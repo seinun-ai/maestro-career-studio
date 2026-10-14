@@ -33,7 +33,7 @@ import {
   formatSalary,
   humanizeEnum,
 } from "@/components/job-extracted-fields";
-import { JobKnockoutCard } from "@/components/job-knockout-card";
+import { JobKnockoutCard, KnockoutLine } from "@/components/job-knockout-card";
 import { JobSubmittedTab } from "@/components/job-submitted-tab";
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
 import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
@@ -728,6 +728,7 @@ export default function JobDetailPage({
               job={job}
               hideTitle
               actionsSlot={reExtractButton}
+              statusSlot={<KnockoutLine scan={data?.knockout} job={job} />}
             />
             <JobTrackingUrlField jobId={id} sourceUrl={job.source_url} readOnly={!ownership.canWrite} />
           </TabsContent>

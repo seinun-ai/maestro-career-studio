@@ -52,9 +52,9 @@ def test_knockout_chip_text_is_label_then_word():
 
 def test_knockout_requirements_not_stated_is_a_minus_not_a_question():
     src = _read("components/job-knockout-card.tsx")
-    assert "\"No requirements listed\"" in src
+    assert '"No requirements listed"' in _read("lib/knockout-line.ts")
     # The Minus (register `none`) is the "No requirements listed" line's icon and the Not listed chip's.
-    assert '<NoneIcon aria-hidden className="size-4" />, label: "No requirements listed"' in src
+    assert '<NoneIcon aria-hidden className="size-4" />' in src
     assert 'job_unstated: { icon: NoneIcon, word: "Not listed"' in src
     assert src.count("NoneIcon") == 3  # destructure + chip + line, nowhere else
     assert src.count("UnknownIcon") == 3  # destructure, the profile_missing chip, the incomplete banner

@@ -36,7 +36,8 @@ def test_a_clear_knockout_claims_no_more_than_no_conflict():
     src = Path(knockout.__file__).read_text(encoding="utf-8")
     assert 'elif results & {"pass", "warning"}:\n        status = "clear"' in src
     card = _read("components/job-knockout-card.tsx")
-    assert 'label: "No knock-outs" }' in card  # the quiet line says only that nothing conflicts
+    # The quiet line says only that nothing conflicts; its words live in lib/knockout-line.ts.
+    assert 'label: "No knock-outs"' in _read("lib/knockout-line.ts") and "{shown.label}" in card
     assert "Nothing rules you out" not in card and "conflicts with your profile" not in card
     assert "meet the listed" not in card and "match what the job lists" not in card
 

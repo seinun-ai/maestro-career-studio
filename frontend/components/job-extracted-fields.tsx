@@ -216,10 +216,13 @@ function BulletSection({
 export function JobExtractedFields({
   job,
   actionsSlot,
+  statusSlot,
   hideTitle = false,
 }: {
   job: Job;
   actionsSlot?: React.ReactNode;
+  /** Shown first inside the card (the job page's knock-out line). */
+  statusSlot?: React.ReactNode;
   /** Hide company · title when the page header already shows it. */
   hideTitle?: boolean;
 }) {
@@ -281,6 +284,7 @@ export function JobExtractedFields({
           {actionsSlot}
         </CardHeader>
         <CardContent className="space-y-5">
+          {statusSlot}
           {/* Only present values render: the chips carry no visible field
               names, so an empty dashed chip cannot say WHICH field is missing
               (the labelled StatLines below keep the — convention). */}

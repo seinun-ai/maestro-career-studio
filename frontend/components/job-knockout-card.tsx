@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
+import { knockoutBanner, knockoutLine } from "@/lib/knockout-line";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { Job, KnockoutCheck, KnockoutScan } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -114,20 +115,12 @@ function CheckChip({ label, summary, href, hint }: { label: string; summary: Sum
   );
 }
 
-export function JobKnockoutCard({
-  scan,
-  job,
-}: {
-  scan: KnockoutScan | null | undefined;
-  job: Job;
-}) {
-  if (!scan) return null;
+/** What both renderings read from a scan: the chips, the detail rows and what could not be compared. */
+function knockoutParts(scan: KnockoutScan, job: Job) {
   const unchecked = uncheckedItems(job, scan);
   // A job that lists pay or years the profile can't answer is not "no requirements listed".
   const notChecked = scan.status === "unstated" && unchecked.length > 0;
   const rows = scan.checks.filter((c) => ROW_RESULTS.has(c.result) && c.message);
-  const conflict = scan.checks.find((c) => c.result === "conflict");
-  const missing = scan.checks.find((c) => c.result === "profile_missing");
 
   const strip = (
     <>
@@ -165,62 +158,95 @@ export function JobKnockoutCard({
       )}
     </>
   );
-  const hasStrip = scan.checks.length > 0 || unchecked.length > 0;
-  const stripBlock = hasStrip ? <div className="mt-2">{strip}</div> : null;
+  return { notChecked, hasStrip: scan.checks.length > 0 || unchecked.length > 0, rows, unchecked, strip };
+}
 
-  if (scan.status === "conflict" || scan.status === "incomplete_profile") {
-    const isConflict = scan.status === "conflict";
-    const Icon = isConflict ? FailsIcon : UnknownIcon;
-    return (
-      <div role="status" className="space-y-2">
-        <div
-          className={cn(
-            "rounded-corner-md px-4 py-3 text-body-medium",
-            isConflict
-              ? "border border-transparent bg-error-container text-on-error-container"
-              : "bg-warning-container text-on-warning-container",
-          )}
-        >
-          <div className="flex items-center gap-2 font-medium [&>svg]:size-4">
-            <Icon aria-hidden />
-            {isConflict
-              ? `You may not qualify${conflict ? `: ${LABEL_BY_KIND[conflict.kind]}` : ""}`
-              : "Your profile is missing an answer"}
-          </div>
-          {isConflict ? null : (
-            <>
-              <p className="mt-1 text-body-small">Add it to your profile to check this job.</p>
-              <Link
-                href={autofillHref(missing?.kind)}
-                className="mt-2 inline-block text-body-small underline underline-offset-2"
-              >
-                Complete your profile
-              </Link>
-            </>
-          )}
+/**
+ * The knock-out banner: shown only when the scan blocks, a conflict or a missing profile answer. A scan that
+ * blocks nothing is `KnockoutLine`, inside the Job details card.
+ */
+export function JobKnockoutCard({
+  scan,
+  job,
+}: {
+  scan: KnockoutScan | null | undefined;
+  job: Job;
+}) {
+  if (!scan || !knockoutBanner(scan.status)) return null;
+  const { hasStrip, strip } = knockoutParts(scan, job);
+  const conflict = scan.checks.find((c) => c.result === "conflict");
+  const missing = scan.checks.find((c) => c.result === "profile_missing");
+  const isConflict = scan.status === "conflict";
+  const Icon = isConflict ? FailsIcon : UnknownIcon;
+  return (
+    <div role="status" className="space-y-2">
+      <div
+        className={cn(
+          "rounded-corner-md px-4 py-3 text-body-medium",
+          isConflict
+            ? "border border-transparent bg-error-container text-on-error-container"
+            : "bg-warning-container text-on-warning-container",
+        )}
+      >
+        <div className="flex items-center gap-2 font-medium [&>svg]:size-4">
+          <Icon aria-hidden />
+          {isConflict
+            ? `You may not qualify${conflict ? `: ${LABEL_BY_KIND[conflict.kind]}` : ""}`
+            : "Your profile is missing an answer"}
         </div>
-        {hasStrip ? <div className="rounded-corner-md border border-border px-3 py-2">{strip}</div> : null}
+        {isConflict ? null : (
+          <>
+            <p className="mt-1 text-body-small">Add it to your profile to check this job.</p>
+            <Link
+              href={autofillHref(missing?.kind)}
+              className="mt-2 inline-block text-body-small underline underline-offset-2"
+            >
+              Complete your profile
+            </Link>
+          </>
+        )}
       </div>
-    );
-  }
+      {hasStrip ? <div className="rounded-corner-md border border-border px-3 py-2">{strip}</div> : null}
+    </div>
+  );
+}
 
+/**
+ * The knock-out result when nothing blocks: one small line (tick and text) in the Job details card. A warning
+ * or a check the profile could not answer is still worth its chip, so the strip shows under the line only then.
+ */
+export function KnockoutLine({
+  scan,
+  job,
+}: {
+  scan: KnockoutScan | null | undefined;
+  job: Job;
+}) {
+  if (!scan) return null;
+  const { notChecked, rows, unchecked, strip } = knockoutParts(scan, job);
+  const shown = knockoutLine(scan.status, notChecked);
+  if (!shown) return null;
   // `clear` is any pass or warning (knockout.py): a warning chip can sit under it, and a check the
   // profile could not answer is left out, so the line claims only that nothing conflicts.
-  const line = notChecked
-    ? { icon: <NotRunIcon aria-hidden className="size-4" />, label: "Checks not run yet" }
-    : scan.status === "clear"
-      ? { icon: <DoneIcon aria-hidden className="size-4 text-success" />, label: "No knock-outs" }
-      : { icon: <NoneIcon aria-hidden className="size-4" />, label: "No requirements listed" };
+  const icon =
+    shown.kind === "not_run" ? (
+      <NotRunIcon aria-hidden className="size-4" />
+    ) : shown.kind === "clear" ? (
+      <DoneIcon aria-hidden className="size-4 text-success" />
+    ) : (
+      <NoneIcon aria-hidden className="size-4" />
+    );
+  const warned = scan.checks.some((c) => c.result === "warning");
   return (
-    <div role="status" className="rounded-corner-md border border-border px-3 py-2 text-body-medium">
-      <div className={cn("flex items-center gap-2 font-medium", scan.status !== "clear" && "text-muted-foreground")}>
-        {line.icon}
-        {line.label}
+    <div role="status" className="text-body-small">
+      <div className={cn("flex items-center gap-2", scan.status !== "clear" && "text-muted-foreground")}>
+        {icon}
+        {shown.label}
         {scan.status === "unstated" && !notChecked ? (
           <span className="sr-only">{". Nothing here to check. That doesn't mean you qualify."}</span>
         ) : null}
       </div>
-      {stripBlock}
+      {warned || unchecked.length > 0 || rows.length > 0 ? <div className="mt-2">{strip}</div> : null}
     </div>
   );
 }

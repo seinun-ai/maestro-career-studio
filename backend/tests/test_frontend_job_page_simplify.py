@@ -61,3 +61,26 @@ def test_the_page_says_where_the_job_stands_under_the_header():
     # The detail names the application's resume (backend test_jobs_router.py); an older backend's gap
     # falls back to the label hook.
     assert "data.base_resume_name ?? baseName(application.base_resume)" in _JOB
+
+
+# ── A4: knock-outs only when they block ─────────────────────────────────────
+
+_KNOCKOUT = _read("components/job-knockout-card.tsx")
+
+
+def test_the_knockout_banner_shows_only_when_it_blocks():
+    banner = _KNOCKOUT[_KNOCKOUT.index("export function JobKnockoutCard(") : _KNOCKOUT.index("export function KnockoutLine(")]
+    assert "!knockoutBanner(scan.status)" in banner and "return null;" in banner
+    # The quiet outcomes are gone from the banner: they are the line's.
+    for words in ("No knock-outs", "No requirements listed", "Checks not run yet"):
+        assert words not in banner
+
+
+def test_a_scan_that_blocks_nothing_is_one_line_in_the_job_details_card():
+    assert "statusSlot={<KnockoutLine scan={data?.knockout} job={job} />}" in _JOB
+    fields = _read("components/job-extracted-fields.tsx")
+    assert "{statusSlot}" in fields and fields.index("{statusSlot}") < fields.index("<dl ")
+    line = _KNOCKOUT[_KNOCKOUT.index("export function KnockoutLine(") :]
+    assert "knockoutLine(scan.status, notChecked)" in line and "{shown.label}" in line
+    # The chips ride under the line only when there is a warning or a check that could not run.
+    assert "warned || unchecked.length > 0 || rows.length > 0" in line
