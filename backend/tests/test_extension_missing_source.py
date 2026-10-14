@@ -107,7 +107,7 @@ def test_a_middle_name_box_is_skipped_never_given_another_name(tmp_path):
 
 
 def test_a_phone_type_box_is_skipped_never_given_the_number(tmp_path):
-    labels = ["Phone Device Type", "Enter in your mobile number: Type"]
+    labels = ["Phone Device Type", "Enter in your mobile number: Type", "Phone type", "Type of phone", "Cell phone type"]
     result = run_profile_fill(
         tmp_path,
         profile={"personal": {"phone": "5551234567"}},
@@ -116,6 +116,18 @@ def test_a_phone_type_box_is_skipped_never_given_the_number(tmp_path):
     for label in labels:
         assert outcome_for(result, label) == "skip_rule", label
         assert result["values"][label] == "", label
+
+
+def test_type_as_a_verb_is_not_a_phone_type_box(tmp_path):
+    """"type" in a label that asks for the number ("Please type your mobile number") is the phone box."""
+    result = run_profile_fill(
+        tmp_path,
+        profile={"personal": {"phone": "5551234567"}},
+        fields=[{"label": "Please type your mobile number", "kind": "text"},
+                {"label": "Mobile phone (type digits only)", "kind": "text"}],
+    )
+    assert outcome_for(result, "Please type your mobile number") == "filled"
+    assert outcome_for(result, "Mobile phone (type digits only)") == "filled"
 
 
 def test_first_matching_valueless_rule_is_the_one_reported(tmp_path):
