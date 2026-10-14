@@ -948,14 +948,66 @@ def test_ready_shows_each_flagged_fields_fixed_note_under_its_name(tmp_path):
     """A drafted written answer and a date set to the 1st each carry a fixed note under the field name; a
     sentence that is not a fixed one is not shown."""
     draft, day = "Drafted from your history: read it", "Day set to the 1st"
-    flags = [{"fid": "f1", "question": "Most impressive project", "reason": "Answered for you: check", "note": draft},
-             {"fid": "f2", "question": "Start date", "reason": "Answered for you: check", "note": day},
-             {"fid": "f3", "question": "Phone", "reason": "Answered for you: check", "note": "Call 555-0100"}]
+    flags = [{"fid": "f1", "question": "Most impressive project", "reason": "A screening question with no saved answer behind it.", "note": draft},
+             {"fid": "f2", "question": "Start date", "reason": "Doesn't match your profile.", "note": day},
+             {"fid": "f3", "question": "Phone", "reason": "A screening question with no saved answer behind it.", "note": "Call 555-0100"}]
     out = _run(tmp_path, [{"seed": [_seeded("ready", readyAt=1, flags=flags)]}])
     [flagged] = _by_class(_card(out["shots"][1])["body"], "flags")
     rows = [(_text(item["children"][0]), [_text(n) for n in _by_class(item, "row-note")])
             for item in flagged["children"]]
     assert rows == [("Most impressive project", [draft]), ("Start date", [day]), ("Phone", [])]
+
+
+DRAFT_NOTE, DAY_NOTE = "Drafted from your history: read it", "Day set to the 1st"
+
+
+def _assumed(fid, question, note, **extra):
+    return {"fid": fid, "question": question, "required": True, "status": "assumed", "answer": "SECRET ANSWER TEXT",
+            "note": note, **extra}
+
+
+def _three_pages(tmp_path, middle, **spec):
+    return _run(tmp_path, [{"start": SEED}], pages=(STEP1, STEP2, REVIEW),
+                reports=[{"fields": [verified("f1")]}, {"fields": middle}, {"fields": [verified("f1", "Phone")]}], **spec)
+
+
+def test_ready_shows_a_draft_made_on_an_earlier_page_with_its_note(tmp_path):
+    """A drafted answer on page 2 is still the user's to read at Ready on page 3, though the last page's receipt has no flag."""
+    out = _three_pages(tmp_path, [verified("f1"), _assumed("f2", "Most impressive project", DRAFT_NOTE)])
+    shot = out["shots"][-1]
+    assert _record(shot)["status"] == "ready"
+    text = _body_text(shot)
+    assert "Check before you submit" in text and "Most impressive project" in text and DRAFT_NOTE in text
+    [flagged] = _by_class(_card(shot)["body"], "flags")
+    [item] = flagged["children"]
+    # Another page's field id is no jump on this page: the row is a name, not a button.
+    assert [one["tag"] for one in _walk(item) if one["tag"] == "BUTTON"] == []
+
+
+def test_ready_shows_a_date_assumption_from_an_earlier_page(tmp_path):
+    out = _three_pages(tmp_path, [_assumed("f2", "Start date", DAY_NOTE)])
+    text = _body_text(out["shots"][-1])
+    assert "Start date" in text and DAY_NOTE in text
+
+
+def test_the_run_keeps_assumed_rows_value_free_and_once_per_question_and_step(tmp_path):
+    out = _three_pages(tmp_path, [_assumed("f2", "Start date", DAY_NOTE), _assumed("f3", "Start date", DAY_NOTE),
+                                   _assumed("f4", "Other", "Call 555-0100")])
+    record = _record(out["shots"][-1])
+    assert record["assumedRows"] == [{"fid": "f2", "question": "Start date", "step": 1, "note": DAY_NOTE},
+                                     {"fid": "f4", "question": "Other", "step": 1, "note": None}]
+    assert "SECRET ANSWER TEXT" not in json.dumps(out["queueSaves"])
+
+
+def test_an_assumed_row_the_receipt_also_flagged_is_one_row_with_its_note(tmp_path):
+    flags = {"flags": [{"index": 0, "question": "Start date", "flags": [{"reason": "Doesn't match your profile."}]}]}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [verified("f1")]}, {"fields": [_assumed("f1", "Start date", DAY_NOTE)]}],
+               inventory=[_field("f1", "x", question="Start date")],
+               api={"POST /api/jobs/job-1/filled-answers": _reply(flags)})
+    [flagged] = _by_class(_card(out["shots"][-1])["body"], "flags")
+    assert len(flagged["children"]) == 1
+    assert DAY_NOTE in _text(flagged) and "Doesn't match your profile." in _text(flagged)
 
 
 def test_a_confirmation_page_after_your_submit_starts_a_countdown_and_posts_nothing_before_it_ends(tmp_path):

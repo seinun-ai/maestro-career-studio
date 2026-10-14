@@ -222,10 +222,27 @@
     return out;
   }
 
-  /** "Check before you submit": the flags the run's last receipt came back with, each a jump. */
+  /** The rows of "Check before you submit": the last receipt's flags, then the answers the run made for the
+   * user on any page (a draft, a date set to the 1st) that the receipt did not name; one that it did gains
+   * its note. A row from another page is a name only: its field id means nothing on this one. */
+  function checkRows(run) {
+    const rows = (run.flags ?? []).map((row) => ({ ...row }));
+    for (const one of run.assumedRows ?? []) {
+      const same = rows.find((row) => row.question === one.question);
+      if (same) {
+        if (!same.note && one.note) same.note = one.note;
+      } else {
+        rows.push({ fid: one.step === (run.step ?? 0) ? one.fid : null, question: one.question,
+                    reason: "Answered for you", ...(one.note ? { note: one.note } : {}) });
+      }
+    }
+    return rows;
+  }
+
+  /** "Check before you submit": the rows above, each a jump where the field is on this page. */
   function flagsBlock(ctx, run) {
     const { node, attach } = ctx.build;
-    const rows = run.flags ?? [];
+    const rows = checkRows(run);
     if (!rows.length) return null;
     const head = node("div", "grp", "Check before you submit");
     head.setAttribute("role", "heading");

@@ -26,6 +26,7 @@
  * THE RECORD is plain data (the driver's header lists its fields). The host adds: `startTabId` (the
  * tab the run began in), `stopRequested`, `pages` (`{n, filled}` per finished page), `progress`
  * (`{done, total}` of the page in hand), `flags` (the last receipt's "Check before you submit"),
+ * `assumedRows` (every page's answered-for-you rows, `{fid, question, step, note}`, never a value),
  * `parkedAt`/`yourMs` (the user's time), `learned` (what Resume saved), and for the auto-mark
  * `markAt`, `noAutoMark`, `markNote`, `markConflict` and `timeCounted`. Answers never live on it: the receipt's
  * memory of what it posted (values) and Undo's previous profile values stay in this file's maps,
@@ -107,7 +108,7 @@
       openUrl: seed.openUrl, inPlace: seed.inPlace === true, startTabId: tabId, tabId: null,
       status: "waiting", why: null, open: [], hosts: [], seen: [], step: 0, fingerprint: null,
       startedAt: null, readyAt: null, yourMs: 0, flowOrigin: null,
-      stopRequested: false, pages: [], progress: null, flags: [], parkedAt: null, learned: null,
+      stopRequested: false, pages: [], progress: null, flags: [], assumedRows: [], parkedAt: null, learned: null,
       markAt: null, noAutoMark: false, markNote: null, markConflict: false,
     };
   }
@@ -338,6 +339,19 @@
     return Object.fromEntries(Object.entries(moves).filter(([axis, move]) => move !== ns.recipeBook.AXES[axis][0]));
   }
 
+  /** The run's answered-for-you rows, kept across pages (Ready lists them whatever page it lands on): a
+   * drafted answer or a date set to the 1st, by its question and fixed note, never its value. One row per
+   * question and step. */
+  function keepAssumed(record, report) {
+    const rows = record.assumedRows ?? [];
+    const step = record.step ?? 0;
+    for (const row of report.fields) {
+      if (row.status !== "assumed" || !row.question || rows.some((one) => one.question === row.question && one.step === step)) continue;
+      rows.push({ fid: row.fid, question: row.question, step, note: ns.fillLoop.knownNote(row.note) });
+    }
+    record.assumedRows = rows;
+  }
+
   /** The fill of one page, pinned to the run's tab: its job and application from the record, the
    * run's limits, and a `cancelled` that only the run's own Stop moves. Posts the answer receipt,
    * tries the resume attach as Autofill does, and sends the same value-free telemetry and trace. */
@@ -413,6 +427,7 @@
         { consentForms: report.consentForms === true, fields: report.fields });
       // This page's flags only: a page whose receipt is null must not show the previous page's.
       record.flags = flags ?? [];
+      keepAssumed(record, report);
       postGaps(store, record, leftovers(report.trace));
     }
     // A repair of named fields posts no receipt and no gap rows: the page's own fill already did.
