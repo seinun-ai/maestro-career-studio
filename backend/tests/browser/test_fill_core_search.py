@@ -674,3 +674,42 @@ def test_a_write_whose_box_is_replaced_mid_write_is_made_again_on_the_new_one(pa
     row = apply(page, f, op="write", value="1 Main St")
     assert (row["outcome"], row["committed"]) == ("verified", "1 Main St")
     assert page.input_value("#a") == "1 Main St" and page.evaluate("document.querySelectorAll('#a').length") == 1
+
+
+def _form_of_text_boxes(n, animator_inside):
+    """`n` labelled boxes in a form, and a box moving every frame: in the same
+    field group as the text boxes, or somewhere else on the page."""
+    boxes = "".join(f"<div><label for='f{i}'>Field {i}</label><input id='f{i}'></div>" for i in range(n))
+    spinner = "<div id='spin'></div>"
+    group = f"<div data-automation-id='formField-group'>{spinner}{boxes}</div>" if animator_inside else boxes
+    return f"""{'' if animator_inside else spinner}<form>{group}</form>
+<script>let n = 0; setInterval(() => {{ spin.style.left = (n++ % 50) + 'px'; }}, 16);</script>"""
+
+
+def _write_all(page, count):
+    """Each write's seconds, in order."""
+    f = inv(page)
+    took = []
+    for i in range(count):
+        start = time.monotonic()
+        assert apply(page, f[f"Field {i}"], op="write", value=f"v{i}")["outcome"] == "verified"
+        took.append(time.monotonic() - start)
+    return took
+
+
+def test_a_page_animating_elsewhere_does_not_hold_every_write_to_the_cap(page, load):
+    """A carousel or badge changes the page every frame, so the whole page never
+    holds still. Each write waits only on its own section, which does: no write
+    runs to the 2 s cap, and ten fields fit well inside ten seconds."""
+    load(page, _form_of_text_boxes(10, animator_inside=False))
+    took = _write_all(page, 10)
+    assert max(took) < 1.5 and sum(took) < 10, took
+
+
+def test_a_page_that_never_holds_still_costs_one_capped_wait_then_is_left_alone(page, load):
+    """The animation sits in the very section being written to, so the first write
+    runs to the cap; the page is then noisy and the other nine do not wait."""
+    load(page, _form_of_text_boxes(10, animator_inside=True))
+    took = _write_all(page, 10)
+    slow = [t for t in took if t > 1.8]   # which write meets the page first is not fixed
+    assert len(slow) == 1 and sorted(took)[-2] < 1.0 and sum(took) < 6, took   # unmarked: 10 x 2 s

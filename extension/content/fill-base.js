@@ -77,10 +77,13 @@
     await sleep(ms);
     check(t);
   };
-  // Resolves once the page has had no change for `ms` (a node, a text or an attribute), or after `max` whatever it is still doing: a page that never
-  // stops (a ticking clock) must not hold a write for ever. Sleeps like every
-  // other wait, so a hidden tab's timers do not stretch it.
-  const quiet = async (t, { ms = 300, max = 2000 } = {}) => {
+  // Resolves once `root` (the page, or one section of it) has had no change for
+  // `ms` (a node, a text or an attribute), or after `max` whatever it is still
+  // doing: a page that never stops (a ticking clock) must not hold a write for
+  // ever. Answers true when it was the cap that ended the wait, so a caller can
+  // learn the page is noisy. Sleeps like every other wait, so a hidden tab's
+  // timers do not stretch it.
+  const quiet = async (t, { ms = 300, max = 2000, root = document.body } = {}) => {
     check(t);
     const start = performance.now();
     let last = start;
@@ -88,12 +91,12 @@
       last = performance.now();
     });
     // Everything counts: a spinner's label or any attribute still moving is a page still changing.
-    watch.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+    watch.observe(root, { childList: true, subtree: true, characterData: true, attributes: true });
     try {
       for (;;) {
         const now = performance.now();
         const left = Math.min(last + ms - now, start + max - now);
-        if (left <= 0) return;
+        if (left <= 0) return last + ms > now;
         await sleep(left);
         check(t);
       }

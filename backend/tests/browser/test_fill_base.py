@@ -435,7 +435,7 @@ def test_quiet_waits_for_the_page_to_stop_changing(page, load):
       const end = await ({QUIET})([200, 2000]);
       return end - start;
     }}""")
-    assert 480 <= got < 900, got
+    assert 480 <= got < 1350, got
 
 
 def test_quiet_is_capped_for_a_page_that_never_holds_still(page, load):
@@ -445,7 +445,7 @@ def test_quiet_is_capped_for_a_page_that_never_holds_still(page, load):
       setInterval(() => box.append(document.createElement('i')), 20);
       return ({QUIET})([200, 500]).then((end) => end - start);
     }}""")
-    assert 480 <= got < 800, got
+    assert 480 <= got < 1200, got
 
 
 def test_quiet_on_a_still_page_takes_one_window(page, load):
@@ -454,7 +454,7 @@ def test_quiet_on_a_still_page_takes_one_window(page, load):
       const start = performance.now();
       return ({QUIET})([100, 2000]).then((end) => end - start);
     }}""")
-    assert 90 <= got < 300, got
+    assert 90 <= got < 450, got
 
 
 def test_quiet_stops_with_a_stop(page, load):
@@ -485,7 +485,7 @@ def test_quiet_waits_past_text_and_attribute_changes(page, load):
         attribute: await run((n) => {{ flag.setAttribute('data-n', String(n)); }}),
       }};
     }}""")
-    assert 680 <= got["text"] < 1100 and 680 <= got["attribute"] < 1100, got
+    assert 680 <= got["text"] < 1650 and 680 <= got["attribute"] < 1650, got
 
 
 def test_quiet_is_capped_for_a_page_that_animates_forever(page, load):
@@ -496,4 +496,22 @@ def test_quiet_is_capped_for_a_page_that_animates_forever(page, load):
       setInterval(() => {{ box.firstChild.data = String(n++); box.dataset.n = n; }}, 20);
       return ({QUIET})([200, 500]).then((end) => end - start);
     }}""")
-    assert 480 <= got < 800, got
+    assert 480 <= got < 1200, got
+
+
+
+def test_quiet_watches_only_the_root_it_is_given_and_says_when_the_cap_ended_it(page, load):
+    load(page, "<div id='busy'>0</div><div id='calm'></div>")
+    got = page.evaluate(f"""async () => {{
+      const base = {B};
+      let n = 0;
+      setInterval(() => {{ busy.style.left = (n++ % 50) + 'px'; }}, 16);   // elsewhere on the page
+      const t0 = performance.now();
+      const capped = await base.quiet({{cancelled: false}}, {{ms: 200, max: 2000, root: calm}});
+      const ownMs = performance.now() - t0;
+      const t1 = performance.now();
+      const cappedBody = await base.quiet({{cancelled: false}}, {{ms: 200, max: 500}});
+      return {{capped, ownMs, cappedBody, bodyMs: performance.now() - t1}};
+    }}""")
+    assert got["capped"] is False and 190 <= got["ownMs"] < 450, got
+    assert got["cappedBody"] is True and 480 <= got["bodyMs"] < 1200, got

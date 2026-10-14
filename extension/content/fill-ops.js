@@ -184,17 +184,27 @@
 
   // A choice can make the page redraw a moment later with nothing changing in
   // between (Country, then its address boxes as new nodes 400 ms on), so the
-  // first write after one waits for 600 ms of stillness; any other write waits
-  // only while the page is still changing. Typing into a box that is about to be
-  // replaced loses the draft.
+  // first write after one waits for 600 ms of stillness on the whole page; any
+  // other write waits only while ITS section is still changing. Typing into a
+  // box that is about to be replaced loses the draft.
+  // A page that never holds still (a carousel, a badge) costs one wait up to the
+  // cap and is then "noisy" for the rest of the run: its writes wait only out
+  // the post-choice window, and the same-apply retry covers a redraw.
   const CHOICE_QUIET = 600;
   const CHANGING = 300;
+  const SECTION = 'form, fieldset, [role="group"], [data-automation-id*="Section"], [data-automation-id*="formField"]';
   let choseAt = -Infinity;
-  const calm = async () => {
-    const afterChoice = performance.now() - choseAt < CHOICE_QUIET;
-    if (!afterChoice && inv().quietFor() >= CHANGING) return;
+  let noisy = false;
+  const calm = async (a) => {
+    const sinceChoice = performance.now() - choseAt;
+    const afterChoice = sinceChoice < CHOICE_QUIET;
+    if (!afterChoice && (noisy || inv().quietFor() >= CHANGING)) return;
     try {
-      await ns.fillBase.withinBudget((t) => ns.fillBase.quiet(t, { ms: afterChoice ? CHOICE_QUIET : CHANGING }), 2500);
+      await ns.fillBase.withinBudget(async (t) => {
+        if (noisy) return ns.fillBase.settle(t, CHOICE_QUIET - sinceChoice);
+        const root = afterChoice ? document.body : (inv().resolve(a.fid)?.closest(SECTION) ?? document.body);
+        if (await ns.fillBase.quiet(t, { ms: afterChoice ? CHOICE_QUIET : CHANGING, root })) noisy = true;
+      }, 2500);
     } catch {
       // A Stop or the page never holding still: the write goes on, and its own token reports a Stop.
     }
@@ -202,7 +212,7 @@
 
   // The one field operation: re-checked against the page as it is NOW, then run.
   const attempt = async (a) => {
-    if (a.op === "write") await calm();
+    if (a.op === "write") await calm(a);
     const { el, shape, refused } = target(a.fid, a.fp);
     if (refused) return { refused };
     // A set's budget is its items' (one item: setItem); setMax only caps a batch.
@@ -342,6 +352,7 @@
       }
       if (opts.runId && opts.runId !== runId) {
         runId = opts.runId;
+        noisy = false;
         ns.fillBase.resume();
         verified.clear();
       }
