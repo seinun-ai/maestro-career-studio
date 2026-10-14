@@ -107,6 +107,7 @@
   // long. Longer than the gap between two stages of one answer (notes §2 rule
   // 4: School showed 1 row, then 8), so the first stage is never the answer.
   const QUIET_MS = 500;
+  const LATE_ENTER_MS = 1500; // the wait for results after an Enter sent to a box that was silent for OPEN_MS
   const ANSWER_MS = 300; // typing that shows nothing new this long did not search: a combobox gets the Enter
   const FRAME_MS = 100; // a frame, or this long where none runs (a hidden tab starves requestAnimationFrame)
   const CLEANUP_WAIT_MS = 500; // a cancelled search's debounce, waited out before closing
@@ -453,7 +454,7 @@
   // §2 rule 5): no popup at once, the caller reads the evidence. The rows say
   // whether the widget takes one answer or several: shapes remembers that.
   // Returns { pop, unsettled }.
-  const waitSettled = async (el, shape, before, snap, was, t) => {
+  const waitSettled = async (el, shape, before, snap, was, t, openMs = OPEN_MS) => {
     const start = Date.now();
     let last = null;
     let since = start;
@@ -477,8 +478,8 @@
       const size = scrollerOf(p) ? null : declared(p);
       if (size !== null && rowsOf(p).length < size) return null; // the list says more are coming
       if (now - since < QUIET_MS) return null;
-      return sig !== was || now - start >= OPEN_MS ? { pop: p } : null;
-    }, OPEN_MS + QUIET_MS, t);
+      return sig !== was || now - start >= openMs ? { pop: p } : null;
+    }, openMs + QUIET_MS, t);
     const pop = got?.pop ?? null;
     ns.shapes.learnRows(el, pop);
     return { pop, unsettled: !got && seen };
@@ -582,7 +583,9 @@
       w?.saw("keyboard");
     }
     if (workday || gated) note(used, "search", enter ? "enter" : "debounce");
-    const got = await waitSettled(el, shape, before, snap, shown, t);
+    // After a last-resort Enter (the box showed nothing for the whole OPEN_MS) the answer gets less
+    // time: the operation's own budget is no longer than the two waits together.
+    const got = await waitSettled(el, shape, before, snap, shown, t, enter && filters ? LATE_ENTER_MS : OPEN_MS);
     if (got.pop) settledFor.set(box, { pop: got.pop, texts: textsOf(got.pop), query: box.value });
     return got;
   };
