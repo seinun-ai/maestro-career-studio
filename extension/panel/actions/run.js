@@ -353,8 +353,13 @@
     const rows = record.assumedRows ?? [];
     const step = record.step ?? 0;
     for (const row of report.fields) {
-      if (row.status !== "assumed" || !row.question || rows.some((one) => one.question === row.question && one.step === step)) continue;
-      rows.push({ fid: row.fid, question: row.question, step, note: ns.fillLoop.knownNote(row.note) });
+      // A value the engine landed without choosing it (a search's one hit) is the user's to check: a fixed
+      // sentence, never the text the page took.
+      const landed = row.status === "needs_answer" && ns.queueRun.LANDED.test(row.lastOutcome ?? "");
+      if ((row.status !== "assumed" && !landed) || !row.question
+          || rows.some((one) => one.question === row.question && one.step === step)) continue;
+      rows.push({ fid: row.fid, question: row.question, step,
+                  note: landed ? ns.fillLoop.landedNote(null, row.lastOutcome) : ns.fillLoop.knownNote(row.note) });
     }
     record.assumedRows = rows;
   }

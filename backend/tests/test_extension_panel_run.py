@@ -1001,6 +1001,19 @@ def test_the_run_keeps_assumed_rows_value_free_and_once_per_question_and_step(tm
     assert "SECRET ANSWER TEXT" not in json.dumps(out["queueSaves"])
 
 
+def test_a_field_filled_by_searching_is_listed_for_checking_and_the_run_goes_on(tmp_path):
+    landed = {**needs("f2", "Field of Study"), "lastOutcome": "search_committed",
+              "answer": 'Searching picked "SECRET ANSWER TEXT". Check it.'}
+    out = _three_pages(tmp_path, [verified("f1"), landed])
+    shot = out["shots"][-1]
+    assert _record(shot)["status"] == "ready"
+    assert _record(shot)["assumedRows"] == [{"fid": "f2", "question": "Field of Study", "step": 1,
+                                             "note": "Searching picked a value. Check it."}]
+    text = _body_text(shot)
+    assert "Field of Study" in text and "Searching picked a value. Check it." in text
+    assert "SECRET ANSWER TEXT" not in json.dumps(out["queueSaves"]) + text
+
+
 def test_an_assumed_row_the_receipt_also_flagged_is_one_row_with_its_note(tmp_path):
     flags = {"flags": [{"index": 0, "question": "Start date", "flags": [{"reason": "Doesn't match your profile."}]}]}
     out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),

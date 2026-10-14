@@ -132,7 +132,7 @@
  * button ids are minted per read; judging the pre-fill read would stop every such wizard on its
  * first page as "review".
  *
- * WHAT THIS FILE PUBLISHES: ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, USER_NAVIGATES,
+ * WHAT THIS FILE PUBLISHES: ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, USER_NAVIGATES, LANDED,
  * RUN_LIMITS, HIDDEN_TABS_OK }. The scheduler (`next`, the record list, pacing) is not here.
  */
 (() => {
@@ -258,8 +258,15 @@
   // invalid that the reader did not see as required (no star, no aria-required): after a Next that
   // did nothing, the page's complaint is the better witness, and the park then names the field
   // instead of ending as `no_change` after a refill.
+  //
+  // A required field the engine left with a value ON it (a search picked its one hit, a click committed an option, a
+  // popup committed while it was explored) is not a question: the engine's own check could not call the value right,
+  // and the page's validation can. It is listed under "Check before you submit" (the host's `keepAssumed`) and the
+  // Next press decides. A field the engine gave up on (nothing landed) still parks.
+  const LANDED = /^(?:group_committed|search_committed|committed_while_\w+)$/;
   const openQuestions = (report) => report.fields
-    .filter((f) => OPEN_STATUSES.has(f.status) && (f.required || (f.status === "needs_answer" && f.invalid === true)))
+    .filter((f) => OPEN_STATUSES.has(f.status) && !(f.status === "needs_answer" && LANDED.test(f.lastOutcome ?? ""))
+      && (f.required || (f.status === "needs_answer" && f.invalid === true)))
     .map((f) => ({ fid: f.fid, question: String(f.question ?? "").slice(0, MAX_QUESTION), required: Boolean(f.required) }));
 
   /** Run one record to a stop. Returns the record; its `status` and `why` say where it got to. */
@@ -950,5 +957,5 @@
     return { classify, pageErrors, pageRequired, advance, signIn, createAccount, waitForChange };
   }
 
-  ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK, USER_NAVIGATES };
+  ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK, USER_NAVIGATES, LANDED };
 })();

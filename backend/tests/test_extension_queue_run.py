@@ -2125,6 +2125,30 @@ def test_a_rejection_that_names_nothing_readable_parks(tmp_path):
     assert names(out, "fix") == [] and out["pressed"] == ["next-1"]
 
 
+# ---------- a field the engine filled by searching does not park ----------
+
+@pytest.mark.parametrize("how", ["search_committed", "group_committed", "committed_while_exploring",
+                                 "committed_while_opening"])
+def test_a_required_field_a_value_landed_on_is_checked_by_the_page_not_parked_on(tmp_path, how):
+    row = {**needs("f1", "Field of Study"), "lastOutcome": how}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[row], []])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+
+
+@pytest.mark.parametrize("how", ["abstained", "no_answer", "set_for_one", "missing", None])
+def test_a_required_field_the_engine_gave_up_on_still_parks(tmp_path, how):
+    row = {**needs("f1", "Field of Study"), **({"lastOutcome": how} if how else {})}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[row], []])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "open_questions")
+    assert out["pressed"] == []
+
+
+def test_a_landed_field_beside_a_field_that_needs_an_answer_parks_naming_only_the_second(tmp_path):
+    landed = {**needs("f1", "Field of Study"), "lastOutcome": "search_committed"}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[landed, needs("f2", "Visa")], []])
+    assert out["record"]["open"] == [{"fid": "f2", "question": "Visa", "required": True}]
+
+
 # ---------- a page is pressed only if it is the page the run filled ----------
 
 def test_a_repair_that_ends_on_another_page_fills_that_page_before_anything_is_pressed_on_it(tmp_path):

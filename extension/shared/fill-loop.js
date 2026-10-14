@@ -176,7 +176,7 @@
  * emitted); `ignored`, `help` and every explore result are never read.
  * Recording is additive: it changes no status, request or page action.
  *
- * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, knownNote, sourceHintOf, pageUrlOf, limits,
+ * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, knownNote, landedNote, sourceHintOf, pageUrlOf, limits,
  * buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines }.
  */
 (() => {
@@ -2450,14 +2450,15 @@
     outside_date_range: "This date is outside the range the box allows. Left for you.",
     too_long: "This box is too short for the whole link, so nothing was typed. Left for you.",
   };
-  // The only sentences a row's `note` may be: the date notes and the backend's fixed draft note (qa.DRAFT_NOTE).
-  // Anything else /choose sends is dropped, so server text never reaches the panel.
+  // The only sentences a row's `note` may be: the date notes, the backend's fixed draft note (qa.DRAFT_NOTE) and the two
+  // value-free lines for a value the engine landed without choosing it (`queueRun.LANDED`). Anything else /choose
+  // sends is dropped, so server text never reaches the panel.
   const DRAFT_NOTE = "Drafted from your history: read it";
-  const KNOWN_NOTES = new Set([...Object.values(ASSUMED_DATE), DRAFT_NOTE]);
+  const KNOWN_NOTES = new Set([...Object.values(ASSUMED_DATE), DRAFT_NOTE, landedNote(null, "search_committed"), landedNote(null)]);
   const knownNote = (note) => (KNOWN_NOTES.has(note) ? note : null);
 
   // The run record's memory for `runFill(..., { memory })`: made once per record and cleared when the
   // step changes. It holds search terms, which can carry a value, so it saves as nothing.
   const newMemory = () => Object.defineProperty({}, "toJSON", { value: () => undefined });
-  ns.fillLoop = { runFill, newMemory, knownNote, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
+  ns.fillLoop = { runFill, newMemory, knownNote, landedNote, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
 })();
