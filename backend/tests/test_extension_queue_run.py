@@ -1054,12 +1054,50 @@ def test_an_unsure_park_remembers_its_page(tmp_path):
     assert parked["parkedPage"]["key"] == "lastpage" and parked["parkedPage"]["where"].endswith("/last")
 
 
-def test_a_resume_on_the_same_unsure_page_goes_ready_without_a_refill(tmp_path):
+def test_a_resume_on_the_same_unsure_page_fills_it_and_then_goes_ready(tmp_path):
     parked = _parked_unsure(tmp_path)
     again = _drive(tmp_path, [UNSURE], record=parked)
     r = again["record"]
     assert (r["status"], r["readyBy"]) == ("ready", "user") and r["readyAt"] is not None
-    assert again["fillCalls"] == 0 and again["pressed"] == [] and r["tenant"] is not None
+    assert again["fillCalls"] == 1 and again["pressed"] == [] and r["tenant"] is not None
+    order = [c[0] for c in again["calls"]]
+    assert order.index("fill") < order.index("classify", order.index("fill"))
+
+
+@pytest.mark.parametrize("by, page", [
+    ("submit_seen", {"t": "unseen_submit", "url": "/last", "key": "lastpage"}),
+    ("submit_context", {"t": "submit_dialog", "url": "/last", "key": "lastpage"}),
+    ("fields_no_next", UNSURE),
+])
+def test_a_resume_vouches_only_for_a_page_that_parked_on_a_submit_it_could_not_be_sure_of(tmp_path, by, page):
+    first = _drive(tmp_path, [step(1), page])
+    assert (first["record"]["why"], first["record"]["lastBy"]) == ("unsure_page", by)
+    again = _drive(tmp_path, [{**page, "needs": [NEED]}], record=first["record"], fixClears=True)
+    r = again["record"]
+    assert (r["status"], r["readyBy"]) == ("ready", "user")
+    # The fill came first, then the scoped fix of the box still empty, then Ready.
+    assert again["fillCalls"] == 1 and [c[1] for c in names(again, "fix")] == [["Most impressive project"]]
+
+
+def test_a_resume_on_a_several_nexts_park_fills_but_does_not_vouch(tmp_path):
+    page = {"t": "review_next", "url": "/last", "key": "lastpage"}
+    first = _drive(tmp_path, [step(1), page])
+    assert (first["record"]["why"], first["record"]["lastBy"]) == ("unsure_page", "several_next")
+    again = _drive(tmp_path, [page], record=first["record"])
+    r = again["record"]
+    assert (r["status"], r["why"]) == ("parked", "unsure_page") and r.get("readyBy") is None
+    assert again["fillCalls"] == 1 and again["pressed"] == []
+
+
+def test_a_resume_that_finds_a_form_step_voids_the_vouch_fills_and_presses_next(tmp_path):
+    parked = _parked_unsure(tmp_path)
+    last = {"t": "step", "n": 9, "url": "/last", "key": "lastpage", "needs": [NEED]}
+    again = _drive(tmp_path, [last, REVIEW], record=parked)
+    r = again["record"]
+    assert again["fillCalls"] >= 1 and again["pressed"] == ["next-9"]
+    order = [c[0] for c in again["calls"]]
+    assert order.index("fill") < order.index("advance")
+    assert (r["status"], r["readyBy"]) == ("ready", "submit_button"), "the next page is a real review: not the user's vouch"
 
 
 def test_a_vouched_page_still_gets_its_errors_and_required_empties_checked(tmp_path):

@@ -44,7 +44,11 @@
  *                          told the user to go somewhere: sign_in_yourself, verify, posting,
  *                          unknown_page; the host they land on joins `hosts`)
  *     → stopped      closed | bad_link | error | user (a Stop; nothing is called after it)
- *   Resume re-enters `drive` on a parked record: the open tab is kept, the page is read again. After a
+ *   Resume re-enters `drive` on a parked record: the open tab is kept, the page is read again. On the page an
+ *   `unsure_page` park named, the Resume FILLS it (the fill never overwrites an answered field) and the user's
+ *   word counts as the Ready judgement only for a park whose `lastBy` was a Submit the reader could not be sure of
+ *   (`submit_seen`, `submit_context`) or fields with no Next (`fields_no_next`); a page that now reads as a step
+ *   is pressed on to its Next, not vouched for. After a
  *   `page_errors` or `upload` park, on the page it parked on (`record.parkedPage`: address and step key), the
  *   page is NOT filled again (the user fixed what was named): after a page_errors park its errors are read and
  *   any that remain get a repair round; after an upload park a required box still empty parks again (a
@@ -132,6 +136,9 @@
   const POLL_MS = 500;
   const LONE_STABLE = 4;   // reads in a row (about 2 s) before a field-less lone-Next page counts as final
   const MAX_QUESTION = 200;
+  // The parks a Resume may vouch for: no Next beside the fields, or a Submit the reader could not see or a dialog that asked.
+  // Not `several_next`: a real Next is on the page, and pressing it is the user's.
+  const VOUCHABLE = new Set(["submit_seen", "submit_context", "fields_no_next"]);
   const OPEN_STATUSES = new Set(["needs_answer", "cannot_operate"]);
   // A fill "wrote or confirmed" a field when it ended in one of these (not unconfirmed, yours, blocked).
   const WROTE_STATUSES = new Set(["verified", "closest", "assumed", "already", "partial"]);
@@ -424,10 +431,16 @@
             const vouching = resumeWhy === "unsure_page";
             if (parked && (vouching || parked.key !== "") && parked.where === where && parked.key === key) {
               recheck = resumeWhy;
-              pageFilled = true;
-              vouched = vouching;
-              // What an earlier attach wrote (even one the page never confirmed) is not written twice or asked of the user.
-              if (vouched) wroteResume = FILE_WRITTEN.has(record.attach?.outcome);
+              if (vouching) {
+                // The page is filled as any Resume's is (the fill answers nothing that already holds an answer); the
+                // user's word that it is the last page feeds the Ready judgement only, and only for a park that was
+                // about a Submit. What an earlier attach wrote (even one the page never confirmed) is not written twice.
+                pageFilled = false;
+                vouched = VOUCHABLE.has(record.lastBy);
+                wroteResume = FILE_WRITTEN.has(record.attach?.outcome);
+              } else {
+                pageFilled = true;
+              }
             } else {
               // The user moved on by hand: nothing the park learnt is about this page (what moved() clears).
               fixRounds = 0;
@@ -460,6 +473,8 @@
           else if (url && record.hosts.length && !record.hosts.includes(hostOf(url))) return await park("moved_away");
         }
         const verdict = ns.pageKind.classify(summary);
+        // A Resume's word that this was the last page is void once the page reads as a step with a real Next.
+        if (vouched && verdict.kind === "form_step") vouched = false;
         let kind = verdict.kind;
         let by = verdict.by ?? null;   // why a review is a review (page-kind.js); only a real Submit control ends an application
 
