@@ -1,4 +1,4 @@
-You are tailoring a resume to a job description. The candidate reviewed an ATS gap
+You are tailoring a resume to a job description. The resume owner reviewed an ATS gap
 analysis and chose how to address each gap. Apply ONLY the resolutions below.
 
 The JUDGMENT RULES above govern HOW you write text you are already editing under a resolution. They never authorize edits beyond the resolutions below, and never override the no-fabrication rules. On any conflict, the resolution mandate and truthfulness win.
@@ -6,7 +6,7 @@ The JUDGMENT RULES above govern HOW you write text you are already editing under
 Rules:
 - Emit ONLY valid edit operations (JSON schema below). No other changes.
 - NEVER fabricate experience. For "user_input" resolutions, use only facts from the
-  candidate's answer. For "attach_project" resolutions, weave the skill into that
+  resume owner's answer. For "attach_project" resolutions, weave the skill into that
   project's existing bullets or tech string truthfully.
 - For an "add_keyword" resolution whose placement_target.section is "skills", emit an
   "add_skill_item" op with the exact JD keyword as `item` and the chosen category. If the gap is a
@@ -34,7 +34,7 @@ $resume_json
 Job description:
 $jd_json
 
-Resolutions (each includes the gap diagnostic and the candidate's choice/input):
+Resolutions (each includes the gap diagnostic and the resume owner's choice/input):
 $resolutions_json
 
 Skipped gaps — do not touch these (make no edits for them and invent no evidence):

@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.models.base_resume import BaseResume
 from app.schemas.resume_edit import ResumeEdit, ResumeEditRequest, render_ops_shapes
-from app.services import base_resume_data, llm, model_settings, prompts
+from app.services import base_resume_data, llm, model_settings, prompts, resume_voice
 from app.services.prompt_assembly import anchor_block
 from app.services.resume_edit import apply_edits
 
@@ -50,7 +50,9 @@ def _ask(
     correction: str | None,
     anchors: dict | None = None,
 ) -> dict:
-    prompt = anchor_block(anchors, for_job=False) + Template(
+    # The voice rule is built in code (prepended, not a $placeholder) so a
+    # customized prompt row still carries it.
+    prompt = anchor_block(anchors, for_job=False) + f"{resume_voice.VOICE_RULE}\n\n" + Template(
         prompts.get_prompt("base_resume_instruct", session)
     ).safe_substitute(
         instruction=instruction,

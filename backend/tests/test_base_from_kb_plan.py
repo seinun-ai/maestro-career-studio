@@ -1,7 +1,7 @@
 import pytest
 
 from app.models.career_kb import KBEntity, KBPoint
-from app.services import base_from_kb_plan
+from app.services import base_from_kb_plan, resume_voice
 
 
 def _entity(db_session, kind, title, *, points=1, status="active", org=None):
@@ -215,7 +215,7 @@ def test_custom_prompt_keeps_role_label_pure_and_injects_context_once(
 
     base_from_kb_plan.plan(db_session, "forward_deployed_engineer", "")
 
-    assert fake.prompt == expected
+    assert fake.prompt == f"{resume_voice.VOICE_RULE}\n\n{expected}"
 
 
 def test_plan_on_an_empty_kb_is_a_value_error(db_session):

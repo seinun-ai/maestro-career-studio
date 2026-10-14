@@ -12,7 +12,7 @@ from typing import Literal
 from sqlalchemy.orm import Session
 
 from app.models.bullet_rewrite import BulletRewrite
-from app.services import bullet_classify, llm, model_settings, prompts
+from app.services import bullet_classify, llm, model_settings, prompts, resume_voice
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,14 @@ def guard_violations(original: str, rewrite: str, *, supplied: str = "") -> list
         )
     if _PLACEHOLDER.search(rewrite):
         violations.append("contains a placeholder (bracket, brace, TODO, TBD, XX, or blank)")
+    old_voice = {h.text.lower() for h in resume_voice.third_person_hits(original)}
+    voice = [h.text for h in resume_voice.blocking(resume_voice.third_person_hits(rewrite))
+             if h.text.lower() not in old_voice]
+    if voice:
+        violations.append(
+            f"reads as written about someone else ({sorted(set(voice))}): write in implied "
+            "first person, with no I, my, he, she, they, his, her or their"
+        )
     lost = _entities(original) - _entities(rewrite)
     if not supplied_numbers:
         lost |= set((original_numbers - _numbers(rewrite)).keys())
@@ -102,6 +110,8 @@ def guarded_rewrite(
             question=question,
             violations=json.dumps(violations),
         )
+        # Built in code, like the overrides below, so a customized prompt row keeps it.
+        prompt = f"{resume_voice.VOICE_RULE}\n\n{prompt}"
         if context:
             prompt = f"{prompt.rstrip()}\n\n{_CANDIDATE_CONTEXT_OVERRIDE}\n"
         if objective == "condense":

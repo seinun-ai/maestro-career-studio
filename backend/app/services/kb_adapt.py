@@ -33,7 +33,7 @@ from app.schemas.career_kb import (
     KBPortItemReport,
     KBPortReport,
 )
-from app.services import llm, model_settings, prompts
+from app.services import llm, model_settings, prompts, resume_voice
 from app.services.career_kb import (
     _KIND_TO_SECTION,
     _build_entry,
@@ -144,12 +144,13 @@ def _build_prompt(
     )
     # Single-pass substitution: point/bullet texts containing a literal $token
     # must never be re-expanded (same reason prompt_assembly uses Template).
-    return Template(prompts.get_prompt("kb_adapt", session)).safe_substitute(
+    body = Template(prompts.get_prompt("kb_adapt", session)).safe_substitute(
         entity_line=entity_line,
         existing_bullets=entry_block,
         points=points_block,
         style_sample=style_block,
     )
+    return f"{resume_voice.VOICE_RULE}\n\n{body}"
 
 
 def _style_sample(data: dict, section: str, matched_index: int | None) -> str:

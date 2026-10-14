@@ -1,6 +1,6 @@
 import re
 
-from app.services import prompt_assembly
+from app.services import prompt_assembly, resume_voice
 
 
 def test_build_extraction_prompt_injects_raw_jd(monkeypatch):
@@ -470,4 +470,57 @@ def test_word_bank_line_survives_a_customized_skill_prompt(db_session):
 
     p = prompt_assembly.build_gap_tailor_prompt({"summary": "x"}, {"skills": []}, [], [])
 
-    assert p.startswith("MY OWN RULES\nNever use these words: synergy.\n\n---\n\n")
+    assert p.startswith("MY OWN RULES\nNever use these words: synergy.\n")
+    assert p.index("synergy") < p.index(resume_voice.VOICE_RULE) < p.index("\n\n---\n\n")
+
+
+# --- voice (Task D1) -------------------------------------------------------------
+
+def test_voice_line_survives_a_customized_skill_prompt(db_session):
+    prompt_assembly.prompts.set_prompt("tailoring_skill", "MY OWN RULES\n", db_session)
+
+    tailor = prompt_assembly.build_gap_tailor_prompt({"summary": "x"}, {"skills": []}, [], [])
+    enrich = prompt_assembly.build_gap_enrichment_prompt({"summary": "x"}, {"skills": []}, {"gaps": []})
+
+    for p in (tailor, enrich):
+        assert resume_voice.VOICE_RULE in p
+        assert "implied first person" in p
+
+
+def test_voice_line_is_in_every_prompt_that_writes_resume_text(db_session, monkeypatch):
+    from app.services import (
+        base_from_kb_plan, base_resume_instruct, chat_agent, health_guards, kb_adapt, llm,
+    )
+
+    seen = {}
+
+    def fake(**kwargs):
+        seen[kwargs["trace_name"]] = kwargs["prompt"]
+        return {"rewrite": "Built ETL pipelines using Spark.", "ops": [], "include": [],
+                "exclude": [], "summary": "", "notes": ""}
+
+    monkeypatch.setattr(llm, "call_openai", fake)  # the one module object all three import
+
+    health_guards.guarded_rewrite(db_session, "Built ETL pipelines using Spark.", context="")
+    base_resume_instruct._ask(db_session, "tighten it", {"summary": "x"}, None)
+    base_from_kb_plan._ask(db_session, "data_scientist", "", [], {})
+    system = chat_agent._system_prompt(db_session)
+    adapt = kb_adapt._build_prompt(db_session, _entity(), [], [], [], {}, "experience", None)
+
+    assert set(seen) == {"resume_bullet_rewrite", "base-resume-instruct", "base-from-kb-plan"}
+    for text in (*seen.values(), system, adapt):
+        assert resume_voice.VOICE_RULE in text
+
+
+def test_voice_line_is_in_the_chat_system_prompt_even_for_a_customized_row(db_session):
+    from app.services import chat_agent
+
+    prompt_assembly.prompts.set_prompt("chat_system", "Edit resumes.", db_session)
+
+    assert chat_agent._system_prompt(db_session).startswith(resume_voice.VOICE_RULE)
+
+
+def _entity():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(kind="experience", title="Engineer", org="Acme Corp")

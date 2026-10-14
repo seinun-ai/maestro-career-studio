@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.career_kb import KBEntity
-from app.services import llm, model_settings, prompts, role_categories
+from app.services import llm, model_settings, prompts, resume_voice, role_categories
 
 # Kinds whose resume rendering does not come from bullets.
 _RENDERS_WITHOUT_POINTS = {"certification", "education"}
@@ -108,7 +108,7 @@ def _ask(
         "TARGET ROLE: $role_label\n${role_description_line}",
         1,
     )
-    prompt = Template(prompt_text).safe_substitute(
+    prompt = f"{resume_voice.VOICE_RULE}\n\n" + Template(prompt_text).safe_substitute(
         role_label=labels.get(role_category, role_category),
         role_description_line=description_line,
         instruction=(instruction or "").strip() or "(none given)",

@@ -242,3 +242,39 @@ def test_question_reaches_guarded_rewrite_without_allowing_invented_numbers(db_s
     assert "Who used it?" in prompts[0]
     monkeypatch.setattr(hg.llm, "call_openai", lambda **kw: {"rewrite": "Built a guide adopted by 40 teams."})
     assert guarded_rewrite(db_session, "Built a guide.", context="support team adopted it", question="Who used it?") is None
+
+
+# --- voice (Task D1): a rewrite about "he" or "Alex" is rejected -----------------
+
+def test_third_person_rewrite_is_rejected():
+    violations = guard_violations(
+        ORIGINAL, "Built ETL pipelines processing 2M rows daily using Spark and Airflow, which he owns."
+    )
+    assert any("written about someone else" in v for v in violations)
+
+
+def test_a_pronoun_already_in_the_original_is_not_blamed_on_the_rewrite():
+    original = "Mentored engineers so they could ship Spark jobs; cut load 2M rows."
+    assert guard_violations(original, "Mentored engineers so they could ship Spark jobs; cut 2M rows.") == []
+
+
+def test_guarded_rewrite_reprompts_with_the_voice_violation(db_session, monkeypatch):
+    from app.services import health_guards as hg
+
+    good = "Built ETL pipelines processing 2M rows daily using Spark and Airflow."
+    prompts_seen = []
+    answers = iter([
+        {"rewrite": "She built ETL pipelines processing 2M rows daily using Spark and Airflow."},
+        {"rewrite": good},
+    ])
+
+    def fake(**kwargs):
+        prompts_seen.append(kwargs["prompt"])
+        return next(answers)
+
+    monkeypatch.setattr(hg.llm, "call_openai", fake)
+    monkeypatch.setattr(hg.model_settings, "get_smart_model", lambda s: "test-model")
+
+    assert guarded_rewrite(db_session, ORIGINAL, context="") == good
+    assert all("implied first person" in p for p in prompts_seen)
+    assert "written about someone else" in prompts_seen[1]

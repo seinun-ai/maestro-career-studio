@@ -11,7 +11,7 @@ from app.main import app
 from app.models.base_resume import BaseResume
 from app.models.resume_version import ResumeVersion
 from app.schemas.resume_edit import render_ops_shapes
-from app.services import base_resume_instruct, llm, prompts
+from app.services import base_resume_instruct, llm, prompts, resume_voice
 
 RESUME = {
     "contact": {"name": "Jordan Sample", "email": "jordan@example.com"},
@@ -206,4 +206,4 @@ def test_ask_for_changes_without_anchors_is_unchanged(db_session, row, monkeypat
         op_shapes=render_ops_shapes(),
     )
     assert "RESUME ANCHORS" not in fake.calls[0]
-    assert fake.calls[0] == expected
+    assert fake.calls[0] == f"{resume_voice.VOICE_RULE}\n\n{expected}"

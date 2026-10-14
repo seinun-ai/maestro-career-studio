@@ -28,6 +28,7 @@ from app.services import (
     health_zones,
     model_settings,
     pdf_render,
+    resume_voice,
     template_registry,
     template_validation,
 )
@@ -956,9 +957,36 @@ def _slip_notes(resume: dict, levels_by_loc: dict[Location, dict],
     return notes
 
 
+def _voice_notes(resume: dict) -> list[dict]:
+    """`voice.third_person`: the summary or a bullet that reads as written about
+    someone else (a pronoun, the contact's name, "Builds ..."). One note per
+    location; the suggestion is the code's repair, offered only when the rewrite
+    guards accept it. An opener like "Builds" has no suggestion: fixing it means
+    choosing a tense."""
+    name, orgs = resume_voice.contact_name(resume), resume_voice.org_names(resume)
+    notes: list[dict] = []
+    for loc, text in _ladder_items(resume):
+        hits = resume_voice.third_person_hits(text, name, orgs)
+        if not hits:
+            continue
+        what = "summary" if loc[0] == "summary" else "bullet"
+        repaired = resume_voice.repair(text, name, orgs) if resume_voice.blocking(hits) else None
+        notes.append(_finding(
+            "note", loc, _label_at(resume, loc),
+            f"This {what} reads as written about someone else.",
+            "A resume speaks as its owner. A pronoun, your own name or a verb like 'Builds' "
+            "reads as a template or a ghost-writer.",
+            "Write it in implied first person: lead with a verb, and drop he, she, they and your name.",
+            suggestion=_guarded(text, repaired),
+            source="rule", rule="voice.third_person", subject=text,
+            content_hash=bullet_classify.content_hash(text)))
+    return notes
+
+
 def _advisories(resume: dict, *,
                 word_bank: health_wording.WordBank = health_wording.DEFAULT_BANK) -> list[dict]:
     notes: list[dict] = list(_wording_notes(resume, word_bank))
+    notes.extend(_voice_notes(resume))
     if not (resume.get("summary") or "").strip():
         notes.append(_finding(
             "note", ("summary", None, None), "Summary", "No summary.",

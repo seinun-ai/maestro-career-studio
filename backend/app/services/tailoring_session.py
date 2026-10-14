@@ -42,6 +42,7 @@ from app.services import (
     resume_edit,
     resume_lint,
     resume_versions,
+    resume_voice,
 )
 from app.services.ats import normalize_term, score_resume, term_in_text
 from app.services.resume_projects import extra_entry_live, extra_section_live
@@ -1300,14 +1301,22 @@ def _llm_customized(
         raise ValueError(f"Tailoring produced invalid edit ops: {exc}") from exc
 
     missing = _missing_keywords(customized, tailoring.resolutions_json)
-    if missing:
-        missing_wordings = [wording for wording, _ in missing]
-        retry_prompt = (
-            f"{prompt}\n\nCORRECTION REQUIRED: the prior edit set dropped these "
-            "required keyword wordings. Return a complete corrected ops list "
-            "that preserves each wording verbatim: "
-            f"{json.dumps(missing_wordings)}"
-        )
+    voice_problems = resume_voice.changed_hits(base, customized)
+    if missing or voice_problems:
+        # One corrective retry covers both defects, so a clean-but-keywordless
+        # answer and a keyworded-but-third-person one cost the same single call.
+        corrections = []
+        if missing:
+            missing_wordings = [wording for wording, _ in missing]
+            corrections.append(
+                "CORRECTION REQUIRED: the prior edit set dropped these "
+                "required keyword wordings. Return a complete corrected ops list "
+                "that preserves each wording verbatim: "
+                f"{json.dumps(missing_wordings)}"
+            )
+        if voice_problems:
+            corrections.append(resume_voice.correction(voice_problems))
+        retry_prompt = f"{prompt}\n\n" + "\n\n".join(corrections)
         retry_result = llm.call_openai(
             prompt=retry_prompt,
             model=model_settings.get_smart_model(session),
@@ -1354,6 +1363,12 @@ def _llm_customized(
                     "Tailoring produced invalid keyword-survival fallback ops: "
                     f"{exc}"
                 ) from exc
+    # Still third person after the retry: repair it in code (a pronoun clause is
+    # rewritten or dropped, an unfixable line goes back to the base's text).
+    # A pronoun is never stored.
+    repaired = resume_voice.repair_resume(base, customized)
+    if repaired:
+        logger.warning("third-person voice repaired in code at %s", repaired)
     return customized
 
 
@@ -1436,6 +1451,10 @@ def tailor(
                 customized = resume_edit.apply_edits(base, list(ops))
             except ValueError as exc:
                 raise ValueError(f"Tailoring produced invalid edit ops: {exc}") from exc
+            # The caller wrote this text itself: tell it to fix the voice rather
+            # than store or silently rewrite it.
+            if resume_voice.changed_hits(base, customized):
+                raise ValueError(resume_voice.OPS_ERROR)
         else:
             actionable, skipped, already_applied = _resolution_bundle(
                 tailoring, already_applied

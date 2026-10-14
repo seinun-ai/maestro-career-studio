@@ -1,4 +1,4 @@
-You are planning a NEW role-targeted base resume, assembled from a candidate's
+You are planning a NEW role-targeted base resume, assembled from the resume owner's
 Career Knowledge Base. You do not write the resume: you decide WHICH knowledge
 base entries belong on it, which do not, and you draft the summary.
 
@@ -7,7 +7,7 @@ USER INSTRUCTION (may be empty — how they want this resume shaped, what to
 emphasise, what to leave off, and the tone of the summary):
 $instruction
 
-CANDIDATE'S KNOWLEDGE BASE ENTRIES:
+THE RESUME OWNER'S KNOWLEDGE BASE ENTRIES:
 $entities
 
 Return JSON only, exactly this shape:

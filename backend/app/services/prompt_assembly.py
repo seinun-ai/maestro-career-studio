@@ -3,7 +3,7 @@ from string import Template
 from typing import Any
 
 from app.db import SessionLocal
-from app.services import health_wording, prompts
+from app.services import health_wording, prompts, resume_voice
 
 
 def _json_block(data: dict[str, Any]) -> str:
@@ -22,10 +22,13 @@ def _skill_preamble() -> str:
     would vanish on seeded deployments. An unseeded key reads its file default.
 
     The health check's word bank rides along as one appended line, built in
-    code so a customized `prompt.tailoring_skill` row still carries it."""
+    code so a customized `prompt.tailoring_skill` row still carries it. The
+    VOICE line (the resume is the owner's own, implied first person) rides the
+    same way and for the same reason."""
     skill = prompts.get_prompt("tailoring_skill").strip()
     avoid = _avoid_words_line()
-    return f"{skill}\n{avoid}" if avoid else skill
+    lines = [skill, avoid, resume_voice.VOICE_RULE]
+    return "\n".join(line for line in lines if line)
 
 
 def _avoid_words_line() -> str:

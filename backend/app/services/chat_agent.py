@@ -25,7 +25,14 @@ from typing import Any, Iterator
 from sqlalchemy.orm import Session
 
 from app.models.chat import ChatAttachment, ChatMessage, ChatSession
-from app.services import model_settings, persona as persona_service, prompts, tracing, transcript
+from app.services import (
+    model_settings,
+    persona as persona_service,
+    prompts,
+    resume_voice,
+    tracing,
+    transcript,
+)
 from app.services.chat_tools import TOOL_SPECS, ToolContext, execute_tool
 from app.services.llm_providers import registry, replay
 from app.services.llm_providers.types import (
@@ -51,7 +58,8 @@ def _system_prompt(db: Session) -> str:
     template = prompts.get_prompt("chat_system", db)
     persona = (persona_service.get_persona(db) or "").strip()
     persona_block = f"CANDIDATE PERSONA:\n{persona}" if persona else ""
-    return StringTemplate(template).safe_substitute(persona=persona_block).strip()
+    body = StringTemplate(template).safe_substitute(persona=persona_block).strip()
+    return f"{resume_voice.VOICE_RULE}\n\n{body}"
 
 
 def _describe_selection(sel: dict[str, Any]) -> str:

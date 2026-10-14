@@ -352,6 +352,7 @@ const RULE_TITLES: Record<string, string> = {
   "bullet.too_short": "Bullet is too short",
   "entry.too_many_bullets": "Too many bullets",
   "summary.missing": "No summary",
+  "voice.third_person": "Written about someone else",
 };
 
 export function groupNotesByRule<

@@ -1,4 +1,4 @@
-You are editing a candidate's BASE resume on their instruction. A base resume is
+You are editing the resume owner's BASE resume on their instruction. A base resume is
 their standing document for one career track — not a tailoring for one job — so
 every change you propose must still be true when they send it anywhere.
 
@@ -39,7 +39,7 @@ Rules, all binding:
    repeats the full item list. `replace_entry` repeats the whole edited entry.
    Prefer the smallest op that expresses the change (replace_bullet over
    replace_entry; replace_summary over rewriting the document).
-4. Keep the candidate's voice and facts; write bullets result-first, specific,
+4. Keep the resume owner's voice (implied first person, no pronouns, no name) and facts; write bullets result-first, specific,
    with the numbers that are already there. No em dashes.
 5. Leave contact details alone unless the instruction is about them.
 
