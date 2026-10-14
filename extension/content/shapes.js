@@ -57,7 +57,7 @@
   };
   const readField = (el) => memo("field", el, () => ns.readField(el));
   const pass = (fn) => {
-    cache = { field: new Map(), members: new Map() };
+    cache = { field: new Map(), members: new Map(), pills: new Map() };
     try {
       return fn();
     } finally {
@@ -387,6 +387,61 @@
   };
   const pad = (v) => (/^\d$/.test(v) ? `0${v}` : v);
 
+  // PILL GROUPS: a row of buttons that each hold a state (`aria-pressed`) or
+  // ARIA radios (`role=radio` + `aria-checked`) that are not inputs. The group
+  // is the `role=radiogroup`, else the nearest ancestor holding two or more
+  // of them and no other control. A toolbar's toggles are not an answer.
+  // Buttons need a question to be a field at all (a lone toggle, an icon row
+  // with no label is not one); ARIA radios were always listed.
+  const PRESSABLE = 'button[aria-pressed], [role="button"][aria-pressed]';
+  const ARIA_RADIO = '[role="radio"][aria-checked]';
+  const pillOn = (m) => m.getAttribute("aria-pressed") === "true" || m.getAttribute("aria-checked") === "true";
+  const pillText = (m) => clean(m.textContent) || clean(m.getAttribute("aria-label") ?? "");
+  // A `required` label the page marks by class (a CSS-only star): the nearest
+  // label before the group, in the nearest ancestor that holds one.
+  const labelRequired = (container) => {
+    for (let n = container.parentElement, d = 0; n && d < 3 && !edge(n); n = n.parentElement, d += 1) {
+      const before = [...n.querySelectorAll("label")].filter((l) => !container.contains(l)
+        && (l.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING));
+      if (before.length) {
+        const l = before.at(-1);
+        return /required/i.test(l.className) || ns.unmark(clean(l.textContent)).required;
+      }
+    }
+    return false;
+  };
+  const pillGroup = (el) => memo("pills", el, () => {
+    if (el instanceof HTMLInputElement || !el.matches(`${PRESSABLE}, ${ARIA_RADIO}`)) return null;
+    const radio = el.matches(ARIA_RADIO);
+    const kind = radio ? ARIA_RADIO : PRESSABLE;
+    const whole = (container) => {
+      if (container.closest('[role="toolbar"]') || container.querySelector(ns.fieldControls.CONTROL)) return null;
+      return { container, members: [...container.querySelectorAll(kind)] };
+    };
+    const grouped = radio ? el.closest('[role="radiogroup"]') : null;
+    let found = grouped ? whole(grouped) : null;
+    for (let n = el.parentElement, d = 0; !grouped && n && d < 6 && !edge(n); n = n.parentElement, d += 1) {
+      if (n.querySelectorAll(kind).length < 2) continue;
+      found = whole(n);
+      break;
+    }
+    if (!found) return null;
+    const q = describeBy(found.container);
+    return radio || q.question ? { ...found, ...q, radio } : null;
+  });
+  // The pills a person can press: shown, and not disabled unless it holds the answer.
+  const pillChoices = (el) => pillGroup(el).members
+    .filter((m) => ns.fillBase.visible(m) && (pillOn(m) || m.getAttribute("aria-disabled") !== "true"));
+  const pillMulti = (el) => {
+    const g = pillGroup(el);
+    if (g.radio) return false;
+    if (g.container.getAttribute("aria-multiselectable") === "true") return true;
+    for (let n = g.container, d = 0; n && d < 3 && !edge(n); n = n.parentElement, d += 1) {
+      if (/multi-?select/i.test(n.className)) return true;
+    }
+    return false;
+  };
+
   // An editing host (not an editable node inside one).
   const editingHost = (el) => el.isContentEditable && !(el.parentElement?.isContentEditable)
     && !(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement);
@@ -500,6 +555,36 @@
         const s = input ? null : backingSelect(el);
         return { display: readPopup(el), proof: input ? input.value : s ? selectHeld(s) : null };
       },
+    },
+    {
+      // A group of pill buttons (aria-pressed) or ARIA radios. Passive, like a
+      // radio set: the options are the pills' texts and the answer is the
+      // pressed one. A click on a pressed pill un-selects it, so a choose
+      // looks first and never presses one that is already on.
+      name: "pills", kind: "choice",
+      // Listed to the loop and the backend as a radio set ("group"): they know
+      // six shapes, and a pill group answers like one.
+      reports: "group",
+      match: (el) => pillGroup(el) !== null,
+      multi: pillMulti,
+      groupKey: (el) => pillGroup(el).members[0],
+      parts: (el) => pillGroup(el).members,
+      describe: (el) => {
+        const g = pillGroup(el);
+        return { question: g.question ?? "", source: g.source ?? null,
+          required: Boolean(g.required) || g.container.getAttribute("aria-required") === "true" || labelRequired(g.container) };
+      },
+      passive: (el) => ({
+        options: pillChoices(el).map((m, i) => ({ oid: `o${i + 1}`, text: pillText(m), selected: pillOn(m) })),
+        complete: true,
+      }),
+      // Never finished while several are allowed (missing items may be added).
+      answered: (el) => !pillMulti(el) && pillChoices(el).some(pillOn),
+      read: (el) => {
+        const on = pillChoices(el).filter(pillOn).map(pillText);
+        return pillMulti(el) ? on : (on[0] ?? "");
+      },
+      members: pillChoices, labelOf: pillText, pressed: pillOn,
     },
   ];
   // Every other shape shows what it holds: display and proof are its value.

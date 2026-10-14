@@ -29,6 +29,7 @@
   // combobox (not an info icon or a Help link); aria-haspopup="false" never.
   const CANDIDATE = 'input, select, textarea, button[aria-haspopup]:not([aria-haspopup="false"]), '
     + '[aria-haspopup]:not([aria-haspopup="false"]):is([role="button"], [role="combobox"]):not(button):not(input), '
+    + 'button[aria-pressed], [role="button"][aria-pressed]:not(button), '
     + '[role="combobox"]:not(input), [contenteditable]:not([contenteditable="false"]), '
     + '[role="textbox"]:not(input):not(textarea), [role="radio"]:not(input), [role="checkbox"]:not(input), '
     + '[role="switch"], [role="spinbutton"]:not(input), [role="slider"]';
@@ -108,6 +109,9 @@
     if (el instanceof HTMLInputElement && (SKIP.has(el.type) || ns.fillBase.isPasswordBox(el))) return false;
     if (el.disabled) return false;
     const shape = ns.shapes.of(el);
+    // A toggle button that is not one of a labelled group (a favourite star, a
+    // toolbar's Bold) is a control, not a question.
+    if (!shape && el.matches('button[aria-pressed], [role="button"][aria-pressed]')) return false;
     // Read-only is not fillable — unless it opens a list when pressed.
     if (el.readOnly && shape?.name !== "popup") return false;
     // A node inside a rich-text box is the box's content, not a field.
@@ -185,7 +189,7 @@
       const several = shape.multi?.(el);
       const multi = several === null ? null : Boolean(several);
       fields.push({
-        fid, fp, shape: shape.name, kind: shape.kind, multi,
+        fid, fp, shape: shape.reports ?? shape.name, kind: shape.kind, multi,
         question: d.question, source: d.source, section: d.section, repeatIndex: d.repeatIndex,
         required: d.required, help: d.help,
         committed,

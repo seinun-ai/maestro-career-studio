@@ -5,7 +5,7 @@ list, an address autocomplete, URL and date formats. Every page is a fixture or
 inline made-up markup copied from the live shape (fixtures/browser/README.md)."""
 
 from tests.browser.conftest import fixture_html
-from tests.browser.pages import apply, explore, inv, oracle
+from tests.browser.pages import OPS, apply, explore, inv, oracle
 
 
 # --- I1: a read-only combobox whose input is opacity 0
@@ -35,3 +35,109 @@ def test_a_hidden_readonly_combobox_is_still_not_listed(page, load):
                "<label for='b'>B</label><div><input id='b' readonly role='combobox' aria-haspopup='listbox' style='visibility:hidden'></div>"
                "<div style='display:none'><label for='c'>C</label><div><input id='c' readonly role='combobox' aria-haspopup='listbox' style='opacity:0'></div></div>")
     assert inv(page) == {}
+
+
+# --- I2: pill button groups
+def pill_fields(page):
+    """The pill groups. The engine's shape is `pills`; a field is listed as `group` (the loop and the backend know six shapes)."""
+    kinds = page.evaluate("(fids) => fids.map((f) => window.careerStudioCompanion.fillInventory.shapeOf(f).name)",
+                          [f["fid"] for f in inv(page).values()])
+    return {q: f for (q, f), name in zip(inv(page).items(), kinds, strict=True) if name == "pills"}
+
+
+def test_pill_groups_are_one_field_each_with_their_question_and_options(page, load):
+    load(page, fixture_html("pill_buttons.html"))
+    fields = pill_fields(page)
+    assert list(fields) == ["Have you worked for Globex before?", "Highest degree"]
+    prior = fields["Have you worked for Globex before?"]
+    assert (prior["kind"], prior["multi"], prior["required"], prior["answered"], prior["committed"]) == ("choice", False, True, False, "")
+    assert [o["text"] for o in prior["options"]] == ["No", "Yes"] and prior["optionsComplete"]
+    degree = fields["Highest degree"]
+    assert (degree["required"], [o["text"] for o in degree["options"]]) == (False, ["Associate", "Bachelor's", "Master's"])
+    assert inv(page)["City"]["shape"] == "text"   # the form's own text box is not part of either group
+
+
+def test_choosing_a_pill_clicks_once_and_is_verified(page, load):
+    load(page, fixture_html("pill_buttons.html"))
+    row = apply(page, pill_fields(page)["Have you worked for Globex before?"], op="choose", text="Yes")
+    assert (row["outcome"], row["committed"]) == ("verified", "Yes")
+    assert oracle(page, "pills_prior") == "Yes" and oracle(page, "pills_clicks") == 1
+    now = pill_fields(page)["Have you worked for Globex before?"]
+    assert (now["committed"], now["answered"]) == ("Yes", True)
+
+
+def test_a_pressed_pill_is_never_clicked_again(page, load):
+    """A second click would un-select it (ATS-O)."""
+    load(page, fixture_html("pill_buttons.html"))
+    apply(page, pill_fields(page)["Have you worked for Globex before?"], op="choose", text="Yes")
+    row = apply(page, pill_fields(page)["Have you worked for Globex before?"], op="choose", text="Yes")
+    assert row["outcome"] == "verified"
+    assert oracle(page, "pills_prior") == "Yes" and oracle(page, "pills_clicks") == 1
+
+
+def test_choosing_the_other_pill_replaces_the_pick(page, load):
+    load(page, fixture_html("pill_buttons.html"))
+    apply(page, pill_fields(page)["Have you worked for Globex before?"], op="choose", text="Yes")
+    row = apply(page, pill_fields(page)["Have you worked for Globex before?"], op="choose", text="No")
+    assert (row["outcome"], row["committed"]) == ("verified", "No") and oracle(page, "pills_prior") == "No"
+
+
+def test_a_pill_the_user_pressed_counts_as_answered(page, load):
+    load(page, fixture_html("pill_buttons.html"))
+    page.click("button:has-text('Master')")
+    degree = pill_fields(page)["Highest degree"]
+    assert (degree["committed"], degree["answered"]) == ("Master's", True)
+
+
+def test_an_option_the_group_does_not_have_is_missing_and_nothing_is_clicked(page, load):
+    load(page, fixture_html("pill_buttons.html"))
+    row = apply(page, pill_fields(page)["Have you worked for Globex before?"], op="choose", text="Maybe")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "option_missing") and oracle(page, "pills_clicks") == 0
+
+
+def test_an_aria_radiogroup_of_div_radios_is_a_pill_group_too(page, load):
+    load(page, "<div role='radiogroup' aria-label='Are you over 18?'>"
+               "<div role='radio' aria-checked='false' tabindex='0' id='r1'>Yes</div>"
+               "<div role='radio' aria-checked='false' tabindex='0' id='r2'>No</div></div>"
+               "<script>for (const r of document.querySelectorAll('[role=radio]')) r.addEventListener('click', () => {"
+               "for (const o of document.querySelectorAll('[role=radio]')) o.setAttribute('aria-checked', String(o === r)); });</script>")
+    f = inv(page)["Are you over 18?"]
+    assert (f["shape"], [o["text"] for o in f["options"]]) == ("group", ["Yes", "No"])
+    assert apply(page, f, op="choose", text="No")["outcome"] == "verified"
+    assert page.get_attribute("#r2", "aria-checked") == "true" and page.get_attribute("#r1", "aria-checked") == "false"
+
+
+def test_a_toolbar_of_toggle_buttons_and_a_lone_toggle_are_not_fields(page, load):
+    load(page, "<div role='toolbar' aria-label='Format'><button aria-pressed='false'>Bold</button>"
+               "<button aria-pressed='false'>Italic</button></div><button aria-pressed='false'>Star this job</button>")
+    assert inv(page) == {}
+
+
+def test_a_pill_group_multiple_is_added_to_never_unpressed(page, load):
+    """A multi-select pill group (the vendor's class says so) takes a set of items; a pill already on stays on."""
+    load(page, "<div class='input-row--multiselect cx-multi-select-pills'><ul role='list' aria-label='Which tools do you use?'>"
+               + "".join(f"<li><button type='button' aria-pressed='false'>{t}</button></li>" for t in ("Git", "SQL", "Docker"))
+               + "</ul></div><script>for (const b of document.querySelectorAll('button')) b.addEventListener('click', () =>"
+                 "b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')));</script>")
+    f = inv(page)["Which tools do you use?"]
+    assert (f["shape"], f["multi"], f["answered"]) == ("group", True, False)
+    page.click("button:has-text('SQL')")
+    got = page.evaluate(f"(a) => {OPS}.apply([a])", {"fid": f["fid"], "fp": f["fp"], "op": "set", "texts": ["Git", "SQL"], "terms": []})[0]
+    assert got["outcome"] == "verified"
+    assert page.evaluate("[...document.querySelectorAll('[aria-pressed=true]')].map((b) => b.textContent)") == ["Git", "SQL"]
+
+
+def test_the_loop_fills_a_pill_group_like_any_other_choice(page):
+    from tests.browser.test_fill_end_to_end import _run
+    out = _run(page, html=fixture_html("pill_buttons.html"), map={
+        "Have you worked for Globex before?": {"route": "slot", "slot": "work_history.worked_here", "value": "No"},
+        "Highest degree": {"route": "slot", "slot": "education.0.degree", "value": "Master's"},
+        "City": {"route": "none"}})
+    assert {q: out["by_question"][q]["status"] for q in ("Have you worked for Globex before?", "Highest degree")} == {
+        "Have you worked for Globex before?": "verified", "Highest degree": "verified"}
+    assert (oracle(page, "pills_prior"), oracle(page, "pills_degree")) == ("No", "Master's")
+    assert oracle(page, "pills_clicks") == 2
+    # A second run finds both answered and presses nothing.
+    again = _run(page, fresh=False, map={"Have you worked for Globex before?": {"route": "slot", "slot": "work_history.worked_here", "value": "No"}})
+    assert again["by_question"]["Have you worked for Globex before?"]["status"] == "already"
+    assert oracle(page, "pills_clicks") == 2

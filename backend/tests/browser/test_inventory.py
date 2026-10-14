@@ -237,9 +237,18 @@ def test_an_unrecognised_control_is_listed_as_unknown_not_dropped(page, load):
     assert [(f["shape"], f["kind"], f["question"]) for f in fields(page)] == [("unknown", "unknown", "Rate your SQL")]
 
 
-def test_aria_radios_no_shape_claims_are_one_unknown_field(page, load):
+def test_aria_radios_are_one_pill_group_listed_as_a_radio_set(page, load):
+    """Div radios with `aria-checked` were an unknown field; they are a pill group now (tests/browser/test_live2_widgets.py
+    drives one). Listed to the loop as `group`; the radios without `aria-checked` below stay unknown."""
     load(page, """<span id='g'>Preferred contact</span><div role='radiogroup' aria-labelledby='g'>
       <div role='radio' aria-checked='false' tabindex='0'>Email</div><div role='radio' aria-checked='false'>Phone</div></div>""")
+    assert [(f["shape"], f["question"], [o["text"] for o in f["options"]]) for f in fields(page)] == [
+        ("group", "Preferred contact", ["Email", "Phone"])]
+
+
+def test_aria_radios_with_no_checked_state_are_still_one_unknown_field(page, load):
+    load(page, """<span id='g'>Preferred contact</span><div role='radiogroup' aria-labelledby='g'>
+      <div role='radio' tabindex='0'>Email</div><div role='radio'>Phone</div></div>""")
     assert [(f["shape"], f["question"]) for f in fields(page)] == [("unknown", "Preferred contact")]
 
 

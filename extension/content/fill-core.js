@@ -1085,6 +1085,11 @@
       kind = "select";
       if (!opt.selected && el.multiple) gesture = () => addSelected(el, [opt], t); // the other selections stay
       else if (!opt.selected) gesture = () => selectIndex(el, opt.index, t);
+    } else if (shape.name === "pills") {
+      // Look first: a pressed pill is never clicked (a second click un-selects it).
+      const pill = shape.members(el).find((m) => shape.labelOf(m) === want);
+      if (!pill) return { outcome: "unexpected", reason: "option_missing", options };
+      if (!shape.pressed(pill)) gesture = () => tick(pill, t);
     } else if (shape.lone(el)) {
       if (want !== "Yes" && want !== "No") return { outcome: "unexpected", reason: "option_missing", options };
       if (el.checked !== (want === "Yes")) gesture = () => tick(el, t);
@@ -1305,7 +1310,7 @@
       } else {
         for (const want of wanted) {
           const input = shape.members(el).find((m) => shape.labelOf(m) === want);
-          if (input && !input.checked) {
+          if (input && !(shape.pressed ? shape.pressed(input) : input.checked)) {
             tick(input, t);
             await b().settle(t, 60);
           }
