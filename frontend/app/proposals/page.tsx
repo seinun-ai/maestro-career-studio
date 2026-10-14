@@ -12,7 +12,7 @@ export default function ProposalsPage() {
         subtitle={
           <>
             <p>Jobs your connected agents found. Nothing is submitted without your yes.</p>
-            <CapToday />
+            <CapToday onlyNearLimit />
           </>
         }
       />

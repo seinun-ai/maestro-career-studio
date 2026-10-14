@@ -22,3 +22,14 @@ export function summaryParts(counts: SummaryCounts): SummaryPart[] {
   }
   return parts;
 }
+
+/** The share of the daily limit from which the cap meter is worth showing. */
+const CAP_SHOWN_FROM = 0.8;
+
+/**
+ * Whether the "Applications per day" meter shows: only at 80 percent of the limit or more. Below that it is
+ * not news. A limit of none (0) is always news: nothing can be applied to.
+ */
+export function capNearLimit(used: number, max: number): boolean {
+  return max <= 0 || used / max >= CAP_SHOWN_FROM;
+}

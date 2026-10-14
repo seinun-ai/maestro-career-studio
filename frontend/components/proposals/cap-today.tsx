@@ -5,6 +5,7 @@ import { RotateCw } from "lucide-react";
 import { ProgressCount } from "@/components/visual";
 import { RetryChip } from "@/components/retry-chip";
 import { useProposalFunnel } from "@/hooks/use-proposal-funnel";
+import { capNearLimit } from "@/lib/inbox-summary";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 
@@ -19,9 +20,10 @@ import { cn } from "@/lib/utils";
  * is the setting's name (Settings › Connected agents). While loading it shows nothing, which claims
  * nothing. A failed first load is its own state, a retry chip, never a silent
  * blank (docs/frontend-conventions.md, "A failed fetch is a THIRD state").
- * Analytics' Agent pipeline card shows the same line, so both say it one way.
+ * Analytics' Agent pipeline card shows the same line, so both say it one way. The inbox passes
+ * `onlyNearLimit`: there it shows from 80 percent of the limit, Analytics always.
  */
-export function CapToday({ className }: { className?: string }) {
+export function CapToday({ className, onlyNearLimit = false }: { className?: string; onlyNearLimit?: boolean }) {
   const query = useProposalFunnel();
   if (isLoadFailure(query)) {
     return (
@@ -38,6 +40,8 @@ export function CapToday({ className }: { className?: string }) {
   }
   const cap = query.data?.cap;
   if (!cap) return null;
+  // The Agent inbox says it only near the limit (80 percent or more); a failed load still shows above.
+  if (onlyNearLimit && !capNearLimit(cap.reserved_last_24h, cap.max_per_day)) return null;
   return (
     <p className={cn("mt-0.5 flex items-center gap-2 text-body-small tabular-nums", className)}>
       Applications per day: {cap.reserved_last_24h} of {cap.max_per_day} used in the last 24 hours

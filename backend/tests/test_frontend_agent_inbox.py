@@ -67,7 +67,7 @@ def test_the_lanes_use_the_owners_words():
 
 
 def test_the_header_keeps_only_cap_today():
-    assert "<CapToday />" in _PAGE
+    assert "<CapToday onlyNearLimit />" in _PAGE
     cap = _read("components/proposals/cap-today.tsx")
     assert "useProposalFunnel()" in cap
     # The failure is its own state, decided before the readout.

@@ -154,3 +154,23 @@ def test_search_and_filters_render_only_for_a_long_inbox_or_while_one_is_in_use(
     assert "<ListToolbar>" in toolbar and 'label="Search the Agent inbox"' in toolbar
     assert toolbar.rstrip().endswith(") : null}")
     assert "total > FILTERS_FROM" in _read("lib/inbox-filter.ts") and "FILTERS_FROM = 10" in _read("lib/inbox-filter.ts")
+
+
+# ── B4: daily limit only near it ────────────────────────────────────────────
+
+
+def test_the_inbox_says_the_daily_limit_only_near_it_and_analytics_always_does():
+    cap = _read("components/proposals/cap-today.tsx")
+    assert "onlyNearLimit && !capNearLimit(cap.reserved_last_24h, cap.max_per_day)" in cap
+    # A failed load is still shown before the readout, so the error never hides.
+    assert cap.index("if (isLoadFailure(query))") < cap.index("onlyNearLimit &&")
+    assert "<CapToday onlyNearLimit />" in _read("app/proposals/page.tsx")
+    assert "<CapToday " in _read("components/analytics/agent-pipeline-card.tsx")
+    assert "onlyNearLimit" not in _read("components/analytics/agent-pipeline-card.tsx")
+
+
+def test_the_limit_threshold_node():
+    from tests.node_ts import run_node_test
+
+    result = run_node_test("lib/inbox-summary.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr

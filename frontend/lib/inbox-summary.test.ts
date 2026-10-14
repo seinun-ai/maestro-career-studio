@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { summaryParts } from "./inbox-summary.ts";
+import { capNearLimit, summaryParts } from "./inbox-summary.ts";
 
 const none = { new: 0, queued: 0, needs_you: 0, applied_this_week: 0 };
 
@@ -26,4 +26,18 @@ test("new shows first, only when something is new", () => {
 test("zero parts are left out, and all zero is nothing", () => {
   assert.deepEqual(summaryParts({ ...none, queued: 3 }).map((p) => p.key), ["queued"]);
   assert.deepEqual(summaryParts(none), []);
+});
+
+test("the daily limit shows only at 80 percent used or more", () => {
+  assert.equal(capNearLimit(0, 10), false);
+  assert.equal(capNearLimit(7, 10), false);
+  assert.equal(capNearLimit(8, 10), true);
+  assert.equal(capNearLimit(10, 10), true);
+  assert.equal(capNearLimit(12, 10), true);
+  assert.equal(capNearLimit(3, 4), false);
+  assert.equal(capNearLimit(4, 5), true);
+});
+
+test("a limit of none left is always worth saying", () => {
+  assert.equal(capNearLimit(0, 0), true);
 });
