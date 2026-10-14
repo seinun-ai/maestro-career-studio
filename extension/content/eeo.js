@@ -75,7 +75,7 @@
       (value === true ? "yes" : value === false ? "no" : value);
     // A question about protected-veteran classifications, whatever its options say: a Yes does not answer it.
     const PROTECTED_CLASS_QUESTION =
-      /protected\s+veteran|classifications?|categories\s+of\s+(?:protected\s+)?veterans|disabled|separated|wartime|campaign\s+badge|service\s+medal|vevraa/i;
+      /protected\s+veteran|classifications?|categories\s+of\s+(?:protected\s+)?veterans|disabled|separated|wartime|campaign\s+badge|service\s+medal|vevraa|covered\s+veterans?|service[-\s]connected|vietnam[-\s]era|active\s+duty\b.*\b(?:war|campaign)/i;
     const yesToVeteranCannotAnswer = (kind, value, labelText) =>
       kind === "veteran" && (value === "yes" || value === "veteran")
       && PROTECTED_CLASS_QUESTION.test(String(labelText ?? ""));
@@ -93,7 +93,9 @@
       // who is not protected could have chosen it. Unanswered, so the user is asked, not guessed for.
       { id: "veteran", re: /veteran/i, kind: "veteran",
         value: e.veteran_status === "not_veteran" ? undefined : e.veteran_status },
-      { id: "disability", re: /disab/i, value: e.disability_status, kind: "disability" },
+      // `not`: "Are you a disabled veteran?" is the veteran question; the disability answer says nothing
+      // about service, so it must not fill it.
+      { id: "disability", re: /disab/i, not: /veteran/i, value: e.disability_status, kind: "disability" },
       { id: "hispanic-latino", re: /hispanic|latino/i, value: hispanic, kind: "yesno",
         optionList: hispanic === "yes" ? ["Hispanic or Latino"] : [] },
       // `not`: "gender" is inside "transgender", and neither that question nor

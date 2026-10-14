@@ -25,7 +25,14 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, PolarityTrace, Reason
 from app.services import autofill_polarity, jev, llm, model_settings
-from app.services.autofill_catalog import ASK_THE_USER, WORKED_HERE_SLOT, Fact, named_employer_fact, yes_no_word
+from app.services.autofill_catalog import (
+    ASK_THE_USER,
+    WORKED_HERE_SLOT,
+    Fact,
+    named_employer_fact,
+    names_veteran_off_slot,
+    yes_no_word,
+)
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
 from app.services.autofill_map import (
     MIN_CALL_S,
@@ -394,17 +401,23 @@ def _years_first(fields: list[PickField], facts: dict[str, Fact], hint: JobHint 
 # with or without the word "protected". One pattern reads the question, the options and the chosen option.
 VETERAN_SLOT = "eeo.veteran_status"
 _MENTIONS_VETERAN = re.compile(r"veteran", re.IGNORECASE)
+_OPENS_BY_IDENTIFYING = re.compile(r"^\W*i\s+(?:identify\s+as|belong\s+to)\b", re.IGNORECASE)
 _OPENS_WITH_NEGATION = re.compile(
     r"^\W*(?:no\b|not\b|non-?veterans?\b|i\s+am\s+not\b|i['\u2019]m\s+not\b|i\s+do\s+not\b|i\s+don['\u2019]?t\b"
     r"|never\s+served\b|i\s+(?:have\s+)?never\b)", re.IGNORECASE)
 _NAMES_PROTECTED_CLASS = re.compile(
     r"\bprotected\b|\bclassifications?\b|\bvevraa\b|\bcategor(?:y|ies)\s+of\b[^.?]*\bveterans?\b"
     r"|\bdisabled\s+veterans?\b|\b(?:recently\s+)?separated\s+veterans?\b|\bactive\s+duty\s+wartime\b"
-    r"|\bcampaign\s+badge\b|\barmed\s+forces\s+service\s+medal\b", re.IGNORECASE)
+    r"|\bcampaign\s+badge\b|\barmed\s+forces\s+service\s+medal\b"
+    r"|\bcovered\s+veterans?\b|\bservice[-\s]connected\b|\bvietnam[-\s]era\b"
+    r"|\bactive\s+duty\b.*\b(?:war|campaign)", re.IGNORECASE)
 
 
 def _claims_veteran(text: str) -> bool:
-    return bool(_MENTIONS_VETERAN.search(text)) and not _OPENS_WITH_NEGATION.search(text)
+    """An option that does not open with a negation and that mentions a veteran, names a protected class, or
+    opens "I identify as" / "I belong to". A bare "Yes" claims nothing."""
+    return not _OPENS_WITH_NEGATION.search(text) and bool(
+        _MENTIONS_VETERAN.search(text) or _NAMES_PROTECTED_CLASS.search(text) or _OPENS_BY_IDENTIFYING.search(text))
 
 
 def veteran_said(fact: Fact | None) -> str | None:
@@ -468,6 +481,10 @@ def named_employers(fields: list[PickField], facts: dict[str, Fact]
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> dict[str, Picked]:
     fields, facts, dropped = named_employers(fields, facts)
+    # Another voluntary-disclosure answer never answers a question that names a veteran: final, the user's.
+    cross = {f.fid for f in fields if names_veteran_off_slot(f.slot, f.question)}
+    dropped |= cross
+    fields = [f for f in fields if f.fid not in cross]
     budget = Budget()
     # Re-checked, never trusted from the client; `queued` is the server's too (the router reads the job's proposal).
     level = model_settings.get_answer_level(session)

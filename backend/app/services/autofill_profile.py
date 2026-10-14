@@ -37,24 +37,39 @@ _TYPED_WORK_AUTH_KEYS = frozenset(WorkAuth.model_fields)
 # stays as written until the user saves, so a peer that has not updated reads its own old values.
 #
 # `veteran` is a Yes. `not_veteran` is NOT a No: "not a protected veteran" is true of a veteran who is
-# not protected, so it reads as unanswered, and the profile says so under `stale_answers` (the READER's
-# marker, never stored: `set_profile` drops it and a stored copy is not believed) for Settings to ask
-# the question again.
+# not protected, so it reads as unanswered, and the profile says so under `stale_answers` so Settings asks
+# the question again. The marker is DURABLE: a save that does not carry the veteran answer (the pause row
+# writes the profile back without it) keeps it, and only an explicit `eeo.veteran_status` clears it.
 STALE_KEY = "stale_answers"
+STALE_VETERAN = "eeo.veteran_status"
 _LEGACY_YES = "veteran"
 _LEGACY_NOT_PROTECTED = "not_veteran"
 
 
+def _answered_veteran(data: dict[str, Any]) -> bool:
+    eeo = data.get("eeo")
+    value = eeo.get("veteran_status") if isinstance(eeo, dict) else None
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _marks_veteran_stale(data: dict[str, Any]) -> bool:
+    """Whether `data` says the veteran question must be asked again: the legacy answer, or the marker."""
+    eeo = data.get("eeo")
+    legacy = isinstance(eeo, dict) and eeo.get("veteran_status") == _LEGACY_NOT_PROTECTED
+    listed = data.get(STALE_KEY)
+    return legacy or (isinstance(listed, list) and STALE_VETERAN in listed)
+
+
 def _with_current_words(data: dict[str, Any]) -> dict[str, Any]:
+    stale = _marks_veteran_stale(data)
     data = {k: v for k, v in data.items() if k != STALE_KEY}
     eeo = data.get("eeo")
     old = eeo.get("veteran_status") if isinstance(eeo, dict) else None
     if old == _LEGACY_YES:
         return {**data, "eeo": {**eeo, "veteran_status": "yes"}}
     if old == _LEGACY_NOT_PROTECTED:
-        return {**data, "eeo": {k: v for k, v in eeo.items() if k != "veteran_status"},
-                STALE_KEY: ["eeo.veteran_status"]}
-    return data
+        data = {**data, "eeo": {k: v for k, v in eeo.items() if k != "veteran_status"}}
+    return {**data, STALE_KEY: [STALE_VETERAN]} if stale and not _answered_veteran(data) else data
 
 
 def _parse_profile(raw: str) -> dict[str, Any]:
@@ -67,6 +82,15 @@ def _parse_profile(raw: str) -> dict[str, Any]:
     return _with_current_words(data) if isinstance(data, dict) else {}
 
 
+def _parse_stored(raw: str) -> dict[str, Any]:
+    """The stored text as it is, old words and all (`_parse_profile` maps them)."""
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def get_profile(session: Session | None = None) -> dict[str, Any]:
     return _parse_profile(text_settings.get_text(AUTOFILL_KEY, AUTOFILL_FILE, session))
 
@@ -76,7 +100,13 @@ def peek_profile(session: Session | None = None) -> dict[str, Any]:
 
 
 def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict[str, Any]:
+    # The hint outlasts any save that does not answer the question: whatever is stored, or the client's
+    # own marker, keeps it; an explicit veteran answer clears it.
+    stale = _marks_veteran_stale(profile) or _marks_veteran_stale(
+        _parse_stored(text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session)))
     profile = {k: v for k, v in profile.items() if k != STALE_KEY}
+    if stale and not _answered_veteran(profile):
+        profile = {**profile, STALE_KEY: [STALE_VETERAN]}
     text_settings.set_text(
         AUTOFILL_KEY, AUTOFILL_FILE, json.dumps(profile, indent=2, sort_keys=True), session
     )

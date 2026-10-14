@@ -50,6 +50,7 @@ from app.services.autofill_catalog import (
     WORKED_HERE_SLOT,
     Fact,
     named_employer_fact,
+    names_veteran_off_slot,
     question_names_company,
     websites,
 )
@@ -523,6 +524,8 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     if picked is None or _foreign(field):
         return Mapped(route="none"), SLOT_FLOOR
     key, p = picked
+    if names_veteran_off_slot(key, field.question):   # "Are you a disabled veteran?" is not the disability answer
+        return Mapped(route="none"), SLOT_FLOOR
     # "Acme, Globex, or Initech?" names companies the derived No (about the job's company) does not cover.
     if key == WORKED_HERE_SLOT and (named := named_employer_fact(facts, field.question, field.options)):
         if named == ASK_THE_USER:   # a parent or a subsidiary of an employer: neither No nor Yes is true

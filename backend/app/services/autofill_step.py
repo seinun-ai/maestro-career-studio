@@ -34,7 +34,13 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import TERM, DecisionTrace, Engine, StepRequest, StepResponse
 from app.services import jev, llm, model_settings
-from app.services.autofill_catalog import ASK_THE_USER, WORKED_HERE_SLOT, Fact, named_employer_fact
+from app.services.autofill_catalog import (
+    ASK_THE_USER,
+    WORKED_HERE_SLOT,
+    Fact,
+    named_employer_fact,
+    names_veteran_off_slot,
+)
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from app.services.autofill_map import (
     SECOND_OPINION_MAX_S,
@@ -293,6 +299,8 @@ def _option_text(describe: str) -> str | None:
 def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> StepResponse:
     budget = Budget()
+    if req.route == "slot" and names_veteran_off_slot(req.slot, req.question):
+        return StepResponse(mid=None, reason="abstained")
     # A question that names an employer of the history is not the derived No (the job's company only).
     if req.route == "slot" and req.slot == WORKED_HERE_SLOT and (
             named := named_employer_fact(facts, req.question, [t for c in req.candidates if (t := _option_text(c.describe))])):

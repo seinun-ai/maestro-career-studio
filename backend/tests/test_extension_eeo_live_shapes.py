@@ -108,6 +108,8 @@ def test_workdays_real_list_is_left_to_a_yes(tmp_path):
 @pytest.mark.parametrize("asks", [
     "Are you a protected veteran?", "Are you a disabled veteran?", "Are you a recently separated veteran?",
     "Are you an active duty wartime or campaign badge veteran?", "Are you an Armed Forces service medal veteran?",
+    "Are you a covered veteran?", "Are you a service-connected disabled veteran?",
+    "Are you a Vietnam-era veteran?", "Were you on active duty during a war or campaign?",
 ])
 def test_a_yes_never_answers_a_protected_veteran_question_even_with_yes_no_options(tmp_path, answer, asks):
     label = f"{asks} | personalinfous--protectedveteran"
@@ -196,3 +198,19 @@ def test_the_group_is_untouched_while_the_opt_in_is_off(tmp_path):
         tmp_path, fields=_disability_boxes(),
         profile={"eeo": {"disability_status": "no"}}, eeo_enabled=False)
     assert [label for label, was in result["checked"].items() if was] == []
+
+
+@pytest.mark.parametrize("disability", ["yes", "no"])
+def test_the_disability_answer_never_answers_a_question_that_names_a_veteran(tmp_path, disability):
+    """"Are you a disabled veteran?" is the veteran question: the saved disability answer (which says
+    nothing about service) must not fill it. The veteran answer decides: unanswered or Yes leaves it to
+    the user, and only a No (not a veteran, so not a disabled one) answers, as the veteran rule."""
+    label = "Are you a disabled veteran? | personalinfous--disabledveteran"
+    for veteran in ("not_veteran", "yes", None):
+        eeo = {"disability_status": disability} | ({"veteran_status": veteran} if veteran else {})
+        result = _run(tmp_path, label, ["Select One", "Yes", "No"], eeo)
+        assert result["values"][label] == "Select One", veteran
+        assert result["eeoFilled"] == []
+    result = _run(tmp_path, label, ["Select One", "Yes", "No"], {"veteran_status": "no", "disability_status": disability})
+    assert result["values"][label] == "No"
+    assert [item["field"] for item in result["eeoFilled"]] == ["veteran"]

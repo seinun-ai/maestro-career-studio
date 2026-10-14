@@ -1828,6 +1828,21 @@ def test_the_sentinel_vocabulary_is_the_maps_sentinels():
 
 
 @pytest.mark.usefixtures("jev_on")
+def test_a_question_that_names_a_veteran_is_never_mapped_to_another_eeo_answer(db_session, monkeypatch):
+    facts = autofill_catalog.build({"eeo": {"disability_status": "yes", "veteran_status": "yes"}}, [], [])
+    fake_jev(monkeypatch, {"d": ("eeo.disability_status", 0.99), "v": ("eeo.veteran_status", 0.99),
+                           "p": ("eeo.disability_status", 0.99)})
+    fake_llm(monkeypatch)
+    got = autofill_map.map_fields([field("d", "Are you a disabled veteran?", "select"),
+                                   field("v", "Are you a veteran?", "select"),
+                                   field("p", "Do you have a disability?", "select")], facts, db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert (got["d"].route, got["d"].value) == ("none", None)
+    assert got["v"].slot == "eeo.veteran_status"
+    assert (got["p"].route, got["p"].slot) == ("slot", "eeo.disability_status")
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_trace_a_field_the_model_omitted_has_no_chose_none(db_session, monkeypatch):
     monkeypatch.setattr(autofill_map.jev, "decide", lambda q, s, session=None: {})
     fake_llm(monkeypatch)

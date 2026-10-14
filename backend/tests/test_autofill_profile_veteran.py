@@ -61,16 +61,48 @@ def test_the_old_not_a_protected_veteran_answer_reads_as_unanswered_and_says_so(
     assert "stale_answers" not in read_profile(db_session)
 
 
-def test_a_stored_stale_marker_is_never_believed(db_session):
-    """The marker is the reader's own: a hand-edited or synced copy of it is dropped."""
+def test_a_stored_marker_holds_until_the_question_is_answered(db_session):
+    _store(db_session, {"eeo": {}, "stale_answers": ["eeo.veteran_status"]})
+    assert autofill_profile.get_profile(db_session)["stale_answers"] == ["eeo.veteran_status"]
+    # …and an answer retires it: a marker beside an answered question is not believed.
     _store(db_session, {"eeo": {"veteran_status": "no"}, "stale_answers": ["eeo.veteran_status"]})
+    assert "stale_answers" not in autofill_profile.get_profile(db_session)
+    # Only the one marker means anything.
+    _store(db_session, {"eeo": {}, "stale_answers": ["personal.city", 3]})
     assert "stale_answers" not in autofill_profile.get_profile(db_session)
 
 
-def test_a_save_never_stores_the_marker(db_session, tmp_path):
-    client.put("/api/settings/autofill", json={"value": {"eeo": {"gender": "female"},
+def _stored(tmp_path):
+    return json.loads((tmp_path / autofill_profile.AUTOFILL_FILE).read_text())
+
+
+def test_a_save_without_the_veteran_answer_keeps_the_hint_until_it_is_answered(db_session, tmp_path):
+    """The pause row (and any other save) writes the profile back without the dropped answer: the hint
+    must outlast it."""
+    _store(db_session, {"eeo": {"veteran_status": "not_veteran", "gender": "female"}})
+    # What a pause save sends: the profile it just read (marker and all), plus a new custom answer.
+    current = client.get("/api/settings/autofill").json()["value"]
+    client.put("/api/settings/autofill", json={"value": {**current, "custom": [{"question": "Q?", "answer": "A"}]}})
+    assert _stored(tmp_path)["stale_answers"] == ["eeo.veteran_status"]
+    assert client.get("/api/settings/autofill").json()["value"]["stale_answers"] == ["eeo.veteran_status"]
+    # A save that carries no marker at all (a patch built from another read) does not erase it either.
+    client.put("/api/settings/autofill", json={"value": {"eeo": {"gender": "female"}, "personal": {"city": "Springfield"}}})
+    assert client.get("/api/settings/autofill").json()["value"]["stale_answers"] == ["eeo.veteran_status"]
+
+
+@pytest.mark.parametrize("answer", ["no", "yes", "decline"])
+def test_only_an_explicit_veteran_answer_clears_the_hint(db_session, tmp_path, answer):
+    _store(db_session, {"eeo": {"veteran_status": "not_veteran"}})
+    client.put("/api/settings/autofill", json={"value": {"eeo": {"veteran_status": answer},
                                                           "stale_answers": ["eeo.veteran_status"]}})
-    assert "stale_answers" not in json.loads((tmp_path / autofill_profile.AUTOFILL_FILE).read_text())
+    assert "stale_answers" not in _stored(tmp_path) and _stored(tmp_path)["eeo"]["veteran_status"] == answer
+    assert "stale_answers" not in client.get("/api/settings/autofill").json()["value"]
+
+
+def test_a_profile_that_never_had_the_old_answer_never_gets_a_marker(db_session, tmp_path):
+    client.put("/api/settings/autofill", json={"value": {"eeo": {"gender": "female"}}})
+    assert "stale_answers" not in _stored(tmp_path)
+    assert "stale_answers" not in client.get("/api/settings/autofill").json()["value"]
 
 
 def test_the_settings_api_marks_the_old_answer_stale(db_session):

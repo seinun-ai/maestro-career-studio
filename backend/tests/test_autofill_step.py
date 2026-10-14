@@ -1136,3 +1136,16 @@ def test_a_no_never_clicks_an_option_that_claims_to_be_a_veteran_in_step(db_sess
     fake_jev(monkeypatch, ("click:o2", 0.99))
     got = sans_trace(autofill_step.step(_veteran_req("Veteran Status", *options), facts, db_session, None))
     assert got == {"mid": "click:o2", "reason": "matched"}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("slot, key, value", [("eeo.disability_status", "disability_status", "yes"),
+                                              ("eeo.disability_status", "disability_status", "no")])
+def test_step_never_answers_a_question_that_names_a_veteran_from_another_eeo_answer(
+        db_session, monkeypatch, slot, key, value):
+    facts = autofill_catalog.build({"eeo": {key: value}}, [], [])
+    fake_jev(monkeypatch, ("click:o1", 0.99))
+    request = req(slot=slot, question="Are you a disabled veteran?",
+                  candidates=[{"mid": "click:o1", "describe": 'Click the option "Yes"'},
+                              {"mid": "click:o2", "describe": 'Click the option "No"'}] + cands(GIVE_UP))
+    assert sans_trace(autofill_step.step(request, facts, db_session, None)) == {"mid": None, "reason": "abstained"}

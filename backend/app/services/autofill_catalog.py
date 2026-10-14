@@ -409,15 +409,24 @@ def _now_or_future(work_auth: dict[str, Any]) -> str | None:
 
 
 # Where one string names several companies ("Acme, Globex, or Initech"): the commas, semicolons,
-# slashes and "or" / "and" between them. A name that holds one of these itself ("Globex and
-# Sons") still matches whole: the whole string is tried as one name before the parts.
-_COMPANY_SEPARATORS = re.compile(r"\s*(?:[,;/]|\bor\b|\band\b)\s*", re.IGNORECASE)
+# slashes, colons and brackets, "&"-less, and "or" / "and" between them. A name that holds one of these
+# itself ("Globex and Sons") still matches whole: the whole string is tried as one name before the parts.
+_COMPANY_SEPARATORS = re.compile(r"\s*(?:[,;/:()]|\bor\b|\band\b)\s*", re.IGNORECASE)
+# A part is a name once the preposition in front of it is gone ("or at Initech" is "at Initech").
+_LEADING_WORD = re.compile(r"^(?:(?:at|for|with|by|of|the|any\s+of|including|include)\s+)+", re.IGNORECASE)
+# A suffix's full stop ("Acme, Inc. or …") is not the end of a sentence.
+_SUFFIX_STOP = re.compile(r"\b(inc|co|corp|ltd|llc|llp|plc|gmbh|bros|mfg)\.", re.IGNORECASE)
+
+
+def _name_parts(text: str) -> list[str]:
+    """The names a string holds: the whole of it, then its parts, each without its leading preposition."""
+    return [part for raw in (text, *_COMPANY_SEPARATORS.split(text))
+            if (part := _LEADING_WORD.sub("", raw.strip()).strip())]
 
 
 def _company_keys(company: str | None) -> set[str]:
     """The name keys a company string stands for: the whole string and each part."""
-    text = company or ""
-    return {key for part in (text, *_COMPANY_SEPARATORS.split(text)) if (key := name_key(part))}
+    return {key for part in _name_parts(company or "") if (key := name_key(part))}
 
 
 def _akin(a: str, b: str) -> bool:
@@ -428,6 +437,14 @@ def _akin(a: str, b: str) -> bool:
 
 
 WORKED_HERE_SLOT = "derived.previously_employed_here"
+_VETERAN_WORD = re.compile(r"veteran", re.IGNORECASE)
+
+
+def names_veteran_off_slot(slot: str | None, question: str) -> bool:
+    """A question that names a veteran, under another voluntary-disclosure answer ("Are you a disabled
+    veteran?" under the disability answer): the disability answer says nothing about service, so it claims
+    veteran status the applicant never gave. Only `eeo.veteran_status` answers such a question."""
+    return bool(slot and slot.startswith("eeo.") and slot != "eeo.veteran_status" and _VETERAN_WORD.search(question))
 
 
 def _history_employers(out: dict[str, Fact], employment: list[dict[str, Any]] | None) -> list[tuple[str, bool]]:
@@ -482,39 +499,65 @@ _NOT_AN_EMPLOYER = frozenset({
     "consulting", "various", "confidential", "stealth", "personal project"})
 # The companies a question LISTS follow its "worked for / at / by / with" (or "employee of …"): up to the
 # end of the clause, or a word that starts a qualifier ("before", "in the last five years", "as an
-# employee"). Nothing else in the text counts as a company, so "the box below" names no "Box".
+# employee"). A list may be introduced by a colon. Nothing else in the text is PARSED as a company, so
+# "the box below" lists no "Box"; the safety net below catches what the parser does not read.
 _MARKER = (r"(?:worked|work|working|employed|employee|employees|employment|associate|contractor|member|served)"
            r"\s+(?:for|at|by|with|of)")
 _LISTED = re.compile(
-    rf"\b{_MARKER}\s+(?:the\s+)?(.+?)(?=\s+(?:before|previously|ever|currently|now|in\s+the|within|as\b|prior|since|"
-    r"during|at\s+any|including|or\s+any|or\s+its|or\s+one)\b|[?.:!(]|$)", re.IGNORECASE)
+    rf"\b{_MARKER}\s+(.+?)(?=\s+(?:before|previously|ever|currently|now|in\s+the|within|as\b|prior|since|"
+    r"during|at\s+any|including|or\s+any|or\s+its|or\s+one)\b|[?!]|\.(?=\s|$)|$)", re.IGNORECASE)
+# An option that is "Yes, <company>" names that company.
+_YES_COMPANY = re.compile(r"^\W*yes\s*,\s*(.+)$", re.IGNORECASE)
 # What the answer should be when a question names a company that is a parent or a subsidiary of an
-# employer of the history, with no exact match: neither a No nor a Yes is true, so nobody answers.
+# employer of the history, with no exact match, or mentions one in a way the parser cannot read: neither
+# a No nor a Yes is true, so nobody answers.
 ASK_THE_USER = "ask"
+# A phrase that is not a proper name, however a question introduces it.
+_NOT_A_NAME = re.compile(r"^(?:an?|any|our|the|federal|government|following)\b", re.IGNORECASE)
+
+
+def _listed_phrases(question: str, options: tuple[str, ...]) -> list[str]:
+    """The company phrases the question lists, and its options that read as a company."""
+    phrases: list[str] = []
+    for text in (question, *options):
+        for m in _LISTED.finditer(_SUFFIX_STOP.sub(r"\1", text)):
+            phrases += _name_parts(m[1])
+    for text in options:
+        phrases += _name_parts(m[1] if (m := _YES_COMPANY.match(text)) else text)
+    return phrases
 
 
 def _listed_company_keys(question: str, options: tuple[str, ...]) -> set[str]:
     """The name keys of the companies a question lists, and of its options that read as a company
-    (the whole option, or the company after "employee of / associate at …")."""
-    keys: set[str] = set()
-    for text in (question, *options):
-        for m in _LISTED.finditer(text):
-            keys |= _company_keys(m[1])
-    keys |= {key for text in options if (key := name_key(text))}
-    return keys - _NOT_AN_EMPLOYER
+    (the whole option, "Yes, <company>", or the company after "employee of / associate at …")."""
+    return {key for phrase in _listed_phrases(question, options) if (key := name_key(phrase))} - _NOT_AN_EMPLOYER
+
+
+def _capitalised_mention(key: str, texts: tuple[str, ...]) -> bool:
+    """Whether the name `key` (a name key) stands in any of `texts` as capitalised whole words: "Initech"
+    is a mention of "initech", "the initech box" is not. The safety net for what the parser misses."""
+    words = key.split()
+    for text in texts:
+        tokens = re.findall(r"\w+", text)
+        for i in range(len(tokens) - len(words) + 1):
+            window = tokens[i:i + len(words)]
+            if [t.casefold() for t in window] == words and all(t[0].isupper() or t[0].isdigit() for t in window):
+                return True
+    return False
 
 
 def question_names_company(facts: dict[str, Fact], question: str) -> bool:
-    """Whether a question names a company: one it lists ("worked for Globex"), the job's own, or an
-    employer of the history, as a whole word. A written answer about a company the applicant has or has
-    not worked for must come from the history, never from a model's prose."""
-    if _listed_company_keys(question, ()):
+    """Whether a question names a company: a capitalised proper name it lists ("worked for Globex"; not
+    "a federal contractor", "any of the following", "our group"), or the job's own or an employer of the
+    history as capitalised words. A written answer about a company the applicant has or has not worked for
+    must come from the history, never from a model's prose."""
+    if any(phrase[0].isupper() and not _NOT_A_NAME.match(phrase) and name_key(phrase)
+           for phrase in _listed_phrases(question, ())):
         return True
     fact = facts.get(WORKED_HERE_SLOT)
     known = {key for key, _ in fact.employers} | set(fact.companies) if fact else set()
     known |= {name_key(str(f.value)) for slot, f in facts.items() if re.fullmatch(r"experience\.\d+\.employer", slot)}
-    haystack = f" {name_key(question)} "
-    return any(key and key not in _NOT_AN_EMPLOYER and f" {key} " in haystack for key in known)
+    return any(key and key not in _NOT_AN_EMPLOYER and _capitalised_mention(key, (question,)) for key in known)
 
 
 def named_employer_fact(facts: dict[str, Fact], question: str,
@@ -523,19 +566,22 @@ def named_employer_fact(facts: dict[str, Fact], question: str,
     about the job's company, and "Acme, Globex, or Initech?" also asks about Initech.
 
     A Fact (Yes): a company the question lists, or an option that is one, is an employer of the history
-    (the WHOLE history). `ASK_THE_USER`: none is, but one is a parent or a subsidiary of an employer
-    ("Acme" and "Acme Web Services"): no No and no Yes. None: the fact stands as it is. Only companies
-    the question lists are compared, never any word in its text; a history "employer" that is no company
-    (Freelance, Contractor …) never counts."""
+    (the WHOLE history). `ASK_THE_USER`: no exact match, but a listed company is a parent or a subsidiary
+    of an employer ("Acme" and "Acme Web Services"), OR an employer of the history stands anywhere in the
+    question or its options as capitalised words (the safety net: a wording the parser does not read can
+    never become a No). None: nothing of the history is mentioned; the fact stands. A history "employer"
+    that is no company (Freelance, Contractor …) never counts."""
     fact = facts.get(WORKED_HERE_SLOT)
     if fact is None or fact.value != "No":
         return None
-    listed = _listed_company_keys(question, tuple(options))
+    options = tuple(options)
+    listed = _listed_company_keys(question, options)
     employers = [(key, current) for key, current in fact.employers if key not in _NOT_AN_EMPLOYER]
     named = [current for key, current in employers if key in listed]
     if named:
         return make_fact(WORKED_HERE_SLOT, "Yes, currently" if any(named) else "Yes, previously")
-    if any(_akin(key, name) for key, _ in employers for name in listed):
+    if (any(_akin(key, name) for key, _ in employers for name in listed)
+            or any(_capitalised_mention(key, (question, *options)) for key, _ in employers)):
         return ASK_THE_USER
     return None
 

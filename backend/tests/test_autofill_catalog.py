@@ -398,6 +398,70 @@ def test_a_parent_or_subsidiary_of_a_listed_company_is_asked_not_answered(histor
     assert cat.named_employer_fact(f, f"Have you worked for {history}, or Zeta?").value == "Yes, previously"
 
 
+# Every wording an employer of the history can turn up in. Whatever the parser makes of it, the answer is
+# NEVER the derived No: Yes when the list parses, ask when it does not.
+UNPARSED_MENTIONS = [
+    ("Have you worked for any of the following companies: Initech, Globex, Acme?", ()),
+    ("Have you worked for any of the following: Initech, Globex or Acme?", ()),
+    ("Have you worked for Acme, Inc. or Initech, LLC?", ()),
+    ("Have you worked at Acme, or at Initech?", ()),
+    ("Have you worked for our affiliates (Globex, Initech)?", ()),
+    ("Have you worked previously at Initech?", ()),
+    ("Previous Initech employee?", ()),
+    ("Have you interned at Initech?", ()),
+    ("Initech, Globex or Acme: have you worked for any of them?", ()),
+    ("Please include Initech and Globex", ()),
+    ("Employment history", ["Yes, Initech", "No"]),
+    ("Which company?", ["Initech"]),
+    ("Have you worked for Acme?", ["Yes, I worked at Initech", "No"]),
+]
+
+
+@pytest.mark.parametrize("question, options", UNPARSED_MENTIONS)
+def test_an_employer_of_the_history_mentioned_in_any_wording_is_never_a_no(question, options):
+    f = cat.build({}, HISTORY, [], company="Acme")
+    assert f["derived.previously_employed_here"].value == "No"
+    got = cat.named_employer_fact(f, question, options)
+    assert got is not None, (question, options)
+    assert got == cat.ASK_THE_USER or got.value.startswith("Yes"), got
+
+
+@pytest.mark.parametrize("question, options, parsed", [
+    ("Have you worked for any of the following companies: Initech, Globex, Acme?", (), True),
+    ("Have you worked for Acme, Inc. or Initech, LLC?", (), True),
+    ("Have you worked at Acme, or at Initech?", (), True),
+    ("Employment history", ["Yes, Initech", "No"], True),
+    ("Previous Initech employee?", (), False),     # not a list the parser reads: the safety net asks
+    ("Have you interned at Initech?", (), False),
+])
+def test_the_parser_reads_a_list_it_can_and_the_safety_net_asks_for_the_rest(question, options, parsed):
+    got = cat.named_employer_fact(cat.build({}, HISTORY, [], company="Acme"), question, options)
+    assert (got != cat.ASK_THE_USER) is parsed
+
+
+def test_a_lowercase_word_that_is_a_history_employer_is_not_a_mention():
+    """The safety net looks for a CAPITALISED whole word: "box" in "the box below" is not a company."""
+    f = cat.build({}, [{"employer": "Box", "title": "Engineer"}], [], company="Acme")
+    assert cat.named_employer_fact(f, "Have you worked for Acme? Give dates in the box below.") is None
+    assert cat.named_employer_fact(f, "Have you worked for Acme? Give dates in the Box below.") == cat.ASK_THE_USER
+
+
+@pytest.mark.parametrize("question, names", [
+    ("Have you worked for Globex before?", True),
+    ("Have you worked for Acme, Inc. or Globex?", True),
+    ("Have you worked for any of the following companies: Globex, Umbrella?", True),
+    ("Have you worked for a federal contractor?", False),
+    ("Have you worked for an agency of the government?", False),
+    ("Have you worked for any company in our group?", False),
+    ("Have you worked for our company before?", False),
+    ("Have you worked for the following: Globex?", True),
+    ("Have you worked for the Federal Government?", False),
+    ("Have you worked for a company with a government contract?", False),
+])
+def test_question_names_company_counts_only_a_capitalised_proper_name(question, names):
+    assert cat.question_names_company(cat.build({}, HISTORY, [], company="Acme"), question) is names
+
+
 def test_the_named_employer_is_found_past_the_catalogs_job_limit():
     jobs = [{"employer": f"Firm{i}", "title": "Engineer"} for i in range(cat.MAX_EXPERIENCE)]
     f = cat.build({}, jobs + [{"employer": "Initech", "title": "Analyst"}], [], company="Acme")
