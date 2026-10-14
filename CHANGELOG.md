@@ -28,8 +28,62 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+The Companion used to fill one page and wait for you to click through the rest. Turn on full
+automation and the Job step now has an **Apply** button that takes one job through its whole
+application in the tab you are on: it fills a page, clicks Next, fills the next, and stops on the
+review page. Submit is still your click, at every setting. One job at a time for now, and a Queue
+view for several is still ahead.
+
+### Breaking changes
+
+- **`PUT /api/settings/autofill-options` takes `{"answer_level": …}` now.** The old
+  `{"low_stakes": …}` body is refused with a 422. The Settings page and the Job Search Brief already
+  use the new field.
+
+### Added
+
+- **Apply on the Companion's Job step** (needs full automation On). It saves the job, settles the
+  resume (it never replaces a tailored draft or an open tailoring session), queues the job as your
+  yes, then drives the tab from the job's apply link to the review page. It never clicks Submit and
+  it presses Next only when the button reads like Next. A page with any Submit wording, a dialog
+  asking about submitting, a CAPTCHA, an email code, an account to create or a job board's own apply
+  button stops the run and the panel says why. You fix it in the page and press **Resume**.
+- **Your answers are remembered.** Whatever you type into a field while a run waits for you is saved
+  to your profile when you press Resume, with an Undo. A written answer that names the job's company
+  or city is kept for that job only.
+- **Marked applied after your Submit.** When the confirmation page shows, the panel marks the job
+  applied after 8 seconds unless you press Undo. This is recorded as the Companion seeing your
+  Submit, on its own consent channel (`companion`), and clicks nothing.
+- **Sign-in with your saved job-site login**, on known application sites only (Workday, Greenhouse,
+  Lever, Ashby, iCIMS and a few more), in the page's top frame. Anywhere else the run waits for you.
+  The password never reaches an AI model, a trace or a log, and a failed sign-in is never retried.
+- **Screening answers**, a three-level setting under Settings › Form filling that replaces
+  "Answer low-stakes questions for me": **Facts only**, **Backed by your history** (the default) and
+  **Queued means I qualify**. Work authorization, salary, demographic, criminal-history and clearance
+  questions, signatures and claims your history does not support are outside every level. Agents
+  read the level in the Job Search Brief (`applying.answer_level`).
+- **A job remembers the employer's apply link** (`apply_url`) when you save it from a page that shows
+  one, and the run opens that link instead of the job board.
+- **The form-filling agent has more to try.** It never fills a hidden "leave this blank" trap field,
+  leaves optional fields it has no answer for empty and lists them, fills a list such as Skills one
+  item at a time and checks each one landed, can search with a word of its own, gets a short
+  technique note for each kind of widget, and waits for a page to stop redrawing before it types.
+- **It learns from your fix.** When you fix a field by hand while a run waits, the Companion notes
+  which gestures you used (never what you typed) and tries them first on that site next time. With
+  **Keep a fill log** on, fields it could not work join a private, value-free list that ranks what to
+  teach it next. **Clear data** removes that list too.
+
 ### Changed
 
+- **Screening answers start at Backed by your history.** The old switch stored nothing when it was
+  off, so an install that had it off cannot be told apart from one that never touched it. Both now
+  read the default, which answers low-stakes questions in the job's favour and says Yes to "N years of
+  a skill" only when your history shows the skill. If you want the old behaviour, pick **Facts only**.
+  If your laptop and your second copy run different versions, saving the level on the newer one
+  clears the old switch, which the older copy reads as off until you update it.
+- **The Companion remembers the job per tab, not for 30 minutes.** A long application no longer
+  forgets its job halfway, and a second tab's pick no longer overwrites the first. The memory lasts
+  while the tab is open.
 - **The Companion's fill log is now off unless you turn it on.** The record of
   which fields a fill met and on which sites (never what you typed) and the run
   traces are kept only after you tick **Keep a fill log** in the Companion's

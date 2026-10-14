@@ -16,6 +16,17 @@ at to your local Maestro CS app.
   answer. Fields it could not fill are listed so you can finish them. Autofill
   also attaches your tailored resume PDF to an empty resume upload box, and
   Attach resume does it by hand.
+- **Apply to one job for you** (needs **full automation** on in Settings ›
+  Connected agents). The Job step shows **Apply**: it saves the job, settles the
+  resume, queues the job as your yes, then works through the application in this
+  tab. It fills each page, clicks **Next** itself, and stops on the review page so
+  that **Submit** is yours. It asks you only when it must: a CAPTCHA, an email
+  code, a new account, a job board's own apply button, a page it does not
+  recognise, or a required question it could not answer. Answer in the page, then
+  press **Resume** in the panel. Your answers are saved to your profile (with
+  an Undo). After you press Submit and the confirmation page shows, the panel
+  marks the job applied after 8 seconds, unless you press Undo. Running several
+  jobs at once from a Queue view is not built yet.
 - **Track it.** Mark the application Draft or Applied from the panel.
 
 Open the panel with the toolbar icon or `Alt+Shift+J` (change it at
@@ -57,8 +68,34 @@ Otherwise the backend refuses the old id and the panel cannot reach it.
   its type.
 - **Voluntary EEO questions** are skipped unless you have turned on the EEO
   consent in **Profile**.
-- **Never submits** a form or moves a multi-step application to the next page.
-  Review everything before you submit.
+- **Never clicks Submit**, at any setting. Autofill never moves a multi-step
+  application to the next page either. Only **Apply**, when you start it with full
+  automation on, clicks **Next**, and it stops on the review page. Review
+  everything before you submit.
+- **Types your saved job-site password only on known application sites**
+  (Workday, Greenhouse, Lever, Ashby, iCIMS and a few more), in the page itself.
+  Anywhere else it stops and waits for you to sign in. It never creates an
+  account and never retries a failed sign-in.
+- **Never fills a field meant to catch robots** (a hidden "leave this blank"
+  box). Optional fields it has no answer for are left blank and listed.
+
+## Which application sites it handles
+
+What **Apply** knows about each site, as tested in this repo. "Recorded" means a
+page saved from the live site is in the test suite. Everything else it reads
+generically (page text and buttons), which is the same code for every site.
+
+| Site | Filling | Next and Submit buttons | Status |
+|---|---|---|---|
+| Workday | recorded pages for its search boxes, dropdowns, dates, uploads and repeating sections | one recorded marker (the footer button; its text still decides Next or Submit) | deepest coverage; a full run is still to be checked live |
+| iCIMS | one recorded page (a profile step) | generic | generic; a full run is untested |
+| Greenhouse | generic | generic | untested |
+| Lever | generic | generic | untested |
+| Ashby | generic | generic | untested |
+
+A page it cannot sort as Next stops the run on that page, and a button with any
+Submit wording is never clicked on any site. The table grows only from recorded
+pages, never from memory of how a vendor looks.
 
 ## Privacy and telemetry
 
@@ -80,7 +117,9 @@ option was chosen, demographic (EEO) questions included, and never anything you
 typed or any text from your profile. The last 50 runs are kept.
 
 - **Clear it:** in the web app, **Analytics → Autofill coverage → Clear data**.
-  This deletes the records and the run traces but does not turn the log off.
+  This deletes the records, the run traces and the list of fields the fill could
+  not work (hosts and field shapes, never answers) but does not turn the log off.
+  That list is only kept while the log is on.
 - **Turn it off:** untick **Keep a fill log** in the Companion's options. Run
   traces stop too; nothing is recorded while it is off.
 
@@ -123,6 +162,7 @@ settings message as the panel.
   close button.
 - **Multi-step applications** may still need some fields entered by hand. The
   application you picked is remembered in that tab for as long as it stays open,
-  so press **Autofill** again on each page.
+  so press **Autofill** again on each page (a run started with **Apply** moves
+  through the pages by itself).
 
 How it works inside: [INTERNALS.md](INTERNALS.md).

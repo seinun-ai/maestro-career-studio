@@ -11,10 +11,11 @@
   // a field by its label. With it, NOTHING is refused by label: it is the
   // user's application and their recorded, revocable consent. The fill engines
   // never click Next / Save and Continue or Submit, and Submit is never clicked
-  // by anything, at any setting. The ONE exception for Next is the queued run:
-  // `page_advance` (content/page-reader.js) presses a button the page kind
-  // sorted "next", re-sorting its text at click time, so a Submit-worded button
-  // is refused there. Consent removes the refusal on a field; it does not
+  // by anything, at any setting. The ONE exception for Next is a run the user
+  // started with Apply, with full automation On: `page_advance`
+  // (content/page-reader.js) presses a button the page kind sorted "next",
+  // re-sorting its text at click time, so a Submit-worded button is refused
+  // there. Consent removes the refusal on a field; it does not
   // invent a value — an engine still writes only what it has a fact for.
   //
   // Without the permission these are fields the user produces themselves: a

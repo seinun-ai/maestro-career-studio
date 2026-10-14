@@ -380,7 +380,7 @@ evidence for can only go in your skills list, never into an invented bullet.
 The **Companion** is a side panel in Chrome: save a job from the job board you're reading, score
 it, and fill application forms from your saved answers (**Profile › Autofill**). It leaves
 signatures, agreement boxes, passwords and government IDs to you unless you turn
-on the agreement permission in Profile, and it never moves to the next page or submits.
+on the agreement permission in Profile, and it never submits. Autofill does not move to the next page either; only **Apply** does, with full automation on (see the Companion's README).
 
 It can keep a **fill log**: *which* fields it met and whether they filled,
 never what you typed. The log is off unless you tick **Keep a fill log** in the

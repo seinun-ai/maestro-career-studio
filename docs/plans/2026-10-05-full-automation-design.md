@@ -14,6 +14,9 @@ machine is part of the goal, but its sync mechanism is deferred (Part 4).
 
 ## Owner decisions
 
+- **Later, for the Companion:** `2026-10-10-companion-queued-run-design.md` lets the Companion click Next (never Submit)
+  through one job's application when the user starts it with Apply and full automation is On; the "never-submit"
+  promise below holds for Submit only.
 - **Who submits:** the user's own agent (Claude, Codex, or an always-on agent app) with its own
   browser tool. The Companion keeps its never-submit promise; nothing in `extension/` changes.
 - **24/7 agents:** supported when each user runs their own Maestro copy next to the agent. A

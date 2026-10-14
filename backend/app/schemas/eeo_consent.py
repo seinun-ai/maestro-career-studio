@@ -50,8 +50,8 @@ class EeoConsent(BaseModel):
     # conditions" and its family, and also signatures, initials, typed-name
     # attestations and salary history. OFF by default, and a standing consent
     # rather than a per-form question because that is what the user gives
-    # once, on purpose. At every setting the extension never clicks Next or
-    # Submit — those stay the user's.
+    # once, on purpose. At every setting the extension never clicks Submit; it
+    # clicks Next only in a run the user started with Apply, full automation On.
     consent_forms: bool = False
     # Server-derived, never an input: True when the stored record says
     # `consent_forms` under a policy older than CONSENT_FORMS_MIN_POLICY_VERSION.

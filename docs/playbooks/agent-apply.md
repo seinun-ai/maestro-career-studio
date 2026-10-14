@@ -90,7 +90,8 @@ The following sections describe attended operation while full automation is Off.
 
 ## Inputs (read every run, never cache across runs)
 
-`get_job_search_brief` is the one payload (2026-08-01): profile constraints +
+`get_job_search_brief` is the one payload (2026-08-01; it also carries `applying.answer_level`, the user's Screening answers setting, which
+decides how far an answer may go without asking: [agentic-job-search.md](../agentic-job-search.md), "Answer level"): profile constraints +
 warnings (relay warnings, never guess work-auth), base inventory, referrals,
 demand picture, the typed `job_preferences`, and the `auto_apply` guardrail
 block — `company_blocklist`, `max_proposals_per_run`, and the daily-cap

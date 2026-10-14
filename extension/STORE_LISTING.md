@@ -10,7 +10,7 @@ Maestro CS Companion helps you prepare and track job applications in your own
 Maestro Career Studio: save the job you are viewing, choose or tailor a resume,
 fill the application from your saved answers, and record its status. These
 actions share one side panel and your local Maestro backend. The Companion
-never submits an application or advances to the next page.
+never submits an application. It advances to the next page only when you start Apply, with full automation on in Maestro, and then stops on the review page.
 
 ## Permission justifications
 

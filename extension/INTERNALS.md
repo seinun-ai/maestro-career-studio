@@ -40,12 +40,16 @@ proxies their API requests:
 | `content/touch-notice.js` | every frame | tells the panel THAT you changed a field: one throttled (2 s) `fields_touched` message of fids only, sent only where the frame gate (`ns.frameMayReceiveUserData`) says yes; engine writes never trigger it |
 | `content/detect.js` | every frame, every page | the detection read — reads, scores, returns |
 | `shared/ats-buttons.js` | every frame | a short table of navigation buttons an ATS names by its own markers (only recorded ones: Workday's footer button, whose own text decides); it never says "next", and the text sort still wins over any verdict |
+| `shared/ats-hosts.js` | every frame **and** the panel document | the ONE list of known applicant-tracking hosts, anchored at a dot: `content/detect.js` names the vendor from it, and the queued run types the saved job-site password only on a host listed here |
+| `shared/page-kind.js` | every frame **and** the panel document | the pure page-kind classifier and the Next / Submit / unclear button sort (any Submit word wins; a page it cannot sort is the review page) |
+| `shared/queue-run.js` | the panel document | the queued run's driver for ONE job in ONE tab: a pure state machine over injected deps, never clicks Submit; see "Queued run" |
 | `content/page-reader.js` | every frame | the queued run's eyes and hand: `summary()` (counts, button texts, booleans, never a value) for `shared/page-kind.js`, and `advance(id)`, the only navigation click in the extension — it re-sorts the button's current labels and refuses any Submit-worded one |
 | `content/agent.js` | every frame | page RPC front door, extraction wrapper, resume attach |
 | `panel/panel.{html,css,js}` | the side panel | the store, the loaders, the generation guard, the render loop, the tab binding; sends everything through the service worker |
 | `panel/icons.js` | the side panel | `ns.icon(name, {size, label})`: inline Lucide svg built with `createElementNS` (never `innerHTML`), `aria-hidden` unless labelled, `data-icon` names it; one glyph per concept as in the web app's `lib/concept-icons.ts`; no emoji or text glyph in panel code (`test_extension_panel_icons.py`); `panel.js` throws at boot when it is missing, and stage bodies reach it as `build.icon` |
 | `panel/stages/*.js` + `panel/stages.js` | the side panel | one file per rail stage — a body is handed a per-render snapshot (`stageContext`), never the store, and `card` is never published — gathered by a roster that throws when a script tag is missing |
-| `panel/actions/*.js` + `panel/actions.js` | the side panel | one file per concern (save job and score its bases, pick a draft, quick tailor + base as is, fill this form, submit one pause-row answer, ask one question, mark draft/applied), each handed one `write(patch)` door (`actionStore` refuses a key the store lacks); `actions/during.js` is the `busy` span they all read, and `busy` covers everything an action writes including its learn tail |
+| `panel/runs.js` | the side panel | draws a run's record into the Fill row's Next card (running, Needs you, Ready to submit, Marking applied, finished) and holds the park words with their Resume / Skip rules; reaches for nothing, and has no Submit control |
+| `panel/actions/*.js` + `panel/actions.js` | the side panel | one file per concern (save job and score its bases, Apply, the run's host `run.js`, pick a draft, quick tailor + base as is, fill this form, submit one pause-row answer, ask one question, mark draft/applied), each handed one `write(patch)` door (`actionStore` refuses a key the store lacks); `actions/during.js` is the `busy` span they all read, and `busy` covers everything an action writes including its learn tail |
 | `sw.js` | the extension | panel/content API calls, frame fan-out, sanctioned injection, hotkey, and toolbar-to-panel binding |
 | `options.html`, `options.js` | extension options | load `read_settings`, validate and save `backendUrl`/`appUrl` to `storage.sync`; Test connection fetches `/health` directly, with no new permission (`test_extension_options.py`) |
 
@@ -352,7 +356,7 @@ asking permission of itself.
   (written fields, never open ones; a closest write that did not stick is
   residue instead). A finished fill ticks the step and hides that list, so its
   note names each pick instead ("Fill finished. Check the closest match before
-  you submit: major (Information Systems)."). Nothing is submitted and no wizard step is advanced for you.
+  you submit: major (Information Systems)."). Autofill submits nothing and advances no wizard step; only a run you start with Apply presses Next (see Queued run).
 - **The progress rows are the report, and every number is the fill's own** —
   `14 filled · 2 corrected · 3 already filled · 1 not accepted` for the profile
   pass, written-versus-still-open for the application questions, and one row for
@@ -458,11 +462,13 @@ asking permission of itself.
 - **Mark applied** — the Draft/Applied segment lives in the footer permanently,
   so there is no nudge to hunt for. It is withheld for a status outside that pair,
   because pressing Draft on an `interviewing` application would silently walk the
-  record backwards past three states. It is the one PATCH this extension makes,
-  and it is **never automatic in either direction** (there is no applied-detection
-  watcher): `applied_at` is stamped by the backend on entry to applied and
+  record backwards past three states. It is the one status PATCH this extension makes,
+  and it is **never automatic outside a run**: there is no applied-detection watcher on an ordinary
+  page. `applied_at` is stamped by the backend on entry to applied and
   consumed by the analytics series as a fact about the past, so a false positive
-  silently corrupts a record while a false negative costs one click. The Track
+  silently corrupts a record while a false negative costs one click. The one automatic
+  path is a run's own tab: a confirmation page seen after a Ready to submit (the user pressed Submit) is
+  recorded through `companion-submitted` after an 8 s Undo (Queued run). The Track
   body renders no second status control — two Draft/Applied pairs on one screen
   are two writers for one field — and shows the evidence instead: the PDF that
   was rendered and the day it went out, or no line at all when neither.
@@ -705,8 +711,8 @@ know, and each one was learned from a live failure.
   **With it** (an explicit `consentForms: true`) `isPolicyBlocked` refuses NO
   label: every field above, agreement boxes and salary history become fillable
   (owner's decision, 2026-09-26: it is your application and your recorded,
-  revocable consent). Next / Save and Continue and Submit are never clicked at
-  any setting. It is a switch you give in Profile beside the EEO opt-in: two
+  revocable consent). Submit is never clicked, at any setting; Next / Save and Continue is
+  pressed only by `page_advance` in a run the user started with Apply (Queued run). It is a switch you give in Profile beside the EEO opt-in: two
   switches, because opting into EEO fill must not also opt you into agreeing to
   terms. Lifting the policy only lets a box reach /map; what answers it is a
   derived fact the backend holds only while the permission is served on
@@ -1267,7 +1273,7 @@ know, and each one was learned from a live failure.
   reported as "not accepted" rather than as done, and a write whose readback
   could not be confirmed in budget is `filled_unverified` — never `not_stuck`,
   because "we could not see it land" is a different claim from "it did not".
-- **Nothing is ever submitted automatically.** Always review before submitting.
+- **Nothing is ever submitted automatically.** Always review before submitting. The Companion presses Next only in a run you started with Apply.
 
 ## The answer receipt — what the panel records of a form
 
@@ -1344,8 +1350,8 @@ and its values reach no value-free builder (SYSTEM.md
 - **What the Fill body shows of it.** The post answers with the flagged fields
   (server-computed, fixed reason strings); `receiptFlags` is rendered by
   `stages/fill.js` `flagNodes` as the "Check before you submit" group, first among
-  the loop report's groups and beside the rule pass's rows. Warn-only: nothing
-  gates Next or Submit. A row with a field id jumps to it. The debounced capture
+  the loop report's groups and beside the rule pass's rows. Warn-only: a flag
+  never stops a run and never gates a Submit (the Companion clicks none). A row with a field id jumps to it. The debounced capture
   and Mark applied refresh the list from their own post's answer (a capture that
   posts nothing leaves it; leaving a page cannot, the page is gone). The matched
   job's knock-out scan (`knockout` on `/api/jobs/match`) heads the body (the
@@ -1354,6 +1360,124 @@ and its values reach no value-free builder (SYSTEM.md
 - **A rule that wrote over your edit** is the rule's value, not yours: a
   rule-pass run first reads which fids were already changed (`touchedBefore`) and
   does not mark those `edited_by_you`; the loop never writes a field you changed.
+
+## Queued run (one job, Phase 2)
+
+What the Companion does beyond filling a page: with full automation On, the Job step's **Apply** takes ONE job through its
+application in the CURRENT tab, clicking Next on every page, and stops on the review page. **Submit is never clicked, at any
+setting.** Built so far: the driver, the page operations, the one-job panel states, the Screening answers dial and the fill-agent
+fixes below. **Phase 3, not built:** the Queue view, the run list and run log, parallel tabs and pacing, the `next()` scheduler,
+Prepare queued jobs, `GET /api/autofill/queue-run`, and the **Queue** button (`QUEUE_BUTTON = false` in `panel.js`; Apply fills the
+footer alone).
+
+- **Pieces.** `shared/queue-run.js` is the driver: pure, with every browser effect an injected dep (`openTab`, `classify`, `advance`,
+  `fill`, `signIn`, `waitForChange`, `tabUrl`, …), so node drives the whole state machine and a later move of the host is a change of
+  host. `panel/actions/run.js` is the host (a tab, a clock and the page fan-out arrive through the `run` door of the action handle, so
+  `actions/*.js` stay chrome-free); `panel/runs.js` draws the record into the Fill row's Next card. The record is plain data, one per
+  tab, saved to `chrome.storage.session` (`queueRun`) at every change, so reopening the panel shows where a run got to; a record that
+  was mid-air when the panel closed is not running any more. A run is not the active page: a tab switch cancels nothing (the user's
+  own Autofill keeps its tab-switch cancel); what ends a run is Stop (which also sends `fill_cancel` to the run's own tab), a wall, or
+  a finished application.
+- **Page operations** are content-script messages through the existing fan-out and frame gate (`inv-frame-earns-data`):
+  `page_classify` and `page_advance` (`content/page-reader.js`; broadcastable and gated like the `fill_*` ops; a broadcast may name the
+  one frame to ask), `page_sign_in` (top frame only, in `panel_frame0`'s allow list and NOT broadcastable), `fill_watch` and
+  `fill_watch_report` (below). `summary()` is counts, button texts and booleans, never a value or a password.
+- **Page kinds** (`shared/page-kind.js`, pure): the posting, sign-in, create-account, email-code, CAPTCHA, board-native, form step,
+  review, confirmation and closed pages. A button sorts as Submit when ANY Submit stem appears in its text (submit, apply, send, finish,
+  finalize, complete, confirm: substrings, because a wrong match only stops), as Next only when the whole label is a Next word
+  (next, continue, save and continue, review), and otherwise as unclear. A Submit-sorted visible button makes the page the review page;
+  so do a dialog or heading that asks about submitting, a Submit the button list could not see, and several Nexts with nothing to
+  fill. A board's own pages (LinkedIn, Indeed) are `board_native` before any other check. Unclear buttons stop the run (no model
+  picks one; `/api/autofill/page` is not built).
+- **`page_advance` is the only navigation click in the extension.** It re-sorts the button's CURRENT labels (text, value, aria-label,
+  aria-labelledby, title) at click time and refuses any Submit-worded one, a disabled or hidden one, and a forged id; ids are minted
+  per read and tagged per frame, and the press goes to the one frame that named the button. `shared/ats-buttons.js` adds only
+  recorded markers: today Workday's footer button (`data-automation-id="pageFooterNextButton"`, verdict `text`: it is navigation, and
+  its own label still decides Next or Submit). A marker never beats a Submit word, and no row says "next".
+- **A posting's Apply** is followed only as a same-tab http(s) link (`location.assign`, no click handlers), and only on the FIRST read
+  of a tab the run opened itself, at step 0, with nothing filled, on the host the apply link led to, and when the page has no fillable
+  control and one control worded exactly Apply / Apply now / Apply for this job that is not a form's submit. Never after a sign-in
+  or a Resume: a site that restores a saved draft lands on its review page, whose "Apply" is a Submit.
+- **Walls park, they do not retry.** CAPTCHA, email code, account creation, board-native apply, a failed sign-in, a page it does not
+  recognise (a start chooser such as Workday's "Autofill with Resume / Apply Manually"), a "thank you" page before the run reached
+  review, the tab on a host the run never navigated to, the same page again, more than 15 steps and a Next that changes nothing
+  (after one refill) each park with a fixed `why` word; `panel/runs.js` holds the words and which of Resume or Skip this job each
+  offers. Ready to submit needs evidence the page was the application: a step behind it, or a field this page's fill wrote or
+  confirmed. A field-less page with a lone Next after step 0 is treated as review (an "are you sure" page).
+- **Sign-in.** `pageOps().signIn` fetches the login (`POST /api/companion/job-site-login`) and types it in one call, the password a
+  local that goes out of scope with it. It types only on a known ATS host (`shared/ats-hosts.js`, anchored at a dot, never a
+  substring); on any other sign-in page the run parks `sign_in_yourself` without fetching the login. The email box is found by type
+  or autocomplete, the button by plain sign-in wording and re-judged right before the click; the page refuses a locked, captcha-guarded
+  or sign-up form. A password-only second screen parks (`no_email`).
+- **Park less.** A required field the fill reports `unconfirmed` does not park: Next and the page's own validation decide, and a page
+  that does not move is refilled once. A run parks only on required fields it could not answer or operate (`open_questions`, the page's
+  own invalid flag counts), once per page, naming them.
+- **Resume** re-reads the parked page, learns every answer the user typed (`learnAnswer`, with Undo; never a multiline box, so a long
+  written answer is not saved as a standing one), posts a "you" receipt row, and continues. An answer to a question that names the
+  job's company or its city is saved with `only_for`, and the catalog offers and the deterministic fill matches it only for that job.
+- **Learning from a hand fix.** While a run is parked on a popup or search field, `fill_watch` has the page record what the user does
+  to it: event types and a fixed few key names (ArrowDown, ArrowUp, Enter, Space, Tab, Escape), trusted input only, never `value`. On
+  Resume `fill_watch_report` turns that into the engine's own moves (`open:press`, `open:keys`, `search:enter`, `search:debounce`). A
+  known move enters the recipe book at probation for that site (one demonstration never makes it trusted), and a gesture that matches
+  nothing joins the known-gaps list as `missing_technique`, as do leftovers the fill could not operate (`cannot_operate`,
+  `unconfirmed`) and fields the user fixed (`user_fixed`). The recipe book is local and is taught whatever the fill log says; the gaps
+  post only while `telemetryEnabled === true`. A gap is posted once per field and outcome and never retried (each post adds one).
+- **Recording the user's Submit.** On a ready tab, a confirmation page shows "Marking applied in 8 s · Undo"; after 8 s the host posts
+  `companion-submitted` (host, path and the matched words; no page text beyond them). Undo posts nothing and offers Mark applied. A 409
+  shows the server's own sentence and falls back to the status PATCH. The user's time ends when the confirmation is detected.
+- **Apply on the Job step** (`panel/actions/job.js`): re-reads the job and its tailoring sessions; an applied job stops; a job held by
+  the always-on copy is refused with nothing written; it queues as the user's yes (consent channel `companion`, only from
+  `pending_review`), claims the job for this copy when sync marked it offered, settles the resume (a PDF: go; a draft without a PDF:
+  render it, never quick-tailor over it; nothing and no open session: quick tailor with the user's pick; an open custom session:
+  "Finish tailoring first", with Apply using the base resume and the session untouched), then opens `apply_url` (else `source_url`,
+  else the tab's address; http(s) only, re-checked here because a value that arrived by sync skipped the server) in the current tab.
+  It shows for a job with no application or the user's own draft, and stays hidden once the application is applied. With full automation
+  Off the footer is Save job plus "Turn on full automation in Settings to apply from here."
+- **Per-run fill limits.** `runFill` copies its limits per run; a driven tab passes `RUN_LIMITS` (60 s a field, 12 adaptive steps,
+  10 minutes a page), the user's Autofill keeps 25 s, 8 and 3 minutes, and the module defaults are never written.
+
+### The fill agent's rules (all Autofill, run or not)
+
+- **Robot traps are never filled, listed or asked.** `fillBase.robotTrap` judges a control by the field reader's label, aria-label and
+  placeholder (honeypot / "for bots only" / "do not fill this" / "leave this blank" wording, on any control) and, for text boxes only,
+  by page geometry wholly outside the page. A required field is never a trap. The inventory's `eligible()`, the saved-answers fill and
+  open-question collection all use it. KNOWN LIMIT: a trap option inside a real checkbox/radio group (a shared name) is not filtered.
+- **A field that already holds an answer is `already`**, even when no fact maps to it (a phone code showing "United States (+1)").
+- **Optional fields with no fact are `left_blank`**: not asked, not counted as missing, named in a collapsed "left blank" list under the
+  Fill report (it does not hold Ready). Required markers are read from stars, a trailing "Required" word and `aria-required`;
+  question-led labels ("Is travel required") are never read as marked. An optional lone checkbox reads No and a native select without
+  a placeholder shows its first option, so neither is ever `left_blank` (it is still asked).
+- **A list field is worked an item at a time**, up to 20 items: each is searched, picked, committed and confirmed (its pill read)
+  before the next; a missing pill is clicked once more, then reported (`missing`), and a partial list says "N of M added". A list item
+  never takes a closest pick (a `/pick` closest for an item is treated as no pick).
+- **No going round in circles.** A move that left the options and state looking the same as before is `no_change` and counts as failed,
+  whatever the page said; the same search for the same value is never sent three times (a scroll is exempt from the twice cap).
+- **The agent's own search term.** `search:term` types a short term the step model writes (a shorter word, a synonym, the category;
+  `^[\w .&+/#-]{1,40}$`, never logged or traced, at most 6 tried per value). Typing is never an answer: a pick is still a click that
+  clears the slot's floor. After a settled term search that shows the whole list (50 options or fewer, nothing to scroll), one
+  flag-policy field may take the closest option, reported `closest_filled`. `/step` carries `kind` and `worked_here` (up to 4 moves
+  that worked on this site, from the recipe book's axes).
+- **Technique cards.** `services/autofill_techniques.py` holds one card (at most 700 characters) per widget kind (search, multi, popup,
+  group, select, date), appended to the adaptive step's instructions with the kind: what to try after which failure. Cards are widget
+  craft, never per-site procedures. KNOWN LIMIT: the adaptive step runs for popup and search widgets only, so the group, select and date
+  cards are not reached.
+- **Calm before typing.** `fillBase.quiet` waits for the page to stop changing (text and attribute changes included) before a write that
+  follows a choice (600 ms) or a recent change (300 ms), under a 2.5 s cap, watching the field's own section (closest form, fieldset,
+  group or Workday section) except for the first write after a choice, which watches the whole page. A wait that hits the cap marks the
+  page noisy for the rest of the run (a carousel never settles) and its writes then wait only out the post-choice window. A write
+  that finds its element gone is re-found by fingerprint and written once more in the same apply.
+
+### Screening answers
+
+`autofill.answer_level` (Settings › Form filling; `facts` | `history` | `queued`, default `history`) is read by `/map`, `/pick` and
+`/step` (the same level in each prompt), by the Companion and by agents through the Job Search Brief's `applying.answer_level`. The
+protected list (work authorization and sponsorship, salary, EEO, criminal or background history, security clearance and agency
+employment, signatures and attestations, unsupported education or experience claims) sits outside every level. `queued` applies only
+to the job's own posting: `/map`, `/pick` and `/step` carry the page's address (`page_url`, http(s), no fragment; never in a trace) and
+the server needs an accepted or approved proposal and `job_url_match.is_same_posting` against the job's `apply_url` or `source_url`.
+At the top level a years question is Yes only when the history is silent or shows enough years (fewer: asked, in `/step` too); at the
+middle level it is Yes when the history shows the skill and does not contradict the years. Clearance and agency questions are never
+a keen guess. An answer the level gives is an `inferred` receipt row, so the `guessed_screening` flag lists it under "Check before you submit".
 
 ## Telemetry — what leaves the page
 
@@ -1387,7 +1511,7 @@ else before posting:
 | `label` | the field's visible label text, capped at 160 chars |
 | `kind` | the control shape: `text`, `textarea`, `select`, `radio`, `checkbox`, or `combobox` |
 | `host` | the hostname of **the frame the field was in** — not the top frame, so an embedded Greenhouse form is attributed to `boards.greenhouse.io` (a `loop_fill` row: the first frame the loop found fields in) |
-| `outcome` | what happened: `filled`, `corrected`, `filled_normalized`, `filled_unverified`, `not_stuck`, `combobox_snap_failed`, `no_rule`, `missing_source`, `skip_rule`, `skipped_checkbox`, `hidden`, `policy_blocked`, `eeo_disabled`, `retry_filled`, `match_recovered`, `ai_abstained`; on a `loop_fill` row the loop's report status: `verified`, `closest_filled`, `assumed_filled`, `partial`, `unconfirmed` (a value the page shows but never confirmed, or that reverted after its one re-commit), `needs_answer`, `cannot_operate`, `unsupported` (the control ignored every synthetic input), `prefilled`, `blocked`, `user_edited`, or `filled_unverified` for a value that landed without being chosen as the answer — a group click that committed one, a search that picked while exploring (`buildLoopObservations` in `shared/fill-loop.js`). (The backend also accepts `ai_answered`, `ai_no_stick`, `ai_unanswered` and `ai_unaligned` — stored rows carry them — but nothing emits one since the floating card was retired: its AI write-back path was their only source.) |
+| `outcome` | what happened: `filled`, `corrected`, `filled_normalized`, `filled_unverified`, `not_stuck`, `combobox_snap_failed`, `no_rule`, `missing_source`, `skip_rule`, `skipped_checkbox`, `hidden`, `policy_blocked`, `eeo_disabled`, `retry_filled`, `match_recovered`, `ai_abstained`; on a `loop_fill` row the loop's report status: `verified`, `closest_filled`, `assumed_filled`, `partial`, `unconfirmed` (a value the page shows but never confirmed, or that reverted after its one re-commit), `needs_answer`, `left_blank` (an optional field nothing answered, left empty on purpose: the loop did not ask), `cannot_operate`, `unsupported` (the control ignored every synthetic input), `prefilled`, `blocked`, `user_edited`, or `filled_unverified` for a value that landed without being chosen as the answer — a group click that committed one, a search that picked while exploring (`buildLoopObservations` in `shared/fill-loop.js`). (The backend also accepts `ai_answered`, `ai_no_stick`, `ai_unanswered` and `ai_unaligned` — stored rows carry them — but nothing emits one since the floating card was retired: its AI write-back path was their only source.) |
 | `rule_id` | which fill rule matched, or null; on a `loop_fill` row the slot the AI mapped the question to (`slot:…`) or its route (`route:…`) |
 | `options` | for a `select`, a `radio` group, or a Workday listbox-button dropdown whose popup was open at the time, **the option texts as the page renders them** — up to 30, each capped at 160 chars. This is the one field that carries page content, and it is here because a dropdown that could not be matched is unfixable without knowing what its options said. Nothing is ever opened in order to collect them: a telemetry read may not drive the page, so a closed popup reports no options rather than being poked into rendering. A `loop_fill` row carries none |
 
@@ -1421,13 +1545,23 @@ Two things bound that:
    and it does *not* turn capture off — clearing history and opting out are two
    different decisions, and the button only makes the one you asked for.
 
+### Known gaps — what the fill could not learn
+
+A durable, value-free table (`autofill_widget_gap`) that survives the 50-run trace limit. A row is a widget family hash (the recipe
+book's, without its `f:` prefix), the host, the field's shape and an outcome (`cannot_operate`, `unconfirmed`, `user_fixed`,
+`missing_technique`) with a count and a last-seen time; the schema is `extra="forbid"` over closed enums. `sw.js` `fill_gaps` posts it
+to `POST /api/autofill/gaps` (at most 40 a post, keys whitelisted to the schema's four) only while `telemetryEnabled === true`, so with
+the fill log off nothing is posted. It holds hosts, so `DELETE /api/autofill/telemetry` clears it with the rows and runs. It is ranked
+in `scripts/fill_trace.py report` (without hosts) and summarised in one line in Settings › Form filling (`GET /api/autofill/gaps/summary`).
+It is local to this copy (sync does not carry it).
+
 ### Run trace — how the fill loop decided
 
 Separately from the rows above, a "Saved answers + AI" run builds one `report.trace` in
 `shared/fill-loop.js`, and the panel (`panel/actions/fill.js`) sends it once as `fill_trace`. It
 records, per field, how the engines decided: the label source, the map / polarity / pick / step decisions
 (route, slot, engine, confidence, second opinion, chosen option index), each step as an op with `ms`
-and its effect, and the final status. Failed model calls are noted as `{op, ms}`. A field notes its
+and its effect, and the final status. Failed model calls are noted as `{op, ms}`. An adaptive step's move ids include `search:term`; the term itself is never in the trace or the report. A field notes its
 polarity once (the first answer: later /pick and /step calls on a Yes/No field answer with the same way, recalled
 from memory; a recalled way carries `remembered` and the counters skip it). A field keeps at
 most 40 steps (the first 20 and the last 20), and any text is cut to 200 characters without

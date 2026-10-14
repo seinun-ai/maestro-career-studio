@@ -169,7 +169,7 @@ What we do instead is bound what an injection can reach:
   signatures, attestations, consent, credentials and government IDs is consulted
   before a field is ever offered to a model — unless the user has turned on the
   standing agreement permission, which lifts it. The Companion never clicks
-  Next or Submit. A connected agent follows the apply policy below.
+  Submit; it clicks Next only in a run the user starts with Apply, full automation on. A connected agent follows the apply policy below.
 
 **What the consent ledger is, precisely.** Approving or submitting a proposal
 writes an append-only consent event, approval reserves a slot against a daily
@@ -236,7 +236,12 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
   Each hand-off writes `ConsentEvent(action="login_shared", channel="mcp",
   note=client name)`, never the value. MCP error messages are fixed by status
   and never carry the response body. **The login passes through your agent's AI
-  provider. Use it only for job-site accounts.**
+  provider. Use it only for job-site accounts.** The Companion's Apply run uses a
+  second route, POST `/api/companion/job-site-login`, with the same gates, admitted
+  only for the Companion extension's exact origin and recorded with channel
+  `companion`. The Companion types it in the top frame of a known application site
+  only (any other sign-in page waits for the user) and never retries a failure; no
+  model, run record, receipt, trace or telemetry row ever holds it.
 - **Your API key is sent to whatever `base_url` you configure.** That is the
   point of a configurable OpenAI-compatible endpoint, and it means the endpoint
   field is a credential-disclosure decision: your key and your prompt bodies

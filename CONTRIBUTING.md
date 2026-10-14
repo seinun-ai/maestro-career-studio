@@ -53,7 +53,9 @@ if you think the reasoning has expired.
 
 1. **Unchecked volume auto-apply or bulk blast.** Full automation mode is opt-in,
    capped, limited to jobs the user queued and to answers that pass every check;
-   unscored, uncapped or unqueued applying stays refused. Employers now filter for applications
+   unscored, uncapped or unqueued applying stays refused. The Companion's own run is held to the same
+   terms: it works only a job the user queued, one at a time for now, within the daily cap, and it never
+   clicks Submit (it clicks Next, stopping on the review page). Employers now filter for applications
    that read as machine-generated. A blast tool prioritizes volume over the
    stronger, reviewed applications Maestro is built to support.
 2. **Any claim that our match score predicts a real ATS.** Ours is deterministic,

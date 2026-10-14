@@ -202,7 +202,7 @@ it.
 Each tool's own description (which your assistant sees) has the full details.
 
 **Jobs and search**
-- `get_job_search_brief`: your profile, constraints, resume summaries and sync status (`enabled`, `role`); call first in a job-search chat.
+- `get_job_search_brief`: your profile, constraints, resume summaries, sync status (`enabled`, `role`) and an `applying` block (`answer_level`: your Screening answers setting, `facts`, `history` or `queued`); call first in a job-search chat.
 - `sync_now`: ask the always-on copy to sync now; returns the round's outcome and per-step counts. On your laptop, it explains that your bot runs the sync; with sync off, it says "Sync isn't set up."
 - `find_job_by_url`: check whether a posting is already saved.
 - `store_extracted_jd`: save a job. Your assistant fills in the job's details in the format the tool describes.

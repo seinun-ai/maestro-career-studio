@@ -46,6 +46,14 @@ referral careers pages, plain browsing — within these limits:
   `source="agent"` and the `source_url`, plus the raw text when you have it. An
   `already_existed: true` response is an already-tracked job, never a new
   capture.
+- **Answer level.** The brief's `applying.answer_level` is the user's Screening answers setting, and an agent that applies reads it
+  instead of assuming a default. `facts`: answer only from saved answers and career history, and ask for the rest. `history` (the
+  default): also answer a low-stakes question (how you heard, willingness) in the job's favour, and "N years of a skill" Yes when the
+  career history shows the skill without contradicting the years. `queued`: also answer every requirement question on a job the user
+  queued Yes, except a years question the history contradicts, which is asked. At every level the protected list is the user's to
+  answer (work authorization and sponsorship, salary, EEO unless consented, criminal or background history, security clearance and
+  agency employment, signatures and attestations unless consented, education or experience claims the history does not support):
+  never a guess.
 - **Consent, EEO and submission belong to the apply lane.** A hunting session
   never clicks a final submit control. Those rules live in
   [playbooks/agent-apply.md](playbooks/agent-apply.md).

@@ -212,6 +212,14 @@ policy. Use it only for job-site accounts.** Turning full automation Off
 refuses later hand-offs and automatic consent; it cannot recall data already
 sent to a provider.
 
+The Companion has its own route for the same login (`POST
+/api/companion/job-site-login`, admitted only for the Companion extension's
+origin, same gates, recorded as a `login_shared` event on the `companion`
+channel). The Companion types it into the sign-in page itself, only on a known
+application site and only in the page's top frame, and sends it to no AI
+provider: it never reaches a model, a run record, a receipt, a trace or the fill
+log.
+
 ### No telemetry from the author
 
 The code contains no analytics, crash-reporting, or advertising service. Maestro
