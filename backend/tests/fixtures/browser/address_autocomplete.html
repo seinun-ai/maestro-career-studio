@@ -1,0 +1,110 @@
+<!doctype html>
+<!-- An address line-1 autocomplete, as ATS-O's application form draws it (live 2026-10-14; made-up street, city
+     and ZIP). It is the same `oj-combobox-one` shape as jet_combobox.html (one input[role=combobox]
+     [aria-autocomplete=list], no separate value node, `oj-has-no-value` lost on a pick, a result list rendered
+     into <body> and debounced about 800 ms after the last keystroke, an Enter with no list clears the query)
+     whose SUGGESTIONS are whole addresses, and whose pick also fills the City and ZIP code boxes below it.
+     What the suggestions answer is scripted by `window.addressMode`:
+       - "both" (default): any query containing "allora" is answered with the PARTIAL address "Allora Pl,
+         Springfield" first and the full "121 Allora Pl, Springfield" second;
+       - "retry": the full line "121 Allora PL" is answered with the partial address only; the shorter query
+         "121 Allora" (number + street name, no suffix) is answered with both;
+       - "none": nothing but the partial address, whatever is typed;
+       - "twins": the full line is answered with two equally good rows in two cities.
+     State of the fake app: window.__oracle.address_line (the picked suggestion), address_clicks (every row
+     clicked, in order), address_queries (the query the list was answered for, in order), address_enters
+     (Enter presses), address_city / address_zip (what the pick wrote into the City and ZIP boxes). -->
+<label for="address|input">Address Line 1</label>
+<oj-combobox-one id="address" class="oj-combobox oj-combobox-one oj-has-no-value oj-form-control">
+  <div class="oj-text-field-container">
+    <div class="oj-text-field-middle">
+      <input id="address|input" class="oj-combobox-input" type="text" role="combobox" autocomplete="off"
+             aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox"
+             aria-controls="oj-listbox-results-address">
+    </div>
+  </div>
+</oj-combobox-one>
+<label for="city">City</label><input id="city">
+<label for="zip">ZIP Code</label><input id="zip">
+<script>
+(() => {
+  window.__oracle = window.__oracle || {};
+  Object.assign(window.__oracle, {
+    address_line: "", address_clicks: [], address_queries: [], address_enters: 0, address_city: "", address_zip: "",
+  });
+  window.addressMode = window.addressMode || "both";
+  const PARTIAL = "Allora Pl, Springfield";
+  const FULL = "121 Allora Pl, Springfield";
+  const rowsFor = (query) => {
+    const q = query.toLowerCase();
+    const mode = window.addressMode;
+    if (!q.includes("allora")) return [];
+    if (mode === "none") return [PARTIAL];
+    if (mode === "twins") return ["121 Allora Pl, Springfield", "121 Allora Pl, Shelbyville"];
+    if (mode === "retry") return q === "121 allora" ? [PARTIAL, FULL] : [PARTIAL];
+    return [PARTIAL, FULL];
+  };
+  const host = document.getElementById("address");
+  const input = document.getElementById("address|input");
+  let drop = null;
+  let timer = null;
+  const closeList = () => {
+    drop?.remove();
+    drop = null;
+    input.setAttribute("aria-expanded", "false");
+  };
+  const render = (query) => {
+    closeList();
+    window.__oracle.address_queries.push(query);
+    drop = document.createElement("div");
+    drop.className = "oj-listbox-drop";
+    const list = document.createElement("ul");
+    list.id = "oj-listbox-results-address";
+    list.setAttribute("role", "listbox");
+    for (const text of rowsFor(query)) {
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.textContent = text;
+      li.addEventListener("mousedown", (e) => e.preventDefault());
+      li.addEventListener("click", () => {
+        window.__oracle.address_clicks.push(text);
+        window.__oracle.address_line = text;
+        input.value = text;
+        host.classList.remove("oj-has-no-value");
+        const city = text.split(", ")[1] ?? "";
+        document.getElementById("city").value = city;
+        document.getElementById("zip").value = "12345";
+        window.__oracle.address_city = city;
+        window.__oracle.address_zip = "12345";
+        closeList();
+      });
+      list.appendChild(li);
+    }
+    drop.appendChild(list);
+    document.body.appendChild(drop);
+    input.setAttribute("aria-expanded", "true");
+  };
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    closeList();
+    if (!input.value) return;
+    timer = setTimeout(() => render(input.value), 800);   // the debounce
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    window.__oracle.address_enters += 1;
+    if (!drop) {
+      clearTimeout(timer);
+      input.value = window.__oracle.address_line;
+    }
+  });
+  input.addEventListener("focusout", () => {
+    setTimeout(() => {
+      if (document.activeElement === input) return;
+      clearTimeout(timer);
+      input.value = window.__oracle.address_line;
+      closeList();
+    }, 0);
+  });
+})();
+</script>

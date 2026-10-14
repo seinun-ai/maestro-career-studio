@@ -107,6 +107,7 @@
   // long. Longer than the gap between two stages of one answer (notes §2 rule
   // 4: School showed 1 row, then 8), so the first stage is never the answer.
   const QUIET_MS = 500;
+  const ADDRESS_MS = 4000; // a street-address autocomplete geocodes: its rows may take this long
   const LATE_ENTER_MS = 1500; // the wait for results after an Enter sent to a box that was silent for OPEN_MS
   const ANSWER_MS = 300; // typing that shows nothing new this long did not search: a combobox gets the Enter
   const FRAME_MS = 100; // a frame, or this long where none runs (a hidden tab starves requestAnimationFrame)
@@ -345,7 +346,9 @@
 
   // ---- text-like
   async function write(el, shape, value, t, { format } = {}) {
-    if (shape.kind !== "text") return { outcome: "unexpected", reason: "not_text" };
+    // A street-address search box that keeps free text (the loop's last resort when no suggestion
+    // names the street) is written like a text box.
+    if (shape.kind !== "text" && !(format === "address" && shape.name === "search")) return { outcome: "unexpected", reason: "not_text" };
     let parts = null;
     let text = String(value ?? "");
     // A date the box was given with more precision than the fact has (see below):
@@ -552,7 +555,7 @@
     if (used[axis] === undefined) used[axis] = move;
     else if (used[axis] !== move && !(used.varied ??= []).includes(axis)) used.varied.push(axis);
   };
-  const search = async (el, shape, box, term, before, t, w, { press = true, variant, used } = {}) => {
+  const search = async (el, shape, box, term, before, t, w, { press = true, variant, used, address = false } = {}) => {
     const snap = snapshot(el, shape);
     const workday = box === el && ns.shapes.workday(el);
     // The same query, still answered by the list the engine settled for it
@@ -593,7 +596,9 @@
     const filters = !workday && /^(list|both)$/.test(box.getAttribute("aria-autocomplete") ?? "");
     const patient = filters || variant?.search?.[0] === "debounce";
     const silent = async (ms) => !(await b().waitFor(() => searchView(el, shape, before) !== was, ms, t));
-    const enter = workday || (gated && (await silent(patient ? OPEN_MS : ANSWER_MS)));
+    // A street-address box is never sent an Enter (its rows come late and an Enter before them cancels
+    // the search) and is given ADDRESS_MS for them.
+    const enter = workday || (gated && !address && (await silent(patient ? OPEN_MS : ANSWER_MS)));
     if (enter) {
       shown = textsOf(own(el, before));
       b().keyPress(box, "Enter", t);
@@ -602,7 +607,8 @@
     if (workday || gated) note(used, "search", enter ? "enter" : "debounce");
     // After a last-resort Enter (the box showed nothing for the whole OPEN_MS) the answer gets less
     // time: the operation's own budget is no longer than the two waits together.
-    const got = await waitSettled(el, shape, before, snap, shown, t, enter && filters ? LATE_ENTER_MS : OPEN_MS);
+    const got = await waitSettled(el, shape, before, snap, shown, t,
+      address ? ADDRESS_MS : enter && filters ? LATE_ENTER_MS : OPEN_MS);
     if (got.pop) settledFor.set(box, { pop: got.pop, texts: textsOf(got.pop), query: box.value });
     return got;
   };
@@ -664,7 +670,7 @@
   // after an ArrowDown that changed nothing — then the press if they opened
   // nothing. A control the keys may never go to cannot take that order
   // (`used.mismatch`). `used.open` says which move opened the list.
-  const open = async (el, shape, term, t, w, { reclaim = true, variant, used } = {}) => {
+  const open = async (el, shape, term, t, w, { reclaim = true, variant, used, address = false } = {}) => {
     let searchable = shape.open === "search";
     // A search widget with a term runs the search sequence — without the
     // press when the list it opened for an earlier item is still up.
@@ -672,7 +678,7 @@
       const held = heldList(el);
       const before = held ?? b().popups();
       opened.set(el, before);
-      return { ...(await search(el, shape, el, term, before, t, w, { press: !held, variant, used })), before, searchable };
+      return { ...(await search(el, shape, el, term, before, t, w, { press: !held, variant, used, address })), before, searchable };
     }
     const before = b().popups();
     opened.set(el, before);
@@ -734,7 +740,7 @@
     if (!pop) return { pop: null, before, searchable };
     const box = pop.querySelector(INNER_SEARCH);
     if (box) searchable = true;
-    if (term && box) return { ...(await search(el, shape, box, term, before, t, w, { press: false, variant, used })), before, searchable };
+    if (term && box) return { ...(await search(el, shape, box, term, before, t, w, { press: false, variant, used, address })), before, searchable };
     return { pop: await waitOptions(el, before, t), before, searchable };
   };
   const scrollerOf = (pop) => [pop, ...pop.querySelectorAll("*")]
@@ -1015,7 +1021,7 @@
   // `keep` (a set's item): the list it settled stays up, with the query in the
   // box, for the item's own commit to click in — `kept` says it did (fill-ops
   // closes it before anything else touches the page).
-  async function explore(el, shape, { term, consentForms, variant, keep = false } = {}, t) {
+  async function explore(el, shape, { term, consentForms, variant, keep = false, address = false } = {}, t) {
     if (shape.kind !== "choice") return { options: [], complete: false, searchable: false, error: "not_a_choice" };
     if (shape.passive) {
       const p = shape.passive(el);
@@ -1027,14 +1033,14 @@
     const used = {};
     try {
       // fill-ops owns explore's undo (whatever moved, keys included).
-      let { pop, searchable, unsettled } = await open(el, shape, term, t, w, { reclaim: false, variant, used });
+      let { pop, searchable, unsettled } = await open(el, shape, term, t, w, { reclaim: false, variant, used, address });
       let options = pop ? b().optionsOf(pop) : [];
       let byWord = false;
       if (!options.length && term) {
         const word = isUrl(term) ? undefined : term.split(/\s+/).find((x) => x.length > 2 && x !== term);
         // A term that already committed something is not searched again by a
         // word (fill-ops takes the commit back).
-        if (word && !moved(el, shape, snap)) {
+        if (word && !address && !moved(el, shape, snap)) {
           await tidy(el, t);
           ({ pop, searchable, unsettled } = await open(el, shape, word, t, w, { reclaim: false, variant, used }));
           options = pop ? b().optionsOf(pop) : [];
@@ -1212,7 +1218,7 @@
   // choose's work; `used` hears what its opens and searches did (a set's
   // items share one).
   async function chooseOne(el, shape, {
-    text, where, term, consentForms, undo = false, keep = false, asSet = false, variant, used,
+    text, where, term, consentForms, undo = false, keep = false, asSet = false, variant, used, address = false,
   } = {}, t) {
     if (shape.kind !== "choice") return { outcome: "unexpected", reason: "not_a_choice" };
     if (blockedText(text, consentForms)) return { outcome: "blocked" };
@@ -1235,7 +1241,7 @@
     try {
       for (let attempt = 0; ; attempt += 1) {
         const { pop, before: popsBefore, committed, unsettled } = await open(el, shape,
-          shape.open === "search" ? (term ?? text) : term, t, w, { reclaim: !undo, variant, used });
+          shape.open === "search" ? (term ?? text) : term, t, w, { reclaim: !undo, variant, used, address });
         if (committed) return { outcome: "unexpected", reason: "committed_while_opening" };
         // Only a list the search let settle is picked from — or, once an
         // Enter's commit was taken back, the list still up after it.

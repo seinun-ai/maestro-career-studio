@@ -715,7 +715,7 @@
     };
     // `keep` (a set's item on a search box): the list it settled is left up for
     // the item's own commit, which clicks in it without searching again.
-    const explore = async (f, term, { keep = false } = {}) => {
+    const explore = async (f, term, { keep = false, address = false } = {}) => {
       if (halt() || fieldLate(f)) return null;
       // The field's remaining time rides along: the page's explore never runs past it.
       const left = (rows.get(f.fid)?.deadline ?? Infinity) - Date.now();
@@ -724,6 +724,7 @@
         type: "fill_explore", requests: [withOrder(f, {
           fid: f.fid, fp: f.fp, ...(term ? { term } : {}), ...(Number.isFinite(left) ? { ms: left } : {}),
           ...(keep ? { keep: true } : {}),
+          ...(address ? { address: true } : {}),
         })],
       }))[f.fid];
       if (got) heard(f, "explore", got);
@@ -1341,12 +1342,92 @@
     const keepHeld = (f, row) => (row.wroteAs && same(f.committed, row.wrote)
       ? finish(f, row.wroteAs, { lastOutcome: "verified" }) : finish(f, "already"));
 
+    // ---- a street address (line 1) typed into a search box that suggests whole addresses
+    // The fact is the full line, typed as it is with no Enter; the rows are scored by CODE, never by a
+    // model and never by word searches: a row must hold the house number as a whole token and the street
+    // (its name, with Pl/Place, St/Street... equal), and a city or ZIP the profile has breaks a tie. Only
+    // the single best row is picked; two equal rows with different texts are no answer. A list without
+    // the number is searched once more with "number + street name"; if no row qualifies the typed line
+    // is left where the box keeps free text, and the field is flagged.
+    const ROAD_SUFFIX = {
+      place: "pl", pl: "pl", street: "st", st: "st", drive: "dr", dr: "dr", avenue: "ave", ave: "ave", av: "ave",
+      road: "rd", rd: "rd", lane: "ln", ln: "ln", court: "ct", ct: "ct", boulevard: "blvd", blvd: "blvd",
+      circle: "cir", cir: "cir", terrace: "ter", ter: "ter", parkway: "pkwy", pkwy: "pkwy", highway: "hwy",
+      hwy: "hwy", trail: "trl", trl: "trl", way: "way",
+    };
+    const addressWords = (text) => String(text ?? "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[.,#]/g, " ").split(/\s+/).filter(Boolean);
+    const parseAddress = (line) => {
+      const words = addressWords(line);
+      const number = words.find((w) => /^\d+[a-z]?$/.test(w)) ?? null;
+      const rest = words.filter((w) => w !== number);
+      const end = rest.findIndex((w) => ROAD_SUFFIX[w]); // what follows the road suffix is a unit, not the street
+      const street = end >= 0 ? rest.slice(0, end + 1) : rest;
+      return { number, core: street.map((w) => ROAD_SUFFIX[w] ?? w) };
+    };
+    const scoreAddress = (parsed, text, hints) => {
+      const words = addressWords(text);
+      const canon = words.map((w) => ROAD_SUFFIX[w] ?? w);
+      const number = Boolean(parsed.number) && words.includes(parsed.number);
+      const street = parsed.core.length > 0 && parsed.core.every((w) => canon.includes(w));
+      const joined = ` ${words.join(" ")} `;
+      const city = hints.city && joined.includes(` ${addressWords(hints.city).join(" ")} `) ? 1 : 0;
+      const zip = hints.zip && words.includes(String(hints.zip).slice(0, 5)) ? 1 : 0;
+      return { ok: number && street, score: (number ? 4 : 0) + (street ? 4 : 0) + city + zip };
+    };
+    const bestAddress = (options, parsed, hints) => {
+      const scored = usable(options).map((o) => ({ o, ...scoreAddress(parsed, o.text, hints) })).filter((x) => x.ok);
+      const top = Math.max(0, ...scored.map((x) => x.score));
+      const tied = scored.filter((x) => x.score === top);
+      if (tied.length === 1) return tied[0].o;
+      return tied.length && tied.every((x) => addressWords(x.o.text).join(" ") === addressWords(tied[0].o.text).join(" "))
+        ? tied[0].o : null;
+    };
+    const factOf = (slot) => {
+      const v = [...rows.values()].find((r) => r.slot === slot && r.route === "slot")?.value;
+      return typeof v === "string" ? v : null;
+    };
+    const fillAddress = async (f, row, line) => {
+      const parsed = parseAddress(line);
+      const hints = { city: factOf("personal.city"), zip: factOf("personal.postal_code") };
+      // The same line without its road suffix and unit ("121 Allora"), when that is a different query.
+      const tokens = line.split(/\s+/);
+      const at = tokens.findIndex((w) => ROAD_SUFFIX[addressWords(w)[0]]);
+      const short = parsed.number && at > 0 ? tokens.slice(0, at).join(" ") : null;
+      for (const term of [line, ...(short && short !== line ? [short] : [])]) {
+        const got = await explore(f, term, { address: true });
+        if (!got) return lateOrHalted(f);
+        if (exploreRefused(f, got, term)) return undefined;
+        const best = bestAddress(got.options ?? [], parsed, hints);
+        if (!best) continue;
+        const out = await act(f, {
+          op: "choose", text: best.text, term, address: true, ...(typeof best.where === "string" ? { where: best.where } : {}),
+        });
+        if (notDone(f, out)) return undefined;
+        if (out.outcome === "verified") return done(f, "matched", out.committed);
+        if (out.outcome === "unconfirmed") return unconfirmed(f, best.text);
+        return fail(f, out.reason ?? out.outcome);
+      }
+      // No suggestion names the street: the typed line stays where the box keeps free text.
+      const typed = await act(f, { op: "write", value: line, format: "address" });
+      if (notDone(f, typed)) return undefined;
+      if (typed.outcome === "verified") {
+        return finish(f, "unconfirmed", {
+          answer: "No suggestion matched this address, so the typed line was left. Check it.",
+          lastOutcome: "address_unmatched", wrote: line, wroteAs: null,
+        });
+      }
+      return finish(f, "needs_answer", { lastOutcome: "no_address_match" });
+    };
+
     // ---- a choice field: explore when the list is not already whole, then pick and commit
     const fillChoice = async (f, row, prepicked) => {
       const { value } = row;
       if (row.route === "slot" && (value == null || value === "" || (Array.isArray(value) && !value.length))) {
         return finish(f, "needs_answer", { lastOutcome: "no_value" });
       }
+      if (f.shape === "search" && row.route === "slot" && row.slot === "personal.address" && typeof value === "string"
+        && value.trim()) return fillAddress(f, row, value.trim());
       await lookUp(f);
       // A search widget says one answer or several only in the rows of an open
       // list (radios or checkboxes): a fact of several items on one whose

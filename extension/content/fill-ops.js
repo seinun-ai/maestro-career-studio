@@ -26,7 +26,8 @@
   // `undo`: explore's own allowance for taking back what it committed, apart
   // from the explore's, so a slow explore never eats the undo (or the reverse).
   // `add`: one press of a section's Add and the wait for its entry (sections.js).
-  const budgets = { explore: 5000, undo: 6000, apply: 6000, setItem: 6000, setMax: 20000, step: 2000, add: 4000 };
+  // `address`: what an address search (rows that arrive up to 4 s late) adds to an explore or a choose.
+  const budgets = { explore: 5000, undo: 6000, apply: 6000, setItem: 6000, setMax: 20000, step: 2000, add: 4000, address: 3000 };
   const inv = () => ns.fillInventory;
   const core = () => ns.fillCore;
   let runId = null;
@@ -123,10 +124,13 @@
       const snap = core().snapshot(el, shape);
       // `ms`: what the field's clock has left (the loop sends it), so an
       // explore never runs past it; the undo keeps its own allowance.
-      const ms = Number.isFinite(r.ms) ? Math.max(0, Math.min(budgets.explore, r.ms)) : budgets.explore;
+      // An address search waits for its rows longer than any other: its allowance is longer by the same.
+      const cap = budgets.explore + (r.address === true ? budgets.address : 0);
+      const ms = Number.isFinite(r.ms) ? Math.max(0, Math.min(cap, r.ms)) : cap;
       // `variant`: the recipe's move order the loop sends, passed through.
       const { got, aborted } = await run((t) => core().explore(el, shape, {
         term: r.term ?? undefined, consentForms, variant: r.variant ?? undefined, keep: r.keep === true,
+        address: r.address === true,
       }, t), ms, el);
       if (aborted) await cleanup(el);
       let row = got.options ? got : { options: [], complete: false, searchable: false, error: got.reason ?? got.outcome };
@@ -161,7 +165,7 @@
       // `where`: the picked option's category path, from explore.
       return core().choose(el, shape, {
         text: a.text, where: typeof a.where === "string" ? a.where : undefined, term: a.term ?? undefined,
-        consentForms, variant: a.variant ?? undefined,
+        consentForms, variant: a.variant ?? undefined, address: a.address === true,
       }, t);
     }
     if (a.op === "set") {
@@ -217,7 +221,8 @@
     if (refused) return { refused };
     // A set's budget is its items' (one item: setItem); setMax only caps a batch.
     const ms = a.op === "set"
-      ? Math.min(budgets.setMax, budgets.setItem * Math.max(1, (a.texts ?? []).length)) : budgets.apply;
+      ? Math.min(budgets.setMax, budgets.setItem * Math.max(1, (a.texts ?? []).length))
+      : budgets.apply + (a.address === true ? budgets.address : 0);
     return { el, shape, ...(await run((t) => operate(a, el, shape, t), ms, el)) };
   };
 
