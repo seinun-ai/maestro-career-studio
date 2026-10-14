@@ -582,8 +582,12 @@ def test_the_map_cases_hold_the_live_wrong_writes():
     assert by_id["address-line-1"]["expected"] == ["personal.address"]
     assert by_id["military-status"]["expected"] == ["eeo.veteran_status"]   # live CarMax, 2026-09-30
     # Service questions are not the protected-veteran self-identification.
-    for case in ("military-served", "military-spouse", "military-guard-reserve"):
+    for case in ("military-spouse", "military-spouse-service", "military-guard-reserve"):
         assert by_id[case]["expected"] == ["none"], case
+    # Live check 4 (2026-10-14): a No settles "ever served" and "currently or ever served"; a spouse's service
+    # has no fact (a safe No, low-stakes).
+    assert by_id["military-currently-or-ever"]["expected"] == ["eeo.veteran_status"]
+    assert set(by_id["military-served"]["expected"]) == {"none", "eeo.veteran_status"}
     for case in ("terms-and-conditions", "background-check-consent", "certify-true"):
         assert by_id[case]["expected"] == ["derived.agrees_to_terms"], case
     # Not an agreement: a willingness question, and optional opt-ins (the low-stakes setting's).

@@ -1488,3 +1488,27 @@ def test_a_worked_here_step_for_another_company_reports_the_no_assumed(db_sessio
             candidates=[{"mid": "click:o1", "describe": 'Click the option "No"'}, {"mid": GIVE_UP, "describe": "Stop"}])
     got = autofill_step.step(r, facts, db_session, None)
     assert (got.mid, got.reason) == ("click:o1", reason)
+
+
+# ---------- Live check 4: dealer, contractor and "DIRECTLY employed" questions on an Acme job (Phase 2e, R3)
+
+DEALER = "Have you been employed or are you currently employed with an authorized dealer of Acme or Metro by Acme?"
+CONTRACTOR = "Have you previously or are you currently working as a contractor for Acme?"
+DIRECTLY = ("Have you previously been DIRECTLY employed with Acme Holdings AG or Initech? (i.e. have you received "
+            "a paycheck or W-2 directly from one of these companies?)")
+
+
+def _acme_job_facts():
+    return autofill_catalog.build({}, [{"employer": "Globex", "title": "Analyst", "start_date": "2019-01",
+                                        "end_date": "2021-06"}], [], company="Acme")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [DEALER, CONTRACTOR, DIRECTLY])
+def test_a_dealer_contractor_or_directly_employed_step_reports_the_no_assumed(db_session, monkeypatch, question):
+    fake_jev(monkeypatch, ("click:o1", 0.9))
+    r = req(slot=autofill_catalog.WORKED_HERE_SLOT, question=question,
+            candidates=[{"mid": "click:o1", "describe": 'Click the option "No"'}, {"mid": GIVE_UP, "describe": "Stop"}])
+    got = autofill_step.step(r, _acme_job_facts(), db_session, None)
+    assert (got.mid, got.reason) == ("click:o1", "assumed")
+

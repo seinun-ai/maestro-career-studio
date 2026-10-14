@@ -784,7 +784,7 @@ _OTHER_SHAPES = tuple(re.compile(rx, re.IGNORECASE) for rx in (
 # A group of companies is no company ("FAANG companies", "Fortune 500", "the Big Four", "Big 4 firms").
 _COMPANY_GROUP = re.compile(r"\b(?:faang|maang|fang|big\s*(?:tech|four|4|three|3|five|5)|fortune|global\s*500|"
                             r"inc\.?\s*5000)\b", re.IGNORECASE)
-_NAME_JOINERS = frozenset({"of", "and", "&", "de", "la", "the"})
+_NAME_JOINERS = frozenset({"of", "and", "&", "de", "la", "the", "by"})   # "Bank of Initrode", "Metro by Initrode"
 
 
 def _is_a_name(part: str) -> bool:
@@ -808,28 +808,76 @@ def _other_company_clause(question: str) -> str | None:
     return None
 
 
+# A dealer, agent or contractor of a company is not the company: "employed with an authorized dealer of Acme",
+# "working as a contractor for Acme" (live check 4, 2026-10-14). The history lists employers, so it never says
+# whether one of them dealt for or contracted to the company; a No is the Companion's inference even when the
+# company is the job's own, and is reported assumed through the same path as another company's.
+_AGENT = (r"(?:authori[sz]ed\s+)?(?:dealers?|dealerships?|resellers?|retailers?|agents?|distributors?|franchisees?)")
+_YOU_ASKED = r"\b(?:have|has|are|were|was|did)\s+you\b[^?.;]*?"
+_RELATED_SHAPES = tuple(re.compile(rx, re.IGNORECASE) for rx in (
+    # "employed with an authorized dealer of Acme", "worked for a reseller of Acme"
+    rf"{_YOU_ASKED}\b(?:employed|worked|work|working)\s+(?:for|at|by|with)\s+(?:an?\s+)?{_AGENT}\s+(?:of|for)\s+(?P<co>.+)",
+    # "working as a contractor for Acme", "worked as an independent contractor with Acme"
+    rf"{_YOU_ASKED}\b(?:employed|worked|work|working|engaged)\s+as\s+(?:an?\s+)?"
+    r"(?:(?:independent|third[- ]party|temporary|contract)\s+)?(?:contractors?|subcontractors?|consultants?)\s+"
+    r"(?:for|at|with|of)\s+(?P<co>.+)",
+))
+_AUTHORISED_AGENT = re.compile(r"\bauthori[sz]ed\s+(?=dealers?|dealerships?|resellers?|retailers?|agents?|distributors?|franchisees?)",
+                               re.IGNORECASE)
+# The most companies one question may name and still take the derived No (a list longer than this is not a
+# worked-here question about a few brands).
+_MAX_LISTED = 4
+
+
+def _related_company_clause(question: str) -> str | None:
+    """The text that names the company after a dealer or contractor shape, up to the end of its clause."""
+    for shape in _RELATED_SHAPES:
+        if m := shape.search(question):
+            return _CLAUSE_END.split(_SUFFIX_STOP.sub(r"\1", m["co"]), maxsplit=1)[0]
+    return None
+
+
+def _listed_names(clause: str) -> list[str]:
+    """The names a clause holds: itself when it holds one ("Initrode & Sons"), else its parts ("Acme or
+    Metro by Acme": the whole is no name of its own)."""
+    parts = _name_parts(clause)
+    return parts if len({name_key(p) for p in parts}) <= 1 else parts[1:]
+
+
 def asks_worked_here_of_other(facts: dict[str, Fact], question: str,
                               options: tuple[str, ...] | list[str] = ()) -> bool:
-    """Whether a question asks whether the applicant worked for ONE company that is neither the job's (as the
-    job record spells it: a page says "Initrode", the record holds the legal entity) nor an employer of the
-    history, while the derived answer is No. The history lists jobs and none is at a company the question
-    names, so the derived No stands (`inv-worked-here-no`), unless an entry of the history is no company
-    ("Confidential", "Freelance": the resume cannot say where it was). Employment verbs only
-    (`_OTHER_SHAPES`), the exclusion list (`_NOT_WORKED_HERE`), one capitalised proper name that is no group
-    of companies, and `named_employer_fact` (an employer, a parent or a subsidiary of one, or a mention it
-    cannot read) has nothing to add. The job's own company is the listed path's (`asks_worked_here`)."""
+    """Whether a question asks whether the applicant worked for a SHORT LIST (at most `_MAX_LISTED`) of
+    companies that are neither the job's (as the job record spells it: a page says "Initrode", the record
+    holds the legal entity) nor an employer of the history, while the derived answer is No. The history lists
+    jobs and none is at a company the question names, so the derived No stands (`inv-worked-here-no`), unless
+    an entry of the history is no company ("Confidential", "Freelance": the resume cannot say where it was).
+    A No to "A or B" is a No to each, on the same evidence as for one name. Employment verbs only
+    (`_OTHER_SHAPES`), the exclusion list (`_NOT_WORKED_HERE`), every listed name a capitalised proper name
+    that is no group of companies, and `named_employer_fact` (an employer, a parent or a subsidiary of one,
+    or a mention it cannot read) has nothing to add. The job's own company is the listed path's
+    (`asks_worked_here`) for an employment verb; a DEALER or a CONTRACTOR of a company, the job's own
+    included (`_RELATED_SHAPES`), is not a line of the history, so its No is read here and reported assumed."""
     fact = facts.get(WORKED_HERE_SLOT)
     options = tuple(options)
-    if fact is None or fact.value != "No" or _NOT_WORKED_HERE.search(question) or any(
-            _NOT_WORKED_HERE.search(o) for o in options):
+    if fact is None or fact.value != "No":
+        return False
+    related = _related_company_clause(question)
+    # "Authorized" in "authorized dealer" is the dealer's word, not the work-authorization question's.
+    texts = [_AUTHORISED_AGENT.sub("", t) if related is not None else t for t in (question, *options)]
+    if any(_NOT_WORKED_HERE.search(t) for t in texts):
         return False
     if any(key in _NOT_AN_EMPLOYER for key, _ in fact.employers):
         return False
-    parts = _name_parts(clause) if (clause := _other_company_clause(question)) else []
-    keys = {name_key(p) for p in parts}
-    if not parts or len(keys) != 1 or not keys - {""} or not all(_is_a_name(p) for p in parts):
+    clause = related if related is not None else _other_company_clause(question)
+    names = _listed_names(clause) if clause else []
+    keys = {name_key(n) for n in names}
+    if not names or "" in keys or len(keys) > _MAX_LISTED or not all(_is_a_name(n) for n in names):
         return False
-    if keys & set(fact.companies) or keys & _NOT_AN_EMPLOYER:
+    if keys & _NOT_AN_EMPLOYER:
+        return False
+    # The job's own company is the listed path's (a direct fact) for an employment verb; a dealer or a
+    # contractor of it is an inference, so it stays here.
+    if related is None and keys & set(fact.companies):
         return False
     return named_employer_fact(facts, question, options) is None
 

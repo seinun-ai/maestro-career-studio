@@ -2047,3 +2047,54 @@ def test_a_worked_here_no_for_another_company_is_reported_assumed(db_session, mo
     got = autofill_pick.pick([pf("w", slot=autofill_catalog.WORKED_HERE_SLOT, question=question,
                                  options=opts("Yes", "No"))], _globex_facts(), db_session, None)
     assert sans_trace(got["w"]) == {"oids": ["o2"], "reason": reason}
+
+
+# ---------- Live check 4: dealer, contractor and "DIRECTLY employed" questions on an Acme job (Phase 2e, R3)
+
+DEALER = "Have you been employed or are you currently employed with an authorized dealer of Acme or Metro by Acme?"
+CONTRACTOR = "Have you previously or are you currently working as a contractor for Acme?"
+DIRECTLY = ("Have you previously been DIRECTLY employed with Acme Holdings AG or Initech? (i.e. have you received "
+            "a paycheck or W-2 directly from one of these companies?)")
+
+
+def _acme_job_facts():
+    return autofill_catalog.build({}, [{"employer": "Globex", "title": "Analyst", "start_date": "2019-01",
+                                        "end_date": "2021-06"}], [], company="Acme")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [DEALER, CONTRACTOR, DIRECTLY])
+def test_a_dealer_contractor_or_directly_employed_no_is_reported_assumed_even_for_the_jobs_own_company(
+        db_session, monkeypatch, question):
+    """A dealer, a contractor or a second brand is not a line of the history: the derived No is the Companion's
+    inference, so the receipt lists it under "Check before you submit"."""
+    fake_jev(monkeypatch, {"w": ("o2", 0.9)})
+    got = autofill_pick.pick([pf("w", slot=autofill_catalog.WORKED_HERE_SLOT, question=question,
+                                 options=opts("Yes", "No"))], _acme_job_facts(), db_session, None)
+    assert sans_trace(got["w"]) == {"oids": ["o2"], "reason": "assumed"}
+
+
+LONG_SPONSORSHIP = ("Will you now or in the future need the company to sponsor you for an immigration benefit, such as an "
+                    "H-1B, TN or O-1 visa, F-1 OPT or CPT (STEM OPT extension included), an EAD based on a pending "
+                    "I-485, or any other work visa petition, transfer or extension?")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_long_sponsorship_question_full_of_visa_and_status_words_takes_the_derived_no(db_session, monkeypatch):
+    """Live check 4 (2026-10-14): H-1B, OPT/CPT, TN, EAD and I-485 in one question stays the sponsorship answer
+    (derived from the two saved answers): picked at the exact floor, never taken for a status or a worked-here
+    question, and the full text reaches the model."""
+    facts = autofill_catalog.build({"work_auth": {"status": "stem_opt", "authorized_now": True,
+                                                  "sponsorship_now": False, "sponsorship_future": False}}, [], [])
+    assert facts["derived.sponsorship_now_or_future"].value == "No"
+    assert len(LONG_SPONSORSHIP) <= 300   # the extension clips a question to 300 characters
+    calls = fake_jev(monkeypatch, {"s": ("o2", 0.95)}, ways={"s": ("same", 0.95)})
+    got = autofill_pick.pick([pf("s", question=LONG_SPONSORSHIP, slot="derived.sponsorship_now_or_future",
+                                 options=opts("Yes", "No"))], facts, db_session, None)
+    assert sans_trace(got["s"]) == {"oids": ["o2"], "reason": "matched"}
+    assert "I-485" in json.dumps(calls)
+    fake_jev(monkeypatch, {"s": ("o2", 0.89)}, ways={"s": ("same", 0.95)})
+    got = autofill_pick.pick([pf("s", question=LONG_SPONSORSHIP, slot="derived.sponsorship_now_or_future",
+                                 options=opts("Yes", "No"))], facts, db_session, None)
+    assert got["s"].reason == "abstained"
+

@@ -2352,7 +2352,7 @@ def test_asks_worked_here_of_another_company_reads_the_shape_the_company_and_the
     assert ask(facts, "Have you ever worked at Initrode?")
     assert ask(facts, "Are you currently employed by Initrode & Sons?")
     assert ask(facts, "Have you ever worked for Bank of Initrode?")
-    assert not ask(facts, "Have you ever worked for Initrode, Hooli or Vandelay?")   # exactly one company
+    assert ask(facts, "Have you ever worked for Initrode, Hooli or Vandelay?")        # a short list of proper names
     assert not ask(facts, "Are you currently employed by Globex?")               # a history employer
     assert not ask(facts, "Are you currently employed by Globex Labs?")           # akin to one
     assert not ask(facts, "Are you currently employed by the company?")           # names no company
@@ -2463,8 +2463,106 @@ def test_a_history_with_an_entry_that_is_no_company_derives_no_no_for_another_co
 @pytest.mark.parametrize("question", ["Have you ever worked for Initrode, Hooli or Vandelay?",
                                       "Are you currently employed by Initrode or Hooli?",
                                       "Have you worked for Initrode / Hooli?"])
-def test_only_a_question_naming_exactly_one_company_takes_the_derived_no(question):
-    assert not autofill_catalog.asks_worked_here_of_other(_globex_history(), question)
+def test_a_short_list_of_companies_none_of_them_in_the_history_takes_the_derived_no(question):
+    """Live check 4 (2026-10-14): "Acme Holdings AG or Initech" was a coin toss on the model path. A No to "A or
+    B" is a No to each, on the same evidence as one name: the history lists jobs and names none of them. Every
+    listed name must be a proper company name; the exclusion list, an entry that is no company, and a mention of
+    an employer of the history (`named_employer_fact`) still decide."""
+    assert autofill_catalog.asks_worked_here_of_other(_globex_history(), question)
+
+
+@pytest.mark.parametrize("question", [
+    "Have you ever worked for Initrode, Hooli, Vandelay, Soylent or Umbrella?",   # more than four names
+    "Have you ever worked for Initrode or Globex?",                              # a history employer
+    "Have you ever worked for Initrode or Globex Labs?",                         # akin to one
+    "Have you ever worked for Initrode or any of its subsidiaries?",             # a part is no name
+    "Have you ever worked for Initrode or a competitor?",
+    "Have you ever worked for Initrode or the Big Four?",                        # a company group
+])
+def test_a_list_with_a_history_employer_a_group_or_a_part_that_is_no_name_is_not_the_derived_no(question):
+    assert not autofill_catalog.asks_worked_here_of_other(_globex_history(), question), question
+
+
+# ---------- Live check 4: dealer, contractor and the "DIRECTLY employed" long question (Phase 2e, R3)
+
+DEALER = "Have you been employed or are you currently employed with an authorized dealer of Acme or Metro by Acme?"
+CONTRACTOR = "Have you previously or are you currently working as a contractor for Acme?"
+DIRECTLY = ("Have you previously been DIRECTLY employed with Acme Holdings AG or Initech? (i.e. have you received "
+            "a paycheck or W-2 directly from one of these companies?)")
+
+
+@pytest.mark.parametrize("company", ["Acme", "Acme Holdings AG", "Acme Wireless"])
+@pytest.mark.parametrize("question", [DEALER, CONTRACTOR, DIRECTLY,
+                                      "Have you worked as a contractor for Acme?",
+                                      "Have you ever worked as a contractor for Initech?"])
+def test_a_dealer_contractor_or_directly_employed_question_takes_the_history_no(company, question):
+    """The job's own company (the page's word, whatever the record holds), another company or a mix: the
+    history lists jobs and no employer of it is among the names. One of the two paths answers, never neither."""
+    facts = _globex_history(company=company)
+    assert (autofill_catalog.asks_worked_here(facts, question)
+            or autofill_catalog.asks_worked_here_of_other(facts, question)), (company, question)
+
+
+@pytest.mark.parametrize("question", [DEALER, CONTRACTOR, "Have you worked as a contractor for Acme?"])
+def test_a_dealer_or_contractor_question_is_the_assumed_path_even_for_the_jobs_own_company(question):
+    """A dealer or a contractor engagement of the job's company is not a line the history carries (a contract
+    through an agency lists the agency): the No is the Companion's inference, so it is reported assumed."""
+    assert autofill_catalog.asks_worked_here_of_other(_globex_history(company="Acme"), question)
+
+
+@pytest.mark.parametrize("question", [
+    "Have you been employed with an authorized dealer of Globex?",              # a history employer
+    "Have you worked as a contractor for Globex?",
+    "Have you worked as a contractor for Globex Labs?",                         # akin to one
+    "Are you a federal contractor for Acme?",                                   # a kind of organisation
+    "Have you worked as a government contractor for Acme?",
+    "Have you been employed with an authorized dealer of a competitor of Acme?",
+    "Are you an authorized dealer of Acme?",                                   # asks about the applicant's own business
+    "Do you know an authorized dealer of Acme?",
+    "Has a family member been employed with an authorized dealer of Acme?",
+    "Have you applied to an authorized dealer of Acme?",
+    "Have you worked as a contractor for the following: Acme, Globex?",
+])
+def test_a_dealer_or_contractor_question_that_names_a_history_employer_or_asks_something_else_is_not_the_no(question):
+    assert not autofill_catalog.asks_worked_here_of_other(_globex_history(company="Acme"), question), question
+
+
+def test_a_dealer_or_contractor_question_is_no_derived_no_when_the_history_holds_the_company_or_cannot_say():
+    yes = _globex_history(company="Acme", employers=("Globex", "Acme"))
+    assert yes[autofill_catalog.WORKED_HERE_SLOT].value != "No"
+    assert not autofill_catalog.asks_worked_here_of_other(yes, DEALER)
+    hidden = _globex_history(company="Acme", employers=("Globex", "Freelance"))
+    assert not autofill_catalog.asks_worked_here_of_other(hidden, CONTRACTOR)
+    assert not autofill_catalog.asks_worked_here_of_other({}, DEALER)
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("key", ["history_unanswered", "none"])
+@pytest.mark.parametrize("question", [DEALER, CONTRACTOR, DIRECTLY])
+def test_such_a_question_the_map_filed_elsewhere_is_rerouted_to_the_derived_no(db_session, monkeypatch, key, question):
+    fake_jev(monkeypatch, {"q": (key, 0.95)})
+    got = _worked_here_answer(db_session, question, _globex_history(company="Acme"))
+    assert (got.route, got.slot, got.value) == ("slot", autofill_catalog.WORKED_HERE_SLOT, "No"), question
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("company", ["Acme", "Acme Holdings AG"])
+@pytest.mark.parametrize("p", [0.63, 0.3])
+def test_the_long_directly_employed_question_takes_the_derived_no_even_when_the_map_named_the_slot_unsurely(
+        db_session, monkeypatch, company, p):
+    """Live (2026-10-14): the same question on another page passed at p 0.63, a hair over the 0.6 floor. The
+    allowlist shape and the history decide, not the model's confidence in a slot code already proved."""
+    fake_jev(monkeypatch, {"q": (autofill_catalog.WORKED_HERE_SLOT, p)})
+    got = _worked_here_answer(db_session, DIRECTLY, _globex_history(company=company))
+    assert (got.route, got.slot, got.value) == ("slot", autofill_catalog.WORKED_HERE_SLOT, "No")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_an_unsure_worked_here_slot_for_a_question_that_is_not_an_employment_shape_is_still_not_rerouted(
+        db_session, monkeypatch):
+    fake_jev(monkeypatch, {"q": (autofill_catalog.WORKED_HERE_SLOT, 0.3)})
+    got = _worked_here_answer(db_session, "Are you related to someone who works at Acme?", _globex_history(company="Acme"))
+    assert got.route == "none"
 
 
 def test_the_company_the_job_names_belongs_to_the_listed_path_not_the_other_company_one():
