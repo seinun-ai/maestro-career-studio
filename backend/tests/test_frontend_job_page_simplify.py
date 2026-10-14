@@ -115,3 +115,31 @@ def test_the_inbox_opens_with_one_summary_line_whose_parts_jump_to_their_lanes()
         assert part in _SUMMARY_LIB
     assert '"needs" : "need"' in _SUMMARY_LIB and "applied this week" in _SUMMARY_LIB and "queued" in _SUMMARY_LIB
     assert "<button" in _STRIP and "StatTile" not in _STRIP
+
+
+# ── B2: lanes in order of urgency, empty lanes hidden ───────────────────────
+
+_SECTION = _read("components/proposals/proposals-section.tsx")
+
+
+def test_the_lanes_run_needs_you_to_review_queued_applying_history_and_an_empty_one_is_not_drawn():
+    marks = [
+        _SECTION.index('anchor="inbox-needs-you"'),
+        _SECTION.index('anchor="inbox-to-review"'),
+        _SECTION.index('anchor="inbox-queued"'),
+        _SECTION.index("title={`Applying · "),
+        _SECTION.index('id="inbox-history"'),
+    ]
+    assert marks == sorted(marks)
+    for guard in (
+        "{needsYou.length > 0 ? (",
+        "{triage.length > 0 ? (",
+        "{queued.length > 0 ? (",
+        "{inFlight.length > 0 ? (",
+        "{historyAll.length > 0 ? (",
+    ):
+        assert guard in _SECTION, guard
+    # History is still the collapsed one; the no-proposals empty state stays.
+    assert "No history yet." not in _SECTION and 'title="No proposals yet"' in _SECTION
+    # "new" jumps to the first lane there is when To review is not drawn.
+    assert "section[id^=" in _STRIP

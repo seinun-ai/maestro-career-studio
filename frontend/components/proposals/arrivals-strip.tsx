@@ -9,7 +9,8 @@ import type { ProposalSummary } from "@/lib/types";
 
 function jumpTo(anchor: string, onJump?: (anchor: string) => void) {
   onJump?.(anchor);
-  const lane = document.getElementById(anchor);
+  // A lane with nothing in it is not drawn: "new" then goes to the first lane there is.
+  const lane = document.getElementById(anchor) ?? document.querySelector<HTMLElement>('section[id^="inbox-"]');
   lane?.scrollIntoView({ block: "start", behavior: "smooth" });
   lane?.focus({ preventScroll: true });
 }

@@ -56,7 +56,7 @@ def test_the_lanes_use_the_owners_words():
     """Needs you · To review · Queued · Applying · History (planner decision 20)."""
     titles = re.findall(r"<Lane\s+(?:ref=\{\w+\}\s+)?title=\{`([^$`]+) · \$\{", _SECTION)
     assert titles == ["Needs you", "To review", "Queued", "Applying"]
-    assert "Nothing to review." in _SECTION
+    assert "Nothing to review." not in _SECTION  # an empty lane is not drawn (B2)
     history = _SECTION.index("History ·")
     assert _SECTION.index('title={`Applying · ') < history
     for old in ("Triage ·", "In flight ·", "pending triage"):
@@ -269,7 +269,7 @@ def test_the_inbox_says_at_its_end_when_the_list_was_cut():
     )
     assert _SECTION.index("History ·") < notice < _SECTION.index("<BulkBar")
     # After the lanes' ternary, not inside it: a filter that hides every row still says the list was cut (M10).
-    assert "          </section>\n        </>\n      )}\n\n      <ListCapNotice" in _SECTION
+    assert "          ) : null}\n        </>\n      )}\n\n      <ListCapNotice" in _SECTION
 
 
 # ── A9: who proposed it ─────────────────────────────────────────────────────

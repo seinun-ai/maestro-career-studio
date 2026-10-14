@@ -587,11 +587,9 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
             </Lane>
           ) : null}
 
-          <Lane ref={toReview} title={`To review · ${triage.length}`} anchor="inbox-to-review">
-            {dayBatches.length === 0 ? (
-              <p className="text-muted-foreground text-body-medium">Nothing to review.</p>
-            ) : (
-              dayBatches.map(({ day, items: dayItems }) => {
+          {triage.length > 0 ? (
+            <Lane ref={toReview} title={`To review · ${triage.length}`} anchor="inbox-to-review">
+              {dayBatches.map(({ day, items: dayItems }) => {
                 const open = effectiveExpandedDays.has(day);
                 const ids = dayItems.map((p) => p.id);
                 const allSelected = ids.every((id) => selected.has(id));
@@ -645,9 +643,9 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
                     ) : null}
                   </div>
                 );
-              })
-            )}
-          </Lane>
+              })}
+            </Lane>
+          ) : null}
 
           {queued.length > 0 ? (
             <Lane title={`Queued · ${queued.length}`} anchor="inbox-queued">
@@ -670,54 +668,57 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
             </Lane>
           ) : null}
 
-          <section tabIndex={-1} aria-labelledby={historyId} id="inbox-history" className="flex flex-col gap-2 outline-none tall:scroll-mt-28">
-            <button
-              id={historyId}
-              type="button"
-              aria-expanded={historyOpen}
-              className="text-muted-foreground inline-flex items-center gap-1.5 text-title-small"
-              onClick={() => setHistoryOpen((v) => !v)}
-            >
-              <ChevronDown
-                className={cn(
-                  "size-3.5 transition-transform",
-                  !historyOpen && "-rotate-90",
-                )}
-                aria-hidden="true"
-              />
-              History · {historyAll.length}
-            </button>
-            {historyOpen ? (
-              <>
-                <FilterChips
-                  label="History status"
-                  value={historyStatus}
-                  onChange={setHistoryStatus}
-                  options={INBOX_LANES.history.map((status) => ({
-                    value: status,
-                    label: STATUS_LABELS[status],
-                    count: historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length,
-                  }))}
+          {/* A lane with nothing in it is not drawn; History is the one that starts collapsed. */}
+          {historyAll.length > 0 ? (
+            <section tabIndex={-1} aria-labelledby={historyId} id="inbox-history" className="flex flex-col gap-2 outline-none tall:scroll-mt-28">
+              <button
+                id={historyId}
+                type="button"
+                aria-expanded={historyOpen}
+                className="text-muted-foreground inline-flex items-center gap-1.5 text-title-small"
+                onClick={() => setHistoryOpen((v) => !v)}
+              >
+                <ChevronDown
+                  className={cn(
+                    "size-3.5 transition-transform",
+                    !historyOpen && "-rotate-90",
+                  )}
+                  aria-hidden="true"
                 />
-                {history.length === 0 ? (
-                  <p className="text-muted-foreground text-body-medium">
-                    {historyAll.length > 0 ? "No history with these statuses." : "No history yet."}
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {history.map((p) => (
-                      <ProposalRow
-                        key={p.id}
-                        proposal={p}
-                        lane="history"
-                        {...rowProps}
-                      />
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : null}
-          </section>
+                History · {historyAll.length}
+              </button>
+              {historyOpen ? (
+                <>
+                  <FilterChips
+                    label="History status"
+                    value={historyStatus}
+                    onChange={setHistoryStatus}
+                    options={INBOX_LANES.history.map((status) => ({
+                      value: status,
+                      label: STATUS_LABELS[status],
+                      count: historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length,
+                    }))}
+                  />
+                  {history.length === 0 ? (
+                    <p className="text-muted-foreground text-body-medium">
+                      No history with these statuses.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {history.map((p) => (
+                        <ProposalRow
+                          key={p.id}
+                          proposal={p}
+                          lane="history"
+                          {...rowProps}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </section>
+          ) : null}
         </>
       )}
 
