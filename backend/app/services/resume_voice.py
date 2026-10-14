@@ -401,18 +401,21 @@ def _get(resume: dict[str, Any], path: Path) -> Any:
 
 
 def changed_hits(
-    base: dict[str, Any], customized: dict[str, Any]
+    base: dict[str, Any], customized: dict[str, Any], *, summary_always: bool = True
 ) -> list[tuple[Path, str, list[VoiceHit]]]:
     """Blocking hits that are the edit set's to answer for: the summary always,
     and any bullet that is not, in the same place, what the base had. A base
     line copied into a changed bullet counts; an unchanged one in place does
-    not (it is still repaired before storage, see `repair_resume`)."""
+    not (it is still repaired before storage, see `repair_resume`).
+
+    `summary_always=False` treats the summary like a bullet: a caller who did not
+    change it is not answerable for it (the MCP ops path)."""
     base_at = dict(slots(base))
     name = contact_name(customized) or contact_name(base)
     orgs = org_names(base) + org_names(customized)
     found = []
     for path, text in slots(customized):
-        if path != ("summary",) and base_at.get(path) == text:
+        if (path != ("summary",) or not summary_always) and base_at.get(path) == text:
             continue
         hits = blocking(third_person_hits(text, name, orgs))
         if hits:

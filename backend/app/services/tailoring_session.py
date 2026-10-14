@@ -1453,8 +1453,11 @@ def tailor(
                 raise ValueError(f"Tailoring produced invalid edit ops: {exc}") from exc
             # The caller wrote this text itself: tell it to fix the voice rather
             # than store or silently rewrite it.
-            if resume_voice.changed_hits(base, customized):
+            # Only what the caller wrote or changed is refused; a base line it left
+            # alone (even a third-person summary) is repaired before storage.
+            if resume_voice.changed_hits(base, customized, summary_always=False):
                 raise ValueError(resume_voice.OPS_ERROR)
+            resume_voice.repair_resume(base, customized)
         else:
             actionable, skipped, already_applied = _resolution_bundle(
                 tailoring, already_applied

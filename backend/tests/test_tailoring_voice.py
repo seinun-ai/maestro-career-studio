@@ -271,14 +271,46 @@ def test_caller_ops_copying_a_bad_base_line_return_400(db_session, tmp_path, mon
     assert "implied first person" in response.json()["detail"]
 
 
-def test_caller_ops_on_a_base_whose_summary_is_third_person_return_400(
+def test_caller_ops_leaving_a_third_person_base_summary_alone_store_it_repaired(
     db_session, tmp_path, monkeypatch, client
 ):
-    base = {**BASE, "summary": "Alex Rivera builds data platforms."}
+    base = {**BASE, "summary": "Founder of Globex, which has shipped two products."}
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex8", resume_json=base)
     created = _open_session(client, job, slug)
 
     response = _tailor(client, created["id"], body={"ops": [ADD_KEYWORD]})
 
+    stored = _stored(db_session, response)
+    assert stored["summary"] == "Founder of Globex; shipped two products."
+    assert "Snowflake" in json.dumps(stored["skills"])
+    _no_voice_problem(stored)
+
+
+def test_caller_ops_leaving_a_third_person_base_bullet_alone_store_it_repaired(
+    db_session, tmp_path, monkeypatch, client
+):
+    base = {**BASE, "experience": [{**BASE["experience"][0],
+            "bullets": ["Built the platform, and he cut load time 20%."]}]}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex9", resume_json=base)
+    created = _open_session(client, job, slug)
+
+    stored = _stored(db_session, _tailor(client, created["id"], body={"ops": [ADD_KEYWORD]}))
+
+    assert stored["experience"][0]["bullets"] == ["Built the platform; cut load time 20%."]
+
+
+def test_caller_ops_changing_the_summary_to_third_person_return_400(
+    db_session, tmp_path, monkeypatch, client
+):
+    base = {**BASE, "summary": "Founder of Globex, which has shipped two products."}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex10", resume_json=base)
+    created = _open_session(client, job, slug)
+
+    response = _tailor(client, created["id"], body={"ops": [_summary("Alex Rivera builds data platforms.")]})
+
     assert response.status_code == 400
+    assert "implied first person" in response.json()["detail"]
+    assert db_session.scalars(select(Application)).first() is None
