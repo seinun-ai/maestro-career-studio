@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import TERM, DecisionTrace, Engine, StepRequest, StepResponse
 from app.services import jev, llm, model_settings
-from app.services.autofill_catalog import WORKED_HERE_SLOT, Fact, named_employer_fact
+from app.services.autofill_catalog import ASK_THE_USER, WORKED_HERE_SLOT, Fact, named_employer_fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from app.services.autofill_map import (
     SECOND_OPINION_MAX_S,
@@ -294,7 +294,10 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
          queued: bool = False) -> StepResponse:
     budget = Budget()
     # A question that names an employer of the history is not the derived No (the job's company only).
-    if req.route == "slot" and req.slot == WORKED_HERE_SLOT and (named := named_employer_fact(facts, req.question)):
+    if req.route == "slot" and req.slot == WORKED_HERE_SLOT and (
+            named := named_employer_fact(facts, req.question, [t for c in req.candidates if (t := _option_text(c.describe))])):
+        if named == ASK_THE_USER:   # a parent or a subsidiary of an employer: neither No nor Yes is true
+            return StepResponse(mid=None, reason="abstained")
         facts = facts | {WORKED_HERE_SLOT: named}
     # The same level /map and /pick state; read here, never from the client (`queued` is the router's).
     level = model_settings.get_answer_level(session)

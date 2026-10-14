@@ -297,14 +297,31 @@ def test_free_text_only_routes_a_text_box(db_session, monkeypatch):
 @pytest.mark.parametrize("key", [autofill_map.YEARS_UNANSWERED, autofill_map.HISTORY_UNANSWERED])
 def test_a_written_history_question_routes_free_text_but_a_choice_keeps_its_route(db_session, monkeypatch, key):
     """"Experience with A/B testing? For how long and which companies?" is a text box: no fact answers
-    it, and the prose route (which carries the history) writes it. A radio with the same key still
-    goes to the reasoning pass, as before."""
+    it, and the prose route (which carries the history) writes it. A radio or a popup with the same key goes
+    to the reasoning pass, as before: scripted answerable here, so the route is `reasoned`."""
     fake_jev(monkeypatch, {"t": (key, 0.95), "r": (key, 0.95), "p": (key, 0.95)})
-    fake_llm(monkeypatch)
+    fake_llm(monkeypatch, reasoned={"r": 0.95, "p": 0.95})
     got = run([field("t", "Experience with A/B testing? For how long and for which companies?"),
                field("r", "Do you have 3+ years of SQL?", "group"),
                field("p", "Pick one", "popup")], db_session)
-    assert (got["t"].route, got["r"].route, got["p"].route) == ("free_text", "none", "none")
+    assert (got["t"].route, got["r"].route, got["p"].route) == ("free_text", "reasoned", "reasoned")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question, history_route", [
+    ("Describe your government contracting experience and clearances.", "free_text"),
+    ("Have you worked for Globex before? If yes, describe your role.", "none"),           # a company it lists
+    ("Did you work at Acme? Please describe.", "none"),                                    # the history's own
+    ("Tell us about your time at Acme and Initech.", "none"),
+])
+def test_a_history_text_box_that_names_a_company_is_not_written_but_a_years_one_always_is(
+        db_session, monkeypatch, question, history_route):
+    """Whether you worked at a company is a fact the history states, not prose a model writes; a years
+    question ("how long, with which tools") is prose from the history whatever it names."""
+    for key, expected in ((autofill_map.HISTORY_UNANSWERED, history_route), (autofill_map.YEARS_UNANSWERED, "free_text")):
+        fake_jev(monkeypatch, {"t": (key, 0.95)})
+        fake_llm(monkeypatch)
+        assert run([field("t", question)], db_session)["t"].route == expected, key
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1128,7 +1145,8 @@ def test_the_history_sentinel_is_a_kind_of_organization_not_any_employer():
 
 
 def test_the_history_sentinel_reaches_a_question_that_names_companies():
-    assert "companies the question itself names" in autofill_map._SENTINELS[HISTORY]
+    text = autofill_map._SENTINELS[HISTORY]
+    assert "companies the question itself names (other than the company applied to)" in text
 
 
 def test_the_worked_here_clause_leaves_the_never_list_only_when_the_fact_is_absent():

@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, PolarityTrace, Reason
 from app.services import autofill_polarity, jev, llm, model_settings
-from app.services.autofill_catalog import WORKED_HERE_SLOT, Fact, named_employer_fact, yes_no_word
+from app.services.autofill_catalog import ASK_THE_USER, WORKED_HERE_SLOT, Fact, named_employer_fact, yes_no_word
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
 from app.services.autofill_map import (
     MIN_CALL_S,
@@ -441,28 +441,33 @@ def _veteran_claims(fields: list[PickField], facts: dict[str, Fact], out: dict[s
             out[f.fid] = picked.model_copy(update={"oids": [], "reason": "asked"})
 
 
-def named_employers(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Fact]]:
-    """A worked-here field whose question or options NAME an employer of the history is picked against Yes,
-    not the derived No (which is about the job's company only): such a field is pointed at a slot of its
-    own, holding that fact, so the rest of the batch keeps the fact it had. Same fields and facts when
-    none is."""
+def named_employers(fields: list[PickField], facts: dict[str, Fact]
+                    ) -> tuple[list[PickField], dict[str, Fact], set[str]]:
+    """A worked-here field whose question lists a company that is an employer of the history (or whose option
+    is one) is picked against Yes, not the derived No (which is about the job's company only): such a field
+    is pointed at a slot of its own, holding that fact, so the rest of the batch keeps the fact it had. One
+    that lists a parent or a subsidiary of an employer, with no exact match, is neither (`ASK_THE_USER`):
+    it leaves the batch and is the user's, for good. The fields to pick, the facts, the dropped fids."""
     moved: dict[str, Fact] = {}
+    dropped: set[str] = set()
     out = []
     for f in fields:
-        named = (named_employer_fact(facts, f.question, *(o.text for o in f.options))
+        named = (named_employer_fact(facts, f.question, [o.text for o in f.options])
                  if f.slot == WORKED_HERE_SLOT and f.route == "slot" else None)
         if named is None:
             out.append(f)
-            continue
-        slot = f"{WORKED_HERE_SLOT}#{len(moved)}"
-        moved[slot] = replace(named, slot=slot)
-        out.append(f.model_copy(update={"slot": slot}))
-    return (out, facts | moved) if moved else (fields, facts)
+        elif named == ASK_THE_USER:
+            dropped.add(f.fid)
+        else:
+            slot = f"{WORKED_HERE_SLOT}#{len(moved)}"
+            moved[slot] = replace(named, slot=slot)
+            out.append(f.model_copy(update={"slot": slot}))
+    return (out, facts | moved, dropped) if (moved or dropped) else (fields, facts, dropped)
 
 
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> dict[str, Picked]:
-    fields, facts = named_employers(fields, facts)
+    fields, facts, dropped = named_employers(fields, facts)
     budget = Budget()
     # Re-checked, never trusted from the client; `queued` is the server's too (the router reads the job's proposal).
     level = model_settings.get_answer_level(session)
@@ -513,4 +518,4 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
         out |= reason(reasoned, facts, session, budget, hint.company if hint else None, level)
     _veteran_claims(fields, facts, out)
     _with_polarity(out, ways)
-    return out
+    return out | {fid: _ASKED for fid in dropped}

@@ -336,7 +336,7 @@ def test_a_parent_and_its_subsidiary_are_not_a_no():
 
 # ---------- the question names companies the job's company string does not (answer time)
 
-def test_a_question_that_names_an_employer_of_the_history_turns_the_no_into_yes():
+def test_a_question_that_lists_an_employer_of_the_history_turns_the_no_into_yes():
     """An Acme application asks "Acme, Globex, or Initech?" and the history holds Initech: the derived
     No is about Acme only, so for this question the answer is Yes."""
     f = cat.build({}, HISTORY, [], company="Acme")
@@ -344,28 +344,70 @@ def test_a_question_that_names_an_employer_of_the_history_turns_the_no_into_yes(
     got = cat.named_employer_fact(f, "Have you worked for Acme, Globex, or Initech before?")
     assert got is not None and got.slot == "derived.previously_employed_here" and got.value == "Yes, previously"
     assert got.describe == f["derived.previously_employed_here"].describe and got.policy == "flag"
-    assert cat.named_employer_fact(f, "Employed by", "Former employee of HOOLI, Inc.").value == "Yes, currently"
+    assert cat.named_employer_fact(f, "Employed by", ["Former employee of HOOLI, Inc."]).value == "Yes, currently"
+    assert cat.named_employer_fact(f, "Previously employed by Acme or Initech?").value == "Yes, previously"
 
 
-@pytest.mark.parametrize("texts", [
-    ("Have you worked for Acme or Globex before?",),          # none is in the history
-    ("Were you a member of the Initechnical society?",),      # not a whole word
-    ("Willing to relocate?",),
+@pytest.mark.parametrize("question, options", [
+    ("Have you worked for Acme or Globex before?", ()),       # none is in the history
+    ("Were you a member of the Initechnical society?", ()),   # not a company of the history
+    ("Willing to relocate?", ()),
+    ("Please give the dates in the box below.", ()),
 ])
-def test_a_question_that_names_no_employer_of_the_history_keeps_the_no(texts):
-    assert cat.named_employer_fact(cat.build({}, HISTORY, [], company="Acme"), *texts) is None
+def test_a_question_that_lists_no_employer_of_the_history_keeps_the_no(question, options):
+    assert cat.named_employer_fact(cat.build({}, HISTORY, [], company="Acme"), question, options) is None
+
+
+def test_only_the_companies_a_question_lists_are_compared_not_any_word_in_its_text():
+    """A history employer called "Box" or "Freelance" is not named by "the box below" or "…or freelance"."""
+    history = [{"employer": "Box", "title": "Engineer"}, {"employer": "Freelance", "title": "Consultant"}]
+    f = cat.build({}, history, [], company="Acme")
+    assert f["derived.previously_employed_here"].value == "No"
+    for question in ("Have you worked for Acme? Please give dates in the box below.",
+                     "Have you ever worked for Acme as an employee or freelance?",
+                     "Have you worked for Acme, as a contractor, or in a freelance role?"):
+        assert cat.named_employer_fact(f, question) is None, question
+
+
+@pytest.mark.parametrize("employer", ["Freelance", "Self-Employed", "Self employed", "Independent", "Contract",
+                                      "Contractor", "Consultant", "Consulting", "Various", "Confidential",
+                                      "Stealth", "Personal Project"])
+def test_a_history_employer_that_is_no_company_is_never_named(employer):
+    f = cat.build({}, [{"employer": employer, "title": "Engineer"}], [], company="Acme")
+    assert f["derived.previously_employed_here"].value == "No"
+    assert cat.named_employer_fact(f, f"Have you worked for Acme or {employer}?", [employer]) is None
+
+
+def test_an_option_that_is_a_company_or_names_one_counts_as_listed():
+    f = cat.build({}, HISTORY, [], company="Acme")
+    assert cat.named_employer_fact(f, "Which of these did you work for?", ["Globex", "Initech"]).value \
+        == "Yes, previously"
+    assert cat.named_employer_fact(f, "Employment", ["Current employee of Hooli", "No"]).value == "Yes, currently"
+    assert cat.named_employer_fact(f, "Employment", ["Yes", "No", "Not Applicable"]) is None
+
+
+@pytest.mark.parametrize("history, question", [
+    ("Acme Web Services", "Have you worked for Acme before?"),            # the history holds the subsidiary
+    ("Acme", "Have you worked for Acme Web Services before?"),            # the history holds the parent
+])
+def test_a_parent_or_subsidiary_of_a_listed_company_is_asked_not_answered(history, question):
+    f = cat.build({}, [{"employer": history, "title": "Engineer"}], [], company="Zeta")
+    assert f["derived.previously_employed_here"].value == "No"
+    assert cat.named_employer_fact(f, question) == cat.ASK_THE_USER
+    # An exact match elsewhere in the list still wins: the answer is Yes, whatever else is akin.
+    assert cat.named_employer_fact(f, f"Have you worked for {history}, or Zeta?").value == "Yes, previously"
 
 
 def test_the_named_employer_is_found_past_the_catalogs_job_limit():
     jobs = [{"employer": f"Firm{i}", "title": "Engineer"} for i in range(cat.MAX_EXPERIENCE)]
     f = cat.build({}, jobs + [{"employer": "Initech", "title": "Analyst"}], [], company="Acme")
     assert f["derived.previously_employed_here"].value == "No"
-    assert cat.named_employer_fact(f, "Acme or Initech?").value == "Yes, previously"
+    assert cat.named_employer_fact(f, "Employed by Acme or Initech?").value == "Yes, previously"
 
 
 def test_only_a_derived_no_is_turned_around():
-    assert cat.named_employer_fact(cat.build({}, HISTORY, [], company="Initech"), "Initech?") is None
-    assert cat.named_employer_fact(cat.build({}, HISTORY, []), "Initech?") is None
+    assert cat.named_employer_fact(cat.build({}, HISTORY, [], company="Initech"), "Employed by Initech?") is None
+    assert cat.named_employer_fact(cat.build({}, HISTORY, []), "Employed by Initech?") is None
 
 
 def test_company_names_match_the_way_sections_match_employers():

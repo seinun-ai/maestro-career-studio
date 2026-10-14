@@ -191,6 +191,9 @@ class Fact:
     # question that names an employer can be checked against all of it (`named_employer_fact`). Never
     # sent anywhere, compared or shown.
     employers: tuple[tuple[str, bool], ...] = field(default=(), compare=False, repr=False)
+    # The same fact: the name keys of the job's own company (`_company_keys`), so a question that names it
+    # is known to (`question_names_company`).
+    companies: tuple[str, ...] = field(default=(), compare=False, repr=False)
 
 
 _YES_WORDS, _NO_WORDS = {"yes", "true"}, {"no", "false"}
@@ -469,22 +472,72 @@ def _worked_here(out: dict[str, Fact], company: str | None,
         answer = "No"
     out.pop("eligibility.previously_employed_here", None)
     fact = make_fact(WORKED_HERE_SLOT, answer)
-    out[WORKED_HERE_SLOT] = replace(fact, employers=tuple(employers)) if answer == "No" else fact
+    out[WORKED_HERE_SLOT] = replace(fact, employers=tuple(employers), companies=tuple(sorted(wanted)))
 
 
-def named_employer_fact(facts: dict[str, Fact], *texts: str) -> Fact | None:
-    """The worked-here fact for a question that NAMES an employer of the history, when the derived
-    answer is No. That No is about the job's company, and "Acme, Globex, or Initech?" also asks about
-    Initech: a history employer found in `texts` (the question, its options) as a whole word makes it
-    Yes, so the answer is never a No the history contradicts. None: the fact stands as it is."""
+# A history "employer" that is not a company: matching a question against it would answer from a word
+# ("Freelance", "Contractor"), never from a company the question names.
+_NOT_AN_EMPLOYER = frozenset({
+    "freelance", "freelancer", "self employed", "independent", "contract", "contractor", "consultant",
+    "consulting", "various", "confidential", "stealth", "personal project"})
+# The companies a question LISTS follow its "worked for / at / by / with" (or "employee of …"): up to the
+# end of the clause, or a word that starts a qualifier ("before", "in the last five years", "as an
+# employee"). Nothing else in the text counts as a company, so "the box below" names no "Box".
+_MARKER = (r"(?:worked|work|working|employed|employee|employees|employment|associate|contractor|member|served)"
+           r"\s+(?:for|at|by|with|of)")
+_LISTED = re.compile(
+    rf"\b{_MARKER}\s+(?:the\s+)?(.+?)(?=\s+(?:before|previously|ever|currently|now|in\s+the|within|as\b|prior|since|"
+    r"during|at\s+any|including|or\s+any|or\s+its|or\s+one)\b|[?.:!(]|$)", re.IGNORECASE)
+# What the answer should be when a question names a company that is a parent or a subsidiary of an
+# employer of the history, with no exact match: neither a No nor a Yes is true, so nobody answers.
+ASK_THE_USER = "ask"
+
+
+def _listed_company_keys(question: str, options: tuple[str, ...]) -> set[str]:
+    """The name keys of the companies a question lists, and of its options that read as a company
+    (the whole option, or the company after "employee of / associate at …")."""
+    keys: set[str] = set()
+    for text in (question, *options):
+        for m in _LISTED.finditer(text):
+            keys |= _company_keys(m[1])
+    keys |= {key for text in options if (key := name_key(text))}
+    return keys - _NOT_AN_EMPLOYER
+
+
+def question_names_company(facts: dict[str, Fact], question: str) -> bool:
+    """Whether a question names a company: one it lists ("worked for Globex"), the job's own, or an
+    employer of the history, as a whole word. A written answer about a company the applicant has or has
+    not worked for must come from the history, never from a model's prose."""
+    if _listed_company_keys(question, ()):
+        return True
+    fact = facts.get(WORKED_HERE_SLOT)
+    known = {key for key, _ in fact.employers} | set(fact.companies) if fact else set()
+    known |= {name_key(str(f.value)) for slot, f in facts.items() if re.fullmatch(r"experience\.\d+\.employer", slot)}
+    haystack = f" {name_key(question)} "
+    return any(key and key not in _NOT_AN_EMPLOYER and f" {key} " in haystack for key in known)
+
+
+def named_employer_fact(facts: dict[str, Fact], question: str,
+                        options: tuple[str, ...] | list[str] = ()) -> Fact | str | None:
+    """What a worked-here question says once it is read again, when the derived answer is No. That No is
+    about the job's company, and "Acme, Globex, or Initech?" also asks about Initech.
+
+    A Fact (Yes): a company the question lists, or an option that is one, is an employer of the history
+    (the WHOLE history). `ASK_THE_USER`: none is, but one is a parent or a subsidiary of an employer
+    ("Acme" and "Acme Web Services"): no No and no Yes. None: the fact stands as it is. Only companies
+    the question lists are compared, never any word in its text; a history "employer" that is no company
+    (Freelance, Contractor …) never counts."""
     fact = facts.get(WORKED_HERE_SLOT)
     if fact is None or fact.value != "No":
         return None
-    haystack = f" {name_key(' '.join(texts))} "
-    named = [current for key, current in fact.employers if f" {key} " in haystack]
-    if not named:
-        return None
-    return make_fact(WORKED_HERE_SLOT, "Yes, currently" if any(named) else "Yes, previously")
+    listed = _listed_company_keys(question, tuple(options))
+    employers = [(key, current) for key, current in fact.employers if key not in _NOT_AN_EMPLOYER]
+    named = [current for key, current in employers if key in listed]
+    if named:
+        return make_fact(WORKED_HERE_SLOT, "Yes, currently" if any(named) else "Yes, previously")
+    if any(_akin(key, name) for key, _ in employers for name in listed):
+        return ASK_THE_USER
+    return None
 
 
 AGREES_TO_TERMS = "derived.agrees_to_terms"

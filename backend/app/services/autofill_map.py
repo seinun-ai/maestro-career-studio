@@ -45,7 +45,14 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import DecisionTrace, Engine, EntryKind, Format, MapField, Mapped
 from app.services import jev, llm, model_settings
-from app.services.autofill_catalog import WORKED_HERE_SLOT, Fact, named_employer_fact, websites
+from app.services.autofill_catalog import (
+    ASK_THE_USER,
+    WORKED_HERE_SLOT,
+    Fact,
+    named_employer_fact,
+    question_names_company,
+    websites,
+)
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR, SLOT_FLOOR
 from app.services.autofill_slots import FREE_TEXT, NO_SLOT
 
@@ -82,8 +89,8 @@ _SENTINELS = {
     # Offered in every question too, so a question the work history may answer
     # has somewhere to go that is neither a protected question nor "none".
     HISTORY_UNANSWERED: "A question about past employment by a KIND of organization (a government agency, a "
-                        "federal contractor), or at companies the question itself names, or a security "
-                        "clearance, which none of the listed applicant facts answers",
+                        "federal contractor), or at companies the question itself names (other than the company "
+                        "applied to), or a security clearance, which none of the listed applicant facts answers",
     # Apart from the history sentinel because only THIS one may ever reach a keen
     # Yes (level "queued" on a queued job): a clearance or agency question never does.
     YEARS_UNANSWERED: "A question about N months or years of experience with a specific skill or tool (at "
@@ -517,7 +524,9 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
         return Mapped(route="none"), SLOT_FLOOR
     key, p = picked
     # "Acme, Globex, or Initech?" names companies the derived No (about the job's company) does not cover.
-    if key == WORKED_HERE_SLOT and (named := named_employer_fact(facts, field.question, *field.options)):
+    if key == WORKED_HERE_SLOT and (named := named_employer_fact(facts, field.question, field.options)):
+        if named == ASK_THE_USER:   # a parent or a subsidiary of an employer: neither No nor Yes is true
+            return Mapped(route="none"), SLOT_FLOOR
         facts = facts | {WORKED_HERE_SLOT: named}
     floor = _floor(facts[key]) if key in facts else SLOT_FLOOR
     if key in facts and p >= floor:
@@ -531,7 +540,10 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     # fact and no option list: the prose route, which carries the career history, answers it.
     # A choice keeps its route (the reasoning pass picks among options).
     if key in _WRITTEN_KEYS and field.shape == "text" and p >= SLOT_FLOOR:
-        return Mapped(route="free_text"), floor
+        # A years question is always prose from the history; a history question that names a company
+        # (listed, the job's or the history's) is NOT: whether the applicant worked there is a fact.
+        if key != HISTORY_UNANSWERED or not question_names_company(facts, field.question):
+            return Mapped(route="free_text"), floor
     if key == BLOCKED_EEO and not eeo_consented and p >= SLOT_FLOOR:
         return Mapped(route="blocked"), floor
     return Mapped(route="none"), floor

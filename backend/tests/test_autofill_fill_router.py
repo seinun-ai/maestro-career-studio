@@ -669,6 +669,54 @@ def test_step_goal_says_yes_when_the_question_names_an_employer_of_the_history(d
     assert f"the answer to the question is {json.dumps('No')}" in goals["k"]
 
 
+def test_a_parent_or_subsidiary_of_a_listed_company_is_nobodys_answer_in_pick_map_and_step(
+        db_session, monkeypatch, tmp_path):
+    """The history lists "DataCo" and "OldCo". A question listing "DataCo Labs" names a subsidiary of one:
+    not the derived No, and not a Yes either. /pick says "asked" (final), /map routes none, /step gives up."""
+    from tests.test_autofill_map import fake_jev as map_jev
+    from tests.test_autofill_pick import fake_jev as pick_jev
+    from tests.test_autofill_step import fake_jev as step_jev
+
+    application = _acme_application(db_session, monkeypatch, tmp_path)
+    question = "Have you worked for DataCo Labs before?"
+    pick_jev(monkeypatch, {"w": ("o2", 0.99)}, ways={"w": ("same", 0.99)})
+    field = {"fid": "w", "question": question, "route": "slot", "slot": "derived.previously_employed_here",
+             "options": WORKED_OPTIONS}
+    picked = _post(db_session, "/api/autofill/pick", {"application_id": str(application.id), "fields": [field]})
+    assert (picked.json()["picks"]["w"]["oids"], picked.json()["picks"]["w"]["reason"]) == ([], "asked")
+
+    map_jev(monkeypatch, {"w": ("derived.previously_employed_here", 0.95)})
+    mapped = _post(db_session, "/api/autofill/map", {"application_id": str(application.id),
+                                                      "fields": [{"fid": "w", "question": question, "shape": "text"}]})
+    assert (mapped.json()["fields"]["w"]["route"], mapped.json()["fields"]["w"]["value"]) == ("none", None)
+
+    step_jev(monkeypatch, ("click:o1", 0.99))
+    body = {"application_id": str(application.id), "fid": "w", "question": question, "route": "slot",
+            "slot": "derived.previously_employed_here",
+            "candidates": [{"mid": "click:o2", "describe": 'Click the option "No"'},
+                           {"mid": "give_up", "describe": "Stop"}]}
+    got = _post(db_session, "/api/autofill/step", body).json()
+    assert (got["mid"], got["reason"]) == (None, "abstained")
+
+
+def test_step_finds_the_employer_in_a_candidate_when_the_question_does_not_list_it(
+        db_session, monkeypatch, tmp_path):
+    import json
+
+    from tests.test_autofill_step import fake_jev
+
+    application = _acme_application(db_session, monkeypatch, tmp_path)
+    calls = fake_jev(monkeypatch, ("click:o1", 0.95))
+    body = {"application_id": str(application.id), "fid": "w", "question": "Which of these employers did you work for?",
+            "route": "slot", "slot": "derived.previously_employed_here",
+            "candidates": [{"mid": "click:o1", "describe": 'Click the option "OldCo"'},
+                           {"mid": "click:o2", "describe": 'Click the option "Globex"'},
+                           {"mid": "give_up", "describe": "Stop"}]}
+    assert _post(db_session, "/api/autofill/step", body).status_code == 200
+    goal = calls[-1]["questions"]["w"]["instructions"]
+    assert f"the answer to the question is {json.dumps('Yes, previously')}" in goal
+
+
 # ---------- the veteran fallback: /pick leaves a protected-class popup for good, and /step cannot take it over
 
 def test_a_saved_yes_never_reaches_a_protected_class_through_pick_then_step(db_session, monkeypatch, tmp_path):
