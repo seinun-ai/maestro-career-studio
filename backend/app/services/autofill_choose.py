@@ -132,6 +132,8 @@ _NEVER_DRAFTED = re.compile(
     r"earning|package|bonus|equity|health|caste|"
     r"available|availability|when\s+can\s+you\s+(?:start|begin)|\bshifts?\b|weekend|on-?site|\blift|smok|\bcar\b|"
     r"where\s+do\s+you\s+live|located|based\s+in|phone|e-?mail|\burl\b|linkedin|anyone|friend|who\s+told|"
+    r"probation|\bwarrants?\b|how\s+old|married|children|childcare|\bpaying\b|base\s+(?:pay|salary)|\blast\s+base|"
+    r"politic|\bunions?\b|vaccin|\bheight\b|\bweight\b|tattoo|class\s+rank|"
     r"(?:previously|formerly|ever|currently)\s+(?:been\s+)?(?:employed|work(?:ed|ing)?\s+(?:for|at|by))|"
     r"\b(?:have|has|were|are|did)\s+you\b[^?.]*?\b(?:work(?:ed|ing|s)?\s+(?:for|at)|employed|employee|"
     r"intern(?:ed)?\s+(?:for|at|with))|former\s+employee|current\s+employee|employee\s+of|"

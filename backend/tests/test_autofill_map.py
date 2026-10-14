@@ -2091,3 +2091,31 @@ def test_a_slot_or_none_is_never_draftable(db_session, monkeypatch):
     fake_jev(monkeypatch, {"a": ("personal.city", 0.9), "b": ("none", 0.9), "c": ("protected_unanswered", 0.9)})
     got = run([field("a", "City"), field("b", "Pet name"), field("c", "Are you a citizen?")], db_session)
     assert [got[k].draft for k in "abc"] == [False, False, False]
+
+
+# ---------- J4 round 3: the long live worded question
+
+LONG_Q = ("Have you previously been DIRECTLY employed with Acme Wireless, Globex, Initech, Umbrella Corp\u2026 "
+          "or any of their subsidiaries?")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize(("history", "answer"), [(["Hooli"], "No"), (["Hooli", "Initech"], "Yes, previously")])
+def test_the_long_directly_employed_with_question_is_the_worked_here_answer(db_session, monkeypatch, history, answer):
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = autofill_map.map_fields([field("q", LONG_Q, "select", options=["Yes", "No"])], _worked(history), db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert (got["q"].route, got["q"].slot, got["q"].value) == ("slot", autofill_catalog.WORKED_HERE_SLOT, answer)
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    "Do you know an Acme Wireless employee?",
+    "Have you been employed by Acme Wireless or any federal, state or local government agency?",
+    "Have you ever worked for Acme Wireless or a federal contractor?",
+])
+def test_round_three_probes_are_not_the_worked_here_answer(db_session, monkeypatch, question):
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = autofill_map.map_fields([field("q", question, "select", options=["Yes", "No"])], _worked(["Hooli"]),
+                                  db_session, eeo_consented=True, low_stakes=False)
+    assert got["q"].route == "none", question

@@ -705,20 +705,22 @@ def named_employer_fact(facts: dict[str, Fact], question: str,
 # worked for Acme?", "Were you employed by Acme?", "Did you work for Acme?", "Are you currently an employee of
 # Acme?". Never "eligible to work for", "willing to", "want to work at", a household member, a competitor.
 _YOU = r"\byou\s+(?:ever\s+|previously\s+)*"
-_EMPLOYMENT = r"(?:been\s+)?(?:worked|employed|(?:an?\s+)?(?:employee|intern|contractor)|interned|contracted)\s+(?:(?:for|at|by|with|of)\s+)?"
+_ROLE = r"(?:an?\s+)?(?:employee|intern|contractor)(?:\s+(?:or|and|/)\s+(?:an?\s+)?(?:employee|intern|contractor))?"
+# "been DIRECTLY employed with", "been formally employed by": an adverb may stand before the verb.
+_EMPLOYMENT = (rf"(?:been\s+)?(?:(?:directly|formally|officially|ever|previously)\s+)?"
+               rf"(?:worked|employed|{_ROLE}|interned|contracted)\s+(?:(?:for|at|by|with|of)\s+)?")
 _WORKED_SHAPES = tuple(re.compile(rx, re.IGNORECASE) for rx in (
     rf"\b(?:have|has)\s+{_YOU}{_EMPLOYMENT}",
-    rf"\b(?:were|was)\s+{_YOU}(?:employed|(?:an?\s+)?(?:employee|intern|contractor))\s+(?:by|at|of|with)\s+",
+    rf"\b(?:were|was)\s+{_YOU}(?:(?:directly|formally|officially)\s+)?(?:employed|{_ROLE})\s+(?:by|at|of|with)\s+",
     rf"\bdid\s+{_YOU}work\s+(?:for|at)\s+",
-    r"\bare\s+you\s+(?:currently\s+)?(?:an?\s+)?(?:employee|contractor|intern)\s+(?:of|at|for|with)\s+",
+    rf"\bare\s+you\s+(?:currently\s+)?{_ROLE}\s+(?:of|at|for|with)\s+",
     r"\bare\s+you\s+currently\s+employed\s+(?:by|at|with)\s+",
 ))
 # "a current or former employee", "an ex-Acme contractor": a company, when named, follows "of" or comes first.
 _FORMER_ROLE = re.compile(
-    r"\b(?:previous|former|current|ex-?)(?:\s+or\s+(?:previous|former|current))?[\s-]+"
+    r"\b(?:are|were|was)\s+you\b[^?.]*?\b(?:previous|former|current|ex-?)(?:\s+or\s+(?:previous|former|current))?[\s-]+"
     r"(?:(?P<co>[A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,3})\s+)?(?:employee|intern|contractor)\b"
-    r"(?:\s+(?:of|at|for|with)\s+(?P<rest>.*))?", re.IGNORECASE)
-_OPTION_EMPLOYEE = re.compile(r"\bemployee\b", re.IGNORECASE)
+    r"(?:\s+(?:or|and)\s+(?:employee|intern|contractor)\b)?(?:\s+(?:of|at|for|with)\s+(?P<rest>.*))?", re.IGNORECASE)
 # The backstop behind the allowlist: what turns a question that names the company into another question: kin and
 # friends, referrals, applications and interviews, convictions, work authorization and sponsorship, clearance and
 # background checks, terminations, non-competes, where the applicant heard of the job, eligibility, willingness,
@@ -726,7 +728,9 @@ _OPTION_EMPLOYEE = re.compile(r"\bemployee\b", re.IGNORECASE)
 _NOT_WORKED_HERE = re.compile(
     r"relative|family|friend|spouse|anyone|someone|referr|applied|interview|convict|criminal|felony|authori|"
     r"sponsor|visa|clearance|background|terminat|non-?compete|hear\s+about|eligib|legal|able\s+to|willing|want|"
-    r"h-?1b|petition|permit|household|member|compet|fired|disciplin|dismiss|customer|product|vendor|partner",
+    r"h-?1b|petition|permit|household|member|compet|fired|disciplin|dismiss|customer|product|vendor|partner|"
+    # the company listed beside a KIND of organisation is another question ("Acme or a federal contractor")
+    r"government|federal|\bstate\b|\blocal\b|agency|public\s+sector|military|defen[cs]e|\bu\.s\b|united\s+states",
     re.IGNORECASE)
 # Where the company list ends in a clause.
 _CLAUSE_END = re.compile(
@@ -755,7 +759,7 @@ def asks_worked_here(facts: dict[str, Fact], question: str, options: tuple[str, 
             _names_company(m["rest"], companies) if m["rest"] else
             _names_company(m["co"], companies) if m["co"] else True):
         return True
-    return any(_OPTION_EMPLOYEE.search(o) for o in options)
+    return False
 
 
 def lists_job_company(facts: dict[str, Fact], question: str, options: tuple[str, ...] | list[str] = ()) -> bool:

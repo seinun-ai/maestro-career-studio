@@ -523,3 +523,29 @@ def test_a_bare_word_of_the_backstop_does_not_block_an_ordinary_essay(db_session
     Writer(monkeypatch, {"w": "Built a forecasting pipeline for 40 stores."})
     out = autofill_choose.choose([_written(label=label)], application.id, db_session)
     assert out["w"].reason == "assumed", label
+
+
+@pytest.mark.parametrize("label", [
+    "Are you on probation or parole? Please explain.", "Do you have a warrant out? Explain.", "How old are you? Describe.",
+    "Are you married? Please explain.", "Do you have children? Describe them.", "Do you need childcare? Explain.",
+    "Who is paying for your relocation? Explain.", "What is your current base pay? Describe.",
+    "What was your last base salary? Explain.", "Describe your political views.", "Are you a union member? Explain.",
+    "Are you vaccinated? Describe your vaccination status.", "What is your height? Describe.",
+    "What is your weight? Describe.", "Do you have a tattoo? Explain.", "What was your class rank? Describe.",
+])
+def test_the_round_three_backstop_words_are_never_drafted(db_session, monkeypatch, label):
+    application = _application(db_session)
+    writer = Writer(monkeypatch, {"w": "Should not be used."})
+    out = autofill_choose.choose([_written(label=label)], application.id, db_session)
+    assert (out["w"].answer, out["w"].reason) == (None, "abstained") and writer.prompts == [], label
+
+
+@pytest.mark.parametrize("label", [
+    "How do you rank your priorities when deadlines collide?", "Describe a base model you fine-tuned and why.",
+    "Describe a time you weighted competing requirements.", "Tell us about a time you united two teams.",
+])
+def test_the_narrow_phrases_do_not_block_ordinary_essays(db_session, monkeypatch, label):
+    application = _application(db_session)
+    Writer(monkeypatch, {"w": "Built a forecasting pipeline for 40 stores."})
+    out = autofill_choose.choose([_written(label=label)], application.id, db_session)
+    assert out["w"].reason == "assumed", label
