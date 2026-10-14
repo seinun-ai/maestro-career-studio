@@ -200,7 +200,21 @@ asking permission of itself.
 
 - **Save job** — the Job stage shows title, company and the grabbed job
   description in three fields you can correct before anything is saved (schema.org
-  `JobPosting` JSON-LD when the site provides it, visible text otherwise). The
+  `JobPosting` JSON-LD when the site provides it, visible text otherwise). Visible text
+  is read in this order, each candidate only if it is on screen (a hidden duplicate
+  never answers): a job-description container; the section under a description
+  heading (an element whose whole text is "Job Description", "About the role" and the
+  like, climbed to its first ancestor over 300 characters, abandoned at `main`,
+  `article`, `body`, `nav`, `header`, `footer` or an ancestor holding a form control);
+  then `main`/`article`, then the body. A described page also gets the JSON-LD path's
+  `Title:` / `Company:` / `Location:` lines (`postingHeaderLines`, `content/job-posting.js`):
+  from the recorded Darwinbox adapter (host `darwinbox.in`/`.com`, path
+  `/ms/candidatev2/<x>/careers/jobDetails/<id>`; DOM only: the header's `span.title`,
+  the visible Job Snapshot "Location", the company only from the meta description
+  "Job Title | <Company>" and not when that holds a translation key), else the first
+  visible `h1` outside `nav`/`header`/`footer` for the title. Darwinbox is not in
+  `shared/ats-hosts.js`: its Apply leads to a CAPTCHA'd sign-in, so the run stays out of
+  its forms. The
   line under them says "Job description found (N words)" only for a job signal
   (`decisions.describesJob`: `source` `json-ld`, or `content`, a job-description
   container), because three filled boxes over an empty description otherwise

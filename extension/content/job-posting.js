@@ -54,6 +54,7 @@
   const DESCRIPTION_HEADING = /^(job description|about the (job|role|position)|job summary|role (description|overview)|position (description|summary))\s*:?$/i;
   const HEADING_CANDIDATES = "h1, h2, h3, h4, h5, h6, [role=heading], p, div, span, strong, b, legend, dt, label";
   const SITE_CHROME = /^(nav|header|footer)$/i;
+  const CHROME_SELECTOR = "nav, header, footer";
   const PAGE_WIDE = /^(html|body|main|article)$/i;
 
   /** The text under a description heading, for a posting with no JSON-LD and no job-description class.
@@ -69,7 +70,7 @@
     for (const heading of document.querySelectorAll(HEADING_CANDIDATES)) {
       if (heading.childElementCount > 2 || heading.textContent.length > 40
         || !DESCRIPTION_HEADING.test(heading.textContent.trim()) || !isShown(heading)
-        || heading.closest("nav, header, footer")) continue;
+        || heading.closest(CHROME_SELECTOR)) continue;
       for (let node = heading.parentElement; node; node = node.parentElement) {
         if (PAGE_WIDE.test(node.tagName) || SITE_CHROME.test(node.tagName)
           || node.querySelector("input, textarea, select")) break;
@@ -83,7 +84,52 @@
     return best;
   }
 
+  const oneLine = (text) => String(text ?? "").replace(/\s+/g, " ").trim();
+
+  // The Darwinbox candidate portal (Angular; no JSON-LD, no `h1`, document title "Job Details Page"). Recorded
+  // from a live page, DOM only: a job page is /ms/candidatev2/<x>/careers/jobDetails/<id> on a darwinbox host.
+  const DARWINBOX_HOST = /(^|\.)darwinbox\.(in|com)$/i;
+  const DARWINBOX_JOB_PATH = /^\/ms\/candidatev2\/[^/]+\/careers\/jobDetails\/[^/]+\/?$/;
+  // The portal's translation key, shown where its language file did not load ("mainPage.companyName").
+  const UNTRANSLATED_KEY = /^[A-Za-z][\w-]*(\.[\w-]+)+$/;
+
+  /** Title, company and place of a Darwinbox job page, each left out when the page does not give it.
+   * Title: the header's `span.title`. Place: the visible Job Snapshot item labelled "Location". Company:
+   * only the meta description ("Job Title | <Company>"), and not when that holds a translation key. */
+  function darwinboxFacts() {
+    if (!DARWINBOX_HOST.test(location.hostname) || !DARWINBOX_JOB_PATH.test(location.pathname)) return {};
+    const snapshot = [...document.querySelectorAll(".grid-item")].find((item) => isShown(item)
+      && oneLine(item.querySelector(".label")?.textContent).toLowerCase() === "location");
+    const named = /^Job Title \| (.+)$/.exec(
+      oneLine(document.querySelector('meta[name="description"]')?.getAttribute("content")));
+    return {
+      title: oneLine(document.querySelector(".header-section .title-section > .title")?.textContent),
+      place: oneLine(snapshot?.querySelector(".value")?.textContent),
+      company: named && !UNTRANSLATED_KEY.test(named[1]) ? named[1] : "",
+    };
+  }
+
+  /** The first visible `h1` outside site chrome, for a page whose title no recorded adapter gives. */
+  function visibleH1Title() {
+    for (const h1 of document.querySelectorAll("h1")) {
+      const text = oneLine(h1.textContent);
+      if (text && text.length <= 200 && isShown(h1) && !h1.closest(CHROME_SELECTOR)) return text;
+    }
+    return "";
+  }
+
+  /** The `Title:` / `Company:` / `Location:` lines the JSON-LD path writes, for a page read as visible
+   * content: what a recorded site adapter knows, else the page's own `h1` for the title. Empty when
+   * the page gives none; the caller writes the blank line after them only when there are some. */
+  function postingHeaderLines() {
+    const site = darwinboxFacts();
+    const title = site.title || visibleH1Title();
+    return [title && `Title: ${title}`, site.company && `Company: ${site.company}`,
+      site.place && `Location: ${site.place}`].filter(Boolean);
+  }
+
   ns.findJobPostingInDocument = findJobPostingInDocument;
+  ns.postingHeaderLines = postingHeaderLines;
   ns.usableDescriptionNode = usableDescriptionNode;
   ns.descriptionUnderHeading = descriptionUnderHeading;
 })();

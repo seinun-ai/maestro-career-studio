@@ -12,6 +12,8 @@ import pytest
 
 from tests.browser.conftest import EXTENSION, fixture_html
 from tests.browser.test_fill_end_to_end import SOURCES
+from tests.extension_harness import run_node
+from tests.extension_panel_harness import PANEL_SOURCE, _PANEL_FAKES_JS
 
 DARWINBOX = "https://acme.darwinbox.in/ms/candidatev2/main/careers/jobDetails/a0000000000001?src=Linkedin"
 ELSEWHERE = "https://careers.acme.test/jobs/data-analyst"
@@ -116,3 +118,99 @@ def test_a_section_under_300_characters_is_not_a_description(page):
     out = _generic(page, "<div><section><h2>About the role</h2><p>Short and sweet.</p></section></div>")
     assert out["source"] == "body"
 
+
+# ---------- P2: the recorded Darwinbox page and the header lines ----------
+
+_PREVIEW_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+main(async () => {
+  await settle();
+  emit(ns.panel.previewFrom(spec.posting));
+});
+"""
+
+
+def _preview(tmp_path, posting):
+    return run_node(_PREVIEW_DRIVER_JS, {"posting": posting}, tmp_path, source=PANEL_SOURCE)
+
+
+def _header(out):
+    head = out["text"].split("\n\n", 1)[0]
+    return head.split("\n") if head.startswith(("Title: ", "Company: ", "Location: ")) else []
+
+
+def test_the_darwinbox_page_writes_the_header_lines_and_previewfrom_fills_the_boxes(page, tmp_path):
+    out = _darwinbox(page)
+    assert _header(out) == ["Title: Data Analyst", "Company: Acme Robotics",
+                            "Location: Pune, Maharashtra, India"]
+    assert out["source"] == "content"
+    preview = _preview(tmp_path, out)
+    assert (preview["title"], preview["company"], preview["location"]) == (
+        "Data Analyst", "Acme Robotics", "Pune, Maharashtra, India")
+    # The round trip is the identity: the description keeps its first line, header lines out of it.
+    assert preview["text"].startswith("Job Description")
+    assert "Title:" not in preview["text"] and "Company:" not in preview["text"]
+    assert out["text"] == (
+        "Title: Data Analyst\nCompany: Acme Robotics\nLocation: Pune, Maharashtra, India\n\n" + preview["text"])
+
+
+@pytest.mark.parametrize("meta", ["Job Title | mainPage.companyName", "Job Title | jobDetails.page_title.x",
+                                  "Careers", "Job Title | "])
+def test_an_untranslated_or_missing_company_gives_no_company_line(page, meta):
+    out = _darwinbox(page, meta=meta)
+    assert _header(out) == ["Title: Data Analyst", "Location: Pune, Maharashtra, India"]
+
+
+@pytest.mark.parametrize("url", [
+    "https://acme.darwinbox.in/ms/candidatev2/main/careers/allJobs",
+    "https://acme.darwinbox.in.attacker.test/ms/candidatev2/main/careers/jobDetails/a0000000000001",
+    "https://notdarwinbox.in/ms/candidatev2/main/careers/jobDetails/a0000000000001",
+    "https://acme.darwinbox.in/other/careers/jobDetails/a0000000000001",
+])
+def test_the_adapter_does_not_fire_off_a_darwinbox_job_page(page, url):
+    out = _darwinbox(page, url=url)
+    assert _header(out) == []
+    assert out["source"] == "content"  # the heading rule still reads the description
+    assert out["text"].startswith("Job Description")
+
+
+def test_the_adapter_also_fires_on_the_dot_com_host(page):
+    out = _darwinbox(page, url=DARWINBOX.replace("acme.darwinbox.in", "acme.darwinbox.com"))
+    assert _header(out)[0] == "Title: Data Analyst"
+
+
+def test_a_snapshot_location_that_is_not_shown_is_not_read(page):
+    html = fixture_html("darwinbox_posting.html").replace(
+        '<div class="grid-item"><div class="label">Location</div>',
+        '<div class="grid-item" style="display:none"><div class="label">Location</div>')
+    _open(page, DARWINBOX, html)
+    assert _header(_read(page)) == ["Title: Data Analyst", "Company: Acme Robotics"]
+
+
+def test_a_visible_h1_outside_site_chrome_gives_the_title(page, tmp_path):
+    out = _generic(page, f"<div><h1>  Data   Analyst </h1><div><h2>About the role</h2><p>{FILLER}</p></div></div>")
+    assert _header(out) == ["Title: Data Analyst"]
+    assert _preview(tmp_path, out)["title"] == "Data Analyst"
+
+
+def test_the_adapters_title_beats_the_h1(page):
+    html = fixture_html("darwinbox_posting.html").replace(
+        '<div class="navigation">', '<h1>Careers at Acme</h1><div class="navigation">')
+    _open(page, DARWINBOX, html)
+    assert _header(_read(page))[0] == "Title: Data Analyst"
+
+
+@pytest.mark.parametrize("chrome", ["header", "nav", "footer"])
+def test_an_h1_inside_site_chrome_is_not_a_title(page, chrome):
+    out = _generic(page, f"<{chrome}><h1>Acme Careers</h1></{chrome}><div><h2>About the role</h2><p>{FILLER}</p></div>")
+    assert out["source"] == "content"
+    assert _header(out) == []
+
+
+def test_a_hidden_h1_and_an_h1_on_a_page_that_is_not_a_posting_give_no_title(page):
+    out = _generic(page, f'<h1 style="display:none">Hidden</h1><div><h2>About the role</h2><p>{FILLER}</p></div>')
+    assert _header(out) == []
+    out = _generic(page, f"<h1>A recipe for soup</h1><p>{FILLER}</p>")
+    assert out["source"] == "body"
+    assert out["text"].startswith("A recipe for soup")
+    assert _header(out) == []

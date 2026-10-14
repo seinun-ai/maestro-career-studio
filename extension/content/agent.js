@@ -81,10 +81,13 @@
     const described = longest(describedNodes) ?? ns.descriptionUnderHeading();
     const page = described === null ? longest(candidates) : null;
     const best = described ?? page;
+    // The header lines the JSON-LD path writes, for a described page that gives them (Darwinbox, an `h1`).
+    const header = described === null ? [] : ns.postingHeaderLines();
+    const body = (best ?? document.body.innerText ?? "").trim();
     return {
       url: location.href,
       title: document.title,
-      text: (best ?? document.body.innerText ?? "").trim().slice(0, 60000),
+      text: (header.length ? [...header, "", body].join("\n") : body).slice(0, 60000),
       source: described !== null ? "content" : page !== null ? "page" : "body",
       applyUrl: ns.pageReader?.applyUrl(null) ?? null,
     };
