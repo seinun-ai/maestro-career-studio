@@ -62,3 +62,24 @@ def test_a_job_offered_to_the_other_copy_is_left_alone_too(client, db_session, s
     again = client.post("/api/jobs/ingest", json={**BODY, "apply_url": APPLY})
 
     assert again.status_code == 200 and again.json()["apply_url"] is None
+
+
+def test_a_replica_refuses_a_patched_apply_link(client, db_session, sync_on):
+    """The Companion's save of the page it ran on goes through the ordinary route: a job the other copy
+    owns is not written here."""
+    first = client.post("/api/jobs/ingest", json=BODY).json()
+    _replica(db_session, first["id"])
+
+    response = client.patch(f"/api/jobs/{first['id']}", json={"apply_url": APPLY})
+
+    assert response.status_code == 409
+    db_session.expire_all()
+    assert db_session.get(Job, uuid.UUID(first["id"])).apply_url is None
+
+
+def test_an_owned_job_takes_a_patched_apply_link(client, db_session, sync_on):
+    first = client.post("/api/jobs/ingest", json=BODY).json()
+
+    response = client.patch(f"/api/jobs/{first['id']}", json={"apply_url": APPLY})
+
+    assert response.status_code == 200 and response.json()["apply_url"] == APPLY

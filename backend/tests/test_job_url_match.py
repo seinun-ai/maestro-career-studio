@@ -9,6 +9,7 @@ from app.services.job_url_match import is_same_posting, posting_id
 
 LEVER = "https://jobs.lever.co/acme/abc"
 GREENHOUSE = "https://boards.greenhouse.io/acme/jobs/123"
+WD_POSTING = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_R-1"
 
 
 @pytest.mark.parametrize(
@@ -38,6 +39,11 @@ GREENHOUSE = "https://boards.greenhouse.io/acme/jobs/123"
         # apply page, which is the collision that made a threshold impossible.
         (GREENHOUSE, "https://boards.greenhouse.io/acme/jobs/456", False),
         (LEVER, "https://jobs.lever.co/acme/xyz", False),
+        # --- a Workday posting and its apply page (the locale and tenant stay in the path) ---
+        (WD_POSTING, f"{WD_POSTING}/apply", True),
+        (WD_POSTING, f"{WD_POSTING}/apply/applyManually", True),
+        (f"{WD_POSTING}/apply/applyManually", f"{WD_POSTING}/apply/applyManually?source=x#step2", True),
+        (WD_POSTING, WD_POSTING.replace("Data-Scientist_R-1", "Data-Scientist_R-2") + "/apply", False),
         # --- reverse direction: saved is more specific than current ---
         # The employer index is an ANCESTOR of the saved posting. Matching the
         # reverse direction would claim a search listing is the job.

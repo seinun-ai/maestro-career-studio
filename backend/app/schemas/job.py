@@ -38,6 +38,8 @@ class JobCreate(BaseModel):
 
 class JobPatch(BaseModel):
     source_url: str | None = None
+    # The Companion saves the page it ran an application on, so the next visit matches the job.
+    apply_url: HttpUrlStr | None = None
 
 
 class JobIngest(BaseModel):

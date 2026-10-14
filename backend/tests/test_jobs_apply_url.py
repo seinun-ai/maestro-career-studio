@@ -128,6 +128,84 @@ def test_an_ingested_duplicate_gains_the_link_too(client):
     assert (again["id"], again["apply_url"]) == (first["id"], APPLY)
 
 
+# --- the Companion saves the page it ran on -----------------------------------------
+
+WORKDAY_APPLY = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_R-1/apply/applyManually"
+WORKDAY_POSTING = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_R-1"
+
+
+def _board_job(client, monkeypatch, **body):
+    _stub_extraction(monkeypatch)
+    return client.post("/api/jobs", json={"raw_text": "Data Scientist at Acme",
+                                          "source_url": "https://board.example/jobs/1", **body}).json()
+
+
+def test_a_job_gains_its_apply_link_by_patch(client, monkeypatch):
+    job = _board_job(client, monkeypatch)
+
+    response = client.patch(f"/api/jobs/{job['id']}", json={"apply_url": WORKDAY_APPLY})
+
+    assert response.status_code == 200
+    assert response.json()["apply_url"] == WORKDAY_APPLY
+    assert response.json()["source_url"] == "https://board.example/jobs/1"
+    assert client.get(f"/api/jobs/{job['id']}").json()["apply_url"] == WORKDAY_APPLY
+
+
+def test_a_patch_without_the_link_leaves_it_alone(client, monkeypatch):
+    job = _board_job(client, monkeypatch, apply_url=APPLY)
+
+    client.patch(f"/api/jobs/{job['id']}", json={"source_url": "https://board.example/jobs/2"})
+
+    assert client.get(f"/api/jobs/{job['id']}").json()["apply_url"] == APPLY
+
+
+@pytest.mark.parametrize("bad", ["javascript:alert(1)", "data:text/html,x", "ftp://acme.example/a",
+                                 "//acme.example/a", "https://", "not a url", "",
+                                 "https://acme.example/" + "a" * 2048],
+                         ids=["javascript", "data", "ftp", "scheme-relative", "no-host", "words", "empty",
+                              "too-long"])
+def test_a_patched_apply_link_must_be_http(client, monkeypatch, bad):
+    job = _board_job(client, monkeypatch)
+
+    response = client.patch(f"/api/jobs/{job['id']}", json={"apply_url": bad})
+
+    assert response.status_code == 422
+    assert client.get(f"/api/jobs/{job['id']}").json()["apply_url"] is None
+
+
+def test_the_match_finds_a_job_by_its_apply_link(client, monkeypatch):
+    """The page the user applied on is remembered: next time it IS the job, though the saved board
+    page is another site."""
+    job = _board_job(client, monkeypatch)
+    assert client.get("/api/jobs/match", params={"url": WORKDAY_APPLY}).json()["match"] == "none"
+    client.patch(f"/api/jobs/{job['id']}", json={"apply_url": WORKDAY_APPLY})
+
+    body = client.get("/api/jobs/match", params={"url": WORKDAY_APPLY}).json()
+
+    assert body["match"] == "exact"
+    assert body["job"]["id"] == job["id"]
+
+
+def test_the_match_reads_the_apply_links_below_a_saved_posting_and_the_wizards_other_steps(client, monkeypatch):
+    posting = _board_job(client, monkeypatch, source_url=WORKDAY_POSTING)
+    # A saved posting matches the apply page that sits below it (the Workday apply suffix)...
+    assert client.get("/api/jobs/match", params={"url": WORKDAY_APPLY}).json()["job"]["id"] == posting["id"]
+    # ...and a saved apply link matches the same page with a fragment or a referral query.
+    other = _board_job(client, monkeypatch, raw_text="Analyst at Globex", source_url="https://board.example/jobs/9",
+                       apply_url=WORKDAY_APPLY.replace("Data-Scientist_R-1", "Analyst_R-9"))
+    page = WORKDAY_APPLY.replace("Data-Scientist_R-1", "Analyst_R-9") + "?source=x#step2"
+    assert client.get("/api/jobs/match", params={"url": page}).json()["job"]["id"] == other["id"]
+
+
+def test_a_sibling_posting_is_not_matched_by_an_apply_link(client, monkeypatch):
+    job = _board_job(client, monkeypatch, apply_url=WORKDAY_APPLY)
+
+    sibling = WORKDAY_APPLY.replace("Data-Scientist_R-1", "Data-Scientist_R-2")
+
+    assert client.get("/api/jobs/match", params={"url": sibling}).json()["match"] == "none"
+    assert job["apply_url"] == WORKDAY_APPLY
+
+
 # --- the migration --------------------------------------------------------------
 
 def _config(tmp_path):

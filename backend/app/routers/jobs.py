@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import begin_write, get_db
@@ -510,18 +510,21 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
     # this scale — a SQL LIKE over a raw source_url would be more fragile than
     # the thing it optimizes.
     #
-    # is_not(None) narrows the scan only; it is not a safety guard, since
+    # The saved link and the employer's apply link both name the job: a posting saved from a board
+    # is matched on the employer's own form, once the Companion has remembered that page as the
+    # apply link. is_not(None) narrows the scan only; it is not a safety guard, since
     # is_same_posting returns False for a null or unparseable link.
     stmt = (
-        select(Job.id, Job.source_url)
-        .where(Job.source_url.is_not(None))
+        select(Job.id, Job.source_url, Job.apply_url)
+        .where(or_(Job.source_url.is_not(None), Job.apply_url.is_not(None)))
         .order_by(Job.created_at.desc())
     )
     matched_id = next(
         (
             job_id
-            for job_id, source_url in db.execute(stmt)
+            for job_id, source_url, apply_url in db.execute(stmt)
             if job_url_match.is_same_posting(source_url, url)
+            or job_url_match.is_same_posting(apply_url, url)
         ),
         None,
     )
@@ -603,6 +606,8 @@ def patch_job(job_id: UUID, payload: JobPatch, db: Annotated[Session, Depends(ge
         raise HTTPException(status_code=404, detail="Job not found")
     if payload.source_url is not None:
         job.source_url = payload.source_url.strip() or None
+    if payload.apply_url is not None:
+        job.apply_url = payload.apply_url
     db.commit()
     db.refresh(job)
     return _with_newest_proposal(db, job)
