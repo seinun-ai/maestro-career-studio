@@ -395,7 +395,7 @@ it attaches your resume before pressing Next and never presses Next over an empt
 error and has no required box left empty. When a review page is not plainly the last one, Apply stops
 with "Not sure this is the last page"; look, then press **Resume** to say it is. On a known application
 site that asks you to make an account, Apply makes it with your saved job-site login, once, and stops
-with **Account not created** if the site refuses, wants an email check or shows a CAPTCHA. A required
+with **Account not created** if the site refuses it, **Email code** if the site wants an email check and **CAPTCHA** if it shows one. A required
 written question your saved answers cannot answer is **drafted from your career history for you to
 read** ("Drafted from your history: read it"), never saved as a standing answer; **Facts only** turns
 drafting off. The **Ask** box at the foot of the Fill step answers any question from a form in one

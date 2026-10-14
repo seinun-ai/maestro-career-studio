@@ -475,7 +475,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `by` is `submit_button` (a real Submit control inside the application and no real Next), shows no errors and has no required box empty (`requiredEmpty`:
   one scoped fix, then `open_questions`). Any other reason a page reads as a review (a Submit the reader could not see, a dialog about submitting, several
   Nexts, fields and no Next) parks `unsure_page`; a field-less page with only a bare Continue or Proceed parks `confirm_page`; a plain Next is pressed. A
-  Resume on an `unsure_page` is the user vouching for that page (no refill, errors and empties still checked, `readyBy` "user"). Closed means closed: a strict
+  Resume on an `unsure_page` is the user vouching for that page (no refill, errors and empties still checked, `readyBy` "user"). The one resume the run already wrote on the page excuses ONE required resume box, never a second. Closed means closed: a strict
   notice, nothing fillable and no Apply, and resumable. Pinned by `tests/test_extension_queue_run.py`, `test_extension_page_kind.py` and `tests/browser/test_page_reader.py`.
 - **Low stakes are decisive; a draft is read, not trusted.** `{#inv-drafted-answers}` A low-stakes gap is filled and reported `assumed` with a fixed note, never
   left blank and never invented as a fact: a date box asking for more than the fact has takes the 1st (January for a year), https goes on a host, a phone type

@@ -409,7 +409,7 @@ asking permission of itself.
   covers every case it leaves alone. Three states off the page's
   own count of boxes a resume could go into: one box is the offer, naming the
   file; none is nothing at all (and so is a page whose one box is for another
-  document or the site's own import, `otherBox`, from `uploads[0].kind`); **more
+  document or the site's own import, `otherBox`, from `uploads[0].kind`: the offer is a dead button that says the box is for another document, or, for the import box, that it fills in the form from a resume); **more
   than one is a sentence and a dead button**, because the panel cannot always tell
   a resume box from a cover-letter box and the page would look like it worked.
   The write itself skips every box the page's words rule out: it writes each
@@ -1431,7 +1431,7 @@ footer alone).
   is not built). **A Next is the step's when** it is visible, enabled, not an error line (`inErrors`) and not site chrome (`chrome`: header, nav,
   footer, search, contentinfo; a footer inside the application's own content is not chrome): inside a form first; when no Next is in a form (a
   wizard whose fields sit in several `<form>`s keeps its footer Next in a bar outside all of them), the ONE pressable Next anywhere in the
-  application, leaving out a dialog's or a cookie notice's (`overlay`). `isPlainNext` tells "Next", "Next step" and "Save and continue/next" from a
+  application, leaving out a dialog's or a cookie notice's (`overlay`); such a Next outside every form is no "real Next" either, so a cookie banner's Continue beside a real Submit never turns the end of an application into `several_next`. `isPlainNext` tells "Next", "Next step" and "Save and continue/next" from a
   bare "Continue" or "Proceed". **Closed** is the notice wordings only (this job, position, posting or requisition has been or is now closed, has
   been filled, no longer accepting applications, available or open; "has been filled" after until, once, when, after, before, if or unless is
   prose) and counts only on a page with nothing fillable and no Apply control, so a job description's own prose never ends a run.
@@ -1449,7 +1449,7 @@ footer alone).
   review, the tab on a host the run never navigated to (not after a park that told the user to go somewhere, `sign_in_yourself`,
   `verify`, `posting` or `unknown_page`: where they land on Resume is theirs, and that host joins the run's), the same page again, more than 15 steps, a Next that changes nothing
   (after one refill), a Next the page refuses and names (`page_errors`), a required upload it could not fill (`upload`), a review page that is not
-  plainly the end (`unsure_page`) and a field-less page with only a bare Continue or Proceed (`confirm_page`) each park with a fixed `why` word;
+  plainly the end (`unsure_page`) and a field-less page with only a bare Continue or Proceed (`confirm_page`; a step whose only content is an upload box the fill wrote or listed is a step, not this: `hadUpload`) each park with a fixed `why` word;
   `panel/runs.js` holds the words and which of Resume or Skip this job each offers. A **closed** page ends the run as stopped (`closed`) and offers
   Resume ("Open the application in the tab, then press Resume").
 - **Sign-in.** `pageOps().signIn` fetches the login (`POST /api/companion/job-site-login`) and types it in one call, the password a
@@ -1459,16 +1459,17 @@ footer alone).
   or sign-up form. A password-only second screen parks (`no_email`).
 - **Account creation** (`pageOps().createAccount`, owner decision 2026-10-14, reversing "account creation always parks"). The driver runs it only
   when the page classifies as `create_account`, the host the run reached (`record.hosts.at(-1)`) is a known ATS (`shared/ats-hosts.js`) and the record
-  has not already tried (`accountTried`, set once the press went); a sign-up on any other host stays the `create_account` wall. It fetches the login
+  has not already tried (`accountTried`, set BEFORE the press so a Stop that lands during it still leaves the attempt made and a Resume never creates a second account; a refusal that pressed nothing unmarks it); a sign-up on any other host stays the `create_account` wall. It fetches the login
   as sign-in does and `page_create_account` (content/page-reader.js `createAccount`; TOP frame only, `panel_frame0`, NOT broadcastable) types it in
   one call, the password a local that goes out of scope with it and every outcome a fixed word. The page must hold exactly one email box and
   exactly two new-password boxes and no code box or CAPTCHA, or it refuses. It never types into a honeypot (robot-trap wording, `name="website"`,
   a beecatcher or honeypot id), types the same password in both boxes, ticks only a REQUIRED checkbox whose own words agree to create the account or
   to the privacy notice ("terms" counts only in a sentence that names the account; only the `createAccountCheckbox` automation id marks a box
   required for it) and refuses any whose words mention an application, a certification, a background check, FCRA, third parties, sharing, selling,
-  alerts or marketing, and presses only the one visible control whose WHOLE label is "Create Account" (never one in site chrome, one with a Submit word
-  in any label,, or one the page marks as a submit). The status shows "Creating account". After the
-  press the driver waits for the page: a changed page goes on (an email check that reads as one parks `verify`); the same page with errors, or no
+  alerts or marketing. A REQUIRED box it will not tick, and the user has not, refuses the page (`agreement`: nothing typed or pressed, the `create_account` wall,
+  the attempt not used). It presses only the one visible control whose WHOLE label is "Create Account" (never one in site chrome, one with a Submit word
+  in any label, or one the page marks as a submit). The status shows "Creating account". After the
+  press the driver waits for the page: a changed page goes on (an email check that reads as one parks `verify`, a CAPTCHA parks `captcha`); the same page with errors, or no
   change, or a sign-up page seen again, parks `create_account_failed` (the "Account not created" card), never retried. An account that already exists is one of the failures:
   the user signs in or fixes the page and presses Resume.
 - **Ready is a real review page.** `finish("ready")` needs, in order: the page is a review with `by` = `submit_button` (the record keeps `lastBy`;
@@ -1499,7 +1500,9 @@ footer alone).
   once more (`refilled`) before Next or Ready. A Next that changes nothing is refilled once more too (`tried`). The trigger is the control count; a
   changed set of field fingerprints is not a trigger. Per-page flags (`pageFilled`, `tried`, `fixRounds`, `requiredTried`, `vouched`, `listed`,
   `refilled`, `attempted`, `wroteResume`, `record.attach`, `record.memory`) reset in `moved()`; `record.flags` (Check before you submit) is the LAST
-  page's alone, so a page whose receipt is null shows none.
+  page's alone, so a page whose receipt is null shows none. `record.assumedRows` is the run's, NOT reset per page: every answer the run made for you on any
+  page (a drafted answer, a date set to the 1st) as `{fid, question, step, note}`, one per question and step, never a value; Ready merges it into
+  the same list (a receipt flag for the same question gains the note; a row from another page is a name, not a jump).
 - **Park less.** A required field the fill reports `unconfirmed` does not park: Next and the page's own validation decide, and a page
   that does not move is refilled once. A run parks only on required fields it could not answer or operate (`open_questions`, the page's
   own invalid flag counts), once per page, naming them.
@@ -1541,7 +1544,7 @@ footer alone).
   `attached` or `unconfirmed` (a write the page may have taken but did not show) means the resume was written: `wroteResume` is set and it is never
   written again on that page, by the gate or a repair (a repair attaches to at most one named box), and a Resume on an `unsure_page` park keeps it when
   the parked record's attach outcome says a file was written. **On a review page** (below) a required empty upload item carries its box kind: one of kind
-  `resume` excused by `wroteResume` is not owed, a `parser` or `other` box, or a choice between several, parks `upload` and is never given the resume
+  `resume` excused by `wroteResume` is not owed (ONE box only: a second required upload parks `upload`), a `parser` or `other` box, or a choice between several, parks `upload` and is never given the resume
   through the required-empty fix. The page line reads "Resume attached", "A file was already attached" or "Couldn't attach the resume: ...", and the
   counter "N of M answered" counts only fields that ended filled, verified or kept, an upload box as one field. The Ready card shows the attach line
   whenever the outcome was not a plain attach.
@@ -1715,7 +1718,9 @@ footer alone).
   question comes from the container's label; the options are the button texts; the answer is the pressed one. Choosing LOOKS first and never clicks a
   pressed button, since a second click un-selects it. A group is multi-select by `aria-multiselectable`, or by a `multiselect` class or tag name on the
   container or up to three ancestors, and is then added to, never un-pressed, and never finished while items may be missing. A lone toggle and a
-  toolbar's toggles are not fields. The page reader counts a pill group in `requiredEmpty` once, required from its `describe()`.
+  toolbar's toggles are not fields. A group holding a button that sorts as a Submit or a Next, is submit-marked or is `type=submit` (`ns.pageKind.movesOn`) is a row of
+  actions, not a field (a `Form actions` list of Back and Submit), and `choose` and `set` refuse to press such a pill (`submit_like`) as a second line of defence.
+  The page reader counts a pill group in `requiredEmpty` once, required from its `describe()`, and `fillableControls` counts one control per group.
 - **A category row is a group to open, never an answer.** A list row (Workday's source tree) with no selection control (no radio, checkbox or
   `aria-checked`) whose LAST content is a chevron icon (`trailingChevron`) is described to the adaptive step as a group. A row whose click showed
   children is remembered per field as a group even when nothing marks it, unless it is selectable (a selectable row whose click redrew the list is an
@@ -1731,7 +1736,9 @@ footer alone).
   committed) and falls back to its resting text (`restingText`: the input's text only while its list is closed and it is not focused) when no backing
   input exists; the JET host losing `oj-has-no-value` stays real proof ahead of both. A read that rests on the resting text alone is a **weak read**
   (`weakRead`): when the only evidence is that text and the query the engine typed reads the same as the picked option, the pick is reported `unconfirmed`, not verified, since
-  a strict widget that rejects the click and keeps the query looks the same.
+  a strict widget that rejects the click and keeps the query looks the same. To make a real commit visible, a **weak box** (`weakBox`: select-style, with no
+  selection node, no chip and no backing input to read a pick from) is typed a PREFIX of the option's text, its last character dropped, when the term would be the
+  whole text and has at least 3 characters: after the click a real commit shows a change (`Canad` to `Canada`), while a widget that rejected the click keeps the prefix.
 - **A read-only select drawn with an invisible input is a field** (the antd opacity rule, `inventory.js` `invisibleButDrawn`). An Ant Design
   read-only select puts its combobox `input` at `opacity: 0` over the words it shows. Only opacity is forgiven: the input must be read-only, popup-shaped,
   still have client rects, not be `visibility: hidden`, and sit in a visible widget box; `display: none`, `visibility: hidden` and an empty box stay hidden.

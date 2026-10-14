@@ -113,9 +113,9 @@ view for several is still ahead.
   account, the run does it with your saved job-site login, once, on the sites it knows (Workday,
   Greenhouse, Lever, Ashby, iCIMS and a few more), in the page itself. It ticks only the box that
   agrees to creating the account or to the privacy notice, never a marketing box, and presses only
-  "Create Account". An email check, a CAPTCHA or a site that refuses the account (a password rule, an
-  account that already exists) stops the run and says so: **Account not created**. It never tries
-  twice, and the password never reaches an AI model, a trace, a log or the screen.
+  "Create Account". An email check stops the run at **Email code** and a CAPTCHA at **CAPTCHA**; a
+  site that refuses the account (a password rule, an account that already exists) stops it at
+  **Account not created**. It never tries twice, and the password never reaches an AI model, a trace, a log or the screen.
 - **More controls get filled.** Dropdowns drawn as read-only boxes, Yes/No and Degree questions drawn
   as rows of buttons, category lists that open before they show their choices, autocomplete boxes
   that answer slowly, and street addresses (typed whole and picked from the suggestions by house

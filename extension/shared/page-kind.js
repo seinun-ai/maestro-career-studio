@@ -75,7 +75,8 @@
     // never be taken for an employer's (the saved employer password is not the board's).
     if (s.boardNative) return { kind: "board_native" };
     // Two or more password inputs is a sign-up or a change-password form even when the confirm
-    // field is unlabelled: this run never fills a password, so it parks.
+    // field is unlabelled. The page is a wall here; the driver creates the account itself only on a
+    // known ATS host (queue-run.js), and the run never types a password anywhere else.
     if (s.confirmPassword || (s.passwordInputs ?? 0) > 1) return { kind: "create_account" };
     if (s.otpInput) return { kind: "verify" };
     if (s.passwordInputs === 1) return { kind: "sign_in" };
