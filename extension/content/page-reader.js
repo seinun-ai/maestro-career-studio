@@ -30,9 +30,10 @@
  * label sorted by its words would make the popup a Submit. So `summary()` marks (`fieldControl`) and
  * leaves out of the Submit/Next sort, and out of `submitSeen`: a popup button, a pill-group member, and a
  * button inside a field holder (a formField wrapper, or a fieldset or group that holds another field)
- * unless its SHOWN text says Submit or Send (a question's aria-label does not count), it is a plain or other Next
- * (in a holder), a form's own submit button (a button with no type inside a form, or `type=submit`) or one the page
- * marks as a submit. The vendor's footer Next (shared/ats-buttons.js, "text") is marked
+ * unless it is a form's own submit button (a button with no type inside a form, or `type=submit`) or one the page
+ * marks as a submit, or it is a menu button (`aria-haspopup="true"`) or a button in a holder whose SHOWN text says
+ * Submit or Send, or a holder button worded as a Next. A listbox popup and a pill (any button holding `aria-pressed`)
+ * show the answer picked, which may say those words and is still the field's. The vendor's footer Next (shared/ats-buttons.js, "text") is marked
  * `navigation`: the classifier takes it as the step's Next over a Submit the button list could not see.
  *
  * The Workday START CHOOSER is the second narrow exception, `advance(id, {chooser: true})`. "Apply Manually" is a Submit
@@ -255,15 +256,17 @@
   const FIELD_HOLDER = 'fieldset, [role="group"], [data-automation-id^="formField"]';
   const PILL_MEMBER = 'button[aria-pressed], [role="button"][aria-pressed], [role="radio"]:not(input), '
     + 'ul[role="list"][aria-label] > li > button:only-child';
-  // A button whose SHOWN text says Submit or Send is an action wherever it sits (a popup that reads Submit, a Submit in a
-  // fieldset): only a question in the aria-label, which the shown text does not carry, makes a popup a field's.
+  // Shown words that say Submit or Send make a button an action where it is not a field's own answer: a menu-style
+  // `aria-haspopup="true"` button, or a plain button in a field holder. A listbox popup (Workday's) and a pill group SHOW
+  // the answer picked ("Yes, I am willing to submit to a background check", "Send me texts"), which is still the field's.
   const ACTION_WORDS = /\b(?:submit|send)\b/i;
   function fieldControl(el) {
     // A real submit control stays one: a form's own submit button (the property, so a button with no type counts), the
-    // type attribute, a submit mark, or shown words that say so.
-    if ((el.type === "submit" && el.form) || el.getAttribute("type")?.toLowerCase() === "submit" || submitMarked(el)
-      || ACTION_WORDS.test(shownTextOf(el))) return false;
-    if (el.matches(POPUP_BUTTON)) return true;
+    // type attribute, or a submit mark.
+    if ((el.type === "submit" && el.form) || el.getAttribute("type")?.toLowerCase() === "submit" || submitMarked(el)) return false;
+    if (el.matches(POPUP_BUTTON)) return !(el.getAttribute("aria-haspopup") === "true" && ACTION_WORDS.test(shownTextOf(el)));
+    // A button that holds `aria-pressed` is a toggle by its own ARIA role, whatever it says ("Send me texts"): never an action.
+    if (el.matches("[aria-pressed]")) return true;
     if (el.matches(PILL_MEMBER)) {
       try {
         if (ns.shapes?.of(el)?.name === "pills") return true;
@@ -273,8 +276,9 @@
     }
     const holder = el.closest(FIELD_HOLDER);
     if (!holder) return false;
-    // A <button> with no type attribute is a form's default submit; a Next of any wording is the step's.
-    if (el.type === "submit" || sortOf(labelOf(el)) === "next") return false;
+    // A <button> with no type attribute is a form's default submit; a Next of any wording is the step's; Submit or Send
+    // shown on it is an action.
+    if (el.type === "submit" || ACTION_WORDS.test(shownTextOf(el)) || sortOf(labelOf(el)) === "next") return false;
     // A toolbar group of buttons holds no field. A vendor's formField wrapper always does.
     return holder.matches('[data-automation-id^="formField"]')
       || [...holder.querySelectorAll(FIELD_BOX)].some((c) => c !== el && !el.contains(c));

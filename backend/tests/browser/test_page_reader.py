@@ -2273,6 +2273,39 @@ def test_a_question_that_says_submit_only_in_its_aria_name_stays_a_field_control
     assert classify(page)["kind"] == "form_step"
 
 
+# A FILLED popup or a pressed pill shows the answer, which may say submit or send: still the field's, never an action.
+FOOTER_SAVE = FOOTER.format(text="Save and Continue")
+
+
+@pytest.mark.parametrize("shown_text", ["Yes, I am willing to submit to a background check", "Send me updates"])
+def test_a_filled_workday_popup_showing_an_answer_with_submit_or_send_is_still_a_field(page, shown_text):
+    serve(page, WORKDAY_URL, f"""<div data-automation-id='formField-q'><label id='q'>Willing?</label>
+      <button type='button' aria-haspopup='listbox' aria-label='Willing? {shown_text} Required'>{shown_text}</button></div>
+      <label for='fn'>First Name</label><input id='fn'>{FOOTER_SAVE}""")
+    s, verdict = both(page)
+    assert s["submitSeen"] is False
+    assert verdict == {"kind": "form_step", "next": button(s, "Save and Continue")["id"]}
+
+
+def test_a_pressed_pill_showing_send_me_texts_is_still_a_field_on_workday(page):
+    serve(page, WORKDAY_URL, f"""<fieldset><legend>Contact preference?</legend>
+      <button type='button' aria-pressed='true'>Send me texts</button><button type='button' aria-pressed='false'>No</button></fieldset>
+      <label for='fn'>First Name</label><input id='fn'>{FOOTER_SAVE}""")
+    s, verdict = both(page)
+    assert button(s, "Send me texts")["fieldControl"] is True and s["submitSeen"] is False
+    assert verdict["kind"] == "form_step"
+
+
+def test_off_workday_a_filled_popup_and_a_pressed_pill_with_those_words_are_fields_beside_a_next(page, load):
+    load(page, """<fieldset><legend>Willing?</legend><button type='button' aria-haspopup='listbox'>Yes, I will submit to a background check</button></fieldset>
+      <button type='button'>Next</button>""", SOURCES)
+    assert classify(page)["kind"] == "form_step"
+    load(page, """<fieldset><legend>Contact preference?</legend>
+      <button type='button' aria-pressed='true'>Send me texts</button><button type='button' aria-pressed='false'>No</button></fieldset>
+      <button type='button'>Next</button>""", SOURCES)
+    assert classify(page)["kind"] == "form_step"
+
+
 @pytest.mark.parametrize("text", ["Continue", "Proceed", "Review application", "Save and Continue"])
 @pytest.mark.parametrize("holder", [
     "<fieldset><legend>Details</legend><input id='a'>{b}</fieldset>",
