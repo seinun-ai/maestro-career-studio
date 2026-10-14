@@ -1174,11 +1174,12 @@ def heard_step(db_session, r, hint=None):
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_the_how_heard_goal_names_the_category_the_leaf_order_and_other(db_session, monkeypatch):
+def test_the_how_heard_goal_searches_the_board_first_then_the_likeliest_category(db_session, monkeypatch):
     calls = fake_jev(monkeypatch)
     heard_step(db_session, heard(), JobHint(title="Analyst", company="Acme", source="LinkedIn"))
     text = calls[0]["questions"]["f"]["instructions"]
-    assert "website, online or job-board category" in text and '"Other"' in text
+    assert "search box" in text and "open the category most likely to hold it" in text
+    assert 'otherwise "Other"' not in text   # the goal no longer sends the model to a fixed category
     assert '"LinkedIn"' in text and "job-board leaf" in text and "careers-site leaf" in text
     assert "Job board" in text   # the applicant's own word still states what the source is
 
@@ -1188,8 +1189,8 @@ def test_the_how_heard_goal_without_a_known_board_still_walks_the_same_tree(db_s
     calls = fake_jev(monkeypatch)
     heard_step(db_session, heard())
     text = calls[0]["questions"]["f"]["instructions"]
-    assert "website, online or job-board category" in text and "careers-site leaf" in text
-    assert "found on" not in text
+    assert "open the category most likely to hold it" in text and "careers-site leaf" in text
+    assert "found on" not in text and "search box" not in text
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1207,7 +1208,7 @@ def test_a_how_heard_leaf_is_assumed_and_opening_the_category_is_progress(db_ses
 def test_another_slot_keeps_its_ordinary_goal(db_session, monkeypatch):
     calls = fake_jev(monkeypatch)
     autofill_step.step(req(slot="education.0.discipline"), FACTS, db_session, None)
-    assert "website, online or job-board category" not in calls[0]["questions"]["f"]["instructions"]
+    assert "open the category most likely" not in calls[0]["questions"]["f"]["instructions"]
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1228,7 +1229,7 @@ def test_a_saved_source_that_is_no_board_walks_the_tree_to_its_own_leaf(db_sessi
     r = heard(candidates=[{"mid": "click:o1", "describe": f'Click the option "{saved}"'}, {"mid": GIVE_UP, "describe": "Stop"}])
     got = autofill_step.step(r, facts, db_session, JobHint(title="Analyst", company="Acme", source="LinkedIn"))
     text = calls[0]["questions"]["f"]["instructions"]
-    assert "website, online or job-board category" not in text and "LinkedIn" not in text and saved in text
+    assert "open the category most likely" not in text and "LinkedIn" not in text and saved in text
     assert sans_trace(got) == {"mid": "click:o1", "reason": "matched"}
 
 
@@ -1239,7 +1240,7 @@ def test_a_saved_board_answer_takes_the_board_first_goal(db_session, monkeypatch
     calls = fake_jev(monkeypatch)
     autofill_step.step(heard(), facts, db_session, JobHint(title="Analyst", company="Acme", source="Indeed"))
     text = calls[0]["questions"]["f"]["instructions"]
-    assert "website, online or job-board category" in text and '"Indeed"' in text and "job-board leaf" in text
+    assert "open the category most likely to hold it" in text and '"Indeed"' in text and "job-board leaf" in text
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1287,3 +1288,120 @@ def test_a_made_up_category_tree_is_walked_to_the_boards_leaf(db_session, monkey
     assert sans_trace(opened) == {"mid": "click:o2", "reason": "progress"}
     picked = heard_step(db_session, heard(candidates=leaves, history=["click:o2 -> progressed"]), hint)
     assert sans_trace(picked) == {"mid": "click:o2", "reason": "assumed"}
+
+
+# ---------- N1: How did you hear about us? searches the board before any model is asked
+
+SIX_GROUPS = [{"mid": f"click:o{i}", "describe": f'Open the group "{name}"'} for i, name in enumerate(
+    ["Direct Source", "Job Fair", "Other", "Referral", "Social Media", "Website"], start=1)]
+BOARD_HINT = JobHint(title="Analyst", company="Acme", source="linkedin")   # the router lowercases ?source=
+
+
+def no_model(monkeypatch):
+    """A step the code decides alone: any model call fails the test."""
+    def boom(*a, **kw):
+        raise AssertionError("the model was asked")
+    monkeypatch.setattr(autofill_step, "_move", boom)
+    monkeypatch.setattr(autofill_step, "_with_term", boom)
+
+
+def searchable(*extra):
+    return [*SIX_GROUPS, {"mid": "search:term", "describe": "Type a search term you choose into the search box"},
+            *extra, {"mid": GIVE_UP, "describe": "Stop"}]
+
+
+def test_six_groups_and_a_search_box_search_the_boards_name_without_asking_a_model(db_session, monkeypatch):
+    no_model(monkeypatch)
+    got = heard_step(db_session, heard(candidates=searchable()), BOARD_HINT)
+    assert (got.mid, got.reason, got.term) == ("search:term", "progress", "LinkedIn")
+    # Code's call: no engine, no probability, nothing a model said (like the worked-here reroute).
+    assert got.trace == DecisionTrace()
+
+
+def test_the_boards_leaf_the_search_listed_is_clicked_assumed(db_session, monkeypatch):
+    no_model(monkeypatch)
+    leaves = [{"mid": "click:o8", "describe": 'Click the option "Indeed"'},
+              {"mid": "click:o9", "describe": 'Click the option "LinkedIn"'},
+              {"mid": "search:term", "describe": "Type a search term"}, {"mid": GIVE_UP, "describe": "Stop"}]
+    got = heard_step(db_session, heard(candidates=leaves, tried_terms=["LinkedIn"], history=["search:term -> progressed"]),
+                     BOARD_HINT)
+    assert (got.mid, got.reason, got.term) == ("click:o9", "assumed", None) and got.trace == DecisionTrace()
+
+
+def test_the_leaf_is_clicked_before_any_search_when_it_is_already_listed(db_session, monkeypatch):
+    no_model(monkeypatch)
+    leaves = [*SIX_GROUPS[:2], {"mid": "click:o9", "describe": 'Click the option "linkedin"'},
+              {"mid": "search:term", "describe": "Type a search term"}]
+    got = heard_step(db_session, heard(candidates=leaves), BOARD_HINT)
+    assert (got.mid, got.reason) == ("click:o9", "assumed")
+
+
+def test_a_leaf_that_says_the_saved_word_is_the_profiles_answer_not_assumed(db_session, monkeypatch):
+    """The saved word "LinkedIn" is itself the board: its leaf is a match, not a guess."""
+    no_model(monkeypatch)
+    facts = autofill_catalog.build({"preferences": {"how_heard": "LinkedIn"}}, [], [])
+    got = autofill_step.step(heard(candidates=[{"mid": "click:o9", "describe": 'Click the option "LinkedIn"'}]),
+                             facts, db_session, None)
+    assert (got.mid, got.reason) == ("click:o9", "matched")
+
+
+def test_a_group_named_like_the_board_is_never_clicked_as_its_leaf(db_session, monkeypatch):
+    calls = []
+    monkeypatch.setattr(autofill_step, "_move", lambda *a, **kw: calls.append(1) or autofill_step.ABSTAIN)
+    r = heard(candidates=[{"mid": "click:o1", "describe": 'Open the group "LinkedIn"'}, {"mid": GIVE_UP, "describe": "Stop"}])
+    got = heard_step(db_session, r, BOARD_HINT)
+    assert calls == [1] and got.mid is None
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("tried", [["LinkedIn"], ["linkedin"], [" LINKEDIN "]])
+def test_a_board_already_searched_with_no_leaf_goes_to_the_model(db_session, monkeypatch, tried):
+    calls = fake_jev(monkeypatch, ("click:o5", 0.9))
+    got = heard_step(db_session, heard(candidates=searchable(), tried_terms=tried), BOARD_HINT)
+    assert len(calls) == 1 and (got.mid, got.reason) == ("click:o5", "progress")
+    assert "search box" in calls[0]["questions"]["f"]["instructions"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_with_no_search_box_offered_the_model_walks_the_categories(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, ("click:o5", 0.9))
+    got = heard_step(db_session, heard(candidates=[*SIX_GROUPS, {"mid": GIVE_UP, "describe": "Stop"}]), BOARD_HINT)
+    assert len(calls) == 1 and (got.mid, got.reason) == ("click:o5", "progress")
+
+
+@pytest.mark.parametrize(("source", "board"), [("rec_linkedin", "LinkedIn"), ("INDEED", "Indeed"), ("ziprecruiter", "ZipRecruiter")])
+def test_the_board_comes_from_the_pages_source_hint_matched_to_the_known_names(db_session, monkeypatch, source, board):
+    no_model(monkeypatch)
+    got = heard_step(db_session, heard(candidates=searchable()), JobHint(title="Analyst", company="Acme", source=source))
+    assert (got.mid, got.term) == ("search:term", board)
+
+
+def test_with_no_source_hint_a_board_named_in_the_saved_value_is_searched(db_session, monkeypatch):
+    no_model(monkeypatch)
+    facts = autofill_catalog.build({"preferences": {"how_heard": "Indeed"}}, [], [])
+    got = autofill_step.step(heard(candidates=searchable()), facts, db_session, None)
+    assert (got.mid, got.term) == ("search:term", "Indeed")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("hint", [None, JobHint(title="Analyst", company="Acme", source="a-friend"),
+                                  JobHint(title="Analyst", company="Acme", source=None)])
+def test_a_saved_job_board_with_no_known_board_asks_the_model(db_session, monkeypatch, hint):
+    calls = fake_jev(monkeypatch, ("click:o5", 0.9))
+    got = heard_step(db_session, heard(candidates=searchable()), hint)
+    assert len(calls) == 1 and got.mid == "click:o5"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_website_answer_never_searches_a_board(db_session, monkeypatch):
+    facts = autofill_catalog.build({"preferences": {"how_heard": "Company website"}}, [], [])
+    calls = fake_jev(monkeypatch, ("click:o6", 0.9))
+    autofill_step.step(heard(candidates=searchable()), facts, db_session, BOARD_HINT)
+    assert len(calls) == 1
+
+
+def test_another_slot_never_takes_the_boards_search(db_session, monkeypatch):
+    calls = []
+    monkeypatch.setattr(autofill_step, "_move", lambda *a, **kw: calls.append(1) or autofill_step.ABSTAIN)
+    autofill_step.step(req(slot="education.0.discipline", candidates=searchable()), FACTS, db_session, BOARD_HINT)
+    assert calls == [1]

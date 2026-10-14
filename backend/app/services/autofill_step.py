@@ -152,20 +152,64 @@ def how_heard_kind(value: str) -> str | None:
     return "site" if _SITE_ANSWER.search(value) else None
 
 
+_NON_ALNUM = re.compile(r"[^0-9a-z]+")
+
+
+def _folded(text: str) -> str:
+    return _NON_ALNUM.sub("", text.casefold())
+
+
+def board_of(value: str, hint: JobHint | None) -> str | None:
+    """The known board a "how did you hear" answer is about: the board the page's `source` hint names
+    ("linkedin", "rec_linkedin"), else a board named in the saved value; None when neither names one."""
+    for text in (hint.source if hint and hint.source else None, value):
+        folded = _folded(text or "")
+        named = [name for name in BOARD_NAMES if _folded(name) in folded]
+        if named:
+            return max(named, key=len)
+    return None
+
+
+def _board_move(req: StepRequest, value: str, hint: JobHint | None) -> StepResponse | None:
+    """Code's own move for a board answer, before any model: the board's leaf if the list shows it, else a
+    search for the board's name if one is offered and not yet tried. The search covers a tree whole (Workday's
+    prompt lists the leaf of any category), where a model walking categories cannot back out of a wrong one.
+    None: neither applies, the model decides. The trace is code's call (no engine, nothing a model said)."""
+    if not (board := board_of(value, hint)):
+        return None
+    for c in req.candidates:
+        text = _option_text(c.describe)
+        if (c.mid.startswith("click:") and not c.describe.startswith(GROUP_CLICK) and text is not None
+                and text.casefold() == board.casefold()):
+            # The saved word itself is the profile's answer; any other leaf is the Companion's pick.
+            return StepResponse(mid=c.mid, reason="matched" if text.casefold() == value.casefold() else "assumed",
+                                trace=DecisionTrace())
+    tried = {t.strip().casefold() for t in req.tried_terms}
+    if board.casefold() not in tried and any(c.mid == SEARCH_TERM for c in req.candidates):
+        return StepResponse(mid=SEARCH_TERM, reason="progress", term=board, trace=DecisionTrace())
+    return None
+
+
 def _how_heard_goal(field: str, value: str, kind: str, hint: JobHint | None) -> str:
     """How did you hear about us? is often a tree (Workday: a category, then the leaf). The applicant's saved
     source is a kind ("Job board", "Company website"); the leaf is not the profile's word, so the step reports it
     `assumed` (`step`). A board answer picks the board that listed THIS job first; a website answer picks the
-    company's careers-site leaf and names no board."""
+    company's careers-site leaf and names no board. The goal never names one category: the same board sits
+    under "Job Board" on one site and "Social Media" on another."""
     head = (f"You are filling {field} on a job application; the applicant's saved answer is {json.dumps(value)} "
             "(a source, never a person).")
-    grouped = ("open the website, online or job-board category if the options are grouped (otherwise \"Other\"), "
-               "then select ")
     if kind == "site":
+        grouped = ("if the options are grouped, open the category most likely to hold it (names like Website, "
+                   "Company, Careers, Online, Internet or Other); if it is not there, try the next, then select ")
         return (f"{head} The goal is to select where the applicant heard about the job: {grouped}the company "
                 f"careers-site leaf (the company's own website). Never select a job board's leaf. {NEVER_YES_NO}")
     found = f" This job was found on {json.dumps(hint.source)}." if hint and hint.source else ""
-    leaf = f"the leaf for {json.dumps(hint.source)}, otherwise " if hint and hint.source else ""
+    board = board_of(value, hint)
+    grouped = (f"search the list's search box for {json.dumps(board)} first if it has one; else " if board else "") + (
+        "if the options are grouped, open the category most likely to hold it (job boards and social sites sit "
+        "under names like Job Board, Online, Internet, Website, Social Media or Other); if it is not there, try "
+        "the next, then select ")
+    leaf = f"the leaf for {json.dumps(board)}, otherwise " if board else ""
     return (f"{head}{found} The goal is to select where the applicant heard about the job: {grouped}{leaf}"
             f"a job-board leaf, otherwise the company careers-site leaf. {NEVER_YES_NO}")
 
@@ -376,6 +420,9 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     shown = {c.mid: _option_text(c.describe) for c in req.candidates}
     if said and veteran_overreach(said, req.question, [t for t in shown.values() if t]):
         return StepResponse(mid=None, reason="abstained", polarity=polarity)
+    # A saved board answer: the board's leaf or its name in the search box is code's call, before a model.
+    if req.slot == HOW_HEARD_SLOT and how_heard_kind(values[0]) == "board" and (coded := _board_move(req, values[0], hint)):
+        return coded.model_copy(update={"polarity": polarity})
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
     goal = _goal(req, values, hint, facts, answer, level=level, queued=queued)
     ask = _Ask(goal=goal, instructions=_instructions(goal, req),

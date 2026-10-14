@@ -944,11 +944,11 @@ def test_the_scrubbed_trace_of_a_term_run_keeps_the_move_and_no_term(e2e_page, t
     assert [s["move"] for s in field["steps"] if s.get("move") == "search:term"] == ["search:term"] * 4
 
 
-def real_step(page, monkeypatch, facts, script):
+def real_step(page, monkeypatch, facts, script, hint=None):
     """Serve /step from the real service over `facts` (run with `stepBackend=True`): the verdict,
     the floors and the term check are production's; only the models are scripted. `script`: per
     call, (the move's id or an option's text to click, Jev's probability); the fast model's terms
-    come from the moves that name one, `("search:term", p, "Statistics")`."""
+    come from the moves that name one, `("search:term", p, "Statistics")`. `hint`: the job hint the router builds."""
     from app.schemas.autofill_fill import StepRequest
     from app.services import autofill_step, jev, model_settings
     from tests.test_autofill_choose_jev import _answer
@@ -966,7 +966,7 @@ def real_step(page, monkeypatch, facts, script):
     monkeypatch.setattr(jev, "decide", decide)
     monkeypatch.setattr(autofill_step, "fast_json", lambda session, prompt, name, **kw: {"term": terms.pop(0)})
     page.expose_function("__step", lambda body: autofill_step.step(
-        StepRequest.model_validate(body), facts, None, None).model_dump(mode="json", exclude={"trace", "polarity"}))
+        StepRequest.model_validate(body), facts, None, hint).model_dump(mode="json", exclude={"trace", "polarity"}))
 
 
 def _study_facts():
@@ -1025,6 +1025,28 @@ def test_an_exact_policy_slot_never_takes_the_nearest_row_after_the_agents_searc
                limits={"MAX_ROUNDS": 1}, stepBackend=True)
     assert out["by_question"]["Field of Study"]["status"] == "needs_answer" and oracle(page, "fieldOfStudy") == ""
     assert [s["complete"] for s in bodies_of(out, "/api/autofill/step")][:2] == [False, True]
+
+
+# ---------- N1: a board answer is searched, not walked, on workday_source_search.html
+
+def test_the_board_is_searched_by_name_and_its_leaf_clicked_without_asking_a_model(e2e_page, monkeypatch):
+    """Live 2026-10-14: LinkedIn sat under Social Media, the fixed category goal walked the wrong one. With the
+    page's source hint "linkedin", REAL /step searches the board's name (code's call), the search lists the
+    leaf across all six categories, and the next step clicks it: assumed (the saved word was "Job board")."""
+    from app.services import autofill_catalog, autofill_step
+    from app.services.autofill_pick import JobHint
+
+    page = e2e_page
+    facts = autofill_catalog.build({"preferences": {"how_heard": "Job board"}}, [], [])
+    real_step(page, monkeypatch, facts, [], hint=JobHint(title="Analyst", company="Acme", source="linkedin"))
+    monkeypatch.setattr(autofill_step, "_move", lambda *a, **kw: pytest.fail("the model was asked"))
+    out = _run(page, html=fixture_html("workday_source_search.html"), url="https://acme.wd1.myworkdayjobs.com/apply",
+               map={"How Did You Hear About Us?": {"route": "slot", "slot": "preferences.how_heard", "value": "Job board"}},
+               limits={"MAX_ROUNDS": 1}, stepBackend=True)
+    heard = out["by_question"]["How Did You Hear About Us?"]
+    assert oracle(page, "heard") == "LinkedIn" and heard["status"] == "assumed", heard
+    moves = _study_moves(out)
+    assert [m[0] for m in moves] == ["search:term", moves[1][0]] and moves[0][1] == "LinkedIn" and moves[1][0].startswith("click:")
 
 
 # ---------- a redrawn section is typed once (Task 32), on workday_misses.html

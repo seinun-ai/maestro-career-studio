@@ -1,0 +1,243 @@
+<!-- A Workday-style "How Did You Hear About Us?" search box on a tenant whose six categories hold the boards
+     under names a goal cannot guess (made-up employer Acme; live check 2026-10-14, as the owner described it:
+     LinkedIn sits under Social Media, not under a Job Board or Website category). Same widget behaviour as
+     workday_search.html (field notes §2: press opens the list, Enter on key-up searches, the radio commits),
+     with ONE difference that matters here: the search covers the WHOLE tree, so a typed board name lists its
+     leaf whichever category holds it, and two leaves share "LinkedIn" in their text so the search never commits
+     by itself (the single-hit rule, §2 rule 5). Categories open to their leaves in the same list. -->
+<div data-automation-id="formField-source"><label for="heard">How Did You Hear About Us?*</label>
+  <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+    <ul data-automation-id="selectedItemList" role="listbox"></ul>
+    <div data-automation-id="multiselectInputContainer"><div>
+      <input id="heard" type="text" data-uxi-widget-type="selectinput"></div></div>
+  </div></div>
+<div id="portal"></div>
+<style>
+  [data-automation-id="activeListContainer"] { position: relative; width: 420px; max-height: 180px; min-height: 30px;
+    overflow-y: auto; border: 1px solid #888; background: #fff; }
+  [data-automation-id="activeListContainer"] > [role="option"] { position: absolute; left: 0; right: 0; height: 30px;
+    display: flex; align-items: center; }
+  [data-automation-id="activeListContainer"] > [data-kind="category"]::after { content: "\203A"; margin-left: 8px; }
+  [data-automation-id="promptLeafNode"] { display: flex; align-items: center; gap: 6px; }
+  [data-automation-id="selectedItem"] { display: inline-flex; align-items: center; gap: 4px; }
+  [data-automation-id="DELETE_charm"] { width: 14px; height: 14px; cursor: pointer; }
+  [data-automation-id="DELETE_charm"]::before { content: "\00D7"; }
+  [data-automation-id="selectedItem"] [data-automation-id="promptOption"] { margin: 0; }
+</style>
+<script>
+(() => {
+  // __oracle[<field>] is what the fake app HOLDS: set only by the radio or
+  // checkbox inside a result row (or a single-hit Enter, or a pill's ×) —
+  // never by what is typed in the box. The engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+
+  // Six categories; the search lists the leaves of ALL of them.
+  const HEARD = {
+    "Direct Source": ["Company Careers Site"],
+    "Job Fair": ["Campus Job Fair", "Virtual Job Fair"],
+    "Other": ["Other", "LinkedIn Learning"],
+    "Referral": ["Employee Referral", "Friend or Family"],
+    "Social Media": ["Facebook", "Instagram", "LinkedIn"],
+    "Website": ["Glassdoor", "Indeed", "ZipRecruiter"],
+  };
+  const WIDGETS = {
+    heard: { multi: false, leaves: Object.values(HEARD).flat(),
+             start: () => Object.keys(HEARD).map((text) => ({ kind: "category", text })) },
+  };
+  const ROW_H = 30;
+  const WINDOW = 8;   // rows ever in the DOM: long lists are virtualized (§2 rule 6)
+  // The notes give no timings: the two stages sit 250 ms apart, so an engine
+  // that waits 500 ms of quiet has 250 ms of slack before the second lands.
+  const STAGE_1_MS = 150;
+  const STAGE_2_MS = 400;
+
+  const state = { heard: [] };
+  const portal = document.getElementById("portal");
+  const inputOf = (id) => document.getElementById(id);
+  const pillList = (id) => inputOf(id).closest('[data-automation-id="multiSelectContainer"]')
+    .querySelector('[data-automation-id="selectedItemList"]');
+
+  const syncOracle = (id) => { oracle[id] = WIDGETS[id].multi ? [...state[id]] : (state[id][0] ?? ""); };
+  const renderPills = (id) => {
+    pillList(id).replaceChildren(...state[id].map((text) => {
+      const li = document.createElement("li");
+      const pill = document.createElement("div");
+      pill.setAttribute("data-automation-id", "selectedItem");
+      pill.setAttribute("role", "option");
+      pill.setAttribute("aria-label", `${text}, press delete to clear value.`);
+      const charm = document.createElement("div");
+      charm.setAttribute("data-automation-id", "DELETE_charm");
+      const p = document.createElement("p");
+      p.setAttribute("data-automation-id", "promptOption");
+      p.textContent = text;
+      pill.append(charm, p);
+      li.append(pill);
+      return li;
+    }));
+  };
+
+  // The one open list: { id, box, items, token }. Only one widget's list is
+  // open at a time; its container is the portal's only child.
+  let open = null;
+  let tokens = 0;
+  const close = () => { open = null; portal.replaceChildren(); };
+
+  const buildRow = (row, kind) => {
+    row.dataset.kind = kind;
+    if (kind === "leaf") {
+      const leaf = document.createElement("div");
+      leaf.setAttribute("data-automation-id", "promptLeafNode");
+      const box = document.createElement("input");
+      box.type = WIDGETS[open.id].multi ? "checkbox" : "radio";
+      box.setAttribute("data-automation-id", "radioBtn");
+      box.tabIndex = -1;
+      const text = document.createElement("div");
+      text.setAttribute("data-automation-id", "promptOption");
+      leaf.append(box, text);
+      row.replaceChildren(leaf);
+    } else {
+      // A category (with its › arrow, drawn by CSS) or the "No Items." row.
+      const text = document.createElement("div");
+      text.setAttribute("data-automation-id", "promptOption");
+      row.replaceChildren(text);
+    }
+  };
+  // Rows are REUSED: an existing row keeps its node and gets new text (§2 rule 3).
+  const render = () => {
+    if (!open) return;
+    const { box, items, id } = open;
+    box.querySelector("[data-spacer]").style.height = `${items.length * ROW_H}px`;
+    const first = Math.max(0, Math.min(Math.floor(box.scrollTop / ROW_H), items.length - WINDOW));
+    const shown = items.slice(first, first + WINDOW);
+    const rows = [...box.querySelectorAll(':scope > [role="option"]')];
+    shown.forEach((item, i) => {
+      let row = rows[i];
+      if (!row) {
+        row = document.createElement("div");
+        row.setAttribute("role", "option");
+        box.append(row);
+      }
+      // "No Items." is an option-role row too (§2 rule 9), but not a menu item.
+      if (item.kind === "none") row.removeAttribute("data-automation-id");
+      else row.setAttribute("data-automation-id", "menuItem");
+      if (row.dataset.kind !== item.kind) buildRow(row, item.kind);
+      row.dataset.index = String(first + i);
+      row.style.top = `${(first + i) * ROW_H}px`;
+      row.setAttribute("aria-selected", "false");
+      row.querySelector('[data-automation-id="promptOption"]').textContent = item.text;
+      const tick = row.querySelector('input[data-automation-id="radioBtn"]');
+      if (tick) tick.checked = state[id].includes(item.text);
+    });
+    rows.slice(shown.length).forEach((r) => r.remove());
+  };
+
+  const openList = (id) => {
+    const box = document.createElement("div");
+    box.setAttribute("data-automation-id", "activeListContainer");
+    box.setAttribute("role", "listbox");
+    const spacer = document.createElement("div");
+    spacer.setAttribute("data-spacer", "");
+    box.append(spacer);
+    open = { id, box, items: WIDGETS[id].start(), token: ++tokens };
+    portal.replaceChildren(box);
+    box.addEventListener("scroll", render);
+    box.addEventListener("click", onListClick);
+    render();
+  };
+
+  const commit = (text, { onlyAdd = false } = {}) => {
+    const { id } = open;
+    if (WIDGETS[id].multi) {
+      if (state[id].includes(text)) { if (!onlyAdd) state[id] = state[id].filter((t) => t !== text); }
+      else state[id] = [...state[id], text];
+      renderPills(id);
+      syncOracle(id);
+      // The tick is redrawn on the NEXT frame: read right after the click, the
+      // box still shows its old state (§2 rule 8). The list and query stay.
+      requestAnimationFrame(render);
+    } else {
+      state[id] = [text];
+      renderPills(id);
+      syncOracle(id);
+      inputOf(id).value = "";
+      close();
+    }
+  };
+
+  function onListClick(e) {
+    const row = e.target.closest('[role="option"]');
+    if (!row || !open) return;
+    const item = open.items[Number(row.dataset.index)];
+    if (!item) return;
+    if (e.target.matches('input[data-automation-id="radioBtn"]')) {
+      if (e.target.type === "checkbox") e.preventDefault();   // the app, not the browser, owns the tick
+      commit(item.text);
+      return;
+    }
+    if (item.kind === "category") {
+      open.items = HEARD[item.text].map((text) => ({ kind: "leaf", text }));
+      open.box.scrollTop = 0;
+      render();
+      return;
+    }
+    // A click on the row itself only HIGHLIGHTS it (aria-selected is the
+    // keyboard highlight here, not "chosen") — §2 "row vs radio".
+    for (const r of open.box.querySelectorAll(':scope > [role="option"]')) r.setAttribute("aria-selected", "false");
+    row.setAttribute("aria-selected", "true");
+  }
+
+  // Matching is silent in the notes: every word of the query, case-insensitive,
+  // inside the option text (a misspelt word finds nothing, one right word finds all).
+  const search = (id, query) => {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const hits = WIDGETS[id].leaves.filter((t) => words.every((w) => t.toLowerCase().includes(w)));
+    const results = hits.length ? hits.map((text) => ({ kind: "leaf", text })) : [{ kind: "none", text: "No Items." }];
+    const token = open.token;
+    const live = () => open && open.token === token;
+    // Results arrive in two stages (§2 rule 4): the first row, then the rest.
+    setTimeout(() => { if (!live()) return; open.items = results.slice(0, 1); open.box.scrollTop = 0; render(); }, STAGE_1_MS);
+    setTimeout(() => {
+      if (!live()) return;
+      open.items = results;
+      render();
+      // A search with exactly one result commits it on its own (§2 rule 5).
+      if (hits.length === 1) commit(hits[0], { onlyAdd: true });
+    }, STAGE_2_MS);
+  };
+
+  for (const id of Object.keys(WIDGETS)) {
+    const input = inputOf(id);
+    renderPills(id);
+    syncOracle(id);
+    // Press opens the default list, drawn on the next animation frame. Typing
+    // without a press opens nothing (§2 probe sequence).
+    input.addEventListener("mousedown", () => {
+      if (open && open.id === id) return;
+      requestAnimationFrame(() => { if (!open || open.id !== id) openList(id); });
+    });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+    // Enter searches on KEY-UP, and only while this widget's list is open (§2 rules 1, 2).
+    input.addEventListener("keyup", (e) => {
+      if (e.key !== "Enter" || !open || open.id !== id) return;
+      open.token = ++tokens;
+      const query = input.value.trim();
+      if (query) search(id, query);
+    });
+    pillList(id).addEventListener("click", (e) => {
+      const charm = e.target.closest('[data-automation-id="DELETE_charm"]');
+      if (!charm) return;
+      const text = charm.parentElement.querySelector('[data-automation-id="promptOption"]').textContent;
+      state[id] = state[id].filter((t) => t !== text);
+      renderPills(id);
+      syncOracle(id);
+      if (open && open.id === id) requestAnimationFrame(render);
+    });
+  }
+  // Where the notes are silent: a press anywhere outside the open widget and
+  // its list closes the list (the notes do not say how the live list closes).
+  document.addEventListener("mousedown", (e) => {
+    if (!open || portal.contains(e.target) || e.target === inputOf(open.id)) return;
+    close();
+  });
+})();
+</script>
