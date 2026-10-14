@@ -3053,6 +3053,14 @@
     const press = ns.decisions.applyPress(card);
     const alone = card.apply?.queued === true || !QUEUE_BUTTON;
     const spin = (kind) => (card.busy === kind ? " spin" : "");
+    // The job's run is parked in another tab on a step the user does by hand, and this tab is the job's too: the
+    // press is to bring the run here (it stays parked until the user presses Continue here).
+    const mover = ns.panelActionsRun.movableFor(card);
+    if (mover) {
+      const move = actionButton("cta", "Move the run to this tab", () => moveRun(mover.id));
+      move.disabled = card.busy !== null;
+      return [move];
+    }
     const apply = actionButton(alone ? `cta${spin("apply")}` : `cta pair${spin("apply")}`, press.label,
                                () => applyJob());
     apply.disabled = card.busy !== null || card.applySteps?.live === true || press.needsPick;
@@ -3147,6 +3155,11 @@
     chrome.tabs.onRemoved.addListener((tabId) => {
       forgetTab(tabId);
       runWatch.removed?.(tabId);
+    });
+    // A NEW TAB IS HEARD BY THE QUEUED RUN ALONE: one parked on a step the user does by hand (the posting's
+    // Apply, the start chooser) follows them into the tab they open (`actions/run.js`, `followTo`).
+    chrome.tabs.onCreated.addListener((tab) => {
+      runWatch.created?.(tab);
     });
     // A SUBFRAME of the bound tab finished loading, which is how an embedded
     // application form arrives with no url change (`scheduleFrameDetect`).
@@ -4963,7 +4976,7 @@
           dropDeletedApplication, scoreAllBases, quickTailor, useBaseAsIs,
           stopUsingBaseAsIs, createPdf, startFill,
           attachResume, submitAnswer, askQuestion, setStatus, trackThis, startRun, stopRun, resumeRun,
-          skipRun, closeRun, undoLearned, undoMark, markApplied, restoreRuns } =
+          skipRun, closeRun, moveRun, undoLearned, undoMark, markApplied, restoreRuns } =
     ns.panelActions(actionStore());
 
   /** The one primary per stage, as BEHAVIOUR — keyed on the same strings as

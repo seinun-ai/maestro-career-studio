@@ -221,10 +221,14 @@
   function parkedBody(ctx, run) {
     const { node, attach } = ctx.build;
     const [reason, say] = parkWords(run) ?? ["Needs you", "Do this step in the tab, then press Resume."];
-    const box = attach(node("div", "needs run-needs"), node("div", "run-reason", reason), node("div", "opts", say),
+    // A run that followed the user into this tab waits for one press here; it never carries on by itself.
+    const moved = run.moved === true ? "The run moved to this tab. Press Continue here when this is the page to fill. " : "";
+    const box = attach(node("div", "needs run-needs"), node("div", "run-reason", reason), node("div", "opts", `${moved}${say}`),
       ["open_questions", "page_errors", "upload"].includes(run.why) ? questions(ctx, run) : null);
     const actions = node("div", "run-actions");
-    if (canResume(run)) attach(actions, button(ctx, "save", "run-resume", "Resume", () => ctx.act.resumeRun(run.id)));
+    if (canResume(run)) {
+      attach(actions, button(ctx, "save", "run-resume", run.moved === true ? "Continue here" : "Resume", () => ctx.act.resumeRun(run.id)));
+    }
     attach(box, actions);
     const out = [box];
     if (canSkip(run)) {

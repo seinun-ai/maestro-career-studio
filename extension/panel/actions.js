@@ -94,7 +94,7 @@
  * WHAT THIS FILE PUBLISHES: ns.panelActions = (store) => ({ addJob, queueJob,
  * applyJob, applyWithBase, pickApplication, unpickApplication, dropDeletedApplication, scoreAllBases,
  * quickTailor, useBaseAsIs, stopUsingBaseAsIs, createPdf, startFill, submitAnswer,
- * askQuestion, setStatus, trackThis, startRun, stopRun, resumeRun, skipRun, closeRun, undoLearned,
+ * askQuestion, setStatus, trackThis, startRun, stopRun, resumeRun, skipRun, closeRun, moveRun, undoLearned,
  * undoMark, markApplied, restoreRuns }).
  */
 (() => {
@@ -169,6 +169,7 @@
     resumeRun: (id) => run.resumeRun(store, id),
     skipRun: (id) => run.skipRun(store, id),
     closeRun: (id) => run.closeRun(store, id),
+    moveRun: (id) => run.moveRun(store, id),
     undoLearned: (id) => run.undoLearned(store, id),
     undoMark: (id) => run.undoMark(store, id),
     markApplied: (id) => run.markApplied(store, id),

@@ -398,6 +398,7 @@
 
   const PICK_NOTE = "Pick a resume to apply with.";
   const ANOTHER_TAB = "Another tab is already applying to this job. Finish or stop that run first.";
+  const MOVE_RUN = "This job's run is waiting in another tab. Press Move the run to this tab to bring it here.";
   /** A job another copy holds is a stop with a line of its own: nothing was running to cross. */
   const heldStop = (sentence) => ({ stop: sentence, line: "Using this copy of the job", why: "Held elsewhere" });
   const WAITING = "Waiting for your pick";
@@ -532,9 +533,14 @@
     if (!canRunHere(read.ownership)) return heldStop(heldSentence(read.ownership));
     // Another tab's run holds this job's proposal: a relink under it would move the application the run
     // is filling. The server cannot see the panel's runs, so the panel checks.
-    if (read.proposalId && store.read().runs.some((one) => one.proposalId === read.proposalId
-        && !ns.panelActionsRun.TERMINAL.has(one.status))) {
-      return { stop: ANOTHER_TAB, line: "Opening the application", why: "Running in another tab" };
+    const holder = read.proposalId ? store.read().runs.find((one) => one.proposalId === read.proposalId
+      && !ns.panelActionsRun.TERMINAL.has(one.status)) : null;
+    if (holder) {
+      // A run parked on a step the user does by hand (the posting's Apply, say) can come to this tab; one that
+      // is driving cannot be taken from the page it is working on.
+      return ns.panelActionsRun.movable(holder)
+        ? { stop: MOVE_RUN, line: "Opening the application", why: "Move the run to this tab" }
+        : { stop: ANOTHER_TAB, line: "Opening the application", why: "Running in another tab" };
     }
     const inPlace = facts.claimed === true;
     // Before anything is written: a pick that no longer stands is the user's to make again.

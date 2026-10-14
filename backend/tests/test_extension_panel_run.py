@@ -244,6 +244,7 @@ main(async () => {
       el.click();
     }
     if (step.activate !== undefined) await onActivated({ tabId: step.activate });
+    if (step.created) await onCreated(step.created);
     if (step.update) await onUpdated(step.update.tab, step.update.change);
     if (step.removed !== undefined) await onRemoved(step.removed);
     if (step.fire) {
@@ -1240,6 +1241,128 @@ def test_a_run_in_place_never_navigates_the_tab_and_parks_when_the_tab_is_not_th
                afterNavigate=0)
     assert out["updates"] == []
     assert (_record(out["shots"][-1])["status"], _record(out["shots"][-1])["why"]) == ("parked", "moved_away")
+
+
+# ---------- a parked run follows the user into the tab they opened ----------
+
+_TABS = [{"id": 7, "url": CAREER_POSTING}, {"id": 8, "url": WORKDAY_APPLY}]
+_TAB_URLS = {"7": CAREER_POSTING, "8": WORKDAY_APPLY}
+
+
+def _parked_on_the_posting(**extra):
+    return _seeded("parked", why="posting", hosts=["careers.acme.test"], openUrl=WORKDAY_APPLY, **extra)
+
+
+def _opened_by(tab_id, url="", opener=7, **extra):
+    """What `chrome.tabs.onCreated` hands over: a link's new tab has its address pending, not yet loaded."""
+    return {"id": tab_id, "openerTabId": opener, "url": url, "pendingUrl": url, "windowId": 1, **extra}
+
+
+def _follow(tmp_path, steps, **spec):
+    spec.setdefault("tabs", _TABS)
+    spec.setdefault("tabUrls", _TAB_URLS)
+    return _run(tmp_path, steps, **spec)
+
+
+def test_a_parked_posting_follows_the_user_into_the_tab_their_apply_opened_and_waits_for_one_press(tmp_path):
+    out = _follow(tmp_path, [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, WORKDAY_APPLY)},
+                             {"activate": 8}])
+    record = _record(out["shots"][-1])
+    assert (record["tabId"], record["startTabId"]) == (8, 8)
+    assert (record["status"], record["why"]) == ("parked", "posting")
+    assert "acme.wd1.myworkdayjobs.com" in record["hosts"] and "careers.acme.test" in record["hosts"]
+    # Nothing resumed by itself: not a read of the new tab, not a fill.
+    assert out["fills"] == [] and _page_messages(out, "page_classify") == []
+    card = _card(out["shots"][-1])
+    assert (card["title"], _buttons(card["body"])["run-resume"]) == ("Needs you", "Continue here")
+    assert "moved to this tab" in _text(card["body"]).lower()
+
+
+def test_continue_here_drives_the_new_tab_and_the_old_one_is_left_alone(tmp_path):
+    out = _follow(tmp_path, [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, WORKDAY_APPLY)},
+                             {"activate": 8}, {"press": "run-resume"}, {}], pages=(STEP1, REVIEW))
+    record = _record(out["shots"][-1])
+    assert (record["tabId"], record["status"]) == (8, "ready")
+    assert {msg["tabId"] for msg in _page_messages(out, "page_classify")} == {8}
+    # The panel's own reading of the tab it was bound to at boot aside, the run touched tab 8 and only tab 8.
+    run_messages = {"page_classify", "page_advance", "page_errors", "fill_inventory", "fill_cancel"}
+    assert {msg["tabId"] for msg in out["broadcasts"] if msg["message"]["type"] in run_messages} == {8}
+    # The note is spent: a later park on this record reads as any park.
+    assert not record.get("moved")
+
+
+@pytest.mark.parametrize("status,why", [
+    ("filling", None), ("advancing", None), ("opening", None), ("signing_in", None),
+    ("parked", "open_questions"), ("parked", "captcha"), ("parked", "page_errors"), ("ready", None),
+])
+def test_a_run_that_is_driving_or_waiting_for_something_else_never_moves(tmp_path, status, why):
+    record = _seeded(status, why=why, hosts=["careers.acme.test"], openUrl=WORKDAY_APPLY)
+    out = _follow(tmp_path, [{"seed": [record]}, {"created": _opened_by(8, WORKDAY_APPLY)},
+                             {"update": {"tab": 8, "change": {"url": WORKDAY_APPLY}}}])
+    assert _record(out["shots"][-1])["tabId"] == 7
+
+
+@pytest.mark.parametrize("why", ["posting", "chooser", "unknown_page", "sign_in_yourself", "verify"])
+def test_every_park_that_sends_the_user_elsewhere_follows_them(tmp_path, why):
+    record = _seeded("parked", why=why, hosts=["careers.acme.test"], openUrl=WORKDAY_APPLY)
+    out = _follow(tmp_path, [{"seed": [record]}, {"created": _opened_by(8, WORKDAY_APPLY)}])
+    assert (_record(out["shots"][-1])["tabId"], _record(out["shots"][-1])["why"]) == (8, why)
+
+
+def test_a_tab_that_loads_its_address_after_it_opens_is_followed_when_the_address_arrives(tmp_path):
+    out = _follow(tmp_path, [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, "")},
+                             {"update": {"tab": 8, "change": {"status": "loading"}}}])
+    assert _record(out["shots"][-1])["tabId"] == 7
+    out = _follow(tmp_path, [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, "")},
+                             {"update": {"tab": 8, "change": {"url": WORKDAY_APPLY}}}])
+    assert (_record(out["shots"][-1])["tabId"], _record(out["shots"][-1])["why"]) == (8, "posting")
+
+
+@pytest.mark.parametrize("url", ["https://social.example.test/share?u=1", "https://www.linkedin.com/jobs/view/9"])
+def test_a_tab_the_page_opened_for_something_else_takes_nothing(tmp_path, url):
+    out = _follow(tmp_path, [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, url)},
+                             {"update": {"tab": 8, "change": {"url": url}}}],
+                  tabUrls={"7": CAREER_POSTING, "8": url})
+    assert _record(out["shots"][-1])["tabId"] == 7
+
+
+def test_a_tab_with_no_opener_follows_only_when_the_backend_says_it_is_the_same_job(tmp_path):
+    other = _reply({"match": "exact", "job": {"id": "job-9", "company": "Initech", "title": "Analyst"}, "application": None})
+    same = _reply(_SAVED_MATCH)
+    steps = [{"seed": [_parked_on_the_posting()]}, {"created": {"id": 8, "url": "", "windowId": 1}},
+             {"update": {"tab": 8, "change": {"url": WORKDAY_APPLY}}}]
+    out = _follow(tmp_path, steps, api={"/api/jobs/match": other})
+    assert _record(out["shots"][-1])["tabId"] == 7
+    out = _follow(tmp_path, steps, api={"/api/jobs/match": same})
+    assert (_record(out["shots"][-1])["tabId"], _record(out["shots"][-1])["why"]) == (8, "posting")
+    # A host that is neither the apply host nor a known applicant system is never even looked up.
+    out = _follow(tmp_path, [{"seed": [_parked_on_the_posting()]}, {"created": {"id": 8, "url": "", "windowId": 1}},
+                             {"update": {"tab": 8, "change": {"url": "https://news.example.test/a"}}}],
+                  api={"/api/jobs/match": same}, tabUrls={"7": CAREER_POSTING, "8": "https://news.example.test/a"})
+    assert _record(out["shots"][-1])["tabId"] == 7
+    assert not [msg for msg in _api_calls(out, "/api/jobs/match") if "news.example.test" in msg["path"]]
+
+
+def test_a_tab_in_another_window_or_a_run_another_panel_holds_is_left_alone(tmp_path):
+    steps = [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, WORKDAY_APPLY, windowId=2)}]
+    out = _follow(tmp_path, steps, windowIds={"8": 2})
+    assert _record(out["shots"][-1])["tabId"] == 7
+    steps = [{"seed": [_parked_on_the_posting(lease="panel-someone-else")]}, {"created": _opened_by(8, WORKDAY_APPLY)}]
+    out = _follow(tmp_path, steps)
+    assert _record(out["shots"][-1])["tabId"] == 7
+
+
+def test_a_tab_the_user_already_has_a_run_in_is_never_taken_over(tmp_path):
+    busy = {**_seeded("filling", hosts=["acme.wd1.myworkdayjobs.com"]), "id": "run-2", "tabId": 8, "startTabId": 8,
+            "proposalId": "prop-2", "jobId": "job-2"}
+    out = _follow(tmp_path, [{"seed": [_parked_on_the_posting(), busy]}, {"created": _opened_by(8, WORKDAY_APPLY)}])
+    tabs = {run["id"]: run["tabId"] for run in out["shots"][-1]["runs"]}
+    assert tabs == {"run-1": 7, "run-2": 8}
+
+
+def test_the_moved_run_is_saved_on_its_new_tab_for_a_reopened_panel(tmp_path):
+    out = _follow(tmp_path, [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, WORKDAY_APPLY)}])
+    assert out["queueSaves"][-1][0]["tabId"] == 8 and out["queueSaves"][-1][0]["startTabId"] == 8
 
 
 def test_done_takes_a_finished_record_off_the_tab(tmp_path):

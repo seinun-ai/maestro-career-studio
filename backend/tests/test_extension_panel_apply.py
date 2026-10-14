@@ -118,11 +118,12 @@ _APPLY_DRIVER_JS = _PANEL_FAKES_JS + r"""
 // ---- nothing may open: Apply drives THIS tab ----
 const created = [];
 chrome.tabs.create = async (props) => { created.push({ tab: props }); return { id: 99 }; };
-chrome.windows = { create: async (props) => { created.push({ window: props }); return { id: 5 }; } };
+chrome.windows = { create: async (props) => { created.push({ window: props }); return { id: 5 }; },
+                   getCurrent: async () => ({ id: 1 }) };
 const updates = [];
 let currentUrl = (spec.tabs ?? [])[0]?.url ?? "";
 let at = 0;
-chrome.tabs.get = async (id) => ({ id, status: "complete", url: (spec.tabUrls ?? {})[id] ?? currentUrl });
+chrome.tabs.get = async (id) => ({ id, status: "complete", windowId: 1, url: (spec.tabUrls ?? {})[id] ?? currentUrl });
 chrome.tabs.update = async (id, props) => { updates.push([id, props]); if (props.url) { currentUrl = props.url; at = 0; } };
 
 // ---- the fake site, for the one test that drives a whole record ----
@@ -1491,6 +1492,43 @@ def test_apply_stops_that_name_another_tab_or_a_finished_application_cross_a_lin
     [applied] = [item for item in _by_class(done["shots"][-1]["regions"]["rail"], "apply-steps")[0]["children"]
                  if item["class"] == "fail"]
     assert _by_class(applied, "why")[0]["text"] == "Already applied"
+
+
+def _parked_elsewhere(tab=8, **extra):
+    return {**_run_record(tab, "parked", why="posting"), "proposalId": "prop-1", "jobId": "job-1", **extra}
+
+
+def test_apply_with_the_jobs_run_parked_in_another_tab_offers_to_move_it_and_writes_nothing(tmp_path):
+    """Parked on a step the user does by hand, the run can come here; one that is driving cannot."""
+    detail = _job(proposal_id="prop-1", proposal_status="accepted", application=_draft())
+    out = _apply(tmp_path, api=_saved(**{"/api/jobs/job-1/detail": detail}),
+                 tabs=[{"id": 7, "url": BOARD_URL}, {"id": 8, "url": APP_URL}],
+                 steps=[{"seed": [_parked_elsewhere()], "call": "applyJob", "settles": 2}])
+    [failed] = [item for item in _by_class(out["shots"][-1]["regions"]["rail"], "apply-steps")[0]["children"]
+                if item["class"] == "fail"]
+    assert _by_class(failed, "why")[0]["text"] == "Move the run to this tab"
+    assert out["seeds"] == [] and _order(out) == []
+
+
+def test_the_footer_offers_to_move_the_parked_run_here_and_the_press_moves_it_without_resuming(tmp_path):
+    seed = _parked_elsewhere(hosts=["jobs.acme.test"])
+    out = _apply(tmp_path, api=_saved(), tabs=[{"id": 7, "url": BOARD_URL}, {"id": 8, "url": APP_URL}],
+                 steps=[{"seed": [seed]}, {"foot": "Move the run to this tab", "settles": 3}])
+    assert _labels(out["shots"][1]) == ["Move the run to this tab"]
+    [record] = out["shots"][-1]["facts"]["runs"]
+    assert (record["tabId"], record["startTabId"], record["status"], record["why"]) == (7, 7, "parked", "posting")
+    assert _order(out) == [] and out["seeds"] == []
+    # The card on this tab now holds the run, and the footer's offer is gone.
+    assert "Continue here" in _rail_buttons(out["shots"][-1])
+    assert "Move the run to this tab" not in _labels(out["shots"][-1])
+
+
+def test_the_footer_offers_no_move_for_a_run_that_is_driving_or_another_jobs(tmp_path):
+    for record in (_parked_elsewhere(status="filling", why=None), _parked_elsewhere(jobId="job-9"),
+                   _parked_elsewhere(why="open_questions")):
+        out = _apply(tmp_path, api=_saved(), tabs=[{"id": 7, "url": BOARD_URL}, {"id": 8, "url": APP_URL}],
+                     steps=[{"seed": [record]}])
+        assert "Move the run to this tab" not in _labels(out["shots"][-1]), record
 
 
 def test_a_pressed_stop_is_drawn_dimmed(tmp_path):

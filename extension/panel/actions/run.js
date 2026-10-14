@@ -33,7 +33,7 @@
  * which neither the card nor `chrome.storage.session` ever sees.
  *
  * WHAT THIS FILE PUBLISHES: ns.panelActionsRun = { startRun, runningHere, stopRun, resumeRun, skipRun,
- * closeRun, undoLearned, undoMark, markApplied, restoreRuns, TERMINAL }. `TERMINAL` is the set of run
+ * closeRun, moveRun, movable, movableFor, undoLearned, undoMark, markApplied, restoreRuns, TERMINAL }. `TERMINAL` is the set of run
  * statuses that are over, read by the Job step's Apply to see whether another tab's run holds a job.
  */
 (() => {
@@ -81,6 +81,9 @@
     lease: `panel-${Math.random().toString(36).slice(2)}`,
     // Per run: the fids the page watches for the user's hands, and the gap rows already posted.
     watching: new Map(), gapped: new Map(),
+    // New tabs a parked run's tab opened whose address has not arrived (tab id -> run id), and the
+    // tab+address pairs already asked the backend about (one lookup each).
+    openers: new Map(), looked: new Set(),
   };
 
   const tabOf = (record) => record.tabId ?? record.startTabId;
@@ -687,7 +690,7 @@
     // moved here): the mark after the user's Submit then has exactly one owner.
     // A ready tab taken back to a form step is a new fill: it is no longer vouched for as the finished application.
     const wasReady = record.status === "ready";
-    Object.assign(record, { status: "filling", stopRequested: false, learned: null, lease: state.lease },
+    Object.assign(record, { status: "filling", stopRequested: false, learned: null, moved: false, lease: state.lease },
       wasReady ? { readyAt: null, readyBy: null, movedOn: false } : {});
     persist(store);
     try {
@@ -717,7 +720,101 @@
 
   // ---------- the confirmation: a Submit the user pressed, seen, and marked 8 s later ----------
 
+  // ---------- a parked run follows the user into the tab they open ----------
+
+  // A record with no lease predates the field (or was made by a test): this panel's to watch.
+  const ownedHere = (record) => record.lease == null || record.lease === state.lease;
+
+  /** Whether the record may be moved to another tab: parked on a step the user does by hand (the posting's
+   * Apply, the start chooser, a sign-in, a code, a page it does not know), owned by this panel and not being
+   * driven. A run that is filling or advancing never moves; neither does one waiting for an answer or a wall. */
+  const movable = (record) => record.status === "parked" && ns.queueRun.USER_NAVIGATES.has(record.why)
+    && record.stopRequested !== true && !state.driving.has(record.id) && ownedHere(record);
+
+  /** The record that could come to the tab the facts are bound to: this job's, in another tab, movable. */
+  function movableFor(facts) {
+    const jobId = facts.job?.id;
+    if (!jobId || facts.tabId == null || !Array.isArray(facts.runs)) return null;
+    if (facts.runs.some((one) => tabOf(one) === facts.tabId && live(one))) return null;
+    return facts.runs.find((one) => one.jobId === jobId && tabOf(one) !== facts.tabId && movable(one)) ?? null;
+  }
+
+  /** A page the application could be on: a host the run reached, the apply link's host, or a known ATS. */
+  function looksLikeApplication(record, url) {
+    const host = hostOf(url);
+    return Boolean(host) && ((record.hosts ?? []).includes(host) || host === hostOf(record.openUrl)
+      || ns.atsHosts.isKnown(host));
+  }
+
+  /** Rebind the record to `tabId`. It stays parked where it was parked and does nothing by itself: the card
+   * on the new tab offers Continue here. Its old tab loses the vouch, and the new tab's host joins the run's. */
+  async function followTo(store, record, tabId, url) {
+    if (!movable(record) || tabOf(record) === tabId) return false;
+    if (store.read().runs.some((one) => one !== record && tabOf(one) === tabId && live(one))) return false;
+    // A side panel is one per window and every panel hears every tab: only the window's own tab is ours.
+    if (!(await store.run.ownsTab(tabId).catch(() => false)) || !movable(record)) return false;
+    const old = tabOf(record);
+    const host = hostOf(url);
+    const hosts = record.hosts ?? [];
+    Object.assign(record, { tabId, startTabId: tabId, moved: true,
+      hosts: host && !hosts.includes(host) ? [...hosts, host] : hosts });
+    store.run.unvouch(old);
+    persist(store);
+    return true;
+  }
+
+  /** The tab a parked run's page opened: followed at once when its address is already the application's,
+   * else when the address arrives (`followOpened`). A tab opened for anything else is not the run's. */
+  function onTabCreated(store, tab) {
+    if (!Number.isInteger(tab?.id) || !Number.isInteger(tab.openerTabId)) return;
+    const record = store.read().runs.find((one) => tabOf(one) === tab.openerTabId && movable(one));
+    if (!record) return;
+    const url = tab.pendingUrl || tab.url || "";
+    if (!/^https?:/.test(url)) {
+      state.openers.set(tab.id, record.id);
+      return;
+    }
+    if (looksLikeApplication(record, url)) followTo(store, record, tab.id, url).catch(warn("could not follow the new tab"));
+  }
+
+  /** A tab's address arrived or changed. A tab a parked run's page opened is followed when it is the
+   * application's; any other tab only when the backend says its page is this very job, and only for the
+   * apply link's host or a known ATS (one lookup per address). */
+  function followOpened(store, tabId, url) {
+    if (!/^https?:/.test(url)) return;
+    const runs = store.read().runs;
+    if (runs.some((one) => tabOf(one) === tabId && live(one))) return;
+    const pending = state.openers.get(tabId);
+    if (pending) {
+      state.openers.delete(tabId);
+      const record = recordById(store, pending);
+      if (record && movable(record) && looksLikeApplication(record, url)) {
+        followTo(store, record, tabId, url).catch(warn("could not follow the new tab"));
+      }
+      return;
+    }
+    const key = `${tabId} ${url}`;
+    if (state.looked.has(key)) return;
+    const host = hostOf(url);
+    const record = runs.find((one) => one.jobId && movable(one) && tabOf(one) !== tabId
+      && (host === hostOf(one.openUrl) || ns.atsHosts.isKnown(host)));
+    if (!record) return;
+    state.looked.add(key);
+    store.api(`/api/jobs/match?url=${encodeURIComponent(url)}`)
+      .then((found) => (found?.job?.id === record.jobId ? followTo(store, record, tabId, url) : false))
+      .catch(warn("could not tell whether the new tab is this job"));
+  }
+
+  /** The offer on the tab the user is looking at: bring the parked run here. Nothing is driven. */
+  function moveRun(store, id) {
+    const record = recordById(store, id);
+    const facts = store.read();
+    if (!record || facts.tabId == null || movableFor(facts)?.id !== record.id) return Promise.resolve();
+    return followTo(store, record, facts.tabId, facts.url ?? "").then(() => undefined);
+  }
+
   function onTabUpdated(store, tabId, change) {
+    if (change.url) followOpened(store, tabId, change.url);
     for (const record of store.read().runs) {
       if (record.tabId !== tabId || !live(record)) continue;
       // A tab that went to a host the run never reached is no longer the run's page: its vouch (the
@@ -733,10 +830,8 @@
     }
   }
 
-  // A record with no lease predates the field (or was made by a test): this panel's to watch.
-  const ownedHere = (record) => record.lease == null || record.lease === state.lease;
-
   function onTabRemoved(store, tabId) {
+    state.openers.delete(tabId);
     for (const record of store.read().runs) {
       if (tabOf(record) !== tabId || !live(record)) continue;
       state.timers.get(record.id)?.();
@@ -875,7 +970,8 @@
    * stopped as interrupted; a countdown that was running is the user's to finish by hand. */
   async function restoreRuns(store) {
     store.run.watch({ updated: (tabId, change) => onTabUpdated(store, tabId, change),
-                      removed: (tabId) => onTabRemoved(store, tabId) });
+                      removed: (tabId) => onTabRemoved(store, tabId),
+                      created: (tab) => onTabCreated(store, tab) });
     const saved = await store.run.load().catch(() => []);
     const kept = (Array.isArray(saved) ? saved : []).filter((one) => one && typeof one.id === "string");
     // A reopened panel takes over the records on tabs of ITS window; another window's stay that
@@ -892,6 +988,6 @@
     store.render();
   }
 
-  ns.panelActionsRun = { startRun, runningHere, stopRun, resumeRun, skipRun, closeRun, undoLearned, undoMark,
-                         markApplied, restoreRuns, TERMINAL };
+  ns.panelActionsRun = { startRun, runningHere, stopRun, resumeRun, skipRun, closeRun, moveRun, movable, movableFor,
+                         undoLearned, undoMark, markApplied, restoreRuns, TERMINAL };
 })();

@@ -109,6 +109,7 @@ _PANEL_FAKES_JS = r"""
 let onActivated = null;
 let onUpdated = null;
 let onRemoved = null;
+let onCreated = null;
 let onRuntimeMessage = null;
 const heard = (msg, sender) => onRuntimeMessage(msg, sender);
 // A frame of some tab finished loading (`chrome.webNavigation.onCompleted`):
@@ -304,6 +305,7 @@ global.chrome = {
     onActivated: { addListener: (fn) => { listeners.push("onActivated"); onActivated = fn; } },
     onUpdated: { addListener: (fn) => { listeners.push("onUpdated"); onUpdated = fn; } },
     onRemoved: { addListener: (fn) => { listeners.push("onRemoved"); onRemoved = fn; } },
+    onCreated: { addListener: (fn) => { listeners.push("onCreated"); onCreated = fn; } },
   },
   webNavigation: {
     onCompleted: {
