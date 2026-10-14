@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import DecisionTrace, Engine, EntryKind, Format, MapField, Mapped
 from app.services import jev, llm, model_settings
-from app.services.autofill_catalog import Fact, websites
+from app.services.autofill_catalog import WORKED_HERE_SLOT, Fact, named_employer_fact, websites
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR, SLOT_FLOOR
 from app.services.autofill_slots import FREE_TEXT, NO_SLOT
 
@@ -516,6 +516,9 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     if picked is None or _foreign(field):
         return Mapped(route="none"), SLOT_FLOOR
     key, p = picked
+    # "Acme, Globex, or Initech?" names companies the derived No (about the job's company) does not cover.
+    if key == WORKED_HERE_SLOT and (named := named_employer_fact(facts, field.question, *field.options)):
+        facts = facts | {WORKED_HERE_SLOT: named}
     floor = _floor(facts[key]) if key in facts else SLOT_FLOOR
     if key in facts and p >= floor:
         key = _placed_key(field, key, facts)

@@ -19,13 +19,13 @@ never costs them, on the request's one `Budget`.
 import json
 import logging
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, PolarityTrace, Reason
 from app.services import autofill_polarity, jev, llm, model_settings
-from app.services.autofill_catalog import Fact, yes_no_word
+from app.services.autofill_catalog import WORKED_HERE_SLOT, Fact, named_employer_fact, yes_no_word
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
 from app.services.autofill_map import (
     MIN_CALL_S,
@@ -414,8 +414,28 @@ def _veteran_claims(fields: list[PickField], facts: dict[str, Fact], out: dict[s
             out[f.fid] = picked.model_copy(update={"oids": [], "reason": "abstained"})
 
 
+def named_employers(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Fact]]:
+    """A worked-here field whose question or options NAME an employer of the history is picked against Yes,
+    not the derived No (which is about the job's company only): such a field is pointed at a slot of its
+    own, holding that fact, so the rest of the batch keeps the fact it had. Same fields and facts when
+    none is."""
+    moved: dict[str, Fact] = {}
+    out = []
+    for f in fields:
+        named = (named_employer_fact(facts, f.question, *(o.text for o in f.options))
+                 if f.slot == WORKED_HERE_SLOT and f.route == "slot" else None)
+        if named is None:
+            out.append(f)
+            continue
+        slot = f"{WORKED_HERE_SLOT}#{len(moved)}"
+        moved[slot] = replace(named, slot=slot)
+        out.append(f.model_copy(update={"slot": slot}))
+    return (out, facts | moved) if moved else (fields, facts)
+
+
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> dict[str, Picked]:
+    fields, facts = named_employers(fields, facts)
     budget = Budget()
     # Re-checked, never trusted from the client; `queued` is the server's too (the router reads the job's proposal).
     level = model_settings.get_answer_level(session)

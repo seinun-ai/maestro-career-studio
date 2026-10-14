@@ -598,3 +598,72 @@ def test_choose_does_not_offer_the_model_a_saved_answer_that_names_another_job(d
         assert _post(db_session, "/api/autofill/choose", payload).status_code == 200
         assert ("Willing to relocate to Austin?" in prompts[-1]) is offered, (where, application_id)
         assert "Preferred shift" in prompts[-1]
+
+
+# ---------- "Acme, Globex, or Initech": the question names companies the job's company string does not
+
+def _acme_application(db_session, monkeypatch, tmp_path):
+    """An application at Acme, whose resume (SAMPLE_RESUME) lists DataCo and OldCo but never Acme."""
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    application = _seed_application(db_session, slug)
+    db_session.get(Job, application.job_id).company = "Acme"
+    db_session.commit()
+    model_settings.set_jev_api_key(db_session, "sk-or-test")
+    model_settings.set_autofill_engine(db_session, "jev")
+    return application
+
+
+WORKED_OPTIONS = [{"oid": "o1", "text": "Yes"}, {"oid": "o2", "text": "No"}]
+
+
+def test_pick_answers_yes_when_the_question_names_an_employer_of_the_history(db_session, monkeypatch, tmp_path):
+    import json
+
+    from tests.test_autofill_pick import fake_jev
+
+    application = _acme_application(db_session, monkeypatch, tmp_path)
+    calls = fake_jev(monkeypatch, {"w": ("o1", 0.95), "k": ("o2", 0.95)}, ways={"w": ("same", 0.95), "k": ("same", 0.95)})
+    fields = [{"fid": "w", "question": "Have you worked for Acme, Globex or OldCo?", "route": "slot",
+               "slot": "derived.previously_employed_here", "options": WORKED_OPTIONS},
+              {"fid": "k", "question": "Have you worked for Acme or Globex?", "route": "slot",
+               "slot": "derived.previously_employed_here", "options": WORKED_OPTIONS}]
+    r = _post(db_session, "/api/autofill/pick", {"application_id": str(application.id), "fields": fields})
+    assert r.status_code == 200
+    instructions = {fid: q["instructions"] for fid, q in calls[0]["questions"].items()}
+    assert json.dumps("Yes, previously") in instructions["w"] and json.dumps("No") not in instructions["w"]
+    # A question that names no employer of the history is still the derived No.
+    assert json.dumps("No") in instructions["k"] and "Yes, previously" not in instructions["k"]
+
+
+def test_map_hands_back_yes_when_the_question_names_an_employer_of_the_history(db_session, monkeypatch, tmp_path):
+    from tests.test_autofill_map import fake_jev
+
+    application = _acme_application(db_session, monkeypatch, tmp_path)
+    fake_jev(monkeypatch, {"w": ("derived.previously_employed_here", 0.95),
+                           "k": ("derived.previously_employed_here", 0.95)})
+    fields = [{"fid": "w", "question": "Previously employed by Acme, Globex, or OldCo?", "shape": "text"},
+              {"fid": "k", "question": "Previously employed by Acme?", "shape": "text"}]
+    r = _post(db_session, "/api/autofill/map", {"application_id": str(application.id), "fields": fields})
+    assert r.status_code == 200
+    got = r.json()["fields"]
+    assert (got["w"]["slot"], got["w"]["value"]) == ("derived.previously_employed_here", "Yes, previously")
+    assert (got["k"]["slot"], got["k"]["value"]) == ("derived.previously_employed_here", "No")
+
+
+def test_step_goal_says_yes_when_the_question_names_an_employer_of_the_history(db_session, monkeypatch, tmp_path):
+    import json
+
+    from tests.test_autofill_step import fake_jev
+
+    application = _acme_application(db_session, monkeypatch, tmp_path)
+    calls = fake_jev(monkeypatch, ("click:o1", 0.95))
+    goals = {}
+    for fid, question in (("w", "Have you worked for Acme, Globex or OldCo?"), ("k", "Have you worked for Acme?")):
+        body = {"application_id": str(application.id), "fid": fid, "question": question, "route": "slot",
+                "slot": "derived.previously_employed_here",
+                "candidates": [{"mid": "click:o1", "describe": 'Click the option "Yes"'},
+                               {"mid": "give_up", "describe": "Stop"}]}
+        assert _post(db_session, "/api/autofill/step", body).status_code == 200
+        goals[fid] = calls[-1]["questions"][fid]["instructions"]
+    assert f"the answer to the question is {json.dumps('Yes, previously')}" in goals["w"]
+    assert f"the answer to the question is {json.dumps('No')}" in goals["k"]

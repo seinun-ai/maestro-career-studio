@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import TERM, DecisionTrace, Engine, StepRequest, StepResponse
 from app.services import jev, llm, model_settings
-from app.services.autofill_catalog import Fact
+from app.services.autofill_catalog import WORKED_HERE_SLOT, Fact, named_employer_fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from app.services.autofill_map import (
     SECOND_OPINION_MAX_S,
@@ -281,6 +281,9 @@ def _with_term(req: StepRequest, ask: _Ask, session: Session, budget: Budget, mo
 def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> StepResponse:
     budget = Budget()
+    # A question that names an employer of the history is not the derived No (the job's company only).
+    if req.route == "slot" and req.slot == WORKED_HERE_SLOT and (named := named_employer_fact(facts, req.question)):
+        facts = facts | {WORKED_HERE_SLOT: named}
     # The same level /map and /pick state; read here, never from the client (`queued` is the router's).
     level = model_settings.get_answer_level(session)
     # The queued level's blanket Yes to a years question is /pick's alone, after it has asked the history

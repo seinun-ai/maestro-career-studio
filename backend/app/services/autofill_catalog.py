@@ -18,7 +18,7 @@ permission (`consent_forms`) is served on.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any, get_args
 
@@ -187,6 +187,10 @@ class Fact:
     # a fact's question has a polarity (autofill_polarity: same or opposite,
     # code flips a plain Yes/No); a status, list or name is never turned into one.
     yes_no: bool = False
+    # Only the derived worked-here No: the name key and currentness of EVERY job in the history, so a
+    # question that names an employer can be checked against all of it (`named_employer_fact`). Never
+    # sent anywhere, compared or shown.
+    employers: tuple[tuple[str, bool], ...] = field(default=(), compare=False, repr=False)
 
 
 _YES_WORDS, _NO_WORDS = {"yes", "true"}, {"no", "false"}
@@ -420,36 +424,67 @@ def _akin(a: str, b: str) -> bool:
     return long.startswith(f"{short} ")
 
 
-def _worked_here(out: dict[str, Fact], company: str | None, *, complete: bool = True) -> None:
+WORKED_HERE_SLOT = "derived.previously_employed_here"
+
+
+def _history_employers(out: dict[str, Fact], employment: list[dict[str, Any]] | None) -> list[tuple[str, bool]]:
+    """Every employer of the history as (name key, whether that job is current): the WHOLE history
+    when the raw jobs are at hand (the catalog itself lists only MAX_EXPERIENCE of them), else what
+    the catalog lists."""
+    if employment is not None:
+        pairs = [(name_key(str(block.get("employer") or "")), bool(block.get("current"))) for block in employment]
+    else:
+        pairs = [(name_key(str(f.value)), getattr(out.get(f"experience.{m[1]}.current"), "value", None) == "Yes")
+                 for slot, f in out.items() if (m := re.fullmatch(r"experience\.(\d+)\.employer", slot))]
+    return [(key, current) for key, current in pairs if key]
+
+
+def _worked_here(out: dict[str, Fact], company: str | None,
+                 employment: list[dict[str, Any]] | None = None) -> None:
     """The job's company among the history's employers, for THIS application.
 
     A match is Yes — "Yes, currently" when a matching job is current, else "Yes, previously", so a
     pick between "Current Associate" and "Former Associate" has the words to choose by — and the
     company-agnostic standing answer goes. When the history lists jobs and none is at the company
     (or at any company the string names), it is "No": the resume says where the applicant worked
-    (owner, 2026-10-14). Nothing is derived with no jobs listed, with no company, when an employer
-    is a parent or a subsidiary of the company by name ("Amazon" and "Amazon Web Services"), when the
-    history was cut at MAX_EXPERIENCE jobs (`complete` False: the job that matches may be cut),
-    or when the standing answer says Yes (the user's own word outranks an inference): then the
-    question is asked, as it was. A match is still a Yes however long the history."""
+    (owner, 2026-10-14). The WHOLE history is compared, past the jobs the catalog lists. Nothing is
+    derived with no jobs, with no company, when an employer is a parent or a subsidiary of the
+    company by name ("Acme" and "Acme Web Services"), or when the standing answer says Yes (the
+    user's own word outranks an inference): then the question is asked, as it was.
+
+    The derived No is about THE JOB'S company only; a question that names other companies is read
+    again at answer time (`named_employer_fact`), so the fact carries every employer's name key."""
     wanted = _company_keys(company)
-    employers = {m[1]: name_key(str(f.value)) for slot, f in out.items()
-                 if (m := re.fullmatch(r"experience\.(\d+)\.employer", slot))}
-    employers = {i: key for i, key in employers.items() if key}
+    employers = _history_employers(out, employment)
     if not wanted or not employers:
         return
-    matched = [i for i, key in employers.items() if key in wanted]
+    matched = [current for key, current in employers if key in wanted]
     standing = out.get("eligibility.previously_employed_here")
     if matched:
-        current = any(getattr(out.get(f"experience.{i}.current"), "value", None) == "Yes" for i in matched)
-        answer = "Yes, currently" if current else "Yes, previously"
-    elif (not complete or any(_akin(key, name) for key in employers.values() for name in wanted)
+        answer = "Yes, currently" if any(matched) else "Yes, previously"
+    elif (any(_akin(key, name) for key, _ in employers for name in wanted)
           or (standing is not None and yes_no_word(str(standing.value)) == "Yes")):
         return
     else:
         answer = "No"
     out.pop("eligibility.previously_employed_here", None)
-    out["derived.previously_employed_here"] = make_fact("derived.previously_employed_here", answer)
+    fact = make_fact(WORKED_HERE_SLOT, answer)
+    out[WORKED_HERE_SLOT] = replace(fact, employers=tuple(employers)) if answer == "No" else fact
+
+
+def named_employer_fact(facts: dict[str, Fact], *texts: str) -> Fact | None:
+    """The worked-here fact for a question that NAMES an employer of the history, when the derived
+    answer is No. That No is about the job's company, and "Acme, Globex, or Initech?" also asks about
+    Initech: a history employer found in `texts` (the question, its options) as a whole word makes it
+    Yes, so the answer is never a No the history contradicts. None: the fact stands as it is."""
+    fact = facts.get(WORKED_HERE_SLOT)
+    if fact is None or fact.value != "No":
+        return None
+    haystack = f" {name_key(' '.join(texts))} "
+    named = [current for key, current in fact.employers if f" {key} " in haystack]
+    if not named:
+        return None
+    return make_fact(WORKED_HERE_SLOT, "Yes, currently" if any(named) else "Yes, previously")
 
 
 AGREES_TO_TERMS = "derived.agrees_to_terms"
@@ -477,7 +512,7 @@ def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: lis
     _derived(out, profile, today or date.today())
     _education(out, profile.get("education"))
     _experience(out, employment or [])
-    _worked_here(out, company, complete=len(employment or []) <= MAX_EXPERIENCE)
+    _worked_here(out, company, employment or [])
     _languages(out, profile.get("languages"))
     _add(out, "skills", tuple(s for s in (skills or []) if s))
     _custom(out, profile.get("custom"), company, location)

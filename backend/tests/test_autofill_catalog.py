@@ -260,8 +260,8 @@ def test_the_jobs_company_in_the_history_derives_previously_employed_yes():
 
 @pytest.mark.parametrize("company", [None, "", "Tata"])
 def test_no_company_or_a_parent_or_subsidiary_name_derives_nothing_and_keeps_the_standing_answer(company):
-    """No company known, or one that is the start of an employer's name ("Tata" / "Tata Consultancy
-    Services"): the history cannot say No, so the question is asked as before."""
+    """No company known, or one that is the start of an employer's name: the history cannot say No, so
+    the question is asked as before."""
     f = cat.build({"eligibility": {"previously_employed_here": False}},
                   [{"employer": "Tata Consultancy Services", "title": "Engineer"}], [], company=company)
     assert "derived.previously_employed_here" not in f
@@ -297,7 +297,7 @@ def test_an_empty_history_leaves_the_question_unanswered():
     ("Acme, Globex, or Initech", "Yes, previously"),   # one of three matches
     ("Acme, Globex or Umbrella", "No"),                # none of three does
     ("Acme / Hooli", "Yes, currently"),
-    ("Procter and Gamble", "No"),                      # "and" inside a name still reads as a name
+    ("Globex and Sons", "No"),                         # "and" inside a name still reads as a name
 ])
 def test_a_string_naming_several_companies_is_no_only_when_none_matches(company, expected):
     f = cat.build({}, HISTORY, [], company=company)
@@ -305,16 +305,21 @@ def test_a_string_naming_several_companies_is_no_only_when_none_matches(company,
 
 
 def test_a_whole_name_that_holds_and_still_matches_whole():
-    f = cat.build({}, [{"employer": "Procter and Gamble", "title": "Analyst"}], [], company="Procter and Gamble")
+    f = cat.build({}, [{"employer": "Globex and Sons", "title": "Analyst"}], [], company="Globex and Sons")
     assert f["derived.previously_employed_here"].value == "Yes, previously"
 
 
-def test_a_history_cut_at_the_job_limit_cannot_say_no_but_can_say_yes():
+def test_a_long_history_is_compared_whole_not_as_far_as_the_catalog_lists_it():
+    """The catalog lists MAX_EXPERIENCE jobs, but a job past the limit is still a job: Yes for a match
+    there, and No only after every job was compared (owner, 2026-10-14)."""
     jobs = [{"employer": f"Firm{i}", "title": "Engineer"} for i in range(cat.MAX_EXPERIENCE)]
-    assert "derived.previously_employed_here" not in cat.build({}, jobs + [{"employer": "Acme"}], [], company="Zeta")
-    assert cat.build({}, jobs + [{"employer": "Acme"}], [], company="Firm3")[
-        "derived.previously_employed_here"].value == "Yes, previously"
-    assert cat.build({}, jobs, [], company="Zeta")["derived.previously_employed_here"].value == "No"
+    long_history = jobs + [{"employer": "Acme", "title": "Analyst", "current": True}]
+    assert f"experience.{cat.MAX_EXPERIENCE}.employer" not in cat.build({}, long_history, [], company="Zeta")
+    assert cat.build({}, long_history, [], company="Zeta")["derived.previously_employed_here"].value == "No"
+    assert cat.build({}, long_history, [], company="Acme")["derived.previously_employed_here"].value == "Yes, currently"
+    assert cat.build({}, long_history, [], company="Firm3")["derived.previously_employed_here"].value == "Yes, previously"
+    # …and a parent/subsidiary name past the limit still blocks the No.
+    assert "derived.previously_employed_here" not in cat.build({}, long_history, [], company="Acme Web Services")
 
 
 def test_a_standing_yes_outranks_an_inferred_no():
@@ -325,8 +330,42 @@ def test_a_standing_yes_outranks_an_inferred_no():
 
 
 def test_a_parent_and_its_subsidiary_are_not_a_no():
-    f = cat.build({}, [{"employer": "Amazon", "title": "Engineer"}], [], company="Amazon Web Services")
+    f = cat.build({}, [{"employer": "Acme", "title": "Engineer"}], [], company="Acme Web Services")
     assert "derived.previously_employed_here" not in f
+
+
+# ---------- the question names companies the job's company string does not (answer time)
+
+def test_a_question_that_names_an_employer_of_the_history_turns_the_no_into_yes():
+    """An Acme application asks "Acme, Globex, or Initech?" and the history holds Initech: the derived
+    No is about Acme only, so for this question the answer is Yes."""
+    f = cat.build({}, HISTORY, [], company="Acme")
+    assert f["derived.previously_employed_here"].value == "No"
+    got = cat.named_employer_fact(f, "Have you worked for Acme, Globex, or Initech before?")
+    assert got is not None and got.slot == "derived.previously_employed_here" and got.value == "Yes, previously"
+    assert got.describe == f["derived.previously_employed_here"].describe and got.policy == "flag"
+    assert cat.named_employer_fact(f, "Employed by", "Former employee of HOOLI, Inc.").value == "Yes, currently"
+
+
+@pytest.mark.parametrize("texts", [
+    ("Have you worked for Acme or Globex before?",),          # none is in the history
+    ("Were you a member of the Initechnical society?",),      # not a whole word
+    ("Willing to relocate?",),
+])
+def test_a_question_that_names_no_employer_of_the_history_keeps_the_no(texts):
+    assert cat.named_employer_fact(cat.build({}, HISTORY, [], company="Acme"), *texts) is None
+
+
+def test_the_named_employer_is_found_past_the_catalogs_job_limit():
+    jobs = [{"employer": f"Firm{i}", "title": "Engineer"} for i in range(cat.MAX_EXPERIENCE)]
+    f = cat.build({}, jobs + [{"employer": "Initech", "title": "Analyst"}], [], company="Acme")
+    assert f["derived.previously_employed_here"].value == "No"
+    assert cat.named_employer_fact(f, "Acme or Initech?").value == "Yes, previously"
+
+
+def test_only_a_derived_no_is_turned_around():
+    assert cat.named_employer_fact(cat.build({}, HISTORY, [], company="Initech"), "Initech?") is None
+    assert cat.named_employer_fact(cat.build({}, HISTORY, []), "Initech?") is None
 
 
 def test_company_names_match_the_way_sections_match_employers():
