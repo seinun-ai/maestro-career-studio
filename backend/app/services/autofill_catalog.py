@@ -77,14 +77,15 @@ _DESCRIBES: dict[str, str] = {
     # one; a Yes alone does not (it never says which protected class, if any), so a
     # classification question with a Yes is asked (autofill_pick._veteran_claims). A person who
     # is no veteran has never served, so a No also answers "currently or ever served" (live
-    # check 4, 2026-10-14); a Yes never claims CURRENT service (autofill_pick.veteran_overreach).
+    # check 4, 2026-10-14); a Yes never answers a question about CURRENT service alone
+    # (autofill_pick.veteran_overreach).
     # No negation word in it: a description that denies is read as the fact being false.
     "eeo.veteran_status": ("is a veteran (voluntary self-identification; a No also settles every option that "
                            "denies being a veteran or a protected veteran, a question whether the applicant has "
                            "ever or currently served in the military, and a military self-identification "
                            "question whose options are protected-veteran classifications; a Yes alone never says "
                            "which protected class applies, and never answers a branch, a discharge, current "
-                           "service (an ever-or-currently question included) or a relative's service)"),
+                           "service alone or a relative's service)"),
     "eeo.disability_status": "has a disability (voluntary self-identification)",
     # A form asks for it as "salary requirements" or "compensation" as often
     # as "desired salary": one fact, described in each wording.

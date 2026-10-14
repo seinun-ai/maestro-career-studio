@@ -697,7 +697,7 @@ def test_every_description_a_yes_or_no_fact_carries_has_a_direction():
         "veteran or a protected veteran, a question whether the applicant has ever or currently served in "
         "the military, and a military self-identification question whose options are "
         "protected-veteran classifications; a Yes alone never says which protected class applies, and never "
-        "answers a branch, a discharge, current service (an ever-or-currently question included) or a "
+        "answers a branch, a discharge, current service alone or a "
         "relative's service)")
     assert built["experience.0.current"].describe == "experience entry 1: is the applicant's current job (yes/no)"
 

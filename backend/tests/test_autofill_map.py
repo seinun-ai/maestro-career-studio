@@ -579,7 +579,7 @@ def test_the_veteran_fact_is_offered_for_a_military_question(db_session, monkeyp
         assert never in described, never
     # Owner (2026-10-14): one veteran Yes/No, so a No also answers "currently or ever served".
     assert "ever or currently served in the military" in described
-    assert "(an ever-or-currently question included)" in described
+    assert "current service alone" in described
     assert "not" not in described
 
 
