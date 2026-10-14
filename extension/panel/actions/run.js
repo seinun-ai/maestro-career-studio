@@ -59,6 +59,7 @@
   // A record that was mid-air when the panel closed is not running any more.
   const IN_AIR = new Set(["waiting", "opening", "signing_in", "creating_account", "filling", "advancing"]);
   const MAX_PHRASE = 300;
+  const MAX_LOOKED = 50;
   // What the fill report counts as filled on a page (the engine wrote it and checked it).
   const WROTE = new Set(["verified", "closest", "assumed"]);
   // What the card counts as answered: filled and verified, or found answered or the user's own (kept).
@@ -357,7 +358,7 @@
     for (const row of report.fields) {
       // A value the engine landed without choosing it (a search's one hit) is the user's to check: a fixed
       // sentence, never the text the page took.
-      const landed = row.status === "needs_answer" && ns.queueRun.LANDED.test(row.lastOutcome ?? "");
+      const landed = ns.queueRun.landedToCheck(row);
       if ((row.status !== "assumed" && !landed) || !row.question
           || rows.some((one) => one.question === row.question && one.step === step)) continue;
       rows.push({ fid: row.fid, question: row.question, step,
@@ -417,7 +418,8 @@
       pageUrl: ns.fillLoop.pageUrlOf(url),
       limits,
       // Nobody is waiting on an optional skills box in a run, and it is the slowest field of a page.
-      skipOptionalSkills: true,
+      // (A repair of fields the page named is not it: a skills box the page asks for is worked.)
+      skipOptionalSkills: !scoped,
       // What the loop learnt on this page (moves that failed, terms tried) survives to the next call on
       // it. The record owns it; the driver clears it when the step changes, and it never reaches storage.
       memory: (record.memory ??= ns.fillLoop.newMemory()),
@@ -464,13 +466,11 @@
    * fields, never the rest of the page. A fill field is worked again with `only` (and the page's
    * memory); an upload box gets the run's PDF. An error that names nothing the run can work (an unmapped
    * label) stays the user's, and so does one the repair did not fix: `{fixed, remaining}` says which are
-   * left, so the park names only those. `wrote` says whether anything was written at all: a banner left up
-   * over boxes already holding their file is repaired by writing nothing, and the driver then reads the page
-   * again to see where it is. */
+   * left, so the park names only those. A banner left up over boxes already holding their file is repaired by
+   * writing nothing; the driver then reads the page again to see where it is. */
   async function fixPage(store, record, errors, limits) {
     const mapped = (one) => one.target && (one.kind === "field" || one.kind === "upload");
     const remaining = errors.filter((one) => !mapped(one));
-    let wrote = false;
     // An upload box the page named gets the run's PDF, whatever the box looks like to the run's own attach,
     // but only ONE box: two named uploads cannot both be the resume's, so the user is asked.
     const uploads = errors.filter((one) => mapped(one) && one.kind === "upload");
@@ -480,22 +480,20 @@
         // A banner left up over a box the user filled by hand is a stale line: that box is repaired.
         if ((await uploadBoxes(store.run, record)).some((box) => box.target === one.target && box.occupied)) continue;
         if (record.stopRequested === true || !(await attachBox(store, record, one.target)).attached) remaining.push(one);
-        else wrote = true;
       }
     }
     const fields = errors.filter((one) => mapped(one) && one.kind === "field");
     if (fields.length && record.stopRequested !== true) {
       const report = await fillPage(store, record, limits, { only: fields.map((one) => one.target) });
-      if (report.stopped) return { fixed: false, remaining: [...remaining, ...fields], wrote };
+      if (report.stopped) return { fixed: false, remaining: [...remaining, ...fields] };
       const byFid = new Map(report.fields.map((row) => [row.fid, row]));
       for (const one of fields) {
-        if (REPAIRED.has(byFid.get(one.target)?.status)) wrote = wrote || WROTE.has(byFid.get(one.target).status);
-        else remaining.push(one);
+        if (!REPAIRED.has(byFid.get(one.target)?.status)) remaining.push(one);
       }
     } else {
       remaining.push(...fields);
     }
-    return { fixed: remaining.length === 0, remaining, wrote };
+    return { fixed: remaining.length === 0, remaining };
   }
 
   /** Whether the worker posted the run's trace: it answers `why: "off"` when the fill log is off, and the card
@@ -762,12 +760,23 @@
     return facts.runs.find((one) => one.jobId === jobId && tabOf(one) !== facts.tabId && movable(one)) ?? null;
   }
 
-  /** A page the application could be on: a host the run reached, the apply link's host, or a known ATS. */
-  function looksLikeApplication(record, url) {
-    const host = hostOf(url);
-    return Boolean(host) && ((record.hosts ?? []).includes(host) || host === hostOf(record.openUrl)
-      || ns.atsHosts.isKnown(host));
+  /** Whether `url` lies under `base`: the same origin and one path the prefix of the other (a posting and its
+   * apply or step pages), two segments at least. Another job of the same tenant, or a policy page, is not. */
+  function underPath(base, url) {
+    try {
+      const [a, b] = [new URL(base), new URL(url)];
+      if (a.origin !== b.origin) return false;
+      const [x, y] = [a, b].map((one) => one.pathname.split("/").filter(Boolean));
+      const n = Math.min(x.length, y.length);
+      return n >= 2 && x.slice(0, n).every((segment, i) => segment === y[i]);
+    } catch {
+      return false;
+    }
   }
+
+  /** The record's own application: under the link it was queued for, or under the Apply link its posting showed. */
+  const isTheApplication = (record, url) => underPath(record.openUrl, url)
+    || (Boolean(record.applyHref) && underPath(record.applyHref, url));
 
   /** Rebind the record to `tabId`. It stays parked where it was parked and does nothing by itself: the card
    * on the new tab offers Continue here. Its old tab loses the vouch, and the new tab's host joins the run's. */
@@ -786,8 +795,8 @@
     return true;
   }
 
-  /** The tab a parked run's page opened: followed at once when its address is already the application's,
-   * else when the address arrives (`followOpened`). A tab opened for anything else is not the run's. */
+  /** The tab a parked run's page opened: followed at once when its address is the application's, else when the
+   * address arrives (`followOpened`). Any other page, however it was opened, needs the backend to say it is this job. */
   function onTabCreated(store, tab) {
     if (!Number.isInteger(tab?.id) || !Number.isInteger(tab.openerTabId)) return;
     const record = store.read().runs.find((one) => tabOf(one) === tab.openerTabId && movable(one));
@@ -797,12 +806,13 @@
       state.openers.set(tab.id, record.id);
       return;
     }
-    if (looksLikeApplication(record, url)) followTo(store, record, tab.id, url).catch(warn("could not follow the new tab"));
+    if (isTheApplication(record, url)) followTo(store, record, tab.id, url).catch(warn("could not follow the new tab"));
+    else followOpened(store, tab.id, url);
   }
 
-  /** A tab's address arrived or changed. A tab a parked run's page opened is followed when it is the
-   * application's; any other tab only when the backend says its page is this very job, and only for the
-   * apply link's host or a known ATS (one lookup per address). */
+  /** A tab's address arrived or changed. A tab a parked run's page opened is followed when it is the application's;
+   * any other page only when the backend says it is this very job, and only on the apply link's host or a known
+   * ATS (one lookup per address). */
   function followOpened(store, tabId, url) {
     if (!/^https?:/.test(url)) return;
     const runs = store.read().runs;
@@ -810,11 +820,11 @@
     const pending = state.openers.get(tabId);
     if (pending) {
       state.openers.delete(tabId);
-      const record = recordById(store, pending);
-      if (record && movable(record) && looksLikeApplication(record, url)) {
-        followTo(store, record, tabId, url).catch(warn("could not follow the new tab"));
+      const opener = recordById(store, pending);
+      if (opener && movable(opener) && isTheApplication(opener, url)) {
+        followTo(store, opener, tabId, url).catch(warn("could not follow the new tab"));
+        return;
       }
-      return;
     }
     const key = `${tabId} ${url}`;
     if (state.looked.has(key)) return;
@@ -823,6 +833,8 @@
       && (host === hostOf(one.openUrl) || ns.atsHosts.isKnown(host)));
     if (!record) return;
     state.looked.add(key);
+    // The last fifty addresses only: a long session with the run parked must not grow this without end.
+    if (state.looked.size > MAX_LOOKED) state.looked.delete(state.looked.values().next().value);
     store.api(`/api/jobs/match?url=${encodeURIComponent(url)}`)
       .then((found) => (found?.job?.id === record.jobId ? followTo(store, record, tabId, url) : false))
       .catch(warn("could not tell whether the new tab is this job"));

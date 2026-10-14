@@ -1016,6 +1016,15 @@ def test_a_field_filled_by_searching_is_listed_for_checking_and_the_run_goes_on(
     assert "SECRET ANSWER TEXT" not in json.dumps(out["queueSaves"]) + text
 
 
+def test_a_protected_answer_a_click_landed_on_parks_and_is_not_listed_as_checked(tmp_path):
+    landed = {**needs("f2", "Are you legally authorized to work here?"), "lastOutcome": "group_committed",
+              "slot": "work_auth.authorized_now"}
+    out = _three_pages(tmp_path, [verified("f1"), landed])
+    record = _record(out["shots"][-1])
+    assert (record["status"], record["why"]) == ("parked", "open_questions")
+    assert record.get("assumedRows", []) == []
+
+
 def test_an_assumed_row_the_receipt_also_flagged_is_one_row_with_its_note(tmp_path):
     flags = {"flags": [{"index": 0, "question": "Start date", "flags": [{"reason": "Doesn't match your profile."}]}]}
     out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
@@ -1358,6 +1367,42 @@ def test_a_tab_with_no_opener_follows_only_when_the_backend_says_it_is_the_same_
     assert not [msg for msg in _api_calls(out, "/api/jobs/match") if "news.example.test" in msg["path"]]
 
 
+@pytest.mark.parametrize("url", ["https://careers.acme.test/privacy-policy",
+                                 "https://acme.wd1.myworkdayjobs.com/External/job/Remote/Other-Role_R999",
+                                 "https://acme.wd1.myworkdayjobs.com/External/job/Remote/Data-Scientist_R1/../x"])
+def test_a_tab_the_page_opened_to_another_page_of_the_same_site_is_not_this_jobs_unless_the_backend_says_so(tmp_path, url):
+    """A privacy policy on a known host, another job on the same tenant: an opener alone proves nothing."""
+    steps = [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, url)},
+             {"update": {"tab": 8, "change": {"url": url}}}]
+    out = _follow(tmp_path, steps, tabUrls={"7": CAREER_POSTING, "8": url})
+    assert _record(out["shots"][-1])["tabId"] == 7
+    # ... but on the apply link's host or a known ATS, the backend recognising the page as this job does move it
+    # (the lookup a stranger tab gets); a page of the career site itself is never looked up.
+    out = _follow(tmp_path, steps, tabUrls={"7": CAREER_POSTING, "8": url}, api={"/api/jobs/match": _reply(_SAVED_MATCH)})
+    assert _record(out["shots"][-1])["tabId"] == (8 if "myworkdayjobs" in url else 7)
+
+
+def test_a_tab_opened_to_the_form_under_the_queued_link_or_the_postings_last_apply_link_is_followed_at_once(tmp_path):
+    step_of_the_form = WORKDAY_APPLY.split("?")[0] + "/applyManually"
+    out = _follow(tmp_path, [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, step_of_the_form)}])
+    assert _record(out["shots"][-1])["tabId"] == 8
+    other = "https://apply.initech.test/jobs/55/apply"
+    seed = _parked_on_the_posting(applyHref=other)
+    out = _follow(tmp_path, [{"seed": [seed]}, {"created": _opened_by(8, other)}], tabUrls={"7": CAREER_POSTING, "8": other})
+    assert _record(out["shots"][-1])["tabId"] == 8
+
+
+def test_the_backend_is_asked_once_per_address_and_remembers_only_the_last_fifty(tmp_path):
+    other = _reply({"match": "exact", "job": {"id": "job-9"}, "application": None})
+    host = "https://acme.wd1.myworkdayjobs.com/External/job/Remote/Role_R"
+    first = {"update": {"tab": 8, "change": {"url": f"{host}1000"}}}
+    steps = [{"seed": [_parked_on_the_posting()]}, first, first,
+             *({"update": {"tab": 8, "change": {"url": f"{host}{n}"}}} for n in range(1001, 1056)), first]
+    out = _follow(tmp_path, steps, api={"/api/jobs/match": other})
+    asked = [msg["path"] for msg in _api_calls(out, "/api/jobs/match") if "R1000" in msg["path"]]
+    assert len(asked) == 2, "once for the repeat, again only after fifty others pushed it out"
+
+
 def test_a_tab_in_another_window_or_a_run_another_panel_holds_is_left_alone(tmp_path):
     steps = [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, WORKDAY_APPLY, windowId=2)}]
     out = _follow(tmp_path, steps, windowIds={"8": 2})
@@ -1530,6 +1575,8 @@ def test_a_rejected_next_repairs_only_the_named_field_and_presses_again(tmp_path
     # Page 1's fill, the repair of City alone, then the review page's fill.
     only = [call["options"].get("only") for call in out["fills"]]
     assert only == [None, ["f-city"], None]
+    # A box the page itself named is a repair of that box: skills included, whatever the run leaves alone.
+    assert [call["options"].get("skipOptionalSkills") for call in out["fills"]] == [True, False, True]
     assert len(_page_messages(out, "page_advance")) == 2
     assert len(_page_messages(out, "page_errors")) == 1
     # The repair is no page: the pages list counts the page once.
