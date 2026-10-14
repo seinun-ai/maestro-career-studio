@@ -1547,7 +1547,7 @@
       sweptFrames = false;
       if (cancelled()) return 0;
       let reverted = 0;
-      const frames = await broadcast({ type: "fill_sweep" });
+      const frames = await broadcast({ type: "fill_sweep", ...(only ? { only: [...only] } : {}) });
       sweptFrames = results(frames).length > 0;
       for (const r of rowsOf(frames)) {
         if (r?.held === true && r.outcome === "verified") held.add(r.fid);

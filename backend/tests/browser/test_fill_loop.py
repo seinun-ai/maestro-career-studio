@@ -3668,3 +3668,11 @@ def test_memory_remembers_the_terms_tried_and_never_a_value_on_the_record(page, 
         options={"sourceHint": None, "memory": "shared"})
     held = page.evaluate("""() => JSON.stringify(window.__runMemory) """)
     assert held in ("{}", None) or "Data Science" not in held   # a record that is saved to storage carries no value
+
+
+def test_only_sends_its_fids_to_the_sweep_and_without_only_the_sweep_is_unscoped(page, load):
+    scoped = run(page, load, **_two_fields(), options={"sourceHint": None, "only": ["d"]})
+    sweeps = [m for m in scoped["sent"] if m["type"] == "fill_sweep"]
+    assert sweeps and all(m["only"] == ["d"] for m in sweeps)
+    open_ = run(page, load, **_two_fields())
+    assert all("only" not in m for m in open_["sent"] if m["type"] == "fill_sweep")

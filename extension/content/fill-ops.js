@@ -264,7 +264,9 @@
     return got.candidates ? got : { error: got.reason ?? got.outcome, version: null, candidates: [] };
   };
 
-  const sweep = async () => {
+  // `only` (fids, optional): a scoped fix recommits no field outside it.
+  const sweep = async (only) => {
+    const scope = Array.isArray(only) ? new Set(only) : null;
     const out = [];
     const reported = new Set();
     // Delayed reversion: a value verified earlier that no longer holds. A
@@ -290,7 +292,7 @@
     // Text holding a value and showing an error: commit its own value again.
     for (const f of inv().list({ consentForms }).fields) {
       if (halted()) break;
-      if (reported.has(f.fid) || f.kind !== "text" || !f.committed || !f.invalid || f.touched || f.policyBlocked) continue;
+      if (reported.has(f.fid) || (scope && !scope.has(f.fid)) || f.kind !== "text" || !f.committed || !f.invalid || f.touched || f.policyBlocked) continue;
       const [row] = await applyNow([{ fid: f.fid, fp: f.fp, op: "recommit" }]);
       if (row) out.push({ fid: f.fid, outcome: row.outcome });
     }

@@ -627,7 +627,7 @@
       ? ns.fillOps.stepState({ fid: msg.fid, fp: msg.fp, value: msg.value })
       : null),
     fill_sweep: (msg) => (frameMayReceiveUserData(msg)
-      ? ns.fillOps.sweep()
+      ? ns.fillOps.sweep(msg.only)
       : []),
     fill_focus: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.focus(msg.fid)

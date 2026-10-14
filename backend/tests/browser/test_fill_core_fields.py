@@ -44,6 +44,17 @@ def test_sweep_recommits_text_that_shows_an_error_with_its_own_value(page, load)
     assert oracle(page, "zip") == "00000"
 
 
+TWO_INVALID = ("<label for='a'>First</label><input id='a' value='x' aria-invalid='true'>"
+               "<label for='b'>Second</label><input id='b' value='y' aria-invalid='true'>")
+
+
+def test_a_sweep_given_fids_recommits_only_those(page, load):
+    load(page, TWO_INVALID)
+    fields = inv(page)
+    assert [r["fid"] for r in page.evaluate(f"(fids) => {OPS}.sweep(fids)", [fields["First"]["fid"]])] == [fields["First"]["fid"]]
+    assert sorted(r["fid"] for r in page.evaluate(f"() => {OPS}.sweep()")) == sorted(f["fid"] for f in fields.values())
+
+
 def test_a_text_the_page_clears_on_blur_is_reverted(page, load):
     load(page, "<label for='a'>Q</label><input id='a'><script>"
                "document.getElementById('a').addEventListener('focusout', e => { e.target.value = ''; });</script>")
