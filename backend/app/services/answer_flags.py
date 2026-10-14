@@ -176,7 +176,12 @@ _LEVELS = [level for level, _ in _LEVEL_ONLY]
 _NO_FIELD = frozenset({"degree", "degrees", "s", "advanced", "graduate", "level", "equivalent", "or", "and", "of",
                        "the", "a", "an", "diploma", "program", "programme"})
 _DEGREE_SLOT = re.compile(r"education\.\d+\.degree")
-_ACRONYM_SKIP = frozenset({"of", "in", "and", "the", "for"})
+_ABBREVIATION_FIELD = {
+    "mba": frozenset({"business", "administration"}), "dba": frozenset({"business", "administration"}),
+    "meng": frozenset({"engineering"}), "beng": frozenset({"engineering"}), "btech": frozenset({"technology"}),
+    "mfa": frozenset({"fine", "arts"}), "mph": frozenset({"public", "health"}), "edd": frozenset({"education"}),
+    "dphil": frozenset({"philosophy"}),
+}
 
 
 def degree_level(text: Any) -> str | None:
@@ -203,8 +208,10 @@ def _same_degree(said: str, kept: str) -> bool | None:
     cannot tell and the words decide."""
     if _names_only_a_level(said) and degree_level(said) == degree_level(kept):
         return True
-    initials = "".join(w[0] for w in _fold(kept).split() if w not in _ACRONYM_SKIP)
-    if len(initials) >= 2 and _fold(said).replace(" ", "") == initials:
+    # An abbreviation that carries its field is that field's degree: "M.B.A." is a Master of Business
+    # Administration, and no other business degree ("Masters of Business Analytics").
+    field = _ABBREVIATION_FIELD.get(_fold(said).replace(" ", ""))
+    if field is not None and degree_level(said) == degree_level(kept) and field <= _tokens(kept):
         return True
     return None
 
