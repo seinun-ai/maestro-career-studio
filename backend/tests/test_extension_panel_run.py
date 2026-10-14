@@ -148,6 +148,15 @@ chrome.storage.session.set = async (patch) => {
   return realSessionSet(patch);
 };
 
+// A BROWSER BLURS A REMOVED NODE: focus falls to the body when the focused control leaves the document.
+const holds = (node, target) => node === target || node.children.some((kid) => holds(kid, target));
+for (const root of [...Object.values(REGIONS), CONTROLS]) {
+  const replace = root.replaceChildren.bind(root);
+  root.replaceChildren = (...kids) => {
+    if (ACTIVE && root.children.some((kid) => holds(kid, ACTIVE))) ACTIVE = null;
+    replace(...kids);
+  };
+}
 const errors = [];
 console.error = (...args) => { errors.push(args.map(String).join(" ")); };
 const ns = loadModules();
@@ -178,7 +187,7 @@ ns.fillLoop.runFill = async (deps, options) => {
 };
 
 const mids = [];
-const snap = () => ({ regions: regions(), runs: JSON.parse(JSON.stringify(ns.panel.actionStore().read().runs)) });
+const snap = () => ({ focused: document.activeElement?.id ?? null, regions: regions(), runs: JSON.parse(JSON.stringify(ns.panel.actionStore().read().runs)) });
 let started = null;
 main(async () => {
   await settle();
@@ -213,6 +222,11 @@ main(async () => {
       });
       for (const el of els) el.click();
       mids.push(snap());
+    }
+    if (step.focus) {
+      const el = document.getElementById(step.focus);
+      if (!el) throw new Error(`no control #${step.focus} to focus`);
+      el.focus();
     }
     if (step.pressText) {
       const hit = (node) => (node.tagName === "BUTTON" && node.textContent === step.pressText ? node
@@ -267,7 +281,9 @@ def _card(shot):
 
 
 def _buttons(node):
-    return {one["id"]: _text(one) for one in _walk(node) if one["tag"] == "BUTTON" and one["id"]}
+    """The card's own buttons: the Ask drawer under it is not the card's (its own tests read it)."""
+    return {one["id"]: _text(one) for one in _walk(node)
+            if one["tag"] == "BUTTON" and one["id"] and one["id"] != "qna-toggle"}
 
 
 def _body_text(shot):
@@ -319,15 +335,34 @@ def test_every_status_is_the_next_cards_title_and_only_the_working_ones_say_appl
     assert "Autofill" not in _text(out["shots"][1]["regions"]["foot"])
 
 
-def test_a_ready_run_card_keeps_the_ask_box_under_it(tmp_path):
-    """The Ask drawer is about the user's own question, so a run card does not take it away."""
-    out = _run(tmp_path, [{"seed": [_seeded("ready", readyAt=1)]}, {"pressText": "Ask"}])
-    closed, opened = out["shots"][1]["regions"]["rail"], out["shots"][2]["regions"]["rail"]
-    [drawer] = _by_class(closed, "qna")
-    [toggle] = _by_class(drawer, "linkish")
-    assert toggle["attrs"]["aria-expanded"] == "false"
-    assert not [one for one in _walk(closed) if one["id"] == "qna-question"]
-    assert [one for one in _walk(opened) if one["id"] == "qna-question"]
+def test_a_parked_or_ready_run_card_keeps_the_ask_box_under_it(tmp_path):
+    """The Ask drawer is about the user's own question, so a card that waits for the user keeps it."""
+    for record in (_seeded("ready", readyAt=1), _seeded("parked", why="captcha")):
+        out = _run(tmp_path, [{"seed": [record]}, {"pressText": "Ask"}])
+        closed, opened = out["shots"][1]["regions"]["rail"], out["shots"][2]["regions"]["rail"]
+        [drawer] = _by_class(closed, "qna")
+        [toggle] = _by_class(drawer, "linkish")
+        assert (toggle["id"], toggle["attrs"]["aria-expanded"]) == ("qna-toggle", "false")
+        assert not [one for one in _walk(closed) if one["id"] == "qna-question"]
+        assert [one for one in _walk(opened) if one["id"] == "qna-question"]
+
+
+@pytest.mark.parametrize("status", ["opening", "signing_in", "filling", "advancing"])
+def test_a_working_run_offers_no_ask_box_only_a_line_saying_when_it_opens(tmp_path, status):
+    """A page turn wipes the draft and a repaint moves the caret, so the box waits for a pause."""
+    out = _run(tmp_path, [{"seed": [_seeded(status)]}])
+    rail = out["shots"][1]["regions"]["rail"]
+    assert not _by_class(rail, "qna")
+    assert not [one for one in _walk(rail) if one["tag"] == "TEXTAREA"]
+    assert "Ask opens when the run pauses." in _text(rail)
+    assert "run-stop" in _buttons(_card(out["shots"][1])["body"])
+
+
+def test_the_stop_button_keeps_its_place_and_focus_across_repaints_of_a_working_run(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("filling", step=1)]}, {"focus": "run-stop"},
+                          {"seed": [_seeded("filling", step=1, pages=[{"n": 1, "filled": 3}])]}])
+    assert out["shots"][-1]["focused"] == "run-stop"
+    assert "run-stop" in _buttons(_card(out["shots"][-1])["body"])
 
 
 def test_the_running_card_shows_the_pages_so_far_a_bar_stop_and_the_fixed_line(tmp_path):
@@ -368,6 +403,8 @@ def test_no_state_ever_draws_a_submit_control(tmp_path):
     ("sign_in_yourself", "Sign in yourself", True, True),
     ("posting", "Apply yourself", True, True),
     ("unknown_page", "Page not recognised", True, True),
+    ("unsure_page", "Not sure this is the last page", True, True),
+    ("confirm_page", "Check this page", True, True),
     ("already_applied", "Already sent?", True, True),
     ("moved_away", "Left the application", True, True),
     ("loop", "The same page again", True, True),
@@ -1508,3 +1545,27 @@ def test_a_resume_after_an_upload_park_with_the_box_filled_presses_on(tmp_path):
     out = _run(tmp_path, [{"seed": [seeded]}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
                frames={"page_uploads": [{"frameId": 0, "result": [{**BOX, "occupied": True}]}]})
     assert _record(out["shots"][2])["step"] == 1 and len(out["fills"]) == 1
+
+
+# ---------- G1: a ready tab taken back to a form step ----------
+
+def test_a_ready_tab_taken_back_to_a_form_step_says_so_and_resume_fills_that_page(tmp_path):
+    back = page("step", 4)
+    final = page("review", 5)
+    out = _run(tmp_path, [{"start": SEED}, {"page": 2, "update": {"tab": 7, "change": {"url": back["url"]}}}],
+               pages=(STEP1, REVIEW, back, final))
+    shot = out["shots"][-1]
+    assert _record(shot)["status"] == "ready" and _record(shot)["movedOn"] is True
+    body = _card(shot)["body"]
+    assert "You moved on. Press Resume to fill this page." in _text(body)
+    assert _buttons(body)["run-resume"] == "Resume"
+    again = _run(tmp_path, [{"start": SEED}, {"page": 2, "update": {"tab": 7, "change": {"url": back["url"]}}},
+                            {"press": "run-resume"}], pages=(STEP1, REVIEW, back, final))
+    record = _record(again["shots"][-1])
+    assert record["status"] == "ready" and not record.get("movedOn") and record["readyBy"] == "submit_button"
+
+
+def test_a_ready_card_that_has_not_been_left_offers_no_resume_and_no_moved_on_line(tmp_path):
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW))
+    body = _card(out["shots"][-1])["body"]
+    assert "run-resume" not in _buttons(body) and "You moved on" not in _text(body)

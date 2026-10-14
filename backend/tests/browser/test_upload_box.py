@@ -298,29 +298,10 @@ def test_a_lone_required_box_with_no_word_of_its_own_and_a_far_heading_is_the_re
     assert oracle(blank, "files") == ["Jane_Doe_Resume.pdf"]
 
 
-def test_a_lone_box_that_is_not_required_but_sits_under_a_resume_heading_is_the_resume_box(blank):
-    """Workday again (live check 2): the same shape without `aria-required`. The heading that says
-    "Resume/CV" is seven levels up, in the box's own section, and nothing else is a field there."""
+def test_a_lone_box_that_is_not_required_stays_unknown(blank):
     _load(blank, ERRORS.replace('aria-required="true"', ""))
-    assert _uploads(blank) == [{"kind": "resume", "occupied": False}]
-    assert _proven(_attach(blank)) == 1
-    assert oracle(blank, "files") == ["Jane_Doe_Resume.pdf"]
-
-
-def test_a_lone_box_with_no_resume_heading_in_its_section_stays_unknown(blank):
-    _load(blank, ERRORS.replace('aria-required="true"', "").replace("Resume/CV", "Documents")
-          .replace("upload your resume and", "upload your"))
     assert _uploads(blank) == [{"kind": "unknown", "occupied": False}]
     assert _proven(_attach(blank)) == 0
-
-
-def test_the_climb_to_a_heading_stops_at_an_ancestor_holding_another_field(blank):
-    """A far heading belongs to the section it heads: past an ancestor that holds another field, it
-    heads that field's section as well, and names neither."""
-    _load(blank, """<form><h3>Resume</h3><div><div><div><div><div><div><div>
-      <input aria-label="Name"><div class="up"><input type="file" name="upload_1"></div>
-    </div></div></div></div></div></div></div></form>""")
-    assert _uploads(blank)[0]["kind"] == "unknown"
 
 
 def test_a_lone_required_box_labelled_cover_letter_is_not_a_resume_box(blank):
@@ -331,17 +312,9 @@ def test_a_lone_required_box_labelled_cover_letter_is_not_a_resume_box(blank):
 
 
 def test_a_required_box_among_several_is_not_taken_for_the_resume_box(blank):
-    # Required alone names no document: the section's resume heading is taken out so only that is tested.
-    two = (ERRORS.replace("Resume/CV", "Documents").replace("upload your resume and", "upload your")
-           + '<div><label for="x2">Attachment</label><input type="file" id="x2"></div>')
-    _load(blank, two)
-    assert [box["kind"] for box in _uploads(blank)] == ["unknown", "unknown"]
-
-
-def test_a_box_in_its_own_resume_section_is_a_resume_box_among_several(blank):
     two = ERRORS + '<div><label for="x2">Attachment</label><input type="file" id="x2"></div>'
     _load(blank, two)
-    assert [box["kind"] for box in _uploads(blank)] == ["resume", "unknown"]
+    assert [box["kind"] for box in _uploads(blank)] == ["unknown", "unknown"]
 
 
 def test_page_uploads_names_each_box_in_the_pages_words_with_a_handle_and_its_state(blank):

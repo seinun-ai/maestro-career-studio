@@ -1080,25 +1080,25 @@ def test_a_step_that_fails_is_crossed_with_a_short_reason_and_no_server_words(tm
 
 def test_bases_not_scored_for_this_job_hide_behind_a_show_more_button(tmp_path):
     """Three bases, two scored: the list shows the two, and one accessible button reveals the third."""
-    out = _apply(tmp_path, api=_saved(), steps=[{"id": "base-more"}])
+    out = _apply(tmp_path, api=_saved(), steps=[{"id": "base-show-more"}])
     before, after = out["shots"][0], out["shots"][1]
     assert [row["id"] for row in _rows_in_rail(before)] == ["base-ai_ml_engineer", "base-data_scientist"]
-    [more] = [one for one in _walk(before["regions"]["rail"]) if one["id"] == "base-more"]
+    [more] = [one for one in _walk(before["regions"]["rail"]) if one["id"] == "base-show-more"]
     assert (more["tag"], _text(more)) == ("BUTTON", "Show 1 more (not scored for this job)")
     assert "linkish" in more["class"].split() and more["attrs"]["aria-expanded"] == "false"
     [group] = [one for one in _walk(before["regions"]["rail"]) if one["attrs"].get("role") == "radiogroup"]
-    assert more["attrs"]["aria-controls"] == group["id"]
+    assert more["attrs"]["aria-controls"] == group["id"] == "base-list-box"
     # Every name keeps its colour square (Backend Engineer has no colour, so it has no square to keep).
     assert all(_by_class(row, "swatch") for row in _rows_in_rail(before))
     rows = _rows_in_rail(after)
     assert [row["id"] for row in rows] == ["base-ai_ml_engineer", "base-data_scientist", "base-swe_backend"]
     assert all(_by_class(row, "swatch") for row in rows[:2])
-    [open_more] = [one for one in _walk(after["regions"]["rail"]) if one["id"] == "base-more"]
+    [open_more] = [one for one in _walk(after["regions"]["rail"]) if one["id"] == "base-show-more"]
     assert open_more["attrs"]["aria-expanded"] == "true"
 
 
 def test_the_selected_base_stays_in_the_list_when_it_was_not_scored(tmp_path):
-    out = _apply(tmp_path, api=_saved(), steps=[{"id": "base-more"}, {"id": "base-swe_backend"}])
+    out = _apply(tmp_path, api=_saved(), steps=[{"id": "base-show-more"}, {"id": "base-swe_backend"}])
     mid = out["shots"][2]
     assert [row["id"] for row in _rows_in_rail(mid)] == [
         "base-ai_ml_engineer", "base-data_scientist", "base-swe_backend"]
@@ -1109,7 +1109,7 @@ def test_with_nothing_scored_every_base_shows_and_there_is_no_show_more_button(t
     api = _saved(**{"GET /api/ats-scores": _reply([])})
     shot = _apply(tmp_path, api=api)["shots"][0]
     assert len(_rows_in_rail(shot)) == 3
-    assert not [one for one in _walk(shot["regions"]["rail"]) if one["id"] == "base-more"]
+    assert not [one for one in _walk(shot["regions"]["rail"]) if one["id"] == "base-show-more"]
 
 
 def test_the_base_list_is_locked_while_apply_works_and_a_click_changes_nothing(tmp_path):
@@ -1500,3 +1500,20 @@ def test_apply_stops_that_name_another_tab_or_a_finished_application_cross_a_lin
 
 def test_a_pressed_stop_is_drawn_dimmed(tmp_path):
     assert '.stop[aria-disabled="true"] { opacity: .6; cursor: default; }' in PANEL_CSS
+
+
+def test_the_show_more_toggle_is_locked_while_apply_is_live_and_free_otherwise(tmp_path):
+    out = _apply(tmp_path, api=_saved(), hold=["POST /api/proposals"], holdSkip=1,
+                 steps=[{"foot": "Apply"}, {"release": True, "settles": 2}])
+    before, during = out["shots"][0], out["shots"][1]
+    [locked] = [one for one in _walk(during["regions"]["rail"]) if one["id"] == "base-show-more"]
+    assert locked["disabled"]
+    [free] = [one for one in _walk(before["regions"]["rail"]) if one["id"] == "base-show-more"]
+    assert not free["disabled"]
+
+
+def test_focus_stays_on_the_show_more_toggle_after_it_is_pressed(tmp_path):
+    out = _apply(tmp_path, api=_saved(), steps=[{"focus": "base-show-more"}, {"id": "base-show-more"}])
+    assert out["shots"][-1]["focused"] == "base-show-more"
+    [toggle] = [one for one in _walk(out["shots"][-1]["regions"]["rail"]) if one["id"] == "base-show-more"]
+    assert _text(toggle) == "Show fewer"

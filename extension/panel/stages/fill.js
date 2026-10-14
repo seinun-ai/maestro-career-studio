@@ -738,6 +738,8 @@
     // essay row's own note), and this discloses a region six pixels below it.
     const trigger = node("button", "linkish", facts.qna.open ? "Hide" : "Ask");
     trigger.type = "button";
+    // Stable, so focus survives the repaint a press causes (`withPlaceKept`).
+    trigger.id = "qna-toggle";
     trigger.setAttribute("aria-expanded", facts.qna.open ? "true" : "false");
     // The Tailor fork's disclosure pattern, reused whole: `aria-expanded` is
     // the state, `aria-controls` names WHAT was disclosed — and it is set ONLY
@@ -833,11 +835,18 @@
     hint.id = FORGET_HINT_ID;
     return build.attach(row, button, hint);
   }
-  // The body, with the Forget control under it on every path.
+  const ASK_WAITS = "Ask opens when the run pauses.";
+
+  // The body: a run's card, or the report with the Forget control under it.
   function fillBody(ctx) {
-    // A queued run on this tab is the fill in progress: its card (panel/runs.js) is the body.
-    // The Ask box still sits under it: it is about the user's own question, not about the run.
-    if (ctx.facts.run) return ctx.build.attach(ns.panelRuns.render(ctx), qnaDrawer(ctx));
+    // A queued run on this tab is the fill in progress: its card (panel/runs.js) leads the body.
+    // The Ask box waits for a pause: a page turn wipes its draft and a repaint moves the caret, so
+    // while the run works there is one line in its place.
+    if (ctx.facts.run) {
+      const card = ns.panelRuns.render(ctx);
+      if (!ns.panelRuns.working(ctx.facts.run)) return ctx.build.attach(card, qnaDrawer(ctx));
+      return ctx.build.attach(card, ctx.build.node("div", "sub", ASK_WAITS));
+    }
     const body = fillBodyOf(ctx);
     const forget = forgetRow(ctx);
     return forget ? ctx.build.attach(body, forget) : body;

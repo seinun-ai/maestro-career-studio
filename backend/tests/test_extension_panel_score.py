@@ -81,7 +81,7 @@ main(async () => {
   }
   // "Show N more": the bases that were not scored for this job are behind this button.
   if (spec.showMore === true) {
-    const more = findById(REGIONS.rail, "base-more");
+    const more = findById(REGIONS.rail, "base-show-more");
     if (!more) throw new Error("no Show more button");
     more.click();
     await settle();

@@ -321,7 +321,7 @@
     return `${build.plural(scored, "base resume")} scored for this job`;
   }
 
-  const BASE_LIST_ID = "base-list";
+  const BASE_LIST_ID = "base-list-box";
 
   /** Which base resumes the list shows. Once any base is scored for this job, only the scored ones
    * and the selected one are on screen (the rest are other-country or off-target bases the scorer
@@ -343,9 +343,9 @@
     const button = build.node("button", "linkish",
       open ? "Show fewer" : `Show ${extra} more (not scored for this job)`);
     button.type = "button";
-    button.id = "base-more";
-    // Locked with the list while Apply works, like the two ways round below it.
-    button.disabled = facts.busy === true || facts.applying === true;
+    button.id = "base-show-more";
+    // Locked while Apply is live, the same as the rows it reveals.
+    button.disabled = facts.applying === true;
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.setAttribute("aria-controls", BASE_LIST_ID);
     button.addEventListener("click", act.toggleBaseMore);
