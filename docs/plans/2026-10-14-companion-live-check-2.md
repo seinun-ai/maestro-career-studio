@@ -341,3 +341,76 @@ Batches G, H, I, J and K own disjoint files and can run in parallel.
 **Interfaces:**
 - G1's `requiredEmpty` relies on H1 and H2 reading `required` correctly. G must also detect required empties from star or `aria-required` on its own, so G does not block on H.
 - J3 needs I8, so that a written question is never `left_blank`.
+
+---
+
+## Addendum: Workday live run (2026-10-14, a Workday tenant)
+
+**Owner decision: create the account.** On known ATS hosts, the Companion creates the account with the saved job-site login. It fills the email, password and verify-password fields. It ticks only a plain account or privacy agreement checkbox when the page requires one, and then presses Create Account. Email codes and CAPTCHAs still park. This reverses the 2026-10-10 rule "account creation always parks".
+
+### G additions
+
+**G1+: Ready on Workday question steps**
+- `content/detect.js` `fillableControls` counts popup buttons: `button[aria-haspopup]:not([aria-haspopup="false"])`, plus any non-input `[role=button][aria-haspopup]`. Search controls are excluded. G owns this hunk.
+- `requiredEmpty` treats a popup button that shows a placeholder ("Select One", from `policy.js` `PLACEHOLDER`) as empty. It counts as required when its aria-label ends in "Required", or when its legend has `abbr[title=required]` or `*`.
+- If the fill listed 0 fields and a re-read then shows `fillable > 0` (or a new set of field fingerprints), set `pageFilled = false` once and fill again before Next or Ready.
+- Reset `record.flags` for each page (`run.js` ~414). A page whose receipt is null must not show the previous page's flags.
+- Test fixture `wizard_popup_questions.html`: three Workday-style popup buttons that mount 2.5 s after the footer. Expect `fillable` to be 3, the fill to list 3 fields, and the run never to report Ready while `requiredEmpty > 0`.
+
+**G3+:** the fill-log-off line also shows the last trace time.
+
+**G4: create the account (owner decision)**
+- `page_create_account` op, in the top frame, on known ATS hosts only, at most once per record. It runs only when the page has exactly one email box and two `new-password` boxes:
+  - type the saved email, and the same saved password into both password boxes;
+  - never type into a honeypot. Treat as a honeypot any control whose label or name says it is for robots, any `name="website"` on an account page, or any control with "beecatcher" or "honeypot" in its automation id;
+  - tick the single account-agreement checkbox only if it is required and its label is an agreement to create the account or to the privacy notice. Never tick marketing opt-ins;
+  - press only the button whose whole label is "Create Account".
+- The password comes from the existing `/api/companion/job-site-login` route. It stays in a local variable only, never in a card, trace or log.
+- After the press:
+  - an email check parks `verify`; after Resume, the existing sign-in route signs in;
+  - a password-rule or duplicate-account error parks `create_account_failed`, never retried;
+  - an "Already have an account" situation leaves the existing sign-in path to handle it.
+- Test: an `acme.test` fixture with the email, password and verify ids, the agreement checkbox, the honeypot, and the Create Account button. Assert the honeypot stays empty, the button is pressed once, and the next page is read.
+
+### H addition
+
+**H2+:**
+- `sectionOf` climbs to the nearest preceding heading in the same field or section, up to about 10 levels. It still stops at FORM and at any other field.
+- A lone attachable box whose section says resume or CV counts as `resume`, whether or not it is required.
+- Test: the `workday_errors` shape without `aria-required` reads `resume`, and the file is written once.
+
+### I addition
+
+**I2+, category rows:**
+- A list row counts as a group when it has no selection control, no radio and no `aria-checked`, and it has a trailing chevron icon.
+- A row whose click revealed children is remembered in `memory` as progress.
+- A category is never committed as the answer.
+
+**I3 check:** Workday's search box needs Enter on keyup. The no-Enter rule must not break `workday_search.html`; key the rule on the live input attributes.
+
+### J additions
+
+**J4: worked-here reroute**
+- In `_route`, a choice field gets `WORKED_HERE_SLOT` when both hold:
+  - the map picked `history_unanswered`, `protected_unanswered` or no fact;
+  - the question lists the job's own company (new helper `lists_job_company`).
+- `named_employer_fact` then decides the answer.
+- Test: history Hooli/Vandelay with a question listing "Acme Wireless, Globex, Initech…" answers No. Initech in the history answers Yes. "Initech Labs" gives no answer.
+
+**J5: phone device type**
+- Add `derived.phone_type = "Mobile"` when `personal.phone` exists, with the description "the kind of phone the number is (mobile, home or work)".
+- Report it as `assumed`. That needs a small hunk in `autofill_pick._bar`.
+- Exclude it from `differs_from_profile`.
+- Add a `phone-type` skip rule before the phone rule in `content/autofill.js`.
+
+**J6: How did you hear**
+- Derive the source from the job's saved `source_url` host as well as `?source=`, for example linkedin.com → "LinkedIn".
+- Add a slot goal for `preferences.how_heard`:
+  - open the website, online or job-board category, otherwise "Other";
+  - pick the board leaf, otherwise a job-board leaf, otherwise the company careers-site leaf;
+  - report it as `assumed`.
+- Test: a made-up category tree.
+
+**J7: degree level in the flag**
+- `answer_flags.py` compares `education.N.degree` by level: doctorate, master (including MBA and MS), bachelor, associate, high school.
+- "Master's/Advanced Degree" against "Masters of …" is not flagged.
