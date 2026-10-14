@@ -256,6 +256,29 @@
   `/context` or `/choose` hands it on (whole word, case-insensitive, in that field only; a row with no kind is met by either; no application
   means a scoped row holds nowhere). Settings shows the scope and **Use for every job** drops it. The `/step` prompt carries a technique card per widget kind
   (`services/autofill_techniques.py`) and, with `search:term`, one fast-model call that writes the agent's own search term.
+- **History answers and the veteran question** (`services/autofill_catalog.py`, `autofill_map.py`, `autofill_pick.py`, `autofill_step.py`).
+  **Written history questions are written.** A text-shape field (text, textarea, multiline) that `/map` files under `years_unanswered` or
+  `history_unanswered` routes `free_text`, so the prose `/choose` path that carries the career history writes it (a choice field keeps its
+  route; the prose rule against unsupported claims stays; a `history_unanswered` text box that names a company stays the user's). The run trace
+  names the sentinel the model chose (`Sentinel` in `schemas/autofill_fill.py`: a fixed word, never a value). **Worked here.** When the history
+  lists jobs and none is at the company, `derived.previously_employed_here` is **No**, marked `inferred` and worded "from your work history" on
+  the receipt (`FilledFieldRead.note`); a match is Yes ("Yes, currently" / "Yes, previously"); no jobs, no company, a parent or subsidiary of an
+  employer, a history cut at the job limit or a saved Yes leave the question asked. That No is about the job's company only, so a question that
+  lists other companies is read again at answer time (`named_employer_fact`, over the WHOLE history, in /pick, /step and /map): a listed company
+  that is an employer is Yes, a listed company that is a parent or subsidiary of one, or an employer standing in the question or its options as
+  capitalised words (a leading or trailing stop-word such as Current or United is ignored), is asked, never No; entries that are no company
+  (Freelance, Contractor) never count. The `HISTORY_UNANSWERED` description reaches a "worked at named companies" question, and the reasoned pass's
+  never-list drops its worked-here clause only while the fact is absent. **Veteran** is one question, "Are you a veteran?"
+  (`eeo.veteran_status`: `no` "No, I am not a veteran", `yes` "Yes, I am a veteran", `decline` "I don't wish to answer"). A No settles every
+  "not a (protected) veteran" option at the exact floor; a Yes alone never says which protected class, so a classification question (the VEVRAA
+  classes by name, "protected", "classification", covered, service-connected, Vietnam-era, active duty during a war or campaign) is asked, an
+  option that names a class or opens "I identify as" is a claim after a No, and any other saved Yes/No fact, a custom row included, is refused on a
+  question that names a veteran class. The saved-answers fill (`content/eeo.js`) takes a plain veteran option or a bare Yes only. Stored values are
+  mapped when the profile is READ, not migrated: `veteran` reads as `yes`; `not_veteran` ("not a protected veteran", true of a veteran who is not
+  protected) reads as unanswered, and the profile lists `stale_answers: ["eeo.veteran_status"]` until the question is answered (a save that does
+  not carry the answer keeps the marker; an older Settings page or peer keeps reading what is stored, so an old peer can read a synced `yes` as a
+  protected veteran). Profile › Autofill asks the question again ("Answer again: this question changed."). Known limits: a lowercase mention of an
+  employer outside a parsed list still reads No, and the veteran-class guard errs toward asking.
 - **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
   compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
   persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
@@ -724,8 +747,12 @@
   pinned by `test_two_concurrent_creates_for_one_job_leave_one_open_proposal`. A partial unique
   index was rejected: a database v0.4.0 imported from Postgres may already hold rows that break
   it, so creating it would fail the migration. If the caller also passes `application_id`
-  and the proposal is unlinked, late-link it (never relink to a different
-  application — 409). Company blocklist stays hard 409. Agent-sourced jobs gate
+  and the proposal is unlinked, late-link it. A proposal already linked to a different
+  application is relinked only by the Companion's Apply: its exact origin, a proposal
+  `accepted` on the `companion` channel with no final review taken, a new application that is
+  a draft of THIS job, and an old one that is gone or still a draft (it goes back to the user
+  lane); every other mismatch is a 409, and an application of another job is refused on every
+  linking route. Company blocklist stays hard 409. Agent-sourced jobs gate
   execute helpers (`prepare` / `attach_evidence` / `record_consent` /
   `mark_submitted`) on an open proposal in the allowed status set — 409 `no
   open proposal for this job`; user- sourced jobs stay ungated. Evidence kinds
@@ -747,6 +774,11 @@
   **Auto-apply** card (deprecated `cooldown_days` hidden but preserved on save;
   the model is extra=forbid) and a **Full automation** card whose On switch
   asks for confirmation. Turning it Off refuses auto consent and login hand-offs.
+  **The Companion's Apply switches**: the `Setting("companion_apply")` row (`services/companion_apply.py`, `JsonSetting`; local JSON at
+  `settings/companion_apply.json`, mirrored and carried in the synced profile bundle) is `{auto_pick: true, stop_each_step: false}`, both `StrictBool`.
+  `GET`/`PUT /api/settings/companion-apply` (a SettingEnvelope); a blob that will not parse reads as the defaults. Settings › AI & models › Form
+  filling shows them as **Choose the base resume for me** and **Stop after each step**; the panel reads them on bind and obeys them only with full
+  automation On (`extension/INTERNALS.md`, "The switches"). The pick limits are Auto-apply's `auto_pick_floor` and `auto_pick_margin`.
   **The Companion's run** (SYSTEM.md §7; `routers/companion.py`, `app/companion_origin.py`): consent channel `companion` is legal only on the
   Companion extension's exact origin (403 otherwise). A PATCH with it queues (`accepted`, from `pending_review`) and refuses `approved` and
   `submitted`; those come only from `POST /api/proposals/{id}/companion-submitted` (`{confirmation: {host, path, text}}`, `extra=forbid`),

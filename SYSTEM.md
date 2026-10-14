@@ -88,7 +88,7 @@ backend/
                        placement_targets, ats_score, base_eligibility, application_writes,
                        artifacts, application_render, engines (the ONE probe),
                        pdf_render (dual-engine: pdflatex + typst), pdf_preview,
-                       jd_extraction, resume_lint, health_*, career_kb,
+                       jd_extraction, resume_lint, resume_voice, health_*, career_kb,
                        chat_agent + chat_tools, transcript (chat rows as neutral parts; NULL `parts` = legacy row), llm_providers/ (neutral LLM types, errors, registry (model id to provider), OpenAI-compatible, Gemini and Claude adapters), attachment_extract (bounded DOCX/PPTX + notes; decks are documents),
                        autofill_choose + autofill_slots + jev (Companion fill), resumes_folder (visible PDF copies),
                        automations (page catalog), agent_runs + inbox_readiness, …)
@@ -210,7 +210,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    pre-ops first (enable_entry → toggle_entry, port_kb_point → add_bullet +
    KBPortLog row; deduped per point/entry), then remaining non-skip
    resolutions → smart-model LLM → typed edit ops → apply → keyword-survival
-   check (one retry, then add_skill_item fallback — LLM path only) →
+   check (one retry, then add_skill_item fallback — LLM path only) → voice check (one retry, then repair in code; §6 inv-resume-voice) →
    reuse-or-insert application → version row → draft-KBPoint write-back of substantive user_input answers (origin=gap_elicitation; every
    skipped write-back returns on the response as `kb_writeback_skips` with a reason — too_short / wrong_section / no_entity_match / duplicate,
    or profile_owned_elsewhere (always-on copy: tailoring skips draft career-history points) — and the gap page toasts a quiet note, so
@@ -308,36 +308,31 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 - **`tailor_application` vs `edit_application`** `{#inv-tailor-vs-edit}` (MCP): the former REPLACES `customized_json`
   wholesale from the BASE resume; the latter applies ops to the CURRENT draft — docstrings lead with this; keep them
   unmistakable. Edit indices are **0-based into the full JSON array**, including `enabled: false` rows omitted from PDF; PATCH `/edits` echoes `applied[]`.
-- **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry` stores label,
-  kind, rule id, option texts, outcome, host — never what was typed, was there before, or any AI answer: no value column, `extra="forbid"`,
-  sw re-filters to six keys. `POST /runs` stores one strict `RunTrace` (newest 50 kept): a label or section holding a value the run wrote,
-  was answered, left or found committed is blanked (`fill-loop.js` `rowKeys`/`siblingKeys`; a field's own option texts and a lone checkbox's
-  yes/no excepted; another field's value counts at 2+ chars typed, 4+ otherwise); the page's option texts and the chosen option's index in
-  that field's own list are kept on every field, EEO too, except a text holding another TYPED field's value; the rest is enums and numbers,
-  never a typed or profile string in a free-text slot. `sw.js` `scrubTrace` whitelists against the schema; nothing posts unless
-  `telemetryEnabled` is `true` (default off; Options › Keep a fill log). Runs fold into host/label-free `autofill_mechanism_stats` (a
-  remembered polarity is not counted). Rows carry `host` + `first_seen_at`, runs `host` + `started_at`: where and when you applied, so
-  `DELETE /telemetry` clears rows and runs, keeps counters, never the capture toggle (`extension/INTERNALS.md`; `…/telemetry/summary` ranks
-  failures). `scripts/fill_trace.py last|report` reads a DB copy. The **known-gaps table** (`autofill_widget_gap`, `POST
-  /api/autofill/gaps`, `extra="forbid"`, closed enums) holds only a widget family hash, host, field shape, outcome (`cannot_operate`,
-  `unconfirmed`, `user_fixed`, `missing_technique`) and counts; `sw.js` `fill_gaps` posts it only while `telemetryEnabled === true`, and
-  `DELETE /telemetry` clears it with the rows and runs. The **gesture report** that teaches the recipe book after a hand fix
-  (`content/recipes.js` `watch`/`report`) holds event types and an allowlisted few key names, never `value` or other keys, credits a pick only to the one field the user is on, and
-  never teaches the generic move (a press), so a hand fix cannot demote a recipe; it stays local, with the fill log off too.
+- **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry` stores label, kind, rule
+  id, option texts, outcome, host — never what was typed, was there before, or any AI answer: no value column, `extra="forbid"`, sw re-filters to six
+  keys. `POST /runs` stores one strict `RunTrace` (newest 50 kept): a label or section holding a value the run wrote, was answered, left or found
+  committed is blanked (`fill-loop.js` `rowKeys`/`siblingKeys`, which a scoped `only` fill still feeds from the fields it left alone; a field's own
+  option texts and a lone checkbox's yes/no excepted; another field's value counts at 2+ chars typed, 4+ otherwise); the page's option texts and the
+  chosen option's index are kept on every field, EEO too, except a text holding another TYPED field's value; the rest is enums and numbers (a /map
+  step names its sentinel from a fixed list, `TRACE_SENTINELS`, in `fill-loop.js` and `sw.js`), never a typed or profile string in a free-text slot.
+  `sw.js` `scrubTrace` whitelists against the schema; nothing posts unless `telemetryEnabled` is `true` (default off; Options › Keep a fill log). Runs
+  fold into host/label-free `autofill_mechanism_stats`. Rows carry `host` + `first_seen_at`, runs `host` + `started_at`, so `DELETE /telemetry` clears
+  rows, runs and gaps, keeps counters, never the capture toggle (`extension/INTERNALS.md`; `scripts/fill_trace.py last|report` reads a DB copy). The
+  **known-gaps table** (`autofill_widget_gap`, `POST /api/autofill/gaps`, `extra="forbid"`, closed enums) holds only a widget family hash, host, field
+  shape, outcome and counts, posted only while `telemetryEnabled === true`; the **gesture report** behind the recipe book (`content/recipes.js`) holds
+  event types and a few allowlisted key names, never `value`, and stays local with the fill log off too.
 - **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an agent filled into an
   application form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`) lives only in the local `filled_answers` table
   (`services/filled_answers.py`; `docs/entities/filled-answers.md`): one row per page run, linked to an application by job + base resume. It
   never enters telemetry, run traces, Langfuse or exports. An EEO value is stored only under recorded EEO consent (the fill's own gate,
   `eeo_consent.withhold_unconsented`, asked at write; without it the row keeps the question with `answer: null`); withdrawing consent clears
-  stored EEO answers (`eeo_consent.set_consent` → `filled_answers.clear_eeo_answers`; `eeo_answered` stays true) and reads are gated again
-  as a second guard. No agent read returns an EEO value, marked or not (the server classifies by question words too): `get_final_review`'s
-  `flags` carry `eeo_answered`, the MCP client strips again, and no MCP path reads `GET /api/jobs/{id}/filled-answers`, which serves EEO
-  values to the web UI. The Companion panel (`shared/receipt.js`, posted by `panel/actions/fill.js` `recordReceipt`) posts the receipt
-  through the generic `api` door, never `telemetry`/`fill_trace`, so it works with telemetry off; after each run, while you edit (a
-  value-free fids-only hint), at Mark applied and as it leaves a page it reads only frames that earn the data (inv-frame-earns-data),
-  records no never-fill field even under standing consent (`ns.isNeverFilled`), and its values never reach the run-trace builders. Pinned by
-  `tests/test_filled_answers_invariant.py`, `test_extension_panel_receipt.py`, `test_filled_answers_api.py`, `test_filled_answers_agent.py`
-  and `mcp_server/tests/test_client_filled_answers.py`.
+  stored EEO answers (`eeo_answered` stays true) and reads are gated again as a second guard. No agent read returns an EEO value, marked or
+  not (the server classifies by question words too): `get_final_review`'s `flags` carry `eeo_answered`, the MCP client strips again, and no
+  MCP path reads `GET /api/jobs/{id}/filled-answers`, which serves EEO values to the web UI. The Companion panel (`shared/receipt.js`,
+  `panel/actions/fill.js` `recordReceipt`) posts the receipt through the generic `api` door, never `telemetry`/`fill_trace`, so it works with
+  telemetry off; it reads only frames that earn the data (inv-frame-earns-data), records no never-fill field even under standing consent
+  (`ns.isNeverFilled`), and its values never reach the run-trace builders. Pinned by `tests/test_filled_answers_invariant.py`,
+  `test_extension_panel_receipt.py`, `test_filled_answers_api.py`, `test_filled_answers_agent.py` and `mcp_server/tests/test_client_filled_answers.py`.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at the sender, but `broadcastToFrames`
   targets every frame — a job page carries ad/analytics/chat iframes, and the ISOLATED world protects the message in transit, NOT the DOM
   written into: a frame owns its DOM, so a profile value in a third-party frame's input is readable by that frame's script. `agent.js` gates
@@ -347,20 +342,18 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   returns the handler's EMPTY shape, never a throw. Attach also requires a VISIBLE input (`input.files` is readable with no gesture). Pinned
   by `tests/test_extension_frame_gate.py`.
 - **The policy deny-list is single-source, and it is TWO lists.** `{#inv-policy-deny-list-single-source}` `extension/shared/policy.js` (in
-  `shared/`, not `content/`, since the panel consults it too) declares each exactly once: `NEVER_FILLED` (signatures/initials, passwords,
-  government IDs) and `CONSENT_FORMS` (the application's OWN certify/acknowledge/attest/terms/arbitration/waiver boxes). WITHOUT the
-  standing `consent_forms` permission (inv-eeo-standing-consent) both lists and the salary rule refuse; WITH it `isPolicyBlocked(label,
-  {consentForms: true})` refuses NO label (owner, 2026-09-26: the user's application, recorded revocable consent); Submit stays the user's
-  at every setting, and Next is clicked only by `page_advance` in a run the user started with Apply, full automation On (§7). It DEFAULTS to
-  false and only a literal `true` counts, so omitting it unlocks nothing; only `fillFormFromProfile` and the fill loop's inventory pass it.
-  FOUR consumers across THREE surfaces: `fillFormFromProfile` ahead of rule matching and `collectOpenQuestions` ahead of EXCLUDE and the
-  per-type ladder — so a consent question rendered as a select/radio is never offered to the model or tagged `data-rt-qid` — plus the
-  panel's PAIR, the half a reader would not guess: the pause row's body renders no input for a blocked label AND `submitAnswer` refuses one
-  again, because the first decides what to draw and the second is what touches the page. Salary history/current/CTC and unqualified
-  salary/wage/compensation mentions are also blocked without consent; explicit salary expectations are allowed only AFTER both lists, so an
-  expectation phrase cannot bypass a list match. `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one declaration
-  of EACH list; only the commit ladder stays a deliberate, pinned-identical twin so each writer is self-contained
-  (`…commit_ladder_stay_identical`).
+  `shared/`, since the panel consults it too) declares each exactly once: `NEVER_FILLED` (signatures/initials, passwords, government IDs) and
+  `CONSENT_FORMS` (the application's OWN certify/acknowledge/attest/terms/arbitration/waiver boxes). WITHOUT the standing `consent_forms`
+  permission (inv-eeo-standing-consent) both lists and the salary rule refuse; WITH it `isPolicyBlocked(label, {consentForms: true})` refuses NO
+  label (the user's application, recorded revocable consent); Submit stays the user's at every setting, and Next is clicked only by
+  `page_advance` in a run the user started with Apply, full automation On (§7). It DEFAULTS to false and only a literal `true` counts; only
+  `fillFormFromProfile` and the fill loop's inventory pass it. FOUR consumers across THREE surfaces: `fillFormFromProfile` ahead of rule
+  matching and `collectOpenQuestions` ahead of EXCLUDE and the per-type ladder — so a consent question rendered as a select/radio is never
+  offered to the model or tagged `data-rt-qid` — plus the panel's PAIR: the pause row renders no input for a blocked label AND `submitAnswer`
+  refuses one again (the first decides what to draw, the second touches the page). Salary history/current/CTC and unqualified
+  salary/wage/compensation mentions are also blocked without consent; explicit salary expectations are allowed only AFTER both lists.
+  `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one declaration of EACH list; only the commit ladder stays a
+  deliberate, pinned-identical twin (`…commit_ladder_stay_identical`).
 - **One label-pattern table, two readers** `{#inv-one-label-pattern-table}` (`extension/shared/profile-fields.js`). The eleven patterns
   naming a TYPED home in the autofill profile (`eligibility.*`, `work_auth.*`, `preferences.*`) are read by `content/autofill.js`'s rule
   table, which FILLS those fields, and by the panel's `saveTargetFor`, which decides where a pause-row answer is LEARNED. They must be one
@@ -422,16 +415,16 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   retried), and the password never reaches a model, run record, card, receipt, trace, telemetry or error. Pins:
   `tests/test_job_site_login.py`, `test_job_site_login_handoff.py`, `test_companion_job_site_login.py`,
   `mcp_server/tests/test_client_job_site_login.py` (symbols in `.system_md_enforcement.json`).
-- **Automatic consent is gated by the user's switch.** `{#inv-auto-consent-gated}` Off by default; only PUT `/api/settings/full-automation`
-  (`{value: bool}`, StrictBool) writes it; PUT `/api/settings/auto-apply` preserves it. Channel `auto` approves only `accepted` (Queued),
-  requires `final_review` evidence, re-checks the company blocklist, and keeps the daily-cap/already-applied gates. An auto-attested submit,
-  including from `submission_uncertain`, needs a note with at least one letter or digit; both auto paths require full automation On. A
-  company blocked after approval still has its submit recorded. Eligibility is the agent's `apply-auto` prompt, not a server-side review
-  judgment. Channel `companion` is the Companion's own and only its exact extension origin may name it: PATCH uses it for the user's Apply
-  (Queued only); the user's real Submit, seen as a confirmation page, is recorded only by `POST /api/proposals/{id}/companion-submitted`
-  (approved then attested submitted, host/path/text as the receipt), which clicks nothing and, past the daily cap or skip list, files an
-  applied-yourself record. Pins: `tests/test_full_automation_setting.py`, `test_proposal_state_machine.py`, `test_companion_submitted.py`
-  (symbols in `.system_md_enforcement.json`).
+- **Automatic consent is gated by the user's switch.** `{#inv-auto-consent-gated}` Off by default; only PUT `/api/settings/full-automation` (`{value: bool}`, StrictBool)
+  writes it; PUT `/api/settings/auto-apply` preserves it. Channel `auto` approves only `accepted` (Queued), requires `final_review` evidence, re-checks the company
+  blocklist, and keeps the daily-cap/already-applied gates. An auto-attested submit, including from `submission_uncertain`, needs a note with at least one letter or digit;
+  both auto paths require full automation On. A company blocked after approval still has its submit recorded. Eligibility is the agent's `apply-auto` prompt, not a
+  server-side review judgment. Channel `companion` is the Companion's own and only its exact extension origin may name it: PATCH uses it for the user's Apply (Queued only);
+  `POST /api/proposals` moves an `accepted` proposal to a newer draft of its job only for that origin, when the yes came on channel `companion`, no final review exists and
+  the old draft is gone or still a draft (every other mismatch stays a 409, and an application of another job is refused on every linking route); the user's real Submit,
+  seen as a confirmation page, is recorded only by `POST /api/proposals/{id}/companion-submitted` (approved then attested submitted, host/path/text as the receipt), which
+  clicks nothing and, past the daily cap or skip list, files an applied-yourself record. Pins: `tests/test_full_automation_setting.py`, `test_proposal_state_machine.py`,
+  `test_companion_submitted.py`, `test_proposals_router.py` (symbols in `.system_md_enforcement.json`).
 - **One writer per job; the laptop owns the profile.** `{#inv-one-writer-ownership}` With sync on (a key file exists) every job has one owner
   machine (`jobs.owner_machine`, NULL = this one) and the other copy holds a read-only replica; the laptop owns the whole profile, which
   the always-on copy replaces on every round and never merges. A queue, skip, status or note change on the other copy's job is a
@@ -471,6 +464,26 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 - **Base resume colour is identity, never state.** `{#inv-resume-color-identity}` One hue per base resume, drawn as a square beside its
   name, never as status; the recipe lives once in `globals.css` and the presets are mirrored across backend, frontend and extension.
   Pinned by `tests/test_frontend_resume_colors.py` and `test_resume_color_parity.py`.
+- **Resume text is the owner's own, in implied first person.** `{#inv-resume-voice}` Every rewrite prompt carries the VOICE rule (built in code, so a
+  customised row keeps it); `services/resume_voice.py` finds the shapes about the owner. Model and caller text NEVER stores a blocking third-person
+  hit (one retry, then repair, then drop); the owner's base lines get only mechanical repairs and are never dropped. Ambiguous shapes are flagged
+  (health advisory `voice.third_person`), never rewritten. MCP ops with a hit get a 400; the tailor response lists repaired paths as `voice_repairs`.
+  Pinned by `tests/test_resume_voice.py` and `test_tailoring_voice.py`.
+- **A Next the page rejects is not a move.** `{#inv-rejected-next}` A press that leaves address and step heading while the page shows errors keeps
+  `step` and `seen`; the driver reads `page_errors` (the page's own words, never a value), repairs ONLY the fields they name (`fix`,
+  `runFill({only})`) in at most `MAX_FIX_ROUNDS`, each error once, then presses again; a repeat or an error it cannot work parks `page_errors`. Pinned
+  by `tests/test_extension_queue_run.py`.
+- **The resume is written once per page, to a lone box, before Next.** `{#inv-one-resume-write}` Only a page's one required upload box whose own words
+  name no other document counts as the resume's, or the box a page error named (an opaque tag); never over a file already there, and never a second
+  write after an `unconfirmed` one. A required box still empty after the fill parks `upload` before `page_advance`, and a Resume never attaches.
+  Pinned by `tests/test_extension_queue_run.py` and `tests/browser/test_upload_box.py`.
+- **A worked-here No is never wrong.** `{#inv-worked-here-no}` The history answers No to "Have you worked at X?" only when it lists jobs and no
+  employer is among the companies the question names (the whole history, any wording); a match is Yes, and a parent or subsidiary of an employer, or
+  an employer's name standing in the question as capitalised words, is ASKED (`autofill_catalog.named_employer_fact`, read by /pick, /step and /map).
+  Pinned by `tests/test_autofill_catalog.py`.
+- **Veteran status is one Yes/No.** `{#inv-veteran-yes-no}` A No settles every "not a (protected) veteran" option; a Yes, and any other saved Yes/No
+  fact, never picks or answers a protected class (/pick, /step, /map and `content/eeo.js`). Legacy `veteran` reads as yes; legacy `not_veteran` reads
+  as UNANSWERED and the profile lists it under `stale_answers`. Pinned by `tests/test_autofill_pick.py`.
 
 ## 7. Agent surfaces
 
@@ -585,32 +598,33 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   answers (EEO only under inv-eeo-standing-consent) and the career history. Readback is timer-sampled and never defaults to failure:
   unconfirmable is `filled_unverified`, not `not_stuck`. Submit stays human at every setting; Next only in the run below. After each run, both modes, the panel posts the
   page's answer receipt (`shared/receipt.js`) and lists its flags under **Check before you submit**; a matched job's knock-out heads Fill.
-  The loop never fills a robot trap (`fillBase.robotTrap`: honeypot wording on any control, off-page geometry on text boxes only, never
-  a required field), leaves an optional field with no fact blank (`left_blank`, named in a collapsed list, not asked), commits and
-  confirms each item of a list field (up to 20, never a closest pick), repeats no move that changed nothing, waits for the page to settle
-  before typing, and gives its adaptive step a technique card per widget kind, what worked on this site and its own `search:term`
-  (a flagged closest only after it).
+  The loop never fills a robot trap (`fillBase.robotTrap`), leaves an optional field with no fact blank (`left_blank`, listed, not asked),
+  commits and confirms each item of a list field (up to 20, none already shown as a pill; never a closest pick), repeats no move that changed
+  nothing (a run record's `memory` keeps what failed across calls on one page; `only` limits a call to named fields), waits for the page to
+  settle before typing, and gives its adaptive step a technique card per widget kind, what worked on this site and its own `search:term`.
   **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`, Settings › AI & models › **Form filling**); how each decides, and
   the Jev key's host rule, are reference tier: `docs/entities/others.md`, "Form-filling engines".
 - **Queued run, one job (Apply)** (`shared/queue-run.js` driver, pure with injected deps; host `panel/actions/run.js`; card `panel/runs.js`;
-  `extension/INTERNALS.md`, "Queued run"): with full automation On the Job step offers **Apply**: save, pick the resume (never overwriting a
+  `extension/INTERNALS.md`, "Queued run"): with full automation On the Job step offers **Apply**: save, score, pick the resume (never overwriting a
   tailored draft or an open session), queue as the user's yes (consent channel `companion`), then drive THIS tab from the job's apply link
-  (`apply_url`, else `source_url`; http(s) only; on a job the user picked by hand, THIS page, saved as its `apply_url` if it has none, and `/api/jobs/match` reads both links) through sign-in, fill and Next to **Ready to submit**. Parallel tabs, the run list, the
-  Queue view and the **Queue** button are not built. **Submit is never clicked, at any setting**: `shared/page-kind.js` treats any Submit
-  word, a dialog about submitting or an unseen Submit as the review page, and Next is pressed only by `page_advance`
-  (`content/page-reader.js`), which re-sorts the button's labels at click time; `shared/ats-buttons.js` holds only recorded markers (today
-  Workday's footer, whose text still decides). A posting's Apply is followed only as a same-tab http(s) link (no click handlers) on the
-  first read of a tab the run opened. CAPTCHA, email code, account creation, a job board's own apply and any unrecognised page PARK (Needs
-  you), as does a required field it could not answer, once per page. The user answers in the page and presses **Resume**: every typed answer
-  is remembered (Undo; long written ones never). One naming the job's company or city is saved with `only_for` + `only_for_kind` and held
-  for that job only: matched as a whole word, in that field, by `autofill_job.profile_for_job` for both `/context` and `/choose` (a general
-  row whose question names this job is scoped on update; the same question at another job adds a row; Settings has Use for every job). The
-  hand fix teaches the recipe book (§6 gesture report). The user's own Submit is recorded only from a confirmation page on a host the run
-  reached at the same employer, straight from the application's own pages, after an 8 s Undo (a tab closed during it marks at once); any other page sets
-  `noAutoMark`, leaving the manual Mark applied, and Done on the Ready card ends the record writing nothing. Only the panel holding a
-  record's lease arms its mark, and Apply on a tab with a live run writes nothing. Run tabs fill with per-run limits (60 s a field, 12
-  adaptive steps, 10 min a page; single-page Autofill keeps 25 s and 8). The job memory is per tab (`chrome.storage.session`
-  `widget.sessions`, no clock; origin, tenant, sibling-posting and backend-wins guards).
+  (`apply_url`, else `source_url`; http(s) only; on a job the user picked by hand, THIS page, saved as its `apply_url` if it has none, and
+  `/api/jobs/match` reads both links) through sign-in, fill and Next to **Ready to submit**. While it prepares, a live checklist with Stop (taken
+  between steps; what was done stays) shows each step and the base list is locked. Two switches, Settings › Form filling (`companion_apply`, `GET/PUT
+  /api/settings/companion-apply`, synced with the profile, read only with full automation On): **Choose the base resume for me** (default On: pick
+  only when the top match score reaches Auto-apply's floor and leads the next by its margin, else ask; Off: nothing is preselected) and **Stop after
+  each step** (default Off: three presses, Save job, Tailor resume or Make PDF, Start filling, and the user's yes is given at Start filling, not
+  before). **Submit is never clicked, at any setting**: `shared/page-kind.js` treats any Submit word, a dialog about submitting or an unseen Submit as
+  the review page, and Next is pressed only by `page_advance` (`content/page-reader.js`), which re-sorts the button's labels at click time. A
+  posting's Apply is followed only as a same-tab http(s) link (no click handlers) on the first read of a tab the run opened. CAPTCHA, email code,
+  account creation, a job board's own apply and any unrecognised page PARK (Needs you), as does a required field it could not answer, once per page,
+  and a refused Next it cannot repair (inv-rejected-next) or a required upload it cannot fill (inv-one-resume-write). The user answers in the page and
+  presses **Resume**: every typed answer is remembered (Undo; long written ones never); one naming the job's company or city is held for that job only
+  (`only_for` + `only_for_kind`, whole word, by `autofill_job.profile_for_job` for both `/context` and `/choose`; Settings has Use for every job). The
+  hand fix teaches the recipe book (§6 gesture report). The user's own Submit is recorded only from a confirmation page on a host the run reached at
+  the same employer, straight from the application's own pages, after an 8 s Undo (a tab closed during it marks at once); any other page sets
+  `noAutoMark`, leaving the manual Mark applied, and Done on the Ready card ends the record writing nothing (per-run limits, leases and Apply on a
+  live tab: INTERNALS). The job memory is per tab (`chrome.storage.session` `widget.sessions`, no clock; origin, tenant, sibling-posting and
+  backend-wins guards).
 - **Screening answers dial** (Settings › Form filling; `autofill.answer_level`, default **Backed by your history**, so an install that had
   the old low-stakes switch off now answers low-stakes questions; the one setting for the Companion, `/map` `/pick` `/step` and agents, via
   the brief's `applying.answer_level`): **Facts only** (saved answers and history), **Backed by your history** (also low-stakes kinds in the
@@ -840,15 +854,15 @@ citation. Priority lives in the item text, not in the ordinal.
 44. Companion run limits left on purpose: a robot-trap option inside a real checkbox/radio group (shared name) is not filtered
     (honeypots are standalone text boxes); sync's duplicate resolution that keeps the laptop's twin drops the other copy's
     `apply_url`, and a replica's link is never sent to its owner; a password-only second sign-in screen parks (`no_email`); technique
-    cards for group, select and date widgets are never reached (the adaptive step runs for popup and search only); the run list,
-    Queue view and parallel tabs wait for Phase 3 (`docs/plans/2026-10-10-companion-queued-run.md`).
+    cards for group, select and date widgets are never reached (the adaptive step runs for popup and search only); a page with no
+    heading never reads as a rejected Next, `heldValues` misses a select's shown text and a custom combobox, and the hand-attached-file
+    check reads the run's own frame only; the run list, Queue view and parallel tabs wait for Phase 3 (`docs/plans/2026-10-10-companion-queued-run.md`);
+    the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits".
 
 ## 12. Gotchas that have bitten before
 
 - **A hidden tab stalled saves** (2026-10-13): TanStack v5 scoped mutations queue as paused and continue only while the tab
   is focused → serialize saves with a per-key promise chain (`lib/in-order.ts`), never a mutation scope.
-- **Safari may not focus a range input on click** (2026-10-13): UI latched on focus never engaged → latch on `pointerdown` as well.
-- **`[&_img]:opacity-N` beat an img's own `opacity-0` loading class** (2026-10-13): specificity → pass a prop, not a descendant selector.
 - **An update served the old version's pages** (2026-10-12, 0.10.0): Next writes `.next/server/route-cache` inside the
   installed bundle at run time; uv replaces only shipped files, so 0.9.0's cached HTML (dead script and CSS links) outlived
   the update → `maestro run` clears it before the web starts (`runtime.clear_web_cache`).

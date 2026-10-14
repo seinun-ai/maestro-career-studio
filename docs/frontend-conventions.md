@@ -1764,3 +1764,9 @@ Every action answers. The answer depends on where the effect lands:
 - **A button, an input, every state.** Rest, hover, focus (solid ring), pressed (0.97), `pending`, disabled
   (with the reason tied by `aria-describedby`), and for a field `aria-invalid` (error) or `data-warning`
   (warning, never blocks a save).
+
+## Browser quirks
+
+- **A range input may not take focus on click in Safari**, so UI latched on focus never engages: latch on `pointerdown` as well.
+- **A descendant selector can beat a class on the element itself**: `[&_img]:opacity-N` out-specified an img's own `opacity-0` loading
+  class. Pass a prop to the child instead of styling it from the parent.

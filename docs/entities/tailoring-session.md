@@ -71,6 +71,26 @@ saw — the page refetches and drops its local copy on any `apply_profile`
 error. Custom remains the default entry point; the checkpoint is the only
 place the mode is decided.
 
+**Voice.** A resume is the owner's own, in implied first person (SYSTEM.md §6 `inv-resume-voice`). Every rewrite prompt carries the VOICE
+rule, built in code beside the avoid-words line (`prompt_assembly._skill_preamble`; `guarded_rewrite` and the chat prompt carry it too, the chat's
+scoped to resume and Career KB text), so a customised prompt row keeps it. `services/resume_voice.py` (pure; word boundaries) finds BLOCKING shapes:
+a clause-initial He/She/I followed by a verb, `, where he/she/I + verb`, his/her/my directly modifying a noun in the owner's role, the full contact name
+(not inside a company name on the resume), and a given name opening a clause or acting as a surname ("Shah built"). They/their, he/she after a noun or
+relative word, a capitalised mid-sentence She, a "which has/built" founder clause and a "Builds" opener are FLAGGED only (the health advisory
+`voice.third_person`, a note on the summary or a bullet, with the code's repair offered as the suggestion when the rewrite guards accept it). In
+`_llm_customized` a blocking hit in the summary or a changed bullet triggers one corrective retry (the same call as the keyword-survival retry); what
+is still a hit is repaired in code just before the draft is saved, on EVERY tailoring path (a pre-ops-only edit included): text the model or a caller
+wrote is strict (rewrite `He built X` to `Built X`, `, where he built X` to `; built X`, strip a leading name before a past-tense verb, otherwise drop
+the sentence or bullet it cannot clean, never join across a subordinator), while a line already on the base gets only mechanical repairs (a
+sentence-initial pronoun, the full name; a line that is about other people is stored byte for byte) and is never cut or dropped. State participles
+(been, done, seen) are not repaired. A keyword only a repaired line carried is added back to the skills list. The tailor response lists the repaired
+paths as `voice_repairs` (`TailorResponse`; the web UI does not show them yet). MCP `tailor_session` ops that write a hit (a changed summary or bullet,
+or a bad base line copied into one) return 400 with the lines quoted and a sentence telling the agent to write in implied first person; an
+unchanged base line is repaired instead. Check wording (`health_guards.guard_violations`) rejects a rewrite with a blocking hit, including pronouns
+the original had. Known limits: a given name that is an ordinary word (Max, Chase, Grant) blocks in model-written text; a path that copies the base as it is
+(**Use resume as is**, the Companion's Apply with the base resume, quick tailor's nothing-to-tailor result) runs no voice repair, so a third-person
+base summary reaches the PDF: the health check flags it, and the fix belongs in the base resume.
+
 Creation order matters (`services/tailoring_session.create_session`):
 health-gate check first (cheap, 409 via `HealthGateBlockedError`), then ONE
 engine run whose result both builds the gaps and stages the "before" score

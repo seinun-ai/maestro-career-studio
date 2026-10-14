@@ -60,7 +60,9 @@ approved evaluator contract. Code validates the model response and computes scor
   enforcement. A fresh, failing, unwaived fatal gate blocks tailoring. Source: `health_gates.py`.
 - **Existing advisories** [weak]: missing summary, entry bullet count, long or short bullets,
   duplicate or undemonstrated skills, sentence-like skills, punctuation and duplicate certifications
-  remain suggestions with no score impact. Source: `resume_lint._advisories` and `_shape_notes`.
+  remain suggestions with no score impact. So does `voice.third_person`: a summary or bullet that reads as written
+  about someone else (a pronoun, the contact's name, a "Builds" opener), noted with the code's repair as the
+  suggestion when the rewrite guards accept it. Source: `resume_lint._advisories`, `_shape_notes` and `_voice_notes`.
 - **No numbers** [moderate]: `evidence.no_numbers` is a whole-resume note (location
   `{"section": "resume"}`, no index) that fires when at least `MIN_SCOREABLE_ITEMS` (4) scored bullets
   exist (experience, projects, extras; the summary is not one) and none contains a number. It is a

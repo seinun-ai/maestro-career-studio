@@ -28,6 +28,13 @@ at to your local Maestro CS app.
   marks the job applied after 8 seconds, unless you press Undo. If the tab moves
   to some other page first, nothing is marked for you and **Mark applied** is left
   to press; **Done** on the review card ends the run without marking anything.
+  If a page refuses **Next** and says why, it fixes only the fields the page names and
+  stops, listing them, if that does not help. It attaches your resume before pressing
+  **Next** and never presses **Next** over an empty required upload. While it gets ready
+  it shows a checklist with a **Stop** button. Two switches under **Settings › AI &
+  models › Form filling** steer it: **Choose the base resume for me** (picks only when
+  one resume clearly wins, else asks) and **Stop after each step** (three presses:
+  **Save job**, **Tailor resume**, **Start filling**).
   Running several jobs at once from a Queue view is not built yet.
 - **Track it.** Mark the application Draft or Applied from the panel.
 
@@ -69,7 +76,8 @@ Otherwise the backend refuses the old id and the panel cannot reach it.
   never unticks a box you already ticked. A password box is still skipped by
   its type.
 - **Voluntary EEO questions** are skipped unless you have turned on the EEO
-  consent in **Profile**.
+  consent in **Profile**. Veteran status is one Yes/No question there; a Yes never
+  picks a protected class for you.
 - **Never clicks Submit**, at any setting. Autofill never moves a multi-step
   application to the next page either. Only **Apply**, when you start it with full
   automation on, clicks **Next**, and it stops on the review page. Review

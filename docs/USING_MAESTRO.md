@@ -382,6 +382,20 @@ it, and fill application forms from your saved answers (**Profile › Autofill**
 signatures, agreement boxes, passwords and government IDs to you unless you turn
 on the agreement permission in Profile, and it never submits. Autofill does not move to the next page either; only **Apply** does, with full automation on (see the Companion's README).
 
+With full automation on, **Apply** shows a live checklist while it gets ready (save, score, the resume it
+uses, queue, tailor, make the PDF, open the application) and a **Stop** button that ends it between steps.
+Two switches under **Settings › AI & models › Form filling** steer it. **Choose the base resume for me**
+(on) picks a resume only when its match score clearly wins, using the limits in Auto-apply, and asks you
+when it is close; off, you always pick. **Stop after each step** (off) makes Apply three presses, **Save
+job**, **Tailor resume** and **Start filling**, and your yes to queueing comes with the last one. When a
+page refuses Next and says why, Apply fixes only the fields it names and stops if that does not help;
+it attaches your resume before pressing Next and never presses Next over an empty required upload.
+
+Veteran status is one question in **Profile › Autofill**: "Are you a veteran?" (Yes, No, or "I don't
+wish to answer"). A No answers every "I am not a protected veteran" option on a form. A Yes never picks
+a protected class for you, so the Companion leaves that list to you. If your Profile still held the old
+"Not a protected veteran" answer, the question is empty and asks again.
+
 It can keep a **fill log**: *which* fields it met and whether they filled,
 never what you typed. The log is off unless you tick **Keep a fill log** in the
 Companion's options (right-click its toolbar icon, then **Options**). It stays

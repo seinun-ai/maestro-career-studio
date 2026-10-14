@@ -39,6 +39,14 @@ view for several is still ahead.
 - **`PUT /api/settings/autofill-options` takes `{"answer_level": …}` now.** The old
   `{"low_stakes": …}` body is refused with a 422. The Settings page and the Job Search Brief already
   use the new field.
+- **Veteran status is one Yes/No question now.** Profile › Autofill asks "Are you a veteran?" with
+  Yes, No and "I don't wish to answer". Your old "Veteran" answer reads as Yes. The old "Not a
+  protected veteran" answer is gone: it was true of a veteran who is not protected, so it cannot
+  answer this question. It reads as unanswered, Profile asks you again, and until you do the
+  Companion leaves veteran questions on a form for you. A No answers every "I am not a protected
+  veteran" option. A Yes never picks a protected class for you. If your second copy has not been
+  updated, it reads a synced Yes or No as "I don't wish to answer", so update the always-on copy at
+  the same time as your laptop.
 
 ### Added
 
@@ -75,8 +83,47 @@ view for several is still ahead.
   which gestures you used (never what you typed) and tries them first on that site next time. With
   **Keep a fill log** on, fields it could not work join a private, value-free list that ranks what to
   teach it next. **Clear data** removes that list too.
+- **Two new switches for Apply**, under Settings › AI & models › Form filling. **Choose the base
+  resume for me** (on by default) lets Apply pick the resume only when one clearly wins: its match
+  score reaches Auto-apply's floor and leads the next by Auto-apply's margin. If it is close, Apply
+  stops and asks. Off, nothing is picked until you pick. **Stop after each step** (off by default)
+  turns Apply into three presses, **Save job**, **Tailor resume** (or **Make PDF**) and **Start
+  filling**, and your yes to queueing the job moves to the last one.
+- **A live checklist while Apply gets ready.** The Job card lists each step as it happens (saving the
+  job, scoring your resumes, the resume it is using, queueing, tailoring, making the PDF, opening the
+  application) with a tick, a spinner or a short reason, and a **Stop** button that ends the press
+  between steps. Whatever was already done stays done. The resume list is locked while it works.
+- **The run reads the page's errors.** When a page refuses Next and says why (Workday's "Errors
+  Found" banner, for example), the run no longer counts that as a new page. It fixes only the fields
+  the page names, presses Next once more, and if the page still refuses it stops and lists what the
+  page asks for. It never refills the rest of the page.
+- **The resume is attached before Next.** A required upload box labelled only "Upload a file" is now
+  recognised as the resume box when it is the page's only upload. The Companion never presses Next
+  over an empty required upload: it attaches your PDF or stops and says which box needs a file. The
+  page line reads "Resume attached" or says why it could not, and the counter counts answered fields.
+- **Written history questions get answers.** "Do you have experience with X? For how long and for
+  which companies?" used to be left blank. It is now written from your career history, and never
+  claims what your history does not support.
+- **"Have you worked at X before?" answers No from your work history** when your history lists jobs
+  and none is at that company. The receipt says "from your work history". Any match still answers
+  Yes, and a company that looks like a parent or subsidiary of one of your employers is asked, not
+  answered.
 
 ### Changed
+
+- **Your tailored resume is written in first person.** Tailoring, rewrites, the Assistant and agents
+  now write each line as you would ("Built X", never "He built X" or "Builds X"). If the AI slips,
+  Maestro retries once, then repairs the line in code; a pronoun or your name is never stored. Your
+  own lines are only touched where it is mechanical. The tailor result lists what was repaired, an
+  agent that sends third-person text gets an error saying how to fix it, and the health check notes
+  a summary or bullet that reads as written about someone else. **Use resume as is**, Apply with the
+  base resume and quick tailor's "nothing to tailor" result use your base text unchanged, so fix a
+  third-person summary in the base resume itself.
+- **Apply stops guessing between close resumes.** With full automation on, the Companion preselects a
+  resume only on a clear win (see the new switches). The pick limits under Auto-apply now say they
+  apply to connected agents and the Companion.
+- **Tailoring after Apply no longer wedges it.** Apply links the draft it made; a draft you tailor
+  afterwards is now linked in its place instead of failing with "proposal already linked".
 
 - **Screening answers start at Backed by your history.** The old switch stored nothing when it was
   off, so an install that had it off cannot be told apart from one that never touched it. Both now

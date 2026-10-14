@@ -122,7 +122,7 @@ by what was clicked. An action ends by re-running a load; "advance to Resume" is
 not a sentence any of them can say. **Job asks two questions**: is the job
 saved, and which base resume goes with it (Score merged into Job on
 2026-09-27). It is done when the job is saved AND a base is chosen: picked by
-you, or the ranking's scored best, preselected; an application bound to the page
+you, or the ranking's scored best, preselected (with full automation On only on a clear win, by "Choose the base resume for me": Queued run, "The switches"); an application bound to the page
 answers with its own `base_resume`, and so does a base-as-is claim with the base
 it armed. Three rules hold the shape up:
 
@@ -261,7 +261,7 @@ asking permission of itself.
   nothing). The base list is also where the panel says, once, what a match score
   is: the web app's `ATS_SCORE_LEAD` sentence, a fixed-rules comparison with the
   job description. A resume with no score says "not scored" rather than zero
-  and sorts last, the scored best is preselected until you pick another, and a
+  and sorts last, the scored best is preselected until you pick another (with full automation On, only on a clear win, or never if the switch is Off), and a
   pick made by hand wins over the ranking permanently. For a saved job with no
   application the scores are a stage input, so `loadContext` reads them before
   the first render of the matched page (no Job-then-Resume flash). **Beside a
@@ -920,7 +920,7 @@ know, and each one was learned from a live failure.
      for, or are related to someone at, the company applied to is on the
      reasoning never-list (that is the derived fact above, or yours), and a
      reasoned field that NAMES the company applied to — in its question or
-     any option ("Former Associate of The Home Depot") — is refused before
+     any option ("Former Associate of The Globex Depot") — is refused before
      any model sees it; a generic wording ("the company", "us") is held back
      by the never-list alone, in the prompt. The fast model
      judges it answerable from a DESCRIPTION of the history (no values). Jev
@@ -1380,8 +1380,10 @@ footer alone).
   a finished application.
 - **Page operations** are content-script messages through the existing fan-out and frame gate (`inv-frame-earns-data`):
   `page_classify` and `page_advance` (`content/page-reader.js`; broadcastable and gated like the `fill_*` ops; a broadcast may name the
-  one frame to ask), `page_sign_in` (top frame only, in `panel_frame0`'s allow list and NOT broadcastable), `fill_watch` and
-  `fill_watch_report` (below). `summary()` is counts, button texts and booleans, never a value or a password.
+  one frame to ask), `page_errors` and `page_uploads` (broadcastable like the others; below), `page_sign_in` (top frame only, in `panel_frame0`'s allow list and NOT
+  broadcastable), `fill_watch` and `fill_watch_report` (below). `summary()` is counts, button texts and booleans, never a value or a password;
+  its `errors` is a COUNT of what the page complains about, `errorKeys` are hashes of those errors (which ones, never what they say), and a
+  button that is only a line of the error summary carries `inErrors` (and `errorLine` when its own text reads as "Error - <field>").
 - **Page kinds** (`shared/page-kind.js`, pure): the posting, sign-in, create-account, email-code, CAPTCHA, board-native, form step,
   review, confirmation and closed pages. A button sorts as Submit when ANY Submit stem appears in its text (submit, apply, send, finish,
   finalize, complete, confirm: substrings, because a wrong match only stops), as Next only when the whole label is a Next word
@@ -1401,8 +1403,8 @@ footer alone).
 - **Walls park, they do not retry.** CAPTCHA, email code, account creation, board-native apply, a failed sign-in, a page it does not
   recognise (a start chooser such as Workday's "Autofill with Resume / Apply Manually"), a "thank you" page before the run reached
   review, the tab on a host the run never navigated to (not after a park that told the user to go somewhere, `sign_in_yourself`,
-  `verify`, `posting` or `unknown_page`: where they land on Resume is theirs, and that host joins the run's), the same page again, more than 15 steps and a Next that changes nothing
-  (after one refill) each park with a fixed `why` word; `panel/runs.js` holds the words and which of Resume or Skip this job each
+  `verify`, `posting` or `unknown_page`: where they land on Resume is theirs, and that host joins the run's), the same page again, more than 15 steps, a Next that changes nothing
+  (after one refill), a Next the page refuses and names (`page_errors`) and a required upload it could not fill (`upload`) each park with a fixed `why` word; `panel/runs.js` holds the words and which of Resume or Skip this job each
   offers. Ready to submit needs evidence the page was the application: a step behind it, or a field this page's fill wrote or
   confirmed. A field-less page with a lone Next after step 0 is treated as review (an "are you sure" page).
 - **Sign-in.** `pageOps().signIn` fetches the login (`POST /api/companion/job-site-login`) and types it in one call, the password a
@@ -1413,12 +1415,54 @@ footer alone).
 - **Park less.** A required field the fill reports `unconfirmed` does not park: Next and the page's own validation decide, and a page
   that does not move is refilled once. A run parks only on required fields it could not answer or operate (`open_questions`, the page's
   own invalid flag counts), once per page, naming them.
+- **A Next the page rejects is not a move** (`rejected`). A Workday "Errors Found" banner adds buttons, which used to change the page
+  fingerprint, so the press read as a move and the card said "Page 3" over the same page. Now the buttons the error summary owns (`inErrors`,
+  `errorLine`) are out of the fingerprint, the Submit sort and the page classifier, and `press` returns `rejected` instead of `moved` when the
+  address and the step heading are those of the press and the page names an error that was not there before it (or nothing else changed). A
+  page with no heading is an unknown step, never "the same", and an error summary's own heading is not the step's; a standing "Fields marked * are
+  required" line on a page that moved is a move. `waitForChange` ends the wait at once on a fresh error; one that is not new must stay for `REJECT_HOLD_MS` (3 s), or
+  `REJECT_HOLD_STANDING_MS` (8 s) when the page already showed errors before the press (`baseline`, the press's `errorKeys`), since a slow save
+  leaves the old banner up. `step` and `seen` do not change, and `moved()` clears the page's `fixRounds`, `attempted` set, resume-written flag, attach note and `record.memory`.
+  The driver reads `page_errors` from the frame that was pressed, hands the items to `deps.fix` (the host's `fixPage`) and presses once more.
+  `fixPage` works ONLY the named fields: a fill field through `runFill(..., {only: fids, memory})` (a scoped call posts no receipt, no gap rows and
+  no resume attach, so the page's receipt reflects the page's first full fill only, and its progress count stays as that fill left it), an upload box through the targeted attach. An error that names nothing
+  the run can work (an unmapped label, an `unknown` kind), two upload errors at once, or a box left unattached is a blocker. An error is repaired once
+  (`attempted`, by label), at most `MAX_FIX_ROUNDS` (3) rounds a page; the same error back, or a blocker, parks `page_errors` with `open` set to the
+  errors' labels. The card says "The page asks for more" and lists them; a field the page named only by its words (an upload box) has nothing to
+  jump to.
+- **`page_errors` reads what the page itself complains about**, in its own words and never a value: `{count, items: [{label, target, kind}]}`, `kind`
+  `field` | `upload` | `unknown`. Sources: a visible alert or `aria-live` region that reads like an error (not `aria-live="off"`; a region that holds a
+  field is the step around it), a block headed "Errors Found" / "Please correct" and the like, and each control marked invalid (the field reader's
+  `invalid`, extended to upload boxes: the box's own `aria-invalid`, an error node in its widget, an error referenced by `aria-describedby`; never a
+  fieldset around a neighbour). One item per field (the summary's line and the field's own mark are one error). A summary item maps to its field by its link
+  (`href="#id"`, `aria-controls`, the `for` of its label), else by `aria-describedby`, else by an exact normalised label; "Error - X" and "The field X
+  is required" reduce to `X`. A mapped error is worded by the field's own question; an unmapped one by its line's field name; a name that could carry
+  something of the user's (a file name, an address, a quoted string, a value the page holds, `heldValues`) becomes "Something the page names". A
+  block that merely sits under "please correct any errors" is not a summary when it holds a button that is no error line, and a Submit-sorted
+  button always counts as a Submit, wherever it sits.
+- **The resume is written once per page, before Next.** The fill's attach (`panel/stages/fill.js`, via `fillPage`) counts a REQUIRED upload box as the
+  resume box when it is the page's only upload box and its own words (not its section's) name no other document (cover letter, transcript,
+  portfolio, writing sample, other); it never writes over a file already there and re-checks `resumeOnly` at write time. `page_uploads` lists the
+  boxes (`{label, target, kind, required, occupied}`, `target` an opaque `data-maestro-up` tag) and `attach_resume_pdf` takes that `target`: the box a
+  page error, or the fill's report of a required empty box, named. A targeted attach skips the "exactly one resume box" rule but still refuses an
+  occupied box or one labelled for another document; with several boxes on the frame the named one must read as a resume box and no other box may
+  hold a file (the user attached by hand). **The gate** (`queue-run.js`, after the fill and before `advance`): the report's `attach.required` (a
+  required box still empty that the fill's own write did not cover) gets ONE targeted attach if it is a lone box not labelled `other` and nothing
+  was written on this page; else the run parks `upload` naming the boxes. An outcome of `attached` or `unconfirmed` (a write the page may have
+  taken but did not show) means the resume was written: it is never written again on that page, by the gate or a repair, and a repair attaches
+  to at most one named box. The page line reads "Resume attached", "A file was already attached" or "Couldn't attach the resume: ...", and the
+  counter "N of M answered" counts only fields that ended filled, verified or kept, an upload box as one field.
 - **Resume** turns the record to `filling` BEFORE its first await (Resume and Skip leave the card and Stop shows, so a second Resume cannot
   post the receipt twice or replace Undo's memory, and a Skip pressed meanwhile is honoured; Skip also sets `stopRequested`), then re-reads
   the parked page, learns every answer the user typed (`learnAnswer`, with Undo; never a multiline box, so a long written answer is not
   saved as a standing one), posts a "you" receipt row, and continues; a record ended under the read is not driven. Resume also makes the
   record belong to the panel that pressed it (its lease), so the mark after the user's Submit has exactly one owner even when another window's
-  panel left the record.
+  panel left the record. A `page_errors` or `upload` park remembers its page (`record.parkedPage`: address and step key, cleared on the first
+  read after the Resume). A Resume skips the fill only when that first read is that page (an empty step key proves nothing, so that page is filled
+  as usual); then after a `page_errors` park the errors are read and any that remain get a repair round, and after an `upload` park the upload
+  boxes are only LOOKED at (`deps.uploads`, never an attach): a required box still empty parks `upload` again, naming only it, except the box
+  an `unconfirmed` write went into (excused by its tag, or, if the page redrew it, when it is the only one left), and Next is pressed only when
+  none is. On any other page a Resume fills as usual, so it never presses Next over an unfilled page.
 - **A saved answer that names this job stays with this job.** The panel (`panel/actions/pause.js` `scopeOf`) saves a row with `only_for`
   and `only_for_kind` (`company` or `city`) when the QUESTION names the job's company (the legal-suffix-free name first) or its city. The
   company match is case-sensitive on the job's own spelling (a company called Gap is not "any gap in employment"); a city is taken only from
@@ -1452,8 +1496,10 @@ footer alone).
   tab for a new Apply. A read that fails on a ready tab leaves it ready (the driver does not stop a run mid-Submit). Each record carries the
   lease of the panel that owns it, and only that panel arms its auto-mark (every window's panel hears every tab; a reopened panel takes over the
   records on tabs of its own window). A run tab that navigates to a host the run never reached loses its frame vouch until a Resume reads it.
-- **Apply on the Job step** (`panel/actions/job.js`): re-reads the job and its tailoring sessions; an applied job stops; a job held by
-  the always-on copy is refused with nothing written; it queues as the user's yes (consent channel `companion`, only from
+- **Apply on the Job step** (`panel/actions/job.js`, `shared/decisions.js` `applyPress`/`preselect`): re-reads the job and its tailoring
+  sessions; an applied job stops; a job held by the always-on copy is refused with nothing written; it saves and scores the job's bases first
+  (**Save job** also routes on the backend's match, not on a remembered job, so Apply after a restored pick uses that job and never saves the page
+  as a second one), picks the resume per the switches below, queues as the user's yes (consent channel `companion`, only from
   `pending_review`), claims the job for this copy when sync marked it offered, settles the resume (a PDF: go; a draft without a PDF:
   render it, never quick-tailor over it; nothing and no open session: quick tailor with the user's pick; an open custom session:
   "Finish tailoring first", with Apply using the base resume and the session untouched), then opens `apply_url` (else `source_url`,
@@ -1470,8 +1516,50 @@ footer alone).
   and a refused save does not stop the run. The next visit then matches: `/api/jobs/match` reads `apply_url` as well as `source_url`
   (`is_same_posting`), trusting an apply link only when it names a posting (`job_url_match.names_posting`). With full automation
   Off the footer is Save job plus "Turn on full automation in Settings to apply from here."
+- **The Apply checklist and Stop** (`panel/actions/job.js` `applyChecklist`, store key `applySteps`, drawn by `panel/stages/job.js`). While a press
+  prepares, the Job card lists each step it takes, in order: Saving the job, Scoring your resumes, Using <base> (<score>) with the base's colour
+  square, Queueing the job, Tailoring the resume (or Using your tailored resume), Making the PDF, Linking the resume to the job, Opening the
+  application. A step shows a spinner while it runs, a tick when done, a cross with a FIXED reason when it fails ("Couldn't save", ...; never
+  server text, the note under the list carries whatever the panel may say) or a plain marker for the line the user is to answer ("Pick a resume to
+  apply with"); a step that was not needed is never listed, and each state is also written for a screen reader. The footer's live note announces
+  each step (the rail is rebuilt on every paint, so a live region inside it would be a new node each time). **Stop** (a labelled button with a stable
+  id) is read at the boundaries between steps, never inside a call: a request sent is not cancelled halfway, and what was done stays done (a saved
+  job, a tailored draft); the list then says "Stopped after <step>". A Stop between save and score ends before the score is asked, a press from a tab
+  the panel left counts as stopped, and Stop survives a rebind and keeps focus. The base list is locked while Apply works (disabled radios,
+  `aria-disabled`). Apply is refused while a checklist is live or while another tab's run holds the job's proposal (`ANOTHER_TAB`; the panel reads
+  `run.js` `TERMINAL` to tell). Once the run starts, the run card takes over. Held, no-link and finish-first stops cross a line of their own. **Limit:** "Apply with the base
+  resume" (the finish-first path) and quick tailor's nothing-to-tailor path use the base text as it is, with no voice repair, so a base summary
+  written in the third person reaches the PDF; the health check flags it (`voice.third_person`), so fix it at the source, in the base resume.
+- **The switches** (Settings › AI & models › Form filling, `companion_apply`: `GET`/`PUT /api/settings/companion-apply`, `{auto_pick: true,
+  stop_each_step: false}`, file-mirrored and carried in the synced profile bundle). `loadAutomation` fetches both switches with the auto-apply
+  setting in one breath and obeys them only with full automation On; a switch it cannot read is the default. **Choose the base resume for me**
+  (`decisions.preselect`): the top match score must reach Auto-apply's `auto_pick_floor` and lead the next scored base by `auto_pick_margin` (a lone
+  scored base has no rival); a close call, a low top or a re-score that made the race close clears an earlier preselection (`null`), and Apply stops
+  after scoring at "Pick a resume to apply with" with the list unlocked. With the switch Off nothing is preselected, an unsaved posting's footer is
+  **Save job** (a pick comes after the save) and a saved job with nothing picked waits (`needsPick`). **Stop after each step** (`decisions.applyPress`):
+  the footer names the NEXT press, **Save job** (save, score, pick), **Tailor resume** (or **Make PDF** when a draft has no PDF), **Start filling**
+  (queue as the user's yes, claim, link, run), and each press re-reads what the server holds so it is idempotent; no `/api/proposals` call happens
+  before Start filling. With it Off one press runs every stage and queueing stays at the start of Apply. The Job step says the active mode in one
+  line with a link to the Settings card (`modeLine`). The pick limits are Auto-apply's; their label now says they apply to connected agents and
+  the Companion. **Track this** counts as a pick (`claimFrom: "pick"`), so a just-tracked binding offers Apply at once.
+- **Relinking the proposal.** Apply links the draft it made to the open proposal; a draft the user tailors afterwards used to meet "proposal already
+  linked" on every later press. `POST /api/proposals` now moves an `accepted` proposal to a newer draft of the same job, only for the Companion's
+  exact origin, only when the proposal was queued on the `companion` channel with no final review taken, and while the old draft is gone or still a
+  draft (the draft it leaves goes back to the user lane); an application of another job is refused on every linking route. Everything else is a 409.
 - **Per-run fill limits.** `runFill` copies its limits per run; a driven tab passes `RUN_LIMITS` (60 s a field, 12 adaptive steps,
   10 minutes a page), the user's Autofill keeps 25 s, 8 and 3 minutes, and the module defaults are never written.
+
+### Known limits (Queued run)
+
+- **A page with no heading can never read as a rejected Next** (the fingerprint has no step key, so "same step" is unknown, never true); such a
+  page that refuses a Next shows as "no change" and parks after one refill.
+- **`heldValues` misses a select's visible text and a custom combobox's value** (it reads typed inputs and a multi-select's pills), so an error line
+  that echoes one of those is shown as the page wrote it instead of "Something the page names".
+- **A file the user attached by hand is seen in the run's own frame only.** A targeted attach refuses when another box in the frame holds a file; one
+  held in a different frame of the page is not seen.
+- **Step mode, Save job:** on a wizard page whose restored job has no posting text, **Save job** dead-ends ("Nothing to save yet"); and a save from
+  a page that escapes the backend's dedupe can create a second job (an older gap).
+- **Several required upload boxes** park `upload`, naming them: the run never guesses which one is the resume's.
 
 ### The fill agent's rules (all Autofill, run or not)
 
@@ -1479,6 +1567,16 @@ footer alone).
   placeholder (honeypot / "for bots only" / "do not fill this" / "leave this blank" wording, on any control) and, for text boxes only,
   by page geometry wholly outside the page. A required field is never a trap. The inventory's `eligible()`, the saved-answers fill and
   open-question collection all use it. KNOWN LIMIT: a trap option inside a real checkbox/radio group (a shared name) is not filtered.
+- **Fill memory and `only`.** `runFill(..., {only, memory})` serves a repair after a rejected Next. `only` (fids): the call works those fields and
+  no others; every other field is closed before any map or explore, so it is never read into a row, mapped, explored, written or reported, and no
+  section is grown (its entry-adding pass is skipped, and `fill_sweep` carries `only`). Its values still feed the trace's redaction keys (a
+  field the call leaves alone holds a value the trace must not carry). `memory` (`fillLoop.newMemory()`, one per run record; `record.memory`): what a
+  field's adaptive step learnt, keyed by the field's fingerprint (the question and kind, never a value) as `failedMoves`, `moveRuns` and
+  `termsTried`, so a second call on the same page keeps the twice-per-search cap and the tried search terms. The record clears it when the step
+  changes, and it saves as nothing (`toJSON` returns undefined: the terms may carry a value; a record read back from storage starts empty).
+- **A list item that is already a pill is covered.** In `commitSet`, an item equal (case and spacing aside) to a pill the box already shows is marked
+  `matched` with no explore and no set, and a list the first item's look left open is closed; twelve skills with ten already present cost two
+  explores. `setAll`'s `holds` check stays as the backstop.
 - **A field that already holds an answer is `already`**, even when no fact maps to it (a phone code showing "United States (+1)").
 - **Optional fields with no fact are `left_blank`**: not asked, not counted as missing, named in a collapsed "left blank" list under the
   Fill report (it does not hold Ready). Required markers are read from stars, a trailing "Required" word and `aria-required`;
@@ -1598,7 +1696,11 @@ Separately from the rows above, a "Saved answers + AI" run builds one `report.tr
 `shared/fill-loop.js`, and the panel (`panel/actions/fill.js`) sends it once as `fill_trace`. It
 records, per field, how the engines decided: the label source, the map / polarity / pick / step decisions
 (route, slot, engine, confidence, second opinion, chosen option index), each step as an op with `ms`
-and its effect, and the final status. Failed model calls are noted as `{op, ms}`. An adaptive step's move ids include `search:term`; the term itself is never in the trace or the report. A field notes its
+and its effect, and the final status. Failed model calls are noted as `{op, ms}`. An adaptive step's move ids include `search:term`; the term itself is never in the trace or the report. A /map step also names the sentinel the
+model chose when it filed the field under one of the six fixed words (`free_text`, `none`, `protected_unanswered`, `history_unanswered`,
+`years_unanswered`, `blocked_eeo`; `Sentinel` in `schemas/autofill_fill.py`, `TRACE_SENTINELS` declared in `shared/fill-loop.js` and again in
+`sw.js`, each side filtering to the list): a fixed word, never a value, kept by the reasoned and low-stakes routes too, and printed by
+`scripts/fill_trace.py`. A field notes its
 polarity once (the first answer: later /pick and /step calls on a Yes/No field answer with the same way, recalled
 from memory; a recalled way carries `remembered` and the counters skip it). A field keeps at
 most 40 steps (the first 20 and the last 20), and any text is cut to 200 characters without
