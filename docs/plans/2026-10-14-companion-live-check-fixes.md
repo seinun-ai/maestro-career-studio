@@ -37,7 +37,7 @@ Each task is test-first, and the tests press real buttons through the existing h
 - Apply on a posting is pressed only through a plain same-tab link on the first read of a tab the run opened.
 - The app repo is public, so tests use made-up names (Acme, Globex, `*.test`).
 
-Diagnosis notes are in the session scratchpad: `diag-etsy.md`, `diag-dayforce.md`, `diag-voice.md` and `diag-apply-flow.md`.
+Diagnosis notes are in the session scratchpad: (local only, not in the repo).
 
 ---
 
