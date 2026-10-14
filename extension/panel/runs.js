@@ -118,6 +118,8 @@
     if (!attach?.outcome) return "";
     if (attach.outcome === "attached") return "Resume attached";
     if (attach.outcome === "unconfirmed") return attach.text ?? "Couldn't confirm the resume upload.";
+    // The run left a box that already held a file: nothing went wrong.
+    if (attach.reason === "occupied") return "A file was already attached";
     return `Couldn't attach the resume: ${attach.text ?? "the upload box was left for you."}`;
   }
 

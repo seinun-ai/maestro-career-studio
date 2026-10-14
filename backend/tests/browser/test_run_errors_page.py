@@ -54,7 +54,7 @@ DRIVER = """async (spec) => {
       calls.push(["fill"]);
       const attach = spec.gate ? await (async () => {
         const boxes = (await deliver({ type: "page_uploads" })).filter((b) => b.required && !b.occupied);
-        return { outcome: null, reason: null, required: boxes.length > 0, boxes: boxes.map(({ label, target }) => ({ label, target })) };
+        return { outcome: null, reason: null, required: boxes.length > 0, boxes: boxes.map(({ label, target, kind }) => ({ label, target, kind, written: false })) };
       })() : undefined;
       return { fields: [{ fid: "x", question: "Skills", required: true, status: "verified" }], ...(attach ? { attach } : {}) };
     },
@@ -132,3 +132,23 @@ def test_the_gate_attaches_to_the_required_upload_before_the_first_next_so_nothi
     assert oracle(page, "nexts") == 1, "the page never had a Next to refuse"
     assert [c[0] for c in out["calls"]] == ["fill", "attachTo"]
     assert oracle(page, "files") == ["Ada.pdf"]
+
+
+def test_a_lone_required_box_labelled_for_a_cover_letter_is_never_written_the_run_parks_naming_it(page):
+    page.set_default_timeout(60000)
+    body = fixture_html("workday_errors.html").replace("Upload a file (5MB max)</span>", "Cover letter</span>")
+    page.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body=body))
+    page.goto(URL)
+    page.evaluate("""() => {
+      window.chrome = window.chrome || {};
+      Object.defineProperty(window.chrome, "runtime", { configurable: true, value: {
+        id: "t", onMessage: { addListener: (fn) => { window.__pageListener = fn; } } } });
+    }""")
+    for src in SOURCES:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+    out = page.evaluate(DRIVER.replace("URL", json.dumps(URL)), {"pdf": PDF, "gate": True, "repair": True})
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "upload")
+    assert [o["question"] for o in r["open"]] == ["Cover letter"]
+    assert oracle(page, "files") == [] and oracle(page, "nexts") == 0
+    assert [c[0] for c in out["calls"]] == ["fill"]

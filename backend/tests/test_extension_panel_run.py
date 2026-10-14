@@ -146,6 +146,10 @@ chrome.storage.session.set = async (patch) => {
 const errors = [];
 console.error = (...args) => { errors.push(args.map(String).join(" ")); };
 const ns = loadModules();
+// How many answer receipts the run posts (a scoped repair must post none).
+let receiptCalls = 0;
+const realReceipt = ns.panelRecordReceipt;
+ns.panelRecordReceipt = async (...args) => { receiptCalls += 1; return realReceipt(...args); };
 
 // ---- the fill stub: reports instead of touching a page ----
 const fills = [];
@@ -223,7 +227,7 @@ main(async () => {
     if (started && step.finish) await started;
     shots.push(snap());
   }
-  emit({ shots, mids, queueSaves, fills, pressed, updates, sent, writes, sessionWrites, broadcasts, held: heldTimers.filter(Boolean).length,
+  emit({ shots, mids, queueSaves, fills, receiptCalls, pressed, updates, sent, writes, sessionWrites, broadcasts, held: heldTimers.filter(Boolean).length,
          profile: PROFILE, errors, warnings });
 });
 """
@@ -1345,3 +1349,98 @@ def test_the_page_counts_only_what_ended_answered_and_each_upload_box_as_one_fie
     # Answered: verified, already, yours (not the one the page took back, not the one still open),
     # plus the upload that holds a file. Of five fields and one upload box.
     assert record["progress"] == {"done": 4, "total": 6}
+
+
+# ---------- one resume write per page, whatever the gate or a repair would like ----------
+
+TWO_UPLOADS = {"count": 2, "items": [{"label": "Upload one", "target": "t-1", "kind": "upload"},
+                                     {"label": "Upload two", "target": "t-2", "kind": "upload"}]}
+RESUME_BOX = {"tier": "B", "form": True, "score": 2, "fileInputs": 1, "uploads": [{"kind": "resume", "occupied": False}]}
+
+
+def test_two_upload_errors_are_never_both_the_resumes_so_the_run_parks_and_writes_nothing(tmp_path):
+    frames = {"page_errors": [{"frameId": 0, "result": TWO_UPLOADS}], "page_uploads": [{"frameId": 0, "result": []}]}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, STEP1_REJECTED, REVIEW), frames=frames,
+               replies={"attach_pdf": ATTACHED_ONE})
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"]) == ("parked", "page_errors")
+    assert [o["question"] for o in record["open"]] == ["Upload one", "Upload two"]
+    assert _attach_asks(out) == []
+
+
+def test_a_cover_letter_box_is_never_written_and_the_run_parks_naming_it(tmp_path):
+    cover = {**BOX, "label": "Cover letter", "kind": "other"}
+    out = _upload_run(tmp_path, ATTACHED_ONE, boxes=[cover])
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"]) == ("parked", "upload")
+    assert [o["question"] for o in record["open"]] == ["Cover letter"]
+    assert [ask for ask in _attach_asks(out) if ask.get("target")] == []
+
+
+def test_a_write_the_run_could_not_prove_is_not_repeated_when_the_next_is_refused_over_the_same_box(tmp_path):
+    """The run's own attach wrote and could not prove it; the page then refuses Next naming the upload.
+    A second copy is what the hedge is for: the run parks instead."""
+    frames = {"page_errors": [{"frameId": 0, "result": UPLOAD_ERROR}],
+              "page_uploads": [{"frameId": 0, "result": [{**BOX, "kind": "resume"}]}]}
+    wrote_unproven = _reply([{"frameId": 0, "result": {"written": 1, "proven": 0}}])
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, STEP1_REJECTED, REVIEW), frames=frames, callBeforeSweep=True,
+               page={"detect_page": _reply(RESUME_BOX)}, replies={"attach_pdf": wrote_unproven})
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"]) == ("parked", "page_errors")
+    assert len(_attach_asks(out)) == 1, "one write in all: the automatic one"
+
+
+def test_a_resume_after_an_unconfirmed_gate_write_presses_on_and_never_writes_a_second_copy(tmp_path):
+    wrote_unproven = _reply([{"frameId": 0, "result": {"written": 1, "proven": 0}}])
+    out = _upload_run_steps(tmp_path, wrote_unproven, [{"start": SEED}, {"press": "run-resume"}],
+                            api={"GET /api/applications/app-1": _reply(APPLICATION)})
+    assert _record(out["shots"][1])["why"] == "upload"
+    # Page one is not filled again; Next moves to the review page, whose fake still shows an empty required
+    # box: the gate would write again, and refuses, because the earlier write may be there unseen.
+    assert len(out["fills"]) == 2
+    record = _record(out["shots"][2])
+    assert (record["status"], record["why"], record["step"]) == ("parked", "upload", 1)
+    assert len(_attach_asks(out)) == 1, "one write in all"
+
+
+def _upload_run_steps(tmp_path, reply, steps, boxes=(BOX,), **spec):
+    spec["frames"] = {"page_uploads": [{"frameId": 0, "result": list(boxes)}], **spec.get("frames", {})}
+    spec.setdefault("page", {"detect_page": _reply(UNKNOWN_BOX)})
+    spec.setdefault("replies", {})["attach_pdf"] = reply
+    return _run(tmp_path, steps, pages=(STEP1, REVIEW), callBeforeSweep=True, **spec)
+
+
+# ---------- a Resume after a park the user fixed by hand does not refill the page ----------
+
+def test_a_resume_after_page_errors_reads_the_errors_and_presses_when_none_remain(tmp_path):
+    seeded = _seeded("parked", why="page_errors", open=[{"fid": "f-city", "question": "City", "required": True}],
+                     seen=[], step=0, filled=True, wrote=True)
+    out = _run(tmp_path, [{"seed": [seeded]}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               frames={"page_errors": [{"frameId": 0, "result": {"count": 0, "items": []}}]})
+    record = _record(out["shots"][2])
+    assert (record["status"], record["step"]) == ("ready", 1)
+    # Only the review page was filled: the user fixed what was named.
+    assert len(out["fills"]) == 1 and len(_page_messages(out, "page_errors")) == 1
+    assert len(_page_messages(out, "page_advance")) == 1
+
+
+def test_a_resume_after_page_errors_repairs_only_what_the_page_still_names(tmp_path):
+    seeded = _seeded("parked", why="page_errors", open=[{"fid": "f-city", "question": "City", "required": True}],
+                     seen=[], step=0, filled=True, wrote=True)
+    out = _run(tmp_path, [{"seed": [seeded]}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               frames={"page_errors": [{"frameId": 0, "result": CITY_ERROR}]},
+               reports=[{"fields": [verified("f-city", "City")]}, {"fields": [verified("f1")]}])
+    assert [call["options"].get("only") for call in out["fills"]] == [["f-city"], None]
+
+
+def test_a_scoped_repair_posts_no_answer_receipt(tmp_path):
+    out = _rejected(tmp_path)
+    # Three fills ran (page one, the repair of City, the review page); the repair posts no receipt.
+    assert len(out["fills"]) == 3 and out["receiptCalls"] == 2
+
+
+def test_the_card_does_not_call_a_box_that_already_held_a_file_a_failure(tmp_path):
+    attach = {"outcome": "skipped", "reason": "occupied", "text": "A file is already attached. The Companion left it."}
+    out = _run(tmp_path, [{"seed": [_seeded("filling", attach=attach, progress={"done": 1, "total": 2})]}])
+    text = _body_text(out["shots"][1])
+    assert "A file was already attached" in text and "Couldn't attach" not in text

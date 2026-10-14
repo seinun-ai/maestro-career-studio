@@ -117,7 +117,7 @@ def test_the_summary_is_counts_texts_and_booleans_and_never_a_value(page, load):
     assert "Zelda-Secret-9" not in json.dumps(s)
     assert set(s) == {"host", "stepKey", "applyId", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
                       "fillable", "hasApplyLink", "confirmationText", "confirmationPhrase", "closedText", "boardNative",
-                      "submitSeen", "submitContext", "errors"}
+                      "submitSeen", "submitContext", "errors", "errorKeys"}
     assert s["errors"] == 0
     assert set(s["buttons"][0]) == {"id", "text", "inForm", "visible", "enabled"}
     assert (s["passwordInputs"], s["fillable"]) == (1, 3)
@@ -1531,15 +1531,6 @@ def test_the_banners_buttons_are_marked_so_the_fingerprint_can_leave_them_out(pa
     assert shown(after, errors=False) == shown(before, errors=False)
 
 
-def test_a_submit_worded_error_in_the_banner_does_not_make_the_step_a_review(page, load):
-    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li><button type="button">Error - Please submit a
-      resume</button></li></ul></div><h2>My Experience</h2><label for="c">City</label><input id="c">
-      <button type="button">Save and Continue</button>""", SOURCES)
-    s = summary(page)
-    assert s["submitSeen"] is False
-    assert classify(page)["kind"] == "form_step"
-
-
 def test_a_field_error_is_mapped_by_its_describedby_to_the_field(page, load):
     load(page, """<h2>Contact</h2><label for="phone">Phone Number</label>
       <input id="phone" aria-invalid="true" aria-describedby="e-phone">
@@ -1590,3 +1581,139 @@ def test_the_errors_are_words_never_values(page, load):
     out = page_errors(page)
     assert "Zelda-Secret-9" not in json.dumps(out) and out["count"] == 1
     assert "Zelda-Secret-9" not in json.dumps(summary(page))
+
+
+# ---------- a real Submit is never swallowed by a region that only looks like an error summary ----------
+
+CONTINUE_ELSEWHERE = "<main><h1>Review</h1><div><button type='button'>Continue</button></div>{block}</main>"
+
+
+@pytest.mark.parametrize("block", [
+    # A static hint beside the Submit, matching the 'please correct' heading words.
+    "<div><p>Please correct any errors before submitting.</p><button type='button'>Submit application</button></div>",
+    # The same under a live wrapper.
+    "<div aria-live='polite'><p>Please correct any errors before submitting.</p><button type='button'>Submit application</button></div>",
+    "<div role='alert'><p>You must fix any error first.</p><button type='button'>Submit application</button></div>",
+], ids=["plain", "aria-live", "alert"])
+def test_a_submit_beside_error_words_is_still_the_review_pages_and_never_a_continue_beside_it(page, load, block):
+    load(page, CONTINUE_ELSEWHERE.format(block=block), SOURCES)
+    s = summary(page)
+    assert not [b for b in s["buttons"] if b["text"] == "Submit application" and b.get("inErrors")]
+    assert classify(page)["kind"] == "review"
+
+
+def test_a_submit_worded_line_in_the_banner_still_counts_as_a_submit(page, load):
+    """When unsure whether a button is Next or Submit, stop: the banner line's Submit word counts."""
+    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li><button type="button">Error - Please submit a
+      resume</button></li></ul></div><h2>My Experience</h2><label for="c">City</label><input id="c">
+      <button type="button">Save and Continue</button>""", SOURCES)
+    assert classify(page)["kind"] == "review"
+
+
+def test_a_live_region_marked_off_is_no_error_summary(page, load):
+    load(page, """<div aria-live="off"><ul><li>Error - City</li></ul></div>
+      <label for="city">City</label><input id="city">""", SOURCES)
+    assert page_errors(page) == {"count": 0, "items": []}
+
+
+def test_an_error_line_button_is_marked_but_a_next_beside_the_banner_is_not(page, load):
+    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li><button type="button">Error - City</button></li></ul></div>
+      <label for="city">City</label><input id="city"><button type="button">Next</button>""", SOURCES)
+    marked = {b["text"]: bool(b.get("inErrors")) for b in summary(page)["buttons"]}
+    assert marked == {"Error - City": True, "Next": False}
+    assert classify(page)["kind"] == "form_step"
+
+
+# ---------- an upload's complaint is its own box's, never a neighbour's ----------
+
+def test_an_invalid_fieldset_around_a_field_and_an_optional_upload_does_not_report_the_upload(page, load):
+    load(page, """<h2>Documents</h2><form><fieldset aria-invalid="true"><label for="c">City</label>
+      <input id="c" aria-invalid="true"><div><label for="f">Upload a file</label><input type="file" id="f"></div></fieldset>
+      <button type="button">Next</button></form>""", SOURCES)
+    items = page_errors(page)["items"]
+    assert [(i["label"], i["kind"]) for i in items] == [("City", "field")]
+
+
+# ---------- the words are the page's, never the user's ----------
+
+def test_a_mapped_item_is_worded_by_the_fields_question_not_by_the_error_line(page, load):
+    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li><a href="#ph">Error - Phone Number, which must be 10 digits</a></li></ul></div>
+      <label for="ph">Phone</label><input id="ph" aria-invalid="true">""", SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert (item["label"], item["kind"]) == ("Phone", "field")
+
+
+@pytest.mark.parametrize("line", [
+    "Error: Ada_Lovelace_Resume.pdf must be under 5MB",
+    "Error: ada@example is invalid",
+    "Error: \"Ada Lovelace\" is not a number",
+])
+def test_an_unmapped_line_that_carries_a_file_name_an_address_or_a_quoted_string_is_not_repeated(page, load, line):
+    load(page, f"""<div role="alert"><h3>Errors Found</h3><ul><li>{line}</li></ul></div>
+      <label for="e">Email</label><input id="e" value="ada@example">""", SOURCES)
+    out = page_errors(page)
+    assert out["items"] == [{"label": "Something the page names", "target": None, "kind": "unknown"}]
+    blob = json.dumps([out, summary(page)])
+    assert "Ada" not in blob and "ada@example" not in blob and "Lovelace" not in blob
+
+
+def test_an_unmapped_line_that_echoes_a_pill_or_a_typed_value_is_not_repeated(page, load):
+    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li>Error: Python is required</li><li>Error: Springfield Heights is required</li></ul></div>
+      <ul><li data-automation-id="selectedItem"><p data-automation-id="promptOption">Python</p></li></ul>
+      <label for="c">Town</label><input id="c" value="Springfield Heights">""", SOURCES)
+    out = page_errors(page)
+    assert [i["label"] for i in out["items"]] == ["Something the page names"]
+    assert "Python" not in json.dumps(out) and "Springfield" not in json.dumps(out)
+
+
+def test_a_live_region_that_is_not_an_error_line_is_never_used_as_a_label(page, load):
+    load(page, """<div aria-live="polite">Python selected. Required field. 3 of 15 chosen: Python, SQL, Go</div>
+      <label for="s">Skills</label><input id="s" role="combobox">""", SOURCES)
+    out = page_errors(page)
+    assert out == {"count": 0, "items": []}
+    assert "Python" not in json.dumps(summary(page))
+
+
+def test_a_standing_hint_about_required_fields_is_not_an_error(page, load):
+    load(page, """<main><h1>Engineer at Acme</h1><p aria-live="polite">Fields marked * are required</p>
+      <label for="a">City *</label><input id="a"><button type="button">Next</button></main>""", SOURCES)
+    assert page_errors(page) == {"count": 0, "items": []}
+    assert summary(page)["errors"] == 0
+
+
+@pytest.mark.parametrize("line", ["Phone Number is required", "Phone Number can't be blank", "Phone Number: This field is required",
+                                  "The field Phone Number is required and must have a value."])
+def test_the_usual_ways_a_page_words_a_missing_field_all_name_it(page, load, line):
+    load(page, f"""<div role="alert"><ul><li>{line}</li></ul></div>
+      <label for="ph">Phone Number</label><input id="ph">""", SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert (item["label"], item["kind"]) == ("Phone Number", "field")
+
+
+def test_an_unmapped_line_that_only_repeats_a_mapped_label_is_dropped(page, load):
+    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li><a href="#c">Error - City</a></li><li>Error - City field</li></ul></div>
+      <label for="c">City</label><input id="c" aria-invalid="true">""", SOURCES)
+    assert [i["label"] for i in page_errors(page)["items"]] == ["City"]
+
+
+# ---------- the step heading is the step's ----------
+
+def test_an_error_summarys_heading_is_not_the_steps_heading(page, load):
+    clean = "<main><h2>Contact details</h2><label for='a'>Full name</label><input id='a'><button type='button'>Next</button></main>"
+    load(page, clean, SOURCES)
+    before = summary(page)["stepKey"]
+    for banner in ("<div role='alert'><h2>Please correct the errors below</h2><ul><li>Error - Full name</li></ul></div>",
+                   "<div role='alert'><h2>Problems with your answers</h2><ul><li>Error - Full name</li></ul></div>"):
+        load(page, "<main>" + banner + clean[len("<main>"):], SOURCES)
+        assert summary(page)["stepKey"] == before and before != ""
+
+
+# ---------- the cheap read stays cheap ----------
+
+def test_a_page_with_no_complaint_reads_no_field_questions(page, load):
+    controls = "".join(f"<label for='i{n}'>Question {n}</label><input id='i{n}'>" for n in range(40))
+    load(page, f"<h2>Questions</h2>{controls}<button type='button'>Next</button>", SOURCES)
+    page.evaluate("""() => { const ns = window.careerStudioCompanion; window.__reads = 0; const real = ns.readField;
+      ns.readField = (el) => { window.__reads += 1; return real(el); }; }""")
+    summary(page)
+    assert page.evaluate("window.__reads") == 0

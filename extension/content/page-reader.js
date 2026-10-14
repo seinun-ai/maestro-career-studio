@@ -206,9 +206,8 @@
 
   /** A Submit anywhere a person could press one (WIDE_BUTTONS), shown, enabled or not. Beyond
    * BUTTONS, site chrome is the site's, and a long block of text in a link is not a button label. */
-  const submitSeen = (regions) => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
+  const submitSeen = () => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
     if (!shown(el)) return false;
-    if (inErrorRegion(el, regions)) return false;
     const extra = !el.matches(BUTTONS);
     if (extra && (inChrome(el) || shownTextOf(el).length > MAX_TEXT)) return false;
     return submitMarked(el) || labels(el).some((text) => sortOf(text) === "submit");
@@ -216,7 +215,9 @@
 
   /** The step's first visible h1/h2 text, outside site chrome. */
   const stepHeading = () => {
-    const heading = [...document.querySelectorAll("h1, h2")].find((el) => shown(el) && !inChrome(el) && squash(el.textContent));
+    // An error summary's own heading ("Please correct the errors below") is not the step's.
+    const heading = [...document.querySelectorAll("h1, h2")].find((el) => shown(el) && !inChrome(el)
+      && squash(el.textContent) && !ERROR_HEADING.test(squash(el.textContent)) && !el.closest(LIVE));
     return heading ? squash(heading.textContent) : "";
   };
 
@@ -247,24 +248,56 @@
 
   // ---------- the page's own complaints ----------
 
-  // A heading that says the page has errors; the words an error summary or live region must carry.
+  // A heading that says the page has errors (never a line about one field).
   const ERROR_HEADING = /errors? found|please (fix|correct)|there (is|are) \d+ errors?/i;
   const ERRORISH = /error|required|must|invalid|please (fix|correct|enter|select|provide|choose)|can(?:no|['’])t|unable/i;
   const ERROR_LEAD = /^\s*errors?\s*[-:–—]\s*/i;
-  const FIELD_REQUIRED = /^\s*the field\s+(.+?)\s+is required\b.*$/i;
+  // How a line names its field: "The field X is required…", "X: This field is required", "X is
+  // required", "X can't be blank". The name is group 1.
+  const LINE_NAMES = [
+    /^the field\s+(.+?)\s+is required\b.*$/i,
+    /^(.+?)\s*:\s*this field is required\b.*$/i,
+    /^(.+?)\s+(?:is|are)\s+required\b.*$/i,
+    /^(.+?)\s+(?:can(?:['’]t|not)|must not)\s+be\s+(?:blank|empty)\b.*$/i,
+  ];
+  // A standing hint, not a complaint: "Fields marked * are required", "All questions are required".
+  const HINT_NAME = /^(?:all\s+)?(?:required\s+)?(?:fields?|questions?|items?)\b|\bmarked\b|\*\s*$/i;
   const REGION_ITEMS = 'li, a[href], button, [role="button"], [role="link"], [role="listitem"]';
+  const LIVE = '[role="alert"], [aria-live]:not([aria-live="off"])';
   const CONTROLS = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"])'
     + ':not([type="image"]), select, textarea, [role="combobox"]';
+  // What the run says when the page's own words might carry something of the user's.
+  const UNNAMED = "Something the page names";
+  const FILE_NAME = /[\w-]+\.(?:pdf|docx?|png|jpe?g|gif|txt|rtf|odt|pages|zip|csv|xlsx?)\b/i;
+  const QUOTED = /["“”]|(?:^|\s)['‘][^'’]+['’](?:\s|$)/;
 
   const normal = (text) => squash(text).replace(/\*/g, "").replace(/[\s.:]+$/, "").toLowerCase();
-  /** The page's wording for the field an error names: "Error - X", "Error: X", "The field X is
-   * required and must have a value." and "X" all read as X. */
-  const fieldNamed = (raw) => {
-    let text = squash(raw).replace(ERROR_LEAD, "");
-    const m = FIELD_REQUIRED.exec(text);
-    if (m) text = m[1];
-    return text.replace(/[\s.:]+$/, "").slice(0, MAX_TEXT * 2);
+  const keyOf = (text) => {
+    let hash = 0x811c9dc5;
+    for (const ch of normal(text)) hash = Math.imul(hash ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+    return hash.toString(36);
   };
+
+  /** What field an error line names, or null when the text is not an error line at all: a lead
+   * ("Error - X", "Error: X") or one of LINE_NAMES. Headings and standing hints are not lines. */
+  function errorLineOf(raw) {
+    const text = squash(raw);
+    if (!text || ERROR_HEADING.test(text)) return null;
+    const lead = ERROR_LEAD.test(text);
+    const bare = text.replace(ERROR_LEAD, "");
+    let name = lead ? bare : null;
+    for (const pattern of LINE_NAMES) {
+      const m = pattern.exec(bare);
+      if (m) {
+        name = m[1];
+        break;
+      }
+    }
+    if (!name || HINT_NAME.test(name)) return null;
+    return { name: name.replace(/[\s.:]+$/, "").slice(0, MAX_TEXT * 2) };
+  }
+  /** Whether a button's own text reads as one of the error summary's lines or its heading. */
+  const isErrorText = (text) => ERROR_HEADING.test(squash(text)) || errorLineOf(text) !== null;
 
   const byId = (id) => (id ? document.getElementById(id) : null);
   const isFileInput = (el) => el instanceof HTMLInputElement && el.type === "file";
@@ -281,23 +314,26 @@
 
   /** The error summaries on the page: a visible alert or live region that reads like an error, or
    * the nearest block around a short element headed "Errors Found" and the like. A region that holds
-   * a field is the step around it, not a summary. */
+   * a field is the step around it, not a summary, and a block around a heading that also holds a
+   * button which is no error line (a Submit under "Please correct any errors before submitting") is
+   * not a summary either. */
   function errorRegions() {
     const regions = new Set();
     const hasField = (el) => el.querySelector(CONTROLS) !== null;
-    for (const el of document.querySelectorAll('[role="alert"], [aria-live]')) {
-      if (shown(el) && ERRORISH.test(squash(el.textContent)) && !hasField(el)) regions.add(el);
+    const onlyErrorButtons = (el) => [...el.querySelectorAll(BUTTONS)].every((b) => isErrorText(labelOf(b)));
+    for (const el of document.querySelectorAll(LIVE)) {
+      if (ERRORISH.test(el.textContent ?? "") && shown(el) && !hasField(el)) regions.add(el);
     }
     for (const el of document.querySelectorAll("body *")) {
-      if (el.childElementCount > 1 || !shown(el)) continue;
+      if (el.childElementCount > 1) continue;
       const own = squash(el.textContent);
-      if (own.length > 60 || !ERROR_HEADING.test(own)) continue;
+      if (own.length > 60 || !ERROR_HEADING.test(own) || !shown(el)) continue;
       // The nearest block around the heading that holds more than the heading: the summary.
       let region = el.parentElement;
       for (let level = 0; level < 3 && region; level += 1, region = region.parentElement) {
         if (region === document.body || region.tagName === "FORM" || hasField(region)) break;
         if (squash(region.textContent).length > own.length + 8) {
-          regions.add(region);
+          if (onlyErrorButtons(region)) regions.add(region);
           break;
         }
       }
@@ -306,9 +342,20 @@
     return [...regions].filter((r) => ![...regions].some((o) => o !== r && o.contains(r)));
   }
 
+  /** The boxes an upload's own complaint may live in: climb from the input while the ancestor holds no
+   * other field, never beyond (a fieldset around City and the upload is City's). */
+  function uploadBox(input) {
+    const boxes = [];
+    for (let n = input.parentElement; n && n !== document.body && n.tagName !== "FORM"; n = n.parentElement) {
+      if (n.querySelectorAll(CONTROLS).length > 1) break;
+      boxes.push(n);
+    }
+    return boxes;
+  }
   /** Whether an upload box carries the page's complaint: the field reader's own test (its error
-   * node, its described-by), or aria-invalid on the box or the uploader wrapped around it. */
-  const uploadInvalid = (input) => input.closest('[aria-invalid="true"]') !== null || ns.fillBase.invalid(input);
+   * node, its described-by), or aria-invalid on the input or on the uploader around it alone. */
+  const uploadInvalid = (input) => input.getAttribute("aria-invalid") === "true"
+    || uploadBox(input).some((n) => n.getAttribute("aria-invalid") === "true") || ns.fillBase.invalid(input);
 
   const boxShown = (el) => shown(el) || (isFileInput(el) && Boolean(el.parentElement) && shown(el.parentElement));
   /** The page's own words for a control's question, else "". */
@@ -323,8 +370,24 @@
       const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => byId(id)?.textContent);
       question = squash([el.getAttribute("aria-label"), ...named].find((t) => squash(t)) ?? "");
     }
-    return fieldNamed(question);
+    return squash(question).replace(ERROR_LEAD, "").replace(/[\s.:]+$/, "").slice(0, MAX_TEXT * 2);
   };
+
+  /** Every value the page holds right now, lower-cased and at least three characters: text typed in a
+   * control and the pills a multi-select shows. An error line that echoes one is the user's. */
+  function heldValues() {
+    const out = new Set();
+    for (const el of document.querySelectorAll("input, textarea, select")) {
+      if (isFileInput(el) || ns.fillBase.isPasswordBox(el) || /^(hidden|checkbox|radio|submit|button)$/.test(el.type ?? "")) continue;
+      const v = squash(el.value).toLowerCase();
+      if (v.length >= 3) out.add(v);
+    }
+    for (const el of document.querySelectorAll('[data-automation-id="promptOption"], [data-automation-id="selectedItem"]')) {
+      const v = squash(el.textContent).toLowerCase();
+      if (v.length >= 3 && v.length <= 80) out.add(v);
+    }
+    return out;
+  }
 
   /** The handle a later op can find `el` by, or null: a fill field's fid (resolving it can re-list the
    * inventory, so the count-only read never asks), or an upload box's tag. */
@@ -352,51 +415,70 @@
     return null;
   }
 
-  /** What the page complains about: `{count, items: [{label, target, kind}]}`, one item per field
-   * (the summary's line and the field's own mark are one error). `withTargets` false is the cheap
-   * read `summary()` makes: the count and no handle, which would re-list the fill inventory. */
-  function collectErrors(withTargets) {
+  /** What the page complains about: `{count, items: [{label, target, kind}], keys}`, one item per field
+   * (the summary's line and the field's own mark are one error). A mapped item is worded by the field's
+   * own question, never by the error line; an unmapped one by its line's field name, and a name that
+   * could carry something of the user's (a file name, an address, a quoted string, a value the page
+   * holds) is UNNAMED. `withTargets` false is the cheap read `summary()` makes: no handle, which would
+   * re-list the fill inventory. `keys` are hashes of the labels: which errors, never what. */
+  function collectErrors(withTargets, regions = errorRegions()) {
     const controls = [...document.querySelectorAll(`${CONTROLS}, input[type="file"]`)].filter(boxShown);
-    const labelled = controls.map((el) => {
-      const question = questionOf(el);
-      return { el, question, label: normal(question) };
-    });
-    const items = [];
-    const seen = new Set();
-    const add = (label, el) => {
-      const handle = el ? handleOf(el, withTargets) : { kind: "unknown", target: null };
-      const key = el ? el : `label:${normal(label)}`;
-      if (seen.has(key) || (el === null && items.some((one) => normal(one.label) === normal(label)))) return;
-      seen.add(key);
-      items.push({ label, ...handle, el });
+    const isInvalid = (el) => (isFileInput(el) ? uploadInvalid(el) : ns.fillBase.invalid(el));
+    const questions = new Map();   // read lazily: only a control a line may name, or an invalid one
+    const questionFor = (el) => {
+      if (!questions.has(el)) questions.set(el, questionOf(el));
+      return questions.get(el);
+    };
+    let held = null;
+    const safe = (name) => {
+      held ??= heldValues();
+      const low = name.toLowerCase();
+      if (!name || FILE_NAME.test(name) || name.includes("@") || QUOTED.test(name)
+        || [...held].some((value) => low.includes(value))) return UNNAMED;
+      return name;
     };
 
-    for (const region of errorRegions()) {
-      const all = [...region.querySelectorAll(REGION_ITEMS)]
-        .filter((n) => shown(n) && squash(n.textContent) && !ERROR_HEADING.test(squash(n.textContent)));
-      const lines = all.filter((n) => !all.some((o) => o !== n && o.contains(n)));
-      const texts = lines.length ? lines : [region];
-      for (const line of texts) {
-        const label = fieldNamed(line.textContent);
-        if (!label) continue;
-        let el = line === region ? null : linkedControl(line);
+    const items = [];
+    const claimed = new Set();
+    const add = (name, el) => {
+      if (el) {
+        if (claimed.has(el)) return;
+        claimed.add(el);
+        items.push({ label: safe(questionFor(el) || name), ...handleOf(el, withTargets), el });
+      } else if (!items.some((one) => !one.el && normal(one.label) === normal(safe(name)))) {
+        items.push({ label: safe(name), kind: "unknown", target: null, el: null });
+      }
+    };
+
+    for (const region of regions) {
+      const all = [...region.querySelectorAll(REGION_ITEMS)].filter((n) => squash(n.textContent) && shown(n));
+      for (const line of all.filter((n) => !all.some((o) => o !== n && o.contains(n)))) {
+        const named = errorLineOf(line.textContent);
+        if (!named) continue;
+        let el = linkedControl(line);
         if (!el) {
-          const wanted = normal(label);
-          const same = labelled.filter((c) => c.label === wanted).map((c) => c.el);
-          el = same.length === 1 ? same[0] : same.filter((c) => (isFileInput(c) ? uploadInvalid(c) : ns.fillBase.invalid(c)))[0] ?? null;
-          if (same.length > 1 && same.filter((c) => (isFileInput(c) ? uploadInvalid(c) : ns.fillBase.invalid(c))).length !== 1) el = null;
+          const wanted = normal(named.name);
+          const same = controls.filter((c) => normal(questionFor(c)) === wanted);
+          const bad = same.filter(isInvalid);
+          el = same.length === 1 ? same[0] : bad.length === 1 ? bad[0] : null;
         }
-        add(label, el);
+        add(named.name, el);
       }
     }
-    for (const { el, question } of labelled) {
-      if (!(isFileInput(el) ? uploadInvalid(el) : ns.fillBase.invalid(el))) continue;
-      add(question || "Field", el);
+    for (const el of controls) {
+      if (!claimed.has(el) && isInvalid(el)) add(questionFor(el) || "Field", el);
     }
-    return { count: items.length, items: items.map(({ el, ...item }) => item) };
+    // A line that names no field the page has, but whose words sit inside a mapped item's label (or the
+    // other way round), is the same error said twice.
+    const mapped = items.filter((one) => one.el).map((one) => normal(one.label));
+    const kept = items.filter((one) => one.el || !mapped.some((m) => m && (normal(one.label).includes(m) || m.includes(normal(one.label)))));
+    return { count: kept.length, items: kept.map(({ el, ...item }) => item), keys: kept.map((one) => keyOf(one.label)) };
   }
 
-  const pageErrors = () => collectErrors(true);
+  const pageErrors = () => {
+    const { count, items } = collectErrors(true);
+    return { count, items };
+  };
   const inErrorRegion = (el, regions) => regions.some((r) => r.contains(el));
 
   const tag = (el) => {
@@ -443,6 +525,8 @@
     for (const old of document.querySelectorAll("[data-maestro-btn]")) old.removeAttribute("data-maestro-btn");
     const inForm = inFormOf(fieldForms());
     const regions = errorRegions();
+    const found = collectErrors(false, regions);
+    const errorSummary = { errors: found.count, errorKeys: found.keys };
     const buttons = [...document.querySelectorAll(BUTTONS)].map((el) => {
       const id = tag(el);
       const known = knownOf(el);
@@ -454,7 +538,7 @@
         enabled: enabled(el),
         ...(known ? { known } : {}),
         // The error summary's own buttons ("Errors Found", "Error - <field>"): not part of the step.
-        ...(inErrorRegion(el, regions) ? { inErrors: true } : {}),
+        ...(inErrorRegion(el, regions) && isErrorText(labelOf(el)) ? { inErrors: true } : {}),
       };
     });
     const bodyText = (document.body?.innerText ?? "").slice(0, BODY_SLICE);
@@ -478,9 +562,9 @@
       confirmationPhrase: CONFIRMATION.exec(bodyText)?.[0] ?? null,
       closedText: CLOSED.test(bodyText),
       boardNative: BOARD_HOST.test(location.hostname),
-      submitSeen: submitSeen(regions),
+      submitSeen: submitSeen(),
       submitContext: submitContext(),
-      errors: collectErrors(false).count,
+      ...errorSummary,
     };
   }
 

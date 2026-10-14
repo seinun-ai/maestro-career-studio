@@ -37,7 +37,9 @@
  *                          told the user to go somewhere: sign_in_yourself, verify, posting,
  *                          unknown_page; the host they land on joins `hosts`)
  *     → stopped      closed | bad_link | error | user (a Stop; nothing is called after it)
- *   Resume re-enters `drive` on a parked record: the open tab is kept, the page is read again.
+ *   Resume re-enters `drive` on a parked record: the open tab is kept, the page is read again. After a
+ *   `page_errors` or `upload` park the page is NOT filled again (the user fixed what was named): the errors
+ *   are read, any that remain get a repair round, and Next is pressed.
  *
  * SETTLING. A page the run has just arrived at (the opened tab, an Apply or Next that moved it, a
  * sign-in) is often not drawn yet: the content scripts load at document_idle, and a client-rendered
@@ -79,21 +81,24 @@
  *   classify(tabId) → [{frameId, result: {summary, top}}]      tabUrl(tabId) → the tab's address
  *   advance(tabId, frameId, id, opts) → {clicked, why}         opts is {apply: true} or absent
  *   fill(record, {limits}) → the fill-loop report              signIn(record, {allowedHost, stop}) → {signedIn}
- *   waitForChange(tabId, before, ms, stop, baseline) → {changed, url, errors, sameStep}
- *                                `baseline`: the errors the page showed before the press
+ *   waitForChange(tabId, before, ms, stop, baseline) → {changed, url, errors, sameStep, fresh}
+ *                                `baseline`: the error keys the page showed before the press
  *   pageErrors(tabId, frameId) → {count, items: [{label, target, kind}]}   what the page complains about
- *   attachTo(record, box) → {attached}   the run's PDF into the one box `{label, target}` names (a box
- *                                the page itself named, or the fill's report found required and empty)
+ *   attachTo(record, box) → {attached}   the run's PDF into the one box `{label, target}` names: a box the
+ *                                page itself named, or the ONE required empty box the fill's report found
+ *                                (never one labelled for another document; at most one write per page)
  *   fix(record, errors, {limits}) → {fixed}  repairs ONLY the fields the errors name; the driver then presses once more
  *   sleep(ms) · save(record) · onUpdate(record) · now() · cancelled(record)
  *                                (save is the host's: it owns the list)
- *   pageOps() builds classify, advance, signIn and waitForChange from a message transport.
+ *   pageOps() builds classify, pageErrors, advance, signIn and waitForChange from a message transport.
  *
  * A REJECTED NEXT IS NOT A MOVE. A press that leaves the address and the step heading where they
  * were while the page shows errors is "rejected": `step` and `seen` do not change (the banner's own
  * buttons are out of the fingerprint, and a rejection is caught even if they were not). The driver
  * reads the errors, hands them to `fix`, and presses once more; the same error again, or one `fix`
- * cannot repair, parks `page_errors` naming the fields. The rest of the page is never refilled.
+ * cannot repair, parks `page_errors` naming the fields. The rest of the page is never refilled. It is a
+ * rejection when the error is new on the same step (or nothing else changed); a page that moved past
+ * a standing error line is a move.
  *
  * ONE DEVIATION FROM A STRAIGHT READING: after a clean fill the page is read AGAIN before it is
  * judged. A Next that stays disabled until the form validates is enabled only afterwards, and the
@@ -132,7 +137,10 @@
   // The fill just wrote the file: the page may be slow to show its row, and a second copy is what the hedge is for.
   const FILE_WRITTEN = new Set(["attached", "unconfirmed"]);
   const MAX_FIX_ROUNDS = 3;   // repairs on one page; each error is repaired once
-  const REJECT_HOLD_MS = 3000;  // a banner already up before the press must stay this long to be a rejection
+  // Errors already on the page before the press must stay this long, the page otherwise unchanged, to
+  // count as the press's rejection (a slow save leaves the old banner up for a while).
+  const REJECT_HOLD_MS = 3000;
+  const REJECT_HOLD_STANDING_MS = 8000;
   const HALT = Symbol("halt");
 
   /** The hostname of an http(s) address, lower-cased, else null (any other scheme, or not an address). */
@@ -185,7 +193,7 @@
     // not see (`submitSeen`), or a dialog asking about submitting (`submitContext`).
     const showsSubmit = (f) => kindOf(f) === "review" && (
       f.result.summary.submitSeen === true || f.result.summary.submitContext === true
-      || (f.result.summary.buttons ?? []).some((b) => b.visible !== false && b.inErrors !== true && ns.pageKind.sortButton(b) === "submit"));
+      || (f.result.summary.buttons ?? []).some((b) => b.visible !== false && ns.pageKind.sortButton(b) === "submit"));
     const fullest = usable.reduce((best, f) => (!best || fillable(f) > fillable(best) ? f : best), null);
     if (top && (WALL_ANYWHERE.has(kindOf(top)) || TOP_ONLY.has(kindOf(top)))) return top;
     const wall = usable.find((f) => WALL_ANYWHERE.has(kindOf(f)));
@@ -255,21 +263,25 @@
     let movedChecked = false;  // a Resume's first read has been checked against the hosts the run reached
     let fixRounds = 0;       // repairs after a rejected Next on this page
     let attempted = new Set();  // the errors already repaired on this page (by their label)
+    let wroteResume = false; // the resume has been written on this page (by the fill's attach or the gate): never twice
+    let recheck = null;      // a Resume after a park the user fixed by hand: don't refill, look at the page's errors
 
     const noteHost = async (url) => {
       const host = hostOf(url);
       if (host && host !== record.hosts.at(-1)) await update({ hosts: [...record.hosts, host] });
     };
-    const waitFor = (before, baseline = 0) => act(deps.waitForChange, record.tabId, before, LIMITS.changeMs, stopping, baseline);
+    const waitFor = (before, baseline = []) => act(deps.waitForChange, record.tabId, before, LIMITS.changeMs, stopping, baseline);
     const waitChange = async (before) => (await waitFor(before))?.changed === true;
     // "refused" (the page would not press it: the button went, or turned into a Submit), "rejected"
     // (the page stayed where it was and shows errors: whatever else changed, this is NOT a move),
     // "same" (pressed, the page did not change) or "moved". The wait is skipped for a refusal.
-    const press = async (frame, id, before, opts, baseline = 0) => {
+    const press = async (frame, id, before, opts, baseline = []) => {
       const pressed = await act(deps.advance, record.tabId, frame.frameId, id, opts);
       if (pressed?.clicked !== true) return "refused";
       const waited = await waitFor(before, baseline);
-      if ((waited?.errors ?? 0) > 0 && waited?.sameStep === true) return "rejected";
+      // Errors on the same step are the press's refusal when one is NEW (not on the page before it) or when
+      // nothing else changed. A standing line ("Fields marked * are required") on a page that moved is no refusal.
+      if ((waited?.errors ?? 0) > 0 && waited?.sameStep === true && (waited.fresh === true || waited.changed !== true)) return "rejected";
       return waited?.changed === true ? "moved" : "same";
     };
     const moved = () => {
@@ -278,6 +290,8 @@
       tried = 0;
       fixRounds = 0;
       attempted = new Set();
+      wroteResume = false;
+      record.attach = null;
       // What the fill learnt on the page it just left is about that page (host sets it again when needed).
       record.memory = null;
     };
@@ -286,6 +300,21 @@
       fid: it.kind === "field" && typeof it.target === "string" ? it.target : null,   // an upload box has no fid
       question: String(it.label ?? "").slice(0, MAX_QUESTION), required: true,
     }));
+
+    // One repair round for the errors a page names: null to press again, else the park that ends the run. The
+    // same error back after a repair, one that cannot be repaired, or too many rounds, parks naming them.
+    const repair = async (items) => {
+      const open = errorsOpen(items);
+      const key = (it) => String(it.label ?? "").toLowerCase();
+      if (!items.length || items.some((it) => attempted.has(key(it))) || fixRounds >= MAX_FIX_ROUNDS) {
+        return await park("page_errors", { open });
+      }
+      for (const it of items) attempted.add(key(it));
+      fixRounds += 1;
+      await update({ status: "filling" });
+      const repaired = await act(deps.fix, record, items, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
+      return repaired?.fixed === true ? null : await park("page_errors", { open });
+    };
 
     // A read of the page that looks unfinished is repeated, for a page the run has just arrived at.
     //   "blank"  no frame answering, or a page classed unknown (a skeleton, a spinner): re-read until
@@ -323,6 +352,12 @@
       gate();
       const resumed = record.tabId != null;
       const userNavigates = USER_NAVIGATES.has(record.why);
+      // The user fixed what a page_errors or upload park named: the page is not filled again (they fixed
+      // what was named); its errors are read, and Next is pressed if there are none.
+      if (resumed && (record.why === "page_errors" || record.why === "upload")) {
+        recheck = record.why;
+        pageFilled = true;
+      }
       if (record.tabId == null) {
         const host = hostOf(record.openUrl);
         if (!host) return await finish("stopped", "bad_link");
@@ -440,17 +475,18 @@
           if (report.fields.some((f) => WROTE_STATUSES.has(f.status))) await update({ wrote: true });
           const open = openQuestions(report);
           if (open.length) return await park("open_questions", { open });
-          // Never press Next over a required upload known to be empty: attach to it (the page's own
-          // box, found after the fill), or park naming it.
+          // Never press Next over a required upload known to be empty, and never write the resume twice on
+          // a page. The one box the fill's attach wrote is exempt; of the rest, a lone box that is not
+          // labelled for another document gets the targeted attach, and anything else parks naming them.
           const need = report.attach;
-          if (need?.required === true && !FILE_WRITTEN.has(need.outcome)) {
-            const boxes = Array.isArray(need.boxes) ? need.boxes : [];
-            const left = [];
-            for (const box of boxes) {
-              const got = await act(deps.attachTo, record, box);
-              if (got?.attached !== true) left.push(box);
-            }
-            if (!boxes.length || left.length) return await park("upload", { open: errorsOpen(left.length ? left : boxes) });
+          if (FILE_WRITTEN.has(need?.outcome)) wroteResume = true;
+          const boxes = Array.isArray(need?.boxes) ? need.boxes.filter((box) => box.written !== true) : [];
+          if (need?.required === true) {
+            const lone = boxes.length === 1 && boxes[0].kind !== "other" && !wroteResume;
+            if (!lone) return await park("upload", { open: errorsOpen(boxes) });
+            const got = await act(deps.attachTo, record, boxes[0]);
+            if (got?.attached !== true) return await park("upload", { open: errorsOpen(boxes) });
+            wroteResume = true;
           }
           pageFilled = true;
           continue;
@@ -471,7 +507,19 @@
           await update({ fingerprint: here });
         }
         await update({ status: "advancing" });
-        const outcome = await press(frame, verdict.next, here, undefined, summary.errors ?? 0);
+        if (recheck) {
+          const was = recheck;
+          recheck = null;
+          if (was === "page_errors") {
+            const standing = await act(deps.pageErrors, record.tabId, frame.frameId);
+            if (Array.isArray(standing?.items) && standing.items.length) {
+              const stop = await repair(standing.items);
+              if (stop) return stop;
+              continue;
+            }
+          }
+        }
+        const outcome = await press(frame, verdict.next, here, undefined, summary.errorKeys ?? []);
         if (outcome === "moved") {
           // Remembered only once it moved the page: a press that did nothing leaves this page
           // unseen, so a Resume on it is not mistaken for coming back to it.
@@ -483,15 +531,8 @@
           // The page refused and says why. Not a step, not a seen page: read what it names, repair
           // exactly that, press again. The same error back, or one that cannot be repaired, parks.
           const found = await act(deps.pageErrors, record.tabId, frame.frameId);
-          const items = Array.isArray(found?.items) ? found.items : [];
-          const open = errorsOpen(items);
-          const again = items.some((it) => attempted.has(String(it.label ?? "").toLowerCase()));
-          if (!items.length || again || fixRounds >= MAX_FIX_ROUNDS) return await park("page_errors", { open });
-          for (const it of items) attempted.add(String(it.label ?? "").toLowerCase());
-          fixRounds += 1;
-          await update({ status: "filling" });
-          const repaired = await act(deps.fix, record, items, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
-          if (repaired?.fixed !== true) return await park("page_errors", { open });
+          const stop = await repair(Array.isArray(found?.items) ? found.items : []);
+          if (stop) return stop;
           continue;
         }
         // The page may now show errors a fill can fix: refill once, press once more.
@@ -568,13 +609,16 @@
     }
 
     /** Poll until the tab's fingerprint differs from `before` (or, with the page unreadable, its
-     * address does), `ms` runs out, or `stop()` says so. `{changed, url, errors, sameStep}`:
-     * `errors` is what the page shows now and `sameStep` whether its address and step heading are
-     * those of `before`. A page that stays put and shows MORE errors than `baseline` (the count
-     * before the press) is a rejected Next and ends the wait at once; errors that were already up
-     * must stay for REJECT_HOLD_MS first, since a slow success also shows the old banner. */
-    async function waitForChange(tabId, before, ms, stop, baseline = 0) {
+     * address does), `ms` runs out, or `stop()` says so. `{changed, url, errors, sameStep, fresh}`:
+     * `errors` is what the page shows now, `sameStep` whether its address and step heading are those of
+     * `before` (a page with no heading is unknown, not the same), and `fresh` whether it names an error
+     * that was not on the page before the press (`baseline`: the error keys the page showed then). A page
+     * that stays put with a fresh error is a rejected Next and ends the wait at once; the same errors
+     * as before must stay for a while first, since a slow save also leaves the old banner up. */
+    async function waitForChange(tabId, before, ms, stop, baseline = []) {
       const [wasAt, wasKey] = String(before).split("\n");
+      const known = new Set(Array.isArray(baseline) ? baseline : []);
+      const hold = known.size ? REJECT_HOLD_STANDING_MS : REJECT_HOLD_MS;
       const startedAt = now();
       let heldSince = null;
       for (;;) {
@@ -587,16 +631,17 @@
         }
         const here = fingerprint(url, summary);
         const [nowAt, nowKey] = here.split("\n");
-        const sameStep = summary !== null && nowAt === wasAt && nowKey === wasKey;
+        const sameStep = summary !== null && nowAt === wasAt && nowKey !== "" && nowKey === wasKey;
         const errors = summary?.errors ?? 0;
-        if (summary ? here !== before : nowAt !== wasAt) return { changed: true, url, errors, sameStep };
+        const fresh = (summary?.errorKeys ?? []).some((key) => !known.has(key));
+        if (summary ? here !== before : nowAt !== wasAt) return { changed: true, url, errors, sameStep, fresh };
         if (sameStep && errors > 0) {
           heldSince ??= now();
-          if (errors > baseline || now() - heldSince >= REJECT_HOLD_MS) return { changed: false, url, errors, sameStep };
+          if (fresh || now() - heldSince >= hold) return { changed: false, url, errors, sameStep, fresh };
         } else {
           heldSince = null;
         }
-        if (stop?.() || now() - startedAt >= ms) return { changed: false, url, errors, sameStep };
+        if (stop?.() || now() - startedAt >= ms) return { changed: false, url, errors, sameStep, fresh };
         await sleep(POLL_MS);
       }
     }

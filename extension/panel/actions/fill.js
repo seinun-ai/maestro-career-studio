@@ -983,6 +983,10 @@
     if (!facts.application || facts.pdfReady !== true || typeof target !== "string" || !target) {
       return { outcome: "left", text: LEFT_FOR_YOU, applicationId: facts.application?.id ?? null };
     }
+    // A write the page may have taken but did not show is not written a second time: that file may be
+    // on the page, and a second copy is what the hedge is for.
+    const prior = sameApplication(facts.autoAttach?.applicationId, facts.application) ? facts.autoAttach : null;
+    if (prior?.outcome === "unconfirmed") return { outcome: "unconfirmed", text: prior.text, applicationId: facts.application.id };
     return writeResume(store, facts.application.id, undefined, token, stopped, target);
   }
 

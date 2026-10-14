@@ -395,22 +395,26 @@
     if (auto) record.attach = attachNote(auto);
     if (!scoped) {
       // The page's upload boxes, after the attach: one field each in the page's count, and a required
-      // one still empty is the driver's to attach to (or park on) before it presses Next.
+      // one still empty is the driver's to attach to (or park on) before it presses Next. The box the
+      // attach above wrote (a resume box, when it wrote) is marked `written` and exempt.
       const boxes = await uploadBoxes(host, record);
-      const empty = boxes.filter((box) => box.required && !box.occupied);
+      const wrote = ns.panelRunAttach.wrote(auto);
+      const empty = boxes.filter((box) => box.required && !box.occupied)
+        .map(({ label, target, kind }) => ({ label, target, kind, written: wrote && kind === "resume" }));
       const taken = boxes.filter((box) => box.occupied).length;
       record.progress = { done: answered.size + taken, total: Math.max(total, finished.size) + boxes.length };
-      report.attach = { outcome: auto?.outcome ?? null, reason: auto?.reason ?? null, required: empty.length > 0,
-                        boxes: empty.map(({ label, target }) => ({ label, target })) };
+      report.attach = { outcome: auto?.outcome ?? null, reason: auto?.reason ?? null,
+                        required: empty.some((box) => !box.written), boxes: empty };
+      rs.write({ consentForms: report.consentForms === true });
+      const flags = await ns.panelRecordReceipt(rs, rs.read(), 0,
+        (frames) => ns.receipt.fromLoop(report, frames, auto, rs.read().receiptSeen?.fids),
+        { consentForms: report.consentForms === true });
+      if (flags !== null) record.flags = flags;
+      postGaps(store, record, leftovers(report.trace));
     }
-    rs.write({ consentForms: report.consentForms === true });
-    const flags = await ns.panelRecordReceipt(rs, rs.read(), 0,
-      (frames) => ns.receipt.fromLoop(report, frames, auto, rs.read().receiptSeen?.fids),
-      { consentForms: report.consentForms === true });
-    if (flags !== null) record.flags = flags;
+    // A repair of named fields posts no receipt and no gap rows: the page's own fill already did.
     host.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(report), url);
     if (report.trace) store.trace(report.trace);
-    postGaps(store, record, leftovers(report.trace));
     if (!report.stopped && !scoped) {
       const filled = report.fields.filter((row) => WROTE.has(row.status)).length;
       const n = (record.step ?? 0) + 1;
@@ -420,7 +424,7 @@
   }
 
   // What counts as a field repaired: the engine wrote it and checked it, or found it answered.
-  const REPAIRED = new Set([...WROTE, "already"]);
+  const REPAIRED = new Set([...WROTE, "already", "yours"]);
 
   /** The repair after the page refused a Next, by what its errors named (`pageErrors`): ONLY those
    * fields, never the rest of the page. A fill field is worked again with `only` (and the page's
@@ -429,8 +433,11 @@
   async function fixPage(store, record, errors, limits) {
     if (errors.some((one) => !one.target || (one.kind !== "field" && one.kind !== "upload"))) return { fixed: false };
     let fixed = true;
-    // An upload box the page named gets the run's PDF, whatever the box looks like to the run's own attach.
-    for (const one of errors.filter((e) => e.kind === "upload")) {
+    // An upload box the page named gets the run's PDF, whatever the box looks like to the run's own attach,
+    // but only ONE box: two named uploads cannot both be the resume's, so the user is asked.
+    const uploads = errors.filter((e) => e.kind === "upload");
+    if (uploads.length > 1) return { fixed: false };
+    for (const one of uploads) {
       if (record.stopRequested === true || !(await attachBox(store, record, one.target)).attached) return { fixed: false };
     }
     const fids = errors.filter((one) => one.kind === "field").map((one) => one.target);
@@ -445,6 +452,8 @@
 
   /** The run's PDF into the one upload box `target` names; the card's attach line follows the result. */
   async function attachBox(store, record, target) {
+    // The resume was written on this page already (and may be there, only unseen): never a second copy.
+    if (record.attach?.outcome === "attached" || record.attach?.outcome === "unconfirmed") return { attached: false };
     const rs = runStore(store, record);
     const got = await ns.panelRunAttach.attachTo(rs, 0, () => record.stopRequested === true, target);
     if (!got) return { attached: false };
@@ -460,7 +469,8 @@
   /** The attach as the card keeps it: the outcome, and its sentence unless it is the one that names the
    * file ("attached"), so the record holds no filename. */
   function attachNote(auto) {
-    return { outcome: auto.outcome, ...(auto.outcome !== "attached" && auto.text ? { text: String(auto.text).slice(0, MAX_PHRASE) } : {}) };
+    return { outcome: auto.outcome, ...(auto.reason ? { reason: String(auto.reason).slice(0, 40) } : {}),
+             ...(auto.outcome !== "attached" && auto.text ? { text: String(auto.text).slice(0, MAX_PHRASE) } : {}) };
   }
 
   /** The page's upload boxes in its own words (`page_uploads`), from every frame that answers; a box
@@ -470,7 +480,7 @@
       const frames = await host.tabBroadcast(record.tabId, { type: "page_uploads" });
       return frames.flatMap((frame) => (Array.isArray(frame.result) ? frame.result : []))
         .filter((box) => box && typeof box.target === "string" && box.target)
-        .map((box) => ({ label: String(box.label ?? "").slice(0, 160), target: box.target,
+        .map((box) => ({ label: String(box.label ?? "").slice(0, 160), target: box.target, kind: String(box.kind ?? "unknown"),
                          required: box.required === true, occupied: box.occupied === true }));
     } catch {
       return [];

@@ -79,7 +79,7 @@ const tick = (name, ...args) => {
   }
 };
 const earlyReads = {};
-const banner = {};         // page index -> the page is showing its error banner
+const banner = { ...(spec.banner ?? {}) };   // page index -> the page is showing its error banner
 let lastRejected = false;  // the last press was one the page rejected
 let fillCalls = 0;
 let clock = 1000;
@@ -125,10 +125,17 @@ const deps = {
   },
   waitForChange: async (tabId, before, ms, stop, baseline) => {
     tick("waitForChange", ms, typeof stop, baseline ?? null);
+    if (spec.waits?.length) {
+      // A scripted answer (a standing banner on a page that moved, ...): the page still moves as pressed.
+      const scripted = spec.waits.shift();
+      if (scripted.moves) { at += 1; }
+      moved = false;
+      return scripted.result;
+    }
     const c = moved;
     moved = false;
     const shown = lastRejected ? (current().errorCount ?? (current().errorItems ?? []).length) : 0;
-    return { changed: c, url: "ignored", errors: shown, sameStep: lastRejected };
+    return { changed: c, url: "ignored", errors: shown, sameStep: lastRejected, fresh: lastRejected };
   },
   pageErrors: async (tabId, frameId) => {
     tick("pageErrors", frameId);
@@ -981,7 +988,7 @@ def test_a_fill_that_reports_it_was_stopped_is_a_stopped_run(tmp_path):
 
 def test_the_wait_is_given_the_stop_check(tmp_path):
     out = _drive(tmp_path, [step(1), REVIEW])
-    assert names(out, "waitForChange")[0][1:] == [15000, "function", 0]   # the 0: no error on the page before the press
+    assert names(out, "waitForChange")[0][1:] == [15000, "function", []]   # the []: no error on the page before the press
 
 
 # ---------- links, errors, records ----------
@@ -1059,8 +1066,13 @@ let t = 0;
 let pollN = 0;
 const t0 = { summary: { host: "x", fillable: 2, stepKey: "a", buttons: [{ text: "Next", visible: true }] }, top: true };
 const t1 = { summary: { host: "x", fillable: 2, stepKey: "b", buttons: [{ text: "Next", visible: true }] }, top: true };
+// The same step with a button added that is no error line, and one standing error already on the page.
+const e2 = { summary: { ...t0.summary, errors: 1, errorKeys: ["k1"], buttons: [...t0.summary.buttons, { text: "Help", visible: true }] }, top: true };
+// A page that names no step heading, now showing one error.
+const blank0 = { summary: { ...t0.summary, stepKey: "" }, top: true };
+const blank1 = { summary: { ...t0.summary, stepKey: "", errors: 1, errorKeys: ["k1"] }, top: true };
 // The step as t0, now showing one error (and the banner's own buttons).
-const e1 = { summary: { ...t0.summary, errors: 1, buttons: [...t0.summary.buttons, { text: "Errors Found", visible: true, inErrors: true }] }, top: true };
+const e1 = { summary: { ...t0.summary, errors: 1, errorKeys: ["k1"], buttons: [...t0.summary.buttons, { text: "Errors Found", visible: true, inErrors: true }] }, top: true };
 
 const ops = ns.queueRun.pageOps({
   broadcast: async (tabId, message, ...only) => {
@@ -1070,7 +1082,7 @@ const ops = ns.queueRun.pageOps({
     if (message.type === "page_classify") {
       const pages = spec.polls ?? [t0];
       const p = pages[Math.min(pollN - 1, pages.length - 1)];
-      return p === null ? [{ frameId: 0, result: { summary: null } }] : [{ frameId: 0, result: p === "t1" ? t1 : p === "e1" ? e1 : t0 }];
+      return p === null ? [{ frameId: 0, result: { summary: null } }] : [{ frameId: 0, result: { t1, e1, e2, blank0, blank1 }[p] ?? t0 }];
     }
     if (message.type === "page_errors") {
       return [{ frameId: 3, result: { count: 1, items: [{ label: "City", target: "f-1", kind: "field" }] } }];
@@ -1101,7 +1113,7 @@ main(async () => {
       { allowedHost: "jobs.acme.test", ...(spec.stopAfterFetch ? { stop: () => true } : {}) });
   }
   if (spec.op === "wait") {
-    const before = ns.queueRun.fingerprint(spec.beforeUrl ?? "https://jobs.acme.test/a", t0.summary);
+    const before = ns.queueRun.fingerprint(spec.beforeUrl ?? "https://jobs.acme.test/a", spec.blankBefore ? blank0.summary : t0.summary);
     result = await ops.waitForChange(4, before, spec.ms ?? 3000, spec.stop ? () => true : undefined, spec.baseline);
   }
   if (spec.op === "errors") result = await ops.pageErrors(4, spec.frameId);
@@ -1333,14 +1345,31 @@ def test_the_banners_buttons_stay_out_of_the_fingerprint(tmp_path):
 def test_wait_for_change_reports_new_errors_on_an_unchanged_step_at_once(tmp_path):
     out = _ops(tmp_path, "wait", polls=["e1"], ms=15000)
     assert out["result"]["changed"] is False and out["result"]["sameStep"] is True and out["result"]["errors"] == 1
-    assert out["polls"] == 1 and out["slept"] == 0
+    assert out["result"]["fresh"] is True and out["polls"] == 1 and out["slept"] == 0
 
 
-def test_wait_for_change_does_not_call_stale_errors_a_rejection_before_the_hold(tmp_path):
+def test_wait_for_change_does_not_call_standing_errors_a_rejection_before_a_long_hold(tmp_path):
     """A Next pressed over an old banner may be a slow success: only a banner that stays is a rejection."""
-    out = _ops(tmp_path, "wait", polls=["e1"], ms=15000, baseline=1)
-    assert out["result"]["changed"] is False and out["result"]["errors"] == 1
-    assert 3000 <= out["slept"] <= 3500
+    out = _ops(tmp_path, "wait", polls=["e1"], ms=15000, baseline=["k1"])
+    assert out["result"]["changed"] is False and out["result"]["errors"] == 1 and out["result"]["fresh"] is False
+    assert 8000 <= out["slept"] <= 8500
+
+
+def test_wait_for_change_counts_the_label_set_not_the_count(tmp_path):
+    """One standing error and one new one is two errors, but the press brought only the new one: a count
+    would call 1 -> 1 'nothing new' when the error is another."""
+    out = _ops(tmp_path, "wait", polls=["e1"], ms=15000, baseline=["other"])
+    assert out["result"]["fresh"] is True and out["slept"] == 0
+
+
+def test_a_page_that_moved_with_only_standing_errors_is_changed_and_not_fresh(tmp_path):
+    out = _ops(tmp_path, "wait", polls=["e2"], baseline=["k1"])
+    assert (out["result"]["changed"], out["result"]["sameStep"], out["result"]["fresh"]) == (True, True, False)
+
+
+def test_a_page_with_no_step_heading_is_never_the_same_step(tmp_path):
+    out = _ops(tmp_path, "wait", polls=["blank1"], blankBefore=True, ms=1000)
+    assert out["result"]["sameStep"] is False and out["result"]["errors"] == 1
 
 
 def test_wait_for_change_leaves_a_page_that_moved_alone(tmp_path):
@@ -1361,7 +1390,8 @@ def test_page_errors_from_a_frame_that_did_not_answer_is_empty(tmp_path):
 
 # ---------- a required upload box still empty after the fill: attach to it, or park, never press Next over it ----------
 
-BOX = {"label": "Upload a file (5MB max)", "target": "t-up"}
+BOX = {"label": "Upload a file (5MB max)", "target": "t-up", "kind": "unknown", "written": False}
+COVER = {"label": "Cover letter", "target": "t-cl", "kind": "other", "written": False}
 NEEDS_UPLOAD = {"outcome": None, "reason": None, "required": True, "boxes": [BOX]}
 
 
@@ -1387,15 +1417,41 @@ def test_a_required_box_with_no_handle_parks_without_trying(tmp_path):
     assert (out["record"]["why"], names(out, "attachTo"), names(out, "advance")) == ("upload", [], [])
 
 
-@pytest.mark.parametrize("outcome", ["attached", "unconfirmed"])
-def test_a_file_the_fill_just_wrote_is_not_written_a_second_time(tmp_path, outcome):
+def test_the_box_the_fill_just_wrote_is_exempt_and_is_not_written_a_second_time(tmp_path):
     """The page may be slow to show its row: a second copy is what the hedge is for."""
-    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{**NEEDS_UPLOAD, "outcome": outcome}])
+    written = {**BOX, "kind": "resume", "written": True}
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{"outcome": "unconfirmed", "required": False, "boxes": [written]}])
     assert names(out, "attachTo") == [] and out["record"]["status"] == "ready"
 
 
+@pytest.mark.parametrize("outcome", ["attached", "unconfirmed"])
+def test_another_required_box_beside_the_written_one_parks_it_never_a_second_copy(tmp_path, outcome):
+    """The resume is on the page already: a second required box (any kind) is the user's, named."""
+    written = {**BOX, "kind": "resume", "written": True}
+    other = {"label": "Writing sample", "target": "t-ws", "kind": "unknown", "written": False}
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{"outcome": outcome, "required": True, "boxes": [written, other]}])
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "upload") and names(out, "attachTo") == [] and names(out, "advance") == []
+    assert [o["question"] for o in r["open"]] == ["Writing sample"]
+
+
+def test_a_cover_letter_box_is_never_tried(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{**NEEDS_UPLOAD, "boxes": [COVER]}])
+    r = out["record"]
+    assert (r["why"], names(out, "attachTo"), names(out, "advance")) == ("upload", [], [])
+    assert [o["question"] for o in r["open"]] == ["Cover letter"]
+
+
+def test_two_required_empty_boxes_are_never_guessed_between(tmp_path):
+    boxes = [BOX, COVER]
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{**NEEDS_UPLOAD, "boxes": boxes}])
+    r = out["record"]
+    assert (r["why"], names(out, "attachTo")) == ("upload", [])
+    assert [o["question"] for o in r["open"]] == ["Upload a file (5MB max)", "Cover letter"]
+
+
 @pytest.mark.parametrize("outcome", [None, "skipped", "left"])
-def test_any_other_outcome_with_the_box_still_required_tries_the_targeted_attach(tmp_path, outcome):
+def test_any_other_outcome_with_a_lone_box_still_required_tries_the_targeted_attach(tmp_path, outcome):
     out = _drive(tmp_path, [step(1), REVIEW], attaches=[{**NEEDS_UPLOAD, "outcome": outcome}])
     assert len(names(out, "attachTo")) == 1
 
@@ -1405,13 +1461,64 @@ def test_a_page_with_no_required_empty_upload_attaches_nothing(tmp_path):
     assert names(out, "attachTo") == [] and out["record"]["status"] == "ready"
 
 
-def test_every_box_is_tried_and_the_park_names_only_those_left(tmp_path):
-    boxes = [BOX, {"label": "Cover letter", "target": "t-cl"}]
-    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{**NEEDS_UPLOAD, "boxes": boxes}], attachTo={"attached": False})
-    assert [c[1] for c in names(out, "attachTo")] == ["t-up", "t-cl"]
-    assert [o["question"] for o in out["record"]["open"]] == ["Upload a file (5MB max)", "Cover letter"]
+def test_a_second_page_gets_its_own_one_write(tmp_path):
+    out = _drive(tmp_path, [step(1), step(2), REVIEW], attaches=[NEEDS_UPLOAD, {**NEEDS_UPLOAD, "boxes": [{**BOX, "target": "t-2"}]}])
+    assert [c[1] for c in names(out, "attachTo")] == ["t-up", "t-2"] and out["record"]["status"] == "ready"
 
 
 def test_a_stop_before_the_attach_calls_nothing_after_it(tmp_path):
     out = _drive(tmp_path, [step(1), REVIEW], attaches=[NEEDS_UPLOAD], cancelOnAttach=True)
     assert out["record"]["status"] == "stopped" and names(out, "advance") == []
+
+
+def test_a_press_that_moved_the_page_past_a_standing_error_line_is_a_step(tmp_path):
+    """A standing 'Fields marked * are required' live region: the page changed, the error is not new."""
+    waits = [{"moves": True, "result": {"changed": True, "url": "x", "errors": 1, "sameStep": True, "fresh": False}}]
+    out = _drive(tmp_path, [step(1), REVIEW], waits=waits)
+    r = out["record"]
+    assert (r["status"], r["step"], len(r["seen"])) == ("ready", 1, 1) and names(out, "fix") == []
+
+
+def test_a_new_error_on_the_same_step_is_a_rejection_even_when_the_page_changed(tmp_path):
+    waits = [{"moves": False, "result": {"changed": True, "url": "x", "errors": 1, "sameStep": True, "fresh": True}}] * 2
+    out = _drive(tmp_path, [step(1, errorItems=[CITY])], waits=waits, banner={0: True})
+    assert (out["record"]["step"], out["record"]["why"]) == (0, "page_errors")
+
+
+# ---------- a Resume after the user fixed what a park named: nothing is filled again ----------
+
+def _resumed(tmp_path, why, pages, **spec):
+    record = {"tabId": 7, "status": "parked", "why": why, "step": 0, "hosts": ["jobs.acme.test"], "filled": True,
+              "wrote": True, "open": [{"fid": "f-9", "question": "City", "required": True}]}
+    return _drive(tmp_path, pages, record=record, **spec)
+
+
+def test_a_resume_after_page_errors_does_not_refill_and_presses_when_the_page_names_nothing(tmp_path):
+    out = _resumed(tmp_path, "page_errors", [step(1), REVIEW])
+    assert out["record"]["status"] == "ready"
+    assert out["fillCalls"] == 1, "only the review page is filled: the user fixed what was named"
+    assert names(out, "pageErrors") == [["pageErrors", 0]] and names(out, "fix") == []
+    assert out["pressed"] == ["next-1"]
+
+
+def test_a_resume_after_page_errors_repairs_only_what_the_page_still_names(tmp_path):
+    out = _resumed(tmp_path, "page_errors", [step(1, errorItems=[CITY]), REVIEW], banner={0: True})
+    assert [c[1] for c in names(out, "fix")] == [["City"]]
+    assert out["fillCalls"] == 1 and out["record"]["status"] == "ready"
+
+
+def test_a_resume_after_an_upload_park_presses_without_filling_or_reading_errors(tmp_path):
+    out = _resumed(tmp_path, "upload", [step(1), REVIEW])
+    assert out["fillCalls"] == 1 and names(out, "pageErrors") == [] and out["pressed"] == ["next-1"]
+
+
+def test_a_resume_after_open_questions_still_fills_the_page(tmp_path):
+    out = _resumed(tmp_path, "open_questions", [step(1), REVIEW])
+    assert out["fillCalls"] == 2
+
+
+# ---------- the attach record is per page ----------
+
+def test_the_attach_note_belongs_to_a_page_and_goes_with_it(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], record={"attach": {"outcome": "attached"}})
+    assert out["record"]["attach"] is None
