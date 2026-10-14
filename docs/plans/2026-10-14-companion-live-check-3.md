@@ -141,3 +141,34 @@ Diagnosis notes are local only and not in the repo.
 ## Order and ownership
 
 Batch M (one implementer, M1 → M6 in order) and Batch N (one implementer, N1 → N3) run at the same time; their files do not overlap. Batch O after both pass review.
+
+---
+
+## Batch P: reading a posting without JSON-LD (a Darwinbox careers page)
+
+**Problem.** On a Darwinbox job page (Angular, no JSON-LD, no `main`/`article`) the Job step read the whole page as `body`, showed "No job description found", left Title/Company/Location empty and refused the save. The description sits in `.jd-container > .details-box > (.title "Job Description" + .jd)`; a hidden duplicate (`.mobile-view-jd`, display:none) is also in the DOM. The title is a `span.title` in the header (no `h1`; `document.title` is "Job Details Page"); the company appears only in `meta[name=description]` as "Job Title | <Company>"; the location is the Job Snapshot item labelled "Location". Apply Now leads to a sign-in page with a CAPTCHA, so the run stays out of Darwinbox's forms; Darwinbox is **not** added to the known-ATS hosts.
+
+**Owns:** `extension/content/agent.js`, a new `extension/content/posting-sites.js` (or a section of `job-posting.js`) for the recorded adapter, `manifest.json` only if a new content script is needed, `extension/INTERNALS.md` "Save job" paragraph, new browser tests and fixture.
+
+### P1: heading-anchored description, visible only
+
+- New candidate in `extractJobPosting`: a visible element whose whole trimmed text is a description heading (`job description`, `about the job/role/position`, `job summary`, `role description/overview`, `position description/summary`, optional colon); climb to the first ancestor whose `innerText` exceeds 300 characters. Abandon at `main`/`article`/`body`, at `nav`/`header`/`footer`, or at any ancestor holding a form control (the existing "never carry a form value" rule). Answers source `content`.
+- Every container candidate must be visible (`getClientRects().length > 0`).
+
+### P2: a recorded Darwinbox adapter (DOM only, no network)
+
+- Fires only on host `(^|\.)darwinbox\.(in|com)$` and path `/ms/candidatev2/<x>/careers/jobDetails/<id>`.
+- Title from `.header-section .title-section > .title`; location from the visible Job Snapshot item labelled "Location"; company from `meta[name=description]` matching `^Job Title \| (.+)$`, rejecting an untranslated dotted key (`mainPage.…`), else no Company line.
+- Emits the same `Title:`/`Company:`/`Location:` header lines and blank line the JSON-LD path writes, so `previewFrom` fills the boxes.
+- Generic extra: when no title line exists, the first visible `h1` outside site chrome gives `Title:`.
+
+### Tests
+
+New `backend/tests/browser/test_posting_read.py` and fixture `darwinbox_posting.html` (Acme Robotics, "Data Analyst", "Pune, Maharashtra, India") served at `https://acme.darwinbox.in/ms/candidatev2/main/careers/jobDetails/a0000000000001?src=Linkedin`:
+1. source `content`, `describesJob` true; text excludes "Sign In", "Job Snapshot", "Share the opportunity", "View Similar Jobs";
+2. a longer hidden `.mobile-view-jd` copy is never the answer;
+3. header lines round-trip through `previewFrom` into Title, Company, Location;
+4. an untranslated meta key gives no Company line;
+5. the adapter does not fire on `/careers/allJobs` or `acme.darwinbox.in.attacker.test`;
+6. generic heading rule on `careers.acme.test` ("About the role" over > 300 characters) gives `content`;
+7. negatives: a climb reaching a container with an input, a heading in `nav`/`footer`, a section under 300 characters → no `content`; the `h1` fallback ignores an `h1` in a header/nav.
