@@ -59,3 +59,21 @@ export function filterProposals<T extends Pick<Proposal, "fit_json"> & { job: Fi
     return true;
   });
 }
+
+/** An inbox longer than this many proposals gets the search and filters. */
+const FILTERS_FROM = 10;
+
+/**
+ * Whether the search and filters render: only for a long inbox (more than ten proposals), or while one is in
+ * use, so a user can always clear what they set. A sort other than the default counts as in use.
+ */
+export function filtersShown(total: number, active: InboxFilter & { sort: string }): boolean {
+  return (
+    total > FILTERS_FROM ||
+    active.q.trim() !== "" ||
+    active.role !== "all" ||
+    active.board !== "all" ||
+    active.minScore != null ||
+    active.sort !== "score"
+  );
+}

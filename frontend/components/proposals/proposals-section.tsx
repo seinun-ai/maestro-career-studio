@@ -63,6 +63,7 @@ import {
   boardHost,
   chosenScore,
   filterProposals,
+  filtersShown,
 } from "@/lib/inbox-filter";
 import { finalFocusOn, focusIfDropped, focusSuccessor } from "@/lib/focus";
 import {
@@ -496,72 +497,75 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
       {/* The lanes stay later siblings of the toolbar: globals.css clears a
           focused row from under the stuck toolbar (and the bulk bar) only for
           `[data-slot="list-toolbar"] ~ :focus-within`. */}
-      <ListToolbar>
-        <ListSearch label="Search the Agent inbox" value={q} onChange={setQ} />
-        {/* On a phone the pills share a line wherever two fit whole (min-w-10rem put
-            one per line), and a value is never clipped: they wrap instead. */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Select
-            value={sort}
-            onValueChange={(v) => setSort((v as SortKey) ?? "score")}
-          >
-            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Sort">
-              <SelectValue>{SORT_LABELS[sort]}</SelectValue>
-            </SelectTrigger>
-            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
-              {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
-                <SelectItem key={key} value={key}>
-                  {SORT_LABELS[key]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={role} onValueChange={(v) => setRole(v ?? "all")}>
-            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Role">
-              <SelectValue>{role === "all" ? "All roles" : roleLabel(role)}</SelectValue>
-            </SelectTrigger>
-            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
-              <SelectItem value="all">All roles</SelectItem>
-              {roles.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {roleLabel(r)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={board} onValueChange={(v) => setBoard(v ?? "all")}>
-            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Job board">
-              <SelectValue>{board === "all" ? "All boards" : board}</SelectValue>
-            </SelectTrigger>
-            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
-              <SelectItem value="all">All boards</SelectItem>
-              {boards.map((b) => (
-                <SelectItem key={b} value={b}>
-                  {b}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={minScore == null ? "any" : String(minScore)}
-            onValueChange={(v) =>
-              setMinScore(v && v !== "any" ? (Number(v) as ScoreFloor) : null)
-            }
-          >
-            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[8rem]" aria-label="Minimum score">
-              <SelectValue>{scoreLabel(minScore)}</SelectValue>
-            </SelectTrigger>
-            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[10rem]">
-              <SelectItem value="any">{scoreLabel(null)}</SelectItem>
-              {SCORE_FLOORS.map((floor) => (
-                <SelectItem key={floor} value={String(floor)}>
-                  {scoreLabel(floor)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </ListToolbar>
+      {/* Search and filters are for a long inbox, or while one is in use (so it can always be cleared). */}
+      {filtersShown(items.length, { q, role, board, minScore, sort }) ? (
+        <ListToolbar>
+          <ListSearch label="Search the Agent inbox" value={q} onChange={setQ} />
+          {/* On a phone the pills share a line wherever two fit whole (min-w-10rem put
+              one per line), and a value is never clipped: they wrap instead. */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Select
+              value={sort}
+              onValueChange={(v) => setSort((v as SortKey) ?? "score")}
+            >
+              <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Sort">
+                <SelectValue>{SORT_LABELS[sort]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
+                {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {SORT_LABELS[key]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={role} onValueChange={(v) => setRole(v ?? "all")}>
+              <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Role">
+                <SelectValue>{role === "all" ? "All roles" : roleLabel(role)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
+                <SelectItem value="all">All roles</SelectItem>
+                {roles.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {roleLabel(r)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={board} onValueChange={(v) => setBoard(v ?? "all")}>
+              <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Job board">
+                <SelectValue>{board === "all" ? "All boards" : board}</SelectValue>
+              </SelectTrigger>
+              <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
+                <SelectItem value="all">All boards</SelectItem>
+                {boards.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={minScore == null ? "any" : String(minScore)}
+              onValueChange={(v) =>
+                setMinScore(v && v !== "any" ? (Number(v) as ScoreFloor) : null)
+              }
+            >
+              <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[8rem]" aria-label="Minimum score">
+                <SelectValue>{scoreLabel(minScore)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[10rem]">
+                <SelectItem value="any">{scoreLabel(null)}</SelectItem>
+                {SCORE_FLOORS.map((floor) => (
+                  <SelectItem key={floor} value={String(floor)}>
+                    {scoreLabel(floor)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </ListToolbar>
+      ) : null}
 
       {nothingMatches ? (
         <EmptyState

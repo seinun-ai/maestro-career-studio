@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { boardHost, chosenScore, filterProposals } from "./inbox-filter.ts";
+import { boardHost, chosenScore, filterProposals, filtersShown } from "./inbox-filter.ts";
 
 const job = {
   company: "Acme",
@@ -56,4 +56,19 @@ test("the helpers never throw on odd input", () => {
   assert.equal(chosenScore({ fit_json: null }), null);
   assert.equal(boardHost("not a url"), null);
   assert.equal(boardHost(null), null);
+});
+
+const idle = { q: "", role: "all", board: "all", minScore: null, sort: "score" };
+
+test("the search and filters show only for a long inbox, or while one is in use", () => {
+  assert.equal(filtersShown(0, idle), false);
+  assert.equal(filtersShown(10, idle), false);
+  assert.equal(filtersShown(11, idle), true);
+  // A short inbox keeps its controls while a filter is on, so a user can always clear it.
+  assert.equal(filtersShown(3, { ...idle, q: "acme" }), true);
+  assert.equal(filtersShown(3, { ...idle, role: "ml_engineer" }), true);
+  assert.equal(filtersShown(3, { ...idle, board: "jobs.lever.co" }), true);
+  assert.equal(filtersShown(3, { ...idle, minScore: 70 }), true);
+  assert.equal(filtersShown(3, { ...idle, sort: "newest" }), true);
+  assert.equal(filtersShown(3, { ...idle, q: "   " }), false);
 });

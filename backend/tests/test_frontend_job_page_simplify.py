@@ -143,3 +143,14 @@ def test_the_lanes_run_needs_you_to_review_queued_applying_history_and_an_empty_
     assert "No history yet." not in _SECTION and 'title="No proposals yet"' in _SECTION
     # "new" jumps to the first lane there is when To review is not drawn.
     assert "section[id^=" in _STRIP
+
+
+# ── B3: filters only for long lists ─────────────────────────────────────────
+
+
+def test_search_and_filters_render_only_for_a_long_inbox_or_while_one_is_in_use():
+    assert "{filtersShown(items.length, { q, role, board, minScore, sort }) ? (" in _SECTION
+    toolbar = _SECTION[_SECTION.index("{filtersShown(") : _SECTION.index("{nothingMatches ? (")]
+    assert "<ListToolbar>" in toolbar and 'label="Search the Agent inbox"' in toolbar
+    assert toolbar.rstrip().endswith(") : null}")
+    assert "total > FILTERS_FROM" in _read("lib/inbox-filter.ts") and "FILTERS_FROM = 10" in _read("lib/inbox-filter.ts")
