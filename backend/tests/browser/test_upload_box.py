@@ -335,3 +335,52 @@ def test_page_uploads_marks_a_box_that_holds_a_file(blank):
 def test_page_uploads_on_a_page_with_no_upload_is_empty(blank):
     _load(blank, "<h2>Questions</h2><input aria-label='City'>")
     assert _page_uploads(blank) == []
+
+
+# ---------- live check 2: a box whose label sits outside its widget ----------
+#
+# A react-dropzone box keeps its input hidden inside a widget that prints its own "Click to upload"
+# text; the box's name ("Resume *") is a sibling of the WIDGET. The field reader gives up at the
+# widget's text, so the box read as unknown and not required, and the run neither wrote nor parked.
+
+DROPZONE = """<form><div class="grp"><span class="lbl">LABEL <span>*</span></span>
+  <div class="w1"><div class="w2"><div class="dz" role="presentation"><input type="file" id="dz" style="display:none">
+    <p>Click to upload or drag and drop</p></div></div></div></div></form>
+<script>
+document.querySelector("#dz").addEventListener("change", (e) => {
+  const row = document.createElement("span");
+  row.textContent = [...e.target.files].map((f) => f.name).join(", ");
+  e.target.parentElement.append(row);
+});
+</script>"""
+
+
+def test_a_dropzone_labelled_outside_its_widget_is_a_required_resume_box(blank):
+    _load(blank, DROPZONE.replace("LABEL", "Resume"))
+    assert _uploads(blank) == [{"kind": "resume", "occupied": False}]
+    [box] = _page_uploads(blank)
+    assert (box["label"], box["required"], box["kind"]) == ("Resume", True, "resume")
+
+
+def test_autofills_write_attaches_to_the_dropzone_box(blank):
+    _load(blank, DROPZONE.replace("LABEL", "Resume"))
+    assert _attach(blank) == {"written": 1, "proven": 1}
+    assert _held(blank, "#dz") == ["Jane_Doe_Resume.pdf"]
+
+
+def test_the_runs_targeted_write_attaches_to_the_dropzone_box(blank):
+    _load(blank, DROPZONE.replace("LABEL", "Resume"))
+    [box] = _page_uploads(blank)
+    reply = blank.evaluate("""([b64, target]) => new Promise((resolve) => {
+      const msg = { type: "attach_resume_pdf", b64, filename: "Jane_Doe_Resume.pdf", resumeOnly: true, target };
+      if (window.__pageListener(msg, { id: "t" }, resolve) !== true) resolve(null);
+    })""", [PDF, box["target"]])
+    assert reply["data"]["written"] == 1
+    assert _held(blank, "#dz") == ["Jane_Doe_Resume.pdf"]
+
+
+def test_a_dropzone_labelled_cover_letter_outside_its_widget_is_another_document(blank):
+    _load(blank, DROPZONE.replace("LABEL", "Cover letter"))
+    assert _uploads(blank) == [{"kind": "other", "occupied": False}]
+    assert _page_uploads(blank)[0]["required"] is True
+    assert _proven(_attach(blank)) == 0

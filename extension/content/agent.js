@@ -283,10 +283,25 @@
       REMOVE_CONTROL.test(`${control.textContent} ${control.getAttribute("aria-label") ?? ""}`));
   }
 
+  /** What the box is called when the field reader gave up at the uploader's own text ("Click to
+   * upload"): a react-dropzone's name ("Resume *") is a sibling of the WIDGET. The text before the
+   * widget, its star read as required. Empty when the reader already named the box. */
+  function outsideName(input, read) {
+    if (read.question || typeof ns.precedingLabel !== "function" || typeof ns.unmark !== "function") {
+      return { text: "", required: false };
+    }
+    try {
+      return ns.unmark(ns.precedingLabel(uploadWidgetOf(input) ?? input, [input]));
+    } catch (_) {
+      return { text: "", required: false };
+    }
+  }
+
   function uploadBoxOf(input) {
     const box = uploadWidgetOf(input) ?? input.parentElement;
     const read = typeof ns.readField === "function" ? ns.readField(input) : { question: "" };
-    const own = [read.question, words(input.id), words(input.name)];
+    const outside = outsideName(input, read);
+    const own = [read.question, outside.text, words(input.id), words(input.name)];
     for (let el = input; el; el = el === box ? null : el.parentElement) {
       own.push(el.getAttribute("aria-label"), words(el.getAttribute("data-automation-id")));
       for (const id of (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean)) {
@@ -296,7 +311,7 @@
     let kind = kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([sectionOf(input)]) ?? "unknown";
     // A REQUIRED box that is the page's only upload, and whose words name no document, is the resume's
     // (live Workday: "Upload a file (5MB max)", seven levels under the heading that says resume).
-    if (kind === "unknown" && read.required && attachableFileInputs().length === 1) kind = "resume";
+    if (kind === "unknown" && (read.required || outside.required) && attachableFileInputs().length === 1) kind = "resume";
     return { kind, occupied: hasFile(input, box) };
   }
 
@@ -325,8 +340,10 @@
       try {
         box = uploadBoxOf(input);
       } catch (_) { /* unknown and occupied: nothing is written to it */ }
-      return { label: ns.pageReader.fieldWords(input), target: ns.pageReader.uploadTag(input),
-               required: Boolean(ns.readField?.(input)?.required), occupied: box.occupied, kind: box.kind };
+      const read = ns.readField?.(input);
+      const outside = outsideName(input, read ?? { question: "" });
+      return { label: ns.pageReader.fieldWords(input) || outside.text, target: ns.pageReader.uploadTag(input),
+               required: Boolean(read?.required || outside.required), occupied: box.occupied, kind: box.kind };
     });
   }
 
