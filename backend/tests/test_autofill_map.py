@@ -2216,7 +2216,7 @@ def test_a_spouses_military_service_routes_low_stakes_with_the_no_kind_in_the_as
               low_stakes=True)
     assert got["q"].route == "low_stakes"
     text = calls[1]["questions"]["q"]["instructions"]
-    assert SPOUSE_SERVICE in text and "I don't wish to answer" in text and "the applicant's own (never a spouse's" in text
+    assert SPOUSE_SERVICE in text and "I don't wish to answer" in text and "the applicant's own military service (a spouse's or household member's is not on this list)" in text
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -2386,7 +2386,10 @@ def test_the_no_kind_is_a_closed_list_and_the_never_list_names_the_new_kinds():
     # Owner (2026-10-14): a spouse's or household member's military service, with no fact, is a safe No.
     assert SPOUSE_SERVICE in scope
     assert "I don't wish to answer" in scope
-    assert "the applicant's own (never a spouse's" in never   # the applicant's veteran status stays protected
+    # The rendered never-list reads cleanly: the applicant's own service is protected, a spouse's is not on it.
+    assert ("veteran or disability status), the applicant's own military service (a spouse's or household "
+            "member's is not on this list), background") in never
+    assert "never a spouse's" not in never
     for kind in ("authorization, release or signature", "a box authorizing a background check or a consumer report",
                  "termination or discipline", "a non-compete or other agreement", "debarment or exclusion",
                  "EEO / diversity / voluntary self-identification (gender, race or ethnicity, veteran or "

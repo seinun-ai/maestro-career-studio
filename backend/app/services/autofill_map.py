@@ -140,8 +140,8 @@ _NEVER_LOW_STAKES_TEMPLATE = (
     "a factual education or experience question (a school, degree, employer, title, date, licence or "
     "certification{years}), "
     "work authorization, sponsorship, age or eligibility facts, EEO / diversity / voluntary self-identification "
-    "(gender, race or ethnicity, veteran or disability status), the applicant's own (never a spouse's or household "
-    "member's military service), background or criminal history, termination or "
+    "(gender, race or ethnicity, veteran or disability status), the applicant's own military service (a spouse's or "
+    "household member's is not on this list), background or criminal history, termination or "
     "discipline, a non-compete or other agreement, debarment or exclusion, security clearance, salary, {worked}"
     "or a legal attestation, authorization, release or signature (such as a box authorizing a background check "
     "or a consumer report)")
