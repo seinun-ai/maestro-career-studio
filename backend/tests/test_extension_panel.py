@@ -1485,6 +1485,10 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # Apply and Queue's reading of the server about THIS job, and the claim to tailor before
         # applying: both are about one posting.
         "apply": {"queued": True, "sessionId": "sess-1"}, "tailorFirst": True,
+        # The Apply checklist and a pressed Stop: both about the press made on one page.
+        "applySteps": {"live": True, "stopped": None, "lines": [{"key": "save", "text": "Saving the job",
+                                                                  "state": "run"}]},
+        "applyStop": True,
     }
     out = run_node(_RESET_DRIVER_JS, {"store": populated}, tmp_path,
                    source=PANEL_SOURCE)
@@ -1496,6 +1500,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "baseSelected": False, "baseFromApplication": False, "baseArmed": False,
         "scores": None, "busy": None, "note": None, "preview": None, "previewTyped": False,
         "prepared": False, "tailorOpen": False, "apply": None, "tailorFirst": False,
+        "applySteps": None, "applyStop": False,
         "revisit": None,
         "fill": None, "writeResults": None, "residue": None, "essays": None,
         "closest": None, "blank": None, "aiNote": None,

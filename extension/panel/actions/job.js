@@ -2,7 +2,8 @@
  * resumes against it (the Score step's action until Score merged into Job,
  * 2026-09-27), and — with full automation on — Queue and Apply. A save runs the
  * scoring in the same press; Queue is a save plus the user's yes; Apply is
- * Queue plus the resume plus a one-job run in THIS tab.
+ * Queue plus the resume plus a one-job run in THIS tab, drawn as a checklist with
+ * a Stop, and (a Settings switch) split into one press per step.
  *
  * One of the concern files behind `ns.panelActions`; `panel/actions.js` is the
  * joiner and carries the whole contract. Read it before adding anything here.
@@ -24,7 +25,7 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const duringAction = ns.panelDuringAction;
-  const { rankBaseResumes, describesJob, applyFacts, httpUrl, applyLink } = ns.decisions;
+  const { rankBaseResumes, describesJob, applyFacts, httpUrl, applyLink, preselect, applyPress } = ns.decisions;
 
   /** The backend's two refusals of a job the scorer cannot read yet, both 422:
    * no skills in its description (`normalize_jd`), or no description read at
@@ -63,7 +64,7 @@
    * is deterministic and base rows upsert, so scoring a job saved last week
    * again costs one local pass per base and changes nothing that was right.
    */
-  async function addJob(store, { as = "job", reload = true } = {}) {
+  async function addJob(store, { as = "job", reload = true, steps = null } = {}) {
     const facts = store.read();
     if (facts.busy !== null) return;
     const body = store.build.ingestBodyFrom(facts.preview, facts.url);
@@ -92,10 +93,12 @@
     // The tab this posting came off may not be the tab the answer arrives on —
     // `duringAction` holds that guard on both limbs and hands back `null` when
     // there is nothing here left to say.
-    const done = await duringAction(store, as, () =>
-      store.api("/api/jobs", { method: "POST", body: JSON.stringify(body) }),
-    "Couldn't save the job.");
-    if (!done) return;
+    const done = await duringAction(store, as, () => {
+      steps?.begin("save", "Saving the job");
+      return store.api("/api/jobs", { method: "POST", body: JSON.stringify(body) });
+    }, "Couldn't save the job.");
+    if (!done) return steps?.fail();
+    steps?.done("save");
     const { token, out: job } = done;
     const skills = job.extracted_json?.skills?.length ?? 0;
     const saved = job.already_existed === true
@@ -110,7 +113,7 @@
       note: { text: saved },
     });
     store.render();
-    await scoreAllBases(store, { lead: `${saved} `, as });
+    await scoreAllBases(store, { lead: `${saved} `, as, steps });
     if (!store.current(token)) return;
     // Queue and Apply go on from here and re-read when they end, so they ask for no reload now.
     if (!reload) return;
@@ -148,7 +151,7 @@
    * save's spinner keeps turning), a note on failure, and the generation check
    * on BOTH limbs.
    */
-  async function scoreAllBases(store, { lead = "", quiet = false, as = "job" } = {}) {
+  async function scoreAllBases(store, { lead = "", quiet = false, as = "job", steps = null } = {}) {
     if (store.read().busy !== null) return;
     const job = store.read().job;
     if (!job) {
@@ -160,15 +163,18 @@
     }
     store.scored(job.id);
     const what = `${lead}Couldn't score your base resumes.`;
-    const done = await duringAction(store, as, () =>
-      store.api("/api/ats-scores", {
+    const done = await duringAction(store, as, () => {
+      steps?.begin("score", "Scoring your resumes");
+      return store.api("/api/ats-scores", {
         method: "POST", body: JSON.stringify({ job_id: job.id }),
-      }), {
+      });
+    }, {
       what,
       answered: (err) => (err.status === 422 && UNREADABLE_JOB.test(String(err.message))
         ? `${what} ${REFRESH_STEP}` : null),
     }, { quiet });
-    if (!done) return;
+    if (!done) return steps?.fail();
+    steps?.done("score");
     // No `token` past here, and that is the same divergence the paragraph above
     // names: nothing is re-read, so there is no second round trip to guard.
     const rows = done.out;
@@ -205,7 +211,10 @@
       // (`stageFor`'s `baseChosen`), and it is named in the note and on the
       // Job row's summary rather than chosen silently.
       if (!facts.baseSelected && !facts.baseFromApplication) {
-        store.write({ baseSlug: best.slug });
+        // The best match, or with full automation on only a clear win (`preselect`): the note below
+        // still names the best match, which is a fact about the ranking, not a pick.
+        const slug = preselect(facts, ranked);
+        if (slug !== undefined) store.write({ baseSlug: slug });
       }
       say(`${lead}Best match: ${best.display_name || best.slug} (match score ${
         Math.round(best.score)}).`);
@@ -383,15 +392,125 @@
     return { id: applicationId, hasPdf: Boolean(draft.pdf_path), baseResume: draft.base_resume ?? null };
   }
 
+  // ---------- the Apply checklist ----------
+
+  const PICK_NOTE = "Pick a resume to apply with.";
+  const WAITING = "Waiting for your pick";
+  const READY_NOTE = "Resume ready. Press Start filling to go on.";
+
+  /** What each line says when a step goes wrong, and what the user's Stop came after. Fixed sentences:
+   * the checklist never shows a server's words, the note below it carries whatever the panel may say. */
+  const WHY = {
+    save: "Couldn't save", score: "Couldn't score", queue: "Couldn't queue", tailor: "Couldn't tailor",
+    pdf: "Couldn't make the PDF", link: "Couldn't link", open: "Couldn't open",
+  };
+  const AFTER = {
+    save: "saving the job", score: "scoring your resumes", base: "choosing the resume",
+    queue: "queueing the job", tailor: "tailoring the resume", pdf: "making the PDF",
+    link: "linking the resume to the job",
+  };
+
+  /** The live checklist of one Apply press (`applySteps` in the store, drawn by stages/job.js), and the
+   * Stop that ends it.
+   *
+   * A line is a step: `begin` shows it running (and says it through the footer note, which is the
+   * panel's persistent live region: the rail is rebuilt on every paint, so a region inside it would be
+   * a new node each time and a screen reader would hear nothing), `done` ticks it, `fail` crosses the
+   * running one with a fixed reason, `put` adds one already true ("Using your tailored resume"). A step
+   * that was not needed is never added. `halted` is the Stop, read at the boundaries between steps and
+   * never inside a call: a request sent is not cancelled halfway, and what was done stays done.
+   *
+   * Every write is guarded by the press's generation (`store.current`), so a tab switched mid-press
+   * leaves the new tab's panel alone. */
+  function applyChecklist(store, token) {
+    const lines = [];
+    const state = { live: true, stopped: null };
+    let over = false;
+    const paint = () => {
+      if (over || !store.current(token)) return;
+      store.write({ applySteps: { ...state, lines: lines.map((one) => ({ ...one })) } });
+      store.render();
+    };
+    const say = (text) => {
+      if (!over && store.current(token)) store.write({ note: { text } });
+    };
+    const last = (wanted) => lines.findLast((one) => one.state === wanted);
+    return {
+      /** The panel's Apply starts a fresh list, and a Stop pressed for the last one is forgotten. */
+      open() {
+        store.write({ applySteps: { ...state, lines: [] }, applyStop: false });
+        store.render();
+      },
+      begin(key, text, extra = {}) {
+        lines.push({ key, text, state: "run", after: AFTER[key], ...extra });
+        say(`${text}…`);
+        paint();
+      },
+      done(key) {
+        const line = lines.findLast((one) => one.key === key);
+        if (line) line.state = "done";
+        paint();
+      },
+      put(key, text, extra = {}) {
+        lines.push({ key, text, state: "done", after: AFTER[key], ...extra });
+        paint();
+      },
+      /** The step that was running did not finish. */
+      fail(why) {
+        const line = last("run");
+        if (line) Object.assign(line, { state: "fail", why: why ?? WHY[line.key] });
+        paint();
+      },
+      /** Nothing is running; the next move is the user's. */
+      wait() {
+        lines.push({ key: "wait", text: WAITING, state: "wait" });
+        paint();
+      },
+      halted: () => !over && store.current(token) && store.read().applyStop === true,
+      /** Say where the Stop landed: after the last step that finished. */
+      stopped() {
+        state.stopped = last("done")?.after ?? "the last step";
+        say(`Stopped after ${state.stopped}.`);
+        paint();
+      },
+      end() {
+        state.live = false;
+        paint();
+      },
+      /** The run takes over: the card drawn from here on is its own. */
+      clear() {
+        if (!over && store.current(token)) store.write({ applySteps: null, applyStop: false });
+        over = true;
+      },
+    };
+  }
+
+  /** The line that names the resume Apply is using, with its square (drawn by stages/job.js from `hue`)
+   * and its match score for this job when there is one. */
+  function showBase(store, steps, slug) {
+    const facts = store.read();
+    const entry = rankBaseResumes(facts.resumes, facts.scores).find((one) => one.slug === slug);
+    const name = entry?.display_name || slug;
+    const scored = entry && entry.score !== null ? ` (${Math.round(entry.score)})` : "";
+    steps.put("base", `Using ${name}${scored}`, { hue: entry?.color_hue ?? null });
+  }
+
   /** Everything between the press and the run, as one span of `busy`: the user's yes, the claim on
    * the job, a resume that is ready, and the proposal tied to its application. Returns `{stop}`
-   * (a sentence: nothing more was done) or `{seed, application}` for `startRun`.
+   * (a sentence: nothing more was done), `{halted}` (the user's Stop landed), `{ready}` (a press that
+   * goes only as far as the resume: Tailor resume, Make PDF) or `{seed, application}` for `startRun`.
+   * `through` says how far the press goes: `"resume"` or `"start"`.
+   *
+   * EVERY STAGE RE-READS WHAT THE SERVER HOLDS and does only what is missing, which is what lets "Stop
+   * after each step" be three presses of one function. The user's yes (the queue) is the first move
+   * of a press that goes on to the run, and the whole of Apply with the switch off, so a step press
+   * that only readies the resume queues nothing.
    *
    * A CLAIMED binding (the user named the job's draft on a page the backend did not match) runs
    * `inPlace`: the pick says this page IS that job's application, so the run's link is this page and
    * the job's saved links (a board's, say) are never opened, and the application is the draft they
    * named, not the job's newest. */
-  async function prepareApply(store, facts, withBase) {
+  async function prepareApply(store, facts, { withBase, through, steps }) {
     const jobId = facts.job.id;
     const read = await readApplyFacts(store, jobId);
     if (read.applied) return { stop: ALREADY_APPLIED };
@@ -400,46 +519,89 @@
     // Before anything is written: a pick that no longer stands is the user's to make again.
     const picked = inPlace ? await pickedDraft(store, facts.application?.id, jobId) : null;
     if (picked?.stop) return picked;
-    const queued = await queueProposal(store, facts, read);
-    if (queued.stop) return queued;
-    if (read.ownership) {
-      const held = await claimHere(store, jobId);
-      if (held) return { stop: held };
-    }
     let applicationId = picked ? picked.id : read.applicationId;
     let pdfReady = picked ? picked.hasPdf : read.hasPdf;
     const base = (picked ? picked.baseResume : read.baseResume) ?? facts.baseSlug;
+    // The user's own custom tailoring is never tailored over; the other way round it is theirs to choose.
+    const finishFirst = applicationId === null && read.sessionId && !withBase;
+    // Nothing picked and nothing to make a resume from: stop before anything is written. The list is
+    // unlocked, and picking is what the user does next.
+    if (applicationId === null && !finishFirst && !base) return { stop: PICK_NOTE, pick: true };
+    if (base) showBase(store, steps, base);
+    if (steps.halted()) return { halted: true };
+    let proposalId = null;
+    if (through === "start") {
+      if (!read.queued) steps.begin("queue", "Queueing the job");
+      const queued = await queueProposal(store, facts, read);
+      if (queued.stop) return queued;
+      if (!read.queued) steps.done("queue");
+      proposalId = queued.id;
+      if (read.ownership) {
+        const held = await claimHere(store, jobId);
+        if (held) return { stop: held };
+      }
+      if (steps.halted()) return { halted: true };
+    }
     if (applicationId === null) {
-      // The user's own custom tailoring is never tailored over; the other way round it is theirs to choose.
-      if (read.sessionId && !withBase) return { stop: FINISH_FIRST };
-      if (!base) return { stop: "Pick a base resume first." };
+      if (finishFirst) return { stop: FINISH_FIRST };
+      steps.begin("tailor", withBase ? "Using your base resume" : "Tailoring the resume");
       ({ applicationId, pdfReady } = await newResume(store, jobId, base, withBase));
+      steps.done("tailor");
+    } else {
+      steps.put("tailor", "Using your tailored resume", { after: "choosing your resume" });
     }
+    if (steps.halted()) return { halted: true };
     if (!pdfReady) {
+      steps.begin("pdf", "Making the PDF");
       await store.api(`/api/applications/${encodeURIComponent(applicationId)}/render`, { method: "POST" });
+      steps.done("pdf");
+      if (steps.halted()) return { halted: true };
     }
+    if (through === "resume") return { ready: true, application: { id: applicationId } };
+    steps.begin("link", "Linking the resume to the job");
     try {
       await store.api("/api/proposals", {
         method: "POST", body: JSON.stringify({ job_id: jobId, application_id: applicationId }) });
     } catch (err) {
       throw err.status === 409 ? shown(`Couldn't link the resume to the job. ${err.message}`) : err;
     }
+    steps.done("link");
     // Sync can deliver a link that never met the server's check, so it is vouched for here: http(s) only.
     const openUrl = inPlace ? httpUrl(facts.url)
       : httpUrl(read.applyUrl) ?? httpUrl(read.sourceUrl) ?? httpUrl(facts.url);
     if (!openUrl) return { stop: "This job has no web link the Companion can open." };
     if (inPlace && !read.applyUrl) await saveApplyLink(store, jobId, openUrl);
+    // The last point a Stop can land: after this the run is the card, with its own Stop.
+    if (steps.halted()) return { halted: true };
+    steps.begin("open", "Opening the application");
     return {
       application: { id: applicationId },
-      seed: { proposalId: queued.id, jobId, applicationId, company: facts.job.company ?? null,
+      seed: { proposalId, jobId, applicationId, company: facts.job.company ?? null,
               location: read.location ?? facts.job.location ?? null,
               title: facts.job.title ?? null, baseSlug: base, openUrl, ...(inPlace ? { inPlace } : {}) },
     };
   }
 
+  /** After a press that saved the job (Save job, with "Stop after each step" on or "Choose the base
+   * resume for me" off): say which resume is selected, or that the user is to pick. The scoring already
+   * ran, and with it the pick (`preselect`); this only reports it. */
+  function reportPick(store, steps) {
+    const { baseSlug } = store.read();
+    if (baseSlug) {
+      showBase(store, steps, baseSlug);
+      return;
+    }
+    steps.wait();
+    store.write({ note: { text: PICK_NOTE } });
+  }
+
   /** Apply: Queue, then run this one job in THIS tab. `start` is the run host's `startRun` and
    * `running` its `runningHere`, handed in by the roster (an action reaches no other action). Everything up to the run holds one `busy`
    * span; the run itself is not an action and holds none (it has its own card and Stop).
+   *
+   * ONE PRESS GOES AS FAR AS `ns.decisions.applyPress` SAYS: to the run (Apply, Start filling), to a
+   * ready resume (Tailor resume, Make PDF), or only to a saved and scored job (Save job). Beside it the
+   * checklist says what is happening, and its Stop ends the press at the next boundary.
    *
    * `withBase` is the open-custom-session state's "Apply with the base resume": the same road, but
    * the base resume stands in for the tailoring the user has not finished, and their session is
@@ -456,25 +618,62 @@
       return;
     }
     const token = store.token();
-    if (!store.read().job) {
-      await addJob(store, { as: "apply", reload: false });
-      if (!store.current(token) || !store.read().job) return;
+    const { through } = applyPress(store.read());
+    const steps = applyChecklist(store, token);
+    steps.open();
+    try {
+      await runApply(store, token, steps, { start, withBase, through });
+    } finally {
+      steps.end();
     }
-    const facts = store.read();
-    const done = await duringAction(store, "apply", () => prepareApply(store, facts, withBase), {
-      what: "Couldn't start the application.", answered: "Couldn't start the application. Try again." });
-    if (!done) return;
-    if (done.out.stop) {
-      store.write({ note: { text: done.out.stop } });
-      store.render();
-      await store.loadContext(done.token);
+  }
+
+  async function runApply(store, token, steps, { start, withBase, through }) {
+    if (!store.read().job) {
+      await addJob(store, { as: "apply", reload: through === "save", steps });
+      if (!store.current(token) || !store.read().job) return;
+      if (steps.halted()) {
+        steps.stopped();
+        return;
+      }
+      if (through === "save") {
+        reportPick(store, steps);
+        store.render();
+        return;
+      }
+    } else if (through === "save") {
       return;
     }
-    // The application exists now, whatever the run does next.
-    store.write({ application: { id: done.out.application.id, status: "draft" }, pdfReady: true, note: null });
+    const facts = store.read();
+    const done = await duringAction(store, "apply", () => prepareApply(store, facts, { withBase, through, steps }), {
+      what: "Couldn't start the application.", answered: "Couldn't start the application. Try again." });
+    if (!done) {
+      steps.fail();
+      return;
+    }
+    const out = done.out;
+    if (out.halted) {
+      steps.stopped();
+    } else if (out.stop) {
+      if (out.pick) steps.wait();
+      else steps.fail();
+      store.write({ note: { text: out.stop } });
+    } else if (out.ready) {
+      // The resume exists now and the user's next press is the run.
+      store.write({ application: { id: out.application.id, status: "draft" }, pdfReady: true,
+                    note: { text: READY_NOTE } });
+      store.remember();
+    } else {
+      // The application exists now, whatever the run does next.
+      store.write({ application: { id: out.application.id, status: "draft" }, pdfReady: true, note: null });
+      steps.clear();
+      store.render();
+      store.remember();
+      await start(out.seed);
+      return;
+    }
     store.render();
-    store.remember();
-    await start(done.out.seed);
+    await store.loadContext(done.token);
   }
 
   /** Apply with the base resume: the open-custom-session state's way on. */

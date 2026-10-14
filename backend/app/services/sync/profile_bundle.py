@@ -31,6 +31,7 @@ from app.services import (
     auto_apply_settings,
     autofill_profile,
     base_resume_data,
+    companion_apply,
     eeo_consent,
     job_preferences,
     job_site_login,
@@ -52,6 +53,7 @@ REFUSED = "Only the always-on copy applies a profile."
 # stays in step with the row. A new file-mirrored setting MUST be added here.
 MIRRORS: dict[str, str] = {
     auto_apply_settings.AUTO_APPLY_KEY: auto_apply_settings.AUTO_APPLY_FILE,
+    companion_apply.COMPANION_APPLY_KEY: companion_apply.COMPANION_APPLY_FILE,
     quick_tailor.QUICK_TAILOR_KEY: quick_tailor.QUICK_TAILOR_FILE,
     job_preferences.JOB_PREFERENCES_KEY: job_preferences.JOB_PREFERENCES_FILE,
     market_settings.MARKET_KEY: market_settings.MARKET_FILE,

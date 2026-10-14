@@ -908,3 +908,354 @@ def test_an_unsaved_posting_that_cannot_be_read_is_not_queued_or_run(tmp_path):
                  steps=[{"foot": "Apply"}])
     assert _order(out) == [] and out["seeds"] == []
     assert "Nothing to save yet" in _note(out["shots"][1])
+
+
+# ---------- the Apply checklist, its Stop, and the locked base list ----------
+# Apply is several round trips; the Job card shows each step as it happens (a spinner, a tick, or a mark and
+# a short reason), the footer says each one through its live note, and Stop ends the press between steps.
+
+NO_MATCH = _reply({"match": "none", "job": None, "application": None})
+SAVED_MATCH = _reply({"match": "exact", "job": JOB, "application": None})
+PICK_NOTE = "Pick a resume to apply with."
+
+
+def _rows(ai, ds):
+    return [{"target_type": "base_resume", "target_id": "ai_ml_engineer", "phase": "base", "composite": ai},
+            {"target_type": "base_resume", "target_id": "data_scientist", "phase": "base", "composite": ds}]
+
+
+def _flow(rows=None, **api):
+    """An unsaved posting that becomes a saved one: the match says none, then (the panel re-reads it after the
+    save) exact; the scorer answers the same rows to the POST and to the later read."""
+    rows = SCORE_ROWS if rows is None else rows
+    return _fresh(**{"/api/jobs/match": [NO_MATCH, SAVED_MATCH], "GET /api/ats-scores": _reply(rows),
+                     "POST /api/ats-scores": _reply(rows), **api})
+
+
+def _companion(auto_pick=True, stop_each_step=False):
+    return {"/api/settings/companion-apply": _reply(
+        {"key": "companion_apply", "value": {"auto_pick": auto_pick, "stop_each_step": stop_each_step}})}
+
+
+def _lines(shot):
+    """The checklist as painted: `[(state, words)]` in order. The words are the line's own text."""
+    lists = _by_class(shot["regions"]["rail"], "apply-steps")
+    if not lists:
+        return []
+    return [(item["class"], _by_class(item, "what")[0]["text"]) for item in lists[0]["children"]]
+
+
+def _buttons(shot, region="foot"):
+    return [one for one in _walk(shot["regions"][region]) if one["tag"] == "BUTTON"]
+
+
+def _stop_button(shot):
+    return [one for one in _buttons(shot) if "stop" in one["class"].split()]
+
+
+def _rows_in_rail(shot):
+    return [one for one in _walk(shot["regions"]["rail"])
+            if one["tag"] == "BUTTON" and one["attrs"].get("role") == "radio"]
+
+
+def test_the_checklist_lists_each_step_in_order_with_a_tick_and_a_square_on_the_resume(tmp_path):
+    out = _apply(tmp_path, api=_fresh(), hold=["POST /api/proposals"], holdSkip=1,
+                 steps=[{"foot": "Apply"}, {"release": True, "settles": 2}])
+    mid, end = out["shots"][1], out["shots"][-1]
+    assert _lines(mid) == [
+        ("done", "Saving the job"), ("done", "Scoring your resumes"), ("done", "Using AI/ML Engineer (72)"),
+        ("done", "Queueing the job"), ("done", "Tailoring the resume"), ("run", "Linking the resume to the job")]
+    # The resume's square is on its line; a name is never bare.
+    [using] = [item for item in _by_class(mid["regions"]["rail"], "what") if item["text"].startswith("Using ")]
+    assert [kid["class"] for kid in using["children"]] == ["swatch"]
+    assert _names_without_a_square(mid, [row["display_name"] for row in HUED_RESUMES if row["color_hue"]]) == []
+    # The run takes over: the checklist is gone and the list is the user's again.
+    assert _lines(end) == [] and len(out["seeds"]) == 1
+    assert not any(one["disabled"] for one in _rows_in_rail(end))
+
+
+def test_a_step_that_was_not_needed_is_not_listed(tmp_path):
+    api = _saved(**{"/api/jobs/job-1/detail": _job(proposal_id="prop-1", proposal_status="accepted",
+                                                   application=_draft())})
+    out = _apply(tmp_path, api=api, hold=["POST /api/proposals"], steps=[{"foot": "Apply"}])
+    assert _lines(out["shots"][1]) == [
+        ("done", "Using AI/ML Engineer (72)"), ("done", "Using your tailored resume"),
+        ("run", "Linking the resume to the job")]
+
+
+def test_a_draft_without_a_pdf_adds_the_pdf_step(tmp_path):
+    api = _saved(**{"/api/jobs/job-1/detail": _job(application=_draft(pdf=False)),
+                    "POST /api/applications/app-1/render": _reply({"pdf_path": "renders/Ada.pdf"})})
+    out = _apply(tmp_path, api=api, hold=["/api/applications/app-1/render"], steps=[{"foot": "Apply"}])
+    assert _lines(out["shots"][1])[-1] == ("run", "Making the PDF")
+
+
+def test_the_footer_note_says_each_step_and_the_checklist_is_a_labelled_list(tmp_path):
+    out = _apply(tmp_path, api=_fresh(), hold=["POST /api/proposals"], holdSkip=1, steps=[{"foot": "Apply"}])
+    mid = out["shots"][1]
+    # The note is the panel's one persistent live region (the rail is rebuilt on every paint).
+    [note] = _by_class(mid["regions"]["foot"], "note")
+    assert note["attrs"]["aria-live"] == "polite"
+    assert note["text"] == "Linking the resume to the job…"
+    [checklist] = _by_class(mid["regions"]["rail"], "apply-steps")
+    assert checklist["tag"] == "OL" and checklist["attrs"]["aria-label"] == "Preparing to apply"
+    # A state is a word as well as a shape.
+    [tick, *_] = checklist["children"]
+    assert _by_class(tick, "vh")[0]["text"] == "Done: "
+    assert _by_class(checklist["children"][-1], "vh")[0]["text"] == "In progress: "
+
+
+def test_stop_is_a_button_with_a_clear_name_while_apply_prepares(tmp_path):
+    out = _apply(tmp_path, api=_fresh(), hold=["POST /api/proposals"], holdSkip=1,
+                 steps=[{"foot": "Apply"}, {"release": True, "settles": 2}])
+    [stop] = _stop_button(out["shots"][1])
+    assert _text(stop) == "Stop" and stop["attrs"]["aria-label"] == "Stop preparing to apply"
+    assert not stop["disabled"]
+    assert _stop_button(out["shots"][0]) == [] and _stop_button(out["shots"][-1]) == []
+
+
+def test_stop_after_scoring_leaves_no_proposal_and_no_tailoring(tmp_path):
+    out = _apply(tmp_path, api=_flow(), hold=["POST /api/ats-scores"],
+                 steps=[{"foot": "Apply"}, {"foot": "Stop"}, {"release": True, "settles": 3}])
+    # Held mid-score: the first save is done, scoring is running, and Stop has been heard.
+    assert _lines(out["shots"][1]) == [("done", "Saving the job"), ("run", "Scoring your resumes")]
+    [pressed] = _stop_button(out["shots"][2])
+    assert _text(pressed) == "Stopping…" and pressed["disabled"]
+    end = out["shots"][-1]
+    assert _order(out) == ["POST /api/jobs", "POST /api/ats-scores"]
+    assert out["seeds"] == []
+    assert _lines(end) == [("done", "Saving the job"), ("done", "Scoring your resumes"),
+                           ("stop-line", "Stopped after scoring your resumes.")]
+    assert _note(end) == "Stopped after scoring your resumes."
+    # What was done stays done, and Apply is there to press again.
+    assert _stop_button(end) == [] and _labels(end) == ["Apply"]
+    assert not [one for one in _buttons(end) if one["disabled"] and _text(one) == "Apply"]
+
+
+def test_stop_between_steps_ends_the_press_without_cancelling_a_call_already_sent(tmp_path):
+    # Held at the quick tailor: the call is sent, Stop is pressed, and it still completes and is kept.
+    out = _apply(tmp_path, api=_fresh(), hold=["/quick-tailor"],
+                 steps=[{"foot": "Apply"}, {"foot": "Stop"}, {"release": True, "settles": 3}])
+    assert len(_api(out, "POST", "/quick-tailor")) == 1
+    end = out["shots"][-1]
+    assert _lines(end)[-2:] == [("done", "Tailoring the resume"), ("stop-line", "Stopped after tailoring the resume.")]
+    assert _api(out, "POST", "/render") == [] and out["seeds"] == []
+    # Linking is a write after the queue: it was never sent.
+    assert [msg for msg in _api(out, "POST", "/api/proposals") if "application_id" in _body(msg)] == []
+
+
+def test_a_step_that_fails_is_crossed_with_a_short_reason_and_no_server_words(tmp_path):
+    api = _fresh(**{"/quick-tailor": {"ok": False, "status": 500, "error": "Traceback secret-detail-9"}})
+    out = _apply(tmp_path, api=api, steps=[{"foot": "Apply"}])
+    shot = out["shots"][1]
+    assert _lines(shot)[-1] == ("fail", "Tailoring the resume")
+    [failed] = [item for item in _by_class(shot["regions"]["rail"], "apply-steps")[0]["children"]
+                if item["class"] == "fail"]
+    assert _by_class(failed, "why")[0]["text"] == "Couldn't tailor"
+    assert _by_class(failed, "vh")[0]["text"] == "Didn't finish: "
+    assert "secret-detail-9" not in _text(shot["regions"]["rail"]) + _text(shot["regions"]["foot"])
+    assert _stop_button(shot) == []
+    assert out["seeds"] == []
+
+
+def test_the_base_list_is_locked_while_apply_works_and_a_click_changes_nothing(tmp_path):
+    api = _saved()
+    out = _apply(tmp_path, api=api, hold=["POST /api/proposals"], holdSkip=1,
+                 steps=[{"foot": "Apply"}, {"id": "base-data_scientist"}, {"release": True, "settles": 2}])
+    before, during, after = out["shots"][0], out["shots"][2], out["shots"][-1]
+    rows = _rows_in_rail(before)
+    assert len(rows) == 3 and not any(row["disabled"] for row in rows)
+    rows = _rows_in_rail(during)
+    assert len(rows) == 3 and all(row["disabled"] and row["attrs"]["aria-disabled"] == "true" for row in rows)
+    [group] = [one for one in _walk(during["regions"]["rail"]) if one["attrs"].get("role") == "radiogroup"]
+    assert group["attrs"]["aria-disabled"] == "true"
+    # The click on a locked row (the harness fires it even though a browser would not) is refused.
+    assert during["facts"]["baseSlug"] == "ai_ml_engineer"
+    assert [row["attrs"]["aria-checked"] for row in rows if row["id"] == "base-ai_ml_engineer"] == ["true"]
+    assert not any(row["disabled"] for row in _rows_in_rail(after))
+    # The two ways round are locked with it.
+    assert all(one["disabled"] for one in _buttons(during, "rail"))
+
+
+# ---------- the pick: only on a clear win ----------
+
+
+@pytest.mark.parametrize("ai,ds,picked", [
+    (71.8, 63.6, "ai_ml_engineer"),   # clear: above the floor, ahead by more than the margin
+    (60, 55, "ai_ml_engineer"),       # exactly the floor, exactly the margin
+    (45, 44, None),                    # a close call, both under the floor
+    (80, 77, None),                    # high, but the lead is under the margin
+    (50, 20, None),                    # a big lead, but under the floor
+    (65, None, "ai_ml_engineer"),     # a lone scored base has no rival to lead
+], ids=["clear", "at-the-limits", "close-call", "thin-lead", "low-top", "lone"])
+def test_the_panel_preselects_a_resume_only_on_a_clear_win(tmp_path, ai, ds, picked):
+    rows = [row for row in _rows(ai, ds or 0) if not (ds is None and row["target_id"] == "data_scientist")]
+    shot = _apply(tmp_path, api=_saved(**{"GET /api/ats-scores": _reply(rows)}))["shots"][0]
+    assert shot["facts"]["baseSlug"] == picked
+    checked = [row["id"] for row in _rows_in_rail(shot) if row["attrs"]["aria-checked"] == "true"]
+    assert checked == ([f"base-{picked}"] if picked else [])
+    assert [PICK_NOTE.rstrip(".") in _text(shot["regions"]["rail"]),
+            _buttons(shot)[-1]["disabled"]] == [picked is None] * 2
+
+
+def test_the_pick_uses_the_users_floor_and_margin_from_auto_apply(tmp_path):
+    settings = _reply({"key": "auto_apply", "value": {"full_automation": True, "auto_pick_floor": 40,
+                                                         "auto_pick_margin": 0.5}})
+    api = _saved(**{"GET /api/ats-scores": _reply(_rows(45, 44)), "/api/settings/auto-apply": settings})
+    assert _apply(tmp_path, api=api)["shots"][0]["facts"]["baseSlug"] == "ai_ml_engineer"
+
+
+def test_a_close_call_stops_apply_after_scoring_and_asks_with_the_list_unlocked(tmp_path):
+    out = _apply(tmp_path, api=_flow(_rows(45, 44)), steps=[{"foot": "Apply", "settles": 3}])
+    end = out["shots"][-1]
+    assert _order(out) == ["POST /api/jobs", "POST /api/ats-scores"]
+    assert out["seeds"] == []
+    assert _lines(end) == [("done", "Saving the job"), ("done", "Scoring your resumes"), ("wait", "Waiting for your pick")]
+    assert _note(end) == PICK_NOTE
+    rows = _rows_in_rail(end)
+    assert len(rows) == 3 and not any(row["disabled"] for row in rows)
+    assert [row["attrs"]["aria-checked"] for row in rows] == ["false"] * 3
+    assert _foot(end)[-1][0] == "Apply" and _buttons(end)[-1]["disabled"]
+
+
+def test_picking_after_the_ask_lets_apply_go_on_with_that_resume(tmp_path):
+    out = _apply(tmp_path, api=_flow(_rows(45, 44)),
+                 steps=[{"foot": "Apply", "settles": 3}, {"id": "base-data_scientist", "settles": 2},
+                        {"foot": "Apply", "settles": 3}])
+    picked = out["shots"][2]
+    # A new pick starts the next press: the old checklist is gone and Apply is live.
+    assert _lines(picked) == []
+    assert not _buttons(picked)[-1]["disabled"]
+    assert _body(_api(out, "POST", "/quick-tailor")[0]) == {"base_resume": "data_scientist"}
+    assert out["seeds"][0]["baseSlug"] == "data_scientist"
+    assert [_lines(out["shots"][3])] == [[]]
+
+
+def test_with_choose_for_me_off_nothing_is_preselected_and_an_unsaved_posting_offers_save_job(tmp_path):
+    api = _flow(**_companion(auto_pick=False))
+    out = _apply(tmp_path, api=api, steps=[{"foot": "Save job", "settles": 3}])
+    first, end = out["shots"][0], out["shots"][-1]
+    assert _labels(first) == ["Save job"] and _order(out) == ["POST /api/jobs", "POST /api/ats-scores"]
+    # Saved and scored; the best match is named, but nothing is chosen, and Apply waits for the user.
+    assert end["facts"]["baseSlug"] is None and out["seeds"] == []
+    assert [row["attrs"]["aria-checked"] for row in _rows_in_rail(end)] == ["false"] * 3
+    assert _foot(end)[-1][0] == "Apply" and _buttons(end)[-1]["disabled"]
+    assert _lines(end)[-1] == ("wait", "Waiting for your pick")
+
+
+def test_with_choose_for_me_off_a_saved_job_waits_for_the_users_pick_then_applies_with_it(tmp_path):
+    api = _saved(**_companion(auto_pick=False))
+    out = _apply(tmp_path, api=api, steps=[{"id": "base-data_scientist"}, {"foot": "Apply"}])
+    first, picked = out["shots"][0], out["shots"][1]
+    assert first["facts"]["baseSlug"] is None and _buttons(first)[-1]["disabled"]
+    assert PICK_NOTE.rstrip(".") in _text(first["regions"]["rail"])
+    assert not _buttons(picked)[-1]["disabled"]
+    assert _body(_api(out, "POST", "/quick-tailor")[0]) == {"base_resume": "data_scientist"}
+
+
+def test_a_picked_resume_survives_a_rescore_and_is_not_replaced_by_the_best(tmp_path):
+    api = _saved(**_companion(auto_pick=False), **{"POST /api/ats-scores": _reply(SCORE_ROWS)})
+    out = _apply(tmp_path, api=api, steps=[{"id": "base-data_scientist"}, {"body": "Update scores", "settles": 2}])
+    assert out["shots"][-1]["facts"]["baseSlug"] == "data_scientist"
+
+
+# ---------- "Stop after each step": three presses, the yes at the third ----------
+
+
+def _stepwise(**api):
+    return {**_companion(stop_each_step=True), **api}
+
+
+def test_save_job_is_the_first_press_and_saves_and_scores_without_queueing(tmp_path):
+    out = _apply(tmp_path, api=_flow(**_stepwise()), steps=[{"foot": "Save job", "settles": 3}])
+    assert _labels(out["shots"][0]) == ["Save job"]
+    assert _order(out) == ["POST /api/jobs", "POST /api/ats-scores"]
+    end = out["shots"][-1]
+    assert _lines(end) == [("done", "Saving the job"), ("done", "Scoring your resumes"),
+                           ("done", "Using AI/ML Engineer (72)")]
+    # The next press is named for what it does.
+    assert _labels(end) == ["Tailor resume"]
+    assert out["seeds"] == []
+
+
+def test_tailor_resume_makes_the_resume_and_stops_before_the_queue_and_the_run(tmp_path):
+    out = _apply(tmp_path, api=_saved(**_stepwise()), steps=[{"foot": "Tailor resume", "settles": 3}])
+    assert _labels(out["shots"][0]) == ["Tailor resume"]
+    assert _order(out) == ["POST /api/jobs/job-1/quick-tailor"]
+    assert _api(out, "POST", "/api/proposals") == [] and _api(out, "PATCH", "/api/proposals") == []
+    assert out["seeds"] == []
+    assert "Press Start filling" in _note(out["shots"][-1])
+
+
+def test_make_pdf_renders_the_draft_and_stops(tmp_path):
+    bound = _bound(pdf=False, **_stepwise())
+    out = _apply(tmp_path, api=bound, steps=[{"foot": "Make PDF", "settles": 3}])
+    assert _primary(out["shots"][0]) == ["Make PDF"]
+    assert _order(out) == ["POST /api/applications/app-1/render"]
+    assert out["seeds"] == []
+
+
+def test_start_filling_is_where_the_yes_is_given_and_the_run_starts(tmp_path):
+    out = _apply(tmp_path, api=_bound(**_stepwise()), steps=[{"foot": "Start filling", "settles": 3}])
+    assert _primary(out["shots"][0]) == ["Start filling"]
+    assert _order(out) == ["POST /api/proposals", "PATCH /api/proposals/prop-1", "POST /api/proposals"]
+    [accepted] = _api(out, "PATCH", "/api/proposals/prop-1")
+    assert _body(accepted) == {"status": "accepted", "consent": {"channel": "companion"}}
+    assert len(out["seeds"]) == 1 and out["seeds"][0]["applicationId"] == "app-1"
+
+
+def test_the_three_presses_in_a_row_queue_nothing_before_the_third(tmp_path):
+    # The match reads: no job, the saved job, then the saved job with its new draft (and the draft has a PDF).
+    bound = {"match": "exact", "job": JOB, "application": {"id": "app-1", "status": "draft",
+                                                           "base_resume": "ai_ml_engineer"}}
+    api = _flow(**_stepwise(), **{
+        "/api/jobs/match": [NO_MATCH, SAVED_MATCH, _reply(bound)],
+        "GET /api/applications/app-1": _reply(_draft()),
+        "/api/jobs/job-1/detail": [_job(), _job(), _job(), _job(application=_draft()),
+                                   _job(application=_draft())]})
+    out = _apply(tmp_path, api=api, steps=[{"foot": "Save job", "settles": 3}, {"foot": "Tailor resume", "settles": 3},
+                                           {"foot": "Start filling", "settles": 3}])
+    assert [_primary(shot) for shot in out["shots"][:3]] == [["Save job"], ["Tailor resume"], ["Start filling"]]
+    order = _order(out)
+    assert order[:3] == ["POST /api/jobs", "POST /api/ats-scores", "POST /api/jobs/job-1/quick-tailor"]
+    assert "POST /api/proposals" not in order[:3] and len(out["seeds"]) == 1
+
+
+def test_a_stepwise_footer_never_names_a_press_the_job_cannot_take(tmp_path):
+    # A draft the user made in the web app: the first press this panel offers is the PDF or the run.
+    assert _primary(_apply(tmp_path, api=_bound(pdf=True, **_stepwise()))["shots"][0]) == ["Start filling"]
+    assert _primary(_apply(tmp_path, api=_bound(pdf=False, **_stepwise()))["shots"][0]) == ["Make PDF"]
+
+
+# ---------- how Apply is set, in one line ----------
+
+
+@pytest.mark.parametrize("pick,stop,words", [
+    (True, False, "Apply picks the resume and runs every step."),
+    (True, True, "Apply picks the resume and stops after each step."),
+    (False, False, "You pick the resume. Apply runs every step."),
+    (False, True, "You pick the resume. Apply stops after each step."),
+])
+def test_the_job_step_says_how_apply_is_set_with_a_link_to_the_switches(tmp_path, pick, stop, words):
+    for api in (_saved(**_companion(pick, stop)), _fresh(**_companion(pick, stop))):
+        shot = _apply(tmp_path, api=api)["shots"][0]
+        [line] = [one for one in _by_class(shot["regions"]["rail"], "sub") if words in one["text"]]
+        [link] = [one for one in line["children"] if one["tag"] == "A"]
+        assert link["href"] == "http://localhost:3000/settings#form-filling"
+        assert link["attrs"]["aria-label"] == "Change in Settings (opens in a new tab)"
+        assert PROMISE in _text(shot["regions"]["rail"])
+
+
+def test_a_setting_the_panel_cannot_read_leaves_apply_picking_and_running_every_step(tmp_path):
+    shot = _apply(tmp_path, api=_saved())["shots"][0]
+    assert "Apply picks the resume and runs every step." in _text(shot["regions"]["rail"])
+    assert _labels(shot) == ["Apply"]
+
+
+def test_the_switches_are_read_only_when_full_automation_is_on(tmp_path):
+    off = _apply(tmp_path, api=_fresh(**{"/api/settings/auto-apply": AUTOMATION_OFF}, **_companion(False, True)))
+    assert _api(off, "GET", "/api/settings/companion-apply") == []
+    on = _apply(tmp_path, api=_fresh(**_companion(False, True)))
+    assert len(_api(on, "GET", "/api/settings/companion-apply")) == 1
+    # And what it read is in force: with Stop after each step on, an unsaved posting's press is Save job.
+    assert _labels(on["shots"][0]) == ["Save job"] and _labels(off["shots"][0]) == ["Save job"]

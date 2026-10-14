@@ -14,7 +14,8 @@
  *
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
  * postingId, sessionTenant, restorableSession, postingLink, samePosting,
- * applyFacts, httpUrl, reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite }.
+ * applyFacts, httpUrl, reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
+ * preselect, applyPress }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -234,6 +235,52 @@
         if (b.score === null) return -1;
         return b.score - a.score;
       });
+  }
+
+  /** What `baseSlug` becomes when scores arrive and the user has not picked: a slug, null ("nobody is
+   * picked"), or undefined ("leave the selection alone"). `ranked` is `rankBaseResumes`' answer.
+   *
+   * With full automation off (or not known) it is the ranking's best scored base, as it always was, and
+   * undefined when no base is scored. With full automation on the pick is made only on a clear win, by
+   * the Companion's "Choose the base resume for me" switch and Auto-apply's two limits: the top score is
+   * at least `floor` AND leads the next scored base by at least `margin`. A close call (45 against 44,
+   * both under 60), a low top, or the switch off is null, which also clears an earlier preselection: a
+   * re-score that made the race close must not leave the old winner looking chosen. Choosing between
+   * near-equal resumes is the user's; a guess there is a resume nobody chose going to an employer. A lone
+   * scored base has no rival to lead. */
+  function preselect({ fullAutomation, companionApply }, ranked) {
+    const scored = (ranked ?? []).filter((one) => one.score !== null && one.score !== undefined);
+    if (fullAutomation !== true) return scored.length ? scored[0].slug : undefined;
+    if (!scored.length || companionApply?.autoPick === false) return null;
+    const [top, next] = scored;
+    if (top.score < (companionApply?.floor ?? 60)) return null;
+    if (next && top.score - next.score < (companionApply?.margin ?? 5)) return null;
+    return top.slug;
+  }
+
+  /** What the Job step's footer button says and does, for a saved or unsaved posting.
+   *
+   * `through` is how far one press goes: `"save"` (save and score, then the pick), `"resume"` (a resume
+   * made and its PDF, no queue, no run) or `"start"` (queue, claim, link and run). With "Stop after each
+   * step" off one press is `"start"` and the label is Apply; with it on the label names the NEXT press
+   * (Save job, Tailor resume, Make PDF, Start filling) and each press is idempotent, because it reads
+   * what the server holds. With "Choose the base resume for me" off, an unsaved posting is Save job (a
+   * pick comes after the save), and a saved one with nothing picked has `needsPick`: the button waits.
+   * `needsPick` is false beside an application, whose own base answers the question. */
+  function applyPress({ match, job, application, pdfReady, baseSlug, companionApply }) {
+    const stepwise = companionApply?.stopEachStep === true;
+    const saved = match === "exact" && Boolean(job?.id);
+    if (!saved) {
+      return stepwise || companionApply?.autoPick === false
+        ? { label: "Save job", through: "save", needsPick: false }
+        : { label: "Apply", through: "start", needsPick: false };
+    }
+    const hasApplication = application != null;
+    const needsPick = !hasApplication && (baseSlug === null || baseSlug === undefined);
+    if (!stepwise) return { label: "Apply", through: "start", needsPick };
+    if (!hasApplication) return { label: "Tailor resume", through: "resume", needsPick };
+    return pdfReady === true ? { label: "Start filling", through: "start", needsPick: false }
+      : { label: "Make PDF", through: "resume", needsPick: false };
   }
 
   /** What Apply and Queue need to know about a saved job, read from the backend's own answers: the
@@ -732,6 +779,7 @@
   ns.decisions = {
     stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession, postingLink,
     samePosting, applyFacts, httpUrl, namesPosting, applyLink, offersApply, boardHost,
+    preselect, applyPress,
     reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
   };
 })();

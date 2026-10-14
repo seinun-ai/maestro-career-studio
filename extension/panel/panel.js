@@ -573,6 +573,20 @@
      * the backend's, which is why it is a field of its own and not a key of `settings` (the
      * extension's own options, from the service worker). */
     fullAutomation: null,
+    /** The Companion's Apply switches and the pick limits they use, read once per bind beside
+     * `fullAutomation`: `autoPick` ("Choose the base resume for me"), `stopEachStep` ("Stop after each
+     * step"), and Auto-apply's `floor` and `margin`. These are the defaults until the backend answers
+     * (an unreadable setting is the setting off its switches, which is what Apply did before they
+     * existed). Not a fact about the page, so `resetPageFacts` leaves it. */
+    companionApply: { autoPick: true, stopEachStep: false, floor: 60, margin: 5 },
+    /** The Apply checklist: `{lines, live, stopped}` or null. `lines` are the steps of the press in
+     * order, each `{key, text, state, why?, name?, hue?}` with `state` one of run, done, fail, wait;
+     * `live` is true from the press until it ends (it shows Stop and locks the base list); `stopped`
+     * names the step the user's Stop came after. Written by `actions/job.js` between its awaits, and by
+     * nothing else. Page-shaped, so `resetPageFacts` clears it. */
+    applySteps: null,
+    /** The user pressed Stop on the checklist: Apply ends at its next await boundary. */
+    applyStop: false,
     /** What Apply and Queue need to know about THIS saved job, as the server holds it now
      * (`ns.decisions.applyFacts`): its newest proposal, whether it is applied, an open tailoring
      * session of the user's own, the job's link. Null until read, with full automation off, and for
@@ -832,6 +846,9 @@
     // first: both are about one posting.
     store.apply = null;
     store.tailorFirst = false;
+    // The checklist is about the press made on that page.
+    store.applySteps = null;
+    store.applyStop = false;
     // And so did the done row they reopened. Every fact the reopened body
     // renders is cleared by the lines around this one, so a `revisit` that
     // survived would hold open a Fill report about a form the user has left —
@@ -2171,6 +2188,13 @@
         // Queue. `apply` is what the server said about this job when the page was read.
         fullAutomation: card.fullAutomation,
         apply: card.apply,
+        // How Apply is set to behave (the Settings switches), the checklist of the press in hand, and
+        // the two facts the base list needs: it is locked while that press works, and it has no
+        // preselected row when the user is to pick.
+        companionApply: card.companionApply,
+        applySteps: card.applySteps,
+        applying: card.applySteps?.live === true,
+        needsPick: card.fullAutomation === true && ns.decisions.applyPress(card).needsPick,
         // The base-as-is CLAIM, and the Resume body is the only reader: armed,
         // that body names the choice and offers the way out of it instead of
         // re-offering the limb the user already pressed. It also feeds
@@ -2243,7 +2267,7 @@
         qna: sameApplication(card.qna.applicationId, card.application)
           ? card.qna : { ...card.qna, answered: null, answer: null, copied: false },
       },
-      act: { editPreview, pickApplication, unpickApplication, pickBase, useBaseAsIs,
+      act: { editPreview, pickApplication, unpickApplication, pickBase, useBaseAsIs, stopApply,
              stopUsingBaseAsIs, openTailor, quickTailor, tailorFirst, applyWithBase,
              scoreBases: () => scoreAllBases(),
              setFillMode, forgetLearnedMoves, startFill, attachResume, scrollToField, focusField, editAnswer,
@@ -2382,8 +2406,13 @@
    * it the user would pick again on every step.
    */
   function pickBase(slug) {
+    // Locked while Apply works (the list is disabled): the pick would land after the press had read the
+    // base it uses, and the panel would show a resume the application was not made from.
+    if (card.applySteps?.live === true) return;
     card.baseSlug = slug;
     card.baseSelected = true;
+    // The checklist describes the press that ended; a new pick starts the next one.
+    card.applySteps = null;
     // A pick made in a REOPENED Job row answers the question it was reopened
     // to ask, so the view closes. It has to be said here because a switch made
     // from Resume leaves the stage on Resume, and `openRow`'s "the rail moved
@@ -2450,7 +2479,12 @@
     card.tailorFirst = true;
     card.tailorOpen = true;
     card.revisit = null;
-    card.note = decide().stage === "job" ? { text: "Select Update scores first, then tailor." } : null;
+    // The step cannot close for one of two reasons: nothing is scored, or nothing is picked (the user is to
+    // pick, or the scores gave no clear win), and the sentence names the one that is true.
+    const unpicked = card.baseSlug === null && Array.isArray(card.scores) && card.scores.length > 0;
+    card.note = decide().stage === "job"
+      ? { text: unpicked ? "Pick a resume first, then tailor." : "Select Update scores first, then tailor." }
+      : null;
     render();
   }
 
@@ -2557,6 +2591,15 @@
     ask("page_broadcast", {
       tabId: card.tabId, message: { type: "fill_cancel" },
     }).catch((err) => console.warn("[maestro-cs] could not stop the fill:", err));
+  }
+
+  /** Stop the Apply that is preparing: it ends at its next await boundary (`actions/job.js` reads
+   * `applyStop` after every step), so a server call already sent is never cancelled halfway, and what
+   * it had already done stays done. Painted at once, so the button says it heard. */
+  function stopApply() {
+    if (card.applySteps?.live !== true || card.applyStop) return;
+    card.applyStop = true;
+    render();
   }
 
   /** The stage bodies, from the roster that gathers them.
@@ -2920,6 +2963,15 @@
       stop.disabled = card.stopRequested;
       controls.push(stop);
     }
+    // STOP FOR APPLY, the same way, while its checklist is live. It is keyed on the checklist rather than
+    // on `busy`: Apply is several round trips and `busy` is released between two of them. Its name says
+    // what it stops, since the footer also shows the fill's Stop.
+    if (card.applySteps?.live === true) {
+      const stop = actionButton("stop", card.applyStop ? "Stopping…" : "Stop", stopApply);
+      stop.setAttribute("aria-label", card.applyStop ? "Stopping preparing to apply" : "Stop preparing to apply");
+      stop.disabled = card.applyStop;
+      controls.push(stop);
+    }
     // THE PRIMARY BELONGS TO THE OPEN ROW, not to the inferred stage, and the
     // two are the same thing until a done row is reopened. It has to be this
     // way for the feature to be one: the design's promise is "one primary at a
@@ -2970,13 +3022,19 @@
 
   /** Apply, with Queue beside it once the Queue view exists (`QUEUE_BUTTON`). A job already queued
    * is the user's yes, so Apply stands alone and takes the whole line. Both wait for any running
-   * action; the spinner is on the one pressed. */
+   * action; the spinner is on the one pressed.
+   *
+   * THE LABEL IS THE NEXT PRESS (`ns.decisions.applyPress`): Apply, or with "Stop after each step" on
+   * Save job, Tailor resume, Make PDF and Start filling. With nothing picked and the user to pick,
+   * the button waits (the list above it says so), and it never waits on a posting that is not saved
+   * yet, because the save is how a pick becomes possible. */
   function applyButtons() {
+    const press = ns.decisions.applyPress(card);
     const alone = card.apply?.queued === true || !QUEUE_BUTTON;
     const spin = (kind) => (card.busy === kind ? " spin" : "");
-    const apply = actionButton(alone ? `cta${spin("apply")}` : `cta pair${spin("apply")}`, "Apply",
+    const apply = actionButton(alone ? `cta${spin("apply")}` : `cta pair${spin("apply")}`, press.label,
                                () => applyJob());
-    apply.disabled = card.busy !== null;
+    apply.disabled = card.busy !== null || card.applySteps?.live === true || press.needsPick;
     if (alone) return [apply];
     const queue = actionButton(`cta pair alt${spin("queue")}`, "Queue", () => queueJob());
     queue.disabled = card.busy !== null;
@@ -3415,16 +3473,38 @@
   /** Is full automation on? One cheap read of the backend's auto-apply setting per bind. Anything
    * but a plain `true` (an unreachable backend, an older server, a malformed answer) reads as "not
    * known": the Job step stays Save job, and the match's own failure already told the user the
-   * backend is unreachable. Never throws, so the load that awaits it cannot be broken by it. */
+   * backend is unreachable. Never throws, so the load that awaits it cannot be broken by it.
+   *
+   * Beside it: the pick limits Auto-apply holds (`auto_pick_floor`, `auto_pick_margin`) and, with full
+   * automation on, the Companion's two Apply switches (`/api/settings/companion-apply`), which the panel
+   * obeys now that the Companion picks a resume. A switch it cannot read is the default (on, off). */
   async function loadAutomation(token) {
     let on = null;
+    const mine = { autoPick: true, stopEachStep: false, floor: 60, margin: 5 };
     try {
-      const setting = await api("/api/settings/auto-apply");
-      on = setting?.value?.full_automation === true;
+      const value = (await api("/api/settings/auto-apply"))?.value;
+      on = value?.full_automation === true;
+      // The pick limits are Auto-apply's own; the defaults stand when they are not numbers.
+      if (Number.isFinite(value?.auto_pick_floor)) mine.floor = value.auto_pick_floor;
+      if (Number.isFinite(value?.auto_pick_margin)) mine.margin = value.auto_pick_margin;
     } catch (_) {
       // Left null on purpose; nothing to say that the match has not.
     }
-    if (current(token)) card.fullAutomation = on;
+    // The switches only mean something with full automation on, so they are read only then. Anything but
+    // a plain yes/no is the default: a switch the panel could not read has not been turned.
+    if (on) {
+      try {
+        const value = (await api("/api/settings/companion-apply"))?.value;
+        if (value?.auto_pick === false) mine.autoPick = false;
+        if (value?.stop_each_step === true) mine.stopEachStep = true;
+      } catch (_) {
+        // The defaults stand.
+      }
+    }
+    if (current(token)) {
+      card.fullAutomation = on;
+      card.companionApply = mine;
+    }
   }
 
   /** What Apply and Queue need to know about the saved job on this page, read from the server (its
@@ -4461,16 +4541,20 @@
     // arguing with them. It moves `baseSlug` and NEVER `baseSelected`, which
     // stays the user's own pick (`pickBase`); the moved `baseSlug` is the
     // preselected best that closes the Job step (`cardFacts`' `baseChosen`).
-    if (!card.baseSelected && !card.baseFromApplication) {
-      const best = rankBaseResumes(card.resumes, card.scores)[0];
-      if (best && best.score !== null) card.baseSlug = best.slug;
-    }
+    if (!card.baseSelected && !card.baseFromApplication) preselectBase(card);
     if (paint) render();
     // The Job step opening on a saved job that no base has a score for is
     // scored now, with no press (owner decision, 2026-09-27). Synchronous to
     // the guard above, so it starts for this page or not at all; the action
     // holds the generation rule for its own round trip.
     if (shouldScoreOnOpen(card)) scoreAllBases({ quiet: true });
+  }
+
+  /** Preselect the base resume from the scores, unless the user has picked (the caller's test): see
+   * `ns.decisions.preselect` for what is selected and when nothing is. */
+  function preselectBase(store) {
+    const slug = ns.decisions.preselect(store, rankBaseResumes(store.resumes, store.scores));
+    if (slug !== undefined) store.baseSlug = slug;
   }
 
   /** Score the bases WITHOUT a press? Only when the Job step is what the user
@@ -4533,7 +4617,9 @@
     // `?.[0]` and not `[0]`: `card.resumes` is `[]` for a user with no base
     // resumes yet, and a panel that threw on the empty library would take the
     // whole load down for the one user who needs the empty state most.
-    if (!card.baseSlug) card.baseSlug = card.resumes?.[0]?.slug ?? null;
+    // Not with full automation on: there nothing is preselected unless the scores make a clear win
+    // (`preselectBase`), and a library-first default would look like a resume somebody chose.
+    if (!card.baseSlug && card.fullAutomation !== true) card.baseSlug = card.resumes?.[0]?.slug ?? null;
     if (paint) render();
   }
 
@@ -4789,8 +4875,8 @@
         // The top document alone: the only door `page_sign_in` may use.
         tabFrame0: (tabId, message) => ask("panel_frame0", { tabId, message }),
         prepare: (tabId) => ask("panel_prepare", { tabId }),
-        attachPdf: (tabId, path, filename, expect, resumeOnly) =>
-          ask("attach_pdf", { tabId, path, filename, expect, resumeOnly }),
+        attachPdf: (tabId, path, filename, expect, resumeOnly, target) =>
+          ask("attach_pdf", { tabId, path, filename, expect, resumeOnly, ...(target ? { target } : {}) }),
         tabUrl: async (tabId) => (await chrome.tabs.get(tabId))?.url ?? "",
         // Not "loading": a fake or an older tab that reports no status counts as loaded.
         loaded: async (tabId) => (await chrome.tabs.get(tabId))?.status !== "loading",

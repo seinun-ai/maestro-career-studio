@@ -66,14 +66,14 @@ const AUTO_APPLY_FIELDS: {
     // ATS is spelled out once on this tab, here, where it first appears. Both
     // pick limits are playbook rules the agent is given (docs/playbooks/agent-apply.md).
     label: "Lowest match score to pick a resume",
-    hint: `${ATS_SCORE_LEAD_ALL_JOBS} Below this, connected agents ask you which base resume to use.`,
+    hint: `${ATS_SCORE_LEAD_ALL_JOBS} Below this, connected agents and the Companion ask you which base resume to use.`,
     min: 0,
     max: 100,
   },
   {
     key: "auto_pick_margin",
     label: "Lead needed to pick a resume",
-    hint: "Connected agents pick a base resume on their own only when its match score leads the next one by this many points.",
+    hint: "Connected agents and the Companion pick a base resume on their own only when its match score leads the next one by this many points.",
     min: 0,
     max: 100,
   },

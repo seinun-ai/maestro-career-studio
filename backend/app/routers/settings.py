@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings as app_settings
 from app.db import begin_write, get_db
 from app.schemas.auto_apply import AutoApplySettings
+from app.schemas.companion_apply import CompanionApplySettings
 from app.schemas.eeo_consent import EeoConsent
 from app.schemas.job_preferences import JobPreferences
 from app.schemas.job_site_login import (
@@ -37,6 +38,7 @@ from app.schemas.settings import (
 from app.services import (
     auto_apply_settings,
     autofill_profile,
+    companion_apply,
     eeo_consent,
     jev,
     job_preferences,
@@ -319,6 +321,18 @@ def put_mcp_workflow(
     payload: SettingValueIn[McpWorkflowSettings], db: Annotated[Session, Depends(get_db)]
 ):
     return {"key": "mcp_workflow", "value": mcp_workflow.set_settings(payload.value, db)}
+
+
+@router.get("/companion-apply", response_model=SettingEnvelope[CompanionApplySettings])
+def get_companion_apply(db: Annotated[Session, Depends(get_db)]):
+    return {"key": "companion_apply", "value": companion_apply.get_settings(db)}
+
+
+@router.put("/companion-apply", response_model=SettingEnvelope[CompanionApplySettings])
+def put_companion_apply(
+    payload: SettingValueIn[CompanionApplySettings], db: Annotated[Session, Depends(get_db)]
+):
+    return {"key": "companion_apply", "value": companion_apply.set_settings(payload.value, db)}
 
 
 @router.get("/job-preferences", response_model=SettingEnvelope[JobPreferences])

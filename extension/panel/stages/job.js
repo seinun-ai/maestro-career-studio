@@ -68,6 +68,65 @@
       : "No job description found on this page.";
   }
 
+  /** The Companion's Apply switches in one line, with the way to change them (Settings, Form filling).
+   * Said once, where Apply is: the user should not have to open Settings to learn why Apply asked, or
+   * why it stopped. Null with no web app address to send them to would still say the line; it only
+   * drops the link. */
+  function modeLine({ facts, build }) {
+    const { node, attach } = build;
+    const picks = facts.companionApply?.autoPick !== false;
+    const stops = facts.companionApply?.stopEachStep === true;
+    const words = `${picks ? "Apply picks the resume and" : "You pick the resume. Apply"} ${
+      stops ? "stops after each step" : "runs every step"}.`;
+    const line = node("div", "sub mode", `${words} `);
+    if (!facts.appUrl) return line;
+    const link = attach(node("a", null, "Change in Settings"), build.icon("external-link", { size: 12 }));
+    link.setAttribute("aria-label", "Change in Settings (opens in a new tab)");
+    link.href = `${facts.appUrl}/settings#form-filling`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    return attach(line, link);
+  }
+
+  /** What Apply promises and how it is set, the two lines under the base question. */
+  function promiseLines(ctx) {
+    return [ctx.build.node("div", "sub", APPLY_PROMISE), modeLine(ctx)];
+  }
+
+  /** The checklist of the Apply press in hand: one line per step it took, in order. A running step has a
+   * spinner, a finished one a tick, a step that did not finish a mark and its reason (a fixed phrase:
+   * the server's own words are never shown), and the line the user is to answer ("Pick a resume to
+   * apply with") a plain marker. The words of a state are also written for a screen reader (`.vh`), since
+   * a shape is not a word. A base resume's line keeps its square. The announcement of each step is the
+   * footer note's (the rail is rebuilt on every paint, so a live region in it would be a new node each
+   * time); this list is the picture and its own labelled list. Null with nothing to say. */
+  const STATE_WORDS = { run: "In progress: ", done: "Done: ", fail: "Didn't finish: ", wait: "Waiting for you: " };
+  function checklist({ facts, build }) {
+    const steps = facts.applySteps;
+    if (!steps || (!steps.lines.length && !steps.stopped)) return null;
+    const { node, attach } = build;
+    const list = node("ol", "apply-steps");
+    list.setAttribute("aria-label", "Preparing to apply");
+    for (const line of steps.lines) {
+      const item = node("li", line.state);
+      const mark = line.state === "done" ? build.icon("check", { size: 14 })
+        : line.state === "fail" ? build.icon("circle-alert", { size: 14 })
+          : line.state === "wait" ? build.icon("circle-help", { size: 14 })
+            : attach(node("span", "mark spin"));
+      if (line.state === "run") mark.setAttribute("aria-hidden", "true");
+      const what = attach(node("span", "what", line.text), build.swatch(line.hue));
+      attach(item, node("span", "vh", STATE_WORDS[line.state]), mark, what);
+      if (line.state === "fail") attach(item, node("span", "why", line.why));
+      attach(list, item);
+    }
+    if (steps.stopped) {
+      const words = `Stopped after ${steps.stopped}.`;
+      attach(list, attach(node("li", "stop-line"), build.icon("circle-minus", { size: 14 }),
+                          node("span", "what", words)));
+    }
+    return list;
+  }
+
   /** The Job stage: three fields the user can correct before anything is saved.
    *
    * Rendered FROM `facts.preview`, never from what the inputs happen to hold —
@@ -98,10 +157,11 @@
       tag.setAttribute("for", input.id);
       attach(kv, tag, input);
     }
-    const body = attach(node("div", "stg-body"), kv,
+    const body = attach(node("div", "stg-body"), checklist(ctx), kv,
                         node("div", "sub", previewNote(facts.preview)));
     const where = automationLine(facts);
     if (where) attach(body, node("div", "sub", where));
+    if (facts.fullAutomation === true) attach(body, modeLine(ctx));
     const pick = picker(ctx);
     return pick ? attach(body, pick) : body;
   }
@@ -131,9 +191,9 @@
     stop.type = "button";
     stop.disabled = facts.busy === true;
     stop.addEventListener("click", act.unpickApplication);
-    const body = attach(node("div", "stg-body"), bound);
+    const body = attach(node("div", "stg-body"), checklist(ctx), bound);
     // Apply is in the footer exactly when `offersApply` says so; say what it does, as the saved body does.
-    if (offersApply(facts)) attach(body, node("div", "sub", APPLY_PROMISE));
+    if (offersApply(facts)) attach(body, ...promiseLines(ctx));
     const pick = picker(ctx);
     if (pick) attach(body, pick);
     return attach(body, stop);
@@ -283,6 +343,12 @@
     row.id = `base-${entry.slug}`;
     row.setAttribute("role", "radio");
     row.setAttribute("aria-checked", selected ? "true" : "false");
+    // Locked while Apply works: the press reads the base once, and a pick made after would show a resume
+    // the application was not made from. Disabled, so a click is impossible rather than ignored.
+    if (facts.applying === true) {
+      row.disabled = true;
+      row.setAttribute("aria-disabled", "true");
+    }
     const dot = node("span", "r");
     dot.setAttribute("aria-hidden", "true");
     attach(row, dot, ...rowText(build, entry, best));
@@ -353,7 +419,7 @@
     const { node, attach } = ctx.build;
     const ranked = rankBaseResumes(ctx.facts.resumes, ctx.facts.scores);
     const best = ranked.findIndex((entry) => entry.score !== null);
-    const body = node("div", "stg-body");
+    const body = attach(node("div", "stg-body"), checklist(ctx));
     if (ctx.facts.application) {
       const usedSlug = ctx.facts.application.base_resume || ctx.facts.baseSlug;
       const list = node("div");
@@ -362,12 +428,13 @@
       attach(body, tailoredFrom(ctx, ranked, usedSlug), list, node("div", "sub", ATS_SCORE_LEAD));
       // Apply is in the footer for the user's own draft; say what it does, as the unsaved body does.
       const draft = (ctx.facts.application.status ?? "draft") === "draft";
-      if (ctx.facts.fullAutomation === true && draft) attach(body, node("div", "sub", APPLY_PROMISE));
+      if (ctx.facts.fullAutomation === true && draft) attach(body, ...promiseLines(ctx));
       return body;
     }
     const list = node("div");
     list.setAttribute("role", "radiogroup");
     list.setAttribute("aria-label", "Base resume, best match first");
+    if (ctx.facts.applying === true) list.setAttribute("aria-disabled", "true");
     ranked.forEach((entry, index) => attach(list, baseRow(ctx, entry, index === best)));
     if (ctx.facts.fullAutomation === true) return applyBody(ctx, body, list, ranked);
     return attach(body, list,
@@ -390,14 +457,18 @@
       const button = node("button", null, label);
       button.type = "button";
       button.id = id;
-      button.disabled = facts.busy === true;
+      button.disabled = facts.busy === true || facts.applying === true;
       button.addEventListener("click", onClick);
       attach(ways, button);
     }
-    return attach(body, node("div", "sub", "Apply with this resume"), list,
+    // The question the list answers: with nothing picked it is the user's to answer, and the footer
+    // button waits for it.
+    const ask = facts.needsPick ? "Pick a resume to apply with"
+      : facts.companionApply?.stopEachStep === true ? "Use this resume" : "Apply with this resume";
+    return attach(body, node("div", "sub", ask), list,
                   node("div", "sub", rankingNote(ctx, ranked)),
                   node("div", "sub", ATS_SCORE_LEAD),
-                  node("div", "sub", APPLY_PROMISE), ways);
+                  ...promiseLines(ctx), ways);
   }
 
   /** "Finish tailoring first": the user's own tailoring session is open in the web app, and Apply
@@ -418,7 +489,7 @@
     const base = node("button", null, "Apply with the base resume");
     base.type = "button";
     base.id = "job-apply-base";
-    base.disabled = facts.busy === true;
+    base.disabled = facts.busy === true || facts.applying === true;
     base.addEventListener("click", act.applyWithBase);
     attach(ways, base);
     return attach(node("div", "apply-first"),

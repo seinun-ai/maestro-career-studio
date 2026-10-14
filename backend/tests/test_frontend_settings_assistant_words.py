@@ -431,9 +431,9 @@ def test_profile_and_agent_limits_speak_plainly():
         ("components/settings/auto-apply-section.tsx", 'hint: "Counts from when the job was filed. Queued jobs stay.",'),
         ("components/settings/auto-apply-section.tsx", 'hint: "Each application you say yes to submit counts for 24 hours.",'),
         ("components/settings/auto-apply-section.tsx",
-         "hint: `${ATS_SCORE_LEAD_ALL_JOBS} Below this, connected agents ask you which base resume to use.`,"),
+         "hint: `${ATS_SCORE_LEAD_ALL_JOBS} Below this, connected agents and the Companion ask you which base resume to use.`,"),
         ("components/settings/auto-apply-section.tsx",
-         "Connected agents pick a base resume on their own only when its match score leads the next one by this many points."),
+         "Connected agents and the Companion pick a base resume on their own only when its match score leads the next one by this many points."),
     ):
         assert words in _flat(_read(rel)), (rel, words)
     assert "Proposals per hunt" not in _read("components/settings/auto-apply-section.tsx")

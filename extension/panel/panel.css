@@ -429,6 +429,30 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .apply-first b { font-size: 13px; font-weight: 600; }
 .apply-first .sub { margin: 2px 0 0; }
 
+/* The Apply checklist (stages/job.js `checklist`): one line per step of the press, a spinner while it
+ * runs, a tick when done, a mark and a short reason when it did not finish, a plain marker for the line
+ * the user is to answer. A base resume's line keeps its square, first on the line. The base list under it
+ * is disabled while the press works. */
+.apply-steps { list-style: none; margin: 0 0 12px; padding: 0; font-size: 13px; }
+.apply-steps li { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; }
+.apply-steps .ico, .apply-steps .mark { flex: none; margin-top: calc((1lh - 14px) / 2); }
+.apply-steps .mark { display: inline-block; width: 14px; height: 14px; }
+.apply-steps .mark.spin::after { display: block; width: 10px; height: 10px; margin: 0; vertical-align: 0; }
+.apply-steps .what { min-width: 0; overflow-wrap: anywhere; }
+.apply-steps .what:has(> .swatch) { display: flex; align-items: flex-start; gap: 6px; }
+.apply-steps .what:has(> .swatch) > .swatch { margin-top: calc((1lh - 10px) / 2); }
+.apply-steps li.done { color: var(--cs-muted); }
+.apply-steps li.done .ico { color: var(--cs-good); }
+.apply-steps li.run, .apply-steps li.wait { font-weight: 600; }
+.apply-steps li.fail .ico, .apply-steps li.fail .why { color: var(--cs-warn-text); }
+.apply-steps .why { margin-left: auto; flex: none; font-size: 12px; font-weight: 600; }
+.apply-steps li.stop-line { color: var(--cs-muted); }
+.baserow:disabled, .baserow[aria-disabled="true"] { cursor: default; opacity: .6; }
+/* How Apply is set, one line with its way to Settings: the link wears the panel's own colour (a UA link is
+ * unreadable on the dark surface). */
+.sub.mode a { color: var(--cs-primary); text-underline-offset: 2px; white-space: nowrap; }
+.sub.mode a .ico { margin-left: 3px; }
+
 /* The Job-stage application picker: recent drafts, a native select.
  *
  * Replaced the stacked `.approw` buttons: four-plus drafts overflowed the

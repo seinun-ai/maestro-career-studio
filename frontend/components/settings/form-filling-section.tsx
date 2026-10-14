@@ -4,11 +4,12 @@ import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { LoadErrorState } from "@/components/load-error-state";
 import { NewTabLink } from "@/components/new-tab-link";
 import { KeyField } from "@/components/settings/models-section";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
-import { ACTION_ROW } from "@/components/settings/setting-layout";
+import { ACTION_ROW, GROUP_HEADING, SwitchRow } from "@/components/settings/setting-layout";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,12 +19,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { type AutofillGapsSummary, gapsLine } from "@/lib/autofill-gaps";
-import { couldnt } from "@/lib/error-text";
-import type { JevInfo } from "@/lib/types";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
+import { isLoadFailure } from "@/lib/query-state";
+import type { JevInfo, SettingEnvelope } from "@/lib/types";
+
+/** The Companion's Apply switches (`companion_apply`): who picks the base resume, and whether Apply
+ *  stops between steps. The panel reads them when it binds a tab. */
+type CompanionApply = { auto_pick: boolean; stop_each_step: boolean };
+const COMPANION_APPLY_PATH = "/api/settings/companion-apply";
+const COMPANION_APPLY_KEY = ["settings", "companion-apply"] as const;
 
 type JevPatch = Partial<Pick<JevInfo, "base_url" | "model" | "engine">> & {
   api_key?: string | null;
@@ -54,6 +64,77 @@ function KnownGapsLine() {
   });
   if (!gaps.data) return null;
   return <p className="text-muted-foreground text-body-small">{gapsLine(gaps.data)}</p>;
+}
+
+/** Two switches for Apply in the Companion. Each saves on toggle and shows at once; the saved value
+ *  replaces it. The match-score limits that decide a clear win are Auto-apply's. */
+function CompanionApplySwitches() {
+  const qc = useQueryClient();
+  const pickId = useId();
+  const stopId = useId();
+  const pickHintId = useId();
+  const stopHintId = useId();
+  const setting = useQuery({
+    queryKey: COMPANION_APPLY_KEY,
+    queryFn: () => apiFetch<SettingEnvelope<CompanionApply>>(COMPANION_APPLY_PATH),
+  });
+  const save = useMutation({
+    mutationFn: (value: CompanionApply) =>
+      apiFetch<SettingEnvelope<CompanionApply>>(COMPANION_APPLY_PATH, {
+        method: "PUT",
+        body: JSON.stringify({ value }),
+      }),
+    onSuccess: (result) => qc.setQueryData(COMPANION_APPLY_KEY, result),
+    onError: (err: Error) => toast.error(couldnt("save this setting", err)),
+  });
+  const saveOnce = useSingleFlight(save.mutate);
+  const shown = save.isPending ? save.variables : setting.data?.value;
+  const change = (patch: Partial<CompanionApply>) => {
+    if (setting.data && !save.isPending) saveOnce({ ...setting.data.value, ...patch });
+  };
+  return (
+    <section className="grid gap-2" aria-label="Apply in the Companion">
+      <h3 className={GROUP_HEADING}>Apply in the Companion</h3>
+      {isLoadFailure(setting) && !setting.data ? (
+        <LoadErrorState
+          className="py-4"
+          title="Couldn't load the Apply switches."
+          detail={loadErrorDetail(setting.error)}
+          retrying={setting.isFetching}
+          onRetry={() => void setting.refetch()}
+        />
+      ) : !shown ? (
+        <Skeleton className="h-24 w-full" />
+      ) : (
+        <>
+          <SwitchRow htmlFor={pickId} label="Choose the base resume for me">
+            <Switch
+              id={pickId}
+              aria-describedby={pickHintId}
+              checked={shown.auto_pick}
+              onCheckedChange={(checked) => change({ auto_pick: checked })}
+            />
+          </SwitchRow>
+          <p id={pickHintId} className="text-muted-foreground text-body-small">
+            Apply picks the best match when it clearly leads, using the limits in Auto-apply. If
+            it is close, it asks you. Off, nothing is picked until you pick.
+          </p>
+          <SwitchRow htmlFor={stopId} label="Stop after each step">
+            <Switch
+              id={stopId}
+              aria-describedby={stopHintId}
+              checked={shown.stop_each_step}
+              onCheckedChange={(checked) => change({ stop_each_step: checked })}
+            />
+          </SwitchRow>
+          <p id={stopHintId} className="text-muted-foreground text-body-small">
+            Apply stops after saving the job, after the resume, and before filling, so you press
+            once for each.
+          </p>
+        </>
+      )}
+    </section>
+  );
 }
 
 /** Jev (TypeSafe AI) as the Companion's form-filling decision engine: its key,
@@ -192,6 +273,7 @@ export function FormFillingSection() {
               {save.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
+          <CompanionApplySwitches />
           <KnownGapsLine />
         </div>
       )}
