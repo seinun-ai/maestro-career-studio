@@ -75,7 +75,7 @@
  *   page it cannot sort, ends the run as `ready`. The posting's Apply is the one narrow exception,
  *   pressed ONLY while: the page classified as a posting (no fillable control), this is the record's
  *   step 0, nothing has been filled in this record, and the tab is still on the host the apply link
- *   led to, AND it is the FIRST page this drive() call read after opening the tab itself (a record with `inPlace` did not: its page was the user's, so a posting parks). Never on a
+ *   led to (or the employer's career site the run reached, whose Apply goes to that same link or to a known applicant system: `leadsOn`), AND it is the FIRST page this drive() call read after opening the tab itself (a record with `inPlace` did not: its page was the user's, so a posting parks). Never on a
  *   Resume, never after a sign-in: a site that restores a saved draft lands on its review page, which
  *   has no fillable control and an "Apply" that is a Submit. The page refuses a control that would
  *   submit a form, and the press goes to the one frame that named the control. A field-less page
@@ -187,6 +187,20 @@
   }
   const bare = (host) => String(host ?? "").toLowerCase().replace(/^www\./, "");
   const sameSite = (a, b) => Boolean(a) && Boolean(b) && bare(a) === bare(b);
+  /** The page is one the run reached and its posting Apply goes to the record's own application link (same
+   * origin, same posting) or to a host on the known-ATS list. The reader names the address without its query. */
+  const leadsOn = (record, summary) => {
+    let target;
+    let link;
+    try {
+      target = new URL(summary.applyHref);
+      link = new URL(record.openUrl);
+    } catch {
+      return false;
+    }
+    return sameSite(record.hosts.at(-1), summary.host)
+      && (ns.atsHosts.isKnown(target.hostname) || (target.origin === link.origin && ns.decisions.samePosting(link.href, target.href)));
+  };
 
   /** One string for "which page is this": the address (no hash), the step heading's key, the
    * visible button texts sorted, and how many controls a fill could answer. Value-free by
@@ -612,7 +626,9 @@
 
         if (kind === "posting") {
           const mine = sameSite(record.hosts.at(-1), hostOf(record.openUrl)) && sameSite(summary.host, hostOf(record.openUrl));
-          if (!mayApply || !mine || !summary.applyId) return await park("posting");
+          // ... or the employer's own career site (a page the run reached) whose Apply leads to the link the run was queued
+          // for or to a known applicant system: the press navigates this tab there (page-reader.js).
+          if (!mayApply || !summary.applyId || !(mine || leadsOn(record, summary))) return await park("posting");
           await update({ status: "advancing" });
           const outcome = await press(frame, summary.applyId, fingerprint(url, summary), { apply: true });
           if (outcome !== "moved") return await park(outcome === "refused" ? "posting" : "no_change");

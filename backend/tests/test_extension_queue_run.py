@@ -810,6 +810,55 @@ def test_a_posting_on_another_host_than_the_apply_link_is_not_pressed(tmp_path):
     assert names(out, "advance") == []
 
 
+CAREERS_POSTING = {"t": "posting", "host": "careers.acme.test", "urlHost": "careers.acme.test"}
+WD_APPLY = "https://acme.wd1.myworkdayjobs.com/External/job/Remote/Data-Analyst_R100/apply"
+
+
+def _career_posting(href):
+    return {**CAREERS_POSTING, "patch": {"applyHref": href}}
+
+
+def test_a_career_site_posting_is_pressed_when_its_apply_leads_to_the_runs_own_application_link(tmp_path):
+    """The saved link opened to the employer's posting; its Apply goes to the link the run was queued
+    for (same posting, the query and fragment aside). The press navigates this tab; the run follows."""
+    record = {"openUrl": WD_APPLY + "?source=Board"}
+    out = _drive(tmp_path, [_career_posting(WD_APPLY), step(1, host="acme.wd1.myworkdayjobs.com"), REVIEW], record=record)
+    assert out["record"]["status"] == "ready"
+    assert names(out, "advance")[0][1:] == [0, "apply-1", {"apply": True}]
+
+
+def test_a_career_site_apply_to_a_known_applicant_system_is_pressed_whoever_the_tenant(tmp_path):
+    out = _drive(tmp_path, [_career_posting("https://initech.wd3.myworkdayjobs.com/External/job/X/apply"), step(1), REVIEW],
+                 record={"openUrl": "https://acme.wd1.myworkdayjobs.com/External/job/Remote/Other_R7/apply"})
+    assert out["record"]["status"] == "ready"
+    assert names(out, "advance")[0][3] == {"apply": True}
+
+
+@pytest.mark.parametrize("href", [
+    "https://jobs.other.test/acme/apply",                      # not an applicant system, not the queued link
+    "https://acme.wd1.myworkdayjobs.com.other.test/apply",     # an applicant system's name inside someone else's host
+    "https://apply.initech.test/jobs/77/apply",                # the queued link's host, another job
+    "",                                                        # the reader gave no address
+])
+def test_a_career_site_apply_that_leads_anywhere_else_is_not_pressed(tmp_path, href):
+    out = _drive(tmp_path, [_career_posting(href)], record={"openUrl": "https://apply.initech.test/jobs/55/apply"})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "posting")
+    assert names(out, "advance") == []
+
+
+def test_a_career_site_apply_to_the_queued_link_on_a_site_that_is_no_applicant_system_is_pressed(tmp_path):
+    out = _drive(tmp_path, [_career_posting("https://apply.initech.test/jobs/55/apply"), step(1), REVIEW],
+                 record={"openUrl": "https://apply.initech.test/jobs/55/apply?utm=x"})
+    assert out["record"]["status"] == "ready"
+
+
+def test_a_career_site_apply_is_not_pressed_on_a_resume(tmp_path):
+    record = {"tabId": 7, "status": "parked", "why": "posting", "hosts": ["careers.acme.test"], "openUrl": WD_APPLY}
+    out = _drive(tmp_path, [_career_posting(WD_APPLY)], record=record)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "posting")
+    assert names(out, "advance") == []
+
+
 def test_a_posting_whose_page_host_claims_otherwise_is_not_pressed(tmp_path):
     out = _drive(tmp_path, [{"t": "posting", "host": "other.example.test", "urlHost": "jobs.acme.test"}])
     assert out["record"]["why"] == "posting" and names(out, "advance") == []

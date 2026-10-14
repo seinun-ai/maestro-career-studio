@@ -115,7 +115,7 @@ def test_the_summary_is_counts_texts_and_booleans_and_never_a_value(page, load):
       <input type='password' value='Zelda-Secret-9'><button>Next</button></form>""", SOURCES)
     s = summary(page)
     assert "Zelda-Secret-9" not in json.dumps(s)
-    assert set(s) == {"host", "stepKey", "applyId", "chooserId", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
+    assert set(s) == {"host", "stepKey", "applyId", "applyHref", "chooserId", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
                       "fillable", "hasApplyLink", "confirmationText", "confirmationPhrase", "closedText", "boardNative",
                       "submitSeen", "submitContext", "errors", "errorKeys", "requiredEmpty", "requiredKeys"}
     assert s["errors"] == 0
@@ -1478,7 +1478,6 @@ def test_the_apply_call_names_the_link_beside_a_forms_apply_button_not_the_butto
     ("javascript:void(0)", None), (" JavaScript:go()", None), ("JAVASCRIPT:go()", None),
     ("java&#10;script:go()", None), ("java&#9;script:go()", None), ("jav&#x61;script:go()", None),
     ("data:text/html,hi", None), ("mailto:jobs@acme.test", None), ("ftp://acme.test/apply", None),
-    ("/jobs/9/apply", "_blank"), ("/jobs/9/apply", "_BLANK"), ("/jobs/9/apply", " _Blank "),
     ("/jobs/9/apply", "applywin"), ("/jobs/9/apply", "_top"), ("/jobs/9/apply", "_parent"),
 ])
 def test_a_link_that_goes_nowhere_or_opens_a_tab_is_not_an_apply_the_run_presses(page, load, href, target):
@@ -1501,6 +1500,61 @@ def test_a_same_tab_http_link_is_pressable_whatever_the_case_of_self(page, load,
 def test_an_absolute_https_link_is_pressable(page, load):
     load(page, f"<h1>A</h1><a href='https://careers.acme.test/9' {CLICK}>Apply</a>", SOURCES)
     assert summary(page)["applyId"]
+
+
+CAREER_URL = "https://careers.acme.test/job/123"
+WORKDAY_APPLY = "https://acme.wd1.myworkdayjobs.com/External/job/Remote/Data-Analyst_R100/apply"
+
+
+def _serve_career_page(page, body):
+    page.route(CAREER_URL, lambda route: route.fulfill(status=200, content_type="text/html", body=body))
+    page.goto(CAREER_URL)
+    for src in SOURCES:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+
+
+def test_a_new_tab_apply_to_the_applicant_system_is_named_and_pressed_in_the_same_tab(page):
+    """The employer's career site opens its form in a new tab (target=_blank, twice on the page). The
+    press already navigates this tab to the checked address, so the new-tab request is no risk: the
+    run neither opens a tab nor loses the page."""
+    _serve_career_page(page, fixture_html("posting_blank_apply.html"))
+    assert classify(page)["kind"] == "posting"
+    s = summary(page)
+    assert s["applyId"]
+    # The address (no query) is what the driver judges; the link's own handlers never ran.
+    assert s["applyHref"] == WORKDAY_APPLY
+    tabs = []
+    page.context.on("page", lambda new: tabs.append(new))
+    page.route(re.compile(r"https://acme\.wd1\.myworkdayjobs\.com/.*"), lambda route: route.fulfill(
+        status=200, content_type="text/html", body="<p>landed</p>"))
+    with page.expect_navigation() as nav:
+        try:
+            result = advance_apply(page, s["applyId"])
+        except PlaywrightError as err:
+            if "context was destroyed" not in str(err):
+                raise
+            result = {"clicked": True}
+    assert result == {"clicked": True}
+    assert nav.value.url == WORKDAY_APPLY + "?source=Board"
+    assert tabs == [] and len(page.context.pages) == 1
+
+
+def test_a_new_tab_apply_to_the_same_site_is_pressable_and_one_to_any_other_site_is_not(page):
+    _serve_career_page(page, "<h1>A</h1><a target='_blank' href='https://careers.acme.test/job/123/apply'>Apply</a>")
+    assert summary(page)["applyId"]
+    for href in ("https://jobs.other.test/acme/apply", "https://acme.wd1.myworkdayjobs.com.other.test/apply"):
+        _serve_career_page(page, f"<h1>A</h1><a target='_blank' href='{href}' {CLICK}>Apply Now</a>")
+        assert summary(page)["applyId"] is None, href
+    # A same-tab link to an unknown site is what it always was: named, and the driver decides.
+    _serve_career_page(page, "<h1>A</h1><a href='https://jobs.other.test/acme/apply'>Apply Now</a>")
+    assert summary(page)["applyId"]
+
+
+def test_the_press_re_checks_a_new_tab_apply_whose_address_the_page_rewrites(page):
+    _serve_career_page(page, fixture_html("posting_blank_apply.html"))
+    apply_id = summary(page)["applyId"]
+    page.evaluate("() => document.querySelectorAll('a.apply-button').forEach((a) => a.setAttribute('href', 'https://jobs.other.test/x'))")
+    assert advance_apply(page, apply_id) == {"clicked": False, "why": "would_submit"}
 
 
 def test_a_base_target_that_opens_a_tab_makes_a_targetless_link_unpressable(page, load):

@@ -18,7 +18,8 @@
  * exactly an apply wording (APPLY_TEXT: "Apply", "Apply now", "Apply for this job") and any other
  * label (aria-label, title) is an apply wording or "Apply for/to/at <something>" that carries no
  * Submit word. And it presses only a real navigation LINK (an <a> with an http(s) href that is not
- * "#", not javascript:, not target=_blank, which opens a tab the run cannot follow). A <button>
+ * "#", not javascript:, and no target but the same tab; target=_blank is allowed for this call alone, and only to this
+ * page's own site or a known applicant system, because the press NAVIGATES this tab and opens nothing). A <button>
  * Apply is never pressed, form or no form: a form-less one is page script (a quick-apply, a
  * draft's review) that may well send the application, so the page parks as a posting. The link is
  * NAVIGATED to (location.assign of its checked address), never clicked: a click would run its
@@ -819,12 +820,18 @@
   // <button>, even one with no form: a form-less button is page script, and script can submit
   // (owner, batch-4 review). The scheme is the PARSED one (`el.protocol`): a raw-text test is beaten by "java&#10;script:", which the
   // parser reads as javascript:. A target other than "" or "_self" (any case, a named window, or a
-  // <base target>) opens a tab the run cannot follow.
-  const applyPressable = (el) => {
+  // <base target>) opens a tab the run cannot follow. The one exception is the posting's own Apply
+  // (`blank: true`): a career site that asks for a NEW TAB is pressed all the same, because the press
+  // navigates THIS tab to the checked address and opens nothing; it must go to the page's own site or to
+  // a known applicant system (shared/ats-hosts.js), so a new-tab request never carries the run anywhere else.
+  const applyPressable = (el, { blank = false } = {}) => {
     if (el.tagName !== "A") return false;
     const href = (el.getAttribute("href") ?? "").trim();
     const target = (el.getAttribute("target") ?? document.querySelector("base[target]")?.getAttribute("target") ?? "").trim().toLowerCase();
-    return href !== "" && !href.startsWith("#") && /^https?:$/.test(el.protocol) && (target === "" || target === "_self");
+    if (href === "" || href.startsWith("#") || !/^https?:$/.test(el.protocol)) return false;
+    if (target === "" || target === "_self") return true;
+    return blank && target === "_blank"
+      && (withoutWww(el.hostname) === withoutWww(location.hostname) || ns.atsHosts.isKnown(el.hostname));
   };
 
   // The chooser's one allowed link (see the header): the row in shared/ats-buttons.js, a plain same-tab http(s) link
@@ -889,12 +896,14 @@
     const passwords = passwordInputs();
     // The posting's plain Apply, named for the one narrow `advance(id, {apply: true})` call. A link
     // is not in `buttons`, so it is tagged here (a button keeps the id it was given above).
-    const applyEl = [...document.querySelectorAll(`a[href], ${BUTTONS}`)].find((el) => shown(el) && enabled(el) && isApply(el) && applyPressable(el));
+    const applyEl = [...document.querySelectorAll(`a[href], ${BUTTONS}`)].find((el) => shown(el) && enabled(el) && isApply(el) && applyPressable(el, { blank: true }));
     const chooserLinkEl = chooserEl();
     const out = {
       host: location.hostname,
       stepKey: stepKey(),
       applyId: applyEl ? applyEl.getAttribute("data-maestro-btn") ?? tag(applyEl) : null,
+      // Where that link goes, address only (no query, no fragment): the driver judges a link that leaves this site.
+      applyHref: applyEl?.tagName === "A" ? `${applyEl.origin}${applyEl.pathname}` : null,
       chooserId: chooserLinkEl ? chooserLinkEl.getAttribute("data-maestro-btn") ?? tag(chooserLinkEl) : null,
       buttons,
       passwordInputs: passwords.length,
@@ -998,7 +1007,7 @@
     if (ns.fillableControls() > 0) return { clicked: false, why: "not_posting" };
     if (knownOf(el) === "submit" || submitMarked(el)) return { clicked: false, why: "submit" };
     if (!shown(el) || !enabled(el) || !isApply(el)) return { clicked: false, why: "not_apply" };
-    if (!applyPressable(el)) return { clicked: false, why: "would_submit" };
+    if (!applyPressable(el, { blank: true })) return { clicked: false, why: "would_submit" };
     // NAVIGATE to the address just checked; do not click. A click runs the link's handlers (an
     // onclick quick-apply, an SPA router), which are page script that can send the application.
     // `el.href` is the parsed, absolute http(s) address `applyPressable` approved.
