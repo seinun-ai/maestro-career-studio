@@ -538,3 +538,159 @@ def test_recipes_hold_no_values_labels_or_urls(loop_page):
     for key, entry in out["book"]["entries"].items():
         assert re.fullmatch(r"[sf]:[0-9a-z]+", key)
         assert set(entry) <= {"moves", "state", "wins", "sites", "seen"}
+
+
+# ---------- learning from the user's fix (Task 20b): what the user did, never what they typed
+
+RECIPES = "window.careerStudioCompanion.recipes"
+GESTURES = {"open:press", "open:keys", "search:enter", "search:debounce"}
+
+
+def watch(page, f):
+    return page.evaluate(f"(fid) => {RECIPES}.watch(fid)", f["fid"])
+
+
+def report(page, f):
+    return page.evaluate(f"(fid) => {RECIPES}.report(fid)", f["fid"])
+
+
+def pick(page, text):
+    page.get_by_role("option", name=text).click()
+
+
+def test_opening_a_list_with_the_keyboard_is_the_open_keys_gesture(page, load):
+    f = engine(page, load, fixture_html("workday_listbox.html"))["Degree"]
+    assert watch(page, f) is True
+    page.focus("#degree")
+    page.keyboard.press("Enter")
+    pick(page, "Masters")
+    got = report(page, f)
+    assert got["gestures"] == ["open:keys"]
+    assert (got["family"], got["site"]) == (f["recipe"]["family"], f["recipe"]["site"])
+
+
+def test_opening_a_list_with_a_press_is_the_open_press_gesture(page, load):
+    f = engine(page, load, fixture_html("workday_listbox.html"))["Degree"]
+    watch(page, f)
+    page.click("#degree")
+    pick(page, "Masters")
+    assert report(page, f)["gestures"] == ["open:press"]
+
+
+@pytest.mark.parametrize("key", ["ArrowDown", "Enter", "Space"])
+def test_the_keys_that_open_a_list_are_the_open_keys_gesture(page, load, key):
+    f = engine(page, load, KEYBOARD_ONLY)["Willing to travel?"]
+    watch(page, f)
+    page.focus("#kb")
+    page.keyboard.press(key)
+    assert report(page, f)["gestures"] == ["open:keys"]
+
+
+def test_typing_then_enter_is_the_search_enter_gesture_and_no_typed_character_is_reported(page, load):
+    f = engine(page, load, fixture_html("react_select.html"))["Country"]
+    watch(page, f)
+    page.focus("#country")
+    page.keyboard.type("Spr")
+    page.keyboard.press("Enter")
+    got = report(page, f)
+    assert got["gestures"] == ["search:enter"]
+    # Value-free: the report names the family, the site and the gestures, and nothing the user typed.
+    assert set(got) == {"family", "site", "gestures"} and set(got["gestures"]) <= GESTURES
+    assert "Spr" not in json.dumps(got) and all(c not in got["gestures"] for c in "Spr")
+
+
+def test_typing_a_pause_and_a_pointer_pick_is_the_search_debounce_gesture(page, load):
+    f = engine(page, load, fixture_html("react_select.html"))["Country"]
+    watch(page, f)
+    page.click("#country")
+    page.keyboard.type("Can")
+    page.wait_for_timeout(450)
+    pick(page, "Canada")
+    got = report(page, f)
+    assert got["gestures"] == ["open:press", "search:debounce"]
+    assert "Can" not in json.dumps(got)
+
+
+def test_what_the_engine_does_itself_is_not_the_users_gesture(page, load):
+    """The engine's own presses and keys are synthetic: only trusted input counts as the user's."""
+    f = engine(page, load, fixture_html("workday_listbox.html"))["Degree"]
+    watch(page, f)
+    row = apply(page, f, op="choose", text="Masters")
+    assert row["outcome"] == "verified"
+    assert report(page, f)["gestures"] == []
+
+
+def test_a_report_ends_the_watch_and_an_unwatched_field_has_no_report(page, load):
+    fields = engine(page, load, fixture_html("workday_listbox.html"))
+    degree, auth = fields["Degree"], fields["Are you legally authorized to work in the United States?"]
+    watch(page, degree)
+    page.click("#degree")
+    assert report(page, degree)["gestures"] == ["open:press"]
+    assert report(page, degree) is None and report(page, auth) is None
+    # A field that was never listed cannot be watched.
+    assert page.evaluate(f"() => {RECIPES}.watch('nope-1')") is False
+
+
+def test_a_press_on_another_field_is_not_this_fields_gesture(page, load):
+    fields = engine(page, load, fixture_html("workday_listbox.html"))
+    degree = fields["Degree"]
+    watch(page, degree)
+    page.click("#auth")
+    assert report(page, degree)["gestures"] == []
+
+
+def test_the_gesture_log_is_bounded_and_holds_only_the_vocabulary(page, load):
+    f = engine(page, load, fixture_html("react_select.html"))["Country"]
+    watch(page, f)
+    page.focus("#country")
+    for _ in range(80):
+        page.keyboard.press("a")
+    page.keyboard.press("Escape")
+    page.keyboard.press("Enter")
+    got = report(page, f)
+    assert set(got["gestures"]) <= GESTURES and len(got["gestures"]) <= 4
+
+
+# ---------- a demonstration teaches the book (Task 20b)
+
+
+def demonstrate(page, book, lessons, day=DAY):
+    return page.evaluate(f"([b, l, d]) => {BOOK}.demonstrate(b, l, d)", [book, lessons, day])
+
+
+def shown(recipe, moves=KEYS):
+    return {"recipe": recipe, "moves": moves}
+
+
+def test_one_demonstration_is_probation_for_that_site_only_never_trusted(page, load):
+    book_page(page, load)
+    b = demonstrate(page, None, [shown(A)])
+    assert (state(b, "s:sitea"), state(b, "f:fam1")) == ("probation", "probation")
+    assert consult(page, b, A) == {"key": "s:sitea", "variant": KEYS_FIRST}
+    assert consult(page, b, B) is None
+
+
+def test_a_demonstration_on_a_second_site_trusts_the_family_like_an_engine_win(page, load):
+    book_page(page, load)
+    b = demonstrate(page, demonstrate(page, None, [shown(A)]), [shown(B)], DAY + 1)
+    assert state(b, "f:fam1") == "trusted" and state(b, "s:siteb") == "probation"
+    assert consult(page, b, C, DAY + 1) == {"key": "f:fam1", "variant": KEYS_FIRST}
+
+
+def test_a_demonstration_of_the_generic_move_teaches_nothing_and_unknown_words_are_dropped(page, load):
+    book_page(page, load)
+    b = demonstrate(page, None, [shown(A, {"open": "press", "search": "enter"}), shown(B, {"open": "click-twice"})])
+    assert b["entries"] == {}
+
+
+def test_the_stores_demonstration_is_written_under_the_lock_and_read_back(page, load):
+    book_page(page, load)
+    got = page.evaluate(f"""async (a) => {{
+      let stored = null;
+      const store = {BOOK}.store({{ read: async () => stored, write: async (b) => {{ stored = b; }}, today: () => {DAY} }});
+      await store.recordDemonstration([{{recipe: a, moves: {{open: "keys"}}}}]);
+      await store.recordDemonstration([]);   // nothing shown: nothing written
+      return {{ stored, after: await {BOOK}.store({{ read: async () => stored, write: async () => {{}}, today: () => {DAY} }}).get(a) }};
+    }}""", A)
+    assert got["after"] == {"key": "s:sitea", "variant": KEYS_FIRST}
+    assert got["stored"]["entries"]["s:sitea"]["state"] == "probation"

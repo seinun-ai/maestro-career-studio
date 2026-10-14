@@ -520,6 +520,9 @@
     return true;
   }
 
+  // The fids a watch message names: strings only, at most a page's worth.
+  const fidsOf = (msg) => (Array.isArray(msg?.fids) ? msg.fids.filter((fid) => typeof fid === "string").slice(0, 40) : []);
+
   /** Preserve the message names, positional profile-fill call, and output shapes.
    *
    * The gated entries are exactly the fan-out set: the broadcastable types
@@ -643,6 +646,18 @@
       ns.fillOps.cancel();
       return true;
     },
+    /* Learn from the user's fix (content/recipes.js). `fill_watch` starts watching the parked
+     * fields' gestures (a new park replaces the last watch); `fill_watch_report` answers, per
+     * fid, which of the engine's moves the user made: `{family, site, gestures}`, event types
+     * and a fixed few key names, never what was typed. Gated like the fill operations. */
+    fill_watch: (msg) => {
+      if (!frameMayReceiveUserData(msg)) return 0;
+      ns.recipes.unwatch();
+      return fidsOf(msg).filter((fid) => ns.recipes.watch(fid)).length;
+    },
+    fill_watch_report: (msg) => (frameMayReceiveUserData(msg)
+      ? Object.fromEntries(fidsOf(msg).map((fid) => [fid, ns.recipes.report(fid)]).filter(([, one]) => one))
+      : {}),
     /* The queued run's eyes and its one hand (content/page-reader.js). Gated like the fill
      * operations, each returning its empty shape in a refused frame. `page_advance` presses a
      * Next button the reader named, re-sorting its text at click time; it never presses a Submit.

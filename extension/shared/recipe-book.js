@@ -29,6 +29,9 @@
  *   however many fields it kept);
  * - a family's is `trusted` only once two SITES kept it; it is tried on a new
  *   site only then (a probation recipe is tried on its own site only);
+ * - a hand fix the user showed (`demonstrate`, the panel's Resume after a parked
+ *   field) counts as one kept run of the move they used, no more: a known move
+ *   enters at `probation` for that site, and the family needs two sites as ever;
  * - a lesson that contradicts it (the move produced an unconfirmed or
  *   reverted value, or the other move won) → `demoted`, never tried again;
  * - a learned move the control could not take (a structural mismatch the
@@ -179,6 +182,17 @@
     return { v: VERSION, entries: Object.fromEntries(entries) };
   };
 
+  // A new book from `raw` and the moves the USER used to fix fields the engine
+  // left open: `{ recipe, moves }` each, the moves being the known words the
+  // page's gesture watcher named (content/recipes.js). It is one kept run
+  // per key, so it climbs the same lifecycle an engine win does and no faster:
+  // never trusted from one demonstration, and only a move other than the
+  // generic one is held. A demonstration that disagrees with a recipe the
+  // engine already tried (the other move won) demotes it, as an engine
+  // contradiction would.
+  const demonstrate = (raw, shown, today) => learn(raw, (Array.isArray(shown) ? shown : [])
+    .map(({ recipe, moves }) => ({ recipe, used: null, moves, outcome: "kept" })), today);
+
   const size = (raw) => Object.keys(clean(raw).entries).length;
 
   // Two tabs may finish a run together: each record's read → learn → write
@@ -202,17 +216,20 @@
       }
     };
     let book = null;
+    // One write per call, under the lock, whichever way the lessons came.
+    const keep = (change) => async (lessons) => {
+      if (!Array.isArray(lessons) || !lessons.length) return;
+      await locked(async () => {
+        book = change(await load(), lessons, today());
+        await write(book);
+      });
+    };
     return {
       get: async (recipe) => consult((book ??= await load()), recipe, today()),
-      record: async (lessons) => {
-        if (!Array.isArray(lessons) || !lessons.length) return;
-        await locked(async () => {
-          book = learn(await load(), lessons, today());
-          await write(book);
-        });
-      },
+      record: keep(learn),
+      recordDemonstration: keep(demonstrate),
     };
   };
 
-  ns.recipeBook = { clean, consult, learn, size, store };
+  ns.recipeBook = { AXES, clean, consult, learn, demonstrate, size, store };
 })();

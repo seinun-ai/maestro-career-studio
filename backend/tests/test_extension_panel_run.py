@@ -147,7 +147,7 @@ ns.fillLoop.runFill = async (deps, options) => {
   call.cancelledAtEnd = deps.cancelled();
   return { runId: "r", host: "jobs.acme.test", fields: planned.fields, aiFailure: null,
            stopped: planned.stopsWhenCancelled ? call.cancelledAtEnd : false, timedOut: false,
-           consentForms: false, sections: [] };
+           consentForms: false, sections: [], ...(planned.trace ? { trace: planned.trace } : {}) };
 };
 
 const snap = () => ({ regions: regions(), runs: JSON.parse(JSON.stringify(ns.panel.actionStore().read().runs)) });
@@ -610,6 +610,148 @@ def test_a_field_the_user_left_alone_or_the_policy_never_fills_is_not_learned(tm
 def test_resume_accrues_the_users_time_from_park_to_resume(tmp_path):
     out = _parked_on_questions(tmp_path, [{"skew": 42_000}, {"press": "run-resume"}])
     assert 42_000 <= _record(out["shots"][-1])["yourMs"] < 60_000
+
+
+# ---------- needs you: a hand fix teaches the recipe book and the known-gaps list ----------
+
+Q1 = "Have you used our product before?"
+A_FIELD = {"family": "f:abc123", "site": "s:def456"}
+SHOWN = {"q1": {**A_FIELD, "gestures": ["open:keys"]}}
+FIXED = [_field("q1", "Yes", question=Q1, shape="popup", touched=False)]
+FIX_GAP = {"family": "abc123", "host": "jobs.acme.test", "shape": "popup", "outcome": "user_fixed"}
+
+
+def _fixed(tmp_path, steps, shown=SHOWN, inventory=FIXED, gaps_reply=None, **spec):
+    frames = {"fill_watch": [{"frameId": 0, "result": 1}],
+              "fill_watch_report": [{"frameId": 0, "result": shown}]}
+    return _run(tmp_path, [{"start": SEED}, *steps], pages=(STEP1, REVIEW),
+                reports=[{"fields": [needs("q1", Q1)]}, {"fields": [verified("f1")]}],
+                inventory=inventory, frames=frames, profileStore=json.loads(json.dumps(OLD_PROFILE)),
+                replies={"fill_gaps": gaps_reply or _reply({"posted": 1})}, **spec)
+
+
+def _gap_posts(out):
+    return [msg["gaps"] for msg in out["sent"] if msg["type"] == "fill_gaps"]
+
+
+def _book(out):
+    """The recipe book as last written, or None when nothing was written."""
+    books = [patch["fill.recipes"] for patch in out["writes"] if "fill.recipes" in patch]
+    return books[-1] if books else None
+
+
+def _entries(out):
+    return (_book(out) or {"entries": {}})["entries"]
+
+
+def test_a_park_on_questions_watches_those_fields_in_the_runs_tab_once(tmp_path):
+    out = _fixed(tmp_path, [])
+    watches = _page_messages(out, "fill_watch")
+    assert [(msg["tabId"], msg["message"]["fids"]) for msg in watches] == [(7, ["q1"])]
+    # No other park has fields to watch.
+    walled = _run(tmp_path, [{"start": SEED}], pages=(STEP1, page("captcha", 1)))
+    assert _page_messages(walled, "fill_watch") == []
+
+
+def test_skipping_the_job_ends_the_pages_watch_and_asks_it_nothing(tmp_path):
+    out = _fixed(tmp_path, [{"press": "run-skip"}])
+    assert [msg["message"]["fids"] for msg in _page_messages(out, "fill_watch")] == [["q1"], []]
+    assert _page_messages(out, "fill_watch_report") == [] and _gap_posts(out) == []
+
+
+def test_resuming_from_a_wall_asks_the_page_nothing_about_a_fix(tmp_path):
+    pages = (STEP1, page("captcha", 1), STEP2, REVIEW)
+    out = _run(tmp_path, [{"start": SEED}, {"page": 2}, {"press": "run-resume", "finish": False}], pages=pages)
+    assert _page_messages(out, "fill_watch_report") == [] and _gap_posts(out) == []
+
+
+def test_resume_after_a_hand_fix_posts_a_user_fixed_gap_and_records_the_demonstration(tmp_path):
+    out = _fixed(tmp_path, [{"press": "run-resume"}])
+    [report] = _page_messages(out, "fill_watch_report")
+    assert (report["tabId"], report["message"]["fids"]) == (7, ["q1"])
+    # The family goes without its `f:` prefix; the host is the page's; no label or value rides along.
+    assert _gap_posts(out) == [[FIX_GAP]]
+    book = _book(out)
+    assert book["entries"]["s:def456"] == {"moves": {"open": "keys"}, "state": "probation", "wins": 1,
+                                           "seen": book["entries"]["s:def456"]["seen"]}
+    assert book["entries"]["f:abc123"]["state"] == "probation"
+    wire = json.dumps(_gap_posts(out)) + json.dumps(book)
+    assert Q1 not in wire and "Yes" not in wire
+    assert _record(out["shots"][-1])["status"] == "ready"
+
+
+def test_a_fix_whose_move_the_engine_does_not_know_is_a_missing_technique(tmp_path):
+    out = _fixed(tmp_path, [{"press": "run-resume"}], shown={"q1": {**A_FIELD, "gestures": []}},
+                 inventory=[_field("q1", "Yes", question=Q1, shape="popup", touched=True)])
+    assert _gap_posts(out) == [[FIX_GAP, {**FIX_GAP, "outcome": "missing_technique"}]]
+    assert _entries(out) == {}
+
+
+def test_the_generic_move_is_known_so_it_is_no_missing_technique_and_teaches_nothing(tmp_path):
+    out = _fixed(tmp_path, [{"press": "run-resume"}], shown={"q1": {**A_FIELD, "gestures": ["open:press"]}})
+    assert _gap_posts(out) == [[FIX_GAP]]
+    assert _entries(out) == {}
+
+
+def test_the_recipe_book_is_taught_even_when_the_fill_log_is_off_and_the_sw_posts_nothing(tmp_path):
+    """The sw gates the gap post on the fill log (its own tests); the recipe book is local and is not."""
+    out = _fixed(tmp_path, [{"press": "run-resume"}], gaps_reply=_reply({"posted": 0}))
+    assert _book(out)["entries"]["s:def456"]["state"] == "probation"
+    assert _record(out["shots"][-1])["status"] == "ready"
+
+
+def test_a_refused_gap_post_neither_blocks_the_resume_nor_is_sent_again(tmp_path):
+    out = _fixed(tmp_path, [{"press": "run-resume"}],
+                 gaps_reply={"ok": False, "error": "the backend is unreachable"})
+    assert len(_gap_posts(out)) == 1
+    assert _record(out["shots"][-1])["status"] == "ready"
+    assert _book(out) is not None
+
+
+def test_a_field_that_holds_nothing_after_the_fix_teaches_nothing(tmp_path):
+    empty = [_field("q1", "", question=Q1, shape="popup", touched=False)]
+    out = _fixed(tmp_path, [{"press": "run-resume"}], inventory=empty)
+    assert _gap_posts(out) == [] and _book(out) is None
+
+
+def test_a_value_nobody_touched_and_no_gesture_vouches_for_is_not_a_fix(tmp_path):
+    out = _fixed(tmp_path, [{"press": "run-resume"}], shown={"q1": {**A_FIELD, "gestures": []}})
+    assert _gap_posts(out) == [] and _book(out) is None
+
+
+def test_a_field_without_a_family_has_nothing_to_key_a_lesson_by(tmp_path):
+    out = _fixed(tmp_path, [{"press": "run-resume"}], shown={})
+    assert _gap_posts(out) == [] and _book(out) is None
+
+
+def test_a_touched_field_counts_as_fixed_even_when_no_gesture_was_seen(tmp_path):
+    out = _fixed(tmp_path, [{"press": "run-resume"}], shown={"q1": {**A_FIELD, "gestures": []}},
+                 inventory=[_field("q1", "Yes", question=Q1, shape="popup", touched=True)])
+    assert [gap["outcome"] for gap in _gap_posts(out)[0]] == ["user_fixed", "missing_technique"]
+
+
+def test_a_page_that_cannot_report_the_fix_does_not_stop_the_resume(tmp_path):
+    """No frame answers `fill_watch_report` (a tab that lost its scripts): the answers are still
+    saved, the run still goes on, and nothing is posted or taught."""
+    out = _run(tmp_path, [{"start": SEED}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [needs("q1", Q1)]}, {"fields": [verified("f1")]}],
+               inventory=FIXED, profileStore=json.loads(json.dumps(OLD_PROFILE)))
+    assert _record(out["shots"][-1])["status"] == "ready" and _gap_posts(out) == [] and _book(out) is None
+
+
+def test_the_leftovers_of_each_page_join_the_known_gaps_once(tmp_path):
+    trace = {"host": "jobs.acme.test", "fields": [
+        {"fid": "g1", "shape": "popup", "family": "f:zz99", "outcome": "cannot_operate"},
+        {"fid": "g2", "shape": "search", "family": "f:yy88", "outcome": "unconfirmed"},
+        {"fid": "g3", "shape": "popup", "family": "f:xx77", "outcome": "verified"},
+        {"fid": "g4", "shape": "text", "outcome": "cannot_operate"}]}
+    leftover = [{"fid": "g1", "question": "Pick", "required": False, "status": "cannot_operate"}]
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
+               reports=[{"fields": leftover, "trace": trace}, {"fields": [verified("f1")], "trace": trace}],
+               replies={"fill_gaps": _reply({"posted": 2})})
+    assert _gap_posts(out) == [[
+        {"family": "zz99", "host": "jobs.acme.test", "shape": "popup", "outcome": "cannot_operate"},
+        {"family": "yy88", "host": "jobs.acme.test", "shape": "search", "outcome": "unconfirmed"}]]
 
 
 # ---------- ready to submit, and the 8 s auto-mark ----------

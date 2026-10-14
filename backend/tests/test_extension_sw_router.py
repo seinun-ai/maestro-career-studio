@@ -1167,6 +1167,81 @@ def test_a_telemetry_observation_cut_through_an_emoji_is_valid(tmp_path):
     assert (observation["label"], observation["options"]) == ("L" * 159, ["L" * 159, "a"])
 
 
+# ---------- the known-gaps list: `fill_gaps` is telemetry's third sibling ----------
+#
+# Widget families the engine could not operate, or that the user fixed by hand: the panel hands
+# `{family, host, shape, outcome}` rows to the one context that can fetch, which posts them only for
+# a user who turned the fill log on. They are NOT broadcastable (a page never asks for them).
+
+_GAPS_DRIVER_JS = _TELEMETRY_DRIVER_JS.replace(
+    '{ type: "telemetry", action: spec.action, page_host: spec.pageHost,\n        observations: spec.observations }',
+    'spec.message')
+assert _GAPS_DRIVER_JS != _TELEMETRY_DRIVER_JS, "the telemetry driver's message moved"
+
+
+def _gap(**over):
+    return {"family": "ab12cd", "host": "jobs.acme.test", "shape": "popup", "outcome": "user_fixed", **over}
+
+
+def _post_gaps(tmp_path, gaps, settings=None):
+    return run_node(_GAPS_DRIVER_JS, {"message": {"type": "fill_gaps", "gaps": gaps},
+                                      "settings": OPTED_IN if settings is None else settings},
+                    tmp_path, source=SW_JS)
+
+
+@pytest.mark.parametrize("stored", [{"telemetryEnabled": False}, {}, {"telemetryEnabled": None},
+                                    {"telemetryEnabled": "true"}, {"telemetryEnabled": 1}],
+                         ids=["off", "never-chosen", "null", "string", "number"])
+def test_gaps_are_posted_only_for_a_user_who_turned_the_fill_log_on(tmp_path, stored):
+    """The same switch as telemetry's, read the same way: a gate, and only an explicit `true` opens it."""
+    out = _post_gaps(tmp_path, [_gap()], settings=stored)
+    assert out["reply"]["data"] == {"posted": 0}
+    assert out["posted"] == [], "a gap reached the network before the user turned the log on"
+
+
+def test_gaps_are_posted_to_the_gaps_endpoint_with_exactly_the_four_keys(tmp_path):
+    sentinels = {"label": "SENTINEL-LABEL", "value": "SENTINEL-VALUE", "option": "SENTINEL-OPTION",
+                 "answer": "SENTINEL-ANSWER", "url": "https://jobs.acme.test/apply"}
+    out = _post_gaps(tmp_path, [_gap(**sentinels)])
+    [posted] = out["posted"]
+    assert posted["url"].endswith("/api/autofill/gaps")
+    assert posted["body"] == {"gaps": [_gap()]}
+    assert "SENTINEL" not in json.dumps(posted["body"]) and out["reply"]["data"] == {"posted": 1}
+
+
+def test_a_gap_the_schema_would_refuse_is_dropped_alone(tmp_path):
+    """One odd row would 422 the whole post: it is dropped here and the rest go."""
+    odd = [_gap(family="f:ab12"), _gap(family="AB12"), _gap(family=""), _gap(family="a" * 12),
+           _gap(host="Jobs Acme"), _gap(host=""), _gap(shape="listbox"), _gap(outcome="verified"),
+           _gap(family=None), {"family": "ab12"}, "text", None]
+    body = _post_gaps(tmp_path, [*odd, _gap(shape="unknown", outcome="missing_technique")])["posted"][0]["body"]
+    assert body == {"gaps": [_gap(shape="unknown", outcome="missing_technique")]}
+
+
+@pytest.mark.parametrize("gaps", [None, [], "x", {"family": "ab"}, [{"family": "f:no"}]])
+def test_no_usable_gap_posts_nothing(tmp_path, gaps):
+    out = _post_gaps(tmp_path, gaps)
+    assert out["reply"]["data"] == {"posted": 0} and out["posted"] == []
+
+
+def test_a_post_carries_at_most_forty_gaps(tmp_path):
+    body = _post_gaps(tmp_path, [_gap(family=f"a{i}") for i in range(55)])["posted"][0]["body"]
+    assert len(body["gaps"]) == 40
+
+
+def test_the_gap_whitelist_mirrors_the_backends_schema():
+    from typing import get_args
+
+    from app.schemas import autofill_fill as F
+    from app.schemas import autofill_gaps as G
+
+    assert _sw_regex("GAP_FAMILY") == _meta(G.GapIn, "family", "pattern")
+    assert _sw_regex("TRACE_HOST") == G.HOST_PATTERN
+    assert int(_sw_const("GAP_MAX")) == G.MAX_GAPS
+    assert _sw_vocab("GAP_OUTCOMES") == set(get_args(G.GapOutcome))
+    assert _sw_vocab("TRACE_SHAPES") == set(get_args(F.Shape))
+
+
 def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
     """`page_broadcast`'s allow-list, beside the `panel_frame0` one it is
     deliberately NOT merged with (see that handler's own note: this list may
@@ -1208,6 +1283,9 @@ def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
         # The queued run's page reader and its Next click, gated on the receiving side like the
         # fill operations; `page_advance` presses a Next only and never a Submit.
         "page_classify", "page_advance",
+        # Learn from the user's fix: a parked field's gestures (event types and a fixed few key
+        # names, never what was typed), watched and then reported. Gated on the receiving side.
+        "fill_watch", "fill_watch_report",
     ]
 
 

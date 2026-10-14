@@ -134,6 +134,13 @@ ns.fillOps = {
   add: (r) => { calls.push(["fillOps.add", r]); return { sid: "f-s1", outcome: "added", entries: 1 }; },
   cancel: () => { calls.push(["fillOps.cancel", 0]); },
 };
+// The gesture watcher needs a real DOM too (tests/browser/test_recipes.py drives it).
+ns.recipes = {
+  ...ns.recipes,
+  unwatch: () => { calls.push(["recipes.unwatch", 0]); },
+  watch: (fid) => { calls.push(["recipes.watch", fid]); return true; },
+  report: (fid) => { calls.push(["recipes.report", fid]); return { family: "f:ab", site: "s:cd", gestures: ["open:keys"] }; },
+};
 // The page reader needs a real DOM too (tests/browser/test_page_reader.py drives it).
 ns.pageReader = {
   summary: () => { calls.push(["pageReader.summary", 0]); return { host: "x", buttons: [] }; },
@@ -159,7 +166,7 @@ main(async () => {
     skills: [], pairs: [], b64: "", filename: "resume.pdf",
     consentForms: true, runId: "run-2", requests: [{ fid: "f-1", fp: "p" }],
     actions: [{ fid: "f-1", fp: "p", op: "write", value: "x" }], fid: "f-1", fp: "p", value: "v",
-    sid: "f-s1", heading: "Websites", entries: 0, id: "tag-3",
+    sid: "f-s1", heading: "Websites", entries: 0, id: "tag-3", fids: ["f-1", "f-2"],
     email: "ada@acme.test", password: "pw-test-only", allowedHost: "x.test",
     // Only when the fixture states one — `undefined` is the shape the floating
     // card sends, and it must keep meaning "unchecked".
@@ -525,6 +532,8 @@ FILL_GATED = {
     "fill_focus": False,
     "fill_sections": [],
     "fill_add": None,  # broadcast: every frame but the sid's own answers null
+    "fill_watch": 0,  # how many of the fids it now watches
+    "fill_watch_report": {},  # fid -> what the user did there
 }
 
 
@@ -559,6 +568,18 @@ def test_fill_step_state_forwards_the_field_and_nothing_else(tmp_path):
     the rest of whatever message carried them."""
     out = _run(tmp_path, type_="fill_step_state", top_frame=True)
     assert out["calls"] == [["fillOps.stepState", {"fid": "f-1", "fp": "p", "value": "v"}]]
+
+
+def test_fill_watch_replaces_the_last_watch_and_watches_only_the_fids_it_is_sent(tmp_path):
+    out = _run(tmp_path, type_="fill_watch", top_frame=True)
+    assert out["calls"] == [["recipes.unwatch", 0], ["recipes.watch", "f-1"], ["recipes.watch", "f-2"]]
+    assert out["data"] == 2
+
+
+def test_fill_watch_report_answers_per_fid_and_only_what_the_watcher_said(tmp_path):
+    out = _run(tmp_path, type_="fill_watch_report", top_frame=True)
+    assert out["calls"] == [["recipes.report", "f-1"], ["recipes.report", "f-2"]]
+    assert out["data"] == {fid: {"family": "f:ab", "site": "s:cd", "gestures": ["open:keys"]} for fid in ("f-1", "f-2")}
 
 
 def test_fill_add_forwards_the_section_and_the_view_it_was_decided_on(tmp_path):

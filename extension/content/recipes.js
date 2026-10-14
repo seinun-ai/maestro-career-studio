@@ -19,6 +19,15 @@
  * whose opening and searching have more than one known move. Text boxes and
  * passive choices (a select, radios, checkboxes) are written one way.
  *
+ * It also WATCHES: when a field is parked and the user fixes it by hand, the
+ * panel asks the page what they did (`watch` / `report`). The answer is one of
+ * the engine's own moves, in the recipe book's words (`open:press`,
+ * `open:keys`, `search:enter`, `search:debounce`). The watcher records event
+ * TYPES and, for a fixed few keys, their NAMES (ArrowDown, ArrowUp, Enter,
+ * Space, Tab, Escape); it never reads `key` for anything else and never
+ * `value`, so what was typed is not in it to leak. Only trusted input counts: the
+ * engine's own presses and keys are synthetic.
+ *
  * Bump ENGINE_VERSION when a move's meaning changes: every recipe learned
  * under the old meaning then matches nothing and expires.
  */
@@ -86,5 +95,102 @@
     return { family: `f:${family}`, site: `s:${hash(`${family}@${location.hostname}`)}` };
   };
 
-  ns.recipes = { signature };
+  // ---------- watching a hand fix ----------
+
+  const KEY_NAMES = { ArrowDown: "ArrowDown", ArrowUp: "ArrowUp", Enter: "Enter", " ": "Space", Tab: "Tab", Escape: "Escape" };
+  // Keys that open a list from the keyboard.
+  const OPENERS = new Set(["ArrowDown", "Enter", "Space"]);
+  // The engine waits this long for a widget's own filter before it sends an Enter (fill-core's
+  // ANSWER_MS); a pick that came after at least as long a pause is the "wait" move.
+  const PAUSE_MS = 300;
+  const MAX_LOG = 64;
+  const MAX_WATCHED = 40;
+  // What a pointer lands on when it picks from a popup.
+  const OPTIONISH = '[role="option"], [role="listbox"], [role="menu"], [role="menuitem"], [role="treeitem"], [role="tree"], li';
+  const watching = new Map(); // fid -> { family, site, log, engaged }
+  const EVENTS = ["pointerdown", "keydown", "input"];
+
+  // Whether the event's path runs through this field (its element or any part of it).
+  const within = (path, fid) => path.some((n) => n instanceof Element && ns.fillInventory.fidFor(n, { relist: false }) === fid);
+  // Consecutive repeats are one gesture: a held key, a burst of typing.
+  const push = (entry, token) => {
+    const last = entry.log.at(-1);
+    if (last && last.t === token.t && last.k === token.k) last.at = token.at;
+    else if (entry.log.length < MAX_LOG) entry.log.push(token);
+  };
+
+  const onEvent = (e) => {
+    if (!e.isTrusted) return;
+    const path = e.composedPath();
+    const at = performance.now();
+    for (const [fid, entry] of watching) {
+      const inside = within(path, fid);
+      if (e.type === "pointerdown") {
+        if (inside) {
+          entry.engaged = true;
+          push(entry, { t: "press", at });
+        } else if (entry.engaged) {
+          // A pick lands in the popup; anywhere else the user has moved on.
+          if (path.some((n) => n instanceof Element && n.matches(OPTIONISH))) push(entry, { t: "pick", at });
+          else entry.engaged = false;
+        }
+      } else if (inside && e.type === "input") {
+        entry.engaged = true;
+        push(entry, { t: "type", at });
+      } else if (inside && e.type === "keydown") {
+        entry.engaged = true;
+        // Only the names above, by exact match: a printable key is never read past this lookup.
+        const name = KEY_NAMES[e.key];
+        if (name) push(entry, { t: "key", k: name, at });
+      }
+    }
+  };
+
+  // The recipe book's moves a log says the user made: how the widget was opened (the first
+  // thing they did to it) and how a search was committed (the last time typing ended in an Enter,
+  // or in a pick after a pause).
+  const gesturesOf = (log) => {
+    const out = [];
+    const first = log.find((t) => t.t === "press" || t.t === "type" || (t.t === "key" && OPENERS.has(t.k)));
+    if (first?.t === "press") out.push("open:press");
+    if (first?.t === "key") out.push("open:keys");
+    let typed = null;
+    let search = null;
+    for (const t of log) {
+      if (t.t === "type") typed = t.at;
+      else if (typed !== null && t.t === "key" && t.k === "Enter") [search, typed] = ["search:enter", null];
+      else if (typed !== null && t.t === "pick" && t.at - typed >= PAUSE_MS) [search, typed] = ["search:debounce", null];
+    }
+    if (search) out.push(search);
+    return out;
+  };
+
+  const stopListening = () => { for (const type of EVENTS) document.removeEventListener(type, onEvent, true); };
+  // Start watching one field (a fid the last inventory named) for the user's hands. False when
+  // the field is gone or has no family, i.e. nothing a recipe could hold.
+  const watch = (fid) => {
+    const el = ns.fillInventory.resolve(fid);
+    const shape = ns.fillInventory.shapeOf(fid);
+    const keys = el && shape ? signature(el, shape) : null;
+    if (!keys || (!watching.has(fid) && watching.size >= MAX_WATCHED)) return false;
+    if (!watching.size) for (const type of EVENTS) document.addEventListener(type, onEvent, true);
+    watching.set(fid, { ...keys, log: [], engaged: false });
+    return true;
+  };
+  // What the user did to a watched field, once: `{ family, site, gestures }`, or null for a field
+  // not being watched. Ends that field's watch.
+  const report = (fid) => {
+    const entry = watching.get(fid);
+    if (!entry) return null;
+    watching.delete(fid);
+    if (!watching.size) stopListening();
+    return { family: entry.family, site: entry.site, gestures: gesturesOf(entry.log) };
+  };
+  // Forget every watch (a new park replaces the last one).
+  const unwatch = () => {
+    watching.clear();
+    stopListening();
+  };
+
+  ns.recipes = { signature, watch, report, unwatch };
 })();

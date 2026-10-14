@@ -275,8 +275,9 @@ def test_agent_is_only_the_page_rpc_front_door():
     """The split is defeated if a moved engine leaves a stale agent.js copy."""
     source = (EXTENSION / "content" / "agent.js").read_text(encoding="utf-8")
     # A size guard, not a design one: the named functions below are what must stay out. It grew
-    # 700 -> 720 for the queued run's two gated handlers (page_classify, page_advance).
-    assert len(source.splitlines()) < 720
+    # 700 -> 720 for the queued run's two gated handlers (page_classify, page_advance), and
+    # 720 -> 740 for the gesture watcher's two (fill_watch, fill_watch_report).
+    assert len(source.splitlines()) < 740
     assert "function fillFormFromProfile" not in source
     assert "function collectOpenQuestions" not in source
     assert "function fillAnswersByQid" not in source

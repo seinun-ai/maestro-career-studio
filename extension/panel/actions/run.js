@@ -61,6 +61,8 @@
   const MAX_PHRASE = 300;
   // What the fill report counts as filled on a page (the engine wrote it and checked it).
   const WROTE = new Set(["verified", "closest", "assumed"]);
+  // The outcomes of a field the engine left that join the known-gaps list.
+  const LEFTOVER = new Set(["cannot_operate", "unconfirmed"]);
 
   // The host's memory, per panel: not on the record, not in storage. `facts` is what the run's
   // own store reads (and the receipt's `receiptSeen`, which holds answers); `undo` is the profile
@@ -68,6 +70,8 @@
   const state = {
     driving: new Set(), checking: new Set(), marking: new Set(),
     facts: new Map(), undo: new Map(), phrases: new Map(), timers: new Map(), count: 0,
+    // Per run: the fids the page watches for the user's hands, and the gap rows already posted.
+    watching: new Map(), gapped: new Map(),
   };
 
   const tabOf = (record) => record.tabId ?? record.startTabId;
@@ -217,8 +221,94 @@
    * vouched for, and the panel paints. */
   function onUpdate(store, record) {
     if (record.status === "parked" && record.parkedAt == null) record.parkedAt = store.run.now();
+    if (record.status === "parked" && record.why === "open_questions") watchParked(store, record);
     if (TERMINAL.has(record.status)) store.run.unvouch(tabOf(record));
     store.render();
+  }
+
+  // ---------- learning from the user's fix, and the known-gaps list (design Part 8.2-8.3) ----------
+
+  /** A park on open questions: have the page watch what the user does to those fields, so Resume can
+   * tell which of the engine's moves they used. Once per set of fields; the page answers with event
+   * types and a few key names, never what was typed (content/recipes.js). */
+  function watchParked(store, record) {
+    const fids = (record.open ?? []).map((one) => one.fid).filter((fid) => typeof fid === "string");
+    const key = fids.join(",");
+    if (!fids.length || state.watching.get(record.id) === key) return;
+    state.watching.set(record.id, key);
+    store.run.tabBroadcast(tabOf(record), { type: "fill_watch", fids }).catch(warn("could not watch the parked fields"));
+  }
+
+  /** The gap rows not posted yet for this run, marked posted. Each row posted adds one to the stored
+   * count, so a row goes once per field and outcome and is never sent again, whatever happens. */
+  function freshGaps(record, rows) {
+    const done = state.gapped.get(record.id) ?? new Set();
+    state.gapped.set(record.id, done);
+    return rows.filter((row) => {
+      if (done.has(row.key)) return false;
+      done.add(row.key);
+      return true;
+    }).map(({ gap }) => gap);
+  }
+
+  /** Hand rows to the service worker, which posts them only for a user who turned the fill log on. */
+  function postGaps(store, record, rows) {
+    const gaps = freshGaps(record, rows);
+    if (gaps.length) store.run.gaps(gaps);
+  }
+
+  const bare = (family) => String(family).replace(/^f:/, "");
+
+  /** The engine's leftovers on a page (a widget it could not operate, a value the page took back) as
+   * gap rows: the trace is value-free and already names the family, shape and outcome of each. */
+  function leftovers(trace) {
+    const host = typeof trace?.host === "string" ? trace.host : "";
+    return (trace?.fields ?? []).filter((one) => LEFTOVER.has(one.outcome) && typeof one.family === "string")
+      .map((one) => ({ key: `${one.fid}:${one.outcome}`,
+                       gap: { family: bare(one.family), host, shape: one.shape, outcome: one.outcome } }));
+  }
+
+  /** Resume after the user fixed parked fields by hand: ask the page what they did to each (the
+   * watcher's report), and for every field that now holds a value (the user's hand on it was seen, or
+   * the page marked it touched) post a `user_fixed` gap. A move the engine knows teaches the recipe
+   * book for that site (a demonstration: probation, never trusted from one); no known move is a
+   * `missing_technique` gap. The recipe book is local and is taught whatever the fill log says; the
+   * gap rows are the service worker's to gate. Never throws into Resume. */
+  async function learnFromFix(store, record, fields, host) {
+    const watched = (record.open ?? []).map((one) => one.fid);
+    state.watching.delete(record.id);
+    if (!watched.length) return;
+    const frames = await host.tabBroadcast(record.tabId, { type: "fill_watch_report", fids: watched });
+    const seen = Object.assign({}, ...frames.map((frame) => frame.result).filter((one) => one && typeof one === "object"));
+    const pageHost = hostOf(await host.tabUrl(record.tabId).catch(() => ""));
+    const rows = [];
+    const lessons = [];
+    for (const fid of watched) {
+      const got = seen[fid];
+      const field = fields.get(fid);
+      if (!got?.family || !got.site || !field || field.policyBlocked === true || !answerText(field.committed)) continue;
+      const gestures = Array.isArray(got.gestures) ? got.gestures : [];
+      if (field.touched !== true && !gestures.length) continue;
+      const gap = (outcome) => ({ key: `${fid}:${outcome}`,
+                                  gap: { family: bare(got.family), host: pageHost, shape: field.shape, outcome } });
+      rows.push(gap("user_fixed"));
+      const moves = movesOf(gestures);
+      if (Object.keys(moves).length) lessons.push({ recipe: { family: got.family, site: got.site }, moves });
+      else rows.push(gap("missing_technique"));
+    }
+    if (lessons.length) await store.recipes().recordDemonstration(lessons);
+    postGaps(store, record, rows);
+  }
+
+  /** The recipe book's moves a gesture list names: `open:keys` is `{open: "keys"}`. Only the words
+   * the book knows survive (its own `clean` drops the rest again). */
+  function movesOf(gestures) {
+    const moves = {};
+    for (const one of gestures) {
+      const [axis, move] = String(one).split(":");
+      if (axis && move && ns.recipeBook.AXES[axis]?.includes(move)) moves[axis] = move;
+    }
+    return moves;
   }
 
   /** The fill of one page, pinned to the run's tab: its job and application from the record, the
@@ -274,6 +364,7 @@
     if (flags !== null) record.flags = flags;
     host.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(report), url);
     if (report.trace) store.trace(report.trace);
+    postGaps(store, record, leftovers(report.trace));
     if (!report.stopped) {
       const filled = report.fields.filter((row) => WROTE.has(row.status)).length;
       const n = (record.step ?? 0) + 1;
@@ -335,6 +426,9 @@
     const record = recordById(store, id);
     if (!record || record.status !== "parked") return;
     Object.assign(record, { status: "stopped", why: "user", open: [], parkedAt: null });
+    // The page stops watching the fields this run parked on (an empty watch replaces the last).
+    state.watching.delete(record.id);
+    store.run.tabBroadcast(tabOf(record), { type: "fill_watch", fids: [] }).catch(warn("could not stop watching"));
     store.run.unvouch(tabOf(record));
     persist(store);
   }
@@ -346,6 +440,8 @@
     state.facts.delete(record.id);
     state.undo.delete(record.id);
     state.phrases.delete(record.id);
+    state.watching.delete(record.id);
+    state.gapped.delete(record.id);
     store.write({ runs: store.read().runs.filter((one) => one.id !== id) });
     store.run.unvouch(tabOf(record));
     persist(store);
@@ -373,6 +469,8 @@
     await ns.panelRecordReceipt(rs, rs.read(), 0, () => ns.receipt.fromEdits(frames, seen),
       { inventory: false, consentForms: rs.read().consentForms === true });
     const fields = new Map(frames.flatMap((frame) => frame.result?.fields ?? []).map((one) => [one.fid, one]));
+    // The fix itself, apart from the answers: what the user did teaches the recipe book.
+    await learnFromFix(store, record, fields, host).catch(warn("could not learn from the fix"));
     const items = [];
     for (const one of record.open ?? []) {
       const field = fields.get(one.fid);

@@ -4796,6 +4796,11 @@
           ask("telemetry", { action, observations, page_host: hostOf(url) })
             .catch((err) => console.warn("[maestro-cs] telemetry failed:", err));
         },
+        // The known-gaps list: value-free rows ({family, host, shape, outcome}), handed to the service
+        // worker, which posts them only when the fill log is on. Swallowed, as telemetry is.
+        gaps: (gaps) => {
+          ask("fill_gaps", { gaps }).catch((err) => console.warn("[maestro-cs] gaps failed:", err));
+        },
         // Session storage: gone when Chrome closes, which is the life a run has.
         save: (records) => chrome.storage.session.set({ queueRun: records }),
         load: async () => (await chrome.storage.session.get("queueRun"))?.queueRun ?? [],

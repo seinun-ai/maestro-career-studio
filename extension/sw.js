@@ -402,6 +402,30 @@ function scrubTrace(trace) {
 }
 // ---- end scrubTrace ----
 
+// ---- the known-gaps list's gate: four keys per row, each in the schema's own shape ----
+//
+// `app/schemas/autofill_gaps.py`, mirrored by `test_the_gap_whitelist_mirrors_the_backends_schema`. A
+// row is a widget family (the recipe hash, WITHOUT its `f:` prefix: the panel strips it), the page's
+// host, the field's shape and what happened. No label, value or option text has a key to ride on.
+const GAP_MAX = 40;
+const GAP_FAMILY = /^[0-9a-z]{1,11}$/;
+const GAP_OUTCOMES = new Set(["cannot_operate", "unconfirmed", "user_fixed", "missing_technique"]);
+
+/** The rows to post: only those the schema takes, each cut to its four keys. */
+function scrubGaps(gaps) {
+  if (!Array.isArray(gaps)) return [];
+  return gaps.map((gap) => {
+    const row = {
+      family: traceMatch(GAP_FAMILY)(gap?.family),
+      host: traceMatch(TRACE_HOST, 253 + 6)(typeof gap?.host === "string" ? gap.host.toLowerCase() : gap?.host),
+      shape: gap?.shape === "unknown" ? "unknown" : traceOneOf(TRACE_SHAPES)(gap?.shape),
+      outcome: traceOneOf(GAP_OUTCOMES)(gap?.outcome),
+    };
+    return Object.values(row).every((v) => v !== undefined) ? row : null;
+  }).filter(Boolean).slice(0, GAP_MAX);
+}
+// ---- end scrubGaps ----
+
 // ---------- reaching the UI ----------
 //
 // ONE surface, two routes to it: the toolbar icon (via `setPanelBehavior` at
@@ -646,6 +670,21 @@ const HANDLERS = {
     return { posted: 1 };
   },
 
+  /** The known-gaps list: widget families the engine could not operate or the user fixed by hand.
+   *
+   * `telemetry`'s switch, read the same way and for the same reason: it posts only when
+   * `telemetryEnabled` is `true` (the fill log, off by default), and `scrubGaps` is the whitelist.
+   * NOT broadcastable: the page never asks for it. Each row posted adds one to the stored count,
+   * so the panel posts a row once and never retries one. */
+  async fill_gaps(msg) {
+    const { telemetryEnabled } = await getSettings();
+    if (telemetryEnabled !== true) return { posted: 0 };
+    const gaps = scrubGaps(msg.gaps);
+    if (!gaps.length) return { posted: 0 };
+    await api("/api/autofill/gaps", { method: "POST", body: JSON.stringify({ gaps }) });
+    return { posted: gaps.length };
+  },
+
   /** Fetch a resume PDF and hand it to every frame of the tab the panel names.
    *
    * The bytes never travel through the UI: a Blob does not survive a
@@ -747,7 +786,7 @@ const HANDLERS = {
       "guided_write", "scroll_to_field",
       "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
       "fill_sections", "fill_add", "detect_page", "extract_job_posting",
-      "page_classify", "page_advance"];
+      "page_classify", "page_advance", "fill_watch", "fill_watch_report"];
     const tabId = fanoutTab(msg, sender);
     if (!BROADCASTABLE.includes(msg.message?.type)) {
       throw new Error(`not broadcastable: ${JSON.stringify(msg.message?.type)}`);
