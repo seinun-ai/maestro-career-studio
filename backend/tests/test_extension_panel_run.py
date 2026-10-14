@@ -1335,6 +1335,41 @@ def test_an_attach_the_page_does_not_take_parks_upload_naming_the_box_and_presse
     assert "Upload a file (5MB max)" in body and "resume" in body.lower()
 
 
+PARSER = {"label": "Import Resume", "target": "t-parser", "required": False, "occupied": False, "kind": "parser"}
+REAL = {"label": "Resume Upload", "target": "t-real", "required": True, "occupied": False, "kind": "resume"}
+PARSER_AND_REAL = {"tier": "B", "form": True, "score": 2, "fileInputs": 2,
+                   "uploads": [{"kind": "parser", "occupied": False}, {"kind": "resume", "occupied": False}]}
+
+
+def test_a_parser_box_beside_an_empty_required_resume_box_is_never_attached_to(tmp_path):
+    """Live ATS-D shape: the run's own attach picks the one resume box (resume-only, two boxes counted);
+    the parser (not required) is neither written nor parked on."""
+    out = _upload_run(tmp_path, ATTACHED_ONE, boxes=[PARSER, REAL], page={"detect_page": _reply(PARSER_AND_REAL)})
+    asks = _attach_asks(out)
+    assert asks and all((ask["resumeOnly"], ask.get("expect")) == (True, 2) for ask in asks[:1])
+    assert not [ask for ask in asks if ask.get("target") == "t-parser"]
+    record = _record(out["shots"][1])
+    assert record["status"] == "ready" and record["attach"]["outcome"] == "attached"
+
+
+def test_a_parser_box_beside_a_resume_box_the_page_would_not_take_parks_naming_only_the_real_box(tmp_path):
+    out = _upload_run(tmp_path, ATTACHED_NONE, boxes=[PARSER, REAL], page={"detect_page": _reply(PARSER_AND_REAL)})
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"]) == ("parked", "upload")
+    assert record["open"] == [{"fid": None, "question": "Resume Upload", "required": True}]
+
+
+def test_a_lone_required_parser_box_parks_upload_naming_it(tmp_path):
+    """The Companion never writes a parser box, so a required one is the user's to attach by hand."""
+    parser = {**PARSER, "required": True}
+    lone = {"tier": "B", "form": True, "score": 2, "fileInputs": 1, "uploads": [{"kind": "parser", "occupied": False}]}
+    out = _upload_run(tmp_path, ATTACHED_NONE, boxes=[parser], page={"detect_page": _reply(lone)})
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"], record["step"]) == ("parked", "upload", 0)
+    assert record["open"] == [{"fid": None, "question": "Import Resume", "required": True}]
+    assert not _page_messages(out, "page_advance")
+
+
 def test_a_page_with_no_required_empty_upload_sends_no_targeted_attach(tmp_path):
     out = _upload_run(tmp_path, ATTACHED_ONE, boxes=[{**BOX, "required": False}])
     assert [ask for ask in _attach_asks(out) if ask.get("target")] == []
@@ -1577,3 +1612,47 @@ def test_the_closed_stop_says_how_to_take_it_back_and_resume_drives_the_page(tmp
     assert "Not closed? Press Resume." in _text(body) and _buttons(body)["run-resume"] == "Resume"
     again = _run(tmp_path, [{"seed": [_seeded("stopped", why="closed")]}, {"press": "run-resume"}], pages=(STEP1, REVIEW))
     assert _record(again["shots"][-1])["status"] == "ready"
+
+
+# ---------- G3: the fill log, and the resume line on Ready ----------
+
+LOG_OFF = "Fill log is off. Turn it on in Options to let Maestro CS see what each field tried."
+TRACE = {"host": "jobs.acme.test", "fields": []}
+
+
+def test_a_run_that_ends_while_the_fill_log_is_off_says_so_on_the_card(tmp_path):
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [verified("f1")], "trace": TRACE}, {"fields": [verified("f2")], "trace": TRACE}],
+               replies={"fill_trace": _reply({"posted": 0, "why": "off"})})
+    assert _record(out["shots"][-1])["status"] == "ready"
+    assert LOG_OFF in _text(_card(out["shots"][-1])["body"])
+
+
+def test_a_stopped_run_says_the_fill_log_is_off_too(tmp_path):
+    record = _seeded("stopped", why="user", logOff=True)
+    out = _run(tmp_path, [{"seed": [record]}])
+    assert LOG_OFF in _text(_card(out["shots"][1])["body"])
+
+
+def test_a_run_with_the_fill_log_on_says_nothing_about_it(tmp_path):
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [verified("f1")], "trace": TRACE}, {"fields": [verified("f2")], "trace": TRACE}],
+               replies={"fill_trace": _reply({"posted": 1})})
+    assert "Fill log" not in _text(_card(out["shots"][-1])["body"])
+
+
+@pytest.mark.parametrize("attach, said", [
+    ({"outcome": "left", "reason": "no_box", "text": "no upload box took the file."}, "Couldn't attach the resume"),
+    ({"outcome": "unconfirmed", "text": "Couldn't confirm the resume upload."}, "Couldn't confirm the resume upload."),
+    ({"outcome": "left", "reason": "occupied"}, "A file was already attached"),
+])
+def test_ready_says_where_the_resume_stands_when_it_did_not_simply_attach(tmp_path, attach, said):
+    out = _run(tmp_path, [{"seed": [_seeded("ready", readyAt=1, attach=attach)]}])
+    assert said in _text(_card(out["shots"][1])["body"])
+
+
+def test_ready_has_no_resume_line_for_a_clean_attach_or_none(tmp_path):
+    for attach in ({"outcome": "attached"}, None):
+        out = _run(tmp_path, [{"seed": [_seeded("ready", readyAt=1, attach=attach)]}])
+        text = _text(_card(out["shots"][1])["body"])
+        assert "Couldn't" not in text and "Resume attached" not in text and "already attached" not in text

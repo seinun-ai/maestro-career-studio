@@ -416,7 +416,7 @@
     }
     // A repair of named fields posts no receipt and no gap rows: the page's own fill already did.
     host.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(report), url);
-    if (report.trace) store.trace(report.trace);
+    if (report.trace) noteLog(store, record, store.trace(report.trace));
     if (!report.stopped && !scoped) {
       const filled = report.fields.filter((row) => WROTE.has(row.status)).length;
       const n = (record.step ?? 0) + 1;
@@ -452,6 +452,18 @@
       fixed = fids.every((fid) => REPAIRED.has(byFid.get(fid)?.status));
     }
     return { fixed };
+  }
+
+  /** Whether the worker posted the run's trace: it answers `why: "off"` when the fill log is off, and the card
+   * then says so. Never awaited (a fill is not delayed by its own log), and never throws. */
+  function noteLog(store, record, reply) {
+    Promise.resolve(reply).then((got) => {
+      if (got === undefined || got === null) return;
+      const off = got.why === "off";
+      if (record.logOff === off) return;
+      record.logOff = off;
+      store.render();
+    }).catch(warn("could not read the fill log's answer"));
   }
 
   /** The run's PDF into the one upload box `target` names; the card's attach line follows the result. */

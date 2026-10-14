@@ -666,7 +666,8 @@ const HANDLERS = {
    * trace posts nothing. */
   async fill_trace(msg) {
     const { telemetryEnabled } = await getSettings();
-    if (telemetryEnabled !== true) return { posted: 0 };
+    // `why: "off"` lets the run card say the fill log is off (a trace nobody can read helps nobody).
+    if (telemetryEnabled !== true) return { posted: 0, why: "off" };
     const trace = scrubTrace(msg.trace);
     if (!trace) return { posted: 0 };
     await api("/api/autofill/runs", { method: "POST", body: JSON.stringify(trace) });

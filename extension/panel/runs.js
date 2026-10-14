@@ -238,10 +238,22 @@
     return attach(node("div", "flagged"), head, list);
   }
 
+  /** One line when the fill log is off, shown once a run has ended: the log is what lets Maestro CS see what each
+   * field tried, and it is the user's switch (Options). */
+  function logOffLine(ctx, run) {
+    return run.logOff === true
+      ? ctx.build.node("div", "sub run-log-off", "Fill log is off. Turn it on in Options to let Maestro CS see what each field tried.")
+      : null;
+  }
+
   function readyBody(ctx, run) {
     const { node, attach } = ctx.build;
+    // Where the resume stands is said whenever it did not simply attach (a box left for the user, a write
+    // that could not be confirmed): the user is about to Submit.
+    const attachSaid = run.attach?.outcome && run.attach.outcome !== "attached" ? attachLine(run.attach) : "";
     const out = [node("div", "sub", "Check the page, then press Submit in the tab. The Companion never presses it for you."),
-      flagsBlock(ctx, run)];
+      attachSaid ? node("div", "sub run-attach", attachSaid) : null,
+      flagsBlock(ctx, run), logOffLine(ctx, run)];
     if (run.markNote) out.push(node("div", "sub run-mark-note", run.markNote));
     if (run.movedOn === true) out.push(node("div", "sub run-moved-on", "You moved on. Press Resume to fill this page."));
     // Done: not submitting this one. It ends the record and writes nothing, so the tab is free again.
@@ -276,6 +288,7 @@
       // A tab closed on a confirmation the mark then failed on: the one place the user hears it.
       if (run.markNote) out.push(node("div", "sub run-mark-note", run.markNote));
     }
+    out.push(logOffLine(ctx, run));
     if (canResume(run)) attach(actions, button(ctx, "save", "run-resume", "Resume", () => ctx.act.resumeRun(run.id)));
     attach(actions, button(ctx, "save", "run-done", "Done", () => ctx.act.closeRun(run.id)));
     return [...out, actions];

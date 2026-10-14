@@ -4888,9 +4888,9 @@
       },
       // The run's value-free trace, with telemetry's rules: swallowed, and the
       // opt-in check and the scrub are the service worker's.
-      trace: (trace) => {
-        ask("fill_trace", { trace }).catch((err) => console.warn("[maestro-cs] trace failed:", err));
-      },
+      // Returns the worker's reply (`{posted, why?}`), or null: a run says "the fill log is off" from it.
+      trace: (trace) => ask("fill_trace", { trace })
+        .catch((err) => console.warn("[maestro-cs] trace failed:", err)),
       remember: rememberSession,
       /** THE QUEUED RUN'S DOOR: the browser things `actions/run.js` may not reach for itself (it is
        * under the actions rule: no `chrome`, no timers). Every one names its TAB, because a run is

@@ -754,14 +754,19 @@ def _posted_trace(tmp_path, trace, **kw):
 def test_a_trace_is_not_posted_when_the_user_turned_telemetry_off(tmp_path):
     """The same switch as telemetry's, read the same way. A gate, not a filter."""
     out = _post_trace(tmp_path, _run_trace(), settings={"telemetryEnabled": False})
-    assert out["reply"]["data"] == {"posted": 0}
+    assert out["reply"]["data"] == {"posted": 0, "why": "off"}, "the answer says the log is off, so the run card can"
     assert out["posted"] == [], "an opted-out user's run reached the network"
+
+
+def test_a_trace_with_the_log_on_never_says_the_log_is_off(tmp_path):
+    assert _post_trace(tmp_path, _run_trace())["reply"]["data"] == {"posted": 1}
+    assert _post_trace(tmp_path, None, missing=True)["reply"]["data"] == {"posted": 0}
 
 
 def test_a_trace_is_not_posted_until_the_user_turns_the_log_on(tmp_path):
     """The trace shares the fill log's switch, so it shares its default: off."""
     out = _post_trace(tmp_path, _run_trace(), settings={})
-    assert out["reply"]["data"] == {"posted": 0}
+    assert out["reply"]["data"] == {"posted": 0, "why": "off"}
     assert out["posted"] == [], "a run reached the network before the user turned the log on"
 
 
