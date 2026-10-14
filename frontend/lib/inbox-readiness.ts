@@ -84,6 +84,45 @@ export function headerProposalPill(args: {
   };
 }
 
+/** The plan summaries the web app's Queue and the Companion file for a job you queued yourself (lib/api.ts
+ *  `promoteJobToAgentQueue`, the Companion's `proposalBody`): a filing, not a plan anyone wrote. */
+const FIXED_PLAN_SUMMARIES = ["Queued from the Companion by the user", "Promoted from the tracker by the user"];
+
+type ProposalContentFields = {
+  status: string;
+  reason?: string | null;
+  proposed_by?: string | null;
+  plan_json?: Record<string, unknown> | null;
+  qa_entries?: readonly unknown[] | null;
+  evidence_json?: readonly { path?: string | null }[] | null;
+};
+
+const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+
+/**
+ * Whether the job page's proposal card has anything to say beyond the fact that the job was filed: a question
+ * or a stop that needs you (a needs-you status is one), a reason, a company note, a plan someone wrote (not
+ * the fixed filing of a proposal you queued yourself), drafted answers, or screenshots. History only (an
+ * applied-manually skip) is not content: the Where this stands line says it.
+ */
+export function proposalHasContent(p: ProposalContentFields): boolean {
+  // The Needs you statuses (lib/inbox-lanes.ts NEEDS_YOU_STATUSES); this file takes no value imports.
+  if (p.status === "needs_decision" || p.status === "needs_human") return true;
+  const reason = text(p.reason);
+  if (reason && reason !== APPLIED_MANUALLY) return true;
+  const plan = p.plan_json ?? {};
+  if (text(plan.company_note)) return true;
+  const summary = text(plan.summary);
+  if (summary && !(p.proposed_by === "you" && FIXED_PLAN_SUMMARIES.includes(summary))) return true;
+  if ((p.qa_entries ?? []).length > 0) return true;
+  return (p.evidence_json ?? []).some((e) => (e.path ?? "").startsWith("evidence/"));
+}
+
+/** "expires <date>" shows only while the proposal can still expire (the backend's `expire_stale`). */
+export function proposalCanExpire(status: string): boolean {
+  return status === "pending_review" || status === "needs_decision";
+}
+
 /** Created after the last visit. No visit time known yet: nothing is marked new. */
 export function isNew(createdAt: string, since: string | null): boolean {
   return since != null && Date.parse(createdAt) > Date.parse(since);

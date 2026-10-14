@@ -12,6 +12,7 @@ import { reasonLabel } from "@/components/proposals/triage-actions";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
 import { proposalByLine } from "@/lib/agent-name";
+import { proposalCanExpire } from "@/lib/inbox-readiness";
 import { needsYouHelp, needsYouLine } from "@/lib/inbox-lanes";
 import { isLoadFailure } from "@/lib/query-state";
 import { formatAbsoluteDateTime, formatShortDate } from "@/lib/format-date";
@@ -21,7 +22,8 @@ import { CONCEPT_ICONS } from "@/lib/concept-icons";
 const AgentInboxIcon = CONCEPT_ICONS.agentInbox;
 
 /**
- * Proposal-only fields for the job Overview tab — plan, expires, evidence.
+ * Proposal-only fields for the job Overview tab — plan, expires, evidence. The job page mounts it only
+ * when the proposal carries something (`proposalHasContent`) or failed to load.
  * Fit scores live on Score & Tailor / triage; salary / work-auth / level live
  * in JobExtractedFields. Do not duplicate them here.
  */
@@ -89,7 +91,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
           title={formatAbsoluteDateTime(data.created_at)}
         >
           Proposed {formatShortDate(data.created_at)}
-          {data.expires_at ? ` · expires ${formatShortDate(data.expires_at)}` : ""}
+          {data.expires_at && proposalCanExpire(data.status) ? ` · expires ${formatShortDate(data.expires_at)}` : ""}
         </p>
         {needs ? (
           <div className="flex flex-col gap-1">

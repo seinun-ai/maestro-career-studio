@@ -60,7 +60,7 @@ import { proposalByLine, queuedToast } from "@/lib/agent-name";
 import { apiFetch, apiUrlForBrowserPdf, listAtsScores, promoteJobToAgentQueue } from "@/lib/api";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
-import { headerProposalPill } from "@/lib/inbox-readiness";
+import { headerProposalPill, proposalHasContent } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
 import { formatShortDate } from "@/lib/format-date";
@@ -722,7 +722,11 @@ export default function JobDetailPage({
           </div>
 
           <TabsContent value="jd" className="mt-0 space-y-4">
-            {proposalId ? <ProposalAgentPanel proposalId={proposalId} /> : null}
+            {/* Only a proposal that carries something: a question, a reason, a note, a plan someone wrote,
+                drafted answers or screenshots. A load failure shows its error card. */}
+            {proposalId && (proposalQuery.isError || (proposalQuery.data && proposalHasContent(proposalQuery.data))) ? (
+              <ProposalAgentPanel proposalId={proposalId} />
+            ) : null}
             <JobKnockoutCard scan={data?.knockout} job={job} />
             <JobExtractedFields
               job={job}

@@ -84,3 +84,21 @@ def test_a_scan_that_blocks_nothing_is_one_line_in_the_job_details_card():
     assert "knockoutLine(scan.status, notChecked)" in line and "{shown.label}" in line
     # The chips ride under the line only when there is a warning or a check that could not run.
     assert "warned || unchecked.length > 0 || rows.length > 0" in line
+
+
+# ── A5: the proposal card only when it carries something ────────────────────
+
+_PANEL = _read("components/proposals/proposal-agent-panel.tsx")
+
+
+def test_the_proposal_card_mounts_only_when_it_carries_something():
+    tab = _JOB[_JOB.index('<TabsContent value="jd"') :]
+    tab = tab[: tab.index("<JobKnockoutCard")]
+    assert "proposalHasContent(proposalQuery.data)" in tab and "<ProposalAgentPanel proposalId={proposalId} />" in tab
+    # A proposal that failed to load still shows its error card; one still loading shows nothing.
+    assert "proposalQuery.isError ||" in tab
+    assert "{proposalId ? <ProposalAgentPanel" not in _JOB
+
+
+def test_expires_shows_only_while_the_proposal_can_still_expire():
+    assert "data.expires_at && proposalCanExpire(data.status)" in _PANEL

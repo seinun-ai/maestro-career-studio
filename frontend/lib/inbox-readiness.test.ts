@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { headerProposalPill, historyLabel, historyStatusOf, isNew, isReady, readinessMarks, readinessSteps, readyFirst } from "./inbox-readiness.ts";
+import { headerProposalPill, historyLabel, proposalCanExpire, proposalHasContent, historyStatusOf, isNew, isReady, readinessMarks, readinessSteps, readyFirst } from "./inbox-readiness.ts";
 
 const ready = { tailored: true, knockout: null, to_check: 0 };
 
@@ -140,4 +140,53 @@ test("with no application the header pill reads like the inbox History lane", ()
     { label: "Queued", styleStatus: "accepted" },
   );
   assert.equal(headerProposalPill({ hasApplication: false, status: null, reason: null, fallbackLabel: "" }), null);
+});
+
+const filed = {
+  status: "accepted",
+  reason: null,
+  proposed_by: "you",
+  plan_json: { summary: "Queued from the Companion by the user" },
+  qa_entries: [],
+  evidence_json: [],
+};
+
+test("a proposal you filed with only the fixed plan carries nothing", () => {
+  assert.equal(proposalHasContent(filed), false);
+  assert.equal(proposalHasContent({ ...filed, plan_json: { summary: "Promoted from the tracker by the user" } }), false);
+  assert.equal(proposalHasContent({ ...filed, plan_json: null, evidence_json: null }), false);
+});
+
+test("each thing a proposal can carry makes the card worth showing", () => {
+  assert.equal(proposalHasContent({ ...filed, status: "needs_decision" }), true); // a question
+  assert.equal(proposalHasContent({ ...filed, status: "needs_human" }), true); // a stop
+  assert.equal(proposalHasContent({ ...filed, status: "rejected", reason: "not a fit" }), true);
+  assert.equal(proposalHasContent({ ...filed, plan_json: { company_note: "Acme is hiring" } }), true);
+  assert.equal(proposalHasContent({ ...filed, plan_json: { summary: "Lead with the SQL work" } }), true);
+  assert.equal(proposalHasContent({ ...filed, qa_entries: [{ id: "q1" }] }), true);
+  assert.equal(proposalHasContent({ ...filed, evidence_json: [{ path: "evidence/step1.png" }] }), true);
+});
+
+test("an agent's own fixed-looking plan is still its plan", () => {
+  assert.equal(
+    proposalHasContent({ ...filed, proposed_by: "claude-code", plan_json: { summary: "Queued from the Companion by the user" } }),
+    true,
+  );
+});
+
+test("empty strings and non-screenshot evidence do not count", () => {
+  assert.equal(proposalHasContent({ ...filed, plan_json: { summary: "  ", company_note: "" }, reason: " " }), false);
+  assert.equal(proposalHasContent({ ...filed, evidence_json: [{ path: "/jobs/42" }, { path: "" }] }), false);
+});
+
+test("an applied-manually skip is history the Where this stands line already tells", () => {
+  assert.equal(proposalHasContent({ ...filed, status: "rejected", reason: "applied manually" }), false);
+});
+
+test("only a proposal that is still open can expire", () => {
+  assert.equal(proposalCanExpire("pending_review"), true);
+  assert.equal(proposalCanExpire("needs_decision"), true);
+  for (const status of ["needs_human", "accepted", "approved", "submitted", "submission_uncertain", "rejected", "expired"]) {
+    assert.equal(proposalCanExpire(status), false, status);
+  }
 });
