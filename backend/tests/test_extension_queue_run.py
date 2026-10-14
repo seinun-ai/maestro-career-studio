@@ -121,7 +121,9 @@ const deps = {
   tabUrl: async () => {
     tick("tabUrl");
     const p = current();
-    return `https://${p.urlHost ?? p.host ?? "jobs.acme.test"}${p.url ?? `/p/${at}`}#frag`;
+    // `drift`: the address changes with every fill on the page (a query string or a path the site rewrites).
+    const drift = p.drift === "query" ? `?v=${fillCalls}` : p.drift === "path" ? `/${fillCalls}` : "";
+    return `https://${p.urlHost ?? p.host ?? "jobs.acme.test"}${p.url ?? `/p/${at}`}${drift}#frag`;
   },
   advance: async (tabId, frameId, id, opts) => {
     tick("advance", frameId, id, opts ?? null);
@@ -826,14 +828,16 @@ def test_a_career_site_posting_is_pressed_when_its_apply_leads_to_the_runs_own_a
     record = {"openUrl": WD_APPLY + "?source=Board"}
     out = _drive(tmp_path, [_career_posting(WD_APPLY), step(1, host="acme.wd1.myworkdayjobs.com"), REVIEW], record=record)
     assert out["record"]["status"] == "ready"
-    assert names(out, "advance")[0][1:] == [0, "apply-1", {"apply": True}]
+    # The press carries the address it was judged on, so a link rewritten in between is refused by the page.
+    assert names(out, "advance")[0][1:] == [0, "apply-1", {"apply": True, "href": WD_APPLY}]
 
 
 def test_a_career_site_apply_to_a_known_applicant_system_is_pressed_whoever_the_tenant(tmp_path):
-    out = _drive(tmp_path, [_career_posting("https://initech.wd3.myworkdayjobs.com/External/job/X/apply"), step(1), REVIEW],
+    out = _drive(tmp_path, [_career_posting("https://initech.wd3.myworkdayjobs.com/External/job/X/apply"),
+                            step(1, host="initech.wd3.myworkdayjobs.com"), REVIEW],
                  record={"openUrl": "https://acme.wd1.myworkdayjobs.com/External/job/Remote/Other_R7/apply"})
     assert out["record"]["status"] == "ready"
-    assert names(out, "advance")[0][3] == {"apply": True}
+    assert names(out, "advance")[0][3]["apply"] is True
 
 
 @pytest.mark.parametrize("href", [
@@ -849,9 +853,35 @@ def test_a_career_site_apply_that_leads_anywhere_else_is_not_pressed(tmp_path, h
 
 
 def test_a_career_site_apply_to_the_queued_link_on_a_site_that_is_no_applicant_system_is_pressed(tmp_path):
-    out = _drive(tmp_path, [_career_posting("https://apply.initech.test/jobs/55/apply"), step(1), REVIEW],
+    out = _drive(tmp_path, [_career_posting("https://apply.initech.test/jobs/55/apply"), step(1, host="apply.initech.test"), REVIEW],
                  record={"openUrl": "https://apply.initech.test/jobs/55/apply?utm=x"})
     assert out["record"]["status"] == "ready"
+
+
+@pytest.mark.parametrize("record", [{"openUrl": WD_APPLY + "?source=Board"}, {}])
+def test_a_press_that_lands_on_a_host_the_link_never_named_parks_before_any_fill_and_trusts_nothing(tmp_path, record):
+    """An open redirect on the posting's Apply: the first read after the press is judged by where it landed,
+    not by what the page asked for. Nothing is filled there and its host never joins the run's."""
+    posting = _career_posting(WD_APPLY) if record else {"t": "posting"}
+    out = _drive(tmp_path, [posting, step(1, host="evil.test", urlHost="evil.test"), REVIEW], record=record)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "moved_away")
+    assert out["fillCalls"] == 0 and "evil.test" not in r["hosts"]
+    assert len(names(out, "advance")) == 1
+
+
+def test_a_press_that_lands_on_the_links_host_or_the_queued_hosts_is_followed(tmp_path):
+    out = _drive(tmp_path, [{"t": "posting"}, step(1), REVIEW])   # the queued link's own host
+    assert out["record"]["status"] == "ready"
+    out = _drive(tmp_path, [_career_posting(WD_APPLY), step(1, host="acme.wd5.myworkdayjobs.com"), REVIEW],
+                 record={"openUrl": "https://careers.acme.test/job/9"})   # a known ATS host
+    assert out["record"]["status"] == "ready"
+
+
+def test_the_posting_the_run_parks_on_is_remembered_by_the_address_of_its_apply_link(tmp_path):
+    out = _drive(tmp_path, [_career_posting(WD_APPLY)], record={"tabId": 7, "status": "parked", "why": "posting",
+                                                                "hosts": ["careers.acme.test"], "openUrl": WD_APPLY})
+    assert out["record"]["applyHref"] == WD_APPLY
 
 
 def test_a_career_site_apply_is_not_pressed_on_a_resume(tmp_path):
@@ -1923,6 +1953,15 @@ def test_advance_sends_the_id_and_the_apply_flag_only_when_it_is_exactly_true(tm
     assert out["result"] == {"clicked": True}
 
 
+def test_advance_carries_the_address_it_was_judged_on_for_the_apply_press_alone(tmp_path):
+    href = "https://acme.wd1.myworkdayjobs.com/External/job/X/apply"
+    out = _ops(tmp_path, "advance", advanceOptions={"apply": True, "href": href})
+    assert out["sent"] == [["broadcast", 4, {"type": "page_advance", "id": "tag-1", "apply": True, "href": href}, 0]]
+    for options in ({"href": href}, {"apply": True, "href": 7}, {"chooser": True, "href": href}):
+        sent = _ops(tmp_path, "advance", advanceOptions=options)["sent"][0][2]
+        assert "href" not in sent, options
+
+
 def test_every_press_goes_to_the_one_frame_that_named_the_button(tmp_path):
     apply = _ops(tmp_path, "advance", frameId=3, advanceOptions={"apply": True})
     assert apply["sent"] == [["broadcast", 4, {"type": "page_advance", "id": "tag-1", "apply": True}, 3]]
@@ -2149,6 +2188,23 @@ def test_a_landed_field_beside_a_field_that_needs_an_answer_parks_naming_only_th
     assert out["record"]["open"] == [{"fid": "f2", "question": "Visa", "required": True}]
 
 
+@pytest.mark.parametrize("slot", ["work_auth.authorized_now", "work_auth.sponsorship_future", "eligibility.over_18",
+                                  "eeo.veteran_status", "derived.sponsorship_now_or_future", "derived.us_citizen",
+                                  "derived.previously_employed_here", "derived.agrees_to_terms", "preferences.desired_salary"])
+def test_a_protected_answer_a_click_landed_on_is_still_the_users_to_give(tmp_path, slot):
+    """Work authorization, sponsorship, EEO, eligibility, salary and the agreements park whatever landed."""
+    row = {**needs("f1", "Are you legally authorized to work here?"), "lastOutcome": "group_committed", "slot": slot}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[row], []])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "open_questions")
+    assert out["pressed"] == []
+
+
+def test_an_ordinary_slot_a_search_landed_on_still_passes(tmp_path):
+    row = {**needs("f1", "Field of Study"), "lastOutcome": "search_committed", "slot": "education.0.discipline"}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[row], []])
+    assert out["record"]["status"] == "ready"
+
+
 # ---------- a page is pressed only if it is the page the run filled ----------
 
 def test_a_repair_that_ends_on_another_page_fills_that_page_before_anything_is_pressed_on_it(tmp_path):
@@ -2180,6 +2236,38 @@ def test_a_repair_that_could_only_work_some_of_the_errors_parks_naming_only_the_
                  fix={"fixed": False, "remaining": [unknown]})
     r = out["record"]
     assert (r["status"], r["why"]) == ("parked", "page_errors")
+    assert r["open"] == [{"fid": None, "question": "Mystery", "required": True}]
+
+
+def test_a_page_whose_address_only_gains_a_query_after_each_fill_is_the_same_page(tmp_path):
+    """A session or tracking parameter the site rewrites is not another page: one fill, one press, as ever."""
+    out = _drive(tmp_path, [step(1, drift="query"), REVIEW])
+    assert out["record"]["status"] == "ready" and out["fillCalls"] == 2 and out["pressed"] == ["next-1"]
+
+
+def test_a_page_whose_path_changes_after_every_fill_stops_at_the_step_limit_not_forty_fills(tmp_path):
+    """The filled-page guard counts a step each time it fires: it is bounded like any other step."""
+    out = _drive(tmp_path, [step(1, drift="path")], cancelOnFill=40)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "step_limit")
+    assert out["fillCalls"] <= 16
+
+
+def test_a_page_the_guard_lands_on_that_the_run_has_already_been_through_is_a_loop(tmp_path):
+    first = step(1, url="/x")
+    out = _drive(tmp_path, [first, step(2, rejects=1, errorItems=[UPLOAD], url="/y"), first, REVIEW], fixMoves=True)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "loop")
+    assert out["fillCalls"] == 2
+
+
+def test_a_review_page_with_required_boxes_the_repair_could_not_work_names_only_the_rest(tmp_path):
+    mapped = {"label": "City", "target": "f-9", "kind": "field"}
+    unknown = {"label": "Mystery", "target": None, "kind": "unknown"}
+    out = _drive(tmp_path, [step(1), {"t": "review", "needs": [mapped, unknown]}],
+                 fix={"fixed": False, "remaining": [unknown]})
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "open_questions")
     assert r["open"] == [{"fid": None, "question": "Mystery", "required": True}]
 
 

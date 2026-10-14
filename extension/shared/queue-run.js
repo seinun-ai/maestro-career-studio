@@ -132,7 +132,7 @@
  * button ids are minted per read; judging the pre-fill read would stop every such wizard on its
  * first page as "review".
  *
- * WHAT THIS FILE PUBLISHES: ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, USER_NAVIGATES, LANDED,
+ * WHAT THIS FILE PUBLISHES: ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, USER_NAVIGATES, landedToCheck,
  * RUN_LIMITS, HIDDEN_TABS_OK }. The scheduler (`next`, the record list, pacing) is not here.
  */
 (() => {
@@ -187,6 +187,9 @@
   }
   const bare = (host) => String(host ?? "").toLowerCase().replace(/^www\./, "");
   const sameSite = (a, b) => Boolean(a) && Boolean(b) && bare(a) === bare(b);
+  /** An address without its query: origin and path. A query string is a session or a tracking parameter as often
+   * as it is a step; the heading key and the path say which page this is. */
+  const pathOf = (where) => String(where).split("?")[0];
   /** The page is one the run reached and its posting Apply goes to the record's own application link (same
    * origin, same posting) or to a host on the known-ATS list. The reader names the address without its query. */
   const leadsOn = (record, summary) => {
@@ -263,9 +266,15 @@
   // popup committed while it was explored) is not a question: the engine's own check could not call the value right,
   // and the page's validation can. It is listed under "Check before you submit" (the host's `keepAssumed`) and the
   // Next press decides. A field the engine gave up on (nothing landed) still parks.
+  //
+  // Never one the protected list covers (SYSTEM.md: work authorization and sponsorship, eligibility, EEO, salary,
+  // citizenship, the agreements): a value a click happened to land on is not the applicant's answer to those.
   const LANDED = /^(?:group_committed|search_committed|committed_while_\w+)$/;
+  const PROTECTED_SLOT = /^(?:work_auth|eligibility|eeo)\.|^derived\.(?:sponsorship|previously_employed_here|us_citizen|agrees_to_terms)|^preferences\.desired_salary/;
+  const landedToCheck = (f) => f.status === "needs_answer" && LANDED.test(f.lastOutcome ?? "")
+    && !PROTECTED_SLOT.test(f.slot ?? "");
   const openQuestions = (report) => report.fields
-    .filter((f) => OPEN_STATUSES.has(f.status) && !(f.status === "needs_answer" && LANDED.test(f.lastOutcome ?? ""))
+    .filter((f) => OPEN_STATUSES.has(f.status) && !landedToCheck(f)
       && (f.required || (f.status === "needs_answer" && f.invalid === true)))
     .map((f) => ({ fid: f.fid, question: String(f.question ?? "").slice(0, MAX_QUESTION), required: Boolean(f.required) }));
 
@@ -331,6 +340,7 @@
     let recheck = null;      // ... and then: don't refill, look at the page's errors or upload boxes
     let thisPage = null;     // {where, key} of the page being read: remembered when a park names a page
     let filledPage = null;   // {where, key, here} of the page this run last filled: the only page it presses
+    let landing = null;      // the hosts a posting Apply may land on: the first read after the press must be on one
 
     const noteHost = async (url) => {
       const host = hostOf(url);
@@ -548,6 +558,16 @@
         const checkPlace = inPlaceFirst;
         inPlaceFirst = false;
         if (checkPlace && url && !ns.decisions.samePosting(record.openUrl, url)) return await park("moved_away");
+        // WHERE A POSTING'S APPLY LANDED decides whether the page is trusted at all: a redirect to a host nothing
+        // named is not filled, and its host never joins the run's (the fill, the sign-in and the vouch all follow `hosts`).
+        if (landing) {
+          const allowed = landing;
+          landing = null;
+          const landed = hostOf(url);
+          if (!landed || !(allowed.some((host) => sameSite(host, landed)) || ns.atsHosts.isKnown(landed))) {
+            return await park("moved_away");
+          }
+        }
         if (arrived) {
           navigated = false;
           await noteHost(url);
@@ -640,12 +660,17 @@
           const mine = sameSite(record.hosts.at(-1), hostOf(record.openUrl)) && sameSite(summary.host, hostOf(record.openUrl));
           // ... or the employer's own career site (a page the run reached) whose Apply leads to the link the run was queued
           // for or to a known applicant system: the press navigates this tab there (page-reader.js).
+          // The posting's own Apply link, kept so a tab the user opens from it can be told from any other.
+          if ((summary.applyHref ?? null) !== (record.applyHref ?? null)) await update({ applyHref: summary.applyHref ?? null });
           if (!mayApply || !summary.applyId || !(mine || leadsOn(record, summary))) return await park("posting");
           await update({ status: "advancing" });
-          const outcome = await press(frame, summary.applyId, fingerprint(url, summary), { apply: true });
+          const outcome = await press(frame, summary.applyId, fingerprint(url, summary),
+            { apply: true, ...(summary.applyHref ? { href: summary.applyHref } : {}) });
           if (outcome !== "moved") return await park(outcome === "refused" ? "posting" : "no_change");
           moved();
           chooserNext = true;
+          // Where the press may land: the link's own host, the queued link's host, or a known applicant system.
+          landing = [hostOf(summary.applyHref), hostOf(record.openUrl)].filter(Boolean);
           continue;
         }
 
@@ -665,9 +690,15 @@
         // A PAGE IS PRESSED ONLY IF IT IS THE PAGE THIS RUN FILLED. A press the page refused, or a repair, can end
         // with the site on its next page; the page in hand is not the one that was filled, so the press that
         // brought it here counts as a step and the page is filled before anything else is done on it.
-        if (pageFilled && filledPage && (filledPage.where !== thisPage.where || filledPage.key !== thisPage.key)) {
+        if (pageFilled && filledPage && (pathOf(filledPage.where) !== pathOf(thisPage.where) || filledPage.key !== thisPage.key)) {
+          // Bounded like any step: a site that keeps rewriting its address cannot walk the run through forty fills.
+          if (record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
+          if (record.seen.some((one) => one.startsWith(`${thisPage.where}\n${thisPage.key}\n`))) return await park("loop");
           await update({ step: record.step + 1, seen: [...record.seen, filledPage.here ?? `${filledPage.where}\n${filledPage.key}`] });
           moved();
+        } else if (pageFilled && filledPage && filledPage.where !== thisPage.where) {
+          // The same page under a new query string (a session or tracking parameter): still the page that was filled.
+          filledPage.where = thisPage.where;
         }
 
         // form_step | review: fill the page, read it again, then judge it.
@@ -766,7 +797,9 @@
               requiredTried = true;
               await update({ status: "filling" });
               const repaired = await act(deps.fix, record, pending, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
-              if (repaired?.fixed !== true) return await park("open_questions", { open });
+              if (repaired?.fixed !== true) {
+                return await park("open_questions", { open: Array.isArray(repaired?.remaining) ? errorsOpen(repaired.remaining) : open });
+              }
               continue;
             }
           }
@@ -881,7 +914,10 @@
     async function advance(tabId, frameId, id, opts) {
       const apply = opts?.apply === true;
       const chooser = opts?.chooser === true;
-      const frames = await broadcast(tabId, { type: "page_advance", id, ...(apply ? { apply: true } : {}), ...(chooser ? { chooser: true } : {}) }, frameId);
+      // The Apply press names the address it was judged on: the page refuses a link rewritten since the read.
+      const href = apply && typeof opts.href === "string" ? opts.href : null;
+      const frames = await broadcast(tabId, { type: "page_advance", id, ...(apply ? { apply: true } : {}), ...(href ? { href } : {}),
+                                              ...(chooser ? { chooser: true } : {}) }, frameId);
       const answer = (Array.isArray(frames) ? frames : []).find((f) => f.frameId === frameId)?.result;
       return answer?.clicked === true ? { clicked: true } : { clicked: false, why: typeof answer?.why === "string" ? answer.why : "gate" };
     }
@@ -957,5 +993,5 @@
     return { classify, pageErrors, pageRequired, advance, signIn, createAccount, waitForChange };
   }
 
-  ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK, USER_NAVIGATES, LANDED };
+  ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK, USER_NAVIGATES, landedToCheck };
 })();

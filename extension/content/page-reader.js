@@ -1001,13 +1001,15 @@
    * control, or not plainly worded as Apply), "would_submit" (it is not a real same-tab link: a button, or a link
    * that goes nowhere or opens a new tab), "not_posting" (the page has fields: it is a form, and
    * its Apply-worded button is a Submit), "submit" (the vendor's table calls it one). */
-  function pressApply(id) {
+  function pressApply(id, href = null) {
     const el = typeof id === "string" && id ? document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`) : null;
     if (!el || !el.matches(`a[href], ${BUTTONS}`)) return { clicked: false, why: "not_apply" };
     if (ns.fillableControls() > 0) return { clicked: false, why: "not_posting" };
     if (knownOf(el) === "submit" || submitMarked(el)) return { clicked: false, why: "submit" };
     if (!shown(el) || !enabled(el) || !isApply(el)) return { clicked: false, why: "not_apply" };
     if (!applyPressable(el, { blank: true })) return { clicked: false, why: "would_submit" };
+    // The driver judged THIS address (origin and path): a link the page rewrote since the read is not pressed.
+    if (typeof href === "string" && `${el.origin}${el.pathname}` !== href) return { clicked: false, why: "would_submit" };
     // NAVIGATE to the address just checked; do not click. A click runs the link's handlers (an
     // onclick quick-apply, an SPA router), which are page script that can send the application.
     // `el.href` is the parsed, absolute http(s) address `applyPressable` approved.
@@ -1033,9 +1035,9 @@
    * "not_next" (no such tagged button, or it is hidden, disabled or not worded as a Next).
    * `{apply: true}` is the posting's Apply instead (pressApply), and `{chooser: true}` the start chooser's one link
    * (pressChooser); each does only its own thing, and both together do nothing. */
-  function advance(id, { apply = false, chooser = false } = {}) {
+  function advance(id, { apply = false, chooser = false, href = null } = {}) {
     if (apply === true && chooser === true) return { clicked: false, why: "not_next" };
-    if (apply === true) return pressApply(id);
+    if (apply === true) return pressApply(id, href);
     if (chooser === true) return pressChooser(id);
     if (typeof id !== "string" || !id) return { clicked: false, why: "not_next" };
     const el = document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`);

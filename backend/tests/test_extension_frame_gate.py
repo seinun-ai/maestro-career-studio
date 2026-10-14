@@ -147,7 +147,7 @@ ns.pageReader = {
   fieldWords: (el) => "Upload", uploadTag: (el) => "t-1",
   pageErrors: () => { calls.push(["pageReader.pageErrors"]); return { count: 1, items: [{ label: "City", target: "f-1", kind: "field" }] }; },
   // The Apply flag rides as a third element only when it was true: a plain Next click never carries it.
-  advance: (id, opts) => { calls.push(opts?.apply === true ? ["pageReader.advance", id, "apply"] : ["pageReader.advance", id]); return { clicked: true }; },
+  advance: (id, opts) => { calls.push(opts?.apply === true ? ["pageReader.advance", id, "apply", ...(opts.href ? [opts.href] : [])] : ["pageReader.advance", id]); return { clicked: true }; },
   // Records WHICH keys arrived and whether each value is the message's own, never the values: the
   // secret must not ride out in a call log. `spec.signInThrows` models page script throwing it.
   signIn: (a) => {
@@ -181,6 +181,7 @@ main(async () => {
     ...(spec.expect === null ? {} : { expect: spec.expect }),
     ...(spec.peek ? { peek: true } : {}),
     ...(spec.apply === undefined ? {} : { apply: spec.apply }),
+    ...(spec.href === undefined ? {} : { href: spec.href }),
     ...(spec.readOnly ? { readOnly: true } : {}),
     // The origin the panel vouches for (`withFlowOrigin`), only when stated.
     ...(spec.flowOrigin === undefined ? {} : { flowOrigin: spec.flowOrigin }),
@@ -192,10 +193,12 @@ main(async () => {
 
 def _run(tmp_path, *, type_, top_frame, form=False, detect_throws=False, file_inputs=(),
          expect=None, peek=False, flow_origin=None, origin=None, controls=None,
-         read_only=False, apply=None):
+         read_only=False, apply=None, href=None):
     extra = {}
     if apply is not None:
         extra["apply"] = apply
+    if href is not None:
+        extra["href"] = href
     if controls is not None:
         extra["controls"] = list(controls)
     if flow_origin is not None:
@@ -645,6 +648,17 @@ def test_page_errors_reads_the_page_and_forwards_nothing(tmp_path):
 ])
 def test_page_advance_forwards_the_apply_flag_only_when_it_is_exactly_true(tmp_path, apply, expected):
     out = _run(tmp_path, type_="page_advance", top_frame=True, apply=apply)
+    assert out["calls"] == expected
+
+
+@pytest.mark.parametrize("href, apply, expected", [
+    ("https://x.test/apply", True, [["pageReader.advance", "tag-3", "apply", "https://x.test/apply"]]),
+    (None, True, [["pageReader.advance", "tag-3", "apply"]]),
+    (7, True, [["pageReader.advance", "tag-3", "apply"]]),
+    ("https://x.test/apply", None, [["pageReader.advance", "tag-3"]]),   # an address rides the Apply call alone
+])
+def test_page_advance_forwards_the_address_the_apply_was_judged_on_only_with_the_apply_flag(tmp_path, href, apply, expected):
+    out = _run(tmp_path, type_="page_advance", top_frame=True, apply=apply, href=href)
     assert out["calls"] == expected
 
 

@@ -1550,6 +1550,24 @@ def test_a_new_tab_apply_to_the_same_site_is_pressable_and_one_to_any_other_site
     assert summary(page)["applyId"]
 
 
+def test_an_apply_press_that_names_the_address_it_was_judged_on_is_refused_if_the_link_now_goes_elsewhere(page):
+    _serve_career_page(page, fixture_html("posting_blank_apply.html"))
+    s = summary(page)
+    refuse = f"(id) => {READER}.advance(id, {{apply: true, href: 'https://acme.wd1.myworkdayjobs.com/External/job/Remote/Other_R7/apply'}})"
+    assert page.evaluate(refuse, s["applyId"]) == {"clicked": False, "why": "would_submit"}
+    assert page.url == CAREER_URL
+    page.route(re.compile(r"https://acme\.wd1\.myworkdayjobs\.com/.*"), lambda route: route.fulfill(
+        status=200, content_type="text/html", body="<p>landed</p>"))
+    with page.expect_navigation() as nav:
+        try:
+            result = page.evaluate(f"(id) => {READER}.advance(id, {{apply: true, href: '{WORKDAY_APPLY}'}})", s["applyId"])
+        except PlaywrightError as err:
+            if "context was destroyed" not in str(err):
+                raise
+            result = {"clicked": True}
+    assert result == {"clicked": True} and nav.value.url.startswith(WORKDAY_APPLY)
+
+
 def test_the_press_re_checks_a_new_tab_apply_whose_address_the_page_rewrites(page):
     _serve_career_page(page, fixture_html("posting_blank_apply.html"))
     apply_id = summary(page)["applyId"]

@@ -792,7 +792,8 @@
       : { count: 0, items: [] }),
     page_uploads: (msg) => (frameMayReceiveUserData(msg) ? pageUploads() : []),
     page_advance: (msg) => (frameMayReceiveUserData(msg)
-      ? ns.pageReader.advance(msg.id, { apply: msg.apply === true, chooser: msg.chooser === true })
+      ? ns.pageReader.advance(msg.id, { apply: msg.apply === true, chooser: msg.chooser === true,
+          ...(msg.apply === true && typeof msg.href === "string" ? { href: msg.href } : {}) })
       : { clicked: false, why: "gate" }),
     // The saved login: TOP frame only (a subframe is refused, not asked), via panel_frame0 alone.
     // A fixed word on any failure: an error's text could be the password.
