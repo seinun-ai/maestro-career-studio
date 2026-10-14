@@ -30,6 +30,21 @@ AUTOFILL_FILE = "autofill.json"
 _TYPED_WORK_AUTH_KEYS = frozenset(WorkAuth.model_fields)
 
 
+# Veteran status was "not a PROTECTED veteran" / "a veteran", and is now one Yes/No question (owner,
+# 2026-10-14). The profile is a JSON text setting, so the old values are mapped when it is READ, never
+# migrated: the row, its file mirror, a profile synced from a peer that has not updated and an older
+# Settings page's save all land in the same text, and every reader gets the new words. What is stored
+# stays as written until the user saves, so a peer that has not updated reads its own old values.
+_LEGACY_VETERAN = {"not_veteran": "no", "veteran": "yes"}
+
+
+def _with_current_words(data: dict[str, Any]) -> dict[str, Any]:
+    eeo = data.get("eeo")
+    if isinstance(eeo, dict) and isinstance(old := eeo.get("veteran_status"), str) and old in _LEGACY_VETERAN:
+        return {**data, "eeo": {**eeo, "veteran_status": _LEGACY_VETERAN[old]}}
+    return data
+
+
 def _parse_profile(raw: str) -> dict[str, Any]:
     if not raw.strip():
         return {}
@@ -37,7 +52,7 @@ def _parse_profile(raw: str) -> dict[str, Any]:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    return data if isinstance(data, dict) else {}
+    return _with_current_words(data) if isinstance(data, dict) else {}
 
 
 def get_profile(session: Session | None = None) -> dict[str, Any]:

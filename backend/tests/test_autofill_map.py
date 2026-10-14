@@ -545,16 +545,18 @@ def test_the_phone_and_address_facts_are_offered_as_what_they_are_not(db_session
 def test_the_veteran_fact_is_offered_for_a_military_question(db_session, monkeypatch):
     """Live CarMax Workday (2026-09-30) asked "Military Status:" and /map tied
     it to no fact: the veteran fact says it answers a military
-    SELF-IDENTIFICATION question too, and never a service question (a
-    non-protected veteran's No to "Have you served?" would be false). It
-    stays a proposition with a direction."""
-    facts = autofill_catalog.build({"eeo": {"veteran_status": "not_veteran"}}, [], [])
+    SELF-IDENTIFICATION question too (a No settles it; a Yes alone does not say
+    which protected class), and never a branch, discharge or relative's service
+    question. It stays a proposition with a direction."""
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
     calls = fake_jev(monkeypatch)
     autofill_map.map_fields([field("v", "Military Status:", "popup")], facts, db_session,
                             eeo_consented=True, low_stakes=False)
     described = calls[0]["questions"]["v"]["criteria"]["eeo.veteran_status"]
-    assert described.startswith("is a protected veteran") and "military self-identification" in described
-    for never in ("ever served or serves now", "a branch", "a discharge", "a relative's service"):
+    assert described.startswith("is a veteran") and "military self-identification" in described
+    assert "a No also settles every option that denies being a veteran or a protected veteran" in described
+    assert "a Yes alone never says which protected class applies" in described
+    for never in ("current service", "a branch", "a discharge", "a relative's service"):
         assert never in described, never
     assert "not" not in described
 

@@ -11,7 +11,7 @@ from app.services import autofill_slots
 PROFILE = {
     "personal": {"first_name": "Sample", "city": "Springfield"},
     "work_auth": {"status": "stem_opt", "sponsorship_future": True},
-    "eeo": {"veteran_status": "not_veteran"},
+    "eeo": {"veteran_status": "no"},
     "preferences": {"willing_to_relocate": True, "how_heard": "LinkedIn"},
     "education": [
         {"school": "State University", "degree": "Master's", "discipline": "Business Analytics", "end_year": "2024"},
@@ -52,7 +52,7 @@ def test_an_empty_resume_field_is_not_a_fact():
 def test_codes_become_words_a_form_would_show():
     f = facts()
     assert f["work_auth.status"].value == "F-1 STEM OPT extension" and f["work_auth.status"].policy == "exact"
-    assert f["eeo.veteran_status"].value == "No, I am not a protected veteran"
+    assert f["eeo.veteran_status"].value == "No, I am not a veteran"
     assert f["work_auth.sponsorship_future"].value == "Yes"
 
 
@@ -110,7 +110,7 @@ def test_exact_slots_are_described_in_words_a_form_uses():
                       "countries_authorized": ["United States"]},
         "eligibility": {"over_18": True, "previously_employed_here": False, "non_compete": False},
         "eeo": {"gender": "female", "race_ethnicity": ["Asian"], "hispanic_latino": False,
-                "veteran_status": "not_veteran", "disability_status": "no"},
+                "veteran_status": "no", "disability_status": "no"},
     }, [], [])
     assert f["work_auth.sponsorship_now"].describe == "needs employer visa sponsorship now (yes/no)"
     assert f["work_auth.authorized_now"].describe == "legally authorized to work in the country now (yes/no)"
@@ -453,16 +453,18 @@ def test_a_yes_or_no_prefix_is_capitalised_and_other_words_are_left():
 
 
 def test_veteran_status_reads_as_a_yes_or_no_and_still_names_its_option():
-    f = cat.build({"eeo": {"veteran_status": "not_veteran"}}, [], [])["eeo.veteran_status"]
-    assert (f.value, f.yes_no) == ("No, I am not a protected veteran", True)
-    assert cat.build({"eeo": {"veteran_status": "veteran"}}, [], [])["eeo.veteran_status"].value \
-        == "Yes, I am a protected veteran"
+    f = cat.build({"eeo": {"veteran_status": "no"}}, [], [])["eeo.veteran_status"]
+    assert (f.value, f.yes_no) == ("No, I am not a veteran", True)
+    assert cat.build({"eeo": {"veteran_status": "yes"}}, [], [])["eeo.veteran_status"].value \
+        == "Yes, I am a veteran"
+    assert cat.build({"eeo": {"veteran_status": "decline"}}, [], [])["eeo.veteran_status"].value \
+        == "I don't wish to answer"
 
 
 # The words whose answer is meant as a Yes or a No: every other status word
 # must not start like one, or it would be read reversed.
 INTENDED_YES_NO = {("eeo.disability_status", "no"), ("eeo.disability_status", "yes"),
-                   ("eeo.veteran_status", "not_veteran"), ("eeo.veteran_status", "veteran"),
+                   ("eeo.veteran_status", "no"), ("eeo.veteran_status", "yes"),
                    ("eeo.hispanic_latino", "yes"), ("eeo.hispanic_latino", "no")}
 
 
@@ -488,7 +490,7 @@ def test_every_description_a_yes_or_no_fact_carries_has_a_direction():
     profile = {"work_auth": {"status": "citizen", "authorized_now": True, "sponsorship_now": False,
                              "sponsorship_future": False},
                "eligibility": {"over_18": True, "previously_employed_here": False, "non_compete": False},
-               "eeo": {"hispanic_latino": "no", "disability_status": "no", "veteran_status": "not_veteran"},
+               "eeo": {"hispanic_latino": "no", "disability_status": "no", "veteran_status": "no"},
                "languages": [{"language": "Norwegian", "native": True, "fluent": True}],
                "preferences": {"willing_to_relocate": True}}
     built = cat.build(profile, EMPLOYMENT, [])
@@ -499,9 +501,10 @@ def test_every_description_a_yes_or_no_fact_carries_has_a_direction():
         assert not re.search(r"\b(status|type|kind)\b", fact.describe, re.IGNORECASE), (slot, fact.describe)
     assert built["eeo.disability_status"].describe == "has a disability (voluntary self-identification)"
     assert built["eeo.veteran_status"].describe == (
-        "is a protected veteran (also answers a military self-identification question whose options are "
-        "protected-veteran classifications; never whether the applicant ever served or serves now, a branch, a "
-        "discharge, or a relative's service; voluntary self-identification)")
+        "is a veteran (voluntary self-identification; a No also settles every option that denies being a "
+        "veteran or a protected veteran, and a military self-identification question whose options are "
+        "protected-veteran classifications; a Yes alone never says which protected class applies, and never "
+        "answers a branch, a discharge, current service or a relative's service)")
     assert built["experience.0.current"].describe == "experience entry 1: is the applicant's current job (yes/no)"
 
 

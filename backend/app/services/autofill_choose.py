@@ -203,7 +203,7 @@ def _choose_with_jev(
         if value is None:
             fallback.append(f)
         elif not f.options and policy == "exact" and slot is not None:
-            # Exact slots store codes ("stem_opt", "not_veteran"): typed into a
+            # Exact slots store codes ("stem_opt", "decline"): typed into a
             # text box verbatim they are wrong. The fast model words them.
             fallback.append(f)
         elif not f.options:

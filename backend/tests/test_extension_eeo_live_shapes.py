@@ -5,6 +5,8 @@ profile that answers every one of these questions. Two of them left the field
 blank; the first stated the OPPOSITE of the user's answer.
 """
 
+import pytest
+
 from tests.extension_harness import outcome_for, run_profile_fill
 
 
@@ -38,7 +40,14 @@ def _run(tmp_path, label, options, eeo):
     )
 
 
-def test_not_a_veteran_is_never_answered_as_a_veteran(tmp_path):
+# "Are you a veteran?" is yes / no / decline (owner, 2026-10-14); a profile cached before that, or saved
+# by an older panel, still says veteran / not_veteran, and means the same.
+_NO = ["no", "not_veteran"]
+_YES = ["yes", "veteran"]
+
+
+@pytest.mark.parametrize("answer", _NO)
+def test_not_a_veteran_is_never_answered_as_a_veteran(tmp_path, answer):
     """The worst defect in this round, and the reason the patterns are anchored.
 
     `/not a protected veteran/` matched "I identify as a veteran, just not a
@@ -48,17 +57,18 @@ def test_not_a_veteran_is_never_answered_as_a_veteran(tmp_path):
     protected-class question, on a form the employer keeps.
     """
     label = "veterans status: select one required | personalinfous--veteranstatus"
-    result = _run(tmp_path, label, _VETERAN_OPTIONS, {"veteran_status": "not_veteran"})
+    result = _run(tmp_path, label, _VETERAN_OPTIONS, {"veteran_status": answer})
 
     assert result["values"][label] == "I am not a veteran"
     assert "identify as a veteran" not in result["values"][label]
     assert outcome_for(result, label) == "filled"
 
 
-def test_a_veteran_still_matches_an_affirmative(tmp_path):
+@pytest.mark.parametrize("answer", _YES)
+def test_a_veteran_still_matches_an_affirmative(tmp_path, answer):
     """Anchoring the negatives must not cost the positive answer."""
     label = "veterans status: select one required | personalinfous--veteranstatus"
-    result = _run(tmp_path, label, _VETERAN_OPTIONS, {"veteran_status": "veteran"})
+    result = _run(tmp_path, label, _VETERAN_OPTIONS, {"veteran_status": answer})
     assert "identify as" in result["values"][label]
 
 

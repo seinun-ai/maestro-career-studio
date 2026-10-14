@@ -843,7 +843,10 @@ def get_autofill_profile(application_id: str | None = None, base: str | None = N
     (`profile.eeo`) are returned ONLY when Profile standing consent is active
     (`eeo_consent.enabled`) and are stripped otherwise; when returned they are
     the user's stored answers, intended for Playwright/agent fill verbatim with
-    no inference or model-authored values. `eeo.gender` is male, female,
+    no inference or model-authored values. `eeo.veteran_status` is no, yes
+    or decline: one question, "Are you a veteran?" (a no also answers "not a
+    protected veteran"; a yes alone never says which protected class applies,
+    so leave a protected-class list to the user). `eeo.gender` is male, female,
     non_binary, self_describe or decline; with self_describe,
     `eeo.gender_self_describe` is the user's own words for a form's
     self-describe box. A form lacking a matching option is left to the user.

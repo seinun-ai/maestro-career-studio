@@ -95,8 +95,10 @@
           : value === "no" ? optionWords.disability_no : optionWords.decline;
       }
       if (kind === "veteran") {
-        return value === "veteran" ? optionWords.veteran
-          : value === "not_veteran" ? optionWords.not_veteran : optionWords.decline;
+        // "Are you a veteran?" is one Yes/No (yes / no / decline). The old values (a profile cached
+        // before the change, or saved by an older panel) are read the same: not_veteran is a No.
+        return value === "yes" || value === "veteran" ? optionWords.veteran
+          : value === "no" || value === "not_veteran" ? optionWords.not_veteran : optionWords.decline;
       }
       if (kind === "gender") return GENDER_VALUES.has(value) ? optionWords[value] : [];
       return null;

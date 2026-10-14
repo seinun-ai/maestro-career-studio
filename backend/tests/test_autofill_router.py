@@ -232,7 +232,7 @@ def test_context_includes_eeo_consent_metadata_and_keeps_profile_eeo_values(
     autofill_profile.set_profile(
         {
             "personal": {"first_name": "Sample"},
-            "eeo": {"gender": "female", "veteran_status": "not_veteran"},
+            "eeo": {"gender": "female", "veteran_status": "no"},
         },
         db_session,
     )
@@ -282,7 +282,7 @@ def test_context_withholds_eeo_values_without_consent(db_session, tmp_path, monk
     autofill_profile.set_profile(
         {
             "personal": {"first_name": "Sample"},
-            "eeo": {"gender": "female", "veteran_status": "not_veteran"},
+            "eeo": {"gender": "female", "veteran_status": "no"},
         },
         db_session,
     )

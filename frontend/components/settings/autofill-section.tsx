@@ -153,12 +153,15 @@ const GROUPS: GroupDef[] = [
     fields: [
       {
         key: "veteran_status",
-        label: "Veteran status",
+        label: "Are you a veteran?",
         type: "select",
+        // One Yes/No. A "No" also answers a form's "not a protected veteran" option; a "Yes" alone never
+        // says which protected class applies, so the Companion leaves that list to you. The backend
+        // reads the old stored values (not_veteran, veteran) as no and yes.
         options: [
-          { value: "not_veteran", label: "I am not a protected veteran" },
-          { value: "veteran", label: "I identify as a veteran" },
-          { value: "decline", label: "Decline to answer" },
+          { value: "no", label: "No, I am not a veteran" },
+          { value: "yes", label: "Yes, I am a veteran" },
+          { value: "decline", label: "I don't wish to answer" },
         ],
       },
       {

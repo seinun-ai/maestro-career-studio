@@ -384,6 +384,36 @@ def _years_first(fields: list[PickField], facts: dict[str, Fact], hint: JobHint 
     return out | {fid: p if p.oids else p.model_copy(update={"reason": "asked"}) for fid, p in picked.items()}
 
 
+# The veteran answer is a Yes/No ("Are you a veteran?", owner 2026-10-14): a No settles every option that
+# says "not a (protected) veteran", but never one that claims veteran status (an option that opens "I am a
+# veteran, but not a protected veteran" does, and it contains the words "not a protected veteran"); a Yes
+# claims nothing about a protected class, so an option that names one is the user's. Anchored as the
+# Companion's own option words are (content/eeo.js).
+VETERAN_SLOT = "eeo.veteran_status"
+_CLAIMS_VETERAN = re.compile(r"^\W*(?:i\s+(?:am|was)\s+(?:a\s+)?(?:protected\s+)?veteran\b|i\s+identify\s+as\b)",
+                             re.IGNORECASE)
+_NAMES_PROTECTED_CLASS = re.compile(r"\bprotected\b|\bclassifications?\b", re.IGNORECASE)
+
+
+def _veteran_claims(fields: list[PickField], facts: dict[str, Fact], out: dict[str, Picked]) -> None:
+    """Take back a veteran pick that says more than the saved answer does: after a No, an option that
+    claims veteran status; after a Yes, an option that names a protected class. Left to the user."""
+    fact = facts.get(VETERAN_SLOT)
+    if fact is None or not isinstance(fact.value, str):
+        return
+    said = yes_no_word(fact.value)
+    wrong = {"No": _CLAIMS_VETERAN, "Yes": _NAMES_PROTECTED_CLASS}.get(said.split(",", 1)[0])
+    if wrong is None:
+        return
+    for f in fields:
+        picked = out.get(f.fid)
+        if f.slot != VETERAN_SLOT or picked is None or not picked.oids:
+            continue
+        text = next((o.text for o in f.options if o.oid == picked.oids[0]), "")
+        if wrong.search(text):
+            out[f.fid] = picked.model_copy(update={"oids": [], "reason": "abstained"})
+
+
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> dict[str, Picked]:
     budget = Budget()
@@ -434,5 +464,6 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
         out |= _years_first(years, facts, hint, session, budget)
     if reasoned:
         out |= reason(reasoned, facts, session, budget, hint.company if hint else None, level)
+    _veteran_claims(fields, facts, out)
     _with_polarity(out, ways)
     return out

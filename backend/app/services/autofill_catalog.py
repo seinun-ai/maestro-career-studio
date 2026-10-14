@@ -39,7 +39,8 @@ _WORDS: dict[str, dict[str, str]] = {
         "other_visa": "Another visa", "not_authorized": "Not authorized to work",
     },
     # Worded as a Yes or a No (`is_yes_no`), so a reversed question is read by its meaning.
-    "eeo.veteran_status": {"not_veteran": "No, I am not a protected veteran", "veteran": "Yes, I am a protected veteran",
+    # One Yes/No question (owner, 2026-10-14). The profile reader maps the old values (autofill_profile).
+    "eeo.veteran_status": {"no": "No, I am not a veteran", "yes": "Yes, I am a veteran",
                            "decline": "I don't wish to answer"},
     "eeo.disability_status": {"no": "No, I do not have a disability", "yes": "Yes, I have a disability",
                               "decline": "I do not want to answer"},
@@ -70,13 +71,17 @@ _DESCRIBES: dict[str, str] = {
     # A Yes/No answer's description is a proposition WITH a direction: polarity
     # (autofill_polarity) judges a question against it, and "disability status"
     # cannot say whether "are you free of any disability?" asks it or its opposite.
-    # "Military Status:" (live Workday) asks it too, and found no fact without the
-    # word; but only a self-identification over protected-veteran classes: a
-    # non-protected veteran's No to "Have you served?" would be false.
-    "eeo.veteran_status": ("is a protected veteran (also answers a military self-identification question whose "
-                           "options are protected-veteran classifications; never whether the applicant ever served "
-                           "or serves now, a branch, a discharge, or a relative's service; voluntary "
-                           "self-identification)"),
+    # "Military Status:" (live Workday) asks it too. The answer is "Are you a
+    # veteran?" (owner, 2026-10-14): a No settles every "not a protected veteran" and
+    # "I am not a veteran" option, because a person who is no veteran is no protected
+    # one; a Yes alone does not (it never says which protected class, if any), so a
+    # classification question with a Yes is asked (autofill_pick._veteran_claims).
+    # No negation word in it: a description that denies is read as the fact being false.
+    "eeo.veteran_status": ("is a veteran (voluntary self-identification; a No also settles every option that "
+                           "denies being a veteran or a protected veteran, and a military self-identification "
+                           "question whose options are protected-veteran classifications; a Yes alone never says "
+                           "which protected class applies, and never answers a branch, a discharge, current "
+                           "service or a relative's service)"),
     "eeo.disability_status": "has a disability (voluntary self-identification)",
     # A form asks for it as "salary requirements" or "compensation" as often
     # as "desired salary": one fact, described in each wording.

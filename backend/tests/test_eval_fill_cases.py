@@ -411,7 +411,7 @@ def test_the_reversed_wording_cases_are_labelled():
 EVERY_SLOT = {
     "work_auth": {"status": "h1b", "authorized_now": True, "sponsorship_now": False, "sponsorship_future": False},
     "eligibility": {"over_18": True, "non_compete": False, "previously_employed_here": False},
-    "eeo": {"gender": "male", "race_ethnicity": ["Asian"], "hispanic_latino": "no", "veteran_status": "not_veteran",
+    "eeo": {"gender": "male", "race_ethnicity": ["Asian"], "hispanic_latino": "no", "veteran_status": "no",
             "disability_status": "no"},
     "preferences": {"how_heard": "Referral", "willing_to_relocate": True},
     "personal": {"country": "United States", "state": "Texas"},
