@@ -141,8 +141,8 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def summary(session: Session, since: datetime | None = None) -> dict[str, Any]:
-    """The arrivals strip: new since `since` (default the last day), ready to apply, needs you,
-    applied this week (submitted by an agent or applied by the user)."""
+    """The inbox's summary line: new since `since` (default the last day), ready to apply, queued
+    (every accepted row), needs you, applied this week (submitted by an agent or applied by the user)."""
     now = utcnow()
     since = _as_utc(since) if since else now - NEW_WINDOW
     queued = session.execute(
@@ -159,6 +159,7 @@ def summary(session: Session, since: datetime | None = None) -> dict[str, Any]:
         "since": since,
         "new": _count(session, ApplicationProposal.created_at > since),
         "ready": sum(is_ready(r) for r in for_proposals(session, [tuple(r) for r in queued]).values()),
+        "queued": len(queued),
         "needs_you": _count(session, ApplicationProposal.status.in_(NEEDS_YOU)),
         "applied_this_week": _count(session, applied, ApplicationProposal.updated_at >= now - WEEK),
     }

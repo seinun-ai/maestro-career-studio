@@ -2069,6 +2069,8 @@ export interface ProposalSummary {
   since: string;
   new: number;
   ready: number;
+  /** Every accepted row (the Queued lane's count). */
+  queued: number;
   needs_you: number;
   applied_this_week: number;
 }

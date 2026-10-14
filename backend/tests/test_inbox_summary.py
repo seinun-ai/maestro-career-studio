@@ -50,7 +50,7 @@ def _summary(since):
     response = client.get("/api/proposals/summary", params={"since": since.isoformat()})
     assert response.status_code == 200, response.text
     body = response.json()
-    return {k: body[k] for k in ("new", "ready", "needs_you", "applied_this_week")}
+    return {k: body[k] for k in ("new", "ready", "queued", "needs_you", "applied_this_week")}
 
 
 def test_the_summary_counts_new_needs_you_and_applied_this_week(db_session):
@@ -65,7 +65,7 @@ def test_the_summary_counts_new_needs_you_and_applied_this_week(db_session):
     _prop(db_session, "submitted", updated_at=utcnow() - timedelta(days=8))
     after = _summary(since)
     assert {k: after[k] - before[k] for k in after} == {
-        "new": 7, "ready": 0, "needs_you": 1, "applied_this_week": 2}
+        "new": 7, "ready": 0, "queued": 1, "needs_you": 1, "applied_this_week": 2}
 
 
 def test_the_summary_defaults_to_the_last_day():
@@ -73,7 +73,7 @@ def test_the_summary_defaults_to_the_last_day():
     response = client.get("/api/proposals/summary")
     assert response.status_code == 200, response.text
     body = response.json()
-    assert set(body) == {"since", "new", "ready", "needs_you", "applied_this_week"}
+    assert set(body) == {"since", "new", "ready", "queued", "needs_you", "applied_this_week"}
     since = datetime.fromisoformat(body["since"])
     assert before - timedelta(hours=24) <= since <= utcnow() - timedelta(hours=24)
 
@@ -92,6 +92,18 @@ def test_ready_counts_only_queued_rows_with_a_pdf_and_no_answer_flags(db_session
     }]))
     db_session.commit()
     assert _summary(since)["ready"] - before["ready"] == 1
+
+
+def test_queued_counts_every_accepted_row_ready_or_not(db_session):
+    """The inbox's one summary line says how many are queued: all of the Queued lane, not just the ready ones."""
+    since = utcnow() - timedelta(minutes=5)
+    before = _summary(since)
+    _link_pdf(db_session, _prop(db_session, "accepted"))
+    _prop(db_session, "accepted")
+    _prop(db_session, "approved")
+    after = _summary(since)
+    assert after["queued"] - before["queued"] == 2
+    assert after["ready"] - before["ready"] == 1
 
 
 @pytest.mark.parametrize("status", ["needs_decision", "needs_human"])

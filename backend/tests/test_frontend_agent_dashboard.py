@@ -32,15 +32,22 @@ def test_the_page_renders_the_dashboard_in_order():
     assert "<ProposalsSection since={since} />" in _DASH
 
 
-def test_the_strip_reads_the_summary_and_names_its_tiles():
+def test_the_strip_reads_the_summary_and_is_one_line():
     assert "/api/proposals/summary" in _STRIP
     assert '["proposals", "summary", since]' in _STRIP  # refetches with every inbox action
-    for words in ("New since your last visit", "Ready to apply", "Needs you", "Applied this week"):
-        assert words in _STRIP
+    assert "summaryParts(data)" in _STRIP and "Nothing waiting" in _STRIP
+    for tile in ("StatTile", "grid-cols-4", "New since your last visit", "Ready to apply"):
+        assert tile not in _STRIP
     assert "scrollIntoView" in _STRIP
     assert "enabled: since != null" in _STRIP
-    assert "disabled={!count}" in _STRIP
     assert "focus({ preventScroll: true })" in _STRIP
+    # Counts that have not loaded claim nothing.
+    assert "if (!data) return null;" in _STRIP
+
+
+def test_the_summary_line_node():
+    result = run_node_test("lib/inbox-summary.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_recent_runs_reads_latest_and_fails_quietly():
@@ -79,7 +86,7 @@ def test_history_jump_opens_history_synchronously():
 
 def test_history_jump_opens_before_the_strip_scrolls():
     assert _STRIP.index("onJump?.(anchor)") < _STRIP.index("scrollIntoView")
-    assert "jumpTo(tile.anchor, onJump)" in _STRIP
+    assert "jumpTo(part.anchor, onJump)" in _STRIP
 
 
 def test_history_state_is_shared_and_accessibly_named():
@@ -94,16 +101,9 @@ def test_lane_targets_clear_the_sticky_toolbar():
     assert "tall:scroll-mt-28" in history.split('className="', 1)[1].split('"', 1)[0]
 
 
-def test_tiles_show_disabled_state_and_use_the_button_focus_ring():
-    for cls in ("disabled:opacity-50", "disabled:[&_p]:text-muted-foreground",
-                "outline-none", "border", "border-transparent", "focus-visible:border-ring",
-                "focus-visible:ring-3", "focus-visible:ring-ring/50"):
+def test_summary_parts_are_buttons_with_a_focus_ring_and_long_run_text_wraps():
+    for cls in ("outline-none", "focus-visible:ring-3", "focus-visible:ring-ring", "min-w-0", "flex-wrap"):
         assert cls in _STRIP
-
-
-def test_dashboard_tiles_use_the_shared_pattern_and_long_run_text_wraps():
-    assert "<StatTile" in _STRIP
-    assert "grid-cols-4" in _STRIP and "min-w-0" in _STRIP
     assert "min-w-0" in _DASH
     assert "whitespace-pre-wrap" in _RUNS
     assert "wrap-anywhere" in _RUNS

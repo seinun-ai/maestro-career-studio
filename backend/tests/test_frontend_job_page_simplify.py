@@ -102,3 +102,16 @@ def test_the_proposal_card_mounts_only_when_it_carries_something():
 
 def test_expires_shows_only_while_the_proposal_can_still_expire():
     assert "data.expires_at && proposalCanExpire(data.status)" in _PANEL
+
+
+# ── B1: one summary line instead of four tiles ──────────────────────────────
+
+_STRIP = _read("components/proposals/arrivals-strip.tsx")
+_SUMMARY_LIB = _read("lib/inbox-summary.ts")
+
+
+def test_the_inbox_opens_with_one_summary_line_whose_parts_jump_to_their_lanes():
+    for part in ('"inbox-needs-you"', '"inbox-queued"', '"inbox-history"', '"inbox-to-review"'):
+        assert part in _SUMMARY_LIB
+    assert '"needs" : "need"' in _SUMMARY_LIB and "applied this week" in _SUMMARY_LIB and "queued" in _SUMMARY_LIB
+    assert "<button" in _STRIP and "StatTile" not in _STRIP

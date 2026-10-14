@@ -855,7 +855,7 @@ def test_inbox_rows_use_actor_score_and_readiness_visuals():
 
 
 def test_empty_inbox_top_collapses():
-    assert "Nothing new since your last visit" in _read("components/proposals/arrivals-strip.tsx")
+    assert "Nothing waiting" in _read("components/proposals/arrivals-strip.tsx")
 
 
 def test_run_outcome_is_a_glyph_and_a_word():

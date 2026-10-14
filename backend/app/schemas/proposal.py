@@ -120,6 +120,8 @@ class ProposalSummaryResponse(BaseModel):
     since: datetime
     new: int = 0
     ready: int = 0
+    # Every accepted row, ready or not: the Queued lane's count.
+    queued: int = 0
     needs_you: int = 0
     applied_this_week: int = 0
 
