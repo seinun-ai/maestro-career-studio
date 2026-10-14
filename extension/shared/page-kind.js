@@ -10,7 +10,7 @@
  * words match as substrings (a "Reapply", an "Incomplete" and a "Submit_application" all stop),
  * the Next words must be the WHOLE label, and a visible-but-disabled Submit still counts.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageKind = { classify, sortButton, KINDS }.
+ * WHAT THIS FILE PUBLISHES: ns.pageKind = { classify, sortButton, isPlainNext, KINDS }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -23,6 +23,10 @@
   const SUBMIT_WORDS = /submit|appl(y|ying|ies|ied)|\b(re)?(send|sends|sending|sent)\b|finish|finali[sz]|complet|confirm/;
   // Whole label only, after decoration ("Next →", "Continue.") is trimmed off the ends.
   const NEXT_WORDS = /^(next( step)?|continue|save\s*(and|&)\s*(continue|next)|proceed|review( (your )?application)?)$/;
+
+  // The Next wordings that can only mean "the next page of the form": a page with nothing on it to fill
+  // and one of these is a step. A bare "Continue" or "Proceed" there may be the Submit's confirmation.
+  const PLAIN_NEXT = /^(next( step)?|save\s*(and|&)\s*(continue|next))$/;
 
   /** Lower-cased, one space between words, invisible characters gone, camelCase and snake_case split. */
   function normalise(text) {
@@ -42,6 +46,11 @@
     if (known === "submit" || known === "next") return known;
     if (NEXT_WORDS.test(words.replace(/^[^a-z]+|[^a-z]+$/g, ""))) return "next";
     return "unclear";
+  }
+
+  /** Whether a button's text is a plain Next ("Next", "Next step", "Save and continue/next"). */
+  function isPlainNext(text) {
+    return PLAIN_NEXT.test(normalise(text).replace(/^[^a-z]+|[^a-z]+$/g, ""));
   }
 
   function classify(s) {
@@ -64,21 +73,38 @@
     const sorted = (s.buttons ?? []).filter((b) => b.errorLine !== true).map((b) => ({ ...b, sort: sortButton(b) }));
     // A Submit counts when it can be SEEN, enabled or not: it is often disabled until the form
     // validates, and a Next beside it is then not to be trusted. Outside the form counts too.
-    const submit = sorted.some((b) => b.sort === "submit" && b.visible !== false);
-    // The error summary's own buttons ("Errors Found", "Error - <field>") are never the step's Next.
-    const next = sorted.filter((b) => b.sort === "next" && b.visible && b.enabled && b.inForm !== false && b.inErrors !== true);
+    const submits = sorted.filter((b) => b.sort === "submit" && b.visible !== false);
+    // A Next that could be pressed: visible, enabled, and the step's. The error summary's own buttons
+    // ("Errors Found", "Error - <field>") and site chrome (a header Continue) are never the step's Next.
+    const pressable = (b) => b.sort === "next" && b.visible && b.enabled && b.inErrors !== true && b.chrome !== true;
+    // Inside a form first. A page whose fields sit in several <form>s often keeps its footer Next in a
+    // bar outside every one of them (Dayforce): when no Next is inside a form, the ONE pressable Next
+    // anywhere in the application (not in chrome) is the step's.
+    const inForms = sorted.filter((b) => pressable(b) && b.inForm !== false);
+    const next = inForms.length ? inForms : sorted.filter(pressable);
+    // A Next still on the page, enabled or not: the application is not over while one remains.
+    const realNext = sorted.some((b) => b.sort === "next" && b.visible && b.inErrors !== true && b.chrome !== true);
     // `submitSeen`: a Submit the button list could not see (a div role=button, an image input, a
     // plain link, or a control whose id or name says submit). `submitContext`: a dialog or the
     // step's own heading asks about submitting ("Submit your application?"), so its Proceed is the
     // Submit's. Either one stops the run the way a visible Submit button does.
-    if (submit || s.submitSeen || s.submitContext) return { kind: "review" };
+    //
+    // `by` says WHY a page is a review, because only one reason is the end of an application: a real
+    // Submit control (inside the application, not the site's header) and no real Next beside it. The
+    // others are "stop, don't know": a Submit the list could not see, a dialog that asks, several Nexts,
+    // or fields and no Next.
+    if (submits.length || s.submitSeen || s.submitContext) {
+      const own = submits.some((b) => b.chrome !== true);
+      if (own) return { kind: "review", by: realNext ? "several_next" : "submit_button" };
+      return { kind: "review", by: submits.length || s.submitSeen ? "submit_seen" : "submit_context" };
+    }
     // Exactly one Next is the step, even with nothing to fill (an intro or "before you apply"
     // page should advance). Several, or fields with no Next, is not sure: the run stops here.
     if (next.length === 1) return { kind: "form_step", next: next[0].id };
-    if (s.fillable > 0 || next.length > 1) return { kind: "review" };
+    if (s.fillable > 0 || next.length > 1) return { kind: "review", by: next.length > 1 ? "several_next" : "fields_no_next" };
     return { kind: "unknown" };
   }
 
-  ns.pageKind = { classify, sortButton, KINDS: ["captcha", "create_account", "verify", "sign_in",
+  ns.pageKind = { classify, sortButton, isPlainNext, KINDS: ["captcha", "create_account", "verify", "sign_in",
     "confirmation", "closed", "posting", "board_native", "form_step", "review", "unknown"] };
 })();

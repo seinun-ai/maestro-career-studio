@@ -650,7 +650,10 @@
     const wasQuestions = record.status === "parked" && record.why === "open_questions";
     // Resume is this panel taking the record over (it may have been left by another window's panel and
     // moved here): the mark after the user's Submit then has exactly one owner.
-    Object.assign(record, { status: "filling", stopRequested: false, learned: null, lease: state.lease });
+    // A ready tab taken back to a form step is a new fill: it is no longer vouched for as the finished application.
+    const wasReady = record.status === "ready";
+    Object.assign(record, { status: "filling", stopRequested: false, learned: null, lease: state.lease },
+      wasReady ? { readyAt: null, readyBy: null, movedOn: false } : {});
     persist(store);
     try {
       if (wasQuestions) await afterTyping(store, record);

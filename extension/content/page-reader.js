@@ -42,7 +42,7 @@
  * `applyLink` / `applyTarget` read the EMPLOYER's apply link off the posting page the user is
  * viewing (design Part 7): an absolute http(s) link to another site, never fetched, never followed.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, pageErrors, fieldWords, uploadTag, advance, signIn, applyUrl, applyLink, applyTarget }.
+ * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, pageErrors, pageRequired, fieldWords, uploadTag, advance, signIn, applyUrl, applyLink, applyTarget }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -77,6 +77,10 @@
   // a plain link.
   const WIDE_BUTTONS = 'button, input[type="submit"], input[type="button"], input[type="image"], [role="button"], a';
   const SUBMIT_MARK_ATTRS = ["id", "name", "data-qa", "data-automation-id", "formaction"];
+  // A progress stepper lists every step by name, the last often "Submit": those are labels, not controls.
+  // Only a real button inside one still counts.
+  const STEPPER = '[class*="steps" i], [class*="stepper" i], [role="progressbar"]';
+  const REAL_BUTTON = 'button, input[type="submit"], input[type="button"], input[type="image"]';
   // A dialog or step heading that asks about submitting. Narrower than the button sort on purpose:
   // "Apply to Acme" and "Complete your application" head ordinary steps.
   const SUBMIT_HEADING = /\bsubmit(ting|ted)?\b|\bsend (your|my) application\b|\bfinali[sz]e\b/i;
@@ -209,6 +213,7 @@
   const submitSeen = (regions) => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
     if (!shown(el)) return false;
     if (errorLineButton(el, regions)) return false;
+    if (!el.matches(REAL_BUTTON) && el.closest(STEPPER)) return false;
     const extra = !el.matches(BUTTONS);
     if (extra && (inChrome(el) || shownTextOf(el).length > MAX_TEXT)) return false;
     return submitMarked(el) || labels(el).some((text) => sortOf(text) === "submit");
@@ -418,6 +423,19 @@
     return null;
   }
 
+  /** The words a run may say of a field, or UNNAMED when they could carry something of the user's (a
+   * file name, an address, a quoted string, a value the page holds). Held values are read once, lazily. */
+  function labeller() {
+    let held = null;
+    return (name) => {
+      held ??= heldValues();
+      const low = name.toLowerCase();
+      if (!name || FILE_NAME.test(name) || name.includes("@") || QUOTED.test(name)
+        || [...held].some((value) => low.includes(value))) return UNNAMED;
+      return name;
+    };
+  }
+
   /** What the page complains about: `{count, items: [{label, target, kind}], keys}`, one item per field
    * (the summary's line and the field's own mark are one error). A mapped item is worded by the field's
    * own question, never by the error line; an unmapped one by its line's field name, and a name that
@@ -432,14 +450,7 @@
       if (!questions.has(el)) questions.set(el, questionOf(el));
       return questions.get(el);
     };
-    let held = null;
-    const safe = (name) => {
-      held ??= heldValues();
-      const low = name.toLowerCase();
-      if (!name || FILE_NAME.test(name) || name.includes("@") || QUOTED.test(name)
-        || [...held].some((value) => low.includes(value))) return UNNAMED;
-      return name;
-    };
+    const safe = labeller();
 
     const items = [];
     const claimed = new Set();
@@ -480,6 +491,166 @@
 
   const pageErrors = () => {
     const { count, items } = collectErrors(true);
+    return { count, items };
+  };
+
+  // ---------- what the page needs and does not hold yet ----------
+  //
+  // A required control that is still empty. "Required" is read from the page itself, whatever the field
+  // reader makes of the label: the `required` attribute, `aria-required`, the field reader's own verdict,
+  // or a star (or the word) in the text just before the control's own wrapper. "Empty" is what the control
+  // shows: no text, a select on its placeholder, a radio or checkbox group with nothing chosen, an upload
+  // with no file. Words and handles only, never a value.
+
+  const STAR = "*\u2731\u2217\uFF0A\uFE61\u204E";
+  const STAR_MARK = new RegExp(`(?:^|[^\\p{L}\\p{N}])[${STAR}]|[${STAR}](?:$|[^\\p{L}\\p{N}])`, "u");
+  const STAR_CHARS = new RegExp(`[${STAR}]+`, "gu");
+  const REQUIRED_WORD = /\(\s*required\s*\)|[-\u2013\u2014|,:]\s*required\s*:?\s*$|(?:^|\s)required\s*:?\s*$/i;
+  // A standing hint ("Fields marked * are required"), not a mark on the box that follows it.
+  const HINTY = /\b(?:marked|denotes?|indicates?|indicated)\b|^\s*(?:all\s+)?(?:fields?|questions?|items?)\b[^?]*\brequired\b/i;
+  const NOT_A_LABEL = '[role="alert"], [aria-live]:not([aria-live="off"]), [class*="error" i], script, style, template';
+  const HEADINGS = "h1, h2, h3, h4, h5, h6, [role='heading']";
+  const FIELD_BOX = `${CONTROLS}, input[type="file"], button[aria-haspopup]:not([aria-haspopup="false"])`;
+  const MAX_REQUIRED_LABEL = 200;
+  const MAX_CLIMB = 6;
+  const REMOVE_WORD = /\b(?:remove|delete|replace)\b/i;
+
+  /** Whether a label's text says "required": a star, or the word set off or trailing. */
+  const marksRequired = (raw) => {
+    const text = squash(raw);
+    if (!text || text.length > 400 || HINTY.test(text) || errorLineOf(text) !== null) return false;
+    return STAR_MARK.test(text) || (!text.endsWith("?") && REQUIRED_WORD.test(text));
+  };
+
+  const edgeOf = (n) => !n || n === document.body || n === document.documentElement || n.tagName === "FORM";
+  // A react-select style dummy: an invisible, unfocusable input kept only for form validation.
+  const dummyBox = (c) => c.tabIndex === -1 && !isFileInput(c) && getComputedStyle(c).opacity === "0";
+
+  /** The words just before a control's own wrapper, and whether they mark it required. Climb from the
+   * control while the parent holds no other field; at each level the nearest earlier sibling with text is
+   * the label. It is not a label when a heading or another field comes first. `scan` (an upload's hidden
+   * input, which sits inside a dropzone full of its own prompts) keeps looking past text that marks
+   * nothing, outward. `{required: false}` when nothing there names the control. */
+  function labelBefore(own, { scan = false } = {}) {
+    const mine = (c) => own.some((o) => o === c || o.contains(c) || c.contains(o));
+    const foreign = (n) => (n.matches(FIELD_BOX) ? [n] : [...n.querySelectorAll(FIELD_BOX)])
+      .some((c) => !mine(c) && boxShown(c) && !dummyBox(c));
+    for (let node = own[0], depth = 0; node && depth < MAX_CLIMB && !edgeOf(node); depth += 1, node = node.parentElement) {
+      for (let sib = node.previousElementSibling; sib; sib = sib.previousElementSibling) {
+        if (sib.matches(NOT_A_LABEL) || !shown(sib)) continue;
+        if (sib.matches(HEADINGS) || sib.querySelector(HEADINGS) || foreign(sib)) return { required: false, text: "" };
+        const text = squash(sib.innerText ?? sib.textContent);
+        if (!text) continue;
+        if (marksRequired(text)) return { required: true, text };
+        if (!scan) return { required: false, text };
+      }
+      if (edgeOf(node.parentElement) || foreign(node.parentElement)) break;
+    }
+    return { required: false, text: "" };
+  }
+
+  /** Whether the control's own labels say it is required, without the field reader's walk (the count
+   * `summary()` takes on every poll stays cheap): a label for it, its aria name, its fieldset's legend. */
+  function namedRequired(el) {
+    const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => byId(id)?.textContent);
+    const legend = el.closest("fieldset")?.querySelector(":scope > legend")?.textContent;
+    return [...(el.labels ?? [])].some((l) => marksRequired(l.innerText ?? l.textContent))
+      || [el.getAttribute("aria-label"), ...named, legend].some((t) => marksRequired(t));
+  }
+
+  const uploadKind = (input) => {
+    try {
+      return ns.uploadKindOf?.(input) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const isChoiceBox = (el) => el instanceof HTMLInputElement && (el.type === "radio" || el.type === "checkbox");
+  // Custom radios and checkboxes hide the input and show a label (the inventory's own rule).
+  const choiceShown = (el) => shown(el) || [...(el.labels ?? []), el.closest("label"), el.parentElement].some((n) => n && shown(n));
+  const hasPopupShape = (shape) => shape?.name === "popup";
+
+  /** Whether an upload box shows a file: the input holds one, or its uploader draws a row naming it (a
+   * file name, or a remove or replace control), the way Workday's does while its input reads empty. */
+  function fileHeld(input) {
+    if ((input.files?.length ?? 0) > 0) return true;
+    const box = uploadBox(input).slice(0, 4).at(-1) ?? input.parentElement;
+    if (!box) return false;
+    if (FILE_NAME.test(box.innerText ?? "")) return true;
+    return [...box.querySelectorAll('button, [role="button"]')]
+      .some((c) => REMOVE_WORD.test(`${c.textContent} ${c.getAttribute("aria-label") ?? ""}`));
+  }
+
+  /** The required, still-empty items of the page: `{count, items: [{label, target, kind}], keys}`, one
+   * item per field (a radio group or a split date is one). `withTargets` false is the cheap read
+   * `summary()` makes, as for `collectErrors`. */
+  function collectRequired(withTargets) {
+    const safe = labeller();
+    const seen = new Set();
+    const items = [];
+    for (const el of document.querySelectorAll(FIELD_BOX)) {
+      let shape = null;
+      try {
+        shape = ns.shapes?.of(el) ?? null;
+      } catch {
+        shape = null;
+      }
+      const file = isFileInput(el);
+      if (file && uploadKind(el) === "parser") continue;   // the site's import-from-resume box: never owed a file
+      if (el.disabled || (el.readOnly && !hasPopupShape(shape)) || ns.fillBase.isPasswordBox(el) || inChrome(el)
+        || el.closest('[role="listbox"], [role="menu"], [aria-hidden="true"]')) continue;
+      if (!(isChoiceBox(el) ? choiceShown(el) : boxShown(el)) || (!file && dummyBox(el))) continue;
+      let key = el;
+      let own = [el];
+      try {
+        key = shape?.groupKey?.(el) ?? el;
+        own = shape?.parts?.(el) ?? [el];
+      } catch {
+        key = el;
+        own = [el];
+      }
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      let empty = false;
+      try {
+        if (file) empty = !fileHeld(el);
+        else if (shape?.name === "group") empty = !own.some((m) => m.checked);
+        else {
+          const got = shape ? shape.read(el) : el.value;
+          empty = Array.isArray(got) ? got.length === 0 : !squash(got) || Boolean(ns.isPlaceholderText?.(squash(got)));
+        }
+      } catch {
+        empty = false;   // unreadable: it cannot be said to be empty
+      }
+      if (!empty) continue;
+
+      const flagged = own.some((c) => c.required === true || c.getAttribute("aria-required") === "true")
+        || el.closest('[role="radiogroup"][aria-required="true"], [role="group"][aria-required="true"]') !== null;
+      let said = null;
+      const before = () => (said ??= labelBefore(own, { scan: file }));
+      let isRequired = flagged || own.some(namedRequired);
+      // The field reader's own verdict costs a walk of the page around the control: only the read that
+      // names items (`withTargets`) asks it, never the count `summary()` polls.
+      if (!isRequired && withTargets) {
+        try {
+          isRequired = Boolean(ns.readField(el).required);
+        } catch {
+          isRequired = false;
+        }
+      }
+      if (!isRequired) isRequired = before().required;
+      if (!isRequired) continue;
+
+      const heard = squash(questionOf(el)) || squash(before().text.replace(STAR_CHARS, " ")).replace(/[\s.:]+$/, "");
+      const label = safe(heard.slice(0, MAX_REQUIRED_LABEL) || (file ? "Upload" : "Field"));
+      items.push({ label, ...handleOf(own[0], withTargets) });
+    }
+    return { count: items.length, items, keys: items.map((one) => keyOf(one.label)) };
+  }
+
+  const pageRequired = () => {
+    const { count, items } = collectRequired(true);
     return { count, items };
   };
   const inErrorRegion = (el, regions) => regions.some((r) => r.contains(el));
@@ -534,6 +705,7 @@
     activeRegions = regions;
     const found = collectErrors(false, regions);
     const errorSummary = { errors: found.count, errorKeys: found.keys };
+    const needed = collectRequired(false);
     const buttons = [...document.querySelectorAll(BUTTONS)].map((el) => {
       const id = tag(el);
       const known = knownOf(el);
@@ -544,6 +716,8 @@
         visible: shown(el),
         enabled: enabled(el),
         ...(known ? { known } : {}),
+        // Site chrome (header, nav, a site footer): never the application step's Next.
+        ...(inChrome(el) ? { chrome: true } : {}),
         // The error summary's own buttons ("Errors Found", "Error - <field>"): not part of the step.
         ...(inErrorRegion(el, regions) && isErrorText(labelOf(el)) ? { inErrors: true } : {}),
         ...(errorLineButton(el, regions) ? { errorLine: true } : {}),
@@ -573,6 +747,9 @@
       submitSeen: submitSeen(regions),
       submitContext: submitContext(),
       ...errorSummary,
+      // Required boxes still empty: a count and value-free keys, like the errors.
+      requiredEmpty: needed.count,
+      requiredKeys: needed.keys,
     };
     activeRegions = null;
     return out;
@@ -756,5 +933,5 @@
     return { signedIn: "clicked" };
   }
 
-  ns.pageReader = { summary, pageErrors, fieldWords: questionOf, uploadTag: upTagOf, advance, signIn, applyUrl, applyLink, applyTarget };
+  ns.pageReader = { summary, pageErrors, pageRequired, fieldWords: questionOf, uploadTag: upTagOf, advance, signIn, applyUrl, applyLink, applyTarget };
 })();

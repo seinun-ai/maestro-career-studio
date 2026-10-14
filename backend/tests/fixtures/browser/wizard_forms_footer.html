@@ -1,0 +1,31 @@
+<!doctype html>
+<!-- A wizard whose step is split into several <form>s with its Next in a plain bar outside every
+     one of them, modelled on the structure observed live on an Ant Design careers site
+     (2026-10-14, labelled ATS-D in the plan): the bar is a fixed-position affix <div> inside the
+     page's main area, NOT a <footer> element. The progress stepper lists every step by name,
+     the last one "Submit": those are labels, not controls.
+     Oracle: `advanced` is set only by the bar's Next click handler. -->
+<html><head><title>Apply to Acme</title></head><body>
+<header><a href="#">Acme Careers</a></header>
+<main>
+  <div class="ant-steps" aria-label="Progress">
+    <div class="ant-steps-item"><span>Candidate Info</span></div>
+    <div class="ant-steps-item"><span>Documents</span></div>
+    <div class="ant-steps-item" role="button"><span>Submit</span></div>
+    <a class="ant-steps-item" href="#submit">Submit</a>
+  </div>
+  <h1>Candidate Info</h1>
+  <form id="f1"><label for="fn">First name*</label><input id="fn" required></form>
+  <form id="f2"><label for="ln">Last name*</label><input id="ln" required></form>
+  <form id="f3"><label for="ph">Phone</label><input id="ph"></form>
+  <div class="ant-affix" style="position: fixed; bottom: 0; left: 0; right: 0;">
+    <div class="ant-row"><button type="button" test-id="application-cancel">Cancel</button>
+      <button type="button" id="next" test-id="application-next-step"><span>Next</span></button></div>
+  </div>
+</main>
+<script>
+  window.__oracle = window.__oracle || {};
+  window.__oracle.advanced = false;
+  document.getElementById("next").addEventListener("click", () => { window.__oracle.advanced = true; });
+</script>
+</body></html>

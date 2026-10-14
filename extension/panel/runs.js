@@ -47,6 +47,11 @@
       "This isn't a site the Companion signs in to. Sign in in the tab, then press Resume."],
     posting: ["Apply yourself",
       "The Companion didn't press this page's Apply. Open the application form in the tab, then press Resume."],
+    unsure_page: ["Not sure this is the last page",
+      "Check it in the tab, then press Resume or Submit yourself."],
+    confirm_page: ["Check this page",
+      "This page has only a Continue button, and the Companion can't tell whether it sends the application. "
+      + "Check it in the tab, then press Resume or go on yourself."],
     unknown_page: ["Page not recognised",
       "The Companion doesn't recognise this page. Get to the application form in the tab, then press Resume."],
     already_applied: ["Already sent?",
@@ -78,8 +83,10 @@
   // job board's button is the site's). Stopped: only the ones a user may take back.
   const NO_RESUME = new Set(["step_limit", "board_native"]);
   const RESUMABLE_STOPS = new Set(["error", "user", "interrupted"]);
+  // A ready tab the user took back to a form step (`movedOn`) can be resumed to fill that page.
   const canResume = (run) => (run.status === "parked" ? !NO_RESUME.has(run.why)
-    : run.status === "stopped" && RESUMABLE_STOPS.has(run.why));
+    : run.status === "ready" ? run.movedOn === true
+      : run.status === "stopped" && RESUMABLE_STOPS.has(run.why));
   const canSkip = (run) => run.status === "parked";
 
   // The walls that stop a run by design, named in a line under each of them.
@@ -236,8 +243,10 @@
     const out = [node("div", "sub", "Check the page, then press Submit in the tab. The Companion never presses it for you."),
       flagsBlock(ctx, run)];
     if (run.markNote) out.push(node("div", "sub run-mark-note", run.markNote));
+    if (run.movedOn === true) out.push(node("div", "sub run-moved-on", "You moved on. Press Resume to fill this page."));
     // Done: not submitting this one. It ends the record and writes nothing, so the tab is free again.
     const actions = node("div", "run-actions");
+    if (run.movedOn === true) attach(actions, button(ctx, "save", "run-resume", "Resume", () => ctx.act.resumeRun(run.id)));
     // After an Undo, a page that was not the confirmation, or when Maestro CS would not take the
     // automatic mark: the user's own press.
     if (run.noAutoMark) {

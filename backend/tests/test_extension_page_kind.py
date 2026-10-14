@@ -23,12 +23,13 @@ emit({
   sorted: (spec.buttons || []).map((b) => ns.pageKind.sortButton(b)),
   classified: (spec.summaries || []).map((s) => ns.pageKind.classify(s)),
   kinds: ns.pageKind.KINDS,
+  plain: (spec.plain || []).map((t) => ns.pageKind.isPlainNext(t)),
 });
 """
 
 
-def _run(tmp_path, buttons=(), summaries=()):
-    return run_node(_DRIVER, {"buttons": list(buttons), "summaries": list(summaries)}, tmp_path,
+def _run(tmp_path, buttons=(), summaries=(), plain=()):
+    return run_node(_DRIVER, {"buttons": list(buttons), "summaries": list(summaries), "plain": list(plain)}, tmp_path,
                     source=PAGE_KIND_JS)
 
 
@@ -145,11 +146,13 @@ def test_known_marker_table_can_name_next_but_never_beats_a_submit_word(tmp_path
 
 # ---------- page kinds ----------
 
-def btn(text, *, id=None, visible=True, enabled=True, in_form=True, known=None):
+def btn(text, *, id=None, visible=True, enabled=True, in_form=True, known=None, chrome=False):
     out = {"id": id or text, "text": text, "type": "button", "marker": "", "inForm": in_form,
            "visible": visible, "enabled": enabled}
     if known:
         out["known"] = known
+    if chrome:
+        out["chrome"] = True
     return out
 
 
@@ -268,17 +271,17 @@ def test_review_is_also_an_unclear_advance_button_only(tmp_path):
 
 def test_a_submit_beside_a_next_is_review_never_form_step(tmp_path):
     out = kind(tmp_path, fillable=2, buttons=[btn("Next"), btn("Submit")])
-    assert out == {"kind": "review"}
+    assert out == {"kind": "review", "by": "several_next"}
 
 
 def test_several_nexts_are_not_sure_so_the_page_is_review(tmp_path):
-    assert kind(tmp_path, fillable=2, buttons=[btn("Next"), btn("Continue")]) == {"kind": "review"}
+    assert kind(tmp_path, fillable=2, buttons=[btn("Next"), btn("Continue")]) == {"kind": "review", "by": "several_next"}
 
 
 def test_a_visible_but_disabled_submit_still_stops_the_run(tmp_path):
     """Submit is often disabled until the form validates. A Next beside it must not be trusted."""
     out = kind(tmp_path, fillable=2, buttons=[btn("Next"), btn("Submit", enabled=False)])
-    assert out == {"kind": "review"}
+    assert out["kind"] == "review"
 
 
 def test_hidden_buttons_are_ignored_for_both_next_and_submit(tmp_path):
@@ -292,13 +295,70 @@ def test_a_disabled_next_is_not_clickable(tmp_path):
     assert kind(tmp_path, fillable=2, buttons=[btn("Next", enabled=False)])["kind"] == "review"
 
 
-def test_a_next_outside_the_form_is_not_taken_as_the_forms_next(tmp_path):
-    assert kind(tmp_path, fillable=2, buttons=[btn("Next", in_form=False)])["kind"] == "review"
+def test_a_next_in_site_chrome_is_never_the_steps_next(tmp_path):
+    """Header, nav and site-footer buttons are the site's: a Continue there is not the step's."""
+    assert kind(tmp_path, fillable=2, buttons=[btn("Next", in_form=False, chrome=True)]) == {
+        "kind": "review", "by": "fields_no_next"}
+    assert kind(tmp_path, fillable=2, buttons=[btn("Next", chrome=True)]) == {"kind": "review", "by": "fields_no_next"}
+    out = kind(tmp_path, fillable=2, buttons=[btn("Continue", id="site", chrome=True, in_form=False), btn("Next", id="step")])
+    assert out == {"kind": "form_step", "next": "step"}
+
+
+def test_a_next_outside_every_form_and_outside_chrome_is_the_step(tmp_path):
+    """Dayforce: four <form>s hold the fields and the footer Next is a plain bar outside them. The one
+    visible, enabled Next that is no site chrome is the step's."""
+    out = kind(tmp_path, fillable=2, buttons=[btn("Next", id="n", in_form=False), btn("Cancel", in_form=False)])
+    assert out == {"kind": "form_step", "next": "n"}
+
+
+def test_two_nexts_outside_every_form_are_not_sure(tmp_path):
+    out = kind(tmp_path, fillable=2, buttons=[btn("Next", in_form=False), btn("Continue", in_form=False)])
+    assert out == {"kind": "review", "by": "several_next"}
+
+
+def test_a_next_outside_the_form_that_is_an_error_summary_button_is_not_the_step(tmp_path):
+    bad = btn("Next", in_form=False)
+    bad["inErrors"] = True
+    assert kind(tmp_path, fillable=2, buttons=[bad]) == {"kind": "review", "by": "fields_no_next"}
+
+
+def test_a_disabled_next_outside_the_form_is_not_taken(tmp_path):
+    assert kind(tmp_path, fillable=2, buttons=[btn("Next", in_form=False, enabled=False)])["kind"] == "review"
+
+
+def test_review_says_why_it_is_review(tmp_path):
+    """`by` is the reason: only a real Submit control and no real Next is the end of the application."""
+    assert kind(tmp_path, fillable=2, buttons=[btn("Submit application")]) == {"kind": "review", "by": "submit_button"}
+    assert kind(tmp_path, fillable=0, buttons=[btn("Submit application"), btn("Back")])["by"] == "submit_button"
+    assert kind(tmp_path, fillable=2, buttons=[btn("Next"), btn("Submit")])["by"] == "several_next"
+    assert kind(tmp_path, fillable=2, buttons=[btn("Next", enabled=False), btn("Submit")])["by"] == "several_next"
+    assert kind(tmp_path, fillable=2, buttons=[btn("Next"), btn("Continue")])["by"] == "several_next"
+    assert kind(tmp_path, fillable=2, buttons=[btn("Done")])["by"] == "fields_no_next"
+    assert kind(tmp_path, fillable=2, buttons=[])["by"] == "fields_no_next"
+    assert kind(tmp_path, fillable=2, buttons=[btn("Back")], submitSeen=True)["by"] == "submit_seen"
+    assert kind(tmp_path, fillable=0, buttons=[btn("Proceed"), btn("Cancel")], submitContext=True)["by"] == "submit_context"
+    assert kind(tmp_path, fillable=0, buttons=[btn("Cancel")], submitContext=True)["by"] == "submit_context"
+
+
+def test_a_next_in_chrome_does_not_turn_a_real_submit_into_a_mixed_page(tmp_path):
+    out = kind(tmp_path, fillable=2, buttons=[btn("Submit application"), btn("Continue", chrome=True, in_form=False)])
+    assert out == {"kind": "review", "by": "submit_button"}
+
+
+def test_a_submit_in_site_chrome_alone_is_not_a_real_submit_control(tmp_path):
+    """It still stops the run (the one rule), but it is not the application's own Submit."""
+    out = kind(tmp_path, fillable=2, buttons=[btn("Apply now", chrome=True, in_form=False)])
+    assert out == {"kind": "review", "by": "submit_seen"}
+
+
+def test_only_review_carries_a_by(tmp_path):
+    assert "by" not in kind(tmp_path, fillable=2, buttons=[btn("Next", id="n")])
+    assert "by" not in kind(tmp_path)
 
 
 def test_a_submit_outside_the_form_still_counts_as_a_submit(tmp_path):
     out = kind(tmp_path, fillable=2, buttons=[btn("Next"), btn("Submit", in_form=False)])
-    assert out == {"kind": "review"}
+    assert out["kind"] == "review"
 
 
 def test_unknown_is_nothing_at_all(tmp_path):
@@ -312,17 +372,17 @@ def test_a_lone_next_with_nothing_to_fill_advances(tmp_path):
 
 
 def test_several_nexts_with_nothing_to_fill_stop_as_review(tmp_path):
-    assert kind(tmp_path, buttons=[btn("Next"), btn("Continue")]) == {"kind": "review"}
+    assert kind(tmp_path, buttons=[btn("Next"), btn("Continue")]) == {"kind": "review", "by": "several_next"}
 
 
 def test_a_lone_next_with_nothing_to_fill_beside_a_submit_is_review(tmp_path):
-    assert kind(tmp_path, buttons=[btn("Next"), btn("Submit", visible=True)]) == {"kind": "review"}
+    assert kind(tmp_path, buttons=[btn("Next"), btn("Submit", visible=True)])["kind"] == "review"
 
 
 def test_a_missing_buttons_list_is_tolerated(tmp_path):
     s = summary(fillable=2)
     del s["buttons"]
-    assert _run(tmp_path, summaries=[s])["classified"][0] == {"kind": "review"}
+    assert _run(tmp_path, summaries=[s])["classified"][0] == {"kind": "review", "by": "fields_no_next"}
 
 
 def test_known_next_marker_makes_an_unclear_label_the_forms_next(tmp_path):
@@ -332,12 +392,12 @@ def test_known_next_marker_makes_an_unclear_label_the_forms_next(tmp_path):
 
 def test_known_submit_marker_stops_the_run_whatever_the_wording(tmp_path):
     out = kind(tmp_path, fillable=2, buttons=[btn("Next", known="submit")])
-    assert out == {"kind": "review"}
+    assert out["kind"] == "review"
 
 
 def test_known_next_cannot_unmark_a_submit_word(tmp_path):
     out = kind(tmp_path, fillable=2, buttons=[btn("Submit application", known="next")])
-    assert out == {"kind": "review"}
+    assert out["kind"] == "review"
 
 
 # ---------- the safety invariant, over a grid ----------
@@ -364,3 +424,12 @@ def test_a_submit_worded_live_button_is_never_the_next_to_click(tmp_path):
         if verdict["kind"] == "form_step":
             clicked = verdict["next"].split(":", 1)[1]
             assert sorted_of[clicked] == "next", (combo, verdict)
+
+
+@pytest.mark.parametrize("text, plain", [
+    ("Next", True), ("NEXT", True), ("Next step", True), ("Next →", True), ("Save and continue", True),
+    ("Save & next", True), ("Save and Next", True),
+    ("Continue", False), ("Proceed", False), ("Review application", False), ("Submit", False), ("", False), (None, False),
+])
+def test_only_the_plain_next_wordings_count_as_a_plain_next(tmp_path, text, plain):
+    assert _run(tmp_path, plain=[text])["plain"] == [plain]

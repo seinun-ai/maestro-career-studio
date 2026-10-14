@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- A required written question and a required resume box whose labels the field reader cannot
+     read as labels, modelled on the structure observed live on a careers form (2026-10-14,
+     labelled ATS-G in the plan): the question is a long sentence in a <span> BEFORE the textarea's
+     wrapper chain (div > div > textarea; no for/id, no aria, no required attribute), and the resume
+     box is a dropzone whose file input is hidden, with "Resume *" in a sibling span of an ancestor.
+     The optional question beside them carries no star. -->
+<html><head><title>Apply to Acme</title></head><body>
+<main>
+  <h1>Apply: Data Analyst at Acme</h1>
+  <div class="row">
+    <span class="q">What is the most impressive project you have built, what made it hard, and what would you do differently if you started it again today? <span class="star">*</span></span>
+    <div class="outer"><div class="inner"><textarea data-1p-ignore="true"></textarea></div></div>
+  </div>
+  <div class="row">
+    <span class="q">Anything else you would like us to know?</span>
+    <div class="outer"><div class="inner"><textarea data-1p-ignore="true"></textarea></div></div>
+  </div>
+  <div class="row">
+    <span class="q">Resume<span class="star">*</span></span>
+    <div class="dropzone"><div class="drop-inner"><p>Drag and drop a file here, or choose one</p>
+      <button type="button">Choose file</button>
+      <input type="file" style="display:none" tabindex="-1"></div></div>
+  </div>
+  <button type="button">Submit application</button>
+</main>
+</body></html>

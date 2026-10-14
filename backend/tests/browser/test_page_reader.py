@@ -117,7 +117,7 @@ def test_the_summary_is_counts_texts_and_booleans_and_never_a_value(page, load):
     assert "Zelda-Secret-9" not in json.dumps(s)
     assert set(s) == {"host", "stepKey", "applyId", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
                       "fillable", "hasApplyLink", "confirmationText", "confirmationPhrase", "closedText", "boardNative",
-                      "submitSeen", "submitContext", "errors", "errorKeys"}
+                      "submitSeen", "submitContext", "errors", "errorKeys", "requiredEmpty", "requiredKeys"}
     assert s["errors"] == 0
     assert set(s["buttons"][0]) == {"id", "text", "inForm", "visible", "enabled"}
     assert (s["passwordInputs"], s["fillable"]) == (1, 3)
@@ -315,6 +315,195 @@ def test_a_button_tied_to_the_form_by_its_form_attribute_is_in_the_form(page, lo
     assert summary(page)["buttons"][0]["inForm"] is True
 
 
+# ---------- G1: a Next outside every form, a stepper that says Submit, a chrome flag ----------
+
+def test_a_next_in_a_bar_outside_every_form_is_the_step_and_a_stepper_label_is_no_submit(page, load):
+    """Dayforce: four <form>s, the Next in an affix bar outside them, a stepper whose last step is
+    called "Submit" (a role=button span and a link inside it). The stepper's words are labels."""
+    load(page, fixture_html("wizard_forms_footer.html"), SOURCES)
+    s = summary(page)
+    assert s["submitSeen"] is False
+    assert button(s, "Next")["inForm"] is False and "chrome" not in button(s, "Next")
+    verdict = classify(page)
+    assert verdict["kind"] == "form_step"
+    assert page.evaluate("(id) => document.querySelector(`[data-maestro-btn='${id}']`).textContent", verdict["next"]) == "Next"
+    assert advance(page, verdict["next"]) == {"clicked": True}
+    assert oracle(page, "advanced") is True
+
+
+def test_a_real_submit_button_in_a_stepper_still_counts(page, load):
+    """The stepper exemption is for labels: a real <button> that says Submit is a Submit wherever it sits."""
+    load(page, """<div class='stepper'><button type='button'>Submit</button></div>
+      <label for='a'>Name</label><input id='a'>""", SOURCES)
+    assert summary(page)["submitSeen"] is True
+
+
+@pytest.mark.parametrize("holder", ["<div class='steps'>{x}</div>", "<ol class='my-stepper'>{x}</ol>",
+                                    "<div role='progressbar'>{x}</div>"])
+def test_stepper_labels_are_not_a_submit_seen(page, load, holder):
+    x = "<span role='button'>Submit</span><a href='#s'>Submit</a>"
+    load(page, holder.format(x=x) + "<label for='a'>Name</label><input id='a'><button>Next</button>", SOURCES)
+    assert summary(page)["submitSeen"] is False
+
+
+def test_a_div_button_outside_a_stepper_that_says_submit_is_still_seen(page, load):
+    load(page, "<div role='button'>Submit</div><label for='a'>Name</label><input id='a'>", SOURCES)
+    assert summary(page)["submitSeen"] is True
+
+
+def test_a_button_in_site_chrome_carries_the_chrome_flag(page, load):
+    load(page, """<header><button>Continue</button></header>
+      <main><label for='a'>Name</label><input id='a'><button>Next</button></main>
+      <footer><button>Subscribe</button></footer>""", SOURCES)
+    flags = {b["text"]: b.get("chrome") for b in summary(page)["buttons"]}
+    assert flags == {"Continue": True, "Next": None, "Subscribe": True}
+    assert classify(page)["kind"] == "form_step"
+
+
+def test_a_next_in_the_site_header_alone_is_never_the_step(page, load):
+    load(page, "<header><button>Next</button></header><label for='a'>Name</label><input id='a'>", SOURCES)
+    verdict = classify(page)
+    assert verdict == {"kind": "review", "by": "fields_no_next"}
+
+
+def test_a_sites_submit_in_chrome_stops_but_is_not_the_applications_submit(page, load):
+    load(page, "<header><button>Apply now</button></header><label for='a'>Name</label><input id='a'>", SOURCES)
+    assert classify(page) == {"kind": "review", "by": "submit_seen"}
+
+
+# ---------- G1: required and empty ----------
+
+def required(page):
+    return page.evaluate(f"() => {READER}.pageRequired()")
+
+
+def test_a_required_box_is_counted_while_empty_and_not_after(page, load):
+    load(page, "<label for='a'>Name</label><input id='a' required><label for='b'>Notes</label><input id='b'>", SOURCES)
+    s = summary(page)
+    assert (s["requiredEmpty"], len(s["requiredKeys"])) == (1, 1)
+    page.fill("#a", "Zelda-Secret-9")
+    assert summary(page)["requiredEmpty"] == 0
+    assert "Zelda-Secret-9" not in json.dumps(summary(page))
+
+
+@pytest.mark.parametrize("control", [
+    "<input id='a' aria-required='true'>",
+    "<input id='a' required>",
+    "<textarea id='a' required></textarea>",
+    "<input id='a' type='email' required>",
+])
+def test_required_by_attribute_or_aria_is_counted_with_no_label_at_all(page, load, control):
+    """Whatever the field reader makes of the label, the attribute alone says required."""
+    load(page, f"<div>{control}</div>", SOURCES)
+    assert summary(page)["requiredEmpty"] == 1
+
+
+def test_a_star_in_the_label_makes_an_empty_box_required(page, load):
+    load(page, "<label for='a'>First name*</label><input id='a'><label for='b'>Nickname</label><input id='b'>", SOURCES)
+    assert summary(page)["requiredEmpty"] == 1
+
+
+def test_a_long_question_before_the_box_and_a_hidden_upload_under_a_star_are_required(page, load):
+    """ATS-G: the question is a sentence in a span before div>div>textarea, the resume box a hidden file
+    input; neither reads as a labelled, required field to the field reader."""
+    load(page, fixture_html("label_before_box.html"), SOURCES)
+    s = summary(page)
+    assert s["requiredEmpty"] == 2
+    items = required(page)["items"]
+    assert [i["kind"] for i in items] == ["field", "upload"]
+    assert required(page)["count"] == 2
+    assert all(i["target"] for i in items)
+    assert items[0]["label"].startswith("What is the most impressive project")
+    page.fill("textarea >> nth=0", "An answer")
+    assert summary(page)["requiredEmpty"] == 1
+    page.set_input_files("input[type=file]", files=[{"name": "resume.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4"}])
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_standing_hint_is_not_a_star_on_the_first_field(page, load):
+    load(page, "<p>Fields marked * are required.</p><div><div><input id='a'></div></div>", SOURCES)
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_the_previous_fields_error_text_does_not_make_the_next_field_required(page, load):
+    load(page, """<label for='a'>Email</label><input id='a' value='sam'><p role='alert'>Email is required</p>
+      <div><div><input id='b'></div></div>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_an_optional_empty_box_and_hidden_required_ones_are_not_counted(page, load):
+    load(page, """<label for='a'>Notes</label><input id='a'>
+      <input id='b' required style='display:none'><input id='c' required type='hidden'>
+      <input id='d' required disabled><div style='visibility:hidden'><input id='e' required></div>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_required_select_on_its_placeholder_is_empty_until_picked(page, load):
+    load(page, """<label for='a'>Country*</label><select id='a'>
+      <option value=''>Select one</option><option value='us'>United States</option></select>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 1
+    page.select_option("#a", "us")
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_required_radio_group_with_nothing_chosen_is_one_empty_item(page, load):
+    load(page, """<fieldset><legend>Are you over 18?*</legend>
+      <label><input type='radio' name='age'> Yes</label><label><input type='radio' name='age'> No</label></fieldset>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 1
+    assert [i["kind"] for i in required(page)["items"]] == ["field"]
+    page.check("input >> nth=1")
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_nameless_radio_pair_under_a_starred_question_is_required(page, load):
+    """The Gem shape: no name, no fieldset; the question sits in a sibling of the radios' wrapper."""
+    load(page, """<div class='row'><div><span>Are you graduating in 2027?<span>*</span></span></div>
+      <div><div><div><div><input type='radio' id='y'><label for='y'>Yes</label></div>
+      <div><input type='radio' id='n'><label for='n'>No</label></div></div></div></div></div>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 1
+    page.check("#y")
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_required_lone_checkbox_is_empty_until_ticked(page, load):
+    load(page, "<label><input type='checkbox' id='a' required> I agree to the terms</label>", SOURCES)
+    assert summary(page)["requiredEmpty"] == 1
+    page.check("#a")
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_required_upload_with_a_file_row_or_a_file_is_not_empty(page, load):
+    load(page, """<div><span>Resume*</span><div class='zone'><input type='file' style='display:none'>
+      <div class='row'>resume.pdf <button type='button' aria-label='Remove file'>x</button></div></div></div>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 0
+    load(page, """<div><span>Resume*</span><div class='zone'><input type='file' style='display:none'>
+      <p>Drop a file</p></div></div>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 1
+
+
+def test_a_parser_upload_box_is_never_a_required_empty(page):
+    """The site's own import-from-resume box (H's `parser` kind) is not a box the run owes a file, even
+    marked required; the real resume box beside it still is."""
+    from tests.browser.test_upload_box import _load
+    _load(page, """<form><section><h3>Candidate Info</h3><div class='up'><span>Resume*</span>
+      <button type='button'>Import Resume</button><input type='file' id='r1' style='display:none' required></div></section>
+      <section><h3>Resume Upload</h3><div class='up'><span>Resume*</span><p>Drag your resume here</p>
+      <input type='file' id='r2' style='display:none' required></div></section></form>""")
+    items = page.evaluate(f"() => {READER}.pageRequired()")["items"]
+    assert [i["kind"] for i in items] == ["upload"] and page.evaluate(f"() => {READER}.summary().requiredEmpty") == 1
+    tag = page.evaluate("() => document.querySelector('#r2').getAttribute('data-maestro-up')")
+    assert items[0]["target"] == tag
+
+
+def test_page_required_names_words_and_handles_never_values(page, load):
+    load(page, "<label for='a'>Name</label><input id='a' required><label for='b'>Phone</label><input id='b' required value='555-0100'>", SOURCES)
+    out = required(page)
+    assert out["count"] == 1 and out["items"][0]["label"] == "Name"
+    assert out["items"][0]["kind"] == "field" and isinstance(out["items"][0]["target"], str)
+    assert "555" not in json.dumps(out)
+    assert set(out) == {"count", "items"}
+
+
 # ---------- advance: the Next click ----------
 
 def test_advance_clicks_the_one_next_of_a_form_step(page, load):
@@ -474,7 +663,7 @@ def test_a_dialog_with_any_submit_word_in_its_question_is_a_submit_context(page,
     Continue is never offered as the step."""
     load(page, dialog, SOURCES)
     assert summary(page)["submitContext"] is True
-    assert classify(page) == {"kind": "review"}
+    assert classify(page) == {"kind": "review", "by": "submit_context"}
 
 
 @pytest.mark.parametrize("html", [
@@ -828,7 +1017,7 @@ DRIVE = """async ({record, swap, signIn}) => {
     fill: async () => ({fields: []}),
     signIn: async () => { calls.push(["signIn"]); document.body.innerHTML = swap; return {signedIn: true}; },
     waitForChange: async () => ({changed: Boolean(signIn)}),
-    pageErrors: async () => ({count: 0, items: []}), fix: async () => ({fixed: false}),
+    pageErrors: async () => ({count: 0, items: []}), pageRequired: async () => ({count: 0, items: []}), fix: async () => ({fixed: false}),
     attachTo: async () => ({attached: false}),
     uploads: async () => [],
     sleep: async () => {}, save() {}, onUpdate() {}, now: () => (clock += 1000), cancelled: () => false,
@@ -1425,11 +1614,14 @@ def test_workdays_footer_button_relabelled_submit_is_a_submit_and_never_pressed(
 
 def test_the_workday_marker_means_nothing_on_another_host(page):
     """On any host but Workday's the button is outside the only form like any other button: the
-    page does not read as a step, and the marker earns it no `inForm`."""
+    marker earns it no `inForm` and no `known`. It is still the one Next anywhere in the application
+    outside site chrome, so the page reads as a step through the classifier's fallback."""
     serve(page, "https://careers.acme-example.test/apply", WORKDAY_FOOTER_PAGE.format(text="Save and Continue"))
     nav = button(summary(page), "Save and Continue")
     assert nav["inForm"] is False and "known" not in nav
-    assert classify(page)["kind"] == "review"
+    assert classify(page)["kind"] == "form_step"
+    serve(page, "https://careers.acme-example.test/apply2", WORKDAY_FOOTER_PAGE.format(text="Submit"))
+    assert classify(page) == {"kind": "review", "by": "submit_button"}
 
 
 # ---------- a board's own hosts, and the ceiling on what is stored ----------

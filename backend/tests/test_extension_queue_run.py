@@ -37,7 +37,9 @@ const summaryOf = (p, banner = false) => {
   const s = { ...base, host: p.host ?? base.host, stepKey: p.key ?? `${p.t}${p.n ?? ""}` };
   if (banner) s.errors = (p.errorItems ?? []).length;
   switch (p.t) {
-    case "step": s.fillable = p.fillable ?? 2; s.buttons = [btn(`next-${p.n}`, "Next"), btn(`back-${p.n}`, "Back")]; break;
+    case "step": s.fillable = p.fillable ?? 2; s.buttons = [btn(`next-${p.n}`, p.nextText ?? "Next"), btn(`back-${p.n}`, "Back")]; break;
+    case "review_next": s.fillable = 2; s.buttons = [btn("next-r", "Next"), btn("submit-1", "Submit application")]; break;
+    case "fields_only": s.fillable = 2; s.buttons = [btn("back-f", "Back")]; break;
     case "review": s.fillable = 2; s.buttons = [btn("submit-1", p.submitText ?? "Submit application"), btn("back-r", "Back")]; break;
     case "captcha": s.fillable = 1; s.captchaVisible = true; break;
     case "create_account": s.passwordInputs = 2; s.confirmPassword = true; break;
@@ -56,6 +58,15 @@ const summaryOf = (p, banner = false) => {
     case "submit_dialog": s.fillable = 2; s.buttons = [btn(`n-${p.n ?? 0}`, "Next")]; s.submitContext = true; break;
     case "unknown": break;
     default: throw new Error(`no page type ${p.t}`);
+  }
+  // A page that complains (errs) or still has required boxes empty (needs) until a fix clears it.
+  if (p.errs && !cleared[pages.indexOf(p)]) {
+    s.errors = p.errs.length;
+    s.errorKeys = p.errs.map((e) => e.label);
+  }
+  if (p.needs && !cleared[pages.indexOf(p)]) {
+    s.requiredEmpty = p.needs.length;
+    s.requiredKeys = p.needs.map((e) => e.label);
   }
   return s;
 };
@@ -79,6 +90,7 @@ const tick = (name, ...args) => {
   }
 };
 const earlyReads = {};
+const cleared = {};        // page index -> a fix cleared what the page complained about
 const banner = { ...(spec.banner ?? {}) };   // page index -> the page is showing its error banner
 let lastRejected = false;  // the last press was one the page rejected
 let fillCalls = 0;
@@ -140,12 +152,18 @@ const deps = {
   pageErrors: async (tabId, frameId) => {
     tick("pageErrors", frameId);
     const p = current();
-    const items = banner[at] === true ? (p.errorItems ?? []) : [];
+    const items = banner[at] === true ? (p.errorItems ?? []) : (p.errs && !cleared[at] ? p.errs : []);
+    return { count: items.length, items };
+  },
+  pageRequired: async (tabId, frameId) => {
+    tick("pageRequired", frameId);
+    const items = current().needs && !cleared[at] ? current().needs : [];
     return { count: items.length, items };
   },
   fix: async (rec, errors) => {
     // What the record says AT the moment of the fix: a rejected press is no step and no seen page.
     tick("fix", errors.map((e) => e.label), rec.step, rec.seen.length, rec.status);
+    if (spec.fixClears) cleared[at] = true;
     return spec.fix ?? { fixed: true };
   },
   fill: async (record, options) => {
@@ -642,15 +660,127 @@ def test_a_resume_remembers_that_a_field_was_written_before_the_park(tmp_path):
 
 # ---------- when unsure whether a button is Next or Submit, stop ----------
 
-def test_a_fieldless_page_with_a_lone_next_after_the_first_step_is_treated_as_review_and_not_pressed(tmp_path):
-    out = _drive(tmp_path, [step(1), step(2, fillable=0), step(3)])
-    assert out["record"]["status"] == "ready" and out["record"]["step"] == 1
-    assert out["pressed"] == ["next-1"]
+def test_a_fieldless_page_with_a_lone_plain_next_after_the_first_step_is_pressed(tmp_path):
+    """Oracle's section 3 is cards and one NEXT: the old rule read it as a review and said Ready."""
+    out = _drive(tmp_path, [step(1), step(2, fillable=0), REVIEW])
+    assert out["record"]["status"] == "ready" and out["record"]["step"] == 2
+    assert out["pressed"] == ["next-1", "next-2"]
+
+
+@pytest.mark.parametrize("text", ["Next", "Next step", "Save and continue", "Save & next", "NEXT"])
+def test_every_plain_next_wording_on_a_fieldless_page_advances(tmp_path, text):
+    out = _drive(tmp_path, [step(1), step(2, fillable=0, nextText=text), REVIEW])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1", "next-2"]
+
+
+@pytest.mark.parametrize("text", ["Continue", "Proceed", "Review application"])
+def test_a_fieldless_page_with_only_a_continue_parks_confirm_page_and_is_not_pressed(tmp_path, text):
+    out = _drive(tmp_path, [step(1), step(2, fillable=0, nextText=text), REVIEW])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "confirm_page")
+    assert out["pressed"] == ["next-1"] and out["record"]["readyAt"] is None
 
 
 def test_an_intro_page_at_the_first_step_still_advances(tmp_path):
     out = _drive(tmp_path, [step(1, fillable=0), REVIEW])
     assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+
+
+# ---------- Ready only on a real review page with nothing missing (G1) ----------
+
+ERR = {"label": "Phone", "target": "f-phone", "kind": "field"}
+NEED = {"label": "Most impressive project", "target": "f-proj", "kind": "field"}
+NEED_UP = {"label": "Resume", "target": "u1", "kind": "upload"}
+
+
+def test_ready_records_why_it_was_a_review(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW])
+    assert out["record"]["status"] == "ready" and out["record"]["readyBy"] == "submit_button"
+
+
+@pytest.mark.parametrize("page, by", [
+    ({"t": "fields_only"}, "fields_no_next"),
+    ({"t": "review_next"}, "several_next"),
+    ({"t": "unseen_submit"}, "submit_seen"),
+    ({"t": "submit_dialog"}, "submit_context"),
+])
+def test_a_review_that_is_not_a_real_submit_page_parks_unsure_and_never_ready(tmp_path, page, by):
+    out = _drive(tmp_path, [step(1), page])
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "unsure_page")
+    assert r["readyAt"] is None and r.get("readyBy") is None and r["lastBy"] == by
+    assert out["pressed"] == ["next-1"], "it never advances over an unsure page"
+
+
+def test_a_review_page_with_errors_is_repaired_then_ready_on_a_clean_read(tmp_path):
+    out = _drive(tmp_path, [step(1), {**REVIEW, "errs": [ERR]}], fixClears=True)
+    assert out["record"]["status"] == "ready"
+    assert [c[1] for c in names(out, "fix")] == [["Phone"]]
+    assert out["pressed"] == ["next-1"]
+    order = [c[0] for c in out["calls"]]
+    assert order.index("fix") < len(order) - 1 and order.index("pageErrors") < order.index("fix")
+
+
+def test_a_review_page_whose_errors_stay_after_the_repair_parks_page_errors_not_ready(tmp_path):
+    out = _drive(tmp_path, [step(1), {**REVIEW, "errs": [ERR]}])
+    r = out["record"]
+    assert (r["status"], r["why"], r["readyAt"]) == ("parked", "page_errors", None)
+    assert [o["question"] for o in r["open"]] == ["Phone"] and len(names(out, "fix")) == 1
+
+
+def test_a_repair_that_cannot_fix_the_errors_on_a_review_page_parks_page_errors(tmp_path):
+    out = _drive(tmp_path, [step(1), {**REVIEW, "errs": [ERR]}], fix={"fixed": False})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "page_errors")
+
+
+def test_a_required_empty_gets_one_scoped_fix_then_ready_when_it_is_filled(tmp_path):
+    out = _drive(tmp_path, [step(1), {**REVIEW, "needs": [NEED]}], fixClears=True)
+    assert out["record"]["status"] == "ready"
+    assert [c[1] for c in names(out, "fix")] == [["Most impressive project"]]
+    assert names(out, "pageRequired") != []
+
+
+def test_a_required_empty_that_stays_empty_parks_open_questions_naming_it(tmp_path):
+    out = _drive(tmp_path, [step(1), {**REVIEW, "needs": [NEED]}])
+    r = out["record"]
+    assert (r["status"], r["why"], r["readyAt"]) == ("parked", "open_questions", None)
+    assert [(o["fid"], o["question"], o["required"]) for o in r["open"]] == [("f-proj", "Most impressive project", True)]
+    assert len(names(out, "fix")) == 1, "one scoped fix, not a loop"
+
+
+def test_a_fix_that_cannot_work_a_required_empty_parks_open_questions_at_once(tmp_path):
+    out = _drive(tmp_path, [step(1), {**REVIEW, "needs": [NEED]}], fix={"fixed": False})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "open_questions")
+    assert len(names(out, "fix")) == 1
+
+
+def test_a_required_upload_the_run_already_wrote_does_not_hold_up_ready(tmp_path):
+    """The page's row may not show a file name: the attach's own word is the evidence."""
+    out = _drive(tmp_path, [{**REVIEW, "needs": [NEED_UP]}], attaches=[{"outcome": "attached", "required": False}])
+    assert out["record"]["status"] == "ready" and names(out, "fix") == []
+
+
+def test_a_required_upload_that_was_not_written_goes_to_the_fix(tmp_path):
+    out = _drive(tmp_path, [{**REVIEW, "needs": [NEED_UP]}], fixClears=True)
+    assert out["record"]["status"] == "ready"
+    assert [c[1] for c in names(out, "fix")] == [["Resume"]]
+
+
+def test_errors_are_handled_before_required_empties(tmp_path):
+    out = _drive(tmp_path, [{**REVIEW, "errs": [ERR], "needs": [NEED]}], fixClears=True)
+    assert [c[1] for c in names(out, "fix")][0] == ["Phone"]
+    assert out["record"]["status"] == "ready"
+
+
+def test_a_lone_parser_box_does_not_park_upload(tmp_path):
+    """The site's import-from-resume box is reported not required and never written: the page is not held up."""
+    parser = {"label": "Import Resume", "target": "u-p", "kind": "parser", "required": False, "occupied": False, "written": False}
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{"outcome": "left", "required": False, "boxes": [parser]}])
+    assert out["record"]["status"] == "ready" and names(out, "attachTo") == []
+
+
+def test_a_clean_review_makes_no_required_read(tmp_path):
+    out = _drive(tmp_path, [REVIEW])
+    assert names(out, "pageRequired") == [] and names(out, "fix") == []
 
 
 # ---------- settling: a page just arrived at is often not drawn yet ----------
@@ -682,9 +812,9 @@ def test_a_half_drawn_step_is_not_mistaken_for_a_final_page_and_the_full_step_ad
     assert out["record"]["step"] == 2
 
 
-def test_a_lone_next_page_that_stays_that_way_is_the_final_page_after_four_agreeing_reads(tmp_path):
-    out = _drive(tmp_path, [step(1), step(2, fillable=0)])
-    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+def test_a_lone_next_page_that_stays_that_way_is_pressed_after_four_agreeing_reads(tmp_path):
+    out = _drive(tmp_path, [step(1), step(2, fillable=0), REVIEW])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1", "next-2"]
     assert len(names(out, "sleep")) == 3, "four identical reads in a row (about 2 s) before it is judged final"
 
 
@@ -945,7 +1075,8 @@ def test_a_subframe_whose_only_submit_signal_is_unseen_or_a_dialog_makes_the_tab
     for top in (step(0, fillable=0), step(0, fillable=2)):
         frames = [{"frameId": 0, "top": True, "page": top}, {"frameId": 4, "page": sub}]
         out = _drive(tmp_path, [{"t": "step", "n": 0, "frames": frames}])
-        assert out["record"]["status"] == "ready" and names(out, "advance") == [], top
+        # Stopped, not Ready: a Submit the button list could not see is not proof of the last page.
+        assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unsure_page") and names(out, "advance") == [], top
 
 
 def test_a_wall_in_any_frame_and_a_sign_in_at_the_top_still_win(tmp_path):

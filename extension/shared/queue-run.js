@@ -17,7 +17,8 @@
  *                    only on a host the run reached, at the employer (`record.tenant`, as the panel's
  *                    `sessionTenant` reads it) of the page that reached Ready, straight from the
  *                    application's own pages. Any other page the tab moves to, a posting included,
- *                    sets `noAutoMark` (the manual Mark applied is left).
+ *                    sets `noAutoMark` (the manual Mark applied is left). A ready tab that shows a form step with a
+ *                    real Next again sets `movedOn` (the card offers a Resume that fills it).
  *     → parked       the run needs the user or hit a wall; `why` says which:
  *         captcha | create_account | verify | board_native   the page kind, a wall by design
  *         sign_in_failed   the saved login did not work; never retried (a lockout)
@@ -25,6 +26,9 @@
  *                          the saved password is not typed there; the user signs in and presses Resume
  *         open_questions   required fields it could not answer or operate; `open` lists them
  *         no_change        Next did nothing, even after one refill
+ *         unsure_page      a review page that is not plainly the end (`lastBy`: no real Submit control, or a Next
+ *                          still on it): never Ready
+ *         confirm_page     a page with nothing to fill and only a "Continue" or "Proceed": not pressed
  *         page_errors      the page refused a Next and named what it wants (`open` lists the fields), and
  *                          one repair of exactly those fields did not satisfy it, or none was possible
  *         upload           a required upload box is still empty after the fill and could not be attached
@@ -136,7 +140,7 @@
   // Ready that is another job being looked at, and an application sent by hand is not this one's.
   const APPLICATION_PAGES = new Set(["review", "form_step"]);
   const DEPS = ["openTab", "classify", "advance", "fill", "signIn", "waitForChange", "tabUrl",
-    "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "fix", "attachTo", "uploads"];
+    "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "pageRequired", "fix", "attachTo", "uploads"];
   // The fill just wrote the file: the page may be slow to show its row, and a second copy is what the hedge is for.
   const FILE_WRITTEN = new Set(["attached", "unconfirmed"]);
   const MAX_FIX_ROUNDS = 3;   // repairs on one page; each error is repaired once
@@ -266,6 +270,7 @@
     let tried = 0;           // Next presses on this page that did nothing
     let movedChecked = false;  // a Resume's first read has been checked against the hosts the run reached
     let fixRounds = 0;       // repairs after a rejected Next on this page
+    let requiredTried = false;  // the one scoped fix for required boxes still empty on this review page
     let attempted = new Set();  // the errors already repaired on this page (by their label)
     let wroteResume = false; // the resume has been written on this page (by the fill's attach or the gate): never twice
     let resumeWhy = null;    // a Resume after page_errors or upload: decided on the first read, by whether it is the parked page
@@ -295,6 +300,7 @@
       pageFilled = false;
       tried = 0;
       fixRounds = 0;
+      requiredTried = false;
       attempted = new Set();
       wroteResume = false;
       record.attach = null;
@@ -320,6 +326,12 @@
       await update({ status: "filling" });
       const repaired = await act(deps.fix, record, items, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
       return repaired?.fixed === true ? null : await park("page_errors", { open });
+    };
+
+    // Read what the page names as wrong in this frame and repair exactly that: null to go on, else the park.
+    const repairNamed = async (frame) => {
+      const found = await act(deps.pageErrors, record.tabId, frame.frameId);
+      return await repair(Array.isArray(found?.items) ? found.items : []);
     };
 
     // A read of the page that looks unfinished is repeated, for a page the run has just arrived at.
@@ -399,6 +411,7 @@
             } else {
               // The user moved on by hand: nothing the park learnt is about this page (what moved() clears).
               fixRounds = 0;
+              requiredTried = false;
               attempted = new Set();
               wroteResume = false;
               record.attach = null;
@@ -428,6 +441,7 @@
         }
         const verdict = ns.pageKind.classify(summary);
         let kind = verdict.kind;
+        let by = verdict.by ?? null;   // why a review is a review (page-kind.js); only a real Submit control ends an application
 
         // A finished run only watches for the confirmation of the user's own Submit, and only believes
         // one that follows the application itself: on a host the run reached, with every read since
@@ -441,7 +455,13 @@
           const sameEmployer = !record.tenant || ns.decisions.sessionTenant(url) === record.tenant;
           const here = record.hosts.includes(hostOf(url)) && sameEmployer;
           if (here && kind === "confirmation") return await finish("confirming", null);
-          if (here && APPLICATION_PAGES.has(kind)) return record;
+          if (here && APPLICATION_PAGES.has(kind)) {
+            // A ready tab the user took back to a form step (a real Next on it): the card says so and offers a
+            // Resume; coming back to a review clears it.
+            const movedOn = kind === "form_step";
+            if ((record.movedOn === true) !== movedOn) await update({ movedOn });
+            return record;
+          }
           await update({ noAutoMark: true });
           return record;
         }
@@ -449,15 +469,22 @@
         // (a draft this browser's session already submitted): not ready, not this run's to mark.
         if (kind === "confirmation") return await park("already_applied");
         // A field-less page with an Apply after a fill (or after a step) is the review page.
-        if (kind === "posting" && (record.filled === true || record.step > 0)) kind = "review";
-        // Later than the first page, a page with nothing to fill and a lone Next may be a final
-        // "are you sure" page: when unsure whether a button is Next or Submit, stop. (An intro page
-        // at step 0 still advances.)
-        if (kind === "form_step" && record.step > 0 && (summary.fillable ?? 0) === 0) kind = "review";
-
+        if (kind === "posting" && (record.filled === true || record.step > 0)) {
+          kind = "review";
+          by = "submit_button";   // its Apply is a Submit-worded button
+        }
         if (WALLS.has(kind)) return await park(kind);
         if (kind === "closed") return await finish("stopped", "closed");
         if (kind === "unknown") return await park("unknown_page");
+
+        // Later than the first page, a page with nothing to fill and one button: a plain Next ("Next",
+        // "Save and continue") is a step like any other (a page of cards). A bare "Continue" or "Proceed" there
+        // may be a final "are you sure" page's, so it parks for the user rather than being pressed. (An intro
+        // page at step 0 still advances.)
+        if (kind === "form_step" && record.step > 0 && (summary.fillable ?? 0) === 0) {
+          const lone = (summary.buttons ?? []).find((b) => b.id === verdict.next);
+          if (!ns.pageKind.isPlainNext(lone?.text)) return await park("confirm_page");
+        }
 
         if (kind === "sign_in") {
           // Marked BEFORE the attempt: whatever happens, the login is tried once.
@@ -521,7 +548,35 @@
           // this page's fill wrote or confirmed. A start chooser or a posting with a stray control
           // (a job-alert box) has neither.
           if (record.step === 0 && record.wrote !== true) return await park("unknown_page");
-          return await finish("ready", null, { readyAt: deps.now(), open: [], tenant: ns.decisions.sessionTenant(url) });
+          // And it needs a page that is the END of one: a real Submit control and no real Next. Every other
+          // reason a page reads as a review (a Submit the reader could not see, a dialog that asks, several
+          // Nexts, fields and no Next) means "stop, not sure": never Ready.
+          await update({ lastBy: by });
+          if (by !== "submit_button") return await park("unsure_page");
+          // The page still complains: one repair of what it names, as after a rejected Next; the same
+          // complaint again parks naming it.
+          if ((summary.errors ?? 0) > 0) {
+            const stop = await repairNamed(frame);
+            if (stop) return stop;
+            continue;
+          }
+          // A required box still empty: one scoped fix of exactly those, then they must be filled. The
+          // resume this page's attach already wrote is excused (its row may not show a file name).
+          if ((summary.requiredEmpty ?? 0) > 0) {
+            const found = await act(deps.pageRequired, record.tabId, frame.frameId);
+            const pending = (Array.isArray(found?.items) ? found.items : [])
+              .filter((one) => !(one.kind === "upload" && wroteResume));
+            if (pending.length) {
+              const open = errorsOpen(pending);
+              if (requiredTried) return await park("open_questions", { open });
+              requiredTried = true;
+              await update({ status: "filling" });
+              const repaired = await act(deps.fix, record, pending, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
+              if (repaired?.fixed !== true) return await park("open_questions", { open });
+              continue;
+            }
+          }
+          return await finish("ready", null, { readyAt: deps.now(), open: [], readyBy: by, tenant: ns.decisions.sessionTenant(url) });
         }
 
         const here = fingerprint(url, summary);
@@ -568,8 +623,7 @@
         if (outcome === "rejected") {
           // The page refused and says why. Not a step, not a seen page: read what it names, repair
           // exactly that, press again. The same error back, or one that cannot be repaired, parks.
-          const found = await act(deps.pageErrors, record.tabId, frame.frameId);
-          const stop = await repair(Array.isArray(found?.items) ? found.items : []);
+          const stop = await repairNamed(frame);
           if (stop) return stop;
           continue;
         }
@@ -602,13 +656,17 @@
 
     const classify = (tabId) => broadcast(tabId, { type: "page_classify" });
 
-    /** What the frame that was pressed says the page complains about: `{count, items}`, words and
+    /** What the frame that was read says of the page: `{count, items: [{label, target, kind}]}`, words and
      * handles only. A frame that did not answer says there is nothing. */
-    async function pageErrors(tabId, frameId) {
-      const frames = await broadcast(tabId, { type: "page_errors" }, frameId);
+    async function itemsFrom(tabId, frameId, message) {
+      const frames = await broadcast(tabId, message, frameId);
       const answer = (Array.isArray(frames) ? frames : []).find((f) => f.frameId === frameId)?.result;
       return Array.isArray(answer?.items) ? { count: answer.items.length, items: answer.items } : { count: 0, items: [] };
     }
+    /** What the page complains about (`page_errors`). */
+    const pageErrors = (tabId, frameId) => itemsFrom(tabId, frameId, { type: "page_errors" });
+    /** The required boxes still empty (`page_required`). */
+    const pageRequired = (tabId, frameId) => itemsFrom(tabId, frameId, { type: "page_required" });
 
     // The press goes to the one frame that named the button (ids are frame-tagged as well).
     async function advance(tabId, frameId, id, opts) {
@@ -684,7 +742,7 @@
       }
     }
 
-    return { classify, pageErrors, advance, signIn, waitForChange };
+    return { classify, pageErrors, pageRequired, advance, signIn, waitForChange };
   }
 
   ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK };
