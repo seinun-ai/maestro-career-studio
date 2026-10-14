@@ -669,7 +669,7 @@ def test_the_manual_mark_applied_posts_to_the_same_endpoint(tmp_path):
     assert _record(out["shots"][-1])["status"] == "applied"
 
 
-def test_a_409_says_so_and_offers_mark_applied_through_the_application_not_a_retry_loop(tmp_path):
+def test_a_409_shows_the_servers_sentence_and_offers_mark_applied_through_the_application(tmp_path):
     conflict = {"ok": False, "error": "Cannot move to submitted from rejected", "status": 409}
     out = _ready_then_confirmation(
         tmp_path, [{"fire": True}, {"press": "run-mark"}],
@@ -677,18 +677,37 @@ def test_a_409_says_so_and_offers_mark_applied_through_the_application_not_a_ret
              "PATCH /api/applications/app-1": _reply({**APPLICATION, "status": "applied"})})
     after_409 = out["shots"][-2]
     assert _record(after_409)["status"] == "ready"
-    assert "already has this job in another state" in _body_text(after_409)
+    assert "Cannot move to submitted from rejected" in _body_text(after_409)
     assert len(_api_calls(out, "companion-submitted")) == 1
     [patch] = [msg for msg in _api_calls(out, "/api/applications/app-1") if (msg.get("init") or {}).get("method") == "PATCH"]
     assert json.loads(patch["init"]["body"]) == {"status": "applied"}
     assert _record(out["shots"][-1])["status"] == "applied"
 
 
-def test_the_users_time_after_ready_counts_to_the_confirmation(tmp_path):
-    out = _ready_then_confirmation(
-        tmp_path, [{"skew": 30_000}, {"fire": True}],
-        api={"POST /api/proposals/prop-1/companion-submitted": _reply({"id": "prop-1", "status": "submitted"})})
-    assert _record(out["shots"][-1])["yourMs"] >= 30_000
+def test_the_users_time_after_ready_stops_when_the_confirmation_is_detected(tmp_path):
+    """Ready to the confirmation is the user's (checking the form, pressing Submit). The 8 s, the network
+    and an Undo are not: 20 s before the page, 30 s after it, and only the first is counted."""
+    posted = {"POST /api/proposals/prop-1/companion-submitted": _reply({"id": "prop-1", "status": "submitted"})}
+    base = [{"start": SEED}, {"skew": 20_000}, {"page": 2, "update": {"tab": 7, "change": {"url": CONFIRM["url"]}}}]
+    out = _run(tmp_path, [*base, {"skew": 30_000}, {"fire": True}], pages=(STEP1, REVIEW, CONFIRM), api=posted)
+    assert 20_000 <= _record(out["shots"][-1])["yourMs"] < 30_000
+    out = _run(tmp_path, [*base, {"press": "run-undo"}, {"skew": 30_000}, {"press": "run-mark"}],
+               pages=(STEP1, REVIEW, CONFIRM), api=posted)
+    assert 20_000 <= _record(out["shots"][-1])["yourMs"] < 30_000
+
+
+def test_a_matched_application_form_on_another_origin_is_kept_not_navigated_away_from(tmp_path):
+    """The posting was saved from a board; the run starts on the employer's ATS form, which the backend
+    matched to the job. Progress on it is kept. On the board itself the run still moves to the link."""
+    saved = {"match": "exact", "job": {"id": "job-1", "company": "Acme", "title": "Data Scientist"},
+             "application": None}
+    seed = {**SEED, "openUrl": "https://careers.acme.test/jobs/77/apply"}
+    out = _run(tmp_path, [{"start": seed}], api={"/api/jobs/match": _reply(saved)})
+    assert out["updates"] == []
+    board = "https://www.linkedin.com/jobs/view/123"
+    out = _run(tmp_path, [{"start": seed}], api={"/api/jobs/match": _reply(saved)},
+               tabs=[{"id": 7, "url": board}], tabUrls={"7": board}, afterNavigate=0)
+    assert out["updates"] == [[7, {"url": seed["openUrl"]}]]
 
 
 def test_done_takes_a_finished_record_off_the_tab(tmp_path):

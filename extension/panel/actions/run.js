@@ -27,7 +27,7 @@
  * tab the run began in), `stopRequested`, `pages` (`{n, filled}` per finished page), `progress`
  * (`{done, total}` of the page in hand), `flags` (the last receipt's "Check before you submit"),
  * `parkedAt`/`yourMs` (the user's time), `learned` (what Resume saved), and for the auto-mark
- * `markAt`, `noAutoMark`, `markNote` and `markConflict`. Answers never live on it: the receipt's
+ * `markAt`, `noAutoMark`, `markNote`, `markConflict` and `timeCounted`. Answers never live on it: the receipt's
  * memory of what it posted (values) and Undo's previous profile values stay in this file's maps,
  * which neither the card nor `chrome.storage.session` ever sees.
  *
@@ -47,6 +47,15 @@
   const LOAD_WAIT_MS = 30000;
   const LOAD_POLL_MS = 250;
   const TERMINAL = new Set(["stopped", "applied"]);
+  // The job boards the page reader calls board-native (content/page-reader.js BOARD_HOST).
+  const BOARD_HOST = /(^|\.)(linkedin|indeed)\.com$/i;
+  const hostOf = (url) => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return "";
+    }
+  };
   // A record that was mid-air when the panel closed is not running any more.
   const IN_AIR = new Set(["waiting", "opening", "signing_in", "filling", "advancing"]);
   const MAX_PHRASE = 300;
@@ -146,15 +155,12 @@
     const tabId = record.startTabId;
     const here = await host.tabUrl(tabId).catch(() => "");
     const facts = store.read();
-    const matched = facts.tabId === tabId && facts.job?.id === record.jobId && Boolean(record.jobId);
-    const sameSite = (() => {
-      try {
-        return new URL(here).origin === new URL(url).origin;
-      } catch {
-        return false;
-      }
-    })();
-    const stays = Boolean(here) && (samePosting(url, here) || (matched && sameSite));
+    // The backend's match is honoured wherever the page is: a posting saved from a board, with the run
+    // started on the employer's own ATS form, is a different origin from the saved link and still the
+    // job. A job BOARD's page is the exception, because there the run's move is to the employer's link.
+    const matched = facts.tabId === tabId && facts.job?.id === record.jobId && Boolean(record.jobId)
+      && !BOARD_HOST.test(hostOf(here));
+    const stays = Boolean(here) && (samePosting(url, here) || matched);
     if (!stays) {
       await host.navigate(tabId, url);
       const until = host.now() + LOAD_WAIT_MS;
@@ -463,6 +469,11 @@
   }
 
   function armAutoMark(store, record) {
+    // The user's time ends when the confirmation is SEEN: not the 8 s delay, the network, or an Undo.
+    if (!record.timeCounted && record.readyAt != null) {
+      record.yourMs += Math.max(0, store.run.now() - record.readyAt);
+      record.timeCounted = true;
+    }
     state.timers.get(record.id)?.();
     record.markAt = store.run.now() + AUTO_MARK_MS;
     state.timers.set(record.id, store.run.after(AUTO_MARK_MS, () => {
@@ -518,17 +529,16 @@
         await store.api(`/api/applications/${encodeURIComponent(record.applicationId)}`,
           { method: "PATCH", body: JSON.stringify({ status: "applied" }) });
       }
-      const now = store.run.now();
-      Object.assign(record, { status: "applied", why: null, markAt: null, markNote: null,
-        yourMs: record.yourMs + (record.readyAt == null ? 0 : Math.max(0, now - record.readyAt)) });
+      Object.assign(record, { status: "applied", why: null, markAt: null, markNote: null });
       store.run.unvouch(tabOf(record));
     } catch (err) {
       const conflict = err?.status === 409;
       Object.assign(record, { status: "ready", why: null, markAt: null, noAutoMark: true,
         markConflict: conflict || record.markConflict,
-        markNote: conflict
-          ? "Maestro CS already has this job in another state, so it wasn't marked automatically. Mark it applied yourself once you've checked it went through."
-          : ns.panelFailureNote({ what: "Couldn't mark this applied." }, err) });
+        // The server's own sentence for a 409 (it says why the proposal would not move), through
+        // `failureNote`; the fallback is the application's status, since a retry would be refused again.
+        markNote: ns.panelFailureNote({ what: "Couldn't mark this applied.",
+          answered: (failure) => (failure.status === 409 ? String(failure.message) : null) }, err) });
     } finally {
       state.marking.delete(record.id);
       persist(store);
