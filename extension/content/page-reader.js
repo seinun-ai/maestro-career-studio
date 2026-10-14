@@ -1013,16 +1013,24 @@
   const newPasswordBox = (el) => el.type === "password"
     && (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).includes("new-password");
 
-  /** The account agreement to tick, if the page asks for one: `{el}`, `null` (none asked), or `{refuse}`. */
+  /** The account agreement to tick, if the page asks for one: `{el}`, `null` (none asked), or `{refuse}`. A
+   * REQUIRED box left unticked (its words are not the account's or the privacy notice's, or it names a
+   * marketing or sharing consent) refuses too: the sign-up could not succeed, and pressing Create Account
+   * over it would only burn the attempt. */
   function agreementCheckbox(scope) {
     const boxes = [...scope.querySelectorAll('input[type="checkbox"], [role="checkbox"]')].filter((el) => shown(el) || shown(el.parentElement));
-    const wanted = boxes.filter((el) => {
+    const ticked = (el) => el.checked === true || el.getAttribute("aria-checked") === "true";
+    const wanted = [];
+    let blocked = false;
+    for (const el of boxes) {
       const words = squash([labelTextOf(el), el.getAttribute("aria-label"), el.closest("label")?.textContent].join(" "));
       const required = el.required === true || el.getAttribute("aria-required") === "true" || marksRequired(words)
         || ACCOUNT_BOX_MARK.test(el.getAttribute("data-automation-id") ?? "");
-      return required && AGREES.test(words) && !DENY.test(words);
-    });
-    if (wanted.length > 1) return { refuse: true };
+      if (!required) continue;
+      if (AGREES.test(words) && !DENY.test(words)) wanted.push(el);
+      else if (!ticked(el)) blocked = true;
+    }
+    if (blocked || wanted.length > 1) return { refuse: true };
     return wanted.length === 1 ? { el: wanted[0] } : null;
   }
 

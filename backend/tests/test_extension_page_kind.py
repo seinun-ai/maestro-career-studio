@@ -314,7 +314,7 @@ def test_a_next_in_site_chrome_is_never_the_steps_next(tmp_path):
 
 
 def test_a_next_outside_every_form_and_outside_chrome_is_the_step(tmp_path):
-    """Dayforce: four <form>s hold the fields and the footer Next is a plain bar outside them. The one
+    """ATS-D: four <form>s hold the fields and the footer Next is a plain bar outside them. The one
     visible, enabled Next that is no site chrome is the step's."""
     out = kind(tmp_path, fillable=2, buttons=[btn("Next", id="n", in_form=False), btn("Cancel", in_form=False)])
     assert out == {"kind": "form_step", "next": "n"}
@@ -450,6 +450,15 @@ def test_a_next_in_a_dialog_or_cookie_notice_outside_every_form_is_not_taken_as_
     out = kind(tmp_path, fillable=2, buttons=[btn("Continue", id="cookie", in_form=False, overlay=True),
                                               btn("Next", id="step", in_form=False)])
     assert out == {"kind": "form_step", "next": "step"}
+
+
+def test_a_cookie_banners_continue_never_turns_a_real_review_into_several_next(tmp_path):
+    """The banner's Continue is not the application's Next: with a real Submit beside it the page is the end."""
+    out = kind(tmp_path, fillable=2, buttons=[btn("Submit application"), btn("Continue", id="cookie", in_form=False, overlay=True)])
+    assert out == {"kind": "review", "by": "submit_button"}
+    # A Next that a form holds, inside a dialog, still counts.
+    out = kind(tmp_path, fillable=2, buttons=[btn("Submit application"), btn("Next", id="n", overlay=True)])
+    assert out == {"kind": "review", "by": "several_next"}
 
 
 def test_a_next_in_a_dialog_that_a_form_holds_is_still_the_step(tmp_path):

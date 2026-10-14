@@ -357,6 +357,15 @@ def test_an_email_check_page_after_the_press_parks_verify_and_the_resume_signs_i
     assert names(resumed, "createAccount") == []
 
 
+def test_a_stop_during_the_press_keeps_the_attempt_so_a_resume_never_creates_a_second_account(tmp_path):
+    first = _drive(tmp_path, [ACCOUNT], cancelOnCreate=True, record=ON_WD)
+    assert (first["record"]["status"], first["record"]["why"]) == ("stopped", "user")
+    assert first["record"]["accountTried"] is True and len(names(first, "createAccount")) == 1
+    again = _drive(tmp_path, [ACCOUNT], record={**first["record"], "status": "stopped"})
+    assert names(again, "createAccount") == []
+    assert (again["record"]["status"], again["record"]["why"]) == ("parked", "create_account_failed")
+
+
 def test_a_stop_before_the_account_is_created_types_nothing(tmp_path):
     out = _drive(tmp_path, [ACCOUNT], cancelAfter=3, record=ON_WD)   # Stop lands after openTab, classify, tabUrl
     assert (out["record"]["status"], out["record"]["why"]) == ("stopped", "user")
@@ -751,7 +760,7 @@ def test_a_resume_remembers_that_a_field_was_written_before_the_park(tmp_path):
 # ---------- when unsure whether a button is Next or Submit, stop ----------
 
 def test_a_fieldless_page_with_a_lone_plain_next_after_the_first_step_is_pressed(tmp_path):
-    """Oracle's section 3 is cards and one NEXT: the old rule read it as a review and said Ready."""
+    """ATS-O's section 3 is cards and one NEXT: the old rule read it as a review and said Ready."""
     out = _drive(tmp_path, [step(1), step(2, fillable=0), REVIEW])
     assert out["record"]["status"] == "ready" and out["record"]["step"] == 2
     assert out["pressed"] == ["next-1", "next-2"]
@@ -774,6 +783,17 @@ def test_a_continue_page_whose_fill_listed_fields_is_a_step_whatever_the_reader_
     """The count the reader takes can lag the fill (popups drawn late): what the fill LISTED decides."""
     out = _drive(tmp_path, [step(1), step(2, fillable=0, nextText="Continue"), REVIEW],
                  fills=[[needs("a", status="verified")], [needs("q", "Degree", required=False, status="verified")], []])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1", "next-2"]
+
+
+@pytest.mark.parametrize("attach", [
+    {"outcome": "attached", "required": False, "boxes": []},
+    {"outcome": "unconfirmed", "required": False, "boxes": [{"label": "Resume", "target": "u1", "kind": "resume", "written": True}]},
+])
+def test_an_upload_only_step_with_a_continue_is_a_step_when_its_box_was_written(tmp_path, attach):
+    """The fill listed no field, but the page held an upload box the run filled: not a final "are you sure" page."""
+    out = _drive(tmp_path, [step(1), step(2, fillable=0, nextText="Continue"), REVIEW],
+                 fills=[[needs("a", status="verified")], [], []], attaches=[None, attach])
     assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1", "next-2"]
 
 
@@ -928,6 +948,14 @@ def test_the_resume_already_written_excuses_the_resume_box_but_never_a_cover_let
     assert [o["question"] for o in r["open"]] == ["Cover letter"] and names(cover, "fix") == []
     resume = _drive(tmp_path, [{**REVIEW, "needs": [_up("Resume", "resume")]}], attaches=wrote)
     assert resume["record"]["status"] == "ready" and names(resume, "fix") == []
+
+
+def test_the_resume_already_written_excuses_only_one_box_a_second_required_one_parks_upload(tmp_path):
+    wrote = [{"outcome": "attached", "required": False}]
+    needs = [_up("Resume", "resume", "u1"), _up("Resume again", "resume", "u2")]
+    out = _drive(tmp_path, [{**REVIEW, "needs": needs}], attaches=wrote, fixClears=True)
+    r = out["record"]
+    assert (r["status"], r["why"], r["readyAt"]) == ("parked", "upload", None) and names(out, "fix") == []
 
 
 def test_two_required_upload_boxes_are_the_users_to_choose_between(tmp_path):

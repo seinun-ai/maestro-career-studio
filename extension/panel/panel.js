@@ -443,7 +443,7 @@
      * That is the conservative direction and it is stated rather than hidden.
      */
     fileInputs: 0,
-    /** The one upload box is for another document (a cover letter): the attach offer is dead. */
+    /** The one upload box is for another document ("other": a cover letter) or is the site's own import ("parser"): the attach offer is dead. */
     otherBox: false,
     /** What this panel put ON this page, or null. `{filename, count}`.
      *
@@ -2238,7 +2238,7 @@
         // second home for a stage decision.
         pdfReady: card.pdfReady === true,
         fileInputs: card.fileInputs,
-        otherBox: card.otherBox === true,
+        otherBox: card.otherBox || false,
         // Only beside the application it was made for (`sameApplication`).
         attached: sameApplication(card.attached?.applicationId, card.application)
           ? card.attached : null,
@@ -3775,8 +3775,12 @@
    * (the first ask and each retry) and a count that disagreed between them
    * would be a rail whose offer flickered. */
   const countFileInputs = (verdict) => Number(verdict?.fileInputs) || 0;
-  /** The page's one upload box is for another document (`uploads`, content/agent.js): no press writes it. */
-  const onlyOtherBox = (verdict) => countFileInputs(verdict) === 1 && verdict?.uploads?.[0]?.kind === "other";
+  /** The page's one upload box is for another document or is the site's own import (`uploads`,
+   * content/agent.js): no press writes it. The box's kind, else false. */
+  const onlyOtherBox = (verdict) => {
+    const kind = verdict?.uploads?.[0]?.kind;
+    return countFileInputs(verdict) === 1 && (kind === "other" || kind === "parser") ? kind : false;
+  };
 
   /** Ask whether this page has a form, and if NOTHING answers, put our scripts
    * there and ask once more. `askPostingPrepared`'s twin, deliberately the same

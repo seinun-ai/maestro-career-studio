@@ -291,6 +291,22 @@ function fillableControls() {
     count += 1;
     if (count >= CAP) break;
   }
+  // A PILL GROUP (Yes/No buttons that hold aria-pressed, or a labelled list of button-only items) is a field
+  // too, ONE per group: a step made of nothing else read as having nothing to fill.
+  const groups = new Set();
+  const shapes = window.careerStudioCompanion?.shapes;
+  const PILLS = 'button[aria-pressed], [role="button"][aria-pressed], ul[role="list"][aria-label] > li > button:only-child';
+  if (shapes) {
+    for (const el of document.querySelectorAll(PILLS)) {
+      if (count >= CAP) break;
+      if (el.closest?.(SITE_CHROME) || shapes.of(el)?.name !== "pills") continue;
+      const key = shapes.of(el).groupKey(el);
+      if (groups.has(key)) continue;
+      groups.add(key);
+      if (el.disabled || el.getAttribute("aria-disabled") === "true" || !(el.offsetWidth || el.offsetHeight || el.getClientRects?.().length)) continue;
+      count += 1;
+    }
+  }
   return count;
 }
 

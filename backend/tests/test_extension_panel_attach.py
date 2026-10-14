@@ -285,6 +285,15 @@ def test_a_lone_cover_letter_box_offers_no_press_and_says_why(tmp_path):
     assert "This page's upload box is for another document." in _attach_text(out["settled"])
 
 
+def test_a_lone_parser_box_offers_no_press_and_says_what_the_box_does(tmp_path):
+    """The site's import-from-resume box fills in the form from a file: the press never writes it, so the offer is dead."""
+    out = _autofill(tmp_path, {"kind": "parser", "occupied": False})
+    assert out["button"] == {"disabled": True}
+    text = _attach_text(out["settled"])
+    assert "This page's upload box fills in the form from a resume. Attach your resume where the page asks for it." in text
+    assert "for another document" not in text
+
+
 def test_a_box_of_unknown_kind_is_left_to_the_button(tmp_path):
     out = _autofill(tmp_path, {"kind": "unknown", "occupied": False})
     assert _attach_asks(out) == []

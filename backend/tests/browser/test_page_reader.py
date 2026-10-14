@@ -22,7 +22,7 @@ from tests.test_extension_page_kind import SUBMIT
 
 READER = "window.careerStudioCompanion.pageReader"
 KIND = "window.careerStudioCompanion.pageKind"
-SOURCES = ENGINE_SOURCES + ["content/detect.js", "shared/ats-hosts.js", "shared/ats-buttons.js", "shared/page-kind.js",
+SOURCES = ENGINE_SOURCES + ["content/detect.js", "shared/ats-hosts.js", "shared/ats-buttons.js",
                            "content/page-reader.js", "shared/queue-run.js"]
 
 
@@ -406,7 +406,7 @@ def test_a_button_tied_to_the_form_by_its_form_attribute_is_in_the_form(page, lo
 # ---------- G1: a Next outside every form, a stepper that says Submit, a chrome flag ----------
 
 def test_a_next_in_a_bar_outside_every_form_is_the_step_and_a_stepper_label_is_no_submit(page, load):
-    """Dayforce: four <form>s, the Next in an affix bar outside them, a stepper whose last step is
+    """ATS-D: four <form>s, the Next in an affix bar outside them, a stepper whose last step is
     called "Submit" (a role=button span and a link inside it). The stepper's words are labels."""
     load(page, fixture_html("wizard_forms_footer.html"), SOURCES)
     s = summary(page)
@@ -555,7 +555,7 @@ def test_a_required_radio_group_with_nothing_chosen_is_one_empty_item(page, load
 
 
 def test_a_nameless_radio_pair_under_a_starred_question_is_required(page, load):
-    """The Gem shape: no name, no fieldset; the question sits in a sibling of the radios' wrapper."""
+    """The ATS-G shape: no name, no fieldset; the question sits in a sibling of the radios' wrapper."""
     load(page, """<div class='row'><div><span>Are you graduating in 2027?<span>*</span></span></div>
       <div><div><div><div><input type='radio' id='y'><label for='y'>Yes</label></div>
       <div><input type='radio' id='n'><label for='n'>No</label></div></div></div></div></div>""", SOURCES)
@@ -617,6 +617,15 @@ def test_a_popup_with_a_pick_showing_is_not_empty(page, load):
     load(page, """<fieldset><legend>Degree *</legend>
       <button type='button' aria-haspopup='listbox' aria-label='Bachelor Required'>Bachelor</button></fieldset>""", SOURCES)
     assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_step_of_nothing_but_pill_groups_reads_as_fillable_one_control_per_group(page, load):
+    load(page, fixture_html("pill_buttons.html").replace('<input id="initech_city">', ""), SOURCES)
+    assert page.evaluate(FILLABLE) == 2
+    assert summary(page)["fillable"] == 2
+    load(page, "<ul role='list' aria-label='Form actions'><li><button type='button'>Back</button></li>"
+               "<li><button type='button'>Submit application</button></li></ul>", SOURCES)
+    assert page.evaluate(FILLABLE) == 0
 
 
 def test_a_sites_menu_button_and_a_search_popup_are_not_fillable_controls(page, load):
@@ -908,6 +917,26 @@ def test_an_account_or_privacy_agreement_is_ticked(page, load, sentence):
     serve_account(page, html)
     assert create_account(page) == {"created": "clicked"}
     assert oracle(page, "agreed") is True
+
+
+@pytest.mark.parametrize("sentence", [
+    "I certify my application is true and accept the terms of this application",
+    "I agree to creating this account and to marketing emails",
+    "I am at least 18 years old",
+])
+def test_a_required_box_that_is_not_an_account_agreement_refuses_and_presses_nothing(page, sentence):
+    """A box the page requires and the run will not tick leaves the sign-up unable to succeed: nothing is typed or pressed."""
+    html = fixture_html("create_account_form.html").replace("I agree to creating this account to apply for positions with Acme", sentence)
+    serve_account(page, html)
+    assert create_account(page) == {"created": False, "why": "agreement"}
+    assert oracle(page, "created") == 0 and oracle(page, "agreed") is False and page.input_value("#pw") == ""
+
+
+def test_a_required_box_the_user_already_ticked_is_not_a_blocker(page):
+    html = fixture_html("create_account_form.html").replace("I agree to creating this account to apply for positions with Acme", "I am at least 18 years old")
+    serve_account(page, html)
+    page.evaluate("() => { document.getElementById('agree').checked = true; }")
+    assert create_account(page) == {"created": "clicked"}
 
 
 def test_an_automation_id_that_merely_says_privacy_does_not_make_a_box_required(page, load):

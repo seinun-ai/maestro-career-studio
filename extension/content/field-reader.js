@@ -111,7 +111,7 @@
   // A label is short and is no sentence ("Phone", "Are you over 18?", "City:").
   const labelish = (t) => t.length <= 80 && t.split(" ").length <= 12 && !/[.!]$/.test(unmark(t).text);
   // A WRITTEN QUESTION is no short label but it ends in "?" ("What is the
-  // hardest bug you fixed for Acme? Why was it hard? *", Gem, live 2026-10-14):
+  // hardest bug you fixed for Acme? Why was it hard? *", ATS-G, live 2026-10-14):
   // a non-choice field takes it whole, up to 200 characters.
   const MAX_QUESTION = 200;
   const questionish = (t) => t.length <= MAX_QUESTION && unmark(t).text.endsWith("?");

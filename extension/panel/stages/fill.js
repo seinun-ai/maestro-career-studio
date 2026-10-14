@@ -245,12 +245,15 @@
     const { facts, act, build } = ctx;
     if (!facts.pdfReady || facts.fileInputs < 1) return null;
     const many = facts.fileInputs > 1;
-    // The page's one box is for another document: the press writes no such box, so the offer says so.
-    const other = facts.otherBox === true && !many;
+    // The page's one box is for another document, or is the site's own import: the press writes neither, so
+    // the offer says so.
+    const odd = many ? false : facts.otherBox || false;
+    const other = odd !== false;
     const box = build.node("div", "attach");
     const line = build.node("div", "sub", many
       ? `This page has ${boxes(facts.fileInputs)}. Attach your resume yourself `
         + "so it goes in the right one."
+      : odd === "parser" ? "This page's upload box fills in the form from a resume. Attach your resume where the page asks for it."
       : other ? "This page's upload box is for another document."
       : facts.attachName
         ? `Put ${facts.attachName} in this page's upload box.`

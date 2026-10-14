@@ -273,6 +273,7 @@
     let movedChecked = false;  // a Resume's first read has been checked against the hosts the run reached
     let fixRounds = 0;       // repairs after a rejected Next on this page
     let listed = null;       // how many fields the last fill on this page reported (null: none yet)
+    let hadUpload = false;   // the page held an upload box the fill wrote or listed: it is a step, not an "are you sure" page
     let seenAtFill = 0;      // how many controls the page showed when that fill began
     let refilled = false;    // fields that showed up after an empty fill have had their one more fill
     let vouched = false;     // a Resume on the very page that parked "unsure": the user says it is the last one
@@ -309,6 +310,7 @@
       requiredTried = false;
       vouched = false;
       listed = null;
+      hadUpload = false;
       seenAtFill = 0;
       refilled = false;
       attempted = new Set();
@@ -497,10 +499,14 @@
           if (record.accountTried === true) return await park("create_account_failed");
           const allowedHost = record.hosts.at(-1);
           if (!ns.atsHosts.isKnown(allowedHost)) return await park("create_account");
-          await update({ status: "creating_account" });
+          // Marked BEFORE the press, as the sign-in is: a Stop that lands during it still leaves the attempt
+          // made, so a Resume never creates a second account. A refusal that pressed nothing unmarks it.
+          await update({ status: "creating_account", accountTried: true });
           const made = await act(deps.createAccount, record, { allowedHost, stop: stopping });
-          if (!made?.created) return await park("create_account");
-          await update({ accountTried: true });
+          if (!made?.created) {
+            await update({ accountTried: false });
+            return await park("create_account");
+          }
           const waited = await waitFor(fingerprint(url, summary));
           if (waited?.changed !== true || (waited.sameStep === true && (waited.errors ?? 0) > 0)) {
             return await park("create_account_failed");
@@ -559,6 +565,7 @@
           // labelled for another document gets the targeted attach, and anything else parks naming them.
           const need = report.attach;
           if (FILE_WRITTEN.has(need?.outcome)) wroteResume = true;
+          hadUpload = wroteResume || (Array.isArray(need?.boxes) && need.boxes.length > 0);
           const boxes = Array.isArray(need?.boxes) ? need.boxes.filter((box) => box.written !== true) : [];
           if (need?.required === true) {
             const lone = boxes.length === 1 && boxes[0].kind !== "other" && boxes[0].kind !== "parser" && !wroteResume;
@@ -585,7 +592,7 @@
         // may be a final "are you sure" page's, so it parks for the user rather than being pressed. What the fill
         // LISTED decides, not the reader's count, which lags a page that draws its fields late. (An intro page at
         // step 0 still advances.)
-        if (kind === "form_step" && record.step > 0 && listed === 0) {
+        if (kind === "form_step" && record.step > 0 && listed === 0 && !hadUpload) {
           const lone = (summary.buttons ?? []).find((b) => b.id === verdict.next);
           if (!ns.pageKind.isPlainNext(lone?.text)) return await park("confirm_page");
         }
@@ -611,12 +618,17 @@
           // resume this page's attach already wrote is excused (its row may not show a file name).
           if ((summary.requiredEmpty ?? 0) > 0) {
             const found = await act(deps.pageRequired, record.tabId, frame.frameId);
-            const pending = (Array.isArray(found?.items) ? found.items : [])
-              .filter((one) => !(one.kind === "upload" && wroteResume && one.box !== "other"));
+            // ONE box is the resume already written; a second required box is not it, and the user chooses.
+            let excused = false;
+            const pending = (Array.isArray(found?.items) ? found.items : []).filter((one) => {
+              if (one.kind !== "upload" || !wroteResume || one.box === "other" || excused) return true;
+              excused = true;
+              return false;
+            });
             // The resume goes in a resume box and nowhere else: a box for another document (or the site's own
             // import), and a choice between several, are the user's.
             const uploads = pending.filter((one) => one.kind === "upload");
-            if (uploads.some((one) => one.box === "other" || one.box === "parser") || uploads.length > 1) {
+            if (uploads.some((one) => one.box === "other" || one.box === "parser") || uploads.length > (excused ? 0 : 1)) {
               return await park("upload", { open: errorsOpen(pending) });
             }
             if (pending.length) {
