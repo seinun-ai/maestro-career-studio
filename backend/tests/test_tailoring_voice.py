@@ -314,3 +314,46 @@ def test_caller_ops_changing_the_summary_to_third_person_return_400(
     assert response.status_code == 400
     assert "implied first person" in response.json()["detail"]
     assert db_session.scalars(select(Application)).first() is None
+
+
+def test_a_pre_ops_only_tailor_still_repairs_what_it_stores(db_session, tmp_path, monkeypatch, client):
+    """Enabling a base entry whose bullet reads "He streamed ..." is the whole edit set: no LLM
+    call, no caller ops. The repair still runs before the draft is saved."""
+    from app.models.job import Job  # noqa: F401
+    from app.models.tailoring_session import TailoringSession
+
+    base = {**BASE, "projects": [{
+        "name": "Ingestion Pipeline", "enabled": False, "tech": "Kafka",
+        "bullets": ["He streamed events with Kafka, and she cut lag 20%."],
+    }]}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex11", resume_json=base)
+    tailoring = TailoringSession(
+        job_id=job.id, base_resume=slug, status="open", resolutions_json=[],
+        gaps_json={"categories": [{"key": "missing_skills", "gaps": [{
+            "gap_id": "skill:kafka", "kind": "skill", "jd_skill": "Kafka",
+            "diagnostic": {"fix_hint": "absent"},
+            "actions": ["add_keyword", "user_input", "attach_project", "skip", "enable_entry"],
+        }]}]},
+    )
+    db_session.add(tailoring)
+    db_session.commit()
+    tailoring_session.save_resolutions(
+        tailoring.id,
+        [{"gap_id": "skill:kafka", "action": "enable_entry", "payload": {
+            "section": "projects", "index": 0, "name": "Ingestion Pipeline",
+            "provenance": {"source": "library_auto"}}}],
+        session=db_session,
+    )
+
+    def no_llm(**kwargs):
+        raise AssertionError("pre-ops only: the LLM must not be called")
+
+    monkeypatch.setattr(tailoring_session.llm, "call_openai", no_llm)
+
+    tailored = tailoring_session.tailor(tailoring.id, session=db_session)
+
+    stored = db_session.get(Application, tailored.application_id).customized_json
+    assert stored["projects"][0]["enabled"] is True
+    assert stored["projects"][0]["bullets"] == ["Streamed events with Kafka; cut lag 20%."]
+    _no_voice_problem(stored)

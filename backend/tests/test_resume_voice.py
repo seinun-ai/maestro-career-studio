@@ -62,6 +62,36 @@ def test_not_hits(text):
     assert [h for h in rv.third_person_hits(text, NAME, ORGS) if h.blocking] == []
 
 
+@pytest.mark.parametrize("text, expected", [
+    ("HE built data platforms.", [("pronoun", "HE")]),
+    ("SHE led the rewrite.", [("pronoun", "SHE")]),
+    ("MY work reduced latency 30%.", [("first_person", "MY")]),
+    ("Cut cost. HE BUILT data platforms.", [("pronoun", "HE")]),   # sentence start + verb-like word
+    ("THEY shipped it.", [("pronoun", "THEY")]),
+])
+def test_capitalised_pronouns_are_hits_when_they_read_as_a_pronoun(text, expected):
+    got = [(h.kind, h.text) for h in rv.third_person_hits(text, NAME, ORGS) if h.blocking]
+    assert got == expected
+
+
+@pytest.mark.parametrize("text", [
+    "Supported HE (Higher Education) reporting.",        # parentheses
+    "Migrated the MY-SQL cluster.",                       # hyphenated
+    "Supported HE and HR reporting.",                      # followed by a conjunction
+    "Offices in MY and SG.",
+    "Led SALES, HR AND HE REPORTING teams.",              # inside an all-caps run
+    "Served the (HE) sector.",
+])
+def test_all_caps_acronyms_are_not_pronouns(text):
+    assert [h for h in rv.third_person_hits(text, NAME, ORGS) if h.blocking] == []
+
+
+def test_the_full_name_needs_word_boundaries():
+    assert rv.third_person_hits("Built the Joann Leeves platform.", "Ann Lee") == []
+    assert rv.repair("Built the Joann Leeves platform.", "Ann Lee") == "Built the Joann Leeves platform."
+    assert [(h.kind, h.text) for h in rv.third_person_hits("Ann Lee built it.", "Ann Lee")] == [("name", "Ann Lee")]
+
+
 def test_a_leading_third_person_verb_is_flagged_not_rejected():
     hits = rv.third_person_hits("Builds data platforms. Combines ML with product sense.", NAME, ORGS)
     assert [(h.kind, h.text, h.blocking) for h in hits] == [

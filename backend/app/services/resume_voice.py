@@ -54,7 +54,7 @@ _PRONOUN = re.compile(
     r"\b(?:he|she|they|his|her|hers|him|their|theirs|himself|herself)\b",
     re.IGNORECASE,
 )
-_MY = re.compile(r"\b(?:my|My|myself)\b")
+_MY = re.compile(r"\b(?:my|My|myself|MY)\b")
 _I = re.compile(r"(?<![\w/.\-'])I(?![\w/.\-]|'(?![smvld]))")
 # "Phase I", "Type I diabetes", "World War I": a Roman numeral, not the pronoun.
 _ROMAN_PRECEDERS = {
@@ -101,6 +101,33 @@ def _verb_opener(word: str) -> bool:
     return bool(stems & _VERB_STEMS)
 
 
+_CAPS_FUNCTION_WORDS = {
+    "and", "or", "in", "for", "of", "to", "with", "at", "on", "by", "as", "from", "vs",
+    "via", "per", "the", "a", "an",
+}
+
+
+def _caps_reads_as_pronoun(text: str, m: re.Match[str]) -> bool:
+    """An all-caps "HE" or "MY" is a shouted pronoun when a lower-case word
+    follows ("HE built"), or when it opens a sentence ahead of a verb-like word
+    ("HE BUILT"). It is an acronym beside a bracket or a hyphen ("HE (Higher
+    Education)", "MY-SQL"), ahead of a conjunction or preposition ("HE and HR"),
+    or inside an all-caps run."""
+    before, after = text[: m.start()].rstrip(), text[m.end():]
+    if before.endswith(("(", "-", "/", "&")) or after[:1] in {"-", "/", ")", "&"}:
+        return False
+    if after.lstrip().startswith("("):
+        return False
+    nxt = re.match(r"\s+([A-Za-z]+)", after)
+    if not nxt:
+        return False
+    word = nxt.group(1)
+    if word.islower():
+        return word not in _CAPS_FUNCTION_WORDS
+    starts_sentence = not before or before[-1] in ".!?"
+    return starts_sentence and (_is_past(word) or _verb_opener(word) or word.lower() in _VERB_STEMS)
+
+
 def _name_tokens(name: str) -> list[str]:
     tokens = [re.sub(r"[^\w'’-]", "", t) for t in (name or "").split()]
     # Two letters is a name ("Li", "Xu"); a single letter is an initial.
@@ -133,11 +160,14 @@ def third_person_hits(
 
     for m in _PRONOUN.finditer(text):
         word = m.group(0)
-        if len(word) > 1 and word.isupper():  # "HE", "HER": an acronym
+        if word.isupper() and not _caps_reads_as_pronoun(text, m):  # "HE": an acronym
             continue
         hits.append(VoiceHit("pronoun", word, m.start(), m.end()))
     for m in _MY.finditer(text):
-        hits.append(VoiceHit("first_person", m.group(0), m.start(), m.end()))
+        word = m.group(0)
+        if word.isupper() and not _caps_reads_as_pronoun(text, m):  # "MY": a country code
+            continue
+        hits.append(VoiceHit("first_person", word, m.start(), m.end()))
     for m in _I.finditer(text):
         before = text[: m.start()].split()
         if before and before[-1].strip("(,").lower() in _ROMAN_PRECEDERS:
@@ -150,7 +180,8 @@ def third_person_hits(
         phrase = " ".join((name or "").split())
         taken: list[tuple[int, int]] = []
         if len(tokens) > 1 and phrase:
-            for m in re.finditer(r"\s+".join(re.escape(p) for p in phrase.split()), masked, re.I):
+            full = r"(?<!\w)" + r"\s+".join(re.escape(p) for p in phrase.split()) + r"(?!\w)"
+            for m in re.finditer(full, masked, re.I):
                 hits.append(VoiceHit("name", m.group(0), m.start(), m.end()))
                 taken.append((m.start(), m.end()))
         for token in tokens:

@@ -1,5 +1,6 @@
 """Tailoring session workflow: freeze a gap list at creation, accumulate resolutions,
 then turn resolutions into LLM-generated typed edit ops and an auto-scored application."""
+import copy
 import hashlib
 import json
 import logging
@@ -1363,12 +1364,6 @@ def _llm_customized(
                     "Tailoring produced invalid keyword-survival fallback ops: "
                     f"{exc}"
                 ) from exc
-    # Still third person after the retry: repair it in code (a pronoun clause is
-    # rewritten or dropped, an unfixable line goes back to the base's text).
-    # A pronoun is never stored.
-    repaired = resume_voice.repair_resume(base, customized)
-    if repaired:
-        logger.warning("third-person voice repaired in code at %s", repaired)
     return customized
 
 
@@ -1457,7 +1452,6 @@ def tailor(
             # alone (even a third-person summary) is repaired before storage.
             if resume_voice.changed_hits(base, customized, summary_always=False):
                 raise ValueError(resume_voice.OPS_ERROR)
-            resume_voice.repair_resume(base, customized)
         else:
             actionable, skipped, already_applied = _resolution_bundle(
                 tailoring, already_applied
@@ -1466,7 +1460,7 @@ def tailor(
                 raise ValueError("No actionable resolutions to tailor")
 
             if not actionable:
-                customized = base
+                customized = copy.deepcopy(base)
             else:
                 customized = _llm_customized(
                     session,
@@ -1477,6 +1471,13 @@ def tailor(
                     already_applied,
                     user_prompt,
                 )
+
+        # Every path ends here, just before the draft is saved: whatever is still
+        # third person (after the retry, or in a pre-ops-only edit, or already on
+        # the base) is repaired or dropped in code. A pronoun is never stored.
+        repaired = resume_voice.repair_resume(base, customized)
+        if repaired:
+            logger.warning("third-person voice repaired in code at %s", repaired)
 
         # Re-tailoring must REUSE the job's existing application for this base
         # rather than orphan it: the job page surfaces only the newest application,
