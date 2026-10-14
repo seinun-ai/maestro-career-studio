@@ -380,6 +380,8 @@
         return { outcome: "unexpected", reason: "outside_date_range" };
       }
     }
+    // A URL is written whole or not at all: a box shorter than it would keep a truncated link.
+    if (format === "url" && el.maxLength > 0 && text.length > el.maxLength) return { outcome: "unexpected", reason: "too_long" };
     // A box already showing the value cannot show an effect: never no_effect.
     const shown = displayed(el, shape, value, { format }) === "verified";
     const w = watch(el, shape);
@@ -1029,7 +1031,7 @@
       let options = pop ? b().optionsOf(pop) : [];
       let byWord = false;
       if (!options.length && term) {
-        const word = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
+        const word = isUrl(term) ? undefined : term.split(/\s+/).find((x) => x.length > 2 && x !== term);
         // A term that already committed something is not searched again by a
         // word (fill-ops takes the commit back).
         if (word && !moved(el, shape, snap)) {
@@ -1434,8 +1436,13 @@
     learnedGroups.get(el).add(groupKey(text, where));
   };
   const knownGroup = (el, text, where) => learnedGroups.get(el)?.has(groupKey(text, where)) === true;
+  // A URL is one value: its words are not terms (a search for "vercel.app" found the wrong row,
+  // and a link was once truncated to its last words).
+  const URL_VALUE = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d+)?(?:[/?#]\S*)?$/i;
+  const isUrl = (value) => URL_VALUE.test(String(value ?? "").trim());
   const wordsOf = (value) => {
     const whole = String(value ?? "").trim();
+    if (isUrl(whole)) return [];
     return [...new Set(whole.split(/[\s,/()&-]+/).filter((w) => w.length > 2 && w !== whole))].slice(0, MAX_WORDS);
   };
   // The popup a move (or a category commit) left open for this field, found

@@ -1417,7 +1417,16 @@
     // and a salary ("$80,000" for 80000). /map says it (`format`, from the
     // slot, server-side — autofill_map.format_of is the one reading); the
     // loop takes only a format it knows, and never guesses one.
-    const FORMATS = new Set(["phone", "money"]);
+    const FORMATS = new Set(["phone", "money", "url"]);
+    // A URL is its own format, decided by the fact's SLOT (a website, LinkedIn, GitHub or portfolio
+    // fact) or by a value that carries its scheme: written whole with https://, compared by the
+    // site it names, never split into words and never cut to fit a short box.
+    const URL_SLOT = /(^|\.)(website|linkedin|github|portfolio|url)s?(\.\d+)?$/;
+    const urlFormat = (m) => (URL_SLOT.test(m?.slot ?? "") || /^https?:\/\/\S+$/i.test(String(m?.value ?? "").trim()) ? "url" : undefined);
+    const withScheme = (v) => {
+      const t = String(v ?? "").trim();
+      return /^[a-z][a-z0-9+.-]*:\/\//i.test(t) ? t : `https://${t}`;
+    };
     // Why /map left a field the profile could answer (`why`, a known word
     // only), said in the report: never "no fact" when the profile has one.
     const WHY = { unclear_job: "Left for you: it isn't clear which of your jobs this entry is." };
@@ -1428,7 +1437,7 @@
     const fillText = async (f, value, format, reason = "matched") => {
       // An empty write is no answer: refused here, never sent (and never retried).
       if (!String(value ?? "").trim()) return finish(f, "needs_answer", { lastOutcome: "no_value" });
-      const out = await act(f, { op: "write", value, ...(format ? { format } : {}) });
+      const out = await act(f, { op: "write", value: format === "url" ? withScheme(value) : value, ...(format ? { format } : {}) });
       if (notDone(f, out)) return undefined;
       // A date the box asked more of than the profile has (the 1st of the month, January): written, and
       // reported as answered for the user to check (owner decision: low stakes are decisive decisions).
@@ -1451,6 +1460,8 @@
     };
 
     // ---- observe, map, sweep
+    const heldUrl = (f) => f.shape === "text" && f.kind === "text" && typeof f.committed === "string"
+      && URLISH.test(f.committed.trim());
     const observe = (frames) => {
       const now = (frames ?? []).flatMap((fr) => (fr?.result?.fields ?? []).map((f) => [fr.frameId, f]));
       const seen = new Set(now.map(([, f]) => f.fid));
@@ -1497,8 +1508,14 @@
         else if (f.touched) finish(f, "yours", { lastOutcome: "yours" });
         else if (f.kind === "unknown" || f.shape === "unknown" || !FID.test(f.fid)) {
           finish(f, "cannot_operate", { lastOutcome: "unsupported" });
-        } else if (row.status === "new" && f.answered && !f.invalid && !row.leftover) finish(f, "already");
-        else if (FINAL.has(row.status) && !(row.status === "verified" && f.invalid)) continue;
+        } else if (row.status === "new" && f.answered && !f.invalid && !row.leftover) {
+          // A URL the box holds is compared with the profile's before it counts as the answer
+          // (a parsed resume left "example.dev" where the website belongs): mapped first.
+          if (heldUrl(f)) {
+            set(f.fid, { heldUrl: true });
+            open.push(f);
+          } else finish(f, "already");
+        } else if (FINAL.has(row.status) && !(row.status === "verified" && f.invalid)) continue;
         else if ((row.attempts ?? 0) >= L.MAX_ATTEMPTS) finish(f, "cannot_operate");
         else open.push(f);
       }
@@ -1537,7 +1554,7 @@
         });
         for (const f of part) {
           const m = res?.fields?.[f.fid];
-          const format = FORMATS.has(m?.format) ? m.format : undefined;
+          const format = FORMATS.has(m?.format) ? m.format : urlFormat(m);
           const datePart = narrowed(f, m);
           if (m) {
             set(f.fid, { route: m.route, slot: m.slot ?? null, value: datePart ? datePart.value : m.value ?? null,
@@ -1658,6 +1675,14 @@
       const prose = [];
       for (const f of open) {
         const row = rows.get(f.fid);
+        if (row.heldUrl) {
+          // Held, answered: the same site as the fact is `already`; no URL fact to compare with, the
+          // box stands as it is; a different site is never counted as the answer (and never overwritten).
+          const fact = row.route === "slot" && typeof row.value === "string" && urlFormat(row) ? row.value : null;
+          if (!fact || same(asUrl(f.committed), asUrl(fact))) finish(f, "already");
+          else finish(f, "needs_answer", { lastOutcome: "holds_something_else", answer: "This box holds something else. Check it." });
+          continue;
+        }
         if (row.part && !row.value) {
           finish(f, "needs_answer", { lastOutcome: "no_date_part", answer: `Your profile has no ${row.part} for this date.` });
         } else if (row.route === "none" && row.why) {

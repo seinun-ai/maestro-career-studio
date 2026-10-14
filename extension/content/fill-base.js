@@ -437,10 +437,15 @@
   const sameMoney = (x, y) => x.value === y.value && (!x.code || !y.code || x.code === y.code)
     && (!x.symbol || !y.symbol || x.symbol === y.symbol)
     && !(signOnly(x) && codeOnly(y)) && !(codeOnly(x) && signOnly(y));
+  // A URL compared by what it names: scheme, a leading `www.`, the host's case, a
+  // trailing slash and a #fragment do not make a different site.
+  const urlKey = (v) => String(v).trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/^www\./i, "")
+    .replace(/#.*$/, "").replace(/\/+$/, "").replace(/^[^/]*/, (host) => host.toLowerCase());
   const equivalent = (actual, wrote, { format } = {}) => {
     const a = fold(actual);
     const w = fold(wrote);
     if (!a || !w) return false;
+    if (format === "url") return urlKey(a) === urlKey(w);
     if (format === "phone") return a.replace(/\D/g, "") !== "" && a.replace(/\D/g, "") === w.replace(/\D/g, "");
     if (format === "money") {
       const x = moneyOf(actual);

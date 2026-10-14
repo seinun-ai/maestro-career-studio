@@ -189,3 +189,50 @@ def test_an_autocomplete_with_no_value_node_reads_its_own_text_once_the_list_is_
     f = inv(page)["Country"]
     row = apply(page, f, op="choose", text="Canada", term="Can")
     assert (row["outcome"], row["committed"]) == ("verified", "Canada")
+
+
+# --- I5: URL values
+URL_BOX = "<label for='u'>Website</label><input id='u'{attrs}>"
+
+
+def test_a_url_is_written_whole_and_compared_after_normalising_scheme_www_and_slash(page, load):
+    load(page, URL_BOX.format(attrs=""))
+    f = inv(page)["Website"]
+    row = apply(page, f, op="write", value="https://sample-one-site.example.dev", format="url")
+    assert (row["outcome"], row["committed"]) == ("verified", "https://sample-one-site.example.dev")
+    # The page re-writes it as it likes: the same site is still the same value.
+    page.evaluate("document.getElementById('u').value = 'http://www.Sample-One-Site.example.dev/'")   # the page's own rewrite
+    assert apply(page, inv(page)["Website"], op="write", value="https://sample-one-site.example.dev", format="url")["outcome"] == "verified"
+
+
+def test_a_url_box_shorter_than_the_url_is_refused_not_truncated(page, load):
+    load(page, URL_BOX.format(attrs=" maxlength='20'"))
+    row = apply(page, inv(page)["Website"], op="write", value="https://sample-one-site.example.dev", format="url")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "too_long") and page.input_value("#u") == ""
+
+
+def test_a_different_host_is_not_the_same_url(page, load):
+    load(page, URL_BOX.format(attrs=""))
+    f = inv(page)["Website"]
+    apply(page, f, op="write", value="https://example.dev", format="url")
+    assert page.input_value("#u") == "https://example.dev"
+    # Verifying a different site against what the box holds is a revert, never a match.
+    ok = page.evaluate(f"() => window.careerStudioCompanion.fillBase.equivalent('example.dev', 'sample-one-site.example.dev', {{ format: 'url' }})")
+    assert ok is False
+
+
+URL_SEARCH = ("<label for='q'>Portfolio link</label><div class='wrap'><input id='q' role='combobox' aria-autocomplete='list' "
+              "aria-controls='ql'></div><ul id='ql' role='listbox' hidden></ul>"
+              "<script>window.typed = []; const q = document.getElementById('q');"
+              "q.addEventListener('input', () => window.typed.push(q.value));</script>")
+
+
+def test_a_url_is_never_searched_by_its_words(page, load):
+    """ATS-O truncated a link to its last words (a search:word move): a URL has no words to search."""
+    load(page, URL_SEARCH)
+    f = inv(page)["Portfolio link"]
+    url = "https://sample-one-site.example.dev/work"
+    s = page.evaluate(f"(r) => {OPS}.stepState(r)", {"fid": f["fid"], "fp": f["fp"], "value": url})
+    assert not [c for c in s["candidates"] if c["mid"].startswith("search:word")]
+    explore(page, f, url)
+    assert set(page.evaluate("window.typed")) <= {url, ""}   # the whole URL, never "sample-one-site.example.dev/work" pieces

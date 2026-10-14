@@ -62,3 +62,41 @@ def test_a_date_beyond_the_boxs_max_is_not_written_and_is_the_users(e2e_page):
                map={"Start date": {"route": "slot", "slot": "experience.0.start", "value": "2021-05", "format": "date"}})
     assert out["by_question"]["Start date"]["status"] != "assumed" and page.input_value("#s") == ""
 
+
+# --- I5: URL values through the loop
+WEBSITE = {"route": "slot", "slot": "personal.website", "value": "sample-one-site.example.dev"}
+
+
+def test_a_url_slot_is_written_with_https(e2e_page):
+    page = e2e_page
+    out = _run(page, html="<form><label for='w'>Website</label><input id='w'></form>", map={"Website": WEBSITE})
+    assert page.input_value("#w") == "https://sample-one-site.example.dev"
+    assert out["by_question"]["Website"]["status"] == "verified"
+
+
+def test_a_stored_url_that_already_has_a_scheme_is_written_as_it_is(e2e_page):
+    page = e2e_page
+    _run(page, html="<form><label for='w'>LinkedIn</label><input id='w'></form>", map={
+        "LinkedIn": {"route": "slot", "slot": "personal.linkedin", "value": "http://www.example.com/in/sample"}})
+    assert page.input_value("#w") == "http://www.example.com/in/sample"
+
+
+def test_a_box_too_short_for_the_url_is_left_for_the_user_and_nothing_is_truncated(e2e_page):
+    page = e2e_page
+    out = _run(page, html="<form><label for='w'>Website</label><input id='w' maxlength='20'></form>", map={"Website": WEBSITE})
+    assert page.input_value("#w") == "" and out["by_question"]["Website"]["status"] != "verified"
+
+
+def test_a_box_holding_a_different_host_is_flagged_and_never_counted_answered(e2e_page):
+    page = e2e_page
+    out = _run(page, html="<form><label for='w'>Website</label><input id='w' value='example.dev'></form>", map={"Website": WEBSITE})
+    row = out["by_question"]["Website"]
+    assert (row["status"], row["lastOutcome"]) == ("needs_answer", "holds_something_else"), row
+    assert page.input_value("#w") == "example.dev"   # the box is not overwritten
+
+
+def test_a_box_holding_the_same_site_in_another_spelling_is_already_there(e2e_page):
+    page = e2e_page
+    out = _run(page, html="<form><label for='w'>Website</label><input id='w' value='https://www.Sample-One-Site.example.dev/'></form>",
+               map={"Website": WEBSITE})
+    assert out["by_question"]["Website"]["status"] == "already"
