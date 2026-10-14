@@ -88,7 +88,10 @@
 
     // A button that is only a line of the error summary ("Error - <what>", not marked as a submit by the page)
     // is neither a Next nor a Submit, whatever its words.
-    const sorted = (s.buttons ?? []).filter((b) => b.errorLine !== true).map((b) => ({ ...b, sort: sortButton(b) }));
+    // A field's own control (a popup whose aria-label is the question, a pill, a button in a field holder) is neither a
+    // Next nor a Submit: `fieldControl` is the reader's mark (content/page-reader.js).
+    const sorted = (s.buttons ?? []).filter((b) => b.errorLine !== true && b.fieldControl !== true)
+      .map((b) => ({ ...b, sort: sortButton(b) }));
     // A Submit counts when it can be SEEN, enabled or not: it is often disabled until the form
     // validates, and a Next beside it is then not to be trusted. Outside the form counts too.
     const submits = sorted.filter((b) => b.sort === "submit" && b.visible !== false);
@@ -105,6 +108,11 @@
     // notice's or a dialog's Continue outside every form is not the application's.
     const realNext = sorted.some((b) => b.sort === "next" && b.visible && b.inErrors !== true && b.chrome !== true
       && !(b.overlay === true && b.inForm === false));
+    // The vendor's own navigation button (`navigation`, Workday's footer), visible, enabled and worded as a Next, is the
+    // step's Next: it settles several Nexts, and outweighs a Submit-worded thing the button list could not see (a link in a
+    // question). A real Submit button, or a dialog that asks about submitting, still wins; and a footer that reads Submit
+    // is a Submit like any other.
+    const footer = sorted.find((b) => b.navigation === true && b.sort === "next" && pressable(b));
     // `submitSeen`: a Submit the button list could not see (a div role=button, an image input, a
     // plain link, or a control whose id or name says submit). `submitContext`: a dialog or the
     // step's own heading asks about submitting ("Submit your application?"), so its Proceed is the
@@ -114,11 +122,13 @@
     // Submit control (inside the application, not the site's header) and no real Next beside it. The
     // others are "stop, don't know": a Submit the list could not see, a dialog that asks, several Nexts,
     // or fields and no Next.
-    if (submits.length || s.submitSeen || s.submitContext) {
+    const unseen = s.submitSeen === true && !footer;
+    if (submits.length || unseen || s.submitContext) {
       const own = submits.some((b) => b.chrome !== true);
       if (own) return { kind: "review", by: realNext ? "several_next" : "submit_button" };
-      return { kind: "review", by: submits.length || s.submitSeen ? "submit_seen" : "submit_context" };
+      return { kind: "review", by: submits.length || unseen ? "submit_seen" : "submit_context" };
     }
+    if (footer) return { kind: "form_step", next: footer.id };
     // Exactly one Next is the step, even with nothing to fill (an intro or "before you apply"
     // page should advance). Several, or fields with no Next, is not sure: the run stops here.
     if (next.length === 1) return { kind: "form_step", next: next[0].id };

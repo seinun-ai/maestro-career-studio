@@ -2156,6 +2156,140 @@ def test_the_workday_marker_means_nothing_on_another_host(page):
     assert classify(page) == {"kind": "review", "by": "submit_button"}
 
 
+# ---------- a field's own control is never an action; the Workday footer decides (Phase 2d, M1) ----------
+
+# A Workday question popup carries the QUESTION in its aria-label ("<question> <value> Required"). A
+# question that says "submit" or "apply" must not make the popup a Submit, and a page with a real
+# footer Next must not read as "maybe the last page".
+BACKGROUND_Q = "Acme runs a background check. Would you be willing to submit to one? Select One Required"
+POPUP_STEP = """<div data-automation-id='applyFlowPage'>
+  <div data-automation-id='formField-willing'><label id='willing'>Would you be willing to submit to a background check?</label>
+    <button type='button' aria-haspopup='listbox' aria-label='{question}' aria-labelledby=''>Select One</button></div>
+  <label for='fn'>First Name</label><input id='fn' type='text'></div>
+{footer}"""
+FOOTER = "<button type='button' data-automation-id='pageFooterNextButton'>{text}</button>"
+
+
+def both(page):
+    """One read, so the ids the verdict names are the ones the summary shows."""
+    return tuple(page.evaluate(f"() => {{ const s = {READER}.summary(); return [s, {KIND}.classify(s)]; }}"))
+
+
+def popup_step(footer=FOOTER.format(text="Save and Continue"), question=BACKGROUND_Q):
+    return POPUP_STEP.replace("{question}", question).replace("{footer}", footer)
+
+
+def test_a_popup_whose_question_says_submit_is_no_submit_and_the_footer_next_makes_a_form_step(page):
+    serve(page, WORKDAY_URL, popup_step())
+    s, verdict = both(page)
+    assert s["submitSeen"] is False
+    assert verdict == {"kind": "form_step", "next": button(s, "Save and Continue")["id"]}
+    assert advance(page, verdict["next"]) == {"clicked": True}
+
+
+def test_the_same_page_with_a_real_submit_button_is_still_a_review(page):
+    serve(page, WORKDAY_URL, popup_step(footer="<button type='button'>Submit application</button>"
+                                                 + FOOTER.format(text="Save and Continue")))
+    assert classify(page)["kind"] == "review"
+    serve(page, WORKDAY_URL + "2", popup_step(footer="<button type='button'>Submit application</button>"))
+    assert classify(page) == {"kind": "review", "by": "submit_button"}
+
+
+@pytest.mark.parametrize("holder", [
+    "<fieldset><legend>Willing?</legend>{control}</fieldset>",
+    "<div role='group' aria-label='Willing?'>{control}</div>",
+    "<div data-automation-id='formField-q'>{control}</div>",
+    "<div>{control}</div>",
+])
+def test_a_popup_button_is_a_field_wherever_it_sits_and_never_a_submit(page, load, holder):
+    control = f"<button type='button' aria-haspopup='listbox' aria-label='{BACKGROUND_Q}'>Select One</button>"
+    load(page, f"<input id='fn'>{holder.format(control=control)}<button type='button'>Next</button>", SOURCES)
+    s = summary(page)
+    assert s["submitSeen"] is False
+    assert classify(page)["kind"] == "form_step"
+    popup = next(b for b in s["buttons"] if b["text"].startswith("Acme runs"))
+    assert popup["fieldControl"] is True and "fieldControl" not in button(s, "Next")
+
+
+def test_a_true_popup_too_is_a_field_control(page, load):
+    load(page, "<fieldset><legend>Pick</legend><button type='button' aria-haspopup='true'>Apply filters</button>"
+               "<input id='x'></fieldset><button type='button'>Next</button>", SOURCES)
+    assert classify(page)["kind"] == "form_step"
+
+
+def test_a_popup_button_that_is_a_real_submit_is_still_one(page, load):
+    load(page, "<input id='fn'><button type='submit' aria-haspopup='true'>Send</button>", SOURCES)
+    assert classify(page)["kind"] == "review"
+    load(page, "<input id='fn'><button type='button' aria-haspopup='listbox' data-automation-id='bottom-submit'>Menu</button>"
+               "<button type='button'>Next</button>", SOURCES)
+    assert classify(page)["kind"] == "review"
+
+
+def test_a_pill_group_member_is_a_field_control_and_never_an_action(page, load):
+    load(page, """<fieldset><legend>Confirm you agree?</legend>
+      <button type='button' aria-pressed='false'>Confirm</button><button type='button' aria-pressed='false'>Decline</button></fieldset>
+      <button type='button'>Next</button>""", SOURCES)
+    s = summary(page)
+    assert button(s, "Confirm")["fieldControl"] is True
+    assert s["submitSeen"] is False
+    assert classify(page)["kind"] == "form_step"
+
+
+def test_a_button_in_a_field_group_that_is_not_a_choice_is_a_field_control_but_a_next_or_submit_there_is_not(page, load):
+    load(page, """<fieldset><legend>Details</legend><input id='a'><button type='button'>Confirm address</button></fieldset>
+      <button type='button'>Next</button>""", SOURCES)
+    assert button(summary(page), "Confirm address")["fieldControl"] is True
+    assert classify(page)["kind"] == "form_step"
+    # A plain Next inside a field group is still the step's Next; a default (no type) button is a form's submit.
+    load(page, "<form><fieldset><legend>Details</legend><input id='a'><button type='button'>Next</button></fieldset></form>", SOURCES)
+    assert classify(page)["kind"] == "form_step"
+    load(page, "<form><fieldset><legend>Details</legend><input id='a'><button>Confirm</button></fieldset></form>", SOURCES)
+    assert classify(page)["kind"] == "review"
+    load(page, "<form><fieldset><legend>Details</legend><input id='a'><button type='submit'>Confirm</button></fieldset></form>", SOURCES)
+    assert classify(page)["kind"] == "review"
+
+
+def test_a_toolbar_group_of_buttons_holds_no_field_so_its_submit_still_counts(page, load):
+    load(page, "<input id='a'><div role='group' aria-label='Actions'><button type='button'>Back</button>"
+               "<button type='button'>Submit application</button></div>", SOURCES)
+    assert classify(page) == {"kind": "review", "by": "submit_button"}
+
+
+def test_a_link_in_a_question_that_says_apply_is_no_submit_when_the_footer_is_a_next(page):
+    link = "<a href='#more'>Complete the form</a>"
+    serve(page, WORKDAY_URL, popup_step(footer=link + FOOTER.format(text="Save and Continue")))
+    s, verdict = both(page)
+    assert s["submitSeen"] is True, "outside a question, a Submit-worded link is a Submit the list could not see"
+    assert verdict["kind"] == "form_step", "but the vendor's footer Next outweighs it"
+    # Inside the question itself it is the question's own text, never a control.
+    serve(page, WORKDAY_URL + "2", popup_step().replace("</button></div>", f"</button>{link}</div>", 1))
+    assert summary(page)["submitSeen"] is False
+
+
+def test_a_footer_that_reads_submit_stays_a_submit(page):
+    serve(page, WORKDAY_URL, popup_step(footer=FOOTER.format(text="Submit")))
+    assert classify(page) == {"kind": "review", "by": "submit_button"}
+
+
+def test_several_nexts_on_a_workday_step_resolve_to_the_footer(page):
+    serve(page, WORKDAY_URL, popup_step() + "<button type='button'>Next</button>")
+    s, verdict = both(page)
+    assert verdict == {"kind": "form_step", "next": button(s, "Save and Continue")["id"]}
+
+
+def test_a_disabled_footer_next_decides_nothing(page):
+    serve(page, WORKDAY_URL, popup_step(footer="<button type='button' disabled data-automation-id='pageFooterNextButton'>Save and Continue</button>"))
+    assert classify(page)["kind"] == "review"   # fields and no pressable Next: not sure
+
+
+def test_a_popup_is_a_field_control_off_workday_too_but_the_footer_has_no_authority_there(page):
+    plain = popup_step().replace("<div data-automation-id='applyFlowPage'>", "<div>")
+    serve(page, "https://careers.initech.test/apply", plain)
+    assert classify(page)["kind"] == "form_step"   # the popup is a field, and the one Next is the step
+    serve(page, "https://careers.initech.test/apply2", plain.replace("</div>\n<button", "</div>\n<a href='#x'>Complete the form</a><button", 1))
+    assert classify(page) == {"kind": "review", "by": "submit_seen"}   # no vendor marker: a Submit-worded link stops
+
+
 # ---------- a board's own hosts, and the ceiling on what is stored ----------
 
 def _target(page, href):

@@ -146,7 +146,8 @@ def test_known_marker_table_can_name_next_but_never_beats_a_submit_word(tmp_path
 
 # ---------- page kinds ----------
 
-def btn(text, *, id=None, visible=True, enabled=True, in_form=True, known=None, chrome=False, overlay=False):
+def btn(text, *, id=None, visible=True, enabled=True, in_form=True, known=None, chrome=False, overlay=False,
+        field_control=False, navigation=False):
     out = {"id": id or text, "text": text, "type": "button", "marker": "", "inForm": in_form,
            "visible": visible, "enabled": enabled}
     if known:
@@ -155,6 +156,10 @@ def btn(text, *, id=None, visible=True, enabled=True, in_form=True, known=None, 
         out["chrome"] = True
     if overlay:
         out["overlay"] = True
+    if field_control:
+        out["fieldControl"] = True
+    if navigation:
+        out["navigation"] = True
     return out
 
 
@@ -333,6 +338,29 @@ def test_a_next_outside_the_form_that_is_an_error_summary_button_is_not_the_step
 
 def test_a_disabled_next_outside_the_form_is_not_taken(tmp_path):
     assert kind(tmp_path, fillable=2, buttons=[btn("Next", in_form=False, enabled=False)])["kind"] == "review"
+
+
+def test_a_field_control_is_neither_a_next_nor_a_submit(tmp_path):
+    """A popup whose aria-label is its question (the reader marks it `fieldControl`) never sorts."""
+    ask = btn("Would you be willing to submit to a background check? Select One Required", id="q", field_control=True)
+    assert kind(tmp_path, fillable=2, buttons=[ask, btn("Next", id="n")]) == {"kind": "form_step", "next": "n"}
+    assert kind(tmp_path, fillable=2, buttons=[ask]) == {"kind": "review", "by": "fields_no_next"}
+    assert kind(tmp_path, fillable=2, buttons=[ask, btn("Submit application")])["by"] == "submit_button"
+
+
+def test_the_vendors_footer_next_makes_a_form_step_and_settles_several_nexts(tmp_path):
+    footer = btn("Save and Continue", id="foot", navigation=True)
+    assert kind(tmp_path, fillable=2, buttons=[footer, btn("Next", id="other")]) == {"kind": "form_step", "next": "foot"}
+    # Over a Submit the button list could not see (a link in a question) ...
+    assert kind(tmp_path, fillable=2, buttons=[footer], submitSeen=True) == {"kind": "form_step", "next": "foot"}
+    # ... but not over a real Submit button, a dialog that asks, or a footer that is itself a Submit.
+    assert kind(tmp_path, fillable=2, buttons=[footer, btn("Submit application")])["by"] == "several_next"
+    assert kind(tmp_path, fillable=2, buttons=[footer], submitContext=True)["kind"] == "review"
+    assert kind(tmp_path, fillable=2, buttons=[btn("Submit", id="foot", navigation=True)]) == {
+        "kind": "review", "by": "submit_button"}
+    # A footer that cannot be pressed decides nothing.
+    off = btn("Save and Continue", id="foot", navigation=True, enabled=False)
+    assert kind(tmp_path, fillable=2, buttons=[off], submitSeen=True)["by"] == "submit_seen"
 
 
 def test_review_says_why_it_is_review(tmp_path):

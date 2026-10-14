@@ -25,6 +25,15 @@
  * onclick or router script, which can send the application too. Whether the run may ask at all
  * (the first page of a tab it opened itself) is the driver's (shared/queue-run.js).
  *
+ * A FIELD'S OWN CONTROL IS NEVER AN ACTION. A Workday question popup carries its question in its
+ * aria-label ("... would you be willing to submit to a background check? Select One Required"), and a
+ * label sorted by its words would make the popup a Submit. So `summary()` marks (`fieldControl`) and
+ * leaves out of the Submit/Next sort, and out of `submitSeen`: a popup button, a pill-group member, and a
+ * button inside a field holder (a formField wrapper, or a fieldset or group that holds another field)
+ * unless it is a plain Next, a `type=submit` (attribute, or a button with no type: a form's default) or
+ * one the page marks as a submit. The vendor's footer Next (shared/ats-buttons.js, "text") is marked
+ * `navigation`: the classifier takes it as the step's Next over a Submit the button list could not see.
+ *
  * `pageErrors()` reads what the page itself complains about after a Next it refused: its error
  * summary (an alert or live region, or a list headed "Errors Found") and each field it marks
  * invalid, upload boxes included. Words only, never a value: `{count, items: [{label, target, kind}]}`,
@@ -227,11 +236,38 @@
 
   const submitMarked = (el) => ns.pageKind.submitMarked(el);
 
+  // A field's own control (see the header): a popup button (the rule `fillableControls` uses), a pill-group member,
+  // or a button inside a field holder. Never an action, so never sorted as a Submit or a Next.
+  const POPUP_BUTTON = 'button[aria-haspopup="listbox"], button[aria-haspopup="true"], '
+    + '[role="button"][aria-haspopup="listbox"]:not(input), [role="button"][aria-haspopup="true"]:not(input)';
+  const FIELD_HOLDER = 'fieldset, [role="group"], [data-automation-id^="formField"]';
+  const PILL_MEMBER = 'button[aria-pressed], [role="button"][aria-pressed], [role="radio"]:not(input), '
+    + 'ul[role="list"][aria-label] > li > button:only-child';
+  function fieldControl(el) {
+    // A real submit control stays one: the type says so, or the page marks it.
+    if (el.getAttribute("type")?.toLowerCase() === "submit" || submitMarked(el)) return false;
+    if (el.matches(POPUP_BUTTON)) return true;
+    if (el.matches(PILL_MEMBER)) {
+      try {
+        if (ns.shapes?.of(el)?.name === "pills") return true;
+      } catch {
+        // A shape that cannot be read says nothing.
+      }
+    }
+    const holder = el.closest(FIELD_HOLDER);
+    if (!holder) return false;
+    // A <button> with no type attribute is a form's default submit; a plain Next is the step's.
+    if (el.type === "submit" || ns.pageKind.isPlainNext(labelOf(el))) return false;
+    // A toolbar group of buttons holds no field. A vendor's formField wrapper always does.
+    return holder.matches('[data-automation-id^="formField"]')
+      || [...holder.querySelectorAll(FIELD_BOX)].some((c) => c !== el && !el.contains(c));
+  }
+
   /** A Submit anywhere a person could press one (WIDE_BUTTONS), shown, enabled or not. Beyond
    * BUTTONS, site chrome is the site's, and a long block of text in a link is not a button label. */
   const submitSeen = (regions) => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
     if (!shown(el)) return false;
-    if (errorLineButton(el, regions)) return false;
+    if (errorLineButton(el, regions) || fieldControl(el)) return false;
     if (!el.matches(REAL_BUTTON) && isStepperLabel(el)) return false;
     const extra = !el.matches(BUTTONS);
     if (extra && (inChrome(el) || shownTextOf(el).length > MAX_TEXT)) return false;
@@ -777,6 +813,10 @@
         // The error summary's own buttons ("Errors Found", "Error - <field>"): not part of the step.
         ...(inErrorRegion(el, regions) && isErrorText(labelOf(el)) ? { inErrors: true } : {}),
         ...(errorLineButton(el, regions) ? { errorLine: true } : {}),
+        // A field's own control (a popup, a pill, a button in a field holder): neither a Next nor a Submit.
+        ...(fieldControl(el) ? { fieldControl: true } : {}),
+        // The vendor's own navigation button (Workday's footer): the step's Next when its own text says so.
+        ...(isNavigation(el) ? { navigation: true } : {}),
       };
     });
     const bodyText = (document.body?.innerText ?? "").slice(0, BODY_SLICE);
@@ -907,6 +947,8 @@
     // word in the text beats the table's "next"; the table's "submit" beats a Next-worded text.
     const sort = ns.pageKind.sortButton({ text: labelOf(el), known: knownOf(el) });
     if (sort === "submit" || submitMarked(el)) return { clicked: false, why: "submit" };
+    // A field's own control (a popup whose question reads like a Next) is never pressed as one.
+    if (fieldControl(el)) return { clicked: false, why: "not_next" };
     if (sort !== "next" || !shown(el) || !enabled(el)) return { clicked: false, why: "not_next" };
     el.click();
     return { clicked: true };
