@@ -351,9 +351,36 @@
     return { applicationId: made.id, pdfReady: Boolean(made.pdf_path) };
   }
 
+  /** This page, as the job's apply link: http(s) only, without its fragment. */
+  function pageLink(url) {
+    const link = httpUrl(url);
+    if (!link) return null;
+    const page = new URL(link);
+    page.hash = "";
+    return page.href;
+  }
+
+  /** Remember the page a hand-picked job was applied on, so the next visit matches it
+   * (`/api/jobs/match` reads the apply link). A convenience: a job that has a link keeps it, and a
+   * refused write (a job another copy holds, an offline server) must not stop the run. */
+  async function saveApplyLink(store, jobId, url) {
+    const link = pageLink(url);
+    if (!link) return;
+    try {
+      await store.api(`/api/jobs/${encodeURIComponent(jobId)}`, {
+        method: "PATCH", body: JSON.stringify({ apply_url: link }) });
+    } catch (err) {
+      console.warn("[maestro-cs] could not save the page as the job's apply link:", err);
+    }
+  }
+
   /** Everything between the press and the run, as one span of `busy`: the user's yes, the claim on
    * the job, a resume that is ready, and the proposal tied to its application. Returns `{stop}`
-   * (a sentence: nothing more was done) or `{seed, application}` for `startRun`. */
+   * (a sentence: nothing more was done) or `{seed, application}` for `startRun`.
+   *
+   * A CLAIMED binding (the user named the job's draft on a page the backend did not match) runs
+   * `inPlace`: the pick says this page IS that job's application, so the run's link is this page and
+   * the job's saved links (a board's, say) are never opened. */
   async function prepareApply(store, facts, withBase) {
     const jobId = facts.job.id;
     const read = await readApplyFacts(store, jobId);
@@ -383,14 +410,17 @@
     } catch (err) {
       throw err.status === 409 ? shown(`Couldn't link the resume to the job. ${err.message}`) : err;
     }
+    const inPlace = facts.claimed === true;
     // Sync can deliver a link that never met the server's check, so it is vouched for here: http(s) only.
-    const openUrl = httpUrl(read.applyUrl) ?? httpUrl(read.sourceUrl) ?? httpUrl(facts.url);
+    const openUrl = inPlace ? httpUrl(facts.url)
+      : httpUrl(read.applyUrl) ?? httpUrl(read.sourceUrl) ?? httpUrl(facts.url);
     if (!openUrl) return { stop: "This job has no web link the Companion can open." };
+    if (inPlace && !read.applyUrl) await saveApplyLink(store, jobId, openUrl);
     return {
       application: { id: applicationId },
       seed: { proposalId: queued.id, jobId, applicationId, company: facts.job.company ?? null,
               location: read.location ?? facts.job.location ?? null,
-              title: facts.job.title ?? null, baseSlug: base, openUrl },
+              title: facts.job.title ?? null, baseSlug: base, openUrl, ...(inPlace ? { inPlace } : {}) },
     };
   }
 

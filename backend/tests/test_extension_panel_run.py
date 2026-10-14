@@ -1053,6 +1053,19 @@ def test_a_matched_application_form_on_another_origin_is_kept_not_navigated_away
     assert out["updates"] == [[7, {"url": seed["openUrl"]}]]
 
 
+def test_a_run_in_place_never_navigates_the_tab_even_on_a_board_or_another_address(tmp_path):
+    """The user picked the job for THIS page: whatever the tab shows, the run reads it where it is."""
+    board = "https://www.linkedin.com/jobs/view/123"
+    in_place = {**SEED, "inPlace": True}
+    out = _run(tmp_path, [{"start": in_place}], tabs=[{"id": 7, "url": board}], tabUrls={"7": board},
+               afterNavigate=0)
+    assert out["updates"] == []
+    assert _record(out["shots"][-1])["inPlace"] is True
+    moved = {**in_place, "openUrl": "https://other.acme.test/jobs/55/apply"}
+    out = _run(tmp_path, [{"start": moved}], afterNavigate=0)
+    assert out["updates"] == []
+
+
 def test_done_takes_a_finished_record_off_the_tab(tmp_path):
     out = _ready_then_confirmation(
         tmp_path, [{"fire": True}, {"press": "run-done"}],

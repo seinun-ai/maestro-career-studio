@@ -595,7 +595,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 - **Queued run, one job (Apply)** (`shared/queue-run.js` driver, pure with injected deps; host `panel/actions/run.js`; card `panel/runs.js`;
   `extension/INTERNALS.md`, "Queued run"): with full automation On the Job step offers **Apply**: save, pick the resume (never overwriting a
   tailored draft or an open session), queue as the user's yes (consent channel `companion`), then drive THIS tab from the job's apply link
-  (`apply_url`, else `source_url`; http(s) only) through sign-in, fill and Next to **Ready to submit**. Parallel tabs, the run list, the
+  (`apply_url`, else `source_url`; http(s) only; on a job the user picked by hand, THIS page, saved as its `apply_url` if it has none, and `/api/jobs/match` reads both links) through sign-in, fill and Next to **Ready to submit**. Parallel tabs, the run list, the
   Queue view and the **Queue** button are not built. **Submit is never clicked, at any setting**: `shared/page-kind.js` treats any Submit
   word, a dialog about submitting or an unseen Submit as the review page, and Next is pressed only by `page_advance`
   (`content/page-reader.js`), which re-sorts the button's labels at click time; `shared/ats-buttons.js` holds only recorded markers (today

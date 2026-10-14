@@ -103,7 +103,7 @@
       proposalId: seed.proposalId, jobId: seed.jobId ?? null, applicationId: seed.applicationId ?? null,
       company: seed.company ?? null, location: seed.location ?? null, title: seed.title ?? null,
       baseSlug: seed.baseSlug ?? null,
-      openUrl: seed.openUrl, startTabId: tabId, tabId: null,
+      openUrl: seed.openUrl, inPlace: seed.inPlace === true, startTabId: tabId, tabId: null,
       status: "waiting", why: null, open: [], hosts: [], seen: [], step: 0, fingerprint: null,
       startedAt: null, readyAt: null, yourMs: 0, flowOrigin: null,
       stopRequested: false, pages: [], progress: null, flags: [], parkedAt: null, learned: null,
@@ -172,7 +172,8 @@
     // job. A job BOARD's page is the exception, because there the run's move is to the employer's link.
     const matched = facts.tabId === tabId && facts.job?.id === record.jobId && Boolean(record.jobId)
       && !BOARD_HOST.test(hostOf(here));
-    const stays = Boolean(here) && (samePosting(url, here) || matched);
+    // A run in place is on the page the user picked for it: that page is never navigated away.
+    const stays = record.inPlace === true || (Boolean(here) && (samePosting(url, here) || matched));
     if (!stays) {
       await host.navigate(tabId, url);
       const until = host.now() + LOAD_WAIT_MS;
@@ -420,7 +421,8 @@
   }
 
   /** Apply to one job in the CURRENT tab, from its employer link through every page to the review.
-   * `seed` is `{proposalId, jobId, applicationId, company, location, title, baseSlug, openUrl}`; the Job
+   * `seed` is `{proposalId, jobId, applicationId, company, location, title, baseSlug, openUrl, inPlace}`
+   * (`inPlace`: the user picked the job for this very page, so `openUrl` is this page); the Job
    * step's Apply (Task 20a) builds it after the job is queued and its resume is ready. A tab with a
    * run that has not finished is not started again. */
   async function startRun(store, seed) {

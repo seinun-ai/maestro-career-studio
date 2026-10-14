@@ -50,7 +50,7 @@
  *   page it cannot sort, ends the run as `ready`. The posting's Apply is the one narrow exception,
  *   pressed ONLY while: the page classified as a posting (no fillable control), this is the record's
  *   step 0, nothing has been filled in this record, and the tab is still on the host the apply link
- *   led to, AND it is the FIRST page this drive() call read after opening the tab itself. Never on a
+ *   led to, AND it is the FIRST page this drive() call read after opening the tab itself (a record with `inPlace` did not: its page was the user's, so a posting parks). Never on a
  *   Resume, never after a sign-in: a site that restores a saved draft lands on its review page, which
  *   has no fillable control and an "Apply" that is a Submit. The page refuses a control that would
  *   submit a form, and the press goes to the one frame that named the control. A field-less page
@@ -299,7 +299,8 @@
         await update({ tabId: await deps.openTab(record.openUrl, stopping) });
         gate();
         navigated = true;
-        applyOk = true;
+        // A run in place did not open its tab: the page was the user's, so a posting's Apply is theirs.
+        applyOk = record.inPlace !== true;
       } else if (record.readyAt == null) {
         await update({ status: "filling", why: null, open: [] });
       }

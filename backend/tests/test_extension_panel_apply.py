@@ -176,6 +176,12 @@ main(async () => {
       if (!node) throw new Error(`no control #${step.id}`);
       node.click();
     }
+    if (step.pick !== undefined) {
+      const select = document.getElementById("draft-pick");
+      if (!select) throw new Error("no draft picker on screen");
+      select.value = step.pick;
+      select.dispatch("change");
+    }
     if (step.seed) {
       ns.panel.actionStore().write({ runs: step.seed });
       ns.panel.actionStore().render();
@@ -558,6 +564,143 @@ def test_the_job_step_stays_open_on_a_draft_so_apply_is_there_without_reopening_
 def test_an_applied_application_has_no_apply(tmp_path):
     shot = _apply(tmp_path, api=_bound(status="applied"))["shots"][0]
     assert _primary(shot) == []
+
+
+# ---------- a job the user picked by hand: Apply runs in THIS tab ----------
+# The user opened the employer's own form (a different site from the saved link, so the backend's match
+# is silent), and named the job's draft in the picker. That pick says this page IS the job's application,
+# so Apply runs here and never opens or navigates to the job's saved links.
+
+FORM_HOST = "forms.globex.test"
+FORM_URL = f"https://{FORM_HOST}/apply/step1"
+PICKED = {"id": "app-1", "job_id": "job-1", "base_resume": "ai_ml_engineer", "status": "draft",
+          "job_company": "Acme", "job_title": "Data Scientist"}
+FORM_PAGE = {"extract_job_posting": _reply({"url": FORM_URL, "title": "Apply", "text": "", "source": "body"}),
+             "detect_page": _reply({"tier": "B", "form": True, "score": 2})}
+
+
+def _picked(status="draft", **api):
+    """An unmatched employer form with the user's draft on the picker's list, and a saved job that has no
+    apply link yet (it was saved from a board)."""
+    detail = _job(application=_draft(status=status), apply_url=None,
+                  proposal_status=None if status == "draft" else "submitted")
+    return _saved(**{
+        "/api/jobs/match": _reply({"match": "none", "job": None, "application": None}),
+        "GET /api/applications?": _reply([PICKED]),
+        "GET /api/applications/app-1": _reply(_draft(status=status)),
+        "/api/jobs/job-1/detail": detail,
+        "PATCH /api/jobs/job-1": _reply({**JOB, "apply_url": FORM_URL}),
+        **api,
+    })
+
+
+def _on_form(tmp_path, steps, api=None, url=FORM_URL, **spec):
+    spec.setdefault("page", FORM_PAGE)
+    return _apply(tmp_path, api=api or _picked(), tabs=[{"id": 7, "url": url}],
+                  steps=[{"pick": "app-1", "settles": 4}, *steps], **spec)
+
+
+def test_a_picked_draft_with_full_automation_on_shows_apply(tmp_path):
+    out = _on_form(tmp_path, [])
+    shot = out["shots"][-1]
+    assert _primary(shot) == ["Apply"]
+    assert PROMISE in _text(shot["regions"]["rail"])
+    # The unmatched page offered the pick, and nothing was written by making it.
+    assert _order(out) == []
+
+
+def test_a_picked_draft_with_full_automation_off_shows_no_apply(tmp_path):
+    out = _on_form(tmp_path, [], api=_picked(**{"/api/settings/auto-apply": AUTOMATION_OFF}))
+    assert "Apply" not in _labels(out["shots"][-1])
+
+
+@pytest.mark.parametrize("status", ["applied", "interview"])
+def test_a_picked_application_that_is_already_applied_shows_no_apply(tmp_path, status):
+    out = _on_form(tmp_path, [], api=_picked(status=status))
+    assert "Apply" not in _labels(out["shots"][-1])
+
+
+def test_a_picked_job_already_submitted_shows_no_apply(tmp_path):
+    api = _picked(**{"/api/jobs/job-1/detail": _job(application=_draft(), apply_url=None,
+                                                    proposal_status="submitted")})
+    assert "Apply" not in _labels(_on_form(tmp_path, [], api=api)["shots"][-1])
+
+
+def test_a_picked_job_that_is_queued_shows_apply_alone(tmp_path):
+    api = _picked(**{"/api/jobs/job-1/detail": _job(application=_draft(), apply_url=None,
+                                                    proposal_id="prop-1", proposal_status="accepted")})
+    assert _primary(_on_form(tmp_path, [], api=api, queue_button=True)["shots"][-1]) == ["Apply"]
+
+
+def test_a_refresh_after_a_pick_still_knows_the_picked_job_is_queued(tmp_path):
+    """The pick comes back from the browser's memory on a reload (a wizard's next page): the facts Apply
+    needs are read for it again, not only when the pick was made."""
+    api = _picked(**{"/api/jobs/job-1/detail": _job(application=_draft(), apply_url=None,
+                                                    proposal_id="prop-1", proposal_status="accepted")})
+    out = _on_form(tmp_path, [{"id": "refresh-page", "settles": 4}], api=api, queue_button=True)
+    assert out["shots"][-1]["facts"]["apply"]["queued"] is True
+    assert _primary(out["shots"][-1]) == ["Apply"]
+
+
+def test_apply_on_a_picked_draft_runs_in_this_tab_and_never_opens_the_jobs_links(tmp_path):
+    out = _on_form(tmp_path, [{"foot": "Apply"}])
+    [seed] = out["seeds"]
+    assert seed["openUrl"] == FORM_URL and seed["inPlace"] is True
+    assert (seed["jobId"], seed["applicationId"], seed["baseSlug"]) == ("job-1", "app-1", "ai_ml_engineer")
+    assert out["updates"] == [] and out["created"] == []
+    # The draft is the user's own: nothing is tailored, rendered or made.
+    assert _api(out, "POST", "/quick-tailor") == [] and _api(out, "POST", "/from-base") == []
+    assert _api(out, "POST", "/render") == []
+    assert [one for one in _order(out) if "/api/jobs" in one] == ["PATCH /api/jobs/job-1"]
+
+
+def test_a_picked_draft_runs_a_whole_record_here_on_this_pages_host(tmp_path):
+    site = [page("step", 1, host=FORM_HOST), page("review", 2, host=FORM_HOST)]
+    out = _on_form(tmp_path, [{"foot": "Apply", "settles": 5}], realRun=True, site=site)
+    assert out["updates"] == [] and out["created"] == []
+    [record] = out["shots"][-1]["facts"]["runs"]
+    assert (record["status"], record["startTabId"], record["jobId"]) == ("ready", 7, "job-1")
+    assert record["hosts"][0] == FORM_HOST and record["openUrl"] == FORM_URL
+    assert len(out["fills"]) >= 1
+    assert not [msg for msg in out["broadcasts"] if "submit" in msg["message"]["type"]]
+
+
+def test_a_run_here_does_not_press_a_postings_apply_link(tmp_path):
+    """The press rule is for a tab the run opened. This tab was the user's, so a posting page parks."""
+    posting = {**page("step", 1, host=FORM_HOST), "summary": {**page("step", 1, host=FORM_HOST)["summary"],
+               "fillable": 0, "hasApplyLink": True, "applyId": "apply-1", "buttons": []}}
+    out = _on_form(tmp_path, [{"foot": "Apply", "settles": 4}], realRun=True, site=[posting, STEP1])
+    [record] = out["shots"][-1]["facts"]["runs"]
+    assert (record["status"], record["why"]) == ("parked", "posting")
+    assert not [msg for msg in out["broadcasts"] if msg["message"].get("type") == "page_advance"]
+
+
+def test_the_page_is_saved_as_the_jobs_apply_link_without_its_fragment(tmp_path):
+    out = _on_form(tmp_path, [{"foot": "Apply"}], url=f"{FORM_URL}?step=1#section-2")
+    [patch] = _api(out, "PATCH", "/api/jobs/job-1")
+    assert _body(patch) == {"apply_url": f"{FORM_URL}?step=1"}
+    assert out["seeds"][0]["openUrl"] == f"{FORM_URL}?step=1#section-2"
+
+
+def test_a_job_that_has_an_apply_link_keeps_it(tmp_path):
+    api = _picked(**{"/api/jobs/job-1/detail": _job(application=_draft(), apply_url=APP_URL)})
+    out = _on_form(tmp_path, [{"foot": "Apply"}], api=api)
+    assert _api(out, "PATCH", "/api/jobs/job-1") == []
+    assert len(out["seeds"]) == 1 and out["seeds"][0]["openUrl"] == FORM_URL
+
+
+def test_a_refused_link_save_still_runs(tmp_path):
+    refusal = {"ok": False, "status": 409, "error": "This job is with your bot."}
+    out = _on_form(tmp_path, [{"foot": "Apply"}], api=_picked(**{"PATCH /api/jobs/job-1": refusal}))
+    assert len(_api(out, "PATCH", "/api/jobs/job-1")) == 1
+    assert len(out["seeds"]) == 1
+
+
+def test_an_exact_match_apply_is_unchanged_and_saves_no_link(tmp_path):
+    out = _apply(tmp_path, api=_bound(), steps=[{"foot": "Apply"}])
+    [seed] = out["seeds"]
+    assert not seed.get("inPlace") and seed["openUrl"] == APP_URL
+    assert _api(out, "PATCH", "/api/jobs/job-1") == []
 
 
 # ---------- where the job lives (sync) ----------

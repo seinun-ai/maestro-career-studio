@@ -2944,12 +2944,13 @@
   /** Does the open Job step offer Apply (and Queue) instead of Save job? With full automation on,
    * unless the job is already applied. A saved job may have no application yet, or the user's own
    * DRAFT (`/api/jobs/match` returns it bound): Apply starts from that draft, and `prepareApply` never
-   * tailors over it. A claimed binding (the user's pick on an unmatched page) has no saved job here,
-   * and an applied one has nothing left to apply. Off or not known, the footer is exactly what it was. */
+   * tailors over it. A claimed binding (the user's pick on an unmatched page) offers it too, once the
+   * pick names a saved job: the pick says this page is that job's application, so Apply runs in this tab.
+   * An applied one has nothing left to apply. Off or not known, the footer is exactly what it was. */
   function jobAppliesHere() {
     if (card.fullAutomation !== true || card.apply?.applied === true) return false;
     if (card.application === null) return true;
-    return card.claimed !== true && Boolean(card.job?.id) && card.application.status === "draft";
+    return Boolean(card.job?.id) && card.application.status === "draft";
   }
 
   // Phase 3: the Queue view picks queued jobs up. Until it exists the Queue button would promise a
@@ -3417,13 +3418,13 @@
 
   /** What Apply and Queue need to know about the saved job on this page, read from the server (its
    * detail and its tailoring sessions) only when the Job step can offer them: full automation on, a
-   * saved job, and no application bound or a draft of the user's (an applied one has nothing to
-   * apply). Otherwise nothing is asked and `apply` is null. A failed read leaves it null, and Apply
-   * re-reads at press time anyway, so a stale or missing answer here can only cost a button's state,
-   * never a decision. */
+   * saved job (the backend's match, or the job the user's pick named), and no application bound or a
+   * draft of the user's (an applied one has nothing to apply). Otherwise nothing is asked and `apply`
+   * is null. A failed read leaves it null, and Apply re-reads at press time anyway, so a stale or
+   * missing answer here can only cost a button's state, never a decision. */
   async function loadApplyFacts(token) {
     const ready = card.fullAutomation === true && card.match === "exact" && card.job?.id
-      && (card.application === null || (card.claimed !== true && card.application.status === "draft"));
+      && (card.application === null || card.application.status === "draft");
     if (!ready) {
       card.apply = null;
       return;
@@ -4816,6 +4817,7 @@
       recipes: recipeDoor,
       loadContext,
       loadBaseScores,
+      loadApplyFacts,
       // `evidenceFrom` rides here for `ingestBodyFrom`'s reason: the Track
       // action's PATCH answers with the same shape `loadContext`'s GET does, so
       // both fold it through ONE function rather than each reading `pdf_path`

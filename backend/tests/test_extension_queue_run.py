@@ -467,6 +467,18 @@ def test_a_posting_without_an_apply_the_page_named_is_not_pressed(tmp_path):
     assert out["record"]["why"] == "posting" and names(out, "advance") == []
 
 
+def test_a_run_in_place_does_not_press_a_postings_apply_on_its_first_read(tmp_path):
+    """The tab was the user's, not opened by the run: a posting there parks as "Apply yourself"."""
+    out = _drive(tmp_path, [{"t": "posting"}, step(1), REVIEW], record={"inPlace": True})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "posting")
+    assert names(out, "advance") == []
+
+
+def test_a_run_in_place_on_the_form_itself_fills_and_advances_as_any_run_does(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], record={"inPlace": True})
+    assert (out["record"]["status"], out["record"]["step"]) == ("ready", 1)
+
+
 @pytest.mark.parametrize("record", [{"filled": True, "wrote": True}, {"step": 1}])
 def test_a_field_less_page_with_an_apply_button_after_a_fill_or_a_step_is_the_review_page(tmp_path, record):
     """Never pressed: with the record's `filled` (or a step behind it) the Apply-worded button is a

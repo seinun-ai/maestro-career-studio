@@ -57,6 +57,8 @@
     evidence: null,
     scores: null,
     revisit: null,
+    // What Apply read about the job the pick named.
+    apply: null,
   };
 
   /** The panel's whole vocabulary for a referent that died. ONE string, said
@@ -177,6 +179,9 @@
       },
       note: { text: `Using ${chosen.job_company} · ${chosen.job_title}.` },
     });
+    // What Apply needs of the picked job, before the paint that draws its button.
+    await store.loadApplyFacts(token);
+    if (!store.current(token)) return;
     store.remember();
     store.render();
     await store.loadBaseScores(token);
