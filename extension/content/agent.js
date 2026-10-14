@@ -290,29 +290,38 @@
 
   // A PARSER BOX is the site's own "fill this form from my resume": it imports, parses or autofills
   // from the file and rewrites fields the Companion filled (live check 2: wrong education rows, a
-  // middle name, a cut-off link). Its wording says so, in its own words, its uploader's or its
-  // section's. It is NEVER written, by any press. Doubt falls to "parser": a skipped attach costs a
-  // press, a wrong write costs the form.
+  // middle name, a cut-off link). It is NEVER written, by any press. The words are an ACTION on the
+  // file, the resume noun its object ("Import Resume", "Autofill from resume", "Apply with resume"):
+  // "Import from Dropbox" is a file source. The nearest NAME decides, as `kindOf` does: a section
+  // heading that plainly names a resume upload outranks its button's "Import Resume" (the live
+  // "Resume Upload" box has one), and a parser-worded section never overrides a box that names a
+  // plain resume. COMBINED wording ("Resume (we'll use it to fill your profile)") is the resume box
+  // when it is the only one, and a parser beside a separate resume box (`readBoxes`).
   const RESUME = String.raw`(?:r[eé]sum[eé]s?|cv|curriculum\s+vitae)(?![\p{L}\p{N}])`;
-  const FILL = String.raw`(?:auto-?\s?fill|pre-?\s?fill|populate|fill)`;
+  const OBJECT = String.raw`(?:(?:your|my|a|the)\s+)?${RESUME}`;
   const PARSER_WORDS = WORD([
-    String.raw`(?:import|parse|auto-?\s?fill|pre-?\s?fill|populate)\b[^.]{0,40}?\b${RESUME}`,
-    String.raw`apply\s+with\b[^.]{0,12}?\b${RESUME}`,
-    String.raw`\b${RESUME}[^.]{0,30}?\bto\s+${FILL}\b`,
-    String.raw`fill\b[^.]{0,40}?\b(?:from|with|using)\b[^.]{0,20}?\b${RESUME}`,
+    String.raw`(?:import|parse)\s+${OBJECT}`,
+    String.raw`(?:auto-?\s?fill|pre-?\s?fill|populate)\b[^.\n]{0,40}?\b(?:from|with|using)\s+${OBJECT}`,
+    String.raw`fill\s+(?:in\s+|out\s+)?(?:the\s+|this\s+|your\s+)?(?:form|application|profile|fields?)\b[^.\n]{0,20}?\b(?:from|with|using)\s+${OBJECT}`,
+    String.raw`apply\s+with\s+${OBJECT}`,
   ].join("|"));
+  const COMBINED_WORDS = WORD(String.raw`${RESUME}[^.\n]{0,30}?\bto\s+(?:auto-?\s?fill|pre-?\s?fill|populate|fill)`);
+  const hit = (re, texts) => texts.some((t) => re.test(String(t ?? "")));
+  // Boxes whose read threw: unknown and occupied, and no press writes them.
+  const UNREAD = new WeakSet();
 
   /** What the box is called when the field reader gave up at the uploader's own text ("Click to
    * upload"): a react-dropzone's name ("Resume *") is a sibling of the WIDGET. The text before the
-   * widget, its star read as required. Empty when the reader already named the box. */
+   * widget, its star read as required. Empty when the reader already named the box, and for a stray
+   * file name (a filename is the user's, never a label). */
   function outsideName(input, read) {
-    if (read.question || typeof ns.precedingLabel !== "function" || typeof ns.unmark !== "function") {
-      return { text: "", required: false };
-    }
+    const none = { text: "", required: false };
+    if (read.question || typeof ns.precedingLabel !== "function" || typeof ns.unmark !== "function") return none;
     try {
-      return ns.unmark(ns.precedingLabel(uploadWidgetOf(input) ?? input, [input]));
+      const named = ns.unmark(ns.precedingLabel(uploadWidgetOf(input) ?? input, [input]));
+      return FILE_ROW.test(named.text) ? none : named;
     } catch (_) {
-      return { text: "", required: false };
+      return none;
     }
   }
 
@@ -321,35 +330,47 @@
     const box = widget ?? input.parentElement;
     const read = typeof ns.readField === "function" ? ns.readField(input) : { question: "" };
     const outside = outsideName(input, read);
-    const own = [read.question, outside.text, words(input.id), words(input.name)];
+    const labels = [read.question, outside.text];
     for (let el = input; el; el = el === box ? null : el.parentElement) {
-      own.push(el.getAttribute("aria-label"), words(el.getAttribute("data-automation-id")));
+      labels.push(el.getAttribute("aria-label"), words(el.getAttribute("data-automation-id")));
       for (const id of (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean)) {
-        own.push(document.getElementById(id)?.textContent);
+        labels.push(document.getElementById(id)?.textContent);
       }
     }
+    const own = [...labels, words(input.id), words(input.name)];
     const section = sectionOf(input);
     // Only an uploader of its own speaks for the box: a bare input's parent may be the whole form.
-    const parser = [...own, widget?.innerText, section].some((t) => PARSER_WORDS.test(String(t ?? "")));
-    if (parser) return { kind: "parser", occupied: hasFile(input, box) };
+    const uploader = [widget?.innerText];
+    const plain = (texts) => kindOf(texts) === "resume" && !hit(PARSER_WORDS, texts);
+    const parser = hit(PARSER_WORDS, labels) || (hit(PARSER_WORDS, uploader) && !plain([section]))
+      || (hit(PARSER_WORDS, [section]) && !plain(labels) && !plain(uploader));
+    const occupied = hasFile(input, box);
+    if (parser) return { kind: "parser", occupied };
     let kind = kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([section]) ?? "unknown";
     // A REQUIRED box that is the page's only upload, and whose words name no document, is the resume's
     // (live Workday: "Upload a file (5MB max)", seven levels under the heading that says resume).
     if (kind === "unknown" && (read.required || outside.required) && attachableFileInputs().length === 1) kind = "resume";
-    return { kind, occupied: hasFile(input, box) };
+    return { kind, occupied, combined: kind === "resume" && hit(COMBINED_WORDS, [...labels, ...uploader]) };
   }
 
-  /** `uploadBoxOf` for each of `inputs`, in order; a box whose read throws is unknown and occupied
-   * (nothing is attached to it). SEVERAL RESUME-LOOKING BOXES: keep the ones whose section names a
-   * resume upload and demote the rest to unknown (live ATS-D: "Candidate Info" beside "Resume
-   * Upload"). When no section names one, all stay and the callers' "exactly one" rule refuses. */
+  /** `uploadBoxOf` for each of `inputs`, in order, as `{kind, occupied}` (a box whose read throws is
+   * unknown and occupied, and in `UNREAD`). COMBINED boxes are parsers only beside another resume box.
+   * SEVERAL RESUME-LOOKING BOXES: keep the ones whose section names a resume upload and demote the
+   * rest to unknown (live ATS-D: "Candidate Info" beside "Resume Upload"). When no section names
+   * one, all stay and the callers' "exactly one" rule refuses. */
   function readBoxes(inputs) {
-    const boxes = inputs.map((input) => {
+    const raw = inputs.map((input) => {
       try {
         return uploadBoxOf(input);
       } catch (_) {
-        return { kind: "unknown", occupied: true };
+        return { kind: "unknown", occupied: true, unread: true };
       }
+    });
+    const boxes = raw.map(({ kind, occupied, combined, unread }, i) => {
+      const separate = raw.some((other, j) => j !== i && other.kind === "resume" && !other.combined);
+      const box = { kind: combined && separate ? "parser" : kind, occupied };
+      if (unread) UNREAD.add(box);
+      return box;
     });
     const resumes = boxes.map((box, i) => (box.kind === "resume" ? i : -1)).filter((i) => i >= 0);
     if (resumes.length > 1) {
@@ -370,17 +391,12 @@
    * one resume box" rule does not apply; the other refusals do. Two more, for what the user may have
    * done by hand: no other box in the frame holds a file already (the resume is on the page, in the
    * box the error did not name), and among several boxes the named one must read as a resume box. */
-  function targetBox(inputs, target) {
+  function targetBox(inputs, boxes, target) {
     const at = inputs.findIndex((one) => one.getAttribute("data-maestro-up") === target);
-    try {
-      const boxes = at < 0 ? [] : readBoxes(inputs);
-      const box = boxes[at];
-      if (!box || box.kind === "other" || box.kind === "parser" || box.occupied) return [];
-      if (inputs.length > 1 && (box.kind !== "resume" || boxes.some((one, i) => i !== at && one.occupied))) return [];
-      return [inputs[at]];
-    } catch (_) {
-      return [];
-    }
+    const box = boxes[at];
+    if (!box || box.kind === "other" || box.kind === "parser" || box.occupied) return [];
+    if (inputs.length > 1 && (box.kind !== "resume" || boxes.some((one, i) => i !== at && one.occupied))) return [];
+    return [inputs[at]];
   }
 
   /** The page's upload boxes in its own words, for the run: `{label, target, required, occupied,
@@ -389,20 +405,17 @@
     const inputs = attachableFileInputs();
     const boxes = readBoxes(inputs);
     return inputs.map((input, i) => {
-      const box = boxes[i];
       const read = ns.readField?.(input);
       const outside = outsideName(input, read ?? { question: "" });
-      // A parser box is never asked for: it is not a field the run owes a file.
+      // `required` is the page's word, a parser's too: a required parser box parks the run, naming it.
       return { label: ns.pageReader.fieldWords(input) || outside.text, target: ns.pageReader.uploadTag(input),
-               required: box.kind !== "parser" && Boolean(read?.required || outside.required),
-               occupied: box.occupied, kind: box.kind };
+               required: Boolean(read?.required || outside.required), occupied: boxes[i].occupied, kind: boxes[i].kind };
     });
   }
 
   /** Autofill's one target, re-checked at write time for `expect`'s reason:
    * the page's only resume box, while it holds no file; else none. */
-  function theResumeBox(inputs) {
-    const boxes = readBoxes(inputs);
+  function theResumeBox(inputs, boxes) {
     const at = boxes.map((box, i) => (box.kind === "resume" ? i : -1)).filter((i) => i >= 0);
     return at.length === 1 && !boxes[at[0]].occupied ? [inputs[at[0]]] : [];
   }
@@ -526,9 +539,10 @@
     const reply = (written, proven) => (resumeOnly || targeted ? { written, proven } : proven);
     const all = attachableFileInputs();
     if (!targeted && Number.isInteger(expect) && all.length !== expect) return reply(0, 0);
-    // The button writes every box but a parser (the site's own fill-from-resume), which no press writes.
-    const inputs = targeted ? targetBox(all, target) : resumeOnly ? theResumeBox(all)
-      : all.filter((_, i) => readBoxes(all)[i].kind !== "parser");
+    // The button writes every box but a parser (the site's own fill-from-resume) or one it could not read.
+    const boxes = readBoxes(all);
+    const inputs = targeted ? targetBox(all, boxes, target) : resumeOnly ? theResumeBox(all, boxes)
+      : all.filter((_, i) => boxes[i].kind !== "parser" && !UNREAD.has(boxes[i]));
     if (!inputs.length) return reply(0, 0);
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const file = new File([bytes], filename, { type: "application/pdf" });

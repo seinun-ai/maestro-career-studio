@@ -278,8 +278,8 @@ def test_agent_is_only_the_page_rpc_front_door():
     # 700 -> 720 for the queued run's two gated handlers (page_classify, page_advance), and
     # 720 -> 740 for the gesture watcher's two (fill_watch, fill_watch_report), and
     # 740 -> 790 for the run's page_errors / page_uploads and the targeted attach, and
-    # 790 -> 840 for the parser box and an upload box named outside its widget.
-    assert len(source.splitlines()) < 840
+    # 790 -> 880 for the parser box, an upload box named outside its widget and the section climb.
+    assert len(source.splitlines()) < 880
     assert "function fillFormFromProfile" not in source
     assert "function collectOpenQuestions" not in source
     assert "function fillAnswersByQid" not in source

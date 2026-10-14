@@ -447,11 +447,12 @@ def test_the_file_lands_only_in_the_real_resume_box(blank, resume_only):
     assert _held_nth(blank, 1) == ["Jane_Doe_Resume.pdf"]
 
 
-def test_page_uploads_reports_the_parser_as_never_required_and_never_the_runs_to_write(blank):
+def test_page_uploads_reports_the_parsers_real_required_state_and_never_writes_it(blank):
     _load(blank, BOTH.replace('id="files_resume" style="display:none"></div></section>\n<section>',
                               'id="files_resume" style="display:none" required></div></section>\n<section>'))
     parser, real = _page_uploads(blank)
-    assert (parser["kind"], parser["required"]) == ("parser", False)
+    # Truthful: a required parser box parks the run, naming it, so the user attaches it by hand.
+    assert (parser["kind"], parser["required"]) == ("parser", True)
     assert real["kind"] == "resume"
     reply = blank.evaluate("""([b64, target]) => new Promise((resolve) => {
       const msg = { type: "attach_resume_pdf", b64, filename: "Jane_Doe_Resume.pdf", target };
@@ -462,8 +463,8 @@ def test_page_uploads_reports_the_parser_as_never_required_and_never_the_runs_to
 
 
 @pytest.mark.parametrize("wording", [
-    "Import Resume", "Autofill with resume", "Apply with resume", "Upload your resume to fill in the form",
-    "Auto-fill application from CV", "Parse my resume",
+    "Import Resume", "Autofill with resume", "Apply with resume", "Autofill from resume",
+    "Auto-fill application from CV", "Parse my resume", "Import your resume",
 ])
 def test_a_lone_box_that_imports_parses_or_autofills_from_the_resume_is_never_written(blank, wording):
     _load(blank, f'<form><h3>Candidate Info</h3><div class="up"><button type="button">{wording}</button>'
@@ -473,7 +474,108 @@ def test_a_lone_box_that_imports_parses_or_autofills_from_the_resume_is_never_wr
     assert _proven(_attach(blank, resume_only=False, expect=1)) == 0
     assert _held(blank, "#p") == []
     [box] = _page_uploads(blank)
-    assert (box["kind"], box["required"]) == ("parser", False)
+    assert (box["kind"], box["required"]) == ("parser", True)
+
+
+@pytest.mark.parametrize("label", ["Resume (we'll use it to fill your profile)", "Upload your resume to fill in the form"])
+def test_a_combined_box_that_is_the_only_resume_box_is_a_resume_box(blank, label):
+    """Live ruling: one box that takes the resume AND fills from it is the resume box."""
+    _load(blank, f'<form><h3>Application</h3><div class="up"><p>{label}</p>'
+                 f'<input type="file" id="c" style="display:none"></div></form>')
+    assert _uploads(blank) == [{"kind": "resume", "occupied": False}]
+    assert _attach(blank)["written"] == 1
+    assert _held(blank, "#c") == ["Jane_Doe_Resume.pdf"]
+
+
+def test_a_combined_box_beside_a_separate_resume_box_is_a_parser(blank):
+    _load(blank, TWO_RESUMES.format(import_text="Upload your resume to fill your profile",
+                                    second_heading="Resume Upload", second_text="Drag your resume here"))
+    assert [box["kind"] for box in _uploads(blank)] == ["parser", "resume"]
+
+
+def test_import_from_a_cloud_drive_is_no_parser(blank):
+    """"Import from" is a file source; the resume noun must be the verb's object."""
+    _load(blank, '<form><h3>Application</h3><div class="up"><p>Import from Dropbox or Google Drive</p>'
+                 '<p>No resume attached</p><input type="file" id="d" style="display:none"></div></form>')
+    assert _uploads(blank) == [{"kind": "resume", "occupied": False}]
+
+
+# Live ATS-D, re-pinned: the REAL "Resume Upload" box carries an "Import Resume" button too.
+LIVE = """<form>
+<section><h3>Candidate Info</h3>
+  <div class="up"><p>Click Import Resume to add this information from your resume</p>
+    <button type="button">Import Resume</button>
+    <input type="file" id="files_resume" style="display:none"></div></section>
+<section><h3>Resume Upload</h3>
+  <div class="up"><span>Attachment:</span><button type="button">Import Resume</button>
+    <input type="file" id="files_resume" style="display:none"></div></section>
+<section><h3>Cover Letter</h3>
+  <div class="up"><button type="button">Add Cover Letter</button>
+    <input type="file" id="files_coverLetter" style="display:none"></div></section></form>"""
+
+
+def test_a_resume_upload_section_outranks_its_buttons_import_resume(blank):
+    _load(blank, LIVE)
+    assert [box["kind"] for box in _uploads(blank)] == ["parser", "resume", "other"]
+
+
+@pytest.mark.parametrize("resume_only", [True, False], ids=["autofill", "button"])
+def test_on_the_live_shape_the_file_lands_once_in_the_resume_upload_box(blank, resume_only):
+    _load(blank, LIVE)
+    _attach(blank, resume_only=resume_only, expect=3)
+    assert [_held_nth(blank, n) for n in (0, 1)] == [[], ["Jane_Doe_Resume.pdf"]]
+    if not resume_only:  # the button writes every box that is not a parser
+        assert _held_nth(blank, 2) == ["Jane_Doe_Resume.pdf"]
+
+
+@pytest.mark.parametrize("heading", ["Resume", "Resume/CV", "Attach resume"])
+def test_any_plain_resume_heading_outranks_a_buttons_import_words(blank, heading):
+    _load(blank, TWO_RESUMES.format(import_text="Import Resume", second_heading=heading, second_text="x")
+          .replace("<h3>Candidate Info</h3>", "<h3>Candidate Info</h3><p>Autofill from resume</p>"))
+    assert [box["kind"] for box in _uploads(blank)] == ["parser", "resume"]
+
+
+def test_a_section_that_describes_filling_from_the_resume_makes_its_box_a_parser(blank):
+    _load(blank, '<form><h3>Autofill from resume</h3><div class="up"><input type="file" id="s" '
+                 'style="display:none"><p>PDF only</p></div></form>')
+    assert [box["kind"] for box in _uploads(blank)] == ["parser"]
+
+
+def test_a_parser_worded_section_never_overrides_a_box_that_names_a_plain_resume(blank):
+    _load(blank, '<form><h3>Autofill from resume</h3><div class="up"><p>Drop your resume here</p>'
+                 '<input type="file" id="s" style="display:none"></div></form>')
+    assert [box["kind"] for box in _uploads(blank)] == ["resume"]
+
+
+# Ashby-like: an "Autofill from resume" block, then a "Resume" dropzone, no heading between them.
+ASHBY = """<form><div class="autofill"><p>Autofill from resume</p>
+  <div class="dz"><input type="file" id="af" style="display:none"><p>Click to upload</p></div></div>
+<div class="grp"><span>Resume <span>*</span></span><div class="w1"><div class="w2"><div class="dz">
+  <input type="file" id="res" style="display:none"><p>Drop file</p></div></div></div></div></form>"""
+
+
+def test_a_resume_dropzone_after_an_autofill_block_is_the_resume_box(blank):
+    _load(blank, ASHBY)
+    assert [box["kind"] for box in _uploads(blank)] == ["parser", "resume"]
+    assert _attach(blank, expect=2)["written"] == 1
+    assert _held(blank, "#af") == [] and _held(blank, "#res") == ["Jane_Doe_Resume.pdf"]
+
+
+def test_a_name_that_is_a_file_row_is_no_label(blank):
+    """The text before a widget can be a stray file name; it is never used as the box's name."""
+    _load(blank, DROPZONE.replace("LABEL", "Jane_Doe_Resume.pdf"))
+    assert _page_uploads(blank)[0]["label"] == ""
+
+
+def test_the_button_write_skips_a_box_whose_read_failed(blank):
+    _load(blank, GREENHOUSE)
+    blank.evaluate("""() => {
+      const read = window.careerStudioCompanion.readField;
+      window.careerStudioCompanion.readField = (el) => { if (el.id === "cover_letter") throw new Error("x"); return read(el); };
+    }""")
+    _attach(blank, resume_only=False, expect=2)
+    assert _held(blank, "#resume") == ["Jane_Doe_Resume.pdf"]
+    assert _held(blank, "#cover_letter") == []
 
 
 def test_a_box_that_only_asks_for_a_resume_is_still_a_resume_box(blank):

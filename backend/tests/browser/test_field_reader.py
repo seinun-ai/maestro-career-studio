@@ -326,4 +326,4 @@ def test_a_long_text_still_needs_a_question_mark_and_a_sane_length_to_be_a_label
 
 def test_a_long_question_is_no_label_for_a_choice(page, load):
     load(page, f"<div><span>{LONG_Q}</span><div><input type=radio name=q id=a><span>Yes</span></div></div>")
-    assert page.evaluate(READ, "#a")["question"] != LONG_Q
+    assert page.evaluate(READ, "#a")["question"] == ""
