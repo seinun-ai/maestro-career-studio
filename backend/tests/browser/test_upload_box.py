@@ -201,9 +201,19 @@ def test_the_resume_only_write_never_touches_a_cover_letter_box(blank):
     assert oracle(blank, "files") == []
 
 
-def test_the_button_write_is_unchanged_by_the_kind(blank):
-    """The press is the user's decision: the button's write reads no kind."""
+def test_the_button_never_writes_a_box_for_another_document(blank):
+    """The press is the user's decision, but a cover letter box is not where the resume goes: a lone
+    "Cover letter" box (or one per frame) takes nothing from the button either."""
     _load(blank, WORKDAY.replace("Resume/CV", "Cover Letter"))
+    assert _attach(blank, resume_only=False) == 0
+    assert oracle(blank, "files") == []
+
+
+def test_the_button_still_writes_a_box_nothing_names(blank):
+    """Unknown is the button's case (the user decides): only `other` and `parser` are refused."""
+    _load(blank, WORKDAY.replace('<h4 id="resume-heading">Resume/CV</h4>', "")
+          .replace(' aria-labelledby="resume-heading"', "")
+          .replace("formField-resume", "formField-upload"))
     assert _attach(blank, resume_only=False) == 1
 
 
@@ -524,8 +534,7 @@ def test_on_the_live_shape_the_file_lands_once_in_the_resume_upload_box(blank, r
     _load(blank, LIVE)
     _attach(blank, resume_only=resume_only, expect=3)
     assert [_held_nth(blank, n) for n in (0, 1)] == [[], ["Jane_Doe_Resume.pdf"]]
-    if not resume_only:  # the button writes every box that is not a parser
-        assert _held_nth(blank, 2) == ["Jane_Doe_Resume.pdf"]
+    assert _held_nth(blank, 2) == []  # nor does the button write a cover letter box
 
 
 @pytest.mark.parametrize("heading", ["Resume", "Resume/CV", "Attach resume"])
@@ -533,6 +542,21 @@ def test_any_plain_resume_heading_outranks_a_buttons_import_words(blank, heading
     _load(blank, TWO_RESUMES.format(import_text="Import Resume", second_heading=heading, second_text="x")
           .replace("<h3>Candidate Info</h3>", "<h3>Candidate Info</h3><p>Autofill from resume</p>"))
     assert [box["kind"] for box in _uploads(blank)] == ["parser", "resume"]
+
+
+def test_a_label_taken_from_inside_the_boxs_own_widget_is_the_uploaders_word(blank):
+    """The field reader names a box by the button right beside its input; that is the uploader's text,
+    not the box's own label, so a "Resume Upload" section outranks it."""
+    _load(blank, '<form><h3>Resume Upload</h3><span><button type="button">Import Resume</button>'
+                 '<input type="file" id="b" style="display:none"></span></form>')
+    assert _uploads(blank) == [{"kind": "resume", "occupied": False}]
+    assert _attach(blank)["written"] == 1
+
+
+def test_a_label_inside_the_widget_still_makes_a_parser_where_no_section_names_a_resume(blank):
+    _load(blank, '<form><h3>Candidate Info</h3><span><button type="button">Import Resume</button>'
+                 '<input type="file" id="b" style="display:none"></span></form>')
+    assert _uploads(blank) == [{"kind": "parser", "occupied": False}]
 
 
 def test_a_section_that_describes_filling_from_the_resume_makes_its_box_a_parser(blank):

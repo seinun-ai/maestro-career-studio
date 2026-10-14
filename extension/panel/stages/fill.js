@@ -245,10 +245,13 @@
     const { facts, act, build } = ctx;
     if (!facts.pdfReady || facts.fileInputs < 1) return null;
     const many = facts.fileInputs > 1;
+    // The page's one box is for another document: the press writes no such box, so the offer says so.
+    const other = facts.otherBox === true && !many;
     const box = build.node("div", "attach");
     const line = build.node("div", "sub", many
       ? `This page has ${boxes(facts.fileInputs)}. Attach your resume yourself `
         + "so it goes in the right one."
+      : other ? "This page's upload box is for another document."
       : facts.attachName
         ? `Put ${facts.attachName} in this page's upload box.`
         : "Put your tailored resume in this page's upload box.");
@@ -261,11 +264,11 @@
     // control that stayed live during a fill would send a document into a page
     // the run is still walking, and one that stayed live over several boxes
     // would make the sentence above it a suggestion.
-    button.disabled = facts.busy === true || many;
+    button.disabled = facts.busy === true || many || other;
     // WHY IT IS DEAD RATHER THAN MISSING, said to a screen reader too: a
     // disabled button announces no reason on its own, and the sentence beside
     // it is the reason.
-    if (many) button.setAttribute("aria-describedby", ATTACH_NOTE_ID);
+    if (many || other) button.setAttribute("aria-describedby", ATTACH_NOTE_ID);
     line.id = ATTACH_NOTE_ID;
     button.addEventListener("click", act.attachResume);
     return build.attach(box, line, button);

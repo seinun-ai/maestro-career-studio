@@ -1498,7 +1498,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "match": None, "job": None, "application": None, "pdfReady": False,
         "claimed": False, "claimFrom": None,
         "evidence": None, "touched": False, "hasForm": False,
-        "fileInputs": 0, "attached": None, "autoAttach": None, "baseSlug": None,
+        "fileInputs": 0, "otherBox": False, "attached": None, "autoAttach": None, "baseSlug": None,
         "baseSelected": False, "baseFromApplication": False, "baseArmed": False,
         "scores": None, "busy": None, "note": None, "preview": None, "previewTyped": False,
         "prepared": False, "tailorOpen": False, "apply": None, "tailorFirst": False,

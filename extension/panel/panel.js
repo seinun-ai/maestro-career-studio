@@ -443,6 +443,8 @@
      * That is the conservative direction and it is stated rather than hidden.
      */
     fileInputs: 0,
+    /** The one upload box is for another document (a cover letter): the attach offer is dead. */
+    otherBox: false,
     /** What this panel put ON this page, or null. `{filename, count}`.
      *
      * PAGE-SHAPED like `fill` and cleared by `resetPageFacts` for the same
@@ -836,6 +838,7 @@
     // offer an attach on a page with no box and the second would show one
     // employer's filename under another employer's posting.
     store.fileInputs = 0;
+    store.otherBox = false;
     store.attached = null;
     store.autoAttach = null;
     store.baseSlug = null;
@@ -2235,6 +2238,7 @@
         // second home for a stage decision.
         pdfReady: card.pdfReady === true,
         fileInputs: card.fileInputs,
+        otherBox: card.otherBox === true,
         // Only beside the application it was made for (`sameApplication`).
         attached: sameApplication(card.attached?.applicationId, card.application)
           ? card.attached : null,
@@ -3288,7 +3292,7 @@
    * `baseSlug` travels only as the user's pick (`refreshPage`): the library's
    * default is re-derived from the re-read library. */
   const PAGE_WORK = [
-    "touched", "hasForm", "fileInputs", "attached", "autoAttach", "baseSelected",
+    "touched", "hasForm", "fileInputs", "otherBox", "attached", "autoAttach", "baseSelected",
     "baseArmed", "tailorOpen", "tailorFirst", "revisit", "fill", "eeoConsent", "residue", "essays",
     "closest", "blank", "aiNote", "writeResults", "loop", "receiptFlags", "receiptSeen",
     "answers", "qna", "baseMore",
@@ -3744,6 +3748,7 @@
     // After an in-place url change this read is the step being left, so its
     // count is not shown: the ladder's first rung (a second on) says.
     card.fileInputs = inPlace ? 0 : countFileInputs(verdict);
+    card.otherBox = !inPlace && onlyOtherBox(verdict);
     // AN IMMEDIATE YES IS THE WHOLE ANSWER on a page the panel was opened or
     // switched onto: a Greenhouse-class page whose form is in the first paint
     // costs exactly the one round trip it always did.
@@ -3770,6 +3775,8 @@
    * (the first ask and each retry) and a count that disagreed between them
    * would be a rail whose offer flickered. */
   const countFileInputs = (verdict) => Number(verdict?.fileInputs) || 0;
+  /** The page's one upload box is for another document (`uploads`, content/agent.js): no press writes it. */
+  const onlyOtherBox = (verdict) => countFileInputs(verdict) === 1 && verdict?.uploads?.[0]?.kind === "other";
 
   /** Ask whether this page has a form, and if NOTHING answers, put our scripts
    * there and ask once more. `askPostingPrepared`'s twin, deliberately the same
@@ -4057,6 +4064,7 @@
     if (verdict?.form !== true) return;
     card.hasForm = true;
     card.fileInputs = countFileInputs(verdict);
+    card.otherBox = onlyOtherBox(verdict);
     noteForm(verdict);
     render();
   }
@@ -4135,6 +4143,7 @@
       if (verdict) {
         const before = card.fileInputs;
         card.fileInputs = countFileInputs(verdict);
+        card.otherBox = onlyOtherBox(verdict);
         // A late box is worth a repaint on its own: `hasForm` may never flip on
         // a posting page whose only form-ish thing is an upload control, and
         // the offer would then wait for some unrelated render.

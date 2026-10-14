@@ -278,6 +278,13 @@ def test_a_cover_letter_box_is_never_auto_attached(tmp_path):
         "The upload box isn't for a resume, so the Companion left it.")
 
 
+def test_a_lone_cover_letter_box_offers_no_press_and_says_why(tmp_path):
+    """The button never writes a box for another document, so the offer says so and is dead."""
+    out = _autofill(tmp_path, {"kind": "other", "occupied": False})
+    assert out["button"] == {"disabled": True}
+    assert "This page's upload box is for another document." in _attach_text(out["settled"])
+
+
 def test_a_box_of_unknown_kind_is_left_to_the_button(tmp_path):
     out = _autofill(tmp_path, {"kind": "unknown", "occupied": False})
     assert _attach_asks(out) == []

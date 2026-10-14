@@ -146,7 +146,8 @@ def test_a_second_row_for_the_same_name_is_proof(upload_page):
 def test_a_row_in_another_uploader_does_not_prove_this_ones_write(page):
     """The widget is this input's alone: the climb stops below an ancestor that
     holds another file input, so the cover-letter box's row cannot vouch for
-    the résumé box. Unchecked (`expect` absent) so both boxes are written."""
+    the résumé box. Unchecked (`expect` absent); the button never writes the cover-letter box
+    (another document), so the one unproven write is the résumé's: nothing is proven."""
     page.set_default_timeout(20000)
     _load(page, """
       <section>
@@ -165,8 +166,8 @@ def test_a_row_in_another_uploader_does_not_prove_this_ones_write(page):
           } }, 200);
         });
       </script>""")
-    assert _attach(page, expect=None) == {"ok": True, "data": 1}
-    assert page.evaluate("document.getElementById('cover').files.length") == 1
+    assert _attach(page, expect=None) == {"ok": True, "data": 0}
+    assert page.evaluate("document.getElementById('cover').files.length") == 0
 
 
 def test_an_input_the_page_re_rendered_counts_by_its_row(upload_page):

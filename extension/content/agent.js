@@ -341,9 +341,13 @@
     const section = sectionOf(input);
     // Only an uploader of its own speaks for the box: a bare input's parent may be the whole form.
     const uploader = [widget?.innerText];
+    // A parser-worded label read from INSIDE the widget (the button beside the input) is the
+    // uploader's word, not the box's own: it weighs as the uploader's.
+    const inside = (t) => Boolean(widget && t && hit(PARSER_WORDS, [t]) && widget.innerText.includes(t));
+    const outer = labels.filter((t) => !inside(t));
     const plain = (texts) => kindOf(texts) === "resume" && !hit(PARSER_WORDS, texts);
-    const parser = hit(PARSER_WORDS, labels) || (hit(PARSER_WORDS, uploader) && !plain([section]))
-      || (hit(PARSER_WORDS, [section]) && !plain(labels) && !plain(uploader));
+    const parser = hit(PARSER_WORDS, outer) || (hit(PARSER_WORDS, uploader) && !plain([section]))
+      || (hit(PARSER_WORDS, [section]) && !plain(outer) && !plain(uploader));
     const occupied = hasFile(input, box);
     if (parser) return { kind: "parser", occupied };
     let kind = kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([section]) ?? "unknown";
@@ -539,10 +543,11 @@
     const reply = (written, proven) => (resumeOnly || targeted ? { written, proven } : proven);
     const all = attachableFileInputs();
     if (!targeted && Number.isInteger(expect) && all.length !== expect) return reply(0, 0);
-    // The button writes every box but a parser (the site's own fill-from-resume) or one it could not read.
+    // The button writes every box but a parser (the site's own fill-from-resume), one for another
+    // document (a cover letter) or one it could not read.
     const boxes = readBoxes(all);
     const inputs = targeted ? targetBox(all, boxes, target) : resumeOnly ? theResumeBox(all, boxes)
-      : all.filter((_, i) => boxes[i].kind !== "parser" && !UNREAD.has(boxes[i]));
+      : all.filter((_, i) => !["parser", "other"].includes(boxes[i].kind) && !UNREAD.has(boxes[i]));
     if (!inputs.length) return reply(0, 0);
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const file = new File([bytes], filename, { type: "application/pdf" });
@@ -792,6 +797,8 @@
       try { return ns.pageReader.signIn({ email: msg.email, password: msg.password, allowedHost: msg.allowedHost }); }
       catch { return { signedIn: false, why: "error" }; }
     },
+    // The same login typed to CREATE the account (owner decision 2026-10-14): top frame only, panel_frame0
+    // alone, a fixed word on any failure. The reader itself refuses everything but a sign-up page.
   };
 
   // ONE LIVE listener per isolated world. panel_prepare re-injects this file
