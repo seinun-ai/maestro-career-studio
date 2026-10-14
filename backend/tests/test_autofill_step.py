@@ -1233,12 +1233,42 @@ def test_a_saved_source_that_is_no_board_walks_the_tree_to_its_own_leaf(db_sessi
 
 
 @pytest.mark.usefixtures("jev_on")
-@pytest.mark.parametrize("saved", ["Job board", "Online", "Company website", "LinkedIn"])
-def test_a_saved_board_online_or_website_answer_takes_the_board_goal(db_session, monkeypatch, saved):
+@pytest.mark.parametrize("saved", ["Job board", "LinkedIn", "Indeed", "Online job boards"])
+def test_a_saved_board_answer_takes_the_board_first_goal(db_session, monkeypatch, saved):
     facts = autofill_catalog.build({"preferences": {"how_heard": saved}}, [], [])
     calls = fake_jev(monkeypatch)
-    autofill_step.step(heard(), facts, db_session, None)
-    assert "website, online or job-board category" in calls[0]["questions"]["f"]["instructions"]
+    autofill_step.step(heard(), facts, db_session, JobHint(title="Analyst", company="Acme", source="Indeed"))
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert "website, online or job-board category" in text and '"Indeed"' in text and "job-board leaf" in text
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("saved", ["Company website", "Careers page", "Company careers site", "Website"])
+def test_a_saved_website_answer_picks_the_careers_site_leaf_first_and_names_no_board(db_session, monkeypatch, saved):
+    facts = autofill_catalog.build({"preferences": {"how_heard": saved}}, [], [])
+    calls = fake_jev(monkeypatch)
+    autofill_step.step(heard(), facts, db_session, JobHint(title="Analyst", company="Acme", source="LinkedIn"))
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert "careers-site leaf" in text and "LinkedIn" not in text and "job-board leaf" not in text
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("saved", ["Internet search", "Online", "Google"])
+def test_any_other_online_answer_walks_to_its_own_leaf(db_session, monkeypatch, saved):
+    facts = autofill_catalog.build({"preferences": {"how_heard": saved}}, [], [])
+    calls = fake_jev(monkeypatch)
+    autofill_step.step(heard(), facts, db_session, JobHint(title="Analyst", company="Acme", source="LinkedIn"))
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert "careers-site leaf" not in text and "LinkedIn" not in text and saved in text
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_website_leaf_that_is_not_the_saved_word_is_assumed(db_session, monkeypatch):
+    facts = autofill_catalog.build({"preferences": {"how_heard": "Company website"}}, [], [])
+    fake_jev(monkeypatch, ("click:o1", 0.9))
+    r = heard(candidates=[{"mid": "click:o1", "describe": 'Click the option "Careers page"'},
+                          {"mid": GIVE_UP, "describe": "Stop"}])
+    assert sans_trace(autofill_step.step(r, facts, db_session, None)) == {"mid": "click:o1", "reason": "assumed"}
 
 
 @pytest.mark.usefixtures("jev_on")

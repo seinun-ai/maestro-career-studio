@@ -137,28 +137,37 @@ def _progress(mid: str | None, p: float | None, engine: Engine) -> StepResponse:
 
 
 HOW_HEARD_SLOT = "preferences.how_heard"
-# A saved source the BOARD goal fits: a job board, something online, a website, or a board by name. Any other
-# ("Referral", "Career fair") is walked to its own leaf by the ordinary goal.
-_BOARD_ANSWER = re.compile(r"\bboards?\b|\bonline\b|\bweb\s*sites?\b|\binternet\b|\bweb\b|\bcareers?\s+(?:site|page)\b",
-                           re.IGNORECASE)
+# A saved source the BOARD-first goal fits: a job board, or a board by name. A website / careers-page answer takes
+# the careers-site leaf first and names no board. Any other ("Referral", "Internet search", "Online") is walked to
+# its own leaf by the ordinary goal.
+_BOARD_ANSWER = re.compile(r"\bboards?\b", re.IGNORECASE)
+_SITE_ANSWER = re.compile(r"\bweb\s*sites?\b|\bcareers?\s+(?:site|page)s?\b|\bcompany\s+site\b", re.IGNORECASE)
 
 
-def board_answer(value: str) -> bool:
-    """Whether a saved "how did you hear" answer is a board, online or website kind of source, or names a board."""
+def how_heard_kind(value: str) -> str | None:
+    """"board", "site" or None: which tree goal a saved "how did you hear" answer takes."""
     folded = value.casefold()
-    return bool(_BOARD_ANSWER.search(value) or any(name.casefold() in folded for name in BOARD_NAMES))
+    if _BOARD_ANSWER.search(value) or any(name.casefold() in folded for name in BOARD_NAMES):
+        return "board"
+    return "site" if _SITE_ANSWER.search(value) else None
 
 
-def _how_heard_goal(field: str, value: str, hint: JobHint | None) -> str:
-    """How did you hear about us? is often a tree (Workday: a category, then the board). The applicant's
-    saved source is a kind ("Job board"); the board that listed THIS job is the leaf. The leaf is not the
-    profile's word, so the step reports it `assumed` (`_decide`)."""
+def _how_heard_goal(field: str, value: str, kind: str, hint: JobHint | None) -> str:
+    """How did you hear about us? is often a tree (Workday: a category, then the leaf). The applicant's saved
+    source is a kind ("Job board", "Company website"); the leaf is not the profile's word, so the step reports it
+    `assumed` (`step`). A board answer picks the board that listed THIS job first; a website answer picks the
+    company's careers-site leaf and names no board."""
+    head = (f"You are filling {field} on a job application; the applicant's saved answer is {json.dumps(value)} "
+            "(a source, never a person).")
+    grouped = ("open the website, online or job-board category if the options are grouped (otherwise \"Other\"), "
+               "then select ")
+    if kind == "site":
+        return (f"{head} The goal is to select where the applicant heard about the job: {grouped}the company "
+                f"careers-site leaf (the company's own website). Never select a job board's leaf. {NEVER_YES_NO}")
     found = f" This job was found on {json.dumps(hint.source)}." if hint and hint.source else ""
-    leaf = (f"the leaf for {json.dumps(hint.source)}, otherwise" if hint and hint.source else "")
-    return (f"You are filling {field} on a job application; the applicant's saved answer is {json.dumps(value)} "
-            f"(a source, never a person).{found} The goal is to select where the applicant heard about the job: "
-            "open the website, online or job-board category if the options are grouped (otherwise \"Other\"), then "
-            f"select {leaf} a job-board leaf, otherwise the company careers-site leaf. {NEVER_YES_NO}")
+    leaf = f"the leaf for {json.dumps(hint.source)}, otherwise " if hint and hint.source else ""
+    return (f"{head}{found} The goal is to select where the applicant heard about the job: {grouped}{leaf}"
+            f"a job-board leaf, otherwise the company careers-site leaf. {NEVER_YES_NO}")
 
 
 def _goal(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict[str, Fact],
@@ -178,8 +187,8 @@ def _goal(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict
         return (f"You are filling {field} on a job application. For the applicant, the answer to the question is "
                 f"{json.dumps(answer.answer)}{that_is}: the goal is to select the option that states that answer.")
     fact = facts[req.slot]
-    if req.slot == HOW_HEARD_SLOT and board_answer(values[0]):
-        return _how_heard_goal(field, values[0], hint)
+    if req.slot == HOW_HEARD_SLOT and (kind := how_heard_kind(values[0])):
+        return _how_heard_goal(field, values[0], kind, hint)
     return (f"You are filling {field} on a job application. The goal is to select the option that means the "
             f"same as the applicant's fact {json.dumps(fact.describe)}: {json.dumps(values[0])}. {NEVER_YES_NO}")
 
@@ -375,7 +384,7 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     moved = _with_term(req, ask, session, budget, _move(req, ask, session, budget))
     # A tree's leaf (the board) is the Companion's pick, not the saved word: the user is told to check it.
     # An option that says the saved word itself ("Job board" for "Job board") is the profile's answer.
-    if (req.slot == HOW_HEARD_SLOT and board_answer(values[0]) and moved.mid and moved.reason in ("matched", "closest")
+    if (req.slot == HOW_HEARD_SLOT and how_heard_kind(values[0]) and moved.mid and moved.reason in ("matched", "closest")
             and (text := shown.get(moved.mid)) is not None and text.casefold() != values[0].casefold()):
         moved = moved.model_copy(update={"reason": "assumed"})
     if said and veteran_overreach(said, req.question, [], shown.get(moved.mid or "")):
