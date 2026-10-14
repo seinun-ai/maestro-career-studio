@@ -158,16 +158,17 @@ def _same_date(said: Any, kept: Any) -> bool | None:
 _NOT_INSIDE = r"(?<![\w.'-])"
 _LEVEL_ONLY = (
     ("doctorate", r"ph\.?\s?d|doctor(?:ate|al)?"),
-    ("master", r"master'?s?|m\.?\s?s\.?c?|m\.?\s?a|advanced\s+degree|graduate\s+degree"),
-    ("bachelor", r"bachelor'?s?|b\.?\s?s\.?c?|b\.?\s?a|undergraduate"),
+    ("master", r"master'?s?|advanced\s+degree|graduate\s+degree"),
+    ("bachelor", r"bachelor'?s?|undergraduate"),
     ("associate", r"associate'?s?|a\.a\.?s?|a\.s\.|aas?"),
     ("high school", r"high\s*school|ged|secondary\s+school|hs\s+diploma"),
 )
-# Abbreviations that carry their field (business administration, engineering…): a level, but not level-only.
+# Abbreviations that carry their field (science, arts, business administration, engineering…): a level, but not
+# level-only. A bare "MS" is a Master of SCIENCE: against a Master of Business Analytics it is a different degree.
 _WITH_FIELD = (
     ("doctorate", r"d\.?\s?b\.?\s?a|ed\.?\s?d|d\.?\s?phil"),
-    ("master", r"m\.?\s?b\.?\s?a|m\.?\s?eng|m\.?\s?f\.?\s?a|m\.?\s?p\.?\s?h"),
-    ("bachelor", r"b\.?\s?eng|b\.?\s?tech"),
+    ("master", r"m\.?\s?b\.?\s?a|m\.?\s?eng|m\.?\s?f\.?\s?a|m\.?\s?p\.?\s?h|m\.?\s?s\.?c?|m\.?\s?a"),
+    ("bachelor", r"b\.?\s?eng|b\.?\s?tech|b\.?\s?s\.?c?|b\.?\s?a"),
 )
 _LEVEL_ONLY_RE = {level: re.compile(rf"{_NOT_INSIDE}(?:{words})\b", re.IGNORECASE) for level, words in _LEVEL_ONLY}
 _WITH_FIELD_RE = {level: re.compile(rf"{_NOT_INSIDE}(?:{words})\b", re.IGNORECASE) for level, words in _WITH_FIELD}
@@ -181,6 +182,8 @@ _ABBREVIATION_FIELD = {
     "meng": frozenset({"engineering"}), "beng": frozenset({"engineering"}), "btech": frozenset({"technology"}),
     "mfa": frozenset({"fine", "arts"}), "mph": frozenset({"public", "health"}), "edd": frozenset({"education"}),
     "dphil": frozenset({"philosophy"}),
+    "ms": frozenset({"science"}), "msc": frozenset({"science"}), "ma": frozenset({"arts"}),
+    "bs": frozenset({"science"}), "bsc": frozenset({"science"}), "ba": frozenset({"arts"}),
 }
 
 
@@ -204,14 +207,15 @@ def _names_only_a_level(text: Any) -> bool:
 
 
 def _same_degree(said: str, kept: str) -> bool | None:
-    """True when the degrees agree by level (the page's value names only a level) or by initials; None when this
-    cannot tell and the words decide."""
+    """True when the degrees agree by level (the page's value names only a level, or the profile's does) or by an
+    abbreviation's field; None when this cannot tell and the words decide."""
     if _names_only_a_level(said) and degree_level(said) == degree_level(kept):
         return True
     # An abbreviation that carries its field is that field's degree: "M.B.A." is a Master of Business
     # Administration, and no other business degree ("Masters of Business Analytics").
     field = _ABBREVIATION_FIELD.get(_fold(said).replace(" ", ""))
-    if field is not None and degree_level(said) == degree_level(kept) and field <= _tokens(kept):
+    if field is not None and degree_level(said) == degree_level(kept) and (
+            field <= _tokens(kept) or _names_only_a_level(kept)):
         return True
     return None
 
