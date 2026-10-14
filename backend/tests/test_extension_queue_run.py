@@ -609,10 +609,10 @@ def test_a_half_drawn_step_is_not_mistaken_for_a_final_page_and_the_full_step_ad
     assert out["record"]["step"] == 2
 
 
-def test_a_lone_next_page_that_stays_that_way_is_the_final_page_after_two_agreeing_reads(tmp_path):
+def test_a_lone_next_page_that_stays_that_way_is_the_final_page_after_four_agreeing_reads(tmp_path):
     out = _drive(tmp_path, [step(1), step(2, fillable=0)])
     assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
-    assert len(names(out, "sleep")) == 1, "two reads in a row agreeing is enough"
+    assert len(names(out, "sleep")) == 3, "four identical reads in a row (about 2 s) before it is judged final"
 
 
 def test_a_page_that_never_draws_parks_after_the_cap(tmp_path):
@@ -622,10 +622,24 @@ def test_a_page_that_never_draws_parks_after_the_cap(tmp_path):
     assert 15000 <= slept <= 15500 and names(out, "fill") == []
 
 
-def test_an_unknown_page_that_holds_still_is_judged_after_two_agreeing_reads(tmp_path):
+def test_a_skeleton_that_repeats_for_several_reads_is_waited_out_not_parked(tmp_path):
+    """A Workday spinner can hold for seconds: a matching pair 500 ms apart proves nothing."""
+    out = _drive(tmp_path, [{**step(1), "early": [{"t": "unknown"}] * 3 + [NONE, NONE]}, REVIEW])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+    assert len(names(out, "sleep")) == 5
+
+
+def test_an_unknown_page_that_never_changes_is_judged_only_when_the_cap_runs_out(tmp_path):
     out = _drive(tmp_path, [{"t": "unknown"}])
     assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
-    assert len(names(out, "sleep")) == 1
+    assert 15000 <= sum(c[1] for c in names(out, "sleep")) <= 15500
+
+
+def test_a_step_whose_fields_arrive_after_a_second_is_not_mistaken_for_a_final_page(tmp_path):
+    """The same field-less lone-Next read twice (and three times) is still a step half drawn."""
+    half = step(2, fillable=0)
+    out = _drive(tmp_path, [step(1), {**step(2), "early": [half, half, half]}, REVIEW])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1", "next-2"]
 
 
 def test_a_resume_does_not_wait_for_a_page_the_run_did_not_just_arrive_at(tmp_path):

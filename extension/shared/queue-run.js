@@ -31,10 +31,10 @@
  *
  * SETTLING. A page the run has just arrived at (the opened tab, an Apply or Next that moved it, a
  * sign-in) is often not drawn yet: the content scripts load at document_idle, and a client-rendered
- * wizard answers with a skeleton. When such a read finds no frame, a page classed unknown, or a
+ * wizard answers with a skeleton. When such a read finds no frame or a page classed unknown, the
+ * driver re-reads every POLL_MS until the page stops looking blank, for at most LIMITS.changeMs. A
  * field-less page with a lone Next after step 0 (a step half drawn looks exactly like an "are you
- * sure" page), the driver re-reads every POLL_MS until the fingerprint is the same on two reads in
- * a row (an empty read never counts as steady), for at most LIMITS.changeMs, and only then judges.
+ * sure" page) must also hold still for LONE_STABLE reads in a row before it is judged final.
  * The rule lives here, not in pageOps().waitForChange, so it also covers the first read of a
  * freshly opened tab whatever the host's openTab resolves on.
  *
@@ -94,6 +94,7 @@
   // Task 1a's spike: a fill in a background tab of the run window works.
   const HIDDEN_TABS_OK = true;
   const POLL_MS = 500;
+  const LONE_STABLE = 4;   // reads in a row (about 2 s) before a field-less lone-Next page counts as final
   const MAX_QUESTION = 200;
   const OPEN_STATUSES = new Set(["needs_answer", "cannot_operate"]);
   // A fill "wrote or confirmed" a field when it ended in one of these (not unconfirmed, yours, blocked).
@@ -237,25 +238,34 @@
       tried = 0;
     };
 
-    // A read of the page that looks unfinished (no frame, an unknown page, or a half-drawn step) is
-    // repeated until two reads in a row agree. Only for a page the run has just arrived at.
+    // A read of the page that looks unfinished is repeated, for a page the run has just arrived at.
+    //   "blank"  no frame answering, or a page classed unknown (a skeleton, a spinner): re-read until
+    //            it stops looking blank or the cap runs out. A matching pair proves nothing, a
+    //            spinner can hold for seconds.
+    //   "lone"   after step 0, nothing fillable and a lone Next. A step whose fields have not
+    //            arrived looks exactly like an "are you sure" page, so it must hold still for
+    //            LONE_STABLE reads in a row (about 2 s) before it is judged to be one.
     const unfinished = (frame) => {
-      if (!frame) return true;
+      if (!frame) return "blank";
       const summary = frame.result.summary;
       const kind = ns.pageKind.classify(summary).kind;
-      return kind === "unknown" || (record.step > 0 && kind === "form_step" && (summary.fillable ?? 0) === 0);
+      if (kind === "unknown") return "blank";
+      return record.step > 0 && kind === "form_step" && (summary.fillable ?? 0) === 0 ? "lone" : null;
     };
     const readPage = async (settle) => {
       const startedAt = deps.now();
       let previous = null;
+      let agreeing = 0;
       for (;;) {
         const frame = pickFrame(await act(deps.classify, record.tabId));
         const url = await act(deps.tabUrl, record.tabId);
-        if (!settle || !unfinished(frame)) return { frame, url };
+        const why = settle ? unfinished(frame) : null;
+        if (!why) return { frame, url };
         const print = frame ? fingerprint(url, frame.result.summary) : null;
-        if (print !== null && print === previous) return { frame, url };
-        if (deps.now() - startedAt >= LIMITS.changeMs) return { frame, url };
+        agreeing = print !== null && print === previous ? agreeing + 1 : 1;
         previous = print;
+        if (why === "lone" && agreeing >= LONE_STABLE) return { frame, url };
+        if (deps.now() - startedAt >= LIMITS.changeMs) return { frame, url };
         await act(deps.sleep, POLL_MS);
       }
     };
