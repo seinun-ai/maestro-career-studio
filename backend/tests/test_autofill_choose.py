@@ -486,3 +486,40 @@ def test_a_label_that_gives_a_character_limit_is_honoured(db_session, monkeypatc
         application.id, db_session)
     assert 0 < len(out["a"].answer) <= 200 and out["a"].answer.endswith(".")
     assert 0 < len(out["b"].answer) <= 300 and out["b"].answer.endswith(".")
+
+
+@pytest.mark.parametrize("label", [
+    "Have you ever been charged with an offence? Describe it.", "Have you been involved in litigation? Explain.",
+    "Have you ever been sued? Please describe.", "Were you let go from a previous role? Explain.",
+    "Are you bound by a non-compete? Describe it.", "Do you have a restrictive covenant? Explain.",
+    "What are your current earnings? Please describe.", "Describe your compensation package.",
+    "Do you expect a bonus? Explain.", "Describe the equity you hold.", "Do you have health insurance needs? Explain.",
+    "What is your caste? Please describe.", "Have you held public office? Describe it.",
+    "Have you worked for a state agency? Describe.", "Have you worked for state government? Explain.",
+    "Have you worked for a state body? Explain.", "Have you worked for a municipal employer? Describe.",
+    "When are you available to start? Explain.", "Describe your availability.", "When can you start? Please explain.",
+    "When can you begin working with us? Explain.", "Are you able to work a night shift? Explain.",
+    "Can you work weekends? Describe.", "Are you able to work on-site? Explain.", "Can you lift 50 pounds? Describe.",
+    "Do you smoke? Please explain.", "Do you own a car? Describe it.", "Where do you live? Please describe.",
+    "Are you located near our office? Describe.", "Are you based in the United States? Describe.",
+    "What is your phone number? Please describe.", "What is your e-mail? Please describe.",
+    "What is your portfolio URL? Describe it.", "Link your LinkedIn profile and describe it.",
+    "Do you know anyone here? Explain.", "Do you have a friend at the company? Describe.", "Who told you about this job? Describe.",
+])
+def test_the_wider_backstop_never_drafts_these(db_session, monkeypatch, label):
+    application = _application(db_session)
+    writer = Writer(monkeypatch, {"w": "Should not be used."})
+    out = autofill_choose.choose([_written(label=label)], application.id, db_session)
+    assert (out["w"].answer, out["w"].reason) == (None, "abstained") and writer.prompts == [], label
+
+
+@pytest.mark.parametrize("label", [
+    "State your motivation for applying to this role.", "Describe how you deliver live dashboards to stakeholders.",
+    "Tell us about a project you were in charge of.", "Describe a time you stated a hard truth to a client.",
+    "What was the most complex data model you designed? Why?",
+])
+def test_a_bare_word_of_the_backstop_does_not_block_an_ordinary_essay(db_session, monkeypatch, label):
+    application = _application(db_session)
+    Writer(monkeypatch, {"w": "Built a forecasting pipeline for 40 stores."})
+    out = autofill_choose.choose([_written(label=label)], application.id, db_session)
+    assert out["w"].reason == "assumed", label
