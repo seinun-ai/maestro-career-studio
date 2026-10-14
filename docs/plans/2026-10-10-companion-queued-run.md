@@ -1959,9 +1959,10 @@ Expected: PASS.
 **Phase 2 host wiring for a one-record run (planner, 2026-10-13, after the batch-5 review).** Task 19
 is Phase 3, but a one-job run in the CURRENT tab needs its driver deps now. Task 20 (one-job parts)
 owns them, in `extension/panel/actions/run.js` (created here, extended by Task 19 later):
-- `openTab`: for a run started on the current tab, returns that tab when it is already on `openUrl`,
-  else `chrome.tabs.update` and resolves once the page is readable; always seeds `record.hosts` with
-  the tab's host (so sign-in and the posting Apply work when the run starts on an open page).
+- `openTab(url, stop)`: for a run started on the current tab, returns that tab WITHOUT navigating
+  when it is on the same posting (`samePosting`, or the backend's job match — a user part-way through
+  the form, e.g. on /apply/step2, keeps their progress), else `chrome.tabs.update` and resolves once
+  the page is readable, honouring `stop`. The driver records the hosts it reaches itself.
 - `fill`: pinned to `record.tabId`, using the record's job and application, forwarding `opts.limits`
   as runFill's `options.limits`, and `cancelled: () => cancelled(record)` NOT tied to the panel's tab
   generation.
