@@ -1054,3 +1054,29 @@ def test_a_redrawn_section_is_typed_once(e2e_page):
         steps = _field_trace(out, question)["steps"]
         assert [(s["effect"], s["word"]) for s in steps if s["op"] == "write"] == [("progress", "verified")], steps
         assert not [s for s in steps if s.get("effect") == "error" or s.get("word") == "stale"], steps
+
+
+def test_a_skills_box_already_flagged_invalid_still_gets_every_item(e2e_page):
+    """A required skills box left aria-invalid by an earlier Next answers `reverted` to every set (the
+    error clears only for the user's own blur). That used to end the list after one item per round."""
+    page = e2e_page
+    skills = ["Python", "SQL", "Tableau", "Git"]
+    html = fixture_html("workday_misses.html").replace('<input id="skills" type="text"', '<input id="skills" aria-invalid="true" type="text"')
+    assert 'aria-invalid="true"' in html
+    out = _run(page, html=html, url="https://careers.acme.test/apply",
+               map={"Type to Add Skills": {"route": "slot", "slot": "skills", "value": skills}}, limits={"MAX_ROUNDS": 1})
+    assert sorted(oracle(page, "slowSkills")) == sorted(skills), out["by_question"]["Type to Add Skills"]
+    sets = [s for s in _field_trace(out, "Type to Add Skills")["steps"] if s["op"] == "set"]
+    assert len(sets) == len(skills)
+
+
+def test_a_skill_the_list_only_nearly_has_is_missing_not_replaced(e2e_page):
+    """"Docker Swarm" lists no row (its word "Docker" lists two others): the item is reported missing
+    and no pill stands in for it."""
+    page = e2e_page
+    out = _run(page, html=fixture_html("workday_misses.html"), url="https://careers.acme.test/apply",
+               map={"Type to Add Skills": {"route": "slot", "slot": "skills", "value": ["Docker Swarm", "SQL"]}},
+               limits={"MAX_ROUNDS": 1})
+    assert oracle(page, "slowSkills") == ["SQL"]
+    skills = out["by_question"]["Type to Add Skills"]
+    assert (skills["status"], skills["answer"]) == ("partial", "1 of 2 added"), skills

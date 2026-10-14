@@ -1708,6 +1708,83 @@ def test_a_search_for_another_value_is_a_fresh_count(page, load):
     assert [m["mid"] for m in actions(out, "move")].count("search:value") == 4
 
 
+def test_a_click_is_the_same_move_by_the_option_it_names_not_by_its_position(page, load):
+    """Nested categories: every list's first row is click:o1, a different option each time.
+    Two of them progressed; a third click:o1 on a third option is not "the same move a third time"."""
+    def level(name):
+        return {"version": 1, "popupOpen": True, "options": [{"oid": "o1", "text": name}],
+                "candidates": [{"mid": "click:o1", "describe": f'Open the group "{name}"'}, GIVE_UP]}
+    out = run(page, load, frames=[[f("d", "popup", "Source")]] * 3,
+              map={"d": {"route": "slot", "slot": "preferences.how_heard", "value": "Referral"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_popup"}},
+              apply={"click:o1": {"outcome": "progressed"}},
+              step={"states": [level("A"), level("B"), level("C"), level("C")],
+                    "moves": [{"mid": "click:o1", "reason": "progress"}] * 4})
+    # A, B and C each opened once; the second ask for C (the same option) is its second run and still allowed.
+    assert [m["mid"] for m in actions(out, "move")].count("click:o1") == 4
+    assert not any(e.endswith("already_failed") for s in bodies(out, "/api/autofill/step") for e in s["history"])
+
+
+def test_a_third_click_on_the_same_option_is_refused(page, load):
+    state = {"version": 1, "popupOpen": True, "options": [{"oid": "o1", "text": "A"}, {"oid": "o2", "text": "x"}],
+             "candidates": [{"mid": "click:o1", "describe": 'Open the group "A"'}, GIVE_UP]}
+    out = run(page, load, frames=[[f("d", "popup", "Source")]] * 3,
+              map={"d": {"route": "slot", "slot": "preferences.how_heard", "value": "Referral"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_popup"}},
+              apply={"click:o1": {"outcome": "progressed"}},
+              step={"states": [{**state, "options": [{"oid": "o1", "text": "A"}, {"oid": "o2", "text": str(i)}]} for i in range(8)],
+                    "moves": [{"mid": "click:o1", "reason": "progress"}] * 8})
+    assert [m["mid"] for m in actions(out, "move")].count("click:o1") == 2
+
+
+def test_a_list_item_the_list_never_offers_is_missing_never_its_nearest_option(page, load):
+    """Live review: a term search lists only a near miss, and the step may call that view complete and
+    take the nearest option. For a list item the view is never complete, and a `closest` answer is
+    refused: the item is reported missing and no substitute is clicked."""
+    near = {"version": 1, "complete": True, "popupOpen": True, "options": [{"oid": "o1", "text": "Machine Learning"}],
+            "candidates": [{"mid": "click:o1", "describe": 'Click the option "Machine Learning"'}, GIVE_UP]}
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]] * 3,
+              map={"k": {"route": "slot", "slot": "skills", "value": ["PyTorch", "SQL"]}},
+              explore={"PyTorch": {"options": [], "complete": False, "error": "empty_popup"},
+                       "SQL": {"options": [opt("o1", "SQL")]}},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}},
+              step={"states": [near, dict(near)], "moves": [{"mid": "click:o1", "reason": "closest"}] * 2})
+    assert not actions(out, "move") or all(m["mid"] == "give_up" for m in actions(out, "move"))
+    assert all(s["complete"] is False for s in bodies(out, "/api/autofill/step"))
+    r = row(out, "k")
+    assert (r["status"], r["answer"]) == ("partial", "1 of 2 added")
+
+
+def test_a_single_answer_field_still_gets_its_closest_rule(page, load):
+    near = {"version": 1, "complete": True, "popupOpen": True, "options": [{"oid": "o1", "text": "Computer Science"}],
+            "candidates": [{"mid": "click:o1", "describe": 'Click the option "Computer Science"'}, GIVE_UP]}
+    out = run(page, load, **_search_field([near, dict(near)]), )
+    assert bodies(out, "/api/autofill/step")[0]["complete"] is True
+
+
+def test_a_reverted_item_does_not_end_the_list(page, load):
+    """A required skills box already aria-invalid answers `reverted` to every set until a blur. The items
+    went in: each is covered and the next is worked; the error is judged once, after the last."""
+    skills = ["SQL", "Python", "Tableau"]
+    reverted = lambda t: {"outcome": "reverted", "added": [t], "missing": []}  # noqa: E731
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": skills}},
+              explore={t: {"options": [opt("o1", t)]} for t in skills},
+              pick={f"k:{t}": {"oids": ["o1"], "reason": "matched"} for t in skills},
+              apply={"SQL": reverted("SQL"), "Python": reverted("Python"), "Tableau": {"outcome": "verified", "added": ["Tableau"], "missing": []}})
+    assert statuses(out) == {"k": "verified"}
+    assert [a["texts"] for a in actions(out, "set")] == [[t] for t in skills]
+
+
+def test_a_box_still_flagged_after_the_last_item_is_a_reverted_field(page, load):
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]] * 2,
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL"]}},
+              explore={"SQL": {"options": [opt("o1", "SQL")]}},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}},
+              apply={"SQL": {"outcome": "reverted", "added": ["SQL"], "missing": []}})
+    assert statuses(out) != {"k": "verified"}
+
+
 # ---------- search:term: the agent's own search term (Task 30)
 
 TERM_MOVE = {"mid": "search:term", "describe": "Type a search term you choose into the search box"}
@@ -2555,7 +2632,8 @@ def test_the_step_request_carries_the_widgets_kind_and_the_moves_that_worked_on_
     book = {"f:fam1": {"key": "s:sitea", "variant": {"open": ["keys", "press"], "search": ["debounce", "enter"]}}}
     out = popup_run(page, load, recipes={"book": book}, pick={"d": {"oids": [], "reason": "abstained"}}, step=STEP_OPEN)
     [body] = bodies(out, "/api/autofill/step")
-    assert body["kind"] == "popup" and body["worked_here"] == ["open", "search:value"]
+    # The search axis is not "worked here": search:value is often the move that fails.
+    assert body["kind"] == "popup" and body["worked_here"] == ["open"]
 
 
 def test_a_family_recipe_from_other_sites_is_not_what_worked_here(page, load):
