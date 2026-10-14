@@ -70,8 +70,8 @@ view for several is still ahead.
   Lever, Ashby, iCIMS and a few more), in the page's top frame. Anywhere else the run waits for you.
   The password never reaches an AI model, a trace or a log, and a failed sign-in is never retried.
 - **Screening answers**, a three-level setting under Settings › Form filling that replaces
-  "Answer low-stakes questions for me": **Facts only**, **Backed by your history** (the default) and
-  **Queued means I qualify**. Work authorization, salary, demographic, criminal-history and clearance
+  "Answer low-stakes questions for me": **Careful**, **Balanced** (the default) and
+  **Confident**. Work authorization, salary, demographic, criminal-history and clearance
   questions, signatures and claims your history does not support are outside every level. Agents
   read the level in the Job Search Brief (`applying.answer_level`).
 - **A job remembers the employer's apply link** (`apply_url`) when you save it from a page that shows
@@ -127,7 +127,7 @@ view for several is still ahead.
   cannot answer ("Why do you want to work here?") is drafted from your career history and the job,
   in your own voice and about 120 words, or the length the question names. The row says "Drafted from
   your history: read it". Nothing is saved as a standing answer; edit it and press Resume to teach it.
-  At **Facts only** nothing is drafted, and work authorization, pay, demographic, background,
+  At **Careful** nothing is drafted, and work authorization, pay, demographic, background,
   availability and "have you worked here" questions never are.
 - **"How did you hear about us?" finds the board.** A job board that listed the job is searched by
   name first; a site that groups its answers is walked category by category only when the search does
@@ -155,10 +155,10 @@ view for several is still ahead.
 - **Tailoring after Apply no longer wedges it.** Apply links the draft it made; a draft you tailor
   afterwards is now linked in its place instead of failing with "proposal already linked".
 
-- **Screening answers start at Backed by your history.** The old switch stored nothing when it was
+- **Screening answers start at Balanced.** The old switch stored nothing when it was
   off, so an install that had it off cannot be told apart from one that never touched it. Both now
   read the default, which answers low-stakes questions in the job's favour and says Yes to "N years of
-  a skill" only when your history shows the skill. If you want the old behaviour, pick **Facts only**.
+  a skill" only when your history shows the skill. If you want the old behaviour, pick **Careful**.
   If your laptop and your second copy run different versions, saving the level on the newer one
   clears the old switch, which the older copy reads as off until you update it.
 - **The Companion remembers the job per tab, not for 30 minutes.** A long application no longer

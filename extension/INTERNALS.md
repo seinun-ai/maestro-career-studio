@@ -1955,7 +1955,7 @@ empty. Such a box is the user's alone: `CONSENT_FORMS` refuses it without the Ag
 - **Middle name.** `/map` files a middle-name or middle-initial question as none unless the fact is `personal.middle_name` (the profile has none), and
   `content/autofill.js` has a middle-name guard rule ahead of the first-name rule. The name is used as stored, never split.
 - **Drafted written answers.** Only a REQUIRED text or textarea field `/map` filed under `free_text` or `years_unanswered` (`Mapped.draft`) and `/choose` could not
-  answer is drafted (`autofill_choose._with_drafts`, at most six a call, one smart-model call in `qa.draft_answers`). Never at **Facts only**, never without an
+  answer is drafted (`autofill_choose._with_drafts`, at most six a call, one smart-model call in `qa.draft_answers`). Never at **Careful**, never without an
   application to ground it, and never when the never-drafted backstop matches the label (protected, EEO, work-authorization, money, background, signature,
   logistics, public-sector and worked-here wording). It is bounded by what is left of 7.5 s since `/choose` began (reading the context counts; under 2 s left,
   nothing is drafted), and a failure leaves the field open. The draft is plain text in the owner's voice (`resume_voice.repair` in code), about 120 words unless the

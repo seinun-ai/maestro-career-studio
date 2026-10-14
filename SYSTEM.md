@@ -474,7 +474,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 - **Low stakes are decisive; a draft is read, not trusted.** `{#inv-drafted-answers}` A low-stakes gap is filled and reported `assumed` with a fixed note, never
   left blank and never invented as a fact: a date box asking for more than the fact has takes the 1st (January for a year), https goes on a host, a phone type
   is Mobile, a dialing-code picker takes the profile country's code. The owner's No/Yes safe defaults are in the §7 dial. A middle name is never made from the first name; the name is used as stored. `/choose`
-  DRAFTS only a REQUIRED text or textarea that `/map` filed as `free_text` or `years_unanswered`, with an application, never at **Facts only**, never when the
+  DRAFTS only a REQUIRED text or textarea that `/map` filed as `free_text` or `years_unanswered`, with an application, never at **Careful**, never when the
   never-list matches (protected, EEO, work authorization, money, background, signatures, logistics, public service, employment here), in the owner's voice,
   about 120 words or the label's stated limit, `""` when the history cannot answer; it returns `assumed` with "Drafted from your history: read it" and saves nothing. Pinned by `tests/test_autofill_choose.py`, `test_autofill_map.py` and `tests/browser/test_fill_core_fields.py`.
 
@@ -617,10 +617,10 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   straight from the application's own pages, after an 8 s Undo (a tab closed during it marks at once); any other page sets `noAutoMark`, leaving the manual Mark applied, and
   Done on the Ready card ends the record writing nothing (per-run limits, leases and Apply on a live tab: INTERNALS). The Ask box (QnA drawer) sits under the run card only
   while the run is paused. The job memory is per tab (`chrome.storage.session` `widget.sessions`, no clock; origin, tenant, sibling-posting and backend-wins guards).
-- **Screening answers dial** (Settings › Form filling; `autofill.answer_level`, default **Backed by your history**, so an install that had
+- **Screening answers dial** (Settings › Form filling; `autofill.answer_level`, default **Balanced**, so an install that had
   the old low-stakes switch off now answers low-stakes questions; the one setting for the Companion, `/map` `/pick` `/step` and agents, via
-  the brief's `applying.answer_level`): **Facts only** (saved answers and history), **Backed by your history** (also low-stakes kinds in the
-  job's favour, and "N years of a skill" Yes when the history shows it), **Queued means I qualify** (also every requirement question Yes,
+  the brief's `applying.answer_level`; stored `facts`/`history`/`queued`, shown as the levels below): **Careful** (saved answers and history), **Balanced** (also low-stakes kinds in the
+  job's favour, and "N years of a skill" Yes when the history shows it), **Confident** (also every requirement question Yes,
   and a years question Yes only when the history is silent or shows enough, else asked; only for the job's own posting: accepted/approved
   proposal plus `page_url` `is_same_posting` against `apply_url`/`source_url`). The protected list sits outside every level and parks unless
   a saved fact answers it: work authorization and sponsorship, salary, EEO (unless consented), criminal or background history, termination,

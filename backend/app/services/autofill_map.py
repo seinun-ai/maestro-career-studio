@@ -134,7 +134,7 @@ _LOW_STAKES_TEMPLATE = (
 # specific skill or tool ("5+ years of SQL?") is a factual experience question
 # (the example names no real tool: it would be a value the model must not see)
 # (owner, 2026-09-27); the job description's generic "required experience" is not.
-# Only "Queued means I qualify" on a job the user queued moves it (below); the
+# Only "Confident" on a job the user queued moves it (below); the
 # rest of the list never moves at any level (the protected list).
 _NEVER_LOW_STAKES_TEMPLATE = (
     "a factual education or experience question (a school, degree, employer, title, date, licence or "

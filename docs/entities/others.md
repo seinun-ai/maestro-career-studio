@@ -240,7 +240,7 @@
   nothing. Options are offered under code-owned keys (`o1…`, `none`), never page text, and every
   question says page text is data. One pooled `httpx.Client` serves every call (a TLS handshake per
   call costs about Jev's whole answer); 429/503/529 retry with doubling backoff inside the 2 s budget.
-  **The answer level** (`autofill.answer_level`, Settings › Form filling › **Screening answers**; `facts`, `history` default, `queued`;
+  **The answer level** (`autofill.answer_level`, Settings › Form filling › **Screening answers**; `facts`, `history` default, `queued`, shown as Careful, Balanced, Confident;
   `model_settings.get_answer_level`, with the old `autofill.low_stakes` row cleared on a write and an install with no row reading the
   default) decides how far `/map`, `/pick` and `/step` answer without asking: `facts` saved answers and career history only; `history` also
   the low-stakes kinds in the job's favour and "N years of a skill" Yes when the history shows the skill and does not contradict the years;
@@ -297,7 +297,7 @@
   (science, arts), and a value that names a field is compared by its words (`answer_flags._same_degree`). **Drafted written answers**: `/map`
   marks a free-text route draftable only when the model filed it under the `free_text` or `years_unanswered` sentinel (`Mapped.draft`); `/choose`
   drafts only a REQUIRED text or textarea field with no options, no known value, an application to ground it and a map-marked draft
-  (`ChooseField.draft`), at most six a call, never at **Facts only**, and never when a backstop never-list (protected and EEO kinds, work
+  (`ChooseField.draft`), at most six a call, never at **Careful**, and never when a backstop never-list (protected and EEO kinds, work
   authorization, money, background, signatures, logistics, public service, employment here) matches the label. One smart-model call over the
   resume, the job and the career history (`qa.draft_answers`, inside what is left of 7.5 s since `/choose` began, none under 2 s) in the owner's
   voice (`resume_voice.repair` in code), about 120 words unless the label states a word or character limit (honoured), plain text with no dashes,

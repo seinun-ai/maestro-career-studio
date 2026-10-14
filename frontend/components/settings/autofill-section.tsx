@@ -1344,26 +1344,25 @@ const ANSWER_LEVELS: {
 }[] = [
   {
     value: "facts",
-    label: "Facts only",
+    label: "Careful",
     line: "Only your saved answers and career history. Anything else waits for you.",
   },
   {
     value: "history",
-    label: "Backed by your history",
+    label: "Balanced",
     line:
-      "Also answers low-stakes questions in the job's favor, and "
-      + "years-with-a-skill questions when your history shows the skill.",
+      "Also answers low-stakes questions and years-with-a-skill questions "
+      + "when your history shows the skill.",
     note:
       "Low-stakes means how you heard about the job, travel, relocation and "
       + "similar. They show under Answered for you.",
   },
   {
     value: "queued",
-    label: "Queued means I qualify",
+    label: "Confident",
     line:
-      "On jobs you queued, also says yes to requirement and years questions, "
-      + "except the ones listed below. If your history shows fewer years, it "
-      + "asks you.",
+      "On jobs you queued, also answers Yes to requirement and years "
+      + "questions. If your history shows fewer years, it asks you.",
   },
 ];
 

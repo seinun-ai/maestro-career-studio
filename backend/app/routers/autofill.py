@@ -436,7 +436,7 @@ def _queued(db: Session, application_id: UUID | None, page_url: str | None) -> b
     they accepted (or that was approved) AND the page is that job's own posting
     (its apply link or its source link; `job_url_match.is_same_posting` treats an
     apply sub-path as the same posting and fails toward "not"). Only then may the
-    "Queued means I qualify" level answer its requirement questions Yes. The panel
+    "Confident" level answer its requirement questions Yes. The panel
     restores an application per ATS tenant, and one host serves many employers,
     so neither the id nor the host would do; no page address is not queued.
     Read here, never taken from the page's say-so."""

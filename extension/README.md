@@ -63,7 +63,7 @@ at to your local Maestro CS app.
   from your career history and the job, in your own voice, about 120 words (or the
   length the question names). The row says "Drafted from your history: read it".
   It is never saved as a standing answer and never submitted for you; edit it in
-  the page and press **Resume** to keep your version. **Facts only** (Settings ›
+  the page and press **Resume** to keep your version. **Careful** (Settings ›
   Form filling) turns drafting off, and pay, work authorization, demographic,
   background and "have you worked here" questions are never drafted.
 - **Safe defaults for questions your profile cannot answer.** From **Backed by your

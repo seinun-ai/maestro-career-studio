@@ -166,7 +166,7 @@ def _with_drafts(
     """The essay writer's draft (`qa.draft_answers`) for each required written question `out` left
     null: written, and reported `assumed` so the user reads it. Grounded in an application's resume
     and job, so none without one. A draft that fails leaves the field open, as it was."""
-    # "Facts only" answers from saved answers and the career history, never a model's prose.
+    # "Careful" answers from saved answers and the career history, never a model's prose.
     if application_id is None or model_settings.get_answer_level(session) == "facts":
         return out
     asked = {f.qid: f.label for f in fields if _draftable(f, out.get(f.qid))}

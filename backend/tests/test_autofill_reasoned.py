@@ -15,7 +15,7 @@ def test_history_level_lets_a_years_question_be_yes_when_the_history_shows_the_s
 
 
 def test_the_queued_level_keeps_the_same_history_backed_years_rule():
-    # "Queued means I qualify" is /map's: a years question it routes `reasoned` is still history-backed here.
+    # "Confident" is /map's: a years question it routes `reasoned` is still history-backed here.
     assert autofill_reasoned.prompt_rules(level="queued") == autofill_reasoned.prompt_rules(level="history")
 
 

@@ -407,11 +407,11 @@ site that asks you to make an account, Apply makes it with your saved job-site l
 20 seconds for the site to finish, and only then stops with **Account not created** if the site refuses
 it, **Email code** if the site wants an email check and **CAPTCHA** if it shows one. A required
 written question your saved answers cannot answer is **drafted from your career history for you to
-read** ("Drafted from your history: read it"), never saved as a standing answer; **Facts only** turns
+read** ("Drafted from your history: read it"), never saved as a standing answer; **Careful** turns
 drafting off. The **Ask** box at the foot of the Fill step answers any question from a form in one
 paragraph you can copy; it opens when a run pauses.
 
-A question your profile cannot answer gets a safe default from **Backed by your history** up: No (or Not
+A question your profile cannot answer gets a safe default from **Balanced** up: No (or Not
 applicable when offered) for membership of a tribe, union or association, a referral, or relatives at the
 company, and No (or "I don't wish to answer") for a spouse's or household member's military service; Yes for willingness to a standard step such as a background check, drug test, references,
 I-9 or providing documents, and for basic means such as transport and internet. Criminal or background
