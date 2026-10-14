@@ -186,6 +186,8 @@
         options: passive?.options.map((o) => ({ ...o, policyBlocked: blocked(o.text, consentForms) })) ?? null,
         optionsComplete: passive?.complete ?? false,
         invalid: ns.fillBase.invalid(el),
+        // A box for prose (textarea, rich-text host): the panel never keeps its answer as a standing one.
+        multiline: shape.name === "text" && (el instanceof HTMLTextAreaElement || el.isContentEditable === true),
         touched: touched.has(fid),
         policyBlocked: fieldBlocked(d.question, optionTexts, consentForms),
         // Value-free keys for the widget's family (content/recipes.js), or

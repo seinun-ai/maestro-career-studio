@@ -34,10 +34,19 @@ def test_a_field_record_carries_every_key_later_tasks_read(page, load):
     f = fields(page)[0]
     assert set(f) == {"fid", "fp", "shape", "kind", "multi", "question", "source", "section", "repeatIndex",
                       "required", "help", "committed", "answered", "options", "optionsComplete", "invalid",
-                      "touched", "policyBlocked", "recipe", "part"}
+                      "touched", "policyBlocked", "recipe", "part", "multiline"}
     assert (f["kind"], f["source"], f["required"], f["help"]) == ("text", "label-for", True, "As on your ID")
     assert f["recipe"] is None   # a text box has no move to learn (content/recipes.js)
     assert f["part"] is None     # no date part: the field reader's `part`
+
+
+def test_a_textarea_or_rich_text_box_is_multiline_and_a_one_line_input_is_not(page, load):
+    """The panel's Resume never saves a long written answer as a standing one; the inventory is where
+    it can tell a box for prose from a one-line input (both are the `text` shape)."""
+    load(page, "<label for='a'>City</label><input id='a'><label for='b'>Why us?</label><textarea id='b'></textarea>"
+               "<div role='textbox' contenteditable='true' aria-label='Cover note'></div>")
+    by_q = by_question(page)
+    assert (by_q["City"]["multiline"], by_q["Why us?"]["multiline"], by_q["Cover note"]["multiline"]) == (False, True, True)
 
 
 def test_a_date_part_control_says_which_part_it_holds(page, load):

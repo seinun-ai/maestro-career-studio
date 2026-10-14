@@ -176,8 +176,8 @@ def statuses(out):
     return [e.split(":", 1)[1] for e in out["events"] if e.startswith("update:")]
 
 
-def needs(fid, question="Question", required=True, status="needs_answer"):
-    return {"fid": fid, "question": question, "required": required, "status": status}
+def needs(fid, question="Question", required=True, status="needs_answer", invalid=False):
+    return {"fid": fid, "question": question, "required": required, "status": status, "invalid": invalid}
 
 
 # ---------- the happy path ----------
@@ -330,6 +330,19 @@ def test_an_open_required_field_parks_the_page_with_the_list(tmp_path):
     assert r["open"] == [{"fid": "f1", "question": "Work authorization", "required": True},
                          {"fid": "f2", "question": "Cell", "required": True}]
     assert names(out, "advance") == []
+
+
+def test_a_field_the_page_flags_invalid_parks_by_name_though_the_reader_missed_its_star(tmp_path):
+    """A required field the reader did not see as required (no star, no aria-required) is the page's
+    to complain about: after a Next that did nothing it shows invalid. Parking on it names the field;
+    without this the run would refill and then stop as `no_change`, saying nothing about which field."""
+    fills = [[needs("f1", "Pronouns", required=False, invalid=True),
+              needs("f2", "Nickname", required=False),
+              needs("f3", "Cell", required=False, status="cannot_operate", invalid=True)]]
+    out = _drive(tmp_path, [step(1), REVIEW], fills=fills)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "open_questions")
+    assert r["open"] == [{"fid": "f1", "question": "Pronouns", "required": False}]
 
 
 def test_an_optional_open_field_does_not_park(tmp_path):

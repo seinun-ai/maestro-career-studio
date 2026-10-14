@@ -388,6 +388,14 @@ def test_an_optional_field_the_page_marks_invalid_is_asked(page, load):
     assert statuses(out) == {"e": "needs_answer"}
 
 
+def test_a_report_row_carries_whether_the_page_flagged_the_field_invalid(page, load):
+    """The queued run parks on a needs_answer row the page flags invalid even when the reader saw no
+    star (queue-run.js `openQuestions`), so the flag has to reach the report."""
+    out = run(page, load, frames=[[f("e", question="Phone Extension", invalid=True), f("g", question="Nickname")]],
+              map={"e": {"route": "none"}, "g": {"route": "none"}})
+    assert (row(out, "e")["invalid"], row(out, "g")["invalid"]) == (True, False)
+
+
 def test_an_optional_field_holding_text_it_does_not_count_as_an_answer_is_asked(page, load):
     # Something is in the box (a placeholder the reader could not tell from a value): leave the call to the user.
     out = run(page, load, frames=[[f("e", question="Phone Extension", committed="ext.")]],

@@ -166,9 +166,13 @@
     return top ?? fullest;
   }
 
+  // A required field it could not answer or operate parks. So does a field the page itself flags
+  // invalid that the reader did not see as required (no star, no aria-required): after a Next that
+  // did nothing, the page's complaint is the better witness, and the park then names the field
+  // instead of ending as `no_change` after a refill.
   const openQuestions = (report) => report.fields
-    .filter((f) => f.required && OPEN_STATUSES.has(f.status))
-    .map((f) => ({ fid: f.fid, question: String(f.question ?? "").slice(0, MAX_QUESTION), required: true }));
+    .filter((f) => OPEN_STATUSES.has(f.status) && (f.required || (f.status === "needs_answer" && f.invalid === true)))
+    .map((f) => ({ fid: f.fid, question: String(f.question ?? "").slice(0, MAX_QUESTION), required: Boolean(f.required) }));
 
   /** Run one record to a stop. Returns the record; its `status` and `why` say where it got to. */
   async function drive(record, deps, options = {}) {

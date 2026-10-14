@@ -307,6 +307,8 @@
       fillable: ns.fillableControls(),
       hasApplyLink: [...document.querySelectorAll(`a[href], ${BUTTONS}`)].some((el) => shown(el) && labels(el).some((t) => APPLY_TEXT.test(t))),
       confirmationText: CONFIRMATION.test(bodyText),
+      // The matched words alone (the run records them as the confirmation it saw), never the page around them.
+      confirmationPhrase: CONFIRMATION.exec(bodyText)?.[0] ?? null,
       closedText: CLOSED.test(bodyText),
       boardNative: BOARD_HOST.test(location.hostname),
       submitSeen: submitSeen(),

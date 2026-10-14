@@ -116,8 +116,8 @@ def test_the_summary_is_counts_texts_and_booleans_and_never_a_value(page, load):
     s = summary(page)
     assert "Zelda-Secret-9" not in json.dumps(s)
     assert set(s) == {"host", "stepKey", "applyId", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
-                      "fillable", "hasApplyLink", "confirmationText", "closedText", "boardNative", "submitSeen",
-                      "submitContext"}
+                      "fillable", "hasApplyLink", "confirmationText", "confirmationPhrase", "closedText", "boardNative",
+                      "submitSeen", "submitContext"}
     assert set(s["buttons"][0]) == {"id", "text", "inForm", "visible", "enabled"}
     assert (s["passwordInputs"], s["fillable"]) == (1, 3)
 
@@ -174,11 +174,20 @@ def test_a_later_summary_retires_the_ids_of_an_earlier_one(page, load):
 def test_confirmation_and_closed_text(page, load):
     load(page, "<p>We've received your application.</p>", SOURCES)
     assert summary(page)["confirmationText"] is True
+    assert summary(page)["confirmationPhrase"] == "We've received your application"
     load(page, "<p>This position has been filled.</p>", SOURCES)
     assert summary(page)["closedText"] is True
     load(page, "<p>Tell us about yourself.</p>", SOURCES)
     s = summary(page)
     assert (s["confirmationText"], s["closedText"]) == (False, False)
+    assert s["confirmationPhrase"] is None
+
+
+def test_the_confirmation_phrase_is_the_match_and_none_of_the_page_around_it(page, load):
+    load(page, "<p>Hi Zelda-Secret-9, thank you for applying to Acme. Your reference is 4471.</p>", SOURCES)
+    s = summary(page)
+    assert s["confirmationPhrase"] == "thank you for applying"
+    assert "Zelda-Secret-9" not in json.dumps(s)
 
 
 def test_password_and_code_inputs(page, load):

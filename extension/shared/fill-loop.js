@@ -232,8 +232,10 @@
   const CAN_ADAPT = new Set(["popup", "search"]);
   // The widget kinds the step agent has a technique card for (backend autofill_techniques); a set of items is `multi`.
   const STEP_KINDS = new Set(["popup", "search", "group", "select", "date"]);
-  // A recipe holds the moves of an axis; the page's own move of that axis is what worked here.
-  const WORKED_MOVE = { open: "open", search: "search:value" };
+  // A recipe holds the moves of an axis; the page's own move of that axis is what worked here. Only
+  // the open: a search's Enter says the page took a typed query, not that the applicant's value found
+  // its option (search:value is often the move that fails).
+  const WORKED_MOVE = { open: "open" };
   const MAX_WORKED = 4; // the backend's cap
   // A search term the agent wrote (`search:term`): the shape the backend and the page accept, at most six per value.
   const TERM = /^[\p{L}\p{N}_ .&+/#-]{1,40}$/u;
@@ -940,7 +942,9 @@
     // long list takes a scroll per window, and a scroll that shows the same
     // window again is `no_change`, a scroll at the end is refused by the page.
     const MAX_RUNS = 2;
-    const adapt = async (f, row, first, item) => {
+    // `asItem`: the value is one item of a list field. An item the list never offers is left missing,
+    // never replaced by its nearest option (the user could not tell which pill was a substitute).
+    const adapt = async (f, row, first, item, asItem = false) => {
       const value = item ?? (typeof row.value === "string" ? row.value : undefined);
       const history = first ? [first] : [];
       // A state + move pair that failed, for this field and this run: never
@@ -1006,9 +1010,9 @@
           ...(tried_.length ? { tried_terms: tried_ } : {}),
           ...(kind ? { kind } : {}),
           ...(worked.length ? { worked_here: worked } : {}),
-          complete: Boolean(state.complete),
+          complete: Boolean(state.complete) && !asItem,
         }, rows.get(f.fid).deadline);
-        const chosen = res?.mid && res.mid !== "give_up" && STEP_REASONS.has(res.reason)
+        const chosen = res?.mid && res.mid !== "give_up" && STEP_REASONS.has(res.reason) && !(asItem && res.reason === "closest")
           ? offered.find((c) => c.mid === res.mid) : null;
         // The model's own word: a give_up it chose is as visible as a click.
         noteAnswer(f.fid, "step", res, res, ms, {
@@ -1023,7 +1027,10 @@
           ? res.term.trim() : null;
         if (chosen.mid === "search:term" && !term) return giveUp(f, "gave_up");
         const tried = `${stateKey(state, value)}:${chosen.mid}${term ? `:${term.toLowerCase()}` : ""}`;
-        const key = JSON.stringify([chosen.mid, value ?? null, term?.toLowerCase() ?? null]);
+        // A click is the same move when it names the same option: its id ("click:o1") is only a
+        // position, a different option in each new list.
+        const named = chosen.mid.startsWith("click:") ? quotedText(chosen.describe) : null;
+        const key = JSON.stringify([named === null ? chosen.mid : ["click", named], value ?? null, term?.toLowerCase() ?? null]);
         if (failedMoves.has(tried) || (chosen.mid !== "scroll" && (ran.get(key) ?? 0) >= MAX_RUNS)) {
           // Proposed again on the same state, or after its two runs: not
           // executed. The model hears so, and chooses again from the same
@@ -1128,6 +1135,7 @@
       const landed = [];
       let landedHow = "group_committed"; // how the last landed value got there
       let committed = null;
+      let shows = false; // the last item's set left the field showing an error
       let listUp = Boolean(learnt?.up); // an item's explore left its list up and no set has used it yet
       // One picked option, committed under its own page budget. Undefined: the
       // field is decided (stopped, refused, out of time) and commitSet ends.
@@ -1146,7 +1154,11 @@
           missed.set(item, historyEntry("choose", "timeout"));
           return true;
         }
-        if (out.outcome !== "verified" && out.outcome !== "partial") {
+        // `reverted`: the box shows an error (it may be aria-invalid from before, and clear only on a
+        // blur). The item is judged by what it added or missed like any other; whether the error is
+        // still there is judged once, after the last item.
+        shows = out.outcome === "reverted";
+        if (out.outcome !== "verified" && out.outcome !== "partial" && !shows) {
           fail(f, out.reason ?? out.outcome);
           return false;
         }
@@ -1214,6 +1226,8 @@
         if (listUp) await act(f, { op: "close" }, { closing: true });
       }
       if (halt()) return undefined;
+      // The page still flags the field after the last item went in: it took the values back.
+      if (shows) return fail(f, "reverted");
       // What the generic path missed, on a popup widget: the adaptive step, one item at a time.
       if (CAN_ADAPT.has(f.shape) && routeOf(row) === "slot") {
         const queue = [...missed].filter(([item]) => !late.includes(item));
@@ -1223,7 +1237,7 @@
             late.push(...queue.slice(i).map(([x]) => x));
             break;
           }
-          const r = await adapt(f, row, first, item);
+          const r = await adapt(f, row, first, item, true);
           if (FINAL.has(rows.get(f.fid).status) || r.outcome === "halted") return undefined;
           if (r.outcome === "verified" && STATUS[r.reason]) {
             covered.set(item, r.reason);
@@ -2002,6 +2016,9 @@
         question: r.field?.question ?? "",
         section: r.field?.section ?? "",
         required: Boolean(r.field?.required),
+        // The page's own complaint about the field as last read (aria-invalid, an error beside it):
+        // the queued run parks on it when the reader missed the star.
+        invalid: Boolean(r.field?.invalid),
         shape: r.field?.shape,
         // Reverted and never re-committed (out of rounds, stopped, out of
         // time): the page took back a value the engine wrote. Said so.
