@@ -610,6 +610,23 @@
     return list;
   }
 
+  /** The optional fields the run left blank, by name, in a collapsed disclosure under their count.
+   *
+   * ROUTE `none` MEANS NO FACT PASSED THE FLOOR, not that the profile has none: a near miss (a
+   * sponsorship question at 0.88 against a 0.90 floor) goes quiet, and a count alone gave the user
+   * nothing to look at. So each is named and jumps to its field, like the rows under Needs your
+   * answer, but quietly: closed until opened, no heading, no count chip, and never counted as
+   * needing an answer or held against Ready. A native `details`, so the keyboard and a screen
+   * reader get the disclosure for free. */
+  function leftBlankList(ctx, rows) {
+    if (!rows.length) return null;
+    const { build } = ctx;
+    const block = build.node("details", "blank-list");
+    const list = loopRows(ctx, rows, () => null);
+    list.setAttribute("aria-label", "Left blank (optional)");
+    return build.attach(block, build.node("summary", null, "Left blank (optional)"), list);
+  }
+
   function loopReport(ctx, loop) {
     const { build } = ctx;
     const { node, attach } = build;
@@ -644,6 +661,7 @@
       [having("yours").length, (n) => `${n} you edited`],
     ].filter(([n]) => n).map(([n, say]) => say(n));
     if (left.length) attach(report, node("div", "sub count", left.join(" · ")));
+    attach(report, leftBlankList(ctx, having("left_blank")));
     // Entries of a repeating section the Companion did not add: the user's to add.
     for (const line of ns.fillLoop.sectionLines(loop)) attach(report, node("div", "sub count", line));
     if (!report.children.length) attach(report, node("div", "sub count", "No fields to fill here."));

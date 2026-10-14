@@ -3749,7 +3749,7 @@ def _loop_groups(region):
     [report] = _by_class(region, "loop")
     out = []
     for node in report["children"]:
-        if {"grp", "count", "check-line"} & set(node["class"].split()):
+        if {"grp", "count", "check-line", "blank-list"} & set(node["class"].split()):
             out.append((_text(node), []))
         else:
             out[-1][1].extend(_text(item) for item in node["children"])
@@ -3826,22 +3826,46 @@ def test_a_group_with_no_rows_is_not_shown(tmp_path):
         ("1 filled", []), ("Needs your answer 1", ["Preferred shift"]), ("1 already filled", [])]
 
 
-def test_optional_fields_left_blank_are_a_count_never_a_question(tmp_path):
-    """An optional field nothing answered is said once, as a count among the
-    lines for what the loop left alone: no row to click, nothing under Needs
-    your answer, and it adds nothing to the note's count of open fields."""
+def test_optional_fields_left_blank_are_a_count_and_a_quiet_named_list_never_a_question(tmp_path):
+    """An optional field nothing answered is said once, as a count among the lines for what the loop
+    left alone, and named under it in a collapsed list: route `none` means no fact passed the floor,
+    not that the profile has none, so a near miss must not go quiet. None of it is a question: nothing
+    under Needs your answer, nothing added to the note's count of open fields."""
     one = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [
         *DONE_REPORT["fields"], _field("n1", "Preferred shift", "needs_answer"),
         _field("e1", "Phone Extension", "left_blank", route="none", lastOutcome="no_fact")]})
     assert _loop_groups(one["settled"]["rail"]) == [
         ("1 filled", []), ("Needs your answer 1", ["Preferred shift"]),
-        ("1 already filled · 1 optional field left blank", [])]
+        ("1 already filled · 1 optional field left blank", []),
+        ("Left blank (optional) Phone Extension", [])]
     [note] = _by_class(one["settled"]["foot"], "note")
     assert note["text"] == "1 field needs your answer."
     two = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [
         *DONE_REPORT["fields"], _field("n1", "Preferred shift", "needs_answer"),
         _field("e1", "Phone Extension", "left_blank"), _field("e2", "Fax", "left_blank")]})
-    assert _loop_groups(two["settled"]["rail"])[-1] == ("1 already filled · 2 optional fields left blank", [])
+    assert _loop_groups(two["settled"]["rail"])[-2:] == [
+        ("1 already filled · 2 optional fields left blank", []),
+        ("Left blank (optional) Phone Extension Fax", [])]
+
+
+def test_the_left_blank_list_is_collapsed_and_each_name_jumps_to_its_field(tmp_path):
+    # One field still open, so the step is not ticked and its report stays on screen.
+    out = _loop(tmp_path, jump="Fax", report={"host": LOOP_HOST, "fields": [
+        *DONE_REPORT["fields"], _field("n1", "Preferred shift", "needs_answer"),
+        _field("e1", "Phone Extension", "left_blank"),
+        _field("e2", "Fax", "left_blank")]})
+    [block] = _by_class(out["settled"]["rail"], "blank-list")
+    # A native disclosure: closed until the user opens it, and not a heading of the report.
+    assert block["tag"] == "DETAILS" and "open" not in block["attrs"]
+    assert [kid["tag"] for kid in block["children"]][0] == "SUMMARY"
+    assert "grp" not in block["class"].split()
+    [jump] = [msg for msg in out["broadcasts"] if msg["message"]["type"] == "fill_focus"]
+    assert jump["message"]["fid"] == "e2"
+
+
+def test_a_report_with_nothing_left_blank_draws_no_list(tmp_path):
+    out = _loop(tmp_path)  # the default report leaves fields open, so its report is on screen
+    assert _by_class(out["settled"]["rail"], "blank-list") == []
 
 
 def test_a_loop_that_left_only_optional_fields_blank_is_finished(tmp_path):
