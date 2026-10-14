@@ -1483,9 +1483,19 @@ footer alone).
   of a tab the run opened itself, at step 0, with nothing filled, on the host the apply link led to, and when the page has no fillable
   control and one control worded exactly Apply / Apply now / Apply for this job that is not a form's submit. Never after a sign-in
   or a Resume: a site that restores a saved draft lands on its review page, whose "Apply" is a Submit.
+  **A career site's Apply** (the employer's own posting page, which the run reached by the saved posting link or a redirect) is pressed too,
+  when it goes to the record's queued link (same origin, same posting: `leadsOn`) or to a known ATS host (`shared/ats-hosts.js`), whoever the tenant.
+  Such a link often asks for a NEW TAB (`target=_blank`); the press navigates THIS tab, so the reader (`applyPressable(el, {blank: true})`, this call
+  alone) allows `_blank` for a link to the page's own site or a known ATS host, and any other target is still refused. The summary names the link
+  (`applyHref`: origin and path, no query) and the record keeps it (`record.applyHref`, the address a tab the user opens is told by, below). The
+  press carries that address and the page refuses it if the link was rewritten since the read (`would_submit`). **The landing is judged before
+  it is trusted** (`landing`): the first read after the press must be on the link's host, the queued link's host or a known ATS host, else the
+  run parks `moved_away` before any fill, and that host never joins `record.hosts` (the fill, the sign-in and the frame vouch all follow `hosts`).
+  A site that bounces the application through a single-sign-on host the list does not hold therefore parks there; the user signs in in the tab and
+  presses Resume.
 - **Walls park, they do not retry.** CAPTCHA, email code, account creation on a host that is not a known ATS or that the page refuses, a sign-up page seen again after the press (`create_account_failed`), board-native apply, a failed sign-in, a start chooser it may not follow (`chooser`), a page it does not
   recognise, a "thank you" page before the run reached
-  review, the tab on a host the run never navigated to (not after a park that told the user to go somewhere, `sign_in_yourself`,
+  review, the tab on a host the run never navigated to (`moved_away`, and the same park for a posting Apply that landed on a host nothing named; not after a park that told the user to go somewhere, `sign_in_yourself`,
   `verify`, `posting`, `chooser` or `unknown_page`: where they land on Resume is theirs, and that host joins the run's), the same page again, more than 15 steps, a Next that changes nothing
   (after one refill), a Next the page refuses and names (`page_errors`), a required upload it could not fill (`upload`), a review page that is not
   plainly the end (`unsure_page`, after it held; below) and a field-less page with only a bare Continue or Proceed (`confirm_page`; a step whose only content is an upload box the fill wrote or listed is a step, not this: `hadUpload`) each park with a fixed `why` word;
@@ -1558,6 +1568,17 @@ footer alone).
 - **Park less.** A required field the fill reports `unconfirmed` does not park: Next and the page's own validation decide, and a page
   that does not move is refilled once. A run parks only on required fields it could not answer or operate (`open_questions`, the page's
   own invalid flag counts), once per page, naming them.
+- **A value the engine landed is checked, not parked on** (`landedToCheck`, `shared/queue-run.js`). A required field the fill left `needs_answer` with a value ON it (its last
+  outcome `group_committed`, `search_committed` or `committed_while_*`: a search picked its one hit, a click committed an option) is not an open question: the engine's own check
+  could not call the value right and the page's validation can. `openQuestions` leaves it out and `keepAssumed` lists it in `record.assumedRows`, so Ready shows it under
+  **Check before you submit** with one of two fixed lines ("Searching picked a value. Check it.", "Companion clicked an option. Check it."; never the text the page took:
+  `fillLoop.landedNote`, `KNOWN_NOTES`). A field the engine gave up on (nothing landed) still parks, and a landed field beside one that needs an answer parks naming only the second.
+  **Never one the protected list covers** (`PROTECTED_SLOT`: `work_auth.*`, `eligibility.*`, `eeo.*`, `derived.sponsorship`, `derived.previously_employed_here`, `derived.us_citizen`,
+  `derived.agrees_to_terms`, `preferences.desired_salary`): a value a click happened to land on is not the applicant's answer to those, so they park and are never listed as checked.
+- **A skills box that is not required is left empty in a run** (`skipOptionalSkills`, passed by `fillPage` for a full fill, not for a scoped repair; `shared/fill-loop.js`
+  `optionalSkills`). A box the map put the resume's skills in (slot `skills`), or a multi-select or search box whose question names skills, that is neither required nor flagged
+  invalid, finishes `left_blank` with `lastOutcome: optional_skills` and no explore, pick or step call: a list of tags is a set of searches, one step each, and nothing
+  waits on it. A required one is filled as before, and so is one a page error names (the repair is scoped, so the skip does not apply). A prose box about skills is the model's.
 - **A Next the page rejects is not a move** (`rejected`). A Workday "Errors Found" banner adds buttons, which used to change the page
   fingerprint, so the press read as a move and the card said "Page 3" over the same page. Now the buttons the error summary owns (`inErrors`,
   `errorLine`) are out of the fingerprint, the Submit sort and the page classifier, and `press` returns `rejected` instead of `moved` when the
@@ -1568,11 +1589,19 @@ footer alone).
   leaves the old banner up. `step` and `seen` do not change, and `moved()` clears the page's `fixRounds`, `attempted` set, resume-written flag, attach note and `record.memory`.
   The driver reads `page_errors` from the frame that was pressed, hands the items to `deps.fix` (the host's `fixPage`) and presses once more.
   `fixPage` works ONLY the named fields: a fill field through `runFill(..., {only: fids, memory})` (a scoped call posts no receipt, no gap rows and
-  no resume attach, so the page's receipt reflects the page's first full fill only, and its progress count stays as that fill left it), an upload box through the targeted attach. An error that names nothing
-  the run can work (an unmapped label, an `unknown` kind), two upload errors at once, or a box left unattached is a blocker. An error is repaired once
-  (`attempted`, by label), at most `MAX_FIX_ROUNDS` (3) rounds a page; the same error back, or a blocker, parks `page_errors` with `open` set to the
+  no resume attach, so the page's receipt reflects the page's first full fill only, and its progress count stays as that fill left it), an upload box through the targeted attach. It works every
+  error it can map and returns `{fixed, remaining}`: an error that names nothing the run can work (an unmapped label, an `unknown` kind), two upload errors at once, a box left
+  unattached and a field the fill did not repair stay the user's, and the park names ONLY those (`errorsOpen(remaining)`; the same for a required-empty fix on a review page, which
+  parks `open_questions`). A repair that wrote nothing (a banner left up over boxes already holding their file) is not a fix; the driver reads the page again and judges it by the
+  rule below. An error is repaired once (`attempted`, by label), at most `MAX_FIX_ROUNDS` (3) rounds a page; the same error back, or a blocker, parks `page_errors` with `open` set to the
   errors' labels. The card says "The page asks for more" and lists them; a field the page named only by its words (an upload box) has nothing to
   jump to.
+- **A page the run did not fill is never pressed** (`filledPage`: `{where, key, here}` of the page the run last filled, set at every fill, cleared by `moved()`).
+  A refused press or a repair can end with the site on its NEXT page, whose Next the run would otherwise press unfilled. Before any press the current read is compared
+  with `filledPage` by PATH and step key (the query is left out: a session or tracking parameter that appears after a fill is the same page, and `filledPage.where`
+  follows it). A different page counts as one step (`step + 1`, the old page's `here` goes into `seen`), `moved()` runs and the page is filled first. The count is
+  bounded like any step: `step_limit` at the step cap and `loop` for a page already in `seen`, so a site that rewrites its address on every fill cannot walk the run
+  through forty fills. A page whose path and heading are those of the page filled is pressed again without a second fill.
 - **`page_errors` reads what the page itself complains about**, in its own words and never a value: `{count, items: [{label, target, kind}]}`, `kind`
   `field` | `upload` | `unknown`. Sources: a visible alert or `aria-live` region that reads like an error (not `aria-live="off"`; a region that holds a
   field is the step around it), a block headed "Errors Found" / "Please correct" and the like, and each control marked invalid (the field reader's
@@ -1606,7 +1635,8 @@ footer alone).
 - **Resume** turns the record to `filling` BEFORE its first await (Resume and Skip leave the card and Stop shows, so a second Resume cannot
   post the receipt twice or replace Undo's memory, and a Skip pressed meanwhile is honoured; Skip also sets `stopRequested`), then re-reads
   the parked page, learns every answer the user typed (`learnAnswer`, with Undo; never a multiline box, so a long written answer is not
-  saved as a standing one), posts a "you" receipt row, and continues; a record ended under the read is not driven. Resume also makes the
+  saved as a standing one; after an `open_questions`, `page_errors` or `upload` park, `LEARNS`: a field the page named as wrong, or one typed in the page over an upload park,
+  is an answer like any other, while a wall or a navigation park asked for none), posts a "you" receipt row, and continues; a record ended under the read is not driven. Resume also makes the
   record belong to the panel that pressed it (its lease), so the mark after the user's Submit has exactly one owner even when another window's
   panel left the record. A `page_errors`, `upload` or `unsure_page` park remembers its page (`record.parkedPage`: address and step key, cleared on the first
   read after the Resume; an `unsure_page` page is matched by address alone when it has no heading). A Resume after `page_errors` or `upload` skips the fill only when that first read is that page (an empty step key proves nothing, so that page is filled
@@ -1636,6 +1666,20 @@ footer alone).
   recipe book at probation for that site (one demonstration never makes it trusted), and a gesture that matches nothing joins the known-gaps list as `missing_technique`, as do leftovers the fill could not operate (`cannot_operate`,
   `unconfirmed`) and fields the user fixed (`user_fixed`). The recipe book is local and is taught whatever the fill log says; the gaps
   post only while `telemetryEnabled === true`. A gap is posted once per field and outcome and never retried (each post adds one).
+- **A parked run follows the user into the tab they open** (`panel/actions/run.js` `followTo`, `onTabCreated`, `followOpened`, `moveRun`; `panel.js` listens to
+  `chrome.tabs.onCreated` and the panel preview's stub knows it). The parks that send the user elsewhere (`USER_NAVIGATES`: `posting`, `chooser`, `unknown_page`,
+  `sign_in_yourself`, `verify`) leave the run waiting in a tab the user may abandon: a career site's Apply opens the form in a NEW tab, a start chooser is pressed by
+  hand. A record is `movable` only when it is `parked` on one of those, not stopping, not being driven and owned by this panel (`ownedHere`, the lease). **Follow
+  rule.** A tab whose `openerTabId` is the record's tab is followed at once when its address is the application itself: under the queued link (`openUrl`) or under
+  the Apply link the posting showed (`record.applyHref`), one path the prefix of the other with two segments at least on the same origin (`underPath`; a leading locale
+  segment such as /en-US/ ignored), so another job of the same tenant or a policy page is not. A tab with no address yet (`pendingUrl`) is followed when it arrives (`followOpened`).
+  Any other page, however it was opened, is followed only when the backend says it is this job (`GET /api/jobs/match`, one lookup per tab and address, the last fifty
+  remembered) and only on the apply link's host or a known ATS host. The follow rebinds `tabId`/`startTabId`, sets `moved`, adds the new tab's host, unvouches the old
+  tab and keeps the park; it **never drives**. The card then says "The run moved to this tab. Press Continue here when this is the page to fill." and its Resume is
+  labelled **Continue here** (`runs.js`); pressing it is the ordinary Resume. A driving run, a wall or a question never moves; a tab the user already has a live run in is
+  never taken over; a tab in another window is left alone (`ownsTab`: a side panel is one per window and every panel hears every tab) and so is a run another panel holds.
+  The other way round, when the user is on a tab of this job and its run waits elsewhere, the Job step's footer is one primary, **Move the run to this tab**
+  (`moveRun`, published by `actions.js`; `movableFor` finds the record), which makes the same rebind and nothing else. A moved record is saved at its new tab for a reopened panel.
 - **Recording the user's Submit.** A ready tab believes a confirmation page only when it is on a host the run reached, at the employer of the
   page that reached Ready, and every read since Ready was a review or form step of that application (a page not drawn yet says nothing). The
   record keeps that employer as `tenant` (the panel's `sessionTenant`: origin plus first path segment), because a shared ATS host serves every
@@ -1657,7 +1701,13 @@ footer alone).
   render it, never quick-tailor over it; nothing and no open session: quick tailor with the user's pick; an open custom session:
   "Finish tailoring first", with Apply using the base resume and the session untouched), then opens `apply_url` (else `source_url`,
   else the tab's address; http(s) only, re-checked here because a value that arrived by sync skipped the server) in the current tab.
+  The seed also carries the job's saved posting (`sourceUrl`): `openTab` keeps the tab only when it is not the job's posting, or the job has
+  no separate application link. A run started on the posting itself (the page the job was found on, a career site's description) therefore
+  NAVIGATES to the saved application link instead of staying there; a tab already on the application (the link, or a page under it) stays, and
+  so does one on a job whose only link is its posting (`onPostingOnly`: the posting is where the user found the job, the link is where the form is).
   On a tab that already has a live run it only says "A run is already going in this tab." and writes nothing.
+  When another tab's run for this job is parked on a step the user does by hand (below), the press says "Move the run to this tab" (`MOVE_RUN`) instead of
+  "Running in another tab", writes nothing and moves nothing; a run that is driving still says "Running in another tab".
   It shows for a job with no application or the user's own draft, and stays hidden once the application is applied. **A job picked by
   hand** (the user's pick on a page the backend's match did not name, `claimFrom: "pick"`; a binding taken from a run record is not one, because
   the tab may have gone elsewhere) shows it too and runs `inPlace`: the pick says this page IS that job's application, so the record's
@@ -1731,6 +1781,14 @@ footer alone).
   `group_committed`) is the fallback.
 - **SmartRecruiters and iCIMS are unverified.** They are on the known-host list (sign-in and account creation are typed there), but no recorded page
   of either has been run through the account or review rules; only the sites of the 2026-10-14 live checks (Workday and three tenants called ATS-D, ATS-G and ATS-O in the diagnoses) were driven live.
+- **A follow needs the application's address or the backend's word.** A page the user opens that is neither under the queued link or the posting's Apply link
+  nor a job the backend matches (an applicant system whose first page carries nothing the job's records name) is not followed: the card waits where it was and the
+  footer's **Move the run to this tab** is the way. The user's tab must also be in the panel's own window.
+- **A single-sign-on redirect after a career site's Apply parks.** The landing check allows the link's host, the queued link's host and a known ATS host only; an
+  identity provider in between is none of them, so the run parks `moved_away` and the user signs in in the tab, then presses Resume.
+- **Query-only wizards read as one page.** The filled-page guard compares path and step heading with the query left out. A wizard whose steps differ only in a query
+  parameter AND share a heading (or have none) reads as the page already filled, so after a refused press or a repair that ended on its next step, that step
+  is pressed without being filled first. A press that moved still resets the guard (`moved()`), so the ordinary path is not affected.
 - **Account creation has no password-rule retry**: a site whose rule the saved password fails parks `create_account_failed` and waits for the user.
 
 ### The fill agent's rules (all Autofill, run or not)
@@ -2008,7 +2066,9 @@ was answered, left over or found committed (`rowKeys` / `siblingKeys` in `shared
 things never count: a field's own option texts (a country select answered "United States" would
 otherwise blank every label saying so) and a lone checkbox's yes/no. A field's own value blanks its
 own label at any length; another field's value blanks a label at 2+ characters when that other
-field is typed (text, date, search, popup) and at 4+ otherwise. The page's own option texts and the
+field is typed (text, date, search, popup) and at 4+ otherwise; a word every form uses as an OPTION (Yes, No, True, False, Mobile, Home, Work, Other, None, Cell,
+Office, Personal, Business; `COMMON_OPTION_WORDS`) never blanks ANOTHER row's label or option list, so an answer "Mobile" leaves a question that names a company
+called Acme-Mobile readable, while the row that holds it still blanks its own label. The page's own option texts and the
 chosen option's index are kept on every field, EEO included (owner decision), so a wrong pick can be
 read back. The index counts the field's own `options` list (the inventory's passive list, `o{i+1}`, as stored
 in `options`), not the options /pick was offered (those drop placeholder and never-fill rows); it is left out

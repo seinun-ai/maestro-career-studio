@@ -48,6 +48,12 @@ at to your local Maestro CS app.
   that mentions "submit" no longer stops a run. On a Workday "Start Your
   Application" page the run presses **Apply Manually** and nothing else on that
   page; if it cannot, it says "Choose how to apply" and waits for you.
+  Started on the job's own posting, Apply opens the application link saved with the job instead of staying there. On a
+  career site whose **Apply** button asks for a new tab, it presses the button in the same tab, but only when it leads to
+  that link or to a known application site; a landing on any other site stops the run. When it waits for a step you do by
+  hand, it follows you into the tab you open for the application and says "The run moved to this tab"; press **Continue
+  here** and it carries on from there. If you are on the job's tab and the run waits in another one, the Job step offers
+  **Move the run to this tab**; a run that is filling never moves.
   On a known application site that asks you to make an account, the run makes it
   with your saved job-site login, once, and waits up to 20 seconds for the site
   to finish before it says "Account not created" (see below). While a run is working the
@@ -64,9 +70,12 @@ at to your local Maestro CS app.
   history** up, a Yes/No about membership or relatives at the company is answered
   No (Not applicable when offered), and willingness to a standard step (background
   check, drug test, references, I-9, documents) or basic means (transport,
-  internet) is answered Yes. Criminal or background history, salary, work
-  authorization and demographic questions are never defaulted, and every default is listed under **Check before you
-  submit**.
+  internet) is answered Yes, and a spouse's or household member's military service
+  is answered No (or "I don't wish to answer"). Criminal or background history, salary,
+  work authorization, demographic questions and your own military service are never
+  defaulted, and every default is listed under **Check before you submit**, as is a
+  required field that a search or a click filled for you (Field of Study, say), which no
+  longer stops the run. An optional Skills box stays empty in a run.
 - **Postings without built-in job data are read too.** The Job step reads the
   description from the section under a "Job Description" or "About the role"
   heading, and the title, company and location from a recorded page layout (a

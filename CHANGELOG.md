@@ -195,6 +195,37 @@ view for several is still ahead.
 
 ### Fixed
 
+- **Fourth live check of Apply, from an employer's own career site to a Workday tenant.**
+  - Apply on a job's own posting now opens the application link saved with the job, instead of staying on the
+    posting. If you start Apply part-way through the form, it stays where you are.
+  - A career site's **Apply** button that asks for a new tab is pressed in the same tab, but only when it
+    leads to the job's application link or to a known application site. If the page you land on is on
+    another site, Apply stops there instead of filling it.
+  - When Apply waits for you to do a step by hand (the posting's own Apply button, a start page, a sign-in), it
+    follows you into the tab you open for the application, and the card says "The run moved to this tab".
+    Press **Continue here** to carry on; nothing is filled until you do. If the run waits in another tab, the
+    Job step offers **Move the run to this tab** instead of "Running in another tab". A run that is
+    filling never moves.
+  - After a page refuses **Next**, Apply fills the page it ends up on before pressing anything there. It
+    fixes the errors it can match to a field, and the stop names only the ones left.
+  - A required field that a search or a click filled (Field of Study, say) no longer stops the run. It is
+    listed under **Check before you submit**. Work authorization, sponsorship, eligibility, demographic and
+    salary questions are not treated this way and still stop for you.
+  - An optional Skills box stays empty in a run, since it was the slowest field on a page. A required one
+    is still filled.
+  - What you type in the page while Apply waits on "The page asks for more" or on an upload is remembered
+    for next time, the same as for a question.
+  - A veteran **No** now answers "Are you currently or have you ever served in the military?" with the
+    never-served option and says it was assumed. A **Yes** never answers a question about current
+    service, and never picks an option that says you serve now.
+  - A spouse's or household member's military service gets the safe default **No** (or "I don't wish to
+    answer" when offered), listed under **Check before you submit**. Your own military service is never
+    defaulted.
+  - "Worked as a contractor for X", "employed by an authorized dealer of X" and a short list of companies
+    answer No from your history when none of them is yours, and say it was assumed. A company that goes
+    by more than one name, or one written as initials in your history, is asked instead.
+  - A word like "Mobile" or "Home" that you answered no longer hides part of another question in the fill
+    log.
 - **Third live check of Apply on a Workday tenant.**
   - A Workday "Start Your Application" page no longer stops the run. It presses **Apply Manually**, the one link
     that only opens the form, and never **Autofill with Resume** or **Use My Last Application**; anywhere else

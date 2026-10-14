@@ -247,7 +247,11 @@
     "inv-rejected-next": [
       {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_rejected_press_is_not_a_step_not_a_seen_page_and_calls_fix_with_the_errors"},
       {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_the_same_errors_after_one_fix_park_naming_the_upload_and_press_no_third_time"},
-      {"path": "extension/shared/queue-run.js", "symbol": "MAX_FIX_ROUNDS"}
+      {"path": "extension/shared/queue-run.js", "symbol": "MAX_FIX_ROUNDS"},
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_repair_that_ends_on_another_page_fills_that_page_before_anything_is_pressed_on_it"},
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_repair_that_could_only_work_some_of_the_errors_parks_naming_only_the_rest"},
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_press_that_lands_on_a_host_the_link_never_named_parks_before_any_fill_and_trusts_nothing"},
+      {"path": "backend/tests/browser/test_page_reader.py", "symbol": "test_a_new_tab_apply_to_the_same_site_is_pressable_and_one_to_any_other_site_is_not"}
     ],
     "inv-one-resume-write": [
       {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_an_attach_that_fails_parks_naming_the_box_and_never_presses_next"},
@@ -264,12 +268,20 @@
       {"path": "backend/tests/test_autofill_catalog.py", "symbol": "test_asks_worked_here_is_an_allowlist_of_question_shapes"},
       {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_question_that_only_names_the_company_is_not_the_worked_here_answer"},
       {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_derived_no_reroute_for_another_company_traces_as_the_codes_call"},
-      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_history_with_an_entry_that_is_no_company_derives_no_no_for_another_company"}
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_history_with_an_entry_that_is_no_company_derives_no_no_for_another_company"},
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_an_employer_known_by_another_name_is_asked_not_the_derived_no"},
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_name_whose_initials_spell_an_acronym_employer_is_asked_not_the_derived_no"},
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_dealer_contractor_or_directly_employed_question_takes_the_history_no"},
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_list_with_a_history_employer_a_group_or_a_part_that_is_no_name_is_not_the_derived_no"},
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_an_unsure_worked_here_slot_for_worked_with_is_asked_but_a_none_keeps_the_pinned_reroute"}
     ],
     "inv-veteran-yes-no": [
       {"path": "backend/tests/test_autofill_pick.py", "symbol": "test_a_no_picks_every_option_that_denies_being_a_veteran_at_the_exact_floor"},
       {"path": "backend/tests/test_autofill_pick.py", "symbol": "test_a_saved_custom_yes_no_row_never_answers_a_veteran_class_question"},
-      {"path": "backend/tests/test_autofill_profile_veteran.py", "symbol": "test_the_old_not_a_protected_veteran_answer_reads_as_unanswered_and_says_so"}
+      {"path": "backend/tests/test_autofill_profile_veteran.py", "symbol": "test_the_old_not_a_protected_veteran_answer_reads_as_unanswered_and_says_so"},
+      {"path": "backend/tests/test_autofill_pick.py", "symbol": "test_a_no_answers_a_currently_or_ever_served_question_with_the_never_served_option"},
+      {"path": "backend/tests/test_autofill_pick.py", "symbol": "test_a_yes_never_answers_a_question_about_current_service_alone"},
+      {"path": "backend/tests/test_autofill_pick.py", "symbol": "test_a_yes_never_picks_an_option_that_claims_current_service"}
     ],
     "inv-ready-real-review": [
       {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_review_that_is_not_a_real_submit_page_parks_unsure_and_never_ready"},

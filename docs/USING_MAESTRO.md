@@ -397,7 +397,12 @@ error and has no required box left empty. When Apply is not sure about a page it
 page**. Look, then press **Resume**: Apply fills what is still open first, and your Resume counts as
 "this is the last page" only when no Next is left on it. Dropdowns and Yes/No buttons are fields, never
 Next or Submit. On a Workday "Start Your Application" page Apply presses **Apply Manually** and nothing
-else there; if it cannot, it says **Choose how to apply** and waits for you. On a known application
+else there; if it cannot, it says **Choose how to apply** and waits for you. If you start Apply on the job's own posting,
+it opens the application link saved with the job rather than staying there; on a career site whose **Apply** button asks for a
+new tab, Apply presses it in the same tab, but only when it leads to that link or to a known application site. When Apply waits for
+a step you do by hand, it follows you into the tab you open for the application and says "The run moved to this tab"; press
+**Continue here** to carry on (nothing is filled until you do). If you are on the job's tab and its run waits in another one, the
+Job step offers **Move the run to this tab**; a run that is filling never moves. On a known application
 site that asks you to make an account, Apply makes it with your saved job-site login, once, waits up to
 20 seconds for the site to finish, and only then stops with **Account not created** if the site refuses
 it, **Email code** if the site wants an email check and **CAPTCHA** if it shows one. A required
@@ -408,15 +413,18 @@ paragraph you can copy; it opens when a run pauses.
 
 A question your profile cannot answer gets a safe default from **Backed by your history** up: No (or Not
 applicable when offered) for membership of a tribe, union or association, a referral, or relatives at the
-company; Yes for willingness to a standard step such as a background check, drug test, references,
+company, and No (or "I don't wish to answer") for a spouse's or household member's military service; Yes for willingness to a standard step such as a background check, drug test, references,
 I-9 or providing documents, and for basic means such as transport and internet. Criminal or background
-history, salary, work authorization and demographic questions are never defaulted. Every default is listed under **Check before
-you submit**. The Companion also reads a job posting that has no built-in job data, taking the
+history, salary, work authorization, demographic questions and your own military service are never defaulted. Every default is
+listed under **Check before you submit**, and so is a required field that a search or a click filled for you (Field of Study, say),
+which no longer stops the run; the page's own check decides. An optional Skills box stays empty in a run. What you type in the page
+while a run waits on "The page asks for more" or on an upload is remembered like any other answer. The Companion also reads a job posting that has no built-in job data, taking the
 description from the section under a "Job Description" or "About the role" heading.
 
 Veteran status is one question in **Profile › Autofill**: "Are you a veteran?" (Yes, No, or "I don't
 wish to answer"). A No answers every "I am not a protected veteran" option on a form. A Yes never picks
-a protected class for you, so the Companion leaves that list to you. If your Profile still held the old
+a protected class for you, so the Companion leaves that list to you, and a Yes never answers "are you currently serving?" either. A No
+also answers "have you ever served?" with the never-served option, and says it was assumed. If your Profile still held the old
 "Not a protected veteran" answer, the question is empty and asks again.
 
 It can keep a **fill log**: *which* fields it met and whether they filled,
