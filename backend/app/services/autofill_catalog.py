@@ -689,6 +689,19 @@ def named_employer_fact(facts: dict[str, Fact], question: str,
     return None
 
 
+def lists_job_company(facts: dict[str, Fact], question: str, options: tuple[str, ...] | list[str] = ()) -> bool:
+    """Whether a question (or its options) lists the company applied to: "Have you worked for Acme, Globex or
+    Initech?" on an Acme job. A listed name, or the company as capitalised words anywhere in it. False with no
+    worked-here fact (no company is known, or the history cannot say). Such a question is the worked-here
+    answer's, whatever else it lists (`named_employer_fact` reads the rest)."""
+    fact = facts.get(WORKED_HERE_SLOT)
+    if fact is None or not fact.companies:
+        return False
+    options = tuple(options)
+    return bool(set(fact.companies) & _listed_company_keys(question, options)
+                or any(_capitalised_mention(key, (question, *options)) for key in fact.companies))
+
+
 AGREES_TO_TERMS = "derived.agrees_to_terms"
 
 

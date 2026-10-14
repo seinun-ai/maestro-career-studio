@@ -1920,3 +1920,62 @@ def test_a_country_dialing_code_field_maps_to_the_phone_country(db_session, monk
     assert "calling code" in criteria["derived.phone_country"]
     assert "5551234567" not in repr(calls)
     assert "+1 United States" not in repr(calls)
+
+
+# ---------- J4: a question that lists the job's own company is the worked-here answer
+
+LISTED_Q = "Have you ever worked for Acme Wireless, Globex or Initech?"
+
+
+def _worked(history):
+    return autofill_catalog.build({}, [{"employer": e, "title": "Analyst", "start_date": "2019-01", "end_date": "2021-06"}
+                                       for e in history], [], company="Acme Wireless")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("key", ["history_unanswered", "protected_unanswered", "none"])
+@pytest.mark.parametrize(("history", "answer"), [
+    (["Hooli", "Vandelay"], "No"),
+    (["Hooli", "Initech"], "Yes, previously"),
+])
+def test_a_question_listing_the_jobs_company_is_the_worked_here_answer(db_session, monkeypatch, key, history, answer):
+    """The map filed it as a history, protected or no-fact question; the list names the company applied to,
+    so the derived worked-here answer (and what the list adds to it) decides."""
+    fake_jev(monkeypatch, {"q": (key, 0.95)})
+    got = autofill_map.map_fields([field("q", LISTED_Q, "select", options=["Yes", "No"])], _worked(history), db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert (got["q"].route, got["q"].slot, got["q"].value) == ("slot", autofill_catalog.WORKED_HERE_SLOT, answer)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_listed_company_that_is_only_akin_to_an_employer_is_left_to_the_user(db_session, monkeypatch):
+    """History holds "Initech Labs": the list's Initech may be its parent, so neither No nor Yes is true."""
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = autofill_map.map_fields([field("q", LISTED_Q, "select", options=["Yes", "No"])], _worked(["Initech Labs"]),
+                                  db_session, eeo_consented=True, low_stakes=False)
+    assert got["q"].route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_question_that_does_not_list_the_jobs_company_is_not_rerouted(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = autofill_map.map_fields([field("q", "Have you worked for a federal contractor?", "select",
+                                         options=["Yes", "No"])], _worked(["Hooli"]), db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert got["q"].route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_text_box_listing_the_company_is_not_rerouted(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"q": ("none", 0.95)})
+    got = autofill_map.map_fields([field("q", LISTED_Q)], _worked(["Hooli"]), db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert got["q"].route == "none"
+
+
+def test_lists_job_company_reads_the_company_as_a_listed_name_or_capitalised_words():
+    facts = _worked(["Hooli"])
+    assert autofill_catalog.lists_job_company(facts, LISTED_Q)
+    assert autofill_catalog.lists_job_company(facts, "Are you a current or former employee?", ("Acme Wireless employee", "No"))
+    assert not autofill_catalog.lists_job_company(facts, "Have you worked for Globex?")
+    assert not autofill_catalog.lists_job_company({}, LISTED_Q)

@@ -50,6 +50,7 @@ from app.services.autofill_catalog import (
     WORKED_HERE_SLOT,
     Fact,
     named_employer_fact,
+    lists_job_company,
     names_veteran_off_slot,
     question_names_company,
     websites,
@@ -516,6 +517,9 @@ def _placed_entry_key(field: MapField, key: str) -> str | None:
     return f"{m[1]}.{field.profile_entry}.{m[3]}"
 
 
+# The map's answers that mean "no fact in the list answers this": a question that lists the job's own company
+# is the worked-here answer's anyway.
+_FILED_ELSEWHERE = frozenset({HISTORY_UNANSWERED, PROTECTED_UNANSWERED, NO_SLOT})
 MIDDLE_NAME_SLOT = "personal.middle_name"
 _MIDDLE_NAME = re.compile(r"\bmiddle\s*(name|initial)\b", re.IGNORECASE)
 
@@ -525,7 +529,15 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     """The route, and the floor the model's answer was held to: that of the fact
     it chose, taken BEFORE `_placed_key` remaps the key (a placed entry's fact is
     another fact than the one the model named), else SLOT_FLOOR."""
-    if picked is None or _foreign(field):
+    if _foreign(field):
+        return Mapped(route="none"), SLOT_FLOOR
+    # "Have you worked for Acme, Globex or Initech?" on an Acme job is the worked-here question, however the
+    # map filed it (a history, a protected question, no fact, or no readable answer): the derived answer, and
+    # what the list adds to it (`named_employer_fact`, below), decide. A choice only: a text box is prose.
+    if (picked is None or picked[0] in _FILED_ELSEWHERE) and field.shape not in _WRITTEN_SHAPES \
+            and lists_job_company(facts, field.question, field.options):
+        picked = (WORKED_HERE_SLOT, 1.0)
+    if picked is None:
         return Mapped(route="none"), SLOT_FLOOR
     key, p = picked
     # The name is stored as entered and never split: a Middle Name box takes only a stored middle name
