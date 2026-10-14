@@ -236,3 +236,33 @@ def test_a_url_is_never_searched_by_its_words(page, load):
     assert not [c for c in s["candidates"] if c["mid"].startswith("search:word")]
     explore(page, f, url)
     assert set(page.evaluate("window.typed")) <= {url, ""}   # the whole URL, never "sample-one-site.example.dev/work" pieces
+
+
+# --- I7: flicker visibility
+def test_an_explore_that_committed_and_took_it_back_says_so_and_counts_the_changes(page, load):
+    from tests.browser.pages import SINGLE_HIT_SEARCH
+    load(page, SINGLE_HIT_SEARCH)
+    got = explore(page, inv(page)["Field of study"], "Analytics")
+    assert got["tookBack"] is True and "error" not in got
+    assert got["changes"] == 2   # the pill the search added, and its removal
+    assert oracle(page, "field_of_study") == ""
+
+
+def test_an_explore_that_changed_nothing_has_no_took_back_and_no_changes(page, load):
+    load(page, fixture_html("workday_search.html"))
+    got = explore(page, inv(page)["School or University"], "Arlington")
+    assert "tookBack" not in got and got["changes"] == 0
+
+
+def test_a_commit_that_could_not_be_taken_back_is_not_took_back(page, load):
+    from tests.browser.pages import SINGLE_HIT_SEARCH
+    load(page, SINGLE_HIT_SEARCH)
+    got = explore(page, inv(page)["Minor"], "Analytics")
+    assert got["error"] == "committed_while_exploring" and "tookBack" not in got and got["changes"] == 1
+
+
+def test_an_applied_choice_counts_one_change_and_a_repeat_none(page, load):
+    load(page, fixture_html("pill_buttons.html"))
+    f = pill_fields(page)["Have you worked for Globex before?"]
+    assert apply(page, f, op="choose", text="Yes")["changes"] == 1
+    assert apply(page, pill_fields(page)["Have you worked for Globex before?"], op="choose", text="Yes")["changes"] == 1

@@ -100,3 +100,27 @@ def test_a_box_holding_the_same_site_in_another_spelling_is_already_there(e2e_pa
     out = _run(page, html="<form><label for='w'>Website</label><input id='w' value='https://www.Sample-One-Site.example.dev/'></form>",
                map={"Website": WEBSITE})
     assert out["by_question"]["Website"]["status"] == "already"
+
+
+# --- I7: flicker visibility in the run trace
+def test_the_trace_records_took_back_and_the_fields_value_changes(e2e_page, tmp_path):
+    from app.schemas.autofill_trace import RunTrace
+    from tests.browser.pages import SINGLE_HIT_SEARCH
+    from tests.test_extension_sw_router import _posted_trace
+
+    page = e2e_page
+    out = _run(page, html=SINGLE_HIT_SEARCH, url="https://careers.acme.test/apply", limits={"MAX_ROUNDS": 1},
+               map={"Field of study": {"route": "slot", "slot": "education.0.discipline", "value": "Analytics"}})
+    trace = out["report"]["trace"]
+    [field] = [f for f in trace["fields"] if f["label"] == "Field of study"]
+    effects = [s.get("effect") for s in field["steps"]]
+    assert "took_back" in effects and field["changes"] >= 2, (effects, field["changes"])
+    # The posted trace (scrubbed by the service worker) keeps both, and the schema takes them.
+    sent = _posted_trace(tmp_path, {**trace, "host": "careers.acme.test"})
+    RunTrace.model_validate(sent)
+    [posted] = [f for f in sent["fields"] if f["label"] == "Field of study"]
+    assert "took_back" in [s.get("effect") for s in posted["steps"]] and posted["changes"] == field["changes"]
+    # Value-free: a count and a word.
+    assert "Analytics" not in str([s for s in posted["steps"]])
+    [row] = [r for r in out["report"]["fields"] if r["question"] == "Field of study"]
+    assert row["changes"] == field["changes"]

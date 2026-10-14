@@ -422,6 +422,8 @@
   // (its other member that explore can raise), a refusal, stale, timeout and
   // cancelled. Any other error (no_popup, unsettled) opened nothing.
   const exploreEffect = (got) => {
+    // The explore committed a value and the page took it back: the flicker, named.
+    if (got?.tookBack === true) return "took_back";
     const error = got?.error;
     if (!error) return got?.options?.length ? "progress" : "no_effect";
     if (error === "cancelled") return null;
@@ -808,6 +810,8 @@
     // contradiction under a recipe.
     const OUTRIGHT = new Set(["committed_while_opening", "committed_while_exploring", "unsettled", "no_popup", "no_effect"]);
     const heard = (f, op, got) => {
+      // How often the field's value changed under the engine (a count the page keeps, never a value).
+      if (Number.isInteger(got?.changes) && got.changes >= 0) set(f.fid, { changes: got.changes });
       const tried = Boolean(rows.get(f.fid).recipe);
       if (got.mismatch) set(f.fid, { mismatch: got.mismatch, moves: got.variant ?? null });
       // Only the operations that carry the order: an adaptive move carries none.
@@ -2208,6 +2212,8 @@
         slot: r.slot ?? null,
         // A fixed sentence about HOW the answer came (a date's day set to the 1st), or null.
         note: r.note ?? null,
+        // How many times its value changed under the engine this run: more than 1 is a flicker.
+        changes: r.changes ?? 0,
         // Left open when the run's clock ran out: the panel can say so.
         lastOutcome: over && !FINAL.has(r.status) ? "timeout" : r.lastOutcome ?? null,
       };
@@ -2289,6 +2295,7 @@
   const MAX_RUN_FIELDS = 200;
   const TRACE_FIELD_OPTIONS = 30;
   const TRACE_TEXT = 200;
+  const TRACE_CHANGES_MAX = 99;
   const TRACE_SHAPES = new Set(["text", "date", "select", "group", "search", "popup"]);
   const TYPED_SHAPES = new Set(["text", "date", "search", "popup"]);
   const TYPED_OPTION_SHAPES = new Set(["text", "date", "search"]);
@@ -2348,6 +2355,7 @@
       shape: TRACE_SHAPES.has(f.shape) ? f.shape : "unknown",
       section: f.section ? shown(f.section) : null,
       required: Boolean(f.required),
+      changes: Math.min(Math.max(Number(row.changes) || 0, 0), TRACE_CHANGES_MAX),
       // The inventory's passive list only (a static list, read before anything
       // was typed): an explore's rows echo what a search typed.
       options: options && options.slice(0, TRACE_FIELD_OPTIONS).map((o) => optionText(String(o?.text ?? ""))),

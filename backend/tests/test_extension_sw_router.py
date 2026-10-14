@@ -759,7 +759,7 @@ def _step(**over):
 
 def _trace_field(fid="f1", **over):
     return {"fid": fid, "label": "First name", "label_source": "aria-label", "shape": "text",
-            "section": "About you", "required": True, "options": ["Yes", "No"], "option_count": 2,
+            "section": "About you", "required": True, "changes": 2, "options": ["Yes", "No"], "option_count": 2,
             "family": "f:ab12", "steps": [_step()], "outcome": "verified", "round": 1, **over}
 
 

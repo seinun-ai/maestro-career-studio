@@ -27,7 +27,7 @@ from app.schemas.autofill_fill import (
 Op = Literal["map", "polarity", "pick", "step",  # decisions
              "explore", "choose", "set", "write", "move",  # page actions
              "sweep", "recipe"]
-Effect = Literal["progress", "no_effect", "unexpected", "reverted", "unconfirmed", "refused", "late", "error"]
+Effect = Literal["progress", "no_effect", "unexpected", "reverted", "unconfirmed", "refused", "late", "error", "took_back"]
 WORD = r"^[a-z_]{1,40}$"  # a page word or a status: lowercase only, so a value cannot hide in it
 SLOT = r"^[a-z_]+(\.[a-z0-9_]+)*$"  # a fact NAME (autofill_catalog), never its value
 MAX_RUN_FIELDS, MAX_FIELD_STEPS, LABEL_MAX, MAX_OPTION_COUNT = 200, 40, 200, 5000
@@ -66,6 +66,7 @@ class TraceField(BaseModel):
     shape: Shape | Literal["unknown"]
     section: str | None = Field(default=None, max_length=LABEL_MAX)
     required: bool = False
+    changes: int = Field(default=0, ge=0, le=99)  # how often the field's value changed under the engine; more than 1 is a flicker
     options: list[Annotated[str, Field(max_length=LABEL_MAX)]] | None = Field(default=None, max_length=30)
     option_count: int = Field(default=0, ge=0, le=MAX_OPTION_COUNT)
     family: str | None = Field(default=None, max_length=32, pattern=r"^f:[0-9a-z]{1,24}$")

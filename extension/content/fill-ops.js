@@ -35,6 +35,11 @@
   // What each verified operation committed, so the sweep can catch a page
   // that quietly reverts a value after it was verified.
   const verified = new Map(); // fid -> { expected, format }
+  // How many times each field's value changed under the engine this run (a commit, its being taken
+  // back, a reversion): a count, never a value. A field that flickers shows a number above 1.
+  const changes = new Map(); // fid -> count
+  const bump = (fid, n = 1) => changes.set(fid, (changes.get(fid) ?? 0) + n);
+  const keyOf = (v) => JSON.stringify([v].flat().filter((x) => x != null && x !== ""));
   const mine = (fid) => typeof fid === "string" && fid.startsWith(`${inv().frame}-`); // a section's sid too
   // Whether Stop is latched: check() without a token throws only then.
   const halted = () => {
@@ -136,7 +141,10 @@
       let row = got.options ? got : { options: [], complete: false, searchable: false, error: got.reason ?? got.outcome };
       const left = row.kept === true;
       delete row.kept;
+      let committed = false;
       if (!halted() && core().moved(el, shape, snap)) {
+        committed = true;
+        bump(r.fid);
         const undo = await run((t) => core().takeBack(el, shape, snap, row.options, t), budgets.undo, el);
         if (undo.aborted) await cleanup(el);
         if (!halted() && core().moved(el, shape, snap)) {
@@ -149,10 +157,13 @@
         delete row.error;
         delete row.committed;
       }
+      // The explore committed a value and it was taken back: said so (`tookBack`), and counted twice.
+      const tookBack = committed && !halted() && !core().moved(el, shape, snap);
+      if (tookBack) bump(r.fid);
       // A list left up stays up only while nothing moved: a commit taken back, or an error, closes it.
       if (left && !row.error && !halted()) kept = r.fid;
       else if (left) await cleanup(el);
-      out[r.fid] = row;
+      out[r.fid] = { ...row, changes: changes.get(r.fid) ?? 0, ...(tookBack ? { tookBack: true } : {}) };
     }
     return out;
   };
@@ -223,7 +234,8 @@
     const ms = a.op === "set"
       ? Math.min(budgets.setMax, budgets.setItem * Math.max(1, (a.texts ?? []).length))
       : budgets.apply + (a.address === true ? budgets.address : 0);
-    return { el, shape, ...(await run((t) => operate(a, el, shape, t), ms, el)) };
+    const was = keyOf(shape.read(el));
+    return { el, shape, was, ...(await run((t) => operate(a, el, shape, t), ms, el)) };
   };
 
   const applyNow = async (actions) => {
@@ -240,7 +252,7 @@
         out.push({ fid: a.fid, outcome: ran.refused, committed: null });
         continue;
       }
-      const { el, shape, got, aborted } = ran;
+      const { el, shape, got, aborted, was } = ran;
       if (a.op === "choose" || a.op === "set" || a.op === "move") choseAt = performance.now();
       if (kept === a.fid) kept = null; // the set tidies its own list (an aborted one is closed below)
       if (aborted) await cleanup(el);
@@ -252,7 +264,9 @@
       } else {
         verified.delete(a.fid);
       }
-      out.push({ fid: a.fid, ...row, committed: el.isConnected ? shape.read(el) : null });
+      const now = el.isConnected ? shape.read(el) : null;
+      if (el.isConnected && keyOf(now) !== was) bump(a.fid);
+      out.push({ fid: a.fid, ...row, committed: now, changes: changes.get(a.fid) ?? 0 });
     }
     return out;
   };
@@ -289,7 +303,8 @@
       if (core().verify(el, shape, expected, { format }) !== "verified") {
         verified.delete(fid);
         reported.add(fid);
-        out.push({ fid, outcome: "reverted" });
+        bump(fid);
+        out.push({ fid, outcome: "reverted", changes: changes.get(fid) ?? 0 });
       } else {
         out.push({ fid, outcome: "verified", held: true });
       }
@@ -362,6 +377,7 @@
         noisy = false;
         ns.fillBase.resume();
         verified.clear();
+        changes.clear();
       }
       // A read-only one (the answer receipt's, after the run) lists under the
       // run's consent without becoming the standing one.
