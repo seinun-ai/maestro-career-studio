@@ -504,7 +504,7 @@ def test_the_agreement_fact_survives_a_catalog_at_its_cap():
 
 def test_a_saved_answer_naming_a_company_is_offered_only_for_that_company():
     profile = {"custom": [
-        {"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"},
+        {"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme", "only_for_kind": "company"},
         {"question": "Is a relative a government official?", "answer": "No"}]}
     at_acme = cat.build(profile, [], [], company="Acme Corp")
     at_globex = cat.build(profile, [], [], company="Globex")
@@ -514,23 +514,43 @@ def test_a_saved_answer_naming_a_company_is_offered_only_for_that_company():
 
 
 def test_a_saved_answer_naming_a_city_is_offered_only_there():
-    profile = {"custom": [{"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin"}]}
+    profile = {"custom": [{"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin", "only_for_kind": "city"}]}
     assert "custom.0" in cat.build(profile, [], [], company="Globex", location="Austin, TX")
     assert "custom.0" not in cat.build(profile, [], [], company="Globex", location="Denver, CO")
 
 
 def test_a_scoped_saved_answer_keeps_every_other_rows_slot():
     profile = {"custom": [
-        {"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin"},
+        {"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin", "only_for_kind": "city"},
         {"question": "Preferred shift", "answer": "Day"}]}
     got = cat.build(profile, [], [], company="Globex", location="Denver, CO")
     assert got["custom.1"].value == "Day" and "custom.0" not in got
 
 
 def test_the_context_profile_drops_a_saved_answer_that_belongs_to_another_job():
-    custom = [{"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"},
+    custom = [{"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme", "only_for_kind": "company"},
               {"question": "Preferred shift", "answer": "Day"}]
     assert [row["question"] for row in cat.custom_for_job(custom, "Acme Corp", None)] == [
         "Have you worked at Acme before?", "Preferred shift"]
     assert [row["question"] for row in cat.custom_for_job(custom, "Globex", "Austin, TX")] == ["Preferred shift"]
     assert [row["question"] for row in cat.custom_for_job(custom, None, None)] == ["Preferred shift"]
+
+
+@pytest.mark.parametrize("row, company, location, offered", [
+    # Whole words, not substrings.
+    ({"only_for": "Box", "only_for_kind": "company"}, "Dropbox", None, False),
+    ({"only_for": "Meta", "only_for_kind": "company"}, "Metabase", None, False),
+    ({"only_for": "Rome", "only_for_kind": "city"}, "Globex", "Jerome, ID", False),
+    ({"only_for": "Box", "only_for_kind": "company"}, "Box, Inc.", None, True),
+    # Which field the scope came from is the one checked.
+    ({"only_for": "Phoenix", "only_for_kind": "company"}, "Globex", "Phoenix, AZ", False),
+    ({"only_for": "Phoenix", "only_for_kind": "city"}, "Phoenix", "Austin, TX", False),
+    ({"only_for": "Phoenix", "only_for_kind": "city"}, "Globex", "Phoenix, AZ", True),
+    # A row with no kind (by hand, or from before kinds) is met by either.
+    ({"only_for": "Phoenix"}, "Globex", "Phoenix, AZ", True),
+    ({"only_for": "Phoenix"}, "Phoenix Labs", None, True),
+    ({"only_for": "Phoenix"}, "Globex", "Austin, TX", False),
+])
+def test_a_scope_is_a_whole_word_in_the_field_it_came_from(row, company, location, offered):
+    profile = {"custom": [{"question": "Q?", "answer": "Yes", **row}]}
+    assert ("custom.0" in cat.build(profile, [], [], company=company, location=location)) is offered

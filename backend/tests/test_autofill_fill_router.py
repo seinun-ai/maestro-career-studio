@@ -13,6 +13,7 @@ from app.models.job import Job
 from app.schemas.autofill_fill import Mapped, Picked, StepResponse
 from app.schemas.eeo_consent import EeoConsent
 from app.services import (
+    autofill_choose,
     autofill_map,
     autofill_pick,
     autofill_profile,
@@ -573,3 +574,27 @@ def test_context_drops_a_scoped_saved_answer_for_a_job_elsewhere(db_session, tmp
         assert questions(f"/api/autofill/context?base={slug}") == ["Preferred shift"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_choose_does_not_offer_the_model_a_saved_answer_that_names_another_job(db_session, tmp_path, monkeypatch):
+    _scoped_profile(db_session, tmp_path, monkeypatch)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    application = _seed_application(db_session, slug)
+    job = db_session.get(Job, application.job_id)
+    prompts = []
+
+    def fake_model(**kwargs):
+        prompts.append(kwargs["prompt"])
+        return {"choices": {}}
+
+    monkeypatch.setattr(autofill_choose.llm, "call_openai", fake_model)
+    field = {"qid": "q1", "label": "Anything", "kind": "text"}
+    for where, application_id, offered in (
+            ("Austin, TX", str(application.id), True), ("Denver, CO", str(application.id), False),
+            ("Austin, TX", None, False)):
+        job.location = where
+        db_session.commit()
+        payload = {"fields": [field], **({"application_id": application_id} if application_id else {})}
+        assert _post(db_session, "/api/autofill/choose", payload).status_code == 200
+        assert ("Willing to relocate to Austin?" in prompts[-1]) is offered, (where, application_id)
+        assert "Preferred shift" in prompts[-1]

@@ -323,16 +323,26 @@ def _languages(out: dict[str, Fact], languages: Any) -> None:
                 out[slot] = make_fact(slot, text)
 
 
+def _names(only: str, where: str | None) -> bool:
+    """`only` as a whole word in `where`: "Box" is not in "Dropbox", "Rome" is not
+    in "Jerome, ID". Case-insensitive; this is the job's own text."""
+    return bool(where) and re.search(rf"(?<![^\W_]){re.escape(only)}(?![^\W_])", where, re.IGNORECASE) is not None
+
+
 def _for_this_job(qa: dict[str, Any], company: str | None, location: str | None) -> bool:
-    """A saved answer whose question named a company or city (`only_for`, set when
-    it was learned) holds only where that name is in this job's company or
-    location. With no job it holds nowhere: an answer about Acme must not look
-    like a standing one at the next employer."""
+    """A saved answer whose question named a company or city (`only_for`, with
+    `only_for_kind` "company" or "city", set when it was learned) holds only
+    where that name is in this job's company, or its location, respectively: a
+    company scope "Phoenix" is not met by a job located in Phoenix. A row with
+    no kind (written by hand or before kinds) is met by either. With no job it
+    holds nowhere: an answer about Acme must not look like a standing one at
+    the next employer."""
     only = qa.get("only_for")
     if not isinstance(only, str) or not only.strip():
         return True
-    only = only.strip().casefold()
-    return any(only in (where or "").casefold() for where in (company, location))
+    only, kind = only.strip(), qa.get("only_for_kind")
+    return ((kind != "city" and _names(only, company))
+            or (kind != "company" and _names(only, location)))
 
 
 def custom_for_job(custom: Any, company: str | None, location: str | None) -> list[Any]:

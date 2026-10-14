@@ -272,8 +272,14 @@ const GROUPS: GroupDef[] = [
   },
 ];
 
-// `only_for`: set when the question named a company or city, so the answer is offered only for a job there.
-type CustomQA = { question: string; answer: string; only_for?: string };
+// `only_for` (a company or a city, per `only_for_kind`): set when the question named it, so the answer is
+// offered only for a job there.
+type CustomQA = {
+  question: string;
+  answer: string;
+  only_for?: string;
+  only_for_kind?: "company" | "city";
+};
 type EducationEntry = {
   school?: string;
   degree?: string;
@@ -1176,6 +1182,26 @@ function AutofillEditor({
               {qa.only_for ? (
                 <p className="text-muted-foreground text-body-small">
                   Only for {qa.only_for}
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="xs"
+                    className="ml-2 h-auto p-0"
+                    aria-label={`Use custom question ${i + 1} for every job`}
+                    onClick={() =>
+                      setCustom(
+                        custom.map((c, j) => {
+                          if (j !== i) return c;
+                          const general = { ...c };
+                          delete general.only_for;
+                          delete general.only_for_kind;
+                          return general;
+                        }),
+                      )
+                    }
+                  >
+                    Use for every job
+                  </Button>
                 </p>
               ) : null}
             </div>

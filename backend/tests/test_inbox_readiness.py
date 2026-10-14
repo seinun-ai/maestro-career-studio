@@ -163,6 +163,16 @@ def test_an_explicit_empty_flag_profile_does_not_read_saved_values(db_session):
     assert "personal.first_name" in filled_answers.flag_context(db_session, job)[0]
 
 
+def test_the_flags_read_a_saved_answer_only_for_the_job_it_names(db_session):
+    autofill_profile.set_profile({"custom": [
+        {"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin",
+         "only_for_kind": "city"}]}, db_session)
+    austin, denver = _mk_job(db_session), _mk_job(db_session)
+    austin.location, denver.location = "Austin, TX", "Denver, CO"
+    assert "custom.0" in filled_answers.flag_context(db_session, austin)[0]
+    assert "custom.0" not in filled_answers.flag_context(db_session, denver)[0]
+
+
 def test_answered_jobs_share_one_disclosable_profile(db_session, monkeypatch):
     rows = [_proposal(db_session) for _ in range(3)]
     for _, job in rows:

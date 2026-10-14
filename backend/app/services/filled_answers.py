@@ -101,7 +101,7 @@ def flag_context(session: Session, job: Job,
     """What the flags compare against: the profile as the fill would serve it. A batch passes
     `profile` (`eeo_consent.disclosable_profile`) so it is read once."""
     profile = eeo_consent.disclosable_profile(session) if profile is None else profile
-    facts = autofill_catalog.build(profile, [], [], company=job.company)
+    facts = autofill_catalog.build(profile, [], [], company=job.company, location=job.location)
     return facts, answer_flags.saved_eeo(profile)
 
 

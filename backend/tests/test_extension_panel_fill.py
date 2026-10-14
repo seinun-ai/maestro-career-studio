@@ -1951,40 +1951,143 @@ def test_a_question_already_in_the_list_is_updated_and_not_duplicated(tmp_path):
     ]
 
 
+_LEARN_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+main(async () => {
+  let profile = spec.profile;
+  const store = {
+    read: () => ({ job: spec.job }),
+    api: async (path, init) => {
+      if (init?.method === "PUT") { profile = JSON.parse(init.body).value; return {}; }
+      return { value: profile };
+    },
+  };
+  const saved = await ns.panelLearn.learnAnswers(store, spec.items, spec.job);
+  const after = JSON.parse(JSON.stringify(profile));
+  await ns.panelLearn.unlearnAnswers(store, saved);
+  emit({ after, undone: profile });
+});
+"""
+
+ACME = {"company": "Acme", "location": "Austin, TX"}
+SCOPED_ACME = {"question": "Have you worked at Acme before?", "answer": "No",
+               "only_for": "Acme", "only_for_kind": "company"}
+
+
 def test_an_answer_that_names_this_jobs_company_or_city_is_kept_for_this_job(tmp_path):
     """"Have you worked at Acme before?" is true of Acme and false-looking-true everywhere else, so a
     saved answer whose question names THIS job's company, or the city of its location, is scoped to it.
-    A question that names neither stays general, and an update keeps the scope the row already had."""
-    job = {"company": "Acme", "location": "Austin, TX"}
+    A question that names neither stays general, and a general row is not scoped by a later page."""
     out = run_node(_CUSTOM_DRIVER_JS, {"cases": [
-        [[], "Have you worked at Acme before?", "No", job],
-        [[], "Willing to relocate to Austin?", "Yes", job],
-        [[], "Is a relative a government official?", "No", job],
-        # Whole words only: "Rome" is not in "chrome", "Acme" is not in "Acmeville".
-        [[], "Do you use chrome?", "Yes", {"company": "Rome", "location": None}],
-        # A legal suffix is not part of how people write a company.
+        [[], "Have you worked at Acme before?", "No", ACME],
+        [[], "Willing to relocate to Austin?", "Yes", ACME],
+        [[], "Is a relative a government official?", "No", ACME],
+        # A legal suffix is not part of how people write a company; the short form is the scope.
         [[], "Have you worked at Acme before?", "No", {"company": "Acme, Inc.", "location": None}],
+        [[], "Worked at Acme Corp before?", "No", {"company": "Acme Corp", "location": None}],
         # Too short to mean anything.
-        [[], "Do you know Al?", "No", {"company": "Al", "location": "Ny"}],
-        # An update keeps its scope; a general row is not scoped by a later page.
-        [[{"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"}],
-         "Have you worked at Acme before?", "Yes", {"company": "Globex", "location": None}],
+        [[], "Do you know Al?", "No", {"company": "Al", "location": "Ny, NY"}],
         [[{"question": "Willing to relocate to Austin?", "answer": "Yes"}],
-         "Willing to relocate to Austin?", "No", job],
+         "Willing to relocate to Austin?", "No", ACME],
         # No job (a run with nothing bound): nothing is scoped.
         [[], "Have you worked at Acme before?", "No", None],
     ]}, tmp_path, source=PANEL_SOURCE)
     assert out["lists"] == [
-        [{"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"}],
-        [{"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin"}],
+        [SCOPED_ACME],
+        [{"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin", "only_for_kind": "city"}],
         [{"question": "Is a relative a government official?", "answer": "No"}],
-        [{"question": "Do you use chrome?", "answer": "Yes"}],
-        [{"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"}],
+        [SCOPED_ACME],
+        [{"question": "Worked at Acme Corp before?", "answer": "No", "only_for": "Acme", "only_for_kind": "company"}],
         [{"question": "Do you know Al?", "answer": "No"}],
-        [{"question": "Have you worked at Acme before?", "answer": "Yes", "only_for": "Acme"}],
         [{"question": "Willing to relocate to Austin?", "answer": "No"}],
         [{"question": "Have you worked at Acme before?", "answer": "No"}],
     ]
+
+
+def test_a_name_in_a_question_scopes_only_as_the_job_spells_it(tmp_path):
+    """Case-sensitive on the company's own capitalization, so ordinary words are not companies, and a
+    city only when the location reads "City, ST" or "City, Country" and is not a mode of work or a
+    country."""
+    cases = [
+        ("Please explain any gap in employment", {"company": "Gap Inc.", "location": None}),
+        ("Check the box to confirm", {"company": "Box", "location": None}),
+        ("What is your target start date?", {"company": "Target", "location": None}),
+        ("Is Gap your first choice?", {"company": "Gap Inc.", "location": None}),
+        ("Can you work from Remote?", {"company": "Globex", "location": "Remote, US"}),
+        ("Do you live in Canada?", {"company": "Globex", "location": "Canada"}),
+        ("Do you live in Canada?", {"company": "Globex", "location": "Toronto, Canada"}),
+        ("Willing to move to Toronto?", {"company": "Globex", "location": "Toronto, Canada"}),
+        ("Willing to move to Toronto?", {"company": "Globex", "location": "Toronto"}),
+    ]
+    out = run_node(_CUSTOM_DRIVER_JS, {"cases": [[[], q, "x", job] for q, job in cases]},
+                   tmp_path, source=PANEL_SOURCE)
+    assert [(row[0].get("only_for"), row[0].get("only_for_kind")) for row in out["lists"]] == [
+        (None, None), (None, None), (None, None), ("Gap", "company"),
+        (None, None), (None, None), (None, None), ("Toronto", "city"), (None, None)]
+
+
+def test_a_scoped_answer_met_again_at_another_job_stays_and_the_new_one_is_a_new_row(tmp_path):
+    other = {"company": "Globex", "location": "Denver, CO"}
+    out = run_node(_CUSTOM_DRIVER_JS, {"cases": [
+        # Not Acme's: the Acme row stays as it was, and this is a general row (Globex is not named).
+        [[SCOPED_ACME], "Have you worked at Acme before?", "Yes", other],
+        # The scope is Acme's own, met at Acme: updated in place, scope kept.
+        [[SCOPED_ACME], "Have you worked at Acme before?", "Yes", ACME],
+        # A new row takes the new job's scope when the question names it.
+        [[{"question": "Willing to relocate to Denver?", "answer": "No", "only_for": "Austin",
+           "only_for_kind": "city"}], "Willing to relocate to Denver?", "Yes", other],
+    ]}, tmp_path, source=PANEL_SOURCE)
+    assert out["lists"] == [
+        [SCOPED_ACME, {"question": "Have you worked at Acme before?", "answer": "Yes"}],
+        [{**SCOPED_ACME, "answer": "Yes"}],
+        [{"question": "Willing to relocate to Denver?", "answer": "No", "only_for": "Austin", "only_for_kind": "city"},
+         {"question": "Willing to relocate to Denver?", "answer": "Yes", "only_for": "Denver", "only_for_kind": "city"}],
+    ]
+
+
+def test_undoing_a_scoped_learn_puts_back_only_its_own_row(tmp_path):
+    # Not "worked at Acme before": the engine has a typed home for that one, so it never reaches `custom`.
+    scoped = {**SCOPED_ACME, "question": "Do you have a friend at Acme?"}
+    items = [{"label": scoped["question"], "answer": "Yes"}]
+    out = run_node(_LEARN_DRIVER_JS, {
+        "profile": {"custom": [scoped]}, "items": items,
+        "job": {"company": "Globex", "location": "Denver, CO"}}, tmp_path, source=PANEL_SOURCE)
+    assert out["after"]["custom"] == [scoped, {"question": scoped["question"], "answer": "Yes"}]
+    assert out["undone"]["custom"] == [scoped]
+    # The same question at Acme updates the Acme row; undo restores its old answer.
+    out = run_node(_LEARN_DRIVER_JS, {
+        "profile": {"custom": [scoped]}, "items": items, "job": ACME}, tmp_path, source=PANEL_SOURCE)
+    assert out["after"]["custom"] == [{**scoped, "answer": "Yes"}]
+    assert out["undone"]["custom"] == [scoped]
+
+
+# One table both languages answer: the panel decides what an answer is scoped to, the backend decides where
+# it is offered. (question, learned at, expected scope, [(company, location, offered there)]).
+_SCOPE_TABLE = [
+    ("Have you worked at Box before?", ("Box", None), ("Box", "company"),
+     [("Dropbox", None, False), ("Box Inc", None, True), ("Globex", None, False)]),
+    ("Have you worked at Acme before?", ("Acme", None), ("Acme", "company"),
+     [("Acmeville", None, False), ("ACME Corp", None, True), (None, None, False)]),
+    ("Willing to relocate to Rome?", ("Globex", "Rome, Italy"), ("Rome", "city"),
+     [("Globex", "Jerome, ID", False), ("Globex", "Rome, Italy", True), ("Rome", "Berlin, Germany", False)]),
+    ("Have you worked at Phoenix before?", ("Phoenix", "Austin, TX"), ("Phoenix", "company"),
+     [("Globex", "Phoenix, AZ", False), ("Phoenix Labs", "Austin, TX", True)]),
+    ("Willing to relocate to Phoenix?", ("Globex", "Phoenix, AZ"), ("Phoenix", "city"),
+     [("Phoenix", "Austin, TX", False), ("Globex", "Phoenix, AZ", True)]),
+]
+
+
+def test_the_panel_and_the_backend_agree_on_what_a_scope_means(tmp_path):
+    from app.services import autofill_catalog
+
+    out = run_node(_CUSTOM_DRIVER_JS, {"cases": [
+        [[], question, "Yes", {"company": at[0], "location": at[1]}] for question, at, _, _ in _SCOPE_TABLE
+    ]}, tmp_path, source=PANEL_SOURCE)
+    for (question, at, scope, elsewhere), [row] in zip(_SCOPE_TABLE, out["lists"], strict=True):
+        assert (row.get("only_for"), row.get("only_for_kind")) == scope, question
+        assert autofill_catalog.custom_for_job([row], *at) == [row], question
+        for company, location, offered in elsewhere:
+            assert bool(autofill_catalog.custom_for_job([row], company, location)) is offered, (question, company, location)
 
 
 def test_remember_unticked_fills_the_field_and_writes_nothing(tmp_path):

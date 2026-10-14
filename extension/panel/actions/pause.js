@@ -154,52 +154,94 @@
    */
   function withCustomAnswer(custom, question, answer, job) {
     const rows = (Array.isArray(custom) ? custom : []).map((row) => ({ ...row }));
-    const key = ns.normLabel(question);
-    const at = rows.findIndex((row) => ns.normLabel(row?.question) === key);
+    const at = customRowAt(rows, question, job);
     if (at === -1) {
-      const only = scopeOf(question, job);
-      rows.push(only ? { question, answer, only_for: only } : { question, answer });
+      rows.push({ question, answer, ...scopeOf(question, job) });
       return rows;
     }
     rows[at] = { ...rows[at], answer };
     return rows;
   }
 
-  // The words a company goes by in a question: its name as listed and without a trailing legal
-  // suffix ("Acme, Inc." is "Acme" to everyone who asks about it).
+  // ---------- a saved answer that names a job's company or city stays with that job ----------
+
   const LEGAL_SUFFIX = /[,.\s]+(?:inc|llc|llp|ltd|limited|corp|corporation|co|company|plc|gmbh)\.?$/i;
   const MIN_SCOPE = 3;
+  // What a location's first part can be without being a city: a mode of work or a country/region.
+  // A short list, not a gazetteer: it is the common ways a posting says "not a place".
+  const NOT_A_CITY = new Set([
+    "remote", "hybrid", "onsite", "on-site", "anywhere", "worldwide", "global", "united states", "usa",
+    "us", "u.s.", "uk", "united kingdom", "canada", "india", "australia", "germany", "france", "ireland",
+    "netherlands", "spain", "singapore", "mexico", "brazil", "europe", "emea", "apac", "latam",
+    "north america", "asia",
+  ]);
+  const escaped = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Whole words: Rome is not in Jerome. The same rule as the backend's (`autofill_catalog._names`).
+  const wordIn = (name, text, flags) => name.length >= MIN_SCOPE
+    && new RegExp(`(?<![\\p{L}\\p{N}])${escaped(name)}(?![\\p{L}\\p{N}])`, `u${flags}`).test(text ?? "");
 
-  /** What a saved answer is scoped to: the job's company, or the city of its location, when the
-   * QUESTION names it ("Have you worked at Acme before?", "Willing to relocate to Austin?"). Such an
-   * answer is true of this job and only looks true elsewhere, so the backend offers it only where
-   * the scope is contained in the job's company or location (`autofill_catalog._custom`). Whole
-   * words, so a company called Rome is not "chrome". Null when the question names neither, or no
-   * job is known (an unscoped answer is the general case). */
-  function scopeOf(question, job) {
-    const city = String(job?.location ?? "").split(",")[0].trim();
-    const company = String(job?.company ?? "").trim();
-    const names = [company, company.replace(LEGAL_SUFFIX, "").trim(), city];
-    return names.find((name) => name.length >= MIN_SCOPE
-      && new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "iu")
-        .test(question ?? "")) ?? null;
+  /** The city of a location that reads "City, ST" or "City, Country"; "" for anything else (Remote,
+   * a bare country, a mode of work). */
+  function cityOf(location) {
+    const parts = String(location ?? "").split(",").map((part) => part.trim());
+    return parts.length > 1 && /^\p{L}[\p{L} .'-]*$/u.test(parts[0])
+      && !NOT_A_CITY.has(parts[0].toLowerCase()) ? parts[0] : "";
   }
+
+  /** What a saved answer is scoped to: the job's company (shortest form first, so "Acme Corp" questions
+   * match a later "Acme" job), or the city of its location, when the QUESTION names it ("Have you
+   * worked at Acme before?", "Willing to relocate to Austin?"). Such an answer is true of this job and
+   * only looks true elsewhere, so the backend offers it only where the name is in the job's company or
+   * location (`autofill_catalog._for_this_job`), by `only_for_kind`.
+   *
+   * CASE-SENSITIVE on the name as the job spells it: "Please explain any gap in employment" does not
+   * name a company called Gap, nor "Check the box" one called Box. `{}` when the question names
+   * neither, or no job is known (the general case). */
+  function scopeOf(question, job) {
+    const company = String(job?.company ?? "").trim();
+    for (const name of new Set([company.replace(LEGAL_SUFFIX, "").trim(), company])) {
+      if (wordIn(name, question, "")) return { only_for: name, only_for_kind: "company" };
+    }
+    const city = cityOf(job?.location);
+    return wordIn(city, question, "") ? { only_for: city, only_for_kind: "city" } : {};
+  }
+
+  /** Does this row hold at this job? The backend's `_for_this_job`, so the panel updates the row the
+   * engine would use. A row with no scope holds everywhere; one without a kind, in either field. */
+  function holdsAt(row, job) {
+    if (!row?.only_for) return true;
+    const kind = row.only_for_kind;
+    return (kind !== "city" && wordIn(row.only_for, job?.company, "i"))
+      || (kind !== "company" && wordIn(row.only_for, job?.location, "i"));
+  }
+
+  /** The row an answer to this question updates at this job: the one with its question that holds here.
+   * A scoped row for ANOTHER job is not it — that answer stays, and this one is a new row. -1 for none. */
+  function customRowAt(rows, question, job) {
+    const key = ns.normLabel(question);
+    return rows.findIndex((row) => ns.normLabel(row?.question) === key && holdsAt(row, job));
+  }
+
+  const scopeKey = (row) => JSON.stringify([row?.only_for ?? null, row?.only_for_kind ?? null]);
 
   /** One answer applied to a profile: the profile with it, where it went, and what it replaced.
    *
    * `before` is what Undo needs and nothing more: the typed key's old value (undefined when the
-   * profile had none), or the custom row this question had (null when it had none). */
+   * profile had none), or the custom row this question had (null when it had none) and the scope of
+   * the row the answer landed in, which with a scoped row for another job beside it is what tells the
+   * two apart. */
   function applyAnswer(profile, label, answer, job) {
     const target = saveTargetFor(label);
     if (target.store === "profile") {
       return { profile: withProfileAnswer(profile, target.path, answer), target,
                before: { path: target.path, value: valueAt(profile, target.path) } };
     }
-    const key = ns.normLabel(label);
-    const old = (Array.isArray(profile.custom) ? profile.custom : [])
-      .find((row) => ns.normLabel(row?.question) === key);
-    return { profile: { ...profile, custom: withCustomAnswer(profile.custom, label, answer, job) }, target,
-             before: { label, row: old ? { ...old } : null } };
+    const rows = Array.isArray(profile.custom) ? profile.custom : [];
+    const at = customRowAt(rows, label, job);
+    const custom = withCustomAnswer(rows, label, answer, job);
+    return { profile: { ...profile, custom }, target,
+             before: { label, row: at === -1 ? null : { ...rows[at] },
+                       scope: scopeKey(custom[at === -1 ? custom.length - 1 : at]) } };
   }
 
   async function putProfile(store, profile) {
@@ -210,8 +252,10 @@
    *
    * READ-MODIFY-WRITE against `/api/settings/autofill`, which is the same
    * representation the PUT takes — `get_profile`/`set_profile` over one JSON
-   * setting. `/api/autofill/context` returns the identical object, but the
-   * panel does not keep it (the store holds the fill's COUNTS, not the profile
+   * setting. `/api/autofill/context` returns that object minus the saved answers
+   * that belong to other jobs (`only_for`), so a profile read from it must NEVER
+   * be PUT back: the whole-object write would delete them. The panel does not
+   * keep the context anyway (the store holds the fill's COUNTS, not the profile
    * it was filled from), so re-reading the settings copy is one cheap GET of
    * exactly the thing being written rather than a resume resolution we would
    * throw away.
@@ -235,7 +279,7 @@
     const facts = store.read();
     const { profile, target } = applyAnswer(current?.value ?? {}, row.label, answer, {
       company: facts.job?.company ?? facts.application?.job_company,
-      location: facts.job?.location ?? facts.application?.job_location,
+      location: facts.job?.location,
     });
     await putProfile(store, profile);
     return target;
@@ -272,7 +316,7 @@
       }
       const key = ns.normLabel(before.label);
       const rows = (Array.isArray(profile.custom) ? profile.custom : [])
-        .filter((row) => ns.normLabel(row?.question) !== key);
+        .filter((row) => ns.normLabel(row?.question) !== key || scopeKey(row) !== before.scope);
       profile = { ...profile, custom: before.row ? [...rows, before.row] : rows };
     }
     await putProfile(store, profile);

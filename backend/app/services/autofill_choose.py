@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_choose import MAX_OPTIONS, Choice, ChooseField
 from app.services import (
+    autofill_job,
     autofill_slots,
     career_kb,
     eeo_consent,
@@ -235,7 +236,9 @@ def _choose_with_llm(
     prompt = prompt_assembly.build_autofill_choose_prompt(
         # Consent-gated like GET /context: the prompt goes to a model provider,
         # so diversity answers go only when standing consent is on.
-        profile=eeo_consent.disclosable_profile(session),
+        # And scoped to the job: a saved answer that named another company or
+        # city is not offered to the model for this one.
+        profile=autofill_job.profile_for_job(session, eeo_consent.disclosable_profile(session), application_id),
         memory=career_kb.compose_context(session),
         fields=_wire_fields(fields),
         persona=persona.get_persona(session),
