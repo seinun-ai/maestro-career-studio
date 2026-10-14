@@ -143,10 +143,13 @@ DRIVER = """async (spec) => {
   } : undefined;
   let budget = spec.stopAfter ?? Infinity;
   const t0 = Date.now();
+  // `memory: "shared"`: the run record's memory, one object for every run in this page.
+  const options = {...(spec.options ?? {sourceHint: null})};
+  if (options.memory === "shared") options.memory = (window.__runMemory ??= {});
   const report = await window.careerStudioCompanion.fillLoop.runFill(
     {broadcast, api, cancelled: () => stop || (budget -= 1) < 0, onProgress: (u) => progress.push(u),
      ...(recipes ? {recipes} : {})},
-    spec.options ?? {sourceHint: null});
+    options);
   return {report, calls, sent, posts, progress, peak, ms: Date.now() - t0, gets, lessons};
 }"""
 
@@ -3564,3 +3567,104 @@ def test_the_loops_trace_vocabularies_mirror_the_backends():
     outcome_effects = re.search(r"const OUTCOME_EFFECT = \{(.*?)\};", SOURCE, re.S).group(1)
     returned = " ".join(re.search(rf"const {fn} = .*?\n  \}};", SOURCE, re.S).group(0) for fn in ("effectOf", "exploreEffect"))
     assert set(re.findall(r':\s*"([a-z_]+)"', outcome_effects)) | set(re.findall(r'(?:return|\?|:) "([a-z_]+)"', returned)) <= set(get_args(T.Effect))
+
+
+# ---------- Task B1: pills already there, `only`, and the record's memory
+
+
+def _pills_field(present, wanted):
+    """Skills, with `present` already on the page as pills (read from the page) and `wanted` the profile's."""
+    missing = [s for s in wanted if s not in present]
+    return dict(frames=[[f("k", "search", "Skills", multi=True, committed=list(present))]],
+                map={"k": {"route": "slot", "slot": "skills", "value": wanted}},
+                explore={s: {"options": [opt("o1", s)]} for s in missing},
+                pick={f"k:{s}": {"oids": ["o1"], "reason": "matched"} for s in missing},
+                apply={s: {"outcome": "verified", "added": [s], "missing": []} for s in missing})
+
+
+def test_pills_already_on_the_page_are_not_explored_again(page, load):
+    wanted = [f"Skill {i}" for i in range(12)]
+    out = run(page, load, **_pills_field(wanted[:10], wanted))
+    assert explored_terms(out) == ["Skill 10", "Skill 11"]
+    assert [a["texts"] for a in actions(out, "set")] == [["Skill 10"], ["Skill 11"]]
+    assert statuses(out) == {"k": "verified"}
+
+
+def test_pills_are_compared_ignoring_case_and_spacing(page, load):
+    out = run(page, load, **_pills_field(["  sql ", "PYTHON"], ["SQL", "Python", "Go"]))
+    assert explored_terms(out) == ["Go"]
+    assert statuses(out) == {"k": "verified"}
+
+
+def test_a_set_whose_every_item_is_already_a_pill_is_verified_without_a_touch(page, load):
+    wanted = ["SQL", "Python"]
+    out = run(page, load, **_pills_field(wanted, wanted))
+    assert "fill_explore" not in out["calls"] and actions(out, "set") == []
+    assert statuses(out) == {"k": "verified"}
+
+
+def test_a_set_with_an_unknown_multiplicity_still_explores_its_first_item(page, load):
+    """Not known to take several (`multi` None): the first item's look is how the loop learns it is a set."""
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=None, committed=["SQL"])]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
+              explore={"SQL": {"options": [opt("o1", "SQL")], "multi": True},
+                       "Python": {"options": [opt("o1", "Python")], "multi": True}},
+              pick={"k:Python": {"oids": ["o1"], "reason": "matched"}},
+              apply={"Python": {"outcome": "verified", "added": ["Python"], "missing": []}})
+    assert statuses(out) == {"k": "verified"}
+    assert explored_terms(out) == ["SQL", "Python"]
+    assert [a["texts"] for a in actions(out, "set")] == [["Python"]]
+
+
+def _two_fields():
+    """A skills box with a pill, and Field of Study: the page's errors named only the second."""
+    return dict(frames=[[f("k", "search", "Skills", multi=True, committed=["SQL"]),
+                         f("d", "text", "Degree")]],
+                map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]},
+                     "d": {"route": "slot", "slot": "education.0.degree", "value": "BS"}},
+                explore={"Python": {"options": [opt("o1", "Python")]}},
+                pick={"k:Python": {"oids": ["o1"], "reason": "matched"}},
+                apply={"Python": {"outcome": "verified", "added": ["Python"], "missing": []}})
+
+
+def test_only_touches_the_fields_it_is_given(page, load):
+    out = run(page, load, **_two_fields(), options={"sourceHint": None, "only": ["d"]})
+    assert [(a["fid"], a["op"]) for a in actions(out)] == [("d", "write")]
+    assert "fill_explore" not in out["calls"] and "fill_sections" not in out["calls"]
+    assert [fl["fid"] for fl in out["report"]["fields"]] == ["d"]
+    assert [fid for body in bodies(out, "/api/autofill/map") for fid in [x["fid"] for x in body["fields"]]] == ["d"]
+    assert statuses(out) == {"d": "verified"}
+
+
+def test_only_with_no_fields_on_the_page_works_nothing(page, load):
+    out = run(page, load, **_two_fields(), options={"sourceHint": None, "only": ["gone"]})
+    assert actions(out) == [] and "fill_explore" not in out["calls"] and "/api/autofill/map" not in out["calls"]
+    assert out["report"]["fields"] == []
+
+
+def test_without_only_every_field_is_worked(page, load):
+    out = run(page, load, **_two_fields())
+    assert sorted(statuses(out)) == ["d", "k"]
+
+
+def test_two_runs_sharing_memory_search_a_value_at_most_twice_in_all(page, load):
+    spec = _search_field([_shown(f"Row {i}") for i in range(8)])
+    first = run(page, load, **spec, options={"sourceHint": None, "memory": "shared"})
+    assert [m["mid"] for m in actions(first, "move")].count("search:value") == 2
+    again = _driven(page, **_search_field([_shown(f"Other {i}") for i in range(8)]),
+                    options={"sourceHint": None, "memory": "shared"})
+    assert [m["mid"] for m in actions(again, "move")].count("search:value") == 0
+
+
+def test_without_memory_a_second_run_searches_again(page, load):
+    spec = _search_field([_shown(f"Row {i}") for i in range(8)])
+    run(page, load, **spec)
+    again = _driven(page, **_search_field([_shown(f"Other {i}") for i in range(8)]))
+    assert [m["mid"] for m in actions(again, "move")].count("search:value") == 2
+
+
+def test_memory_remembers_the_terms_tried_and_never_a_value_on_the_record(page, load):
+    run(page, load, **_search_field([_shown(f"Row {i}") for i in range(8)]),
+        options={"sourceHint": None, "memory": "shared"})
+    held = page.evaluate("""() => JSON.stringify(window.__runMemory) """)
+    assert held in ("{}", None) or "Data Science" not in held   # a record that is saved to storage carries no value

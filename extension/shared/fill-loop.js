@@ -64,6 +64,15 @@
  *   period (QUIET_MS) and a final sweep give a late reversion the chance to
  *   show: a field the engine wrote that reverted gets ONE re-commit per run,
  *   and a second reversion reports it `unconfirmed` (unstable).
+ * - A set item that is already a pill the box shows (case and spacing aside) is
+ *   covered without an explore or a set: ten of twelve skills present cost two
+ *   explores, not twelve.
+ * - `options.only` (fids): the call works those fields and no others, which are
+ *   not read into a row, mapped, explored, written or reported (and no section
+ *   is grown). `options.memory` (`newMemory()`, one per run record): what a
+ *   field's adaptive step learnt (failed moves, how often each ran, terms
+ *   tried), by the field's fingerprint, so a second call on the page keeps the
+ *   twice cap and `tried_terms`. The record clears it when the step changes.
  * - Exploring can commit (a search that finds one hit picks it): the page
  *   takes that back; one it could not take back leaves the field to the user,
  *   named (committed_while_exploring).
@@ -432,6 +441,11 @@
     const recipes = typeof deps.recipes?.get === "function" && typeof deps.recipes?.record === "function"
       ? deps.recipes : null;
     const L = { ...limits, ...options.limits };
+    // `only`: the fids this call works; no other field on the page becomes a row, so none is mapped,
+    // explored or written (a fix of the fields a page's errors named). `memory`: see `newMemory`.
+    const only = Array.isArray(options.only) ? new Set(options.only.map(String)) : null;
+    const inScope = (fid) => !only || only.has(fid);
+    const memory = options.memory && typeof options.memory === "object" ? options.memory : null;
     const startedAt = new Date();
     const runDeadline = Date.now() + L.RUN_MS;
     const runId = newRunId();
@@ -937,6 +951,19 @@
     const optionsOf = (state) => JSON.stringify((state.options ?? []).map((o) => [o?.text, o?.where ?? null]));
     const FAILED = new Set(["unexpected", "reverted"]);
     const MAX_REFUSALS = 2;
+    // What the run record remembers of a field between calls (`options.memory`), by the field's
+    // fingerprint: the moves that failed, how often each ran and the terms tried, so a second
+    // call on the same page spends nothing the first one learnt not to. Never a value in the key;
+    // the terms may carry one, which is why `newMemory` is left out of anything saved. A record
+    // that was saved and read back holds plain objects, not Sets and Maps: those start over.
+    const memoryOf = (f) => {
+      if (!memory || typeof f.fp !== "string") return {};
+      const slot = memory[f.fp] && typeof memory[f.fp] === "object" ? memory[f.fp] : (memory[f.fp] = {});
+      if (!(slot.failedMoves instanceof Set)) delete slot.failedMoves;
+      if (!(slot.moveRuns instanceof Map)) delete slot.moveRuns;
+      if (!(slot.termsTried instanceof Map)) delete slot.termsTried;
+      return slot;
+    };
     // A move runs at most twice per field and value, whatever it did: a third
     // proposal is refused like one that failed. Scroll is the exception: a
     // long list takes a scroll per window, and a scroll that shows the same
@@ -949,19 +976,21 @@
       const history = first ? [first] : [];
       // A state + move pair that failed, for this field and this run: never
       // sent to the page again. The row keeps it across rounds and items.
-      const failedMoves = rows.get(f.fid).failedMoves ?? new Set();
+      const kept = memoryOf(f);
+      const failedMoves = rows.get(f.fid).failedMoves ?? kept.failedMoves ?? new Set();
       // Per move (id, value, and the term it types, once a move names one):
       // how often it ran, and the state it left the last time it progressed.
       // Kept on the row like `failedMoves`.
-      const ran = rows.get(f.fid).moveRuns ?? new Map();
+      const ran = rows.get(f.fid).moveRuns ?? kept.moveRuns ?? new Map();
       const left = rows.get(f.fid).moveLeft ?? new Map();
       // The search terms the agent wrote for this field, per value: sent back
       // as `tried_terms` so the next one is new. Kept in the row, never in the
       // report or the trace (a term can carry the value).
-      const termsTried = rows.get(f.fid).termsTried ?? new Map();
+      const termsTried = rows.get(f.fid).termsTried ?? kept.termsTried ?? new Map();
       const tried_ = termsTried.get(value ?? "") ?? [];
       termsTried.set(value ?? "", tried_);
       set(f.fid, { failedMoves, moveRuns: ran, moveLeft: left, termsTried });
+      Object.assign(kept, { failedMoves, moveRuns: ran, termsTried });
       let after = null; // { key, tried }: a move that progressed, whose state is read next
       let state = null; // kept (not re-read) when a proposed move was refused here: the page's state is untouched
       let refusals = 0; // proposals refused in a row as already failed
@@ -1124,6 +1153,8 @@
     // started, so a slow or lost item costs only itself (one set for all of
     // them ran under one page budget, and timed out with most pills missing).
     // `learnt`: the explore fillChoice already ran for the first item.
+    // A pill as the page shows it, for comparing with a profile item: case and spacing do not matter.
+    const pillText = (x) => String(x ?? "").replace(/\s+/g, " ").trim().toLowerCase();
     const commitSet = async (f, row, opts, complete, noOptions, learnt) => {
       const all = [...new Set(row.value.map(String))];
       const worked = all.slice(0, L.MAX_ITEMS);
@@ -1137,6 +1168,9 @@
       let committed = null;
       let shows = false; // the last item's set left the field showing an error
       let listUp = Boolean(learnt?.up); // an item's explore left its list up and no set has used it yet
+      // The pills the box already shows (the user's, a parsed resume's, an earlier call's): an item
+      // that is one of them is there, so it is neither explored nor set again.
+      const shown = f.shape === "search" ? new Set([f.committed].flat().map(pillText).filter(Boolean)) : new Set();
       // One picked option, committed under its own page budget. Undefined: the
       // field is decided (stopped, refused, out of time) and commitSet ends.
       const commitItem = async (item, p) => {
@@ -1181,7 +1215,17 @@
               late.push(...todo.slice(i));
               break;
             }
-            let shown = opts;
+            if (shown.has(pillText(item))) {
+              // The first item's look left its list up: nothing is set in it, so it is closed.
+              if (listUp) {
+                listUp = false;
+                await act(f, { op: "close" }, { closing: true });
+              }
+              covered.set(item, "matched");
+              committed ??= [f.committed].flat().filter(Boolean);
+              continue;
+            }
+            let options = opts;
             let whole = complete;
             if (f.shape === "search") {
               const fresh = learnt?.item !== item; // else fillChoice's look, whose list may still be up
@@ -1208,10 +1252,10 @@
                 missed.set(item, historyEntry("search:value", "unexpected", got.error ?? "no_results"));
                 continue;
               }
-              shown = got.options;
+              options = got.options;
               whole = false;
             }
-            const p = await pick(f, row, shown, whole, item);
+            const p = await pick(f, row, options, whole, item);
             if (!p && fieldLate(f)) {
               late.push(...todo.slice(i));
               break;
@@ -1398,6 +1442,7 @@
       listed = [];
       const open = [];
       for (const [frameId, f] of now) {
+        if (!inScope(f.fid)) continue;
         const had = rows.get(f.fid);
         if (had?.field && had.field.fp !== f.fp) {
           // The same element now asks something else (relabelled, re-purposed):
@@ -1627,7 +1672,7 @@
       const got = results(await broadcast({ type: "fill_inventory", peek: true, consentForms, runId }))
         .filter((r) => Array.isArray(r?.fids));
       if (!got.length) return false;
-      const now = new Set(got.flatMap((r) => r.fids));
+      const now = new Set(got.flatMap((r) => r.fids).filter(inScope));
       return now.size !== listed.length || listed.some((fid) => !now.has(fid));
     };
     // A fresh inventory before the next field. A field that went is dropped
@@ -1906,7 +1951,7 @@
       if (halt()) break;
       // Entries the profile can fill are added before anything is mapped; a
       // full inventory then lists their fields, mapped in this same round.
-      if (await addEntries()) {
+      if (!only && await addEntries()) {
         if (halt()) break;
         const again = await broadcast({ type: "fill_inventory", consentForms, runId });
         if ((again ?? []).some((fr) => fr?.result !== undefined)) open = observe(again);
@@ -2234,5 +2279,8 @@
     return [`${s.heading}: ${s.added} of ${needed} added. Add the rest yourself.`];
   });
 
-  ns.fillLoop = { runFill, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
+  // The run record's memory for `runFill(..., { memory })`: made once per record and cleared when the
+  // step changes. It holds search terms, which can carry a value, so it saves as nothing.
+  const newMemory = () => Object.defineProperty({}, "toJSON", { value: () => undefined });
+  ns.fillLoop = { runFill, newMemory, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
 })();
