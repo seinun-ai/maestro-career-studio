@@ -59,7 +59,7 @@
   const CONFIRMATION = /thank you for (applying|your application)|application (was )?(submitted|received)|we('ve| have) received your application/i;
   // A closed notice, not a job description's prose ("…the level at which this position is filled"): the page
   // also has to hold nothing fillable and no Apply before the classifier believes it (shared/page-kind.js).
-  const CLOSED = /\bthis (?:job|position|posting|requisition) (?:has been|is now|is) closed\b|\bhas been filled\b|\b(?:is )?no longer (?:accepting applications|available|open)\b/i;
+  const CLOSED = /\bthis (?:job|position|posting|requisition) (?:has been|is now|is) closed\b|(?<!\b(?:until|once|when|after|before|if|unless)\b[^.]{0,80})\bhas been filled\b|\b(?:is )?no longer (?:accepting applications|available|open)\b/i;
   // An external Apply link often says where it goes ("Apply on company site"), which APPLY_TEXT
   // alone would not match; the link reader accepts either.
   const APPLY_OFFSITE_TEXT = /^\s*apply\b[^.]{0,30}\b(company|employer)(?:'s|\u2019s)?\s+(?:web)?site\s*$/i;
@@ -88,7 +88,11 @@
   const SUBMIT_MARK_ATTRS = ["id", "name", "data-qa", "data-automation-id", "formaction"];
   // A progress stepper lists every step by name, the last often "Submit": those are labels, not controls.
   // Only a real button inside one still counts.
-  const STEPPER = '[class*="steps" i], [class*="stepper" i], [role="progressbar"]';
+  // Named so by its class: "stepper", "...-steps" or "steps-item". A plain "steps" or "nextsteps" is not a
+  // stepper, and a container that holds form fields is a form, whatever it is called.
+  const STEPPER = '[class*="stepper" i], [class*="-steps" i], [class*="steps-item" i], [role="progressbar"]';
+  const OVERLAY = 'dialog, [role="dialog"], [role="alertdialog"], [aria-modal="true"], '
+    + '[id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [id*="onetrust" i]';
   const REAL_BUTTON = 'button, input[type="submit"], input[type="button"], input[type="image"]';
   // A dialog or step heading that asks about submitting. Narrower than the button sort on purpose:
   // "Apply to Acme" and "Complete your application" head ordinary steps.
@@ -175,7 +179,8 @@
     .filter((f) => !inChrome(f) && [...f.querySelectorAll(FIELD)].some((c) => shown(c) && onPage(c)));
 
   const inFormOf = (forms) => (el) => {
-    if (!forms.length) return !inChrome(el);
+    // No form holds fields: every button outside site chrome is the step's, except a dialog's or a cookie notice's.
+    if (!forms.length) return !inChrome(el) && !el.closest(OVERLAY);
     const form = el.form ?? el.closest(FORM);
     return forms.some((f) => f === form || f.contains(el));
   };
@@ -222,11 +227,17 @@
   const submitSeen = (regions) => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
     if (!shown(el)) return false;
     if (errorLineButton(el, regions)) return false;
-    if (!el.matches(REAL_BUTTON) && el.closest(STEPPER)) return false;
+    if (!el.matches(REAL_BUTTON) && isStepperLabel(el)) return false;
     const extra = !el.matches(BUTTONS);
     if (extra && (inChrome(el) || shownTextOf(el).length > MAX_TEXT)) return false;
     return submitMarked(el) || labels(el).some((text) => sortOf(text) === "submit");
   });
+
+  /** Inside a progress stepper that holds no form field: a step's name, not a control. */
+  const isStepperLabel = (el) => {
+    const holder = el.closest(STEPPER);
+    return holder !== null && !holder.querySelector(FIELD);
+  };
 
   /** The step's first visible h1/h2 text, outside site chrome. */
   let activeRegions = null;   // the error regions of the summary being built, so its headings are read against one set
@@ -519,7 +530,10 @@
   const HINTY = /\b(?:marked|denotes?|indicates?|indicated)\b|^\s*(?:all\s+)?(?:fields?|questions?|items?)\b[^?]*\brequired\b/i;
   const NOT_A_LABEL = '[role="alert"], [aria-live]:not([aria-live="off"]), [class*="error" i], script, style, template';
   const HEADINGS = "h1, h2, h3, h4, h5, h6, [role='heading']";
-  const FIELD_BOX = `${CONTROLS}, input[type="file"], button[aria-haspopup]:not([aria-haspopup="false"])`;
+  // A pill group (buttons that hold `aria-pressed`, or ARIA radios that are not inputs) is a field only when
+  // the shape reader says it is a GROUP with a question (`pills`): a lone toggle or a toolbar is not one.
+  const PILL_BOX = 'button[aria-pressed], [role="button"][aria-pressed], [role="radio"]:not(input)';
+  const FIELD_BOX = `${CONTROLS}, input[type="file"], button[aria-haspopup="listbox"], button[aria-haspopup="true"], ${PILL_BOX}`;
   const MAX_REQUIRED_LABEL = 200;
   const MAX_CLIMB = 6;
   const REMOVE_WORD = /\b(?:remove|delete|replace)\b/i;
@@ -576,6 +590,23 @@
       return null;
     }
   };
+  /** A button within a few levels of a file input: part of that uploader, not a field of its own. */
+  const insideUploadBox = (button) => {
+    let n = button.parentElement;
+    for (let depth = 0; n && depth < 4 && !edgeOf(n); depth += 1, n = n.parentElement) {
+      if (n.querySelector('input[type="file"]')) return true;
+    }
+    return false;
+  };
+  /** A pill group's own verdict: the shape reads the label's required class (a CSS-only star) as well. */
+  const pillsRequired = (shape, el) => {
+    if (shape?.name !== "pills") return false;
+    try {
+      return Boolean(shape.describe(el)?.required);
+    } catch {
+      return false;
+    }
+  };
   const isChoiceBox = (el) => el instanceof HTMLInputElement && (el.type === "radio" || el.type === "checkbox");
   // Custom radios and checkboxes hide the input and show a label (the inventory's own rule).
   const choiceShown = (el) => shown(el) || [...(el.labels ?? []), el.closest("label"), el.parentElement].some((n) => n && shown(n));
@@ -607,7 +638,10 @@
         shape = null;
       }
       const file = isFileInput(el);
-      if (file && uploadKind(el) === "parser") continue;   // the site's import-from-resume box: never owed a file
+      if (el.matches(PILL_BOX) && shape?.name !== "pills") continue;   // a toggle, a toolbar: not an answer
+      const box = file ? uploadKind(el) : null;
+      if (box === "parser") continue;   // the site's import-from-resume box: never owed a file
+      if (el instanceof HTMLButtonElement && shape?.name !== "pills" && insideUploadBox(el)) continue;   // an uploader's own menu is not a question
       if (el.disabled || (el.readOnly && !hasPopupShape(shape)) || ns.fillBase.isPasswordBox(el) || inChrome(el)
         || el.closest('[role="listbox"], [role="menu"], [aria-hidden="true"]')) continue;
       if (!(isChoiceBox(el) ? choiceShown(el) : boxShown(el)) || (!file && dummyBox(el))) continue;
@@ -640,7 +674,7 @@
         || el.closest('[role="radiogroup"][aria-required="true"], [role="group"][aria-required="true"]') !== null;
       let said = null;
       const before = () => (said ??= labelBefore(own, { scan: file }));
-      let isRequired = flagged || own.some(namedRequired);
+      let isRequired = flagged || own.some(namedRequired) || pillsRequired(shape, el);
       // The field reader's own verdict costs a walk of the page around the control: only the read that
       // names items (`withTargets`) asks it, never the count `summary()` polls.
       if (!isRequired && withTargets) {
@@ -655,7 +689,8 @@
 
       const heard = squash(questionOf(el)) || squash(before().text.replace(STAR_CHARS, " ")).replace(/[\s.:]+$/, "");
       const label = safe(heard.slice(0, MAX_REQUIRED_LABEL) || (file ? "Upload" : "Field"));
-      items.push({ label, ...handleOf(own[0], withTargets) });
+      // An upload says what kind of box it is, so the run never puts the resume in a cover letter's.
+      items.push({ label, ...handleOf(own[0], withTargets), ...(file ? { box: box ?? "unknown" } : {}) });
     }
     return { count: items.length, items, keys: items.map((one) => keyOf(one.label)) };
   }
@@ -729,6 +764,8 @@
         ...(known ? { known } : {}),
         // Site chrome (header, nav, a site footer): never the application step's Next.
         ...(inChrome(el) ? { chrome: true } : {}),
+        // In a dialog or a cookie or consent notice: not the application step's Next unless a form holds it.
+        ...(el.closest(OVERLAY) ? { overlay: true } : {}),
         // The error summary's own buttons ("Errors Found", "Error - <field>"): not part of the step.
         ...(inErrorRegion(el, regions) && isErrorText(labelOf(el)) ? { inErrors: true } : {}),
         ...(errorLineButton(el, regions) ? { errorLine: true } : {}),
@@ -947,11 +984,12 @@
   // ---------- creating the account (owner decision 2026-10-14) ----------
 
   const CREATE_ACCOUNT_BUTTON = /^\s*create (?:an )?account\s*$/i;
-  // An account checkbox that agrees to creating the account or to the privacy notice / terms. Anything
-  // that offers email, news, offers or marketing is an opt-in and is never ticked, whatever else it says.
-  const AGREES = /\b(?:i )?(?:agree|accept|consent|acknowledge)\b[^.]{0,80}\b(?:creat\w*\s+(?:this|an|my|the|a)?\s*account|privacy|terms)\b/i;
-  const OPT_IN = /\b(?:newsletters?|marketing|promotion\w*|offers?|e-?mail me|emails? (?:me|updates)|text me|sms|receive (?:e-?mails?|news|updates|information|communications?|alerts?))\b/i;
-  const ACCOUNT_BOX_MARK = /createAccountCheckbox|privacy|terms/i;
+  // An account checkbox that agrees to creating the account or to the privacy notice, and nothing broader.
+  // "Terms of use/service" counts only in a sentence that also names the account. Anything that certifies an
+  // application, consents to a check, shares or sells data, or offers alerts and marketing is refused.
+  const AGREES = /\b(?:agree|accept|consent|acknowledge)\b[^.]{0,80}?\b(?:creat\w*\s+(?:this|an|my|the|a)?\s*account|creation of (?:an?|the|my) account|privacy)\b|\bterms\b[^.]{0,60}\baccount\b|\baccount\b[^.]{0,60}\bterms\b/i;
+  const DENY = /\b(?:applications?|certify|certification|background|fcra|third[- ]part(?:y|ies)|shar(?:e|ed|es|ing)|sell|sold|alerts?|marketing|newsletters?|promotion\w*|offers?|e-?mail me|emails? (?:me|updates)|text me|sms|receive)\b/i;
+  const ACCOUNT_BOX_MARK = /createAccountCheckbox/;
   const HONEY = /beecatcher|honey-?pot/i;
 
   const labelTextOf = (el) => squash([...(el.labels ?? [])].map((l) => l.textContent).join(" ")
@@ -974,18 +1012,20 @@
       const words = squash([labelTextOf(el), el.getAttribute("aria-label"), el.closest("label")?.textContent].join(" "));
       const required = el.required === true || el.getAttribute("aria-required") === "true" || marksRequired(words)
         || ACCOUNT_BOX_MARK.test(el.getAttribute("data-automation-id") ?? "");
-      return required && AGREES.test(words) && !OPT_IN.test(words);
+      return required && AGREES.test(words) && !DENY.test(words);
     });
     if (wanted.length > 1) return { refuse: true };
     return wanted.length === 1 ? { el: wanted[0] } : null;
   }
 
   /** The one control whose whole label is "Create Account": a real button, or the overlay div a vendor lays over a
-   * hidden submit (its visible face). Never one marked as a submit by the page, never a hidden one. */
+   * hidden submit (its visible face). Never one marked as a submit by the page, never a hidden one, never one in
+   * site chrome, and never one with a Submit word in any label. A tenant whose only such control is the
+   * aria-hidden, submit-marked button (no visible overlay) is REFUSED: the user creates that account. */
   function createAccountButton(scope) {
     const found = [...scope.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"]')]
-      .filter((el) => shown(el) && !submitMarked(el) && el.getAttribute("aria-hidden") !== "true"
-        && labels(el).some((t) => CREATE_ACCOUNT_BUTTON.test(t)));
+      .filter((el) => shown(el) && !inChrome(el) && !submitMarked(el) && el.getAttribute("aria-hidden") !== "true"
+        && labels(el).some((t) => CREATE_ACCOUNT_BUTTON.test(t)) && !labels(el).some((t) => sortOf(t) === "submit"));
     return found.length === 1 ? found[0] : null;
   }
 

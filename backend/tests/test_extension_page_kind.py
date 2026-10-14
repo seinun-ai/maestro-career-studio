@@ -146,13 +146,15 @@ def test_known_marker_table_can_name_next_but_never_beats_a_submit_word(tmp_path
 
 # ---------- page kinds ----------
 
-def btn(text, *, id=None, visible=True, enabled=True, in_form=True, known=None, chrome=False):
+def btn(text, *, id=None, visible=True, enabled=True, in_form=True, known=None, chrome=False, overlay=False):
     out = {"id": id or text, "text": text, "type": "button", "marker": "", "inForm": in_form,
            "visible": visible, "enabled": enabled}
     if known:
         out["known"] = known
     if chrome:
         out["chrome"] = True
+    if overlay:
+        out["overlay"] = True
     return out
 
 
@@ -440,3 +442,15 @@ def test_a_submit_worded_live_button_is_never_the_next_to_click(tmp_path):
 ])
 def test_only_the_plain_next_wordings_count_as_a_plain_next(tmp_path, text, plain):
     assert _run(tmp_path, plain=[text])["plain"] == [plain]
+
+
+def test_a_next_in_a_dialog_or_cookie_notice_outside_every_form_is_not_taken_as_the_step(tmp_path):
+    assert kind(tmp_path, fillable=2, buttons=[btn("Continue", in_form=False, overlay=True)]) == {
+        "kind": "review", "by": "fields_no_next"}
+    out = kind(tmp_path, fillable=2, buttons=[btn("Continue", id="cookie", in_form=False, overlay=True),
+                                              btn("Next", id="step", in_form=False)])
+    assert out == {"kind": "form_step", "next": "step"}
+
+
+def test_a_next_in_a_dialog_that_a_form_holds_is_still_the_step(tmp_path):
+    assert kind(tmp_path, fillable=2, buttons=[btn("Next", id="n", overlay=True)]) == {"kind": "form_step", "next": "n"}

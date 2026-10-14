@@ -83,7 +83,8 @@
     // bar outside every one of them (Dayforce): when no Next is inside a form, the ONE pressable Next
     // anywhere in the application (not in chrome) is the step's.
     const inForms = sorted.filter((b) => pressable(b) && b.inForm !== false);
-    const next = inForms.length ? inForms : sorted.filter(pressable);
+    // The fallback leaves out a dialog's or a cookie notice's Next: it is not the application's unless a form holds it.
+    const next = inForms.length ? inForms : sorted.filter((b) => pressable(b) && b.overlay !== true);
     // A Next still on the page, enabled or not: the application is not over while one remains.
     const realNext = sorted.some((b) => b.sort === "next" && b.visible && b.inErrors !== true && b.chrome !== true);
     // `submitSeen`: a Submit the button list could not see (a div role=button, an image input, a

@@ -217,6 +217,24 @@ def test_this_position_has_been_filled_with_no_apply_is_closed(page, load):
     assert classify(page)["kind"] == "closed"
 
 
+@pytest.mark.parametrize("prose", [
+    "Applications are reviewed until the role has been filled.",
+    "We interview candidates once the position has been filled by an internal move, if ever.",
+    "Postings stay up when the job has been filled elsewhere in the company.",
+])
+def test_a_has_been_filled_inside_a_condition_is_not_a_closed_notice(page, load, prose):
+    load(page, f"<h1>Analyst</h1><p>{prose}</p>", SOURCES)
+    assert summary(page)["closedText"] is False
+
+
+def test_a_dialog_and_a_cookie_notice_buttons_carry_the_overlay_flag(page, load):
+    load(page, """<div class='cookie-banner'><button>Continue</button></div><div role='dialog'><button>Next</button></div>
+      <label for='a'>Name</label><input id='a'><div><button>Save and continue</button></div>""", SOURCES)
+    flags = {b["text"]: (b.get("overlay"), b["inForm"]) for b in summary(page)["buttons"]}
+    assert flags == {"Continue": (True, False), "Next": (True, False), "Save and continue": (None, True)}
+    assert classify(page)["kind"] == "form_step"
+
+
 def test_the_confirmation_phrase_is_the_match_and_none_of_the_page_around_it(page, load):
     load(page, "<p>Hi Zelda-Secret-9, thank you for applying to Acme. Your reference is 4471.</p>", SOURCES)
     s = summary(page)
@@ -371,12 +389,23 @@ def test_a_real_submit_button_in_a_stepper_still_counts(page, load):
     assert summary(page)["submitSeen"] is True
 
 
-@pytest.mark.parametrize("holder", ["<div class='steps'>{x}</div>", "<ol class='my-stepper'>{x}</ol>",
-                                    "<div role='progressbar'>{x}</div>"])
+@pytest.mark.parametrize("holder", ["<div class='wizard-steps'>{x}</div>", "<ol class='my-stepper'>{x}</ol>",
+                                    "<ol class='steps-item-list'>{x}</ol>", "<div role='progressbar'>{x}</div>"])
 def test_stepper_labels_are_not_a_submit_seen(page, load, holder):
     x = "<span role='button'>Submit</span><a href='#s'>Submit</a>"
     load(page, holder.format(x=x) + "<label for='a'>Name</label><input id='a'><button>Next</button>", SOURCES)
     assert summary(page)["submitSeen"] is False
+
+
+@pytest.mark.parametrize("holder", ["<div class='steps'>{x}</div>", "<div class='nextsteps'>{x}</div>"])
+def test_a_container_that_is_not_a_stepper_by_name_does_not_exempt_a_submit(page, load, holder):
+    load(page, holder.format(x="<div role='button'>Submit</div>") + "<label for='a'>Name</label><input id='a'>", SOURCES)
+    assert summary(page)["submitSeen"] is True
+
+
+def test_a_stepper_that_holds_form_fields_is_not_a_stepper(page, load):
+    load(page, "<div class='wizard-steps'><label for='a'>Name</label><input id='a'><div role='button'>Submit</div></div>", SOURCES)
+    assert summary(page)["submitSeen"] is True
 
 
 def test_a_div_button_outside_a_stepper_that_says_submit_is_still_seen(page, load):
@@ -561,6 +590,45 @@ def test_a_sites_menu_button_and_a_search_popup_are_not_fillable_controls(page, 
     assert page.evaluate(FILLABLE) == 0
 
 
+@pytest.mark.parametrize("html", [
+    "<h1>Analyst</h1><a href='https://jobs.acme.test/apply'>Apply now</a><div><button aria-haspopup='true' type='button'>Share</button></div>",
+    "<h1>Analyst</h1><a href='https://jobs.acme.test/apply'>Apply now</a><div><button aria-haspopup='true' type='button'>More</button></div>",
+    "<p>Thank you for applying.</p><div role='button' aria-haspopup='true'>Share</div>",
+])
+def test_an_in_content_share_or_more_menu_is_not_a_fillable_control(page, load, html):
+    load(page, html, SOURCES)
+    assert page.evaluate(FILLABLE) == 0
+    assert classify(page)["kind"] in ("posting", "confirmation")
+
+
+def test_a_true_popup_counts_only_inside_a_form_field_or_showing_a_placeholder(page, load):
+    load(page, """<fieldset><legend>Pick</legend><button type='button' aria-haspopup='true'>Choose</button></fieldset>
+      <div><button type='button' aria-haspopup='true'>Select One</button></div>
+      <div><button type='button' aria-haspopup='true'>Share</button></div>""", SOURCES)
+    assert page.evaluate(FILLABLE) == 2
+
+
+def test_a_menu_button_inside_an_upload_box_is_not_a_required_empty(page, load):
+    load(page, """<fieldset><legend>Resume *</legend><div class='zone'><input type='file' style='display:none'>
+      <button type='button' aria-haspopup='true' aria-label='Options Required'>Select One</button></div></fieldset>""", SOURCES)
+    kinds = [i["kind"] for i in required(page)["items"]]
+    assert kinds == ["upload"]
+
+
+def test_a_cover_letter_dropzone_is_reported_as_an_other_box_and_a_resume_one_as_resume(page):
+    """ATS-G shape: a dropzone per document, the label a starred sibling span; each item says what kind of box it is."""
+    from tests.browser.test_upload_box import _load
+    _load(page, """<div class='row'><span>Resume<span>*</span></span><div class='zone'><p>Drag your resume here</p><input type='file' style='display:none'></div></div>
+      <div class='row'><span>Cover letter<span>*</span></span><div class='zone'><p>Drag your cover letter here</p><input type='file' style='display:none'></div></div>""")
+    items = page.evaluate(f"() => {READER}.pageRequired().items")
+    assert [(i["kind"], i["box"]) for i in items] == [("upload", "resume"), ("upload", "other")]
+
+
+def test_a_text_field_item_carries_no_box_kind(page, load):
+    load(page, "<label for='a'>Name</label><input id='a' required>", SOURCES)
+    assert "box" not in required(page)["items"][0]
+
+
 def test_a_popup_button_is_counted_like_a_combobox(page, load):
     load(page, "<div role='button' aria-haspopup='listbox'>Pick</div><button aria-haspopup='listbox' type='button'>Select One</button>", SOURCES)
     assert page.evaluate(FILLABLE) == 2
@@ -595,13 +663,13 @@ POPUP_DRIVE = """async ({record, mount}) => {
 }"""
 
 
-def _popup_drive(page, html, **record):
+def _popup_drive(page, html, mount=True, **record):
     load_html = html.replace("setTimeout(window.__mountQuestions, 2500);", "")
     page.set_content(load_html)
     for src in SOURCES:
         page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
     base = {"openUrl": "https://jobs.acme.test/apply", "tabId": None, "hosts": [], "seen": [], "step": 0}
-    return page.evaluate(POPUP_DRIVE, {"record": {**base, **record}, "mount": True})
+    return page.evaluate(POPUP_DRIVE, {"record": {**base, **record}, "mount": mount})
 
 
 def test_a_question_step_that_mounts_after_the_footer_is_filled_again_once_the_popups_are_there(page):
@@ -616,6 +684,48 @@ def test_a_review_step_with_popup_questions_still_empty_is_never_ready(page):
     assert out["fills"][:2] == [0, 3]
     assert (out["status"], out["why"]) == ("parked", "open_questions")
     assert out["readyAt"] is None and len(out["open"]) == 3 and out["open"][0] == "Degree"
+
+
+# ---------- pill groups (Yes/No buttons holding aria-pressed) ----------
+
+PILL_REVIEW = fixture_html("pill_buttons.html").replace('<button type="submit">Next</button>',
+                                                       '<button type="submit">Submit application</button>')
+
+
+def test_a_required_unanswered_pill_group_is_a_required_empty_until_a_pill_is_pressed(page, load):
+    load(page, PILL_REVIEW, SOURCES)
+    s = summary(page)
+    assert s["requiredEmpty"] == 1, "the required Yes/No group counts once; the optional degree group and the city do not"
+    [item] = required(page)["items"]
+    assert item["kind"] == "field" and item["label"] == "Have you worked for Globex before?"
+    page.click("button:has-text('Yes')")
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_lone_toggle_or_a_toolbar_is_never_a_required_empty(page, load):
+    load(page, """<button type='button' aria-pressed='false' aria-required='true'>Dark mode</button>
+      <div role='toolbar'><button type='button' aria-pressed='false'>Bold</button><button type='button' aria-pressed='false'>Italic</button></div>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_required_aria_radio_group_with_nothing_chosen_counts_once(page, load):
+    load(page, """<div id='g' role='radiogroup' aria-required='true' aria-label='Willing to relocate?'>
+      <div role='radio' aria-checked='false' tabindex='0'>Yes</div><div role='radio' aria-checked='false' tabindex='0'>No</div></div>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 1
+    page.evaluate("() => document.querySelector('[role=radio]').setAttribute('aria-checked', 'true')")
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_review_page_with_a_required_pill_group_unanswered_is_never_ready_and_is_once_a_pill_is_pressed(page):
+    out = _popup_drive(page, PILL_REVIEW.replace("<script>", "<script>window.__mountQuestions = () => {};"), step=1, wrote=True,
+                       mount=False)
+    assert (out["status"], out["why"]) == ("parked", "open_questions") and out["readyAt"] is None
+    assert out["open"] == ["Have you worked for Globex before?"]
+    page.click("button:has-text('Yes')")
+    page.add_script_tag(content=(EXTENSION / "shared/decisions.js").read_text(encoding="utf-8"))   # Ready asks for the tenant
+    done = page.evaluate(POPUP_DRIVE, {"record": {"openUrl": "https://jobs.acme.test/apply", "tabId": None, "hosts": [],
+                                                   "seen": [], "step": 1, "wrote": True}, "mount": False})
+    assert done["status"] == "ready" and done["readyAt"] is not None, done
 
 
 def test_a_parser_upload_box_is_never_a_required_empty(page):
@@ -696,6 +806,61 @@ def test_a_checkbox_that_is_only_a_marketing_opt_in_is_left_and_the_account_stil
     html = html.replace('<input type="checkbox" id="agree" aria-checked="false" data-automation-id="createAccountCheckbox">\n      <label for="agree">I agree to creating this account to apply for positions with Acme</label>', OPT_IN_BOX.replace("marketing", "agree"))
     serve_account(page, html)
     assert create_account(page) == {"created": "clicked"} and oracle(page, "agreed") is False
+
+
+@pytest.mark.parametrize("sentence", [
+    "I certify my application is true and accept the terms of this application",
+    "I consent to a background check under the terms of the FCRA",
+    "I agree that my data may be shared with third parties per the privacy policy",
+    "I agree to receive job alerts and the privacy policy",
+    "I agree to the terms of use",
+    "I agree to sell my data and to creating this account",
+    "I agree to creating this account and to marketing emails",
+])
+def test_an_agreement_that_is_not_about_the_account_or_its_privacy_notice_is_never_ticked(page, load, sentence):
+    html = fixture_html("create_account_form.html")
+    html = html.replace("I agree to creating this account to apply for positions with Acme", sentence)
+    serve_account(page, html)
+    create_account(page)
+    assert oracle(page, "agreed") is False
+
+
+@pytest.mark.parametrize("sentence", [
+    "I agree to creating this account to apply for positions with Acme",
+    "I agree to the privacy notice",
+    "I accept the privacy policy and the terms of use of my account",
+    "I consent to the creation of an account",
+])
+def test_an_account_or_privacy_agreement_is_ticked(page, load, sentence):
+    html = fixture_html("create_account_form.html").replace(
+        "I agree to creating this account to apply for positions with Acme", sentence)
+    serve_account(page, html)
+    assert create_account(page) == {"created": "clicked"}
+    assert oracle(page, "agreed") is True
+
+
+def test_an_automation_id_that_merely_says_privacy_does_not_make_a_box_required(page, load):
+    html = fixture_html("create_account_form.html").replace('data-automation-id="createAccountCheckbox"', 'data-automation-id="privacyBox"')
+    serve_account(page, html)
+    create_account(page)
+    assert oracle(page, "agreed") is False
+
+
+def test_a_create_account_control_that_is_in_site_chrome_or_submit_worded_is_not_pressed(page, load):
+    chrome = ('<header><div role="button" aria-label="Create Account">Create Account</div></header>'
+              '<form><input type="text" autocomplete="email" id="e"><input type="password" autocomplete="new-password" id="a">'
+              '<input type="password" autocomplete="new-password" id="b"></form>')
+    serve_account(page, chrome)
+    assert create_account(page) == {"created": False, "why": "no_button"}
+
+
+def test_a_tenant_without_the_visible_overlay_is_refused_not_guessed(page, load):
+    """Only the aria-hidden, submit-marked real button is there: refused, so the user creates the account."""
+    html = fixture_html("create_account_form.html")
+    html = html.replace('<div role="button" tabindex="0" aria-label="Create Account" data-automation-id="click_filter" id="overlay"\n           style="position:absolute; inset:0; cursor:pointer;">Create Account</div>', "")
+    serve_account(page, html)
+    assert create_account(page) == {"created": False, "why": "no_button"}
+    assert oracle(page, "hiddenSubmit") == 0 and page.input_value("#pw") == ""
 
 
 def test_two_agreements_are_not_guessed_between(page):
