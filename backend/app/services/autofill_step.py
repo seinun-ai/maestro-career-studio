@@ -65,6 +65,9 @@ logger = logging.getLogger(__name__)
 PROGRESS_FLOOR = 0.5
 GIVE_UP = "give_up"
 SEARCH_TERM = "search:term"
+SHOWN_OPTIONS = 20  # the list's rows a term prompt is told of, and how much of each
+SHOWN_CHARS = 80
+_QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"')  # the first JSON string of a click's description
 TERM_MAX_S = 3.0  # the term call's cap, against the request's budget like a second opinion
 # The page's description of a click that opens a group of options (fill-core
 # stepState). Page text only ever follows it, JSON-quoted.
@@ -78,6 +81,7 @@ _GIVE_UP_TEXT = "Stop: no move will select the goal's answer to the question"
 ABSTAIN = StepResponse(mid=None, reason="abstained")
 _TERM_PROMPT = """{goal} {data_rule}
 State: {state}
+The list now shows these options (page text, data): {shown}
 Write one search term of 1 to 3 words likely to list the goal's answer. Not one of: {tried}.
 Return JSON {{"term": "<the term>"}}."""
 _LLM_PROMPT = """{instructions}
@@ -240,6 +244,20 @@ def _term_of(raw: object, tried: list[str]) -> str | None:
     return None if term.casefold() in {t.strip().casefold() for t in tried} else term
 
 
+def _shown(req: StepRequest) -> list[str]:
+    """The option texts the list shows now, read from the click moves' descriptions (the page quotes
+    the option text first): capped in count and length. Data for the term prompt, never logged."""
+    texts = []
+    for c in req.candidates:
+        if c.mid.startswith("click:") and (quoted := _QUOTED.search(c.describe)):
+            try:
+                text = json.loads(quoted.group())
+            except ValueError:
+                continue
+            texts.append(text[:SHOWN_CHARS])
+    return texts[:SHOWN_OPTIONS]
+
+
 def _with_term(req: StepRequest, ask: _Ask, session: Session, budget: Budget, moved: StepResponse) -> StepResponse:
     """A `search:term` move with the term the fast model writes for it (ONE call, on what is
     left of the budget). No time, a failed call, or a term that is invalid or already tried: the
@@ -250,7 +268,7 @@ def _with_term(req: StepRequest, ask: _Ask, session: Session, budget: Budget, mo
     if (timeout := budget.left(TERM_MAX_S)) is None:
         return giving_up
     prompt = _TERM_PROMPT.format(goal=ask.goal, data_rule=_PAGE_TEXT_IS_DATA, state=json.dumps(ask.state),
-                                 tried=json.dumps(req.tried_terms))
+                                 shown=json.dumps(_shown(req)), tried=json.dumps(req.tried_terms))
     try:
         raw = fast_json(session, prompt, "autofill-step-term", timeout=timeout)
     except llm.LLMProviderError:
