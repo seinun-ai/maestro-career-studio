@@ -67,6 +67,8 @@
  * - A set item that is already a pill the box shows (case and spacing aside) is
  *   covered without an explore or a set: ten of twelve skills present cost two
  *   explores, not twelve.
+ * - `options.skipOptionalSkills` (a queued run): a skills box that is not required (and not flagged invalid) is
+ *   reported `left_blank` (`lastOutcome: optional_skills`) with no explore, pick or step call.
  * - `options.only` (fids): the call works those fields and no others, which are
  *   not read into a row, mapped, explored, written or reported (and no section
  *   is grown). `options.memory` (`newMemory()`, one per run record): what a
@@ -1773,12 +1775,22 @@
     // What each open field is: text (a fact to type), choice, or prose (a
     // free-text answer the model writes); one with nothing to fill it is
     // finished here.
+    // A QUEUED RUN (`options.skipOptionalSkills`) leaves a skills box that is not required alone: a list of
+    // tags is slow (a set of searches, one step each) and nothing needs it to move on. A skills box is the
+    // one the map put the resume's skills in, or a multi-select or search box whose question names skills
+    // (a prose box about skills is the model's). A required one, or one the page flagged invalid, is filled.
+    const optionalSkills = (f, row) => options.skipOptionalSkills === true && !f.required && !f.invalid
+      && (row.slot === "skills" || (/\bskills?\b/i.test(f.question ?? "") && (f.multi === true || f.shape === "search")));
     const routed = (open) => {
       const texts = [];
       const choices = [];
       const prose = [];
       for (const f of open) {
         const row = rows.get(f.fid);
+        if (optionalSkills(f, row)) {
+          finish(f, "left_blank", { lastOutcome: "optional_skills" });
+          continue;
+        }
         if (row.heldUrl) {
           // Held, answered: the same site as the fact is `already`; no URL fact to compare with, the
           // box stands as it is; a different site is never counted as the answer (and never overwritten).

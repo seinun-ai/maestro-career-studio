@@ -484,6 +484,8 @@ def test_a_run_started_on_the_current_tab_fills_each_page_presses_only_next_and_
     assert len(out["fills"]) == 3
     assert out["fills"][0]["options"]["limits"] == {"FIELD_MS": 60000, "MAX_STEPS": 12, "RUN_MS": 600000}
     assert out["fills"][0]["options"]["applicationId"] == "app-1"
+    # Nobody waits on an optional skills box in a run.
+    assert out["fills"][0]["options"]["skipOptionalSkills"] is True
     assert [page["n"] for page in record["pages"]] == [1, 2, 3]
     # The answer receipt names the record's application and base, not whatever the card holds.
     receipts = [json.loads(msg["init"]["body"]) for msg in _api_calls(out, "/api/jobs/job-1/filled-answers")]

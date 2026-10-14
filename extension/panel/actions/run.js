@@ -414,6 +414,8 @@
       sourceHint: ns.fillLoop.sourceHintOf(url),
       pageUrl: ns.fillLoop.pageUrlOf(url),
       limits,
+      // Nobody is waiting on an optional skills box in a run, and it is the slowest field of a page.
+      skipOptionalSkills: true,
       // What the loop learnt on this page (moves that failed, terms tried) survives to the next call on
       // it. The record owns it; the driver clears it when the step changes, and it never reaches storage.
       memory: (record.memory ??= ns.fillLoop.newMemory()),

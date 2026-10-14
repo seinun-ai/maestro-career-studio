@@ -154,7 +154,7 @@ DRIVER = """(spec) => {
   }) : undefined;
   const t0 = Date.now();
   window.__run = ns.fillLoop.runFill({ broadcast, api, cancelled: () => stop, ...(recipes ? { recipes } : {}) },
-    { sourceHint: null })
+    { sourceHint: null, ...(spec.options ?? {}) })
     .then((report) => ({ report, sent, posts, ms: Date.now() - t0, book: book.current }));
   return true;
 }"""
@@ -848,6 +848,37 @@ def test_twelve_skills_each_land_with_their_own_set_and_none_runs_late(e2e_page)
     # whole field fits the ordinary clock (25 s + 6 s for each item past the first).
     assert max(s["ms"] for s in sets) < 6000, sets
     assert out["ms"] < 25000 + 6000 * 11
+
+
+def test_an_optional_skills_box_is_left_empty_in_a_run_and_costs_no_model_call(e2e_page):
+    """Live 2026-10-14: the optional Skills box cost 25 /step calls and three minutes. A run
+    (`skipOptionalSkills`) leaves a skills box that is not required alone."""
+    page = e2e_page
+    out = _skills_run(page, TWELVE_SKILLS, options={"skipOptionalSkills": True})
+    skills = out["by_question"]["Type to Add Skills"]
+    assert (skills["status"], skills["lastOutcome"]) == ("left_blank", "optional_skills"), skills
+    assert oracle(page, "slowSkills") == []
+    assert [b for b in bodies_of(out, "/api/autofill/step") if b["question"] == "Type to Add Skills"] == []
+    assert [b for b in bodies_of(out, "/api/autofill/pick") if "Skills" in json.dumps(b)] == []
+
+
+def test_a_required_skills_box_is_filled_in_a_run_as_before(e2e_page):
+    page = e2e_page
+    html = fixture_html("workday_misses.html").replace(
+        '<input id="skills" type="text"', '<input id="skills" type="text" aria-required="true"')
+    assert 'id="skills" type="text" aria-required="true"' in html
+    out = _run(page, html=html, url="https://careers.acme.test/apply", options={"skipOptionalSkills": True},
+               map={"Type to Add Skills": {"route": "slot", "slot": "skills", "value": TWELVE_SKILLS}},
+               limits={"MAX_ROUNDS": 1, "MAX_ITEMS": 12})
+    assert out["by_question"]["Type to Add Skills"]["status"] == "verified"
+    assert sorted(oracle(page, "slowSkills")) == sorted(TWELVE_SKILLS)
+
+
+def test_an_optional_box_that_is_not_about_skills_is_still_worked_in_a_run(e2e_page):
+    """The skip is for skills alone: only the skills slot / a question naming skills."""
+    page = e2e_page
+    out = _skills_run(page, TWELVE_SKILLS, options={"skipOptionalSkills": True})
+    assert out["by_question"]["Field of Study"]["status"] != "left_blank"
 
 
 def test_a_skill_the_list_never_offers_is_missing_and_the_rest_still_land(e2e_page):
