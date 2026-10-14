@@ -453,28 +453,40 @@
 
   /** The repair after the page refused a Next, by what its errors named (`pageErrors`): ONLY those
    * fields, never the rest of the page. A fill field is worked again with `only` (and the page's
-   * memory); an error that names nothing the run can work (an unmapped label) is a blocker, and
-   * the driver parks on it. `{fixed}` says whether every named field was repaired. */
+   * memory); an upload box gets the run's PDF. An error that names nothing the run can work (an unmapped
+   * label) stays the user's, and so does one the repair did not fix: `{fixed, remaining}` says which are
+   * left, so the park names only those. `wrote` says whether anything was written at all: a banner left up
+   * over boxes already holding their file is repaired by writing nothing, and the driver then reads the page
+   * again to see where it is. */
   async function fixPage(store, record, errors, limits) {
-    if (errors.some((one) => !one.target || (one.kind !== "field" && one.kind !== "upload"))) return { fixed: false };
-    let fixed = true;
+    const mapped = (one) => one.target && (one.kind === "field" || one.kind === "upload");
+    const remaining = errors.filter((one) => !mapped(one));
+    let wrote = false;
     // An upload box the page named gets the run's PDF, whatever the box looks like to the run's own attach,
     // but only ONE box: two named uploads cannot both be the resume's, so the user is asked.
-    const uploads = errors.filter((e) => e.kind === "upload");
-    if (uploads.length > 1) return { fixed: false };
-    for (const one of uploads) {
-      // A banner left up over a box the user filled by hand is a stale line: that box is repaired.
-      if ((await uploadBoxes(store.run, record)).some((box) => box.target === one.target && box.occupied)) continue;
-      if (record.stopRequested === true || !(await attachBox(store, record, one.target)).attached) return { fixed: false };
+    const uploads = errors.filter((one) => mapped(one) && one.kind === "upload");
+    if (uploads.length > 1) remaining.push(...uploads);
+    else {
+      for (const one of uploads) {
+        // A banner left up over a box the user filled by hand is a stale line: that box is repaired.
+        if ((await uploadBoxes(store.run, record)).some((box) => box.target === one.target && box.occupied)) continue;
+        if (record.stopRequested === true || !(await attachBox(store, record, one.target)).attached) remaining.push(one);
+        else wrote = true;
+      }
     }
-    const fids = errors.filter((one) => one.kind === "field").map((one) => one.target);
-    if (fids.length) {
-      const report = await fillPage(store, record, limits, { only: fids });
-      if (report.stopped) return { fixed: false };
+    const fields = errors.filter((one) => mapped(one) && one.kind === "field");
+    if (fields.length && record.stopRequested !== true) {
+      const report = await fillPage(store, record, limits, { only: fields.map((one) => one.target) });
+      if (report.stopped) return { fixed: false, remaining: [...remaining, ...fields], wrote };
       const byFid = new Map(report.fields.map((row) => [row.fid, row]));
-      fixed = fids.every((fid) => REPAIRED.has(byFid.get(fid)?.status));
+      for (const one of fields) {
+        if (REPAIRED.has(byFid.get(one.target)?.status)) wrote = wrote || WROTE.has(byFid.get(one.target).status);
+        else remaining.push(one);
+      }
+    } else {
+      remaining.push(...fields);
     }
-    return { fixed };
+    return { fixed: remaining.length === 0, remaining, wrote };
   }
 
   /** Whether the worker posted the run's trace: it answers `why: "off"` when the fill log is off, and the card

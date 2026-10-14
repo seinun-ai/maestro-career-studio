@@ -323,6 +323,7 @@
     let resumeWhy = null;    // a Resume after page_errors or upload: decided on the first read, by whether it is the parked page
     let recheck = null;      // ... and then: don't refill, look at the page's errors or upload boxes
     let thisPage = null;     // {where, key} of the page being read: remembered when a park names a page
+    let filledPage = null;   // {where, key, here} of the page this run last filled: the only page it presses
 
     const noteHost = async (url) => {
       const host = hostOf(url);
@@ -345,6 +346,7 @@
     const moved = () => {
       navigated = true;
       pageFilled = false;
+      filledPage = null;
       tried = 0;
       fixRounds = 0;
       requiredTried = false;
@@ -377,7 +379,9 @@
       fixRounds += 1;
       await update({ status: "filling" });
       const repaired = await act(deps.fix, record, items, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
-      return repaired?.fixed === true ? null : await park("page_errors", { open });
+      if (repaired?.fixed === true) return null;
+      // The repair worked what it could map: the park names only what is left.
+      return await park("page_errors", { open: Array.isArray(repaired?.remaining) ? errorsOpen(repaired.remaining) : open });
     };
 
     // Read what the page names as wrong in this frame and repair exactly that: null to go on, else the park.
@@ -517,6 +521,7 @@
                 wroteResume = FILE_WRITTEN.has(record.attach?.outcome);
               } else {
                 pageFilled = true;
+                filledPage = { where, key, here: null };
               }
             } else {
               // The user moved on by hand: nothing the park learnt is about this page (what moved() clears).
@@ -650,6 +655,14 @@
           continue;
         }
 
+        // A PAGE IS PRESSED ONLY IF IT IS THE PAGE THIS RUN FILLED. A press the page refused, or a repair, can end
+        // with the site on its next page; the page in hand is not the one that was filled, so the press that
+        // brought it here counts as a step and the page is filled before anything else is done on it.
+        if (pageFilled && filledPage && (filledPage.where !== thisPage.where || filledPage.key !== thisPage.key)) {
+          await update({ step: record.step + 1, seen: [...record.seen, filledPage.here ?? `${filledPage.where}\n${filledPage.key}`] });
+          moved();
+        }
+
         // form_step | review: fill the page, read it again, then judge it.
         if (!pageFilled) {
           // A review page at the first step with nothing on it to fill and no Next is not the end
@@ -681,6 +694,7 @@
             wroteResume = true;
           }
           pageFilled = true;
+          filledPage = { where: thisPage.where, key: thisPage.key, here: null };
           continue;
         }
 
@@ -767,6 +781,7 @@
         }
 
         const here = fingerprint(url, summary);
+        if (filledPage) filledPage.here = here;
         if (tried === 0 && fixRounds === 0) {
           if (record.seen.includes(here)) return await park("loop");
           if (record.step >= LIMITS.stepMax) return await park("step_limit");

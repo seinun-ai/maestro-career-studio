@@ -1548,6 +1548,29 @@ def test_a_repair_that_leaves_the_field_open_parks_naming_it(tmp_path):
     assert len(_page_messages(out, "page_advance")) == 1
 
 
+MYSTERY_ERROR = {"label": "Mystery", "target": None, "kind": "unknown"}
+
+
+def test_a_repair_works_the_errors_it_can_map_and_parks_naming_only_the_rest(tmp_path):
+    error = {"count": 2, "items": [*CITY_ERROR["items"], MYSTERY_ERROR]}
+    out = _rejected(tmp_path, error=error, pages=(STEP1, STEP1_REJECTED))
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"]) == ("parked", "page_errors")
+    assert record["open"] == [{"fid": None, "question": "Mystery", "required": True}]
+    # City was worked on its own; the unknown error is the user's.
+    assert [call["options"].get("only") for call in out["fills"]] == [None, ["f-city"]]
+
+
+def test_a_repair_that_leaves_one_of_two_named_fields_open_names_only_that_one(tmp_path):
+    error = {"count": 2, "items": [*CITY_ERROR["items"], {"label": "State", "target": "f-state", "kind": "field"}]}
+    reports = [{"fields": [verified("f-city", "City"), verified("f-state", "State")]},
+               {"fields": [verified("f-city", "City"), needs("f-state", "State")]}]
+    out = _rejected(tmp_path, error=error, reports=reports, pages=(STEP1, STEP1_REJECTED))
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"]) == ("parked", "page_errors")
+    assert [one["question"] for one in record["open"]] == ["State"]
+
+
 def test_the_card_for_a_page_errors_park_names_the_field_and_the_upload(tmp_path):
     record = _seeded("parked", why="page_errors", open=[
         {"fid": "f-city", "question": "City", "required": True},

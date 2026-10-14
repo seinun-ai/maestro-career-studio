@@ -171,6 +171,8 @@ const deps = {
     // What the record says AT the moment of the fix: a rejected press is no step and no seen page.
     tick("fix", errors.map((e) => e.label), rec.step, rec.seen.length, rec.status);
     if (spec.fixClears) cleared[at] = true;
+    // The page moved on by itself under the repair (a slow save the banner was left up for).
+    if (spec.fixMoves) { at += 1; moved = false; }
     return spec.fix ?? { fixed: true };
   },
   fill: async (record, options) => {
@@ -2121,6 +2123,40 @@ def test_a_rejection_that_names_nothing_readable_parks(tmp_path):
     r = out["record"]
     assert (r["status"], r["why"], r["open"], r["step"]) == ("parked", "page_errors", [], 0)
     assert names(out, "fix") == [] and out["pressed"] == ["next-1"]
+
+
+# ---------- a page is pressed only if it is the page the run filled ----------
+
+def test_a_repair_that_ends_on_another_page_fills_that_page_before_anything_is_pressed_on_it(tmp_path):
+    """The live shape: Next was refused with a stale line over an occupied upload box, nothing was written, and
+    by the re-read the site had moved on. The new page was pressed unfilled."""
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UPLOAD]), step(2), REVIEW], fixMoves=True)
+    r = out["record"]
+    assert (r["status"], r["step"], len(r["seen"])) == ("ready", 2, 2)
+    assert out["pressed"] == ["next-1", "next-2"] and out["fillCalls"] == 3
+    order = [c[0] for c in out["calls"]]
+    after_fix = order[order.index("fix"):]
+    assert after_fix.index("fill") < after_fix.index("advance"), "the new page is filled before its Next"
+
+
+def test_a_page_moved_to_by_a_refused_press_is_counted_as_a_step(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UPLOAD]), step(2), REVIEW], fixMoves=True)
+    # The page the run filled is remembered as seen, so coming back to it is a loop and a step went by.
+    assert out["record"]["seen"][0].startswith("https://jobs.acme.test/p/0\n")
+
+
+def test_a_page_the_repair_left_where_it_was_is_pressed_again_without_a_second_fill(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[CITY]), REVIEW])
+    assert out["fillCalls"] == 2 and out["pressed"] == ["next-1", "next-1"]
+
+
+def test_a_repair_that_could_only_work_some_of_the_errors_parks_naming_only_the_rest(tmp_path):
+    unknown = {"label": "Mystery", "target": None, "kind": "unknown"}
+    out = _drive(tmp_path, [step(1, rejects=9, errorItems=[CITY, unknown])],
+                 fix={"fixed": False, "remaining": [unknown]})
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "page_errors")
+    assert r["open"] == [{"fid": None, "question": "Mystery", "required": True}]
 
 
 def test_a_rejection_resets_with_the_next_page(tmp_path):
