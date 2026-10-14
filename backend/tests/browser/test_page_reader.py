@@ -587,7 +587,7 @@ POPUP_DRIVE = """async ({record, mount}) => {
     pageErrors: async () => ns.pageReader.pageErrors(),
     pageRequired: async () => ns.pageReader.pageRequired(),
     fix: async () => ({fixed: false}),
-    attachTo: async () => ({attached: false}), uploads: async () => [],
+    attachTo: async () => ({attached: false}), uploads: async () => [], createAccount: async () => ({created: false}),
     sleep: async () => {}, save() {}, onUpdate() {}, now: () => (clock += 1000), cancelled: () => false,
   };
   await ns.queueRun.drive(record, deps);
@@ -1285,7 +1285,7 @@ DRIVE = """async ({record, swap, signIn}) => {
     signIn: async () => { calls.push(["signIn"]); document.body.innerHTML = swap; return {signedIn: true}; },
     waitForChange: async () => ({changed: Boolean(signIn)}),
     pageErrors: async () => ({count: 0, items: []}), pageRequired: async () => ({count: 0, items: []}), fix: async () => ({fixed: false}),
-    attachTo: async () => ({attached: false}),
+    attachTo: async () => ({attached: false}), createAccount: async () => ({created: false}),
     uploads: async () => [],
     sleep: async () => {}, save() {}, onUpdate() {}, now: () => (clock += 1000), cancelled: () => false,
   };
