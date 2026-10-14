@@ -58,9 +58,14 @@ def _all(text, name=NAME, orgs=ORGS):
     ("Led the rewrite; Alex cut costs 20%.", [("name_token", "Alex")]),
     ("Led the rewrite, Alex cut costs 20%.", [("name_token", "Alex")]),
     ("Alex built the data platform.", [("name_token", "Alex")]),
-    # a surname keeps the subject/possessive rule
-    ("Led the rewrite for Alex's team.", [("name_token", "Alex")]),
-    ("Led the rewrite. Rivera shipped it.", [("name_token", "Rivera")]),
+    # strict text: a bracket or a dash opens a clause too
+    ("Platform lead (I led 4 engineers).", [("first_person", "I")]),
+    ("Cut cost - he led the rewrite.", [("pronoun", "he")]),
+    ("Cut cost \u2013 he led the rewrite.", [("pronoun", "he")]),
+    ("Cut cost \u2014 she led the rewrite.", [("pronoun", "she")]),
+    # auxiliaries
+    ("I have built the pipeline.", [("first_person", "I")]),
+    ("He has built the pipeline.", [("pronoun", "He")]),
 ])
 def test_what_blocks(text, expected):
     assert _blocking(text) == expected
@@ -76,7 +81,6 @@ def test_what_blocks(text, expected):
     "Mentored engineers so they could ship faster.",
     "Raised their conversion rate by 12%.",
     "Cut cost after he rebuilt the router, saving 20%.",
-    "Platform lead (he built the billing pipeline).",
     "Ran analytics for Acme Corp and she grew revenue 12%.",
     # a possessive that is not directly after the clause's verb
     "Helped a client grow his business 20%.",
@@ -112,6 +116,9 @@ def test_what_does_not_block(text):
     ("Presented the talk Why She Leads at the summit.", [("pronoun_mention", "She", False)]),
     ("Volunteered with She Codes.", [("pronoun_mention", "She", False)]),
     ("Helped a client grow his business 20%.", [("pronoun_mention", "his", False)]),
+    # a surname, or the given name away from the start of a clause, is flagged, never blocking
+    ("Led the rewrite for Alex's team.", [("name_mention", "Alex", False)]),
+    ("Led the rewrite. Rivera shipped it.", [("name_mention", "Rivera", False)]),
 ])
 def test_what_is_only_flagged(text, expected):
     assert _all(text) == expected
@@ -194,22 +201,41 @@ def test_a_name_token_that_is_not_the_owner_acting_is_not_a_hit(text, name):
     assert _blocking(text, name, []) == []
 
 
-def test_a_surname_keeps_the_subject_and_possessive_rule():
-    assert _blocking("Wells built fraud models.", "Sam Wells", []) == [("name_token", "Wells")]
-    assert _blocking("Led the team at Acme, where Wells built billing.", "Sam Wells", []) == [("name_token", "Wells")]
-    assert _blocking("Led Wells's team.", "Sam Wells", []) == [("name_token", "Wells")]
-    assert [(h.kind, h.blocking) for h in rv.third_person_hits("Reported to Rivera.", "Alex Rivera", [])] == [
-        ("name_mention", False)]
+@pytest.mark.parametrize("text, name", [
+    ("Shah built the router.", "Ravi Shah"),
+    ("Ford's EV team adopted the tool.", "Chris Ford"),
+    ("Wells built fraud models.", "Sam Wells"),
+    ("Led the team at Acme, where Wells built billing.", "Sam Wells"),
+    ("Led Wells's team.", "Sam Wells"),
+])
+def test_a_surname_is_flagged_never_blocking(text, name):
+    hits = rv.third_person_hits(text, name, [])
+    assert [(h.kind, h.blocking) for h in hits] == [("name_mention", False)]
+    assert rv.repair(text, name, []) == text
+
+
+@pytest.mark.parametrize("text", [
+    "Austin, TX office lead.",
+    "Austin, Texas office lead.",
+    "Austin Texas office lead.",
+])
+def test_a_given_name_that_is_a_place_is_not_a_hit(text):
+    assert _blocking(text, "Austin Reed", []) == []
+
+
+def test_a_given_name_that_is_an_appositive_subject_still_blocks():
+    assert _blocking("Austin, a data engineer, built the platform.", "Austin Reed", []) == [("name_token", "Austin")]
 
 
 def test_name_tokens_ignore_single_letter_initials():
     assert rv.third_person_hits("Led B's old team.", "A. B. Rivera", []) == []
+    # with one real token left, it is the given name
     assert _blocking("Rivera led it.", "A. B. Rivera", []) == [("name_token", "Rivera")]
 
 
 def test_two_letter_names_are_recognised_as_capitalised_words():
     assert _blocking("Li built data platforms.", "Li Xu", []) == [("name_token", "Li")]
-    assert _blocking("Xu led the rewrite.", "Li Xu", []) == [("name_token", "Xu")]
+    assert _blocking("Xu led the rewrite.", "Li Xu", []) == []
     assert _blocking("Li Xu led the rewrite.", "Li Xu", []) == [("name", "Li Xu")]
     assert rv.third_person_hits("Wrote li-ion battery tests; ran LI audits.", "Li Xu") == []
     assert rv.repair("Li built data platforms.", "Li Xu") == "Built data platforms."
@@ -241,8 +267,12 @@ def test_a_founder_clause_is_flagged_but_never_rewritten():
      "Led the platform team at Acme Corp; built the billing pipeline."),
     ("Led the platform team at Acme Corp, where I built the billing pipeline.",
      "Led the platform team at Acme Corp; built the billing pipeline."),
-    ("Owned billing: she built the pipeline.", "Owned billing: built the pipeline."),
-    ("Led the rewrite; HE cut costs 20%.", "Led the rewrite; cut costs 20%."),
+    ("I have built the billing pipeline.", "Built the billing pipeline."),
+    ("I've built the billing pipeline.", "Built the billing pipeline."),
+    ("He's built the billing pipeline.", "Built the billing pipeline."),
+    ("He has built the billing pipeline.", "Built the billing pipeline."),
+    ("Led the team at Acme Corp, where she has built the billing pipeline.",
+     "Led the team at Acme Corp; built the billing pipeline."),
     ("Led his team of 5 engineers on the rewrite.", "Led team of 5 engineers on the rewrite."),
     ("Owned my team's roadmap for Acme Corp.", "Owned team's roadmap for Acme Corp."),
     ("Alex Rivera led the billing rewrite.", "Led the billing rewrite."),
@@ -255,11 +285,57 @@ def test_repair_rewrites(text, expected):
     assert rv.repair(text, NAME, ORGS, conservative=True) == expected  # the same fixes in both modes
 
 
+@pytest.mark.parametrize("text, expected", [
+    ("Owned billing: she built the pipeline.", "Owned billing: built the pipeline."),
+    ("Led the rewrite; HE cut costs 20%.", "Led the rewrite; cut costs 20%."),
+    ("Led the rewrite; he has built billing.", "Led the rewrite; built billing."),
+    ("Platform lead (I led 4 engineers).", "Platform lead (led 4 engineers)."),
+    ("Cut cost - he led the rewrite.", "Cut cost - led the rewrite."),
+    ("Cut cost \u2013 he led the rewrite.", "Cut cost \u2013 led the rewrite."),
+    ("Cut cost \u2014 she led the rewrite.", "Cut cost \u2014 led the rewrite."),
+])
+def test_strict_repair_also_fixes_a_clause_after_a_bracket_dash_semicolon_or_colon(text, expected):
+    assert rv.repair(text, NAME, ORGS) == expected
+
+
+@pytest.mark.parametrize("text", [
+    "Mentored a new hire; she shipped her first feature in 2 weeks.",
+    "Hired Marco as lead; he built the data team to 12.",
+    "Onboarded the CFO: she approved the budget.",
+    "Mentored Priya; doubled her output.",
+    "Mentored Priya, doubled her output.",
+    "Platform lead (I led 4 engineers).",
+    "Cut cost - he led the rewrite.",
+])
+def test_a_base_line_is_only_touched_when_he_she_or_i_starts_a_sentence(text):
+    """On the owner's own line, a he/she after ; : , is usually someone else, and a possessive
+    after another person is theirs: flagged for the health check, never rewritten."""
+    assert rv.repair(text, NAME, ORGS, conservative=True) == text
+    assert rv.blocking(rv.third_person_hits(text, NAME, ORGS, base_line=True)) == []
+    assert rv.third_person_hits(text, NAME, ORGS, base_line=True)  # but the advisory still sees it
+
+
+def test_a_shouted_clause_after_a_semicolon_is_left_alone_on_a_base_line():
+    text = "Led the rewrite; HE cut costs 20%."
+    assert rv.repair(text, NAME, ORGS, conservative=True) == text
+    assert rv.blocking(rv.third_person_hits(text, NAME, ORGS, base_line=True)) == []
+
+
+def test_the_same_text_from_the_model_is_strict():
+    text = "Mentored a new hire; she shipped her first feature in 2 weeks."
+    assert rv.blocking(rv.third_person_hits(text, NAME, ORGS))
+    assert rv.repair(text, NAME, ORGS) != text
+
+
+def test_a_base_line_with_a_sentence_initial_pronoun_or_a_first_clause_possessive_is_still_repaired():
+    assert rv.repair("He built billing. Cut cost.", NAME, ORGS, conservative=True) == "Built billing. Cut cost."
+    assert rv.repair("Led his team of 5.", NAME, ORGS, conservative=True) == "Led team of 5."
+
+
 @pytest.mark.parametrize("text", [
     "Alex brings 8 years of data engineering experience.",          # present tense: not mechanical
     "Alex, a data engineer, built the platform.",
     "He builds billing for Acme Corp.",
-    "Led the team at Acme Corp, where she has built billing.",      # an auxiliary
     "Led the team at Acme Corp, where he leads the billing pipeline.",
     "Her mentoring grew the team.",
     "He is a strong leader.",
@@ -280,7 +356,7 @@ def test_strict_repair_drops_only_the_sentences_it_cannot_fix():
     "Alex Rivera is a data scientist.",
     "Alex brings 8 years of experience.",
     "Her mentoring grew the team.",
-    "Led the team at Acme Corp, where she has built billing.",
+    "Led the team at Acme Corp, where she is building billing.",
 ])
 def test_strict_repair_gives_up_when_nothing_clean_is_left(text):
     assert rv.repair(text, NAME, ORGS) is None
@@ -294,7 +370,6 @@ def test_strict_repair_gives_up_when_nothing_clean_is_left(text):
     "Helped a client grow his business 20%.",
     "Presented Why She Leads at the summit.",
     "Cut cost after he rebuilt the router, saving 20%.",
-    "Platform lead (he built the billing pipeline).",
     "Dr. Rivera Clinic migrated to Postgres.",
     "Cut Heroku spend by 30% across other teams.",
 ])

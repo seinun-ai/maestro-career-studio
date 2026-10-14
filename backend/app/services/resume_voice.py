@@ -144,11 +144,17 @@ def _sentence_bounds(text: str, pos: int) -> tuple[int, int]:
     return start, (pos + m.start() + 1 if m else len(text))
 
 
-def _clause_initial(text: str, pos: int) -> bool:
+_BOUNDARY = r"[.!?;:,]\s+"
+# In text the model or a caller wrote, a bracket or a dash opens a clause too.
+_WIDE_BOUNDARY = r"(?:" + _BOUNDARY + r"|\(\s*|\s[-\u2013\u2014]\s+|[\u2013\u2014]\s*)"
+
+
+def _clause_initial(text: str, pos: int, *, wide: bool = False) -> bool:
     """`pos` opens the text, a sentence, or a clause: after `.` `!` `?` `;` `:` or
-    a comma, each followed by a space."""
+    a comma, each followed by a space. `wide` adds a bracket and a dash."""
     before = text[:pos]
-    return not before.strip(_QUOTES) or bool(re.search(r"[.!?;:,]\s+$", before))
+    pattern = _WIDE_BOUNDARY if wide else _BOUNDARY
+    return not before.strip(_QUOTES) or bool(re.search(pattern + "$", before))
 
 
 def _sentence_initial(text: str, pos: int) -> bool:
@@ -164,19 +170,27 @@ def _verb_after(text: str, end: int) -> bool:
     return bool(m) and _verb_like(m.group(1))
 
 
-def _subject_position(text: str, m: re.Match[str]) -> bool:
-    """A He/She/I that starts a clause, or follows ", where", with a verb next."""
+def _subject_position(text: str, m: re.Match[str], *, base_line: bool = False) -> bool:
+    """A He/She/I that starts a clause, or follows ", where", with a verb next.
+    On a line already on the base only a SENTENCE start counts: after `;` `:` or a
+    comma a he/she is usually someone the owner mentored, hired or onboarded."""
     if not _verb_after(text, m.end()):
         return False
-    return _clause_initial(text, m.start()) or bool(
+    opens = _sentence_initial(text, m.start()) if base_line else _clause_initial(
+        text, m.start(), wide=True)
+    return opens or bool(
         re.search(r",\s*where\s+$", text[: m.start()], re.IGNORECASE)
     )
 
 
-def _possessive_position(text: str, m: re.Match[str], *, shouted: bool) -> bool:
+def _possessive_position(
+    text: str, m: re.Match[str], *, shouted: bool, base_line: bool = False
+) -> bool:
     """His/her/my that directly modifies a noun in the owner's role: opening a
     clause ("My work reduced…") or right after the clause's verb ("Led his
-    team"). "Helped a client grow his business" is someone else's."""
+    team"). "Helped a client grow his business" is someone else's. On a base line
+    only the sentence's first clause counts: "Mentored Priya; doubled her output"
+    is Priya's."""
     word = m.group(0).lower()
     nxt = re.match(r"\s+([A-Za-z][\w'\u2019-]*)", text[m.end():])
     if not nxt or not nxt.group(1)[0].islower() or nxt.group(1) in _FUNCTION_WORDS:
@@ -184,7 +198,12 @@ def _possessive_position(text: str, m: re.Match[str], *, shouted: bool) -> bool:
     if word == "her" and nxt.group(1) in _OBJECT_FOLLOWERS:
         return False
     before = text[: m.start()]
-    cut = max((c.end() for c in re.finditer(r"[.!?;:,]\s+", before)), default=0)
+    if base_line:
+        sentence = before[max((c.end() for c in re.finditer(r"[.!?]\s+", before)), default=0):]
+        if re.search(_WIDE_BOUNDARY, sentence):
+            return False
+    cut = max((c.end() for c in re.finditer(_WIDE_BOUNDARY if not base_line else _BOUNDARY, before)),
+              default=0)
     words = before[cut:].strip(_QUOTES).split()
     if not words:
         return True
@@ -214,29 +233,34 @@ def _mask(text: str, names: Iterable[str]) -> str:
     return masked
 
 
-def _given_name_opens_clause(masked: str, m: re.Match[str]) -> bool:
+def _given_name_opens_clause(masked: str, m: re.Match[str], *, base_line: bool = False) -> bool:
     """"Alex brings 8 years…", "…; Alex cut costs", "Alex, a data engineer, built…":
     the given name opens a sentence or clause, then a lower-case word or a comma.
     A name list ("Led Priya, Alex and Sam") is not that."""
-    if not _clause_initial(masked, m.start()):
+    if not _clause_initial(masked, m.start(), wide=not base_line):
         return False
     tail = masked[m.end():]
     word = re.match(r"\s+([a-z][\w'\u2019-]*)", tail)
     if word and word.group(1) not in _FUNCTION_WORDS:
         return True
     if tail.startswith(","):
+        # "Austin, TX" and "Austin, Texas" are places; "Alex, a data engineer," is not.
+        if not re.match(r",\s+[a-z]", tail):
+            return False
         before = masked[: m.start()]
         return not before.strip(_QUOTES) or bool(re.search(r"[.!?;:]\s+$", before))
     return False
 
 
-def _token_hit(masked: str, m: re.Match[str], tokens: list[str], *, given: bool) -> str | None:
-    """How a single name token reads. The given name (first token) is a
-    "name_token" when it opens a clause as a subject. A surname is one in subject
-    or possessive position. Beside another capitalised word that is not part of
-    the name ("Wells Fargo", "Ann Arbor", "Lee & Partners") it is no hit at all;
-    anywhere else it is the flag-only "name_mention"."""
-    if given and _given_name_opens_clause(masked, m):
+def _token_hit(
+    masked: str, m: re.Match[str], tokens: list[str], *, given: bool, base_line: bool = False
+) -> str | None:
+    """How a single name token reads. Only the given name (the first token) can
+    block, as "name_token", when it opens a clause as a subject. A surname acting
+    or possessing ("Shah built", "Ford's EV team") is the flag-only "name_mention",
+    and beside another capitalised word that is not part of the name ("Wells
+    Fargo", "Ann Arbor", "Lee & Partners") it is no hit at all."""
+    if given and _given_name_opens_clause(masked, m, base_line=base_line):
         return "name_token"
     others = {t.lower() for t in tokens}
     before = re.search(r"([A-Za-z&][\w'\u2019&-]*)\s+$", masked[: m.start()])
@@ -251,23 +275,11 @@ def _token_hit(masked: str, m: re.Match[str], tokens: list[str], *, given: bool)
                 and not _verb_like(word)
             ):
                 return None
-    tail = masked[m.end():]
-    if tail.startswith(("'s", "\u2019s")):
-        return "name_token"
-    following = after.group(1) if after else ""
-    if following.lower() in {"is", "has", "was", "does"}:
-        return "name_token"
-    if following and _verb_like(following):
-        start, _ = _sentence_bounds(masked, m.start())
-        lead = masked[start:m.start()].strip(" \t\"'(")
-        prior = lead.split()[-1].lower() if lead.split() else ""
-        if not lead or prior in _NAME_CONNECTORS:
-            return "name_token"
     return "name_mention"
 
 
 def third_person_hits(
-    text: str, name: str = "", orgs: Iterable[str] = ()
+    text: str, name: str = "", orgs: Iterable[str] = (), *, base_line: bool = False
 ) -> list[VoiceHit]:
     """Every place `text` stops being the owner's implied first person, or might.
 
@@ -279,7 +291,11 @@ def third_person_hits(
     blocked or rewritten.
 
     `orgs` (company, school, project names) are blanked first, so a contact name
-    inside "Rivera Logistics" and a company called "Her Campus" are safe."""
+    inside "Rivera Logistics" and a company called "Her Campus" are safe.
+
+    `base_line` is for a line already on the base, the owner's own words: a
+    he/she counts only at a sentence start, a possessive only in the sentence's
+    first clause, and brackets and dashes do not open clauses."""
     if not text:
         return []
     hits: list[VoiceHit] = []
@@ -288,16 +304,20 @@ def third_person_hits(
     for m in _PRONOUN.finditer(masked):
         word = m.group(0)
         low, shouted = word.lower(), word.isupper() and len(word) > 1
-        if low in {"he", "she"} and _subject_position(masked, m):
+        if low in {"he", "she"} and _subject_position(masked, m, base_line=base_line):
             hits.append(VoiceHit("pronoun", word, m.start(), m.end()))
-        elif low in {"his", "her"} and _possessive_position(masked, m, shouted=shouted):
+        elif low in {"his", "her"} and _possessive_position(
+            masked, m, shouted=shouted, base_line=base_line
+        ):
             hits.append(VoiceHit("pronoun", word, m.start(), m.end()))
         elif not shouted:  # "HE", "HIS": an acronym
             hits.append(VoiceHit("pronoun_mention", word, m.start(), m.end()))
     for m in _MY.finditer(masked):
         word = m.group(0)
         shouted = word == "MY"
-        if word != "myself" and _possessive_position(masked, m, shouted=shouted):
+        if word != "myself" and _possessive_position(
+            masked, m, shouted=shouted, base_line=base_line
+        ):
             hits.append(VoiceHit("first_person", word, m.start(), m.end()))
         elif not shouted:
             hits.append(VoiceHit("pronoun_mention", word, m.start(), m.end()))
@@ -310,7 +330,7 @@ def third_person_hits(
         prev = re.search(r"([A-Za-z][\w'\u2019-]*)\s+$", masked[: m.start()])
         if prev and prev.group(1)[0].isupper() and prev.group(1).lower() not in _SENTENCE_ADVERBS:
             continue  # "Analyst I", "Engineer I": a numeral
-        if _subject_position(masked, m):
+        if _subject_position(masked, m, base_line=base_line):
             hits.append(VoiceHit("first_person", "I", m.start(), m.end()))
         else:
             hits.append(VoiceHit("pronoun_mention", "I", m.start(), m.end()))
@@ -332,7 +352,7 @@ def third_person_hits(
                     continue
                 if any(a <= m.start() < b for a, b in taken):
                     continue
-                kind = _token_hit(masked, m, tokens, given=index == 0)
+                kind = _token_hit(masked, m, tokens, given=index == 0, base_line=base_line)
                 if kind:
                     hits.append(VoiceHit(kind, m.group(0), m.start(), m.end()))
 
@@ -384,7 +404,13 @@ def _capitalize(s: str) -> str:
     return s[:1].upper() + s[1:]
 
 
-def _fix_once(s: str, hit: VoiceHit) -> str | None:
+# Past participles that differ from the simple past: "He has taken", "I have grown".
+_PARTICIPLES = frozenset("taken grown done begun written driven chosen given seen spoken broken "
+                         "fallen known shown gotten been".split())
+_AUX = re.compile(r"(?:['\u2019](?:ve|s|d)|\s+(?:has|have|had))\s+(?P<verb>[A-Za-z]+)")
+
+
+def _fix_once(s: str, hit: VoiceHit, *, wide: bool = True) -> str | None:
     """One mechanical fix for `hit` in the single sentence `s`, or None when
     anything else would be needed. The only rewrites there are:
     - "He/She/I built X" -> "Built X" (a clause-initial subject before a past verb);
@@ -396,13 +422,20 @@ def _fix_once(s: str, hit: VoiceHit) -> str | None:
     after = re.match(r"(\s+)([A-Za-z]+)", s[hit.end:])
 
     if hit.kind in {"name", "name_token"} or low in {"he", "she", "i"}:
-        if not after or not _is_past(after.group(2)):
+        rest = None
+        if after and _is_past(after.group(2)):
+            rest = s[hit.end + len(after.group(1)):]
+        elif hit.kind in {"pronoun", "first_person"}:
+            # "I've built", "He's built", "He has built": drop the auxiliary too
+            aux = _AUX.match(s, hit.end)
+            if aux and (_is_past(aux.group("verb")) or aux.group("verb").lower() in _PARTICIPLES):
+                rest = s[aux.start("verb"):]
+        if rest is None:
             return None
         where = re.search(r",\s*where\s+$", s[: hit.start], re.IGNORECASE)
-        rest = s[hit.end + len(after.group(1)):]
         if where and hit.kind in {"pronoun", "first_person"}:
             return f"{s[: where.start()]}; {rest}"
-        if not _clause_initial(s, hit.start):
+        if not _clause_initial(s, hit.start, wide=wide):
             return None
         fixed = s[: hit.start] + rest
         if _sentence_initial(s, hit.start):
@@ -410,20 +443,22 @@ def _fix_once(s: str, hit: VoiceHit) -> str | None:
         return fixed
 
     if low in {"his", "her", "my"}:
-        if _clause_initial(s, hit.start):
+        if _clause_initial(s, hit.start, wide=wide):
             return None  # "Her team grew…": no subject left once the possessive goes
         return s[: hit.start] + s[hit.end:].lstrip()
 
     return None
 
 
-def repair_sentence(s: str, name: str = "", orgs: Iterable[str] = ()) -> str | None:
+def repair_sentence(
+    s: str, name: str = "", orgs: Iterable[str] = (), *, base_line: bool = False
+) -> str | None:
     orgs = list(orgs)
     for _ in range(10):
-        hits = blocking(third_person_hits(s, name, orgs))
+        hits = blocking(third_person_hits(s, name, orgs, base_line=base_line))
         if not hits:
             return _tidy(s) or None
-        fixed = _fix_once(s, hits[0])
+        fixed = _fix_once(s, hits[0], wide=not base_line)
         if fixed is None or fixed == s:
             return None
         s = fixed
@@ -441,14 +476,14 @@ def repair(
     already on the base: a sentence that cannot be fixed is kept as written, and
     text always comes back."""
     orgs = list(orgs)
-    if not blocking(third_person_hits(text, name, orgs)):
+    if not blocking(third_person_hits(text, name, orgs, base_line=conservative)):
         return text
     kept: list[str] = []
     for sentence in re.split(r"(?<=[.!?])\s+", text.strip()):
-        if not blocking(third_person_hits(sentence, name, orgs)):
+        if not blocking(third_person_hits(sentence, name, orgs, base_line=conservative)):
             kept.append(sentence)
             continue
-        fixed = repair_sentence(sentence, name, orgs)
+        fixed = repair_sentence(sentence, name, orgs, base_line=conservative)
         if fixed and len(fixed.split()) >= 2:
             if sentence.rstrip().endswith((".", "!", "?")) and not fixed.endswith((".", "!", "?")):
                 fixed += sentence.rstrip()[-1]
@@ -530,9 +565,10 @@ def changed_hits(
     orgs = org_names(base) + org_names(customized)
     found = []
     for path, text in slots(customized):
-        if (path != ("summary",) or not summary_always) and base_at.get(path) == text:
+        unchanged = base_at.get(path) == text
+        if unchanged and (path != ("summary",) or not summary_always):
             continue
-        hits = blocking(third_person_hits(text, name, orgs))
+        hits = blocking(third_person_hits(text, name, orgs, base_line=unchanged))
         if hits:
             found.append((path, text, hits))
     return found

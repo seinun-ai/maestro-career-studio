@@ -461,3 +461,41 @@ def test_unchanged_lines_about_other_people_are_stored_byte_for_byte(
     assert len(calls) == 1
     assert stored["experience"][0]["bullets"] == lines
     assert response.json()["voice_repairs"] == []
+
+
+def test_base_bullets_where_the_pronoun_follows_a_semicolon_or_colon_are_stored_byte_for_byte(
+    db_session, tmp_path, monkeypatch, client
+):
+    """"; she shipped her first feature" is about the new hire. On the owner's own line a
+    he/she after ; : , is flagged for the health check, never rewritten."""
+    lines = ["Mentored a new hire; she shipped her first feature in 2 weeks.",
+             "Hired Marco as lead; he built the data team to 12.",
+             "Onboarded the CFO: she approved the budget."]
+    base = {**BASE, "summary": "Data engineer who onboarded the CFO: she approved the budget.",
+            "experience": [{**BASE["experience"][0], "bullets": list(lines)}]}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex14", resume_json=base)
+    created = _open_session(client, job, slug, resolutions=[KEYWORD])
+    calls = _scripted(monkeypatch, [ADD_KEYWORD])
+
+    response = _tailor(client, created["id"])
+
+    stored = _stored(db_session, response)
+    assert len(calls) == 1  # an unchanged base line is not a reason to ask the model again
+    assert stored["experience"][0]["bullets"] == lines
+    assert stored["summary"] == base["summary"]
+    assert response.json()["voice_repairs"] == []
+
+
+def test_the_model_writing_the_same_clause_is_still_retried(db_session, tmp_path, monkeypatch, client):
+    created = _setup(db_session, tmp_path, monkeypatch, client)
+    calls = _scripted(
+        monkeypatch,
+        [ADD_KEYWORD, _bullet("Led the routing rewrite; he shipped it to 12 teams.")],
+        [ADD_KEYWORD, _bullet("Led the routing rewrite and shipped it to 12 teams.")],
+    )
+
+    stored = _stored(db_session, _tailor(client, created["id"]))
+
+    assert len(calls) == 2
+    assert stored["experience"][0]["bullets"] == ["Led the routing rewrite and shipped it to 12 teams."]
