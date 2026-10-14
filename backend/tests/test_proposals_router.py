@@ -884,3 +884,37 @@ def test_a_relink_hands_the_old_draft_back_to_the_user_lane(db_session):
     db_session.expire_all()
     assert db_session.get(Application, first.id).source == "user"
     assert db_session.get(Application, newer.id).source == "agent"
+
+
+def _applied_then(db_session, company, back_to):
+    """A queued job whose draft the user marked applied (closing the proposal as applied manually),
+    then set to ``back_to``."""
+    job = _mk_job(db_session, company=company)
+    pid = client.post("/api/proposals", json={"job_id": str(job.id)}).json()["id"]
+    app_row = Application(job_id=job.id, base_resume="hybrid", status="draft")
+    db_session.add(app_row)
+    db_session.commit()
+    for status in ("applied", back_to):
+        r = client.patch(f"/api/applications/{app_row.id}", json={"status": status})
+        assert r.status_code == 200, r.text
+    db_session.expire_all()
+    assert db_session.get(ApplicationProposal, UUID(pid)).status == "rejected"
+    return job, app_row
+
+
+def test_a_job_marked_applied_then_set_back_to_draft_queues_again(db_session):
+    # Live check 2026-10-14: Applied, then back to Draft, then Apply in the Companion said "You skipped
+    # this job before". Closing a proposal because the user applied is not a skip; once no application
+    # of the job is in a submitted stage, it no longer blocks a new queue.
+    job, app_row = _applied_then(db_session, "AppliedBackCo", "draft")
+    r = client.post("/api/proposals", json={"job_id": str(job.id), "application_id": str(app_row.id)})
+    assert r.status_code == 201, r.text
+
+
+def test_a_job_still_marked_applied_does_not_queue_and_says_why(db_session):
+    job, app_row = _applied_then(db_session, "StillAppliedCo", "interviewing")
+    r = client.post("/api/proposals", json={"job_id": str(job.id)})
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert "skipped" not in detail
+    assert "marked this job applied" in detail

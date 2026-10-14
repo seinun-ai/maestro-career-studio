@@ -32,7 +32,7 @@ from app.schemas.proposal import (
 )
 from app.services.sync import hooks, requests as sync_requests
 from app.services.sync import ownership as sync_ownership
-from app.services import artifacts, auto_apply_settings, inbox_readiness, proposal_evidence
+from app.services import application_status, artifacts, auto_apply_settings, inbox_readiness, proposal_evidence
 from app.services import proposals as svc
 from app.write_origin import WriteOrigin, get_write_origin
 
@@ -173,18 +173,32 @@ def create_proposal(
     # Owner decision 2026-08-01 (design G3): a decline is scoped to that unique
     # posting and never implicates the company — the explicit blocklist above is
     # the only company-level gate. Deleting the rejected proposal is the reset.
-    declined = db.scalar(
-        select(ApplicationProposal.id)
+    # A proposal closed because the user marked the job applied is not a skip: it blocks only
+    # while an application of the job still says it was sent (Applied, then back to Draft,
+    # queues again).
+    declined = db.scalars(
+        select(ApplicationProposal.reason)
         .where(
             ApplicationProposal.job_id == payload.job_id,
             ApplicationProposal.status == "rejected",
         )
-        .limit(1)
-    )
-    if declined:
+    ).all()
+    if any(reason != svc.APPLIED_MANUALLY for reason in declined):
         raise HTTPException(
             409, detail="You skipped this job before. Delete the skipped proposal in the "
             "Agent inbox to queue it again.",
+        )
+    if declined and db.scalar(
+        select(Application.id)
+        .where(
+            Application.job_id == payload.job_id,
+            Application.status.in_(application_status.SUBMITTED_STAGES),
+        )
+        .limit(1)
+    ):
+        raise HTTPException(
+            409, detail="You marked this job applied. Set its application back to Draft to "
+            "queue it again.",
         )
 
     if payload.application_id is not None:
