@@ -3405,6 +3405,23 @@ def test_a_typed_siblings_key_counts_from_two_characters(page, load):
     assert labels(trace) == {"a": ("Years", None), "b": ("Experience 2", None), "c": ("State", None), "d": ("", None)}
 
 
+@pytest.mark.parametrize("word", ["Mobile", "Home", "Work", "Other", "None", "Business"])
+def test_a_common_option_word_answered_in_one_row_does_not_blank_another_rows_label(page, load, word):
+    """Live 2026-10-14: a phone type answered "Mobile" blanked "Have you worked for T-Mobile?" in the log."""
+    trace = build_trace(page, load, [
+        brow("a", "Phone Device Type", "select", value=word),
+        brow("b", f"Have you worked for Acme-{word}?", section=f"{word} history"),
+        brow("c", "Email", value="ada@example.test"),
+        brow("d", "Write to ada@example.test")])
+    assert labels(trace) == {"a": ("Phone Device Type", None), "b": (f"Have you worked for Acme-{word}?", f"{word} history"),
+                             "c": ("Email", None), "d": ("", None)}
+
+
+def test_a_common_option_word_still_blanks_the_label_of_the_row_that_holds_it(page, load):
+    trace = build_trace(page, load, [brow("a", "Type: Mobile", "select", value="Mobile")])
+    assert labels(trace) == {"a": ("", None)}
+
+
 def test_a_four_character_choice_answer_blanks_a_sibling_label(page, load):
     trace = build_trace(page, load, [brow("a", "Pick", "select", value="Maybe"), brow("b", "Maybe later")])
     assert labels(trace) == {"a": ("Pick", None), "b": ("", None)}

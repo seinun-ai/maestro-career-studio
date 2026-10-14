@@ -2354,7 +2354,13 @@
     const plain = plainKey(row);
     return denyKeys([row.answer, row.value, row.wrote, row.leftover, row.field?.committed]).filter((key) => !plain(key));
   };
-  const siblingKeys = (row) => rowKeys(row).filter((k) => k.length >= (TYPED_SHAPES.has(row.field?.shape)
+  // A word every form uses as an OPTION ("Mobile" for a phone type) says nothing about the applicant, and as
+  // another row's deny key it blanked "T-Mobile" out of a question in the log. The row that holds it still
+  // blanks its own label (`rowKeys`); only what it does to OTHER rows' labels and option lists is dropped.
+  const COMMON_OPTION_WORDS = new Set(["yes", "no", "true", "false", "mobile", "home", "work", "other", "none", "cell",
+    "office", "personal", "business"]);
+  const foreignKey = (key) => !COMMON_OPTION_WORDS.has(key.trim().toLowerCase());
+  const siblingKeys = (row) => rowKeys(row).filter((k) => foreignKey(k) && k.length >= (TYPED_SHAPES.has(row.field?.shape)
     ? MIN_TYPED_SIBLING_KEY : MIN_SIBLING_KEY));
   // Option texts are screened against TYPED siblings' keys only: text, date and
   // search rows, 4+ characters (a dependent select can list what was typed
@@ -2365,7 +2371,7 @@
   // Answers, per row, the pattern for that row's option texts (null: none).
   const optionScreen = (rows) => {
     const typedKeys = new Map([...rows.values()].map((r) => [r, TYPED_OPTION_SHAPES.has(r.field?.shape)
-      ? rowKeys(r).filter((k) => k.length >= MIN_OPTION_KEY) : []]));
+      ? rowKeys(r).filter((k) => foreignKey(k) && k.length >= MIN_OPTION_KEY) : []]));
     const every = [...new Set([...typedKeys.values()].flat())];
     const all = denyRegex(every);
     return (row) => {
