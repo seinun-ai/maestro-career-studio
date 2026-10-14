@@ -281,6 +281,21 @@ def test_a_final_ask_on_a_years_popup_never_reaches_the_adaptive_step(page, load
     assert actions(out, "move") == []
 
 
+def test_a_final_ask_on_a_protected_veteran_popup_never_reaches_the_adaptive_step(page, load):
+    """/pick leaves a protected-class list for a saved Yes with the final "asked": the popup is not handed to
+    /step (which enforces the same rule itself, but a click it cannot make is a click not tried)."""
+    out = run(page, load, frames=[[f("v", "popup", "Protected veteran status")]],
+              map={"v": {"route": "slot", "slot": "eeo.veteran_status", "value": "Yes, I am a veteran"}},
+              explore={"v": {"options": [opt("o1", "I identify as one or more of the classifications of protected veterans"),
+                                         opt("o2", "I am not a protected veteran")], "complete": True}},
+              pick={"v": {"oids": [], "reason": "asked"}}, apply={"click:o1": {"outcome": "verified"}},
+              step={"states": [{"version": 1, "complete": True, "candidates": [
+                  {"mid": "click:o1", "describe": 'Click the option "I identify as one or more of the classifications"'}]}],
+                    "moves": [{"mid": "click:o1", "reason": "matched"}]})
+    assert statuses(out) == {"v": "needs_answer"}
+    assert "/api/autofill/step" not in out["calls"] and actions(out, "move") == []
+
+
 def test_an_ordinary_abstain_on_the_same_popup_still_adapts(page, load):
     out = run(page, load, frames=[[f("y", "popup", "Do you have 5+ years of experience with SQL?")]],
               pick={"y": {"oids": [], "reason": "abstained"}}, **YEARS_POPUP)

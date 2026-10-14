@@ -403,28 +403,38 @@ _ASKS_PROTECTED_CLASS = re.compile(r"\bprotected\s+veterans?\b|\bclassifications
                                    re.IGNORECASE)
 
 
-def _veteran_claims(fields: list[PickField], facts: dict[str, Fact], out: dict[str, Picked]) -> None:
-    """Take back a veteran pick that says more than the saved answer does. After a No: an option that
-    claims veteran status. After a Yes: any pick on a question about protected classes, or among options
-    that name one (the chosen option or any other of the list). Left to the user."""
-    fact = facts.get(VETERAN_SLOT)
+def veteran_said(fact: Fact | None) -> str | None:
+    """"Yes" or "No" when the saved veteran answer is one (a decline is neither), else None."""
     if fact is None or not isinstance(fact.value, str):
-        return
+        return None
     said = yes_no_word(fact.value).split(",", 1)[0]
-    if said not in ("No", "Yes"):
+    return said if said in ("No", "Yes") else None
+
+
+def veteran_overreach(said: str, question: str, options: list[str], chosen: str | None = None) -> bool:
+    """Whether choosing `chosen` (or, with None, answering at all) would say more than a saved `said`
+    does. After a No: a chosen option that claims veteran status. After a Yes: a question about
+    protected classes, or any option, offered or chosen, that names one."""
+    if said == "No":
+        return bool(chosen and _CLAIMS_VETERAN.search(chosen))
+    return (bool(_ASKS_PROTECTED_CLASS.search(question))
+            or any(_NAMES_PROTECTED_CLASS.search(text) for text in (*options, *([chosen] if chosen else []))))
+
+
+def _veteran_claims(fields: list[PickField], facts: dict[str, Fact], out: dict[str, Picked]) -> None:
+    """Take back a veteran pick that says more than the saved answer does (`veteran_overreach`). The
+    abstain is FINAL ("asked"): /step must not take the field over, and it enforces the same rule
+    itself. Left to the user."""
+    said = veteran_said(facts.get(VETERAN_SLOT))
+    if said is None:
         return
     for f in fields:
         picked = out.get(f.fid)
-        if f.slot != VETERAN_SLOT or picked is None or not picked.oids:
+        if f.slot != VETERAN_SLOT or picked is None or picked.reason == "asked":
             continue
-        text = next((o.text for o in f.options if o.oid == picked.oids[0]), "")
-        if said == "No":
-            wrong = bool(_CLAIMS_VETERAN.search(text))
-        else:
-            wrong = (bool(_ASKS_PROTECTED_CLASS.search(f.question))
-                     or any(_NAMES_PROTECTED_CLASS.search(o.text) for o in f.options))
-        if wrong:
-            out[f.fid] = picked.model_copy(update={"oids": [], "reason": "abstained"})
+        text = next((o.text for o in f.options if picked.oids and o.oid == picked.oids[0]), None)
+        if veteran_overreach(said, f.question, [o.text for o in f.options], text):
+            out[f.fid] = picked.model_copy(update={"oids": [], "reason": "asked"})
 
 
 def named_employers(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Fact]]:

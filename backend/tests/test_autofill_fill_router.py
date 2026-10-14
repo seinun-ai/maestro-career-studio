@@ -667,3 +667,34 @@ def test_step_goal_says_yes_when_the_question_names_an_employer_of_the_history(d
         goals[fid] = calls[-1]["questions"][fid]["instructions"]
     assert f"the answer to the question is {json.dumps('Yes, previously')}" in goals["w"]
     assert f"the answer to the question is {json.dumps('No')}" in goals["k"]
+
+
+# ---------- the veteran fallback: /pick leaves a protected-class popup for good, and /step cannot take it over
+
+def test_a_saved_yes_never_reaches_a_protected_class_through_pick_then_step(db_session, monkeypatch, tmp_path):
+    """The loop asks /pick, and for a popup /pick left it falls back to /step. Both are real routes here, both
+    models are scripted to choose the class, and the saved answer is Yes."""
+    from tests.test_autofill_pick import fake_jev as pick_jev
+    from tests.test_autofill_step import fake_jev as step_jev
+
+    monkeypatch.setattr(settings, "settings_dir", tmp_path)
+    autofill_profile.set_profile({"eeo": {"veteran_status": "yes"}}, db_session)
+    eeo_consent.set_consent(EeoConsent(enabled=True, policy_version="1"), db_session)
+    model_settings.set_jev_api_key(db_session, "sk-or-test")
+    model_settings.set_autofill_engine(db_session, "jev")
+    classes = ["I identify as one or more of the classifications of protected veterans listed above",
+               "I am not a protected veteran"]
+    pick_jev(monkeypatch, {"v": ("o1", 0.99)}, ways={"v": ("same", 0.99)})
+    field = {"fid": "v", "question": "Protected veteran status", "route": "slot", "slot": "eeo.veteran_status",
+             "options": [{"oid": f"o{i}", "text": t} for i, t in enumerate(classes, 1)]}
+    picked = _post(db_session, "/api/autofill/pick", {"fields": [field]}).json()["picks"]["v"]
+    # FINAL ("asked"): the loop does not fall back to /step for it.
+    assert (picked["oids"], picked["reason"]) == ([], "asked")
+
+    # A loop version that did fall back still gets nothing.
+    step_jev(monkeypatch, ("click:o1", 0.99), way=("same", 0.99))
+    step = {"fid": "v", "question": "Protected veteran status", "route": "slot", "slot": "eeo.veteran_status",
+            "candidates": [{"mid": f"click:o{i}", "describe": f'Click the option "{t}"'}
+                           for i, t in enumerate(classes, 1)] + [{"mid": "give_up", "describe": "Stop"}]}
+    got = _post(db_session, "/api/autofill/step", step).json()
+    assert (got["mid"], got["reason"]) == (None, "abstained")

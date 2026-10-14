@@ -1253,7 +1253,7 @@ def test_a_no_never_lands_on_an_option_that_claims_to_be_a_veteran(db_session, m
     fake_jev(monkeypatch, {"v": ("o1", 0.99)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question="Veteran Status", slot="eeo.veteran_status",
                                  options=opts(claim, "I am not a Veteran."))], facts, db_session, None)
-    assert got["v"].oids == [] and got["v"].reason == "abstained"
+    assert got["v"].oids == [] and got["v"].reason == "asked"
 
 
 # VEVRAA's protected classes, as forms word them (with or without the word "protected").
@@ -1281,7 +1281,17 @@ def test_a_yes_alone_never_picks_a_protected_class(db_session, monkeypatch, ques
     fake_jev(monkeypatch, {"v": (f"o{wanted}", 0.99)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question=question, slot="eeo.veteran_status", options=opts(*options))],
                              facts, db_session, None)
-    assert got["v"].oids == [] and got["v"].reason == "abstained"
+    assert got["v"].oids == [] and got["v"].reason == "asked"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_yes_on_a_protected_class_list_is_final_even_when_the_model_chose_nothing(db_session, monkeypatch):
+    """"asked" is /pick's FINAL abstain: the loop must not hand the popup to /step."""
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
+    fake_jev(monkeypatch, {"v": ("none", 0.95)}, ways={"v": ("same", 0.95)})
+    got = autofill_pick.pick([pf("v", question="Protected veteran status", slot="eeo.veteran_status",
+                                 options=opts(*MILITARY))], facts, db_session, None)
+    assert got["v"].oids == [] and got["v"].reason == "asked"
 
 
 @pytest.mark.usefixtures("jev_on")

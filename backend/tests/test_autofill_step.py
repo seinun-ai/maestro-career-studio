@@ -1083,3 +1083,52 @@ def test_no_shown_option_text_reaches_the_log_or_the_trace(db_session, monkeypat
         ok = autofill_step.step(r, FACTS, db_session, None)
     assert "Zanzibar" not in caplog.text
     assert all("Zanzibar" not in x.model_dump_json() for x in (failed, ok))
+
+
+# ---------- a saved veteran answer says no more in /step than in /pick (the fallback for a popup /pick left)
+
+def _veteran_req(question, *options):
+    return req(slot="eeo.veteran_status", question=question,
+               candidates=[{"mid": f"click:o{i}", "describe": f'Click the option "{o}"'} for i, o in enumerate(options, 1)]
+               + cands(GIVE_UP))
+
+
+CLASSES = ("I identify as one or more of the classifications of protected veterans listed above",
+           "I am not a protected veteran", "I don't wish to answer")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question, options", [
+    ("Protected veteran status", CLASSES),
+    ("Veteran Status", ("Disabled veteran", "I am not a veteran")),
+    ("Veteran Status", ("I am a veteran", "Armed Forces service medal veteran", "I am not a veteran")),
+    ("Are you a protected veteran?", ("Yes", "No")),
+])
+def test_a_yes_never_clicks_a_protected_class_in_step(db_session, monkeypatch, question, options):
+    """Regression: /pick's abstain on a protected-class popup fell through to /step, which had no veteran
+    guard and clicked the class for a saved Yes."""
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
+    fake_jev(monkeypatch, ("click:o1", 0.99))
+    got = sans_trace(autofill_step.step(_veteran_req(question, *options), facts, db_session, None))
+    assert got == {"mid": None, "reason": "abstained"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_yes_still_clicks_a_plain_veteran_option_in_step(db_session, monkeypatch):
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
+    fake_jev(monkeypatch, ("click:o1", 0.99))
+    got = sans_trace(autofill_step.step(_veteran_req("Are you a veteran?", "Yes, I am a veteran", "No, I am not a veteran"),
+                                        facts, db_session, None))
+    assert got == {"mid": "click:o1", "reason": "matched"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_no_never_clicks_an_option_that_claims_to_be_a_veteran_in_step(db_session, monkeypatch):
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
+    fake_jev(monkeypatch, ("click:o1", 0.99))
+    options = ("I am a Veteran, but not a Protected Veteran", "I am not a Veteran.")
+    got = sans_trace(autofill_step.step(_veteran_req("Veteran Status", *options), facts, db_session, None))
+    assert got == {"mid": None, "reason": "abstained"}
+    fake_jev(monkeypatch, ("click:o2", 0.99))
+    got = sans_trace(autofill_step.step(_veteran_req("Veteran Status", *options), facts, db_session, None))
+    assert got == {"mid": "click:o2", "reason": "matched"}

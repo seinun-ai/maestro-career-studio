@@ -50,6 +50,7 @@ from app.services.autofill_map import (
 )
 from app.services.autofill_pick import (
     NEVER_YES_NO,
+    VETERAN_SLOT,
     Computed,
     JobHint,
     polarity_answers,
@@ -57,6 +58,8 @@ from app.services.autofill_pick import (
     polarity_ways,
     values_for,
     verdict,
+    veteran_overreach,
+    veteran_said,
 )
 from app.services.autofill_techniques import CARDS
 
@@ -278,6 +281,15 @@ def _with_term(req: StepRequest, ask: _Ask, session: Session, budget: Budget, mo
     return moved.model_copy(update={"term": term}) if term else giving_up
 
 
+_OPTION_QUOTED = re.compile(r'"(.*)"')
+
+
+def _option_text(describe: str) -> str | None:
+    """The option a candidate's description quotes ('Click the option "Yes"'), if it quotes one."""
+    m = _OPTION_QUOTED.search(describe)
+    return m[1] if m else None
+
+
 def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> StepResponse:
     budget = Budget()
@@ -311,10 +323,18 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         answer = polarity_answers([req], facts, ways).get(req.fid)
         if answer is None:
             return StepResponse(mid=None, reason="abstained", polarity=polarity)
+    # A saved veteran answer says no more here than /pick lets it (`veteran_overreach`): /step is where a
+    # field /pick left to the user lands, and must never choose a protected class for a Yes.
+    said = veteran_said(fact) if req.slot == VETERAN_SLOT else None
+    shown = {c.mid: _option_text(c.describe) for c in req.candidates}
+    if said and veteran_overreach(said, req.question, [t for t in shown.values() if t]):
+        return StepResponse(mid=None, reason="abstained", polarity=polarity)
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
     goal = _goal(req, values, hint, facts, answer, level=level, queued=queued)
     ask = _Ask(goal=goal, instructions=_instructions(goal, req),
                state={"job": asdict(hint) if hint else None, "history": req.history},
                criteria=criteria, policy=policy)
     moved = _with_term(req, ask, session, budget, _move(req, ask, session, budget))
+    if said and veteran_overreach(said, req.question, [], shown.get(moved.mid or "")):
+        return StepResponse(mid=None, reason="abstained", polarity=polarity)
     return moved.model_copy(update={"polarity": polarity})
