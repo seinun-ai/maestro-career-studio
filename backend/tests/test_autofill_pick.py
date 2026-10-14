@@ -1932,3 +1932,33 @@ def test_a_saved_custom_yes_no_row_never_answers_a_veteran_class_question(db_ses
     got = autofill_pick.pick([pf("v", question="Are you a veteran?", slot="custom.0", options=opts("Yes", "No"))],
                              facts, db_session, None)
     assert got["v"].oids == ["o1"]
+
+
+# ---------- N2: the owner's safe-default rule reaches /pick (2026-10-14)
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_low_stakes_pick_states_both_safe_default_directions_and_answers_no_or_yes_as_assumed(db_session, monkeypatch):
+    model_settings.set_answer_level(db_session, "history")
+    calls = fake_jev(monkeypatch, {"t": ("o2", 0.9), "b": ("o1", 0.9)})
+    got = pick([pf("t", question="Are you a member of a federally recognized tribe?", route="low_stakes",
+                   options=opts("Yes", "No")),
+                pf("b", question="Are you willing to submit to a background check?", route="low_stakes",
+                   options=opts("Yes", "No"))], db_session)
+    for fid in ("t", "b"):
+        text = calls[0]["questions"][fid]["instructions"]
+        assert "No, or Not applicable when it is offered" in text and "Yes to willingness" in text
+    # A guess, reported as one: the receipt shows it as inferred, under "Check before you submit".
+    assert (got["t"].oids, got["t"].reason) == (["o2"], "assumed")
+    assert (got["b"].oids, got["b"].reason) == (["o1"], "assumed")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_tribal_question_never_reads_the_eeo_facts(db_session, monkeypatch):
+    """No: the safe default is No, never inferred from race or ethnicity. A low-stakes pick carries no fact."""
+    model_settings.set_answer_level(db_session, "history")
+    facts = autofill_catalog.build({"eeo": {"race_ethnicity": ["Native American"], "gender": "female"}}, [], [])
+    calls = fake_jev(monkeypatch)
+    autofill_pick.pick([pf("t", question="Are you a member of a federally recognized tribe?", route="low_stakes",
+                           options=opts("Yes", "No", "Not applicable"))], facts, db_session, None)
+    seen = json.dumps(calls[0])
+    assert "Native American" not in seen and "female" not in seen

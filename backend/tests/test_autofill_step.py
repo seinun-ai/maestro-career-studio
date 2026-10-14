@@ -1405,3 +1405,18 @@ def test_another_slot_never_takes_the_boards_search(db_session, monkeypatch):
     monkeypatch.setattr(autofill_step, "_move", lambda *a, **kw: calls.append(1) or autofill_step.ABSTAIN)
     autofill_step.step(req(slot="education.0.discipline", candidates=searchable()), FACTS, db_session, BOARD_HINT)
     assert calls == [1]
+
+
+# ---------- N2: the owner's safe-default rule reaches /step (2026-10-14)
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_low_stakes_step_states_both_safe_default_directions_and_the_never_list(db_session, monkeypatch):
+    model_settings.set_answer_level(db_session, "history")
+    calls = fake_jev(monkeypatch, ("click:o1", 0.9))
+    got = autofill_step.step(req(route="low_stakes", question="Are you a member of a union?",
+                                 candidates=[{"mid": "click:o1", "describe": 'Click the option "No"'},
+                                             {"mid": GIVE_UP, "describe": "Stop"}]), FACTS, db_session, None)
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert "No, or Not applicable when it is offered" in text and "Yes to willingness" in text
+    assert _NEVER_LOW_STAKES in text and "licence" in text and "criminal history" in text
+    assert (got.mid, got.reason) == ("click:o1", "assumed")

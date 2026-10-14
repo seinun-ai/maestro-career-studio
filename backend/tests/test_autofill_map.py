@@ -841,6 +841,13 @@ LOW_STAKES_WORDINGS = [
     "Do you consent to receive automated calls or texts to the phone number(s) I provided?",
     "Based on the job description, do you have the required amount of directly relevant work experience?",
     "Do you meet the educational requirement in the job description?",
+    # Owner safe-default rule (2026-10-14): willingness to a standard step and basic means are Yes, a status
+    # the profile does not record that would only add something is No.
+    "Are you willing to submit to a background check?",
+    "Are you willing to complete the I-9 and E-Verify process?",
+    "Do you have reliable transportation to get to work?",
+    "Are you a member of a federally recognized tribe?",
+    "Are you a member of a union or a professional association?",
 ]
 
 
@@ -2124,3 +2131,82 @@ def test_round_three_probes_are_not_the_worked_here_answer(db_session, monkeypat
     got = autofill_map.map_fields([field("q", question, "select", options=["Yes", "No"])], _worked(["Hooli"]),
                                   db_session, eeo_consented=True, low_stakes=False)
     assert got["q"].route == "none", question
+
+
+# ---------- N2: the owner's safe-default rule (2026-10-14)
+
+def test_the_protected_sentinel_names_background_history_not_a_background_check_question():
+    text = autofill_map._SENTINELS[PROTECTED]
+    assert "background-check question" not in text
+    # A record, a conviction, a pending charge: the history. Willingness to a check is a no-fact question.
+    for word in ("background or criminal history", "record", "conviction", "pending charge"):
+        assert word in text, word
+    for still in ("work-authorization", "sponsorship", "age", "eligibility"):
+        assert still in text, still
+
+
+def test_the_scope_names_the_no_kind_and_the_willingness_yes_kind_in_both_directions():
+    scope = autofill_map._LOW_STAKES
+    for word in ("tribal", "union", "association membership", "Not applicable", "background check", "drug test",
+                 "reference check", "I-9", "E-Verify", "providing documents", "reliable transportation",
+                 "internet access"):
+        assert word in scope, word
+    assert "No, or Not applicable when that is offered" in scope and "the answer is Yes" in scope
+    # The queued level's "answered Yes" is the years clause alone: the new Yes kind must not read as it.
+    assert "answered Yes" not in scope
+
+
+def test_keen_states_the_no_and_the_yes_directions_outright():
+    for facts in ({}, {autofill_map.WORKED_HERE: object()}):
+        text = autofill_map.keen(facts)
+        assert "No, or Not applicable when it is offered" in text and "tribal" in text
+        assert "Yes to willingness" in text and "background check" in text and "reliable transportation" in text
+        assert "No to being related to" in text
+    assert "previously employed" not in autofill_map.keen({autofill_map.WORKED_HERE: object()})
+
+
+@pytest.mark.parametrize("level", ["facts", "history", "queued"])
+@pytest.mark.parametrize("queued", [False, True])
+def test_the_never_list_keeps_the_owners_protected_kinds_and_adds_licences(level, queued):
+    _, never = autofill_map.low_stakes_scope({}, level=level, queued=queued)
+    for kind in ("work authorization", "sponsorship", "age", "EEO", "background or criminal history",
+                 "security clearance", "salary", "legal attestation or signature", "licence", "certification",
+                 "school", "degree", "employer"):
+        assert kind in never, (level, queued, kind)
+    assert "background-check" not in never
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_map_prompt_offers_the_narrowed_protected_sentinel(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"b": ("none", 0.9)}, noul={"b": 0.95})
+    run([field("b", "Are you willing to submit to a background check?", "popup", options=["Yes", "No"])],
+        db_session, low_stakes=True)
+    criteria = calls[0]["questions"]["b"]["criteria"]
+    assert "background-check question" not in criteria[PROTECTED] and "criminal history" in criteria[PROTECTED]
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", ["Are you willing to submit to a background check?",
+                                      "Are you a member of a federally recognized tribe?",
+                                      "Do you have reliable transportation to get to work?"])
+def test_a_no_fact_safe_default_question_routes_low_stakes_with_the_new_kinds_in_the_ask(
+        db_session, monkeypatch, question):
+    calls = fake_jev(monkeypatch, {"q": ("none", 0.9)}, noul={"q": 0.95})
+    got = run([field("q", question, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["q"].route == "low_stakes"
+    text = calls[1]["questions"]["q"]["instructions"]
+    assert "No, or Not applicable when that is offered" in text and "the answer is Yes" in text
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", ["Have you ever been convicted of a felony?",
+                                      "Do you have a pending criminal charge?",
+                                      "Do you hold a valid driver's licence?"])
+def test_a_history_or_licence_question_is_asked_with_the_never_list_that_refuses_it(db_session, monkeypatch, question):
+    """The never-list is stated first in the low-stakes ask; the model refuses by it (noul low), so the field
+    stays the user's. Here the model says no."""
+    calls = fake_jev(monkeypatch, {"q": ("none", 0.9)}, noul={"q": 0.1})
+    got = run([field("q", question, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["q"].route == "none"
+    text = calls[1]["questions"]["q"]["instructions"]
+    assert "criminal history" in text and "licence" in text

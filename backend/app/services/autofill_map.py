@@ -87,8 +87,11 @@ _SENTINELS = {
     NO_SLOT: "None of the listed applicant facts or question kinds fits this field",
     # Offered in EVERY question, so a knockout question the profile cannot
     # answer has somewhere to go that is not "none" (a low-stakes candidate).
-    PROTECTED_UNANSWERED: "A work-authorization, sponsorship, age or eligibility, or background-check "
-                          "question that none of the listed applicant facts answers",
+    # Background HISTORY only (a record, a conviction, a pending charge): willingness to a background check is a
+    # standard pre-employment step, a no-fact low-stakes question (owner, 2026-10-14).
+    PROTECTED_UNANSWERED: "A work-authorization, sponsorship, age or eligibility, or background or criminal "
+                          "history (a record, a conviction, a pending charge) question that none of the "
+                          "listed applicant facts answers",
     # Offered in every question too, so a question the work history may answer
     # has somewhere to go that is neither a protected question nor "none".
     HISTORY_UNANSWERED: "A question about past employment by a KIND of organization (a government agency, a "
@@ -110,7 +113,13 @@ _LOW_STAKES_TEMPLATE = (
     "A low-stakes question an applicant keen on this job would answer in its favor: how the applicant heard "
     "about the job or a referral source; preferred contact method; willingness or comfort with relocation, "
     "travel (any share of time), on-site work, shifts, overtime or a drug test; openness to other roles; "
-    "{conflict}; what the applicant would do if employed by the company; consent to be contacted by SMS, "
+    "{conflict}; a yes/no about a status, affiliation or circumstance the profile does not record and that "
+    "would only add something for the applicant, such as tribal, union or association membership or a referral "
+    "by an employee (No, or Not applicable when that is offered); willingness, readiness or consent to a "
+    "standard pre-employment step (a background check, drug test, reference check, I-9 or E-Verify, providing "
+    "documents) or having basic means the profile does not record, such as reliable transportation or "
+    "internet access (the answer is Yes); what the applicant would do if employed by the company; consent to be "
+    "contacted by SMS, "
     "automated calls or texts, or marketing messages; or a yes/no self-assessment against the job description as "
     "a whole, such as having the required experience or meeting the educational requirement{years}")
 # A list of noun phrases: every question states it after "is about anything
@@ -121,7 +130,8 @@ _LOW_STAKES_TEMPLATE = (
 # Only "Queued means I qualify" on a job the user queued moves it (below); the
 # rest of the list never moves at any level (the protected list).
 _NEVER_LOW_STAKES_TEMPLATE = (
-    "a factual education or experience question (a school, degree, employer, title, date or certification{years}), "
+    "a factual education or experience question (a school, degree, employer, title, date, licence or "
+    "certification{years}), "
     "work authorization, sponsorship, age or eligibility facts, EEO / diversity, background or "
     "criminal history, security clearance, salary, {worked}or a legal attestation or signature")
 # What the years clause says below the queued level, in the scope and in the never-list.
@@ -163,14 +173,23 @@ _LOW_STAKES, _NEVER_LOW_STAKES = low_stakes_scope({})
 _KEEN_WAY = "for a question in that scope, the answer that shows they fit and want this job"
 
 
+# Both safe-default directions, stated outright (owner, 2026-10-14): with only the No in the brackets a
+# model reads "No" as the answer to a willingness question, and with only the fit rule it says No to a
+# background check it would pass.
+_KEEN_NO = ("No, or Not applicable when it is offered, to a status, affiliation or circumstance the profile "
+            "does not record that would only add something (tribal, union or association membership, a referral)")
+_KEEN_YES = ("Yes to willingness, readiness or consent to a standard pre-employment step (a background check, "
+             "drug test, reference check, I-9 or E-Verify, providing documents) or to having basic means "
+             "(reliable transportation, internet access)")
+
+
 def keen(facts: dict[str, Fact]) -> str:
-    """The low-stakes answer (/pick, /step), and which way a conflict question
-    goes. When the history lists the company applied to, "previously employed
-    here" is a fact and a keen No would contradict it, so only a relative is a No."""
-    if WORKED_HERE in facts:
-        return f"an applicant keen on this job would choose ({_KEEN_WAY}; No to being related to someone at the company)"
-    return (f"an applicant keen on this job would choose ({_KEEN_WAY}; No to being related to, or previously "
-            "employed by, the company)")
+    """The low-stakes answer (/pick, /step), and which way each kind goes. When the history lists the
+    company applied to, "previously employed here" is a fact and a keen No would contradict it, so only a
+    relative is a No."""
+    conflict = ("No to being related to someone at the company" if WORKED_HERE in facts
+                else "No to being related to, or previously employed by, the company")
+    return f"an applicant keen on this job would choose ({_KEEN_WAY}; {conflict}; {_KEEN_NO}; {_KEEN_YES})"
 
 
 def low_stakes_rule(facts: dict[str, Fact], refuse: str, subject: str = "the field", *,
