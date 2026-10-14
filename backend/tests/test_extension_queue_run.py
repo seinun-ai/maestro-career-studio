@@ -20,7 +20,8 @@ from tests.extension_harness import ROOT, js_code, run_node
 QUEUE_RUN_JS = (ROOT / "extension" / "shared" / "queue-run.js").read_text(encoding="utf-8")
 PAGE_KIND_JS = (ROOT / "extension" / "shared" / "page-kind.js").read_text(encoding="utf-8")
 ATS_HOSTS_JS = (ROOT / "extension" / "shared" / "ats-hosts.js").read_text(encoding="utf-8")
-SOURCE = ATS_HOSTS_JS + "\n" + PAGE_KIND_JS + "\n" + QUEUE_RUN_JS
+DECISIONS_JS = (ROOT / "extension" / "shared" / "decisions.js").read_text(encoding="utf-8")
+SOURCE = DECISIONS_JS + "\n" + ATS_HOSTS_JS + "\n" + PAGE_KIND_JS + "\n" + QUEUE_RUN_JS
 
 _DRIVER = r"""
 const ns = loadModules();
@@ -754,7 +755,9 @@ def test_a_ready_tab_still_on_its_review_page_is_left_alone(tmp_path):
     assert names(out, "fill") == [] and names(out, "advance") == [] and out["events"] == []
 
 
-READY = {"tabId": 7, "status": "ready", "readyAt": 5, "filled": True, "hosts": ["jobs.acme.test"]}
+# The default fake address is /p/<n>, so "/p" is the employer the page that reached Ready was on.
+READY = {"tabId": 7, "status": "ready", "readyAt": 5, "filled": True, "hosts": ["jobs.acme.test"],
+         "tenant": "https://jobs.acme.test/p"}
 
 
 def test_a_confirmation_on_a_host_the_run_never_reached_is_not_auto_marked(tmp_path):
@@ -780,6 +783,39 @@ def test_a_confirmation_after_the_tab_left_the_review_page_is_not_auto_marked(tm
 
 def test_a_ready_tab_that_moves_to_a_page_that_is_neither_review_nor_confirmation_loses_the_auto_mark(tmp_path):
     out = _drive(tmp_path, [{"t": "closed"}], record=READY)
+    assert (out["record"]["status"], out["record"]["noAutoMark"]) == ("ready", True)
+
+
+def test_the_employer_of_the_page_that_reached_ready_is_kept_on_the_record(tmp_path):
+    out = _drive(tmp_path, [step(1, url="/acme/apply/1"), {**REVIEW, "url": "/acme/apply/review"}])
+    assert (out["record"]["status"], out["record"]["tenant"]) == ("ready", "https://jobs.acme.test/acme")
+
+
+def test_another_employer_on_the_same_ats_host_never_arms_the_auto_mark(tmp_path):
+    """Job A is Ready at /acme. The user opens /globex on the same host, applies there by hand and
+    submits: Globex's thank-you is not job A's."""
+    ready = {**READY, "tenant": "https://jobs.acme.test/acme"}
+    pages = [{"t": "posting", "url": "/globex/jobs/9"}, {"t": "step", "n": 1, "url": "/globex/apply"},
+             {"t": "confirmation", "url": "/globex/thanks"}]
+    out = _drive(tmp_path, pages, record=ready, **{"then": [1, 2]})
+    assert (out["record"]["status"], out["record"]["noAutoMark"]) == ("ready", True)
+
+
+def test_a_confirmation_at_another_employer_on_the_same_host_is_not_auto_marked_even_straight_after_the_review(tmp_path):
+    ready = {**READY, "tenant": "https://jobs.acme.test/acme"}
+    out = _drive(tmp_path, [{"t": "confirmation", "url": "/globex/thanks"}], record=ready)
+    assert (out["record"]["status"], out["record"]["noAutoMark"]) == ("ready", True)
+
+
+def test_a_confirmation_at_the_same_employer_is_auto_marked(tmp_path):
+    ready = {**READY, "tenant": "https://jobs.acme.test/acme"}
+    out = _drive(tmp_path, [{"t": "confirmation", "url": "/acme/thanks"}], record=ready)
+    assert out["record"]["status"] == "confirming"
+
+
+def test_a_posting_read_after_ready_loses_the_auto_mark_even_at_the_same_employer(tmp_path):
+    """Another posting of the same employer, applied to by hand, would otherwise mark this job."""
+    out = _drive(tmp_path, [{"t": "posting"}], record=READY)
     assert (out["record"]["status"], out["record"]["noAutoMark"]) == ("ready", True)
 
 

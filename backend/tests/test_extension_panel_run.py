@@ -937,6 +937,16 @@ def test_a_confirmation_page_on_a_host_the_run_never_reached_starts_no_countdown
     assert set(_buttons(_card(shot)["body"])) == {"run-mark", "run-done"}
 
 
+def test_another_employers_thank_you_on_the_same_ats_host_starts_no_countdown(tmp_path):
+    """Job A is Ready at /apply; the user applies to another employer's job on the same host by hand."""
+    theirs = {**CONFIRM, "url": "https://jobs.acme.test/globex/thanks"}
+    out = _run(tmp_path, [{"start": SEED}, {"page": 2, "update": {"tab": 7, "change": {"url": theirs["url"]}}},
+                          {"fire": True}], pages=(STEP1, REVIEW, theirs), api=POSTED)
+    shot = out["shots"][-1]
+    assert (_record(shot)["status"], _record(shot)["noAutoMark"]) == ("ready", True)
+    assert out["held"] == 0 and not _api_calls(out, "companion-submitted")
+
+
 def test_a_ready_tab_that_browses_on_loses_the_auto_mark_and_a_later_thank_you_does_not_get_it_back(tmp_path):
     away = page("closed", 4)
     out = _run(tmp_path, [{"start": SEED}, {"page": 2, "update": {"tab": 7, "change": {"url": away["url"]}}},

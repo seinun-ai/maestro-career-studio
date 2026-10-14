@@ -1,7 +1,7 @@
 /* Maestro CS Companion — the queued run's driver: ONE job, in ONE tab, from its link to Ready to submit.
  *
  * Panel-side and pure, as shared/fill-loop.js is: it touches no `chrome`, `document` or network
- * call. Everything it does to a browser arrives as a dependency (`deps`), so node drives the whole
+ * call. (It reads `ns.decisions.sessionTenant`, which panel.html loads first.) Everything it does to a browser arrives as a dependency (`deps`), so node drives the whole
  * state machine with fakes, and a later move of the host (service worker, offscreen document) is a
  * change of host, not a rewrite (design Part 1). `pageOps` below builds the three page-facing deps
  * from a message transport; the rest (open a tab, fill, save) are the host's.
@@ -14,8 +14,10 @@
  *                    `unknown_page` instead. A field-less page with a lone Next after step 0 is
  *                    treated as review too (when unsure whether it is Next or Submit, stop).
  *     → confirming   a ready tab that now shows the confirmation page (Task 20 marks it applied), but
- *                    only on a host the run reached and straight from the application's own pages. Any
- *                    other page the tab moves to sets `noAutoMark` (the manual Mark applied is left).
+ *                    only on a host the run reached, at the employer (`record.tenant`, as the panel's
+ *                    `sessionTenant` reads it) of the page that reached Ready, straight from the
+ *                    application's own pages. Any other page the tab moves to, a posting included,
+ *                    sets `noAutoMark` (the manual Mark applied is left).
  *     → parked       the run needs the user or hit a wall; `why` says which:
  *         captcha | create_account | verify | board_native   the page kind, a wall by design
  *         sign_in_failed   the saved login did not work; never retried (a lockout)
@@ -107,8 +109,9 @@
   // The parks whose card tells the user to go somewhere themselves (sign in, enter a code, open the
   // application form): where they land on Resume is theirs, and the run follows them there.
   const USER_NAVIGATES = new Set(["sign_in_yourself", "verify", "posting", "unknown_page"]);
-  // The pages an application is made of, for a ready tab that stays on them.
-  const APPLICATION_PAGES = new Set(["review", "posting", "form_step"]);
+  // The pages an application is made of, for a ready tab that stays on them. Not a posting: after
+  // Ready that is another job being looked at, and an application sent by hand is not this one's.
+  const APPLICATION_PAGES = new Set(["review", "form_step"]);
   const DEPS = ["openTab", "classify", "advance", "fill", "signIn", "waitForChange", "tabUrl",
     "sleep", "save", "onUpdate", "now", "cancelled"];
   const HALT = Symbol("halt");
@@ -334,9 +337,12 @@
         // to after deciding against Submitting) ends the auto-mark; the manual Mark applied is left.
         if (record.readyAt != null) {
           if (record.noAutoMark === true || kind === "unknown") return record;
-          const onRunHost = record.hosts.includes(hostOf(url));
-          if (onRunHost && kind === "confirmation") return await finish("confirming", null);
-          if (onRunHost && APPLICATION_PAGES.has(kind)) return record;
+          // A shared ATS host serves every employer (Greenhouse, Lever, Ashby): the host alone proves
+          // nothing, so the page must also be the employer the Ready page was.
+          const sameEmployer = !record.tenant || ns.decisions.sessionTenant(url) === record.tenant;
+          const here = record.hosts.includes(hostOf(url)) && sameEmployer;
+          if (here && kind === "confirmation") return await finish("confirming", null);
+          if (here && APPLICATION_PAGES.has(kind)) return record;
           await update({ noAutoMark: true });
           return record;
         }
@@ -403,7 +409,7 @@
           // this page's fill wrote or confirmed. A start chooser or a posting with a stray control
           // (a job-alert box) has neither.
           if (record.step === 0 && record.wrote !== true) return await park("unknown_page");
-          return await finish("ready", null, { readyAt: deps.now(), open: [] });
+          return await finish("ready", null, { readyAt: deps.now(), open: [], tenant: ns.decisions.sessionTenant(url) });
         }
 
         const here = fingerprint(url, summary);
