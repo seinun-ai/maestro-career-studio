@@ -151,7 +151,28 @@ def _same_date(said: Any, kept: Any) -> bool | None:
     return None if a is None or b is None else a == b
 
 
+# A degree is compared by its LEVEL, not its words: "Master's/Advanced Degree" is a "Masters of Science".
+# Most advanced first; the first level a text names is its level.
+_DEGREE_LEVELS = (
+    ("doctorate", re.compile(r"\b(?:ph\.?\s?d|doctor(?:ate|al)?|d\.?\s?phil|ed\.?\s?d|dba)\b", re.IGNORECASE)),
+    ("master", re.compile(r"\b(?:master'?s?|m\.?\s?s\.?c?|m\.?\s?a|mba|m\.?\s?eng|m\.?\s?f\.?\s?a|m\.?\s?p\.?\s?h"
+                         r"|advanced\s+degree|graduate\s+degree)\b", re.IGNORECASE)),
+    ("bachelor", re.compile(r"\b(?:bachelor'?s?|b\.?\s?s\.?c?|b\.?\s?a|b\.?\s?eng|b\.?\s?tech|undergraduate)\b",
+                           re.IGNORECASE)),
+    ("associate", re.compile(r"\b(?:associate'?s?|a\.a\.?s?|a\.s\.|aas?)\b", re.IGNORECASE)),
+    ("high school", re.compile(r"\b(?:high\s*school|ged|secondary\s+school|hs\s+diploma)\b", re.IGNORECASE)),
+)
+_DEGREE_SLOT = re.compile(r"education\.\d+\.degree")
+
+
+def degree_level(text: Any) -> str | None:
+    """"doctorate", "master", "bachelor", "associate" or "high school", or None when the text names none."""
+    return next((level for level, pattern in _DEGREE_LEVELS if pattern.search(str(text))), None)
+
+
 def _same_text(slot: str, said: str, kept: str) -> bool:
+    if _DEGREE_SLOT.fullmatch(slot) and (level := degree_level(said)) and level == degree_level(kept):
+        return True
     if slot.endswith("phone") and len(_digits(said)) >= 7 and len(_digits(kept)) >= 7:
         return _digits(said) == _digits(kept)
     dates = _same_date(said, kept)
