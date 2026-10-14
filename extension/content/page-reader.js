@@ -30,8 +30,9 @@
  * label sorted by its words would make the popup a Submit. So `summary()` marks (`fieldControl`) and
  * leaves out of the Submit/Next sort, and out of `submitSeen`: a popup button, a pill-group member, and a
  * button inside a field holder (a formField wrapper, or a fieldset or group that holds another field)
- * unless it is a plain Next, a `type=submit` (attribute, or a button with no type: a form's default) or
- * one the page marks as a submit. The vendor's footer Next (shared/ats-buttons.js, "text") is marked
+ * unless its SHOWN text says Submit or Send (a question's aria-label does not count), it is a plain or other Next
+ * (in a holder), a form's own submit button (a button with no type inside a form, or `type=submit`) or one the page
+ * marks as a submit. The vendor's footer Next (shared/ats-buttons.js, "text") is marked
  * `navigation`: the classifier takes it as the step's Next over a Submit the button list could not see.
  *
  * The Workday START CHOOSER is the second narrow exception, `advance(id, {chooser: true})`. "Apply Manually" is a Submit
@@ -247,15 +248,21 @@
   const submitMarked = (el) => ns.pageKind.submitMarked(el);
 
   // A field's own control (see the header): a popup button (the rule `fillableControls` uses), a pill-group member,
-  // or a button inside a field holder. Never an action, so never sorted as a Submit or a Next.
+  // or a button inside a field holder. Never an action, so never sorted as a Submit or a Next, unless its shown text
+  // says Submit or Send, it is a form's submit button, or (in a holder) it is worded as a Next.
   const POPUP_BUTTON = 'button[aria-haspopup="listbox"], button[aria-haspopup="true"], '
     + '[role="button"][aria-haspopup="listbox"]:not(input), [role="button"][aria-haspopup="true"]:not(input)';
   const FIELD_HOLDER = 'fieldset, [role="group"], [data-automation-id^="formField"]';
   const PILL_MEMBER = 'button[aria-pressed], [role="button"][aria-pressed], [role="radio"]:not(input), '
     + 'ul[role="list"][aria-label] > li > button:only-child';
+  // A button whose SHOWN text says Submit or Send is an action wherever it sits (a popup that reads Submit, a Submit in a
+  // fieldset): only a question in the aria-label, which the shown text does not carry, makes a popup a field's.
+  const ACTION_WORDS = /\b(?:submit|send)\b/i;
   function fieldControl(el) {
-    // A real submit control stays one: the type says so, or the page marks it.
-    if (el.getAttribute("type")?.toLowerCase() === "submit" || submitMarked(el)) return false;
+    // A real submit control stays one: a form's own submit button (the property, so a button with no type counts), the
+    // type attribute, a submit mark, or shown words that say so.
+    if ((el.type === "submit" && el.form) || el.getAttribute("type")?.toLowerCase() === "submit" || submitMarked(el)
+      || ACTION_WORDS.test(shownTextOf(el))) return false;
     if (el.matches(POPUP_BUTTON)) return true;
     if (el.matches(PILL_MEMBER)) {
       try {
@@ -266,8 +273,8 @@
     }
     const holder = el.closest(FIELD_HOLDER);
     if (!holder) return false;
-    // A <button> with no type attribute is a form's default submit; a plain Next is the step's.
-    if (el.type === "submit" || ns.pageKind.isPlainNext(labelOf(el))) return false;
+    // A <button> with no type attribute is a form's default submit; a Next of any wording is the step's.
+    if (el.type === "submit" || sortOf(labelOf(el)) === "next") return false;
     // A toolbar group of buttons holds no field. A vendor's formField wrapper always does.
     return holder.matches('[data-automation-id^="formField"]')
       || [...holder.querySelectorAll(FIELD_BOX)].some((c) => c !== el && !el.contains(c));
@@ -277,11 +284,12 @@
    * BUTTONS, site chrome is the site's, and a long block of text in a link is not a button label. */
   const submitSeen = (regions) => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
     if (!shown(el)) return false;
+    // A label that sorts as a Submit first (the cheap test): only then are the exemptions asked.
+    if (!(submitMarked(el) || labels(el).some((text) => sortOf(text) === "submit"))) return false;
     if (errorLineButton(el, regions) || fieldControl(el)) return false;
     if (!el.matches(REAL_BUTTON) && isStepperLabel(el)) return false;
     const extra = !el.matches(BUTTONS);
-    if (extra && (inChrome(el) || shownTextOf(el).length > MAX_TEXT)) return false;
-    return submitMarked(el) || labels(el).some((text) => sortOf(text) === "submit");
+    return !(extra && (inChrome(el) || shownTextOf(el).length > MAX_TEXT));
   });
 
   /** Inside a progress stepper that holds no form field: a step's name, not a control. */

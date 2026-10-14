@@ -2249,6 +2249,54 @@ def test_a_button_in_a_field_group_that_is_not_a_choice_is_a_field_control_but_a
     assert classify(page)["kind"] == "review"
 
 
+# A visibly Submit-worded button is an action wherever it sits (Phase 2d review).
+@pytest.mark.parametrize("html, by", [
+    # A group holding a field, a type=button Submit and a Next.
+    ("<div role='group' aria-label='Contact'><label for='e'>Email</label><input id='e'>"
+     "<button type='button'>Submit application</button></div><button type='button'>Next</button>", "several_next"),
+    # A menu-style popup that reads Submit, beside a Continue.
+    ("<input id='a'><button type='button' aria-haspopup='true'>Submit</button><button type='button'>Continue</button>", "several_next"),
+    # The same Submit alone in a fieldset, and in a formField wrapper.
+    ("<fieldset><legend>Details</legend><input id='a'><button type='button'>Submit application</button></fieldset>", "submit_button"),
+    ("<div data-automation-id='formField-x'><input id='a'><button type='button'>Send my application</button></div>", "submit_button"),
+])
+def test_a_button_whose_shown_text_says_submit_is_an_action_in_any_field_holder_or_popup(page, load, html, by):
+    load(page, html, SOURCES)
+    s = summary(page)
+    assert not [b for b in s["buttons"] if b.get("fieldControl") and re.search(r"submit|send", b["text"], re.I)]
+    assert classify(page) == {"kind": "review", "by": by}
+
+
+def test_a_question_that_says_submit_only_in_its_aria_name_stays_a_field_control(page, load):
+    load(page, f"<fieldset><legend>Q</legend><input id='a'><button type='button' aria-label='{BACKGROUND_Q}'>Select One</button></fieldset>"
+               "<button type='button'>Next</button>", SOURCES)
+    assert classify(page)["kind"] == "form_step"
+
+
+@pytest.mark.parametrize("text", ["Continue", "Proceed", "Review application", "Save and Continue"])
+@pytest.mark.parametrize("holder", [
+    "<fieldset><legend>Details</legend><input id='a'>{b}</fieldset>",
+    "<div role='group' aria-label='Details'><input id='a'>{b}</div>",
+])
+def test_any_next_worded_button_in_a_whole_form_holder_is_still_the_steps_next(page, load, holder, text):
+    load(page, holder.format(b=f"<button type='button'>{text}</button>"), SOURCES)
+    assert classify(page)["kind"] == "form_step"
+
+
+def test_the_submit_seen_check_asks_for_a_field_control_only_after_a_label_sorted_as_submit(page, load):
+    load(page, "<p>Plain <a href='#a'>links</a> <a href='#b'>and</a> <button type='button'>Back</button> <div role='button'>words</div></p>", SOURCES)
+    calls = page.evaluate("""() => {
+      let n = 0;
+      const orig = Element.prototype.closest;
+      Element.prototype.closest = function (...a) { if (String(a[0]).includes('formField')) n += 1; return orig.apply(this, a); };
+      window.careerStudioCompanion.pageReader.summary();
+      Element.prototype.closest = orig;
+      return n;
+    }""")
+    # Only the BUTTONS list in summary() asks (the one <button>); the links and the div never reach fieldControl.
+    assert calls <= 1
+
+
 def test_a_toolbar_group_of_buttons_holds_no_field_so_its_submit_still_counts(page, load):
     load(page, "<input id='a'><div role='group' aria-label='Actions'><button type='button'>Back</button>"
                "<button type='button'>Submit application</button></div>", SOURCES)
