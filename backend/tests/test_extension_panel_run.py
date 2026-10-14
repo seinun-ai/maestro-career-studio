@@ -150,6 +150,7 @@ ns.fillLoop.runFill = async (deps, options) => {
            consentForms: false, sections: [], ...(planned.trace ? { trace: planned.trace } : {}) };
 };
 
+const mids = [];
 const snap = () => ({ regions: regions(), runs: JSON.parse(JSON.stringify(ns.panel.actionStore().read().runs)) });
 let started = null;
 main(async () => {
@@ -174,6 +175,17 @@ main(async () => {
       if (!el) throw new Error(`no control #${step.press}`);
       el.click();
     }
+    if (step.pressAll) {
+      // Every button looked up BEFORE the first click, so a later one is a stale reference to a
+      // control the first press already replaced: a double click, or a click that raced the repaint.
+      const els = step.pressAll.map((id) => {
+        const el = document.getElementById(id);
+        if (!el) throw new Error(`no control #${id}`);
+        return el;
+      });
+      for (const el of els) el.click();
+      mids.push(snap());
+    }
     if (step.pressText) {
       const hit = (node) => (node.tagName === "BUTTON" && node.textContent === step.pressText ? node
         : node.children.map(hit).find(Boolean));
@@ -192,7 +204,7 @@ main(async () => {
     if (started && step.finish) await started;
     shots.push(snap());
   }
-  emit({ shots, fills, pressed, updates, sent, writes, sessionWrites, broadcasts, held: heldTimers.filter(Boolean).length,
+  emit({ shots, mids, fills, pressed, updates, sent, writes, sessionWrites, broadcasts, held: heldTimers.filter(Boolean).length,
          profile: PROFILE, errors, warnings });
 });
 """
@@ -611,6 +623,36 @@ def test_a_field_the_user_left_alone_or_the_policy_never_fills_is_not_learned(tm
 def test_resume_accrues_the_users_time_from_park_to_resume(tmp_path):
     out = _parked_on_questions(tmp_path, [{"skew": 42_000}, {"press": "run-resume"}])
     assert 42_000 <= _record(out["shots"][-1])["yourMs"] < 60_000
+
+
+def test_resume_shows_the_card_as_working_while_it_reads_what_you_typed(tmp_path):
+    """The read of the page, the receipt and the saved answers all happen before the driver takes the
+    record: the card must not look parked (Resume and Skip pressable) in that gap."""
+    out = _parked_on_questions(tmp_path, [{"pressAll": ["run-resume"]}])
+    during = out["mids"][0]
+    assert _record(during)["status"] == "filling"
+    assert set(_buttons(_card(during)["body"])) == {"run-stop"}
+
+
+def test_pressing_resume_twice_posts_one_receipt_and_leaves_undo_working(tmp_path):
+    once = _parked_on_questions(tmp_path, [{"press": "run-resume"}])
+    out = _parked_on_questions(tmp_path, [{"pressAll": ["run-resume", "run-resume"]}, {"press": "run-undo-saved"}])
+    assert len(_api_calls(out, "/filled-answers")) == len(_api_calls(once, "/filled-answers"))
+    writes = [m for m in _api_calls(out, "/api/settings/autofill") if (m.get("init") or {}).get("method") == "PUT"]
+    assert len(writes) == 2   # the learn, then Undo's put-back
+    assert out["profile"] == OLD_PROFILE
+    assert len(out["fills"]) == 3   # one drive: the parked page, the page again after Resume, the review
+
+
+def test_a_skip_pressed_while_resume_reads_the_page_does_not_end_the_job_it_is_filling(tmp_path):
+    out = _parked_on_questions(tmp_path, [{"pressAll": ["run-resume", "run-skip"]}])
+    assert _record(out["mids"][0])["status"] == "filling"
+    assert _record(out["shots"][-1])["status"] == "ready"
+
+
+def test_skip_stops_any_drive_that_is_still_running(tmp_path):
+    out = _run(tmp_path, [{"start": SEED}, {"press": "run-skip"}], pages=(STEP1, page("captcha", 1)))
+    assert _record(out["shots"][-1])["stopRequested"] is True
 
 
 # ---------- needs you: a hand fix teaches the recipe book and the known-gaps list ----------

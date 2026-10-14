@@ -432,7 +432,7 @@
   function skipRun(store, id) {
     const record = recordById(store, id);
     if (!record || record.status !== "parked") return;
-    Object.assign(record, { status: "stopped", why: "user", open: [], parkedAt: null });
+    Object.assign(record, { status: "stopped", why: "user", stopRequested: true, open: [], parkedAt: null });
     // The page stops watching the fields this run parked on (an empty watch replaces the last).
     state.watching.delete(record.id);
     store.run.tabBroadcast(tabOf(record), { type: "fill_watch", fids: [] }).catch(warn("could not stop watching"));
@@ -506,7 +506,12 @@
   }
 
   /** Resume: the user did what the card asked. An open-questions park reads what they typed first;
-   * a wall just goes round again. The driver re-reads the page, refills, and moves on or stops. */
+   * a wall just goes round again. The driver re-reads the page, refills, and moves on or stops.
+   * The record turns `filling` BEFORE the first await: until the driver takes it, the card would
+   * otherwise still read parked, with Resume and Skip pressable, while the page is read and the
+   * receipt posted (a second Resume would post it twice and overwrite Undo's memory; a Skip would
+   * be driven over). `why` and `open` stay, since the read below and the driver's park-aware rules
+   * (a user who navigated) go by them. */
   async function resumeRun(store, id) {
     const record = recordById(store, id);
     if (!record || !ns.panelRuns.canResume(record) || state.driving.has(record.id)) return;
@@ -515,14 +520,15 @@
       record.parkedAt = null;
     }
     const wasQuestions = record.status === "parked" && record.why === "open_questions";
-    record.stopRequested = false;
-    record.learned = null;
+    Object.assign(record, { status: "filling", stopRequested: false, learned: null });
     persist(store);
     try {
       if (wasQuestions) await afterTyping(store, record);
     } catch (err) {
       console.warn("[maestro-cs] could not read what you typed:", err);
     }
+    // A tab closed or a panel reopened under the read ended the record: nothing is driven.
+    if (!live(record)) return;
     await drive(store, record);
   }
 
