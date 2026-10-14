@@ -10,8 +10,10 @@ def test_a_decision_trace_holds_only_enums_and_numbers():
     t = DecisionTrace(engine="fast", p=0.93, floor=0.9, second="decided", first_p=0.82, first_same=False,
                       chose_none=False)
     assert t.model_dump() == {"engine": "fast", "p": 0.93, "floor": 0.9, "second": "decided", "first_p": 0.82,
-                              "first_same": False, "chose_none": False}
-    for bad in ({"engine": "gpt"}, {"second": "maybe"}, {"p": 1.5}, {"first_p": -0.1}, {"floor": 1.1}, {"chose_none": "maybe"}, {"note": "x"}):
+                              "first_same": False, "chose_none": False, "sentinel": None}
+    assert DecisionTrace(sentinel="years_unanswered").sentinel == "years_unanswered"
+    for bad in ({"engine": "gpt"}, {"second": "maybe"}, {"p": 1.5}, {"first_p": -0.1}, {"floor": 1.1}, {"chose_none": "maybe"}, {"note": "x"},
+                {"sentinel": "personal.city"}, {"sentinel": "Jane Doe"}):
         with pytest.raises(ValidationError):
             DecisionTrace(**bad)
 

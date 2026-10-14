@@ -91,7 +91,7 @@ def _join(*parts: str | None) -> str:
 
 def _map_target(step: TraceStep, _options: list[str] | None) -> str:
     where = step.slot if step.route == "slot" and step.slot else f"route:{step.route}" if step.route else "—"
-    return f"→ {where}" + (f" ({step.why})" if step.why else "")
+    return f"→ {where}" + (f" [{step.sentinel}]" if step.sentinel else "") + (f" ({step.why})" if step.why else "")
 
 
 def _pick_target(step: TraceStep, options: list[str] | None) -> str:

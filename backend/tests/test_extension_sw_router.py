@@ -801,7 +801,7 @@ def test_a_trace_keeps_exactly_the_schemas_keys_at_each_level(tmp_path):
     full_step = {"op": "step", "ms": 5, "effect": "progress", "word": "ok", "route": "slot",
                  "slot": "a.b", "why": "unclear_job", "engine": "jev", "p": 0.9, "floor": 0.5,
                  "second": "decided", "first_p": 0.4, "first_same": True, "chose_none": False,
-                 "way": "same", "remembered": True, "option": 3, "reason": "matched", "move": "click:o3"}
+                 "sentinel": "years_unanswered", "way": "same", "remembered": True, "option": 3, "reason": "matched", "move": "click:o3"}
     body = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=[full_step])]))
     [field] = body["fields"]
     assert set(body) == set(RunTrace.model_fields)
@@ -1022,7 +1022,7 @@ def test_the_trace_whitelist_mirrors_the_backends_schema():
     for name, literal in [("TRACE_OPS", T.Op), ("TRACE_EFFECTS", T.Effect), ("TRACE_SHAPES", F.Shape),
                           ("TRACE_ROUTES", F.Route), ("TRACE_WHYS", F.Why), ("TRACE_ENGINES", F.Engine),
                           ("TRACE_SECONDS", F.Second), ("TRACE_WAYS", F.PolarityWay),
-                          ("TRACE_REASONS", F.StepReason)]:
+                          ("TRACE_REASONS", F.StepReason), ("TRACE_SENTINELS", F.Sentinel)]:
         assert _sw_vocab(name) == set(get_args(literal)), name
 
 

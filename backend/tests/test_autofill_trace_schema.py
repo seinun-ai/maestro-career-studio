@@ -19,6 +19,14 @@ def _step(**kw):
             "reason": "matched", **kw}
 
 
+def test_a_map_step_may_name_a_sentinel_and_nothing_else_of_that_shape():
+    step = TraceStep.model_validate({"op": "map", "route": "none", "sentinel": "years_unanswered"})
+    assert step.sentinel == "years_unanswered"
+    for bad in ("personal.city", "Jane Doe", "", "YEARS_UNANSWERED"):
+        with pytest.raises(ValidationError):
+            TraceStep.model_validate({"op": "map", "sentinel": bad})
+
+
 def _field(**kw):
     return {"fid": "0-12", "label": "Are you authorized to work?", "label_source": "aria-label",
             "shape": "select", "section": "Eligibility", "required": True,

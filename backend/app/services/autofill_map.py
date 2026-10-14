@@ -545,18 +545,24 @@ def _no_fact_key(key: str, eeo_consented: bool) -> bool:
     return key in (NO_SLOT, HISTORY_UNANSWERED, YEARS_UNANSWERED, PROTECTED_UNANSWERED) or (key == BLOCKED_EEO and eeo_consented)
 
 
+def _sentinel_of(picked: tuple[str, float] | None) -> str | None:
+    """The sentinel key a model's top choice was, by name; None for a fact or no readable answer."""
+    return picked[0] if picked and picked[0] in _SENTINELS else None
+
+
 def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact],
             engine: Engine, *, eeo_consented: bool) -> Mapped:
     """`_route`, with the decision it came from: which engine answered, how
     sure, against what floor. A field the model omitted keeps the engine with
-    `p` None, `floor` SLOT_FLOOR and `chose_none` None. A foreign entry is code's
-    none, no model's call: no trace."""
+    `p` None, `floor` SLOT_FLOOR and `chose_none` None. `sentinel` names the sentinel key the
+    model chose, if it chose one. A foreign entry is code's none, no model's call: no trace."""
     mapped, floor = _route(field, picked, facts, eeo_consented=eeo_consented)
     if _foreign(field):
         return mapped
     return mapped.model_copy(update={"trace": DecisionTrace(
         engine=engine, p=picked[1] if picked else None, floor=floor,
-        chose_none=None if picked is None else _no_fact_key(picked[0], eeo_consented))})
+        chose_none=None if picked is None else _no_fact_key(picked[0], eeo_consented),
+        sentinel=_sentinel_of(picked))})
 
 
 # The sentinels the reasoning pass also takes (a history question, a years question), and the one
@@ -691,8 +697,10 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
         for fid, judge in _low_stakes(leftovers(keen_years), facts, session, budget,
                                       level=level, queued=queued).items():
             years = YEARS_UNANSWERED in (key(picked.get(fid)), key(second.get(fid)))
-            out[fid] = Mapped(route="low_stakes", years=years, trace=DecisionTrace(engine=judge))
+            out[fid] = Mapped(route="low_stakes", years=years,
+                              trace=DecisionTrace(engine=judge, sentinel=_sentinel_of(picked.get(fid))))
     if _has_history(facts):
         for fid in _answerable(leftovers(_REASONED_KEYS), facts, session, budget):
-            out[fid] = Mapped(route="reasoned", trace=DecisionTrace(engine="fast"))
+            out[fid] = Mapped(route="reasoned",
+                              trace=DecisionTrace(engine="fast", sentinel=_sentinel_of(picked.get(fid))))
     return out

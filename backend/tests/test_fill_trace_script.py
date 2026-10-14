@@ -534,3 +534,13 @@ def test_report_on_an_empty_database_prints_no_data_for_every_section(tmp_path, 
     assert [line for line in lines if line.startswith("== ")] == SECTIONS
     assert lines.count("(no data)") == 6
     assert fill_trace.SUGGESTION_NOTE in lines
+
+
+def test_a_map_step_that_chose_a_sentinel_names_it():
+    from app.schemas.autofill_trace import TraceStep
+
+    step = TraceStep(op="map", route="none", sentinel="years_unanswered", engine="jev", p=0.95, floor=0.8,
+                     chose_none=True)
+    assert fill_trace.render_step(step) == "map → route:none [years_unanswered]  jev 0.95 ≥0.80"
+    plain = TraceStep(op="map", route="none", why="unclear_job")
+    assert fill_trace.render_step(plain) == "map → route:none (unclear_job)  code"

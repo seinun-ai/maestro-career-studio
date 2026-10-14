@@ -32,12 +32,16 @@ Reason = Literal["matched", "closest", "assumed", "abstained", "asked"]
 # How a model decided an answer: value-free by construction (enums and numbers), returned
 # beside /map, /pick and /step answers for the run trace (docs/plans/2026-10-02-fill-trace-design.md).
 Engine = Literal["jev", "fast"]
+# The names of /map's sentinel keys (autofill_map._SENTINELS): a fixed vocabulary, so a trace can say which one a
+# model chose without any word of the page's or the applicant's.
+Sentinel = Literal["free_text", "none", "protected_unanswered", "history_unanswered", "years_unanswered",
+                   "blocked_eeo"]
 Second = Literal["asked", "decided"]  # asked: it ran and did not change the answer; decided: its answer stands
 PolarityWay = Literal["same", "opposite", "neither", "unsure"]
 
 
 class DecisionFields(BaseModel):
-    """The seven value-free fields of how a model decided, shared by the live `DecisionTrace` and the
+    """The eight value-free fields of how a model decided, shared by the live `DecisionTrace` and the
     stored `TraceStep`."""
 
     model_config = ConfigDict(extra="forbid")
@@ -58,6 +62,10 @@ class DecisionFields(BaseModel):
     # option fell under the floor". False: it chose a real slot, option or move. None: nothing
     # readable came back (a choice that was not offered counts as unreadable), or no model was asked.
     chose_none: bool | None = None
+    # /map only: which sentinel the model's top choice was, by NAME (never a fact, whose name is the
+    # step's `slot`). So a field routed `none` reads as years_unanswered or history_unanswered or
+    # protected_unanswered, or a `free_text` as the model's free_text; None for a fact, an omitted answer.
+    sentinel: Sentinel | None = None
 
 
 class DecisionTrace(DecisionFields):

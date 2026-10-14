@@ -1673,7 +1673,7 @@ def test_trace_low_stakes_judged_by_jev(db_session, monkeypatch):
     fake_jev(monkeypatch, {"t": ("none", 0.95)}, noul={"t": 0.99})
     got = run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
     # `p` stays None: the low-stakes and reasoning passes discard the probability.
-    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="jev"))
+    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="jev", sentinel="none"))
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1686,13 +1686,13 @@ def test_trace_low_stakes_judged_by_the_fast_model_when_jevs_check_fails(db_sess
     monkeypatch.setattr(autofill_map.jev, "decide", decide)
     fake_llm(monkeypatch, {"t": {"key": "none", "confidence": 0.9}}, yes={"t": 0.9})
     got = run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
-    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="fast"))
+    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="fast", sentinel="none"))
 
 
 def test_trace_low_stakes_judged_by_the_fast_engine(db_session, monkeypatch):
     fake_llm(monkeypatch, {"t": {"key": "none", "confidence": 0.95}}, yes={"t": 0.9})
     got = run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
-    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="fast"))
+    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="fast", sentinel="none"))
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1701,7 +1701,7 @@ def test_trace_reasoned_is_always_the_fast_model(db_session, monkeypatch):
     fake_jev(monkeypatch, {"g": ("none", 0.95)})
     fake_llm(monkeypatch, reasoned={"g": 0.9})
     got = run([field("g", HISTORY_WORDINGS[0], "popup", options=["Yes", "No"])], db_session)
-    assert (got["g"].route, got["g"].trace) == ("reasoned", DecisionTrace(engine="fast"))
+    assert (got["g"].route, got["g"].trace) == ("reasoned", DecisionTrace(engine="fast", sentinel="none"))
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1719,8 +1719,8 @@ def test_trace_holds_only_numbers_and_enums_never_a_fact_value(db_session, monke
     # low-stakes route replaces its field's trace: it describes the route that stands.
     assert (got["p"].trace.second, got["c"].trace.second) == (None, "decided")
     assert got["n"].trace.second == "asked"
-    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="jev"))
-    keys = {"engine", "p", "floor", "second", "first_p", "first_same", "chose_none"}
+    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="jev", sentinel="none"))
+    keys = {"engine", "p", "floor", "second", "first_p", "first_same", "chose_none", "sentinel"}
     for fid, mapped in got.items():
         assert set(mapped.trace.model_dump()) == keys, fid
         assert not [v for v in ("555-0100", "Springfield") if v in mapped.trace.model_dump_json()], fid
@@ -1750,6 +1750,63 @@ def test_trace_every_no_fact_key_reads_as_chose_none(db_session, monkeypatch, ke
     fake_llm(monkeypatch)
     got = run([field("g", "Gender", "select")], db_session, eeo_consented=consented)["g"]
     assert (got.route, got.trace.p, got.trace.chose_none) == (expected[0], 0.95, expected[1])
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("key, shape, consented, route", [
+    (autofill_map.YEARS_UNANSWERED, "text", True, "free_text"),
+    (autofill_map.YEARS_UNANSWERED, "group", True, "none"),
+    (autofill_map.HISTORY_UNANSWERED, "popup", True, "none"),
+    (autofill_map.PROTECTED_UNANSWERED, "select", True, "none"),
+    (autofill_map.BLOCKED_EEO, "select", True, "none"),
+    (autofill_map.BLOCKED_EEO, "select", False, "blocked"),
+    (autofill_map.FREE_TEXT, "text", True, "free_text"),
+    (autofill_map.NO_SLOT, "text", True, "none"),
+])
+def test_trace_names_the_sentinel_the_model_chose(db_session, monkeypatch, key, shape, consented, route):
+    """Why a field routed `none` (or free_text) reads off the trace: the sentinel's NAME, which is a fixed
+    word of /map's own, never anything the page or the applicant said."""
+    fake_jev(monkeypatch, {"g": (key, 0.95)})
+    fake_llm(monkeypatch)
+    got = run([field("g", "How many years with A/B testing?", shape)], db_session, eeo_consented=consented)["g"]
+    assert (got.route, got.trace.sentinel) == (route, key)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_a_fact_or_an_omitted_answer_names_no_sentinel(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"a": ("personal.city", 0.9)})
+    fake_llm(monkeypatch)
+    assert run([field("a", "City")], db_session)["a"].trace.sentinel is None
+    monkeypatch.setattr(autofill_map.jev, "decide", lambda q, s, session=None: {})
+    assert run([field("s", "Sponsorship?", "select")], db_session)["s"].trace.sentinel is None
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_a_second_opinion_that_decides_names_its_own_sentinel(db_session, monkeypatch):
+    """Jev unsure (under the floor), the fast model decides blocked_eeo: that is the trace's sentinel."""
+    fake_jev(monkeypatch, {"g": ("none", 0.4)})
+    fake_llm(monkeypatch, {"g": {"key": autofill_map.BLOCKED_EEO, "confidence": 0.95}})
+    got = run([field("g", "Gender", "select")], db_session, eeo_consented=False)["g"]
+    assert (got.route, got.trace.second, got.trace.sentinel) == ("blocked", "decided", autofill_map.BLOCKED_EEO)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_the_reasoned_and_low_stakes_routes_keep_the_sentinel_that_sent_them_there(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"y": (autofill_map.YEARS_UNANSWERED, 0.95), "h": (autofill_map.HISTORY_UNANSWERED, 0.95)},
+             noul={"y": 0.99})
+    fake_llm(monkeypatch, reasoned={"h": 0.95})
+    got = run([field("y", "5+ years of SQL?", "select"), field("h", HISTORY_WORDINGS[0], "popup")], db_session,
+              low_stakes=True, level="queued", queued=True)
+    assert (got["y"].route, got["y"].trace.sentinel) == ("low_stakes", autofill_map.YEARS_UNANSWERED)
+    assert (got["h"].route, got["h"].trace.sentinel) == ("reasoned", autofill_map.HISTORY_UNANSWERED)
+
+
+def test_the_sentinel_vocabulary_is_the_maps_sentinels():
+    from typing import get_args
+
+    from app.schemas.autofill_fill import Sentinel
+
+    assert set(get_args(Sentinel)) == set(autofill_map._SENTINELS)
 
 
 @pytest.mark.usefixtures("jev_on")

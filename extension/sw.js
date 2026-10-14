@@ -284,6 +284,8 @@ const TRACE_ROUTES = new Set(["slot", "free_text", "low_stakes", "reasoned", "no
 const TRACE_WHYS = new Set(["unclear_job"]);
 const TRACE_ENGINES = new Set(["jev", "fast"]);
 const TRACE_SECONDS = new Set(["asked", "decided"]);
+const TRACE_SENTINELS = new Set(["free_text", "none", "protected_unanswered", "history_unanswered", "years_unanswered",
+  "blocked_eeo"]);
 const TRACE_WAYS = new Set(["same", "opposite", "neither", "unsure"]);
 const TRACE_REASONS = new Set(["matched", "closest", "assumed", "progress", "abstained"]);
 const TRACE_MODES = new Set(["assist"]);
@@ -350,6 +352,7 @@ const TRACE_STEP = {
   first_p: traceUnit,
   first_same: traceBool,
   chose_none: traceBool,
+  sentinel: traceOneOf(TRACE_SENTINELS),
   way: traceOneOf(TRACE_WAYS),
   remembered: traceBool,
   option: traceInt(TRACE_PICKS - 1),
