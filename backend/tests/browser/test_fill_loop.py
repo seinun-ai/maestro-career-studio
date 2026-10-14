@@ -2550,6 +2550,20 @@ def test_the_step_request_carries_the_widgets_kind_and_the_moves_that_worked_on_
     assert body["kind"] == "popup" and body["worked_here"] == ["open", "search:value"]
 
 
+def test_a_family_recipe_from_other_sites_is_not_what_worked_here(page, load):
+    """The book hands back a trusted FAMILY recipe on a site it never saw: that is no proof
+    for this site, so the prompt must not say these moves worked here. A site recipe is."""
+    variant = {"open": ["keys", "press"]}
+    family = {"f:fam1": {"key": "f:fam1", "variant": variant}}
+    out = popup_run(page, load, recipes={"book": family}, pick={"d": {"oids": [], "reason": "abstained"}}, step=STEP_OPEN)
+    [body] = bodies(out, "/api/autofill/step")
+    assert body["kind"] == "popup" and "worked_here" not in body
+    site = {"f:fam1": {"key": "s:sitea", "variant": variant}}
+    out = popup_run(page, load, recipes={"book": site}, pick={"d": {"oids": [], "reason": "abstained"}}, step=STEP_OPEN)
+    [body] = bodies(out, "/api/autofill/step")
+    assert body["worked_here"] == ["open"]
+
+
 def test_a_field_without_a_recipe_sends_its_kind_and_no_worked_moves(page, load):
     out = popup_run(page, load, recipes={}, pick={"d": {"oids": [], "reason": "abstained"}}, step=STEP_OPEN)
     [body] = bodies(out, "/api/autofill/step")

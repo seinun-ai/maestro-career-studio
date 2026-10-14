@@ -754,9 +754,14 @@
       if (rows.get(f.fid).recipe) note(f.fid, { op: "recipe" });
     };
     // The page's own moves the field's recipe says worked on this site: ids only, so no
-    // recipe word, value or label rides along. Empty without a recipe.
-    const workedHere = (f) => [...new Set(Object.keys(rows.get(f.fid)?.recipe?.variant ?? {})
-      .map((axis) => WORKED_MOVE[axis]).filter((mid) => mid && MOVE_ID.test(mid)))].slice(0, MAX_WORKED);
+    // recipe word, value or label rides along. Only this site's own recipe counts: the book
+    // also hands back a trusted family recipe learned on other sites, which proves nothing here.
+    const workedHere = (f) => {
+      const recipe = rows.get(f.fid)?.recipe;
+      return recipe?.key && recipe.key === f.recipe?.site
+        ? [...new Set(Object.keys(recipe.variant ?? {}).map((axis) => WORKED_MOVE[axis])
+          .filter((mid) => mid && MOVE_ID.test(mid)))].slice(0, MAX_WORKED) : [];
+    };
     // The technique card's key: a set of items (a multi-select, or a list fact filled item by item) is
     // `multi`, else the field's own shape.
     const kindOf = (f, row, item) => (f.multi || (item !== undefined && Array.isArray(row.value) && row.value.length > 1)
