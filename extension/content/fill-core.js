@@ -1466,7 +1466,7 @@
   const knownGroup = (el, text, where) => learnedGroups.get(el)?.has(groupKey(text, where)) === true;
   // A URL is one value: its words are not terms (a search for "vercel.app" found the wrong row,
   // and a link was once truncated to its last words).
-  const URL_VALUE = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d+)?(?:[/?#]\S*)?$/i;
+  const URL_VALUE = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?::\d+)?(?:[/?#]\S*)?$/i;
   const isUrl = (value) => URL_VALUE.test(String(value ?? "").trim());
   const wordsOf = (value) => {
     const whole = String(value ?? "").trim();

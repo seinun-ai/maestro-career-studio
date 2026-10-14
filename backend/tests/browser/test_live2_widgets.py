@@ -367,3 +367,10 @@ def test_a_row_with_aria_checked_is_never_learned_as_a_category(page, load):
     move(page, f, "close", "Alpha")
     move(page, f, "open", "Alpha")
     assert _clicks(state(page, f, "Alpha"))[0] == 'Click the option "Alpha"'   # a selectable row stays an option
+
+
+def test_a_default_port_is_not_a_different_site(page, load):
+    load(page, "<div></div>")
+    same = lambda a, b: page.evaluate("([a, b]) => window.careerStudioCompanion.fillBase.equivalent(a, b, { format: 'url' })", [a, b])  # noqa: E731
+    assert same("https://example.dev:443/", "example.dev") and same("http://EXAMPLE.dev:80", "https://www.example.dev/")
+    assert not same("example.dev:8080", "example.dev")

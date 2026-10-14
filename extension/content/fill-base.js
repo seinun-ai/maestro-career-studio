@@ -439,8 +439,11 @@
     && !(signOnly(x) && codeOnly(y)) && !(codeOnly(x) && signOnly(y));
   // A URL compared by what it names: scheme, a leading `www.`, the host's case, a
   // trailing slash and a #fragment do not make a different site.
+  // The same keys as the loop's `asUrl` (shared/fill-loop.js): scheme, www., a default port (80, 443), the
+  // host's case, a trailing slash and a #fragment; the path and query stay.
   const urlKey = (v) => String(v).trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/^www\./i, "")
-    .replace(/#.*$/, "").replace(/\/+$/, "").replace(/^[^/]*/, (host) => host.toLowerCase());
+    .replace(/#.*$/, "").replace(/\/+$/, "")
+    .replace(/^[^/?]*/, (host) => host.toLowerCase().replace(/:(80|443)$/, ""));
   const equivalent = (actual, wrote, { format } = {}) => {
     const a = fold(actual);
     const w = fold(wrote);

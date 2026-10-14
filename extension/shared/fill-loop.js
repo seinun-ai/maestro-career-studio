@@ -1514,9 +1514,12 @@
     // site it names, never split into words and never cut to fit a short box.
     const URL_SLOT = /(^|\.)(website|linkedin|github|portfolio|url)s?(\.\d+)?$/;
     const urlFormat = (m) => (URL_SLOT.test(m?.slot ?? "") || /^https?:\/\/\S+$/i.test(String(m?.value ?? "").trim()) ? "url" : undefined);
+    // https:// is added only to what is a host (with or without a path): a GitHub handle or an email in
+    // a URL slot is written as it is.
+    const HOSTISH = /^(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?::\d+)?(?:[/?#]\S*)?$/i;
     const withScheme = (v) => {
       const t = String(v ?? "").trim();
-      return /^[a-z][a-z0-9+.-]*:\/\//i.test(t) ? t : `https://${t}`;
+      return !/^[a-z][a-z0-9+.-]*:\/\//i.test(t) && HOSTISH.test(t) ? `https://${t}` : t;
     };
     // Why /map left a field the profile could answer (`why`, a known word
     // only), said in the report: never "no fact" when the profile has one.
@@ -1852,7 +1855,7 @@
     // default port, a trailing slash and a #fragment: "Example.dev/" holds
     // "https://www.example.dev:443/#top" (treating them as different would
     // write the duplicate).
-    const URLISH = /^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(?::(\d+))?(\/[^\s#]*)?(?:#\S*)?$/i;
+    const URLISH = /^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})(?::(\d+))?(\/[^\s#]*)?(?:#\S*)?$/i;
     const asUrl = (v) => [v].flat().map((x) => {
       const m = URLISH.exec(String(x ?? "").trim());
       if (!m) return x;

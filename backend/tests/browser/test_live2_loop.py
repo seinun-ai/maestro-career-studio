@@ -153,3 +153,31 @@ def test_a_clamped_date_is_reported_assumed_with_its_own_note(e2e_page):
     row = out["by_question"]["Start date"]
     assert (row["status"], row["note"]) == ("assumed", "Date set to the nearest the box allows"), row
     assert page.input_value("#s") == "2021-05-10"
+
+
+# --- review follow-ups: URL edge cases
+def test_a_github_handle_is_written_as_it_is_not_given_a_scheme(e2e_page):
+    page = e2e_page
+    out = _run(page, html="<form><label for='g'>GitHub</label><input id='g'></form>",
+               map={"GitHub": {"route": "slot", "slot": "personal.github", "value": "jdoe"}})
+    assert page.input_value("#g") == "jdoe" and out["by_question"]["GitHub"]["status"] == "verified"
+
+
+def test_an_email_in_a_url_slot_is_written_as_it_is(e2e_page):
+    page = e2e_page
+    _run(page, html="<form><label for='w'>Website</label><input id='w'></form>",
+         map={"Website": {"route": "slot", "slot": "personal.website", "value": "jdoe@example.dev"}})
+    assert page.input_value("#w") == "jdoe@example.dev"
+
+
+def test_a_host_with_a_path_gets_a_scheme(e2e_page):
+    page = e2e_page
+    _run(page, html="<form><label for='w'>Portfolio</label><input id='w'></form>",
+         map={"Portfolio": {"route": "slot", "slot": "personal.website", "value": "www.sample-one-site.example.dev/work"}})
+    assert page.input_value("#w") == "https://www.sample-one-site.example.dev/work"
+
+
+def test_a_number_that_looks_like_a_dotted_host_is_not_a_url_the_box_holds(e2e_page):
+    """A box holding "1.2.3" is answered by whatever is in it, not flagged as another site."""
+    out = _run(e2e_page, html="<form><label for='w'>Website</label><input id='w' value='1.2.3'></form>", map={"Website": WEBSITE})
+    assert out["by_question"]["Website"]["status"] == "already"
