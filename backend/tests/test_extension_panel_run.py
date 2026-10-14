@@ -183,6 +183,7 @@ main(async () => {
       if (!step.background) await started;
     }
     if (step.release && gate) { gate(); gate = null; }
+    if (step.releaseApi) release();
     if (step.press) {
       const el = document.getElementById(step.press);
       if (!el) throw new Error(`no control #${step.press}`);
@@ -926,6 +927,18 @@ def test_a_mark_that_fails_as_the_tab_closes_says_so_on_the_stopped_card(tmp_pat
     assert "Couldn't mark this applied" in _body_text(out["shots"][-1])
 
 
+def test_a_mark_already_in_flight_that_fails_after_the_tab_closed_ends_stopped_with_its_note(tmp_path):
+    """The countdown ended and the mark was on its way when the tab closed; the answer is a failure.
+    A ready record on a closed tab would be invisible: it ends where the user can read why."""
+    out = _ready_then_confirmation(
+        tmp_path, [{"fire": True}, {"removed": 7}, {"releaseApi": True}],
+        hold=["companion-submitted"],
+        api={"POST /api/proposals/prop-1/companion-submitted": {"ok": False, "error": "Server unavailable", "status": 500}})
+    record = _record(out["shots"][-1])
+    assert (record["status"], record["why"]) == ("stopped", "tab_closed")
+    assert "Couldn't mark this applied" in _body_text(out["shots"][-1])
+
+
 def test_a_confirmation_page_on_a_host_the_run_never_reached_starts_no_countdown(tmp_path):
     """The user decided against Submitting and opened another employer's thank-you in the same tab."""
     other = page("confirmation", 9, host="careers.globex.test")
@@ -1108,6 +1121,16 @@ def test_a_ready_run_a_reopened_panel_finds_in_its_own_window_becomes_its_own(tm
     left_by_the_last_panel = _seeded("ready", readyAt=1, lease="panel-that-was-closed")
     out = _run(tmp_path, [{"page": 0, "update": {"tab": 7, "change": {"url": CONFIRM["url"]}}}],
                pages=(CONFIRM,), sessionStored={"queueRun": [left_by_the_last_panel]})
+    assert _record(out["shots"][-1])["status"] == "confirming" and out["held"] == 1
+
+
+def test_resuming_a_record_another_panel_left_makes_it_this_panels_to_arm(tmp_path):
+    """An interrupted record whose tab moved into this window is shown but not adopted at boot. Resume is
+    this panel taking it over: the mark after the user's Submit must have an owner."""
+    theirs = _seeded("stopped", why="interrupted", lease="panel-of-the-other-window")
+    out = _run(tmp_path, [{"press": "run-resume"}, {"page": 1, "update": {"tab": 7, "change": {"url": CONFIRM["url"]}}}],
+               pages=(REVIEW, CONFIRM), sessionStored={"queueRun": [theirs]}, windowIds={"7": 2})
+    assert _record(out["shots"][1])["status"] == "ready"
     assert _record(out["shots"][-1])["status"] == "confirming" and out["held"] == 1
 
 

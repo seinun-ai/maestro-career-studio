@@ -545,7 +545,9 @@
       record.parkedAt = null;
     }
     const wasQuestions = record.status === "parked" && record.why === "open_questions";
-    Object.assign(record, { status: "filling", stopRequested: false, learned: null });
+    // Resume is this panel taking the record over (it may have been left by another window's panel and
+    // moved here): the mark after the user's Submit then has exactly one owner.
+    Object.assign(record, { status: "filling", stopRequested: false, learned: null, lease: state.lease });
     persist(store);
     try {
       if (wasQuestions) await afterTyping(store, record);
@@ -603,10 +605,7 @@
         // The user's Submit went through and the page said so: closing the tab is not a cancel. The
         // mark is made now (an Undo window has no tab to look at), from the page the run saw.
         Object.assign(record, { tabClosed: true, markAt: null });
-        recordSubmitted(store, record).catch(warn("could not mark applied")).finally(() => {
-          if (record.status === "ready") Object.assign(record, { status: "stopped", why: "tab_closed", stopRequested: true });
-          persist(store);
-        });
+        recordSubmitted(store, record).catch(warn("could not mark applied"));
         continue;
       }
       Object.assign(record, { status: "stopped", why: "tab_closed", stopRequested: true, tabClosed: true, markAt: null });
@@ -712,6 +711,11 @@
           answered: (failure) => (failure.status === 409 ? String(failure.message) : null) }, err) });
     } finally {
       state.marking.delete(record.id);
+      // A failed mark on a closed tab (also one already in flight when the tab went) is not a ready
+      // card: nobody would see it. It ends stopped, where its note is read.
+      if (record.tabClosed && record.status === "ready") {
+        Object.assign(record, { status: "stopped", why: "tab_closed", stopRequested: true });
+      }
       persist(store);
     }
     if (record.status === "applied" && store.read().tabId === tabOf(record)) store.loadContext(store.token());
