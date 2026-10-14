@@ -251,8 +251,10 @@
   for the job's own posting: the request carries the page's address and `routers/autofill._queued` needs an accepted or approved proposal
   plus `job_url_match.is_same_posting` against the job's `apply_url` or `source_url`. `PUT /api/settings/autofill-options` takes
   `{answer_level}` (the old `{low_stakes}` is a 422). The same level reaches agents as the Job Search Brief's `applying.answer_level`. An
-  answer saved with `only_for` (a question naming the job's company or city) is offered, and filled by the deterministic pass, only for
-  that job (`autofill_catalog.custom_for_job`). The `/step` prompt carries a technique card per widget kind
+  answer saved with `only_for` + `only_for_kind` (`company` or `city`: a question naming the job's company or city) is offered, and filled by
+  the deterministic pass, only for that job: `autofill_job.profile_for_job` applies `autofill_catalog.custom_for_job` to the profile before
+  `/context` or `/choose` hands it on (whole word, case-insensitive, in that field only; a row with no kind is met by either; no application
+  means a scoped row holds nowhere). Settings shows the scope and **Use for every job** drops it. The `/step` prompt carries a technique card per widget kind
   (`services/autofill_techniques.py`) and, with `search:term`, one fast-model call that writes the agent's own search term.
 - **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
   compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the

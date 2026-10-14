@@ -1400,7 +1400,8 @@ footer alone).
   or a Resume: a site that restores a saved draft lands on its review page, whose "Apply" is a Submit.
 - **Walls park, they do not retry.** CAPTCHA, email code, account creation, board-native apply, a failed sign-in, a page it does not
   recognise (a start chooser such as Workday's "Autofill with Resume / Apply Manually"), a "thank you" page before the run reached
-  review, the tab on a host the run never navigated to, the same page again, more than 15 steps and a Next that changes nothing
+  review, the tab on a host the run never navigated to (not after a park that told the user to go somewhere, `sign_in_yourself`,
+  `verify`, `posting` or `unknown_page`: where they land on Resume is theirs, and that host joins the run's), the same page again, more than 15 steps and a Next that changes nothing
   (after one refill) each park with a fixed `why` word; `panel/runs.js` holds the words and which of Resume or Skip this job each
   offers. Ready to submit needs evidence the page was the application: a step behind it, or a field this page's fill wrote or
   confirmed. A field-less page with a lone Next after step 0 is treated as review (an "are you sure" page).
@@ -1412,25 +1413,47 @@ footer alone).
 - **Park less.** A required field the fill reports `unconfirmed` does not park: Next and the page's own validation decide, and a page
   that does not move is refilled once. A run parks only on required fields it could not answer or operate (`open_questions`, the page's
   own invalid flag counts), once per page, naming them.
-- **Resume** re-reads the parked page, learns every answer the user typed (`learnAnswer`, with Undo; never a multiline box, so a long
-  written answer is not saved as a standing one), posts a "you" receipt row, and continues. An answer to a question that names the
-  job's company or its city is saved with `only_for`, and the catalog offers and the deterministic fill matches it only for that job.
+- **Resume** turns the record to `filling` BEFORE its first await (Resume and Skip leave the card and Stop shows, so a second Resume cannot
+  post the receipt twice or replace Undo's memory, and a Skip pressed meanwhile is honoured; Skip also sets `stopRequested`), then re-reads
+  the parked page, learns every answer the user typed (`learnAnswer`, with Undo; never a multiline box, so a long written answer is not
+  saved as a standing one), posts a "you" receipt row, and continues; a record ended under the read is not driven.
+- **A saved answer that names this job stays with this job.** The panel (`panel/actions/pause.js` `scopeOf`) saves a row with `only_for`
+  and `only_for_kind` (`company` or `city`) when the QUESTION names the job's company (the legal-suffix-free name first) or its city. The
+  company match is case-sensitive on the job's own spelling (a company called Gap is not "any gap in employment"); a city is taken only from
+  a "City, ST" or "City, Country" location, not a mode of work or a country (a short denylist). The backend (`autofill_catalog._for_this_job`)
+  matches whole words, case-insensitively, in that field only ("Box" is not in Dropbox, "Rome" not in Jerome, a company scope is not met by
+  a job's location); a row with no kind, written by hand or earlier, is met by either. A scoped row reaches `/api/autofill/context` and
+  `/choose` only through `autofill_job.profile_for_job` (with no application it holds nowhere), so a model never sees another job's answer.
+  Answering the same question at a job the scoped row does not hold for ADDS a row instead of overwriting; updating an old general row whose
+  question names this job scopes it; Undo removes only the row it added or restores only the one it changed. Settings shows the scope and
+  **Use for every job** drops it. A profile read from `/context` is never PUT back (it lacks other jobs' rows).
 - **Learning from a hand fix.** While a run is parked on a popup or search field, `fill_watch` has the page record what the user does
-  to it: event types and a fixed few key names (ArrowDown, ArrowUp, Enter, Space, Tab, Escape), trusted input only, never `value`. On
-  Resume `fill_watch_report` turns that into the engine's own moves (`open:press`, `open:keys`, `search:enter`, `search:debounce`). A
-  known move enters the recipe book at probation for that site (one demonstration never makes it trusted), and a gesture that matches
-  nothing joins the known-gaps list as `missing_technique`, as do leftovers the fill could not operate (`cannot_operate`,
+  to it: event types and a fixed few key names (ArrowDown, ArrowUp, Enter, Space, Tab, Escape), trusted input only, never `value`. One field
+  is active at a time (the one the user's hands are on), and a pick in an option, listbox, menu or tree popup is credited to that field only;
+  a trusted key, input or focus outside every watched field ends its turn, except inside an open popup, where arrowing through the list is
+  still the field's. On Resume `fill_watch_report` turns that into the engine's own moves (`open:press`, `open:keys`, `search:enter`,
+  `search:debounce`). The generic move (the first of each axis, a plain press) is never taught: the book drops it before its lifecycle sees
+  it, so a hand fix cannot demote a recipe whose move was not tried, and nothing worth teaching writes nothing. A known other move enters the
+  recipe book at probation for that site (one demonstration never makes it trusted), and a gesture that matches nothing joins the known-gaps list as `missing_technique`, as do leftovers the fill could not operate (`cannot_operate`,
   `unconfirmed`) and fields the user fixed (`user_fixed`). The recipe book is local and is taught whatever the fill log says; the gaps
   post only while `telemetryEnabled === true`. A gap is posted once per field and outcome and never retried (each post adds one).
-- **Recording the user's Submit.** On a ready tab, a confirmation page shows "Marking applied in 8 s · Undo"; after 8 s the host posts
-  `companion-submitted` (host, path and the matched words; no page text beyond them). Undo posts nothing and offers Mark applied. A 409
-  shows the server's own sentence and falls back to the status PATCH. The user's time ends when the confirmation is detected.
+- **Recording the user's Submit.** A ready tab believes a confirmation page only when it is on a host the run reached and every read since
+  Ready was one of the application's own pages (a page not drawn yet says nothing); any other page the tab shows (another employer's thank-you,
+  a portal) sets `noAutoMark` and leaves the manual Mark applied. A believed confirmation shows "Marking applied in 8 s · Undo"; after 8 s the
+  host posts `companion-submitted` (host, path and the matched words; no page text beyond them). The host and path are kept from the read that
+  saw the page, so a tab closed during the countdown marks at once (a failure shows on the stopped card) and a tab that moved on cannot change
+  the address sent. Undo posts nothing and offers Mark applied. A 409 shows the server's own sentence and falls back to the status PATCH. The
+  user's time ends when the confirmation is detected. The Ready card's **Done** ends the record as stopped with no server write and frees the
+  tab for a new Apply. A read that fails on a ready tab leaves it ready (the driver does not stop a run mid-Submit). Each record carries the
+  lease of the panel that owns it, and only that panel arms its auto-mark (every window's panel hears every tab; a reopened panel takes over the
+  records on tabs of its own window). A run tab that navigates to a host the run never reached loses its frame vouch until a Resume reads it.
 - **Apply on the Job step** (`panel/actions/job.js`): re-reads the job and its tailoring sessions; an applied job stops; a job held by
   the always-on copy is refused with nothing written; it queues as the user's yes (consent channel `companion`, only from
   `pending_review`), claims the job for this copy when sync marked it offered, settles the resume (a PDF: go; a draft without a PDF:
   render it, never quick-tailor over it; nothing and no open session: quick tailor with the user's pick; an open custom session:
   "Finish tailoring first", with Apply using the base resume and the session untouched), then opens `apply_url` (else `source_url`,
   else the tab's address; http(s) only, re-checked here because a value that arrived by sync skipped the server) in the current tab.
+  On a tab that already has a live run it only says "A run is already going in this tab." and writes nothing.
   It shows for a job with no application or the user's own draft, and stays hidden once the application is applied. With full automation
   Off the footer is Save job plus "Turn on full automation in Settings to apply from here."
 - **Per-run fill limits.** `runFill` copies its limits per run; a driven tab passes `RUN_LIMITS` (60 s a field, 12 adaptive steps,

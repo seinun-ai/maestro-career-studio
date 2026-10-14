@@ -25,8 +25,10 @@ at to your local Maestro CS app.
   recognise, or a required question it could not answer. Answer in the page, then
   press **Resume** in the panel. Your answers are saved to your profile (with
   an Undo). After you press Submit and the confirmation page shows, the panel
-  marks the job applied after 8 seconds, unless you press Undo. Running several
-  jobs at once from a Queue view is not built yet.
+  marks the job applied after 8 seconds, unless you press Undo. If the tab moves
+  to some other page first, nothing is marked for you and **Mark applied** is left
+  to press; **Done** on the review card ends the run without marking anything.
+  Running several jobs at once from a Queue view is not built yet.
 - **Track it.** Mark the application Draft or Applied from the panel.
 
 Open the panel with the toolbar icon or `Alt+Shift+J` (change it at

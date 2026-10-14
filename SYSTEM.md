@@ -322,8 +322,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   /api/autofill/gaps`, `extra="forbid"`, closed enums) holds only a widget family hash, host, field shape, outcome (`cannot_operate`,
   `unconfirmed`, `user_fixed`, `missing_technique`) and counts; `sw.js` `fill_gaps` posts it only while `telemetryEnabled === true`, and
   `DELETE /telemetry` clears it with the rows and runs. The **gesture report** that teaches the recipe book after a hand fix
-  (`content/recipes.js` `watch`/`report`) holds event types and an allowlisted few key names, never `value` or other keys; it stays local,
-  with the fill log off too.
+  (`content/recipes.js` `watch`/`report`) holds event types and an allowlisted few key names, never `value` or other keys, credits a pick only to the one field the user is on, and
+  never teaches the generic move (a press), so a hand fix cannot demote a recipe; it stays local, with the fill log off too.
 - **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an agent filled into an
   application form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`) lives only in the local `filled_answers` table
   (`services/filled_answers.py`; `docs/entities/filled-answers.md`): one row per page run, linked to an application by job + base resume. It
@@ -602,10 +602,15 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   Workday's footer, whose text still decides). A posting's Apply is followed only as a same-tab http(s) link (no click handlers) on the
   first read of a tab the run opened. CAPTCHA, email code, account creation, a job board's own apply and any unrecognised page PARK (Needs
   you), as does a required field it could not answer, once per page. The user answers in the page and presses **Resume**: every typed answer
-  is remembered (Undo; long written ones never), one naming the job's company or city only for that job (`only_for`), and the hand fix
-  teaches the recipe book (§6 gesture report). A confirmation page after the user's own Submit is marked applied after an 8 s Undo. Run tabs
-  fill with per-run limits (60 s a field, 12 adaptive steps, 10 min a page; single-page Autofill keeps 25 s and 8). The job memory is per
-  tab (`chrome.storage.session` `widget.sessions`, no clock; origin, tenant, sibling-posting and backend-wins guards).
+  is remembered (Undo; long written ones never). One naming the job's company or city is saved with `only_for` + `only_for_kind` and held
+  for that job only: matched as a whole word, in that field, by `autofill_job.profile_for_job` for both `/context` and `/choose` (a general
+  row whose question names this job is scoped on update; the same question at another job adds a row; Settings has Use for every job). The
+  hand fix teaches the recipe book (§6 gesture report). The user's own Submit is recorded only from a confirmation page on a host the run
+  reached, straight from the application's own pages, after an 8 s Undo (a tab closed during it marks at once); any other page sets
+  `noAutoMark`, leaving the manual Mark applied, and Done on the Ready card ends the record writing nothing. Only the panel holding a
+  record's lease arms its mark, and Apply on a tab with a live run writes nothing. Run tabs fill with per-run limits (60 s a field, 12
+  adaptive steps, 10 min a page; single-page Autofill keeps 25 s and 8). The job memory is per tab (`chrome.storage.session`
+  `widget.sessions`, no clock; origin, tenant, sibling-posting and backend-wins guards).
 - **Screening answers dial** (Settings › Form filling; `autofill.answer_level`, default **Backed by your history**, so an install that had
   the old low-stakes switch off now answers low-stakes questions; the one setting for the Companion, `/map` `/pick` `/step` and agents, via
   the brief's `applying.answer_level`): **Facts only** (saved answers and history), **Backed by your history** (also low-stakes kinds in the

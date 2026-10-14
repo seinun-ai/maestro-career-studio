@@ -50,10 +50,13 @@ view for several is still ahead.
   button stops the run and the panel says why. You fix it in the page and press **Resume**.
 - **Your answers are remembered.** Whatever you type into a field while a run waits for you is saved
   to your profile when you press Resume, with an Undo. A written answer that names the job's company
-  or city is kept for that job only.
+  or city is kept for that job only: the same question at another job adds its own answer instead of
+  replacing it, and Settings has **Use for every job** to drop the limit.
 - **Marked applied after your Submit.** When the confirmation page shows, the panel marks the job
   applied after 8 seconds unless you press Undo. This is recorded as the Companion seeing your
-  Submit, on its own consent channel (`companion`), and clicks nothing.
+  Submit, on its own consent channel (`companion`), and clicks nothing. It only believes a
+  confirmation on the application's own site, straight after its pages. Anywhere else, **Mark
+  applied** stays yours to press, and **Done** on the review card ends the run without marking it.
 - **Sign-in with your saved job-site login**, on known application sites only (Workday, Greenhouse,
   Lever, Ashby, iCIMS and a few more), in the page's top frame. Anywhere else the run waits for you.
   The password never reaches an AI model, a trace or a log, and a failed sign-in is never retried.
