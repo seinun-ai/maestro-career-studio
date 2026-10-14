@@ -140,8 +140,9 @@
     // Full automation on: the Job step's Queue, and Apply (queue, the resume, then one run in this
     // tab). `startRun` is handed in because an action reaches no other action.
     queueJob: () => job.queueJob(store),
-    applyJob: () => job.applyJob(store, { start: (seed) => run.startRun(store, seed) }),
-    applyWithBase: () => job.applyWithBase(store, { start: (seed) => run.startRun(store, seed) }),
+    applyJob: () => job.applyJob(store, { start: (seed) => run.startRun(store, seed), running: () => run.runningHere(store) }),
+    applyWithBase: () => job.applyWithBase(store, {
+      start: (seed) => run.startRun(store, seed), running: () => run.runningHere(store) }),
     pickApplication: (applicationId) => pick.pickApplication(store, applicationId),
     unpickApplication: () => pick.unpickApplication(store),
     // Bound like the rest, and called by a LOADER rather than by a control —

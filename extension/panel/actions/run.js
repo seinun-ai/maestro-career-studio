@@ -31,8 +31,8 @@
  * memory of what it posted (values) and Undo's previous profile values stay in this file's maps,
  * which neither the card nor `chrome.storage.session` ever sees.
  *
- * WHAT THIS FILE PUBLISHES: ns.panelActionsRun = { startRun, stopRun, resumeRun, skipRun, closeRun,
- * undoLearned, undoMark, markApplied, restoreRuns }.
+ * WHAT THIS FILE PUBLISHES: ns.panelActionsRun = { startRun, runningHere, stopRun, resumeRun, skipRun,
+ * closeRun, undoLearned, undoMark, markApplied, restoreRuns }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -412,6 +412,13 @@
     if (record.tabClosed) record.why = "tab_closed";
   }
 
+  /** Whether the bound tab has a run that has not finished: the Job step's Apply asks this BEFORE it
+   * writes anything, since `startRun` refuses such a tab only after the job was queued and tailored. */
+  function runningHere(store) {
+    const facts = store.read();
+    return facts.tabId !== null && facts.runs.some((one) => tabOf(one) === facts.tabId && live(one));
+  }
+
   /** Apply to one job in the CURRENT tab, from its employer link through every page to the review.
    * `seed` is `{proposalId, jobId, applicationId, company, location, title, baseSlug, openUrl}`; the Job
    * step's Apply (Task 20a) builds it after the job is queued and its resume is ready. A tab with a
@@ -420,7 +427,7 @@
     const facts = store.read();
     const tabId = facts.tabId;
     if (tabId === null || !seed?.proposalId || !seed?.openUrl) return null;
-    if (facts.runs.some((one) => tabOf(one) === tabId && live(one))) return null;
+    if (runningHere(store)) return null;
     const record = newRecord(seed, tabId);
     store.write({ runs: [...facts.runs.filter((one) => tabOf(one) !== tabId), record] });
     persist(store);
@@ -740,6 +747,6 @@
     store.render();
   }
 
-  ns.panelActionsRun = { startRun, stopRun, resumeRun, skipRun, closeRun, undoLearned, undoMark,
+  ns.panelActionsRun = { startRun, runningHere, stopRun, resumeRun, skipRun, closeRun, undoLearned, undoMark,
                          markApplied, restoreRuns };
 })();

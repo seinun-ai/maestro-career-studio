@@ -176,6 +176,10 @@ main(async () => {
       if (!node) throw new Error(`no control #${step.id}`);
       node.click();
     }
+    if (step.seed) {
+      ns.panel.actionStore().write({ runs: step.seed });
+      ns.panel.actionStore().render();
+    }
     if (step.call !== undefined) await actions[step.call]();
     if (step.activate !== undefined) await onActivated({ tabId: step.activate });
     if (step.release) release();
@@ -483,6 +487,26 @@ def test_apply_on_an_applied_job_does_nothing_but_say_so(tmp_path):
     out = _apply(tmp_path, api=api, steps=[{"call": "applyJob"}])
     assert out["seeds"] == [] and _order(out) == []
     assert "already applied" in _note(out["shots"][1]).lower()
+
+
+def _run_record(tab, status="filling", **extra):
+    return {"id": "run-1", "proposalId": "prop-0", "jobId": "job-0", "applicationId": "app-0", "company": "Globex",
+            "openUrl": APP_URL, "startTabId": tab, "tabId": tab, "status": status, "why": None, "open": [],
+            "hosts": ["jobs.acme.test"], "seen": [], "step": 0, "pages": [], "flags": [], **extra}
+
+
+def test_apply_on_a_tab_with_a_live_run_says_so_and_writes_nothing(tmp_path):
+    """A second Apply would queue, tailor and link a job, and only then find the tab taken."""
+    for status in ("filling", "parked", "ready", "confirming"):
+        out = _apply(tmp_path, api=_saved(), steps=[{"seed": [_run_record(7, status)], "call": "applyJob"}])
+        assert out["seeds"] == [] and _order(out) == [], status
+        assert "A run is already going in this tab." in _text(out["shots"][1]["regions"]["foot"]), status
+
+
+def test_a_run_that_is_over_or_in_another_tab_does_not_stop_apply(tmp_path):
+    for record in (_run_record(7, "stopped", why="user"), _run_record(7, "applied"), _run_record(8, "filling")):
+        out = _apply(tmp_path, api=_saved(), steps=[{"seed": [record], "call": "applyJob"}])
+        assert len(out["seeds"]) == 1, record["status"]
 
 
 # ---------- a job that already has a draft: the footer, not applyJob ----------

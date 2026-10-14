@@ -222,6 +222,7 @@
 
   const QUEUED = "Queued. Apply to queued will pick it up.";
   const ALREADY_APPLIED = "You've already applied to this job.";
+  const RUN_GOING = "A run is already going in this tab.";
   const FINISH_FIRST = "You're tailoring this job in Maestro. Finish it, then press Apply.";
   const TAILOR_BLOCKED = "Couldn't tailor your resume. Use Tailor in Maestro CS to see what's in the way.";
   // A proposal that is already in motion in the web app, as its chip words it.
@@ -393,15 +394,22 @@
     };
   }
 
-  /** Apply: Queue, then run this one job in THIS tab. `start` is the run host's `startRun`, handed
-   * in by the roster (an action reaches no other action). Everything up to the run holds one `busy`
+  /** Apply: Queue, then run this one job in THIS tab. `start` is the run host's `startRun` and
+   * `running` its `runningHere`, handed in by the roster (an action reaches no other action). Everything up to the run holds one `busy`
    * span; the run itself is not an action and holds none (it has its own card and Stop).
    *
    * `withBase` is the open-custom-session state's "Apply with the base resume": the same road, but
    * the base resume stands in for the tailoring the user has not finished, and their session is
    * never touched. Submit is nowhere in this file: the run stops at the review. */
-  async function applyJob(store, { start, withBase = false }) {
+  async function applyJob(store, { start, running, withBase = false }) {
     if (store.read().busy !== null || store.read().fullAutomation !== true) return;
+    // Before any write: queueing, tailoring and linking a job to a tab that cannot take its run is work
+    // the user would then have to find and undo.
+    if (running()) {
+      store.write({ note: { text: RUN_GOING } });
+      store.render();
+      return;
+    }
     const token = store.token();
     if (!store.read().job) {
       await addJob(store, { as: "apply", reload: false });
