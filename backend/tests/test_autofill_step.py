@@ -1158,3 +1158,61 @@ def test_step_never_answers_a_veteran_class_question_from_a_saved_custom_yes_no_
     request = req(slot="custom.0", question="Are you a disabled veteran?",
                   candidates=[{"mid": "click:o1", "describe": 'Click the option "Yes"'}] + cands(GIVE_UP))
     assert sans_trace(autofill_step.step(request, facts, db_session, None)) == {"mid": None, "reason": "abstained"}
+
+
+# ---------- J6: How did you hear about us? is a tree: the category, then the board's leaf
+
+HEARD = autofill_catalog.build({"preferences": {"how_heard": "Job board"}}, [], [])
+
+
+def heard(**kw):
+    return req(slot="preferences.how_heard", question="How Did You Hear About Us?", **kw)
+
+
+def heard_step(db_session, r, hint=None):
+    return autofill_step.step(r, HEARD, db_session, hint)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_how_heard_goal_names_the_category_the_leaf_order_and_other(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch)
+    heard_step(db_session, heard(), JobHint(title="Analyst", company="Acme", source="LinkedIn"))
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert "website, online or job-board category" in text and '"Other"' in text
+    assert '"LinkedIn"' in text and "job-board leaf" in text and "careers-site leaf" in text
+    assert "Job board" in text   # the applicant's own word still states what the source is
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_how_heard_goal_without_a_known_board_still_walks_the_same_tree(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch)
+    heard_step(db_session, heard())
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert "website, online or job-board category" in text and "careers-site leaf" in text
+    assert "found on" not in text
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize(("choice", "reason"), [("click:o2", "assumed"), ("open", "progress")])
+def test_a_how_heard_leaf_is_assumed_and_opening_the_category_is_progress(db_session, monkeypatch, choice, reason):
+    """The tree's categories: opening one is progress. The leaf (the board) is not the profile's word: assumed."""
+    fake_jev(monkeypatch, (choice, 0.9))
+    r = heard(candidates=[{"mid": "click:o1", "describe": 'Click the option "Referral"'},
+                          {"mid": "click:o2", "describe": 'Click the option "LinkedIn"'},
+                          {"mid": "open", "describe": "Open the list"}, {"mid": GIVE_UP, "describe": "Stop"}])
+    assert sans_trace(heard_step(db_session, r)) == {"mid": choice, "reason": reason}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_another_slot_keeps_its_ordinary_goal(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch)
+    autofill_step.step(req(slot="education.0.discipline"), FACTS, db_session, None)
+    assert "website, online or job-board category" not in calls[0]["questions"]["f"]["instructions"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_how_heard_option_that_says_the_saved_word_is_the_profiles_answer(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("click:o1", 0.9))
+    r = heard(candidates=[{"mid": "click:o1", "describe": 'Click the option "Job Board"'},
+                          {"mid": GIVE_UP, "describe": "Stop"}])
+    assert sans_trace(heard_step(db_session, r)) == {"mid": "click:o1", "reason": "matched"}

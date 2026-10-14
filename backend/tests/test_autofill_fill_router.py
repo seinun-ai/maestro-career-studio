@@ -746,3 +746,23 @@ def test_a_saved_yes_never_reaches_a_protected_class_through_pick_then_step(db_s
                            for i, t in enumerate(classes, 1)] + [{"mid": "give_up", "describe": "Stop"}]}
     got = _post(db_session, "/api/autofill/step", step).json()
     assert (got["mid"], got["reason"]) == (None, "abstained")
+
+
+@pytest.mark.usefixtures("profile")
+@pytest.mark.parametrize(("url", "source"), [
+    ("https://www.linkedin.com/jobs/view/1234567", "LinkedIn"),
+    ("https://uk.indeed.com/viewjob?jk=abc", "Indeed"),
+    ("https://www.glassdoor.com/job-listing/x-JV.htm", "Glassdoor"),
+    ("https://jobs.example.com/apply?id=7&utm_source=LinkedIn", "linkedin"),       # the URL's own say wins
+    ("https://jobs.example.com/careers/7", None),                                  # a careers site is no board
+    ("https://acme.wd5.myworkdayjobs.com/en-US/careers/job/x_R1", None),           # an ATS is no board
+])
+def test_the_source_is_read_off_the_job_urls_host_as_well(db_session, monkeypatch, tmp_path, url, source):
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    application = _seed_application(db_session, slug)
+    db_session.get(Job, application.job_id).source_url = url
+    db_session.commit()
+    seen = _spy_pick(monkeypatch)
+    assert _post(db_session, "/api/autofill/pick", {"application_id": str(application.id),
+                                                    "fields": [PICK_FIELD]}).status_code == 200
+    assert seen["hint"].source == source

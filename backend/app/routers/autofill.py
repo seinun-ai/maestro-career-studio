@@ -418,12 +418,16 @@ def _job_hint(
     if not source and job and job.source_url:
         query = parse_qs(urlsplit(job.source_url).query)
         source = next((query[k][0] for k in ("source", "utm_source", "src") if query.get(k)), None)
+    source = (source or "").lower()[:60] or None
+    # No ?source=: the tracked URL's host may name the board it was found on (linkedin.com is "LinkedIn").
+    if not source and job:
+        source = autofill_job.board_of_url(job.source_url)
     if job is None and not source:
         return None
     return autofill_pick.JobHint(
         title=job.title if job else None,
         company=job.company if job else None,
-        source=(source or "").lower()[:60] or None,
+        source=source,
     )
 
 

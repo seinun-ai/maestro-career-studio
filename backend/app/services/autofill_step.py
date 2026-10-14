@@ -119,8 +119,8 @@ def _decide(req: StepRequest, mid: str | None, p: float | None, policy: str, *,
     mid = None if mid == GIVE_UP else mid
     if mid and _is_answer(req, mid):
         picked = verdict(req, mid, p, policy, engine=engine)
-        return StepResponse(mid=picked.oids[0] if picked.oids else None, reason=picked.reason,
-                            trace=picked.trace)
+        reason = picked.reason
+        return StepResponse(mid=picked.oids[0] if picked.oids else None, reason=reason, trace=picked.trace)
     return _progress(mid, p, engine)
 
 
@@ -134,6 +134,21 @@ def _progress(mid: str | None, p: float | None, engine: Engine) -> StepResponse:
     if mid and (p or 0.0) >= PROGRESS_FLOOR:
         return StepResponse(mid=mid, reason="progress", trace=trace)
     return StepResponse(mid=None, reason="abstained", trace=trace)
+
+
+HOW_HEARD_SLOT = "preferences.how_heard"
+
+
+def _how_heard_goal(field: str, value: str, hint: JobHint | None) -> str:
+    """How did you hear about us? is often a tree (Workday: a category, then the board). The applicant's
+    saved source is a kind ("Job board"); the board that listed THIS job is the leaf. The leaf is not the
+    profile's word, so the step reports it `assumed` (`_decide`)."""
+    found = f" This job was found on {json.dumps(hint.source)}." if hint and hint.source else ""
+    leaf = (f"the leaf for {json.dumps(hint.source)}, otherwise" if hint and hint.source else "")
+    return (f"You are filling {field} on a job application; the applicant's saved answer is {json.dumps(value)} "
+            f"(a source, never a person).{found} The goal is to select where the applicant heard about the job: "
+            "open the website, online or job-board category if the options are grouped (otherwise \"Other\"), then "
+            f"select {leaf} a job-board leaf, otherwise the company careers-site leaf. {NEVER_YES_NO}")
 
 
 def _goal(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict[str, Fact],
@@ -153,6 +168,8 @@ def _goal(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict
         return (f"You are filling {field} on a job application. For the applicant, the answer to the question is "
                 f"{json.dumps(answer.answer)}{that_is}: the goal is to select the option that states that answer.")
     fact = facts[req.slot]
+    if req.slot == HOW_HEARD_SLOT:
+        return _how_heard_goal(field, values[0], hint)
     return (f"You are filling {field} on a job application. The goal is to select the option that means the "
             f"same as the applicant's fact {json.dumps(fact.describe)}: {json.dumps(values[0])}. {NEVER_YES_NO}")
 
@@ -346,6 +363,11 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
                state={"job": asdict(hint) if hint else None, "history": req.history},
                criteria=criteria, policy=policy)
     moved = _with_term(req, ask, session, budget, _move(req, ask, session, budget))
+    # A tree's leaf (the board) is the Companion's pick, not the saved word: the user is told to check it.
+    # An option that says the saved word itself ("Job board" for "Job board") is the profile's answer.
+    if (req.slot == HOW_HEARD_SLOT and moved.mid and moved.reason in ("matched", "closest")
+            and (text := shown.get(moved.mid)) is not None and text.casefold() != values[0].casefold()):
+        moved = moved.model_copy(update={"reason": "assumed"})
     if said and veteran_overreach(said, req.question, [], shown.get(moved.mid or "")):
         return StepResponse(mid=None, reason="abstained", polarity=polarity)
     return moved.model_copy(update={"polarity": polarity})

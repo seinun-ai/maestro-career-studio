@@ -6,6 +6,7 @@ profile onward, to the deterministic fill (/context) or to a model (/choose),
 passes it through `profile_for_job`, so the scope is decided in one place."""
 
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -28,3 +29,22 @@ def profile_for_job(db: Session, profile: Any, application_id: UUID | None) -> A
     job = application_job(db, application_id)
     return {**profile, "custom": autofill_catalog.custom_for_job(
         profile["custom"], job.company if job else None, job.location if job else None)}
+
+
+# The job boards a posting's URL host names as where the job was found ("how did you hear about us?").
+# By registered domain: a subdomain ("uk.indeed.com") is the same board. A careers site or an ATS host
+# is the employer's own page, no board.
+_BOARDS = {
+    "linkedin.com": "LinkedIn", "indeed.com": "Indeed", "glassdoor.com": "Glassdoor",
+    "ziprecruiter.com": "ZipRecruiter", "monster.com": "Monster", "simplyhired.com": "SimplyHired",
+    "dice.com": "Dice", "wellfound.com": "Wellfound", "angel.co": "Wellfound",
+    "joinhandshake.com": "Handshake", "builtin.com": "Built In", "careerbuilder.com": "CareerBuilder",
+    "snagajob.com": "Snagajob", "flexjobs.com": "FlexJobs", "levels.fyi": "Levels.fyi",
+}
+
+
+def board_of_url(url: str | None) -> str | None:
+    """The job board a posting URL's host names ("https://www.linkedin.com/jobs/view/1" is LinkedIn), else
+    None: the host of a careers site or an applicant tracking system is the employer's."""
+    host = (urlsplit(url or "").hostname or "").lower()
+    return next((name for domain, name in _BOARDS.items() if host == domain or host.endswith(f".{domain}")), None)
