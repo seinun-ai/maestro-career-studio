@@ -29,7 +29,7 @@
   // combobox (not an info icon or a Help link); aria-haspopup="false" never.
   const CANDIDATE = 'input, select, textarea, button[aria-haspopup]:not([aria-haspopup="false"]), '
     + '[aria-haspopup]:not([aria-haspopup="false"]):is([role="button"], [role="combobox"]):not(button):not(input), '
-    + 'button[aria-pressed], [role="button"][aria-pressed]:not(button), '
+    + 'button[aria-pressed], [role="button"][aria-pressed]:not(button), ul[role="list"][aria-label] > li > button, '
     + '[role="combobox"]:not(input), [contenteditable]:not([contenteditable="false"]), '
     + '[role="textbox"]:not(input):not(textarea), [role="radio"]:not(input), [role="checkbox"]:not(input), '
     + '[role="switch"], [role="spinbutton"]:not(input), [role="slider"]';
@@ -111,7 +111,7 @@
     const shape = ns.shapes.of(el);
     // A toggle button that is not one of a labelled group (a favourite star, a
     // toolbar's Bold) is a control, not a question.
-    if (!shape && el.matches('button[aria-pressed], [role="button"][aria-pressed]')) return false;
+    if (!shape && el.matches('button[aria-pressed], [role="button"][aria-pressed], ul[role="list"][aria-label] > li > button')) return false;
     // Read-only is not fillable — unless it opens a list when pressed.
     if (el.readOnly && shape?.name !== "popup") return false;
     // A node inside a rich-text box is the box's content, not a field.

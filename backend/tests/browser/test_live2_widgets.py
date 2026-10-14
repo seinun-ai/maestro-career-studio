@@ -317,3 +317,53 @@ def test_a_pick_typed_with_a_shorter_term_still_verifies_when_the_text_changed(p
     f = strict(page, load, onclick="i.value = 'Canada';")
     row = apply(page, f, op="choose", text="Canada", term="Can")
     assert (row["outcome"], row["committed"]) == ("verified", "Canada")
+
+
+# --- review follow-ups: pill groups and learned categories
+def test_a_multi_select_is_told_by_its_tag_name_too(page, load):
+    load(page, "<cx-multi-select><ul role='list' aria-label='Which tools do you use?'>"
+               + "".join(f"<li><button type='button' aria-pressed='false'>{t}</button></li>" for t in ("Git", "SQL"))
+               + "</ul></cx-multi-select>")
+    assert inv(page)["Which tools do you use?"]["multi"] is True
+
+
+NO_ARIA_PILLS = ("<ul role='list' aria-label='Do you hold a clearance?'>"
+                 "<li><button type='button' class='pill'><span class='icon'></span><span>No</span></button></li>"
+                 "<li><button type='button' class='pill pill--selected'><span class='icon'></span><span>Yes</span></button></li></ul>"
+                 "<script>for (const b of document.querySelectorAll('.pill')) b.addEventListener('click', () => {"
+                 "for (const o of document.querySelectorAll('.pill')) o.classList.toggle('pill--selected', o === b); });</script>")
+
+
+def test_a_list_of_button_only_items_is_a_pill_group_even_with_no_aria_pressed(page, load):
+    load(page, NO_ARIA_PILLS)
+    f = inv(page)["Do you hold a clearance?"]
+    assert (f["shape"], [o["text"] for o in f["options"]], f["committed"], f["answered"]) == ("group", ["No", "Yes"], "Yes", True)
+    assert apply(page, f, op="choose", text="No")["outcome"] == "verified"
+    assert page.get_attribute("button:has-text('No')", "class") == "pill pill--selected"
+
+
+def test_a_pagination_list_or_a_menu_of_buttons_is_not_a_pill_group(page, load):
+    load(page, "<ul role='list' aria-label='Pages'><li><button type='button' aria-current='page'>1</button></li>"
+               "<li><button type='button'>2</button></li></ul>"
+               "<ul role='list' aria-label='Sort by'><li><button type='button' aria-haspopup='menu'>Date</button></li>"
+               "<li><button type='button' aria-expanded='false'>Title</button></li></ul>")
+    assert [q for q, f in inv(page).items() if f["shape"] == "group"] == []
+
+
+CHECKED_ROWS = ("<label id='l'>Skills</label><button id='b' aria-haspopup='listbox' aria-labelledby='l'>Select One</button><div id='portal'></div>"
+                "<script>const b = document.getElementById('b'), p = document.getElementById('portal');"
+                "const show = (rows) => { p.innerHTML = \"<ul role='listbox'>\" + rows.map((r) => `<li role='option' aria-checked='false'>${r}</li>`).join('') + '</ul>';"
+                " p.querySelector('li').addEventListener('click', (e) => { e.stopPropagation(); show(['More A', 'More B']); }); };"
+                "b.addEventListener('click', (e) => { e.stopPropagation(); show(['Alpha', 'Beta']); });"
+                "document.addEventListener('click', () => { p.innerHTML = ''; });</script>")
+
+
+def test_a_row_with_aria_checked_is_never_learned_as_a_category(page, load):
+    from tests.browser.test_adaptive_step import _clicks, move, state
+    load(page, CHECKED_ROWS)
+    f = inv(page)["Skills"]
+    move(page, f, "open", "Alpha")
+    assert move(page, f, "click:o1", "Alpha")["outcome"] == "progressed"   # its list changed, so the step moved on
+    move(page, f, "close", "Alpha")
+    move(page, f, "open", "Alpha")
+    assert _clicks(state(page, f, "Alpha"))[0] == 'Click the option "Alpha"'   # a selectable row stays an option

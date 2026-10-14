@@ -5,7 +5,8 @@
      `ul[role=list][aria-label=<the question>]` whose `li[role=listitem]` each hold a `button[type=button]`
      with `aria-pressed`. A single-answer group replaces its pick on a click of another pill and UN-SELECTS
      on a click of the pressed one. The page's own state is window.__oracle.pills_* (set only by the click
-     handler); `pills_clicks` counts every pill click, so a test can prove a press was not sent. -->
+     handler); `pills_clicks` counts every pill click, so a test can prove a press was not sent. Each pill
+     carries an empty icon span before its text, as the live buttons do (the text is the last span). -->
 <form>
   <div class="input-row">
     <label class="input-row__label input-row__label--required" id="lbl-prior" aria-labelledby="labelText-prior">
@@ -14,8 +15,8 @@
     </label>
     <div class="input-row__control-container" data-qa="prior">
       <ul class="cx-select-pills-container" role="list" aria-label="Have you worked for Globex before?" data-oracle="pills_prior">
-        <li role="listitem"><button type="button" class="cx-select-pill-section" aria-pressed="false" aria-disabled="false"><span>No</span></button></li>
-        <li role="listitem"><button type="button" class="cx-select-pill-section" aria-pressed="false" aria-disabled="false"><span>Yes</span></button></li>
+        <li role="listitem"><button type="button" class="cx-select-pill-section" aria-pressed="false" aria-disabled="false"><span class="cx-select-pill-icon" aria-hidden="true"></span><span>No</span></button></li>
+        <li role="listitem"><button type="button" class="cx-select-pill-section" aria-pressed="false" aria-disabled="false"><span class="cx-select-pill-icon" aria-hidden="true"></span><span>Yes</span></button></li>
       </ul>
     </div>
   </div>
@@ -25,9 +26,9 @@
     </label>
     <div class="input-row__control-container" data-qa="degree">
       <ul class="cx-select-pills-container" role="list" aria-label="Highest degree" data-oracle="pills_degree">
-        <li role="listitem"><button type="button" class="cx-select-pill-section" aria-pressed="false" aria-disabled="false"><span>Associate</span></button></li>
-        <li role="listitem"><button type="button" class="cx-select-pill-section" aria-pressed="false" aria-disabled="false"><span>Bachelor's</span></button></li>
-        <li role="listitem"><button type="button" class="cx-select-pill-section" aria-pressed="false" aria-disabled="false"><span>Master's</span></button></li>
+        <li role="listitem"><button type="button" class="cx-select-pill-section" aria-pressed="false" aria-disabled="false"><span class="cx-select-pill-icon" aria-hidden="true"></span><span>Associate</span></button></li>
+        <li role="listitem"><button type="button" class="cx-select-pill-section" aria-pressed="false" aria-disabled="false"><span class="cx-select-pill-icon" aria-hidden="true"></span><span>Bachelor's</span></button></li>
+        <li role="listitem"><button type="button" class="cx-select-pill-section" aria-pressed="false" aria-disabled="false"><span class="cx-select-pill-icon" aria-hidden="true"></span><span>Master's</span></button></li>
       </ul>
     </div>
   </div>

@@ -419,7 +419,13 @@
   // with no label is not one); ARIA radios were always listed.
   const PRESSABLE = 'button[aria-pressed], [role="button"][aria-pressed]';
   const ARIA_RADIO = '[role="radio"][aria-checked]';
-  const pillOn = (m) => m.getAttribute("aria-pressed") === "true" || m.getAttribute("aria-checked") === "true";
+  // A list of buttons with no ARIA state at all (`ul[role=list][aria-label]` of button-only items): the
+  // state, when the page shows one, is a class on the button.
+  const LISTED = 'ul[role="list"][aria-label] > li > button';
+  const SELECTED_CLASS = /(^|[-_\s])(selected|active|pressed|checked)($|[-_\s])/i;
+  const stateless = (m) => !m.hasAttribute("aria-pressed") && !m.hasAttribute("aria-checked");
+  const pillOn = (m) => m.getAttribute("aria-pressed") === "true" || m.getAttribute("aria-checked") === "true"
+    || (stateless(m) && m.matches(LISTED) && SELECTED_CLASS.test(m.getAttribute("class") ?? ""));
   const pillText = (m) => clean(m.textContent) || clean(m.getAttribute("aria-label") ?? "");
   // A `required` label the page marks by class (a CSS-only star): the nearest
   // label before the group, in the nearest ancestor that holds one.
@@ -434,9 +440,23 @@
     }
     return false;
   };
+  // A `ul[role=list][aria-label]` whose items each hold ONE plain button and nothing else, two or more
+  // of them. Not a menu, a pager or a tab list: any button that says so is the end of it.
+  const NOT_A_PILL = '[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded], [aria-current], [aria-controls], [role="tab"], [role="menuitem"]';
+  const listedGroup = (el) => {
+    const container = el.closest('ul[role="list"][aria-label]');
+    if (!container || container.closest('[role="toolbar"]')) return null;
+    const items = [...container.children];
+    const members = items.map((li) => (li.tagName === "LI" && li.children.length > 0 ? li.querySelectorAll("button, input, select, textarea, a[href]") : []));
+    if (items.length < 2 || !members.every((m) => m.length === 1 && m[0].tagName === "BUTTON" && m[0].parentElement === items[members.indexOf(m)]
+      && !m[0].matches(NOT_A_PILL))) return null;
+    const q = describeBy(container);
+    return q.question ? { container, members: members.map((m) => m[0]), ...q, radio: false } : null;
+  };
   const pillGroup = (el) => memo("pills", el, () => {
-    if (el instanceof HTMLInputElement || !el.matches(`${PRESSABLE}, ${ARIA_RADIO}`)) return null;
+    if (el instanceof HTMLInputElement || !el.matches(`${PRESSABLE}, ${ARIA_RADIO}, ${LISTED}`)) return null;
     const radio = el.matches(ARIA_RADIO);
+    if (!radio && !el.matches(PRESSABLE)) return listedGroup(el);
     const kind = radio ? ARIA_RADIO : PRESSABLE;
     const whole = (container) => {
       if (container.closest('[role="toolbar"]') || container.querySelector(ns.fieldControls.CONTROL)) return null;
@@ -461,7 +481,7 @@
     if (g.radio) return false;
     if (g.container.getAttribute("aria-multiselectable") === "true") return true;
     for (let n = g.container, d = 0; n && d < 3 && !edge(n); n = n.parentElement, d += 1) {
-      if (/multi-?select/i.test(n.className)) return true;
+      if (/multi-?select/i.test(`${n.tagName} ${n.className}`)) return true;
     }
     return false;
   };

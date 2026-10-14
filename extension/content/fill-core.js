@@ -1309,7 +1309,7 @@
         const after = own(el, popsBefore);
         const next = after ? b().optionsOf(after) : [];
         if (next.length && next.map((o) => o.text).join("\n") !== shown && same(shape.read(el), before.display)) {
-          if (!category) learnGroup(el, hit.text, rowPath);
+          if (!category) learnGroup(el, hit.text, rowPath, hit.el);
           leftOpen.set(el, { pop: after, before: popsBefore });
           return { outcome: "unexpected", reason: "new_options", options: flag(next, consentForms) };
         }
@@ -1456,7 +1456,10 @@
   // them a group and a choose never takes one as the answer.
   const learnedGroups = new WeakMap(); // el -> Set("text\nplace")
   const groupKey = (text, where) => `${text}\n${where}`;
-  const learnGroup = (el, text, where) => {
+  const learnGroup = (el, text, where, row) => {
+    // A row that can be selected (a checkbox, radio or aria-checked) is an option whose click redrew the
+    // list, never a category.
+    if (row?.hasAttribute("aria-checked") || row?.querySelector(SELECTION)) return;
     if (!learnedGroups.has(el)) learnedGroups.set(el, new Set());
     learnedGroups.get(el).add(groupKey(text, where));
   };
@@ -1690,7 +1693,7 @@
           const next = after ? b().optionsOf(after).map((o) => o.text).join("\n") : "";
           const unchanged = same(shape.read(el), before.display);
           if (next && next !== shown && unchanged) { // a category: its children are the next state
-            if (!hit.group) learnGroup(el, hit.text, hit.where);
+            if (!hit.group) learnGroup(el, hit.text, hit.where, hit.el);
             leftOpen.set(el, { pop: after, before: held.before });
             return { outcome: "progressed" };
           }
