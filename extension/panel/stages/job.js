@@ -28,7 +28,7 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
-  const { rankBaseResumes, describesJob } = ns.decisions;
+  const { rankBaseResumes, describesJob, offersApply } = ns.decisions;
 
   /** Thousands separators without a locale. `toLocaleString` would read the
    * user's, and this is one number inside an English sentence. */
@@ -132,10 +132,8 @@
     stop.disabled = facts.busy === true;
     stop.addEventListener("click", act.unpickApplication);
     const body = attach(node("div", "stg-body"), bound);
-    // Apply is in the footer for a pick that names a saved job; say what it does, as the saved body does.
-    if (facts.fullAutomation === true && facts.job?.id && (facts.application?.status ?? "draft") === "draft") {
-      attach(body, node("div", "sub", APPLY_PROMISE));
-    }
+    // Apply is in the footer exactly when `offersApply` says so; say what it does, as the saved body does.
+    if (offersApply(facts)) attach(body, node("div", "sub", APPLY_PROMISE));
     const pick = picker(ctx);
     if (pick) attach(body, pick);
     return attach(body, stop);

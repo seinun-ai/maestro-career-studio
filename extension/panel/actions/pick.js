@@ -53,6 +53,7 @@
     job: null,
     match: "none",
     claimed: false,
+    claimFrom: null,
     pdfReady: false,
     evidence: null,
     scores: null,
@@ -125,6 +126,7 @@
       },
       match: "exact",
       claimed: true,
+      claimFrom: "pick",
       // The application's own base is the user's earlier choice, so the Job
       // step's base question is answered by data rather than asked again, and
       // the Base ring compares against the resume the draft came from.

@@ -228,6 +228,7 @@
     const stopping = () => deps.cancelled(record);
 
     let applyOk = false;     // this call opened the tab itself and has not read its first page yet
+    let inPlaceFirst = false;  // a run in place has not read its first page yet
     let navigated = false;   // the last thing the run did moved the tab: its address is the run's own
     let pageFilled = false;  // this page has had its fill (judged afresh after it)
     let tried = 0;           // Next presses on this page that did nothing
@@ -301,6 +302,7 @@
         navigated = true;
         // A run in place did not open its tab: the page was the user's, so a posting's Apply is theirs.
         applyOk = record.inPlace !== true;
+        inPlaceFirst = record.inPlace === true;
       } else if (record.readyAt == null) {
         await update({ status: "filling", why: null, open: [] });
       }
@@ -315,6 +317,11 @@
         // step) may be a saved draft's review page, and its "Apply" is a Submit.
         const mayApply = applyOk;
         applyOk = false;
+        // A run in place drives the page the user picked it for. By the first read the tab may have gone
+        // elsewhere (the pick, the press and the run are not one instant): that page is not this job's.
+        const checkPlace = inPlaceFirst;
+        inPlaceFirst = false;
+        if (checkPlace && url && !ns.decisions.samePosting(record.openUrl, url)) return await park("moved_away");
         if (arrived) {
           navigated = false;
           await noteHost(url);

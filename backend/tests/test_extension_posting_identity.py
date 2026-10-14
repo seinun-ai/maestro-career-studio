@@ -19,7 +19,7 @@ import json
 
 import pytest
 
-from app.services.job_url_match import is_same_posting, posting_id
+from app.services.job_url_match import is_same_posting, names_posting, posting_id
 from tests.extension_harness import _content_source, CONTENT, SHARED, run_node
 from tests.extension_panel_harness import DECISIONS_JS
 
@@ -77,6 +77,35 @@ def test_the_table_exercises_both_branches():
     hits = [posting_id(u) for u in URLS]
     assert sum(1 for h in hits if h) >= 6
     assert sum(1 for h in hits if h is None) >= 5
+
+
+# ---------- does a link name a posting at all? (the apply link the Companion saves) ----------
+
+NAMING_URLS = URLS + [
+    "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_JR1043/apply/applyManually",
+    "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_R-1043",
+    "https://acme.wd5.myworkdayjobs.com/en-US/careers/login",
+    "https://acme.wd5.myworkdayjobs.com/en-US/careers",
+    "https://jobs.lever.co/acme/0b9e5c1a-1d2e-4f3a-9b8c-7d6e5f4a3b2c/apply",
+    "https://acme.example/apply/step2",
+    "https://acme.example/apply/step10",
+    "https://acme.example/careers/apply",
+    "https://jobs.shared.test/apply?org=acme",
+]
+
+_NAMING_DRIVER_JS = r"""
+const { namesPosting } = loadModules().decisions;
+main(async () => {
+  emit(spec.urls.map((url) => namesPosting(url)));
+});
+"""
+
+
+def test_backend_and_extension_agree_on_which_links_name_a_posting(tmp_path):
+    js = run_node(_NAMING_DRIVER_JS, {"urls": NAMING_URLS}, tmp_path, source=DECISIONS_JS)
+    for url, got in zip(NAMING_URLS, js, strict=True):
+        assert got is names_posting(url), url
+    assert 5 <= sum(names_posting(u) for u in NAMING_URLS) < len(NAMING_URLS) - 5
 
 
 # ---------- the stale JSON-LD guard in extractJobPosting ----------

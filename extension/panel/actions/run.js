@@ -36,7 +36,7 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
-  const { samePosting } = ns.decisions;
+  const { samePosting, boardHost } = ns.decisions;
 
   // 8 s between the confirmation page and the mark, so an Undo is a real chance (`submitted` is
   // terminal on the server: the delay is the undo, not a reversal).
@@ -47,8 +47,6 @@
   const LOAD_WAIT_MS = 30000;
   const LOAD_POLL_MS = 250;
   const TERMINAL = new Set(["stopped", "applied"]);
-  // The job boards the page reader calls board-native (content/page-reader.js BOARD_HOST).
-  const BOARD_HOST = /(^|\.)(linkedin|indeed)\.com$/i;
   const hostOf = (url) => {
     try {
       return new URL(url).hostname;
@@ -171,8 +169,9 @@
     // started on the employer's own ATS form, is a different origin from the saved link and still the
     // job. A job BOARD's page is the exception, because there the run's move is to the employer's link.
     const matched = facts.tabId === tabId && facts.job?.id === record.jobId && Boolean(record.jobId)
-      && !BOARD_HOST.test(hostOf(here));
-    // A run in place is on the page the user picked for it: that page is never navigated away.
+      && !boardHost(hostOf(here));
+    // A run in place is on the page the user picked for it: that page is never navigated. If the tab
+    // has gone elsewhere, the driver's first read parks it.
     const stays = record.inPlace === true || (Boolean(here) && (samePosting(url, here) || matched));
     if (!stays) {
       await host.navigate(tabId, url);

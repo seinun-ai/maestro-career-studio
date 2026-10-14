@@ -1481,7 +1481,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # A pick's provenance: it is a fact about THIS page's binding, so a
         # claimed arming carried to the next tab would open a Job door on a
         # posting the user never claimed.
-        "claimed": True,
+        "claimed": True, "claimFrom": "pick",
         # Apply and Queue's reading of the server about THIS job, and the claim to tailor before
         # applying: both are about one posting.
         "apply": {"queued": True, "sessionId": "sess-1"}, "tailorFirst": True,
@@ -1490,7 +1490,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
                    source=PANEL_SOURCE)
     assert out == {
         "match": None, "job": None, "application": None, "pdfReady": False,
-        "claimed": False,
+        "claimed": False, "claimFrom": None,
         "evidence": None, "touched": False, "hasForm": False,
         "fileInputs": 0, "attached": None, "autoAttach": None, "baseSlug": None,
         "baseSelected": False, "baseFromApplication": False, "baseArmed": False,
@@ -1542,6 +1542,7 @@ STALE = {
     # Leftover from a pick on the previous posting. The backend's answer is
     # not a user claim; applyMatch must not leave this standing.
     "claimed": True,
+    "claimFrom": "pick",
 }
 
 
@@ -1582,13 +1583,13 @@ def test_a_match_writes_the_panels_own_shape_and_not_the_endpoints(applied_match
     # The backend named this page. That is not a claim the user made, so the
     # Job row gets no un-pick door. A leftover `claimed` from the previous
     # posting would open one on a match the user cannot withdraw.
-    assert store["claimed"] is False
+    assert store["claimed"] is False and store["claimFrom"] is None
     # A match with no application in it CLEARS the one that was there: the
     # backend's answer is the whole answer, not a patch over the last one.
     assert applied_match["exact_no_application"]["store"]["application"] is None
     assert applied_match["exact_no_application"]["store"]["claimed"] is False
     assert applied_match["none"]["store"] == {**STALE, "match": "none", "job": None,
-                                             "application": None, "claimed": False,
+                                             "application": None, "claimed": False, "claimFrom": None,
                                              "knockout": None,
                                              "baseFromApplication": False,
                                              "settings": None}

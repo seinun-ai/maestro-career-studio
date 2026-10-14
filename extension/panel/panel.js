@@ -398,6 +398,10 @@
      * never a wire field.
      */
     claimed: false,
+    /** Where a claim came from: "pick" (the user named the draft for this page, here or in a session
+     * the bridge restored) or "run" (`bindFromRun`: the tab's run record, whatever the tab shows now).
+     * Only a pick says this page IS that job's application, which is what Apply in place needs. */
+    claimFrom: null,
     pdfReady: false,
     /** What the application has to show for itself: `{pdfName, appliedOn}` or
      * null when it has nothing yet.
@@ -801,6 +805,7 @@
     store.job = null;
     store.application = null;
     store.claimed = false;
+    store.claimFrom = null;
     store.pdfReady = false;
     // The evidence with the application it belongs to: a PDF name and an
     // applied date carried to the next tab would be one employer's receipt
@@ -1234,6 +1239,7 @@
     card.job ??= { id: run.jobId, company: run.company, location: run.location, title: run.title };
     card.match = "exact";
     card.claimed = true;
+    card.claimFrom = "run";
     card.pdfReady = true;
     if (run.baseSlug) {
       card.baseSlug = run.baseSlug;
@@ -1374,6 +1380,7 @@
       store.application = null;
       store.baseFromApplication = false;
       store.claimed = false;
+      store.claimFrom = null;
       store.pdfReady = false;
       // One line, and never a login-shaped card, because there is no account
       // to log in to.
@@ -1413,6 +1420,7 @@
     // the user made, so a leftover `claimed` from a pick on the previous
     // posting must not open an un-pick door here.
     store.claimed = false;
+    store.claimFrom = null;
     return store;
   }
 
@@ -2150,6 +2158,7 @@
         // Provenance of the current binding. The Job body is a switcher /
         // un-pick door only for a claim; a backend match is not one.
         claimed: card.claimed === true,
+        claimFrom: card.claimFrom,
         application: card.application,
         evidence: card.evidence,
         // Resolved here rather than handed the settings object: a body needs
@@ -2411,6 +2420,9 @@
    */
   function rememberSession() {
     const tabId = card.tabId;
+    // A claim taken from a run record belongs to the record, not to a pick: remembered, it would come
+    // back later as one.
+    if (card.claimFrom === "run") return Promise.resolve();
     const entry = sessionEntryFrom(card);
     // No tenant, nothing to scope a memory to; no tab, nowhere to keep it. See
     // `sessionEntryFrom`: this is a refusal, not a fallback.
@@ -2944,13 +2956,12 @@
   /** Does the open Job step offer Apply (and Queue) instead of Save job? With full automation on,
    * unless the job is already applied. A saved job may have no application yet, or the user's own
    * DRAFT (`/api/jobs/match` returns it bound): Apply starts from that draft, and `prepareApply` never
-   * tailors over it. A claimed binding (the user's pick on an unmatched page) offers it too, once the
-   * pick names a saved job: the pick says this page is that job's application, so Apply runs in this tab.
-   * An applied one has nothing left to apply. Off or not known, the footer is exactly what it was. */
+   * tailors over it. The user's pick on an unmatched page offers it too, once the pick names a saved
+   * job: the pick says this page is that job's application, so Apply runs in this tab (`offersApply`
+   * has the whole rule). An applied one has nothing left to apply. Off or not known, the footer is
+   * exactly what it was. */
   function jobAppliesHere() {
-    if (card.fullAutomation !== true || card.apply?.applied === true) return false;
-    if (card.application === null) return true;
-    return Boolean(card.job?.id) && card.application.status === "draft";
+    return ns.decisions.offersApply(card);
   }
 
   // Phase 3: the Queue view picks queued jobs up. Until it exists the Queue button would promise a
@@ -3418,13 +3429,13 @@
 
   /** What Apply and Queue need to know about the saved job on this page, read from the server (its
    * detail and its tailoring sessions) only when the Job step can offer them: full automation on, a
-   * saved job (the backend's match, or the job the user's pick named), and no application bound or a
-   * draft of the user's (an applied one has nothing to apply). Otherwise nothing is asked and `apply`
+   * saved job (the backend's match, or the job the user's pick named; a binding taken from a run
+   * record is not a pick), and no application bound or a draft of the user's (an applied one has
+   * nothing to apply). Otherwise nothing is asked and `apply`
    * is null. A failed read leaves it null, and Apply re-reads at press time anyway, so a stale or
    * missing answer here can only cost a button's state, never a decision. */
   async function loadApplyFacts(token) {
-    const ready = card.fullAutomation === true && card.match === "exact" && card.job?.id
-      && (card.application === null || card.application.status === "draft");
+    const ready = card.match === "exact" && card.job?.id && ns.decisions.offersApply({ ...card, apply: null });
     if (!ready) {
       card.apply = null;
       return;
@@ -3563,6 +3574,7 @@
       // that gets this far is a pick, and `applicationId` already says so. A
       // stored flag would be a second source for one fact, free to disagree.
       card.claimed = true;
+      card.claimFrom = "pick";
     }
     card.pdfReady = entry.pdfReady === true;
     card.touched = entry.touched === true;

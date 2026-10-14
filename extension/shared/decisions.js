@@ -401,6 +401,54 @@
   const STEP_COUNTER_RE = /^[a-z]+\d{1,3}$/i;
   const isIdSegment = (segment) => ID_SEGMENT_RE.test(segment) && !STEP_COUNTER_RE.test(segment);
 
+  /** Does this address carry a posting's identity: an id in the query (`postingId`) or an id-like path
+   * segment? One that does not (a sign-in page, a candidate home, `/careers/apply`) names no job, and
+   * is a prefix of every posting below it. THE SAME RULE as the backend's `job_url_match.names_posting`,
+   * which `tests/test_extension_posting_identity.py` pins over one URL table. */
+  function namesPosting(url) {
+    let u;
+    try {
+      u = new URL(url);
+    } catch {
+      return false;
+    }
+    if (!u.hostname) return false;
+    return postingId(url) !== null || u.pathname.split("/").some((segment) => segment && isIdSegment(segment));
+  }
+
+  // The job boards the page reader calls board-native (content/page-reader.js BOARD_HOST): a run
+  // there moves to the employer's link, and the board's own page is no job's application form.
+  const BOARD_HOST = /(^|\.)(linkedin|indeed)\.com$/i;
+  const boardHost = (host) => BOARD_HOST.test(host ?? "");
+
+  /** The address of a page worth remembering as a job's apply link, or null. Origin, path and only the
+   * one query key that names the posting: a token or a tracking parameter is not kept. Null for a page
+   * that is not http(s), is a job board's, or names no posting (the link would then match other jobs). */
+  function applyLink(url) {
+    let u;
+    try {
+      u = new URL(url);
+    } catch {
+      return null;
+    }
+    if (!/^https?:$/.test(u.protocol) || !u.hostname || boardHost(u.hostname) || !namesPosting(url)) return null;
+    const key = POSTING_ID_QUERY_KEYS.find((one) => (u.searchParams.get(one) ?? "").trim());
+    const query = key ? `?${key}=${encodeURIComponent(u.searchParams.get(key).trim())}` : "";
+    return `${u.origin}${u.pathname}${query}`;
+  }
+
+  /** Does the Job step offer Apply (and Queue) instead of Save job? With full automation on, unless the
+   * job is applied. An unsaved posting does (Apply saves it). A saved job's draft does when the backend's
+   * match bound it, or when the user PICKED it for this page (`claimFrom: "pick"`): the pick says this
+   * page is that job's application. A binding taken from a run record is not that claim: the tab may have
+   * gone elsewhere since. Needs the saved job's id. Off or not known, the footer is what it always was. */
+  function offersApply({ fullAutomation, apply, application, job, claimed, claimFrom }) {
+    if (fullAutomation !== true || apply?.applied === true) return false;
+    if (application == null) return true;
+    if (claimed === true && claimFrom !== "pick") return false;
+    return Boolean(job?.id) && (application.status ?? "draft") === "draft";
+  }
+
   /** Is the page at `url` the posting `link` names, or a page of that posting's
    * wizard? Only a SIBLING answers false: another posting of the same employer.
    *
@@ -683,7 +731,7 @@
 
   ns.decisions = {
     stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession, postingLink,
-    samePosting, applyFacts, httpUrl,
+    samePosting, applyFacts, httpUrl, namesPosting, applyLink, offersApply, boardHost,
     reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
   };
 })();

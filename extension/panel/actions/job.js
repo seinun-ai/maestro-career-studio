@@ -24,7 +24,7 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const duringAction = ns.panelDuringAction;
-  const { rankBaseResumes, describesJob, applyFacts, httpUrl } = ns.decisions;
+  const { rankBaseResumes, describesJob, applyFacts, httpUrl, applyLink } = ns.decisions;
 
   /** The backend's two refusals of a job the scorer cannot read yet, both 422:
    * no skills in its description (`normalize_jd`), or no description read at
@@ -351,20 +351,12 @@
     return { applicationId: made.id, pdfReady: Boolean(made.pdf_path) };
   }
 
-  /** This page, as the job's apply link: http(s) only, without its fragment. */
-  function pageLink(url) {
-    const link = httpUrl(url);
-    if (!link) return null;
-    const page = new URL(link);
-    page.hash = "";
-    return page.href;
-  }
-
   /** Remember the page a hand-picked job was applied on, so the next visit matches it
-   * (`/api/jobs/match` reads the apply link). A convenience: a job that has a link keeps it, and a
-   * refused write (a job another copy holds, an offline server) must not stop the run. */
+   * (`/api/jobs/match` reads the apply link). A convenience: a page that names no posting (`applyLink`
+   * is null: a sign-in page, a job board) is not saved, a job that has a link keeps it, and a refused
+   * write (a job another copy holds, an offline server) must not stop the run. */
   async function saveApplyLink(store, jobId, url) {
-    const link = pageLink(url);
+    const link = applyLink(url);
     if (!link) return;
     try {
       await store.api(`/api/jobs/${encodeURIComponent(jobId)}`, {
@@ -374,27 +366,49 @@
     }
   }
 
+  const PICK_AGAIN = "That draft is no longer this job's open draft. Pick it again.";
+
+  /** The draft the user picked, as the server holds it: the job's NEWEST application is not
+   * necessarily the one they named. Returns `{id, hasPdf, baseResume}` or a `{stop}` sentence when the
+   * draft is gone, is another job's, or is no longer a draft. */
+  async function pickedDraft(store, applicationId, jobId) {
+    let draft;
+    try {
+      draft = await store.api(`/api/applications/${encodeURIComponent(applicationId)}`);
+    } catch (err) {
+      if (err.status === 404) return { stop: PICK_AGAIN };
+      throw err;
+    }
+    if (draft?.job_id !== jobId || (draft.status ?? "draft") !== "draft") return { stop: PICK_AGAIN };
+    return { id: applicationId, hasPdf: Boolean(draft.pdf_path), baseResume: draft.base_resume ?? null };
+  }
+
   /** Everything between the press and the run, as one span of `busy`: the user's yes, the claim on
    * the job, a resume that is ready, and the proposal tied to its application. Returns `{stop}`
    * (a sentence: nothing more was done) or `{seed, application}` for `startRun`.
    *
    * A CLAIMED binding (the user named the job's draft on a page the backend did not match) runs
    * `inPlace`: the pick says this page IS that job's application, so the run's link is this page and
-   * the job's saved links (a board's, say) are never opened. */
+   * the job's saved links (a board's, say) are never opened, and the application is the draft they
+   * named, not the job's newest. */
   async function prepareApply(store, facts, withBase) {
     const jobId = facts.job.id;
     const read = await readApplyFacts(store, jobId);
     if (read.applied) return { stop: ALREADY_APPLIED };
     if (!canRunHere(read.ownership)) return { stop: heldSentence(read.ownership) };
+    const inPlace = facts.claimed === true;
+    // Before anything is written: a pick that no longer stands is the user's to make again.
+    const picked = inPlace ? await pickedDraft(store, facts.application?.id, jobId) : null;
+    if (picked?.stop) return picked;
     const queued = await queueProposal(store, facts, read);
     if (queued.stop) return queued;
     if (read.ownership) {
       const held = await claimHere(store, jobId);
       if (held) return { stop: held };
     }
-    let applicationId = read.applicationId;
-    let pdfReady = read.hasPdf;
-    const base = read.baseResume ?? facts.baseSlug;
+    let applicationId = picked ? picked.id : read.applicationId;
+    let pdfReady = picked ? picked.hasPdf : read.hasPdf;
+    const base = (picked ? picked.baseResume : read.baseResume) ?? facts.baseSlug;
     if (applicationId === null) {
       // The user's own custom tailoring is never tailored over; the other way round it is theirs to choose.
       if (read.sessionId && !withBase) return { stop: FINISH_FIRST };
@@ -410,7 +424,6 @@
     } catch (err) {
       throw err.status === 409 ? shown(`Couldn't link the resume to the job. ${err.message}`) : err;
     }
-    const inPlace = facts.claimed === true;
     // Sync can deliver a link that never met the server's check, so it is vouched for here: http(s) only.
     const openUrl = inPlace ? httpUrl(facts.url)
       : httpUrl(read.applyUrl) ?? httpUrl(read.sourceUrl) ?? httpUrl(facts.url);
@@ -433,6 +446,8 @@
    * never touched. Submit is nowhere in this file: the run stops at the review. */
   async function applyJob(store, { start, running, withBase = false }) {
     if (store.read().busy !== null || store.read().fullAutomation !== true) return;
+    // A binding taken from a run record is not the user's pick for this page: not ours to apply in place.
+    if (store.read().claimed === true && store.read().claimFrom !== "pick") return;
     // Before any write: queueing, tailoring and linking a job to a tab that cannot take its run is work
     // the user would then have to find and undo.
     if (running()) {

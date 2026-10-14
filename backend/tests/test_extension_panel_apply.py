@@ -192,7 +192,7 @@ main(async () => {
     for (let i = 0; i < (step.settles ?? 1); i += 1) await settle();
     shots.push(snap());
   }
-  emit({ shots, sent, seeds, updates, created, fills, errors, warnings, broadcasts });
+  emit({ shots, sent, seeds, updates, created, fills, errors, warnings, broadcasts, writes });
 });
 """
 
@@ -572,7 +572,7 @@ def test_an_applied_application_has_no_apply(tmp_path):
 # so Apply runs here and never opens or navigates to the job's saved links.
 
 FORM_HOST = "forms.globex.test"
-FORM_URL = f"https://{FORM_HOST}/apply/step1"
+FORM_URL = f"https://{FORM_HOST}/jobs/JR1043/apply/step1"
 PICKED = {"id": "app-1", "job_id": "job-1", "base_resume": "ai_ml_engineer", "status": "draft",
           "job_company": "Acme", "job_title": "Data Scientist"}
 FORM_PAGE = {"extract_job_posting": _reply({"url": FORM_URL, "title": "Apply", "text": "", "source": "body"}),
@@ -675,11 +675,110 @@ def test_a_run_here_does_not_press_a_postings_apply_link(tmp_path):
     assert not [msg for msg in out["broadcasts"] if msg["message"].get("type") == "page_advance"]
 
 
-def test_the_page_is_saved_as_the_jobs_apply_link_without_its_fragment(tmp_path):
-    out = _on_form(tmp_path, [{"foot": "Apply"}], url=f"{FORM_URL}?step=1#section-2")
+def test_the_page_is_saved_as_the_jobs_apply_link_without_its_fragment_or_tokens(tmp_path):
+    out = _on_form(tmp_path, [{"foot": "Apply"}], url=f"{FORM_URL}?token=abc123&utm_source=x#section-2")
     [patch] = _api(out, "PATCH", "/api/jobs/job-1")
-    assert _body(patch) == {"apply_url": f"{FORM_URL}?step=1"}
-    assert out["seeds"][0]["openUrl"] == f"{FORM_URL}?step=1#section-2"
+    assert _body(patch) == {"apply_url": FORM_URL}
+    # The run still reads the page as it is.
+    assert out["seeds"][0]["openUrl"] == f"{FORM_URL}?token=abc123&utm_source=x#section-2"
+
+
+def test_the_one_query_key_that_names_a_posting_is_kept_in_the_saved_link(tmp_path):
+    page_url = f"https://{FORM_HOST}/careers?token=abc&gh_jid=555&utm_source=x"
+    out = _on_form(tmp_path, [{"foot": "Apply"}], url=page_url)
+    [patch] = _api(out, "PATCH", "/api/jobs/job-1")
+    assert _body(patch) == {"apply_url": f"https://{FORM_HOST}/careers?gh_jid=555"}
+
+
+WD_FORM = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_JR1234/apply/applyManually"
+
+
+@pytest.mark.parametrize("url", [
+    f"https://{FORM_HOST}/careers/apply",
+    f"https://{FORM_HOST}/careers/apply/step2",
+    "https://jobs.shared.test/apply?org=acme",
+    "https://acme.wd5.myworkdayjobs.com/en-US/careers/login",
+    "https://www.linkedin.com/jobs/view/4001/apply",
+], ids=["no-id", "wizard-step", "tenant-in-query", "sign-in-page", "job-board"])
+def test_a_page_that_names_no_posting_is_never_saved_as_the_apply_link(tmp_path, url):
+    out = _on_form(tmp_path, [{"foot": "Apply"}], url=url)
+    assert _api(out, "PATCH", "/api/jobs/job-1") == []
+    # Apply itself still runs here.
+    assert len(out["seeds"]) == 1 and out["seeds"][0]["inPlace"] is True
+
+
+def test_a_workday_style_apply_page_is_saved(tmp_path):
+    out = _on_form(tmp_path, [{"foot": "Apply"}], url=WD_FORM)
+    [patch] = _api(out, "PATCH", "/api/jobs/job-1")
+    assert _body(patch) == {"apply_url": WD_FORM}
+
+
+def test_apply_uses_the_draft_the_user_picked_not_the_jobs_newest_application(tmp_path):
+    newest = _draft(id="app-2")
+    api = _picked(**{
+        "/api/jobs/job-1/detail": _job(application=newest, apply_url=None),
+        "GET /api/applications/app-2": _reply(newest),
+        "POST /api/proposals": _reply(PROPOSAL),
+    })
+    out = _on_form(tmp_path, [{"foot": "Apply"}], api=api)
+    [seed] = out["seeds"]
+    assert (seed["applicationId"], seed["baseSlug"]) == ("app-1", "ai_ml_engineer")
+    link = [msg for msg in _api(out, "POST", "/api/proposals") if "application_id" in _body(msg)]
+    assert [_body(msg)["application_id"] for msg in link] == ["app-1"]
+    assert _api(out, "POST", "/quick-tailor") == [] and _api(out, "POST", "/from-base") == []
+
+
+def test_the_picked_drafts_own_pdf_decides_whether_it_is_rendered(tmp_path):
+    api = _picked(**{"GET /api/applications/app-1": _reply(_draft(pdf=False)),
+                     "/api/jobs/job-1/detail": _job(application=_draft(id="app-2"), apply_url=None)})
+    out = _on_form(tmp_path, [{"foot": "Apply"}], api=api)
+    assert len(_api(out, "POST", "/api/applications/app-1/render")) == 1
+    assert out["seeds"][0]["applicationId"] == "app-1"
+
+
+@pytest.mark.parametrize("draft", [_draft(job_id="job-9"), _draft(status="applied")],
+                         ids=["another-jobs-draft", "no-longer-a-draft"])
+def test_a_picked_draft_that_is_not_this_jobs_open_draft_stops_before_anything_is_written(tmp_path, draft):
+    # By the call: the draft may have been applied in the web app since the footer was drawn.
+    out = _on_form(tmp_path, [{"call": "applyJob", "settles": 2}],
+                   api=_picked(**{"GET /api/applications/app-1": _reply(draft)}))
+    assert out["seeds"] == [] and _order(out) == []
+    assert "Pick it again" in _note(out["shots"][-1])
+
+
+def test_a_deleted_picked_draft_stops_the_same_way(tmp_path):
+    gone = {"ok": False, "status": 404, "error": "Application not found"}
+    # The pick read it fine; it was deleted in the web app before the press.
+    out = _on_form(tmp_path, [{"foot": "Apply"}],
+                   api=_picked(**{"GET /api/applications/app-1": [_reply(_draft()), gone]}))
+    assert out["seeds"] == [] and _order(out) == []
+    # The reload that follows the stop reads the draft again and says the panel's own sentence.
+    assert "no longer exists" in _note(out["shots"][-1])
+
+
+def test_a_binding_taken_from_a_run_record_offers_no_apply_on_whatever_page_the_tab_shows(tmp_path):
+    """Skip job A, browse to job B's form: the run's claim on the tab is not a pick for this page."""
+    record = _run_record(7, "stopped", why="user", jobId="job-0", applicationId="app-0")
+    out = _apply(tmp_path, api=_picked(), tabs=[{"id": 7, "url": FORM_URL}], page=FORM_PAGE,
+                 sessionStored={"queueRun": [record]},
+                 # Refresh remembers a claim; and a press that got through would find the page unpicked.
+                 steps=[{"id": "refresh-page", "settles": 4}, {"call": "applyJob", "settles": 2}])
+    assert out["seeds"] == [] and _order(out) == []
+    shot = out["shots"][-1]
+    assert "Apply" not in _labels(shot)
+    assert PROMISE not in _text(shot["regions"]["rail"])
+    # And the claim is not written down as a pick that a later load would restore.
+    assert not [write for write in out["writes"] if "widget.session" in write]
+    # Nothing is read for a job the page was never picked for.
+    assert not [msg for msg in out["sent"] if msg["type"] == "api" and "/api/jobs/job-0" in msg["path"]]
+
+
+def test_the_promise_line_is_only_where_the_apply_button_is(tmp_path):
+    for api in (_picked(status="applied"),
+                _picked(**{"/api/jobs/job-1/detail": _job(application=_draft(), apply_url=None,
+                                                          proposal_status="submitted")})):
+        rail = _text(_on_form(tmp_path, [], api=api)["shots"][-1]["regions"]["rail"])
+        assert PROMISE not in rail
 
 
 def test_a_job_that_has_an_apply_link_keeps_it(tmp_path):

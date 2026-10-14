@@ -1460,11 +1460,15 @@ footer alone).
   else the tab's address; http(s) only, re-checked here because a value that arrived by sync skipped the server) in the current tab.
   On a tab that already has a live run it only says "A run is already going in this tab." and writes nothing.
   It shows for a job with no application or the user's own draft, and stays hidden once the application is applied. **A job picked by
-  hand** (a claimed binding to a saved job, on a page the backend's match did not name) shows it too and runs `inPlace`: the pick says this
-  page IS that job's application, so the record's `openUrl` is this page, the tab is never navigated or opened, and a posting's Apply is
-  not pressed (the run did not open the tab; it parks as "Apply yourself"). If the job has no `apply_url`, this page (http(s), without its
-  fragment) is saved as it with `PATCH /api/jobs/{id}`; a job that has one keeps it, and a refused save does not stop the run. The next
-  visit then matches: `/api/jobs/match` reads `apply_url` as well as `source_url`, with the same `is_same_posting`. With full automation
+  hand** (the user's pick on a page the backend's match did not name, `claimFrom: "pick"`; a binding taken from a run record is not one, because
+  the tab may have gone elsewhere) shows it too and runs `inPlace`: the pick says this page IS that job's application, so the record's
+  `openUrl` is this page, the tab is never navigated or opened, and a posting's Apply is not pressed (the run did not open the tab; it parks
+  as "Apply yourself"). The application is the DRAFT THEY NAMED, read at the press (it must still be this job's open draft, else "Pick it
+  again"), not the job's newest. If the first read finds the tab on another site than the press saw, the run parks as `moved_away`. If the job
+  has no `apply_url`, this page is saved as it with `PATCH /api/jobs/{id}`, but only when it names a posting (`decisions.applyLink`: an id
+  segment or a posting-id query key, never a job board), and without its fragment or any query but that key; a job that has a link keeps it,
+  and a refused save does not stop the run. The next visit then matches: `/api/jobs/match` reads `apply_url` as well as `source_url`
+  (`is_same_posting`), trusting an apply link only when it names a posting (`job_url_match.names_posting`). With full automation
   Off the footer is Save job plus "Turn on full automation in Settings to apply from here."
 - **Per-run fill limits.** `runFill` copies its limits per run; a driven tab passes `RUN_LIMITS` (60 s a field, 12 adaptive steps,
   10 minutes a page), the user's Autofill keeps 25 s, 8 and 3 minutes, and the module defaults are never written.

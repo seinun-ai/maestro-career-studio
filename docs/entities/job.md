@@ -53,8 +53,10 @@ the list never scores or backfills).
   A job saved again gains the link it lacked (`_fill_apply_url`, on the hash, `source_url` and requisition-twin dedup paths) but a stored
   link is never replaced by a save, and a replica or an offered job is left alone for its owner to record (a PATCH of one is a 409). The
   Companion's run opens `apply_url` when present, else `source_url`; `queued` answers and `GET /api/jobs/match` match the page against
-  either (`is_same_posting`). A job the user picked by hand for a page gets that page as its `apply_url` (PATCH, only when it has none), so the
-  next visit matches. Reads are plain `str | None`
+  either (`is_same_posting`). A job the user picked by hand for a page gets that page as its `apply_url` (the Companion PATCHes only when it has none and the page
+  names a posting; the PATCH itself replaces whatever is stored), so the next visit matches. `/api/jobs/match` trusts an apply link only
+  when it names a posting (`names_posting`: an id in a path segment or a posting-id query key): one that does not is a prefix of every
+  posting of that employer. Reads are plain `str | None`
   on purpose, so one bad synced value cannot break job listing. Sync carries it; a duplicate resolution that keeps the laptop's twin drops
   the other copy's link.
 - **Ownership under sync** (`owner_machine`, `sync_rev`, `handover`; docs/sync-setup.md). `owner_machine`
