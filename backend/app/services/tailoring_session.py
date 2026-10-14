@@ -1254,6 +1254,32 @@ def _reject_stale_placements(tailoring: TailoringSession, base: dict[str, Any]) 
         )
 
 
+def _keyword_fallback(
+    customized: dict[str, Any], missing: list[tuple[str, dict[str, Any]]]
+) -> dict[str, Any]:
+    """Add each still-missing required wording as a skills-list item, so a keyword
+    can never silently vanish (a dropped op, or a repaired third-person line)."""
+    fallback_ops: list[ResumeEdit] = []
+    for wording, placement in missing:
+        category = placement_targets.ADDITIONAL_SKILLS
+        if placement.get("section") == "skills" and isinstance(
+            placement.get("index_or_category"), str
+        ):
+            category = placement["index_or_category"]
+        fallback_ops.append(
+            AddSkillItem(kind="add_skill_item", category=category, item=wording)
+        )
+    logger.warning(
+        "keyword-survival fallback engaged: %s", [wording for wording, _ in missing]
+    )
+    try:
+        return resume_edit.apply_edits(customized, fallback_ops)
+    except ValueError as exc:
+        raise ValueError(
+            f"Tailoring produced invalid keyword-survival fallback ops: {exc}"
+        ) from exc
+
+
 def _llm_customized(
     session: Session,
     tailoring: TailoringSession,
@@ -1339,31 +1365,7 @@ def _llm_customized(
             ) from exc
         missing = _missing_keywords(customized, tailoring.resolutions_json)
         if missing:
-            fallback_ops: list[ResumeEdit] = []
-            for wording, placement in missing:
-                category = placement_targets.ADDITIONAL_SKILLS
-                if placement.get("section") == "skills" and isinstance(
-                    placement.get("index_or_category"), str
-                ):
-                    category = placement["index_or_category"]
-                fallback_ops.append(
-                    AddSkillItem(
-                        kind="add_skill_item",
-                        category=category,
-                        item=wording,
-                    )
-                )
-            logger.warning(
-                "keyword-survival fallback engaged: %s",
-                [wording for wording, _ in missing],
-            )
-            try:
-                customized = resume_edit.apply_edits(customized, fallback_ops)
-            except ValueError as exc:
-                raise ValueError(
-                    "Tailoring produced invalid keyword-survival fallback ops: "
-                    f"{exc}"
-                ) from exc
+            customized = _keyword_fallback(customized, missing)
     return customized
 
 
@@ -1447,11 +1449,12 @@ def tailor(
             except ValueError as exc:
                 raise ValueError(f"Tailoring produced invalid edit ops: {exc}") from exc
             # The caller wrote this text itself: tell it to fix the voice rather
-            # than store or silently rewrite it.
-            # Only what the caller wrote or changed is refused; a base line it left
-            # alone (even a third-person summary) is repaired before storage.
-            if resume_voice.changed_hits(base, customized, summary_always=False):
-                raise ValueError(resume_voice.OPS_ERROR)
+            # than store or silently rewrite it. Only what the caller wrote or
+            # changed is refused; a base line it left alone is the owner's, and
+            # is repaired below only where that is mechanical.
+            voice_problems = resume_voice.changed_hits(base, customized, summary_always=False)
+            if voice_problems:
+                raise ValueError(resume_voice.ops_error(voice_problems))
         else:
             actionable, skipped, already_applied = _resolution_bundle(
                 tailoring, already_applied
@@ -1478,6 +1481,12 @@ def tailor(
         repaired = resume_voice.repair_resume(base, customized)
         if repaired:
             logger.warning("third-person voice repaired in code at %s", repaired)
+            if not ops:
+                # The repair can take out the one line that carried a required
+                # keyword: put it back where the fallback always puts it.
+                missing = _missing_keywords(customized, tailoring.resolutions_json)
+                if missing:
+                    customized = _keyword_fallback(customized, missing)
 
         # Re-tailoring must REUSE the job's existing application for this base
         # rather than orphan it: the job page surfaces only the newest application,
@@ -1567,6 +1576,7 @@ def tailor(
         # TailorResponse.kb_writeback_skips. Set AFTER refresh so the reload
         # doesn't clear it.
         tailoring.kb_writeback_skips = writeback_skips
+        tailoring.voice_repairs = [resume_voice.format_path(path) for path in repaired]
         artifacts.remove_files(stale)
         return tailoring
     finally:

@@ -1764,6 +1764,12 @@ def tailor_session(
     add_skill_item op into a skills category), not as an experience or project
     bullet; the compare view audits any edit beyond the saved resolutions.
 
+    Resume text is the owner's own, in implied first person: lead with a verb, and
+    use no "I", "my", "he", "she", "they", "his", "her" or "their" and never the
+    person's name. Caller-supplied ops that write or change text breaking this are
+    refused with a 400 that quotes the lines; text the backend writes is retried
+    once, then repaired in code, and `voice_repairs` lists where it did.
+
     Optional user_prompt adds free-form tailoring guidance. Creates the application
     from the base resume plus the ops, scores the result, and returns
     {session, compare, compare_error, next}. compare holds the before/after match score

@@ -64,7 +64,7 @@ def _reply(before: dict, after: dict, reason: str) -> str:
 
 
 def _suggest(db: Session, text: str, note: str, new_fact: str | None,
-             question: str | None) -> str | None:
+             question: str | None, *, name: str = "", orgs: tuple | list = ()) -> str | None:
     """A guarded rewrite carrying the note's fact. `new_fact` is MODEL output, and the guard
     trusts its context's numbers, so a number the note never gave (nor the text) drops it."""
     if not new_fact:
@@ -73,7 +73,8 @@ def _suggest(db: Session, text: str, note: str, new_fact: str | None,
     if set(health_guards._numbers(new_fact)) - given:
         return None
     try:
-        return health_guards.guarded_rewrite(db, text, context=new_fact, question=question or "")
+        return health_guards.guarded_rewrite(
+            db, text, context=new_fact, question=question or "", name=name, orgs=orgs)
     except Exception:  # noqa: BLE001 — a failed draft degrades to "add it yourself"
         logger.exception("dispute suggestion failed")
         return None
@@ -120,7 +121,7 @@ def _store(db: Session, chash: str, note: str, before: dict, after: dict, reply:
     db.commit()
 
 
-def dispute(db: Session, text: str, note: str) -> dict:
+def dispute(db: Session, text: str, note: str, *, name: str = "", orgs: tuple | list = ()) -> dict:
     text, note = str(text).strip(), str(note).strip()
     if not text or not note:
         raise ValueError("A dispute needs a bullet and a note.")
@@ -137,7 +138,8 @@ def dispute(db: Session, text: str, note: str) -> dict:
 
     before_shown, after_shown = shown(before), shown(after)
     reply = _reply(before_shown, after_shown, after["reason"] or "")
-    suggestion = _suggest(db, text, note, after["new_fact"], after_shown["question"])
+    suggestion = _suggest(db, text, note, after["new_fact"], after_shown["question"],
+                          name=name, orgs=orgs)
     if after["new_fact"] and suggestion is None:
         reply = f"{reply} {ADD_IT_YOURSELF}"
     _store(db, chash, note, before, after, reply, suggestion)

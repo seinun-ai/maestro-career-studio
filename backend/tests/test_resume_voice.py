@@ -29,9 +29,9 @@ def _kinds(text, name=NAME, orgs=ORGS):
     ("I've shipped four releases.", [("first_person", "I")]),
     # the contact name, in full or by token
     ("Alex Rivera led the platform rewrite.", [("name", "Alex Rivera")]),
-    ("Alex built the data platform.", [("name", "Alex")]),
-    ("Led the rewrite for Alex's team.", [("name", "Alex")]),
-    ("Led the rewrite. Rivera shipped it.", [("name", "Rivera")]),
+    ("Alex built the data platform.", [("name_token", "Alex")]),
+    ("Led the rewrite for Alex's team.", [("name_token", "Alex")]),
+    ("Led the rewrite. Rivera shipped it.", [("name_token", "Rivera")]),
     # Founder ... which has/built/shipped
     ("Founder of Globex, which has shipped two products.", [("founder_which", "which has")]),
     ("Co-founder of Initech, which built a billing tool.", [("founder_which", "which built")]),
@@ -108,13 +108,13 @@ def test_ordinary_openers_are_not_flagged():
 
 def test_name_tokens_ignore_single_letter_initials():
     assert rv.third_person_hits("Led B's old team.", "A. B. Rivera", []) == []
-    assert _kinds("Rivera led it.", "A. B. Rivera", []) == [("name", "Rivera")]
+    assert _kinds("Rivera led it.", "A. B. Rivera", []) == [("name_token", "Rivera")]
 
 
 def test_two_letter_names_are_recognised_as_capitalised_words():
     hits = rv.third_person_hits("Li built data platforms.", "Li Xu")
-    assert [(h.kind, h.text) for h in hits] == [("name", "Li")]
-    assert [(h.kind, h.text) for h in rv.third_person_hits("Xu led the rewrite.", "Li Xu")] == [("name", "Xu")]
+    assert [(h.kind, h.text) for h in hits] == [("name_token", "Li")]
+    assert [(h.kind, h.text) for h in rv.third_person_hits("Xu led the rewrite.", "Li Xu")] == [("name_token", "Xu")]
     assert [(h.kind, h.text) for h in rv.third_person_hits("Li Xu led the rewrite.", "Li Xu")] == [("name", "Li Xu")]
     # lower-case or all-caps are ordinary words or acronyms, not the person
     assert rv.third_person_hits("Wrote li-ion battery tests; ran LI audits.", "Li Xu") == []
@@ -238,43 +238,57 @@ def test_repair_resume_also_repairs_an_unchanged_line_in_place():
     assert edited["experience"][0]["bullets"] == ["Led the rewrite.", "Cut cost 20%; raised uptime to 99.9%."]
 
 
-def test_a_restored_base_line_is_repaired_or_dropped_never_stored_with_a_pronoun():
-    # The edit's text cannot be repaired, and the base line it replaces is itself third person.
-    base = _resume("Data engineer.", ["Led the rewrite.", "He is the best, and he built the router for Acme Corp."])
-    edited = _resume("Data engineer.", ["Led the rewrite.", "She is a strong leader."])
-    rv.repair_resume(base, edited)
-    assert edited["experience"][0]["bullets"] == ["Led the rewrite."]
-
+def test_a_restored_base_line_is_repaired_cleanly_or_kept_as_the_owner_wrote_it():
     # A repairable base line comes back repaired, not raw.
     base = _resume("Data engineer.", ["Led the rewrite.", "Cut cost 20%, and he raised uptime to 99.9%."])
     edited = _resume("Data engineer.", ["Led the rewrite.", "She is a strong leader."])
     rv.repair_resume(base, edited)
     assert edited["experience"][0]["bullets"] == ["Led the rewrite.", "Cut cost 20%; raised uptime to 99.9%."]
 
+    # One it cannot repair cleanly is the owner's own text: kept, left to the health check.
+    base = _resume("Data engineer.", ["Led the rewrite.", "He is the best at cutting cost."])
+    edited = _resume("Data engineer.", ["Led the rewrite.", "She is a strong leader."])
+    rv.repair_resume(base, edited)
+    assert edited["experience"][0]["bullets"] == ["Led the rewrite.", "He is the best at cutting cost."]
 
-def test_a_restored_base_summary_is_repaired_or_dropped_sentence_by_sentence():
+
+def test_a_restored_base_summary_is_repaired_cleanly_or_kept():
     base = _resume("He built data platforms.", ["Led the rewrite."])
     edited = _resume("He is a strong leader.", ["Led the rewrite."])
     rv.repair_resume(base, edited)
     assert edited["summary"] == "Built data platforms."  # repaired, not "He built data platforms."
 
-    base = _resume("He is a strong leader. Alex Rivera is hands-on. Shipped billing for Acme Corp.", ["Led the rewrite."])
-    edited = _resume("She is great.", ["Led the rewrite."])
-    rv.repair_resume(base, edited)
-    assert edited["summary"] == "Shipped billing for Acme Corp."  # only the clean sentence stays
-
     base = _resume("He is a strong leader.", ["Led the rewrite."])
     edited = _resume("They are great.", ["Led the rewrite."])
     rv.repair_resume(base, edited)
-    assert edited["summary"] == ""
+    assert edited["summary"] == "He is a strong leader."  # the owner's own words stay
 
 
-def test_repair_resume_never_leaves_a_blocking_hit_anywhere():
-    base = _resume("He built it. Alex Rivera leads.", ["Her team grew.", "Alex Rivera shipped it.", "Led the rewrite."])
-    edited = _resume("They are great.", ["She is great.", "Alex Rivera shipped it.", "Led the rewrite.", "I am great."])
+def test_repair_resume_is_strict_with_text_the_edit_wrote_and_gentle_with_the_base():
+    base = _resume("He built it for Acme Corp. Alex Rivera leads.",
+                   ["Her team grew after he left.", "Alex Rivera shipped it.", "Led the rewrite."])
+    edited = _resume("They are great.",
+                     ["Her team grew after he left.", "Alex Rivera shipped it.", "Led the rewrite.",
+                      "I am great.", "She is great."])
     rv.repair_resume(base, edited)
-    for _, text in rv.slots(edited):
-        assert rv.blocking(rv.third_person_hits(text, NAME, rv.org_names(edited))) == []
+    # base lines: only what repairs cleanly; "after he left" would need a clause dropped
+    assert edited["experience"][0]["bullets"][:3] == [
+        "Her team grew after he left.", "Shipped it.", "Led the rewrite."]
+    # the edit's own lines: repaired, restored or dropped; never stored third person
+    assert "I am great." not in edited["experience"][0]["bullets"]
+    assert "She is great." not in edited["experience"][0]["bullets"]
+    # the base summary comes back with "He built" cleaned; "Alex Rivera leads." needs a tense: kept
+    assert edited["summary"] == "Built it for Acme Corp. Alex Rivera leads."
+
+
+def test_unchanged_base_lines_are_never_dropped():
+    lines = ["He is the best.", "Led his team and she grew it.", "Her team grew after he left."]
+    base = _resume("Data engineer.", list(lines))
+    edited = _resume("Data engineer.", list(lines))
+    rv.repair_resume(base, edited)
+    assert len(edited["experience"][0]["bullets"]) == 3
+    assert edited["experience"][0]["bullets"][0] == "He is the best."
+    assert edited["experience"][0]["bullets"][2] == "Her team grew after he left."
 
 
 def test_repair_resume_restores_the_base_line_it_cannot_repair():
@@ -352,3 +366,160 @@ def test_lint_advisory_is_silent_for_implied_first_person():
     resume = _resume("Data engineer who built platforms.", ["Led the rewrite.", "Cut cost 20%."])
 
     assert [n for n in rl.rule_notes(resume) if n["rule"] == "voice.third_person"] == []
+
+
+# --------------------------------------------------------------------------- #
+# precision: a hit must be unambiguous before the text is rewritten
+
+def _blocking(text, name=NAME, orgs=ORGS):
+    return [(h.kind, h.text) for h in rv.third_person_hits(text, name, orgs) if h.blocking]
+
+
+@pytest.mark.parametrize("text, name", [
+    ("Built fraud models for Wells Fargo.", "Sam Wells"),
+    ("Ann Arbor office lead.", "Ann Smith"),
+    ("Built Central Park tooling.", "Sam Park"),
+    ("Served Will County schools.", "Will Adams"),
+    ("Advised Lee & Partners on pricing.", "Ann Lee"),
+    ("Dr. Rivera Clinic migrated to Postgres.", "Alex Rivera"),
+    ("Wrote tests for Wells.", "Sam Wells"),               # not a subject, not a possessive: flag only
+    ("Reported to Rivera.", "Alex Rivera"),
+])
+def test_a_single_name_token_is_not_a_hit_outside_subject_or_possessive_position(text, name):
+    assert _blocking(text, name, []) == []
+
+
+@pytest.mark.parametrize("text, name, expected", [
+    ("Wells built fraud models.", "Sam Wells", [("name_token", "Wells")]),
+    ("Led it. Wells shipped billing.", "Sam Wells", [("name_token", "Wells")]),
+    ("Led the team at Acme, where Wells built billing.", "Sam Wells", [("name_token", "Wells")]),
+    ("Led Wells's team.", "Sam Wells", [("name_token", "Wells")]),
+    ("Sam Wells led fraud models.", "Sam Wells", [("name", "Sam Wells")]),
+])
+def test_a_single_name_token_is_a_hit_in_subject_or_possessive_position(text, name, expected):
+    assert _blocking(text, name, []) == expected
+
+
+def test_a_name_beside_a_flag_only_mention_is_still_flagged_for_the_health_check():
+    hits = rv.third_person_hits("Reported to Rivera.", "Alex Rivera", [])
+    assert [(h.kind, h.blocking) for h in hits] == [("name_mention", False)]
+
+
+def test_dr_rivera_clinic_is_left_intact_by_repair():
+    text = "Dr. Rivera Clinic migrated to Postgres."
+    assert rv.repair(text, "Alex Rivera", []) == text
+
+
+@pytest.mark.parametrize("text", [
+    "Built the HIS integration for Acme Corp.",
+    "Managed HIS rollout across 40 clinics.",
+    "Served the HE sector.",
+    "Supported HE degrees from Acme Corp.",
+    "Cut cost. Managed MY region.",
+    "Led SALES, HR AND HE REPORTING teams.",
+])
+def test_all_caps_in_the_middle_of_a_sentence_is_an_acronym(text):
+    assert _blocking(text, NAME, ORGS) == []
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("HE built data platforms.", [("pronoun", "HE")]),
+    ("HE BUILT DATA PLATFORMS.", [("pronoun", "HE")]),
+    ("Cut cost. SHE led the rewrite.", [("pronoun", "SHE")]),
+    ("MY work reduced latency.", [("first_person", "MY")]),
+])
+def test_a_shouted_pronoun_needs_a_verb_next_or_a_shouted_sentence(text, expected):
+    assert _blocking(text) == expected
+
+
+def test_a_company_called_her_campus_is_not_a_pronoun():
+    orgs = ["Her Campus", "She Loves Data", "Rivera Logistics"]
+    assert _blocking("Built tools for Her Campus.", NAME, orgs) == []
+    assert _blocking("Worked with She Loves Data on dashboards.", NAME, orgs) == []
+    assert _blocking("Managed My Company Inc payroll.", NAME, ["My Company Inc"]) == []
+    assert rv.repair("Built tools for Her Campus.", NAME, orgs) == "Built tools for Her Campus."
+    # and a real pronoun elsewhere in the same text still counts
+    assert _blocking("Built tools for Her Campus, where he led QA.", NAME, orgs) == [("pronoun", "he")]
+
+
+@pytest.mark.parametrize("text", [
+    "Studied Annex I controls.",
+    "Completed Calculus I and II.",
+    "Completed Physics I, II and III.",
+])
+def test_roman_numerals_are_not_the_pronoun(text):
+    assert _blocking(text) == []
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Founder of Acme, which has 2M users.", []),
+    ("Founder of Acme, which serves 2M users.", []),
+    ("Founder of Acme, which provides billing.", []),
+    ("Founder of Acme, which helps clinics.", []),
+    ("Founder of Acme, which employs 40 people.", []),
+    ("Founder of Acme, which supports 3 banks.", []),
+    ("Founder of Acme, which built a billing tool.", [("founder_which", "which built")]),
+    ("Founder of Acme, which shipped two products.", [("founder_which", "which shipped")]),
+    ("Founder of Acme, which launched in 2025.", [("founder_which", "which launched")]),
+    ("Founder of Acme, which created a data lake.", [("founder_which", "which created")]),
+    ("Founder of Acme, which developed an SDK.", [("founder_which", "which developed")]),
+    ("Founder of Acme, which has shipped two products.", [("founder_which", "which has")]),
+])
+def test_founder_clauses(text, expected):
+    assert _blocking(text) == expected
+
+
+def test_a_soft_founder_clause_is_flagged_but_never_rewritten():
+    text = "Founder of Acme, which has 2M users."
+    assert [(h.kind, h.blocking) for h in rv.third_person_hits(text)] == [("founder_note", False)]
+    assert rv.repair(text, NAME, ORGS) == text
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Platform lead (he built the billing pipeline).", "Platform lead (built the billing pipeline)."),
+    ("Owned billing: she built the pipeline.", "Owned billing: built the pipeline."),
+    ("Owned billing - he built the pipeline.", "Owned billing - built the pipeline."),
+    ("Owned billing, where he built the pipeline.", "Owned billing; built the pipeline."),
+    ("Owned billing and she built the pipeline.", "Owned billing; built the pipeline."),
+    # a subordinator changes the meaning: the clause goes, nothing is joined
+    ("Cut cost after he rebuilt the router, saving 20%.", "Cut cost, saving 20%."),
+    ("Cut cost when she left the team.", "Cut cost."),
+    ("Cut cost while they slept.", "Cut cost."),
+    ("Left the team, then he built billing.", "Left the team."),
+    ("Cut cost because he found the leak.", "Cut cost."),
+    ("Shipped billing before she joined.", "Shipped billing."),
+    ("Shipped billing since he started.", "Shipped billing."),
+    ("Shipped billing, so she cut cost.", "Shipped billing."),
+])
+def test_joins(text, expected):
+    assert rv.repair(text, NAME, ORGS) == expected
+
+
+def test_a_short_line_survives_repair():
+    assert rv.repair("Alex Rivera led team.", NAME, ORGS) == "Led team."
+
+
+def test_ops_error_quotes_the_offending_lines():
+    problems = [(("summary",), "He builds things.", []), (("experience", 0, "bullets", 1), "She led QA.", [])]
+    message = rv.ops_error(problems)
+    assert '"He builds things."' in message and '"She led QA."' in message
+    assert "implied first person" in message
+
+
+def test_paths_read_like_the_resume():
+    assert rv.format_path(("summary",)) == "summary"
+    assert rv.format_path(("experience", 0, "bullets", 2)) == "experience[0].bullets[2]"
+    assert rv.format_path(("extra_sections", 1, "entries", 0, "bullets", 3)) == (
+        "extra_sections[1].entries[0].bullets[3]")
+
+
+def test_lint_flags_a_name_mention_but_not_an_employer_that_shares_a_token():
+    from app.services import resume_lint as rl
+
+    resume = _resume("Data engineer.", ["Built fraud models for Wells Fargo.", "Reported to Wells."], name="Sam Wells")
+    resume["experience"][0]["company"] = "Initech"
+
+    notes = [n for n in rl.rule_notes(resume) if n["rule"] == "voice.third_person"]
+
+    assert [n["location"]["bullet_index"] for n in notes] == [1]  # flagged for the owner, not rewritten
+    assert notes[0]["suggestion"] is None

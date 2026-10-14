@@ -59,7 +59,7 @@ def _system_prompt(db: Session) -> str:
     persona = (persona_service.get_persona(db) or "").strip()
     persona_block = f"CANDIDATE PERSONA:\n{persona}" if persona else ""
     body = StringTemplate(template).safe_substitute(persona=persona_block).strip()
-    return f"{resume_voice.VOICE_RULE}\n\n{body}"
+    return f"{resume_voice.CHAT_VOICE_RULE}\n\n{body}"
 
 
 def _describe_selection(sel: dict[str, Any]) -> str:

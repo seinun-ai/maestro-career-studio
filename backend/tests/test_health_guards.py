@@ -299,3 +299,18 @@ def test_guarded_rewrite_rejects_a_rewrite_with_the_owners_name(db_session, monk
     monkeypatch.setattr(hg.model_settings, "get_smart_model", lambda s: "test-model")
 
     assert guarded_rewrite(db_session, ORIGINAL, context="", name="Alex Rivera") is None
+
+
+def test_a_dispute_suggestion_is_checked_against_the_owners_name(db_session, monkeypatch):
+    from app.services import health_disputes
+
+    seen = {}
+    monkeypatch.setattr(
+        health_disputes.health_guards, "guarded_rewrite",
+        lambda db, text, **kw: seen.update(kw) or "Built it.",
+    )
+
+    health_disputes._suggest(db_session, "Built it.", "note", "served many teams", None,
+                             name="Alex Rivera", orgs=["Rivera Logistics"])
+
+    assert seen["name"] == "Alex Rivera" and seen["orgs"] == ["Rivera Logistics"]

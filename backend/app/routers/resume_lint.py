@@ -504,7 +504,8 @@ def dispute_bullet(kind: Kind, key: str, body: DisputeBody,
     if not text.strip():
         raise HTTPException(status_code=422, detail="There is no text here to re-read.")
     try:
-        return health_disputes.dispute(db, text, body.note)
+        name, orgs = resume_voice.identity(resume)
+        return health_disputes.dispute(db, text, body.note, name=name, orgs=orgs)
     except health_disputes.DisputeOverridden as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     except health_disputes.DisputeUnreadable as e:

@@ -16,11 +16,17 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-VOICE_RULE = (
-    "VOICE: this is the resume owner's own resume, written in implied first person. "
-    "Lead each bullet with a verb (\"Built X\", not \"Builds X\" or \"He built X\"). "
-    "Never write \"I\", \"my\", \"he\", \"she\", \"they\", \"his\", \"her\" or \"their\", "
-    "and never use the person's name."
+_RULE_BODY = (
+    "written in implied first person. Lead each bullet with a verb (\"Built X\", not \"Builds X\" "
+    "or \"He built X\"). Never write \"I\", \"my\", \"he\", \"she\", \"they\", \"his\", \"her\" or "
+    "\"their\", and never use the person's name."
+)
+VOICE_RULE = f"VOICE: this is the resume owner's own resume, {_RULE_BODY}"
+# Chat also writes first-person posts, so its rule is scoped to the text it saves
+# to a resume or the Career KB.
+CHAT_VOICE_RULE = (
+    "VOICE, for resume and Career KB text passed to edit_resume, propose_edits or kb_capture "
+    "(not for chat replies or social posts): that text is the resume owner's own, " + _RULE_BODY
 )
 
 # Where the model can learn the fix: the operator's sentence for a caller that
@@ -34,16 +40,23 @@ OPS_ERROR = (
 
 @dataclass(frozen=True)
 class VoiceHit:
-    kind: str  # pronoun | first_person | name | founder_which | opener
+    # pronoun | first_person | name (the full name) | name_token (one token, subject or
+    # possessive position) | founder_which                      -> blocking
+    # name_mention | founder_note | opener                      -> flagged, never rewritten
+    kind: str
     text: str
     start: int
     end: int
 
     @property
     def blocking(self) -> bool:
-        """An opener ("Builds ...") is flagged, never rejected: the word may be a
-        noun, and a correct fix needs a tense the code cannot know."""
-        return self.kind != "opener"
+        """Only a hit that is unambiguous blocks or is rewritten. The rest are
+        ambiguous (a word that may be a noun, a company, a place) and are left to
+        the health check's advisory."""
+        return self.kind in _BLOCKING_KINDS
+
+
+_BLOCKING_KINDS = {"pronoun", "first_person", "name", "name_token", "founder_which"}
 
 
 # --------------------------------------------------------------------------- #
@@ -63,12 +76,16 @@ _ROMAN_PRECEDERS = {
     "title", "form", "schedule", "appendix", "war", "volume", "round", "wave",
     "module", "unit", "act", "book", "generation", "gen", "mark", "mk", "version",
     "release", "sprint", "batch", "cohort", "division", "league", "tour", "exhibit",
+    "annex", "calculus", "algebra", "physics", "chemistry", "biology", "statistics",
+    "accounting", "economics", "anatomy", "studio", "lab",
 }
-_FOUNDER_WHICH = re.compile(
-    r"\b(?:co-?)?founder\b[^.;!?]*?(\bwhich\s+(?:has|have|had|built|ships?|shipped|"
-    r"launched|serves?|served|provides?|helps?)\b)",
-    re.IGNORECASE,
-)
+_ROMAN_FOLLOWERS = re.compile(r"\s*(?:,|and|&|-|\u2013|/)\s*(?:II|III|IV|V|VI|VII|VIII|IX|X)\b")
+_FOUNDER = re.compile(r"\b(?:co-?)?founder\b[^.;!?]*?(\bwhich\s+(\w+))", re.IGNORECASE)
+# What follows "which" in a founder line: past-tense achievements are third-person
+# narration; "which has 2M users" or "which serves clinics" describes the company.
+_FOUNDER_PAST = {"built", "shipped", "launched", "created", "developed", "ran", "led", "grew"}
+_FOUNDER_SOFT = {"has", "have", "had", "serves", "serve", "provides", "provide", "helps", "help",
+                 "employs", "employ", "supports", "support", "ships", "ship"}
 _SENTENCE_START = re.compile(r"(?:^|(?<=[.!?])\s+)([A-Z][a-z]+)\b")
 
 # Third-person-singular present verbs that open a resume line by mistake. A
@@ -89,6 +106,7 @@ schedule ship simplify solve spearhead streamline strengthen support
 supervise test track train transform translate triage tune turn use validate
 work write
 """.split())
+_COPULA = {"is", "has", "was", "does", "did", "also", "now", "then"}
 
 
 def _verb_opener(word: str) -> bool:
@@ -101,43 +119,47 @@ def _verb_opener(word: str) -> bool:
     return bool(stems & _VERB_STEMS)
 
 
-_CAPS_FUNCTION_WORDS = {
-    "and", "or", "in", "for", "of", "to", "with", "at", "on", "by", "as", "from", "vs",
-    "via", "per", "the", "a", "an",
-}
+def _verb_like(word: str) -> bool:
+    low = word.lower()
+    return low in _VERB_STEMS or low in _COPULA or _is_past(low) or _verb_opener(low)
+
+
+def _sentence_bounds(text: str, pos: int) -> tuple[int, int]:
+    start = max((m.end() for m in re.finditer(r"[.!?]\s+", text[:pos])), default=0)
+    m = re.search(r"[.!?](?:\s|$)", text[pos:])
+    return start, (pos + m.start() + 1 if m else len(text))
 
 
 def _caps_reads_as_pronoun(text: str, m: re.Match[str]) -> bool:
-    """An all-caps "HE" or "MY" is a shouted pronoun when a lower-case word
-    follows ("HE built"), or when it opens a sentence ahead of a verb-like word
-    ("HE BUILT"). It is an acronym beside a bracket or a hyphen ("HE (Higher
-    Education)", "MY-SQL"), ahead of a conjunction or preposition ("HE and HR"),
-    or inside an all-caps run."""
-    before, after = text[: m.start()].rstrip(), text[m.end():]
-    if before.endswith(("(", "-", "/", "&")) or after[:1] in {"-", "/", ")", "&"}:
+    """An all-caps "HE" or "MY" is a shouted pronoun only when it opens a
+    sentence ahead of a verb-like word ("HE built", "HE BUILT"), or sits in a
+    sentence that is mostly upper case. Anywhere else ("the HIS integration",
+    "HE sector", "HE (Higher Education)", "MY-SQL") it is an acronym."""
+    nxt = re.match(r"\s+([A-Za-z]+)", text[m.end():])
+    if not nxt or not _verb_like(nxt.group(1)):
         return False
-    if after.lstrip().startswith("("):
-        return False
-    nxt = re.match(r"\s+([A-Za-z]+)", after)
-    if not nxt:
-        return False
-    word = nxt.group(1)
-    if word.islower():
-        return word not in _CAPS_FUNCTION_WORDS
-    starts_sentence = not before or before[-1] in ".!?"
-    return starts_sentence and (_is_past(word) or _verb_opener(word) or word.lower() in _VERB_STEMS)
+    start, end = _sentence_bounds(text, m.start())
+    if not text[start:m.start()].strip(" \t\"'(["):
+        return True
+    words = re.findall(r"[A-Za-z]{2,}", text[start:end])
+    return len(words) >= 4 and sum(w.isupper() for w in words) / len(words) >= 0.8
+
+
+_NAME_SKIP = {"jr", "sr", "ii", "iii", "iv", "phd", "mba", "md", "dr", "mr", "ms", "mrs", "miss"}
+_NAME_CONNECTORS = {"where", "and", "while", "who", "when", "after", "as", "but", "so", "then",
+                    "that", "because"}
 
 
 def _name_tokens(name: str) -> list[str]:
-    tokens = [re.sub(r"[^\w'’-]", "", t) for t in (name or "").split()]
+    tokens = [re.sub(r"[^\w'\u2019-]", "", t) for t in (name or "").split()]
     # Two letters is a name ("Li", "Xu"); a single letter is an initial.
-    skip = {"jr", "sr", "ii", "iii", "iv", "phd", "mba", "md", "dr", "mr", "ms", "mrs", "miss"}
-    return [t for t in tokens if len(t) >= 2 and t.lower() not in skip]
+    return [t for t in tokens if len(t) >= 2 and t.lower() not in _NAME_SKIP]
 
 
 def _mask(text: str, names: Iterable[str]) -> str:
     """`text` with each org name blanked to spaces (same length, so hit offsets
-    stay valid): a contact name inside "Rivera Logistics" is the company."""
+    stay valid): a contact name inside "Rivera Logistics" is the company, and
+    "Her Campus" is not a pronoun."""
     masked = text
     for org in sorted({n.strip() for n in names if n and len(n.strip()) >= 3}, key=len, reverse=True):
         masked = re.sub(
@@ -146,37 +168,73 @@ def _mask(text: str, names: Iterable[str]) -> str:
     return masked
 
 
+def _token_hit(text: str, masked: str, m: re.Match[str], tokens: list[str]) -> str | None:
+    """How a single name token reads: "name_token" in subject or possessive
+    position, None beside another capitalised word that is not part of the name
+    ("Wells Fargo", "Ann Arbor", "Lee & Partners"), else the flag-only
+    "name_mention"."""
+    others = {t.lower() for t in tokens}
+    before = re.search(r"([A-Za-z&][\w'\u2019&-]*)\s+$", masked[: m.start()])
+    after = re.match(r"\s+([A-Za-z&][\w'\u2019&-]*)", masked[m.end():])
+    for neighbour in (before, after):
+        if neighbour:
+            word = neighbour.group(1)
+            # A capitalised verb ("Led", "Built") is just a sentence's first word.
+            if (
+                (word[0].isupper() or word == "&")
+                and word.lower() not in others
+                and not _verb_like(word)
+            ):
+                return None
+    tail = masked[m.end():]
+    if tail.startswith(("'s", "\u2019s")):
+        return "name_token"
+    following = after.group(1) if after else ""
+    if following.lower() in {"is", "has", "was", "does"}:
+        return "name_token"
+    if following and _verb_like(following):
+        start, _ = _sentence_bounds(masked, m.start())
+        lead = masked[start:m.start()].strip(" \t\"'(")
+        prior = lead.split()[-1].lower() if lead.split() else ""
+        if not lead or prior in _NAME_CONNECTORS:
+            return "name_token"
+    return "name_mention"
+
+
 def third_person_hits(
     text: str, name: str = "", orgs: Iterable[str] = ()
 ) -> list[VoiceHit]:
-    """Every place `text` stops being the owner's implied first person.
+    """Every place `text` stops being the owner's implied first person, or might.
 
-    `name` is the contact name; its tokens count as hits except inside an `orgs`
-    name (company, school, project). Hits are sorted by position. Only
-    `opener` hits are non-blocking."""
+    `name` is the contact name; `orgs` are company, school and project names,
+    which are blanked first (a contact name inside "Rivera Logistics", a company
+    called "Her Campus"). Hits are sorted by position. Only unambiguous kinds are
+    `blocking`; see `VoiceHit`."""
     if not text:
         return []
     hits: list[VoiceHit] = []
+    masked = _mask(text, orgs)
 
-    for m in _PRONOUN.finditer(text):
+    for m in _PRONOUN.finditer(masked):
         word = m.group(0)
-        if word.isupper() and not _caps_reads_as_pronoun(text, m):  # "HE": an acronym
+        if word.isupper() and not _caps_reads_as_pronoun(masked, m):  # "HE": an acronym
             continue
         hits.append(VoiceHit("pronoun", word, m.start(), m.end()))
-    for m in _MY.finditer(text):
+    for m in _MY.finditer(masked):
         word = m.group(0)
-        if word.isupper() and not _caps_reads_as_pronoun(text, m):  # "MY": a country code
+        if word.isupper() and not _caps_reads_as_pronoun(masked, m):  # "MY": a country code
             continue
         hits.append(VoiceHit("first_person", word, m.start(), m.end()))
-    for m in _I.finditer(text):
-        before = text[: m.start()].split()
+    for m in _I.finditer(masked):
+        before = masked[: m.start()].split()
         if before and before[-1].strip("(,").lower() in _ROMAN_PRECEDERS:
+            continue
+        if _ROMAN_FOLLOWERS.match(masked[m.end():]):
             continue
         hits.append(VoiceHit("first_person", "I", m.start(), m.end()))
 
     tokens = _name_tokens(name)
     if tokens:
-        masked = _mask(text, orgs)
         phrase = " ".join((name or "").split())
         taken: list[tuple[int, int]] = []
         if len(tokens) > 1 and phrase:
@@ -192,10 +250,20 @@ def third_person_hits(
                     continue
                 if any(a <= m.start() < b for a, b in taken):
                     continue
-                hits.append(VoiceHit("name", m.group(0), m.start(), m.end()))
+                kind = _token_hit(text, masked, m, tokens)
+                if kind:
+                    hits.append(VoiceHit(kind, m.group(0), m.start(), m.end()))
 
-    for m in _FOUNDER_WHICH.finditer(text):
-        hits.append(VoiceHit("founder_which", m.group(1), m.start(1), m.end(1)))
+    for m in _FOUNDER.finditer(text):
+        verb = m.group(2).lower()
+        after = re.match(r"\s+(\w+)", text[m.end():])
+        past = verb in _FOUNDER_PAST or (
+            verb in {"has", "have", "had"} and bool(after) and _is_past(after.group(1))
+        )
+        if past:
+            hits.append(VoiceHit("founder_which", m.group(1), m.start(1), m.end(1)))
+        elif verb in _FOUNDER_SOFT:
+            hits.append(VoiceHit("founder_note", m.group(1), m.start(1), m.end(1)))
 
     for m in _SENTENCE_START.finditer(text):
         if _verb_opener(m.group(1)):
@@ -208,6 +276,12 @@ def blocking(hits: Iterable[VoiceHit]) -> list[VoiceHit]:
     return [h for h in hits if h.blocking]
 
 
+def _clean_target(hit: VoiceHit) -> bool:
+    """The hits a line the edit did not write may be repaired for: a lower-case
+    pronoun or the full name. Everything else is left to the health check."""
+    return (hit.kind == "pronoun" and not hit.text.isupper()) or hit.kind == "name"
+
+
 # --------------------------------------------------------------------------- #
 # repair
 
@@ -216,8 +290,12 @@ built led ran wrote made drove grew took won began sold taught brought set put c
 held kept found gave got saw chose spoke fell sent spent met paid taught thought
 rose broke wove forged oversaw undertook overhauled
 """.split())
+# Subordinators change what a clause means ("after he left"), so joining it with
+# a semicolon would misstate the line: the clause is dropped instead.
+_JOINABLE = {None, "where", "and"}
 _SUBJECT = re.compile(
-    r"(?P<lead>\s*[,;]?\s*(?:(?:where|and|while|who|when|after|as|but|then|so)\s+)?)"
+    r"(?P<lead>\s*[,;]?\s*(?:(?P<conn>where|and|while|who|when|after|as|but|then|so|because|"
+    r"before|since)\s+)?)"
     r"\b(?P<subj>he|she|they|I)\s+(?:(?:has|had|have)\s+)?(?P<verb>[A-Za-z]+)",
     re.IGNORECASE,
 )
@@ -246,9 +324,12 @@ def _clause_end(s: str, pos: int) -> int:
     return len(s.rstrip().rstrip(".!?"))
 
 
-def _drop_clause(s: str, start: int, pos: int) -> str | None:
+def _drop_clause(s: str, start: int, pos: int, clean: bool) -> str | None:
     """`s` without the clause that begins at `start` (a delimiter or connector
-    position) and holds `pos`."""
+    position) and holds `pos`. None in `clean` mode: a line the edit did not
+    write is never cut."""
+    if clean:
+        return None
     end = _clause_end(s, pos)
     return (s[:start] + s[end:]).strip()
 
@@ -272,21 +353,22 @@ def _capitalize(s: str) -> str:
     return s[:1].upper() + s[1:]
 
 
-def _fix_once(s: str, hit: VoiceHit, name: str) -> str | None:
+def _fix_once(s: str, hit: VoiceHit, name: str, clean: bool) -> str | None:
     """One conservative fix for `hit` in the single sentence `s`; None when the
-    only safe move is to give the sentence up."""
+    only safe move is to give the sentence up (`clean`: when anything but a
+    mechanical fix would be needed)."""
     low = hit.text.lower()
 
     if hit.kind == "founder_which":
         for m in _WHICH.finditer(s):
             if m.start("which") == hit.start:
-                return _join_clause(s, m)
+                return _join_clause(s, m, clean)
         return None
 
-    if hit.kind == "name":
+    if hit.kind in {"name", "name_token"}:
         if hit.start == 0 or not s[: hit.start].strip():
             rest = s[hit.end:]
-            if rest.startswith(("'s", "’s")):
+            if rest.startswith(("'s", "\u2019s")):
                 return None
             rest = rest.lstrip()
             first = re.match(r"[A-Za-z]+", rest)
@@ -296,17 +378,17 @@ def _fix_once(s: str, hit: VoiceHit, name: str) -> str | None:
                 return None
             return _capitalize(rest)
         tail = s[hit.end:]
-        if tail.startswith(("'s ", "’s ")):
+        if tail.startswith(("'s ", "\u2019s ")):
             return s[: hit.start] + tail[3:]
         clause = _clause_start(s, hit.start)
-        return None if clause is None else _drop_clause(s, clause, hit.start)
+        return None if clause is None else _drop_clause(s, clause, hit.start, clean)
 
     if low in {"he", "she", "they", "i"}:
         for m in _SUBJECT.finditer(s):
             if m.start("subj") == hit.start:
-                return _join_clause(s, m)
+                return _join_clause(s, m, clean)
         clause = _clause_start(s, hit.start)
-        return None if clause is None else _drop_clause(s, clause, hit.start)
+        return None if clause is None else _drop_clause(s, clause, hit.start, clean)
 
     if low in {"his", "their", "my"} or (
         low == "her" and _possessive_her(s, hit.end)
@@ -317,7 +399,7 @@ def _fix_once(s: str, hit: VoiceHit, name: str) -> str | None:
         return s[: hit.start] + s[hit.end:].lstrip()
 
     clause = _clause_start(s, hit.start)
-    return None if clause is None else _drop_clause(s, clause, hit.start)
+    return None if clause is None else _drop_clause(s, clause, hit.start, clean)
 
 
 def _possessive_her(s: str, end: int) -> bool:
@@ -325,56 +407,82 @@ def _possessive_her(s: str, end: int) -> bool:
     return bool(m) and m.group(1).lower() not in _OBJECT_FOLLOWERS
 
 
-def _join_clause(s: str, m: re.Match[str]) -> str | None:
-    """"…, where he built X" -> "…; built X", when the verb is past tense.
-    A subject opening the sentence just loses the pronoun. Any other verb form
-    ("where he leads") cannot be fixed without choosing a tense: the clause goes."""
+def _join_clause(s: str, m: re.Match[str], clean: bool) -> str | None:
+    """"…, where he built X" -> "…; built X", when the verb is past tense and the
+    connector is "where", "and" or a bare comma. After an opening bracket, colon
+    or dash the clause joins with a space instead. A subordinator ("after he
+    left") or a verb that is not past tense ("where he leads") cannot be fixed
+    without changing or choosing a meaning: the clause goes (never, in `clean`
+    mode). A subject opening the sentence just loses the pronoun."""
     verb = m.group("verb")
-    if m.start("lead") == 0 and not s[: m.start("subj")].strip():
-        if not _is_past(verb):
+    conn = (m.groupdict().get("conn") or "").lower() or None
+    if m.start("lead") == 0 and not s[: m.start("subj" if "subj" in m.groupdict() else "which")].strip():
+        if conn or not _is_past(verb):
             return None
         return _capitalize(s[m.start("verb"):])
     head = s[: m.start("lead")].rstrip(" ,;")
     if not head:
         return None
-    if _is_past(verb):
-        return f"{head}; {s[m.start('verb'):]}"
-    return _drop_clause(s, m.start("lead"), m.end())
+    if _is_past(verb) and conn in _JOINABLE:
+        rest = s[m.start("verb"):]
+        if head.endswith("("):
+            return f"{head}{rest}"
+        if head.endswith((":", "-", "\u2013", "\u2014")):
+            return f"{head} {rest}"
+        return f"{head}; {rest}"
+    return _drop_clause(s, m.start("lead"), m.end(), clean)
 
 
 def repair_sentence(
-    s: str, name: str = "", orgs: Iterable[str] = ()
+    s: str,
+    name: str = "",
+    orgs: Iterable[str] = (),
+    *,
+    select=lambda h: h.blocking,
+    clean: bool = False,
 ) -> str | None:
     orgs = list(orgs)
     for _ in range(10):
-        hits = blocking(third_person_hits(s, name, orgs))
+        hits = [h for h in third_person_hits(s, name, orgs) if select(h)]
         if not hits:
             return _tidy(s) or None
-        fixed = _fix_once(s, hits[0], name)
+        fixed = _fix_once(s, hits[0], name, clean)
         if fixed is None or fixed == s:
             return None
         s = fixed
     return None
 
 
-def repair(text: str, name: str = "", orgs: Iterable[str] = ()) -> str | None:
-    """`text` with every third-person clause repaired or dropped, None when
-    nothing sensible is left. The result never holds a blocking hit."""
+def repair(
+    text: str, name: str = "", orgs: Iterable[str] = (), *, conservative: bool = False
+) -> str | None:
+    """`text` with every blocking third-person clause repaired or dropped, None
+    when nothing sensible is left; the result never holds a blocking hit.
+
+    `conservative` is for a line the edit did not write (text already on the
+    base): only a lower-case pronoun or the full name is touched, only by a fix
+    that adds and cuts nothing but the pronoun, and what cannot be fixed that way
+    is kept as written. It always returns text."""
     orgs = list(orgs)
-    if not blocking(third_person_hits(text, name, orgs)):
+    select = _clean_target if conservative else (lambda h: h.blocking)
+    if not [h for h in third_person_hits(text, name, orgs) if select(h)]:
         return text
     kept: list[str] = []
     for sentence in re.split(r"(?<=[.!?])\s+", text.strip()):
-        if not blocking(third_person_hits(sentence, name, orgs)):
+        if not [h for h in third_person_hits(sentence, name, orgs) if select(h)]:
             kept.append(sentence)
             continue
-        fixed = repair_sentence(sentence, name, orgs)
-        if fixed and len(fixed.split()) >= 3:
+        fixed = repair_sentence(sentence, name, orgs, select=select, clean=conservative)
+        if fixed and len(fixed.split()) >= 2:
             if sentence.rstrip().endswith((".", "!", "?")) and not fixed.endswith((".", "!", "?")):
                 fixed += sentence.rstrip()[-1]
             kept.append(fixed)
+        elif conservative:
+            kept.append(sentence)
     result = " ".join(kept).strip()
-    if not result or blocking(third_person_hits(result, name, orgs)):
+    if conservative:
+        return result or text
+    if not result or [h for h in third_person_hits(result, name, orgs) if select(h)]:
         return None
     return result
 
@@ -462,24 +570,48 @@ def correction(problems: list[tuple[Path, str, list[VoiceHit]]]) -> str:
     )
 
 
+def ops_error(problems: list[tuple[Path, str, list[VoiceHit]]]) -> str:
+    """The 400 sentence for a caller's ops: what to do, and which lines."""
+    quoted = "; ".join(json_quote(text) for _, text, _ in problems[:3])
+    return f"{OPS_ERROR} Lines to fix: {quoted}."
+
+
 def json_quote(text: str) -> str:
     import json
 
     return json.dumps(text, ensure_ascii=False)
 
 
-def repair_resume(base: dict[str, Any], customized: dict[str, Any]) -> list[Path]:
-    """Repair `customized` in place so no blocking hit is stored, whatever its
-    source (the edit set, or text already on the base); returns the paths touched.
+def format_path(path: Path) -> str:
+    """`("experience", 0, "bullets", 2)` -> `experience[0].bullets[2]`."""
+    out = ""
+    for key in path:
+        out += f"[{key}]" if isinstance(key, int) else (f".{key}" if out else str(key))
+    return out
 
-    A line that cannot be repaired is replaced by the base's line at the same
-    place (repaired first, so a third-person base line comes back clean or not at
-    all) or removed. A summary keeps only its clean or repairable sentences."""
+
+def repair_resume(base: dict[str, Any], customized: dict[str, Any]) -> list[Path]:
+    """Repair `customized` in place; returns the paths touched.
+
+    Text the edit wrote (a summary or bullet that differs from the base at the
+    same place) is held to the strict rule: repaired, else put back as the base
+    had it, else removed (a summary keeps only its clean sentences). A line left
+    as the base had it is repaired only where that is mechanical (a lower-case
+    pronoun or the full name) and is never cut or dropped: whatever stays
+    ambiguous is the health check's to flag."""
     name = contact_name(customized) or contact_name(base)
     orgs = org_names(base) + org_names(customized)
+    base_at = dict(slots(base))
     removals: list[Path] = []
     touched: list[Path] = []
     for path, text in slots(customized):
+        parent = _get(customized, path[:-1]) if len(path) > 1 else customized
+        if base_at.get(path) == text:
+            fixed = repair(text, name, orgs, conservative=True)
+            if fixed != text:
+                parent[path[-1]] = fixed
+                touched.append(path)
+            continue
         if not blocking(third_person_hits(text, name, orgs)):
             continue
         fixed = repair(text, name, orgs)
@@ -488,8 +620,7 @@ def repair_resume(base: dict[str, Any], customized: dict[str, Any]) -> list[Path
                 str(base.get("summary") or "") if path == ("summary",)
                 else _original_bullet(base, path, customized)
             )
-            fixed = repair(original, name, orgs) if original else None
-        parent = _get(customized, path[:-1]) if len(path) > 1 else customized
+            fixed = repair(original, name, orgs, conservative=True) if original else None
         if fixed is not None:
             parent[path[-1]] = fixed
         elif path == ("summary",):

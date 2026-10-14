@@ -970,7 +970,8 @@ def _voice_notes(resume: dict) -> list[dict]:
         if not hits:
             continue
         what = "summary" if loc[0] == "summary" else "bullet"
-        repaired = resume_voice.repair(text, name, orgs) if resume_voice.blocking(hits) else None
+        repaired = (resume_voice.repair(text, name, orgs, conservative=True)
+                    if resume_voice.blocking(hits) else None)
         notes.append(_finding(
             "note", loc, _label_at(resume, loc),
             f"This {what} reads as written about someone else.",

@@ -107,3 +107,7 @@ class TailorResponse(BaseModel):
     # Gap answers the KB write-back skipped, with reasons (Phase C Task 11):
     # rendered as a quiet, non-blocking note so flywheel drops are never silent.
     kb_writeback_skips: list[KBWritebackSkip] = Field(default_factory=list)
+    # Where the voice check rewrote or removed text in code (a third-person clause
+    # in a bullet or the summary), as paths like "experience[0].bullets[1]", so a
+    # change the model did not make is never silent.
+    voice_repairs: list[str] = Field(default_factory=list)

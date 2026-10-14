@@ -225,4 +225,5 @@ def tailor_session(
         # gap answers the KB write-back skipped, with reasons — surfaced as a
         # quiet note so flywheel drops are never silent (Phase C Task 11).
         "kb_writeback_skips": getattr(row, "kb_writeback_skips", []),
+        "voice_repairs": getattr(row, "voice_repairs", []),
     }

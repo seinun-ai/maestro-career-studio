@@ -508,8 +508,11 @@ def test_voice_line_is_in_every_prompt_that_writes_resume_text(db_session, monke
     adapt = kb_adapt._build_prompt(db_session, _entity(), [], [], [], {}, "experience", None)
 
     assert set(seen) == {"resume_bullet_rewrite", "base-resume-instruct", "base-from-kb-plan"}
-    for text in (*seen.values(), system, adapt):
+    for text in (*seen.values(), adapt):
         assert resume_voice.VOICE_RULE in text
+    # chat also writes first-person posts: its rule is scoped to resume and KB text
+    assert resume_voice.CHAT_VOICE_RULE in system
+    assert resume_voice.VOICE_RULE not in system
 
 
 def test_voice_line_is_in_the_chat_system_prompt_even_for_a_customized_row(db_session):
@@ -517,7 +520,11 @@ def test_voice_line_is_in_the_chat_system_prompt_even_for_a_customized_row(db_se
 
     prompt_assembly.prompts.set_prompt("chat_system", "Edit resumes.", db_session)
 
-    assert chat_agent._system_prompt(db_session).startswith(resume_voice.VOICE_RULE)
+    system = chat_agent._system_prompt(db_session)
+
+    assert system.startswith(resume_voice.CHAT_VOICE_RULE)
+    assert "edit_resume, propose_edits or kb_capture" in resume_voice.CHAT_VOICE_RULE
+    assert "LinkedIn" in resume_voice.CHAT_VOICE_RULE or "social" in resume_voice.CHAT_VOICE_RULE
 
 
 def _entity():

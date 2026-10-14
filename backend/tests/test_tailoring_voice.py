@@ -183,7 +183,7 @@ def test_clean_output_makes_no_extra_call(db_session, tmp_path, monkeypatch, cli
 
 def test_an_unchanged_summary_is_still_validated(db_session, tmp_path, monkeypatch, client):
     """The summary is always checked, even when the edit set did not write it."""
-    base = {**BASE, "summary": "Alex Rivera builds data platforms. Shipped billing for Globex University."}
+    base = {**BASE, "summary": "Alex Rivera led billing for Globex University."}
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex2", resume_json=base)
     created = _open_session(client, job, slug, resolutions=[KEYWORD])
@@ -192,8 +192,22 @@ def test_an_unchanged_summary_is_still_validated(db_session, tmp_path, monkeypat
     stored = _stored(db_session, _tailor(client, created["id"]))
 
     assert len(calls) == 2  # the summary is a reason to retry
-    assert stored["summary"] == "Shipped billing for Globex University."
+    assert stored["summary"] == "Led billing for Globex University."
     _no_voice_problem(stored)
+
+
+def test_an_unchanged_summary_that_cannot_be_repaired_cleanly_is_kept(
+    db_session, tmp_path, monkeypatch, client
+):
+    base = {**BASE, "summary": "Alex Rivera builds data platforms. Shipped billing for Globex University."}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex2b", resume_json=base)
+    created = _open_session(client, job, slug, resolutions=[KEYWORD])
+    _scripted(monkeypatch, [ADD_KEYWORD])
+
+    stored = _stored(db_session, _tailor(client, created["id"]))
+
+    assert stored["summary"] == base["summary"]  # the owner's words, left to the health check
 
 
 def test_an_unchanged_bad_bullet_is_repaired_but_is_not_a_reason_to_retry(
@@ -227,6 +241,17 @@ def test_copying_a_bad_base_line_into_a_changed_bullet_is_a_hit(db_session, tmp_
     assert len(calls) == 2
     assert "He cut load time 20%." not in json.dumps(stored)
     _no_voice_problem(stored)
+
+
+def test_caller_ops_error_quotes_the_offending_line(db_session, tmp_path, monkeypatch, client):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alexq", resume_json=BASE)
+    created = _open_session(client, job, slug)
+
+    response = _tailor(client, created["id"], body={"ops": [_summary("She builds billing.")]})
+
+    assert response.status_code == 400
+    assert '"She builds billing."' in response.json()["detail"]
 
 
 def test_caller_ops_with_a_hit_return_400_and_store_nothing(db_session, tmp_path, monkeypatch, client):
@@ -271,7 +296,7 @@ def test_caller_ops_copying_a_bad_base_line_return_400(db_session, tmp_path, mon
     assert "implied first person" in response.json()["detail"]
 
 
-def test_caller_ops_leaving_a_third_person_base_summary_alone_store_it_repaired(
+def test_caller_ops_leaving_a_third_person_base_summary_alone_are_not_refused(
     db_session, tmp_path, monkeypatch, client
 ):
     base = {**BASE, "summary": "Founder of Globex, which has shipped two products."}
@@ -281,10 +306,9 @@ def test_caller_ops_leaving_a_third_person_base_summary_alone_store_it_repaired(
 
     response = _tailor(client, created["id"], body={"ops": [ADD_KEYWORD]})
 
-    stored = _stored(db_session, response)
-    assert stored["summary"] == "Founder of Globex; shipped two products."
+    stored = _stored(db_session, response)  # 200: the summary is the owner's, not the caller's
+    assert stored["summary"] == base["summary"]  # a founder clause is left to the health check
     assert "Snowflake" in json.dumps(stored["skills"])
-    _no_voice_problem(stored)
 
 
 def test_caller_ops_leaving_a_third_person_base_bullet_alone_store_it_repaired(
@@ -357,3 +381,61 @@ def test_a_pre_ops_only_tailor_still_repairs_what_it_stores(db_session, tmp_path
     assert stored["projects"][0]["enabled"] is True
     assert stored["projects"][0]["bullets"] == ["Streamed events with Kafka; cut lag 20%."]
     _no_voice_problem(stored)
+
+
+def test_a_keyword_only_the_repaired_line_carried_is_added_back(db_session, tmp_path, monkeypatch, client):
+    """The model put the required keyword only in a third-person bullet. The repair drops the
+    bullet back to the base, so the keyword must be added to the skills list, not lost."""
+    created = _setup(db_session, tmp_path, monkeypatch, client)
+    leads = _bullet("He leads the Snowflake migration for Globex.")
+    calls = _scripted(monkeypatch, [leads])
+
+    stored = _stored(db_session, _tailor(client, created["id"]))
+
+    assert len(calls) == 2
+    assert "He leads" not in json.dumps(stored)
+    assert "Snowflake" in json.dumps(stored["skills"])
+    _no_voice_problem(stored)
+
+
+def test_a_real_employer_that_shares_a_name_token_is_left_alone(db_session, tmp_path, monkeypatch, client):
+    base = {**BASE, "contact": {"name": "Sam Wells", "email": "sam@example.test"}, "experience": [{**BASE["experience"][0],
+            "company": "Initech", "bullets": ["Built fraud models for Wells Fargo."]}]}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="sam", resume_json=base)
+    created = _open_session(client, job, slug, resolutions=[KEYWORD])
+    calls = _scripted(monkeypatch, [ADD_KEYWORD])
+
+    stored = _stored(db_session, _tailor(client, created["id"]))
+
+    assert len(calls) == 1
+    assert stored["experience"][0]["bullets"] == ["Built fraud models for Wells Fargo."]
+
+
+def test_the_response_lists_the_paths_the_repair_touched(db_session, tmp_path, monkeypatch, client):
+    base = {**BASE, "experience": [{**BASE["experience"][0],
+            "bullets": ["Built the platform, and he cut load time 20%."]}]}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex12", resume_json=base)
+    created = _open_session(client, job, slug, resolutions=[KEYWORD])
+    _scripted(monkeypatch, [ADD_KEYWORD])
+
+    body = _tailor(client, created["id"]).json()
+
+    assert body["voice_repairs"] == ["experience[0].bullets[0]"]
+
+
+def test_a_clean_tailor_reports_no_voice_repairs(db_session, tmp_path, monkeypatch, client):
+    created = _setup(db_session, tmp_path, monkeypatch, client)
+    _scripted(monkeypatch, [ADD_KEYWORD])
+
+    assert _tailor(client, created["id"]).json()["voice_repairs"] == []
+
+
+def test_the_mcp_tool_description_names_the_voice_rule():
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "mcp_server" / "server.py").read_text()
+    doc = source[source.index("def tailor_session("):]
+    doc = doc[: doc.index('return {**result, "next": next_hint}')]
+    assert "implied first person" in doc
