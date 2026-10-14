@@ -54,8 +54,9 @@ view for several is still ahead.
   resume (it never replaces a tailored draft or an open tailoring session), queues the job as your
   yes, then drives the tab from the job's apply link to the review page. It never clicks Submit and
   it presses Next only when the button reads like Next. A page with any Submit wording, a dialog
-  asking about submitting, a CAPTCHA, an email code, an account to create or a job board's own apply
-  button stops the run and the panel says why. You fix it in the page and press **Resume**.
+  asking about submitting, a CAPTCHA, an email code, an account on a site it does not know or a job
+  board's own apply button stops the run and the panel says why. You fix it in the page and press
+  **Resume**.
 - **Your answers are remembered.** Whatever you type into a field while a run waits for you is saved
   to your profile when you press Resume, with an Undo. A written answer that names the job's company
   or city is kept for that job only: the same question at another job adds its own answer instead of
@@ -108,6 +109,35 @@ view for several is still ahead.
   and none is at that company. The receipt says "from your work history". Any match still answers
   Yes, and a company that looks like a parent or subsidiary of one of your employers is asked, not
   answered.
+- **Accounts are created on known application sites.** When an application asks you to make an
+  account, the run does it with your saved job-site login, once, on the sites it knows (Workday,
+  Greenhouse, Lever, Ashby, iCIMS and a few more), in the page itself. It ticks only the box that
+  agrees to creating the account or to the privacy notice, never a marketing box, and presses only
+  "Create Account". An email check, a CAPTCHA or a site that refuses the account (a password rule, an
+  account that already exists) stops the run and says so: **Account not created**. It never tries
+  twice, and the password never reaches an AI model, a trace, a log or the screen.
+- **More controls get filled.** Dropdowns drawn as read-only boxes, Yes/No and Degree questions drawn
+  as rows of buttons, category lists that open before they show their choices, autocomplete boxes
+  that answer slowly, and street addresses (typed whole and picked from the suggestions by house
+  number and street, or left as typed and flagged). A link is written whole with https. A date box
+  that wants a day or month your profile does not have takes the 1st, or January, and the row says
+  so. A phone-type box is answered Mobile, a country-code picker takes your country's code, and
+  neither ever receives the number.
+- **Written questions are drafted for you to read.** A required written question your saved answers
+  cannot answer ("Why do you want to work here?") is drafted from your career history and the job,
+  in your own voice and about 120 words, or the length the question names. The row says "Drafted from
+  your history: read it". Nothing is saved as a standing answer; edit it and press Resume to teach it.
+  At **Facts only** nothing is drafted, and work authorization, pay, demographic, background,
+  availability and "have you worked here" questions never are.
+- **"How did you hear about us?" walks the list.** A site that groups its answers (a website, an
+  online source, a job board) is opened category by category to the job board that listed the job, or
+  the company's careers site, and the row says it was assumed.
+- **The Ask box is back under a run.** Paste a question, get one grounded paragraph, copy it. It
+  opens when the run pauses, not while it is working.
+- **A line when the fill log is off.** If **Keep a fill log** is off the run card says so and when the
+  log last recorded a run, so a gap in Analytics has a reason.
+- **Notes under a field.** The answered list and **Check before you submit** show a short fixed note
+  under a field name: "Drafted from your history: read it", "Day set to the 1st".
 
 ### Changed
 
@@ -140,6 +170,28 @@ view for several is still ahead.
   options. That switch is new; the developer-console command is gone. If you
   never chose, logging stops after this update; records already kept stay until
   you clear them in **Analytics → Autofill coverage**.
+- **Ready to submit is stricter.** The run says Ready only on a page that has a real Submit button
+  and no Next, with no error showing and no required box empty. A review page that is not plainly the
+  end (no Submit, or a Next still on it) stops as "Not sure this is the last page": check it, then
+  press **Resume** to say it is. A page with nothing to fill and only a "Continue" or "Proceed" stops
+  instead of being pressed. A stepper's step names, a cookie notice's buttons and a footer's links are
+  no longer mistaken for Submit or Next.
+- **A closed posting means closed.** A job description that says a position "is filled" no longer
+  ends the run. A page counts as closed only when it shows a closed notice and nothing to fill or
+  apply to, and the stop offers **Resume** in case it is not.
+- **Resumes that were not scored for the job are tucked away.** The Job step lists the scored base
+  resumes and the one selected; **Show N more (not scored for this job)** reveals the rest. With
+  nothing scored, every base shows.
+- **The resume goes only into a resume box.** A box that imports or fills the form from a resume
+  (the site's own parser) is never given the file, a required one stops the run naming it, and the
+  **Attach resume** button skips a box meant for a cover letter or another document.
+- **A middle name is never made from your first name.** A Middle Name box stays empty unless you
+  saved a middle name, and your name is typed as you entered it.
+- **"Have you worked here before?" is matched more carefully.** Only a question that asks whether you
+  worked for the company is answered from your work history. Questions about relatives, referrals,
+  eligibility, a competitor, or a time window are no longer mistaken for it.
+- **A degree is compared by its level.** "Master's/Advanced Degree" on a form matches your Master of
+  Science without a warning; a form that names a field is compared by its words.
 
 ## [0.10.1] — 2026-10-12
 

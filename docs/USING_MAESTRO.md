@@ -391,6 +391,16 @@ job**, **Tailor resume** and **Start filling**, and your yes to queueing comes w
 page refuses Next and says why, Apply fixes only the fields it names and stops if that does not help;
 it attaches your resume before pressing Next and never presses Next over an empty required upload.
 
+**Ready to submit** means nothing is missing: the page has a real Submit button and no Next, shows no
+error and has no required box left empty. When a review page is not plainly the last one, Apply stops
+with "Not sure this is the last page"; look, then press **Resume** to say it is. On a known application
+site that asks you to make an account, Apply makes it with your saved job-site login, once, and stops
+with **Account not created** if the site refuses, wants an email check or shows a CAPTCHA. A required
+written question your saved answers cannot answer is **drafted from your career history for you to
+read** ("Drafted from your history: read it"), never saved as a standing answer; **Facts only** turns
+drafting off. The **Ask** box at the foot of the Fill step answers any question from a form in one
+paragraph you can copy; it opens when a run pauses.
+
 Veteran status is one question in **Profile › Autofill**: "Are you a veteran?" (Yes, No, or "I don't
 wish to answer"). A No answers every "I am not a protected veteran" option on a form. A Yes never picks
 a protected class for you, so the Companion leaves that list to you. If your Profile still held the old

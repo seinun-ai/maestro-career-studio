@@ -238,38 +238,17 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 
 ## 6. Cross-cutting invariants (do not break these)
 
-- **The browser is the attacker; six controls are the whole boundary.** `{#inv-browser-boundary}` The API has no
-  authentication; the user's browser is inside the boundary and can be aimed at `127.0.0.1`.
-  1. **Host allowlist, on BOTH listening servers.** `TrustedHostMiddleware` rejects any Host not in
-     `settings.allowed_hosts` (`conftest` adds `testserver`; production does not); without it DNS rebinding makes an
-     attacker page SAME-ORIGIN and CORS is never consulted. The backend check alone guards nothing users touch: the
-     browser hits Next on :3000, whose `/api` catch-all drops the inbound Host. `frontend/proxy.ts` checks first
-     (Next 16 ignores `middleware.ts`), and the `/api` route repeats it. ONE definition: `lib/allowed-hosts.mjs`,
-     plain ESM so `node` runs it in tests.
-  2. **Origin gate** (`app/origin_guard.py`). CORS governs READS, the gate what may RUN: form/multipart POSTs need no
-     preflight. Present-but-unlisted `Origin` → refused before routing; ABSENT → allowed (httpx MCP and healthchecks).
-     Raw ASGI, never `BaseHTTPMiddleware`: it wraps chat SSE. **Host → Origin → CORS** follows `add_middleware`
-     PREPENDING, so `main.py` reads in reverse (pinned by test); CORS and the gate read ONE `ALLOWED_ORIGINS` list.
-  3. **Extension origins are exact ids**, never a pattern: `settings.maestro_cs_extension_ids` →
-     `chrome-extension://<id>` entries in `allow_origins` (a regex trusts EVERY installed extension). Empty refuses
-     extension writes carrying Origin; Chromium's host-permitted extension GETs omit Origin, so reads are not blocked.
-  4. **Template source is data, not code.** `pdf_render._environment()` is a `SandboxedEnvironment` — `Template.source`
-     comes from the web editor, chat and MCP, and a plain `Environment` turns any of those into arbitrary Python (`(((
-     x.__init__.__globals__ )))`). The `(((`/`((*` delimiters are ergonomics, not a control.
-  5. **The compiler can neither execute, read siblings nor download.** `-no-shell-escape` (+ `shell_escape=f`) is
-     unconditional; `compile_cover_letter_pdf` stays a thin alias of `compile_pdf`. `\input` opens anything past Jinja's
-     sandbox, so `_compile_env` adds kpathsea paranoid mode (`openin_any`/`openout_any=p`), and `_run_pdflatex` compiles
-     in a fresh temp folder per run (cwd = `TEXMFOUTPUT` = that folder; only the PDF and log are copied back), so base
-     resumes' shared `tex/` can be neither read nor overwritten. Typst: the `@pkg` regex is only the friendly error (a computed import path
-     walks past it); `_worker` points proxies at a dead address in the child so a download fails. BOUNDS; the render worker is the fix (KNOWN_ISSUES).
-  6. **A template id is a slug, enforced in the REGISTRY.** `validate_template_id` (`schemas/template.py`, importing
-     nothing from `app`) gates `create_draft`, `duplicate` and `_preview_path` — not just `TemplateCreate`, since chat
-     and MCP reach the registry directly and `Template.id` is a bare `Text` PK. `_preview_path` ALSO
-     resolve-then-`relative_to`s: two gates, either leaks.
-  All six pinned in `tests/test_security_boundaries.py`, `test_frontend_host_guard.py`,
-  `test_template_id_containment.py`. Related: `model_settings.set_base_url` rejects non-`http(s)` schemes — that value
-  decides **where the stored API key is sent** (`llm._client`); both containers run non-root `APP_UID` over the PII
-  mounts; and `llm._log_call` keeps metadata only unless `llm_log_content` is set (0600 either way).
+- **The browser is the attacker; six controls are the whole boundary.** `{#inv-browser-boundary}` The API has no authentication; the user's browser
+  is inside the boundary and can be aimed at `127.0.0.1`. (1) **Host allowlist on BOTH servers:** `TrustedHostMiddleware` rejects any Host not in
+  `settings.allowed_hosts` (without it DNS rebinding makes an attacker page same-origin), and `frontend/proxy.ts` plus the `/api` route repeat it from ONE
+  definition, `lib/allowed-hosts.mjs`. (2) **Origin gate** (`app/origin_guard.py`): a present-but-unlisted `Origin` is refused before routing, an absent
+  one allowed; raw ASGI, never `BaseHTTPMiddleware`. (3) **Extension origins are exact ids** (`settings.maestro_cs_extension_ids`), never a pattern.
+  (4) **Template source is data, not code:** `pdf_render._environment()` is a `SandboxedEnvironment`. (5) **The compiler can neither execute, read siblings
+  nor download:** `-no-shell-escape` unconditional, kpathsea paranoid mode, a fresh temp folder per run, Typst proxies pointed at a dead address.
+  (6) **A template id is a slug, enforced in the REGISTRY** (`validate_template_id`; `_preview_path` also resolves then `relative_to`s). Why each exists, the
+  middleware order and the bounds: `docs/entities/others.md`, "Browser boundary details". All six pinned in `tests/test_security_boundaries.py`,
+  `test_frontend_host_guard.py`, `test_template_id_containment.py`. Related: `model_settings.set_base_url` rejects non-`http(s)` schemes (it decides where
+  the stored API key is sent); both containers run non-root `APP_UID`; `llm._log_call` keeps metadata only unless `llm_log_content` is set (0600 either way).
 - **An empty environment variable means UNSET.** `{#inv-empty-env-unset}` `config.scrub_empty_env()` deletes every empty/whitespace env var
   at import, before any SDK client is constructed (`config.SCRUBBED_ENV` records what went). `docker-compose.yml` writes `VAR: ${VAR:-}` for
   optional settings — an EMPTY STRING, not an omission — and third-party SDKs read `os.environ` directly (the OpenAI SDK adopts an empty
@@ -320,7 +299,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   rows, runs and gaps, keeps counters, never the capture toggle (`extension/INTERNALS.md`; `scripts/fill_trace.py last|report` reads a DB copy). The
   **known-gaps table** (`autofill_widget_gap`, `POST /api/autofill/gaps`, `extra="forbid"`, closed enums) holds only a widget family hash, host, field
   shape, outcome and counts, posted only while `telemetryEnabled === true`; the **gesture report** behind the recipe book (`content/recipes.js`) holds
-  event types and a few allowlisted key names, never `value`, and stays local with the fill log off too.
+  event types and a few allowlisted key names, never `value`, and stays local with the fill log off too. With the log off the worker answers a run's
+  trace with `why: "off"` and `lastAt`, the time of the last trace this device posted (an ISO time and nothing else), and the run card says so.
 - **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an agent filled into an
   application form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`) lives only in the local `filled_answers` table
   (`services/filled_answers.py`; `docs/entities/filled-answers.md`): one row per page run, linked to an application by job + base resume. It
@@ -412,7 +392,10 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   channel `mcp`, note = client name) and the login passes through the agent's AI provider. POST `/api/companion/job-site-login`
   (`{proposal_id}`; channel `companion`) is admitted only for the Companion extension's origin: `page_sign_in` types it in the TOP frame
   alone, only on a known ATS host (`shared/ats-hosts.js`; elsewhere the run parks `sign_in_yourself`), once (a failure parks, never
-  retried), and the password never reaches a model, run record, card, receipt, trace, telemetry or error. Pins:
+  retried), and the password never reaches a model, run record, card, receipt, trace, telemetry or error. **Account creation** (owner decision, reversing
+  "it always parks"): `page_create_account`, the same route, top frame and host rule, on a page with one email box and two new-password boxes and no code box
+  or CAPTCHA, once; it ticks only a REQUIRED box that agrees to create the account or to the privacy notice, never a marketing box, and presses only
+  "Create Account"; an email check, CAPTCHA or refusal parks (`verify`, `create_account_failed`), never retried. Pins:
   `tests/test_job_site_login.py`, `test_job_site_login_handoff.py`, `test_companion_job_site_login.py`,
   `mcp_server/tests/test_client_job_site_login.py` (symbols in `.system_md_enforcement.json`).
 - **Automatic consent is gated by the user's switch.** `{#inv-auto-consent-gated}` Off by default; only PUT `/api/settings/full-automation` (`{value: bool}`, StrictBool)
@@ -473,17 +456,33 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `step` and `seen`; the driver reads `page_errors` (the page's own words, never a value), repairs ONLY the fields they name (`fix`,
   `runFill({only})`) in at most `MAX_FIX_ROUNDS`, each error once, then presses again; a repeat or an error it cannot work parks `page_errors`. Pinned
   by `tests/test_extension_queue_run.py`.
-- **The resume is written once per page, to a lone box, before Next.** `{#inv-one-resume-write}` Only a page's one required upload box whose own words
-  name no other document counts as the resume's, or the box a page error named (an opaque tag); never over a file already there, and never a second
-  write after an `unconfirmed` one. A required box still empty after the fill parks `upload` before `page_advance`, and a Resume never attaches.
+- **The resume is written once per page, to a lone resume box, before Next.** `{#inv-one-resume-write}` Only a page's one required upload box whose own words
+  name no other document counts as the resume's (or a lone box under a resume heading, or the box a page error named, an opaque tag); never over a file
+  already there, and never a second write after an `unconfirmed` one. **A parser box is never written** (the site's own import or fill-from-resume; the
+  nearest name decides, `uploadBoxOf`), nor one for another document, by any press, the Attach button included. A required box still empty after the fill, a
+  required parser or other-document box, or a choice among several, parks `upload` before `page_advance`; a Resume never attaches.
   Pinned by `tests/test_extension_queue_run.py` and `tests/browser/test_upload_box.py`.
 - **A worked-here No is never wrong.** `{#inv-worked-here-no}` The history answers No to "Have you worked at X?" only when it lists jobs and no
   employer is among the companies the question names (the whole history, any wording); a match is Yes, and a parent or subsidiary of an employer, or
   an employer's name standing in the question as capitalised words, is ASKED (`autofill_catalog.named_employer_fact`, read by /pick, /step and /map).
-  Pinned by `tests/test_autofill_catalog.py`.
+  Only an ALLOWLIST of question shapes about the applicant's own employment, with the company directly after the phrase, is rerouted to it
+  (`asks_worked_here`, backed by an exclusion list): never eligibility, willingness, relatives, referrals, applications, a competitor, a public body beside the
+  company or a time window. Pinned by `tests/test_autofill_catalog.py`.
 - **Veteran status is one Yes/No.** `{#inv-veteran-yes-no}` A No settles every "not a (protected) veteran" option; a Yes, and any other saved Yes/No
   fact, never picks or answers a protected class (/pick, /step, /map and `content/eeo.js`). Legacy `veteran` reads as yes; legacy `not_veteran` reads
   as UNANSWERED and the profile lists it under `stale_answers`. Pinned by `tests/test_autofill_pick.py`.
+- **Ready means a real review page with nothing missing.** `{#inv-ready-real-review}` The run reports Ready to submit only when the page is a review whose
+  `by` is `submit_button` (a real Submit control inside the application and no real Next), shows no errors and has no required box empty (`requiredEmpty`:
+  one scoped fix, then `open_questions`). Any other reason a page reads as a review (a Submit the reader could not see, a dialog about submitting, several
+  Nexts, fields and no Next) parks `unsure_page`; a field-less page with only a bare Continue or Proceed parks `confirm_page`; a plain Next is pressed. A
+  Resume on an `unsure_page` is the user vouching for that page (no refill, errors and empties still checked, `readyBy` "user"). Closed means closed: a strict
+  notice, nothing fillable and no Apply, and resumable. Pinned by `tests/test_extension_queue_run.py`, `test_extension_page_kind.py` and `tests/browser/test_page_reader.py`.
+- **Low stakes are decisive; a draft is read, not trusted.** `{#inv-drafted-answers}` A low-stakes gap is filled and reported `assumed` with a fixed note, never
+  left blank and never invented as a fact: a date box asking for more than the fact has takes the 1st (January for a year), https goes on a host, a phone type
+  is Mobile, a dialing-code picker takes the profile country's code. A middle name is never made from the first name; the name is used as stored. `/choose`
+  DRAFTS only a REQUIRED text or textarea that `/map` filed as `free_text` or `years_unanswered`, with an application, never at **Facts only**, never when the
+  never-list matches (protected, EEO, work authorization, money, background, signatures, logistics, public service, employment here), in the owner's voice,
+  about 120 words or the label's stated limit, `""` when the history cannot answer; it returns `assumed` with "Drafted from your history: read it" and saves nothing. Pinned by `tests/test_autofill_choose.py`, `test_autofill_map.py` and `tests/browser/test_fill_core_fields.py`.
 
 ## 7. Agent surfaces
 
@@ -599,6 +598,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   unconfirmable is `filled_unverified`, not `not_stuck`. Submit stays human at every setting; Next only in the run below. After each run, both modes, the panel posts the
   page's answer receipt (`shared/receipt.js`) and lists its flags under **Check before you submit**; a matched job's knock-out heads Fill.
   The loop never fills a robot trap (`fillBase.robotTrap`), leaves an optional field with no fact blank (`left_blank`, listed, not asked),
+  reads Yes/No pill buttons, category rows, slow autocomplete lists, street addresses, URLs and split dates as widgets of their own (`extension/INTERNALS.md`, "The fill agent's rules"),
   commits and confirms each item of a list field (up to 20, none already shown as a pill; never a closest pick), repeats no move that changed
   nothing (a run record's `memory` keeps what failed across calls on one page; `only` limits a call to named fields), waits for the page to
   settle before typing, and gives its adaptive step a technique card per widget kind, what worked on this site and its own `search:term`.
@@ -614,16 +614,17 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   only when the top match score reaches Auto-apply's floor and leads the next by its margin, else ask; Off: nothing is preselected) and **Stop after
   each step** (default Off: three presses, Save job, Tailor resume or Make PDF, Start filling, and the user's yes is given at Start filling, not
   before). **Submit is never clicked, at any setting**: `shared/page-kind.js` treats any Submit word, a dialog about submitting or an unseen Submit as
-  the review page, and Next is pressed only by `page_advance` (`content/page-reader.js`), which re-sorts the button's labels at click time. A
+  the review page (Ready only on a real Submit: §6 inv-ready-real-review), and Next is pressed only by `page_advance` (`content/page-reader.js`), which re-sorts the button's labels at click time. A
   posting's Apply is followed only as a same-tab http(s) link (no click handlers) on the first read of a tab the run opened. CAPTCHA, email code,
-  account creation, a job board's own apply and any unrecognised page PARK (Needs you), as does a required field it could not answer, once per page,
+  an account on a site it does not know (on a known ATS it creates the account itself, §6 inv-job-site-password-local), a job board's own apply, a review
+  page that is not plainly the end and any unrecognised page PARK (Needs you), as does a required field it could not answer, once per page,
   and a refused Next it cannot repair (inv-rejected-next) or a required upload it cannot fill (inv-one-resume-write). The user answers in the page and
   presses **Resume**: every typed answer is remembered (Undo; long written ones never); one naming the job's company or city is held for that job only
   (`only_for` + `only_for_kind`, whole word, by `autofill_job.profile_for_job` for both `/context` and `/choose`; Settings has Use for every job). The
   hand fix teaches the recipe book (§6 gesture report). The user's own Submit is recorded only from a confirmation page on a host the run reached at
   the same employer, straight from the application's own pages, after an 8 s Undo (a tab closed during it marks at once); any other page sets
   `noAutoMark`, leaving the manual Mark applied, and Done on the Ready card ends the record writing nothing (per-run limits, leases and Apply on a
-  live tab: INTERNALS). The job memory is per tab (`chrome.storage.session` `widget.sessions`, no clock; origin, tenant, sibling-posting and
+  live tab: INTERNALS). The Ask box (QnA drawer) sits under the run card only while the run is paused. The job memory is per tab (`chrome.storage.session` `widget.sessions`, no clock; origin, tenant, sibling-posting and
   backend-wins guards).
 - **Screening answers dial** (Settings › Form filling; `autofill.answer_level`, default **Backed by your history**, so an install that had
   the old low-stakes switch off now answers low-stakes questions; the one setting for the Companion, `/map` `/pick` `/step` and agents, via
@@ -633,7 +634,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   proposal plus `page_url` `is_same_posting` against `apply_url`/`source_url`). The protected list sits outside every level and parks unless
   a saved fact answers it: work authorization and sponsorship, salary, EEO (unless consented), criminal or background history, clearance and
   agency employment (never a keen guess), signatures and attestations (unless Agreements consent), unsupported education or experience
-  claims. Every dial answer is marked on the receipt.
+  claims. Every dial answer is marked on the receipt; written drafts: §6 inv-drafted-answers.
 - **Streaming chat** runs through `llm_providers` on any provider; eligibility is the tools probe.
 
 ## 8. Frontend conventions
@@ -680,9 +681,8 @@ with the failure mode that bought it. Code citing "§8" lands here.
   (`app.tools.backup_db --stdout` through the running backend container, else the checkout's own image tag —
   `.env`'s `latest` can predate the tool; 0600, magic-byte checked) → ff-only to the newest `v*` tag → images pinned to that tag →
   health poll → extension/MCP reminders (only legacy stdio re-runs setup-mcp.sh; an old Docker `.mcpb` is reinstalled once; README "Updating"). Checkout and images
-  move TOGETHER: a bare `docker compose pull` skews an install (docs/UPDATING.md). Contributors build. **Pre-v0.4.0 guard:** a `<project>_pgdata` volume with no
-  `data/.migrated-from-postgres.json` makes `--check` warn and an update exit before touching anything; a
-  v0.3.0 user's OWN old script skips the guard (recovery steps: docs/UPDATING.md, which holds both rules).
+  move TOGETHER: a bare `docker compose pull` skews an install. Contributors build. The pre-v0.4.0 guard (a `<project>_pgdata` volume with no
+  `data/.migrated-from-postgres.json`) and recovery steps: docs/UPDATING.md.
 - **Windows = WSL for Docker; the uv install runs natively.** Docker needs Desktop's WSL 2 engine with the clone in the WSL home, never
   `/mnt/c` (SQLite WAL over the Windows share is untrusted; the scripts are bash). `.gitattributes` forces LF
   so a clone cannot CRLF scripts or `.env`; `setup-mcp.sh` is not a Windows route. The `.mcpb` uses HTTP on macOS, Windows and Linux without Docker on the assistant's side.

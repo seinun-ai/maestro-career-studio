@@ -22,9 +22,9 @@ appended and never pruned; the values live here and nowhere else (SYSTEM.md §6 
 - **Sources are a frozen vocabulary**, read by phase 4's auto-submit rule: `profile` (the autofill
   profile's personal, work_auth, eligibility, eeo, preferences, education and languages slots, and
   `derived.full_name`), `resume` (an `experience.N.*` slot or `skills`), `custom` (a saved answer,
-  `custom.N`), `written` (prose `/choose` or an agent composed; it blends profile, saved answers, career
+  `custom.N`), `written` (prose `/choose` or an agent composed, a drafted answer included: it is marked `assumed` and the panel shows "Drafted from your history: read it" under the field, from a fixed allowlist of notes; it blends profile, saved answers, career
   history and persona, so prose is not split into Resume vs Career history), `inferred` (any other
-  `derived.*` fact, a low-stakes or reasoned choice, anything no saved fact states; a worked-here No read from the work history carries the note
+  `derived.*` fact, `derived.phone_type` (Mobile) and `derived.phone_country` (a dialing code) among them, a low-stakes or reasoned choice, anything no saved fact states; a worked-here No read from the work history carries the note
   "from your work history", `FilledFieldRead.note`, read-time and never stored), `you` (typed or
   changed by the user in the browser; never an agent's own choice, which is `inferred`), `upload` (a file: `slot` is `resume` or `cover_letter`, `answer` the file name; a
   resume upload carries the application's resume `version`). On screen each is a one-word pill: Profile,

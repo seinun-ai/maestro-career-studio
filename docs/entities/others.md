@@ -260,7 +260,8 @@
   **Written history questions are written.** A text-shape field (text, textarea, multiline) that `/map` files under `years_unanswered` or
   `history_unanswered` routes `free_text`, so the prose `/choose` path that carries the career history writes it (a choice field keeps its
   route; the prose rule against unsupported claims stays; a `history_unanswered` text box that names a company stays the user's). The run trace
-  names the sentinel the model chose (`Sentinel` in `schemas/autofill_fill.py`: a fixed word, never a value). **Worked here.** When the history
+  names the sentinel the model chose (`Sentinel` in `schemas/autofill_fill.py`: a fixed word, never a value). **Worked here.** Only a question of an allowlisted shape about the APPLICANT's own
+  employment at the company is read this way (`autofill_catalog.asks_worked_here`: have you ever worked, been employed or been an employee, intern or contractor for/at/by/with; were you employed by; did you work for; are you an employee of; are you currently employed by; a current or former employee), with the company directly after the phrase, and none of the backstop's words (relatives, referral, application, interview, authorization, sponsorship, clearance, background, eligibility, willingness, competitor, customer, vendor, a government or military body beside the company, a time window); /map reroutes such a question the model filed as history or no-fact (`autofill_map._rerouted`), and a question that merely names the company is not one. When the history
   lists jobs and none is at the company, `derived.previously_employed_here` is **No**, marked `inferred` and worded "from your work history" on
   the receipt (`FilledFieldRead.note`); a match is Yes ("Yes, currently" / "Yes, previously"); no jobs, no company, a parent or subsidiary of an
   employer, a history cut at the job limit or a saved Yes leave the question asked. That No is about the job's company only, so a question that
@@ -279,6 +280,29 @@
   not carry the answer keeps the marker; an older Settings page or peer keeps reading what is stored, so an old peer can read a synced `yes` as a
   protected veteran). Profile › Autofill asks the question again ("Answer again: this question changed."). Known limits: a lowercase mention of an
   employer outside a parsed list still reads No, and the veteran-class guard errs toward asking.
+- **Derived facts, drafted answers and degree levels** (`services/autofill_catalog.py`, `autofill_choose.py`, `qa.py`, `autofill_step.py`, `answer_flags.py`).
+  `derived.phone_type` is "Mobile" whenever the profile holds a number: the profile never says what kind of phone it is, so `autofill_pick`
+  judges it at the assumed floor and reports `assumed` (`ASSUMED_SLOTS`), `differs_from_profile` ignores it, and a phone-type box never receives
+  the number (`/map` keeps it out of the phone re-punctuation, and `content/autofill.js` skips a phone-type box before its phone rule).
+  `derived.phone_country` is "+1 United States" and the like, built from `personal.country` by a fixed table of about fifty countries and their
+  usual spellings (a country the table does not know derives nothing); it answers a dialing-code picker, never the number. **How did you hear**
+  (`preferences.how_heard`): a saved source that reads as a board ("Job board", a board named) or a website ("Company website", a careers page)
+  gets a `/step` goal that opens the website, online or job-board category (else Other) and then picks a leaf: a board answer picks the board
+  that listed THIS job first (the posting URL's host names it, `autofill_job.board_of_url`; a careers site or an ATS host names none), a website
+  answer picks the careers-site leaf and never a board; any other saved word is walked to its own leaf by the ordinary goal. The leaf is the
+  Companion's pick, so the step reports it `assumed` unless an option says the saved word itself. **A middle name is never made from another
+  name**: `/map` files any middle-name or middle-initial question as none unless the fact is `personal.middle_name`, and the stored name is used
+  as entered. **Degrees** are compared by level when the page's value names only a level ("Master's/Advanced Degree" matches a Master of
+  Science), "M.B.A." is a master's in business administration and no other business degree, a bare MS, MA, BS or BA is a degree in its own field
+  (science, arts), and a value that names a field is compared by its words (`answer_flags._same_degree`). **Drafted written answers**: `/map`
+  marks a free-text route draftable only when the model filed it under the `free_text` or `years_unanswered` sentinel (`Mapped.draft`); `/choose`
+  drafts only a REQUIRED text or textarea field with no options, no known value, an application to ground it and a map-marked draft
+  (`ChooseField.draft`), at most six a call, never at **Facts only**, and never when a backstop never-list (protected and EEO kinds, work
+  authorization, money, background, signatures, logistics, public service, employment here) matches the label. One smart-model call over the
+  resume, the job and the career history (`qa.draft_answers`, inside what is left of 7.5 s since `/choose` began, none under 2 s) in the owner's
+  voice (`resume_voice.repair` in code), about 120 words unless the label states a word or character limit (honoured), plain text with no dashes,
+  `""` for what the history cannot answer. It returns `reason: assumed` with the fixed note "Drafted from your history: read it" and saves
+  nothing: a draft is not a standing answer. The receipt reads it as `written`.
 - **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
   compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
   persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
@@ -640,6 +664,38 @@
   gets no ask. Editors render no amber zone wash and make no "read first by a recruiter" claim (a
   fixed positional heuristic must not be stated as fact about a reader); the marker survives ONLY on
   the health report, labelled `Higher priority`.
+- **Browser boundary details** (SYSTEM.md §6 inv-browser-boundary holds the six controls; this is why each exists and what bounds it): the API has no
+  authentication; the user's browser is inside the boundary and can be aimed at `127.0.0.1`.
+  1. **Host allowlist, on BOTH listening servers.** `TrustedHostMiddleware` rejects any Host not in
+     `settings.allowed_hosts` (`conftest` adds `testserver`; production does not); without it DNS rebinding makes an
+     attacker page SAME-ORIGIN and CORS is never consulted. The backend check alone guards nothing users touch: the
+     browser hits Next on :3000, whose `/api` catch-all drops the inbound Host. `frontend/proxy.ts` checks first
+     (Next 16 ignores `middleware.ts`), and the `/api` route repeats it. ONE definition: `lib/allowed-hosts.mjs`,
+     plain ESM so `node` runs it in tests.
+  2. **Origin gate** (`app/origin_guard.py`). CORS governs READS, the gate what may RUN: form/multipart POSTs need no
+     preflight. Present-but-unlisted `Origin` → refused before routing; ABSENT → allowed (httpx MCP and healthchecks).
+     Raw ASGI, never `BaseHTTPMiddleware`: it wraps chat SSE. **Host → Origin → CORS** follows `add_middleware`
+     PREPENDING, so `main.py` reads in reverse (pinned by test); CORS and the gate read ONE `ALLOWED_ORIGINS` list.
+  3. **Extension origins are exact ids**, never a pattern: `settings.maestro_cs_extension_ids` →
+     `chrome-extension://<id>` entries in `allow_origins` (a regex trusts EVERY installed extension). Empty refuses
+     extension writes carrying Origin; Chromium's host-permitted extension GETs omit Origin, so reads are not blocked.
+  4. **Template source is data, not code.** `pdf_render._environment()` is a `SandboxedEnvironment` — `Template.source`
+     comes from the web editor, chat and MCP, and a plain `Environment` turns any of those into arbitrary Python (`(((
+     x.__init__.__globals__ )))`). The `(((`/`((*` delimiters are ergonomics, not a control.
+  5. **The compiler can neither execute, read siblings nor download.** `-no-shell-escape` (+ `shell_escape=f`) is
+     unconditional; `compile_cover_letter_pdf` stays a thin alias of `compile_pdf`. `\input` opens anything past Jinja's
+     sandbox, so `_compile_env` adds kpathsea paranoid mode (`openin_any`/`openout_any=p`), and `_run_pdflatex` compiles
+     in a fresh temp folder per run (cwd = `TEXMFOUTPUT` = that folder; only the PDF and log are copied back), so base
+     resumes' shared `tex/` can be neither read nor overwritten. Typst: the `@pkg` regex is only the friendly error (a computed import path
+     walks past it); `_worker` points proxies at a dead address in the child so a download fails. BOUNDS; the render worker is the fix (KNOWN_ISSUES).
+  6. **A template id is a slug, enforced in the REGISTRY.** `validate_template_id` (`schemas/template.py`, importing
+     nothing from `app`) gates `create_draft`, `duplicate` and `_preview_path` — not just `TemplateCreate`, since chat
+     and MCP reach the registry directly and `Template.id` is a bare `Text` PK. `_preview_path` ALSO
+     resolve-then-`relative_to`s: two gates, either leaks.
+  All six pinned in `tests/test_security_boundaries.py`, `test_frontend_host_guard.py`,
+  `test_template_id_containment.py`. Related: `model_settings.set_base_url` rejects non-`http(s)` schemes — that value
+  decides **where the stored API key is sent** (`llm._client`); both containers run non-root `APP_UID` over the PII
+  mounts; and `llm._log_call` keeps metadata only unless `llm_log_content` is set (0600 either way).
 - **Sync channel details** (SYSTEM.md §6 inv-sync-channel holds the rule; `services/sync/`): after a good seal the protocol and schema
   check answers 409, one request at a time 409, a body cap 413 and a chunk timeout 408, and those answers are sealed. Replays are refused,
   including a seal stamped in a second before this process started. An empty `SYNC_PUBLIC_HOST` changes nothing. `/api/sync`,

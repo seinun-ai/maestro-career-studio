@@ -82,7 +82,8 @@
       {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_what_the_trace_keeps_of_the_page_is_its_labels_and_options"},
       {"path": "backend/tests/test_extension_sw_router.py", "symbol": "test_gaps_are_posted_only_for_a_user_who_turned_the_fill_log_on"},
       {"path": "backend/tests/test_autofill_gaps.py", "symbol": "test_any_extra_key_is_refused_and_nothing_is_stored"},
-      {"path": "backend/tests/test_autofill_gaps.py", "symbol": "test_clearing_telemetry_also_clears_the_gaps_because_they_hold_hosts"}
+      {"path": "backend/tests/test_autofill_gaps.py", "symbol": "test_clearing_telemetry_also_clears_the_gaps_because_they_hold_hosts"},
+      {"path": "backend/tests/test_extension_panel_run.py", "symbol": "test_the_fill_log_line_also_says_when_the_log_last_recorded_a_run"}
     ],
     "inv-filled-answers-local": [
       {"path": "backend/tests/test_filled_answers_invariant.py", "symbol": "test_telemetry_and_trace_never_read_the_receipt"},
@@ -123,7 +124,11 @@
       {"path": "backend/tests/test_job_site_login_handoff.py", "symbol": "test_handoff_never_logs_or_persists_the_password"},
       {"path": "backend/mcp_server/tests/test_client_job_site_login.py", "symbol": "test_login_failure_uses_a_fixed_status_message_without_response_body"},
       {"path": "backend/mcp_server/tests/test_client_job_site_login.py", "symbol": "test_transport_errors_cannot_expose_a_password_in_their_message"},
-      {"path": "backend/tests/test_companion_job_site_login.py", "symbol": "test_no_extension_origin_means_no_login"}
+      {"path": "backend/tests/test_companion_job_site_login.py", "symbol": "test_no_extension_origin_means_no_login"},
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_create_account_fetches_the_login_and_sends_it_to_frame_zero_only"},
+      {"path": "backend/tests/browser/test_page_reader.py", "symbol": "test_the_honeypot_is_never_typed_into_or_focused"},
+      {"path": "backend/tests/browser/test_page_reader.py", "symbol": "test_an_agreement_that_is_not_about_the_account_or_its_privacy_notice_is_never_ticked"},
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_sign_up_that_does_not_move_the_page_parks_account_not_created"}
     ],
     "inv-auto-consent-gated": [
       {"path": "backend/tests/test_full_automation_setting.py", "symbol": "test_full_automation_is_off_by_default_and_round_trips"},
@@ -247,17 +252,36 @@
     "inv-one-resume-write": [
       {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_an_attach_that_fails_parks_naming_the_box_and_never_presses_next"},
       {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_resume_after_an_upload_park_that_finds_the_box_still_empty_parks_again_without_pressing"},
-      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_resume_after_an_unconfirmed_gate_write_presses_next_and_never_attaches"}
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_resume_after_an_unconfirmed_gate_write_presses_next_and_never_attaches"},
+      {"path": "backend/tests/browser/test_upload_box.py", "symbol": "test_page_uploads_reports_the_parsers_real_required_state_and_never_writes_it"},
+      {"path": "backend/tests/browser/test_upload_box.py", "symbol": "test_a_parser_worded_section_never_overrides_a_box_that_names_a_plain_resume"},
+      {"path": "backend/tests/browser/test_attach.py", "symbol": "test_a_targeted_write_never_lands_in_a_box_labelled_for_another_document"}
     ],
     "inv-worked-here-no": [
       {"path": "backend/tests/test_autofill_catalog.py", "symbol": "test_an_employer_of_the_history_mentioned_in_any_wording_is_never_a_no"},
       {"path": "backend/tests/test_autofill_catalog.py", "symbol": "test_a_parent_or_subsidiary_in_a_wording_the_parser_does_not_read_is_asked_not_no"},
-      {"path": "backend/app/services/autofill_catalog.py", "symbol": "def named_employer_fact"}
+      {"path": "backend/app/services/autofill_catalog.py", "symbol": "def named_employer_fact"},
+      {"path": "backend/tests/test_autofill_catalog.py", "symbol": "test_asks_worked_here_is_an_allowlist_of_question_shapes"},
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_question_that_only_names_the_company_is_not_the_worked_here_answer"}
     ],
     "inv-veteran-yes-no": [
       {"path": "backend/tests/test_autofill_pick.py", "symbol": "test_a_no_picks_every_option_that_denies_being_a_veteran_at_the_exact_floor"},
       {"path": "backend/tests/test_autofill_pick.py", "symbol": "test_a_saved_custom_yes_no_row_never_answers_a_veteran_class_question"},
       {"path": "backend/tests/test_autofill_profile_veteran.py", "symbol": "test_the_old_not_a_protected_veteran_answer_reads_as_unanswered_and_says_so"}
+    ],
+    "inv-ready-real-review": [
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_review_that_is_not_a_real_submit_page_parks_unsure_and_never_ready"},
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_page_the_fill_listed_nothing_on_with_only_a_continue_parks_confirm_page_and_is_not_pressed"},
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_vouched_page_still_gets_its_errors_and_required_empties_checked"},
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_required_empty_gets_one_scoped_fix_then_ready_when_it_is_filled"},
+      {"path": "backend/tests/test_extension_page_kind.py", "symbol": "test_the_closed_words_in_a_posting_that_still_has_an_apply_or_a_form_are_not_a_closed_page"}
+    ],
+    "inv-drafted-answers": [
+      {"path": "backend/tests/test_autofill_choose.py", "symbol": "test_a_draft_is_never_saved_as_an_answer"},
+      {"path": "backend/tests/test_autofill_choose.py", "symbol": "test_the_answer_dial_decides_whether_written_questions_are_drafted"},
+      {"path": "backend/tests/test_autofill_choose.py", "symbol": "test_the_backstop_never_drafts_these_even_if_the_map_allowed_it"},
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_middle_name_box_is_never_filled_from_another_name"},
+      {"path": "backend/tests/browser/test_fill_core_fields.py", "symbol": "test_a_native_date_given_a_month_is_written_as_the_first_and_says_so"}
     ]
   },
   "unpinned": {

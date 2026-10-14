@@ -21,8 +21,9 @@ at to your local Maestro CS app.
   resume, queues the job as your yes, then works through the application in this
   tab. It fills each page, clicks **Next** itself, and stops on the review page so
   that **Submit** is yours. It asks you only when it must: a CAPTCHA, an email
-  code, a new account, a job board's own apply button, a page it does not
-  recognise, or a required question it could not answer. Answer in the page, then
+  code, an account on a site it does not know or one the site refused, a job
+  board's own apply button, a page it does not recognise, or a required question
+  it could not answer. Answer in the page, then
   press **Resume** in the panel. Your answers are saved to your profile (with
   an Undo). After you press Submit and the confirmation page shows, the panel
   marks the job applied after 8 seconds, unless you press Undo. If the tab moves
@@ -36,6 +37,25 @@ at to your local Maestro CS app.
   one resume clearly wins, else asks) and **Stop after each step** (three presses:
   **Save job**, **Tailor resume**, **Start filling**).
   Running several jobs at once from a Queue view is not built yet.
+  **Ready to submit** means nothing is missing: the page has a real Submit button
+  and no Next, shows no error, and has no required box left empty. If a review
+  page is not plainly the last one (no Submit, or a Next still on it), the run
+  stops with "Not sure this is the last page"; check it and press **Resume** to
+  say it is. A page whose only button is "Continue" stops for you the same way.
+  On a known application site that asks you to make an account, the run makes it
+  with your saved job-site login, once (see below). While a run is working the
+  panel says "Ask opens when the run pauses"; the Ask box returns when it stops.
+- **Written questions are drafted for you to read.** A required question such as
+  "Why do you want to work here?" that your saved answers cannot answer is drafted
+  from your career history and the job, in your own voice, about 120 words (or the
+  length the question names). The row says "Drafted from your history: read it".
+  It is never saved as a standing answer and never submitted for you; edit it in
+  the page and press **Resume** to keep your version. **Facts only** (Settings ›
+  Form filling) turns drafting off, and pay, work authorization, demographic,
+  background and "have you worked here" questions are never drafted.
+- **Ask one question.** The **Ask** box at the foot of the Fill step takes any
+  question from a form, answers it in one paragraph from your history and the job,
+  and lets you copy it. It never writes into the page.
 - **Track it.** Mark the application Draft or Applied from the panel.
 
 Open the panel with the toolbar icon or `Alt+Shift+J` (change it at
@@ -84,8 +104,15 @@ Otherwise the backend refuses the old id and the panel cannot reach it.
   everything before you submit.
 - **Types your saved job-site password only on known application sites**
   (Workday, Greenhouse, Lever, Ashby, iCIMS and a few more), in the page itself.
-  Anywhere else it stops and waits for you to sign in. It never creates an
-  account and never retries a failed sign-in.
+  Anywhere else it stops and waits for you to sign in. It never retries a failed
+  sign-in.
+- **Creates an account only on those same known sites**, in the page itself, with
+  your saved login and the same password in both boxes. It ticks only the box that
+  agrees to creating the account or to the privacy notice (never a marketing
+  box), presses only "Create Account", and does it once. An email check, a CAPTCHA
+  or a refusal (a password rule, an account that already exists) stops the run
+  with **Account not created**; you finish in the page and press **Resume**. The
+  password never reaches an AI model, the panel, a log or the fill log.
 - **Never fills a field meant to catch robots** (a hidden "leave this blank"
   box). Optional fields it has no answer for are left blank and listed.
 
