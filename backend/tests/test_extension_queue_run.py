@@ -59,6 +59,9 @@ const summaryOf = (p, banner = false) => {
     case "unknown": break;
     default: throw new Error(`no page type ${p.t}`);
   }
+  // `late`: the page's fields mount after the run's first fill (a Workday question step draws them seconds
+  // after its footer), so until then it reads as having nothing to fill.
+  if (p.late && !fillAt[pages.indexOf(p)]) s.fillable = 0;
   // A page that complains (errs) or still has required boxes empty (needs) until a fix clears it.
   if (p.errs && !cleared[pages.indexOf(p)]) {
     s.errors = p.errs.length;
@@ -91,6 +94,7 @@ const tick = (name, ...args) => {
 };
 const earlyReads = {};
 const cleared = {};        // page index -> a fix cleared what the page complained about
+const fillAt = {};         // page index -> fills run on it
 const banner = { ...(spec.banner ?? {}) };   // page index -> the page is showing its error banner
 let lastRejected = false;  // the last press was one the page rejected
 let fillCalls = 0;
@@ -169,6 +173,7 @@ const deps = {
   fill: async (record, options) => {
     tick("fill", options ?? null);
     fillCalls += 1;
+    fillAt[at] = (fillAt[at] ?? 0) + 1;
     // By default a fill writes one field, as a real page's does; `fills` says otherwise.
     const fields = (spec.fills ?? [])[fillCalls - 1] ?? [{ fid: "fdef", question: "Name", required: true, status: "verified" }];
     if (spec.cancelOnFill === fillCalls) { cancelFlag = true; callsWhenCancelled = calls.length; }
@@ -778,11 +783,45 @@ def test_errors_are_handled_before_required_empties(tmp_path):
     assert out["record"]["status"] == "ready"
 
 
+def test_fields_that_appear_after_an_empty_fill_are_filled_once_before_next(tmp_path):
+    """Workday draws its questions after the footer: the first fill listed nothing, the re-read shows controls."""
+    out = _drive(tmp_path, [step(1, late=True), REVIEW], fills=[[], [needs("q1", "Degree", required=False, status="verified")], []])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+    assert [c[0] for c in out["calls"] if c[0] in ("fill", "advance")][:3] == ["fill", "fill", "advance"]
+    assert out["record"]["wrote"] is True
+
+
+def test_the_refill_is_once_per_page_even_when_the_second_fill_lists_nothing(tmp_path):
+    out = _drive(tmp_path, [step(1, late=True), REVIEW], fills=[[], [], [needs("r", status="verified")]])
+    assert out["record"]["status"] == "ready" and out["fillCalls"] == 3, "two fills on step 1 and one on the review"
+    assert out["pressed"] == ["next-1"]
+
+
+def test_a_fill_that_listed_fields_is_not_repeated_because_more_controls_are_visible(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW])
+    assert out["fillCalls"] == 2
+
+
+def test_a_review_whose_fields_mount_after_an_empty_fill_is_filled_before_it_can_be_ready(tmp_path):
+    out = _drive(tmp_path, [step(1), {**REVIEW, "late": True}],
+                 fills=[[needs("a", status="verified")], [], [needs("q1", "Degree", required=False, status="verified")]])
+    assert out["record"]["status"] == "ready" and out["fillCalls"] == 3
+
+
 def test_a_lone_parser_box_does_not_park_upload(tmp_path):
     """The site's import-from-resume box is reported not required and never written: the page is not held up."""
     parser = {"label": "Import Resume", "target": "u-p", "kind": "parser", "required": False, "occupied": False, "written": False}
     out = _drive(tmp_path, [step(1), REVIEW], attaches=[{"outcome": "left", "required": False, "boxes": [parser]}])
     assert out["record"]["status"] == "ready" and names(out, "attachTo") == []
+
+
+def test_a_lone_required_parser_box_gets_no_targeted_attach_and_parks_upload_naming_it(tmp_path):
+    """The site's import-from-resume box is never written, not even by the targeted attach."""
+    parser = {"label": "Import Resume", "target": "u-p", "kind": "parser", "required": True, "occupied": False, "written": False}
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{"outcome": "left", "required": True, "boxes": [parser]}])
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "upload")
+    assert names(out, "attachTo") == [] and [o["question"] for o in r["open"]] == ["Import Resume"]
 
 
 def test_a_clean_review_makes_no_required_read(tmp_path):

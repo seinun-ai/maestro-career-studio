@@ -270,6 +270,9 @@
     let tried = 0;           // Next presses on this page that did nothing
     let movedChecked = false;  // a Resume's first read has been checked against the hosts the run reached
     let fixRounds = 0;       // repairs after a rejected Next on this page
+    let listed = null;       // how many fields the last fill on this page reported (null: none yet)
+    let seenAtFill = 0;      // how many controls the page showed when that fill began
+    let refilled = false;    // fields that showed up after an empty fill have had their one more fill
     let requiredTried = false;  // the one scoped fix for required boxes still empty on this review page
     let attempted = new Set();  // the errors already repaired on this page (by their label)
     let wroteResume = false; // the resume has been written on this page (by the fill's attach or the gate): never twice
@@ -301,6 +304,9 @@
       tried = 0;
       fixRounds = 0;
       requiredTried = false;
+      listed = null;
+      seenAtFill = 0;
+      refilled = false;
       attempted = new Set();
       wroteResume = false;
       record.attach = null;
@@ -523,6 +529,8 @@
           const report = await act(deps.fill, record, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
           if (!Array.isArray(report?.fields)) throw new Error("the fill gave no report");
           if (report.stopped) throw HALT;
+          listed = report.fields.length;
+          seenAtFill = summary.fillable ?? 0;
           if (report.fields.some((f) => WROTE_STATUSES.has(f.status))) await update({ wrote: true });
           const open = openQuestions(report);
           if (open.length) return await park("open_questions", { open });
@@ -533,13 +541,22 @@
           if (FILE_WRITTEN.has(need?.outcome)) wroteResume = true;
           const boxes = Array.isArray(need?.boxes) ? need.boxes.filter((box) => box.written !== true) : [];
           if (need?.required === true) {
-            const lone = boxes.length === 1 && boxes[0].kind !== "other" && !wroteResume;
+            const lone = boxes.length === 1 && boxes[0].kind !== "other" && boxes[0].kind !== "parser" && !wroteResume;
             if (!lone) return await park("upload", { open: errorsOpen(boxes) });
             const got = await act(deps.attachTo, record, boxes[0]);
             if (got?.attached !== true) return await park("upload", { open: errorsOpen(boxes) });
             wroteResume = true;
           }
           pageFilled = true;
+          continue;
+        }
+
+        // A page that draws its fields after its footer (Workday's question steps) showed none when it was
+        // filled and listed none: when the re-read shows controls, it is filled once more before anything
+        // else is judged.
+        if (listed === 0 && seenAtFill === 0 && !refilled && (summary.fillable ?? 0) > 0) {
+          refilled = true;
+          pageFilled = false;
           continue;
         }
 

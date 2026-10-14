@@ -253,15 +253,23 @@ function detectPage() {
  * flow rule, panel.js). Those steps, iCIMS's EEO and Candidate Questions, are
  * a few selects and a Submit and score nothing above. Search boxes do not
  * count, so a careers search page reached after the last step does not offer
- * Autofill over its keyword box. Capped: the answer only has to be "more than
+ * Autofill over its keyword box. A popup button that picks a value counts (Workday's
+ * "Select One"), a site menu or a Search button does not. Capped: the answer only has to be "more than
  * none". */
 function fillableControls() {
   const CAP = 20;
   const SEARCH_NAME = /^(q|query)$|search|keyword/i;
   const SKIPPED_TYPES = ["hidden", "submit", "button", "reset", "image", "search", "password"];
   let count = 0;
+  // A POPUP BUTTON is a field too: Workday's question steps are made of them ("Select One"), and a step of
+  // nothing else read as having nothing to fill. Only a value picker (listbox, or the bare `true`), and never
+  // one in the site's own header, navigation or footer: those are language and account menus.
+  const POPUP = 'button[aria-haspopup="listbox"], button[aria-haspopup="true"], '
+    + '[role="button"][aria-haspopup="listbox"]:not(input), [role="button"][aria-haspopup="true"]:not(input)';
+  const SITE_CHROME = 'header, nav, footer, [role="banner"], [role="navigation"], [role="contentinfo"], [role="menubar"]';
   for (const el of document.querySelectorAll(
-    'input, select, textarea, [role="combobox"], [role="radio"], [role="checkbox"]')) {
+    `input, select, textarea, [role="combobox"], [role="radio"], [role="checkbox"], ${POPUP}`)) {
+    if (el.matches(POPUP) && (el.closest(SITE_CHROME) || SEARCH_NAME.test(el.textContent || ""))) continue;
     const type = (el.getAttribute("type") || "text").toLowerCase();
     if (el.tagName === "INPUT" && SKIPPED_TYPES.includes(type)) continue;
     const words = ["name", "id", "aria-label", "placeholder"].map((key) => el.getAttribute(key) || "");

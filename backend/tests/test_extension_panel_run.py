@@ -106,7 +106,13 @@ Object.defineProperty(spec.frames, "page_classify", { configurable: true, enumer
   } });
 Object.defineProperty(spec.frames, "page_advance", { configurable: true, enumerable: true,
   get: () => { at += 1; return [{ frameId: 0, result: { clicked: true } }]; } });
-spec.frames.fill_inventory = [{ frameId: 0, result: { fields: spec.inventory ?? [] } }];
+// `inventoryByPage`: what the page holds, per site page (a page that holds nothing yields no receipt).
+Object.defineProperty(spec.frames, "fill_inventory", { configurable: true, enumerable: true,
+  get: () => {
+    const byPage = spec.inventoryByPage;
+    const fields = byPage ? byPage[Math.min(at, byPage.length - 1)] : (spec.inventory ?? []);
+    return [{ frameId: 0, result: { fields } }];
+  } });
 spec.frames.fill_cancel = [{ frameId: 0, result: true }];
 spec.frames.fill_focus = [{ frameId: 0, result: true }];
 spec.page = spec.page ?? {};
@@ -1656,3 +1662,21 @@ def test_ready_has_no_resume_line_for_a_clean_attach_or_none(tmp_path):
         out = _run(tmp_path, [{"seed": [_seeded("ready", readyAt=1, attach=attach)]}])
         text = _text(_card(out["shots"][1])["body"])
         assert "Couldn't" not in text and "Resume attached" not in text and "already attached" not in text
+
+
+def test_a_page_with_no_receipt_does_not_show_the_previous_pages_flags(tmp_path):
+    """Flags are per page: the run's last page decides what "Check before you submit" lists."""
+    flags = {"flags": [{"index": 0, "question": "Salary", "flags": [{"reason": "Not in your profile"}]}]}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [verified("f1")]}, {"fields": []}],
+               inventoryByPage=[[_field("f1", "Ada", question="Name")], []],
+               api={"POST /api/jobs/job-1/filled-answers": _reply(flags)})
+    assert _record(out["shots"][-1])["status"] == "ready"
+    assert _record(out["shots"][-1])["flags"] == []
+    assert "Check before you submit" not in _body_text(out["shots"][-1])
+    # The first page's receipt did have them: the reset is the fix, not an absence of flags.
+    kept = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
+                reports=[{"fields": [verified("f1")]}, {"fields": [verified("f2")]}],
+                inventoryByPage=[[_field("f1", "Ada", question="Name")]],
+                api={"POST /api/jobs/job-1/filled-answers": _reply(flags)})
+    assert "Salary" in _body_text(kept["shots"][-1])

@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- A Workday-style question step whose fields mount LATE, modelled on the structure observed live on
+     a Workday tenant (2026-10-14, labelled ATS-W in the plan): the page chrome and the footer Next are
+     drawn first, and the application questions mount about 2.5 s later. Each question is a fieldset with a
+     rich-text legend carrying <abbr title="required">*</abbr>, and ONE popup button (aria-haspopup=listbox,
+     aria-label " Select One Required") with a hidden backing input, exactly as workday_listbox.html.
+     The footer Next is a plain button in a bar, outside any form.
+     Oracle: `mounted` is true once the questions are in the page. -->
+<html><head><title>Apply to Acme</title></head><body>
+<header><a href="#">Acme Careers</a></header>
+<main>
+  <h2>Application Questions</h2>
+  <div id="questions"></div>
+  <div class="footer-bar"><button type="button">Back</button><button type="button" id="next">Save and Continue</button></div>
+</main>
+<script>
+  window.__oracle = window.__oracle || {};
+  window.__oracle.mounted = false;
+  const questions = ["Degree", "Are you legally authorized to work in the United States?", "Have you worked for Acme before?"];
+  window.__mountQuestions = () => {
+    document.getElementById("questions").innerHTML = questions.map((q, i) => `
+      <div data-automation-id="formField-q${i}"><fieldset><legend><div><p>${q}</p><abbr title="required">*</abbr></div></legend>
+        <div><button id="q${i}" type="button" aria-haspopup="listbox" aria-label=" Select One Required" aria-expanded="false">Select One</button>
+        <input type="text" style="display:none"></div></fieldset></div>`).join("");
+    window.__oracle.mounted = true;
+  };
+  setTimeout(window.__mountQuestions, 2500);
+</script>
+</body></html>

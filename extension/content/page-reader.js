@@ -556,8 +556,10 @@
   function namedRequired(el) {
     const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => byId(id)?.textContent);
     const legend = el.closest("fieldset")?.querySelector(":scope > legend")?.textContent;
-    return [...(el.labels ?? [])].some((l) => marksRequired(l.innerText ?? l.textContent))
-      || [el.getAttribute("aria-label"), ...named, legend].some((t) => marksRequired(t));
+    // A popup's aria name ends "<value> Required" (Workday), whatever the question before it says.
+    const aria = el.getAttribute("aria-label") ?? "";
+    return /\brequired\s*$/i.test(aria) || [...(el.labels ?? [])].some((l) => marksRequired(l.innerText ?? l.textContent))
+      || [aria, ...named, legend].some((t) => marksRequired(t));
   }
 
   const uploadKind = (input) => {

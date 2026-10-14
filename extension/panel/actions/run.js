@@ -411,7 +411,8 @@
       const flags = await ns.panelRecordReceipt(rs, rs.read(), 0,
         (frames) => ns.receipt.fromLoop(report, frames, auto, rs.read().receiptSeen?.fids),
         { consentForms: report.consentForms === true });
-      if (flags !== null) record.flags = flags;
+      // This page's flags only: a page whose receipt is null must not show the previous page's.
+      record.flags = flags ?? [];
       postGaps(store, record, leftovers(report.trace));
     }
     // A repair of named fields posts no receipt and no gap rows: the page's own fill already did.

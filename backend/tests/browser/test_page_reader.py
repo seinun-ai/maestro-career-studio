@@ -514,6 +514,110 @@ def test_a_required_upload_with_a_file_row_or_a_file_is_not_empty(page, load):
     assert summary(page)["requiredEmpty"] == 1
 
 
+# ---------- G1+: Workday's question step, whose popup buttons mount late ----------
+
+FILLABLE = "window.careerStudioCompanion.fillableControls()"
+
+
+def test_workday_popup_buttons_are_fillable_controls_and_required_empties_until_picked(page, load):
+    load(page, fixture_html("wizard_popup_questions.html"), SOURCES)
+    assert page.evaluate(FILLABLE) == 0 and summary(page)["requiredEmpty"] == 0
+    page.wait_for_function("window.__oracle.mounted === true")
+    assert page.evaluate(FILLABLE) == 3
+    s = summary(page)
+    assert (s["fillable"], s["requiredEmpty"]) == (3, 3)
+    assert [i["label"] for i in required(page)["items"]][0] == "Degree"
+    page.evaluate("""() => { const b = document.querySelector('#q0'); b.textContent = 'Bachelor'; b.setAttribute('aria-label', 'Bachelor Required'); }""")
+    assert summary(page)["requiredEmpty"] == 2
+
+
+def test_a_popup_button_is_required_by_its_aria_name_alone_or_by_its_legends_star_alone(page, load):
+    load(page, """<fieldset><legend>Question one</legend>
+      <button type='button' aria-haspopup='listbox' aria-label=' Select One Required'>Select One</button></fieldset>
+      <fieldset><legend>Question two <abbr title='required'>*</abbr></legend>
+      <button type='button' aria-haspopup='listbox' aria-label=' Select One'>Select One</button></fieldset>
+      <fieldset><legend>Question three</legend>
+      <button type='button' aria-haspopup='listbox' aria-label=' Select One'>Select One</button></fieldset>""", SOURCES)
+    assert (page.evaluate(FILLABLE), summary(page)["requiredEmpty"]) == (3, 2)
+
+
+def test_a_popup_whose_question_says_are_required_is_still_required_by_its_aria_name(page, load):
+    load(page, """<button type='button' aria-haspopup='listbox'
+      aria-label='What skills are required for this role? Select One Required'>Select One</button>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 1
+
+
+def test_a_popup_with_a_pick_showing_is_not_empty(page, load):
+    load(page, """<fieldset><legend>Degree *</legend>
+      <button type='button' aria-haspopup='listbox' aria-label='Bachelor Required'>Bachelor</button></fieldset>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_sites_menu_button_and_a_search_popup_are_not_fillable_controls(page, load):
+    load(page, """<header><button aria-haspopup='listbox' type='button'>English</button></header>
+      <nav><button aria-haspopup='true' type='button'>Menu</button></nav>
+      <div><button aria-haspopup='menu' type='button'>More</button><button aria-haspopup='false' type='button'>No</button>
+      <button aria-haspopup='listbox' type='button' aria-label='Search jobs'>Search</button></div>""", SOURCES)
+    assert page.evaluate(FILLABLE) == 0
+
+
+def test_a_popup_button_is_counted_like_a_combobox(page, load):
+    load(page, "<div role='button' aria-haspopup='listbox'>Pick</div><button aria-haspopup='listbox' type='button'>Select One</button>", SOURCES)
+    assert page.evaluate(FILLABLE) == 2
+
+
+POPUP_DRIVE = """async ({record, mount}) => {
+  const ns = window.careerStudioCompanion;
+  let clock = 1000, fills = [];
+  const reads = () => ns.pageReader.summary();
+  const deps = {
+    openTab: async () => 1,
+    classify: async () => [{frameId: 0, result: {summary: reads(), top: true}}],
+    tabUrl: async () => location.href,
+    advance: async (tabId, frameId, id) => ns.pageReader.advance(id),
+    // The first fill finds no fields (the questions mount while it runs); later ones list what is visible.
+    fill: async () => {
+      const seen = ns.fillableControls();
+      fills.push(seen);
+      if (fills.length === 1 && mount) window.__mountQuestions();
+      return {fields: [], stopped: false};
+    },
+    signIn: async () => ({signedIn: false}),
+    waitForChange: async () => ({changed: false}),
+    pageErrors: async () => ns.pageReader.pageErrors(),
+    pageRequired: async () => ns.pageReader.pageRequired(),
+    fix: async () => ({fixed: false}),
+    attachTo: async () => ({attached: false}), uploads: async () => [],
+    sleep: async () => {}, save() {}, onUpdate() {}, now: () => (clock += 1000), cancelled: () => false,
+  };
+  await ns.queueRun.drive(record, deps);
+  return {status: record.status, why: record.why, fills, open: (record.open || []).map((o) => o.question), readyAt: record.readyAt};
+}"""
+
+
+def _popup_drive(page, html, **record):
+    load_html = html.replace("setTimeout(window.__mountQuestions, 2500);", "")
+    page.set_content(load_html)
+    for src in SOURCES:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+    base = {"openUrl": "https://jobs.acme.test/apply", "tabId": None, "hosts": [], "seen": [], "step": 0}
+    return page.evaluate(POPUP_DRIVE, {"record": {**base, **record}, "mount": True})
+
+
+def test_a_question_step_that_mounts_after_the_footer_is_filled_again_once_the_popups_are_there(page):
+    out = _popup_drive(page, fixture_html("wizard_popup_questions.html"))
+    assert out["fills"][0] == 0 and out["fills"][1] == 3, "the second fill saw the three popup buttons"
+    assert out["why"] != "unknown_page"
+
+
+def test_a_review_step_with_popup_questions_still_empty_is_never_ready(page):
+    html = fixture_html("wizard_popup_questions.html").replace("Save and Continue", "Submit application")
+    out = _popup_drive(page, html, step=1, wrote=True)
+    assert out["fills"][:2] == [0, 3]
+    assert (out["status"], out["why"]) == ("parked", "open_questions")
+    assert out["readyAt"] is None and len(out["open"]) == 3 and out["open"][0] == "Degree"
+
+
 def test_a_parser_upload_box_is_never_a_required_empty(page):
     """The site's own import-from-resume box (H's `parser` kind) is not a box the run owes a file, even
     marked required; the real resume box beside it still is."""
