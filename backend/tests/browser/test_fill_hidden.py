@@ -128,3 +128,22 @@ def test_hidden_text_and_date_commit_within_the_field_budget(
     else:
         assert page.input_value(selector) == display
     assert (time.monotonic() - start) * 1000 < budget
+
+
+def test_hidden_writes_after_a_choice_land_once_on_the_redrawn_boxes(hidden_page, load):
+    """A hidden tab clamps the page's 400 ms redraw to a second, so the quiet wait
+    after the Country choice can end before it; the field is then found again and
+    the write made once more. Every value lands on the new boxes."""
+    page = hidden_page
+    load(page, fixture_html("workday_misses.html"))
+    f = {x["question"]: x for x in page.evaluate(f"async () => (await {OPS}.inventory({{}})).fields")}
+
+    def row(question, **action):
+        return page.evaluate(f"(a) => {OPS}.apply([a])", {"fid": f[question]["fid"], "fp": f[question]["fp"], **action})[0]
+
+    assert row("Country", op="choose", text="Canada")["outcome"] == "verified"
+    got = [row(q, op="write", value=v)["outcome"]
+           for q, v in (("Address", "1 Main St"), ("City", "Toronto"), ("Postal Code", "M5V 2T6"))]
+    assert got == ["verified"] * 3
+    page.wait_for_function("() => window.__oracle.postalCode === 'M5V 2T6'")
+    assert [oracle(page, k) for k in ("addressLine", "cityName", "postalCode")] == ["1 Main St", "Toronto", "M5V 2T6"]

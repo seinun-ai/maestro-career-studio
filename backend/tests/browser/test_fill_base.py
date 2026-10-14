@@ -421,3 +421,49 @@ def test_typing_into_a_contenteditable_box(page, load):
     page.evaluate("window.trusted = 0; c.addEventListener('input', e => window.trusted += e.isTrusted)")
     page.evaluate(TYPE, ["#c", "Hello there"])
     assert page.evaluate("[c.textContent, window.trusted]") == ["Hello there", 1]
+
+
+QUIET = f"([ms, max]) => {B}.quiet({{cancelled: false}}, {{ms, max}}).then(() => performance.now())"
+
+
+def test_quiet_waits_for_the_page_to_stop_changing(page, load):
+    load(page, "<div id='box'></div>")
+    got = page.evaluate(f"""async () => {{
+      const start = performance.now();
+      const nodes = setInterval(() => box.append(document.createElement('i')), 50);
+      setTimeout(() => clearInterval(nodes), 300);   // the page changes for 300 ms, then holds still
+      const end = await ({QUIET})([200, 2000]);
+      return end - start;
+    }}""")
+    assert 480 <= got < 900, got
+
+
+def test_quiet_is_capped_for_a_page_that_never_holds_still(page, load):
+    load(page, "<div id='box'></div>")
+    got = page.evaluate(f"""async () => {{
+      const start = performance.now();
+      setInterval(() => box.append(document.createElement('i')), 20);
+      return ({QUIET})([200, 500]).then((end) => end - start);
+    }}""")
+    assert 480 <= got < 800, got
+
+
+def test_quiet_on_a_still_page_takes_one_window(page, load):
+    load(page, "<div id='box'></div>")
+    got = page.evaluate(f"""async () => {{
+      const start = performance.now();
+      return ({QUIET})([100, 2000]).then((end) => end - start);
+    }}""")
+    assert 90 <= got < 300, got
+
+
+def test_quiet_stops_with_a_stop(page, load):
+    load(page, "<div id='box'></div>")
+    err = page.evaluate(f"""async () => {{
+      const base = {B};
+      setInterval(() => box.append(document.createElement('i')), 20);
+      const run = base.withinBudget((t) => base.quiet(t, {{ms: 500, max: 2000}}), 5000).catch((e) => e.name);
+      setTimeout(() => base.cancelAll(), 100);
+      return run;
+    }}""")
+    assert err == "Cancelled"

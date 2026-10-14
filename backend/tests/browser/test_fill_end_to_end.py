@@ -1025,3 +1025,32 @@ def test_an_exact_policy_slot_never_takes_the_nearest_row_after_the_agents_searc
                limits={"MAX_ROUNDS": 1}, stepBackend=True)
     assert out["by_question"]["Field of Study"]["status"] == "needs_answer" and oracle(page, "fieldOfStudy") == ""
     assert [s["complete"] for s in bodies_of(out, "/api/autofill/step")][:2] == [False, True]
+
+
+# ---------- a redrawn section is typed once (Task 32), on workday_misses.html
+
+REDRAWN = {
+    "Country": {"route": "slot", "slot": "personal.country", "value": "Canada"},
+    "Address": {"route": "slot", "slot": "personal.address", "value": "1 Main St"},
+    "City": {"route": "slot", "slot": "personal.city", "value": "Toronto"},
+    "Postal Code": {"route": "slot", "slot": "personal.postal_code", "value": "M5V 2T6"},
+}
+
+
+def test_a_redrawn_section_is_typed_once(e2e_page):
+    """Live 2026-10-13: choosing Country redrew Address, City and Postal Code as
+    new nodes 400 ms later; nine text fields each logged `write -> error (stale)`
+    and then wrote again. The fields come right after the Country choice, inside
+    the redraw gap on purpose: the loop waits for the page to stop changing
+    before it types, so each lands on its NEW node with one `write` step, no
+    stale, and what the app holds is the typed value."""
+    page = e2e_page
+    out = _run(page, html=fixture_html("workday_misses.html"), url="https://careers.acme.test/apply",
+               map=REDRAWN, limits={"MAX_ROUNDS": 1})
+    assert [oracle(page, k) for k in ("countryChoice", "addressLine", "cityName", "postalCode")] \
+        == ["Canada", "1 Main St", "Toronto", "M5V 2T6"]
+    for question in ("Address", "City", "Postal Code"):
+        assert out["by_question"][question]["status"] == "verified", out["by_question"][question]
+        steps = _field_trace(out, question)["steps"]
+        assert [(s["effect"], s["word"]) for s in steps if s["op"] == "write"] == [("progress", "verified")], steps
+        assert not [s for s in steps if s.get("effect") == "error" or s.get("word") == "stale"], steps

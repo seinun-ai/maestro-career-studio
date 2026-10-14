@@ -182,20 +182,51 @@
     return Promise.resolve({ outcome: "unexpected", reason: "unknown_op" });
   };
 
+  // A choice can make the page redraw a moment later with nothing changing in
+  // between (Country, then its address boxes as new nodes 400 ms on), so the
+  // first write after one waits for 600 ms of stillness; any other write waits
+  // only while the page is still changing. Typing into a box that is about to be
+  // replaced loses the draft.
+  const CHOICE_QUIET = 600;
+  const CHANGING = 300;
+  let choseAt = -Infinity;
+  const calm = async () => {
+    const afterChoice = performance.now() - choseAt < CHOICE_QUIET;
+    if (!afterChoice && inv().quietFor() >= CHANGING) return;
+    try {
+      await ns.fillBase.withinBudget((t) => ns.fillBase.quiet(t, { ms: afterChoice ? CHOICE_QUIET : CHANGING }), 2500);
+    } catch {
+      // A Stop or the page never holding still: the write goes on, and its own token reports a Stop.
+    }
+  };
+
+  // The one field operation: re-checked against the page as it is NOW, then run.
+  const attempt = async (a) => {
+    if (a.op === "write") await calm();
+    const { el, shape, refused } = target(a.fid, a.fp);
+    if (refused) return { refused };
+    // A set's budget is its items' (one item: setItem); setMax only caps a batch.
+    const ms = a.op === "set"
+      ? Math.min(budgets.setMax, budgets.setItem * Math.max(1, (a.texts ?? []).length)) : budgets.apply;
+    return { el, shape, ...(await run((t) => operate(a, el, shape, t), ms, el)) };
+  };
+
   const applyNow = async (actions) => {
     const out = [];
     for (const a of actions ?? []) {
       if (!mine(a?.fid)) continue;
       await closeLeftOpen(a.op === "move" ? a.fid : null, { reuse: a.op === "set" ? a.fid : null });
-      const { el, shape, refused } = target(a.fid, a.fp);
-      if (refused) {
-        out.push({ fid: a.fid, outcome: refused, committed: null });
+      let ran = await attempt(a);
+      // The page replaced the box while it was typed into (a section redrew):
+      // the draft went with the old node. The field is found again by its
+      // fingerprint and written once more, in this same round.
+      if (a.op === "write" && ran.got?.outcome === "stale" && !ran.el.isConnected) ran = await attempt(a);
+      if (ran.refused) {
+        out.push({ fid: a.fid, outcome: ran.refused, committed: null });
         continue;
       }
-      // A set's budget is its items' (one item: setItem); setMax only caps a batch.
-      const ms = a.op === "set"
-        ? Math.min(budgets.setMax, budgets.setItem * Math.max(1, (a.texts ?? []).length)) : budgets.apply;
-      const { got, aborted } = await run((t) => operate(a, el, shape, t), ms, el);
+      const { el, shape, got, aborted } = ran;
+      if (a.op === "choose" || a.op === "set" || a.op === "move") choseAt = performance.now();
       if (kept === a.fid) kept = null; // the set tidies its own list (an aborted one is closed below)
       if (aborted) await cleanup(el);
       // Remember what was actually COMMITTED: the clicked option's text for a

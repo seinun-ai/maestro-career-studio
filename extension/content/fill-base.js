@@ -77,6 +77,33 @@
     await sleep(ms);
     check(t);
   };
+  // Resolves once the page has had no change for `ms` (a new node, a shown or
+  // hidden one), or after `max` whatever it is still doing: a page that never
+  // stops (a ticking clock) must not hold a write for ever. Sleeps like every
+  // other wait, so a hidden tab's timers do not stretch it.
+  const quiet = async (t, { ms = 300, max = 2000 } = {}) => {
+    check(t);
+    const start = performance.now();
+    let last = start;
+    const watch = new MutationObserver(() => {
+      last = performance.now();
+    });
+    watch.observe(document.body, {
+      childList: true, subtree: true, attributes: true,
+      attributeFilter: ["style", "class", "hidden", "disabled", "readonly", "aria-hidden", "role"],
+    });
+    try {
+      for (;;) {
+        const now = performance.now();
+        const left = Math.min(last + ms - now, start + max - now);
+        if (left <= 0) return;
+        await sleep(left);
+        check(t);
+      }
+    } finally {
+      watch.disconnect();
+    }
+  };
   const withinBudget = async (fn, ms) => {
     if (typeof ms !== "number" || !Number.isFinite(ms)) throw new TypeError("withinBudget needs a budget in ms");
     if (halted) throw new Cancelled(); // a latched Stop never starts new work
@@ -467,7 +494,7 @@
   };
 
   ns.fillBase = {
-    isPasswordBox, Cancelled, Unfocusable, check, sleep, settle, withinBudget, cancelAll, resume, waitFor, visible, invalid,
+    isPasswordBox, Cancelled, Unfocusable, check, sleep, settle, quiet, withinBudget, cancelAll, resume, waitFor, visible, invalid,
     popups, ownedPopup, optionsOf, press, closePopups, enter, leave, keyPress, typeText, equivalent, clean,
     markEnginePopup, insideEnginePopup, engineOpen, robotTrap, isTrapField,
   };

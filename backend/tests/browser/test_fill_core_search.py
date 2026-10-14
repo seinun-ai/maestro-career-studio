@@ -625,3 +625,52 @@ def test_an_item_the_list_never_shows_is_missing_and_the_next_one_still_lands(pa
     assert (row["outcome"], row["missing"]) == ("partial", ["Rust"]) and oracle(page, "slowSkills") == []
     row = apply(page, skills, op="set", texts=["SQL"], terms=["SQL"])
     assert row["outcome"] == "verified" and oracle(page, "slowSkills") == ["SQL"]
+
+
+# ---------- a redrawn section is typed once (Task 32), on workday_misses.html
+
+def test_writes_started_inside_a_redraw_gap_land_on_the_new_boxes(page, load):
+    """Choosing Country makes the page redraw Address, City and Postal Code as new
+    nodes 400 ms later, with nothing changing in between, and the new boxes show
+    what the app holds, so a draft typed on an old node is lost. The three writes
+    start straight after the choice, inside that gap on purpose: each waits for
+    the page to stop changing and lands on the node that is there then."""
+    load(page, fixture_html("workday_misses.html"))
+    f = inv(page)
+    assert apply(page, f["Country"], op="choose", text="Canada")["outcome"] == "verified"
+    page.evaluate("""() => { window.typed = [];
+      document.addEventListener('input', (e) => window.typed.push(e.target.id), true); }""")
+    old = page.evaluate("[...document.querySelectorAll('#address-section input')].map((i) => i.id)")
+    rows = [apply(page, f[q], op="write", value=v)
+            for q, v in (("Address", "1 Main St"), ("City", "Toronto"), ("Postal Code", "M5V 2T6"))]
+    assert [(r["outcome"], r["committed"]) for r in rows] == [
+        ("verified", "1 Main St"), ("verified", "Toronto"), ("verified", "M5V 2T6")]
+    assert page.evaluate("[...document.querySelectorAll('#address-section input')].map((i) => i.id)") == old
+    assert page.evaluate("window.typed") == old   # each box typed into once: no draft lost to an old node
+    assert [oracle(page, k) for k in ("addressLine", "cityName", "postalCode")] == ["1 Main St", "Toronto", "M5V 2T6"]
+    assert page.evaluate("[...document.querySelectorAll('#address-section input')].map((i) => i.value)") \
+        == ["1 Main St", "Toronto", "M5V 2T6"]
+
+
+REPLACED_MID_WRITE = """<label for='a'>Address</label><input id='a' name='addr'>
+<script>
+// The first keystroke makes the page draw the box again: the typed draft stays on the old node.
+window.draws = 0;
+document.getElementById('a').addEventListener('input', (e) => {
+  if (window.draws++) return;
+  const fresh = document.createElement('input');
+  for (const a of e.target.attributes) fresh.setAttribute(a.name, a.value);
+  e.target.replaceWith(fresh);
+}, { once: true });
+</script>"""
+
+
+def test_a_write_whose_box_is_replaced_mid_write_is_made_again_on_the_new_one(page, load):
+    """A box redrawn while it is typed into loses the draft with the old node.
+    The field is found again by its fingerprint and written once more, in the same
+    apply: one row, verified, on the node that is on the page now."""
+    load(page, REPLACED_MID_WRITE)
+    f = inv(page)["Address"]
+    row = apply(page, f, op="write", value="1 Main St")
+    assert (row["outcome"], row["committed"]) == ("verified", "1 Main St")
+    assert page.input_value("#a") == "1 Main St" and page.evaluate("document.querySelectorAll('#a').length") == 1

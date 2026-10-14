@@ -48,8 +48,11 @@
   // roots are observed as the walk finds them.
   let generation = 0;
   let listedAt = -1;
+  // When the page last changed (not the user's typing): a write waits for it.
+  let changedAt = -Infinity;
   const observer = new MutationObserver(() => {
     generation += 1;
+    changedAt = performance.now();
   });
   const OBSERVE = {
     childList: true, subtree: true, attributes: true,
@@ -62,7 +65,15 @@
     observer.observe(root, OBSERVE);
   };
   const flush = () => {
-    if (observer.takeRecords().length) generation += 1;
+    if (observer.takeRecords().length) {
+      generation += 1;
+      changedAt = performance.now();
+    }
+  };
+  // How long the page has held still, in ms (the first change it has not told us of counts).
+  const quietFor = () => {
+    flush();
+    return performance.now() - changedAt;
   };
 
   // Document order, shadow-root fields in place.
@@ -305,7 +316,7 @@
   };
 
   ns.fillInventory = {
-    list, peek, resolve, last, fidFor, frame: FRAME,
+    list, peek, resolve, last, fidFor, quietFor, frame: FRAME,
     fpOf: (fid) => registry.get(fid)?.fp ?? null,
     liveFp,
     shapeOf: (fid) => (registry.has(fid) ? ns.shapes.byName(registry.get(fid).shape) : null),
