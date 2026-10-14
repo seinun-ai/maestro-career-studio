@@ -2013,10 +2013,10 @@ def test_a_name_in_a_question_scopes_only_as_the_job_spells_it(tmp_path):
     city only when the location reads "City, ST" or "City, Country" and is not a mode of work or a
     country."""
     cases = [
-        ("Please explain any gap in employment", {"company": "Gap Inc.", "location": None}),
-        ("Check the box to confirm", {"company": "Box", "location": None}),
-        ("What is your target start date?", {"company": "Target", "location": None}),
-        ("Is Gap your first choice?", {"company": "Gap Inc.", "location": None}),
+        ("Please explain any lapse in employment", {"company": "Lapse Inc.", "location": None}),
+        ("Check the field below", {"company": "Field", "location": None}),
+        ("What is your goal start date?", {"company": "Goal", "location": None}),
+        ("Is Lapse your first choice?", {"company": "Lapse Inc.", "location": None}),
         ("Can you work from Remote?", {"company": "Globex", "location": "Remote, US"}),
         ("Do you live in Canada?", {"company": "Globex", "location": "Canada"}),
         ("Do you live in Canada?", {"company": "Globex", "location": "Toronto, Canada"}),
@@ -2026,7 +2026,7 @@ def test_a_name_in_a_question_scopes_only_as_the_job_spells_it(tmp_path):
     out = run_node(_CUSTOM_DRIVER_JS, {"cases": [[[], q, "x", job] for q, job in cases]},
                    tmp_path, source=PANEL_SOURCE)
     assert [(row[0].get("only_for"), row[0].get("only_for_kind")) for row in out["lists"]] == [
-        (None, None), (None, None), (None, None), ("Gap", "company"),
+        (None, None), (None, None), (None, None), ("Lapse", "company"),
         (None, None), (None, None), (None, None), ("Toronto", "city"), (None, None)]
 
 
@@ -2077,8 +2077,8 @@ def test_undoing_the_scoping_of_a_general_row_puts_the_general_row_back(tmp_path
 # One table both languages answer: the panel decides what an answer is scoped to, the backend decides where
 # it is offered. (question, learned at, expected scope, [(company, location, offered there)]).
 _SCOPE_TABLE = [
-    ("Have you worked at Box before?", ("Box", None), ("Box", "company"),
-     [("Dropbox", None, False), ("Box Inc", None, True), ("Globex", None, False)]),
+    ("Have you worked at Crate before?", ("Crate", None), ("Crate", "company"),
+     [("Datacrate", None, False), ("Crate Inc", None, True), ("Globex", None, False)]),
     ("Have you worked at Acme before?", ("Acme", None), ("Acme", "company"),
      [("Acmeville", None, False), ("ACME Corp", None, True), (None, None, False)]),
     ("Willing to relocate to Rome?", ("Globex", "Rome, Italy"), ("Rome", "city"),

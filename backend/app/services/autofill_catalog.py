@@ -336,7 +336,7 @@ def _languages(out: dict[str, Fact], languages: Any) -> None:
 
 
 def _names(only: str, where: str | None) -> bool:
-    """`only` as a whole word in `where`: "Box" is not in "Dropbox", "Rome" is not
+    """`only` as a whole word in `where`: "Crate" is not in "Datacrate", "Rome" is not
     in "Jerome, ID". Case-insensitive; this is the job's own text."""
     return bool(where) and re.search(rf"(?<![^\W_]){re.escape(only)}(?![^\W_])", where, re.IGNORECASE) is not None
 
@@ -513,7 +513,7 @@ _NOT_AN_EMPLOYER = frozenset({
 # The companies a question LISTS follow its "worked for / at / by / with" (or "employee of …"): up to the
 # end of the clause, or a word that starts a qualifier ("before", "in the last five years", "as an
 # employee"). A list may be introduced by a colon. Nothing else in the text is PARSED as a company, so
-# "the box below" lists no "Box"; the safety net below catches what the parser does not read.
+# "the field below" lists no "Field"; the safety net below catches what the parser does not read.
 _MARKER = (r"(?:worked|work|working|employed|employee|employees|employment|associate|contractor|member|served)"
            r"\s+(?:for|at|by|with|of)")
 _LISTED = re.compile(

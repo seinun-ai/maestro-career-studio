@@ -359,8 +359,8 @@ def test_a_question_that_lists_no_employer_of_the_history_keeps_the_no(question,
 
 
 def test_only_the_companies_a_question_lists_are_compared_not_any_word_in_its_text():
-    """A history employer called "Box" or "Freelance" is not named by "the box below" or "…or freelance"."""
-    history = [{"employer": "Box", "title": "Engineer"}, {"employer": "Freelance", "title": "Consultant"}]
+    """A history employer called "Field" or "Freelance" is not named by "the field below" or "…or freelance"."""
+    history = [{"employer": "Field", "title": "Engineer"}, {"employer": "Freelance", "title": "Consultant"}]
     f = cat.build({}, history, [], company="Acme")
     assert f["derived.previously_employed_here"].value == "No"
     for question in ("Have you worked for Acme? Please give dates in the box below.",
@@ -487,10 +487,10 @@ def test_a_brand_with_a_lowercase_initial_is_still_a_capitalised_mention(employe
 
 
 def test_a_lowercase_word_that_is_a_history_employer_is_not_a_mention():
-    """The safety net looks for a CAPITALISED whole word: "box" in "the box below" is not a company."""
-    f = cat.build({}, [{"employer": "Box", "title": "Engineer"}], [], company="Acme")
-    assert cat.named_employer_fact(f, "Have you worked for Acme? Give dates in the box below.") is None
-    assert cat.named_employer_fact(f, "Have you worked for Acme? Give dates in the Box below.") == cat.ASK_THE_USER
+    """The safety net looks for a CAPITALISED whole word: "field" in "the field below" is not a company."""
+    f = cat.build({}, [{"employer": "Field", "title": "Engineer"}], [], company="Acme")
+    assert cat.named_employer_fact(f, "Have you worked for Acme? Give dates in the field below.") is None
+    assert cat.named_employer_fact(f, "Have you worked for Acme? Give dates in the Field below.") == cat.ASK_THE_USER
 
 
 @pytest.mark.parametrize("question, names", [
@@ -796,10 +796,10 @@ def test_the_context_profile_drops_a_saved_answer_that_belongs_to_another_job():
 
 @pytest.mark.parametrize("row, company, location, offered", [
     # Whole words, not substrings.
-    ({"only_for": "Box", "only_for_kind": "company"}, "Dropbox", None, False),
-    ({"only_for": "Meta", "only_for_kind": "company"}, "Metabase", None, False),
+    ({"only_for": "Crate", "only_for_kind": "company"}, "Datacrate", None, False),
+    ({"only_for": "Vela", "only_for_kind": "company"}, "Velabase", None, False),
     ({"only_for": "Rome", "only_for_kind": "city"}, "Globex", "Jerome, ID", False),
-    ({"only_for": "Box", "only_for_kind": "company"}, "Box, Inc.", None, True),
+    ({"only_for": "Crate", "only_for_kind": "company"}, "Crate, Inc.", None, True),
     # Which field the scope came from is the one checked.
     ({"only_for": "Phoenix", "only_for_kind": "company"}, "Globex", "Phoenix, AZ", False),
     ({"only_for": "Phoenix", "only_for_kind": "city"}, "Phoenix", "Austin, TX", False),

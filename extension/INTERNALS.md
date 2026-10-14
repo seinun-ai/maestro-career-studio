@@ -1465,9 +1465,9 @@ footer alone).
   none is. On any other page a Resume fills as usual, so it never presses Next over an unfilled page.
 - **A saved answer that names this job stays with this job.** The panel (`panel/actions/pause.js` `scopeOf`) saves a row with `only_for`
   and `only_for_kind` (`company` or `city`) when the QUESTION names the job's company (the legal-suffix-free name first) or its city. The
-  company match is case-sensitive on the job's own spelling (a company called Gap is not "any gap in employment"); a city is taken only from
+  company match is case-sensitive on the job's own spelling (a company called Lapse is not "any lapse in employment"); a city is taken only from
   a "City, ST" or "City, Country" location, not a mode of work or a country (a short denylist). The backend (`autofill_catalog._for_this_job`)
-  matches whole words, case-insensitively, in that field only ("Box" is not in Dropbox, "Rome" not in Jerome, a company scope is not met by
+  matches whole words, case-insensitively, in that field only ("Crate" is not in Datacrate, "Rome" not in Jerome, a company scope is not met by
   a job's location); a row with no kind, written by hand or earlier, is met by either. A scoped row reaches `/api/autofill/context` and
   `/choose` only through `autofill_job.profile_for_job` (with no application it holds nowhere), so a model never sees another job's answer.
   Answering the same question at a job the scoped row does not hold for ADDS a row instead of overwriting; updating an old general row whose
