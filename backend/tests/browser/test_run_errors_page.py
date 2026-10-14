@@ -66,6 +66,7 @@ DRIVER = """async (spec) => {
       return { fixed: true };
     },
     attachTo,
+    uploads: async () => await deliver({ type: "page_uploads" }),
     signIn: async () => ({ signedIn: false }),
     save: () => {},
     onUpdate: (rec) => { if (rec.step >= 1) stop = true; },   // the first real move ends the test run

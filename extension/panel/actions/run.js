@@ -233,6 +233,7 @@
       fill: (one, { limits }) => fillPage(store, one, limits),
       fix: (one, errors, { limits }) => fixPage(store, one, errors, limits),
       attachTo: (one, box) => attachBox(store, one, box.target),
+      uploads: (one) => uploadBoxes(host, one),
     };
   }
 
@@ -439,6 +440,8 @@
     const uploads = errors.filter((e) => e.kind === "upload");
     if (uploads.length > 1) return { fixed: false };
     for (const one of uploads) {
+      // A banner left up over a box the user filled by hand is a stale line: that box is repaired.
+      if ((await uploadBoxes(store.run, record)).some((box) => box.target === one.target && box.occupied)) continue;
       if (record.stopRequested === true || !(await attachBox(store, record, one.target)).attached) return { fixed: false };
     }
     const fids = errors.filter((one) => one.kind === "field").map((one) => one.target);

@@ -159,6 +159,7 @@ const deps = {
     const attach = (spec.attaches ?? [])[fillCalls - 1];
     return { fields, stopped: spec.fillStopped === fillCalls, ...(attach ? { attach } : {}) };
   },
+  uploads: async (rec) => { tick("uploads"); return spec.uploadBoxes ?? []; },
   attachTo: async (rec, box) => {
     tick("attachTo", box.target, rec.step);
     if (spec.cancelOnAttach) { cancelFlag = true; callsWhenCancelled = calls.length; }
@@ -1019,7 +1020,7 @@ def test_a_fill_that_returns_no_report_is_an_error_not_a_clean_page(tmp_path):
 
 
 @pytest.mark.parametrize("dep", ["openTab", "classify", "advance", "fill", "signIn", "waitForChange",
-                                 "tabUrl", "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "fix", "attachTo"])
+                                 "tabUrl", "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "fix", "attachTo", "uploads"])
 def test_a_missing_dependency_is_a_type_error_before_anything_runs(tmp_path, dep):
     out = _drive(tmp_path, [step(1)], omitDep=dep)
     assert out["threw"] == f"TypeError: queue-run: missing dep {dep}"
@@ -1487,10 +1488,24 @@ def test_a_new_error_on_the_same_step_is_a_rejection_even_when_the_page_changed(
 
 # ---------- a Resume after the user fixed what a park named: nothing is filled again ----------
 
-def _resumed(tmp_path, why, pages, **spec):
+# Where the fake site's first page is, as the parked record remembers it.
+PARKED_HERE = {"where": "https://jobs.acme.test/p/0", "key": "step1"}
+
+
+def _resumed(tmp_path, why, pages, parked=PARKED_HERE, **spec):
     record = {"tabId": 7, "status": "parked", "why": why, "step": 0, "hosts": ["jobs.acme.test"], "filled": True,
-              "wrote": True, "open": [{"fid": "f-9", "question": "City", "required": True}]}
+              "wrote": True, "parkedPage": parked, "open": [{"fid": "f-9", "question": "City", "required": True}]}
     return _drive(tmp_path, pages, record=record, **spec)
+
+
+def test_a_page_errors_park_remembers_which_page_it_was(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=9, errorItems=[CITY])])
+    assert out["record"]["parkedPage"] == PARKED_HERE
+
+
+def test_an_upload_park_remembers_which_page_it_was(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{"outcome": None, "required": True, "boxes": [COVER]}])
+    assert out["record"]["parkedPage"] == PARKED_HERE
 
 
 def test_a_resume_after_page_errors_does_not_refill_and_presses_when_the_page_names_nothing(tmp_path):
@@ -1507,9 +1522,33 @@ def test_a_resume_after_page_errors_repairs_only_what_the_page_still_names(tmp_p
     assert out["fillCalls"] == 1 and out["record"]["status"] == "ready"
 
 
-def test_a_resume_after_an_upload_park_presses_without_filling_or_reading_errors(tmp_path):
-    out = _resumed(tmp_path, "upload", [step(1), REVIEW])
+def test_a_resume_after_an_upload_park_presses_when_no_required_box_is_empty_and_never_attaches(tmp_path):
+    out = _resumed(tmp_path, "upload", [step(1), REVIEW], uploadBoxes=[{"label": "Upload", "target": "t", "kind": "resume", "required": True, "occupied": True}])
     assert out["fillCalls"] == 1 and names(out, "pageErrors") == [] and out["pressed"] == ["next-1"]
+    assert len(names(out, "uploads")) >= 1 and names(out, "attachTo") == []
+
+
+def test_a_resume_after_an_upload_park_that_finds_the_box_still_empty_parks_again_without_pressing(tmp_path):
+    empty = {"label": "Upload a file (5MB max)", "target": "t-up", "kind": "resume", "required": True, "occupied": False}
+    out = _resumed(tmp_path, "upload", [step(1), REVIEW], uploadBoxes=[empty])
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "upload")
+    assert [o["question"] for o in r["open"]] == ["Upload a file (5MB max)"]
+    assert names(out, "advance") == [] and names(out, "attachTo") == [] and out["fillCalls"] == 0
+
+
+@pytest.mark.parametrize("why", ["page_errors", "upload"])
+def test_a_resume_that_finds_the_tab_on_another_page_fills_it_as_any_page(tmp_path, why):
+    elsewhere = {"where": "https://jobs.acme.test/p/0", "key": "step9"}
+    out = _resumed(tmp_path, why, [step(1), REVIEW], parked=elsewhere)
+    assert out["fillCalls"] == 2, "the page is not the one the user fixed: it is filled"
+    assert names(out, "pageErrors") == [] and names(out, "uploads") == []
+
+
+@pytest.mark.parametrize("why", ["page_errors", "upload"])
+def test_a_resume_with_no_memory_of_the_parked_page_fills_it(tmp_path, why):
+    out = _resumed(tmp_path, why, [step(1), REVIEW], parked=None)
+    assert out["fillCalls"] == 2
 
 
 def test_a_resume_after_open_questions_still_fills_the_page(tmp_path):

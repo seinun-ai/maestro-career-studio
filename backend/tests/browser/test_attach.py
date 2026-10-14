@@ -368,24 +368,44 @@ def test_the_resume_only_write_leaves_two_boxes_it_cannot_tell_apart(page):
     assert reply["data"] == {"written": 0, "proven": 0}
 
 
-def test_a_targeted_write_goes_to_the_named_box_alone(page):
-    _load(page, TWO_BOXES)
-    tags = _tags(page)
-    assert _attach_to(page, tags["Attachment two"]) == {"written": 1, "proven": 1}
-    assert _held(page, "fb") == [NAME] and _held(page, "fa") == []
+RESUME_AND_OTHER = """<h2>Documents</h2>
+  <div><label for="fa">Resume/CV</label><input type="file" id="fa"></div>
+  <div><label for="fb">Writing sample</label><input type="file" id="fb"></div>"""
+
+
+def test_a_targeted_write_goes_to_the_named_resume_box_alone(page):
+    _load(page, RESUME_AND_OTHER)
+    assert _attach_to(page, _tags(page)["Resume/CV"]) == {"written": 1, "proven": 1}
+    assert _held(page, "fa") == [NAME] and _held(page, "fb") == []
 
 
 def test_a_targeted_write_ignores_the_callers_box_count(page):
     """The page named the box, so the count the offer was made from is not the question."""
+    _load(page, RESUME_AND_OTHER)
+    assert _attach_to(page, _tags(page)["Resume/CV"], expect=7) == {"written": 1, "proven": 1}
+
+
+def test_a_targeted_write_to_one_of_several_boxes_that_is_not_a_resume_box_is_refused(page):
+    """Two boxes the page does not label: the named one may be the other document's."""
     _load(page, TWO_BOXES)
-    assert _attach_to(page, _tags(page)["Attachment one"], expect=7) == {"written": 1, "proven": 1}
+    assert _attach_to(page, _tags(page)["Attachment two"]) == {"written": 0, "proven": 0}
+    assert _held(page, "fa") == [] and _held(page, "fb") == []
+
+
+def test_a_targeted_write_is_refused_when_the_user_attached_to_another_box_by_hand(page):
+    """The user put the resume in the first box; the error still names the second. Not a second copy."""
+    _load(page, RESUME_AND_OTHER)
+    tags = _tags(page)
+    page.set_input_files("#fb", {"name": "Mine.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4"})
+    assert _attach_to(page, tags["Resume/CV"]) == {"written": 0, "proven": 0}
+    assert _held(page, "fa") == [] and _held(page, "fb") == ["Mine.pdf"]
 
 
 def test_a_targeted_write_never_lands_over_a_file_already_there(page):
-    _load(page, TWO_BOXES)
+    _load(page, RESUME_AND_OTHER)
     tags = _tags(page)
     page.set_input_files("#fa", {"name": "Mine.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4"})
-    assert _attach_to(page, tags["Attachment one"]) == {"written": 0, "proven": 0}
+    assert _attach_to(page, tags["Resume/CV"]) == {"written": 0, "proven": 0}
     assert _held(page, "fa") == ["Mine.pdf"]
 
 

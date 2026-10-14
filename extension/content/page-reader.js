@@ -206,18 +206,21 @@
 
   /** A Submit anywhere a person could press one (WIDE_BUTTONS), shown, enabled or not. Beyond
    * BUTTONS, site chrome is the site's, and a long block of text in a link is not a button label. */
-  const submitSeen = () => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
+  const submitSeen = (regions) => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
     if (!shown(el)) return false;
+    if (errorLineButton(el, regions)) return false;
     const extra = !el.matches(BUTTONS);
     if (extra && (inChrome(el) || shownTextOf(el).length > MAX_TEXT)) return false;
     return submitMarked(el) || labels(el).some((text) => sortOf(text) === "submit");
   });
 
   /** The step's first visible h1/h2 text, outside site chrome. */
+  let activeRegions = null;   // the error regions of the summary being built, so its headings are read against one set
   const stepHeading = () => {
     // An error summary's own heading ("Please correct the errors below") is not the step's.
+    const regions = activeRegions ?? errorRegions();
     const heading = [...document.querySelectorAll("h1, h2")].find((el) => shown(el) && !inChrome(el)
-      && squash(el.textContent) && !ERROR_HEADING.test(squash(el.textContent)) && !el.closest(LIVE));
+      && squash(el.textContent) && !ERROR_HEADING.test(squash(el.textContent)) && !inErrorRegion(el, regions));
     return heading ? squash(heading.textContent) : "";
   };
 
@@ -480,6 +483,9 @@
     return { count, items };
   };
   const inErrorRegion = (el, regions) => regions.some((r) => r.contains(el));
+  /** A button that is only a line of the error summary ("Error - <what>"): it counts as neither a Next nor a
+   * Submit, whatever its words. Not one the page itself marks as a submit, and not one without the lead. */
+  const errorLineButton = (el, regions) => inErrorRegion(el, regions) && ERROR_LEAD.test(labelOf(el)) && !submitMarked(el);
 
   const tag = (el) => {
     const id = `${FRAME_TAG}-${++seq}`;
@@ -525,6 +531,7 @@
     for (const old of document.querySelectorAll("[data-maestro-btn]")) old.removeAttribute("data-maestro-btn");
     const inForm = inFormOf(fieldForms());
     const regions = errorRegions();
+    activeRegions = regions;
     const found = collectErrors(false, regions);
     const errorSummary = { errors: found.count, errorKeys: found.keys };
     const buttons = [...document.querySelectorAll(BUTTONS)].map((el) => {
@@ -539,6 +546,7 @@
         ...(known ? { known } : {}),
         // The error summary's own buttons ("Errors Found", "Error - <field>"): not part of the step.
         ...(inErrorRegion(el, regions) && isErrorText(labelOf(el)) ? { inErrors: true } : {}),
+        ...(errorLineButton(el, regions) ? { errorLine: true } : {}),
       };
     });
     const bodyText = (document.body?.innerText ?? "").slice(0, BODY_SLICE);
@@ -546,7 +554,7 @@
     // The posting's plain Apply, named for the one narrow `advance(id, {apply: true})` call. A link
     // is not in `buttons`, so it is tagged here (a button keeps the id it was given above).
     const applyEl = [...document.querySelectorAll(`a[href], ${BUTTONS}`)].find((el) => shown(el) && enabled(el) && isApply(el) && applyPressable(el));
-    return {
+    const out = {
       host: location.hostname,
       stepKey: stepKey(),
       applyId: applyEl ? applyEl.getAttribute("data-maestro-btn") ?? tag(applyEl) : null,
@@ -562,10 +570,12 @@
       confirmationPhrase: CONFIRMATION.exec(bodyText)?.[0] ?? null,
       closedText: CLOSED.test(bodyText),
       boardNative: BOARD_HOST.test(location.hostname),
-      submitSeen: submitSeen(),
+      submitSeen: submitSeen(regions),
       submitContext: submitContext(),
       ...errorSummary,
     };
+    activeRegions = null;
+    return out;
   }
 
   const withoutWww = (host) => String(host ?? "").toLowerCase().replace(/^www\./, "");

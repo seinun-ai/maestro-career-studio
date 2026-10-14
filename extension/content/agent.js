@@ -302,12 +302,16 @@
 
   /** The box a page's own error named (`target`: its `data-maestro-up` tag), if this frame holds it,
    * it holds no file, and its words do not name another document. The page chose it, so the "exactly
-   * one resume box" rule does not apply; the other two refusals do. */
+   * one resume box" rule does not apply; the other refusals do. Two more, for what the user may have
+   * done by hand: no other box in the frame holds a file already (the resume is on the page, in the
+   * box the error did not name), and among several boxes the named one must read as a resume box. */
   function targetBox(inputs, target) {
     const input = inputs.find((one) => one.getAttribute("data-maestro-up") === target);
     try {
       const box = input ? uploadBoxOf(input) : null;
-      return box && box.kind !== "other" && !box.occupied ? [input] : [];
+      if (!box || box.kind === "other" || box.occupied) return [];
+      if (inputs.length > 1 && (box.kind !== "resume" || inputs.some((one) => one !== input && uploadBoxOf(one).occupied))) return [];
+      return [input];
     } catch (_) {
       return [];
     }

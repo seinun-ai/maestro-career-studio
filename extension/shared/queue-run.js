@@ -38,8 +38,10 @@
  *                          unknown_page; the host they land on joins `hosts`)
  *     → stopped      closed | bad_link | error | user (a Stop; nothing is called after it)
  *   Resume re-enters `drive` on a parked record: the open tab is kept, the page is read again. After a
- *   `page_errors` or `upload` park the page is NOT filled again (the user fixed what was named): the errors
- *   are read, any that remain get a repair round, and Next is pressed.
+ *   `page_errors` or `upload` park, on the page it parked on (`record.parkedPage`: address and step key), the
+ *   page is NOT filled again (the user fixed what was named): after a page_errors park its errors are read and
+ *   any that remain get a repair round; after an upload park a required box still empty parks again (a
+ *   Resume never attaches); then Next is pressed. On any other page the Resume fills as usual.
  *
  * SETTLING. A page the run has just arrived at (the opened tab, an Apply or Next that moved it, a
  * sign-in) is often not drawn yet: the content scripts load at document_idle, and a client-rendered
@@ -84,6 +86,7 @@
  *   waitForChange(tabId, before, ms, stop, baseline) → {changed, url, errors, sameStep, fresh}
  *                                `baseline`: the error keys the page showed before the press
  *   pageErrors(tabId, frameId) → {count, items: [{label, target, kind}]}   what the page complains about
+ *   uploads(record) → [{label, target, kind, required, occupied}]   the page's upload boxes, for a Resume's look
  *   attachTo(record, box) → {attached}   the run's PDF into the one box `{label, target}` names: a box the
  *                                page itself named, or the ONE required empty box the fill's report found
  *                                (never one labelled for another document; at most one write per page)
@@ -133,7 +136,7 @@
   // Ready that is another job being looked at, and an application sent by hand is not this one's.
   const APPLICATION_PAGES = new Set(["review", "form_step"]);
   const DEPS = ["openTab", "classify", "advance", "fill", "signIn", "waitForChange", "tabUrl",
-    "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "fix", "attachTo"];
+    "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "fix", "attachTo", "uploads"];
   // The fill just wrote the file: the page may be slow to show its row, and a second copy is what the hedge is for.
   const FILE_WRITTEN = new Set(["attached", "unconfirmed"]);
   const MAX_FIX_ROUNDS = 3;   // repairs on one page; each error is repaired once
@@ -193,7 +196,7 @@
     // not see (`submitSeen`), or a dialog asking about submitting (`submitContext`).
     const showsSubmit = (f) => kindOf(f) === "review" && (
       f.result.summary.submitSeen === true || f.result.summary.submitContext === true
-      || (f.result.summary.buttons ?? []).some((b) => b.visible !== false && ns.pageKind.sortButton(b) === "submit"));
+      || (f.result.summary.buttons ?? []).some((b) => b.visible !== false && b.errorLine !== true && ns.pageKind.sortButton(b) === "submit"));
     const fullest = usable.reduce((best, f) => (!best || fillable(f) > fillable(best) ? f : best), null);
     if (top && (WALL_ANYWHERE.has(kindOf(top)) || TOP_ONLY.has(kindOf(top)))) return top;
     const wall = usable.find((f) => WALL_ANYWHERE.has(kindOf(f)));
@@ -241,7 +244,8 @@
       await update({ status, why, ...extra });
       return record;
     };
-    const park = (why, extra = {}) => finish("parked", why, { open: [], ...extra });
+    const park = (why, extra = {}) => finish("parked", why, { open: [], ...extra,
+      ...(why === "page_errors" || why === "upload" ? { parkedPage: thisPage } : {}) });
 
     const gate = () => {
       if (deps.cancelled(record)) throw HALT;
@@ -264,7 +268,9 @@
     let fixRounds = 0;       // repairs after a rejected Next on this page
     let attempted = new Set();  // the errors already repaired on this page (by their label)
     let wroteResume = false; // the resume has been written on this page (by the fill's attach or the gate): never twice
-    let recheck = null;      // a Resume after a park the user fixed by hand: don't refill, look at the page's errors
+    let resumeWhy = null;    // a Resume after page_errors or upload: decided on the first read, by whether it is the parked page
+    let recheck = null;      // ... and then: don't refill, look at the page's errors or upload boxes
+    let thisPage = null;     // {where, key} of the page being read: remembered when a park names a page
 
     const noteHost = async (url) => {
       const host = hostOf(url);
@@ -352,12 +358,9 @@
       gate();
       const resumed = record.tabId != null;
       const userNavigates = USER_NAVIGATES.has(record.why);
-      // The user fixed what a page_errors or upload park named: the page is not filled again (they fixed
-      // what was named); its errors are read, and Next is pressed if there are none.
-      if (resumed && (record.why === "page_errors" || record.why === "upload")) {
-        recheck = record.why;
-        pageFilled = true;
-      }
+      // After a page_errors or upload park the user fixed what was named: if the tab is still on that page
+      // (the first read decides) it is not filled again; its errors or upload boxes are looked at, then Next.
+      if (resumed && (record.why === "page_errors" || record.why === "upload")) resumeWhy = record.why;
       if (record.tabId == null) {
         const host = hostOf(record.openUrl);
         if (!host) return await finish("stopped", "bad_link");
@@ -384,6 +387,19 @@
         // step) may be a saved draft's review page, and its "Apply" is a Submit.
         const mayApply = applyOk;
         applyOk = false;
+        {
+          const [where, key] = fingerprint(url, summary).split("\n");
+          thisPage = { where, key };
+          if (resumeWhy) {
+            const parked = record.parkedPage;
+            if (parked && parked.where === where && parked.key === key) {
+              recheck = resumeWhy;
+              pageFilled = true;
+            }
+            resumeWhy = null;
+            record.parkedPage = null;
+          }
+        }
         // A run in place drives the page the user picked it for. By the first read the tab may have gone
         // elsewhere (the pick, the press and the run are not one instant): that page is not this job's.
         const checkPlace = inPlaceFirst;
@@ -510,6 +526,12 @@
         if (recheck) {
           const was = recheck;
           recheck = null;
+          if (was === "upload") {
+            // Never attach on a Resume: only look. A required box still empty parks again, naming it.
+            const found = await act(deps.uploads, record);
+            const empty = (Array.isArray(found) ? found : []).filter((box) => box.required === true && box.occupied !== true);
+            if (empty.length) return await park("upload", { open: errorsOpen(empty) });
+          }
           if (was === "page_errors") {
             const standing = await act(deps.pageErrors, record.tabId, frame.frameId);
             if (Array.isArray(standing?.items) && standing.items.length) {

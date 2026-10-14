@@ -59,12 +59,13 @@
     if (s.closedText) return { kind: "closed" };
     if (s.hasApplyLink && !s.fillable) return { kind: "posting" };
 
-    const sorted = (s.buttons ?? []).map((b) => ({ ...b, sort: sortButton(b) }));
+    // A button that is only a line of the error summary ("Error - <what>", not marked as a submit by the page)
+    // is neither a Next nor a Submit, whatever its words.
+    const sorted = (s.buttons ?? []).filter((b) => b.errorLine !== true).map((b) => ({ ...b, sort: sortButton(b) }));
     // A Submit counts when it can be SEEN, enabled or not: it is often disabled until the form
     // validates, and a Next beside it is then not to be trusted. Outside the form counts too.
     const submit = sorted.some((b) => b.sort === "submit" && b.visible !== false);
-    // The error summary's own lines ("Errors Found", "Error - <field>") are never the step's Next; they
-    // still count for Submit above, since a Submit is a Submit wherever the page puts it.
+    // The error summary's own buttons ("Errors Found", "Error - <field>") are never the step's Next.
     const next = sorted.filter((b) => b.sort === "next" && b.visible && b.enabled && b.inForm !== false && b.inErrors !== true);
     // `submitSeen`: a Submit the button list could not see (a div role=button, an image input, a
     // plain link, or a control whose id or name says submit). `submitContext`: a dialog or the

@@ -830,6 +830,7 @@ DRIVE = """async ({record, swap, signIn}) => {
     waitForChange: async () => ({changed: Boolean(signIn)}),
     pageErrors: async () => ({count: 0, items: []}), fix: async () => ({fixed: false}),
     attachTo: async () => ({attached: false}),
+    uploads: async () => [],
     sleep: async () => {}, save() {}, onUpdate() {}, now: () => (clock += 1000), cancelled: () => false,
   };
   await ns.queueRun.drive(record, deps);
@@ -1602,11 +1603,26 @@ def test_a_submit_beside_error_words_is_still_the_review_pages_and_never_a_conti
     assert classify(page)["kind"] == "review"
 
 
-def test_a_submit_worded_line_in_the_banner_still_counts_as_a_submit(page, load):
-    """When unsure whether a button is Next or Submit, stop: the banner line's Submit word counts."""
-    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li><button type="button">Error - Please submit a
-      resume</button></li></ul></div><h2>My Experience</h2><label for="c">City</label><input id="c">
-      <button type="button">Save and Continue</button>""", SOURCES)
+BANNER_PAGE = """<div role="alert"><h3>Errors Found</h3><ul><li>{line}</li></ul></div><h2>My Experience</h2>
+  <label for="c">City</label><input id="c"><button type="button">Save and Continue</button>"""
+
+
+def test_a_banner_line_that_only_talks_of_submitting_is_neither_next_nor_submit(page, load):
+    load(page, BANNER_PAGE.format(line="<button type='button'>Error - Please submit a resume</button>"), SOURCES)
+    assert summary(page)["submitSeen"] is False
+    assert classify(page)["kind"] == "form_step"
+
+
+@pytest.mark.parametrize("button", [
+    # Not an Error lead: a real Submit that happens to sit in a live region.
+    "<button type='button'>Submit application</button>",
+    "<button type='button'>Error review: Submit application</button>",
+    # An Error lead, but the button is marked as a submit by the page itself.
+    "<button type='button' data-automation-id='bottom-navigation-submit'>Error - Please submit</button>",
+    "<button type='button' id='submit-btn'>Error - Please submit</button>",
+])
+def test_a_real_submit_in_the_banner_is_still_counted(page, load, button):
+    load(page, BANNER_PAGE.format(line=button), SOURCES)
     assert classify(page)["kind"] == "review"
 
 
@@ -1717,3 +1733,12 @@ def test_a_page_with_no_complaint_reads_no_field_questions(page, load):
       ns.readField = (el) => { window.__reads += 1; return real(el); }; }""")
     summary(page)
     assert page.evaluate("window.__reads") == 0
+
+
+def test_two_steps_inside_a_live_main_have_different_step_keys(page, load):
+    step = "<main aria-live='polite'><h1>{h}</h1><label for='a'>Q</label><input id='a'><button type='button'>Next</button></main>"
+    load(page, step.format(h="Your details"), SOURCES)
+    first = summary(page)["stepKey"]
+    load(page, step.format(h="Your experience"), SOURCES)
+    second = summary(page)["stepKey"]
+    assert first != "" and second != "" and first != second

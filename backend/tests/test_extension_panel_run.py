@@ -1390,17 +1390,17 @@ def test_a_write_the_run_could_not_prove_is_not_repeated_when_the_next_is_refuse
     assert len(_attach_asks(out)) == 1, "one write in all: the automatic one"
 
 
-def test_a_resume_after_an_unconfirmed_gate_write_presses_on_and_never_writes_a_second_copy(tmp_path):
+def test_a_resume_after_an_unconfirmed_gate_write_looks_and_never_writes_a_second_copy(tmp_path):
     wrote_unproven = _reply([{"frameId": 0, "result": {"written": 1, "proven": 0}}])
     out = _upload_run_steps(tmp_path, wrote_unproven, [{"start": SEED}, {"press": "run-resume"}],
                             api={"GET /api/applications/app-1": _reply(APPLICATION)})
     assert _record(out["shots"][1])["why"] == "upload"
-    # Page one is not filled again; Next moves to the review page, whose fake still shows an empty required
-    # box: the gate would write again, and refuses, because the earlier write may be there unseen.
-    assert len(out["fills"]) == 2
+    # The page is not filled again, and the box (as this page still shows it) is still empty: the run
+    # parks again, naming it. It never writes: the earlier write may be there, unseen.
+    assert len(out["fills"]) == 1
     record = _record(out["shots"][2])
-    assert (record["status"], record["why"], record["step"]) == ("parked", "upload", 1)
-    assert len(_attach_asks(out)) == 1, "one write in all"
+    assert (record["status"], record["why"], record["step"]) == ("parked", "upload", 0)
+    assert len(_attach_asks(out)) == 1 and not _page_messages(out, "page_advance")
 
 
 def _upload_run_steps(tmp_path, reply, steps, boxes=(BOX,), **spec):
@@ -1414,7 +1414,8 @@ def _upload_run_steps(tmp_path, reply, steps, boxes=(BOX,), **spec):
 
 def test_a_resume_after_page_errors_reads_the_errors_and_presses_when_none_remain(tmp_path):
     seeded = _seeded("parked", why="page_errors", open=[{"fid": "f-city", "question": "City", "required": True}],
-                     seen=[], step=0, filled=True, wrote=True)
+                     seen=[], step=0, filled=True, wrote=True,
+                     parkedPage={"where": STEP1["url"], "key": "step1"})
     out = _run(tmp_path, [{"seed": [seeded]}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
                frames={"page_errors": [{"frameId": 0, "result": {"count": 0, "items": []}}]})
     record = _record(out["shots"][2])
@@ -1426,7 +1427,8 @@ def test_a_resume_after_page_errors_reads_the_errors_and_presses_when_none_remai
 
 def test_a_resume_after_page_errors_repairs_only_what_the_page_still_names(tmp_path):
     seeded = _seeded("parked", why="page_errors", open=[{"fid": "f-city", "question": "City", "required": True}],
-                     seen=[], step=0, filled=True, wrote=True)
+                     seen=[], step=0, filled=True, wrote=True,
+                     parkedPage={"where": STEP1["url"], "key": "step1"})
     out = _run(tmp_path, [{"seed": [seeded]}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
                frames={"page_errors": [{"frameId": 0, "result": CITY_ERROR}]},
                reports=[{"fields": [verified("f-city", "City")]}, {"fields": [verified("f1")]}])
@@ -1444,3 +1446,44 @@ def test_the_card_does_not_call_a_box_that_already_held_a_file_a_failure(tmp_pat
     out = _run(tmp_path, [{"seed": [_seeded("filling", attach=attach, progress={"done": 1, "total": 2})]}])
     text = _body_text(out["shots"][1])
     assert "A file was already attached" in text and "Couldn't attach" not in text
+
+
+# ---------- a stale upload line, and the Resume's look at where it landed ----------
+
+def test_an_upload_error_over_a_box_that_already_holds_a_file_counts_as_repaired(tmp_path):
+    """The user attached by hand; the page's banner still names the box: nothing is written, Next is pressed."""
+    held = {**BOX, "occupied": True}
+    frames = {"page_errors": [{"frameId": 0, "result": UPLOAD_ERROR}], "page_uploads": [{"frameId": 0, "result": [held]}]}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, STEP1_REJECTED, REVIEW), frames=frames,
+               replies={"attach_pdf": ATTACHED_ONE})
+    record = _record(out["shots"][1])
+    assert (record["status"], record["step"]) == ("ready", 1)
+    assert _attach_asks(out) == [] and len(_page_messages(out, "page_advance")) == 2
+
+
+def _parked(why, **extra):
+    return _seeded("parked", why=why, open=[{"fid": None, "question": "Upload a file (5MB max)", "required": True}],
+                   seen=[], step=0, filled=True, wrote=True, **extra)
+
+
+def test_a_resume_that_lands_on_another_page_fills_it_and_does_not_press_over_it(tmp_path):
+    seeded = _parked("page_errors", parkedPage={"where": "https://jobs.acme.test/apply/other9", "key": "other9"})
+    out = _run(tmp_path, [{"seed": [seeded]}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               frames={"page_errors": [{"frameId": 0, "result": {"count": 0, "items": []}}]})
+    assert len(out["fills"]) == 2 and not _page_messages(out, "page_errors")
+
+
+def test_a_resume_after_an_upload_park_with_the_box_still_empty_parks_again_and_writes_nothing(tmp_path):
+    seeded = _parked("upload", parkedPage={"where": STEP1["url"], "key": "step1"})
+    out = _run(tmp_path, [{"seed": [seeded]}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               frames={"page_uploads": [{"frameId": 0, "result": [BOX]}]}, replies={"attach_pdf": ATTACHED_ONE})
+    record = _record(out["shots"][2])
+    assert (record["status"], record["why"], record["step"]) == ("parked", "upload", 0)
+    assert _attach_asks(out) == [] and not _page_messages(out, "page_advance") and out["fills"] == []
+
+
+def test_a_resume_after_an_upload_park_with_the_box_filled_presses_on(tmp_path):
+    seeded = _parked("upload", parkedPage={"where": STEP1["url"], "key": "step1"})
+    out = _run(tmp_path, [{"seed": [seeded]}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               frames={"page_uploads": [{"frameId": 0, "result": [{**BOX, "occupied": True}]}]})
+    assert _record(out["shots"][2])["step"] == 1 and len(out["fills"]) == 1
