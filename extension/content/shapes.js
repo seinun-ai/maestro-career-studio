@@ -165,6 +165,21 @@
   };
   // A select-style widget shows its value somewhere other than the input.
   const selectStructure = (el) => Boolean(widgetRoot(el) || box(el)?.querySelector(SELECT_STRUCTURE));
+  // A select-style box that keeps its pick as the INPUT's own text, with no
+  // separate value node. Oracle JET's `oj-combobox-one` says so itself: the host
+  // loses `oj-has-no-value` once it holds a value. Any other autocomplete reads
+  // its text as the value only while it is AT REST: the list closed and the box
+  // not focused — a query being typed, or one whose list is still coming, is
+  // never a value.
+  const restingText = (el) => {
+    const text = el.value.trim();
+    if (!text) return "";
+    const jet = el.closest("oj-combobox-one");
+    if (jet) return jet.classList.contains("oj-has-no-value") ? "" : text;
+    const live = el.getAttribute("aria-autocomplete");
+    if (!live || live === "none" || el.getAttribute("aria-expanded") === "true") return "";
+    return el.getRootNode().activeElement === el ? "" : text;
+  };
   // `kind` (multiplicity) and `pills` (chips) are read once by a caller that
   // needs them again.
   const readSearch = (el, kind = multiplicity(el), pills = chips(el)) => {
@@ -176,7 +191,7 @@
     const single = box(el)?.querySelector(SINGLE);
     if (single) return clean(single.textContent);
     if (pills[0]) return pills[0];
-    return searchBacking(el);
+    return searchBacking(el) || restingText(el);
   };
   // A multi widget is never finished (items may be missing), and a Workday
   // pill box whose multiplicity is not known yet is not either: its one pill

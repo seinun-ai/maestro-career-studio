@@ -565,7 +565,15 @@
     // never gets it: its Enter would pick that option. Workday's Enter
     // searches, highlight or not.
     const gated = !workday && !box.getAttribute("aria-activedescendant") && comboBox(box);
-    const patient = variant?.search?.[0] === "debounce";
+    // A box that says it lists as you type (`aria-autocomplete` list or both) is
+    // given the whole OPEN_MS before anything is sent: its list may be debounced
+    // far past ANSWER_MS (Oracle JET: about 500-800 ms), and an Enter before the
+    // list exists CANCELS that search. Only a box that showed nothing at all in
+    // that time (one that searches on Enter alone) gets the key, as a last resort.
+    // Keyed on the live input's own attributes; a Workday box (its widget marker)
+    // searches ON Enter whatever it says and is decided above.
+    const filters = !workday && /^(list|both)$/.test(box.getAttribute("aria-autocomplete") ?? "");
+    const patient = filters || variant?.search?.[0] === "debounce";
     const silent = async (ms) => !(await b().waitFor(() => searchView(el, shape, before) !== was, ms, t));
     const enter = workday || (gated && (await silent(patient ? OPEN_MS : ANSWER_MS)));
     if (enter) {

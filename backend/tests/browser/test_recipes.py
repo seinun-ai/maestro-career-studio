@@ -229,9 +229,11 @@ def test_a_learned_order_the_control_cannot_take_is_a_structural_mismatch(page, 
 
 def test_a_debounce_first_order_waits_for_the_list_instead_of_sending_enter(page, load):
     f = engine(page, load, SLOW_FILTER)["Location"]
+    # A box that says `aria-autocomplete=list` is waited for the whole open window first (an Enter
+    # before a debounced list exists cancels the search on some widgets), so even a cold run takes it.
     cold = apply(page, f, op="choose", text="Austin")
-    assert (cold["outcome"], cold["variant"]) == ("verified", {"search": "enter"})
-    assert page.evaluate("window.enters") == 1
+    assert (cold["outcome"], cold["variant"]) == ("verified", {"search": "debounce"})
+    assert page.evaluate("window.enters") == 0
     f = engine(page, load, SLOW_FILTER)["Location"]
     warm = apply(page, f, op="choose", text="Austin", variant={"search": ["debounce", "enter"]})
     assert (warm["outcome"], warm["variant"]) == ("verified", {"search": "debounce"})

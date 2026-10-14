@@ -141,3 +141,51 @@ def test_the_loop_fills_a_pill_group_like_any_other_choice(page):
     again = _run(page, fresh=False, map={"Have you worked for Globex before?": {"route": "slot", "slot": "work_history.worked_here", "value": "No"}})
     assert again["by_question"]["Have you worked for Globex before?"]["status"] == "already"
     assert oracle(page, "pills_clicks") == 2
+
+
+# --- I3: debounced search lists (JET-style combobox)
+JET_PICK = "Washington, DC, United States"
+
+
+def test_a_debounced_list_is_waited_for_and_no_enter_is_sent(page, load):
+    """The list shows 500 ms after the last keystroke; an Enter before it clears the query (ATS-O)."""
+    load(page, fixture_html("jet_combobox.html"))
+    f = inv(page)["City or state"]
+    assert (f["shape"], f["answered"], f["committed"]) == ("search", False, "")
+    got = explore(page, f, "Washington")
+    assert [o["text"] for o in got["options"]] == [JET_PICK, "Washington, Tyne and Wear, United Kingdom"] and "error" not in got
+    assert oracle(page, "jet_enters") == 0 and oracle(page, "jet_city") == ""
+    assert page.input_value("[id='location|input']") == ""   # the engine's query is taken back
+
+
+def test_a_jet_pick_is_verified_once_and_read_back_as_the_inputs_own_text(page, load):
+    load(page, fixture_html("jet_combobox.html"))
+    f = inv(page)["City or state"]
+    row = apply(page, f, op="choose", text=JET_PICK, term="Washington")
+    assert (row["outcome"], row["committed"]) == ("verified", JET_PICK)
+    assert (oracle(page, "jet_city"), oracle(page, "jet_picks"), oracle(page, "jet_enters")) == (JET_PICK, 1, 0)
+    now = inv(page)["City or state"]
+    assert (now["committed"], now["answered"]) == (JET_PICK, True)
+    # Already there: nothing is typed or clicked again.
+    assert apply(page, now, op="choose", text=JET_PICK, term="Washington")["outcome"] == "verified"
+    assert oracle(page, "jet_picks") == 1
+
+
+def test_a_query_typed_into_a_select_style_box_is_not_its_value(page, load):
+    load(page, fixture_html("jet_combobox.html"))
+    page.click("[id='location|input']")
+    page.keyboard.type("Wash")
+    assert inv(page)["City or state"]["committed"] == ""   # list pending or open: the text is a query
+
+
+def test_an_autocomplete_with_no_value_node_reads_its_own_text_once_the_list_is_closed(page, load):
+    """No JET marker: a select-style wrapper, the pick lands as the input's text, and the box is at rest."""
+    load(page, "<label for='c'>Country</label><div class='combo-container'><input id='c' role='combobox' aria-autocomplete='list' "
+               "aria-expanded='false'></div><div id='drop' role='listbox' style='display:none'><div role='option'>Canada</div></div>"
+               "<script>const i = document.getElementById('c'), d = document.getElementById('drop');"
+               "i.addEventListener('input', () => { d.style.display = ''; i.setAttribute('aria-expanded', 'true'); });"
+               "d.firstChild.addEventListener('click', () => { i.value = 'Canada'; d.style.display = 'none'; i.setAttribute('aria-expanded', 'false'); });"
+               "i.setAttribute('aria-controls', 'drop');</script>")
+    f = inv(page)["Country"]
+    row = apply(page, f, op="choose", text="Canada", term="Can")
+    assert (row["outcome"], row["committed"]) == ("verified", "Canada")

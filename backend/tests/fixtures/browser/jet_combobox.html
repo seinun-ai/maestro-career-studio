@@ -1,0 +1,87 @@
+<!doctype html>
+<!-- An Oracle JET `oj-combobox-one`, as ATS-O's search and application forms draw it (live 2026-10-14, markup
+     captured then made-up labels and cities). Observed:
+       - the box is `oj-combobox-one > div.oj-text-field-container` holding ONE `input[role=combobox]
+         [aria-autocomplete=list][aria-controls=oj-listbox-results-<id>]` and no separate value node: after a pick
+         the pick's text is the input's own value, and the host element simply LOSES its `oj-has-no-value` class;
+       - the result list (`ul#oj-listbox-results-<id>[role=listbox]` of `li[role=option]`) is rendered into a drop
+         element in <body> and is DEBOUNCED: it appears about 500 ms after the last keystroke (about 800 ms were
+         seen live);
+       - an Enter pressed while no list is up clears the query (the box is "searching" and the key cancels it);
+       - leaving the box without a pick puts the committed text (here: nothing) back.
+     State of the fake app: window.__oracle.jet_city (the picked text), jet_enters (Enter key presses seen),
+     jet_picks (row clicks). -->
+<label for="location|input">City or state</label>
+<oj-combobox-one id="location" class="oj-combobox oj-combobox-one oj-has-no-value oj-form-control">
+  <div class="oj-text-field-container">
+    <div class="oj-text-field-middle">
+      <input id="location|input" class="oj-combobox-input" type="text" role="combobox" autocomplete="off"
+             aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox"
+             aria-controls="oj-listbox-results-location">
+    </div>
+  </div>
+</oj-combobox-one>
+<script>
+(() => {
+  window.__oracle = window.__oracle || {};
+  Object.assign(window.__oracle, { jet_city: "", jet_enters: 0, jet_picks: 0 });
+  const CITIES = ["Washington, DC, United States", "Washington, Tyne and Wear, United Kingdom", "Seattle, WA, United States"];
+  const host = document.getElementById("location");
+  const input = document.getElementById("location|input");
+  let drop = null;
+  let timer = null;
+  const closeList = () => {
+    drop?.remove();
+    drop = null;
+    input.setAttribute("aria-expanded", "false");
+  };
+  const render = (query) => {
+    closeList();
+    const rows = CITIES.filter((c) => c.toLowerCase().includes(query.toLowerCase()));
+    drop = document.createElement("div");
+    drop.className = "oj-listbox-drop";
+    const list = document.createElement("ul");
+    list.id = "oj-listbox-results-location";
+    list.setAttribute("role", "listbox");
+    for (const text of rows) {
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.textContent = text;
+      li.addEventListener("mousedown", (e) => e.preventDefault());
+      li.addEventListener("click", () => {
+        window.__oracle.jet_picks += 1;
+        window.__oracle.jet_city = text;
+        input.value = text;
+        host.classList.remove("oj-has-no-value");
+        closeList();
+      });
+      list.appendChild(li);
+    }
+    drop.appendChild(list);
+    document.body.appendChild(drop);
+    input.setAttribute("aria-expanded", "true");
+  };
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    closeList();
+    if (!input.value) return;
+    timer = setTimeout(() => render(input.value), 500);   // the debounce
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    window.__oracle.jet_enters += 1;
+    if (!drop) {   // no list yet: the key cancels the pending search and clears the query
+      clearTimeout(timer);
+      input.value = window.__oracle.jet_city;
+    }
+  });
+  input.addEventListener("focusout", () => {
+    setTimeout(() => {
+      if (document.activeElement === input) return;
+      clearTimeout(timer);
+      input.value = window.__oracle.jet_city;
+      closeList();
+    }, 0);
+  });
+})();
+</script>
