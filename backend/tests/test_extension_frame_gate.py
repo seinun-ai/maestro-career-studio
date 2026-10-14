@@ -156,6 +156,12 @@ ns.pageReader = {
     if (spec.signInThrows) throw new Error("boom " + a.password);
     return { signedIn: "clicked" };
   },
+  createAccount: (a) => {
+    calls.push(["pageReader.createAccount", Object.keys(a).sort(), a.allowedHost,
+                a.email === "ada@acme.test", a.password === "pw-test-only"]);
+    if (spec.signInThrows) throw new Error("boom " + a.password);
+    return { created: "clicked" };
+  },
   applyUrl: () => null,   // extract_job_posting asks it for the employer's link
 };
 
@@ -654,6 +660,27 @@ def test_the_top_frame_forwards_the_three_login_fields_and_nothing_else(tmp_path
     out = _run(tmp_path, type_="page_sign_in", top_frame=True)
     assert out["calls"] == [["pageReader.signIn", ["allowedHost", "email", "password"], "x.test", True, True]]
     assert out["data"] == {"signedIn": "clicked"}
+
+
+@pytest.mark.parametrize("form", [False, True])
+def test_the_account_login_is_typed_in_the_top_frame_only_even_when_a_subframe_has_a_form(tmp_path, form):
+    sub = _run(tmp_path, type_="page_create_account", top_frame=False, form=form)
+    assert sub["calls"] == [] and sub["data"] == {"created": False, "why": "frame"}
+
+
+def test_the_top_frame_forwards_the_three_account_fields_and_nothing_else(tmp_path):
+    out = _run(tmp_path, type_="page_create_account", top_frame=True)
+    assert out["calls"] == [["pageReader.createAccount", ["allowedHost", "email", "password"], "x.test", True, True]]
+    assert out["data"] == {"created": "clicked"}
+
+
+def test_a_throw_inside_the_account_reader_becomes_a_fixed_word(tmp_path):
+    out = run_node(
+        _GATE_DRIVER_JS,
+        {"type": "page_create_account", "topFrame": True, "form": False, "detectThrows": False, "fileInputs": [],
+         "expect": None, "peek": False, "readOnly": False, "signInThrows": True},
+        tmp_path, source=page_runtime_source())
+    assert out["data"] == {"created": False, "why": "error"} and "pw-test-only" not in str(out["data"])
 
 
 def test_a_throw_inside_the_sign_in_reader_becomes_a_fixed_word(tmp_path):

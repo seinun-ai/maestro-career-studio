@@ -116,6 +116,8 @@ Object.defineProperty(spec.frames, "fill_inventory", { configurable: true, enume
 spec.frames.fill_cancel = [{ frameId: 0, result: true }];
 spec.frames.fill_focus = [{ frameId: 0, result: true }];
 spec.page = spec.page ?? {};
+Object.defineProperty(spec.page, "page_create_account", { configurable: true, enumerable: true,
+  get: () => { at += 1; return { ok: true, data: { created: "clicked" } }; } });
 Object.defineProperty(spec.page, "page_sign_in", { configurable: true, enumerable: true,
   get: () => { at += 1; return { ok: true, data: { signedIn: "clicked" } }; } });
 
@@ -1161,6 +1163,44 @@ def test_the_saved_password_reaches_one_message_and_nowhere_else(tmp_path):
     rest = {key: out[key] for key in ("shots", "writes", "sessionWrites", "broadcasts")}
     assert password not in json.dumps(rest)
     assert _record(out["shots"][-1])["status"] == "ready"
+
+
+def test_a_known_ats_sign_up_gets_the_account_created_with_the_saved_login_and_the_password_stays_in_one_message(tmp_path):
+    password = "hunter2-secret-9"
+    host = "acme.myworkdayjobs.com"
+    sign_up = page("create_account", 1, host=host)
+    seed = {**SEED, "openUrl": f"https://{host}/en-US/apply"}
+    out = _run(tmp_path, [{"start": seed}], pages=(sign_up, STEP1, REVIEW),
+               tabs=[{"id": 7, "url": seed["openUrl"]}],
+               api={"/api/companion/job-site-login": _reply({"email": "ada@example.test", "password": password})})
+    carriers = [msg for msg in out["sent"] if password in json.dumps(msg)]
+    assert [msg["type"] for msg in carriers] == ["panel_frame0"]
+    assert carriers[0]["message"]["type"] == "page_create_account"
+    rest = {key: out[key] for key in ("shots", "writes", "sessionWrites", "broadcasts")}
+    assert password not in json.dumps(rest)
+    record = _record(out["shots"][-1])
+    assert record["status"] == "ready" and record["accountTried"] is True
+
+
+def test_a_sign_up_on_a_site_that_is_not_a_known_ats_is_still_a_wall_and_gets_no_password(tmp_path):
+    out = _run(tmp_path, [{"start": SEED}], pages=(page("create_account", 1),),
+               api={"/api/companion/job-site-login": _reply({"email": "a@b.test", "password": "pw-never-sent"})})
+    record = _record(out["shots"][-1])
+    assert (record["status"], record["why"]) == ("parked", "create_account")
+    assert not _api_calls(out, "job-site-login")
+
+
+def test_the_run_card_says_the_account_was_not_created_and_offers_resume(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("parked", why="create_account_failed", accountTried=True)]}])
+    body = _card(out["shots"][1])["body"]
+    assert "Account not created" in _text(body) and "a password rule" in _text(body)
+    assert _buttons(body)["run-resume"] == "Resume" and "run-skip" in _buttons(body)
+
+
+def test_the_card_titles_the_account_step(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("creating_account")]}])
+    card = _card(out["shots"][1])
+    assert card["title"] == "Creating account" and "Creating your account" in _text(card["body"])
 
 
 def test_a_site_that_is_not_a_known_ats_never_gets_the_password(tmp_path):

@@ -278,7 +278,7 @@ const TRACE_TIME = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d{1,9})?(?:
 const TRACE_OPS = new Set(["map", "polarity", "pick", "step", "explore", "choose", "set", "write", "move",
   "sweep", "recipe"]);
 const TRACE_EFFECTS = new Set(["progress", "no_effect", "unexpected", "reverted", "unconfirmed", "refused",
-  "late", "error"]);
+  "late", "error", "took_back"]);
 const TRACE_SHAPES = new Set(["text", "date", "select", "group", "search", "popup"]);
 const TRACE_ROUTES = new Set(["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"]);
 const TRACE_WHYS = new Set(["unclear_job"]);
@@ -366,6 +366,7 @@ const TRACE_FIELD = {
   shape: (v) => (TRACE_SHAPES.has(v) ? v : "unknown"),
   section: traceText(TRACE_TEXT),
   required: traceBool,
+  changes: traceInt(99),
   options: (v) => (Array.isArray(v)
     ? v.slice(0, TRACE_OPTIONS).map((text) => (typeof text === "string" ? cutText(text, TRACE_TEXT) : ""))
     : undefined),
@@ -840,7 +841,7 @@ const HANDLERS = {
    * here is a type that can be aimed at the top document of any tab. Panel-only,
    * and `fanoutTab` is asked FIRST, as in `panel_prepare`.
    *
-   * `page_sign_in` is the third and the odd one out: it carries the saved job-site login, so it
+   * `page_sign_in` (and `page_create_account`, the same login typed into a sign-up) is the third and the odd one out: it carries the saved job-site login, so it
    * is the reason this list is not the broadcast one. It lands on the top document alone (never
    * every frame, where an ad or chat iframe would be handed the password) and nothing here logs it.
    *
@@ -865,7 +866,7 @@ const HANDLERS = {
    * page, and it must not render that as a fact about the page. */
   async panel_frame0(msg, sender) {
     const tabId = fanoutTab(msg, sender);
-    const ALLOWED = ["extract_job_posting", "detect_page", "page_sign_in"];
+    const ALLOWED = ["extract_job_posting", "detect_page", "page_sign_in", "page_create_account"];
     if (!ALLOWED.includes(msg.message?.type)) {
       throw new Error(`not allowed at frame 0: ${JSON.stringify(msg.message?.type)}`);
     }

@@ -581,7 +581,7 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
         # Learn from the user's fix: watch a parked field's gestures, then ask what the user did.
         "fill_watch", "fill_watch_report",
         # The saved login, typed into the top frame only (reached through panel_frame0).
-        "page_sign_in",
+        "page_sign_in", "page_create_account",
     }
     assert called == set(), (
         "something calls a page handler in-frame again — see this test's "

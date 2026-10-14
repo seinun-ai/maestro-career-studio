@@ -43,6 +43,9 @@
     create_account: ["Create an account", WALL_STEP],
     verify: ["Email code", WALL_STEP],
     sign_in_failed: ["Sign-in didn't work", WALL_STEP],
+    create_account_failed: ["Account not created",
+      "The site didn't take the new account (a password rule, or an account that already exists). "
+      + "Create it or sign in yourself in the tab, then press Resume."],
     sign_in_yourself: ["Sign in yourself",
       "This isn't a site the Companion signs in to. Sign in in the tab, then press Resume."],
     posting: ["Apply yourself",
@@ -93,7 +96,7 @@
   const WALLS = [["captcha", "a CAPTCHA"], ["create_account", "creating an account"], ["verify", "an email code"],
     ["sign_in_failed", "a sign-in that didn't work"], ["board_native", "apply on a job board"]];
 
-  const WORKING = new Set(["opening", "signing_in", "filling", "advancing"]);
+  const WORKING = new Set(["opening", "signing_in", "creating_account", "filling", "advancing"]);
   const working = (run) => WORKING.has(run.status);
 
   /** The card's title: the status word. */
@@ -101,6 +104,7 @@
     switch (run.status) {
       case "opening": return "Opening";
       case "signing_in": return "Signing in";
+      case "creating_account": return "Creating account";
       case "filling": case "advancing": return `Filling page ${(run.step ?? 0) + 1}`;
       case "parked": return "Needs you";
       case "ready": return "Ready to submit";
@@ -163,6 +167,7 @@
   const WORKING_LINES = {
     opening: "Opening the employer's application page.",
     signing_in: "Signing in with your saved job-site login.",
+    creating_account: "Creating your account with your saved job-site login.",
   };
 
   function workingBody(ctx, run) {

@@ -641,6 +641,136 @@ def test_page_required_names_words_and_handles_never_values(page, load):
     assert set(out) == {"count", "items"}
 
 
+# ---------- G4: creating the account (owner decision 2026-10-14) ----------
+
+ACCOUNT_URL = "https://jobs.acme.test/create"
+ACCOUNT = {"email": "ada@acme.test", "password": "Pw-Zelda-9-not-real", "allowedHost": "jobs.acme.test"}
+OPT_IN_BOX = ("<div><input type='checkbox' id='marketing'><label for='marketing'>Email me news and offers about "
+              "Acme jobs</label></div>")
+
+
+def create_account(page, **over):
+    return page.evaluate(f"(a) => {READER}.createAccount(a)", {**ACCOUNT, **over})
+
+
+def serve_account(page, html=None):
+    serve(page, ACCOUNT_URL, html if html is not None else fixture_html("create_account_form.html"))
+
+
+def test_the_account_page_is_a_create_account_page_and_not_a_sign_in(page):
+    serve_account(page)
+    assert classify(page)["kind"] == "create_account"
+
+
+def test_the_account_is_created_with_the_saved_login_and_the_visible_button_pressed_once(page):
+    serve_account(page)
+    assert create_account(page) == {"created": "clicked"}
+    assert oracle(page, "created") == 1
+    assert oracle(page, "hiddenSubmit") == 0, "the vendor's hidden submit is never the one pressed"
+    assert oracle(page, "typed") == {"email": ACCOUNT["email"], "pw": ACCOUNT["password"], "pw2": ACCOUNT["password"]}
+    assert oracle(page, "agreed") is True
+
+
+def test_the_honeypot_is_never_typed_into_or_focused(page):
+    serve_account(page)
+    page.evaluate("() => { window.__hp = []; for (const t of ['focus', 'input', 'keydown']) document.getElementById('hp').addEventListener(t, () => window.__hp.push(t)); }")
+    create_account(page)
+    assert oracle(page, "honeypot") == "" and page.evaluate("window.__hp") == []
+
+
+def test_a_honeypot_named_only_by_its_markup_is_still_never_typed_into(page):
+    html = fixture_html("create_account_form.html").replace('<label for="hp">Enter website. This input is for robots only, do not enter if you\'re human.</label>', "")
+    html = html.replace('id="hp" name="website" data-automation-id="beecatcher"', 'id="hp" name="url2" data-automation-id="honeypot-field"')
+    serve_account(page, html)
+    assert create_account(page) == {"created": "clicked"} and oracle(page, "honeypot") == ""
+
+
+def test_a_marketing_opt_in_is_never_ticked(page):
+    serve_account(page, fixture_html("create_account_form.html").replace("<!-- MARKETING -->", OPT_IN_BOX))
+    assert create_account(page) == {"created": "clicked"}
+    assert oracle(page, "marketing") is False and oracle(page, "agreed") is True
+
+
+def test_a_checkbox_that_is_only_a_marketing_opt_in_is_left_and_the_account_still_created(page):
+    html = fixture_html("create_account_form.html")
+    html = html.replace('<input type="checkbox" id="agree" aria-checked="false" data-automation-id="createAccountCheckbox">\n      <label for="agree">I agree to creating this account to apply for positions with Acme</label>', OPT_IN_BOX.replace("marketing", "agree"))
+    serve_account(page, html)
+    assert create_account(page) == {"created": "clicked"} and oracle(page, "agreed") is False
+
+
+def test_two_agreements_are_not_guessed_between(page):
+    two = "<div><input type='checkbox' id='tos' required><label for='tos'>I accept the privacy notice</label></div>"
+    serve_account(page, fixture_html("create_account_form.html").replace("<!-- MARKETING -->", two))
+    assert create_account(page) == {"created": False, "why": "agreement"}
+    assert oracle(page, "created") == 0 and page.input_value("#pw") == ""
+
+
+def test_an_agreement_the_page_does_not_require_is_left_alone(page):
+    html = fixture_html("create_account_form.html").replace(' data-automation-id="createAccountCheckbox"', "")
+    serve_account(page, html)
+    assert create_account(page) == {"created": "clicked"} and oracle(page, "agreed") is False
+
+
+@pytest.mark.parametrize("over, why", [
+    ({"allowedHost": "other.test"}, "host"), ({"email": ""}, "missing"), ({"password": ""}, "missing"),
+    ({"allowedHost": ""}, "missing"),
+])
+def test_a_wrong_host_or_a_missing_value_types_and_presses_nothing(page, over, why):
+    serve_account(page)
+    assert create_account(page, **over) == {"created": False, "why": why}
+    assert oracle(page, "created") == 0 and page.input_value("#email") == "" and page.input_value("#pw") == ""
+
+
+def test_a_sign_in_form_is_not_an_account_form(page):
+    serve(page, ACCOUNT_URL, fixture_html("signin.html"))
+    assert create_account(page) == {"created": False, "why": "not_account_form"}
+
+
+def test_two_email_boxes_are_not_guessed_between(page):
+    html = fixture_html("create_account_form.html").replace("<!-- MARKETING -->",
+        "<div><label for='e2'>Confirm email address</label><input type='email' id='e2'></div>")
+    serve_account(page, html)
+    assert create_account(page) == {"created": False, "why": "several_email"} and oracle(page, "created") == 0
+
+
+def test_a_page_with_a_code_box_or_a_challenge_is_not_asked(page):
+    serve_account(page, fixture_html("create_account_form.html").replace("<!-- MARKETING -->",
+        "<div><label for='otp'>Verification code</label><input id='otp'></div>"))
+    assert create_account(page) == {"created": False, "why": "verify"}
+    serve_account(page, fixture_html("captcha.html"))
+    assert create_account(page)["created"] is False
+
+
+def test_the_button_must_be_labelled_create_account_in_full(page):
+    html = fixture_html("create_account_form.html").replace('aria-label="Create Account"', 'aria-label="Create Account and Apply"') \
+        .replace(">Create Account</div>", ">Create Account and Apply</div>")
+    serve_account(page, html)
+    assert create_account(page) == {"created": False, "why": "no_button"} and page.input_value("#pw") == ""
+
+
+def test_a_submit_marked_button_is_never_pressed_even_if_labelled_create_account(page):
+    html = '<form><input type="text" autocomplete="email" id="e"><input type="password" autocomplete="new-password" id="a"><input type="password" autocomplete="new-password" id="b"><button type="submit" id="submit_application">Create Account</button></form>'
+    serve_account(page, html)
+    assert create_account(page) == {"created": False, "why": "no_button"}
+
+
+def test_a_subframe_is_never_given_the_login(page):
+    serve(page, ACCOUNT_URL, "<p>host</p><iframe id='f'></iframe>")
+    page.evaluate("(html) => { document.getElementById('f').srcdoc = html; }", fixture_html("create_account_form.html"))
+    page.wait_for_function("document.getElementById('f').contentDocument?.getElementById('pw')")
+    sub = next(f for f in page.frames if f != page.main_frame)
+    for src in SOURCES:
+        sub.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+    assert sub.evaluate(f"(a) => {READER}.createAccount(a)", ACCOUNT) == {"created": False, "why": "frame"}
+    assert sub.evaluate("document.getElementById('pw').value") == "" and sub.evaluate("window.__oracle.created") == 0
+
+
+def test_the_result_carries_no_value_from_the_page_or_the_login(page):
+    serve_account(page)
+    out = create_account(page)
+    assert ACCOUNT["password"] not in json.dumps(out) and ACCOUNT["email"] not in json.dumps(out)
+
+
 # ---------- advance: the Next click ----------
 
 def test_advance_clicks_the_one_next_of_a_form_step(page, load):

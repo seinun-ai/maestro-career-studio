@@ -190,6 +190,12 @@ const deps = {
     if (["attached", "unconfirmed"].includes(rec.attach?.outcome)) return { attached: false };
     return spec.attachTo ?? { attached: true };
   },
+  createAccount: async (...args) => {
+    tick("createAccount", args.length, Object.keys(args[1] ?? {}), args[1]?.allowedHost);
+    if (spec.cancelOnCreate) { cancelFlag = true; callsWhenCancelled = calls.length; }
+    if (spec.accountMoves && spec.created?.created !== false) { at += 1; moved = true; }
+    return spec.created ?? { created: true };
+  },
   signIn: async (...args) => {
     tick("signIn", args.length, Object.keys(args[1] ?? {}), args[1]?.allowedHost);
     if (spec.signInMoves) { at += 1; moved = true; }
@@ -283,6 +289,77 @@ def test_the_page_is_read_again_after_the_fill_so_a_next_enabled_by_the_fill_is_
     out = _drive(tmp_path, [step(1), REVIEW])
     order = [c[0] for c in out["calls"]]
     assert order[:6] == ["openTab", "classify", "tabUrl", "fill", "classify", "tabUrl"]
+
+
+# ---------- creating the account on a known ATS host (owner decision 2026-10-14) ----------
+
+ACCOUNT = {"t": "create_account", "host": WD}
+
+
+def test_a_sign_up_page_on_a_known_ats_host_gets_the_account_created_once_and_the_run_goes_on(tmp_path):
+    out = _drive(tmp_path, [ACCOUNT, step(1, host=WD), {**REVIEW, "host": WD}], accountMoves=True, record=ON_WD)
+    assert out["record"]["status"] == "ready" and out["record"]["accountTried"] is True
+    (call,) = names(out, "createAccount")
+    assert call[2] == ["allowedHost", "stop"] and call[3] == WD
+    assert "creating_account" in statuses(out)
+    assert out["pressed"] == ["next-1"] and "password" not in str(out["record"]).lower()
+
+
+@pytest.mark.parametrize("host", ["jobs.acme.test", "careers.initech.test"])
+def test_a_sign_up_page_on_a_host_that_is_not_a_known_ats_is_still_a_wall(tmp_path, host):
+    out = _drive(tmp_path, [{"t": "create_account", "host": host}], record={"openUrl": f"https://{host}/apply"})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "create_account")
+    assert names(out, "createAccount") == []
+
+
+@pytest.mark.parametrize("why", ["not_account_form", "several_email", "no_button", "agreement", "login_unavailable", "host"])
+def test_a_sign_up_the_page_refuses_to_be_typed_into_parks_as_a_wall_and_is_not_marked_tried(tmp_path, why):
+    out = _drive(tmp_path, [ACCOUNT], created={"created": False, "why": why}, record=ON_WD)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "create_account") and not r.get("accountTried")
+    assert len(names(out, "createAccount")) == 1 and names(out, "waitForChange") == []
+
+
+def test_a_sign_up_that_does_not_move_the_page_parks_account_not_created(tmp_path):
+    out = _drive(tmp_path, [ACCOUNT], record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "create_account_failed")
+    assert out["record"]["accountTried"] is True
+
+
+def test_a_resume_on_the_same_sign_up_never_creates_a_second_time(tmp_path):
+    first = _drive(tmp_path, [ACCOUNT], record=ON_WD)
+    again = _drive(tmp_path, [ACCOUNT], record=first["record"])
+    assert len(names(again, "createAccount")) == 0
+    assert (again["record"]["status"], again["record"]["why"]) == ("parked", "verify")
+
+
+def test_a_sign_up_that_comes_back_with_the_pages_complaint_parks_account_not_created(tmp_path):
+    """A password rule or an account that already exists: the page names it, nothing is retried."""
+    again = {**ACCOUNT, "key": "after", "errs": [{"label": "Password", "target": "f-pw", "kind": "field"}]}
+    out = _drive(tmp_path, [ACCOUNT, again], accountMoves=True, record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "create_account_failed")
+    assert len(names(out, "createAccount")) == 1
+
+
+def test_a_sign_up_that_comes_back_without_a_complaint_is_waiting_on_the_email(tmp_path):
+    again = {**ACCOUNT, "key": "after"}
+    out = _drive(tmp_path, [ACCOUNT, again], accountMoves=True, record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "verify")
+
+
+def test_an_email_check_page_after_the_press_parks_verify_and_the_resume_signs_in(tmp_path):
+    out = _drive(tmp_path, [ACCOUNT, {"t": "verify", "host": WD}], accountMoves=True, record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "verify")
+    resumed = _drive(tmp_path, [SIGN_IN, step(1, host=WD), {**REVIEW, "host": WD}], signInMoves=True,
+                     record={**out["record"], "hosts": [WD]})
+    assert resumed["record"]["status"] == "ready" and len(names(resumed, "signIn")) == 1
+    assert names(resumed, "createAccount") == []
+
+
+def test_a_stop_before_the_account_is_created_types_nothing(tmp_path):
+    out = _drive(tmp_path, [ACCOUNT], cancelAfter=3, record=ON_WD)   # Stop lands after openTab, classify, tabUrl
+    assert (out["record"]["status"], out["record"]["why"]) == ("stopped", "user")
+    assert names(out, "createAccount") == []
 
 
 # ---------- walls ----------
@@ -1272,7 +1349,8 @@ const ops = ns.queueRun.pageOps({
   frame0: async (tabId, message) => {
     sent.push(["frame0", tabId, { ...message, password: message.password === undefined ? undefined : "<present>" }]);
     if (spec.frame0Throws) throw new Error(`could not reach with ${message.password}`);
-    return "frame0Result" in spec ? spec.frame0Result : { signedIn: "clicked" };
+    return "frame0Result" in spec ? spec.frame0Result
+      : { [message.type === "page_create_account" ? "created" : "signedIn"]: "clicked" };
   },
   api: async (path, init) => {
     sent.push(["api", path, JSON.parse(init.body)]);
@@ -1290,6 +1368,10 @@ main(async () => {
   if (spec.op === "advance") result = await ops.advance(4, spec.frameId ?? 0, "tag-1", spec.advanceOptions);
   if (spec.op === "signIn") {
     result = await ops.signIn({ proposalId: "p1", tabId: 4 },
+      { allowedHost: "jobs.acme.test", ...(spec.stopAfterFetch ? { stop: () => true } : {}) });
+  }
+  if (spec.op === "createAccount") {
+    result = await ops.createAccount({ proposalId: "p1", tabId: 4 },
       { allowedHost: "jobs.acme.test", ...(spec.stopAfterFetch ? { stop: () => true } : {}) });
   }
   if (spec.op === "wait") {
@@ -1372,6 +1454,36 @@ def test_a_failed_sign_in_is_a_fixed_word_and_the_password_never_leaves(tmp_path
     assert "the-password-9" not in str(out["result"]) and "the-password-9" not in str(out["logged"])
     if "login" in spec or spec.get("apiThrows"):
         assert [s[0] for s in out["sent"]] == ["api"], "no page is asked without a login"
+
+
+def test_create_account_fetches_the_login_and_sends_it_to_frame_zero_only(tmp_path):
+    out = _ops(tmp_path, "createAccount")
+    assert out["sent"][0] == ["api", "/api/companion/job-site-login", {"proposal_id": "p1"}]
+    kind, tab, message = out["sent"][1]
+    assert (kind, tab) == ("frame0", 4)
+    assert message == {"type": "page_create_account", "email": "ada@acme.test", "password": "<present>",
+                       "allowedHost": "jobs.acme.test"}
+    assert len(out["sent"]) == 2 and out["result"] == {"created": True}
+
+
+@pytest.mark.parametrize("spec, why", [
+    ({"apiThrows": True}, "login_unavailable"),
+    ({"login": {"email": "a@b.test"}}, "login_unavailable"),
+    ({"frame0Throws": True}, "unreachable"),
+    ({"frame0Result": {"created": False, "why": "not_account_form"}}, "not_account_form"),
+    ({"frame0Result": {"created": False}}, "refused"),
+    ({"frame0Result": None}, "refused"),
+])
+def test_a_failed_account_creation_is_a_fixed_word_and_the_password_never_leaves(tmp_path, spec, why):
+    out = _ops(tmp_path, "createAccount", **spec)
+    assert out["result"] == {"created": False, "why": why}
+    assert "the-password-9" not in str(out["result"]) and "the-password-9" not in str(out["logged"])
+
+
+def test_a_stop_during_the_login_fetch_creates_no_account(tmp_path):
+    out = _ops(tmp_path, "createAccount", stopAfterFetch=True)
+    assert out["result"] == {"created": False, "why": "stopped"}
+    assert [s[0] for s in out["sent"]] == ["api"], "frame 0 was never asked: no password was sent"
 
 
 def test_wait_for_change_returns_as_soon_as_the_fingerprint_differs(tmp_path):

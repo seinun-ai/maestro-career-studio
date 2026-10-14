@@ -799,6 +799,11 @@
     },
     // The same login typed to CREATE the account (owner decision 2026-10-14): top frame only, panel_frame0
     // alone, a fixed word on any failure. The reader itself refuses everything but a sign-up page.
+    page_create_account: (msg) => {
+      if (window.top !== window.self) return { created: false, why: "frame" };
+      try { return ns.pageReader.createAccount({ email: msg.email, password: msg.password, allowedHost: msg.allowedHost }); }
+      catch { return { created: false, why: "error" }; }
+    },
   };
 
   // ONE LIVE listener per isolated world. panel_prepare re-injects this file

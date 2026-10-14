@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- A Workday-style Create Account page, modelled on the structure observed live on a Workday tenant
+     (2026-10-14, labelled ATS-W in the plan): an email box (autocomplete=email, a plain text input), two
+     new-password boxes, ONE agreement checkbox ("I agree to creating this account…"), and the button as the
+     vendor draws it: a visible overlay div[role=button] labelled "Create Account" over a hidden real submit
+     (aria-hidden, a "createAccountSubmitButton" automation id) that must never be the one pressed. A
+     honeypot input ("This input is for robots only") sits below the form, named "website".
+     Oracle: `created` counts presses of the overlay; `hiddenSubmit` counts presses of the hidden submit;
+     `typed` holds what each box held at the press; `agreed` is the checkbox; `honeypot` its value;
+     `marketing` the optional opt-in's state (when the page has one). -->
+<html><head><title>Create Account</title></head><body>
+<main>
+  <h2>Create Account</h2>
+  <form data-automation-id="signInForm" id="f" onsubmit="return false">
+    <div><label for="email">Email Address<abbr aria-hidden="true">*</abbr></label>
+      <input type="text" id="email" data-automation-id="email" aria-required="true" autocomplete="email"></div>
+    <div><label for="pw">Password<abbr aria-hidden="true">*</abbr></label>
+      <input type="password" id="pw" data-automation-id="password" aria-required="true" autocomplete="new-password"></div>
+    <div><label for="pw2">Verify New Password<abbr aria-hidden="true">*</abbr></label>
+      <input type="password" id="pw2" data-automation-id="verifyPassword" aria-required="true" autocomplete="new-password"></div>
+    <div><input type="checkbox" id="agree" aria-checked="false" data-automation-id="createAccountCheckbox">
+      <label for="agree">I agree to creating this account to apply for positions with Acme</label></div>
+    <!-- MARKETING -->
+    <div style="position: relative; height: 40px;">
+      <div role="button" tabindex="0" aria-label="Create Account" data-automation-id="click_filter" id="overlay"
+           style="position:absolute; inset:0; cursor:pointer;">Create Account</div>
+      <button type="submit" id="hidden-submit" data-automation-id="createAccountSubmitButton" tabindex="-2" aria-hidden="true"
+              style="position:absolute; inset:0; opacity:0;">Create Account</button>
+    </div>
+  </form>
+  <div>Already have an account? <button type="button" data-automation-id="signInLink">Sign In</button></div>
+</main>
+<div>
+  <label for="hp">Enter website. This input is for robots only, do not enter if you're human.</label>
+  <input type="text" id="hp" name="website" data-automation-id="beecatcher">
+</div>
+<script>
+  window.__oracle = window.__oracle || {};
+  Object.assign(window.__oracle, { created: 0, hiddenSubmit: 0, typed: null, agreed: false, honeypot: "", marketing: false });
+  const get = (id) => document.getElementById(id);
+  const snapshot = () => ({ email: get("email").value, pw: get("pw").value, pw2: get("pw2").value });
+  get("overlay").addEventListener("click", () => {
+    window.__oracle.created += 1;
+    window.__oracle.typed = snapshot();
+    window.__oracle.agreed = get("agree").checked;
+    window.__oracle.honeypot = get("hp").value;
+    const m = document.getElementById("marketing");
+    window.__oracle.marketing = m ? m.checked : false;
+  });
+  get("hidden-submit").addEventListener("click", () => { window.__oracle.hiddenSubmit += 1; });
+</script>
+</body></html>

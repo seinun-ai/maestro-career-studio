@@ -39,10 +39,17 @@
  * CAPTCHAs are refused and park. The password is a parameter of that one call: never stored, never
  * logged, never in the return value (a fixed reason word, nothing else).
  *
+ * `createAccount` is the second place the saved job-site login is typed (owner decision 2026-10-14): on a
+ * known ATS host, in the TOP frame, on a page with exactly one email box and exactly two new-password boxes
+ * and nothing else asked (no code box, no CAPTCHA). It types the email and the same password twice,
+ * NEVER into a honeypot, ticks only a required checkbox whose own words agree to create the account or to
+ * the privacy notice (a marketing opt-in is never ticked), and presses only the button whose whole label is
+ * "Create Account". As `signIn`, the password is a parameter of that one call and every outcome is a fixed word.
+ *
  * `applyLink` / `applyTarget` read the EMPLOYER's apply link off the posting page the user is
  * viewing (design Part 7): an absolute http(s) link to another site, never fetched, never followed.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, pageErrors, pageRequired, fieldWords, uploadTag, advance, signIn, applyUrl, applyLink, applyTarget }.
+ * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, pageErrors, pageRequired, fieldWords, uploadTag, advance, signIn, createAccount, applyUrl, applyLink, applyTarget }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -937,5 +944,108 @@
     return { signedIn: "clicked" };
   }
 
-  ns.pageReader = { summary, pageErrors, pageRequired, fieldWords: questionOf, uploadTag: upTagOf, advance, signIn, applyUrl, applyLink, applyTarget };
+  // ---------- creating the account (owner decision 2026-10-14) ----------
+
+  const CREATE_ACCOUNT_BUTTON = /^\s*create (?:an )?account\s*$/i;
+  // An account checkbox that agrees to creating the account or to the privacy notice / terms. Anything
+  // that offers email, news, offers or marketing is an opt-in and is never ticked, whatever else it says.
+  const AGREES = /\b(?:i )?(?:agree|accept|consent|acknowledge)\b[^.]{0,80}\b(?:creat\w*\s+(?:this|an|my|the|a)?\s*account|privacy|terms)\b/i;
+  const OPT_IN = /\b(?:newsletters?|marketing|promotion\w*|offers?|e-?mail me|emails? (?:me|updates)|text me|sms|receive (?:e-?mails?|news|updates|information|communications?|alerts?))\b/i;
+  const ACCOUNT_BOX_MARK = /createAccountCheckbox|privacy|terms/i;
+  const HONEY = /beecatcher|honey-?pot/i;
+
+  const labelTextOf = (el) => squash([...(el.labels ?? [])].map((l) => l.textContent).join(" ")
+    || el.getAttribute("aria-label") || "");
+  /** A box a bot is meant to fill and a person never sees or never types in: named so by the page's words
+   * or markup, or drawn off the page. Never typed into, whatever else it looks like. */
+  const isHoneypot = (el) => ns.fillBase.robotTrap(el, labelTextOf(el))
+    || (el.getAttribute("name") ?? "").toLowerCase() === "website"
+    || [el.id, el.getAttribute("name"), el.getAttribute("data-automation-id"), el.className].some((v) => HONEY.test(String(v ?? "")));
+  const isAccountEmail = (el) => el.type === "email"
+    || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "email" || t === "username")
+    || [el.name, el.placeholder, el.getAttribute("aria-label"), labelTextOf(el)].some((t) => EMAIL_LABEL.test(t ?? ""));
+  const newPasswordBox = (el) => el.type === "password"
+    && (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).includes("new-password");
+
+  /** The account agreement to tick, if the page asks for one: `{el}`, `null` (none asked), or `{refuse}`. */
+  function agreementCheckbox(scope) {
+    const boxes = [...scope.querySelectorAll('input[type="checkbox"], [role="checkbox"]')].filter((el) => shown(el) || shown(el.parentElement));
+    const wanted = boxes.filter((el) => {
+      const words = squash([labelTextOf(el), el.getAttribute("aria-label"), el.closest("label")?.textContent].join(" "));
+      const required = el.required === true || el.getAttribute("aria-required") === "true" || marksRequired(words)
+        || ACCOUNT_BOX_MARK.test(el.getAttribute("data-automation-id") ?? "");
+      return required && AGREES.test(words) && !OPT_IN.test(words);
+    });
+    if (wanted.length > 1) return { refuse: true };
+    return wanted.length === 1 ? { el: wanted[0] } : null;
+  }
+
+  /** The one control whose whole label is "Create Account": a real button, or the overlay div a vendor lays over a
+   * hidden submit (its visible face). Never one marked as a submit by the page, never a hidden one. */
+  function createAccountButton(scope) {
+    const found = [...scope.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"]')]
+      .filter((el) => shown(el) && !submitMarked(el) && el.getAttribute("aria-hidden") !== "true"
+        && labels(el).some((t) => CREATE_ACCOUNT_BUTTON.test(t)));
+    return found.length === 1 ? found[0] : null;
+  }
+
+  function createAccount(args) {
+    try {
+      return createAccountOnce(args ?? {});
+    } catch {
+      return { created: false, why: "error" };
+    }
+  }
+
+  function createAccountOnce({ email, password, allowedHost }) {
+    if (window.top !== window.self) return { created: false, why: "frame" };
+    const text = (v) => typeof v === "string" && v !== "";
+    if (!text(email) || !text(password) || !text(allowedHost)) return { created: false, why: "missing" };
+    if (location.hostname.toLowerCase() !== allowedHost.toLowerCase()) return { created: false, why: "host" };
+    if ([...document.querySelectorAll("iframe")].some(challengeFrame)) return { created: false, why: "captcha" };
+    if (hasCodeInput()) return { created: false, why: "verify" };
+    // Exactly the shape of a sign-up: two new-password boxes, one email box. Anything else is not asked.
+    const passwords = passwordInputs();
+    if (passwords.length !== 2 || !passwords.every(newPasswordBox)) return { created: false, why: "not_account_form" };
+    if (!passwords.every((box) => enabled(box) && !box.readOnly)) return { created: false, why: "locked" };
+    const scope = passwords[0].form ?? passwords[0].closest(FORM) ?? document;
+    const emails = [...scope.querySelectorAll("input")].filter((el) => shown(el) && enabled(el) && !el.readOnly
+      && !ns.fillBase.isPasswordBox(el) && !/^(hidden|checkbox|radio|file|submit|button|reset|image|search|password)$/.test(el.type)
+      && !isHoneypot(el) && isAccountEmail(el));
+    if (emails.length !== 1) return { created: false, why: emails.length ? "several_email" : "no_email" };
+    const agreement = agreementCheckbox(scope);
+    if (agreement?.refuse) return { created: false, why: "agreement" };
+    const go = createAccountButton(scope);
+    if (!go) return { created: false, why: "no_button" };
+
+    const { typeText, enter, leave } = ns.fillBase;
+    try {
+      for (const [el, value] of [[emails[0], email], [passwords[0], password], [passwords[1], password]]) {
+        enter(el);
+        typeText(el, value);
+        leave(el);
+        if (el.value !== value) return { created: false, why: "typing" };
+      }
+      if (agreement?.el && !(agreement.el.checked === true || agreement.el.getAttribute("aria-checked") === "true")) {
+        agreement.el.click();
+        if (!(agreement.el.checked === true || agreement.el.getAttribute("aria-checked") === "true")) {
+          return { created: false, why: "agreement" };
+        }
+      }
+    } catch {
+      return { created: false, why: "typing" };   // a fixed word: an error's text could carry a value
+    }
+    // The page's own handlers ran while typing: the button is judged again before it is pressed.
+    if (!go.isConnected || !shown(go) || !enabled(go) || !labels(go).some((t) => CREATE_ACCOUNT_BUTTON.test(t))) {
+      return { created: false, why: "button" };
+    }
+    try {
+      go.click();
+    } catch {
+      return { created: false, why: "click" };
+    }
+    return { created: "clicked" };
+  }
+
+  ns.pageReader = { summary, pageErrors, pageRequired, fieldWords: questionOf, uploadTag: upTagOf, advance, signIn, createAccount, applyUrl, applyLink, applyTarget };
 })();

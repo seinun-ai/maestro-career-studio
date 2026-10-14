@@ -7,7 +7,7 @@
  * from a message transport; the rest (open a tab, fill, save) are the host's.
  *
  * THE STATE MACHINE (record.status; saved at every change and every page boundary)
- *   opening → [signing_in] → filling → advancing → (next page: filling → advancing …)
+ *   opening → [signing_in | creating_account] → filling → advancing → (next page: filling → advancing …)
  *     → ready        a review page, filled; the user's Submit is the only thing left. Only with
  *                    evidence it was the application: a step behind it, or a field this page's fill
  *                    wrote or confirmed. A start chooser or a posting with a stray control parks
@@ -21,6 +21,8 @@
  *                    real Next again sets `movedOn` (the card offers a Resume that fills it).
  *     → parked       the run needs the user or hit a wall; `why` says which:
  *         captcha | create_account | verify | board_native   the page kind, a wall by design
+ *         create_account_failed   the sign-up page did not take the new account (a password rule, an account
+ *                          that exists, no change); never retried
  *         sign_in_failed   the saved login did not work; never retried (a lockout)
  *         sign_in_yourself the sign-in page is on a host that is not a known ATS (shared/ats-hosts.js):
  *                          the saved password is not typed there; the user signs in and presses Resume
@@ -140,7 +142,7 @@
   // Ready that is another job being looked at, and an application sent by hand is not this one's.
   const APPLICATION_PAGES = new Set(["review", "form_step"]);
   const DEPS = ["openTab", "classify", "advance", "fill", "signIn", "waitForChange", "tabUrl",
-    "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "pageRequired", "fix", "attachTo", "uploads"];
+    "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "pageRequired", "fix", "attachTo", "uploads", "createAccount"];
   // The fill just wrote the file: the page may be slow to show its row, and a second copy is what the hedge is for.
   const FILE_WRITTEN = new Set(["attached", "unconfirmed"]);
   const MAX_FIX_ROUNDS = 3;   // repairs on one page; each error is repaired once
@@ -479,6 +481,25 @@
           kind = "review";
           by = "submit_button";   // its Apply is a Submit-worded button
         }
+        // A sign-up page on a known ATS host: the run creates the account with the saved login, once (owner
+        // decision 2026-10-14). Everywhere else, and for anything the page refuses, it is still a wall.
+        if (kind === "create_account") {
+          // Seen again after the press: the site complained (a password rule, an account that exists), or it
+          // is waiting on the email.
+          if (record.accountTried === true) return await park((summary.errors ?? 0) > 0 ? "create_account_failed" : "verify");
+          const allowedHost = record.hosts.at(-1);
+          if (!ns.atsHosts.isKnown(allowedHost)) return await park("create_account");
+          await update({ status: "creating_account" });
+          const made = await act(deps.createAccount, record, { allowedHost, stop: stopping });
+          if (!made?.created) return await park("create_account");
+          await update({ accountTried: true });
+          const waited = await waitFor(fingerprint(url, summary));
+          if (waited?.changed !== true || (waited.sameStep === true && (waited.errors ?? 0) > 0)) {
+            return await park("create_account_failed");
+          }
+          moved();
+          continue;
+        }
         if (WALLS.has(kind)) return await park(kind);
         if (kind === "closed") return await finish("stopped", "closed");
         if (kind === "unknown") return await park("unknown_page");
@@ -693,33 +714,35 @@
       return answer?.clicked === true ? { clicked: true } : { clicked: false, why: typeof answer?.why === "string" ? answer.why : "gate" };
     }
 
-    /** Fetch the saved login for this record's job and type it in. The password is a local of this
-     * call. Every failure is a fixed word, so no error text can carry a value out. */
-    async function signIn(record, { allowedHost, stop } = {}) {
+    /** Fetch the saved login for this record's job and send it to the top document in ONE call (`message`: `page_sign_in` or
+     * `page_create_account`; `key` is the answer's word for "done": `signedIn` or `created`).
+     * The password is a local of this call, never kept. Every failure is a fixed word, so no error text can
+     * carry a value out. */
+    async function withLogin(record, { allowedHost, stop } = {}, key, message) {
       let login = null;
+      const no = (why) => ({ [key]: false, why });
       try {
         login = await api("/api/companion/job-site-login", {
           method: "POST", body: JSON.stringify({ proposal_id: record.proposalId }),
         });
-        if (typeof login?.email !== "string" || typeof login?.password !== "string") {
-          return { signedIn: false, why: "login_unavailable" };
-        }
+        if (typeof login?.email !== "string" || typeof login?.password !== "string") return no("login_unavailable");
       } catch {
-        return { signedIn: false, why: "login_unavailable" };
+        return no("login_unavailable");
       }
-      // A Stop pressed during the fetch must not type the login or press Sign in.
-      if (stop?.()) return { signedIn: false, why: "stopped" };
+      // A Stop pressed during the fetch must not type the login or press anything.
+      if (stop?.()) return no("stopped");
       try {
-        const result = await frame0(record.tabId, {
-          type: "page_sign_in", email: login.email, password: login.password, allowedHost,
-        });
-        return result?.signedIn === "clicked" ? { signedIn: true } : { signedIn: false, why: typeof result?.why === "string" ? result.why : "refused" };
+        const result = await frame0(record.tabId, { ...message, email: login.email, password: login.password, allowedHost });
+        return result?.[key] === "clicked" ? { [key]: true } : no(typeof result?.why === "string" ? result.why : "refused");
       } catch {
-        return { signedIn: false, why: "unreachable" };
+        return no("unreachable");
       } finally {
         login = null;
       }
     }
+    const signIn = (record, options) => withLogin(record, options, "signedIn", { type: "page_sign_in" });
+    /** The same login typed to create the account (a sign-up page on a known ATS host). */
+    const createAccount = (record, options) => withLogin(record, options, "created", { type: "page_create_account" });
 
     /** Poll until the tab's fingerprint differs from `before` (or, with the page unreadable, its
      * address does), `ms` runs out, or `stop()` says so. `{changed, url, errors, sameStep, fresh}`:
@@ -759,7 +782,7 @@
       }
     }
 
-    return { classify, pageErrors, pageRequired, advance, signIn, waitForChange };
+    return { classify, pageErrors, pageRequired, advance, signIn, createAccount, waitForChange };
   }
 
   ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK };

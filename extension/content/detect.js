@@ -269,7 +269,7 @@ function fillableControls() {
   const SITE_CHROME = 'header, nav, footer, [role="banner"], [role="navigation"], [role="contentinfo"], [role="menubar"]';
   for (const el of document.querySelectorAll(
     `input, select, textarea, [role="combobox"], [role="radio"], [role="checkbox"], ${POPUP}`)) {
-    if (el.matches(POPUP) && (el.closest(SITE_CHROME) || SEARCH_NAME.test(el.textContent || ""))) continue;
+    if (el.matches?.(POPUP) && (el.closest?.(SITE_CHROME) || SEARCH_NAME.test(el.textContent || ""))) continue;
     const type = (el.getAttribute("type") || "text").toLowerCase();
     if (el.tagName === "INPUT" && SKIPPED_TYPES.includes(type)) continue;
     const words = ["name", "id", "aria-label", "placeholder"].map((key) => el.getAttribute(key) || "");

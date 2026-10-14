@@ -56,7 +56,7 @@
     }
   };
   // A record that was mid-air when the panel closed is not running any more.
-  const IN_AIR = new Set(["waiting", "opening", "signing_in", "filling", "advancing"]);
+  const IN_AIR = new Set(["waiting", "opening", "signing_in", "creating_account", "filling", "advancing"]);
   const MAX_PHRASE = 300;
   // What the fill report counts as filled on a page (the engine wrote it and checked it).
   const WROTE = new Set(["verified", "closest", "assumed"]);

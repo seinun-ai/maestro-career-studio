@@ -194,6 +194,14 @@ def panel_handlers(tmp_path_factory):
                                        "msg": {"type": "panel_frame0", "tabId": 9,
                                                "message": {"type": "page_sign_in", "email": "a@b.test",
                                                            "password": "pw-test-only", "allowedHost": "x"}}},
+        "frame0_create_account": {"sender": PANEL, "reply": {"ok": True, "data": {"created": "clicked"}},
+                                  "msg": {"type": "panel_frame0", "tabId": 7,
+                                          "message": {"type": "page_create_account", "email": "ada@acme.test",
+                                                      "password": "pw-test-only", "allowedHost": "x.test"}}},
+        "broadcast_create_account": {"sender": PANEL, "reply": {"ok": True, "data": {}},
+                                     "msg": {"type": "page_broadcast", "tabId": 7,
+                                             "message": {"type": "page_create_account", "email": "ada@acme.test",
+                                                         "password": "pw-test-only", "allowedHost": "x.test"}}},
         "broadcast_sign_in": {"sender": PANEL, "reply": {"ok": True, "data": {}},
                               "msg": {"type": "page_broadcast", "tabId": 7,
                                       "message": {"type": "page_sign_in", "email": "ada@acme.test",
@@ -343,6 +351,17 @@ def test_the_saved_login_reaches_the_top_document_only_and_never_the_broadcast(p
     assert refused["reply"] == {"ok": False, "error": 'not broadcastable: "page_sign_in"'}
     assert refused["addressed"] == []
     assert panel_handlers["frame0_sign_in_from_a_page"]["addressed"] == []
+
+
+def test_the_account_login_reaches_the_top_document_only_and_never_the_broadcast(panel_handlers):
+    """`page_create_account` carries the same password as `page_sign_in` and goes the same one way."""
+    sent = panel_handlers["frame0_create_account"]
+    assert sent["reply"] == {"ok": True, "data": {"created": "clicked"}}
+    assert [a["options"] for a in sent["addressed"]] == [{"frameId": 0}]
+    assert sent["addressed"][0]["message"]["type"] == "page_create_account"
+    refused = panel_handlers["broadcast_create_account"]
+    assert refused["reply"] == {"ok": False, "error": 'not broadcastable: "page_create_account"'}
+    assert refused["addressed"] == []
 
 
 def test_a_sender_that_is_not_this_extension_never_reaches_a_handler(panel_handlers):
