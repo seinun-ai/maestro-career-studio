@@ -159,6 +159,7 @@ main(async () => {
     if (step.tabUrl !== undefined) tabUrlOverride = step.tabUrl;
     if (step.page !== undefined) at = step.page;
     if (step.skew) skew += step.skew;
+    if (step.dropInventory) delete spec.frames.fill_inventory;
     if (step.seed) {
       ns.panel.actionStore().write({ runs: step.seed });
       ns.panel.actionStore().render();
@@ -653,6 +654,12 @@ def test_a_park_on_questions_watches_those_fields_in_the_runs_tab_once(tmp_path)
     assert _page_messages(walled, "fill_watch") == []
 
 
+def test_a_resume_whose_page_read_fails_still_ends_the_pages_watch(tmp_path):
+    """The inventory read after Resume throws: the watch the park started is ended, not left running."""
+    out = _fixed(tmp_path, [{"dropInventory": True}, {"press": "run-resume"}])
+    assert [msg["message"]["fids"] for msg in _page_messages(out, "fill_watch")][-1] == []
+
+
 def test_skipping_the_job_ends_the_pages_watch_and_asks_it_nothing(tmp_path):
     out = _fixed(tmp_path, [{"press": "run-skip"}])
     assert [msg["message"]["fids"] for msg in _page_messages(out, "fill_watch")] == [["q1"], []]
@@ -690,7 +697,7 @@ def test_a_fix_whose_move_the_engine_does_not_know_is_a_missing_technique(tmp_pa
 def test_the_generic_move_is_known_so_it_is_no_missing_technique_and_teaches_nothing(tmp_path):
     out = _fixed(tmp_path, [{"press": "run-resume"}], shown={"q1": {**A_FIELD, "gestures": ["open:press"]}})
     assert _gap_posts(out) == [[FIX_GAP]]
-    assert _entries(out) == {}
+    assert _book(out) is None   # nothing worth teaching: the book is not even written
 
 
 def test_the_recipe_book_is_taught_even_when_the_fill_log_is_off_and_the_sw_posts_nothing(tmp_path):

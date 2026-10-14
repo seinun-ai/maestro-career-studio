@@ -651,6 +651,68 @@ def test_the_gesture_log_is_bounded_and_holds_only_the_vocabulary(page, load):
     assert set(got["gestures"]) <= GESTURES and len(got["gestures"]) <= 4
 
 
+TWO_SEARCHES = """<label for='a'>Alpha</label><input id='a' role='combobox' aria-autocomplete='list' aria-controls='a-list'>
+<ul id='a-list' role='listbox'></ul>
+<label for='b'>Beta</label><input id='b' role='combobox' aria-autocomplete='list' aria-controls='b-list'>
+<ul id='b-list' role='listbox'></ul>
+<ul id='plain'><li id='plain-item'>Not an option</li></ul>
+<script>
+for (const id of ['a', 'b']) {
+  const box = document.getElementById(id);
+  const ul = document.getElementById(id + '-list');
+  box.addEventListener('input', () => { ul.innerHTML = "<li role='option'>" + id + "-one</li>"; });
+}
+</script>"""
+
+
+def test_a_pick_in_one_fields_popup_is_never_credited_to_the_field_typed_in_before(page, load):
+    fields = engine(page, load, TWO_SEARCHES)
+    a, b = fields["Alpha"], fields["Beta"]
+    watch(page, a)
+    watch(page, b)
+    page.focus("#a")
+    page.keyboard.type("x")
+    page.wait_for_timeout(450)
+    page.keyboard.press("Tab")
+    page.keyboard.type("y")
+    page.wait_for_timeout(450)
+    pick(page, "b-one")
+    assert report(page, a)["gestures"] == []
+    assert report(page, b)["gestures"] == ["search:debounce"]
+
+
+def test_the_keyboard_opens_a_search_and_a_pause_then_a_pick_commits_it(page, load):
+    f = engine(page, load, fixture_html("react_select.html"))["Country"]
+    watch(page, f)
+    page.focus("#country")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.type("Can")
+    page.wait_for_timeout(450)
+    pick(page, "Canada")
+    assert report(page, f)["gestures"] == ["open:keys", "search:debounce"]
+
+
+def test_a_pick_after_an_enter_in_the_same_burst_is_not_a_debounce(page, load):
+    f = engine(page, load, fixture_html("react_select.html"))["Country"]
+    watch(page, f)
+    page.focus("#country")
+    page.keyboard.type("Can")
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(450)
+    pick(page, "Canada")
+    assert report(page, f)["gestures"] == ["search:enter"]
+
+
+def test_a_press_on_a_plain_list_item_is_not_a_pick(page, load):
+    f = engine(page, load, TWO_SEARCHES)["Alpha"]
+    watch(page, f)
+    page.focus("#a")
+    page.keyboard.type("x")
+    page.wait_for_timeout(450)
+    page.click("#plain-item")
+    assert report(page, f)["gestures"] == []
+
+
 # ---------- a demonstration teaches the book (Task 20b)
 
 
@@ -675,6 +737,17 @@ def test_a_demonstration_on_a_second_site_trusts_the_family_like_an_engine_win(p
     b = demonstrate(page, demonstrate(page, None, [shown(A)]), [shown(B)], DAY + 1)
     assert state(b, "f:fam1") == "trusted" and state(b, "s:siteb") == "probation"
     assert consult(page, b, C, DAY + 1) == {"key": "f:fam1", "variant": KEYS_FIRST}
+
+
+def test_a_generic_demonstration_never_demotes_a_recipe_the_engine_learned(page, load):
+    """The user's press says nothing about a recipe whose move was never tried on this fix."""
+    book_page(page, load)
+    trusted = learn(page, learn(page, None, [kept(A), kept(B)]), [kept(A, used="s:sitea")], DAY + 1)
+    assert state(trusted, "f:fam1") == "trusted" and state(trusted, "s:sitea") == "trusted"
+    after = demonstrate(page, trusted, [shown(A, {"open": "press"}), shown(C, {"open": "press"})], DAY + 2)
+    assert (state(after, "f:fam1"), state(after, "s:sitea")) == ("trusted", "trusted")
+    assert consult(page, after, A, DAY + 2) == {"key": "s:sitea", "variant": KEYS_FIRST}
+    assert set(after["entries"]) == set(trusted["entries"])
 
 
 def test_a_demonstration_of_the_generic_move_teaches_nothing_and_unknown_words_are_dropped(page, load):

@@ -26,7 +26,9 @@
  * TYPES and, for a fixed few keys, their NAMES (ArrowDown, ArrowUp, Enter,
  * Space, Tab, Escape); it never reads `key` for anything else and never
  * `value`, so what was typed is not in it to leak. Only trusted input counts: the
- * engine's own presses and keys are synthetic.
+ * engine's own presses and keys are synthetic. (A page's own script can fire a trusted
+ * `input` with execCommand("insertText"); that can only shape a lesson for its own site
+ * key, and a family is trusted only after two hosts agree.)
  *
  * Bump ENGINE_VERSION when a move's meaning changes: every recipe learned
  * under the old meaning then matches nothing and expires.
@@ -106,8 +108,11 @@
   const MAX_LOG = 64;
   const MAX_WATCHED = 40;
   // What a pointer lands on when it picks from a popup.
-  const OPTIONISH = '[role="option"], [role="listbox"], [role="menu"], [role="menuitem"], [role="treeitem"], [role="tree"], li';
-  const watching = new Map(); // fid -> { family, site, log, engaged }
+  const OPTIONISH = '[role="option"], [role="listbox"], [role="menu"], [role="menuitem"], [role="treeitem"], [role="tree"]';
+  const watching = new Map(); // fid -> { family, site, log }
+  // The ONE field the user's hands are on: engaging a field disengages every other, so a pick in
+  // one field's popup is never credited to another field they typed in earlier.
+  let active = null;
   const EVENTS = ["pointerdown", "keydown", "input"];
 
   // Whether the event's path runs through this field (its element or any part of it).
@@ -123,27 +128,23 @@
     if (!e.isTrusted) return;
     const path = e.composedPath();
     const at = performance.now();
-    for (const [fid, entry] of watching) {
-      const inside = within(path, fid);
-      if (e.type === "pointerdown") {
-        if (inside) {
-          entry.engaged = true;
-          push(entry, { t: "press", at });
-        } else if (entry.engaged) {
-          // A pick lands in the popup; anywhere else the user has moved on.
-          if (path.some((n) => n instanceof Element && n.matches(OPTIONISH))) push(entry, { t: "pick", at });
-          else entry.engaged = false;
-        }
-      } else if (inside && e.type === "input") {
-        entry.engaged = true;
-        push(entry, { t: "type", at });
-      } else if (inside && e.type === "keydown") {
-        entry.engaged = true;
+    const fid = [...watching.keys()].find((one) => within(path, one));
+    if (fid !== undefined) {
+      active = fid;
+      const entry = watching.get(fid);
+      if (e.type === "pointerdown") push(entry, { t: "press", at });
+      else if (e.type === "input") push(entry, { t: "type", at });
+      else {
         // Only the names above, by exact match: a printable key is never read past this lookup.
         const name = KEY_NAMES[e.key];
         if (name) push(entry, { t: "key", k: name, at });
       }
+      return;
     }
+    if (e.type !== "pointerdown" || !watching.has(active)) return;
+    // A pick lands in the popup of the field the user is on; anywhere else they have moved on.
+    if (path.some((n) => n instanceof Element && n.matches(OPTIONISH))) push(watching.get(active), { t: "pick", at });
+    else active = null;
   };
 
   // The recipe book's moves a log says the user made: how the widget was opened (the first
@@ -174,7 +175,7 @@
     const keys = el && shape ? signature(el, shape) : null;
     if (!keys || (!watching.has(fid) && watching.size >= MAX_WATCHED)) return false;
     if (!watching.size) for (const type of EVENTS) document.addEventListener(type, onEvent, true);
-    watching.set(fid, { ...keys, log: [], engaged: false });
+    watching.set(fid, { ...keys, log: [] });
     return true;
   };
   // What the user did to a watched field, once: `{ family, site, gestures }`, or null for a field
@@ -183,12 +184,14 @@
     const entry = watching.get(fid);
     if (!entry) return null;
     watching.delete(fid);
+    if (active === fid) active = null;
     if (!watching.size) stopListening();
     return { family: entry.family, site: entry.site, gestures: gesturesOf(entry.log) };
   };
   // Forget every watch (a new park replaces the last one).
   const unwatch = () => {
     watching.clear();
+    active = null;
     stopListening();
   };
 

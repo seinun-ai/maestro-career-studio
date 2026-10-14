@@ -186,12 +186,12 @@
   // left open: `{ recipe, moves }` each, the moves being the known words the
   // page's gesture watcher named (content/recipes.js). It is one kept run
   // per key, so it climbs the same lifecycle an engine win does and no faster:
-  // never trusted from one demonstration, and only a move other than the
-  // generic one is held. A demonstration that disagrees with a recipe the
-  // engine already tried (the other move won) demotes it, as an engine
-  // contradiction would.
+  // never trusted from one demonstration. Only moves other than the generic one
+  // are held, and the generic ones are dropped BEFORE the lifecycle sees them:
+  // the user's press says nothing against a recipe whose move was never tried
+  // on this fix, so it must not demote one (an engine contradiction would).
   const demonstrate = (raw, shown, today) => learn(raw, (Array.isArray(shown) ? shown : [])
-    .map(({ recipe, moves }) => ({ recipe, used: null, moves, outcome: "kept" })), today);
+    .map(({ recipe, moves }) => ({ recipe, used: null, moves: learnt(moves), outcome: "kept" })), today);
 
   const size = (raw) => Object.keys(clean(raw).entries).length;
 

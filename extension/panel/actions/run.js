@@ -278,9 +278,9 @@
     const watched = (record.open ?? []).map((one) => one.fid);
     state.watching.delete(record.id);
     if (!watched.length) return;
-    const frames = await host.tabBroadcast(record.tabId, { type: "fill_watch_report", fids: watched });
+    const frames = await host.tabBroadcast(tabOf(record), { type: "fill_watch_report", fids: watched });
     const seen = Object.assign({}, ...frames.map((frame) => frame.result).filter((one) => one && typeof one === "object"));
-    const pageHost = hostOf(await host.tabUrl(record.tabId).catch(() => ""));
+    const pageHost = hostOf(await host.tabUrl(tabOf(record)).catch(() => ""));
     const rows = [];
     const lessons = [];
     for (const fid of watched) {
@@ -293,22 +293,29 @@
                                   gap: { family: bare(got.family), host: pageHost, shape: field.shape, outcome } });
       rows.push(gap("user_fixed"));
       const moves = movesOf(gestures);
-      if (Object.keys(moves).length) lessons.push({ recipe: { family: got.family, site: got.site }, moves });
-      else rows.push(gap("missing_technique"));
+      if (!Object.keys(moves).length) rows.push(gap("missing_technique"));
+      const teach = teachable(moves);
+      if (Object.keys(teach).length) lessons.push({ recipe: { family: got.family, site: got.site }, moves: teach });
     }
     if (lessons.length) await store.recipes().recordDemonstration(lessons);
     postGaps(store, record, rows);
   }
 
   /** The recipe book's moves a gesture list names: `open:keys` is `{open: "keys"}`. Only the words
-   * the book knows survive (its own `clean` drops the rest again). */
+   * the book knows survive. */
   function movesOf(gestures) {
     const moves = {};
     for (const one of gestures) {
       const [axis, move] = String(one).split(":");
-      if (axis && move && ns.recipeBook.AXES[axis]?.includes(move)) moves[axis] = move;
+      if (ns.recipeBook.AXES[axis]?.includes(move)) moves[axis] = move;
     }
     return moves;
+  }
+
+  /** Of those moves, the ones worth teaching: the generic move (the first of its axis) is what the
+   * engine does anyway, and a recipe is never judged by it. */
+  function teachable(moves) {
+    return Object.fromEntries(Object.entries(moves).filter(([axis, move]) => move !== ns.recipeBook.AXES[axis][0]));
   }
 
   /** The fill of one page, pinned to the run's tab: its job and application from the record, the
@@ -463,30 +470,38 @@
   async function afterTyping(store, record) {
     const rs = runStore(store, record);
     const host = store.run;
-    const frames = await host.tabBroadcast(record.tabId,
-      { type: "fill_inventory", readOnly: true, consentForms: rs.read().consentForms === true });
-    const seen = rs.read().receiptSeen?.fids;
-    await ns.panelRecordReceipt(rs, rs.read(), 0, () => ns.receipt.fromEdits(frames, seen),
-      { inventory: false, consentForms: rs.read().consentForms === true });
-    const fields = new Map(frames.flatMap((frame) => frame.result?.fields ?? []).map((one) => [one.fid, one]));
-    // The fix itself, apart from the answers: what the user did teaches the recipe book.
-    await learnFromFix(store, record, fields, host).catch(warn("could not learn from the fix"));
-    const items = [];
-    for (const one of record.open ?? []) {
-      const field = fields.get(one.fid);
-      const answer = answerText(field?.committed);
-      if (!field || field.touched !== true || field.multiline === true || field.policyBlocked === true
-        || ns.isPolicyBlocked(one.question) || !answer) continue;
-      items.push({ label: one.question, answer });
-    }
-    if (!items.length) return;
     try {
-      state.undo.set(record.id, await ns.panelLearn.learnAnswers(store, items,
-        { company: record.company, location: record.location }));
-      record.learned = { count: items.length, undone: false, failed: false };
-    } catch (err) {
-      console.warn("[maestro-cs] learning the answers failed:", err);
-      record.learned = { count: 0, undone: false, failed: true };
+      const frames = await host.tabBroadcast(record.tabId,
+        { type: "fill_inventory", readOnly: true, consentForms: rs.read().consentForms === true });
+      const seen = rs.read().receiptSeen?.fids;
+      await ns.panelRecordReceipt(rs, rs.read(), 0, () => ns.receipt.fromEdits(frames, seen),
+        { inventory: false, consentForms: rs.read().consentForms === true });
+      const fields = new Map(frames.flatMap((frame) => frame.result?.fields ?? []).map((one) => [one.fid, one]));
+      // The fix itself, apart from the answers: what the user did teaches the recipe book.
+      await learnFromFix(store, record, fields, host).catch(warn("could not learn from the fix"));
+      const items = [];
+      for (const one of record.open ?? []) {
+        const field = fields.get(one.fid);
+        const answer = answerText(field?.committed);
+        if (!field || field.touched !== true || field.multiline === true || field.policyBlocked === true
+          || ns.isPolicyBlocked(one.question) || !answer) continue;
+        items.push({ label: one.question, answer });
+      }
+      if (!items.length) return;
+      try {
+        state.undo.set(record.id, await ns.panelLearn.learnAnswers(store, items,
+          { company: record.company, location: record.location }));
+        record.learned = { count: items.length, undone: false, failed: false };
+      } catch (err) {
+        console.warn("[maestro-cs] learning the answers failed:", err);
+        record.learned = { count: 0, undone: false, failed: true };
+      }
+    } finally {
+      // The read failed before the report was asked for: the page is not left watching.
+      if (state.watching.has(record.id)) {
+        state.watching.delete(record.id);
+        host.tabBroadcast(tabOf(record), { type: "fill_watch", fids: [] }).catch(warn("could not stop watching"));
+      }
     }
   }
 
