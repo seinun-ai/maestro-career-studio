@@ -727,7 +727,8 @@
   }
 
   /** The extractor's sources that ARE a job description: a JobPosting record,
-   * or a job-description container (`extractJobPosting` in content/agent.js).
+   * a job-description container, or the section under a description heading
+   * (`extractJobPosting` in content/agent.js).
    * `page` (a long <main>) and `body` (the whole page) are only the page's
    * text: a recipe page, or a careers site's navigation around a posting that
    * lives in an iframe (iCIMS). */

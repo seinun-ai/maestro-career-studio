@@ -4383,7 +4383,7 @@
    * sentence the panel cannot take back (a page that has started talking to us
    * has, at minimum, told us that much). An answered source we do not recognise
    * ranks with `body`: it is an answer, and nothing more is claimed for it.
-   * `page` (a long `<main>` or `<article>` with no job-description container
+   * `page` (a long `<main>` or `<article>` with no job-description container or description heading
    * in it) ranks with `content`, which is what that same text was called
    * until the extractor learned to tell the two apart: the split is about what
    * the Job step may CLAIM (`previewNote`), not about which answer wins. */
