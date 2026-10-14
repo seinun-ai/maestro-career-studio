@@ -21,6 +21,7 @@ from app.services import (
     health_wording,
     resume_lint,
     resume_versions,
+    resume_voice,
 )
 from app.services.application_writes import NO_TAILORED_RESUME
 from app.services.health_guards import RewriteObjective
@@ -438,8 +439,10 @@ def answer_ask(kind: Kind, key: str, finding_id: str, body: AnswerBody,
         answer=body.answer,
         suggestion=None,
     )
+    name, orgs = resume_voice.identity(resume)
     suggestion = health_guards.guarded_rewrite(
         db, text, context=body.answer, question=finding.get("question") or "",
+        name=name, orgs=orgs,
     )
     if suggestion is None:
         raise HTTPException(status_code=422,
@@ -469,8 +472,9 @@ def draft_rewrite(
         resume, loc, body.expected_content_hash, hashless_ok=True
     )
     content_hash = _require_hash(text, body.expected_content_hash)
+    name, orgs = resume_voice.identity(resume)
     suggestion = health_guards.guarded_rewrite(
-        db, text, context=body.context, objective=body.objective
+        db, text, context=body.context, objective=body.objective, name=name, orgs=orgs
     )
     if suggestion is None:
         raise HTTPException(

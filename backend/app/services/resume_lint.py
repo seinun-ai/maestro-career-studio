@@ -1153,11 +1153,14 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
         gap_hits, c2_hit, verifier_cache = health_verify.verify_detections(
             db, resume, gap_hits, c2_hit, prior_cache=prior_verifier)
 
+    voice_name, voice_orgs = resume_voice.identity(resume)
+
     def _rewrite(text: str) -> str | None:
         try:
             return health_guards.guarded_rewrite(
                 db, text, context="",
                 question=classified.get(bullet_classify.content_hash(text), {}).get("question") or "",
+                name=voice_name, orgs=voice_orgs,
             )
         except Exception:  # noqa: BLE001 — a failed rewrite just degrades to ask
             logger.exception("guarded_rewrite failed")

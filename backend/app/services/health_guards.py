@@ -46,7 +46,9 @@ def _entities(text: str) -> set[str]:
     return set(_ACRONYM.findall(text)) | set(_PROPER.findall(text))
 
 
-def guard_violations(original: str, rewrite: str, *, supplied: str = "") -> list[str]:
+def guard_violations(
+    original: str, rewrite: str, *, supplied: str = "", name: str = "", orgs: tuple | list = ()
+) -> list[str]:
     violations: list[str] = []
     original_numbers = _numbers(original)
     supplied_numbers = _numbers(supplied)
@@ -58,9 +60,9 @@ def guard_violations(original: str, rewrite: str, *, supplied: str = "") -> list
         )
     if _PLACEHOLDER.search(rewrite):
         violations.append("contains a placeholder (bracket, brace, TODO, TBD, XX, or blank)")
-    old_voice = {h.text.lower() for h in resume_voice.third_person_hits(original)}
-    voice = [h.text for h in resume_voice.blocking(resume_voice.third_person_hits(rewrite))
-             if h.text.lower() not in old_voice]
+    # Every blocking hit counts, even one the original already had: a rewrite is the
+    # chance to fix it. `name`/`orgs` come from the resume the bullet is on.
+    voice = [h.text for h in resume_voice.blocking(resume_voice.third_person_hits(rewrite, name, orgs))]
     if voice:
         violations.append(
             f"reads as written about someone else ({sorted(set(voice))}): write in implied "
@@ -85,6 +87,8 @@ def guarded_rewrite(
     context: str = "",
     question: str = "",
     objective: RewriteObjective = "strengthen",
+    name: str = "",
+    orgs: tuple | list = (),
 ) -> str | None:
     """One rewrite attempt + one guarded re-prompt. None = caller emits `ask`.
 
@@ -96,7 +100,11 @@ def guarded_rewrite(
     use_cache = _cache_unattended(context, objective)
     if use_cache:
         cached = db.get(BulletRewrite, chash)
-        if cached is not None:
+        # A cached rewrite was checked without this resume's name: check it again.
+        if cached is not None and not (
+            cached.rewrite_text
+            and resume_voice.blocking(resume_voice.third_person_hits(cached.rewrite_text, name, orgs))
+        ):
             return cached.rewrite_text
 
     template = prompts.get_prompt("resume_bullet_rewrite", db)
@@ -124,7 +132,7 @@ def guarded_rewrite(
         if not rewrite:
             result = None
             break
-        violations = guard_violations(original, rewrite, supplied=context)
+        violations = guard_violations(original, rewrite, supplied=context, name=name, orgs=orgs)
         if not violations:
             result = rewrite
             break

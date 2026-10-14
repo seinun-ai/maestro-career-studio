@@ -253,9 +253,20 @@ def test_third_person_rewrite_is_rejected():
     assert any("written about someone else" in v for v in violations)
 
 
-def test_a_pronoun_already_in_the_original_is_not_blamed_on_the_rewrite():
+def test_a_pronoun_already_in_the_original_is_still_rejected_in_the_rewrite():
     original = "Mentored engineers so they could ship Spark jobs; cut load 2M rows."
-    assert guard_violations(original, "Mentored engineers so they could ship Spark jobs; cut 2M rows.") == []
+    violations = guard_violations(original, "Mentored engineers so they could ship Spark jobs; cut 2M rows.")
+    assert any("written about someone else" in v for v in violations)
+
+
+def test_a_rewrite_that_introduces_the_owners_name_is_rejected_but_a_company_is_not():
+    orgs = ["Rivera Logistics"]
+    original = "Built ETL pipelines using Spark at Rivera Logistics."
+    bad = guard_violations(original, "Alex Rivera built ETL pipelines using Spark at Rivera Logistics.",
+                           name="Alex Rivera", orgs=orgs)
+    assert any("written about someone else" in v for v in bad)
+    assert guard_violations(original, "Built ETL pipelines using Spark at Rivera Logistics.",
+                           name="Alex Rivera", orgs=orgs) == []
 
 
 def test_guarded_rewrite_reprompts_with_the_voice_violation(db_session, monkeypatch):
@@ -278,3 +289,13 @@ def test_guarded_rewrite_reprompts_with_the_voice_violation(db_session, monkeypa
     assert guarded_rewrite(db_session, ORIGINAL, context="") == good
     assert all("implied first person" in p for p in prompts_seen)
     assert "written about someone else" in prompts_seen[1]
+
+
+def test_guarded_rewrite_rejects_a_rewrite_with_the_owners_name(db_session, monkeypatch):
+    from app.services import health_guards as hg
+
+    named = "Alex Rivera built ETL pipelines processing 2M rows daily using Spark and Airflow."
+    monkeypatch.setattr(hg.llm, "call_openai", lambda **k: {"rewrite": named})
+    monkeypatch.setattr(hg.model_settings, "get_smart_model", lambda s: "test-model")
+
+    assert guarded_rewrite(db_session, ORIGINAL, context="", name="Alex Rivera") is None

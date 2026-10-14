@@ -26,7 +26,7 @@ VOICE_RULE = (
 # Where the model can learn the fix: the operator's sentence for a caller that
 # wrote the text itself (MCP ops) and for the retry.
 OPS_ERROR = (
-    "Some of the new text reads as written about someone else. Write it in implied "
+    "Some of the resume text reads as written about someone else. Write it in implied "
     "first person: lead with a verb, and use no \"I\", \"my\", \"he\", \"she\", \"they\", "
     "\"his\", \"her\" or \"their\" and no name."
 )
@@ -49,8 +49,9 @@ class VoiceHit:
 # --------------------------------------------------------------------------- #
 # detection
 
+# "them" is left out: "rebuilt 2 of them" refers to things, not to the owner.
 _PRONOUN = re.compile(
-    r"\b(?:he|she|they|his|her|hers|him|them|their|theirs|himself|herself|themselves)\b",
+    r"\b(?:he|she|they|his|her|hers|him|their|theirs|himself|herself)\b",
     re.IGNORECASE,
 )
 _MY = re.compile(r"\b(?:my|My|myself)\b")
@@ -102,7 +103,9 @@ def _verb_opener(word: str) -> bool:
 
 def _name_tokens(name: str) -> list[str]:
     tokens = [re.sub(r"[^\w'’-]", "", t) for t in (name or "").split()]
-    return [t for t in tokens if len(t) >= 3 and t.lower() not in {"jr", "sr", "phd", "mba", "mrs", "miss"}]
+    # Two letters is a name ("Li", "Xu"); a single letter is an initial.
+    skip = {"jr", "sr", "ii", "iii", "iv", "phd", "mba", "md", "dr", "mr", "ms", "mrs", "miss"}
+    return [t for t in tokens if len(t) >= 2 and t.lower() not in skip]
 
 
 def _mask(text: str, names: Iterable[str]) -> str:
@@ -152,8 +155,10 @@ def third_person_hits(
                 taken.append((m.start(), m.end()))
         for token in tokens:
             for m in re.finditer(rf"(?<![\w]){re.escape(token)}(?![\w])", masked, re.I):
-                if not m.group(0)[0].isupper():
-                    continue  # lower-case "grant", "will": an ordinary word
+                # Case-sensitive: the name as written or as a capitalised word. Lower
+                # case ("grant", "li-ion") is an ordinary word, ALL CAPS an acronym.
+                if m.group(0) not in (token, token.title(), token.capitalize()):
+                    continue
                 if any(a <= m.start() < b for a, b in taken):
                     continue
                 hits.append(VoiceHit("name", m.group(0), m.start(), m.end()))
@@ -398,14 +403,16 @@ def _get(resume: dict[str, Any], path: Path) -> Any:
 def changed_hits(
     base: dict[str, Any], customized: dict[str, Any]
 ) -> list[tuple[Path, str, list[VoiceHit]]]:
-    """Blocking hits in text the edit set wrote: a line that is not already,
-    word for word, somewhere on the base resume."""
-    known = {text for _, text in slots(base)}
+    """Blocking hits that are the edit set's to answer for: the summary always,
+    and any bullet that is not, in the same place, what the base had. A base
+    line copied into a changed bullet counts; an unchanged one in place does
+    not (it is still repaired before storage, see `repair_resume`)."""
+    base_at = dict(slots(base))
     name = contact_name(customized) or contact_name(base)
     orgs = org_names(base) + org_names(customized)
     found = []
     for path, text in slots(customized):
-        if text in known:
+        if path != ("summary",) and base_at.get(path) == text:
             continue
         hits = blocking(third_person_hits(text, name, orgs))
         if hits:
@@ -428,32 +435,33 @@ def json_quote(text: str) -> str:
 
 
 def repair_resume(base: dict[str, Any], customized: dict[str, Any]) -> list[Path]:
-    """Repair `customized` in place wherever the edit set wrote third-person
-    text; returns the paths it touched.
+    """Repair `customized` in place so no blocking hit is stored, whatever its
+    source (the edit set, or text already on the base); returns the paths touched.
 
-    A line that cannot be repaired is put back as the base had it (when the base
-    entry still lines up) or removed. A summary falls back to the base summary.
-    Nothing stored afterwards holds a pronoun the edit set wrote."""
-    problems = changed_hits(base, customized)
-    if not problems:
-        return []
+    A line that cannot be repaired is replaced by the base's line at the same
+    place (repaired first, so a third-person base line comes back clean or not at
+    all) or removed. A summary keeps only its clean or repairable sentences."""
     name = contact_name(customized) or contact_name(base)
     orgs = org_names(base) + org_names(customized)
     removals: list[Path] = []
     touched: list[Path] = []
-    for path, text, _ in problems:
+    for path, text in slots(customized):
+        if not blocking(third_person_hits(text, name, orgs)):
+            continue
         fixed = repair(text, name, orgs)
+        if fixed is None:
+            original = (
+                str(base.get("summary") or "") if path == ("summary",)
+                else _original_bullet(base, path, customized)
+            )
+            fixed = repair(original, name, orgs) if original else None
         parent = _get(customized, path[:-1]) if len(path) > 1 else customized
-        if fixed:
+        if fixed is not None:
             parent[path[-1]] = fixed
         elif path == ("summary",):
-            parent["summary"] = base.get("summary", "")
+            parent["summary"] = ""
         else:
-            original = _original_bullet(base, path, customized)
-            if original is None:
-                removals.append(path)
-            else:
-                parent[path[-1]] = original
+            removals.append(path)
         touched.append(path)
     for path in sorted(removals, key=lambda p: p[-1], reverse=True):
         del _get(customized, path[:-1])[path[-1]]
@@ -469,3 +477,8 @@ def _original_bullet(base: dict[str, Any], path: Path, customized: dict[str, Any
     except (KeyError, IndexError, TypeError):
         pass
     return None
+
+
+def identity(resume: dict[str, Any]) -> tuple[str, list[str]]:
+    """(contact name, org names) for `third_person_hits`."""
+    return contact_name(resume), org_names(resume)

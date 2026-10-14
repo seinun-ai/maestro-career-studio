@@ -181,10 +181,9 @@ def test_clean_output_makes_no_extra_call(db_session, tmp_path, monkeypatch, cli
     assert len(calls) == 1
 
 
-def test_text_already_on_the_base_is_not_a_reason_to_retry(db_session, tmp_path, monkeypatch, client):
-    """A base summary that already reads "Builds ..." or names the person is the
-    owner's to fix in the health check; the tailor only answers for what it wrote."""
-    base = {**BASE, "summary": "Alex Rivera builds data platforms."}
+def test_an_unchanged_summary_is_still_validated(db_session, tmp_path, monkeypatch, client):
+    """The summary is always checked, even when the edit set did not write it."""
+    base = {**BASE, "summary": "Alex Rivera builds data platforms. Shipped billing for Globex University."}
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex2", resume_json=base)
     created = _open_session(client, job, slug, resolutions=[KEYWORD])
@@ -192,8 +191,42 @@ def test_text_already_on_the_base_is_not_a_reason_to_retry(db_session, tmp_path,
 
     stored = _stored(db_session, _tailor(client, created["id"]))
 
+    assert len(calls) == 2  # the summary is a reason to retry
+    assert stored["summary"] == "Shipped billing for Globex University."
+    _no_voice_problem(stored)
+
+
+def test_an_unchanged_bad_bullet_is_repaired_but_is_not_a_reason_to_retry(
+    db_session, tmp_path, monkeypatch, client
+):
+    base = {**BASE, "experience": [{**BASE["experience"][0],
+            "bullets": ["Built the platform, and he cut load time 20%."]}]}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex5", resume_json=base)
+    created = _open_session(client, job, slug, resolutions=[KEYWORD])
+    calls = _scripted(monkeypatch, [ADD_KEYWORD])
+
+    stored = _stored(db_session, _tailor(client, created["id"]))
+
     assert len(calls) == 1
-    assert stored["summary"] == "Alex Rivera builds data platforms."
+    assert stored["experience"][0]["bullets"] == ["Built the platform; cut load time 20%."]
+
+
+def test_copying_a_bad_base_line_into_a_changed_bullet_is_a_hit(db_session, tmp_path, monkeypatch, client):
+    base = {**BASE, "experience": [{**BASE["experience"][0],
+            "bullets": ["Built the platform.", "He cut load time 20%."]}]}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex6", resume_json=base)
+    created = _open_session(client, job, slug, resolutions=[KEYWORD])
+    copy = {"kind": "replace_bullet", "section": "experience", "index": 0, "bullet_index": 0,
+            "value": "He cut load time 20%."}
+    calls = _scripted(monkeypatch, [ADD_KEYWORD, copy])
+
+    stored = _stored(db_session, _tailor(client, created["id"]))
+
+    assert len(calls) == 2
+    assert "He cut load time 20%." not in json.dumps(stored)
+    _no_voice_problem(stored)
 
 
 def test_caller_ops_with_a_hit_return_400_and_store_nothing(db_session, tmp_path, monkeypatch, client):
@@ -221,3 +254,31 @@ def test_caller_ops_in_implied_first_person_still_apply(db_session, tmp_path, mo
 
     assert response.status_code == 200
     assert _stored(db_session, response)["summary"] == "Data engineer who built billing."
+
+
+def test_caller_ops_copying_a_bad_base_line_return_400(db_session, tmp_path, monkeypatch, client):
+    base = {**BASE, "summary": "Data engineer.", "experience": [{**BASE["experience"][0],
+            "bullets": ["Built the platform.", "He cut load time 20%."]}]}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex7", resume_json=base)
+    created = _open_session(client, job, slug)
+    copy = {"kind": "replace_bullet", "section": "experience", "index": 0, "bullet_index": 0,
+            "value": "He cut load time 20%."}
+
+    response = _tailor(client, created["id"], body={"ops": [copy]})
+
+    assert response.status_code == 400
+    assert "implied first person" in response.json()["detail"]
+
+
+def test_caller_ops_on_a_base_whose_summary_is_third_person_return_400(
+    db_session, tmp_path, monkeypatch, client
+):
+    base = {**BASE, "summary": "Alex Rivera builds data platforms."}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex8", resume_json=base)
+    created = _open_session(client, job, slug)
+
+    response = _tailor(client, created["id"], body={"ops": [ADD_KEYWORD]})
+
+    assert response.status_code == 400
