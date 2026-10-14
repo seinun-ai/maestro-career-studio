@@ -424,6 +424,19 @@ def test_a_failed_sign_up_redrawn_without_its_password_boxes_on_the_same_page_is
     assert moved_url["record"]["status"] == "ready"
 
 
+def test_a_workday_sign_up_redrawn_without_password_boxes_and_with_the_header_sign_in_still_there_is_not_taken(tmp_path):
+    """Same address and heading, the signed-out header, email box only: the sign-up page again, not a taken account."""
+    redrawn = {**step(1, host=WD, url="/p/0", key="create_account"), "patch": {"headerSignIn": True}}
+    out = _drive(tmp_path, [ACCOUNT, redrawn], accountMoves=True, record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "create_account_failed")
+    assert out["pressed"] == [] and out["fillCalls"] == 0
+    # A new heading with the Sign In kept, and the Sign In gone on the same heading, are still taken accounts.
+    heading = {**step(1, host=WD, url="/p/0", key="myinfo"), "patch": {"headerSignIn": True}}
+    assert _drive(tmp_path, [ACCOUNT, heading, {**REVIEW, "host": WD}], accountMoves=True, record=ON_WD)["record"]["status"] == "ready"
+    gone = {**step(1, host=WD, url="/p/0", key="create_account"), "patch": {"headerSignIn": False}}
+    assert _drive(tmp_path, [ACCOUNT, gone, {**REVIEW, "host": WD}], accountMoves=True, record=ON_WD)["record"]["status"] == "ready"
+
+
 def test_a_sign_up_seen_again_after_a_settled_success_is_still_not_created(tmp_path):
     """The 'seen again' rule is for a LATER read, after the settle took the account."""
     out = _drive(tmp_path, [ACCOUNT, step(1, host=WD), {**ACCOUNT, "key": "back"}], accountMoves=True, record=ON_WD)

@@ -399,8 +399,8 @@
           last = now === "unknown" ? "blank" : "failed";   // a read that does not return "taken" below is the sign-up page still
           if (["verify", "captcha", "sign_in"].includes(now)) return "taken";
           if (now !== "create_account" && now !== "unknown") {
-            // Workday names a signed-in account in its header; elsewhere the page has to have left the sign-up page.
-            if (seen.headerSignIn !== undefined || at !== wasAt || key !== wasKey) return "taken";
+            // Workday's header drops its Sign In button once signed in; otherwise the page has to have left the sign-up page.
+            if (seen.headerSignIn === false || at !== wasAt || key !== wasKey) return "taken";
           }
           if (now === "create_account") {
             if (ns.pageKind.signedUpRead(seen)) return "taken";
