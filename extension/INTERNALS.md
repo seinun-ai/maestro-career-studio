@@ -205,7 +205,8 @@ asking permission of itself.
   never answers): a job-description container; the section under a description
   heading (an element whose whole text is "Job Description", "About the role" and the
   like, climbed to its first ancestor over 300 characters, abandoned at `main`,
-  `article`, `body`, `form`, `nav`, `header`, `footer`, an ancestor holding a form
+  `article`, `body`, `form`, page-level `nav`/`header`/`footer` (a header or footer inside
+  a section or article is the section's own), an ancestor holding a form
   control, an ARIA text widget or site chrome, or one holding the same heading twice,
   which is a list of cards; the first heading in document order that gives a section
   answers, and a label or legend is never a heading);
@@ -216,8 +217,8 @@ asking permission of itself.
   the visible Job Snapshot "Location", the company only from the meta description
   "Job Title | <Company>" and not when that holds a translation key), else the first
   visible `h1` outside `nav`/`header`/`footer` for the title, only when the document title
-  or `og:title` contains its text and it is not `og:site_name` (a hero or a "Careers"
-  banner is no title). Darwinbox is not in
+  or `og:title` contains its text and it is not `og:site_name`, not the last segment of a `Title | Site` title, and not a
+  generic banner word (a hero or a "Careers" banner is no title). Darwinbox is not in
   `shared/ats-hosts.js`: its Apply leads to a CAPTCHA'd sign-in, so the run stays out of
   its forms. The
   line under them says "Job description found (N words)" only for a job signal

@@ -60,12 +60,15 @@
   const DESCRIPTION_HEADING = /^(job description|about the (job|role|position)|job summary|role (description|overview)|position (description|summary))\s*:?$/i;
   // Not `label` or `legend`: those name a form field ("Role Description" over a rich-text box).
   const HEADING_CANDIDATES = "h1, h2, h3, h4, h5, h6, [role=heading], p, div, span, strong, b, dt";
-  const CHROME_SELECTOR = "nav, header, footer";
-  const SITE_CHROME_ANY = "nav, header, footer, [role=navigation], [role=banner], [role=contentinfo]";
+  // PAGE-level chrome only: a `header`/`footer` inside an article, section, aside or main belongs to that
+  // section (its own title block, its "Posted 3 days ago"), and is part of the posting.
+  const SECTIONED = ":is(article, section, aside, main)";
+  const CHROME_SELECTOR = `nav, header:not(${SECTIONED} header), footer:not(${SECTIONED} footer), `
+    + "[role=navigation], [role=banner], [role=contentinfo]";
   // The field reader's control rule plus the ARIA widgets that show a value as plain text.
   const FORM_CONTROL = 'input:not([type="hidden"]), select, textarea, button[aria-haspopup], [role="combobox"], '
     + '[role="textbox"], [role="listbox"], [contenteditable]:not([contenteditable="false"])';
-  const PAGE_WIDE = /^(html|body|main|article|form|nav|header|footer)$/i;
+  const PAGE_WIDE = /^(html|body|main|article|form)$/i;
   const headingKey = (el) => oneLine(el.textContent).replace(/\s*:$/, "").toLowerCase();
 
   /** The text under a description heading, for a posting with no JSON-LD and no job-description class.
@@ -73,7 +76,7 @@
    * Finds a visible element whose whole text is a description heading, then climbs to the first ancestor
    * with more than 300 characters of text: that ancestor is the description's own section. The climb is
    * ABANDONED (this heading answers nothing) at `main`/`article`/`body`/`form`, because that is the page's
-   * text or an application form and not a section; at `nav`/`header`/`footer`, and at an ancestor that
+   * text or an application form and not a section; at page-level `nav`/`header`/`footer`, and at an ancestor that
    * CONTAINS site chrome (a page-wide wrapper); at any ancestor holding a form control or an ARIA text
    * widget, so a value the user typed into an application form never rides into a save; and at an
    * ancestor holding the same heading twice, which is a list of cards and not a posting. The first
@@ -87,7 +90,8 @@
     for (const heading of headings) {
       const key = headingKey(heading);
       for (let node = heading.parentElement; node; node = node.parentElement) {
-        if (PAGE_WIDE.test(node.tagName) || node.querySelector(FORM_CONTROL) || node.querySelector(SITE_CHROME_ANY)
+        if (PAGE_WIDE.test(node.tagName) || node.matches(CHROME_SELECTOR) || node.querySelector(FORM_CONTROL)
+          || node.querySelector(CHROME_SELECTOR)
           || headings.some((other) => other !== heading && headingKey(other) === key && node.contains(other))) break;
         if (usableDescriptionNode(node)) return node.innerText.trim();
       }
@@ -120,12 +124,19 @@
 
   /** Whether the page itself names this text as its title: the document title or `og:title` contains it,
    * and it is not the site's name. A hero ("Acme Corp") or a banner ("Careers") fails both. */
+  const GENERIC_BANNER = /^(careers?|jobs?|open (roles|positions|jobs)|join (us|our team)|work with us)$/i;
   function namedByPage(text) {
     const meta = (property) => oneLine(
       document.querySelector(`meta[property="${property}"]`)?.getAttribute("content")).toLowerCase();
     const lower = text.toLowerCase();
-    return lower !== meta("og:site_name")
-      && [oneLine(document.title).toLowerCase(), meta("og:title")].some((named) => named.includes(lower));
+    if (lower === meta("og:site_name") || GENERIC_BANNER.test(text)) return false;
+    // A title usually ends with the site ("Senior Data Analyst | Acme Corp"): an h1 equal to that last
+    // segment is the site's hero, not the posting.
+    const named = [oneLine(document.title).toLowerCase(), meta("og:title")].filter((title) => {
+      const parts = title.split(/\s[|\-\u2013\u2014\u00b7:]\s/);
+      return title.includes(lower) && !(parts.length > 1 && parts[parts.length - 1] === lower);
+    });
+    return named.length > 0;
   }
 
   /** The first visible `h1` outside site chrome that the page's own title names, for a page whose title

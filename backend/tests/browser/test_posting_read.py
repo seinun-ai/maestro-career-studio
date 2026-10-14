@@ -291,6 +291,9 @@ def test_a_heading_with_non_breaking_spaces_is_still_a_heading(page):
 @pytest.mark.parametrize("h1, title, extra_head", [
     ("Acme Corp", "Senior Data Analyst - Acme", ""),
     ("Careers", "Data Analyst | Acme", ""),
+    ("Acme Corp", "Senior Data Analyst | Acme Corp", ""),
+    ("Careers", "Data Analyst - Acme Careers", ""),
+    ("Open Positions", "Open Positions | Data Analyst", ""),
     ("Acme Corp", "Acme Corp Careers", '<meta property="og:site_name" content="Acme Corp">'),
 ])
 def test_an_h1_that_is_a_site_banner_is_not_the_title(page, h1, title, extra_head):
@@ -323,3 +326,33 @@ def test_a_company_with_a_dot_survives_and_a_translation_key_does_not(page, meta
     header = _header(_darwinbox(page, meta=meta))
     assert ([line for line in header if line.startswith("Company: ")] ==
             ([f"Company: {company}"] if company else []))
+
+
+@pytest.mark.parametrize("h1, title", [
+    ("Senior Data Analyst", "Job Application for Senior Data Analyst at Acme"),
+    ("Data Analyst", "Data Analyst - Acme Careers"),
+])
+def test_an_h1_the_title_names_beside_the_site_is_still_the_title(page, h1, title):
+    out = _generic(page, f"<div><h1>{h1}</h1></div><div class=job-description>{FILLER}</div>", title=title)
+    assert _header(out) == [f"Title: {h1}"]
+
+
+def test_a_section_with_its_own_header_is_not_site_chrome(page):
+    out = _generic(page, f"<section><header><h1>Data Analyst</h1></header><h2>About the role</h2><p>{FILLER}</p></section>",
+                   title="Data Analyst | Acme")
+    assert out["source"] == "content"
+    assert FILLER.strip() in out["text"]
+    assert _header(out) == ["Title: Data Analyst"]
+
+
+def test_a_heading_inside_a_sections_own_header_still_counts(page):
+    out = _generic(page, f"<article><header><h2>About the role</h2></header><p>{FILLER}</p></article>")
+    assert out["source"] == "page"  # the climb ends at the article: that is the page's text, not a section
+    out = _generic(page, f"<div><section><header><h2>About the role</h2></header><p>{FILLER}</p></section></div>")
+    assert out["source"] == "content"
+
+
+def test_a_sections_own_footer_beside_the_description_is_not_site_chrome(page):
+    out = _generic(page, f"<section><div><h2>About the role</h2></div><p>{FILLER}</p><footer>Posted 3 days ago</footer></section>")
+    assert out["source"] == "content"
+    assert FILLER.strip() in out["text"]
