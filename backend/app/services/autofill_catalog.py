@@ -700,26 +700,62 @@ def named_employer_fact(facts: dict[str, Fact], question: str,
     return None
 
 
-# The wording of a worked-here question about the applicant: "Have you ever worked for…", "Are you a current or
-# former employee of…", "Were you previously employed by…", an intern or a contractor. Or an option saying "employee".
-_ASKS_WORKED = re.compile(
-    r"\b(?:have|has|were|are|did|do)\s+you\b[^?.]*?\b(?:work(?:ed)?\s+(?:for|at|with)|employed|employee|intern(?:ed)?|"
-    r"contract(?:ed|or))", re.IGNORECASE)
+# The shapes of a question that asks whether the APPLICANT worked for the company: an ALLOWLIST, not a
+# list of what to exclude. Each ends where the company must follow (`_company_follows`). "Have you ever
+# worked for Acme?", "Were you employed by Acme?", "Did you work for Acme?", "Are you currently an employee of
+# Acme?". Never "eligible to work for", "willing to", "want to work at", a household member, a competitor.
+_YOU = r"\byou\s+(?:ever\s+|previously\s+)*"
+_EMPLOYMENT = r"(?:been\s+)?(?:worked|employed|(?:an?\s+)?(?:employee|intern|contractor)|interned|contracted)\s+(?:(?:for|at|by|with|of)\s+)?"
+_WORKED_SHAPES = tuple(re.compile(rx, re.IGNORECASE) for rx in (
+    rf"\b(?:have|has)\s+{_YOU}{_EMPLOYMENT}",
+    rf"\b(?:were|was)\s+{_YOU}(?:employed|(?:an?\s+)?(?:employee|intern|contractor))\s+(?:by|at|of|with)\s+",
+    rf"\bdid\s+{_YOU}work\s+(?:for|at)\s+",
+    r"\bare\s+you\s+(?:currently\s+)?(?:an?\s+)?(?:employee|contractor|intern)\s+(?:of|at|for|with)\s+",
+    r"\bare\s+you\s+currently\s+employed\s+(?:by|at|with)\s+",
+))
+# "a current or former employee", "an ex-Acme contractor": a company, when named, follows "of" or comes first.
+_FORMER_ROLE = re.compile(
+    r"\b(?:previous|former|current|ex-?)(?:\s+or\s+(?:previous|former|current))?[\s-]+"
+    r"(?:(?P<co>[A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,3})\s+)?(?:employee|intern|contractor)\b"
+    r"(?:\s+(?:of|at|for|with)\s+(?P<rest>.*))?", re.IGNORECASE)
 _OPTION_EMPLOYEE = re.compile(r"\bemployee\b", re.IGNORECASE)
-# What turns a question that names the company into another question: kin and friends, referrals, applications and
-# interviews, convictions, work authorization and sponsorship, clearance and background checks, terminations,
-# non-competes, and where the applicant heard of the job.
+# The backstop behind the allowlist: what turns a question that names the company into another question: kin and
+# friends, referrals, applications and interviews, convictions, work authorization and sponsorship, clearance and
+# background checks, terminations, non-competes, where the applicant heard of the job, eligibility, willingness,
+# other people's employment, competitors, customers and vendors.
 _NOT_WORKED_HERE = re.compile(
     r"relative|family|friend|spouse|anyone|someone|referr|applied|interview|convict|criminal|felony|authori|"
-    r"sponsor|visa|clearance|background|terminat|non-?compete|hear\s+about", re.IGNORECASE)
+    r"sponsor|visa|clearance|background|terminat|non-?compete|hear\s+about|eligib|legal|able\s+to|willing|want|"
+    r"h-?1b|petition|permit|household|member|compet|fired|disciplin|dismiss|customer|product|vendor|partner",
+    re.IGNORECASE)
+# Where the company list ends in a clause.
+_CLAUSE_END = re.compile(
+    r"[?!;]|\.(?=\s|$)|\b(?:before|previously|ever|currently|now|in\s+the|within|since|during|at\s+any|as\s+an?|"
+    r"prior|including)\b", re.IGNORECASE)
 
 
-def asks_worked_here(question: str, options: tuple[str, ...] | list[str] = ()) -> bool:
-    """Whether a question asks whether the applicant worked for the company, by its wording, and is none of the
-    questions that only name the company (`_NOT_WORKED_HERE`)."""
-    if _NOT_WORKED_HERE.search(question) or any(_NOT_WORKED_HERE.search(o) for o in options):
+def _names_company(rest: str, companies: set[str]) -> bool:
+    """Whether the text that follows a worked-here phrase STARTS with the job's company: "Acme, Globex or
+    Initech" does; "a competitor of Acme" and "Acme products" do not (their key is not the company's)."""
+    clause = _CLAUSE_END.split(_SUFFIX_STOP.sub(r"\1", rest), maxsplit=1)[0]
+    return bool(companies & {key for part in _name_parts(clause) if (key := name_key(part))})
+
+
+def asks_worked_here(facts: dict[str, Fact], question: str, options: tuple[str, ...] | list[str] = ()) -> bool:
+    """Whether a question asks whether the applicant worked for the job's company, by one of the allowlisted
+    shapes (`_WORKED_SHAPES`, a former/current employee) and none of the backstop's words (`_NOT_WORKED_HERE`)."""
+    fact = facts.get(WORKED_HERE_SLOT)
+    if fact is None or _NOT_WORKED_HERE.search(question) or any(_NOT_WORKED_HERE.search(o) for o in options):
         return False
-    return bool(_ASKS_WORKED.search(question) or any(_OPTION_EMPLOYEE.search(o) for o in options))
+    companies = set(fact.companies)
+    for shape in _WORKED_SHAPES:
+        if (m := shape.search(question)) and _names_company(question[m.end():], companies):
+            return True
+    if (m := _FORMER_ROLE.search(question)) and (
+            _names_company(m["rest"], companies) if m["rest"] else
+            _names_company(m["co"], companies) if m["co"] else True):
+        return True
+    return any(_OPTION_EMPLOYEE.search(o) for o in options)
 
 
 def lists_job_company(facts: dict[str, Fact], question: str, options: tuple[str, ...] | list[str] = ()) -> bool:
@@ -727,7 +763,7 @@ def lists_job_company(facts: dict[str, Fact], question: str, options: tuple[str,
     Initech?" on an Acme job. A listed name, or the company as capitalised words anywhere in it. False with no
     worked-here fact (no company is known, or the history cannot say). Such a question is the worked-here
     answer's, whatever else it lists (`named_employer_fact` reads the rest). Needs the wording too
-    (`asks_worked_here`): a question that only NAMES the company ("referred by an employee of Acme", "legally
+    (`asks_worked_here`, an allowlist of shapes): a question that only NAMES the company ("referred by an employee of Acme", "legally
     authorized to work for Acme") asks something else."""
     fact = facts.get(WORKED_HERE_SLOT)
     if fact is None or not fact.companies:

@@ -2009,6 +2009,20 @@ NAMES_THE_COMPANY = [
     "Were you terminated from a job you held before applying to Acme Wireless?",
     "Are you bound by a non-compete that would stop you working for Acme Wireless?",
     "How did you hear about Acme Wireless?",
+    # round 2: future work, eligibility, and other people's employment
+    "Are you eligible to work for Acme Wireless?",
+    "Do you need an H-1B petition to work for Acme Wireless?",
+    "Are you willing to work for Acme Wireless on-site?",
+    "Why do you want to work at Acme Wireless?",
+    "Is any household member employed by Acme Wireless?",
+    "Are you employed by a competitor of Acme Wireless?",
+    "Were you fired while employed by Acme Wireless?",
+    "Have you worked with Acme Wireless products?",
+    "Have you worked with Acme Wireless teams or employees?",
+    "Are you able to work for Acme Wireless full time?",
+    "Do you hold a work permit that lets you work at Acme Wireless?",
+    "Are you a customer, vendor or partner of Acme Wireless?",
+    "Have you been disciplined or dismissed by Acme Wireless?",
 ]
 
 
@@ -2039,7 +2053,10 @@ def test_an_unreadable_map_answer_is_not_rerouted_even_for_the_real_question():
 @pytest.mark.parametrize("question", [
     "Have you ever worked for Acme Wireless?", "Are you a current employee of Acme Wireless?",
     "Were you previously employed by Acme Wireless or Globex?", "Have you ever interned at Acme Wireless?",
-    "Have you ever been a contractor for Acme Wireless?",
+    "Have you ever been a contractor for Acme Wireless?", "Has Acme Wireless ever employed you? Have you ever worked for Acme Wireless?",
+    "Have you previously worked with Acme Wireless?", "Did you ever work for Acme Wireless?",
+    "Are you currently employed by Acme Wireless?", "Were you ever an employee of Acme Wireless?",
+    "Are you a current or former Acme Wireless employee?",
 ])
 def test_the_worked_here_wordings_are_rerouted(db_session, monkeypatch, question):
     fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})

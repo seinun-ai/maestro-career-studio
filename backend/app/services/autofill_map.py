@@ -534,7 +534,7 @@ def _rerouted(field: MapField, picked: tuple[str, float], facts: dict[str, Fact]
     """Whether code takes this field for the worked-here question the map filed elsewhere."""
     return (picked[0] in _FILED_ELSEWHERE and field.shape not in _WRITTEN_SHAPES
             and lists_job_company(facts, field.question, field.options)
-            and asks_worked_here(field.question, field.options))
+            and asks_worked_here(facts, field.question, field.options))
 
 
 def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact], *,

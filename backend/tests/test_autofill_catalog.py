@@ -869,14 +869,37 @@ def test_a_derived_yes_asks_when_the_listed_company_is_only_a_parent_or_subsidia
 
 
 @pytest.mark.parametrize(("question", "options", "expected"), [
+    # the shapes that ask about the applicant's OWN past or current employment at the company
     ("Have you ever worked for Acme Wireless?", (), True),
+    ("Have you previously been employed by Acme Wireless?", (), True),
+    ("Have you ever been an employee of Acme Wireless?", (), True),
+    ("Have you ever interned at Acme Wireless?", (), True),
+    ("Have you ever worked with Acme Wireless?", (), True),
+    ("Were you ever employed by Acme Wireless or Globex?", (), True),
+    ("Was your last role as an employee of Acme Wireless? Were you an intern with Acme Wireless?", (), True),
+    ("Did you previously work for Acme Wireless?", (), True),
+    ("Are you currently an employee of Acme Wireless?", (), True),
+    ("Are you currently employed by Acme Wireless?", (), True),
     ("Are you a current or former employee of Acme Wireless?", (), True),
     ("Are you a current or former employee?", ("Acme Wireless employee", "No"), True),
+    ("Are you an ex-Acme Wireless contractor?", (), True),
+    # anything else that names the company, or the employment word
+    ("Are you eligible to work for Acme Wireless?", (), False),
+    ("Do you need an H-1B petition to work for Acme Wireless?", (), False),
+    ("Are you willing to work for Acme Wireless on-site?", (), False),
+    ("Do you want to work at Acme Wireless?", (), False),
+    ("Is any household member employed by Acme Wireless?", (), False),
+    ("Are you employed by a competitor of Acme Wireless?", (), False),
+    ("Were you fired while employed by Acme Wireless?", (), False),
+    ("Have you worked with Acme Wireless products?", (), False),
+    ("Have you worked with Acme Wireless teams?", (), False),
+    ("Are you currently employed by a company that works with Acme Wireless?", (), False),
+    ("Have you ever worked for Globex?", (), False),        # a company that is not the job's
     ("Were you referred by an employee of Acme Wireless?", (), False),
     ("Are you related to anyone who works at Acme Wireless?", (), False),
     ("Have you applied to Acme Wireless before?", (), False),
     ("Have you ever been convicted of a felony? Acme Wireless asks all applicants.", (), False),
     ("How did you hear about Acme Wireless?", (), False),
 ])
-def test_asks_worked_here_reads_the_wording_about_the_applicant(question, options, expected):
-    assert cat.asks_worked_here(question, options) is expected
+def test_asks_worked_here_is_an_allowlist_of_question_shapes(question, options, expected):
+    assert cat.asks_worked_here(_worked_at("Acme Wireless", ["Hooli"]), question, options) is expected, question
