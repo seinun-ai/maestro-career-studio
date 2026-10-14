@@ -63,6 +63,8 @@
   const WROTE = new Set(["verified", "closest", "assumed"]);
   // What the card counts as answered: filled and verified, or found answered or the user's own (kept).
   const ANSWERED = new Set([...WROTE, "already", "yours"]);
+  // The parks after which Resume reads what the user typed into the page (`afterTyping`).
+  const LEARNS = new Set(["open_questions", "page_errors", "upload"]);
   // The outcomes of a field the engine left that join the known-gaps list.
   const LEFTOVER = new Set(["cannot_operate", "unconfirmed"]);
 
@@ -704,7 +706,9 @@
       record.yourMs += Math.max(0, store.run.now() - record.parkedAt);
       record.parkedAt = null;
     }
-    const wasQuestions = record.status === "parked" && record.why === "open_questions";
+    // The parks the user fixed by hand in the page: the questions they typed over, the fields the page named
+    // as wrong, the upload boxes (a field among them is an answer like any other). Walls and navigation are not.
+    const handFixed = record.status === "parked" && LEARNS.has(record.why);
     // Resume is this panel taking the record over (it may have been left by another window's panel and
     // moved here): the mark after the user's Submit then has exactly one owner.
     // A ready tab taken back to a form step is a new fill: it is no longer vouched for as the finished application.
@@ -713,7 +717,7 @@
       wasReady ? { readyAt: null, readyBy: null, movedOn: false } : {});
     persist(store);
     try {
-      if (wasQuestions) await afterTyping(store, record);
+      if (handFixed) await afterTyping(store, record);
     } catch (err) {
       console.warn("[maestro-cs] could not read what you typed:", err);
     }

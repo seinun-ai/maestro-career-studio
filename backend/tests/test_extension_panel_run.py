@@ -1815,6 +1815,35 @@ def _upload_run_steps(tmp_path, reply, steps, boxes=(BOX,), **spec):
 
 # ---------- a Resume after a park the user fixed by hand does not refill the page ----------
 
+@pytest.mark.parametrize("why", ["page_errors", "upload"])
+def test_what_you_typed_on_a_park_over_the_pages_errors_or_an_upload_is_learned_too(tmp_path, why):
+    """Live 2026-10-14: nine answers were typed by hand over a page_errors park and none was kept."""
+    seeded = _seeded("parked", why=why, step=0, seen=[], filled=True, wrote=True,
+                     open=[{"fid": None, "question": "Upload a file", "required": True},
+                           {"fid": "q1", "question": "Have you used our product before?", "required": True}],
+                     parkedPage={"where": STEP1["url"], "key": "step1"})
+    out = _run(tmp_path, [{"seed": [seeded]}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               frames={"page_errors": [{"frameId": 0, "result": {"count": 0, "items": []}}]},
+               inventory=TYPED, profileStore=json.loads(json.dumps(OLD_PROFILE)),
+               reports=[{"fields": [verified("f1")]}])
+    assert {"question": "Have you used our product before?", "answer": "Yes"} in out["profile"]["custom"]
+    posted = [json.loads(msg["init"]["body"]) for msg in _api_calls(out, "/filled-answers")]
+    assert {field["question"] for body in posted for field in body["fields"] if field["source"] == "you"} \
+        >= {"Have you used our product before?"}
+    final = out["shots"][-1]
+    assert _record(final)["status"] == "ready"
+    assert "Saved 1 answer to your profile · Undo" in _body_text(final)
+
+
+@pytest.mark.parametrize("why", ["captcha", "posting", "unknown_page"])
+def test_a_park_that_asked_for_no_answers_reads_and_learns_nothing(tmp_path, why):
+    seeded = _seeded("parked", why=why, step=0, seen=[])
+    out = _run(tmp_path, [{"seed": [seeded]}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               inventory=TYPED, profileStore=json.loads(json.dumps(OLD_PROFILE)))
+    assert out["profile"] == OLD_PROFILE
+    assert "Saved" not in _body_text(out["shots"][-1])
+
+
 def test_a_resume_after_page_errors_reads_the_errors_and_presses_when_none_remain(tmp_path):
     seeded = _seeded("parked", why="page_errors", open=[{"fid": "f-city", "question": "City", "required": True}],
                      seen=[], step=0, filled=True, wrote=True,
