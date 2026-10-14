@@ -113,7 +113,7 @@
   // The ONE field the user's hands are on: engaging a field disengages every other, so a pick in
   // one field's popup is never credited to another field they typed in earlier.
   let active = null;
-  const EVENTS = ["pointerdown", "keydown", "input"];
+  const EVENTS = ["pointerdown", "keydown", "input", "focusin"];
 
   // Whether the event's path runs through this field (its element or any part of it).
   const within = (path, fid) => path.some((n) => n instanceof Element && ns.fillInventory.fidFor(n, { relist: false }) === fid);
@@ -141,9 +141,17 @@
       }
       return;
     }
-    if (e.type !== "pointerdown" || !watching.has(active)) return;
+    if (!watching.has(active)) return;
+    const inPopup = path.some((n) => n instanceof Element && n.matches(OPTIONISH));
+    // A key, typing or focus outside every watched field (and outside a popup, where arrowing through
+    // a list is still the field's) is the user's hands on another field: a later pick in THAT field's
+    // popup is not this one's.
+    if (e.type !== "pointerdown") {
+      if (!inPopup) active = null;
+      return;
+    }
     // A pick lands in the popup of the field the user is on; anywhere else they have moved on.
-    if (path.some((n) => n instanceof Element && n.matches(OPTIONISH))) push(watching.get(active), { t: "pick", at });
+    if (inPopup) push(watching.get(active), { t: "pick", at });
     else active = null;
   };
 

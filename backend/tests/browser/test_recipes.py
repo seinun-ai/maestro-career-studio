@@ -681,6 +681,40 @@ def test_a_pick_in_one_fields_popup_is_never_credited_to_the_field_typed_in_befo
     assert report(page, b)["gestures"] == ["search:debounce"]
 
 
+def test_a_pick_in_a_popup_nobody_watches_is_not_credited_to_the_watched_field_typed_in_before(page, load):
+    """The user typed in the watched field, then moved to a combobox the run never parked on and picked
+    there. Their hands left the watched field at the first key in the other one."""
+    fields = engine(page, load, TWO_SEARCHES)
+    a = fields["Alpha"]
+    watch(page, a)
+    page.focus("#a")
+    page.keyboard.type("x")
+    page.wait_for_timeout(450)
+    page.keyboard.press("Tab")
+    page.keyboard.type("y")
+    page.wait_for_timeout(450)
+    pick(page, "b-one")
+    assert report(page, a)["gestures"] == []
+
+
+def test_a_key_pressed_inside_the_open_popup_does_not_end_the_watched_fields_turn(page, load):
+    """Arrowing through the list is part of using the watched field, not a move to another one."""
+    html = """<label for='c'>Country</label>
+      <input id='c' role='combobox' aria-autocomplete='list' aria-controls='pop'>
+      <ul id='pop' role='listbox'></ul>
+      <script>document.getElementById('c').addEventListener('input', () => {
+        document.getElementById('pop').innerHTML = "<li role='option' tabindex='-1'>Canada</li>"; });</script>"""
+    f = engine(page, load, html)["Country"]
+    watch(page, f)
+    page.focus("#c")
+    page.keyboard.type("Can")
+    page.wait_for_timeout(450)
+    page.locator("[role=option]").first.focus()
+    page.keyboard.press("ArrowDown")
+    pick(page, "Canada")
+    assert report(page, f)["gestures"] == ["search:debounce"]
+
+
 def test_the_keyboard_opens_a_search_and_a_pause_then_a_pick_commits_it(page, load):
     f = engine(page, load, fixture_html("react_select.html"))["Country"]
     watch(page, f)
