@@ -552,7 +552,7 @@ def _is_capitalised(token: str) -> bool:
 
 
 # Words a question or an option capitalises that begin or end no company name of their own: they must
-# not make "Yes" ask against "Yes Bank", or "Current Employee" against "Current Health".
+# not make "Yes" ask against "Yes Ledger", or "Current Employee" against "Current Widgets".
 _STOP_WORDS = frozenset({
     "yes", "no", "have", "has", "are", "were", "was", "did", "do", "please", "select", "current", "former",
     "employee", "previous", "if", "the", "our", "united", "general"})

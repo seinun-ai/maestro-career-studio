@@ -452,12 +452,12 @@ def test_a_parent_or_subsidiary_in_a_wording_the_parser_does_not_read_is_asked_n
 
 
 @pytest.mark.parametrize("employer, question, options", [
-    ("Yes Bank", "Have you worked for Acme before?", ["Yes", "No"]),
-    ("Yes Bank", "Do you agree?", ["Yes", "No"]),
+    ("Yes Ledger", "Have you worked for Acme before?", ["Yes", "No"]),
+    ("Yes Ledger", "Do you agree?", ["Yes", "No"]),
     ("Have Fun Inc", "Have you worked for Acme before?", ()),
-    ("Current Health", "Are you a Current Employee?", ["Current Employee", "Former Employee", "Not Applicable"]),
-    ("United Rentals", "Do you live in the United States?", ["United States", "Other"]),
-    ("General Motors", "Have you worked for Acme? Please select the General Employment option.", ()),
+    ("Current Widgets", "Are you a Current Employee?", ["Current Employee", "Former Employee", "Not Applicable"]),
+    ("United Widgets", "Do you live in the United States?", ["United States", "Other"]),
+    ("General Widgets", "Have you worked for Acme? Please select the General Employment option.", ()),
 ])
 def test_a_common_capitalised_word_that_starts_an_employers_name_does_not_make_it_ask(employer, question, options):
     f = cat.build({}, [{"employer": employer, "title": "Engineer"}], [], company="Acme")
@@ -470,8 +470,8 @@ def test_a_stop_word_before_the_name_does_not_hide_the_parent_or_subsidiary():
     assert cat.named_employer_fact(f, "Previous Initech employee?") == cat.ASK_THE_USER
     assert cat.named_employer_fact(f, "Please select: Current Initech Employee") == cat.ASK_THE_USER
     # An exact name is still found anywhere, whatever stands before it.
-    f = cat.build({}, [{"employer": "Current Health", "title": "Engineer"}], [], company="Acme")
-    assert cat.named_employer_fact(f, "Were you a Current Health employee?") == cat.ASK_THE_USER
+    f = cat.build({}, [{"employer": "Current Widgets", "title": "Engineer"}], [], company="Acme")
+    assert cat.named_employer_fact(f, "Were you a Current Widgets employee?") == cat.ASK_THE_USER
 
 
 @pytest.mark.parametrize("employer, question, options", [
