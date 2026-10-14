@@ -577,6 +577,9 @@ def test_the_veteran_fact_is_offered_for_a_military_question(db_session, monkeyp
     assert "a Yes alone never says which protected class applies" in described
     for never in ("current service", "a branch", "a discharge", "a relative's service"):
         assert never in described, never
+    # Owner (2026-10-14): one veteran Yes/No, so a No also answers "currently or ever served".
+    assert "ever or currently served in the military" in described
+    assert "(an ever-or-currently question included)" in described
     assert "not" not in described
 
 

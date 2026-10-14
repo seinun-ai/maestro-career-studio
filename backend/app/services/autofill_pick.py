@@ -430,6 +430,14 @@ _NAMES_PROTECTED_CLASS = NAMES_PROTECTED_CLASS
 _BARE_CLASS = re.compile(r"\b(?:disabled|recently\s+separated|campaign|wartime)\b", re.IGNORECASE)
 
 
+# A question about CURRENT service. A saved Yes says the applicant served at some time, never that they
+# serve now, so such a question (an "ever or currently" one included) is the user's after a Yes; a No
+# answers it, a person who is no veteran serves nowhere.
+_ASKS_CURRENT_SERVICE = re.compile(
+    r"\b(?:currently|presently|now)\b[^?.]{0,40}?\b(?:serv(?:e|es|ed|ing)|active[-\s]duty|(?:in|of)\s+the\s+"
+    r"(?:military|armed|reserves?|national\s+guard)|member)\b|\bactive[-\s]duty\b|\bserving\b", re.IGNORECASE)
+
+
 def _claims_veteran(text: str) -> bool:
     """An option that does not open with a negation and that mentions a veteran, names a protected class, or
     opens "I identify as" / "I belong to". A bare "Yes" claims nothing."""
@@ -449,11 +457,12 @@ def veteran_said(fact: Fact | None) -> str | None:
 def veteran_overreach(said: str, question: str, options: list[str], chosen: str | list[str] | None = None) -> bool:
     """Whether choosing `chosen` (every option, or with None answering at all) would say more than a saved
     `said` does. After a No: a chosen option that claims veteran status. After a Yes: a question or any
-    option, offered or chosen, that names a protected class."""
+    option, offered or chosen, that names a protected class, or a question about current service."""
     picks = [chosen] if isinstance(chosen, str) else list(chosen or [])
     if said == "No":
         return any(_claims_veteran(text) for text in picks)
-    return any(_NAMES_PROTECTED_CLASS.search(text) for text in (question, *options, *picks))
+    return bool(_ASKS_CURRENT_SERVICE.search(question)) or any(
+        _NAMES_PROTECTED_CLASS.search(text) for text in (question, *options, *picks))
 
 
 def _veteran_claims(fields: list[PickField], facts: dict[str, Fact], out: dict[str, Picked]) -> None:

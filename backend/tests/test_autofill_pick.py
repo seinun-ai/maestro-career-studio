@@ -1259,6 +1259,57 @@ def test_a_no_picks_every_option_that_denies_being_a_veteran_at_the_exact_floor(
     assert got["v"].reason == "abstained"
 
 
+EVER_OR_CURRENT = "Do you currently or have you ever served in the U.S. Military?"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("options, wanted", [
+    (("Yes", "No, I have never served"), 2),
+    (("Yes, I currently serve or have served", "No, I have never served in the military"), 2),
+    (("Yes", "No"), 2),
+])
+def test_a_no_answers_a_currently_or_ever_served_question_with_the_never_served_option(
+        db_session, monkeypatch, options, wanted):
+    """Live check 4 (2026-10-14): one veteran Yes/No. A person who is no veteran has never served, so
+    "currently or ever served" is a No, at the exact floor like any veteran option."""
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
+    calls = fake_jev(monkeypatch, {"v": (f"o{wanted}", 0.95)}, ways={"v": ("same", 0.95)})
+    got = autofill_pick.pick([pf("v", question=EVER_OR_CURRENT, slot="eeo.veteran_status", options=opts(*options))],
+                             facts, db_session, None)
+    assert sans_trace(got["v"]) == {"oids": [f"o{wanted}"], "reason": "matched"}
+    assert "ever or currently served" in json.dumps(calls)
+    # One notch under the exact floor is never an EEO answer.
+    fake_jev(monkeypatch, {"v": (f"o{wanted}", 0.89)}, ways={"v": ("same", 0.95)})
+    got = autofill_pick.pick([pf("v", question=EVER_OR_CURRENT, slot="eeo.veteran_status", options=opts(*options))],
+                             facts, db_session, None)
+    assert got["v"].reason == "abstained"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    EVER_OR_CURRENT, "Are you currently serving in the military?", "Are you currently on active duty?",
+    "Are you presently a member of the National Guard or Reserves?",
+])
+def test_a_yes_never_answers_a_current_service_question(db_session, monkeypatch, question):
+    """A saved Yes says the applicant served at some time, never that they serve now: asked, the user's."""
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
+    fake_jev(monkeypatch, {"v": ("o1", 0.99)}, ways={"v": ("same", 0.99)})
+    got = autofill_pick.pick([pf("v", question=question, slot="eeo.veteran_status", options=opts("Yes", "No"))],
+                             facts, db_session, None)
+    assert got["v"].oids == [] and got["v"].reason == "asked"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", ["Have you ever served in the U.S. Military?", "Are you a veteran?",
+                                      "Did you serve in the armed forces?"])
+def test_a_yes_still_answers_an_ever_served_question(db_session, monkeypatch, question):
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
+    fake_jev(monkeypatch, {"v": ("o1", 0.95)}, ways={"v": ("same", 0.95)})
+    got = autofill_pick.pick([pf("v", question=question, slot="eeo.veteran_status", options=opts("Yes", "No"))],
+                             facts, db_session, None)
+    assert sans_trace(got["v"]) == {"oids": ["o1"], "reason": "matched"}
+
+
 @pytest.mark.usefixtures("jev_on")
 @pytest.mark.parametrize("claim", [
     "I am a Veteran, but not a Protected Veteran", "I identify as a veteran, just not a protected veteran",
