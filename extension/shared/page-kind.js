@@ -84,6 +84,10 @@
     // The closed words count only on a page with nothing to fill and no Apply: a job description can say
     // "this position has been filled" in its prose, and the form or the Apply beside it says it is open.
     if (s.closedText && !s.fillable && !s.hasApplyLink) return { kind: "closed" };
+    // The start chooser (Workday's "Start Your Application"): the reader named its one allowed link (`chooserId`, shared/
+    // ats-buttons.js) and nothing on the page is fillable. Before the posting and Submit checks, because that link reads
+    // "Apply Manually", which is a Submit word.
+    if (s.chooserId && !s.fillable) return { kind: "chooser" };
     if (s.hasApplyLink && !s.fillable) return { kind: "posting" };
 
     // A button that is only a line of the error summary ("Error - <what>", not marked as a submit by the page)
@@ -146,5 +150,5 @@
   }
 
   ns.pageKind = { classify, sortButton, isPlainNext, submitMarked, movesOn, signedUpRead, KINDS: ["captcha", "create_account", "verify", "sign_in",
-    "confirmation", "closed", "posting", "board_native", "form_step", "review", "unknown"] };
+    "confirmation", "closed", "chooser", "posting", "board_native", "form_step", "review", "unknown"] };
 })();

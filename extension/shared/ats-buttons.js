@@ -13,8 +13,15 @@
  * `ns.pageKind.sortButton`, so even a wrong "next" could not turn a Submit-worded button into a
  * Next.
  *
- * WHAT THIS FILE PUBLISHES: ns.atsButtons = { knownSort, HOSTS, RULES }. HOSTS and RULES are
- * published for the tests that pin them.
+ * THE START CHOOSER'S ONE LINK. A Workday posting's Apply leads to a "Start Your Application" page of three
+ * same-tab links. Two of them do something to the user's data (one sends the resume to the site's parser, one copies
+ * an earlier application's answers) and are never followed; the third, Apply Manually, only opens the form. CHOOSERS
+ * lists exactly that one, by host, automation id, visible text and the end of its path, and cites the fixture that
+ * records it. `isChooser` is the page reader's test of a link; the run follows the link by address and never clicks it
+ * (content/page-reader.js `pressChooser`).
+ *
+ * WHAT THIS FILE PUBLISHES: ns.atsButtons = { knownSort, isChooser, HOSTS, RULES, CHOOSERS }. HOSTS, RULES and CHOOSERS
+ * are published for the tests that pin them.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -39,6 +46,12 @@
     { vendor: "workday", buttons: [{ automationId: "pageFooterNextButton", verdict: "text" }] },
   ];
 
+  // SEEN: backend/tests/fixtures/browser/workday_chooser.html (owner's live run, 2026-10-14). ONE row, and the other two
+  // links of that page are deliberately absent: a row is an allowance to follow a link, never a description of a page.
+  const CHOOSERS = [
+    { vendor: "workday", automationId: "applyManually", text: /^apply manually$/i, path: /\/apply\/applyManually$/ },
+  ];
+
   const ATTRS = ["id", "qa", "automationId"];
 
   /** "submit" | "next" | "text" when this vendor's table names the button, else null. "text" means
@@ -60,5 +73,17 @@
     return null;
   }
 
-  ns.atsButtons = { knownSort, HOSTS, RULES };
+  /** Whether a link is the one the CHOOSERS table allows on this host: `attrs` is `{automationId, text, path}`, the link's
+   * own data-automation-id, visible text (spaces squashed) and the path of its address. All must match, on the
+   * vendor's host. An unknown host or a missing field is false. */
+  function isChooser(host, attrs) {
+    if (typeof host !== "string" || !host || !attrs || typeof attrs !== "object") return false;
+    const name = host.toLowerCase();
+    return CHOOSERS.some((row) => HOSTS[row.vendor]?.test(name)
+      && attrs.automationId === row.automationId
+      && typeof attrs.text === "string" && row.text.test(attrs.text.replace(/\s+/g, " ").trim())
+      && typeof attrs.path === "string" && row.path.test(attrs.path));
+  }
+
+  ns.atsButtons = { knownSort, isChooser, HOSTS, RULES, CHOOSERS };
 })();

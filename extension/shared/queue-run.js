@@ -42,6 +42,8 @@
  *                          (Next is never pressed over a known-empty required upload)
  *         loop | step_limit   the same page again, or more than LIMITS.stepMax steps
  *         posting          an Apply it may not press (see below); unknown_page  nothing it knows
+ *         chooser          Workday's "Start Your Application" page where the run may not press Apply Manually (below):
+ *                          the user presses it in the tab, then Resume
  *         already_applied  a "thank you" page BEFORE the run reached review: not this run's Submit
  *         moved_away       a Resume found the tab on a host the run never navigated to: another
  *                          page must not be filled with this job's answers (not after a park that
@@ -78,6 +80,13 @@
  *   has no fillable control and an "Apply" that is a Submit. The page refuses a control that would
  *   submit a form, and the press goes to the one frame that named the control. A field-less page
  *   after a fill is the review page, so its "Apply" button is never pressed.
+ * - THE START CHOOSER's Apply Manually is the one other link the run follows, by `advance(.., {chooser: true})` (the page
+ *   navigates to the checked address; nothing is clicked), and only on the same kind of say-so: the page classified as a
+ *   chooser (the reader named exactly that one link, nothing fillable), this is the record's step 0, nothing has been
+ *   filled, no sign-in or account was made, the call is not a Resume or a run in place, the page is on the host of the tab
+ *   address, and it is either the FIRST page read after the call opened the tab or the ONE read right after the run's own
+ *   posting Apply moved the page. The other two links of that page (the resume parser, the last application's answers)
+ *   are never named, so never pressed. Any other chooser parks `chooser`.
  * - STOP IS HONOURED: `cancelled(record)` is asked before AND after every dep call. Once it is true
  *   the driver calls nothing else (not an advance, not a sign-in) and ends `stopped/user`.
  * - NO PASSWORD PASSES THROUGH THE DRIVER. `signIn(record, {allowedHost})` is a dep; the driver
@@ -96,7 +105,7 @@
  *                               readable itself, see SETTLING); `stop()` is the Stop check, so a
  *                               long load can be abandoned
  *   classify(tabId) → [{frameId, result: {summary, top}}]      tabUrl(tabId) → the tab's address
- *   advance(tabId, frameId, id, opts) → {clicked, why}         opts is {apply: true} or absent
+ *   advance(tabId, frameId, id, opts) → {clicked, why}         opts is {apply: true}, {chooser: true} or absent
  *   fill(record, {limits}) → the fill-loop report              signIn(record, {allowedHost, stop}) → {signedIn}
  *   waitForChange(tabId, before, ms, stop, baseline) → {changed, url, errors, sameStep, fresh}
  *                                `baseline`: the error keys the page showed before the press
@@ -149,7 +158,7 @@
   const WALLS = new Set(["captcha", "create_account", "verify", "board_native"]);
   // The parks whose card tells the user to go somewhere themselves (sign in, enter a code, open the
   // application form): where they land on Resume is theirs, and the run follows them there.
-  const USER_NAVIGATES = new Set(["sign_in_yourself", "verify", "posting", "unknown_page"]);
+  const USER_NAVIGATES = new Set(["sign_in_yourself", "verify", "posting", "unknown_page", "chooser"]);
   // The pages an application is made of, for a ready tab that stays on them. Not a posting: after
   // Ready that is another job being looked at, and an application sent by hand is not this one's.
   const APPLICATION_PAGES = new Set(["review", "form_step"]);
@@ -282,6 +291,7 @@
     const stopping = () => deps.cancelled(record);
 
     let applyOk = false;     // this call opened the tab itself and has not read its first page yet
+    let chooserNext = false; // the run's own posting Apply moved the page: the one read after it may be the start chooser
     let inPlaceFirst = false;  // a run in place has not read its first page yet
     let navigated = false;   // the last thing the run did moved the tab: its address is the run's own
     let pageFilled = false;  // this page has had its fill (judged afresh after it)
@@ -459,6 +469,8 @@
         // step) may be a saved draft's review page, and its "Apply" is a Submit.
         const mayApply = applyOk;
         applyOk = false;
+        const mayChoose = mayApply || chooserNext;
+        chooserNext = false;
         {
           const [where, key] = fingerprint(url, summary).split("\n");
           thisPage = { where, key };
@@ -592,6 +604,20 @@
           await update({ status: "advancing" });
           const outcome = await press(frame, summary.applyId, fingerprint(url, summary), { apply: true });
           if (outcome !== "moved") return await park(outcome === "refused" ? "posting" : "no_change");
+          moved();
+          chooserNext = true;
+          continue;
+        }
+
+        // The start chooser: pressed on the narrow say-so in the header, else it is the user's to press.
+        if (kind === "chooser") {
+          const allowed = mayChoose && !resumed && record.inPlace !== true && record.step === 0 && record.filled !== true
+            && record.signedIn !== true && record.accountTried !== true
+            && sameSite(summary.host, hostOf(url)) && record.hosts.includes(hostOf(url));
+          if (!allowed) return await park("chooser");
+          await update({ status: "advancing" });
+          const outcome = await press(frame, summary.chooserId, fingerprint(url, summary), { chooser: true });
+          if (outcome !== "moved") return await park(outcome === "refused" ? "chooser" : "no_change");
           moved();
           continue;
         }
@@ -803,7 +829,8 @@
     // The press goes to the one frame that named the button (ids are frame-tagged as well).
     async function advance(tabId, frameId, id, opts) {
       const apply = opts?.apply === true;
-      const frames = await broadcast(tabId, { type: "page_advance", id, ...(apply ? { apply: true } : {}) }, frameId);
+      const chooser = opts?.chooser === true;
+      const frames = await broadcast(tabId, { type: "page_advance", id, ...(apply ? { apply: true } : {}), ...(chooser ? { chooser: true } : {}) }, frameId);
       const answer = (Array.isArray(frames) ? frames : []).find((f) => f.frameId === frameId)?.result;
       return answer?.clicked === true ? { clicked: true } : { clicked: false, why: typeof answer?.why === "string" ? answer.why : "gate" };
     }

@@ -56,6 +56,8 @@
     confirm_page: ["Check this page",
       "This page has only a Continue button, and the Companion can't tell whether it sends the application. "
       + "Check it in the tab, then press Resume or go on yourself."],
+    chooser: ["Choose how to apply",
+      "Press Apply Manually in the tab, then Resume."],
     unknown_page: ["Page not recognised",
       "The Companion doesn't recognise this page. Get to the application form in the tab, then press Resume."],
     already_applied: ["Already sent?",

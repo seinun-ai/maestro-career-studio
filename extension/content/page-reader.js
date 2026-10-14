@@ -34,6 +34,13 @@
  * one the page marks as a submit. The vendor's footer Next (shared/ats-buttons.js, "text") is marked
  * `navigation`: the classifier takes it as the step's Next over a Submit the button list could not see.
  *
+ * The Workday START CHOOSER is the second narrow exception, `advance(id, {chooser: true})`. "Apply Manually" is a Submit
+ * word too, on a page of three same-tab links of which two do something to the user's data. `summary().chooserId`
+ * names a link only when the page has no fillable control and exactly one link matches the recorded row
+ * (shared/ats-buttons.js `isChooser`: host, automation id, exact text, end of the path), is a plain same-tab http(s)
+ * link on the page's own host, and is not marked as a submit. The press re-checks all of it and NAVIGATES
+ * (location.assign of the checked address); it never clicks. Whether the run may ask at all is the driver's.
+ *
  * `pageErrors()` reads what the page itself complains about after a Next it refused: its error
  * summary (an alert or live region, or a list headed "Errors Found") and each field it marks
  * invalid, upload boxes and popup buttons included. ONE LINE, ONE NAME: Workday sets the "Error - <question>" button
@@ -799,6 +806,20 @@
     return href !== "" && !href.startsWith("#") && /^https?:$/.test(el.protocol) && (target === "" || target === "_self");
   };
 
+  // The chooser's one allowed link (see the header): the row in shared/ats-buttons.js, a plain same-tab http(s) link
+  // on THIS host, every label saying Apply Manually, not marked as a submit, shown and enabled.
+  const chooserLink = (el) => el.tagName === "A" && shown(el) && enabled(el) && applyPressable(el) && !submitMarked(el)
+    && labels(el).every((t) => /^apply manually$/i.test(t))
+    && el.hostname.toLowerCase() === location.hostname.toLowerCase()
+    && ns.atsButtons.isChooser(location.hostname, {
+      automationId: el.getAttribute("data-automation-id"), text: shownTextOf(el), path: el.pathname });
+  /** The chooser page's one allowed link, or null: the page has no fillable control and exactly one link qualifies. */
+  const chooserEl = () => {
+    if (ns.fillableControls() > 0) return null;
+    const found = [...document.querySelectorAll("a[href]")].filter(chooserLink);
+    return found.length === 1 ? found[0] : null;
+  };
+
   /** A short, stable key for the step's heading (the page's first visible h1 or h2): the same step
    * reads the same, another step differs, and the heading itself never leaves the page (the summary
    * carries no prose). It tells two wizard steps apart that share a URL and a button row. */
@@ -848,10 +869,12 @@
     // The posting's plain Apply, named for the one narrow `advance(id, {apply: true})` call. A link
     // is not in `buttons`, so it is tagged here (a button keeps the id it was given above).
     const applyEl = [...document.querySelectorAll(`a[href], ${BUTTONS}`)].find((el) => shown(el) && enabled(el) && isApply(el) && applyPressable(el));
+    const chooserLinkEl = chooserEl();
     const out = {
       host: location.hostname,
       stepKey: stepKey(),
       applyId: applyEl ? applyEl.getAttribute("data-maestro-btn") ?? tag(applyEl) : null,
+      chooserId: chooserLinkEl ? chooserLinkEl.getAttribute("data-maestro-btn") ?? tag(chooserLinkEl) : null,
       buttons,
       passwordInputs: passwords.length,
       confirmPassword: passwords.some(isConfirmPassword),
@@ -962,12 +985,28 @@
     return { clicked: true };
   }
 
+  /** The start chooser's one link, followed on the driver's say-so and the page's own re-check: the link the last
+   * `summary()` named `chooserId`, still the page's ONE allowed link, with no fillable control on the page.
+   * `{clicked: true}` or `{clicked: false, why}`: "not_chooser" (not that link, a field has appeared, or it is no longer
+   * plainly Apply Manually on this host), "submit" (the page marks it as a submit). NAVIGATES to the checked
+   * address; never clicks, because a click runs the page's own script. */
+  function pressChooser(id) {
+    const el = typeof id === "string" && id ? document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`) : null;
+    if (!el || el.tagName !== "A" || chooserEl() !== el) return { clicked: false, why: "not_chooser" };
+    if (submitMarked(el)) return { clicked: false, why: "submit" };
+    location.assign(el.href);
+    return { clicked: true };
+  }
+
   /** Press the Next button the last `summary()` named `id`, if it is still one. Returns
    * `{clicked: true}` or `{clicked: false, why}`: "submit" (its text now carries a Submit word),
    * "not_next" (no such tagged button, or it is hidden, disabled or not worded as a Next).
-   * `{apply: true}` is the posting's Apply instead (pressApply), and only that. */
-  function advance(id, { apply = false } = {}) {
+   * `{apply: true}` is the posting's Apply instead (pressApply), and `{chooser: true}` the start chooser's one link
+   * (pressChooser); each does only its own thing, and both together do nothing. */
+  function advance(id, { apply = false, chooser = false } = {}) {
+    if (apply === true && chooser === true) return { clicked: false, why: "not_next" };
     if (apply === true) return pressApply(id);
+    if (chooser === true) return pressChooser(id);
     if (typeof id !== "string" || !id) return { clicked: false, why: "not_next" };
     const el = document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`);
     if (!el || !el.matches(BUTTONS)) return { clicked: false, why: "not_next" };

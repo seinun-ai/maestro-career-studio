@@ -411,6 +411,7 @@ def test_no_state_ever_draws_a_submit_control(tmp_path):
     ("sign_in_yourself", "Sign in yourself", True, True),
     ("posting", "Apply yourself", True, True),
     ("unknown_page", "Page not recognised", True, True),
+    ("chooser", "Choose how to apply", True, True),
     ("unsure_page", "Not sure about this page", True, True),
     ("confirm_page", "Check this page", True, True),
     ("already_applied", "Already sent?", True, True),
@@ -1804,6 +1805,12 @@ def test_a_log_that_never_recorded_a_run_has_no_last_trace_time(tmp_path):
                replies={"fill_trace": _reply({"posted": 0, "why": "off", "lastAt": None})})
     text = _text(_card(out["shots"][-1])["body"])
     assert LOG_OFF in text and "Last trace" not in text
+
+
+def test_the_chooser_card_tells_the_user_which_button_to_press(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("parked", why="chooser")]}])
+    body = _card(out["shots"][1])["body"]
+    assert "Press Apply Manually in the tab, then Resume." in _text(body) and "run-resume" in _buttons(body)
 
 
 @pytest.mark.parametrize("by, reason, say", [

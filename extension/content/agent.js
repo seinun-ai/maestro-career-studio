@@ -774,7 +774,8 @@
     /* The queued run's eyes and its one hand (content/page-reader.js). Gated like the fill
      * operations, each returning its empty shape in a refused frame. `page_advance` presses a
      * Next button the reader named, re-sorting its text at click time; it never presses a Submit.
-     * `apply: true` is the one narrow exception (a posting's plain Apply; see page-reader.js). */
+     * `apply: true` (a posting's plain Apply) and `chooser: true` (the start chooser's one link) are the two narrow
+     * exceptions; see page-reader.js. */
     page_classify: (msg) => (frameMayReceiveUserData(msg)
       ? { summary: ns.pageReader.summary(), top: window.top === window.self }
       : { summary: null }),
@@ -788,7 +789,7 @@
       : { count: 0, items: [] }),
     page_uploads: (msg) => (frameMayReceiveUserData(msg) ? pageUploads() : []),
     page_advance: (msg) => (frameMayReceiveUserData(msg)
-      ? ns.pageReader.advance(msg.id, { apply: msg.apply === true })
+      ? ns.pageReader.advance(msg.id, { apply: msg.apply === true, chooser: msg.chooser === true })
       : { clicked: false, why: "gate" }),
     // The saved login: TOP frame only (a subframe is refused, not asked), via panel_frame0 alone.
     // A fixed word on any failure: an error's text could be the password.

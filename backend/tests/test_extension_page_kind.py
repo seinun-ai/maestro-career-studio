@@ -177,8 +177,22 @@ def kind(tmp_path, **kw):
 
 def test_the_kinds_roster_is_pinned(tmp_path):
     assert _run(tmp_path)["kinds"] == [
-        "captcha", "create_account", "verify", "sign_in", "confirmation", "closed", "posting",
+        "captcha", "create_account", "verify", "sign_in", "confirmation", "closed", "chooser", "posting",
         "board_native", "form_step", "review", "unknown"]
+
+
+def test_a_start_chooser_with_the_link_the_reader_named_and_nothing_to_fill_is_a_chooser(tmp_path):
+    """Workday's "Start Your Application": three links, one of which is Apply Manually (a Submit word)."""
+    links = [btn("Autofill with Resume"), btn("Apply Manually", id="am"), btn("Use My Last Application")]
+    assert kind(tmp_path, chooserId="am", fillable=0, buttons=links) == {"kind": "chooser"}
+    # Fields on the page: it is a form, and the Apply-worded button is its Submit.
+    assert kind(tmp_path, chooserId="am", fillable=2, buttons=links)["kind"] == "review"
+    # No id named by the reader: the Submit word decides, as it always has.
+    assert kind(tmp_path, fillable=0, buttons=links) == {"kind": "review", "by": "submit_button"}
+    # It outranks the posting check and a Submit-worded button list, but not a wall.
+    assert kind(tmp_path, chooserId="am", hasApplyLink=True, buttons=links)["kind"] == "chooser"
+    assert kind(tmp_path, chooserId="am", captchaVisible=True, buttons=links)["kind"] == "captcha"
+    assert kind(tmp_path, chooserId="am", passwordInputs=1, buttons=links)["kind"] == "sign_in"
 
 
 def test_captcha_beats_everything(tmp_path):

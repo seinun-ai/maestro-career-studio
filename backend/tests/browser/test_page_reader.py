@@ -115,7 +115,7 @@ def test_the_summary_is_counts_texts_and_booleans_and_never_a_value(page, load):
       <input type='password' value='Zelda-Secret-9'><button>Next</button></form>""", SOURCES)
     s = summary(page)
     assert "Zelda-Secret-9" not in json.dumps(s)
-    assert set(s) == {"host", "stepKey", "applyId", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
+    assert set(s) == {"host", "stepKey", "applyId", "chooserId", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
                       "fillable", "hasApplyLink", "confirmationText", "confirmationPhrase", "closedText", "boardNative",
                       "submitSeen", "submitContext", "errors", "errorKeys", "requiredEmpty", "requiredKeys"}
     assert s["errors"] == 0
@@ -2299,6 +2299,128 @@ def test_the_workday_header_sign_in_button_is_read_on_the_vendors_host_only(page
     assert summary(page)["headerSignIn"] is False
     serve(page, "https://careers.initech.test/apply", body)
     assert "headerSignIn" not in summary(page)
+
+
+# ---------- the Workday start chooser: one link, followed by address, never clicked (Phase 2d, M6) ----------
+
+CHOOSER_URL = "https://acme.wd1.myworkdayjobs.com/en-US/careers/job/Analyst_R1/apply"
+MANUAL = "/en-US/careers/job/Analyst_R1/apply/applyManually?source=Board"
+
+
+def serve_chooser(page, html=None, url=CHOOSER_URL):
+    serve(page, url, html if html is not None else fixture_html("workday_chooser.html"))
+    # The press navigates: the route answers the landing request (the context is offline).
+    page.route(re.compile(r"https://acme\.wd1\.myworkdayjobs\.com/.*/apply/.+"), lambda route: route.fulfill(
+        status=200, content_type="text/html", body="<p>landed</p>"))
+
+
+def chooser_id(page):
+    return summary(page)["chooserId"]
+
+
+def press_chooser(page, element_id):
+    """Run the chooser press and wait for the tab to navigate; (result, new url). A press that did navigate and lost
+    its answer to the destroyed context reads as the navigation it was."""
+    with page.expect_navigation() as nav:
+        try:
+            result = page.evaluate(f"(id) => {READER}.advance(id, {{chooser: true}})", element_id)
+        except PlaywrightError as err:
+            if "context was destroyed" not in str(err):
+                raise
+            result = {"clicked": True}
+    return result, nav.value.url
+
+
+def test_the_chooser_names_apply_manually_and_nothing_else_and_the_page_is_a_chooser(page):
+    serve_chooser(page)
+    s = summary(page)
+    assert page.evaluate("(id) => document.querySelector(`[data-maestro-btn='${id}']`).dataset.automationId", s["chooserId"]) == "applyManually"
+    assert classify(page) == {"kind": "chooser"}
+    # The other two links stay Submit-worded buttons that nothing presses.
+    assert [b["text"] for b in s["buttons"] if b["text"] != "Sign In"] == ["Autofill with Resume", "Apply Manually", "Use My Last Application"]
+
+
+def test_the_chooser_press_navigates_to_the_links_address_and_never_clicks_it(page):
+    serve_chooser(page)
+    page.evaluate("() => { window.clicked = 0; document.querySelector('[data-automation-id=applyManually]').addEventListener('click', () => { window.clicked += 1; }); }")
+    result, url = press_chooser(page, chooser_id(page))
+    assert result == {"clicked": True}
+    assert url == "https://acme.wd1.myworkdayjobs.com" + MANUAL
+
+
+def test_a_plain_next_press_never_follows_the_chooser_link(page):
+    serve_chooser(page)
+    assert advance(page, chooser_id(page)) == {"clicked": False, "why": "submit"}
+    assert page.url == CHOOSER_URL
+
+
+@pytest.mark.parametrize("automation_id", ["autofillWithResume", "useMyLastApplication"])
+def test_a_forged_id_on_a_link_that_changes_data_is_refused(page, automation_id):
+    serve_chooser(page)
+    summary(page)
+    page.evaluate("(a) => document.querySelector(`[data-automation-id=${a}]`).setAttribute('data-maestro-btn', 'forged')", automation_id)
+    result = page.evaluate(f"() => {READER}.advance('forged', {{chooser: true}})")
+    assert result["clicked"] is False and result["why"] == "not_chooser"
+    assert page.url == CHOOSER_URL
+
+
+def test_a_field_added_after_the_page_was_read_refuses_the_press(page):
+    serve_chooser(page)
+    cid = chooser_id(page)
+    page.evaluate("() => document.querySelector('main').insertAdjacentHTML('beforeend', '<label for=z>Zip</label><input id=z>')")
+    assert page.evaluate(f"(id) => {READER}.advance(id, {{chooser: true}})", cid) == {"clicked": False, "why": "not_chooser"}
+    assert summary(page).get("chooserId") is None and classify(page)["kind"] != "chooser"
+
+
+@pytest.mark.parametrize("change", [
+    "el.setAttribute('target', '_blank')",
+    "el.setAttribute('href', 'https://other.example.test/en-US/apply/applyManually')",
+    "el.setAttribute('href', '#')",
+    "el.setAttribute('href', 'javascript:alert(1)')",
+    "el.setAttribute('href', '/en-US/careers/job/Analyst_R1/apply')",
+    "el.textContent = 'Apply Manually and submit'",
+    "el.setAttribute('data-automation-id', 'applyManuallyNow')",
+    "el.setAttribute('aria-label', 'Submit my application')",
+    "el.setAttribute('id', 'submit-link')",
+    "el.setAttribute('aria-disabled', 'true')",
+    "el.style.display = 'none'",
+])
+def test_a_chooser_link_that_is_not_plainly_apply_manually_is_neither_named_nor_followed(page, change):
+    serve_chooser(page)
+    cid = chooser_id(page)
+    page.evaluate(f"() => {{ const el = document.querySelector('[data-automation-id=applyManually], [data-automation-id=applyManuallyNow]'); {change}; }}")
+    assert page.evaluate(f"(id) => {READER}.advance(id, {{chooser: true}})", cid)["clicked"] is False
+    assert page.url == CHOOSER_URL
+    assert summary(page).get("chooserId") is None
+
+
+def test_the_same_markup_off_workday_names_nothing(page):
+    serve_chooser(page, url="https://careers.initech.test/en-US/careers/job/Analyst_R1/apply")
+    assert summary(page).get("chooserId") is None
+    assert classify(page) == {"kind": "review", "by": "submit_button"}
+
+
+def test_two_links_that_both_look_like_apply_manually_are_ambiguous_and_not_named(page):
+    body = fixture_html("workday_chooser.html").replace("</div>\n</main>", """<a role="button" data-automation-id="applyManually"
+      href="/en-US/careers/job/Analyst_R1/apply/applyManually?source=Other">Apply Manually</a></div>\n</main>""")
+    serve_chooser(page, body)
+    assert summary(page).get("chooserId") is None
+
+
+def test_a_link_to_another_host_is_not_followed_even_when_it_reads_apply_manually(page):
+    body = fixture_html("workday_chooser.html").replace(
+        'href="/en-US/careers/job/Analyst_R1/apply/applyManually?source=Board"',
+        'href="https://acme.wd1.myworkdayjobs.com.other.test/en-US/apply/applyManually"')
+    serve_chooser(page, body)
+    assert summary(page).get("chooserId") is None
+
+
+def test_the_chooser_press_refuses_a_stale_id_and_no_id(page):
+    serve_chooser(page)
+    stale = chooser_id(page)
+    summary(page)
+    assert page.evaluate(f"(id) => {READER}.advance(id, {{chooser: true}})", stale)["clicked"] is False
+    assert page.evaluate(f"() => {READER}.advance('', {{chooser: true}})")["clicked"] is False
 
 
 # ---------- a board's own hosts, and the ceiling on what is stored ----------

@@ -52,6 +52,8 @@ const summaryOf = (p, banner = false) => {
       s.buttons = [btn("apply-1", "Apply now", { inForm: false })]; break;
     case "chooser": s.fillable = p.fillable ?? 0;
       s.buttons = ["Autofill with Resume", "Apply Manually", "Use My Last Application"].map((t, i) => btn(`ch-${i}`, t)); break;
+    case "wd_chooser": s.fillable = p.fillable ?? 0; s.chooserId = p.chooserId === undefined ? "ch-1" : p.chooserId;
+      s.buttons = ["Autofill with Resume", "Apply Manually", "Use My Last Application"].map((t, i) => btn(`ch-${i}`, t)); break;
     case "alert_posting": s.fillable = 1; s.hasApplyLink = true;
       s.buttons = [btn("alert-1", "Subscribe", { inForm: false }), btn("apply-1", "Apply now", { inForm: false })]; break;
     case "unseen_submit": s.fillable = 2; s.buttons = [btn(`n-${p.n ?? 0}`, "Next")]; s.submitSeen = true; break;
@@ -454,6 +456,87 @@ def test_a_stop_before_the_account_is_created_types_nothing(tmp_path):
     out = _drive(tmp_path, [ACCOUNT], cancelAfter=3, record=ON_WD)   # Stop lands after openTab, classify, tabUrl
     assert (out["record"]["status"], out["record"]["why"]) == ("stopped", "user")
     assert names(out, "createAccount") == []
+
+
+# ---------- the Workday start chooser (Phase 2d, M6) ----------
+
+CHOOSER = {"t": "wd_chooser", "host": WD}
+POSTING_WD = {"t": "posting", "host": WD}
+
+
+def chooser_presses(out):
+    return [c for c in names(out, "advance") if c[3] == {"chooser": True}]
+
+
+def test_posting_then_chooser_then_a_step_then_a_review_presses_apply_then_the_chooser_then_next(tmp_path):
+    out = _drive(tmp_path, [POSTING_WD, CHOOSER, step(1, host=WD), {**REVIEW, "host": WD}], record=ON_WD)
+    assert (out["record"]["status"], out["record"]["step"]) == ("ready", 1)
+    assert [c[3] for c in names(out, "advance")] == [{"apply": True}, {"chooser": True}, None]
+    assert out["pressed"] == ["apply-1", "ch-1", "next-1"], "only Apply Manually of the three links"
+
+
+def test_a_chooser_on_the_first_read_of_the_tab_the_run_opened_is_pressed(tmp_path):
+    out = _drive(tmp_path, [CHOOSER, step(1, host=WD), {**REVIEW, "host": WD}], record=ON_WD)
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["ch-1", "next-1"]
+    assert [c[3] for c in names(out, "advance")][0] == {"chooser": True}
+
+
+def test_the_chooser_is_not_filled_or_called_ready(tmp_path):
+    out = _drive(tmp_path, [CHOOSER, step(1, host=WD), {**REVIEW, "host": WD}], record=ON_WD)
+    assert out["fillCalls"] == 2, "the step and the review are filled; the chooser is not"
+
+
+@pytest.mark.parametrize("pages, record, extra", [
+    ([step(1, host=WD), CHOOSER], ON_WD, {}),                                         # a chooser at step > 0
+    ([SIGN_IN, CHOOSER], ON_WD, {"signInMoves": True}),                                  # after the run's own sign-in
+    ([CHOOSER], {"tabId": 7, "status": "parked", "why": "posting", "hosts": [WD], "openUrl": f"https://{WD}/apply"}, {}),   # a Resume
+    ([CHOOSER], {"tabId": 7, "status": "parked", "why": "chooser", "hosts": [WD], "openUrl": f"https://{WD}/apply"}, {}),
+    ([CHOOSER], {"openUrl": f"https://{WD}/apply", "inPlace": True}, {}),                # a run in place
+    ([CHOOSER], {"openUrl": f"https://{WD}/apply", "filled": True, "wrote": True}, {}),  # something was already filled
+    ([CHOOSER], {"openUrl": f"https://{WD}/apply", "accountTried": True}, {}),           # after an account was made
+])
+def test_a_chooser_outside_the_runs_first_page_parks_with_no_press(tmp_path, pages, record, extra):
+    out = _drive(tmp_path, pages, record=record, **extra)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "chooser")
+    assert chooser_presses(out) == []
+
+
+def test_a_second_chooser_straight_after_the_first_press_is_not_pressed_again(tmp_path):
+    out = _drive(tmp_path, [CHOOSER, {**CHOOSER, "key": "again"}], record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "chooser")
+    assert len(chooser_presses(out)) == 1
+
+
+def test_a_chooser_after_a_next_press_is_not_pressed_whatever_the_posting_did(tmp_path):
+    out = _drive(tmp_path, [POSTING_WD, step(1, host=WD), CHOOSER], record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "chooser")
+    assert chooser_presses(out) == []
+
+
+def test_a_chooser_whose_page_claims_another_host_than_the_tab_is_not_pressed(tmp_path):
+    out = _drive(tmp_path, [{**CHOOSER, "host": "evil.example.test", "urlHost": WD}], record=ON_WD)
+    assert out["record"]["why"] == "chooser" and chooser_presses(out) == []
+
+
+def test_a_chooser_press_the_page_refuses_parks_chooser_and_one_that_changes_nothing_parks_no_change(tmp_path):
+    refused = _drive(tmp_path, [{**CHOOSER, "refuse": True}], record=ON_WD)
+    assert (refused["record"]["status"], refused["record"]["why"]) == ("parked", "chooser")
+    stuck = _drive(tmp_path, [{**CHOOSER, "stuck": 9}], record=ON_WD)
+    assert (stuck["record"]["status"], stuck["record"]["why"]) == ("parked", "no_change")
+    assert len(chooser_presses(stuck)) == 1
+
+
+def test_a_page_with_no_chooser_id_from_the_reader_is_the_old_unknown_page(tmp_path):
+    out = _drive(tmp_path, [{**CHOOSER, "chooserId": None}], record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert names(out, "advance") == []
+
+
+def test_a_resume_after_a_chooser_park_follows_the_user_to_the_page_they_opened(tmp_path):
+    first = _drive(tmp_path, [step(1, host=WD), CHOOSER], record=ON_WD)
+    assert first["record"]["why"] == "chooser"
+    again = _drive(tmp_path, [step(2, host=WD), {**REVIEW, "host": WD}], record=first["record"])
+    assert again["record"]["status"] == "ready" and chooser_presses(again) == []
 
 
 # ---------- walls ----------
@@ -1736,6 +1819,9 @@ def test_classify_asks_every_frame_of_the_named_tab_for_the_page_summary(tmp_pat
     ({"apply": False}, {"type": "page_advance", "id": "tag-1"}),
     ({"apply": "yes"}, {"type": "page_advance", "id": "tag-1"}),
     ({"apply": True}, {"type": "page_advance", "id": "tag-1", "apply": True}),
+    ({"chooser": False}, {"type": "page_advance", "id": "tag-1"}),
+    ({"chooser": "yes"}, {"type": "page_advance", "id": "tag-1"}),
+    ({"chooser": True}, {"type": "page_advance", "id": "tag-1", "chooser": True}),
 ])
 def test_advance_sends_the_id_and_the_apply_flag_only_when_it_is_exactly_true(tmp_path, options, message):
     out = _ops(tmp_path, "advance", advanceOptions=options)

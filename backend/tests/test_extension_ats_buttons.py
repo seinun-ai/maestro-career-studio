@@ -102,5 +102,50 @@ def test_the_hosts_are_the_shared_ats_hosts(tmp_path):
 def test_the_module_publishes_exactly_its_surface(tmp_path):
     out = run_node("const ns = loadModules(); emit({keys: Object.keys(ns.atsButtons).sort()});",
                    {}, tmp_path, source=ATS_BUTTONS_JS)
-    assert out["keys"] == ["HOSTS", "RULES", "knownSort"]
+    assert out["keys"] == ["CHOOSERS", "HOSTS", "RULES", "isChooser", "knownSort"]
     assert json.dumps(out)  # plain data
+
+
+# ---------- the start chooser's one allowed link (Phase 2d, M6) ----------
+
+CHOOSER = {"automationId": "applyManually", "text": "Apply Manually",
+           "path": "/en-US/careers/job/Analyst_R1/apply/applyManually"}
+
+
+def chooses(tmp_path, cases):
+    return run_node("const ns = loadModules(); emit(spec.cases.map(([h, a]) => ns.atsButtons.isChooser(h, a)));",
+                    {"cases": cases}, tmp_path, source=ATS_BUTTONS_JS)
+
+
+def test_exactly_workdays_apply_manually_link_is_the_one_allowed_chooser_link(tmp_path):
+    host = "acme.wd1.myworkdayjobs.com"
+    out = chooses(tmp_path, [
+        [host, CHOOSER],
+        ["Acme.WD1.MyWorkdayJobs.com", {**CHOOSER, "text": "  apply   manually "}],
+        [host, {**CHOOSER, "automationId": "autofillWithResume", "text": "Autofill with Resume",
+                "path": "/x/apply/autofillWithResume"}],
+        [host, {**CHOOSER, "automationId": "useMyLastApplication", "text": "Use My Last Application",
+                "path": "/x/apply/useMyLastApplication"}],
+        [host, {**CHOOSER, "text": "Apply Manually Now"}],
+        [host, {**CHOOSER, "text": "Apply"}],
+        [host, {**CHOOSER, "automationId": "applyManuallyX"}],
+        [host, {**CHOOSER, "path": "/en-US/careers/job/Analyst_R1/apply"}],
+        [host, {**CHOOSER, "path": "/apply/applyManually/extra"}],
+        [host, {**CHOOSER, "path": "/apply/autofillWithResume"}],
+        ["careers.initech.test", CHOOSER],
+        ["myworkdayjobs.com.example.test", CHOOSER],
+        ["boards.greenhouse.io", CHOOSER],
+        ["", CHOOSER],
+        [None, CHOOSER],
+        [host, None],
+        [host, {}],
+    ])
+    assert out == [True, True] + [False] * 15
+
+
+def test_the_chooser_table_has_one_row_and_cites_its_fixture():
+    source = ATS_BUTTONS_JS
+    assert "workday_chooser.html" in source
+    assert len(re.findall(r"automationId: \"applyManually\"", source)) == 1
+    assert "autofillWithResume\"" not in re.sub(r"//.*", "", source), "the data-changing links are never listed"
+    assert (Path(__file__).resolve().parent / "fixtures" / "browser" / "workday_chooser.html").exists()
