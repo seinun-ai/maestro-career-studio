@@ -105,7 +105,8 @@
       proposalId: seed.proposalId, jobId: seed.jobId ?? null, applicationId: seed.applicationId ?? null,
       company: seed.company ?? null, location: seed.location ?? null, title: seed.title ?? null,
       baseSlug: seed.baseSlug ?? null,
-      openUrl: seed.openUrl, inPlace: seed.inPlace === true, startTabId: tabId, tabId: null,
+      openUrl: seed.openUrl, sourceUrl: seed.sourceUrl ?? null, inPlace: seed.inPlace === true,
+      startTabId: tabId, tabId: null,
       status: "waiting", why: null, open: [], hosts: [], seen: [], step: 0, fingerprint: null,
       startedAt: null, readyAt: null, yourMs: 0, flowOrigin: null,
       stopRequested: false, pages: [], progress: null, flags: [], assumedRows: [], parkedAt: null, learned: null,
@@ -178,9 +179,12 @@
     // job. A job BOARD's page is the exception, because there the run's move is to the employer's link.
     const matched = facts.tabId === tabId && facts.job?.id === record.jobId && Boolean(record.jobId)
       && !boardHost(hostOf(here));
+    // ... except when the matched page is the job's saved POSTING and the job has a different saved
+    // application link: the posting is where the user found the job, the link is where the form is.
+    const onPostingOnly = Boolean(record.sourceUrl) && !samePosting(url, here) && samePosting(record.sourceUrl, here);
     // A run in place is on the page the user picked for it: that page is never navigated. If the tab
     // has gone elsewhere, the driver's first read parks it.
-    const stays = record.inPlace === true || (Boolean(here) && (samePosting(url, here) || matched));
+    const stays = record.inPlace === true || (Boolean(here) && (samePosting(url, here) || (matched && !onPostingOnly)));
     if (!stays) {
       await host.navigate(tabId, url);
       const until = host.now() + LOAD_WAIT_MS;
@@ -553,7 +557,7 @@
   }
 
   /** Apply to one job in the CURRENT tab, from its employer link through every page to the review.
-   * `seed` is `{proposalId, jobId, applicationId, company, location, title, baseSlug, openUrl, inPlace}`
+   * `seed` is `{proposalId, jobId, applicationId, company, location, title, baseSlug, openUrl, sourceUrl, inPlace}`
    * (`inPlace`: the user picked the job for this very page, so `openUrl` is this page); the Job
    * step's Apply (Task 20a) builds it after the job is queued and its resume is ready. A tab with a
    * run that has not finished is not started again. */

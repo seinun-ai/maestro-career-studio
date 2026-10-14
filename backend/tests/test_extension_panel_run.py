@@ -1191,6 +1191,42 @@ def test_a_matched_application_form_on_another_origin_is_kept_not_navigated_away
     assert out["updates"] == [[7, {"url": seed["openUrl"]}]]
 
 
+CAREER_POSTING = "https://careers.acme.test/job/123"
+WORKDAY_APPLY = "https://acme.wd1.myworkdayjobs.com/External/job/Remote/Data-Scientist_R1/apply?source=LinkedIn"
+_SAVED_MATCH = {"match": "exact", "job": {"id": "job-1", "company": "Acme", "title": "Data Scientist"},
+                "application": None}
+
+
+def test_a_run_started_on_the_jobs_own_posting_opens_the_saved_application_link(tmp_path):
+    """The backend matched the career-site posting (the job's source), and the saved apply link is a
+    different page: staying would leave the run reading a posting it cannot press."""
+    seed = {**SEED, "openUrl": WORKDAY_APPLY, "sourceUrl": CAREER_POSTING}
+    out = _run(tmp_path, [{"start": seed}], api={"/api/jobs/match": _reply(_SAVED_MATCH)},
+               tabs=[{"id": 7, "url": CAREER_POSTING}], tabUrls={"7": CAREER_POSTING}, afterNavigate=0)
+    assert out["updates"] == [[7, {"url": WORKDAY_APPLY}]]
+
+
+def test_a_run_started_part_way_through_the_application_form_keeps_the_tab(tmp_path):
+    """The same job, already on its apply host (a step of the form): progress is the user's."""
+    seed = {**SEED, "openUrl": WORKDAY_APPLY, "sourceUrl": CAREER_POSTING}
+    here = "https://acme.wd1.myworkdayjobs.com/External/job/Remote/Data-Scientist_R1/apply/applyManually"
+    out = _run(tmp_path, [{"start": seed}], api={"/api/jobs/match": _reply(_SAVED_MATCH)},
+               tabs=[{"id": 7, "url": here}], tabUrls={"7": here})
+    assert out["updates"] == []
+    other_step = "https://acme.wd1.myworkdayjobs.com/External/job/Remote/Data-Scientist_R1/useMyLastApplication"
+    out = _run(tmp_path, [{"start": seed}], api={"/api/jobs/match": _reply(_SAVED_MATCH)},
+               tabs=[{"id": 7, "url": other_step}], tabUrls={"7": other_step})
+    assert out["updates"] == []
+
+
+def test_a_job_with_no_separate_apply_link_stays_on_its_posting(tmp_path):
+    """No `apply_url`: the run's link IS the posting, so the tab on it is not navigated."""
+    seed = {**SEED, "openUrl": CAREER_POSTING, "sourceUrl": CAREER_POSTING}
+    out = _run(tmp_path, [{"start": seed}], api={"/api/jobs/match": _reply(_SAVED_MATCH)},
+               tabs=[{"id": 7, "url": CAREER_POSTING}], tabUrls={"7": CAREER_POSTING})
+    assert out["updates"] == []
+
+
 def test_a_run_in_place_never_navigates_the_tab_and_parks_when_the_tab_is_not_the_page_it_was_for(tmp_path):
     """The user picked the job for THIS page. If the tab shows another site by the time the run reads it,
     the run does not drive that page as this job, and does not drag the tab back either."""

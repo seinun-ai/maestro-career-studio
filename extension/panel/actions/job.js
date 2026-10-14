@@ -604,7 +604,8 @@
       application: { id: applicationId },
       seed: { proposalId, jobId, applicationId, company: facts.job.company ?? null,
               location: read.location ?? facts.job.location ?? null,
-              title: facts.job.title ?? null, baseSlug: base, openUrl, ...(inPlace ? { inPlace } : {}) },
+              title: facts.job.title ?? null, baseSlug: base, openUrl, sourceUrl: httpUrl(read.sourceUrl),
+              ...(inPlace ? { inPlace } : {}) },
     };
   }
 
