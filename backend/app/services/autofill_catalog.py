@@ -703,6 +703,16 @@ def question_names_company(facts: dict[str, Fact], question: str) -> bool:
     return any(key and key not in _NOT_AN_EMPLOYER and _capitalised_mention(key, (question,)) for key in known)
 
 
+_INITIALS_SKIP = frozenset({"of", "and", "the"})
+
+
+def _initials(key: str) -> str:
+    """The first letters of a name key's words, without of/and/the, when it has two or more ("international
+    business machines" is "ibm"); else "" (a one-word name has no initials of its own)."""
+    letters = [w[0] for w in key.split() if w not in _INITIALS_SKIP]
+    return "".join(letters) if len(letters) > 1 else ""
+
+
 def named_employer_fact(facts: dict[str, Fact], question: str,
                         options: tuple[str, ...] | list[str] = ()) -> Fact | str | None:
     """What a worked-here question says once it is read again, when the derived answer is No. That No is
@@ -733,6 +743,9 @@ def named_employer_fact(facts: dict[str, Fact], question: str,
     # An employer known by an acronym ("IBM", "SAP", "AWS") may be a name in a list the question holds
     # under its long form; no alias table is complete, so a list beside such an employer is asked.
     if len(listed - generic) > 1 and any(key in fact.acronyms for key, _ in employers):
+        return ASK_THE_USER
+    # ... and a listed name whose initials spell such an employer ("International Business Machines", "IBM").
+    if any(_initials(name) in fact.acronyms for name in listed - generic):
         return ASK_THE_USER
     if (any(_akin(key, name) for key, _ in employers for name in listed - generic)
             or _mentions_or_is_akin([key for key, _ in employers], (question, *options))):

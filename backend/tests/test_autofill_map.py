@@ -2706,3 +2706,18 @@ def test_an_unsure_worked_here_slot_with_an_employment_verb_is_still_code_s_call
     assert _is_the_derived_no("Have you ever worked for Salesforce?", employers=("Globex",), company="Salesforce",
                               key=autofill_catalog.WORKED_HERE_SLOT, p=0.3)
 
+
+@pytest.mark.parametrize(("employers", "question", "asked"), [
+    (("IBM",), "Have you worked for International Business Machines?", True),
+    (("IBM",), "Have you worked for Initech Business Machines?", True),             # conservative
+    (("IBM",), "Have you worked for Hooli or International Business Machines?", True),
+    (("SAP",), "Have you worked for Systems Applications and Products?", True),
+    (("Globex",), "Have you worked for International Business Machines?", False),   # no acronym employer
+    (("IBM",), "Have you worked for Initech?", False),                              # initials do not match
+])
+def test_a_name_whose_initials_spell_an_acronym_employer_is_asked_not_the_derived_no(employers, question, asked):
+    facts = _globex_history(company="Acme Wireless", employers=employers)
+    assert (autofill_catalog.named_employer_fact(facts, question, ["Yes", "No"]) == autofill_catalog.ASK_THE_USER) is asked
+    assert autofill_catalog.asks_worked_here_of_other(facts, question, ["Yes", "No"]) is (not asked)
+    assert _is_the_derived_no(question, employers=employers) is (not asked)
+
