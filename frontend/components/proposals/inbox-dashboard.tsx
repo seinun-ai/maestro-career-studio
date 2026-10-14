@@ -7,9 +7,9 @@ import { useInboxVisit } from "@/hooks/use-inbox-visit";
 
 import { ArrivalsStrip } from "./arrivals-strip";
 import { InboxHistoryContext, ProposalsSection } from "./proposals-section";
-import { RecentRuns } from "./recent-runs";
+import { InboxRunNotice } from "./inbox-run-notice";
 
-/** What arrived, what your agent runs did, then the inbox lanes. */
+/** What is waiting, a line about the newest run, then the inbox lanes. */
 export function InboxDashboard() {
   const since = useInboxVisit();
   const history = useState(false);
@@ -20,7 +20,7 @@ export function InboxDashboard() {
     <InboxHistoryContext.Provider value={history}>
       <div className="flex min-w-0 flex-col gap-6">
         <ArrivalsStrip since={since} onJump={openHistory} />
-        <RecentRuns />
+        <InboxRunNotice />
         <ProposalsSection since={since} />
       </div>
     </InboxHistoryContext.Provider>

@@ -41,3 +41,17 @@ export function lastRanLine(finishedAt: string | null | undefined, ago: (iso: st
 }
 
 export const AGENT_RUNS_LATEST_KEY = ["agent-runs", "latest"] as const;
+
+/**
+ * The Agent inbox's one line about runs: "Job hunt found 12 new jobs 2 hours ago", only when the newest run
+ * (the list comes newest first) found something new. Every other run is on the Automations page.
+ */
+export function newJobsLine(
+  runs: readonly { title: string; finished_at: string; counts: Record<string, number> }[],
+  ago: (iso: string) => string,
+): string | null {
+  const newest = runs[0];
+  const found = newest?.counts.found ?? 0;
+  if (!newest || found <= 0) return null;
+  return `${newest.title} found ${found} new ${found === 1 ? "job" : "jobs"} ${ago(newest.finished_at)}`;
+}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { countsLine, lastRanLine, latestByAutomation, outcomeWord } from "./agent-runs.ts";
+import { countsLine, lastRanLine, latestByAutomation, newJobsLine, outcomeWord } from "./agent-runs.ts";
 
 test("counts read in a fixed order, zeros left out", () => {
   assert.equal(countsLine({ skipped: 8, found: 12, proposed: 4, updated: 0 }),
@@ -57,4 +57,21 @@ test("a card formats only a known finish time", () => {
   assert.equal(lastRanLine(undefined, ago), null);
   assert.equal(lastRanLine(null, ago), "Not run yet");
   assert.equal(lastRanLine("2026-10-05T10:00:00Z", ago), "Last ran 2 hours ago");
+});
+
+const hunt = (found: number, over: Record<string, unknown> = {}) => ({
+  title: "Job hunt", finished_at: "2026-10-05T10:00:00Z", counts: { found }, ...over,
+});
+
+test("the inbox says the newest run found new jobs, and links to the runs", () => {
+  assert.equal(newJobsLine([hunt(12)], () => "2 hours ago"), "Job hunt found 12 new jobs 2 hours ago");
+  assert.equal(newJobsLine([hunt(1)], () => "yesterday"), "Job hunt found 1 new job yesterday");
+});
+
+test("the inbox says nothing when the newest run found nothing new", () => {
+  assert.equal(newJobsLine([hunt(0)], () => "now"), null);
+  assert.equal(newJobsLine([hunt(0, { counts: { proposed: 3 } })], () => "now"), null);
+  assert.equal(newJobsLine([], () => "now"), null);
+  // The newest run decides: an older run's finds are not news.
+  assert.equal(newJobsLine([hunt(0), hunt(9)], () => "now"), null);
 });

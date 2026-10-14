@@ -174,3 +174,52 @@ def test_the_limit_threshold_node():
 
     result = run_node_test("lib/inbox-summary.test.ts")
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# ── B5: Recent runs move to Automations ─────────────────────────────────────
+
+
+def test_recent_runs_live_on_automations_and_the_inbox_keeps_one_line():
+    automations = _read("app/automations/page.tsx")
+    assert 'import { RecentRuns } from "@/components/automations/recent-runs";' in automations
+    assert "<RecentRuns />" in automations
+    dash = _read("components/proposals/inbox-dashboard.tsx")
+    assert "<InboxRunNotice />" in dash and "RecentRuns" not in dash
+    assert not (_FRONTEND / "components/proposals/recent-runs.tsx").exists()
+    runs = _read("components/automations/recent-runs.tsx")
+    assert "<details" in runs and "run.digest" in runs and "run.jobs.map" in runs  # expand-to-digest, job links
+
+
+def test_the_inbox_line_names_the_run_and_links_to_see_runs():
+    notice = _read("components/proposals/inbox-run-notice.tsx")
+    assert "newJobsLine(data.items, formatTimeAgo)" in notice
+    assert 'href="/automations"' in notice and "See runs" in notice
+    # Nothing new, nothing shown.
+    assert "if (!line && refused.length === 0) return null;" in notice
+    # A refused request answers something you asked for, so it stays where you would look for it.
+    assert "RefusedLine" in notice and "refused_requests" in notice
+
+
+def test_the_run_line_node():
+    from tests.node_ts import run_node_test
+
+    result = run_node_test("lib/agent-runs.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_real_components_render_without_a_browser():
+    """Renders the summary line, run line, daily limit, knock-out line and proposal card for real.
+
+    Like backend/tests/sync/test_frontend_ownership.py: it needs the web app's installed packages, so
+    the frontend CI job runs it (`node --test components/inbox-simplify.test.mjs`) and the backend job
+    skips its copy.
+    """
+    import pytest
+
+    from tests.node_ts import FRONTEND, _node_with_typescript, run_node_test
+
+    if not (FRONTEND / "node_modules" / "typescript").is_dir():
+        _node_with_typescript()
+        pytest.skip("frontend packages are not installed; the frontend CI job runs this file")
+    done = run_node_test("components/inbox-simplify.test.mjs")
+    assert done.returncode == 0, done.stdout + done.stderr

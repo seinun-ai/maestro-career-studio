@@ -1,42 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import fs from "node:fs";
-import path from "node:path";
-import Module, { createRequire } from "node:module";
-import ts from "typescript";
 
-const require = createRequire(import.meta.url);
-const frontend = path.resolve(import.meta.dirname, "..");
-const resolveFilename = Module._resolveFilename;
-Module._resolveFilename = function (name, ...args) {
-  return resolveFilename.call(this, name.startsWith("@/") ? path.join(frontend, name.slice(2)) : name, ...args);
-};
-for (const extension of [".ts", ".tsx"]) {
-  Module._extensions[extension] = function (module, filename) {
-    const output = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
-      fileName: filename,
-    });
-    module._compile(output.outputText, filename);
-  };
-}
+import { React, load, renderElement, withRouter } from "./render-harness.mjs";
 
-const React = require("react");
-const { renderToStaticMarkup } = require("react-dom/server");
-const { QueryClient, QueryClientProvider } = require("@tanstack/react-query");
-const { JobOwnershipMark, JobOwnershipNotice } = require("./job-ownership.tsx");
-const { RecentRuns } = require("./proposals/recent-runs.tsx");
-const { ConfirmDialogProvider } = require("./confirm-dialog.tsx");
-const { AppRouterContext } = require("next/dist/shared/lib/app-router-context.shared-runtime");
-
-function renderElement(element, seed = []) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  for (const [key, data] of seed) client.setQueryData(key, data);
-  const markup = renderToStaticMarkup(React.createElement(QueryClientProvider, { client },
-    element));
-  client.clear();
-  return markup;
-}
+const { JobOwnershipMark, JobOwnershipNotice } = load("components/job-ownership.tsx");
+const { RecentRuns } = load("components/automations/recent-runs.tsx");
+const { InboxRunNotice } = load("components/proposals/inbox-run-notice.tsx");
 
 function renderMark(ownership) {
   return renderElement(React.createElement(JobOwnershipMark, { jobId: "example-job", ownership }));
@@ -81,29 +50,32 @@ test("a row with no ownership is unmarked, unlocked and says nothing", () => {
   assert.equal(renderElement(React.createElement(JobOwnershipNotice, { ownership: off })), "");
 });
 
-test("Recent runs marks a bot run without jobs and shows a refused request", () => {
+const linked = withRouter;
+
+test("Recent runs marks a bot run without jobs", () => {
   const run = { id: "example-run", automation: "job-hunt", title: "Job hunt", outcome: "ok",
     agent: null, on_bot: true, finished_at: "2026-10-06T12:00:00Z", counts: {}, digest: "", jobs: [] };
+  const html = renderElement(linked(React.createElement(RecentRuns)), [
+    [["agent-runs", "latest"], { items: [run], refused_requests: [] }],
+  ]);
+  assert.match(html, /on your bot/);
+});
+
+test("the Agent inbox shows a refused request, and sync off shows no refusal block", () => {
   const reason = "Maestro couldn't apply this request.";
   const request = { id: "example-request", job_id: "example-job", reason, job_company: "Example employer",
     job_title: "Example role", answered_at: new Date(Date.now() - 3 * 3600 * 1000).toISOString() };
   // Static rendering never dispatches navigation; mount the real link and confirmation providers.
-  const element = React.createElement(AppRouterContext.Provider, { value: {} },
-    React.createElement(ConfirmDialogProvider, null, React.createElement(RecentRuns)));
-  const html = renderElement(element, [
-    [["agent-runs", "latest"], { items: [run], refused_requests: [request] }],
+  const html = renderElement(linked(React.createElement(InboxRunNotice)), [
+    [["agent-runs", "latest"], { items: [], refused_requests: [request] }],
   ]);
-  assert.match(html, /on your bot/);
   assert.match(html, /Request refused/);
   assert.match(html, /Maestro couldn/);
   assert.match(html, /href="\/jobs\/example-job"/);
   assert.match(html, /Example role, Example employer/);
   assert.match(html, /3 hours ago/);
-});
-
-test("Recent runs with sync off shows no refusal block", () => {
-  const element = React.createElement(AppRouterContext.Provider, { value: {} },
-    React.createElement(ConfirmDialogProvider, null, React.createElement(RecentRuns)));
-  const html = renderElement(element, [[["agent-runs", "latest"], { items: [], refused_requests: [] }]]);
-  assert.doesNotMatch(html, /Request refused/);
+  const quiet = renderElement(linked(React.createElement(InboxRunNotice)), [
+    [["agent-runs", "latest"], { items: [], refused_requests: [] }],
+  ]);
+  assert.doesNotMatch(quiet, /Request refused/);
 });

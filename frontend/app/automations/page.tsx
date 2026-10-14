@@ -6,6 +6,7 @@ import { Bot } from "lucide-react";
 
 import { AppPicker } from "@/components/automations/app-picker";
 import { AutomationCard } from "@/components/automations/automation-card";
+import { RecentRuns } from "@/components/automations/recent-runs";
 import { LoadErrorState } from "@/components/load-error-state";
 import { NewTabLink } from "@/components/new-tab-link";
 import { PageHeader, PageShell } from "@/components/page-shell";
@@ -129,6 +130,7 @@ export default function AutomationsPage() {
           {custom ? (
             <AutomationCard card={custom} app={app} disabledReasonId={noteId} />
           ) : null}
+          <RecentRuns />
         </>
       )}
     </PageShell>

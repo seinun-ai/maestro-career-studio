@@ -8,9 +8,8 @@ import { RunOutcome } from "@/components/proposals/run-outcome";
 import { apiFetch } from "@/lib/api";
 import { agentDisplayName } from "@/lib/agent-name";
 import { AGENT_RUNS_LATEST_KEY, countsLine } from "@/lib/agent-runs";
-import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { formatTimeAgo } from "@/lib/format-date";
-import type { AgentRun, AgentRunList, RefusedJobRequest } from "@/lib/types";
+import type { AgentRun, AgentRunList } from "@/lib/types";
 
 function RunLine({ run }: { run: AgentRun }) {
   const who = agentDisplayName(run.agent);
@@ -31,7 +30,7 @@ function RunLine({ run }: { run: AgentRun }) {
         <ul className="mt-2 flex min-w-0 flex-col gap-1 text-body-medium wrap-anywhere">
           {run.jobs.map((job) => (
             <li key={job.id}>
-              <Link href={`/jobs/${job.id}?from=proposals`} className="text-primary underline underline-offset-4">
+              <Link href={`/jobs/${job.id}`} className="text-primary underline underline-offset-4">
                 {[job.title ?? "Untitled role", job.company].filter(Boolean).join(", ")}
               </Link>
             </li>
@@ -42,23 +41,7 @@ function RunLine({ run }: { run: AgentRun }) {
   );
 }
 
-function RefusedLine({ request }: { request: RefusedJobRequest }) {
-  const job = [request.job_title ?? "Untitled role", request.job_company].filter(Boolean).join(", ");
-  return (
-    <div className="rounded-corner-md bg-surface-container-low p-3 text-body-small">
-      <p className="flex items-center gap-1.5 text-title-small">
-        <CONCEPT_ICONS.cannot className="text-muted-foreground size-3.5 shrink-0" aria-hidden="true" />
-        Request refused
-        {request.answered_at ? <span className="text-muted-foreground text-body-small"> · {formatTimeAgo(request.answered_at)}</span> : null}
-      </p>
-      {request.job_id ? <p className="mt-1 max-w-[65ch] wrap-anywhere">{job}</p> : null}
-      <p className="mt-1 max-w-[65ch]">{request.reason}</p>
-      {request.job_id ? <Link href={`/jobs/${request.job_id}`} className="text-primary underline underline-offset-4">Open job</Link> : null}
-    </div>
-  );
-}
-
-/** The newest reported run for each automation, and the requests the other copy refused. */
+/** The newest reported run for each automation, on the Automations page where the runs come from. */
 export function RecentRuns() {
   const { data, isError } = useQuery({
     queryKey: AGENT_RUNS_LATEST_KEY,
@@ -72,15 +55,11 @@ export function RecentRuns() {
       ) : !data ? null : data.items.length === 0 ? (
         <p className="text-muted-foreground flex items-center gap-2 text-body-medium">
           <Bot className="size-4 shrink-0" aria-hidden="true" />
-          <span>
-            No runs yet. Set one up on Automations.{" "}
-            <Link href="/automations" className="text-primary underline underline-offset-4">Open Automations</Link>
-          </span>
+          <span>No runs yet. Copy a prompt into your agent app and its reports show here.</span>
         </p>
       ) : (
         data.items.map((run) => <RunLine key={run.id} run={run} />)
       )}
-      {data?.refused_requests?.map((request) => <RefusedLine key={request.id} request={request} />)}
     </section>
   );
 }

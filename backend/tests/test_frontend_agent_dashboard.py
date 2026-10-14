@@ -20,7 +20,9 @@ def _read(rel: str) -> str:
 _PAGE = _read("app/proposals/page.tsx")
 _DASH = _read("components/proposals/inbox-dashboard.tsx")
 _STRIP = _read("components/proposals/arrivals-strip.tsx")
-_RUNS = _read("components/proposals/recent-runs.tsx")
+_RUNS = _read("components/automations/recent-runs.tsx")
+_NOTICE = _read("components/proposals/inbox-run-notice.tsx")
+_AUTOMATIONS = _read("app/automations/page.tsx")
 _VISIT = _read("hooks/use-inbox-visit.ts")
 _VISIT_LIB = _read("lib/inbox-visit.ts")
 _SECTION = _read("components/proposals/proposals-section.tsx")
@@ -28,7 +30,8 @@ _SECTION = _read("components/proposals/proposals-section.tsx")
 
 def test_the_page_renders_the_dashboard_in_order():
     assert "<InboxDashboard />" in _PAGE
-    assert _DASH.index("<ArrivalsStrip") < _DASH.index("<RecentRuns") < _DASH.index("<ProposalsSection")
+    assert _DASH.index("<ArrivalsStrip") < _DASH.index("<InboxRunNotice") < _DASH.index("<ProposalsSection")
+    assert "RecentRuns" not in _DASH
     assert "<ProposalsSection since={since} />" in _DASH
 
 
@@ -53,15 +56,16 @@ def test_the_summary_line_node():
 def test_recent_runs_reads_latest_and_fails_quietly():
     assert "/api/agent-runs/latest" in _RUNS
     assert "AGENT_RUNS_LATEST_KEY" in _RUNS
-    assert "No runs yet. Set one up on Automations." in _RUNS
+    assert "No runs yet. Copy a prompt into your agent app and its reports show here." in _RUNS
     assert "Couldn't load recent runs." in _RUNS
     assert "LoadErrorState" not in _RUNS
     assert "countsLine(" in _RUNS and "<RunOutcome" in _RUNS and "agentDisplayName(" in _RUNS
 
 
-def test_recent_run_links_keep_the_leave_guard_and_inbox_sequence():
+def test_recent_run_links_keep_the_leave_guard():
     assert 'from "@/components/guarded-link"' in _RUNS
-    assert "?from=proposals" in _RUNS
+    # On Automations a job's back link is Jobs, not the Agent inbox's sequence.
+    assert "?from=proposals" not in _RUNS
 
 
 def test_the_last_visit_survives_blocked_storage_and_reads_once():

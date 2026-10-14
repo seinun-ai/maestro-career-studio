@@ -51,11 +51,13 @@ def _source(path):
 def test_sync_off_pages_make_no_ownership_requests():
     """Ownership rides on the rows the pages already fetch: no job-list read, no refusals read."""
     for path in ["app/applications/page.tsx", "components/proposals/proposals-section.tsx",
-                 "components/proposals/recent-runs.tsx", "components/job-ownership.tsx"]:
+                 "components/proposals/inbox-run-notice.tsx", "components/automations/recent-runs.tsx",
+                 "components/job-ownership.tsx"]:
         text = _source(path)
         assert "use-job-ownership" not in text and "refused-requests" not in text, path
         assert "limit=500" not in text, path
-    assert _source("components/proposals/recent-runs.tsx").count("apiFetch<") == 1
+    assert _source("components/proposals/inbox-run-notice.tsx").count("apiFetch<") == 1
+    assert _source("components/automations/recent-runs.tsx").count("apiFetch<") == 1
 
 
 def test_tailor_page_reads_ownership_and_locks_every_write():
