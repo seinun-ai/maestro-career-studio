@@ -27,6 +27,8 @@
  *         no_change        Next did nothing, even after one refill
  *         page_errors      the page refused a Next and named what it wants (`open` lists the fields), and
  *                          one repair of exactly those fields did not satisfy it, or none was possible
+ *         upload           a required upload box is still empty after the fill and could not be attached
+ *                          (Next is never pressed over a known-empty required upload)
  *         loop | step_limit   the same page again, or more than LIMITS.stepMax steps
  *         posting          an Apply it may not press (see below); unknown_page  nothing it knows
  *         already_applied  a "thank you" page BEFORE the run reached review: not this run's Submit
@@ -80,6 +82,8 @@
  *   waitForChange(tabId, before, ms, stop, baseline) → {changed, url, errors, sameStep}
  *                                `baseline`: the errors the page showed before the press
  *   pageErrors(tabId, frameId) → {count, items: [{label, target, kind}]}   what the page complains about
+ *   attachTo(record, box) → {attached}   the run's PDF into the one box `{label, target}` names (a box
+ *                                the page itself named, or the fill's report found required and empty)
  *   fix(record, errors, {limits}) → {fixed}  repairs ONLY the fields the errors name; the driver then presses once more
  *   sleep(ms) · save(record) · onUpdate(record) · now() · cancelled(record)
  *                                (save is the host's: it owns the list)
@@ -124,7 +128,9 @@
   // Ready that is another job being looked at, and an application sent by hand is not this one's.
   const APPLICATION_PAGES = new Set(["review", "form_step"]);
   const DEPS = ["openTab", "classify", "advance", "fill", "signIn", "waitForChange", "tabUrl",
-    "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "fix"];
+    "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "fix", "attachTo"];
+  // The fill just wrote the file: the page may be slow to show its row, and a second copy is what the hedge is for.
+  const FILE_WRITTEN = new Set(["attached", "unconfirmed"]);
   const MAX_FIX_ROUNDS = 3;   // repairs on one page; each error is repaired once
   const REJECT_HOLD_MS = 3000;  // a banner already up before the press must stay this long to be a rejection
   const HALT = Symbol("halt");
@@ -434,6 +440,18 @@
           if (report.fields.some((f) => WROTE_STATUSES.has(f.status))) await update({ wrote: true });
           const open = openQuestions(report);
           if (open.length) return await park("open_questions", { open });
+          // Never press Next over a required upload known to be empty: attach to it (the page's own
+          // box, found after the fill), or park naming it.
+          const need = report.attach;
+          if (need?.required === true && !FILE_WRITTEN.has(need.outcome)) {
+            const boxes = Array.isArray(need.boxes) ? need.boxes : [];
+            const left = [];
+            for (const box of boxes) {
+              const got = await act(deps.attachTo, record, box);
+              if (got?.attached !== true) left.push(box);
+            }
+            if (!boxes.length || left.length) return await park("upload", { open: errorsOpen(left.length ? left : boxes) });
+          }
           pageFilled = true;
           continue;
         }

@@ -37,6 +37,8 @@
       "Answer them in the page, then press Resume. Your answers are saved to your profile."],
     page_errors: ["The page asks for more",
       "The page wouldn't move on and names what it needs. Fix those in the tab, then press Resume."],
+    upload: ["Resume not attached",
+      "The page needs a file in the upload box below, and the Companion couldn't attach your resume. Attach it in the tab, then press Resume."],
     captcha: ["CAPTCHA", WALL_STEP],
     create_account: ["Create an account", WALL_STEP],
     verify: ["Email code", WALL_STEP],
@@ -110,6 +112,15 @@
     return el;
   }
 
+  /** How the resume attach went, in a sentence for the page line; "" before it has tried anything. An
+   * "unconfirmed" write already says what to check, so it is shown as it is. */
+  function attachLine(attach) {
+    if (!attach?.outcome) return "";
+    if (attach.outcome === "attached") return "Resume attached";
+    if (attach.outcome === "unconfirmed") return attach.text ?? "Couldn't confirm the resume upload.";
+    return `Couldn't attach the resume: ${attach.text ?? "the upload box was left for you."}`;
+  }
+
   /** The bar and the pages so far: a tick and the filled count for each finished page, "k of n" on the
    * one in hand. The bar is the current page's fields, which is all the Companion knows of the length. */
   function pagesList(ctx, run) {
@@ -134,9 +145,10 @@
         node("span", null, `Page ${page.n} · ${page.filled} filled`)));
     }
     if (working(run) && run.status !== "opening") {
-      attach(list, node("li", "now", `Page ${(run.step ?? 0) + 1}${known ? ` · ${progress.done} of ${progress.total}` : ""}`));
+      attach(list, node("li", "now", `Page ${(run.step ?? 0) + 1}${known ? ` · ${progress.done} of ${progress.total} answered` : ""}`));
     }
-    return [bar, list];
+    const line = attachLine(run.attach);
+    return line ? [bar, list, ctx.build.node("div", "sub", line)] : [bar, list];
   }
 
   const WORKING_LINES = {
@@ -181,7 +193,7 @@
     const { node, attach } = ctx.build;
     const [reason, say] = PARKS[run.why] ?? ["Needs you", "Do this step in the tab, then press Resume."];
     const box = attach(node("div", "needs run-needs"), node("div", "run-reason", reason), node("div", "opts", say),
-      ["open_questions", "page_errors"].includes(run.why) ? questions(ctx, run) : null);
+      ["open_questions", "page_errors", "upload"].includes(run.why) ? questions(ctx, run) : null);
     const actions = node("div", "run-actions");
     if (canResume(run)) attach(actions, button(ctx, "save", "run-resume", "Resume", () => ctx.act.resumeRun(run.id)));
     attach(box, actions);

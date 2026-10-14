@@ -159,7 +159,8 @@ ns.fillLoop.runFill = async (deps, options) => {
   fills.push(call);
   const planned = (spec.reports ?? [])[fills.length - 1] ?? spec.report ?? { fields: [{ fid: "f1", question: "Name", required: true, status: "verified" }] };
   if (spec.callBeforeSweep) await deps.beforeSweep?.();
-  deps.onProgress?.({ phase: "field", fid: "f1", status: "verified" });
+  // Each field the report holds is told as it ended, with the status it ended in.
+  for (const row of planned.fields) deps.onProgress?.({ phase: "field", fid: row.fid, status: row.status });
   if (planned.hold) await new Promise((resolve) => { gate = resolve; });
   call.cancelledAtEnd = deps.cancelled();
   return { runId: "r", host: "jobs.acme.test", fields: planned.fields, aiFailure: null,
@@ -314,7 +315,7 @@ def test_the_running_card_shows_the_pages_so_far_a_bar_stop_and_the_fixed_line(t
     out = _run(tmp_path, [{"seed": [record]}])
     body = _card(out["shots"][1])["body"]
     text = _text(body)
-    assert "Page 1 · 12 filled" in text and "Page 2 · 5 of 9" in text
+    assert "Page 1 · 12 filled" in text and "Page 2 · 5 of 9 answered" in text
     assert "It clicks Next for you. It never clicks Submit." in text
     [bar] = _by_class(body, "run-bar")
     assert (bar["attrs"]["role"], bar["attrs"]["aria-valuenow"]) == ("progressbar", "56")
@@ -1227,3 +1228,120 @@ def test_the_card_for_a_page_errors_park_names_the_field_and_the_upload(tmp_path
     assert [btn for btn in _walk(named) if btn["tag"] == "BUTTON"] and len([b for b in _walk(named) if b["tag"] == "BUTTON"]) == 1
     [focus] = _page_messages(out, "fill_focus")
     assert focus["message"]["fid"] == "f-city"
+
+
+# ---------- the resume before Next: the attach line, the gate, the count ----------
+
+BOX = {"label": "Upload a file (5MB max)", "target": "t-up", "required": True, "occupied": False, "kind": "unknown"}
+# The box the run's own attach cannot tell is the resume's: one upload, kind unknown.
+UNKNOWN_BOX = {"tier": "B", "form": True, "score": 2, "fileInputs": 1, "uploads": [{"kind": "unknown", "occupied": False}]}
+ATTACHED_ONE = _reply([{"frameId": 0, "result": {"written": 1, "proven": 1}}])
+ATTACHED_NONE = _reply([{"frameId": 0, "result": {"written": 0, "proven": 0}}])
+
+
+def _upload_run(tmp_path, reply, boxes=(BOX,), **spec):
+    spec["frames"] = {"page_uploads": [{"frameId": 0, "result": list(boxes)}], **spec.get("frames", {})}
+    spec.setdefault("page", {"detect_page": _reply(UNKNOWN_BOX)})
+    spec.setdefault("replies", {})["attach_pdf"] = reply
+    return _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW), callBeforeSweep=True, **spec)
+
+
+def _attach_asks(out):
+    return [msg for msg in out["sent"] if msg["type"] == "attach_pdf"]
+
+
+def test_a_required_empty_upload_the_run_could_not_classify_is_attached_to_by_handle_before_next(tmp_path):
+    out = _upload_run(tmp_path, ATTACHED_ONE)
+    asks = _attach_asks(out)
+    # The run's own attach left the unclassified box (it sent nothing); the gate's targeted one named it.
+    # (The fake page keeps answering that the box is empty, so its second page asks again.)
+    assert [(ask["target"], ask["resumeOnly"]) for ask in asks[:1]] == [("t-up", True)]
+    assert not [ask for ask in asks if ask["target"] != "t-up"]
+    record = _record(out["shots"][1])
+    assert record["status"] == "ready" and record["attach"]["outcome"] == "attached"
+    # The first press came after the first write.
+    first_press = next(i for i, msg in enumerate(out["broadcasts"]) if msg["message"]["type"] == "page_advance")
+    assert first_press >= 1
+
+
+def test_an_attach_the_page_does_not_take_parks_upload_naming_the_box_and_presses_nothing(tmp_path):
+    out = _upload_run(tmp_path, ATTACHED_NONE)
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"], record["step"]) == ("parked", "upload", 0)
+    assert record["open"] == [{"fid": None, "question": "Upload a file (5MB max)", "required": True}]
+    assert not _page_messages(out, "page_advance")
+    body = _body_text(out["shots"][1])
+    assert "Upload a file (5MB max)" in body and "resume" in body.lower()
+
+
+def test_a_page_with_no_required_empty_upload_sends_no_targeted_attach(tmp_path):
+    out = _upload_run(tmp_path, ATTACHED_ONE, boxes=[{**BOX, "required": False}])
+    assert [ask for ask in _attach_asks(out) if ask.get("target")] == []
+    assert _record(out["shots"][1])["status"] == "ready"
+
+
+def test_a_write_the_page_may_have_taken_but_did_not_show_is_unconfirmed_not_left(tmp_path):
+    """Written and not proven: the file may be on the page, so the card hedges and the run parks (it never
+    writes a second copy). Not "the Companion left the upload box for you"."""
+    wrote_unproven = _reply([{"frameId": 0, "result": {"written": 1, "proven": 0}}])
+    out = _upload_run(tmp_path, wrote_unproven, api={"GET /api/applications/app-1": _reply(APPLICATION)})
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"]) == ("parked", "upload")
+    assert record["attach"]["outcome"] == "unconfirmed"
+    assert len([ask for ask in _attach_asks(out) if ask.get("target")]) == 1
+
+
+def test_an_error_that_names_an_upload_box_is_repaired_by_attaching_to_it(tmp_path):
+    rejected = {**STEP1_REJECTED}
+    frames = {"page_errors": [{"frameId": 0, "result": UPLOAD_ERROR}], "page_uploads": [{"frameId": 0, "result": []}]}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, rejected, REVIEW), frames=frames,
+               replies={"attach_pdf": ATTACHED_ONE},
+               reports=[{"fields": [verified("f1")]}, {"fields": [verified("f1")]}])
+    record = _record(out["shots"][1])
+    assert (record["status"], record["step"]) == ("ready", 1)
+    assert [(ask["target"], ask["resumeOnly"]) for ask in _attach_asks(out)] == [("t-up", True)]
+    # Only the upload was repaired: the page was not filled again.
+    assert [call["options"].get("only") for call in out["fills"]] == [None, None]
+
+
+def test_an_upload_error_the_attach_cannot_repair_parks_page_errors(tmp_path):
+    frames = {"page_errors": [{"frameId": 0, "result": UPLOAD_ERROR}], "page_uploads": [{"frameId": 0, "result": []}]}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, STEP1_REJECTED, REVIEW), frames=frames,
+               replies={"attach_pdf": ATTACHED_NONE})
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"], record["step"]) == ("parked", "page_errors", 0)
+    assert record["open"] == [{"fid": None, "question": "Upload a file (5MB max)", "required": True}]
+
+
+@pytest.mark.parametrize("attach,line", [
+    ({"outcome": "attached"}, "Resume attached"),
+    ({"outcome": "skipped", "text": "The upload box isn't for a resume, so the Companion left it."},
+     "Couldn't attach the resume: The upload box isn't for a resume, so the Companion left it."),
+    ({"outcome": "left", "text": "The Companion left the upload box for you."},
+     "Couldn't attach the resume: The Companion left the upload box for you."),
+    ({"outcome": "unconfirmed", "text": "Couldn't confirm the upload. Check the upload box, and attach your resume only if it isn't listed."},
+     "Couldn't confirm the upload. Check the upload box, and attach your resume only if it isn't listed."),
+])
+def test_the_card_says_how_the_attach_went_on_the_page_line(tmp_path, attach, line):
+    out = _run(tmp_path, [{"seed": [_seeded("filling", attach=attach, progress={"done": 1, "total": 2})]}])
+    assert line in _body_text(out["shots"][1])
+
+
+def test_a_run_that_has_not_attached_anything_says_nothing_of_it(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("filling", progress={"done": 1, "total": 2})]}])
+    text = _body_text(out["shots"][1])
+    assert "attach" not in text.lower() and "Resume attached" not in text
+
+
+def test_the_page_counts_only_what_ended_answered_and_each_upload_box_as_one_field(tmp_path):
+    fields = [verified("f1"), needs("f2", "Cell"), {**verified("f3"), "status": "unconfirmed"},
+              {**verified("f4"), "status": "already"}, {**verified("f5"), "status": "yours"}]
+    taken = {**BOX, "occupied": True}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW), reports=[{"fields": fields}],
+               inventory=[{"fid": f"f{n}"} for n in range(1, 6)],
+               frames={"page_uploads": [{"frameId": 0, "result": [taken]}]})
+    record = _record(out["shots"][1])
+    assert record["why"] == "open_questions"
+    # Answered: verified, already, yours (not the one the page took back, not the one still open),
+    # plus the upload that holds a file. Of five fields and one upload box.
+    assert record["progress"] == {"done": 4, "total": 6}

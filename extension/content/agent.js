@@ -293,8 +293,37 @@
         own.push(document.getElementById(id)?.textContent);
       }
     }
-    const kind = kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([sectionOf(input)]) ?? "unknown";
+    let kind = kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([sectionOf(input)]) ?? "unknown";
+    // A REQUIRED box that is the page's only upload, and whose words name no document, is the resume's
+    // (live Workday: "Upload a file (5MB max)", seven levels under the heading that says resume).
+    if (kind === "unknown" && read.required && attachableFileInputs().length === 1) kind = "resume";
     return { kind, occupied: hasFile(input, box) };
+  }
+
+  /** The box a page's own error named (`target`: its `data-maestro-up` tag), if this frame holds it,
+   * it holds no file, and its words do not name another document. The page chose it, so the "exactly
+   * one resume box" rule does not apply; the other two refusals do. */
+  function targetBox(inputs, target) {
+    const input = inputs.find((one) => one.getAttribute("data-maestro-up") === target);
+    try {
+      const box = input ? uploadBoxOf(input) : null;
+      return box && box.kind !== "other" && !box.occupied ? [input] : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /** The page's upload boxes in its own words, for the run: `{label, target, required, occupied,
+   * kind}` per attachable box. The label is the field reader's question; the target an opaque tag. */
+  function pageUploads() {
+    return attachableFileInputs().map((input) => {
+      let box = { kind: "unknown", occupied: true };
+      try {
+        box = uploadBoxOf(input);
+      } catch (_) { /* unknown and occupied: nothing is written to it */ }
+      return { label: ns.pageReader.fieldWords(input), target: ns.pageReader.uploadTag(input),
+               required: Boolean(ns.readField?.(input)?.required), occupied: box.occupied, kind: box.kind };
+    });
   }
 
   /** Autofill's one target, re-checked at write time for `expect`'s reason:
@@ -430,11 +459,13 @@
    * proven}`, so "nothing written" differs from "not proven", and a HIDDEN
    * input in an upload widget counts only by its row (a held `files` proves a
    * bare or visible input, whose own control shows it). The button keeps both. */
-  async function attachResumePdf(b64, filename, expect, resumeOnly = false) {
-    const reply = (written, proven) => (resumeOnly ? { written, proven } : proven);
+  async function attachResumePdf(b64, filename, expect, resumeOnly = false, target = null) {
+    // `target`: write the box the page's own error named, and only it (`targetBox`).
+    const targeted = typeof target === "string" && target !== "";
+    const reply = (written, proven) => (resumeOnly || targeted ? { written, proven } : proven);
     const all = attachableFileInputs();
-    if (Number.isInteger(expect) && all.length !== expect) return reply(0, 0);
-    const inputs = resumeOnly ? theResumeBox(all) : all;
+    if (!targeted && Number.isInteger(expect) && all.length !== expect) return reply(0, 0);
+    const inputs = targeted ? targetBox(all, target) : resumeOnly ? theResumeBox(all) : all;
     if (!inputs.length) return reply(0, 0);
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const file = new File([bytes], filename, { type: "application/pdf" });
@@ -602,7 +633,7 @@
       ? scrollToField(msg.qid)
       : false),
     attach_resume_pdf: (msg) => (frameMayReceiveUserData(msg)
-      ? attachResumePdf(msg.b64, msg.filename, msg.expect, msg.resumeOnly === true)
+      ? attachResumePdf(msg.b64, msg.filename, msg.expect, msg.resumeOnly === true, msg.target)
       : 0),
     /* The fill engine's page operations (content/fill-ops.js). Gated like
      * `guided_write`, each returning its empty shape in a refused frame: an
@@ -669,6 +700,7 @@
     page_errors: (msg) => (frameMayReceiveUserData(msg)
       ? ns.pageReader.pageErrors()
       : { count: 0, items: [] }),
+    page_uploads: (msg) => (frameMayReceiveUserData(msg) ? pageUploads() : []),
     page_advance: (msg) => (frameMayReceiveUserData(msg)
       ? ns.pageReader.advance(msg.id, { apply: msg.apply === true })
       : { clicked: false, why: "gate" }),

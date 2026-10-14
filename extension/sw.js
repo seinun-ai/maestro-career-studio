@@ -732,6 +732,8 @@ const HANDLERS = {
       expect: Number.isInteger(msg.expect) ? msg.expect : undefined,
       // Autofill's own attach (`attachResumePdf`): only a literal true.
       resumeOnly: msg.resumeOnly === true,
+      // The box a page's own error named (an opaque tag the page op handed out): a string or nothing.
+      ...(typeof msg.target === "string" && msg.target ? { target: msg.target } : {}),
       // The origin the panel vouches for (`frameMayReceiveUserData`): a later
       // step's iCIMS frame takes the attach like every other write. A string
       // or nothing, never a coerced value.
@@ -789,7 +791,7 @@ const HANDLERS = {
       "guided_write", "scroll_to_field",
       "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
       "fill_sections", "fill_add", "detect_page", "extract_job_posting",
-      "page_classify", "page_advance", "page_errors", "fill_watch", "fill_watch_report"];
+      "page_classify", "page_advance", "page_errors", "page_uploads", "fill_watch", "fill_watch_report"];
     const tabId = fanoutTab(msg, sender);
     if (!BROADCASTABLE.includes(msg.message?.type)) {
       throw new Error(`not broadcastable: ${JSON.stringify(msg.message?.type)}`);

@@ -149,7 +149,13 @@ const deps = {
     if (spec.cancelOnFill === fillCalls) { cancelFlag = true; callsWhenCancelled = calls.length; }
     if (spec.fillReturns === "nothing") return undefined;
     if (spec.fillThrows) throw new Error("secret-token-xyz exploded");
-    return { fields, stopped: spec.fillStopped === fillCalls };
+    const attach = (spec.attaches ?? [])[fillCalls - 1];
+    return { fields, stopped: spec.fillStopped === fillCalls, ...(attach ? { attach } : {}) };
+  },
+  attachTo: async (rec, box) => {
+    tick("attachTo", box.target, rec.step);
+    if (spec.cancelOnAttach) { cancelFlag = true; callsWhenCancelled = calls.length; }
+    return spec.attachTo ?? { attached: true };
   },
   signIn: async (...args) => {
     tick("signIn", args.length, Object.keys(args[1] ?? {}), args[1]?.allowedHost);
@@ -1006,7 +1012,7 @@ def test_a_fill_that_returns_no_report_is_an_error_not_a_clean_page(tmp_path):
 
 
 @pytest.mark.parametrize("dep", ["openTab", "classify", "advance", "fill", "signIn", "waitForChange",
-                                 "tabUrl", "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "fix"])
+                                 "tabUrl", "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "fix", "attachTo"])
 def test_a_missing_dependency_is_a_type_error_before_anything_runs(tmp_path, dep):
     out = _drive(tmp_path, [step(1)], omitDep=dep)
     assert out["threw"] == f"TypeError: queue-run: missing dep {dep}"
@@ -1351,3 +1357,61 @@ def test_page_errors_asks_the_frame_that_was_pressed_and_only_it(tmp_path):
 def test_page_errors_from_a_frame_that_did_not_answer_is_empty(tmp_path):
     out = _ops(tmp_path, "errors", frameId=9)
     assert out["result"] == {"count": 0, "items": []}
+
+
+# ---------- a required upload box still empty after the fill: attach to it, or park, never press Next over it ----------
+
+BOX = {"label": "Upload a file (5MB max)", "target": "t-up"}
+NEEDS_UPLOAD = {"outcome": None, "reason": None, "required": True, "boxes": [BOX]}
+
+
+def test_a_required_empty_upload_is_attached_to_before_next_is_pressed(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[NEEDS_UPLOAD])
+    assert names(out, "attachTo") == [["attachTo", "t-up", 0]]
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+    # In order: the fill, the attach, then the press.
+    calls = [c[0] for c in out["calls"]]
+    assert calls.index("fill") < calls.index("attachTo") < calls.index("advance")
+
+
+def test_an_attach_that_fails_parks_naming_the_box_and_never_presses_next(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[NEEDS_UPLOAD], attachTo={"attached": False})
+    r = out["record"]
+    assert (r["status"], r["why"], r["step"]) == ("parked", "upload", 0)
+    assert r["open"] == [{"fid": None, "question": "Upload a file (5MB max)", "required": True}]
+    assert names(out, "advance") == []
+
+
+def test_a_required_box_with_no_handle_parks_without_trying(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{"outcome": "left", "required": True, "boxes": []}])
+    assert (out["record"]["why"], names(out, "attachTo"), names(out, "advance")) == ("upload", [], [])
+
+
+@pytest.mark.parametrize("outcome", ["attached", "unconfirmed"])
+def test_a_file_the_fill_just_wrote_is_not_written_a_second_time(tmp_path, outcome):
+    """The page may be slow to show its row: a second copy is what the hedge is for."""
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{**NEEDS_UPLOAD, "outcome": outcome}])
+    assert names(out, "attachTo") == [] and out["record"]["status"] == "ready"
+
+
+@pytest.mark.parametrize("outcome", [None, "skipped", "left"])
+def test_any_other_outcome_with_the_box_still_required_tries_the_targeted_attach(tmp_path, outcome):
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{**NEEDS_UPLOAD, "outcome": outcome}])
+    assert len(names(out, "attachTo")) == 1
+
+
+def test_a_page_with_no_required_empty_upload_attaches_nothing(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{"outcome": "attached", "required": False, "boxes": []}])
+    assert names(out, "attachTo") == [] and out["record"]["status"] == "ready"
+
+
+def test_every_box_is_tried_and_the_park_names_only_those_left(tmp_path):
+    boxes = [BOX, {"label": "Cover letter", "target": "t-cl"}]
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[{**NEEDS_UPLOAD, "boxes": boxes}], attachTo={"attached": False})
+    assert [c[1] for c in names(out, "attachTo")] == ["t-up", "t-cl"]
+    assert [o["question"] for o in out["record"]["open"]] == ["Upload a file (5MB max)", "Cover letter"]
+
+
+def test_a_stop_before_the_attach_calls_nothing_after_it(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], attaches=[NEEDS_UPLOAD], cancelOnAttach=True)
+    assert out["record"]["status"] == "stopped" and names(out, "advance") == []

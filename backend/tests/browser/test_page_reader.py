@@ -829,6 +829,7 @@ DRIVE = """async ({record, swap, signIn}) => {
     signIn: async () => { calls.push(["signIn"]); document.body.innerHTML = swap; return {signedIn: true}; },
     waitForChange: async () => ({changed: Boolean(signIn)}),
     pageErrors: async () => ({count: 0, items: []}), fix: async () => ({fixed: false}),
+    attachTo: async () => ({attached: false}),
     sleep: async () => {}, save() {}, onUpdate() {}, now: () => (clock += 1000), cancelled: () => false,
   };
   await ns.queueRun.drive(record, deps);

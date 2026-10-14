@@ -793,7 +793,7 @@
    * `wanted` is asked again right before the write, after the PDF read, and
    * a no returns null with nothing sent (a tab left, a Stop). */
   async function sendResume(store, applicationId, expect, token,
-                            { resumeOnly = false, wanted = () => store.current(token) } = {}) {
+                            { resumeOnly = false, target = null, wanted = () => store.current(token) } = {}) {
     const detail = await store.api(`/api/applications/${applicationId}`);
     if (!detail.pdf_path) {
       // The store is corrected on the way past: `pdfReady` is what put this
@@ -829,7 +829,7 @@
     let frames;
     try {
       frames = await store.attachPdf(
-        `/api/applications/${applicationId}/pdf`, filename, expect, resumeOnly);
+        `/api/applications/${applicationId}/pdf`, filename, expect, resumeOnly, target);
     } catch (err) {
       // A status is the backend refusing the PDF, before any page was sent
       // anything; with none the channel failed after the send (Autofill).
@@ -951,9 +951,15 @@
         ? "Couldn't tell if the upload box is for a resume. Attach it yourself if it is."
         : "Couldn't tell which upload box is for a resume. Attach it yourself.");
     }
+    return writeResume(store, applicationId, fileInputs, token, stopped);
+  }
+
+  /** The resume-only write and its report, for Autofill's attach and the run's targeted one:
+   * `{outcome, text, ...}`, or null when a Stop or a tab change landed first. Never throws. */
+  async function writeResume(store, applicationId, expect, token, stopped, target = null) {
     try {
-      const sent = await sendResume(store, applicationId, fileInputs, token, {
-        resumeOnly: true, wanted: () => store.current(token) && !stopped() });
+      const sent = await sendResume(store, applicationId, expect, token, {
+        resumeOnly: true, target, wanted: () => store.current(token) && !stopped() });
       if (!sent) return null;
       return { outcome: "attached", ...sent,
                text: `Resume attached: ${sent.filename}. Check the upload before you submit.` };
@@ -964,6 +970,20 @@
         ? { outcome: "unconfirmed", text: err.message, applicationId }
         : { outcome: "left", text: LEFT_FOR_YOU, applicationId };
     }
+  }
+
+  /** The queued run's targeted attach: the application's PDF into the ONE box `target` names (the page
+   * named it itself, in an error or as a required box still empty after the fill). It skips the
+   * "exactly one resume box" decision above and keeps the rest of the rules: the write is refused in
+   * the page when the box holds a file or is labelled for another document (`attachResumePdf`'s
+   * `target`). Returns the same report as `autoAttachResume`, or null when Stop or a tab change landed
+   * first. Never throws: a failure is its line. */
+  async function attachToBox(store, token, stopped, target) {
+    const facts = store.read();
+    if (!facts.application || facts.pdfReady !== true || typeof target !== "string" || !target) {
+      return { outcome: "left", text: LEFT_FOR_YOU, applicationId: facts.application?.id ?? null };
+    }
+    return writeResume(store, facts.application.id, undefined, token, stopped, target);
   }
 
   /** The run's report of its attach, written past the run's own guard:
@@ -983,7 +1003,7 @@
   ns.panelActionsFill = { startFill, attachResume };
   // The queued run attaches the resume the way Autofill does (`actions/run.js` hands these a store
   // of its own, bound to the run's tab).
-  ns.panelRunAttach = { attach: autoAttachResume, land: landAutoAttach, wrote: wroteFile,
+  ns.panelRunAttach = { attach: autoAttachResume, attachTo: attachToBox, land: landAutoAttach, wrote: wroteFile,
                         settleMs: ATTACH_SETTLE_MS };
   ns.panelFillFinished = fillFinished;
   ns.panelLeftSentence = leftSentence;

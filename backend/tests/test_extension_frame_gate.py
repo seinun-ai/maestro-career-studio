@@ -144,6 +144,7 @@ ns.recipes = {
 // The page reader needs a real DOM too (tests/browser/test_page_reader.py drives it).
 ns.pageReader = {
   summary: () => { calls.push(["pageReader.summary", 0]); return { host: "x", buttons: [] }; },
+  fieldWords: (el) => "Upload", uploadTag: (el) => "t-1",
   pageErrors: () => { calls.push(["pageReader.pageErrors"]); return { count: 1, items: [{ label: "City", target: "f-1", kind: "field" }] }; },
   // The Apply flag rides as a third element only when it was true: a plain Next click never carries it.
   advance: (id, opts) => { calls.push(opts?.apply === true ? ["pageReader.advance", id, "apply"] : ["pageReader.advance", id]); return { clicked: true }; },
@@ -305,6 +306,17 @@ def test_attach_is_gated_by_frame(tmp_path):
 
     assert refused["data"] == 0, "an unqualified subframe received the resume PDF"
     assert allowed["data"] == 1, "the real uploader did not receive the resume PDF"
+
+
+def test_page_uploads_is_gated_by_frame_and_hands_out_words_and_a_tag_only(tmp_path):
+    """The run's read of the upload boxes: an unqualified frame answers none (it would name a box the
+    run could then write the resume to), and a box is `{label, target, required, occupied, kind}`."""
+    visible = [{"visible": True}]
+    refused = _run(tmp_path, type_="page_uploads", top_frame=False, form=False, file_inputs=visible)
+    allowed = _run(tmp_path, type_="page_uploads", top_frame=True, file_inputs=visible)
+    assert refused["data"] == []
+    assert [sorted(box) for box in allowed["data"]] == [["kind", "label", "occupied", "required", "target"]]
+    assert allowed["data"][0]["label"] == "Upload" and allowed["data"][0]["target"] == "t-1"
 
 
 def test_attach_skips_an_invisible_file_input(tmp_path):

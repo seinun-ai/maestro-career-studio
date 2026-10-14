@@ -42,7 +42,7 @@
  * `applyLink` / `applyTarget` read the EMPLOYER's apply link off the posting page the user is
  * viewing (design Part 7): an absolute http(s) link to another site, never fetched, never followed.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, pageErrors, advance, signIn, applyUrl, applyLink, applyTarget }.
+ * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, pageErrors, fieldWords, uploadTag, advance, signIn, applyUrl, applyLink, applyTarget }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -662,5 +662,5 @@
     return { signedIn: "clicked" };
   }
 
-  ns.pageReader = { summary, pageErrors, advance, signIn, applyUrl, applyLink, applyTarget };
+  ns.pageReader = { summary, pageErrors, fieldWords: questionOf, uploadTag: upTagOf, advance, signIn, applyUrl, applyLink, applyTarget };
 })();

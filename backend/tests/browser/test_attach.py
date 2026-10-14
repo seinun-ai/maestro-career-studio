@@ -323,3 +323,92 @@ def test_the_widget_stops_below_a_container_holding_other_fields(page):
       </script>""")
     assert _attach(page) == {"ok": True, "data": 0}
     assert page.inner_text("#rows") == NAME
+
+
+# ---------- a targeted attach: the box the page itself named ----------
+#
+# When Next is refused and the page's error names an upload box, the page has said which box it
+# wants. The write then goes to that box alone, whatever the page's other boxes look like, but it
+# still never lands over a file already there or in a box labelled for another document.
+
+TWO_BOXES = """<h2>Documents</h2>
+  <div><label for="fa">Attachment one</label><input type="file" id="fa"></div>
+  <div><label for="fb">Attachment two</label><input type="file" id="fb"></div>"""
+COVER = """<h2>Documents</h2>
+  <div><label for="fa">Cover letter</label><input type="file" id="fa"></div>"""
+
+
+def _tags(page):
+    reply = page.evaluate("""() => new Promise((resolve) => {
+      if (window.__pageListener({ type: "page_uploads" }, { id: "t" }, resolve) !== true) resolve(null);
+    })""")
+    return {box["label"]: box["target"] for box in reply["data"]}
+
+
+def _attach_to(page, target, expect=None):
+    reply = page.evaluate("""([b64, target, expect]) => new Promise((resolve) => {
+      const msg = { type: "attach_resume_pdf", b64, filename: "Jane_Doe_Resume.pdf", resumeOnly: true, target,
+                    ...(expect === null ? {} : { expect }) };
+      if (window.__pageListener(msg, { id: "t" }, resolve) !== true) resolve(null);
+    })""", [PDF, target, expect])
+    assert reply["ok"] is True, reply
+    return reply["data"]
+
+
+def _held(page, ident):
+    return page.evaluate("(id) => [...document.getElementById(id).files].map((f) => f.name)", ident)
+
+
+def test_the_resume_only_write_leaves_two_boxes_it_cannot_tell_apart(page):
+    _load(page, TWO_BOXES)
+    reply = page.evaluate("""([b64]) => new Promise((resolve) => {
+      const msg = { type: "attach_resume_pdf", b64, filename: "x.pdf", resumeOnly: true, expect: 2 };
+      window.__pageListener(msg, { id: "t" }, resolve);
+    })""", [PDF])
+    assert reply["data"] == {"written": 0, "proven": 0}
+
+
+def test_a_targeted_write_goes_to_the_named_box_alone(page):
+    _load(page, TWO_BOXES)
+    tags = _tags(page)
+    assert _attach_to(page, tags["Attachment two"]) == {"written": 1, "proven": 1}
+    assert _held(page, "fb") == [NAME] and _held(page, "fa") == []
+
+
+def test_a_targeted_write_ignores_the_callers_box_count(page):
+    """The page named the box, so the count the offer was made from is not the question."""
+    _load(page, TWO_BOXES)
+    assert _attach_to(page, _tags(page)["Attachment one"], expect=7) == {"written": 1, "proven": 1}
+
+
+def test_a_targeted_write_never_lands_over_a_file_already_there(page):
+    _load(page, TWO_BOXES)
+    tags = _tags(page)
+    page.set_input_files("#fa", {"name": "Mine.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4"})
+    assert _attach_to(page, tags["Attachment one"]) == {"written": 0, "proven": 0}
+    assert _held(page, "fa") == ["Mine.pdf"]
+
+
+def test_a_targeted_write_never_lands_in_a_box_labelled_for_another_document(page):
+    _load(page, COVER)
+    assert _attach_to(page, _tags(page)["Cover letter"]) == {"written": 0, "proven": 0}
+    assert _held(page, "fa") == []
+
+
+@pytest.mark.parametrize("target", ["nope", "", None, 7])
+def test_a_target_that_names_nothing_on_the_page_writes_nothing(page, target):
+    _load(page, TWO_BOXES)
+    reply = page.evaluate("""([b64, target]) => new Promise((resolve) => {
+      const msg = { type: "attach_resume_pdf", b64, filename: "x.pdf", resumeOnly: true, ...(target === null ? {} : { target }) };
+      window.__pageListener(msg, { id: "t" }, resolve);
+    })""", [PDF, target])
+    # No usable target: it is the ordinary resume-only write, which cannot tell these two apart either.
+    assert reply["data"] == {"written": 0, "proven": 0}
+    assert _held(page, "fa") == [] and _held(page, "fb") == []
+
+
+def test_a_targeted_write_to_workdays_emptying_uploader_is_proven_by_its_row(page):
+    _load(page, fixture_html("workday_errors.html"))
+    target = next(iter(_tags(page).values()))
+    assert _attach_to(page, target) == {"written": 1, "proven": 1}
+    assert oracle(page, "files") == [NAME]

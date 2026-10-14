@@ -271,3 +271,67 @@ def test_a_heading_outside_the_uploaders_form_never_names_it(blank):
     _load(blank, """<h2>Resume tips</h2><form>
       <div class="field"><input type="file" name="upload_1"></div></form>""")
     assert _uploads(blank)[0]["kind"] == "unknown"
+
+
+# ---------- a lone required box is the resume box ----------
+#
+# Workday's live upload was labelled only "Upload a file (5MB max)", seven levels below the heading
+# that says "resume". Nothing in reach named a document, the box read as unknown, and the run's
+# attach left it alone: silently. A required box that is the page's only upload box is the resume
+# box, unless its own words name another document.
+
+ERRORS = fixture_html("workday_errors.html")
+
+
+def _page_uploads(page):
+    reply = page.evaluate("""() => new Promise((resolve) => {
+      if (window.__pageListener({ type: "page_uploads" }, { id: "t" }, resolve) !== true) resolve(null);
+    })""")
+    assert reply["ok"] is True, reply
+    return reply["data"]
+
+
+def test_a_lone_required_box_with_no_word_of_its_own_and_a_far_heading_is_the_resume_box(blank):
+    _load(blank, ERRORS)
+    assert _uploads(blank) == [{"kind": "resume", "occupied": False}]
+    assert _proven(_attach(blank)) == 1
+    assert oracle(blank, "files") == ["Jane_Doe_Resume.pdf"]
+
+
+def test_a_lone_box_that_is_not_required_stays_unknown(blank):
+    _load(blank, ERRORS.replace('aria-required="true"', ""))
+    assert _uploads(blank) == [{"kind": "unknown", "occupied": False}]
+    assert _proven(_attach(blank)) == 0
+
+
+def test_a_lone_required_box_labelled_cover_letter_is_not_a_resume_box(blank):
+    _load(blank, ERRORS.replace("Upload a file (5MB max)</span>", "Cover letter</span>"))
+    assert _uploads(blank) == [{"kind": "other", "occupied": False}]
+    assert _proven(_attach(blank)) == 0
+    assert oracle(blank, "files") == []
+
+
+def test_a_required_box_among_several_is_not_taken_for_the_resume_box(blank):
+    two = ERRORS + '<div><label for="x2">Attachment</label><input type="file" id="x2"></div>'
+    _load(blank, two)
+    assert [box["kind"] for box in _uploads(blank)] == ["unknown", "unknown"]
+
+
+def test_page_uploads_names_each_box_in_the_pages_words_with_a_handle_and_its_state(blank):
+    _load(blank, ERRORS)
+    [box] = _page_uploads(blank)
+    assert (box["label"], box["required"], box["occupied"], box["kind"]) == ("Upload a file (5MB max)", True, False, "resume")
+    assert blank.evaluate("(t) => document.querySelector(`[data-maestro-up='${t}']`).id", box["target"]) == "upload-input"
+    assert set(box) == {"label", "target", "required", "occupied", "kind"}
+
+
+def test_page_uploads_marks_a_box_that_holds_a_file(blank):
+    _load(blank, ERRORS)
+    blank.set_input_files("#upload-input", {"name": "Old.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4"})
+    blank.wait_for_selector("[data-automation-id=file-upload-item]")
+    assert _page_uploads(blank)[0]["occupied"] is True
+
+
+def test_page_uploads_on_a_page_with_no_upload_is_empty(blank):
+    _load(blank, "<h2>Questions</h2><input aria-label='City'>")
+    assert _page_uploads(blank) == []

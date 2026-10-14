@@ -59,6 +59,8 @@
   const MAX_PHRASE = 300;
   // What the fill report counts as filled on a page (the engine wrote it and checked it).
   const WROTE = new Set(["verified", "closest", "assumed"]);
+  // What the card counts as answered: filled and verified, or found answered or the user's own (kept).
+  const ANSWERED = new Set([...WROTE, "already", "yours"]);
   // The outcomes of a field the engine left that join the known-gaps list.
   const LEFTOVER = new Set(["cannot_operate", "unconfirmed"]);
 
@@ -125,6 +127,17 @@
     }
     const facts = state.facts.get(record.id);
     const host = store.run;
+    // The top frame's detect, else the first frame that holds a form (an embedded application).
+    const detectUploads = async () => {
+      let verdict = await host.tabFrame0(record.tabId, { type: "detect_page" }).catch(() => null);
+      if (verdict?.form !== true) {
+        const frames = await host.tabBroadcast(record.tabId, { type: "detect_page" }).catch(() => []);
+        verdict = frames.map((frame) => frame.result).find((one) => one?.form === true) ?? verdict;
+      }
+      if (!verdict) return null;
+      return { fileInputs: Number(verdict.fileInputs) || 0,
+               uploads: Array.isArray(verdict.uploads) ? verdict.uploads : null };
+    };
     return {
       read: () => ({ ...facts, tabId: record.tabId }),
       write: (patch) => Object.assign(facts, patch),
@@ -135,19 +148,12 @@
       api: store.api,
       broadcast: (message) => host.tabBroadcast(record.tabId, message),
       prepare: () => host.prepare(record.tabId),
-      attachPdf: (path, filename, expect, resumeOnly = false) =>
-        host.attachPdf(record.tabId, path, filename, expect, resumeOnly),
-      // The top frame's detect, else the first frame that holds a form (an embedded application).
-      detectUploads: async () => {
-        let verdict = await host.tabFrame0(record.tabId, { type: "detect_page" }).catch(() => null);
-        if (verdict?.form !== true) {
-          const frames = await host.tabBroadcast(record.tabId, { type: "detect_page" }).catch(() => []);
-          verdict = frames.map((frame) => frame.result).find((one) => one?.form === true) ?? verdict;
-        }
-        if (!verdict) return null;
-        return { fileInputs: Number(verdict.fileInputs) || 0,
-                 uploads: Array.isArray(verdict.uploads) ? verdict.uploads : null };
-      },
+      attachPdf: (path, filename, expect, resumeOnly = false, target = null) =>
+        host.attachPdf(record.tabId, path, filename, expect, resumeOnly, target),
+      detectUploads,
+      // `sendResume` asks this after a write it could not prove, to tell "the page grew a box" from "the
+      // boxes took nothing"; without it that path threw and read as a write that never happened.
+      detectFileInputs: async () => (await detectUploads())?.fileInputs ?? 0,
       recipes: store.recipes,
       build: store.build,
     };
@@ -225,6 +231,7 @@
       cancelled: (one) => one.stopRequested === true,
       fill: (one, { limits }) => fillPage(store, one, limits),
       fix: (one, errors, { limits }) => fixPage(store, one, errors, limits),
+      attachTo: (one, box) => attachBox(store, one, box.target),
     };
   }
 
@@ -341,7 +348,8 @@
     const url = await host.tabUrl(record.tabId);
     rs.write({ url });
     const stopped = () => record.stopRequested === true;
-    const finished = new Set();
+    const finished = new Set();   // every field that reached a final status
+    const answered = new Set();   // those that ended filled, verified or kept
     let total = 0;
     let auto = null;
     if (!scoped) record.progress = { done: 0, total: 0 };
@@ -352,7 +360,7 @@
         // receipt's read) names every field the loop is about to work.
         if (!scoped && message.type === "fill_inventory" && !message.peek && !message.readOnly) {
           total = frames.reduce((n, frame) => n + (frame.result?.fields?.length ?? 0), 0);
-          record.progress = { done: finished.size, total };
+          record.progress = { done: answered.size, total };
           store.render();
         }
         return frames;
@@ -368,7 +376,8 @@
       onProgress: (update) => {
         if (update.phase !== "field" || scoped) return;
         finished.add(update.fid);
-        record.progress = { done: finished.size, total: Math.max(total, finished.size) };
+        if (ANSWERED.has(update.status)) answered.add(update.fid);
+        record.progress = { done: answered.size, total: Math.max(total, finished.size) };
         store.render();
       },
     }, {
@@ -383,6 +392,17 @@
       ...(scoped ? { only: scope.only } : {}),
     });
     ns.panelRunAttach.land(rs, auto);
+    if (auto) record.attach = attachNote(auto);
+    if (!scoped) {
+      // The page's upload boxes, after the attach: one field each in the page's count, and a required
+      // one still empty is the driver's to attach to (or park on) before it presses Next.
+      const boxes = await uploadBoxes(host, record);
+      const empty = boxes.filter((box) => box.required && !box.occupied);
+      const taken = boxes.filter((box) => box.occupied).length;
+      record.progress = { done: answered.size + taken, total: Math.max(total, finished.size) + boxes.length };
+      report.attach = { outcome: auto?.outcome ?? null, reason: auto?.reason ?? null, required: empty.length > 0,
+                        boxes: empty.map(({ label, target }) => ({ label, target })) };
+    }
     rs.write({ consentForms: report.consentForms === true });
     const flags = await ns.panelRecordReceipt(rs, rs.read(), 0,
       (frames) => ns.receipt.fromLoop(report, frames, auto, rs.read().receiptSeen?.fids),
@@ -409,8 +429,10 @@
   async function fixPage(store, record, errors, limits) {
     if (errors.some((one) => !one.target || (one.kind !== "field" && one.kind !== "upload"))) return { fixed: false };
     let fixed = true;
-    // (An upload box the page named is repaired by the targeted attach.)
-    if (errors.some((one) => one.kind === "upload")) return { fixed: false };
+    // An upload box the page named gets the run's PDF, whatever the box looks like to the run's own attach.
+    for (const one of errors.filter((e) => e.kind === "upload")) {
+      if (record.stopRequested === true || !(await attachBox(store, record, one.target)).attached) return { fixed: false };
+    }
     const fids = errors.filter((one) => one.kind === "field").map((one) => one.target);
     if (fids.length) {
       const report = await fillPage(store, record, limits, { only: fids });
@@ -419,6 +441,40 @@
       fixed = fids.every((fid) => REPAIRED.has(byFid.get(fid)?.status));
     }
     return { fixed };
+  }
+
+  /** The run's PDF into the one upload box `target` names; the card's attach line follows the result. */
+  async function attachBox(store, record, target) {
+    const rs = runStore(store, record);
+    const got = await ns.panelRunAttach.attachTo(rs, 0, () => record.stopRequested === true, target);
+    if (!got) return { attached: false };
+    ns.panelRunAttach.land(rs, got);
+    record.attach = attachNote(got);
+    if (got.outcome === "attached" && record.progress?.total > record.progress.done) {
+      record.progress = { ...record.progress, done: record.progress.done + 1 };
+    }
+    store.render();
+    return { attached: got.outcome === "attached" };
+  }
+
+  /** The attach as the card keeps it: the outcome, and its sentence unless it is the one that names the
+   * file ("attached"), so the record holds no filename. */
+  function attachNote(auto) {
+    return { outcome: auto.outcome, ...(auto.outcome !== "attached" && auto.text ? { text: String(auto.text).slice(0, MAX_PHRASE) } : {}) };
+  }
+
+  /** The page's upload boxes in its own words (`page_uploads`), from every frame that answers; a box
+   * is `{label, target, required, occupied}` and nothing else crosses. */
+  async function uploadBoxes(host, record) {
+    try {
+      const frames = await host.tabBroadcast(record.tabId, { type: "page_uploads" });
+      return frames.flatMap((frame) => (Array.isArray(frame.result) ? frame.result : []))
+        .filter((box) => box && typeof box.target === "string" && box.target)
+        .map((box) => ({ label: String(box.label ?? "").slice(0, 160), target: box.target,
+                         required: box.required === true, occupied: box.occupied === true }));
+    } catch {
+      return [];
+    }
   }
 
   // ---------- starting, stopping, resuming ----------
