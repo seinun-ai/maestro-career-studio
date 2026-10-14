@@ -24,9 +24,19 @@
  *         loop | step_limit   the same page again, or more than LIMITS.stepMax steps
  *         posting          an Apply it may not press (see below); unknown_page  nothing it knows
  *         already_applied  a "thank you" page BEFORE the run reached review: not this run's Submit
- *         already_applied  a "thank you" page BEFORE the run reached review: not this run's Submit
+ *         moved_away       a Resume found the tab on a host the run never navigated to: another
+ *                          page must not be filled with this job's answers
  *     → stopped      closed | bad_link | error | user (a Stop; nothing is called after it)
  *   Resume re-enters `drive` on a parked record: the open tab is kept, the page is read again.
+ *
+ * SETTLING. A page the run has just arrived at (the opened tab, an Apply or Next that moved it, a
+ * sign-in) is often not drawn yet: the content scripts load at document_idle, and a client-rendered
+ * wizard answers with a skeleton. When such a read finds no frame, a page classed unknown, or a
+ * field-less page with a lone Next after step 0 (a step half drawn looks exactly like an "are you
+ * sure" page), the driver re-reads every POLL_MS until the fingerprint is the same on two reads in
+ * a row (an empty read never counts as steady), for at most LIMITS.changeMs, and only then judges.
+ * The rule lives here, not in pageOps().waitForChange, so it also covers the first read of a
+ * freshly opened tab whatever the host's openTab resolves on.
  *
  * THE RULES IT KEEPS
  * - SUBMIT IS NEVER CLICKED. Only a button `ns.pageKind.classify` named the page's Next is ever
@@ -53,13 +63,15 @@
  *   advance and the page's own validation decide, and a page that does not move is refilled once.
  *
  * THE DEPS (all required, each a function; a missing one is a TypeError before anything runs)
- *   openTab(url) → tabId        resolves once the page can be read (loaded, scripts injected): a
- *                               first read that finds no frame answering parks as `unknown_page`
+ *   openTab(url, stop) → tabId  resolves once the tab exists (the driver waits for the page to be
+ *                               readable itself, see SETTLING); `stop()` is the Stop check, so a
+ *                               long load can be abandoned
  *   classify(tabId) → [{frameId, result: {summary, top}}]      tabUrl(tabId) → the tab's address
  *   advance(tabId, frameId, id, opts) → {clicked, why}         opts is {apply: true} or absent
  *   fill(record, {limits}) → the fill-loop report              signIn(record, {allowedHost, stop}) → {signedIn}
  *   waitForChange(tabId, before, ms, stop) → {changed, url}
- *   save(record) · onUpdate(record) · now() · cancelled(record)   (save is the host's: it owns the list)
+ *   sleep(ms) · save(record) · onUpdate(record) · now() · cancelled(record)
+ *                                (save is the host's: it owns the list)
  *   pageOps() builds classify, advance, signIn and waitForChange from a message transport.
  *
  * ONE DEVIATION FROM A STRAIGHT READING: after a clean fill the page is read AGAIN before it is
@@ -88,7 +100,7 @@
   const WROTE_STATUSES = new Set(["verified", "closest", "assumed", "already", "partial"]);
   const WALLS = new Set(["captcha", "create_account", "verify", "board_native"]);
   const DEPS = ["openTab", "classify", "advance", "fill", "signIn", "waitForChange", "tabUrl",
-    "save", "onUpdate", "now", "cancelled"];
+    "sleep", "save", "onUpdate", "now", "cancelled"];
   const HALT = Symbol("halt");
 
   /** The hostname of an http(s) address, lower-cased, else null (any other scheme, or not an address). */
@@ -202,6 +214,7 @@
     let navigated = false;   // the last thing the run did moved the tab: its address is the run's own
     let pageFilled = false;  // this page has had its fill (judged afresh after it)
     let tried = 0;           // Next presses on this page that did nothing
+    let movedChecked = false;  // a Resume's first read has been checked against the hosts the run reached
 
     const noteHost = async (url) => {
       const host = hostOf(url);
@@ -224,15 +237,40 @@
       tried = 0;
     };
 
+    // A read of the page that looks unfinished (no frame, an unknown page, or a half-drawn step) is
+    // repeated until two reads in a row agree. Only for a page the run has just arrived at.
+    const unfinished = (frame) => {
+      if (!frame) return true;
+      const summary = frame.result.summary;
+      const kind = ns.pageKind.classify(summary).kind;
+      return kind === "unknown" || (record.step > 0 && kind === "form_step" && (summary.fillable ?? 0) === 0);
+    };
+    const readPage = async (settle) => {
+      const startedAt = deps.now();
+      let previous = null;
+      for (;;) {
+        const frame = pickFrame(await act(deps.classify, record.tabId));
+        const url = await act(deps.tabUrl, record.tabId);
+        if (!settle || !unfinished(frame)) return { frame, url };
+        const print = frame ? fingerprint(url, frame.result.summary) : null;
+        if (print !== null && print === previous) return { frame, url };
+        if (deps.now() - startedAt >= LIMITS.changeMs) return { frame, url };
+        previous = print;
+        await act(deps.sleep, POLL_MS);
+      }
+    };
+
     try {
       gate();
+      const resumed = record.tabId != null;
+      const userNavigates = record.why === "sign_in_yourself" || record.why === "verify";
       if (record.tabId == null) {
         const host = hostOf(record.openUrl);
         if (!host) return await finish("stopped", "bad_link");
         await update({ status: "opening", why: null, open: [], startedAt: record.startedAt ?? deps.now(), hosts: [host] });
         gate();
         // The tab id is kept before Stop is asked again: a tab the run opened must stay findable.
-        await update({ tabId: await deps.openTab(record.openUrl) });
+        await update({ tabId: await deps.openTab(record.openUrl, stopping) });
         gate();
         navigated = true;
         applyOk = true;
@@ -241,17 +279,26 @@
       }
 
       for (;;) {
-        const frame = pickFrame(await act(deps.classify, record.tabId));
-        if (!frame) return await park("unknown_page");
+        const arrived = navigated;
+        const { frame, url } = await readPage(arrived);
+        // A finished run is only watching for the confirmation: a page not readable yet changes nothing.
+        if (!frame) return record.readyAt != null ? record : await park("unknown_page");
         const summary = frame.result.summary;
         // Spent on this first read, whatever it finds: a later page (after a sign-in, a Resume, a
         // step) may be a saved draft's review page, and its "Apply" is a Submit.
         const mayApply = applyOk;
         applyOk = false;
-        const url = await act(deps.tabUrl, record.tabId);
-        if (navigated) {
+        if (arrived) {
           navigated = false;
           await noteHost(url);
+        }
+        // A Resume finds the tab where the user left it. On a host the run never navigated to it is
+        // another page, and it is not filled with this job's answers. (A ready tab is only watched,
+        // and a park that asked the user to navigate, to sign in or enter a code, is exempt:
+        // where they land is theirs.)
+        if (resumed && !arrived && record.readyAt == null && !movedChecked) {
+          movedChecked = true;
+          if (!userNavigates && url && record.hosts.length && !record.hosts.includes(hostOf(url))) return await park("moved_away");
         }
         const verdict = ns.pageKind.classify(summary);
         let kind = verdict.kind;

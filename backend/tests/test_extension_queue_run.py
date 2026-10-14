@@ -76,14 +76,21 @@ const tick = (name, ...args) => {
     callsWhenCancelled = calls.length;
   }
 };
+const earlyReads = {};
 let fillCalls = 0;
 let clock = 1000;
 
 const deps = {
-  openTab: async (url) => { tick("openTab", url); return 7; },
+  openTab: async (url, stop) => { tick("openTab", url, typeof stop); return 7; },
+  sleep: async (ms) => { tick("sleep", ms); clock += ms; },
   classify: async (tabId) => {
     tick("classify", tabId);
-    const p = current();
+    // A page not drawn yet: `early` reads (consumed once per page) or `always` (never settles) show
+    // another descriptor first; {"t": "none"} is a tab no content script has answered from.
+    const base = current();
+    const early = (earlyReads[at] ??= [...(base.early ?? [])]);
+    const p = base.always ?? (early.length ? early.shift() : base);
+    if (p.t === "none") return [];
     if (p.frames) return p.frames.map((f) => ({ frameId: f.frameId, result: f.page ? { summary: summaryOf(f.page), top: Boolean(f.top) } : { summary: null } }));
     return [{ frameId: 0, result: { summary: summaryOf(p), top: true } }];
   },
@@ -573,6 +580,98 @@ def test_an_intro_page_at_the_first_step_still_advances(tmp_path):
     assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
 
 
+# ---------- settling: a page just arrived at is often not drawn yet ----------
+
+NONE = {"t": "none"}
+
+
+def test_a_tab_no_content_script_has_answered_from_yet_is_waited_for_not_parked(tmp_path):
+    out = _drive(tmp_path, [{**REVIEW, "early": [NONE, NONE, NONE]}])
+    assert out["record"]["status"] == "ready" and out["fillCalls"] == 1
+    assert len(names(out, "sleep")) == 3 and names(out, "sleep")[0][1] == 500
+
+
+def test_a_skeleton_that_classes_unknown_is_waited_for_until_the_form_appears(tmp_path):
+    out = _drive(tmp_path, [{**step(1), "early": [{"t": "unknown"}, {"t": "unknown", "key": "b"}]}, REVIEW])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+
+
+def test_the_page_after_a_press_is_settled_too(tmp_path):
+    out = _drive(tmp_path, [step(1), {**step(2), "early": [NONE, {"t": "unknown"}]}, REVIEW])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1", "next-2"]
+
+
+def test_a_half_drawn_step_is_not_mistaken_for_a_final_page_and_the_full_step_advances(tmp_path):
+    """One Next and nothing fillable looks exactly like an "are you sure" page: it is re-read."""
+    half = step(2, fillable=0)
+    out = _drive(tmp_path, [step(1), {**step(2), "early": [half]}, REVIEW])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1", "next-2"]
+    assert out["record"]["step"] == 2
+
+
+def test_a_lone_next_page_that_stays_that_way_is_the_final_page_after_two_agreeing_reads(tmp_path):
+    out = _drive(tmp_path, [step(1), step(2, fillable=0)])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+    assert len(names(out, "sleep")) == 1, "two reads in a row agreeing is enough"
+
+
+def test_a_page_that_never_draws_parks_after_the_cap(tmp_path):
+    out = _drive(tmp_path, [{**REVIEW, "always": NONE}])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    slept = sum(c[1] for c in names(out, "sleep"))
+    assert 15000 <= slept <= 15500 and names(out, "fill") == []
+
+
+def test_an_unknown_page_that_holds_still_is_judged_after_two_agreeing_reads(tmp_path):
+    out = _drive(tmp_path, [{"t": "unknown"}])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert len(names(out, "sleep")) == 1
+
+
+def test_a_resume_does_not_wait_for_a_page_the_run_did_not_just_arrive_at(tmp_path):
+    parked = {"tabId": 7, "status": "parked", "why": "open_questions", "hosts": ["jobs.acme.test"]}
+    out = _drive(tmp_path, [{"t": "unknown"}], record=parked)
+    assert out["record"]["why"] == "unknown_page" and names(out, "sleep") == []
+
+
+def test_a_stop_while_waiting_for_a_page_ends_the_run_with_no_further_call(tmp_path):
+    out = _drive(tmp_path, [{**REVIEW, "always": NONE}], cancelAfter=5)
+    assert (out["record"]["status"], out["record"]["why"]) == ("stopped", "user")
+    assert len(out["calls"]) == out["callsWhenCancelled"]
+
+
+# ---------- a ready tab is only watched ----------
+
+def test_re_entering_a_ready_record_whose_page_cannot_be_read_yet_leaves_it_ready(tmp_path):
+    """The confirmation watch re-enters on tabs.onUpdated, before document_idle."""
+    ready = {"tabId": 7, "status": "ready", "readyAt": 5, "filled": True}
+    out = _drive(tmp_path, [NONE], record=ready)
+    assert (out["record"]["status"], out["record"]["why"], out["record"]["readyAt"]) == ("ready", None, 5)
+    assert out["events"] == [] and names(out, "sleep") == []
+
+
+# ---------- a Resume must find the tab where the run left it ----------
+
+def test_a_resume_on_a_host_the_run_never_navigated_to_parks_moved_away_and_fills_nothing(tmp_path):
+    parked = {"tabId": 7, "status": "parked", "why": "open_questions", "hosts": ["jobs.acme.test"], "filled": True}
+    out = _drive(tmp_path, [step(1, urlHost="mail.example.test")], record=parked)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "moved_away")
+    assert names(out, "fill") == [] and names(out, "advance") == []
+
+
+@pytest.mark.parametrize("why", ["sign_in_yourself", "verify"])
+def test_a_park_that_asked_the_user_to_navigate_may_resume_on_a_new_host(tmp_path, why):
+    parked = {"tabId": 7, "status": "parked", "why": why, "hosts": ["careers.acme.test"]}
+    out = _drive(tmp_path, [REVIEW], record=parked)
+    assert out["record"]["status"] == "ready"
+
+
+def test_a_resume_on_a_host_the_run_did_reach_goes_on(tmp_path):
+    parked = {"tabId": 7, "status": "parked", "why": "open_questions", "hosts": ["id.acme.test", "jobs.acme.test"]}
+    out = _drive(tmp_path, [REVIEW], record=parked)
+    assert out["record"]["status"] == "ready"
+
+
 # ---------- the confirmation, and a finished run ----------
 
 def test_a_confirmation_page_before_ready_parks_as_already_applied_never_ready(tmp_path):
@@ -714,7 +813,7 @@ def test_an_apply_link_that_is_not_http_or_https_is_never_opened(tmp_path, url):
 @pytest.mark.parametrize("url", ["https://jobs.acme.test/a?b=1#c", "HTTP://Jobs.Acme.test/a"])
 def test_an_http_or_https_link_is_opened(tmp_path, url):
     out = _drive(tmp_path, [REVIEW], record={"openUrl": url})
-    assert names(out, "openTab") == [["openTab", url]]
+    assert names(out, "openTab") == [["openTab", url, "function"]], "the Stop check rides to openTab"
 
 
 def test_a_dependency_that_throws_stops_the_run_with_a_fixed_word_never_its_text(tmp_path):
@@ -729,7 +828,7 @@ def test_a_fill_that_returns_no_report_is_an_error_not_a_clean_page(tmp_path):
 
 
 @pytest.mark.parametrize("dep", ["openTab", "classify", "advance", "fill", "signIn", "waitForChange",
-                                 "tabUrl", "save", "onUpdate", "now", "cancelled"])
+                                 "tabUrl", "sleep", "save", "onUpdate", "now", "cancelled"])
 def test_a_missing_dependency_is_a_type_error_before_anything_runs(tmp_path, dep):
     out = _drive(tmp_path, [step(1)], omitDep=dep)
     assert out["threw"] == f"TypeError: queue-run: missing dep {dep}"

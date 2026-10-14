@@ -806,6 +806,7 @@ def test_the_apply_call_re_checks_that_it_is_still_a_link_at_press_time(page, lo
 DRIVE = """async ({record, swap, signIn}) => {
   const ns = window.careerStudioCompanion;
   const calls = [];
+  let clock = 0;   // every read of the clock moves it, so a wait for a page can reach its cap
   const deps = {
     openTab: async () => 1,
     classify: async () => [{frameId: 0, result: {summary: ns.pageReader.summary(), top: true}}],
@@ -817,7 +818,7 @@ DRIVE = """async ({record, swap, signIn}) => {
     fill: async () => ({fields: []}),
     signIn: async () => { calls.push(["signIn"]); document.body.innerHTML = swap; return {signedIn: true}; },
     waitForChange: async () => ({changed: Boolean(signIn)}),
-    save() {}, onUpdate() {}, now: () => 1, cancelled: () => false,
+    sleep: async () => {}, save() {}, onUpdate() {}, now: () => (clock += 1000), cancelled: () => false,
   };
   await ns.queueRun.drive(record, deps);
   return {status: record.status, why: record.why, calls, hit: window.hit || 0};
