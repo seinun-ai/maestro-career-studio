@@ -1468,8 +1468,6 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # — ready to be copied into a different employer's form.
         "qna": {"open": True, "question": "Why us?", "answered": "Why us?",
                 "answer": "Because…", "applicationId": "app-1", "copied": True},
-        # "Show N more" on the Job step's base list: about this posting's scores.
-        "baseMore": True,
         # Not about the posting, and so not cleared: where the app is, which
         # tab we are bound to, the resume library — and `fillMode`, which is a
         # standing choice about HOW to fill rather than a fact about what was.
@@ -1510,7 +1508,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "receiptFlags": None, "receiptSeen": None, "knockout": None,
         "eeoConsent": None, "answers": {},
         "qna": {"open": False, "question": "", "answered": None, "answer": None,
-                "applicationId": None, "copied": False}, "baseMore": False,
+                "applicationId": None, "copied": False},
         "settings": {"appUrl": APP_URL}, "tabId": 7, "url": POSTING_URL,
         "resumes": [{"slug": "ai_ml_engineer"}], "fillMode": "rules",
         "fault": {"text": "the backend is unreachable", "error": True},

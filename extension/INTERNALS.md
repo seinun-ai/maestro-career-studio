@@ -262,11 +262,9 @@ asking permission of itself.
   is: the web app's `ATS_SCORE_LEAD` sentence, a fixed-rules comparison with the
   job description. A resume with no score says "not scored" rather than zero
   and sorts last, the scored best is preselected until you pick another (with full automation On, only on a clear win, or never if the switch is Off), and a
-  pick made by hand wins over the ranking permanently. **Bases that were not scored for this job are tucked away**: once any base is scored, the list
-  shows the scored ones plus the selected one (`splitBases`; the rest are other-country or off-target bases the scorer skipped), a linkish
-  **Show N more (not scored for this job)** button (`#base-show-more`, `aria-expanded`, `aria-controls` the list box, outside the radiogroup, disabled while
-  Apply works) reveals them and becomes **Show fewer**, the open state is page-shaped (`baseMore`, cleared with the page's facts), and with nothing
-  scored every base shows as before. For a saved job with no
+  pick made by hand wins over the ranking permanently. **Bases that were not scored for this job are not listed**: once any base is scored, the list
+  shows the scored ones plus the selected one even if it is unscored (`shownBases`; the rest are other-country or off-target bases the scorer
+  skipped), with no way to reveal them; with nothing scored (scoring running or failed) every base shows so the pick stays possible. For a saved job with no
   application the scores are a stage input, so `loadContext` reads them before
   the first render of the matched page (no Job-then-Resume flash). **Beside a
   bound application the reopened Job row is read-only**: one line, "Resume
