@@ -132,7 +132,7 @@ def test_startup_essay_never_takes_the_employer_scalar(tmp_path):
         tmp_path,
         fields=[{"label": STARTUP_ESSAY, "kind": "textarea"}],
         profile={},
-        harness={"employment": [{"employer": "Seinun LLC"}]},
+        harness={"employment": [{"employer": "Vandelay LLC"}]},
     )
 
     assert result["values"][STARTUP_ESSAY] == ""

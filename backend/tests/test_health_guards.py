@@ -78,7 +78,7 @@ def test_curly_and_underscore_placeholders_caught():
 
 
 def test_company_name_with_xx_is_not_a_placeholder():
-    violations = guard_violations("Led analytics at Exxon.", "Drove analytics at Exxon.")
+    violations = guard_violations("Led analytics at Globex.", "Drove analytics at Globex.")
     assert not any("placeholder" in v for v in violations)
 
 

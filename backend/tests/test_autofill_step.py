@@ -424,8 +424,8 @@ def test_a_low_stakes_step_says_which_way_a_conflict_question_goes(db_session, m
 
 def test_with_worked_here_the_low_stakes_step_drops_the_previously_employed_no(db_session, monkeypatch):
     model_settings.set_answer_level(db_session, "history")
-    facts = autofill_catalog.build({}, [{"employer": "Guidehouse", "title": "Consultant", "start_date": "2019-01",
-                                         "end_date": "2021-06"}], [], company="Guidehouse")
+    facts = autofill_catalog.build({}, [{"employer": "Initrode", "title": "Consultant", "start_date": "2019-01",
+                                         "end_date": "2021-06"}], [], company="Initrode")
     prompts = []
 
     def call_openai(**kw):

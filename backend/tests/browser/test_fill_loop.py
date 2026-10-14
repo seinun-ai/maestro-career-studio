@@ -2299,8 +2299,8 @@ def test_two_sections_of_a_kind_are_both_placed_nowhere(page, load):
 def test_a_section_left_to_the_user_says_so(page, load):
     """held_unmatched: an entry holds a job the profile does not have. Nothing
     is added, and the report carries the reason even with nothing to add."""
-    out = run(page, load, frames=[work(1, committed="TCS", answered=True) + work(2)],
-              sections=[[section(entries=2, filled=[True, False], held=[["TCS"], []])]],
+    out = run(page, load, frames=[work(1, committed="SCS", answered=True) + work(2)],
+              sections=[[section(entries=2, filled=[True, False], held=[["SCS"], []])]],
               kinds={"f-s1": {"kind": "experience", "wanted": 2, "reason": "held_unmatched",
                               "order": [None, None]}}, map=JOBS)
     assert adds(out) == []

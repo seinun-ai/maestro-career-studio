@@ -30,7 +30,7 @@ from app.services import llm
 
 # Stand-ins for the four kinds of thing that must never land in a log file by
 # default. Each is a real category from the audit's asset list.
-RESUME_TEXT = "Morgan Example led the SEINUN-CANARY migration at Acme"
+RESUME_TEXT = "Morgan Example led the ACME-CANARY migration at Acme"
 JD_TEXT = "We are hiring a data scientist to own the CANARY-JD pipeline"
 ANSWER_TEXT = "I am authorized to work in the CANARY-COUNTRY without sponsorship"
 PROMPT = f"{RESUME_TEXT}\n\n{JD_TEXT}"
@@ -54,7 +54,7 @@ def test_the_default_log_keeps_no_prompt_and_no_response(log_dir, monkeypatch):
     entries = _entries(log_dir)
     assert len(entries) == 1
     blob = json.dumps(entries[0])
-    for secret in ("SEINUN-CANARY", "CANARY-JD", "CANARY-COUNTRY"):
+    for secret in ("ACME-CANARY", "CANARY-JD", "CANARY-COUNTRY"):
         assert secret not in blob, f"{secret} reached the log file"
     assert "prompt" not in entries[0]
     assert "response" not in entries[0]

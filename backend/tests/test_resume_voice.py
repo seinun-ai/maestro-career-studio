@@ -185,7 +185,7 @@ def test_ordinary_openers_are_not_flagged():
 
 
 @pytest.mark.parametrize("text, name", [
-    ("Built fraud models for Wells Fargo.", "Sam Wells"),
+    ("Built fraud models for Wells Ledger.", "Sam Wells"),
     ("Ann Arbor office lead.", "Ann Smith"),
     ("Built Central Park tooling.", "Sam Park"),
     ("Served Will County schools.", "Will Adams"),
@@ -203,7 +203,7 @@ def test_a_name_token_that_is_not_the_owner_acting_is_not_a_hit(text, name):
 
 @pytest.mark.parametrize("text, name", [
     ("Shah built the router.", "Ravi Shah"),
-    ("Ford's EV team adopted the tool.", "Chris Ford"),
+    ("Fordham's EV team adopted the tool.", "Chris Fordham"),
     ("Wells built fraud models.", "Sam Wells"),
     ("Led the team at Acme, where Wells built billing.", "Sam Wells"),
     ("Led Wells's team.", "Sam Wells"),
@@ -616,7 +616,7 @@ def test_lint_advisory_is_silent_for_implied_first_person():
 def test_lint_flags_a_name_mention_but_not_an_employer_that_shares_a_token():
     from app.services import resume_lint as rl
 
-    resume = _resume("Data engineer.", ["Built fraud models for Wells Fargo.", "Reported to Wells."], name="Sam Wells")
+    resume = _resume("Data engineer.", ["Built fraud models for Wells Ledger.", "Reported to Wells."], name="Sam Wells")
     resume["experience"][0]["company"] = "Initech"
 
     notes = [n for n in rl.rule_notes(resume) if n["rule"] == "voice.third_person"]

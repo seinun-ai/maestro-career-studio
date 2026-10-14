@@ -183,7 +183,7 @@ def test_entries_holding_the_first_jobs_in_order_leave_the_rest_to_add(db_sessio
     (["Somewhere Else"],),                  # a job the profile does not have
     (["Yes"],),                             # held, but nothing names the employer
     (["Somewhere Else"], []),               # the empty entry too: it may be the foreign one's job again
-    ([], ["Acme"], ["TCS"]),                # a matching entry in the same section
+    ([], ["Acme"], ["SCS"]),                # a matching entry in the same section
 ])
 def test_a_section_holding_a_foreign_entry_is_left_to_the_user(db_session, monkeypatch, held):
     """An entry holding a job the profile does not have may be a profile job
@@ -195,10 +195,10 @@ def test_a_section_holding_a_foreign_entry_is_left_to_the_user(db_session, monke
 
 @pytest.mark.usefixtures("jev_on")
 def test_a_foreign_entry_is_reported_when_nothing_was_to_be_added(db_session, monkeypatch):
-    """One job in the profile, the page [TCS, empty]: by placement the empty
-    entry would get job #1 — which may be the TCS entry, spelled another way."""
+    """One job in the profile, the page [SCS, empty]: by placement the empty
+    entry would get job #1 — which may be the SCS entry, spelled another way."""
     one = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst"}], [])
-    assert planned(db_session, monkeypatch, one, ["TCS"], []) == {
+    assert planned(db_session, monkeypatch, one, ["SCS"], []) == {
         "kind": "experience", "wanted": 2, "reason": "held_unmatched", "order": [None, None]}
 
 

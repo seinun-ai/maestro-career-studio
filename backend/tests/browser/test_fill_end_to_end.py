@@ -519,7 +519,7 @@ def test_the_loop_adds_the_entries_the_profile_can_fill_and_fills_them(e2e_page)
         assert filled[key] == "verified", key
 
 
-# A Workday-style text box asking the owner's Guidehouse salary question
+# A Workday-style text box asking the owner's Initrode salary question
 # (notes §8): the app takes the amount on leaving the box and shows it back
 # re-punctuated, "$80,000.00" for 80000.
 SALARY = "What are your annual salary requirements?"

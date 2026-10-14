@@ -465,9 +465,9 @@ HISTORY_PROFILE = {
 }
 # The owner's shape: two clearly private companies, dated, one current.
 JOBS = [
-    {"employer": "Seinun Technologies", "title": "Data Analyst", "location": "Austin, TX", "start_date": "Jan 2024",
+    {"employer": "Vandelay Technologies", "title": "Data Analyst", "location": "Austin, TX", "start_date": "Jan 2024",
      "end_date": None, "current": True, "description": "Built forecasting models in SQL and Python"},
-    {"employer": "Tata Consultancy Services", "title": "Systems Engineer", "location": "Chennai",
+    {"employer": "Soylent Consultancy Services", "title": "Systems Engineer", "location": "Chennai",
      "start_date": "Jun 2018", "end_date": "Jul 2022", "current": False,
      "description": "Maintained ETL pipelines for a retail client"},
 ]
@@ -508,7 +508,7 @@ def test_private_employers_answer_the_government_question_no_and_it_is_assumed(d
     got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session)
     assert sans_trace(got["g"]) == {"oids": ["o2"], "reason": "assumed"}
     [asked] = prompts
-    for shown in ("Seinun Technologies", "Tata Consultancy Services", "2018-06", "2022-07", "2024-01",
+    for shown in ("Vandelay Technologies", "Soylent Consultancy Services", "2018-06", "2022-07", "2024-01",
                   "Maintained ETL pipelines", "State University", "Business Analytics", "2026-09-26"):
         assert shown in asked["prompt"], shown
 
@@ -562,9 +562,9 @@ def test_years_of_experience_come_from_the_dated_jobs(db_session, monkeypatch):
     history = autofill_reasoned.history(HISTORY_FACTS)
     assert history["today"] == "2026-09-26"
     assert history["jobs"] == [
-        {"id": "j1", "employer": "Seinun Technologies", "title": "Data Analyst", "description":
+        {"id": "j1", "employer": "Vandelay Technologies", "title": "Data Analyst", "description":
          "Built forecasting models in SQL and Python", "start": "2024-01", "current": "Yes"},
-        {"id": "j2", "employer": "Tata Consultancy Services", "title": "Systems Engineer", "description":
+        {"id": "j2", "employer": "Soylent Consultancy Services", "title": "Systems Engineer", "description":
          "Maintained ETL pipelines for a retail client", "start": "2018-06", "end": "2022-07", "current": "No"}]
     assert history["schools"] == [{"id": "s1", "school": "State University", "degree": "Master's",
                                    "discipline": "Business Analytics", "start_year": "2022", "end_year": "2024"}]
@@ -595,7 +595,7 @@ def test_one_fast_call_answers_every_reasoned_field_and_jev_never_sees_the_histo
     assert [p["trace_name"] for p in prompts] == ["autofill-reasoned-pick"]
     assert '"g"' in prompts[0]["prompt"] and '"c"' in prompts[0]["prompt"]
     assert set(calls[0]["questions"]) == {"m"}
-    assert "Tata" not in repr(calls) and "Seinun" not in repr(calls)
+    assert "Soylent" not in repr(calls) and "Vandelay" not in repr(calls)
 
 
 def test_a_reasoned_field_naming_a_slot_or_with_no_history_abstains_without_a_call(db_session, monkeypatch):
@@ -690,8 +690,8 @@ def _jobs_facts(*jobs):
     return autofill_catalog.build({}, list(jobs), [], today=date(2026, 9, 26))
 
 
-SEINUN, TCS = JOBS
-INFOSYS = {"employer": "Infosys", "title": "Intern", "start_date": "Jan 2017", "end_date": "May 2018",
+VANDELAY, SOYLENT = JOBS
+UMBRELLA = {"employer": "Umbrella", "title": "Intern", "start_date": "Jan 2017", "end_date": "May 2018",
            "current": False, "description": ""}
 
 
@@ -706,21 +706,21 @@ def test_an_option_that_is_not_a_negative_is_not_one(text):
 
 
 @pytest.mark.parametrize("answer, expected", [
-    # Infosys ended before the window: it need not be cited.
+    # Umbrella ended before the window: it need not be cited.
     ({"shown_by": ["j1", "j2"], "since": "2021-09"}, "assumed"),
     # "Ever", from the earliest job's start: every job overlaps, and every one is cited.
     ({"shown_by": ["j1", "j2", "j3"], "since": "2017-01"}, "assumed"),
     # A window that starts before the earliest cited job: nothing shows 2016.
     ({"shown_by": ["j1", "j2", "j3"], "since": "2016-01"}, "abstained"),
-    ({"shown_by": ["j1"], "since": "2021-09"}, "abstained"),  # TCS runs into the window and was skipped
-    ({"shown_by": ["j1", "j2"], "since": "2016-01"}, "abstained"),  # Infosys skipped
+    ({"shown_by": ["j1"], "since": "2021-09"}, "abstained"),  # SOYLENT runs into the window and was skipped
+    ({"shown_by": ["j1", "j2"], "since": "2016-01"}, "abstained"),  # Umbrella skipped
     ({"shown_by": ["j1", "j2"]}, "abstained"),  # no window
     ({"shown_by": ["j1", "j2"], "since": "last five years"}, "abstained"),
     ({"shown_by": ["j1", "j2"], "since": "2021-13"}, "abstained"),
 ])
 def test_a_no_must_cite_every_job_in_its_window(db_session, monkeypatch, answer, expected):
     fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, **answer}})
-    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(SEINUN, TCS, INFOSYS))
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(VANDELAY, SOYLENT, UMBRELLA))
     assert got["g"].reason == expected
 
 
@@ -731,14 +731,14 @@ def test_a_no_must_cite_every_job_in_its_window(db_session, monkeypatch, answer,
 def test_a_no_over_an_undated_history_abstains(db_session, monkeypatch, undated):
     fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1", "j2"],
                                       "since": "2021-09"}})
-    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(SEINUN, undated))
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(VANDELAY, undated))
     assert got["g"].reason == "abstained"
 
 
 def test_a_no_for_a_period_no_job_reaches_abstains(db_session, monkeypatch):
     """Every job ended before the window: nothing shows where the applicant worked in it."""
     fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1"], "since": "2023-09"}})
-    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(TCS))
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(SOYLENT))
     assert got["g"].reason == "abstained"
 
 
@@ -765,8 +765,8 @@ def test_the_prompt_asks_a_negative_for_its_window(db_session, monkeypatch):
 
 # ---------- re-check: worked-here keen wording, real timeouts, harder negatives, current or former
 
-WORKED_HERE = autofill_catalog.build({}, [{"employer": "The Home Depot", "title": "Associate", "start_date": "2019-01",
-                                           "end_date": "2021-06"}], [], company="Home Depot",
+WORKED_HERE = autofill_catalog.build({}, [{"employer": "The Globex Depot", "title": "Associate", "start_date": "2019-01",
+                                           "end_date": "2021-06"}], [], company="Globex Depot",
                                      today=date(2026, 9, 26))
 
 
@@ -838,7 +838,7 @@ def test_less_than_zero_and_never_are_negatives(text):
 def test_a_negative_must_reach_back_a_year_whatever_since_says(db_session, monkeypatch):
     """A `since` of this month cannot make coverage trivial: the window is at
     least the last 12 months, and a cited job must reach back that far."""
-    new_job = {"employer": "Seinun", "title": "Analyst", "start_date": "Mar 2026", "current": True, "description": ""}
+    new_job = {"employer": "Vandelay", "title": "Analyst", "start_date": "Mar 2026", "current": True, "description": ""}
     fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1"], "since": "2026-09"}})
     got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(new_job))
     assert got["g"].reason == "abstained"
@@ -859,21 +859,21 @@ def test_less_than_a_year_needs_the_same_coverage(db_session, monkeypatch):
     assert got["y"].reason == "abstained"
 
 
-# Home Depot's own options (field notes §8a, question 0).
-HOME_DEPOT = ("Current Associate", "Current Associate with a subsidiary of The Home Depot",
-              "Former Associate of The Home Depot or its subsidiaries", "Not Applicable")
+# Globex Depot's own options (field notes §8a, question 0).
+GLOBEX_DEPOT = ("Current Associate", "Current Associate with a subsidiary of The Globex Depot",
+              "Former Associate of The Globex Depot or its subsidiaries", "Not Applicable")
 
 
 @pytest.mark.usefixtures("jev_on")
 @pytest.mark.parametrize("current, value", [(False, "Yes, previously"), (True, "Yes, currently")])
 def test_worked_here_says_current_or_former_to_the_pick(db_session, monkeypatch, current, value):
-    job = {"employer": "The Home Depot", "title": "Associate", "start_date": "2019-01",
+    job = {"employer": "The Globex Depot", "title": "Associate", "start_date": "2019-01",
            "end_date": None if current else "2021-06", "current": current}
-    facts = autofill_catalog.build({}, [job], [], company="Home Depot")
+    facts = autofill_catalog.build({}, [job], [], company="Globex Depot")
     assert facts["derived.previously_employed_here"].value == value
     calls = fake_jev(monkeypatch, {"p": ("o3" if not current else "o1", 0.9)})
-    got = autofill_pick.pick([pf("p", question="Currently or previously employed by The Home Depot?",
-                                 slot="derived.previously_employed_here", options=opts(*HOME_DEPOT))],
+    got = autofill_pick.pick([pf("p", question="Currently or previously employed by The Globex Depot?",
+                                 slot="derived.previously_employed_here", options=opts(*GLOBEX_DEPOT))],
                              facts, db_session, None)
     assert f'"{value}"' in calls[0]["questions"]["p"]["instructions"]
     assert got["p"].oids == (["o1"] if current else ["o3"])
@@ -885,10 +885,10 @@ def test_worked_here_says_current_or_former_to_the_pick(db_session, monkeypatch,
 def test_a_no_whose_jobs_start_after_the_window_start_abstains(db_session, monkeypatch):
     """Probe: one current job from 2024-01 was taken as a five-year "No"."""
     fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1"], "since": "2021-09"}})
-    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(SEINUN))
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(VANDELAY))
     assert got["g"].reason == "abstained"
     fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1"], "since": "2024-01"}})
-    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(SEINUN))
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(VANDELAY))
     assert got["g"].reason == "assumed"
 
 
@@ -939,13 +939,13 @@ def test_a_no_over_a_history_cut_at_its_job_limit_abstains(db_session, monkeypat
     assert got["g"].reason == "abstained"
 
 
-HD_HINT = autofill_pick.JobHint(title="Associate", company="The Home Depot, Inc.", source=None)
+HD_HINT = autofill_pick.JobHint(title="Associate", company="The Globex Depot, Inc.", source=None)
 
 
 @pytest.mark.parametrize("question, options", [
-    ("Currently or previously employed by The Home Depot or its subsidiaries?", ("Yes", "No")),
+    ("Currently or previously employed by The Globex Depot or its subsidiaries?", ("Yes", "No")),
     # The question never names it; its options do (field notes §8a).
-    ("Employment history with us", HOME_DEPOT),
+    ("Employment history with us", GLOBEX_DEPOT),
 ])
 def test_a_reasoned_field_naming_the_company_applied_to_is_refused(db_session, monkeypatch, question, options):
     prompts = fake_reasoner(monkeypatch, {"p": {"oid": "o2", "confidence": 0.99, "shown_by": ["j1", "j2"],
@@ -1214,7 +1214,7 @@ def test_a_military_status_dropdown_is_picked_by_the_statement_of_the_veteran_an
     assert got["v"].reason == "abstained"
 
 
-# Etsy's Workday (live, 2026-10-13) asked "I am not a Veteran." among options a "not a PROTECTED veteran"
+# A live Workday tenant (2026-10-13) asked "I am not a Veteran." among options a "not a PROTECTED veteran"
 # answer did not settle: the veteran answer is now "No, I am not a veteran" (owner, 2026-10-14).
 SERVED_OR_NOT = ("I am a Veteran, but not a Protected Veteran", "I am not a Veteran.")
 

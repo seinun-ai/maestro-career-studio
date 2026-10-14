@@ -400,7 +400,7 @@ def test_a_keyword_only_the_repaired_line_carried_is_added_back(db_session, tmp_
 
 def test_a_real_employer_that_shares_a_name_token_is_left_alone(db_session, tmp_path, monkeypatch, client):
     base = {**BASE, "contact": {"name": "Sam Wells", "email": "sam@example.test"}, "experience": [{**BASE["experience"][0],
-            "company": "Initech", "bullets": ["Built fraud models for Wells Fargo."]}]}
+            "company": "Initech", "bullets": ["Built fraud models for Wells Ledger."]}]}
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch, slug="sam", resume_json=base)
     created = _open_session(client, job, slug, resolutions=[KEYWORD])
@@ -409,7 +409,7 @@ def test_a_real_employer_that_shares_a_name_token_is_left_alone(db_session, tmp_
     stored = _stored(db_session, _tailor(client, created["id"]))
 
     assert len(calls) == 1
-    assert stored["experience"][0]["bullets"] == ["Built fraud models for Wells Fargo."]
+    assert stored["experience"][0]["bullets"] == ["Built fraud models for Wells Ledger."]
 
 
 def test_the_response_lists_the_paths_the_repair_touched(db_session, tmp_path, monkeypatch, client):

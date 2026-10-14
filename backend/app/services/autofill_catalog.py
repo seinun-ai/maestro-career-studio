@@ -143,7 +143,7 @@ _SUFFIX = re.compile(r"\b(inc|llc|llp|ltd|limited|corp|corporation|co|company|pl
 
 
 def name_key(text: str) -> str:
-    """A leading "the" is not part of the name ("The Home Depot" is "Home Depot"),
+    """A leading "the" is not part of the name ("The Globex Depot" is "Globex Depot"),
     unless it is the whole name."""
     key = " ".join(_SUFFIX.sub(" ", re.sub(r"[^\w\s]", " ", text.casefold().replace(".", ""))).split())
     return key[4:] if key.startswith("the ") else key

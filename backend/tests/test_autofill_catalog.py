@@ -250,20 +250,20 @@ def test_derived_policies_come_from_policy_for(slot, policy):
 
 def test_the_jobs_company_in_the_history_derives_previously_employed_yes():
     f = cat.build({"eligibility": {"previously_employed_here": False}},
-                  [{"employer": "Tata Consultancy Services Ltd.", "title": "Engineer"}], [],
-                  company="TATA CONSULTANCY SERVICES")
+                  [{"employer": "Soylent Consultancy Services Ltd.", "title": "Engineer"}], [],
+                  company="SOYLENT CONSULTANCY SERVICES")
     fact = f["derived.previously_employed_here"]
     assert fact.value == "Yes, previously" and "from the work history" in fact.describe
     # The standing answer is company-agnostic: for THIS job it would be wrong.
     assert "eligibility.previously_employed_here" not in f
 
 
-@pytest.mark.parametrize("company", [None, "", "Tata"])
+@pytest.mark.parametrize("company", [None, "", "Soylent"])
 def test_no_company_or_a_parent_or_subsidiary_name_derives_nothing_and_keeps_the_standing_answer(company):
     """No company known, or one that is the start of an employer's name: the history cannot say No, so
     the question is asked as before."""
     f = cat.build({"eligibility": {"previously_employed_here": False}},
-                  [{"employer": "Tata Consultancy Services", "title": "Engineer"}], [], company=company)
+                  [{"employer": "Soylent Consultancy Services", "title": "Engineer"}], [], company=company)
     assert "derived.previously_employed_here" not in f
     assert f["eligibility.previously_employed_here"].value == "No"
 
@@ -528,15 +528,15 @@ def test_company_names_match_the_way_sections_match_employers():
     assert cat.name_key("Acme, Inc.") == cat.name_key("ACME") == "acme"
 
 
-@pytest.mark.parametrize("a, b", [("The Home Depot", "Home Depot"), ("Home Depot", "the home depot, inc.")])
+@pytest.mark.parametrize("a, b", [("The Globex Depot", "Globex Depot"), ("Globex Depot", "the globex depot, inc.")])
 def test_a_leading_the_is_not_part_of_the_name(a, b):
-    assert cat.name_key(a) == cat.name_key(b) == "home depot"
-    assert cat.name_key("Theranos") == "theranos" and cat.name_key("The") == "the"
+    assert cat.name_key(a) == cat.name_key(b) == "globex depot"
+    assert cat.name_key("Therion") == "therion" and cat.name_key("The") == "the"
 
 
 def test_the_home_depot_in_the_history_is_the_home_depot_applied_to():
-    f = cat.build({}, [{"employer": "The Home Depot", "title": "Associate", "end_date": "2021-06"}], [],
-                  company="Home Depot")
+    f = cat.build({}, [{"employer": "The Globex Depot", "title": "Associate", "end_date": "2021-06"}], [],
+                  company="Globex Depot")
     assert f["derived.previously_employed_here"].value == "Yes, previously"
     assert "works, or has worked," in f["derived.previously_employed_here"].describe
 

@@ -826,7 +826,7 @@ def test_profile_entry_is_optional_bounded_and_absent_is_not_null():
 
 # ---------- the widened low-stakes scope (owner, 2026-09-26; plan Task 9b)
 
-# The owner's Home Depot and Guidehouse questions (field notes §8, §8a) the
+# The owner's Globex Depot and Initrode questions (field notes §8, §8a) the
 # low-stakes setting answers in the job's favour when no profile fact does.
 LOW_STAKES_WORDINGS = [
     "How Did You Hear About Us?",
@@ -834,8 +834,8 @@ LOW_STAKES_WORDINGS = [
     "Are you willing to take a drug test if the position requires?",
     "What percentage of time are you willing to travel?",
     "Are you willing to relocate?",
-    "Are you or have you ever been related to a current Guidehouse employee?",
-    "If you become employed by Guidehouse, will you terminate any outside employment?",
+    "Are you or have you ever been related to a current Initrode employee?",
+    "If you become employed by Initrode, will you terminate any outside employment?",
     "Do you consent to receive automated calls or texts to the phone number(s) I provided?",
     "Based on the job description, do you have the required amount of directly relevant work experience?",
     "Do you meet the educational requirement in the job description?",
@@ -1133,8 +1133,8 @@ def test_within_the_budget_both_passes_run(db_session, monkeypatch):
 
 # ---------- re-check: the company applied to is never reasoned; worked-here narrows low-stakes; real timeouts
 
-WORKED_HERE = autofill_catalog.build({}, [{"employer": "Guidehouse", "title": "Consultant", "start_date": "2019-01",
-                                           "end_date": "2021-06"}], [], company="Guidehouse")
+WORKED_HERE = autofill_catalog.build({}, [{"employer": "Initrode", "title": "Consultant", "start_date": "2019-01",
+                                           "end_date": "2021-06"}], [], company="Initrode")
 
 
 def test_the_history_sentinel_is_a_kind_of_organization_not_any_employer():
@@ -1172,7 +1172,7 @@ def test_previously_employed_by_the_company_applied_to_is_never_reasoned(db_sess
     """Probe: filed history_unanswered, then a reasoned "No" citing every job.
     The reasoning question names the company applied to as never, and a
     model that says so leaves the field to the user."""
-    question = "Have you previously been employed by Guidehouse?"
+    question = "Have you previously been employed by Initrode?"
     prompts = fake_llm(monkeypatch, {"p": {"key": HISTORY, "confidence": 0.9}}, reasoned={"p": 0.05})
     got = run([field("p", question, "popup", options=["Yes", "No"])], db_session)
     assert got["p"].route == "none"

@@ -186,7 +186,7 @@ def _verdict(entry: object, offered: dict[str, str], hist: dict, shown: set[str]
 
 def _names_company(field: PickField, company: str | None) -> bool:
     """The company applied to, as a whole-word run, in the question or any
-    option ("Former Associate of The Home Depot")."""
+    option ("Former Associate of The Globex Depot")."""
     key = name_key(company or "")
     if not key:
         return False

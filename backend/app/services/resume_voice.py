@@ -259,7 +259,7 @@ def _token_hit(
 ) -> str | None:
     """How a single name token reads. Only the given name (the first token) can
     block, as "name_token", when it opens a clause as a subject. A surname acting
-    or possessing ("Shah built", "Ford's EV team") is the flag-only "name_mention",
+    or possessing ("Shah built", "Fordham's EV team") is the flag-only "name_mention",
     and beside another capitalised word that is not part of the name ("Wells
     Fargo", "Ann Arbor", "Lee & Partners") it is no hit at all."""
     if given and _given_name_opens_clause(masked, m, base_line=base_line):

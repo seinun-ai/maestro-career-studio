@@ -42,7 +42,7 @@ def test_richer_role_title_matches_same_company_and_start():
 
 def test_different_company_never_matches():
     incoming = _exp("TCS", "Data Analyst")
-    stored = _candidates("experience", _exp("Infosys", "Data Analyst, British Airways Account"))
+    stored = _candidates("experience", _exp("Umbrella", "Data Analyst, British Airways Account"))
     assert find_near_identity("experience", incoming, stored) is None
 
 
