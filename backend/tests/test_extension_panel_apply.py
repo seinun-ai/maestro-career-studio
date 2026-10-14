@@ -1259,3 +1259,22 @@ def test_the_switches_are_read_only_when_full_automation_is_on(tmp_path):
     assert len(_api(on, "GET", "/api/settings/companion-apply")) == 1
     # And what it read is in force: with Stop after each step on, an unsaved posting's press is Save job.
     assert _labels(on["shots"][0]) == ["Save job"] and _labels(off["shots"][0]) == ["Save job"]
+
+
+# ---------- Track this is a pick ----------
+
+
+def test_apply_shows_right_after_track_this_without_a_reload(tmp_path):
+    tracked = _draft(pdf=False)
+    api = _saved(**{"POST /api/applications/from-base": _reply(tracked)})
+    out = _apply(tmp_path, api=api, steps=[{"call": "trackThis", "settles": 3}])
+    assert _labels(out["shots"][0]) == ["Apply"]
+    shot = out["shots"][-1]
+    assert _primary(shot) == ["Apply"] and PROMISE in _text(shot["regions"]["rail"])
+
+
+def test_track_this_with_nothing_picked_asks_for_a_pick_instead_of_a_save(tmp_path):
+    api = _saved(**_companion(auto_pick=False))
+    out = _apply(tmp_path, api=api, steps=[{"call": "trackThis"}])
+    assert _api(out, "POST", "/api/applications/from-base") == []
+    assert _note(out["shots"][-1]) == "Pick a base resume first."

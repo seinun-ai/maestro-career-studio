@@ -149,8 +149,9 @@
     if (facts.busy !== null) return;
     if (facts.application) return;
     if (!facts.job?.id || !facts.baseSlug) {
+      // A saved job with nothing picked (the user is to pick) is told so, not told to save what is saved.
       store.write({
-        note: { text: "Nothing to track yet. Save this job first." },
+        note: { text: facts.job?.id ? "Pick a base resume first." : "Nothing to track yet. Save this job first." },
       });
       store.render();
       return;
@@ -175,6 +176,9 @@
       },
       match: "exact",
       claimed: true,
+      // A track-this IS the user's claim about this page, so Apply is offered at once (`offersApply`
+      // wants a pick for a claimed binding); without it the offer came only after a reload.
+      claimFrom: "pick",
       pdfReady: Boolean(out.pdf_path),
       evidence: store.build.evidenceFrom(out),
       note: { text: "Tracked. Mark it Applied after you submit it." },
