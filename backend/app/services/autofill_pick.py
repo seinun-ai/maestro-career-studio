@@ -30,6 +30,7 @@ from app.services.autofill_catalog import (
     NAMES_PROTECTED_CLASS,
     WORKED_HERE_SLOT,
     Fact,
+    asks_worked_here_of_other,
     named_employer_fact,
     names_veteran_off_slot,
     yes_no_word,
@@ -114,6 +115,19 @@ def abstained(picked: Picked) -> bool:
 # Slots whose answer is the Companion's assumption, not the profile's word: judged at the assumed floor
 # and reported `assumed`, so the user is told to check it (the profile never says what kind of phone it is).
 ASSUMED_SLOTS = frozenset({"derived.phone_type"})
+# The derived worked-here No read for ANOTHER company than the job's (`asks_worked_here_of_other`): the history
+# says no employer of it is named, but the page's word for the company is a guess at the job record's, so the
+# answer is reported assumed and listed for the user to check. A slot of its own, like the named-employer ones.
+WORKED_ELSEWHERE_SLOT = f"{WORKED_HERE_SLOT}#other"
+ASSUMED_SLOTS = ASSUMED_SLOTS | {WORKED_ELSEWHERE_SLOT}
+
+
+def worked_elsewhere(facts: dict[str, Fact], slot: str | None, question: str, options: list[str]) -> Fact | None:
+    """The derived No as a fact of its own slot, when a worked-here field's question names one other
+    company (`asks_worked_here_of_other`); else None."""
+    if slot == WORKED_HERE_SLOT and asks_worked_here_of_other(facts, question, options):
+        return replace(facts[WORKED_HERE_SLOT], slot=WORKED_ELSEWHERE_SLOT)
+    return None
 
 
 def _bar(field, chance: float, policy: str, *, closest_ok: bool) -> tuple[float, Reason]:
@@ -471,7 +485,11 @@ def named_employers(fields: list[PickField], facts: dict[str, Fact]
     for f in fields:
         named = (named_employer_fact(facts, f.question, [o.text for o in f.options])
                  if f.slot == WORKED_HERE_SLOT and f.route == "slot" else None)
-        if named is None:
+        if named is None and f.route == "slot" and (other := worked_elsewhere(
+                facts, f.slot, f.question, [o.text for o in f.options])):
+            moved[WORKED_ELSEWHERE_SLOT] = other
+            out.append(f.model_copy(update={"slot": WORKED_ELSEWHERE_SLOT}))
+        elif named is None:
             out.append(f)
         elif named == ASK_THE_USER:
             dropped.add(f.fid)

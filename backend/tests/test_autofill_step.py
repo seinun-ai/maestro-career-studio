@@ -1475,3 +1475,16 @@ def test_a_source_that_only_contains_a_board_name_is_no_board(source):
                                                ("levels.fyi", "Levels.fyi"), ("careerbuilder", "CareerBuilder")])
 def test_a_board_is_matched_as_whole_tokens_or_a_multi_word_name_run_together(source, board):
     assert autofill_step.board_of("Job board", JobHint(title=None, company=None, source=source)) == board
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize(("question", "reason"), [("Are you currently employed by Initrode?", "assumed"),
+                                                  ("Are you currently employed by Acme Wireless?", "matched")])
+def test_a_worked_here_step_for_another_company_reports_the_no_assumed(db_session, monkeypatch, question, reason):
+    facts = autofill_catalog.build({}, [{"employer": "Globex", "title": "Analyst", "start_date": "2019-01",
+                                         "end_date": "2021-06"}], [], company="Acme Wireless")
+    fake_jev(monkeypatch, ("click:o1", 0.9))
+    r = req(slot=autofill_catalog.WORKED_HERE_SLOT, question=question,
+            candidates=[{"mid": "click:o1", "describe": 'Click the option "No"'}, {"mid": GIVE_UP, "describe": "Stop"}])
+    got = autofill_step.step(r, facts, db_session, None)
+    assert (got.mid, got.reason) == ("click:o1", reason)

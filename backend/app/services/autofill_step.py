@@ -58,6 +58,7 @@ from app.services.autofill_map import (
 from app.services.autofill_pick import (
     NEVER_YES_NO,
     VETERAN_SLOT,
+    WORKED_ELSEWHERE_SLOT,
     Computed,
     JobHint,
     polarity_answers,
@@ -67,6 +68,7 @@ from app.services.autofill_pick import (
     verdict,
     veteran_overreach,
     veteran_said,
+    worked_elsewhere,
 )
 from app.services.autofill_techniques import CARDS
 
@@ -413,6 +415,11 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         if named == ASK_THE_USER:   # a parent or a subsidiary of an employer: neither No nor Yes is true
             return StepResponse(mid=None, reason="abstained")
         facts = facts | {WORKED_HERE_SLOT: named}
+    elif req.route == "slot" and (other := worked_elsewhere(
+            facts, req.slot, req.question, [t for c in req.candidates if (t := _option_text(c.describe))])):
+        # The derived No for another company than the job's: a slot of its own, reported assumed.
+        req = req.model_copy(update={"slot": WORKED_ELSEWHERE_SLOT})
+        facts = facts | {WORKED_ELSEWHERE_SLOT: other}
     # The same level /map and /pick state; read here, never from the client (`queued` is the router's).
     level = model_settings.get_answer_level(session)
     # The queued level's blanket Yes to a years question is /pick's alone, after it has asked the history

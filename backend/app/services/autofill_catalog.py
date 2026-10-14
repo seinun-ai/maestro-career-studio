@@ -765,10 +765,38 @@ def asks_worked_here(facts: dict[str, Fact], question: str, options: tuple[str, 
     return False
 
 
-def _worked_here_clause(question: str) -> str | None:
-    """The text that names the company after a worked-here shape (`_WORKED_SHAPES`, a former/current
-    employee), up to the end of its clause; None when no shape matches or none names a company."""
-    for shape in _WORKED_SHAPES:
+# The shapes of the OTHER-company path (`asks_worked_here_of_other`): employment verbs only. Stricter than
+# `_WORKED_SHAPES` on purpose: "worked with" is use or collaboration ("worked with Kubernetes", "worked with
+# Initrode as a client"), never employment, and the company here is not the job's, so nothing else vouches
+# for the wording.
+_OTHER_ADVERB = r"(?:(?:directly|formally|officially|ever|previously)\s+)*"
+_OTHER_VERB = (rf"{_OTHER_ADVERB}(?:worked\s+(?:for|at)|employed\s+(?:by|at|with)|"
+               r"(?:an?\s+)?(?:employee|intern|contractor)\s+(?:of|at|for|with)|interned\s+(?:at|with))\s+")
+_OTHER_SHAPES = tuple(re.compile(rx, re.IGNORECASE) for rx in (
+    rf"\b(?:have|has)\s+{_YOU}(?:been\s+)?{_OTHER_VERB}",
+    rf"\b(?:were|was)\s+{_YOU}{_OTHER_VERB}",
+    rf"\bdid\s+{_YOU}work\s+(?:for|at)\s+",
+    rf"\bare\s+you\s+(?:currently\s+)?{_OTHER_VERB}",
+))
+# A group of companies is no company ("FAANG companies", "Fortune 500", "the Big Four", "Big 4 firms").
+_COMPANY_GROUP = re.compile(r"\b(?:faang|maang|fang|big\s*(?:tech|four|4|three|3|five|5)|fortune|global\s*500|"
+                            r"inc\.?\s*5000)\b", re.IGNORECASE)
+_NAME_JOINERS = frozenset({"of", "and", "&", "de", "la", "the"})
+
+
+def _is_a_name(part: str) -> bool:
+    """A proper company name: every word with a letter has a capital in it ("Initrode & Sons",
+    "Bank of Initrode"; not "Initrode consultants", "accounting firms"), and it is no group of companies."""
+    words = part.split()
+    return bool(words) and not _COMPANY_GROUP.search(part) and not _NOT_A_NAME.match(part) and all(
+        any(ch.isupper() for ch in w) or not any(ch.isalpha() for ch in w) or w.casefold() in _NAME_JOINERS
+        for w in words)
+
+
+def _other_company_clause(question: str) -> str | None:
+    """The text that names the company after an employment shape, up to the end of its clause; None when no
+    shape matches."""
+    for shape in _OTHER_SHAPES:
         if m := shape.search(question):
             return _CLAUSE_END.split(_SUFFIX_STOP.sub(r"\1", question[m.end():]), maxsplit=1)[0]
     if m := _FORMER_ROLE.search(question):
@@ -779,20 +807,26 @@ def _worked_here_clause(question: str) -> str | None:
 
 def asks_worked_here_of_other(facts: dict[str, Fact], question: str,
                               options: tuple[str, ...] | list[str] = ()) -> bool:
-    """Whether a question asks whether the applicant worked for a company that is neither the job's (as the
+    """Whether a question asks whether the applicant worked for ONE company that is neither the job's (as the
     job record spells it: a page says "Initrode", the record holds the legal entity) nor an employer of the
     history, while the derived answer is No. The history lists jobs and none is at a company the question
-    names, so the derived No stands (`inv-worked-here-no`): same allowlisted shapes and exclusion list as
-    `asks_worked_here`, every name after the phrase a capitalised proper name, and `named_employer_fact` (an
-    employer, a parent or a subsidiary of one, or a mention it cannot read) has nothing to add."""
+    names, so the derived No stands (`inv-worked-here-no`), unless an entry of the history is no company
+    ("Confidential", "Freelance": the resume cannot say where it was). Employment verbs only
+    (`_OTHER_SHAPES`), the exclusion list (`_NOT_WORKED_HERE`), one capitalised proper name that is no group
+    of companies, and `named_employer_fact` (an employer, a parent or a subsidiary of one, or a mention it
+    cannot read) has nothing to add. The job's own company is the listed path's (`asks_worked_here`)."""
     fact = facts.get(WORKED_HERE_SLOT)
     options = tuple(options)
     if fact is None or fact.value != "No" or _NOT_WORKED_HERE.search(question) or any(
             _NOT_WORKED_HERE.search(o) for o in options):
         return False
-    parts = _name_parts(clause) if (clause := _worked_here_clause(question)) else []
-    if not parts or not all(p[0].isupper() and not _NOT_A_NAME.match(p) and name_key(p) not in _NOT_AN_EMPLOYER
-                            for p in parts):
+    if any(key in _NOT_AN_EMPLOYER for key, _ in fact.employers):
+        return False
+    parts = _name_parts(clause) if (clause := _other_company_clause(question)) else []
+    keys = {name_key(p) for p in parts}
+    if not parts or len(keys) != 1 or not keys - {""} or not all(_is_a_name(p) for p in parts):
+        return False
+    if keys & set(fact.companies) or keys & _NOT_AN_EMPLOYER:
         return False
     return named_employer_fact(facts, question, options) is None
 

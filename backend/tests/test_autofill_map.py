@@ -2329,7 +2329,10 @@ def test_asks_worked_here_of_another_company_reads_the_shape_the_company_and_the
     facts = _globex_history()
     ask = autofill_catalog.asks_worked_here_of_other
     assert ask(facts, "Are you currently employed by Initrode?")
-    assert ask(facts, "Have you ever worked for Initrode, Hooli or Vandelay?")
+    assert ask(facts, "Have you ever worked at Initrode?")
+    assert ask(facts, "Are you currently employed by Initrode & Sons?")
+    assert ask(facts, "Have you ever worked for Bank of Initrode?")
+    assert not ask(facts, "Have you ever worked for Initrode, Hooli or Vandelay?")   # exactly one company
     assert not ask(facts, "Are you currently employed by Globex?")               # a history employer
     assert not ask(facts, "Are you currently employed by Globex Labs?")           # akin to one
     assert not ask(facts, "Are you currently employed by the company?")           # names no company
@@ -2377,3 +2380,55 @@ def test_an_authorising_consumer_report_box_is_asked_with_the_never_list_that_re
     assert got["q"].route == "none"
     text = calls[1]["questions"]["q"]["instructions"]
     assert "a box authorizing a background check or a consumer report" in text
+
+
+# A lookalike that names no employer: tools, company GROUPS, a client role, "worked with" (C1).
+NOT_AN_EMPLOYER_QUESTIONS = [
+    "Have you worked with Kubernetes?",
+    "Have you worked with Salesforce?",
+    "Have you worked with SAP?",
+    "Have you worked with Microsoft Excel?",
+    "Have you worked at FAANG companies?",
+    "Have you worked at FAANG?",
+    "Have you worked at Big Tech?",
+    "Have you worked for Fortune 500 companies?",
+    "Have you worked for Big 4 accounting firms?",
+    "Have you worked for the Big Four?",
+    "Have you worked with Initrode Systems in a client role?",
+    "Have you ever worked with Initrode?",
+    "Did you ever work with Initrode?",
+    "Have you ever worked for Initrode consultants?",
+]
+
+
+@pytest.mark.parametrize("question", NOT_AN_EMPLOYER_QUESTIONS)
+def test_a_tool_a_company_group_or_a_client_role_is_not_a_worked_here_question(question):
+    assert not autofill_catalog.asks_worked_here_of_other(_globex_history(), question), question
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", NOT_AN_EMPLOYER_QUESTIONS)
+def test_such_a_lookalike_is_never_rerouted_to_the_derived_no(db_session, monkeypatch, question):
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = _worked_here_answer(db_session, question, _globex_history())
+    assert got.slot != autofill_catalog.WORKED_HERE_SLOT, question
+
+
+@pytest.mark.parametrize("hidden", ["Confidential", "Stealth", "Freelance", "Contractor", "Consulting"])
+def test_a_history_with_an_entry_that_is_no_company_derives_no_no_for_another_company(hidden):
+    """The resume cannot say where that entry was: another company's No would be a guess presented as a fact."""
+    facts = _globex_history(employers=("Globex", hidden))
+    assert facts[autofill_catalog.WORKED_HERE_SLOT].value == "No"
+    assert not autofill_catalog.asks_worked_here_of_other(facts, "Are you currently employed by Initrode?")
+
+
+@pytest.mark.parametrize("question", ["Have you ever worked for Initrode, Hooli or Vandelay?",
+                                      "Are you currently employed by Initrode or Hooli?",
+                                      "Have you worked for Initrode / Hooli?"])
+def test_only_a_question_naming_exactly_one_company_takes_the_derived_no(question):
+    assert not autofill_catalog.asks_worked_here_of_other(_globex_history(), question)
+
+
+def test_the_company_the_job_names_belongs_to_the_listed_path_not_the_other_company_one():
+    facts = _globex_history()
+    assert not autofill_catalog.asks_worked_here_of_other(facts, "Are you currently employed by Acme Wireless?")

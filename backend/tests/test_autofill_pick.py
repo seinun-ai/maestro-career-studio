@@ -1962,3 +1962,22 @@ def test_a_tribal_question_never_reads_the_eeo_facts(db_session, monkeypatch):
                            options=opts("Yes", "No", "Not applicable"))], facts, db_session, None)
     seen = json.dumps(calls[0])
     assert "Native American" not in seen and "female" not in seen
+
+
+# ---------- N3 review: the widened worked-here No is the Companion's inference, reported assumed
+
+def _globex_facts():
+    return autofill_catalog.build({}, [{"employer": "Globex", "title": "Analyst", "start_date": "2019-01",
+                                        "end_date": "2021-06"}], [], company="Acme Wireless")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize(("question", "reason"), [
+    ("Are you currently employed by Initrode?", "assumed"),     # a company the job record does not hold
+    ("Are you currently employed by Acme Wireless?", "matched"),   # the job's own company: a derived fact
+])
+def test_a_worked_here_no_for_another_company_is_reported_assumed(db_session, monkeypatch, question, reason):
+    fake_jev(monkeypatch, {"w": ("o2", 0.9)})
+    got = autofill_pick.pick([pf("w", slot=autofill_catalog.WORKED_HERE_SLOT, question=question,
+                                 options=opts("Yes", "No"))], _globex_facts(), db_session, None)
+    assert sans_trace(got["w"]) == {"oids": ["o2"], "reason": reason}
