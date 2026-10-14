@@ -559,14 +559,17 @@
     const unconfirmed = (f, text, why = "unconfirmed") => finish(f, "unconfirmed", {
       answer: why === "unstable" ? unstableNote(text) : landedNote(text), lastOutcome: why, wrote: text ?? null, wroteAs: null,
     });
-    const done = (f, reason, committed) => {
+    // `note`: a fixed sentence the panel may show beside the row (never a value).
+    const done = (f, reason, committed, note) => {
       const answer = Array.isArray(committed) ? committed.join(", ") : committed ?? null;
       if (!STATUS[reason]) return unconfirmed(f, answer); // never "verified" by default
       // Nothing, or a popup's placeholder, is never a filled answer — whatever the page said.
       if (!String(answer ?? "").trim() || ns.isPlaceholderText(answer)) return unconfirmed(f, answer || null);
       // `wroteAs`: what the engine made of it, kept so a re-render that makes
       // the field look "already answered" still reports the engine's own fill.
-      return finish(f, STATUS[reason], { answer, lastOutcome: "verified", wrote: answer, wroteAs: STATUS[reason] });
+      return finish(f, STATUS[reason], {
+        answer, lastOutcome: "verified", wrote: answer, wroteAs: STATUS[reason], ...(note ? { note } : {}),
+      });
     };
     // ONE budget per field, shared by everything that works on it — its pick,
     // its commit, its adaptive steps, a later round's retry and the sweep's one
@@ -1418,12 +1421,18 @@
     // Why /map left a field the profile could answer (`why`, a known word
     // only), said in the report: never "no fact" when the profile has one.
     const WHY = { unclear_job: "Left for you: it isn't clear which of your jobs this entry is." };
+    const ASSUMED_DATE = {
+      day: "Day set to the 1st", month: "Month set to January", month_day: "Set to the 1st of January",
+    };
     // `reason`: how the answer came ("assumed": /choose drafted it, and the report tells the user to read it).
     const fillText = async (f, value, format, reason = "matched") => {
       // An empty write is no answer: refused here, never sent (and never retried).
       if (!String(value ?? "").trim()) return finish(f, "needs_answer", { lastOutcome: "no_value" });
       const out = await act(f, { op: "write", value, ...(format ? { format } : {}) });
       if (notDone(f, out)) return undefined;
+      // A date the box asked more of than the profile has (the 1st of the month, January): written, and
+      // reported as answered for the user to check (owner decision: low stakes are decisive decisions).
+      if (out.outcome === "verified" && ASSUMED_DATE[out.assumed]) return done(f, "assumed", out.committed, ASSUMED_DATE[out.assumed]);
       if (out.outcome === "verified") return done(f, reason, out.committed);
       if (out.outcome === "unconfirmed") return unconfirmed(f, value);
       return fail(f, out.reason ?? out.outcome);
@@ -2089,6 +2098,8 @@
           ? `Companion wrote "${r.leftover}" here for an earlier question. Check it.` : null),
         route: r.route ?? null,
         slot: r.slot ?? null,
+        // A fixed sentence about HOW the answer came (a date's day set to the 1st), or null.
+        note: r.note ?? null,
         // Left open when the run's clock ran out: the panel can say so.
         lastOutcome: over && !FINAL.has(r.status) ? "timeout" : r.lastOutcome ?? null,
       };

@@ -348,22 +348,36 @@
     if (shape.kind !== "text") return { outcome: "unexpected", reason: "not_text" };
     let parts = null;
     let text = String(value ?? "");
+    // A date the box was given with more precision than the fact has (see below):
+    // `assumed` names what was filled in, and `shownAs` is the date as written.
+    let assumed = null;
+    let shownAs = null;
     if (shape.name === "date") {
       const d = parseDate(value);
       if (!d) return { outcome: "unexpected", reason: "not_a_date" };
       const kind = shape.dateKind(el);
       const placeholder = el.getAttribute("placeholder") ?? "";
-      // Never manufacture precision: a widget that asks for a part the fact
-      // does not have (a day, or a month) is left for the user.
       const asks = kind === "sections" ? shape.dateSections(el).map(shape.partOf)
         : kind === "date" ? ["year", "month", "day"] : kind === "month" ? ["year", "month"]
           : ["yyyy", "mm", "dd"].filter((p) => new RegExp(p, "i").test(placeholder))
             .map((p) => ({ yyyy: "year", mm: "month", dd: "day" })[p]);
-      if (asks.some((part) => !d[part])) return { outcome: "unexpected", reason: "needs_more_date_precision" };
-      if (kind === "sections") parts = shape.dateSections(el).map((sec) => [sec, d[shape.partOf(sec)]]);
+      // LOW STAKES ARE DECISIVE DECISIONS (owner, 2026-10-14): a widget that asks for a part the fact
+      // does not have gets the 1st of the month, or January when the month is missing too — written,
+      // reported `assumed`, never left blank. The fact itself is never changed or invented.
+      const missing = ["month", "day"].filter((part) => asks.includes(part) && !d[part]);
+      const date = { ...d, ...(missing.includes("month") ? { month: "01" } : {}), ...(missing.includes("day") ? { day: "01" } : {}) };
+      if (missing.length) {
+        assumed = missing.length === 2 ? "month_day" : missing[0];
+        shownAs = `${date.year}-${date.month || "01"}${asks.includes("day") ? `-${date.day}` : ""}`;
+      }
+      if (kind === "sections") parts = shape.dateSections(el).map((sec) => [sec, date[shape.partOf(sec)]]);
       else {
-        text = kind === "month" ? `${d.year}-${d.month}` : kind === "date" ? `${d.year}-${d.month}-${d.day}`
-          : formatPattern(placeholder, d);
+        text = kind === "month" ? `${date.year}-${date.month}` : kind === "date" ? `${date.year}-${date.month}-${date.day}`
+          : formatPattern(placeholder, date);
+      }
+      // A native box states its own range: a date outside it is refused, nothing typed.
+      if ((kind === "date" || kind === "month") && ((el.min && text < el.min) || (el.max && text > el.max))) {
+        return { outcome: "unexpected", reason: "outside_date_range" };
       }
     }
     // A box already showing the value cannot show an effect: never no_effect.
@@ -384,9 +398,10 @@
         await blurOut(el, t);
       }
       w.saw();
-      const outcome = verify(el, shape, value, { format });
-      return outcome !== "verified" && outcome !== "stale" && w.ignored && !shown
-        ? { outcome, ...w.reason() } : { outcome };
+      // A date filled in beyond the fact is verified as WRITTEN, and remembered as such.
+      const outcome = verify(el, shape, shownAs ?? value, { format });
+      if (outcome !== "verified" && outcome !== "stale" && w.ignored && !shown) return { outcome, ...w.reason() };
+      return outcome === "verified" && assumed ? { outcome, assumed, text: shownAs } : { outcome };
     } finally {
       w.stop();
     }

@@ -35,3 +35,30 @@ def test_a_labelled_optional_textarea_with_no_fact_is_left_blank(e2e_page):
     [row] = out["report"]["fields"]
     assert row["status"] == "left_blank", row
 
+
+
+# --- I6: native date boxes take the 1st (owner decision)
+DATE_PAGE = ("<form><label for='s'>Start date</label><input id='s' type='date'>"
+             "<label for='e'>Graduation</label><input id='e' type='date'>"
+             "<label for='f'>Full date</label><input id='f' type='date'></form>")
+
+
+def test_a_month_only_date_is_written_as_the_first_and_reported_assumed_with_its_note(e2e_page):
+    page = e2e_page
+    out = _run(page, html=DATE_PAGE, map={
+        "Start date": {"route": "slot", "slot": "experience.0.start", "value": "2021-05", "format": "date"},
+        "Graduation": {"route": "slot", "slot": "education.0.end", "value": "2024", "format": "date"},
+        "Full date": {"route": "slot", "slot": "experience.0.end", "value": "2022-03-09", "format": "date"}})
+    got = {q: (r["status"], r["note"]) for q, r in out["by_question"].items()}
+    assert got == {"Start date": ("assumed", "Day set to the 1st"),
+                   "Graduation": ("assumed", "Set to the 1st of January"),
+                   "Full date": ("verified", None)}, got
+    assert [page.input_value(i) for i in ("#s", "#e", "#f")] == ["2021-05-01", "2024-01-01", "2022-03-09"]
+
+
+def test_a_date_beyond_the_boxs_max_is_not_written_and_is_the_users(e2e_page):
+    page = e2e_page
+    out = _run(page, html="<form><label for='s'>Start date</label><input id='s' type='date' max='2021-04-30'></form>",
+               map={"Start date": {"route": "slot", "slot": "experience.0.start", "value": "2021-05", "format": "date"}})
+    assert out["by_question"]["Start date"]["status"] != "assumed" and page.input_value("#s") == ""
+

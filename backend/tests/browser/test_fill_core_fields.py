@@ -91,11 +91,55 @@ def test_a_plain_date_box_is_written_in_its_placeholder_format(page, load):
     assert page.input_value("#p") == "05/2021"
 
 
-def test_a_date_widget_asking_for_a_day_the_fact_lacks_is_left_alone(page, load):
+# A date box that asks for more precision than the profile has takes the 1st of the month, or
+# January 1st (owner decision 2026-10-14: low stakes are decisive decisions); the write says so
+# (`assumed`) and the loop reports it "answered for you: check".
+def test_a_native_date_given_a_month_is_written_as_the_first_and_says_so(page, load):
     load(page, "<label for='d'>Start date</label><input id='d' type='date'>")
     row = apply(page, inv(page)["Start date"], op="write", value="2021-05")
-    assert (row["outcome"], row["reason"]) == ("unexpected", "needs_more_date_precision")
-    assert page.input_value("#d") == ""
+    assert (row["outcome"], row["assumed"]) == ("verified", "day")
+    assert page.input_value("#d") == "2021-05-01"
+
+
+def test_a_native_date_given_only_a_year_is_written_as_january_first(page, load):
+    load(page, "<label for='d'>Start date</label><input id='d' type='date'>")
+    row = apply(page, inv(page)["Start date"], op="write", value="2024")
+    assert (row["outcome"], row["assumed"]) == ("verified", "month_day")
+    assert page.input_value("#d") == "2024-01-01"
+
+
+def test_a_full_date_assumes_nothing(page, load):
+    load(page, "<label for='d'>Start date</label><input id='d' type='date'>")
+    row = apply(page, inv(page)["Start date"], op="write", value="2021-05-17")
+    assert row["outcome"] == "verified" and "assumed" not in row and page.input_value("#d") == "2021-05-17"
+
+
+def test_a_month_box_given_only_a_year_is_written_as_january(page, load):
+    load(page, "<label for='d'>Graduated</label><input id='d' type='month'>")
+    row = apply(page, inv(page)["Graduated"], op="write", value="2018")
+    assert (row["outcome"], row["assumed"]) == ("verified", "month")
+    assert page.input_value("#d") == "2018-01"
+
+
+def test_a_date_outside_the_boxs_min_or_max_is_refused_and_nothing_is_typed(page, load):
+    load(page, "<label for='d'>Start date</label><input id='d' type='date' max='2021-04-30'>")
+    row = apply(page, inv(page)["Start date"], op="write", value="2021-05")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "outside_date_range") and page.input_value("#d") == ""
+    load(page, "<label for='d'>Start date</label><input id='d' type='date' min='2022-01-01'>")
+    assert apply(page, inv(page)["Start date"], op="write", value="2021-05-17")["reason"] == "outside_date_range"
+
+
+def test_a_workday_date_that_asks_for_a_day_gets_the_first(page, load):
+    load(page, fixture_html("workday_date.html"))
+    row = apply(page, inv(page)["Date"], op="write", value="2021-05")
+    assert (row["outcome"], row["assumed"]) == ("verified", "day")
+    assert oracle(page, "signed") == "2021-05-01"
+
+
+def test_a_pattern_date_box_asking_for_a_day_gets_the_first(page, load):
+    load(page, "<label for='d'>Signed</label><input id='d' placeholder='MM/DD/YYYY'>")
+    row = apply(page, inv(page)["Signed"], op="write", value="2021-05")
+    assert (row["outcome"], row["assumed"]) == ("verified", "day") and page.input_value("#d") == "05/01/2021"
 
 
 # --- choice-like, passive
