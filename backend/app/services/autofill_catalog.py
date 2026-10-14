@@ -551,19 +551,49 @@ def _is_capitalised(token: str) -> bool:
     return token[0].isdigit() or any(ch.isupper() for ch in token)
 
 
-def _capital_windows(texts: tuple[str, ...]) -> set[str]:
-    """The name key of every stretch of consecutive capitalised words in `texts`, and of every part of one
-    ("Previous Initech" holds "previous initech", "previous" and "initech"). What a question could be
-    naming in a wording nothing parses."""
-    keys: set[str] = set()
+# Words a question or an option capitalises that begin or end no company name of their own: they must
+# not make "Yes" ask against "Yes Bank", or "Current Employee" against "Current Health".
+_STOP_WORDS = frozenset({
+    "yes", "no", "have", "has", "are", "were", "was", "did", "do", "please", "select", "current", "former",
+    "employee", "previous", "if", "the", "our", "united", "general"})
+
+
+def _capital_runs(texts: tuple[str, ...]) -> list[list[str]]:
+    """Each stretch of consecutive capitalised words in `texts`."""
+    runs: list[list[str]] = []
     for text in texts:
         run: list[str] = []
         for token in [*re.findall(r"\w+", text), ""]:
             if token and _is_capitalised(token):
                 run.append(token)
                 continue
-            keys |= {name_key(" ".join(run[i:j])) for i in range(len(run)) for j in range(i + 1, len(run) + 1)}
+            if run:
+                runs.append(run)
             run = []
+    return runs
+
+
+def _capital_windows(texts: tuple[str, ...]) -> set[str]:
+    """The name key of every stretch of consecutive capitalised words in `texts`, and of every part of one
+    ("Previous Initech" holds "previous initech", "previous" and "initech"). What a question could be
+    naming in a wording nothing parses: an EXACT mention can stand anywhere in a run."""
+    return {name_key(" ".join(run[i:j])) for run in _capital_runs(texts)
+            for i in range(len(run)) for j in range(i + 1, len(run) + 1)} - {""}
+
+
+def _capital_remainders(texts: tuple[str, ...]) -> set[str]:
+    """The name key of what is left of each capitalised run once its leading and trailing stop-words are
+    gone ("Previous Initech Employee" is "initech"). Only that remainder can be a parent or a subsidiary
+    of an employer, so a capitalised "Yes", "Current" or "United" starts no match."""
+    keys: set[str] = set()
+    for run in _capital_runs(texts):
+        words = list(run)
+        while words and words[0].casefold() in _STOP_WORDS:
+            words.pop(0)
+        while words and words[-1].casefold() in _STOP_WORDS:
+            words.pop()
+        if words:
+            keys.add(name_key(" ".join(words)))
     return keys - {""}
 
 
@@ -574,10 +604,11 @@ def _capitalised_mention(key: str, texts: tuple[str, ...]) -> bool:
 
 
 def _mentions_or_is_akin(employers: list[str], texts: tuple[str, ...]) -> bool:
-    """Whether a capitalised stretch of `texts` is an employer's name, or the start of one or the name it
-    starts ("Initech" and "Initech Software"): a mention the parser did not read, which can never be a No."""
-    windows = _capital_windows(texts)
-    return any(key == window or _akin(key, window) for key in employers for window in windows)
+    """Whether a capitalised stretch of `texts` is an employer's name (anywhere in a run), or, once its
+    stop-words are dropped, the start of one or the name it starts ("Initech" and "Initech Software"):
+    a mention the parser did not read, which can never be a No."""
+    windows, remainders = _capital_windows(texts), _capital_remainders(texts)
+    return any(key in windows or any(_akin(key, rest) for rest in remainders) for key in employers)
 
 
 def question_names_company(facts: dict[str, Fact], question: str) -> bool:
@@ -614,7 +645,8 @@ def named_employer_fact(facts: dict[str, Fact], question: str,
     named = [current for key, current in employers if key in listed]
     if named:
         return make_fact(WORKED_HERE_SLOT, "Yes, currently" if any(named) else "Yes, previously")
-    if (any(_akin(key, name) for key, _ in employers for name in listed)
+    generic = {name for name in listed if set(name.split()) <= _STOP_WORDS}   # "yes", "current employee"
+    if (any(_akin(key, name) for key, _ in employers for name in listed - generic)
             or _mentions_or_is_akin([key for key, _ in employers], (question, *options))):
         return ASK_THE_USER
     return None

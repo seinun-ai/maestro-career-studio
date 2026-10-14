@@ -452,6 +452,29 @@ def test_a_parent_or_subsidiary_in_a_wording_the_parser_does_not_read_is_asked_n
 
 
 @pytest.mark.parametrize("employer, question, options", [
+    ("Yes Bank", "Have you worked for Acme before?", ["Yes", "No"]),
+    ("Yes Bank", "Do you agree?", ["Yes", "No"]),
+    ("Have Fun Inc", "Have you worked for Acme before?", ()),
+    ("Current Health", "Are you a Current Employee?", ["Current Employee", "Former Employee", "Not Applicable"]),
+    ("United Rentals", "Do you live in the United States?", ["United States", "Other"]),
+    ("General Motors", "Have you worked for Acme? Please select the General Employment option.", ()),
+])
+def test_a_common_capitalised_word_that_starts_an_employers_name_does_not_make_it_ask(employer, question, options):
+    f = cat.build({}, [{"employer": employer, "title": "Engineer"}], [], company="Acme")
+    assert f["derived.previously_employed_here"].value == "No"
+    assert cat.named_employer_fact(f, question, options) is None
+
+
+def test_a_stop_word_before_the_name_does_not_hide_the_parent_or_subsidiary():
+    f = cat.build({}, [{"employer": "Initech Software", "title": "Engineer"}], [], company="Acme")
+    assert cat.named_employer_fact(f, "Previous Initech employee?") == cat.ASK_THE_USER
+    assert cat.named_employer_fact(f, "Please select: Current Initech Employee") == cat.ASK_THE_USER
+    # An exact name is still found anywhere, whatever stands before it.
+    f = cat.build({}, [{"employer": "Current Health", "title": "Engineer"}], [], company="Acme")
+    assert cat.named_employer_fact(f, "Were you a Current Health employee?") == cat.ASK_THE_USER
+
+
+@pytest.mark.parametrize("employer, question, options", [
     ("eInitech", "Did you intern at eInitech?", ()),
     ("iTech Labs", "Previous iTech employee?", ()),                 # a lowercase initial, a capital inside
     ("iTech Labs", "Which company?", ["iTech"]),
