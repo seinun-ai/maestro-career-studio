@@ -237,6 +237,8 @@
     } else {
       const [reason, say] = STOPS[run.why] ?? PARKS[run.why] ?? ["Stopped", "Nothing was submitted."];
       out.push(attach(node("div", "needs run-needs"), node("div", "run-reason", reason), node("div", "opts", say)));
+      // A tab closed on a confirmation the mark then failed on: the one place the user hears it.
+      if (run.markNote) out.push(node("div", "sub run-mark-note", run.markNote));
     }
     if (canResume(run)) attach(actions, button(ctx, "save", "run-resume", "Resume", () => ctx.act.resumeRun(run.id)));
     attach(actions, button(ctx, "save", "run-done", "Done", () => ctx.act.closeRun(run.id)));

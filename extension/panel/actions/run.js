@@ -70,6 +70,9 @@
   const state = {
     driving: new Set(), checking: new Set(), marking: new Set(),
     facts: new Map(), undo: new Map(), phrases: new Map(), timers: new Map(), count: 0,
+    // Per run: where the confirmation page was SEEN ({host, path}), kept apart from the tab, which
+    // may have moved on or closed by the time the mark is made.
+    confirmed: new Map(),
     // Per run: the fids the page watches for the user's hands, and the gap rows already posted.
     watching: new Map(), gapped: new Map(),
   };
@@ -178,8 +181,9 @@
   }
 
   /** What a classify read tells the host: the origin of the frame that holds the form (vouched, so
-   * a form in an embedded frame takes the fill, `withFlowOrigin`), and the words a confirmation
-   * page matched (the one thing the auto-mark sends of the page). */
+   * a form in an embedded frame takes the fill, `withFlowOrigin`), the words a confirmation page
+   * matched, and where it was (the two things the auto-mark sends of the page: only a page of a host
+   * the run reached, in the top document, counts as where). */
   function noteFrames(store, record, frames) {
     const picked = ns.queueRun.pickFrame(frames);
     const summary = picked?.result?.summary;
@@ -193,6 +197,8 @@
     if (origin && /^https?:/.test(origin) && (summary.fillable ?? 0) > 0) store.run.vouch(record.tabId, origin);
     if (typeof summary.confirmationPhrase === "string") {
       state.phrases.set(record.id, summary.confirmationPhrase.slice(0, MAX_PHRASE));
+      const where = picked.result.top === true ? addressOf(picked.url) : null;
+      if (where && (record.hosts ?? []).includes(where.host)) state.confirmed.set(record.id, where);
     }
     return frames;
   }
@@ -447,6 +453,7 @@
     state.facts.delete(record.id);
     state.undo.delete(record.id);
     state.phrases.delete(record.id);
+    state.confirmed.delete(record.id);
     state.watching.delete(record.id);
     state.gapped.delete(record.id);
     store.write({ runs: store.read().runs.filter((one) => one.id !== id) });
@@ -563,8 +570,18 @@
       if (tabOf(record) !== tabId || !live(record)) continue;
       state.timers.get(record.id)?.();
       state.timers.delete(record.id);
-      Object.assign(record, { status: "stopped", why: "tab_closed", stopRequested: true, tabClosed: true, markAt: null });
       store.run.unvouch(tabId);
+      if (record.status === "confirming") {
+        // The user's Submit went through and the page said so: closing the tab is not a cancel. The
+        // mark is made now (an Undo window has no tab to look at), from the page the run saw.
+        Object.assign(record, { tabClosed: true, markAt: null });
+        recordSubmitted(store, record).catch(warn("could not mark applied")).finally(() => {
+          if (record.status === "ready") Object.assign(record, { status: "stopped", why: "tab_closed", stopRequested: true });
+          persist(store);
+        });
+        continue;
+      }
+      Object.assign(record, { status: "stopped", why: "tab_closed", stopRequested: true, tabClosed: true, markAt: null });
       persist(store);
     }
   }
@@ -613,15 +630,24 @@
     persist(store);
   }
 
-  /** `{host, path, text}` for the confirmation, from the tab's address and the matched words. */
-  function confirmationOf(url, phrase) {
+  /** `{host, path}` of an address, or null when it names no host. */
+  function addressOf(url) {
     try {
       const { hostname, pathname } = new URL(url);
-      if (!hostname) return null;
-      return { host: hostname, path: pathname || "/", text: String(phrase ?? "").slice(0, MAX_PHRASE) };
+      return hostname ? { host: hostname, path: pathname || "/" } : null;
     } catch {
       return null;
     }
+  }
+
+  /** `{host, path, text}` for the confirmation: the page the run SAW say so, else (a manual mark on a
+   * record that never read one) the tab's address now, plus the matched words. */
+  async function confirmationFor(store, record) {
+    const text = String(state.phrases.get(record.id) ?? "").slice(0, MAX_PHRASE);
+    const seen = state.confirmed.get(record.id);
+    if (seen) return { ...seen, text };
+    const where = addressOf(await store.run.tabUrl(tabOf(record)).catch(() => ""));
+    return where ? { ...where, text } : null;
   }
 
   /** Mark applied. Normally the proposal's own endpoint, which approves and submits under the
@@ -635,8 +661,7 @@
     try {
       let confirmation = null;
       if (!record.markConflict) {
-        const url = await store.run.tabUrl(tabOf(record)).catch(() => "");
-        confirmation = confirmationOf(url, state.phrases.get(record.id));
+        confirmation = await confirmationFor(store, record);
         if (!confirmation) {
           Object.assign(record, { status: "ready", why: null, markAt: null, noAutoMark: true,
             markNote: "Couldn't read the page's address, so it wasn't marked applied. Mark it yourself once it went through." });

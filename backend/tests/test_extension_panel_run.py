@@ -845,6 +845,40 @@ def test_after_8_seconds_the_confirmation_words_and_nothing_else_are_posted_and_
     assert (_record(shot)["status"], _card(shot)["title"]) == ("applied", "Applied")
 
 
+POSTED = {"POST /api/proposals/prop-1/companion-submitted": _reply({"id": "prop-1", "status": "submitted"})}
+
+
+def _confirmation_posted(out):
+    return [json.loads(post["init"]["body"])["confirmation"] for post in _api_calls(out, "companion-submitted")]
+
+
+def test_closing_the_tab_inside_the_8_seconds_marks_at_once_with_the_page_the_run_saw(tmp_path):
+    """The user's Submit went through; closing the tab is no cancel. The mark does not wait out the
+    countdown (Undo's window closes with the tab) and needs no tab to read."""
+    out = _ready_then_confirmation(tmp_path, [{"tabUrl": "", "removed": 7}], api=POSTED)
+    assert _confirmation_posted(out) == [{"host": "jobs.acme.test", "path": "/apply/confirmation9",
+                                          "text": "Thank you for applying"}]
+    assert _record(out["shots"][-1])["status"] == "applied"
+    assert out["held"] == 0
+
+
+def test_moving_on_inside_the_8_seconds_does_not_change_the_page_the_mark_names(tmp_path):
+    away = "https://news.example.test/front-page"
+    out = _ready_then_confirmation(tmp_path, [{"tabUrl": away, "update": {"tab": 7, "change": {"url": away}}},
+                                              {"fire": True}], api=POSTED)
+    assert _confirmation_posted(out) == [{"host": "jobs.acme.test", "path": "/apply/confirmation9",
+                                          "text": "Thank you for applying"}]
+
+
+def test_a_mark_that_fails_as_the_tab_closes_says_so_on_the_stopped_card(tmp_path):
+    out = _ready_then_confirmation(tmp_path, [{"removed": 7}],
+                                   api={"POST /api/proposals/prop-1/companion-submitted":
+                                        {"ok": False, "error": "Server unavailable", "status": 500}})
+    record = _record(out["shots"][-1])
+    assert (record["status"], record["why"]) == ("stopped", "tab_closed")
+    assert "Couldn't mark this applied" in _body_text(out["shots"][-1])
+
+
 def test_undo_inside_the_8_seconds_posts_nothing_and_leaves_a_manual_mark_applied(tmp_path):
     out = _ready_then_confirmation(tmp_path, [{"press": "run-undo"}, {"fire": True}])
     assert not _api_calls(out, "companion-submitted")
