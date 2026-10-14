@@ -2004,6 +2004,21 @@ def test_a_low_stakes_pick_states_both_safe_default_directions_and_answers_no_or
 
 
 @pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("options, wanted", [(("Yes", "No"), "o2"), (("Yes", "No", "I don't wish to answer"), "o3")])
+def test_a_spouses_military_service_is_a_safe_no_reported_assumed(db_session, monkeypatch, options, wanted):
+    """Owner (2026-10-14): a spouse or household member's service has no fact: No (or the decline option),
+    reported assumed so it lands under "Check before you submit". The ask names the kind and the decline."""
+    model_settings.set_answer_level(db_session, "history")
+    calls = fake_jev(monkeypatch, {"s": (wanted, 0.9)})
+    got = pick([pf("s", question="Has your spouse or domestic partner ever served in the U.S. Military?",
+                   route="low_stakes", options=opts(*options))], db_session)
+    text = calls[0]["questions"]["s"]["instructions"]
+    assert "a spouse's, domestic partner's or household member's military service" in text
+    assert "I don't wish to answer" in text
+    assert (got["s"].oids, got["s"].reason) == ([wanted], "assumed")
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_a_tribal_question_never_reads_the_eeo_facts(db_session, monkeypatch):
     """No: the safe default is No, never inferred from race or ethnicity. A low-stakes pick carries no fact."""
     model_settings.set_answer_level(db_session, "history")

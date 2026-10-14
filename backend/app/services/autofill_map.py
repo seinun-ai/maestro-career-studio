@@ -107,6 +107,9 @@ _SENTINELS = {
     BLOCKED_EEO: "A voluntary diversity / EEO question (gender, race or ethnicity, Hispanic or Latino, "
                  "veteran status, or disability) that none of the listed applicant facts answers",
 }
+# The applicant's own veteran status is protected; a spouse's or household member's service is not that, and
+# no profile fact holds it (owner, 2026-10-14): a safe No, shown under "Check before you submit".
+_SPOUSE_SERVICE = "a spouse's, domestic partner's or household member's military service"
 # The owner's scope (2026-09-26): answered in the job's favour when the
 # setting is on and no profile fact answers. Self-assessments against the job
 # description and contact consents are IN; factual entries are not.
@@ -115,8 +118,9 @@ _LOW_STAKES_TEMPLATE = (
     "about the job or a referral source; preferred contact method; willingness or comfort with relocation, "
     "travel (any share of time), on-site work, shifts, overtime or a drug test; openness to other roles; "
     "{conflict}; a yes/no about a status, affiliation or circumstance the profile does not record, only one of "
-    "exactly these: tribal, union or association membership, a referral by an employee, or a relative or "
-    "household member at the company (No, or Not applicable when that is offered); a yes/no question about "
+    "exactly these: tribal, union or association membership, a referral by an employee, a relative or "
+    "household member at the company, or " + _SPOUSE_SERVICE + " (No, or Not applicable when that is "
+    "offered; for military service, No or \"I don't wish to answer\"); a yes/no question about "
     "willingness, readiness or consent to a standard pre-employment step (a background check, drug test, "
     "reference check, consent to complete the I-9 or E-Verify process, providing documents; never a box that "
     "itself gives the authorization, and whether the applicant can prove eligibility to work is work "
@@ -136,7 +140,8 @@ _NEVER_LOW_STAKES_TEMPLATE = (
     "a factual education or experience question (a school, degree, employer, title, date, licence or "
     "certification{years}), "
     "work authorization, sponsorship, age or eligibility facts, EEO / diversity / voluntary self-identification "
-    "(gender, race or ethnicity, veteran or disability status), background or criminal history, termination or "
+    "(gender, race or ethnicity, veteran or disability status), the applicant's own (never a spouse's or household "
+    "member's military service), background or criminal history, termination or "
     "discipline, a non-compete or other agreement, debarment or exclusion, security clearance, salary, {worked}"
     "or a legal attestation, authorization, release or signature (such as a box authorizing a background check "
     "or a consumer report)")
@@ -184,7 +189,8 @@ _KEEN_WAY = "for a question in that scope, the answer that shows they fit and wa
 # background check it would pass.
 _KEEN_NO = ("No, or Not applicable when it is offered, to a status, affiliation or circumstance the profile "
             "does not record, only one of these: tribal, union or association membership, a referral, a relative or "
-            "household member at the company")
+            "household member at the company, " + _SPOUSE_SERVICE + " (for military service, No or \"I don't wish "
+            "to answer\")")
 _KEEN_YES = ("Yes to willingness, readiness or consent to a standard pre-employment step (a background check, "
              "drug test, reference check, consent to complete the I-9 or E-Verify process, providing documents; "
              "never a box that itself gives the authorization) or to having basic means (reliable transportation, "

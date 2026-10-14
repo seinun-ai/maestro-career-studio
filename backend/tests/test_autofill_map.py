@@ -2202,6 +2202,23 @@ def test_a_no_fact_safe_default_question_routes_low_stakes_with_the_new_kinds_in
     assert "No, or Not applicable when that is offered" in text and "the answer is Yes" in text
 
 
+SPOUSE_QUESTIONS = ["Has your spouse or domestic partner ever served in the U.S. Military?",
+                    "Is your spouse, domestic partner or any member of your household currently serving in the military?"]
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", SPOUSE_QUESTIONS)
+def test_a_spouses_military_service_routes_low_stakes_with_the_no_kind_in_the_ask(db_session, monkeypatch, question):
+    """Owner (2026-10-14): no profile fact holds it, so it is the safe No (or "I don't wish to answer"), and the
+    ask names the kind outright; the applicant's own veteran status stays on the never-list."""
+    calls = fake_jev(monkeypatch, {"q": ("none", 0.9)}, noul={"q": 0.95})
+    got = run([field("q", question, "popup", options=["Yes", "No", "I don't wish to answer"])], db_session,
+              low_stakes=True)
+    assert got["q"].route == "low_stakes"
+    text = calls[1]["questions"]["q"]["instructions"]
+    assert SPOUSE_SERVICE in text and "I don't wish to answer" in text and "the applicant's own (never a spouse's" in text
+
+
 @pytest.mark.usefixtures("jev_on")
 @pytest.mark.parametrize("question", ["Have you ever been convicted of a felony?",
                                       "Do you have a pending criminal charge?",
@@ -2358,11 +2375,18 @@ def test_the_scope_takes_willingness_questions_only_never_a_box_that_gives_the_a
     assert "whether the applicant can prove eligibility to work is work authorization" in scope
 
 
+SPOUSE_SERVICE = "a spouse's, domestic partner's or household member's military service"
+
+
 def test_the_no_kind_is_a_closed_list_and_the_never_list_names_the_new_kinds():
     scope, never = autofill_map.low_stakes_scope({})
     for kind in ("tribal, union or association membership", "a referral", "a relative or household member"):
         assert kind in scope, kind
     assert "exactly these" in scope
+    # Owner (2026-10-14): a spouse's or household member's military service, with no fact, is a safe No.
+    assert SPOUSE_SERVICE in scope
+    assert "I don't wish to answer" in scope
+    assert "the applicant's own (never a spouse's" in never   # the applicant's veteran status stays protected
     for kind in ("authorization, release or signature", "a box authorizing a background check or a consumer report",
                  "termination or discipline", "a non-compete or other agreement", "debarment or exclusion",
                  "EEO / diversity / voluntary self-identification (gender, race or ethnicity, veteran or "
@@ -2374,6 +2398,17 @@ def test_the_no_kind_is_a_closed_list_and_the_never_list_names_the_new_kinds():
 def test_keen_names_the_closed_no_list(facts):
     text = autofill_map.keen(facts)
     assert "a relative or household member at the company" in text and "union or association membership" in text
+    assert SPOUSE_SERVICE in text and "I don't wish to answer" in text
+    assert "only one of these" in text   # closed: nothing else joined it
+
+
+def test_the_closed_no_list_is_the_same_in_the_scope_and_in_keen():
+    """The two statements of the list must not drift: every kind the scope names is one keen names."""
+    scope, _ = autofill_map.low_stakes_scope({})
+    text = autofill_map.keen({})
+    for kind in ("tribal, union or association membership", "a referral", "a relative or household member at the company",
+                 SPOUSE_SERVICE):
+        assert kind in scope and kind in text, kind
 
 
 @pytest.mark.usefixtures("jev_on")
