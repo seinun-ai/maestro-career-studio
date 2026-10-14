@@ -532,3 +532,44 @@ def test_the_applications_company_reaches_the_catalog(db_session, monkeypatch, t
     seen = _spy_map(monkeypatch)
     assert _post(db_session, "/api/autofill/map", {"base": slug, "fields": [MAP_FIELD]}).status_code == 200
     assert "derived.previously_employed_here" not in seen["facts"]
+
+
+def _scoped_profile(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "settings_dir", tmp_path)
+    autofill_profile.set_profile({"custom": [
+        {"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin"},
+        {"question": "Preferred shift", "answer": "Day"}]}, db_session)
+
+
+def test_map_offers_a_scoped_saved_answer_only_for_a_job_in_its_city(db_session, tmp_path, monkeypatch):
+    _scoped_profile(db_session, tmp_path, monkeypatch)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    application = _seed_application(db_session, slug)
+    seen = _spy_map(monkeypatch)
+    for where, offered in (("Austin, TX", True), ("Denver, CO", False), (None, False)):
+        db_session.get(Job, application.job_id).location = where
+        db_session.commit()
+        assert _post(db_session, "/api/autofill/map", {
+            "fields": [MAP_FIELD], "application_id": str(application.id)}).status_code == 200
+        assert ("custom.0" in seen["facts"]) is offered, where
+        assert seen["facts"]["custom.1"].value == "Day"
+
+
+def test_context_drops_a_scoped_saved_answer_for_a_job_elsewhere(db_session, tmp_path, monkeypatch):
+    _scoped_profile(db_session, tmp_path, monkeypatch)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    application = _seed_application(db_session, slug)
+    job = db_session.get(Job, application.job_id)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        def questions(url):
+            return [row["question"] for row in TestClient(app).get(url).json()["profile"]["custom"]]
+
+        by_application = f"/api/autofill/context?application_id={application.id}"
+        assert questions(by_application) == ["Preferred shift"]
+        job.location = "Austin, TX"
+        db_session.commit()
+        assert questions(by_application) == ["Willing to relocate to Austin?", "Preferred shift"]
+        assert questions(f"/api/autofill/context?base={slug}") == ["Preferred shift"]
+    finally:
+        app.dependency_overrides.clear()

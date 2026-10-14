@@ -498,3 +498,39 @@ def test_the_agreement_fact_survives_a_catalog_at_its_cap():
     full = {f"custom.{i}": cat.make_fact(f"custom.{i}", "x", "saved answer") for i in range(cat.MAX_SLOTS)}
     got = cat.with_agreement(full, True)
     assert len(got) == cat.MAX_SLOTS and AGREES in got
+
+
+# ---------- a saved answer that names a job's company or city stays with that job (Task 20c)
+
+def test_a_saved_answer_naming_a_company_is_offered_only_for_that_company():
+    profile = {"custom": [
+        {"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"},
+        {"question": "Is a relative a government official?", "answer": "No"}]}
+    at_acme = cat.build(profile, [], [], company="Acme Corp")
+    at_globex = cat.build(profile, [], [], company="Globex")
+    assert "custom.0" in at_acme and "custom.1" in at_acme
+    assert "custom.0" not in at_globex and "custom.1" in at_globex
+    assert "custom.0" not in cat.build(profile, [], [])          # no job: a scoped answer is never offered
+
+
+def test_a_saved_answer_naming_a_city_is_offered_only_there():
+    profile = {"custom": [{"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin"}]}
+    assert "custom.0" in cat.build(profile, [], [], company="Globex", location="Austin, TX")
+    assert "custom.0" not in cat.build(profile, [], [], company="Globex", location="Denver, CO")
+
+
+def test_a_scoped_saved_answer_keeps_every_other_rows_slot():
+    profile = {"custom": [
+        {"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin"},
+        {"question": "Preferred shift", "answer": "Day"}]}
+    got = cat.build(profile, [], [], company="Globex", location="Denver, CO")
+    assert got["custom.1"].value == "Day" and "custom.0" not in got
+
+
+def test_the_context_profile_drops_a_saved_answer_that_belongs_to_another_job():
+    custom = [{"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"},
+              {"question": "Preferred shift", "answer": "Day"}]
+    assert [row["question"] for row in cat.custom_for_job(custom, "Acme Corp", None)] == [
+        "Have you worked at Acme before?", "Preferred shift"]
+    assert [row["question"] for row in cat.custom_for_job(custom, "Globex", "Austin, TX")] == ["Preferred shift"]
+    assert [row["question"] for row in cat.custom_for_job(custom, None, None)] == ["Preferred shift"]

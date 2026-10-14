@@ -328,6 +328,17 @@ def get_autofill_context(
     # The one gate (`eeo_consent.withhold_unconsented`); /choose uses it too.
     sections["profile"] = eeo_consent.withhold_unconsented(
         sections["profile"], sections["eeo_consent"])
+    # A saved answer that named another job's company or city (`only_for`) is not
+    # this fill's: the deterministic pass matches `custom` by question on every
+    # form, so it would fill "Have you worked at Acme before?" at the next employer.
+    if isinstance(sections["profile"], dict) and "custom" in sections["profile"]:
+        job = _application_job(db, application_id)
+        sections["profile"] = {
+            **sections["profile"],
+            "custom": autofill_catalog.custom_for_job(
+                sections["profile"]["custom"],
+                job.company if job else None, job.location if job else None),
+        }
     return sections
 
 
@@ -364,6 +375,11 @@ def _today(theirs: date | None) -> date:
     return theirs if theirs is not None and abs((theirs - ours).days) <= 1 else ours
 
 
+def _application_job(db: Session, application_id: UUID | None) -> Job | None:
+    application = db.get(Application, application_id) if application_id is not None else None
+    return db.get(Job, application.job_id) if application is not None else None
+
+
 def _facts(
     db: Session, application_id: UUID | None, base: str | None, today: date | None = None
 ) -> tuple[dict[str, autofill_catalog.Fact], bool]:
@@ -388,14 +404,14 @@ def _facts(
         consented = agrees = False
     # The job's company, so "previously employed here" can be read off the
     # history for THIS application (autofill_catalog._worked_here).
-    application = db.get(Application, application_id) if application_id is not None else None
-    job = db.get(Job, application.job_id) if application is not None else None
+    job = _application_job(db, application_id)
     facts = autofill_catalog.build(
         eeo_consent.disclosable_profile(db),
         employment_blocks(resume) if resume else [],
         resume_skills(resume) if resume else [],
         today=_today(today),
         company=job.company if job else None,
+        location=job.location if job else None,
     )
     # Served: an agreement given under an older policy reads off (lapsed).
     return autofill_catalog.with_agreement(facts, agrees), consented

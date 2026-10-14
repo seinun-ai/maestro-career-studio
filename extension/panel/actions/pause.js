@@ -152,23 +152,44 @@
    * user trimmed by hand in Settings matches more labels, and replacing it with
    * this page's longer label would silently narrow a rule the user widened.
    */
-  function withCustomAnswer(custom, question, answer) {
+  function withCustomAnswer(custom, question, answer, job) {
     const rows = (Array.isArray(custom) ? custom : []).map((row) => ({ ...row }));
     const key = ns.normLabel(question);
     const at = rows.findIndex((row) => ns.normLabel(row?.question) === key);
     if (at === -1) {
-      rows.push({ question, answer });
+      const only = scopeOf(question, job);
+      rows.push(only ? { question, answer, only_for: only } : { question, answer });
       return rows;
     }
     rows[at] = { ...rows[at], answer };
     return rows;
   }
 
+  // The words a company goes by in a question: its name as listed and without a trailing legal
+  // suffix ("Acme, Inc." is "Acme" to everyone who asks about it).
+  const LEGAL_SUFFIX = /[,.\s]+(?:inc|llc|llp|ltd|limited|corp|corporation|co|company|plc|gmbh)\.?$/i;
+  const MIN_SCOPE = 3;
+
+  /** What a saved answer is scoped to: the job's company, or the city of its location, when the
+   * QUESTION names it ("Have you worked at Acme before?", "Willing to relocate to Austin?"). Such an
+   * answer is true of this job and only looks true elsewhere, so the backend offers it only where
+   * the scope is contained in the job's company or location (`autofill_catalog._custom`). Whole
+   * words, so a company called Rome is not "chrome". Null when the question names neither, or no
+   * job is known (an unscoped answer is the general case). */
+  function scopeOf(question, job) {
+    const city = String(job?.location ?? "").split(",")[0].trim();
+    const company = String(job?.company ?? "").trim();
+    const names = [company, company.replace(LEGAL_SUFFIX, "").trim(), city];
+    return names.find((name) => name.length >= MIN_SCOPE
+      && new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "iu")
+        .test(question ?? "")) ?? null;
+  }
+
   /** One answer applied to a profile: the profile with it, where it went, and what it replaced.
    *
    * `before` is what Undo needs and nothing more: the typed key's old value (undefined when the
    * profile had none), or the custom row this question had (null when it had none). */
-  function applyAnswer(profile, label, answer) {
+  function applyAnswer(profile, label, answer, job) {
     const target = saveTargetFor(label);
     if (target.store === "profile") {
       return { profile: withProfileAnswer(profile, target.path, answer), target,
@@ -177,7 +198,7 @@
     const key = ns.normLabel(label);
     const old = (Array.isArray(profile.custom) ? profile.custom : [])
       .find((row) => ns.normLabel(row?.question) === key);
-    return { profile: { ...profile, custom: withCustomAnswer(profile.custom, label, answer) }, target,
+    return { profile: { ...profile, custom: withCustomAnswer(profile.custom, label, answer, job) }, target,
              before: { label, row: old ? { ...old } : null } };
   }
 
@@ -211,7 +232,11 @@
    */
   async function learnAnswer(store, row, answer) {
     const current = await store.api("/api/settings/autofill");
-    const { profile, target } = applyAnswer(current?.value ?? {}, row.label, answer);
+    const facts = store.read();
+    const { profile, target } = applyAnswer(current?.value ?? {}, row.label, answer, {
+      company: facts.job?.company ?? facts.application?.job_company,
+      location: facts.job?.location ?? facts.application?.job_location,
+    });
     await putProfile(store, profile);
     return target;
   }
@@ -219,13 +244,15 @@
   /** Learn several answers in ONE read-modify-write (a queued run's Resume saves everything the user
    * typed on a page at once), and say what each replaced so `unlearnAnswers` can put it back. The
    * whole-object PUT is why this is one round trip and not one per answer: a second PUT built from
-   * a read taken before the first would erase it. Items are `{label, answer}`. */
-  async function learnAnswers(store, items) {
+   * a read taken before the first would erase it. Items are `{label, answer}`; `job` is the
+   * `{company, location}` the page was answered for (a run's record), which scopes an answer that
+   * names it. */
+  async function learnAnswers(store, items, job) {
     const current = await store.api("/api/settings/autofill");
     let profile = current?.value ?? {};
     const saved = [];
     for (const { label, answer } of items) {
-      const next = applyAnswer(profile, label, answer);
+      const next = applyAnswer(profile, label, answer, job);
       profile = next.profile;
       saved.push({ target: next.target, before: next.before });
     }

@@ -1693,8 +1693,8 @@ _CUSTOM_DRIVER_JS = _PANEL_FAKES_JS + r"""
 const ns = loadModules();
 main(async () => {
   emit({
-    lists: spec.cases.map(([custom, question, answer]) =>
-      ns.withCustomAnswer(custom, question, answer)),
+    lists: spec.cases.map(([custom, question, answer, job]) =>
+      ns.withCustomAnswer(custom, question, answer, job)),
   });
 });
 """
@@ -1948,6 +1948,42 @@ def test_a_question_already_in_the_list_is_updated_and_not_duplicated(tmp_path):
         [{"question": "Preferred shift", "answer": "Day"},
          {"question": "Preferred office", "answer": "Berlin"}],
         [{"question": "Preferred shift", "answer": "Day"}],
+    ]
+
+
+def test_an_answer_that_names_this_jobs_company_or_city_is_kept_for_this_job(tmp_path):
+    """"Have you worked at Acme before?" is true of Acme and false-looking-true everywhere else, so a
+    saved answer whose question names THIS job's company, or the city of its location, is scoped to it.
+    A question that names neither stays general, and an update keeps the scope the row already had."""
+    job = {"company": "Acme", "location": "Austin, TX"}
+    out = run_node(_CUSTOM_DRIVER_JS, {"cases": [
+        [[], "Have you worked at Acme before?", "No", job],
+        [[], "Willing to relocate to Austin?", "Yes", job],
+        [[], "Is a relative a government official?", "No", job],
+        # Whole words only: "Rome" is not in "chrome", "Acme" is not in "Acmeville".
+        [[], "Do you use chrome?", "Yes", {"company": "Rome", "location": None}],
+        # A legal suffix is not part of how people write a company.
+        [[], "Have you worked at Acme before?", "No", {"company": "Acme, Inc.", "location": None}],
+        # Too short to mean anything.
+        [[], "Do you know Al?", "No", {"company": "Al", "location": "Ny"}],
+        # An update keeps its scope; a general row is not scoped by a later page.
+        [[{"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"}],
+         "Have you worked at Acme before?", "Yes", {"company": "Globex", "location": None}],
+        [[{"question": "Willing to relocate to Austin?", "answer": "Yes"}],
+         "Willing to relocate to Austin?", "No", job],
+        # No job (a run with nothing bound): nothing is scoped.
+        [[], "Have you worked at Acme before?", "No", None],
+    ]}, tmp_path, source=PANEL_SOURCE)
+    assert out["lists"] == [
+        [{"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"}],
+        [{"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin"}],
+        [{"question": "Is a relative a government official?", "answer": "No"}],
+        [{"question": "Do you use chrome?", "answer": "Yes"}],
+        [{"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"}],
+        [{"question": "Do you know Al?", "answer": "No"}],
+        [{"question": "Have you worked at Acme before?", "answer": "Yes", "only_for": "Acme"}],
+        [{"question": "Willing to relocate to Austin?", "answer": "No"}],
+        [{"question": "Have you worked at Acme before?", "answer": "No"}],
     ]
 
 

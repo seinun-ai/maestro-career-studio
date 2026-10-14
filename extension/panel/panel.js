@@ -378,7 +378,7 @@
 
     settings: null,     // {backendUrl, appUrl, …} from the SW; null until asked
     match: null,        // the backend's verdict about this url; null ≠ "none"
-    job: null,          // {id, company, title}
+    job: null,          // {id, company, location, title}
     // {id, status} — and that IS the shape this surface reads. `restoreSession`
     // also copies `job_company`/`job_title` off a session entry because the
     // entry carries them; nothing here reads them, and no other writer adds
@@ -1231,7 +1231,7 @@
     const run = boundRun();
     if (!run?.applicationId) return false;
     card.application = { id: run.applicationId, status: "draft", job_company: run.company, job_title: run.title };
-    card.job ??= { id: run.jobId, company: run.company, title: run.title };
+    card.job ??= { id: run.jobId, company: run.company, location: run.location, title: run.title };
     card.match = "exact";
     card.claimed = true;
     card.pdfReady = true;
@@ -1399,7 +1399,7 @@
     }
     store.match = result.match;
     store.job = result.job
-      ? { id: result.job.id, company: result.job.company, title: result.job.title }
+      ? { id: result.job.id, company: result.job.company, location: result.job.location, title: result.job.title }
       : null;
     store.application = result.application ?? null;
     store.knockout = result.knockout ?? null;

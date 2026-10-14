@@ -323,10 +323,31 @@ def _languages(out: dict[str, Fact], languages: Any) -> None:
                 out[slot] = make_fact(slot, text)
 
 
-def _custom(out: dict[str, Fact], custom: Any) -> None:
-    """Saved answers, each described by its own question."""
+def _for_this_job(qa: dict[str, Any], company: str | None, location: str | None) -> bool:
+    """A saved answer whose question named a company or city (`only_for`, set when
+    it was learned) holds only where that name is in this job's company or
+    location. With no job it holds nowhere: an answer about Acme must not look
+    like a standing one at the next employer."""
+    only = qa.get("only_for")
+    if not isinstance(only, str) or not only.strip():
+        return True
+    only = only.strip().casefold()
+    return any(only in (where or "").casefold() for where in (company, location))
+
+
+def custom_for_job(custom: Any, company: str | None, location: str | None) -> list[Any]:
+    """The saved answers that hold for this job, for the deterministic fill (the
+    context feed); `_custom` makes the same call for the model's catalog."""
+    return [qa for qa in (custom if isinstance(custom, list) else [])
+            if not isinstance(qa, dict) or _for_this_job(qa, company, location)]
+
+
+def _custom(out: dict[str, Fact], custom: Any, company: str | None, location: str | None) -> None:
+    """Saved answers, each described by its own question. A row for another job
+    is skipped but still counts, so the slots `custom.<i>` the rest keep do not
+    move."""
     for i, qa in enumerate((custom if isinstance(custom, list) else [])[:MAX_CUSTOM]):
-        if isinstance(qa, dict) and qa.get("question"):
+        if isinstance(qa, dict) and qa.get("question") and _for_this_job(qa, company, location):
             _add(out, f"custom.{i}", qa.get("answer"), f"saved answer to: {qa['question']}")
 
 
@@ -398,9 +419,10 @@ def with_agreement(facts: dict[str, Fact], agrees: bool) -> dict[str, Fact]:
 
 
 def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str], *,
-          today: date | None = None, company: str | None = None) -> dict[str, Fact]:
+          today: date | None = None, company: str | None = None,
+          location: str | None = None) -> dict[str, Fact]:
     """`today`: the clock derived dates read (tests inject it); the server's by
-    default. `company`: the application's job's company, when there is one."""
+    default. `company`, `location`: the application's job's, when there is one."""
     out: dict[str, Fact] = {}
     profile = profile or {}
     _profile_sections(out, profile)
@@ -410,5 +432,5 @@ def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: lis
     _worked_here(out, company)
     _languages(out, profile.get("languages"))
     _add(out, "skills", tuple(s for s in (skills or []) if s))
-    _custom(out, profile.get("custom"))
+    _custom(out, profile.get("custom"), company, location)
     return dict(list(out.items())[:MAX_SLOTS])

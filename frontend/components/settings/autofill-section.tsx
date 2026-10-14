@@ -272,7 +272,8 @@ const GROUPS: GroupDef[] = [
   },
 ];
 
-type CustomQA = { question: string; answer: string };
+// `only_for`: set when the question named a company or city, so the answer is offered only for a job there.
+type CustomQA = { question: string; answer: string; only_for?: string };
 type EducationEntry = {
   school?: string;
   degree?: string;
@@ -1172,6 +1173,11 @@ function AutofillEditor({
                   }
                 />
               </div>
+              {qa.only_for ? (
+                <p className="text-muted-foreground text-body-small">
+                  Only for {qa.only_for}
+                </p>
+              ) : null}
             </div>
             <RemoveButton
               label={`Remove custom question ${i + 1}`}

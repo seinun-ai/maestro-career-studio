@@ -395,7 +395,7 @@ def test_apply_on_a_fresh_posting_saves_queues_tailors_links_and_starts_one_run(
     assert _body(_api(out, "POST", "/api/proposals")[1]) == {"job_id": "job-1", "application_id": "app-1"}
     [seed] = out["seeds"]
     assert seed == {"proposalId": "prop-1", "jobId": "job-1", "applicationId": "app-1", "company": "Acme",
-                    "title": "Data Scientist", "baseSlug": "ai_ml_engineer", "openUrl": APP_URL}
+                    "location": None, "title": "Data Scientist", "baseSlug": "ai_ml_engineer", "openUrl": APP_URL}
     assert out["created"] == []
 
 

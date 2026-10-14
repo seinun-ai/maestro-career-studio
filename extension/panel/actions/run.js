@@ -90,7 +90,8 @@
     return {
       id: `run-${Date.now().toString(36)}-${state.count}`,
       proposalId: seed.proposalId, jobId: seed.jobId ?? null, applicationId: seed.applicationId ?? null,
-      company: seed.company ?? null, title: seed.title ?? null, baseSlug: seed.baseSlug ?? null,
+      company: seed.company ?? null, location: seed.location ?? null, title: seed.title ?? null,
+      baseSlug: seed.baseSlug ?? null,
       openUrl: seed.openUrl, startTabId: tabId, tabId: null,
       status: "waiting", why: null, open: [], hosts: [], seen: [], step: 0, fingerprint: null,
       startedAt: null, readyAt: null, yourMs: 0, flowOrigin: null,
@@ -109,7 +110,7 @@
       state.facts.set(record.id, {
         url: "", busy: null, fileInputs: 0, attached: null, autoAttach: null, receiptSeen: null,
         consentForms: false, pdfReady: true,
-        job: { id: record.jobId, company: record.company, title: record.title },
+        job: { id: record.jobId, company: record.company, location: record.location, title: record.title },
         application: { id: record.applicationId, status: "draft" }, baseSlug: record.baseSlug,
       });
     }
@@ -304,7 +305,7 @@
   }
 
   /** Apply to one job in the CURRENT tab, from its employer link through every page to the review.
-   * `seed` is `{proposalId, jobId, applicationId, company, title, baseSlug, openUrl}`; the Job
+   * `seed` is `{proposalId, jobId, applicationId, company, location, title, baseSlug, openUrl}`; the Job
    * step's Apply (Task 20a) builds it after the job is queued and its resume is ready. A tab with a
    * run that has not finished is not started again. */
   async function startRun(store, seed) {
@@ -382,7 +383,8 @@
     }
     if (!items.length) return;
     try {
-      state.undo.set(record.id, await ns.panelLearn.learnAnswers(store, items));
+      state.undo.set(record.id, await ns.panelLearn.learnAnswers(store, items,
+        { company: record.company, location: record.location }));
       record.learned = { count: items.length, undone: false, failed: false };
     } catch (err) {
       console.warn("[maestro-cs] learning the answers failed:", err);

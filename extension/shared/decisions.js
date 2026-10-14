@@ -270,6 +270,8 @@
       ownership: job.ownership?.owner ? job.ownership : null,
       applyUrl: job.apply_url ?? null,
       sourceUrl: job.source_url ?? null,
+      // Where the job is: a saved answer that names its city is kept for it (pause.js `scopeOf`).
+      location: job.location ?? null,
     };
   }
 

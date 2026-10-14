@@ -388,6 +388,7 @@
     return {
       application: { id: applicationId },
       seed: { proposalId: queued.id, jobId, applicationId, company: facts.job.company ?? null,
+              location: read.location ?? facts.job.location ?? null,
               title: facts.job.title ?? null, baseSlug: base, openUrl },
     };
   }

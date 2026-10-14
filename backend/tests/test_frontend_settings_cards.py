@@ -348,6 +348,15 @@ def test_a_custom_question_has_a_visible_label():
     assert "id={`af-custom-${i}-question`}" in src
 
 
+def test_a_scoped_custom_question_says_which_job_it_is_for():
+    # A saved answer that names a company or city is kept for it (Task 20c); the row says so, and
+    # editing question or answer spreads the row, so the scope survives.
+    src = _read("components/settings/autofill-section.tsx")
+    assert "type CustomQA = { question: string; answer: string; only_for?: string }" in src
+    assert "{qa.only_for ? (" in src and "Only for {qa.only_for}" in src
+    assert "{ ...c, question: e.target.value }" in src and "{ ...c, answer: e.target.value }" in src
+
+
 def test_prompt_editors_stay_mounted_and_say_whether_they_are_open():
     src = _read("components/settings/prompts-section.tsx")
     assert "{advancedOpen && (" not in src  # collapsing dropped drafts and their leave guard
