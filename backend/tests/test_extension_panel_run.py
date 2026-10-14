@@ -411,7 +411,7 @@ def test_no_state_ever_draws_a_submit_control(tmp_path):
     ("sign_in_yourself", "Sign in yourself", True, True),
     ("posting", "Apply yourself", True, True),
     ("unknown_page", "Page not recognised", True, True),
-    ("unsure_page", "Not sure this is the last page", True, True),
+    ("unsure_page", "Not sure about this page", True, True),
     ("confirm_page", "Check this page", True, True),
     ("already_applied", "Already sent?", True, True),
     ("moved_away", "Left the application", True, True),
@@ -1806,10 +1806,23 @@ def test_a_log_that_never_recorded_a_run_has_no_last_trace_time(tmp_path):
     assert LOG_OFF in text and "Last trace" not in text
 
 
-def test_the_unsure_card_says_what_resume_means_here(tmp_path):
-    out = _run(tmp_path, [{"seed": [_seeded("parked", why="unsure_page")]}])
-    text = _text(_card(out["shots"][1])["body"])
-    assert "Not sure this is the last page" in text and "If it is, press Resume. Submit stays yours." in text
+@pytest.mark.parametrize("by, reason, say", [
+    ("several_next", "More than one Next", "Press the right one in the tab, then press Resume."),
+    ("submit_seen", "May send the application", "This page may send the application"),
+    ("submit_context", "May send the application", "If it is the last page, check it and press Resume."),
+    ("fields_no_next", "No Next button found", "No Next button found on this page."),
+    (None, "Not sure about this page", "Check it in the tab, then press Resume."),
+])
+def test_the_unsure_card_says_why_in_words_that_fit_what_the_reader_saw(tmp_path, by, reason, say):
+    out = _run(tmp_path, [{"seed": [_seeded("parked", why="unsure_page", lastBy=by)]}])
+    body = _card(out["shots"][1])["body"]
+    text = _text(body)
+    assert reason in text and say in text
+    assert ("Submit stays yours" in text) is (by != "several_next")
+    # A real Next on the page is never called "the last page".
+    if by == "several_next":
+        assert "last page" not in text
+    assert "run-resume" in _buttons(body)
 
 
 def test_the_fill_log_note_is_kept_with_the_record(tmp_path):

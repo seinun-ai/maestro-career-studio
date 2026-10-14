@@ -528,11 +528,12 @@ def test_an_unconfirmed_field_on_a_page_that_does_not_move_is_refilled_once_then
 
 
 def test_a_refill_that_finds_the_page_open_questions_parks_with_them_not_no_change(tmp_path):
+    """A fill that listed nothing on a page that reports controls is repeated BEFORE any press (Phase 2d, M2)."""
     fills = [[], [needs("f9", "Which office?")]]
     out = _drive(tmp_path, [step(1, stuck=9)], fills=fills)
     r = out["record"]
     assert (r["status"], r["why"]) == ("parked", "open_questions")
-    assert r["open"][0]["fid"] == "f9" and len(out["pressed"]) == 1
+    assert r["open"][0]["fid"] == "f9" and out["pressed"] == [] and out["fillCalls"] == 2
 
 
 def test_a_page_that_moves_on_the_second_press_is_a_step_not_a_failure(tmp_path):
@@ -911,6 +912,79 @@ def test_a_review_whose_fields_mount_after_an_empty_fill_is_filled_before_it_can
     out = _drive(tmp_path, [step(1), {**REVIEW, "late": True}],
                  fills=[[needs("a", status="verified")], [], [needs("q1", "Degree", required=False, status="verified")]])
     assert out["record"]["status"] == "ready" and out["fillCalls"] == 3
+
+
+# ---------- fill before judging; settle an unsure read (Phase 2d, M2) ----------
+
+FIELDS_ONLY = {"t": "fields_only"}
+
+
+def test_a_fill_that_listed_nothing_on_a_page_that_reports_controls_is_filled_once_more(tmp_path):
+    """The Application Questions page was never filled: the pre-fill read counted a control, the fill (popups
+    not drawn yet) listed none, and the old guard needed the pre-fill read to count none."""
+    out = _drive(tmp_path, [step(1, fillable=3), REVIEW],
+                 fills=[[], [needs("q1", "Background check", required=False, status="verified")], []])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+    assert [c[0] for c in out["calls"] if c[0] in ("fill", "advance")][:3] == ["fill", "fill", "advance"]
+    assert out["record"]["wrote"] is True
+
+
+def test_the_second_fill_is_once_even_when_it_lists_nothing_too(tmp_path):
+    out = _drive(tmp_path, [step(1, fillable=3), REVIEW], fills=[[], [], [needs("r", status="verified")]])
+    assert out["record"]["status"] == "ready" and out["fillCalls"] == 3
+    assert out["pressed"] == ["next-1"]
+
+
+def test_a_fill_that_listed_fields_is_not_repeated_because_the_page_reports_more(tmp_path):
+    out = _drive(tmp_path, [step(1, fillable=5), REVIEW])
+    assert out["fillCalls"] == 2
+
+
+def test_a_fields_only_read_that_flickers_then_settles_into_a_step_never_parks_unsure(tmp_path):
+    flicker = {**step(2), "early": [FIELDS_ONLY, FIELDS_ONLY]}
+    out = _drive(tmp_path, [step(1), flicker, REVIEW])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1", "next-2"]
+    assert statuses(out).count("parked") == 0
+
+
+@pytest.mark.parametrize("page, by", [
+    (FIELDS_ONLY, "fields_no_next"),
+    ({"t": "review_next"}, "several_next"),
+    ({"t": "unseen_submit"}, "submit_seen"),
+    ({"t": "submit_dialog"}, "submit_context"),
+])
+def test_an_unsure_read_must_hold_four_reads_in_a_row_before_it_parks(tmp_path, page, by):
+    out = _drive(tmp_path, [step(1), page])
+    r = out["record"]
+    assert (r["status"], r["why"], r["lastBy"]) == ("parked", "unsure_page", by)
+    assert len(names(out, "sleep")) == 3, "four identical reads (about 2 s) before the verdict"
+
+
+def test_a_real_submit_button_is_not_held_back_by_the_unsure_wait(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW])
+    assert out["record"]["status"] == "ready" and names(out, "sleep") == []
+
+
+def test_a_read_that_changes_during_the_hold_starts_the_count_again(tmp_path):
+    shifting = {**FIELDS_ONLY, "early": [FIELDS_ONLY, {"t": "unseen_submit"}, {"t": "unseen_submit"}]}
+    out = _drive(tmp_path, [step(1), shifting])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unsure_page")
+    assert len(names(out, "sleep")) >= 4
+
+
+def test_a_page_with_required_boxes_empty_gets_its_scoped_fix_before_any_unsure_verdict(tmp_path):
+    out = _drive(tmp_path, [step(1), {**FIELDS_ONLY, "needs": [NEED]}], fixClears=True)
+    assert [c[1] for c in names(out, "fix")] == [["Most impressive project"]]
+    order = [c[0] for c in out["calls"]]
+    assert order.index("fix") < len(order) - 1
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unsure_page")
+
+
+def test_an_unsure_page_whose_required_box_stays_empty_names_it_instead_of_asking_about_the_last_page(tmp_path):
+    out = _drive(tmp_path, [step(1), {**FIELDS_ONLY, "needs": [NEED]}])
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "open_questions")
+    assert [o["question"] for o in r["open"]] == ["Most impressive project"]
 
 
 # ---------- the required upload is the resume's, or nobody's (I2) ----------

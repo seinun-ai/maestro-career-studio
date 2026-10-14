@@ -50,8 +50,9 @@
       "This isn't a site the Companion signs in to. Sign in in the tab, then press Resume."],
     posting: ["Apply yourself",
       "The Companion didn't press this page's Apply. Open the application form in the tab, then press Resume."],
-    unsure_page: ["Not sure this is the last page",
-      "If it is, press Resume. Submit stays yours."],
+    // The default, for a record that names no `lastBy`; UNSURE says it per reason.
+    unsure_page: ["Not sure about this page",
+      "The Companion isn't sure what this page is. Check it in the tab, then press Resume. Submit stays yours."],
     confirm_page: ["Check this page",
       "This page has only a Continue button, and the Companion can't tell whether it sends the application. "
       + "Check it in the tab, then press Resume or go on yourself."],
@@ -71,6 +72,17 @@
     board_native: ["Apply on the job board",
       "This job board has its own apply button, and the Companion doesn't use it. Apply there yourself."],
   };
+  // An unsure page, per why the reader was unsure (`run.lastBy`). Never "the last page" while a real Next is visible.
+  const SUBMIT_MAY = ["May send the application",
+    "This page may send the application, so the Companion stopped. If it is the last page, check it and press Resume. Submit stays yours."];
+  const UNSURE = {
+    several_next: ["More than one Next",
+      "Several buttons on this page could move on, so the Companion pressed none. Press the right one in the tab, then press Resume."],
+    submit_seen: SUBMIT_MAY,
+    submit_context: SUBMIT_MAY,
+    fields_no_next: ["No Next button found",
+      "No Next button found on this page. If it is the last page, press Resume. Otherwise go on in the tab yourself. Submit stays yours."],
+  };
   const STOPS = {
     closed: ["Position closed", "This job is no longer taking applications. Not closed? Open the application in the tab, then press Resume."],
     bad_link: ["Bad link", "The saved apply link isn't a web address the Companion can open."],
@@ -79,6 +91,7 @@
     tab_closed: ["Tab closed", "The tab was closed, so the run ended."],
     interrupted: ["Interrupted", "The panel was closed while this ran, so it stopped. Nothing was submitted."],
   };
+  const parkWords = (run) => (run.why === "unsure_page" ? UNSURE[run.lastBy] ?? PARKS.unsure_page : PARKS[run.why]);
   const REASONS = Object.fromEntries([...Object.entries(PARKS), ...Object.entries(STOPS)]
     .map(([why, [reason]]) => [why, reason]));
 
@@ -205,7 +218,7 @@
 
   function parkedBody(ctx, run) {
     const { node, attach } = ctx.build;
-    const [reason, say] = PARKS[run.why] ?? ["Needs you", "Do this step in the tab, then press Resume."];
+    const [reason, say] = parkWords(run) ?? ["Needs you", "Do this step in the tab, then press Resume."];
     const box = attach(node("div", "needs run-needs"), node("div", "run-reason", reason), node("div", "opts", say),
       ["open_questions", "page_errors", "upload"].includes(run.why) ? questions(ctx, run) : null);
     const actions = node("div", "run-actions");
@@ -315,7 +328,7 @@
     if (run.status === "applied") {
       out.push(node("div", "sub", "Recorded as applied in Maestro CS."));
     } else {
-      const [reason, say] = STOPS[run.why] ?? PARKS[run.why] ?? ["Stopped", "Nothing was submitted."];
+      const [reason, say] = STOPS[run.why] ?? parkWords(run) ?? ["Stopped", "Nothing was submitted."];
       out.push(attach(node("div", "needs run-needs"), node("div", "run-reason", reason), node("div", "opts", say)));
       // A tab closed on a confirmation the mark then failed on: the one place the user hears it.
       if (run.markNote) out.push(node("div", "sub run-mark-note", run.markNote));

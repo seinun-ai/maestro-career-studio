@@ -29,7 +29,8 @@
  *         open_questions   required fields it could not answer or operate; `open` lists them
  *         no_change        Next did nothing, even after one refill
  *         unsure_page      a review page that is not plainly the end (`lastBy`: no real Submit control, or a Next
- *                          still on it): never Ready
+ *                          still on it), after it held that read for LONE_STABLE reads in a row and its fill and
+ *                          scoped fixes were done: never Ready
  *         confirm_page     a page with nothing to fill and only a "Continue" or "Proceed": not pressed
  *         page_errors      the page refused a Next and named what it wants (`open` lists the fields), and
  *                          one repair of exactly those fields did not satisfy it, or none was possible
@@ -275,10 +276,10 @@
     let fixRounds = 0;       // repairs after a rejected Next on this page
     let listed = null;       // how many fields the last fill on this page reported (null: none yet)
     let hadUpload = false;   // the page held an upload box the fill wrote or listed: it is a step, not an "are you sure" page
-    let seenAtFill = 0;      // how many controls the page showed when that fill began
     let refilled = false;    // fields that showed up after an empty fill have had their one more fill
     let vouched = false;     // a Resume on the very page that parked "unsure": the user says it is the last one
     let requiredTried = false;  // the one scoped fix for required boxes still empty on this review page
+    let unsureRun = { print: null, reads: 0, since: 0 };  // the same not-sure review read, how many times in a row
     let attempted = new Set();  // the errors already repaired on this page (by their label)
     let wroteResume = false; // the resume has been written on this page (by the fill's attach or the gate): never twice
     let resumeWhy = null;    // a Resume after page_errors or upload: decided on the first read, by whether it is the parked page
@@ -309,10 +310,10 @@
       tried = 0;
       fixRounds = 0;
       requiredTried = false;
+      unsureRun = { print: null, reads: 0, since: 0 };
       vouched = false;
       listed = null;
       hadUpload = false;
-      seenAtFill = 0;
       refilled = false;
       attempted = new Set();
       wroteResume = false;
@@ -557,7 +558,6 @@
           if (!Array.isArray(report?.fields)) throw new Error("the fill gave no report");
           if (report.stopped) throw HALT;
           listed = report.fields.length;
-          seenAtFill = summary.fillable ?? 0;
           if (report.fields.some((f) => WROTE_STATUSES.has(f.status))) await update({ wrote: true });
           const open = openQuestions(report);
           if (open.length) return await park("open_questions", { open });
@@ -579,10 +579,10 @@
           continue;
         }
 
-        // A page that draws its fields after its footer (Workday's question steps) showed none when it was
-        // filled and listed none: when the re-read shows controls, it is filled once more before anything
-        // else is judged.
-        if (listed === 0 && seenAtFill === 0 && !refilled && (summary.fillable ?? 0) > 0) {
+        // A fill that listed nothing on a page that reports fillable controls (Workday's question steps draw their
+        // popups after the footer, and a page that showed one other control at the fill still lists none of them) is
+        // filled once more before anything else is judged.
+        if (listed === 0 && (summary.fillable ?? 0) > 0 && !refilled) {
           refilled = true;
           pageFilled = false;
           continue;
@@ -607,7 +607,7 @@
           // reason a page reads as a review (a Submit the reader could not see, a dialog that asks, several
           // Nexts, fields and no Next) means "stop, not sure": never Ready.
           await update({ lastBy: by });
-          if (by !== "submit_button" && !vouched) return await park("unsure_page");
+          const unsure = by !== "submit_button" && !vouched;
           // The page still complains: one repair of what it names, as after a rejected Next; the same
           // complaint again parks naming it.
           if ((summary.errors ?? 0) > 0) {
@@ -616,7 +616,8 @@
             continue;
           }
           // A required box still empty: one scoped fix of exactly those, then they must be filled. The
-          // resume this page's attach already wrote is excused (its row may not show a file name).
+          // resume this page's attach already wrote is excused (its row may not show a file name). This comes
+          // BEFORE an unsure verdict: a page with boxes empty gets its fix (or names them) first.
           if ((summary.requiredEmpty ?? 0) > 0) {
             const found = await act(deps.pageRequired, record.tabId, frame.frameId);
             // ONE box is the resume already written; a second required box is not it, and the user chooses.
@@ -641,6 +642,20 @@
               if (repaired?.fixed !== true) return await park("open_questions", { open });
               continue;
             }
+          }
+          // Not sure it is the last page: the read must hold, unchanged, for LONE_STABLE reads in a row (about 2 s)
+          // before the run stops. A step half drawn reads as fields and no Next for a moment, and the user
+          // is asked about a page that is not the last one.
+          if (unsure) {
+            const print = `${by}\n${fingerprint(url, summary)}`;
+            unsureRun = print === unsureRun.print
+              ? { ...unsureRun, reads: unsureRun.reads + 1 }
+              : { print, reads: 1, since: unsureRun.since || deps.now() };
+            if (unsureRun.reads < LONE_STABLE && deps.now() - unsureRun.since < LIMITS.changeMs) {
+              await act(deps.sleep, POLL_MS);
+              continue;
+            }
+            return await park("unsure_page");
           }
           return await finish("ready", null, { readyAt: deps.now(), open: [], readyBy: by === "submit_button" ? by : "user", tenant: ns.decisions.sessionTenant(url) });
         }
