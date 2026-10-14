@@ -1537,6 +1537,59 @@ def test_a_resume_after_an_upload_park_that_finds_the_box_still_empty_parks_agai
     assert names(out, "advance") == [] and names(out, "attachTo") == [] and out["fillCalls"] == 0
 
 
+# ---------- a Resume after an unconfirmed gate write: the box that was written is not "still empty" ----------
+
+WRITTEN = {"label": "Upload a file (5MB max)", "target": "t-up", "kind": "resume", "required": True, "occupied": False}
+SAMPLE = {"label": "Writing sample", "target": "t-ws", "kind": "unknown", "required": True, "occupied": False}
+
+
+def _resumed_unconfirmed(tmp_path, boxes, attach=None):
+    attach = {"outcome": "unconfirmed", "target": "t-up"} if attach is None else attach
+    record = {"tabId": 7, "status": "parked", "why": "upload", "step": 0, "hosts": ["jobs.acme.test"], "filled": True,
+              "wrote": True, "parkedPage": PARKED_HERE, "attach": attach, "open": []}
+    return _drive(tmp_path, [step(1), REVIEW], record=record, uploadBoxes=boxes)
+
+
+def test_a_resume_after_an_unconfirmed_gate_write_presses_next_and_never_attaches(tmp_path):
+    out = _resumed_unconfirmed(tmp_path, [WRITTEN])
+    assert out["pressed"] == ["next-1"] and names(out, "attachTo") == [] and out["record"]["status"] == "ready"
+
+
+def test_the_same_resume_with_a_second_required_empty_box_parks_naming_only_that_box(tmp_path):
+    out = _resumed_unconfirmed(tmp_path, [WRITTEN, SAMPLE])
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "upload") and names(out, "advance") == [] and names(out, "attachTo") == []
+    assert [o["question"] for o in r["open"]] == ["Writing sample"]
+
+
+def test_when_the_written_boxs_tag_is_gone_a_single_remaining_box_is_taken_to_be_it(tmp_path):
+    out = _resumed_unconfirmed(tmp_path, [{**WRITTEN, "target": "t-redrawn"}])
+    assert out["pressed"] == ["next-1"] and names(out, "attachTo") == []
+
+
+def test_when_the_tag_is_gone_and_two_boxes_remain_the_run_parks_naming_both(tmp_path):
+    out = _resumed_unconfirmed(tmp_path, [{**WRITTEN, "target": "t-redrawn"}, SAMPLE])
+    assert out["record"]["why"] == "upload" and len(out["record"]["open"]) == 2 and names(out, "advance") == []
+
+
+def test_a_note_without_a_tag_never_excuses_a_box(tmp_path):
+    """The fill's own unconfirmed write names no tag: a box left empty beside it still parks."""
+    out = _resumed_unconfirmed(tmp_path, [SAMPLE], attach={"outcome": "unconfirmed"})
+    assert out["record"]["why"] == "upload" and names(out, "advance") == []
+
+
+def test_only_an_unconfirmed_write_excuses_its_box(tmp_path):
+    out = _resumed_unconfirmed(tmp_path, [WRITTEN], attach={"outcome": "left", "target": "t-up"})
+    assert out["record"]["why"] == "upload" and names(out, "advance") == []
+
+
+def test_a_parked_page_with_no_step_key_does_not_prove_the_tab_is_still_on_it(tmp_path):
+    """An empty key is unknown, not the same: the page is filled as any page."""
+    out = _resumed(tmp_path, "upload", [{"t": "step", "n": 1, "key": ""}, REVIEW],
+                   parked={"where": "https://jobs.acme.test/p/0", "key": ""})
+    assert out["fillCalls"] == 2 and names(out, "uploads") == []
+
+
 @pytest.mark.parametrize("why", ["page_errors", "upload"])
 def test_a_resume_that_finds_the_tab_on_another_page_fills_it_as_any_page(tmp_path, why):
     elsewhere = {"where": "https://jobs.acme.test/p/0", "key": "step9"}

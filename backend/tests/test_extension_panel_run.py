@@ -1390,17 +1390,18 @@ def test_a_write_the_run_could_not_prove_is_not_repeated_when_the_next_is_refuse
     assert len(_attach_asks(out)) == 1, "one write in all: the automatic one"
 
 
-def test_a_resume_after_an_unconfirmed_gate_write_looks_and_never_writes_a_second_copy(tmp_path):
+def test_a_resume_after_an_unconfirmed_gate_write_presses_on_and_never_writes_a_second_copy(tmp_path):
     wrote_unproven = _reply([{"frameId": 0, "result": {"written": 1, "proven": 0}}])
     out = _upload_run_steps(tmp_path, wrote_unproven, [{"start": SEED}, {"press": "run-resume"}],
                             api={"GET /api/applications/app-1": _reply(APPLICATION)})
-    assert _record(out["shots"][1])["why"] == "upload"
-    # The page is not filled again, and the box (as this page still shows it) is still empty: the run
-    # parks again, naming it. It never writes: the earlier write may be there, unseen.
-    assert len(out["fills"]) == 1
+    first = _record(out["shots"][1])
+    assert (first["why"], first["attach"]["outcome"], first["attach"]["target"]) == ("upload", "unconfirmed", "t-up")
+    # The box that was written is not "still empty": Next is pressed, page one is not filled again, and on
+    # the review page (whose fake still shows an empty box) the gate refuses to write a second copy.
+    assert len(_page_messages(out, "page_advance")) == 1 and len(out["fills"]) == 2
     record = _record(out["shots"][2])
-    assert (record["status"], record["why"], record["step"]) == ("parked", "upload", 0)
-    assert len(_attach_asks(out)) == 1 and not _page_messages(out, "page_advance")
+    assert (record["status"], record["why"], record["step"]) == ("parked", "upload", 1)
+    assert len(_attach_asks(out)) == 1, "one write in all"
 
 
 def _upload_run_steps(tmp_path, reply, steps, boxes=(BOX,), **spec):

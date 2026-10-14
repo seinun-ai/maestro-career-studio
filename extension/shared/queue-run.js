@@ -392,7 +392,8 @@
           thisPage = { where, key };
           if (resumeWhy) {
             const parked = record.parkedPage;
-            if (parked && parked.where === where && parked.key === key) {
+            // An empty step key proves nothing (the page named no heading): that page is filled as usual.
+            if (parked && parked.key !== "" && parked.where === where && parked.key === key) {
               recheck = resumeWhy;
               pageFilled = true;
             }
@@ -529,7 +530,15 @@
           if (was === "upload") {
             // Never attach on a Resume: only look. A required box still empty parks again, naming it.
             const found = await act(deps.uploads, record);
-            const empty = (Array.isArray(found) ? found : []).filter((box) => box.required === true && box.occupied !== true);
+            let empty = (Array.isArray(found) ? found : []).filter((box) => box.required === true && box.occupied !== true);
+            // A write the page may have taken but did not show (unconfirmed) leaves its box looking empty: that box
+            // is excused, by the tag the write recorded, or, if the page redrew it, when it is the only one left.
+            const written = record.attach?.outcome === "unconfirmed" ? record.attach.target : null;
+            if (typeof written === "string") {
+              const rest = empty.filter((box) => box.target !== written);
+              if (rest.length < empty.length) empty = rest;   // found by its tag
+              else if (empty.length === 1) empty = [];        // redrawn: the only box left is taken to be it
+            }
             if (empty.length) return await park("upload", { open: errorsOpen(empty) });
           }
           if (was === "page_errors") {

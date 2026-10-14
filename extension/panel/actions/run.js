@@ -462,7 +462,8 @@
     const got = await ns.panelRunAttach.attachTo(rs, 0, () => record.stopRequested === true, target);
     if (!got) return { attached: false };
     ns.panelRunAttach.land(rs, got);
-    record.attach = attachNote(got);
+    // The box written is remembered by its opaque tag (no value), so a Resume can tell it from one left empty.
+    record.attach = { ...attachNote(got), target };
     if (got.outcome === "attached" && record.progress?.total > record.progress.done) {
       record.progress = { ...record.progress, done: record.progress.done + 1 };
     }
