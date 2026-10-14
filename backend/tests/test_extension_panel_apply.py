@@ -485,6 +485,57 @@ def test_apply_on_an_applied_job_does_nothing_but_say_so(tmp_path):
     assert "already applied" in _note(out["shots"][1]).lower()
 
 
+# ---------- a job that already has a draft: the footer, not applyJob ----------
+# `/api/jobs/match` returns the job's newest application, so a user's own tailored draft arrives bound
+# on the page. These click the footer's button: calling `applyJob` directly bypassed the gate that hid
+# Apply on every bound application.
+
+
+def _primary(shot):
+    """The footer's `cta` buttons (the Draft/Applied status chips beside them are not primaries)."""
+    return [label for label, classes in _foot(shot) if "cta" in classes]
+
+
+def _bound(status="draft", pdf=True, **api):
+    """A saved job whose match already names its application (the backend's own, not a claim)."""
+    bound = {"id": "app-1", "status": status, "base_resume": "ai_ml_engineer"}
+    return _saved(**{
+        "/api/jobs/match": _reply({"match": "exact", "job": JOB, "application": bound}),
+        "GET /api/applications/app-1": _reply(_draft(pdf=pdf, status=status)),
+        "/api/jobs/job-1/detail": _job(application=_draft(pdf=pdf, status=status),
+                                       proposal_status=None if status == "draft" else "submitted"),
+        **api,
+    })
+
+
+def test_a_draft_with_a_pdf_shows_apply_and_a_press_starts_the_run_without_tailoring(tmp_path):
+    out = _apply(tmp_path, api=_bound(), steps=[{"foot": "Apply"}])
+    assert _primary(out["shots"][0]) == ["Apply"]
+    assert _api(out, "POST", "/quick-tailor") == [] and _api(out, "POST", "/render") == []
+    assert _api(out, "POST", "/from-base") == []
+    [seed] = out["seeds"]
+    assert seed["applicationId"] == "app-1" and seed["baseSlug"] == "ai_ml_engineer"
+
+
+def test_a_draft_without_a_pdf_renders_it_then_runs_and_never_quick_tailors(tmp_path):
+    out = _apply(tmp_path, api=_bound(pdf=False), steps=[{"foot": "Apply"}])
+    assert _primary(out["shots"][0]) == ["Apply"]
+    assert len(_api(out, "POST", "/api/applications/app-1/render")) == 1
+    assert _api(out, "POST", "/quick-tailor") == [] and _api(out, "POST", "/from-base") == []
+    assert [one["applicationId"] for one in out["seeds"]] == ["app-1"]
+
+
+def test_the_job_step_stays_open_on_a_draft_so_apply_is_there_without_reopening_anything(tmp_path):
+    shot = _apply(tmp_path, api=_bound())["shots"][0]
+    assert PROMISE in _text(shot["regions"]["rail"])
+    assert _primary(shot) == ["Apply"]
+
+
+def test_an_applied_application_has_no_apply(tmp_path):
+    shot = _apply(tmp_path, api=_bound(status="applied"))["shots"][0]
+    assert _primary(shot) == []
+
+
 # ---------- where the job lives (sync) ----------
 
 

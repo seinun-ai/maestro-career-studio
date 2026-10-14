@@ -357,8 +357,11 @@
       const list = node("div");
       ranked.forEach((entry, index) =>
         attach(list, infoRow(ctx, entry, index === best, usedSlug)));
-      return attach(body, tailoredFrom(ctx, ranked, usedSlug), list,
-                    node("div", "sub", ATS_SCORE_LEAD));
+      attach(body, tailoredFrom(ctx, ranked, usedSlug), list, node("div", "sub", ATS_SCORE_LEAD));
+      // Apply is in the footer for the user's own draft; say what it does, as the unsaved body does.
+      const draft = (ctx.facts.application.status ?? "draft") === "draft";
+      if (ctx.facts.fullAutomation === true && draft) attach(body, node("div", "sub", APPLY_PROMISE));
+      return body;
     }
     const list = node("div");
     list.setAttribute("role", "radiogroup");

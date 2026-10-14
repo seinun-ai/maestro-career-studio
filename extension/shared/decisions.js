@@ -94,8 +94,12 @@
    *   step's question is then "apply with this resume, or queue it", and a
    *   chosen base is its input rather than its answer. Without it, picking a
    *   row in the ranked list closed the step and took Apply out of the footer.
-   *   An application still answers the base question, so a tailored draft
-   *   moves the rail on as it always did.
+   *   A DRAFT application (the user's own tailoring, which `/api/jobs/match`
+   *   returns bound) keeps the step open the same way until this page has
+   *   been filled: Apply starts from that draft, so the step cannot close on
+   *   the draft that Apply needs. Filled (`touched`) or applied, an
+   *   application answers the base question and the rail moves on as it
+   *   always did.
    */
   function stageFor({
     match, hasApplication, pdfReady, status, touched, hasForm,
@@ -103,13 +107,15 @@
   }) {
     const saved = match === "exact";
     const fillFromBase = baseArmed === true && !hasApplication;
-    const baseAnswered = hasApplication === true || fillFromBase
+    const isDraft = (status ?? "draft") === "draft";
+    const applyFromDraft = applyHere === true && hasApplication === true && isDraft
+      && touched !== true;
+    const baseAnswered = (hasApplication === true && !applyFromDraft) || fillFromBase
       || (hasScores === true && baseChosen === true && applyHere !== true);
     const jobDone = saved && baseAnswered;
     const resumeDone = saved && hasApplication === true && pdfReady === true;
     const resumeFilledPast = saved && hasApplication === true && !resumeDone
       && touched === true && baseArmed === true;
-    const isDraft = (status ?? "draft") === "draft";
     const trackDone = hasApplication === true && !isDraft;
     // `touched` and nothing else: `done.fill` is this extension's own claim
     // that it filled or attached HERE, and an application marked applied
