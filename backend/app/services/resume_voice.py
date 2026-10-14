@@ -237,7 +237,9 @@ def _given_name_opens_clause(masked: str, m: re.Match[str], *, base_line: bool =
     """"Alex brings 8 years…", "…; Alex cut costs", "Alex, a data engineer, built…":
     the given name opens a sentence or clause, then a lower-case word or a comma.
     A name list ("Led Priya, Alex and Sam") is not that."""
-    if not _clause_initial(masked, m.start(), wide=not base_line):
+    # On a base line, like he/she, only a sentence start counts.
+    if not (_sentence_initial(masked, m.start()) if base_line
+            else _clause_initial(masked, m.start(), wide=True)):
         return False
     tail = masked[m.end():]
     word = re.match(r"\s+([a-z][\w'\u2019-]*)", tail)
@@ -404,9 +406,10 @@ def _capitalize(s: str) -> str:
     return s[:1].upper() + s[1:]
 
 
-# Past participles that differ from the simple past: "He has taken", "I have grown".
-_PARTICIPLES = frozenset("taken grown done begun written driven chosen given seen spoken broken "
-                         "fallen known shown gotten been".split())
+# Action participles that differ from the simple past: "He has taken", "I have grown".
+# State participles (been, done, seen, known, fallen, gotten) are left out on purpose:
+# "I have been building" is not "Built", and dropping the auxiliary would misstate it.
+_PARTICIPLES = frozenset("taken grown driven written chosen given begun shown spoken broken".split())
 _AUX = re.compile(r"(?:['\u2019](?:ve|s|d)|\s+(?:has|have|had))\s+(?P<verb>[A-Za-z]+)")
 
 

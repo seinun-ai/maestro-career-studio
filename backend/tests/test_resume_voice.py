@@ -277,7 +277,6 @@ def test_a_founder_clause_is_flagged_but_never_rewritten():
     ("Owned my team's roadmap for Acme Corp.", "Owned team's roadmap for Acme Corp."),
     ("Alex Rivera led the billing rewrite.", "Led the billing rewrite."),
     ("Alex built the billing pipeline.", "Built the billing pipeline."),
-    ("Led the rewrite; Alex cut costs 20%.", "Led the rewrite; cut costs 20%."),
     ("Alex Rivera led team.", "Led team."),
 ])
 def test_repair_rewrites(text, expected):
@@ -289,6 +288,8 @@ def test_repair_rewrites(text, expected):
     ("Owned billing: she built the pipeline.", "Owned billing: built the pipeline."),
     ("Led the rewrite; HE cut costs 20%.", "Led the rewrite; cut costs 20%."),
     ("Led the rewrite; he has built billing.", "Led the rewrite; built billing."),
+    ("Built the platform; Alex cut costs 20%.", "Built the platform; cut costs 20%."),
+    ("Led the rewrite; Alex cut costs 20%.", "Led the rewrite; cut costs 20%."),
     ("Platform lead (I led 4 engineers).", "Platform lead (led 4 engineers)."),
     ("Cut cost - he led the rewrite.", "Cut cost - led the rewrite."),
     ("Cut cost \u2013 he led the rewrite.", "Cut cost \u2013 led the rewrite."),
@@ -304,6 +305,8 @@ def test_strict_repair_also_fixes_a_clause_after_a_bracket_dash_semicolon_or_col
     "Onboarded the CFO: she approved the budget.",
     "Mentored Priya; doubled her output.",
     "Mentored Priya, doubled her output.",
+    "Built the platform; Alex cut costs 20%.",
+    "Led the rewrite, Alex cut costs 20%.",
     "Platform lead (I led 4 engineers).",
     "Cut cost - he led the rewrite.",
 ])
@@ -620,3 +623,27 @@ def test_lint_flags_a_name_mention_but_not_an_employer_that_shares_a_token():
 
     assert [n["location"]["bullet_index"] for n in notes] == [1]  # flagged for the owner, not rewritten
     assert notes[0]["suggestion"] is None
+
+
+@pytest.mark.parametrize("text", [
+    "I have been building data platforms for 8 years.",
+    "I've done 3 migrations.",
+    "He has been the lead for 3 years.",
+    "HE has been a growth area for us.",           # HE is higher education
+    "She has seen the roadmap through.",
+    "He has known the codebase since 2019.",
+])
+def test_an_auxiliary_before_a_state_participle_is_not_mechanical(text):
+    """"Been", "done", "seen", "known" are not actions the owner took: dropping "I have" would
+    misstate the line. As written on a base line; strict and unfixable in model text."""
+    assert rv.repair(text, NAME, ORGS, conservative=True) == text
+    assert rv.repair(text, NAME, ORGS) is None
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("He has taken the lead on billing.", "Taken the lead on billing."),
+    ("I have grown the team to 12.", "Grown the team to 12."),
+])
+def test_action_participles_still_repair_by_dropping_the_auxiliary(text, expected):
+    # Capitalised: it opens the sentence. The line reads as a fragment, as resume lines do.
+    assert rv.repair(text, NAME, ORGS) == expected
