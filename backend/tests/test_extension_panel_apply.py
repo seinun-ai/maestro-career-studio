@@ -187,7 +187,12 @@ main(async () => {
 """
 
 
-def _apply(tmp_path, steps=(), api=None, **spec):
+# Phase 3 turns the Queue button on (panel.js `QUEUE_BUTTON`); its tests run with the flag flipped.
+QUEUE_ON = PANEL_SOURCE.replace("const QUEUE_BUTTON = false;", "const QUEUE_BUTTON = true;")
+assert QUEUE_ON != PANEL_SOURCE
+
+
+def _apply(tmp_path, steps=(), api=None, queue_button=False, **spec):
     spec.setdefault("tabs", [{"id": 7, "url": BOARD_URL}])
     spec["replies"] = {"read_settings": SETTINGS_REPLY, "panel_prepare": _reply({"injected": True}),
                        "panel_frame0": _reply({"tier": "B", "form": True, "score": 2}),
@@ -195,7 +200,8 @@ def _apply(tmp_path, steps=(), api=None, **spec):
     spec.setdefault("page", {"extract_job_posting": POSTING,
                              "detect_page": _reply({"tier": "none", "form": False, "score": 0})})
     spec["api"] = api if api is not None else _fresh()
-    return run_node(_APPLY_DRIVER_JS, {"steps": list(steps), **spec}, tmp_path, source=PANEL_SOURCE)
+    return run_node(_APPLY_DRIVER_JS, {"steps": list(steps), **spec}, tmp_path,
+                    source=QUEUE_ON if queue_button else PANEL_SOURCE)
 
 
 # ---------- reading what was painted ----------
@@ -267,8 +273,15 @@ def test_a_setting_that_cannot_be_read_leaves_save_job_exactly_as_it_was(tmp_pat
     assert OFF_LINE not in _text(shot["regions"]["rail"])
 
 
-def test_with_full_automation_on_apply_is_primary_and_queue_sits_beside_it(tmp_path):
+def test_with_full_automation_on_apply_is_the_only_primary_until_the_queue_view_exists(tmp_path):
     shot = _apply(tmp_path)["shots"][0]
+    assert _foot(shot) == [("Apply", ["cta"])]
+    assert PROMISE in _text(shot["regions"]["rail"])
+    assert "Queue" not in _rail_buttons(shot)
+
+
+def test_with_the_queue_button_on_it_sits_beside_apply(tmp_path):
+    shot = _apply(tmp_path, queue_button=True)["shots"][0]
     assert _foot(shot) == [("Apply", ["cta", "pair"]), ("Queue", ["cta", "pair", "alt"])]
     rail = _text(shot["regions"]["rail"])
     assert PROMISE in rail
@@ -331,7 +344,7 @@ def test_every_line_that_names_a_base_resume_keeps_its_square(tmp_path):
 
 
 def test_queue_saves_then_posts_the_proposal_then_accepts_it_as_the_companion(tmp_path):
-    out = _apply(tmp_path, steps=[{"foot": "Queue"}])
+    out = _apply(tmp_path, steps=[{"foot": "Queue"}], queue_button=True)
     assert _order(out)[:4] == ["POST /api/jobs", "POST /api/ats-scores", "POST /api/proposals",
                                "PATCH /api/proposals/prop-1"]
     [created] = _api(out, "POST", "/api/proposals")
@@ -349,12 +362,13 @@ def test_queue_saves_then_posts_the_proposal_then_accepts_it_as_the_companion(tm
 
 
 def test_queue_uses_the_resume_the_user_picked(tmp_path):
-    out = _apply(tmp_path, api=_saved(), steps=[{"id": "base-data_scientist"}, {"foot": "Queue"}])
+    out = _apply(tmp_path, api=_saved(), steps=[{"id": "base-data_scientist"}, {"foot": "Queue"}], queue_button=True)
     assert _body(_api(out, "POST", "/api/proposals")[0])["fit"]["chosen_base"] == "data_scientist"
 
 
 def test_a_queued_job_is_not_queued_twice_and_a_proposal_already_accepted_is_not_patched(tmp_path):
-    out = _apply(tmp_path, api=_saved(**{"POST /api/proposals": _reply(ACCEPTED)}), steps=[{"foot": "Queue"}])
+    out = _apply(tmp_path, api=_saved(**{"POST /api/proposals": _reply(ACCEPTED)}), steps=[{"foot": "Queue"}],
+                 queue_button=True)
     assert _api(out, "PATCH", "/api/proposals") == []
     assert _note(out["shots"][1]) == QUEUE_NOTE
 
@@ -362,7 +376,8 @@ def test_a_queued_job_is_not_queued_twice_and_a_proposal_already_accepted_is_not
 def test_queue_says_why_when_the_server_refuses(tmp_path):
     refusal = {"ok": False, "status": 409,
                "error": "You skipped this job before. Delete the skipped proposal in the Agent inbox to queue it again."}
-    out = _apply(tmp_path, api=_saved(**{"POST /api/proposals": refusal}), steps=[{"foot": "Queue"}])
+    out = _apply(tmp_path, api=_saved(**{"POST /api/proposals": refusal}), steps=[{"foot": "Queue"}],
+                 queue_button=True)
     assert "You skipped this job before." in _note(out["shots"][1])
     assert _api(out, "PATCH", "/api/proposals") == []
 
@@ -563,7 +578,8 @@ def test_a_press_belongs_to_the_tab_it_was_made_on(tmp_path, press):
            "/api/jobs/job-2/detail": _job(id="job-2"), **_fresh()}
     out = _apply(tmp_path, api=api, tabs=[{"id": 7, "url": BOARD_URL}, {"id": 8, "url": other}],
                  tabUrls={"7": BOARD_URL, "8": other}, hold=["POST /api/jobs"],
-                 steps=[{"foot": press}, {"activate": 8}, {"release": True, "settles": 2}])
+                 steps=[{"foot": press}, {"activate": 8}, {"release": True, "settles": 2}],
+                 queue_button=True)
     assert _order(out) == ["POST /api/jobs"]
     assert out["seeds"] == []
 

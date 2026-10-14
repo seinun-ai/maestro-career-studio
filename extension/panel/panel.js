@@ -2948,15 +2948,20 @@
     return card.fullAutomation === true && !primaryRefused("job") && card.apply?.applied !== true;
   }
 
-  /** Apply, with Queue beside it. A job already queued is the user's yes, so Apply stands alone and
-   * takes the whole line. Both wait for any running action; the spinner is on the one pressed. */
+  // Phase 3: the Queue view picks queued jobs up. Until it exists the Queue button would promise a
+  // feature that is not there, so Apply stands alone (its own queue step stays: it is the user's yes).
+  const QUEUE_BUTTON = false;
+
+  /** Apply, with Queue beside it once the Queue view exists (`QUEUE_BUTTON`). A job already queued
+   * is the user's yes, so Apply stands alone and takes the whole line. Both wait for any running
+   * action; the spinner is on the one pressed. */
   function applyButtons() {
-    const queued = card.apply?.queued === true;
+    const alone = card.apply?.queued === true || !QUEUE_BUTTON;
     const spin = (kind) => (card.busy === kind ? " spin" : "");
-    const apply = actionButton(queued ? `cta${spin("apply")}` : `cta pair${spin("apply")}`, "Apply",
+    const apply = actionButton(alone ? `cta${spin("apply")}` : `cta pair${spin("apply")}`, "Apply",
                                () => applyJob());
     apply.disabled = card.busy !== null;
-    if (queued) return [apply];
+    if (alone) return [apply];
     const queue = actionButton(`cta pair alt${spin("queue")}`, "Queue", () => queueJob());
     queue.disabled = card.busy !== null;
     return [apply, queue];
