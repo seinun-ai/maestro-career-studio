@@ -2980,7 +2980,8 @@
     if (card.applySteps?.live === true) {
       const stop = actionButton("stop", card.applyStop ? "Stopping…" : "Stop", stopApply);
       stop.id = "apply-stop";
-      stop.setAttribute("aria-label", card.applyStop ? "Stopping preparing to apply" : "Stop preparing to apply");
+      const doing = card.applySteps.adding === true ? "adding the job" : "preparing to apply";
+      stop.setAttribute("aria-label", card.applyStop ? `Stopping ${doing}` : `Stop ${doing}`);
       // Not `disabled`: a disabled button drops the focus the user pressed it with, and `stopApply` already
       // ignores a second press.
       if (card.applyStop) stop.setAttribute("aria-disabled", "true");

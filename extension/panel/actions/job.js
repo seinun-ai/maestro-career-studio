@@ -428,9 +428,10 @@
    *
    * Every write is guarded by the press's generation (`store.current`), so a tab switched mid-press
    * leaves the new tab's panel alone. */
-  function applyChecklist(store, token) {
+  function applyChecklist(store, token, { adding = false } = {}) {
     const lines = [];
-    const state = { live: true, stopped: null };
+    // `adding` names the list and its Stop for the Add job press (stages/job.js, panel.js).
+    const state = { live: true, stopped: null, adding };
     let over = false;
     const paint = () => {
       if (over || !store.current(token)) return;
@@ -655,7 +656,7 @@
     const token = store.token();
     // Add job is the Save job press, whatever the label would say: save, score, stop on the ranked list.
     const { through } = saveOnly ? { through: "save" } : applyPress(store.read());
-    const steps = applyChecklist(store, token);
+    const steps = applyChecklist(store, token, { adding: saveOnly });
     steps.open();
     try {
       await runApply(store, token, steps, { start, withBase, through, kind: saveOnly ? "add" : "apply" });

@@ -1351,8 +1351,8 @@ const ANSWER_LEVELS: {
     value: "history",
     label: "Balanced",
     line:
-      "Also answers low-stakes questions and years-with-a-skill questions "
-      + "when your history shows the skill.",
+      "Also answers low-stakes questions in the job's favor, and "
+      + "years-with-a-skill questions when your history shows the skill.",
     note:
       "Low-stakes means how you heard about the job, travel, relocation and "
       + "similar. They show under Answered for you.",

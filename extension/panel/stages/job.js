@@ -106,7 +106,7 @@
     if (!steps || (!steps.lines.length && !steps.stopped)) return null;
     const { node, attach } = build;
     const list = node("ol", "apply-steps");
-    list.setAttribute("aria-label", "Preparing to apply");
+    list.setAttribute("aria-label", steps.adding === true ? "Adding the job" : "Preparing to apply");
     for (const line of steps.lines) {
       const item = node("li", line.state);
       const mark = line.state === "done" ? build.icon("check", { size: 14 })

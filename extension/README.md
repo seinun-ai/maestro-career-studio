@@ -67,8 +67,8 @@ at to your local Maestro CS app.
   the page and press **Resume** to keep your version. **Careful** (Settings ›
   Form filling) turns drafting off, and pay, work authorization, demographic,
   background and "have you worked here" questions are never drafted.
-- **Safe defaults for questions your profile cannot answer.** From **Backed by your
-  history** up, a Yes/No about membership or relatives at the company is answered
+- **Safe defaults for questions your profile cannot answer.** From **Balanced**
+  up, a Yes/No about membership or relatives at the company is answered
   No (Not applicable when offered), and willingness to a standard step (background
   check, drug test, references, I-9, documents) or basic means (transport,
   internet) is answered Yes, and a spouse's or household member's military service

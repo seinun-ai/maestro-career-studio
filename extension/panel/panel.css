@@ -808,8 +808,9 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   color: var(--cs-text); cursor: pointer;
 }
 .stop + .cta { flex: 1 0 auto; width: auto; }
-/* Apply and Queue, the Job step's pair: equal halves of one line. Queue is outlined like Stop, so it
- * never reads as the primary beside it; a job already queued shows Apply alone, which is a plain .cta. */
+/* Apply and its pair button (Queue, or Add job on an unsaved page): equal halves of one line. The pair
+ * button is outlined like Stop, so it never reads as the primary beside it; a job already queued, or
+ * saved, shows Apply alone, which is a plain .cta. */
 .cta.pair { flex: 1 1 0; width: auto; min-width: 0; }
 .cta.alt { background: var(--cs-surface); color: var(--cs-text); border: 1px solid var(--cs-line); }
 .stop:disabled { opacity: .6; cursor: default; }

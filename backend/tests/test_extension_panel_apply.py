@@ -342,6 +342,35 @@ def test_add_job_spins_while_it_saves_and_both_buttons_wait(tmp_path):
     assert not [one for one in _buttons(out["shots"][-1]) if one["disabled"]]
 
 
+def test_add_job_names_its_checklist_and_its_stop_for_what_they_do(tmp_path):
+    out = _apply(tmp_path, api=_flow(), hold=["POST /api/ats-scores"],
+                 steps=[{"foot": "Add job"}, {"release": True, "settles": 3}])
+    mid, end = out["shots"][1], out["shots"][-1]
+    [checklist] = _by_class(mid["regions"]["rail"], "apply-steps")
+    assert checklist["attrs"]["aria-label"] == "Adding the job"
+    [stop] = _stop_button(mid)
+    assert stop["attrs"]["aria-label"] == "Stop adding the job"
+    # The finished list keeps its name; Apply's own wording is unchanged.
+    assert _by_class(end["regions"]["rail"], "apply-steps")[0]["attrs"]["aria-label"] == "Adding the job"
+    apply = _apply(tmp_path, api=_fresh(), hold=["POST /api/ats-scores"], steps=[{"foot": "Apply"}])["shots"][1]
+    assert _by_class(apply["regions"]["rail"], "apply-steps")[0]["attrs"]["aria-label"] == "Preparing to apply"
+    assert _stop_button(apply)[0]["attrs"]["aria-label"] == "Stop preparing to apply"
+
+
+def test_apply_after_add_job_on_the_now_saved_page_takes_the_normal_apply_path(tmp_path):
+    out = _apply(tmp_path, api=_flow(), steps=[{"foot": "Add job", "settles": 3}, {"foot": "Apply", "settles": 3}])
+    assert _foot(out["shots"][1]) == [("Apply", ["cta"])]
+    # Add job saved and scored; Apply then queued, tailored, linked and started one run, saving nothing twice.
+    assert _order(out) == [
+        "POST /api/jobs", "POST /api/ats-scores", "POST /api/proposals", "PATCH /api/proposals/prop-1",
+        "POST /api/jobs/job-1/quick-tailor", "POST /api/proposals"]
+    [accepted] = _api(out, "PATCH", "/api/proposals/prop-1")
+    assert _body(accepted) == {"status": "accepted", "consent": {"channel": "companion"}}
+    [seed] = out["seeds"]
+    assert seed["applicationId"] == "app-1" and seed["baseSlug"] == "ai_ml_engineer"
+    assert out["created"] == []
+
+
 def test_a_saved_job_shows_apply_alone_not_add_job(tmp_path):
     shot = _apply(tmp_path, api=_saved())["shots"][0]
     assert "Add job" not in _labels(shot)
