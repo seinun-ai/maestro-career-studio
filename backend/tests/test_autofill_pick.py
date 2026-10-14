@@ -1284,6 +1284,47 @@ def test_a_yes_alone_never_picks_a_protected_class(db_session, monkeypatch, ques
     assert got["v"].oids == [] and got["v"].reason == "asked"
 
 
+CLASS_QUESTIONS = ("Are you a disabled veteran?", "Are you a recently separated veteran?",
+                   "Are you an active duty wartime or campaign badge veteran?",
+                   "Are you an Armed Forces service medal veteran?", "Are you a protected veteran?")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", CLASS_QUESTIONS)
+def test_a_yes_never_answers_a_question_that_names_a_class_even_with_plain_yes_no_options(
+        db_session, monkeypatch, question):
+    """"Are you a disabled veteran?" with Yes / No: a saved Yes says they served, not that they are disabled."""
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
+    fake_jev(monkeypatch, {"v": ("o1", 0.99)}, ways={"v": ("same", 0.99)})
+    got = autofill_pick.pick([pf("v", question=question, slot="eeo.veteran_status", options=opts("Yes", "No"))],
+                             facts, db_session, None)
+    assert got["v"].oids == [] and got["v"].reason == "asked"
+
+
+# After a No, any chosen option that mentions "veteran" is a claim unless it OPENS with a negation.
+@pytest.mark.parametrize("text, claims", [
+    ("Non-protected veteran", True), ("Protected Veteran", True), ("Veteran", True),
+    ("I am a Veteran, but not a Protected Veteran", True), ("I identify as a veteran", True),
+    ("I am not a Veteran.", False), ("I am not a protected veteran", False), ("No", False),
+    ("No, I am not a veteran", False), ("Not a veteran", False), ("I do not identify as a veteran", False),
+    ("I don't identify as a veteran", False), ("I\u2019m not a veteran", False), ("Non-veteran", False),
+    ("I have never served in the military", False), ("I don't wish to answer", False),
+])
+def test_after_a_no_an_option_that_mentions_veteran_is_a_claim_unless_it_opens_with_a_negation(text, claims):
+    assert autofill_pick.veteran_overreach("No", "Veteran status", [text], text) is claims
+
+
+def test_after_a_no_every_chosen_option_is_checked_not_only_the_first():
+    assert autofill_pick.veteran_overreach("No", "Veteran status", [], ["I am not a veteran", "Protected Veteran"])
+    assert not autofill_pick.veteran_overreach("No", "Veteran status", [], ["I am not a veteran", "No"])
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
+    field = pf("v", question="Veteran status", slot="eeo.veteran_status",
+               options=opts("I am not a veteran", "Protected Veteran"))
+    out = {"v": Picked(oids=["o1", "o2"], reason="matched")}
+    autofill_pick._veteran_claims([field], facts, out)
+    assert out["v"].oids == [] and out["v"].reason == "asked"
+
+
 @pytest.mark.usefixtures("jev_on")
 def test_a_yes_on_a_protected_class_list_is_final_even_when_the_model_chose_nothing(db_session, monkeypatch):
     """"asked" is /pick's FINAL abstain: the loop must not hand the popup to /step."""

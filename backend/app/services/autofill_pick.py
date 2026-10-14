@@ -384,23 +384,27 @@ def _years_first(fields: list[PickField], facts: dict[str, Fact], hint: JobHint 
     return out | {fid: p if p.oids else p.model_copy(update={"reason": "asked"}) for fid, p in picked.items()}
 
 
-# The veteran answer is a Yes/No ("Are you a veteran?", owner 2026-10-14): a No settles every option that
-# says "not a (protected) veteran", but never one that claims veteran status (an option that opens "I am a
-# veteran, but not a protected veteran" does, and it contains the words "not a protected veteran"); a Yes
-# claims nothing about a protected class. So after a Yes, a QUESTION about protected classes, or a list that
-# offers one anywhere, is the user's whatever option was chosen: the classes are VEVRAA's (disabled,
-# recently separated, active duty wartime or campaign badge, Armed Forces service medal), and a form may
-# name them with or without the word "protected". Anchored as the Companion's own option words are
-# (content/eeo.js).
+# The veteran answer is a Yes/No ("Are you a veteran?", owner 2026-10-14). A No settles an option that
+# DENIES being a veteran, never one that claims it: any chosen option that mentions "veteran" is a claim
+# unless it OPENS with a negation (an option "I am a veteran, but not a protected veteran" contains the
+# words "not a protected veteran", and "Non-protected veteran" is a veteran too). A Yes claims nothing
+# about a protected class. So after a Yes, a QUESTION that names a class, or a list that offers one
+# anywhere, is the user's whatever option was chosen: the classes are VEVRAA's (disabled, recently
+# separated, active duty wartime or campaign badge, Armed Forces service medal), and a form may name them
+# with or without the word "protected". One pattern reads the question, the options and the chosen option.
 VETERAN_SLOT = "eeo.veteran_status"
-_CLAIMS_VETERAN = re.compile(r"^\W*(?:i\s+(?:am|was)\s+(?:a\s+)?(?:protected\s+)?veteran\b|i\s+identify\s+as\b)",
-                             re.IGNORECASE)
+_MENTIONS_VETERAN = re.compile(r"veteran", re.IGNORECASE)
+_OPENS_WITH_NEGATION = re.compile(
+    r"^\W*(?:no\b|not\b|non-?veterans?\b|i\s+am\s+not\b|i['\u2019]m\s+not\b|i\s+do\s+not\b|i\s+don['\u2019]?t\b"
+    r"|never\s+served\b|i\s+(?:have\s+)?never\b)", re.IGNORECASE)
 _NAMES_PROTECTED_CLASS = re.compile(
-    r"\bprotected\b|\bclassifications?\b|\bvevraa\b|\bdisabled\s+veterans?\b"
-    r"|\b(?:recently\s+)?separated\s+veterans?\b|\bactive\s+duty\s+wartime\b|\bcampaign\s+badge\b"
-    r"|\barmed\s+forces\s+service\s+medal\b", re.IGNORECASE)
-_ASKS_PROTECTED_CLASS = re.compile(r"\bprotected\s+veterans?\b|\bclassifications?\b|\bcategor(?:y|ies)\s+of\b.*\bveterans?\b",
-                                   re.IGNORECASE)
+    r"\bprotected\b|\bclassifications?\b|\bvevraa\b|\bcategor(?:y|ies)\s+of\b[^.?]*\bveterans?\b"
+    r"|\bdisabled\s+veterans?\b|\b(?:recently\s+)?separated\s+veterans?\b|\bactive\s+duty\s+wartime\b"
+    r"|\bcampaign\s+badge\b|\barmed\s+forces\s+service\s+medal\b", re.IGNORECASE)
+
+
+def _claims_veteran(text: str) -> bool:
+    return bool(_MENTIONS_VETERAN.search(text)) and not _OPENS_WITH_NEGATION.search(text)
 
 
 def veteran_said(fact: Fact | None) -> str | None:
@@ -411,14 +415,14 @@ def veteran_said(fact: Fact | None) -> str | None:
     return said if said in ("No", "Yes") else None
 
 
-def veteran_overreach(said: str, question: str, options: list[str], chosen: str | None = None) -> bool:
-    """Whether choosing `chosen` (or, with None, answering at all) would say more than a saved `said`
-    does. After a No: a chosen option that claims veteran status. After a Yes: a question about
-    protected classes, or any option, offered or chosen, that names one."""
+def veteran_overreach(said: str, question: str, options: list[str], chosen: str | list[str] | None = None) -> bool:
+    """Whether choosing `chosen` (every option, or with None answering at all) would say more than a saved
+    `said` does. After a No: a chosen option that claims veteran status. After a Yes: a question or any
+    option, offered or chosen, that names a protected class."""
+    picks = [chosen] if isinstance(chosen, str) else list(chosen or [])
     if said == "No":
-        return bool(chosen and _CLAIMS_VETERAN.search(chosen))
-    return (bool(_ASKS_PROTECTED_CLASS.search(question))
-            or any(_NAMES_PROTECTED_CLASS.search(text) for text in (*options, *([chosen] if chosen else []))))
+        return any(_claims_veteran(text) for text in picks)
+    return any(_NAMES_PROTECTED_CLASS.search(text) for text in (question, *options, *picks))
 
 
 def _veteran_claims(fields: list[PickField], facts: dict[str, Fact], out: dict[str, Picked]) -> None:
@@ -432,8 +436,8 @@ def _veteran_claims(fields: list[PickField], facts: dict[str, Fact], out: dict[s
         picked = out.get(f.fid)
         if f.slot != VETERAN_SLOT or picked is None or picked.reason == "asked":
             continue
-        text = next((o.text for o in f.options if picked.oids and o.oid == picked.oids[0]), None)
-        if veteran_overreach(said, f.question, [o.text for o in f.options], text):
+        texts = [o.text for o in f.options if o.oid in picked.oids]
+        if veteran_overreach(said, f.question, [o.text for o in f.options], texts):
             out[f.fid] = picked.model_copy(update={"oids": [], "reason": "asked"})
 
 

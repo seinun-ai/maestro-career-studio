@@ -1103,6 +1103,10 @@ CLASSES = ("I identify as one or more of the classifications of protected vetera
     ("Veteran Status", ("Disabled veteran", "I am not a veteran")),
     ("Veteran Status", ("I am a veteran", "Armed Forces service medal veteran", "I am not a veteran")),
     ("Are you a protected veteran?", ("Yes", "No")),
+    ("Are you a disabled veteran?", ("Yes", "No")),
+    ("Are you a recently separated veteran?", ("Yes", "No")),
+    ("Are you an active duty wartime or campaign badge veteran?", ("Yes", "No")),
+    ("Are you an Armed Forces service medal veteran?", ("Yes", "No")),
 ])
 def test_a_yes_never_clicks_a_protected_class_in_step(db_session, monkeypatch, question, options):
     """Regression: /pick's abstain on a protected-class popup fell through to /step, which had no veteran

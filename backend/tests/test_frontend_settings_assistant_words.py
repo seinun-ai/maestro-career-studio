@@ -741,7 +741,8 @@ def test_the_covenant_question_explains_its_legal_term():
     assert 'label: "Subject to a restrictive covenant?",' in field
     assert 'hint: "Such as a non-compete or non-solicit agreement.",' in field
     renderer = _between(_AUTOFILL, "{group.fields.map((field) => {", "</fieldset>")
-    assert 'const hintId = field.hint ? `${id}-hint` : undefined;' in renderer
+    assert 'const hint = stale ? field.staleHint : field.hint;' in renderer
+    assert 'const hintId = hint ? `${id}-hint` : undefined;' in renderer
     assert "<p id={hintId}" in renderer
     assert "hintId={hintId}" in renderer  # handed to the shared control …
     control = _between(_AUTOFILL, "function FieldControl(", "\n}\n")

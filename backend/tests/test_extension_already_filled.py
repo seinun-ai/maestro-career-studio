@@ -340,7 +340,7 @@ def test_an_already_answered_eeo_control_never_lands_in_already(tmp_path):
             # acquiring an EEO already-claim.
             {"label": "Gender Identity", "kind": "combobox", "value": "Female"},
         ],
-        profile={"eeo": {"gender": "female", "veteran_status": "not_veteran"}},
+        profile={"eeo": {"gender": "female", "veteran_status": "no"}},
         eeo_enabled=True,
     )
     assert result["already"] == []

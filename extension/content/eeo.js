@@ -74,7 +74,8 @@
     const yesNo = (value) =>
       (value === true ? "yes" : value === false ? "no" : value);
     // A question about protected-veteran classifications, whatever its options say: a Yes does not answer it.
-    const PROTECTED_CLASS_QUESTION = /protected\s+veteran|classifications?|categories\s+of\s+(?:protected\s+)?veterans/i;
+    const PROTECTED_CLASS_QUESTION =
+      /protected\s+veteran|classifications?|categories\s+of\s+(?:protected\s+)?veterans|disabled|separated|wartime|campaign\s+badge|service\s+medal|vevraa/i;
     const yesToVeteranCannotAnswer = (kind, value, labelText) =>
       kind === "veteran" && (value === "yes" || value === "veteran")
       && PROTECTED_CLASS_QUESTION.test(String(labelText ?? ""));
@@ -88,7 +89,10 @@
       .filter((option) => norm(option) !== "");
     const hispanic = yesNo(e.hispanic_latino);
     const rules = [
-      { id: "veteran", re: /veteran/i, value: e.veteran_status, kind: "veteran" },
+      // A cached `not_veteran` ("not a PROTECTED veteran") is no answer to "Are you a veteran?": a veteran
+      // who is not protected could have chosen it. Unanswered, so the user is asked, not guessed for.
+      { id: "veteran", re: /veteran/i, kind: "veteran",
+        value: e.veteran_status === "not_veteran" ? undefined : e.veteran_status },
       { id: "disability", re: /disab/i, value: e.disability_status, kind: "disability" },
       { id: "hispanic-latino", re: /hispanic|latino/i, value: hispanic, kind: "yesno",
         optionList: hispanic === "yes" ? ["Hispanic or Latino"] : [] },
@@ -106,10 +110,10 @@
           : value === "no" ? optionWords.disability_no : optionWords.decline;
       }
       if (kind === "veteran") {
-        // "Are you a veteran?" is one Yes/No (yes / no / decline). The old values (a profile cached
-        // before the change, or saved by an older panel) are read the same: not_veteran is a No.
+        // "Are you a veteran?" is one Yes/No (yes / no / decline). The old `veteran`, cached or saved by
+        // an older panel, is a Yes; the old `not_veteran` is unanswered (the rule above), never a No.
         return value === "yes" || value === "veteran" ? optionWords.veteran
-          : value === "no" || value === "not_veteran" ? optionWords.not_veteran : optionWords.decline;
+          : value === "no" ? optionWords.not_veteran : optionWords.decline;
       }
       if (kind === "gender") return GENDER_VALUES.has(value) ? optionWords[value] : [];
       return null;

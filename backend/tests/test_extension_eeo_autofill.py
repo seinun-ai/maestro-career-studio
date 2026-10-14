@@ -40,7 +40,7 @@ const { fillFormFromProfile } = loadModules();
 const profile = {
   personal: { country: "United States" },
   eeo: {
-    veteran_status: "not_veteran",
+    veteran_status: "no",
     disability_status: "no",
     hispanic_latino: "no",
     gender: "female",

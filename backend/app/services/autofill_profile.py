@@ -35,13 +35,25 @@ _TYPED_WORK_AUTH_KEYS = frozenset(WorkAuth.model_fields)
 # migrated: the row, its file mirror, a profile synced from a peer that has not updated and an older
 # Settings page's save all land in the same text, and every reader gets the new words. What is stored
 # stays as written until the user saves, so a peer that has not updated reads its own old values.
-_LEGACY_VETERAN = {"not_veteran": "no", "veteran": "yes"}
+#
+# `veteran` is a Yes. `not_veteran` is NOT a No: "not a protected veteran" is true of a veteran who is
+# not protected, so it reads as unanswered, and the profile says so under `stale_answers` (the READER's
+# marker, never stored: `set_profile` drops it and a stored copy is not believed) for Settings to ask
+# the question again.
+STALE_KEY = "stale_answers"
+_LEGACY_YES = "veteran"
+_LEGACY_NOT_PROTECTED = "not_veteran"
 
 
 def _with_current_words(data: dict[str, Any]) -> dict[str, Any]:
+    data = {k: v for k, v in data.items() if k != STALE_KEY}
     eeo = data.get("eeo")
-    if isinstance(eeo, dict) and isinstance(old := eeo.get("veteran_status"), str) and old in _LEGACY_VETERAN:
-        return {**data, "eeo": {**eeo, "veteran_status": _LEGACY_VETERAN[old]}}
+    old = eeo.get("veteran_status") if isinstance(eeo, dict) else None
+    if old == _LEGACY_YES:
+        return {**data, "eeo": {**eeo, "veteran_status": "yes"}}
+    if old == _LEGACY_NOT_PROTECTED:
+        return {**data, "eeo": {k: v for k, v in eeo.items() if k != "veteran_status"},
+                STALE_KEY: ["eeo.veteran_status"]}
     return data
 
 
@@ -64,6 +76,7 @@ def peek_profile(session: Session | None = None) -> dict[str, Any]:
 
 
 def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict[str, Any]:
+    profile = {k: v for k, v in profile.items() if k != STALE_KEY}
     text_settings.set_text(
         AUTOFILL_KEY, AUTOFILL_FILE, json.dumps(profile, indent=2, sort_keys=True), session
     )

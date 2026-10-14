@@ -41,8 +41,9 @@ def _run(tmp_path, label, options, eeo):
 
 
 # "Are you a veteran?" is yes / no / decline (owner, 2026-10-14); a profile cached before that, or saved
-# by an older panel, still says veteran / not_veteran, and means the same.
-_NO = ["no", "not_veteran"]
+# by an older panel, still says `veteran`, and means yes. Its `not_veteran` ("not a PROTECTED veteran")
+# is no answer to the new question: unanswered.
+_NO = ["no"]
 _YES = ["yes", "veteran"]
 
 
@@ -62,6 +63,13 @@ def test_not_a_veteran_is_never_answered_as_a_veteran(tmp_path, answer):
     assert result["values"][label] == "I am not a veteran"
     assert "identify as a veteran" not in result["values"][label]
     assert outcome_for(result, label) == "filled"
+
+
+def test_a_cached_not_a_protected_veteran_answer_is_unanswered(tmp_path):
+    label = "veterans status: select one required | personalinfous--veteranstatus"
+    result = _run(tmp_path, label, _VETERAN_OPTIONS, {"veteran_status": "not_veteran"})
+    assert result["values"][label] == "Select One"
+    assert result["eeoFilled"] == []
 
 
 @pytest.mark.parametrize("answer", _YES)
@@ -97,8 +105,12 @@ def test_workdays_real_list_is_left_to_a_yes(tmp_path):
 
 
 @pytest.mark.parametrize("answer", _YES)
-def test_a_yes_never_answers_a_protected_veteran_question_even_with_yes_no_options(tmp_path, answer):
-    label = "Are you a protected veteran? | personalinfous--protectedveteran"
+@pytest.mark.parametrize("asks", [
+    "Are you a protected veteran?", "Are you a disabled veteran?", "Are you a recently separated veteran?",
+    "Are you an active duty wartime or campaign badge veteran?", "Are you an Armed Forces service medal veteran?",
+])
+def test_a_yes_never_answers_a_protected_veteran_question_even_with_yes_no_options(tmp_path, answer, asks):
+    label = f"{asks} | personalinfous--protectedveteran"
     result = _run(tmp_path, label, ["Select One", "Yes", "No"], {"veteran_status": answer})
     assert result["values"][label] == "Select One"
     assert result["eeoFilled"] == []

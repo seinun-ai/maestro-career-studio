@@ -207,7 +207,7 @@ QUIET += [
     ("an EEO answer you chose yourself",
      _field("Veteran status", "No", "you", eeo=True), {}),
     ("a veteran answer when the veteran answer is saved",
-     _field("Veteran status", "No", "inferred", eeo=True), {"eeo": {"veteran_status": "not_veteran"}}),
+     _field("Veteran status", "No", "inferred", eeo=True), {"eeo": {"veteran_status": "no"}}),
 ]
 
 

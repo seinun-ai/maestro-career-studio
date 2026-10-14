@@ -59,6 +59,9 @@ type FieldDef = {
   options?: { value: string; label: string }[];
   /** A format or a consequence, between the label and the control. Never an example value. */
   hint?: string;
+  /** Instead of `hint` while the question is empty because the saved answer was dropped when the
+   *  question changed (the backend lists it in the profile's `stale_answers`). */
+  staleHint?: string;
   /** Shown only while another field of the group holds this value: [key, value].
    *  Changing that field away deletes this one (see `setField`). */
   when?: [string, string];
@@ -154,10 +157,12 @@ const GROUPS: GroupDef[] = [
       {
         key: "veteran_status",
         label: "Are you a veteran?",
+        staleHint: "Answer again: this question changed.",
         type: "select",
         // One Yes/No. A "No" also answers a form's "not a protected veteran" option; a "Yes" alone never
         // says which protected class applies, so the Companion leaves that list to you. The backend
-        // reads the old stored values (not_veteran, veteran) as no and yes.
+        // reads the old stored `veteran` as yes; the old `not_veteran` ("not a protected veteran")
+        // is no answer to this question, so it is asked again (staleHint).
         options: [
           { value: "no", label: "No, I am not a veteran" },
           { value: "yes", label: "Yes, I am a veteran" },
@@ -438,6 +443,12 @@ function groupValues(profile: Profile, group: string): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+/** The "group.key" answers the backend dropped because their question changed (`stale_answers`). */
+function staleAnswers(profile: Profile): string[] {
+  const listed = profile.stale_answers;
+  return Array.isArray(listed) ? listed.filter((item): item is string => typeof item === "string") : [];
 }
 
 function isBlank(value: unknown): boolean {
@@ -1008,15 +1019,18 @@ function AutofillEditor({
               const id = `af-${group.key}-${field.key}`;
               const rawValue = groupValues(profile, group.key)[field.key];
               const value = fieldValue(field, rawValue);
-              const hintId = field.hint ? `${id}-hint` : undefined;
+              const stale = Boolean(field.staleHint) && isBlank(rawValue)
+                && staleAnswers(profile).includes(`${group.key}.${field.key}`);
+              const hint = stale ? field.staleHint : field.hint;
+              const hintId = hint ? `${id}-hint` : undefined;
               return (
                 <div key={field.key} className="grid gap-1.5">
                   <Label htmlFor={id} optional={field.optional && group.key !== "eeo"}>
                     {field.label}
                   </Label>
-                  {field.hint ? (
+                  {hint ? (
                     <p id={hintId} className="text-muted-foreground text-body-small">
-                      {field.hint}
+                      {hint}
                     </p>
                   ) : null}
                   <FieldControl
