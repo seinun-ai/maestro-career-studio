@@ -497,7 +497,7 @@ def test_a_search_term_types_the_agents_term_not_the_value_and_lists_its_rows(pa
     s = state(page, f, LONG_VALUE)
     assert s["popupOpen"] is True and [o["text"] for o in s["options"]] == ["Statistics"]
     assert page.input_value("#fos") == "Statistics"   # typing a search is never an answer
-    assert oracle(page, "fieldOfStudy") == "" and s["complete"] is False   # a filtered view is never complete
+    assert oracle(page, "fieldOfStudy") == "" and s["complete"] is True   # the agent's own term's settled result
     click = next(c["mid"] for c in s["candidates"] if c["describe"] == 'Click the option "Statistics"')
     row = move(page, f, click, LONG_VALUE, version=s["version"])
     assert (row["outcome"], row["committed"]) == ("verified", "Statistics") and oracle(page, "fieldOfStudy") == "Statistics"
@@ -523,3 +523,45 @@ def test_a_term_rides_only_with_search_term(page, load):
     f = _study(page, load)
     assert move(page, f, "search:value", "Statistics", term="Mathematics")["outcome"] == "progressed"
     assert [o["text"] for o in state(page, f, "Statistics")["options"]] == ["Statistics"]
+
+
+def test_the_settled_result_of_the_agents_own_term_is_complete_but_the_values_search_never_is(page, load):
+    """Owner decision 2026-10-13: after search:term the nearest option may be taken (flagged), so
+    the page calls the settled, fully shown result complete; search:value keeps "searched is incomplete"."""
+    f = _study(page, load)
+    assert move(page, f, "search:term", LONG_VALUE, term="Mathematics")["outcome"] == "progressed"
+    got = state(page, f, LONG_VALUE)
+    assert [o["text"] for o in got["options"]] == ["Mathematics"] and got["complete"] is True
+    assert oracle(page, "fieldOfStudy") == ""
+    f = _study(page, load)
+    assert move(page, f, "search:value", "Statistics")["outcome"] == "progressed"
+    assert state(page, f, "Statistics")["complete"] is False
+
+
+def test_an_agent_term_result_that_needs_scrolling_is_not_complete(page, load):
+    load(page, fixture_html("workday_search.html"))
+    f = inv(page)["Type to Add Skills"]
+    assert move(page, f, "search:term", "SQL", term="SQL")["outcome"] == "progressed"
+    got = state(page, f, "SQL")
+    assert "scroll" in mids(got) and got["complete"] is False
+
+
+def test_closing_the_field_forgets_that_its_view_was_the_agents(page, load):
+    f = _study(page, load)
+    move(page, f, "search:term", LONG_VALUE, term="Mathematics")
+    move(page, f, "give_up", LONG_VALUE)
+    move(page, f, "open", LONG_VALUE)
+    assert state(page, f, LONG_VALUE)["complete"] is False
+
+
+def test_a_value_search_after_the_agents_term_makes_the_view_incomplete_again(page, load):
+    load(page, fixture_html("popup_with_search.html"))
+    f = inv(page)["Field of study"]
+    value = "Information Systems"
+    move(page, f, "open", value)
+    first = move(page, f, "search:term", value, term="Systems")
+    assert first["outcome"] == "progressed", first
+    assert state(page, f, value)["complete"] is True
+    again = move(page, f, "search:value", value)
+    assert again["outcome"] == "progressed", again
+    assert state(page, f, value)["complete"] is False

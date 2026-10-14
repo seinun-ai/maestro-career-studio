@@ -975,17 +975,53 @@ def _study_facts():
     return autofill_catalog.build({"education": [{"discipline": STUDY_FACT}]}, [], [])
 
 
-@pytest.mark.parametrize("p, status, held", [(0.7, "needs_answer", ""), (0.95, "verified", "Statistics")])
-def test_a_searched_list_is_never_complete_so_the_nearest_row_clears_only_the_matched_floor(
-        e2e_page, monkeypatch, p, status, held):
-    """The real verdict over the page's real state. A search's list is filtered, so the page reports
-    it incomplete and /step cannot call a row the nearest option (`closest`): a row the agent is
-    not sure of (0.7) is left to the user; one it is sure of (0.95) is a match."""
+@pytest.mark.parametrize("p, status, held", [(0.7, "closest", "Statistics"), (0.95, "verified", "Statistics"),
+                                              (0.3, "needs_answer", "")])
+def test_after_its_own_search_the_agent_takes_the_nearest_row_flagged(e2e_page, monkeypatch, p, status, held):
+    """Owner decision 2026-10-13, through the REAL /step service and verdict over the page's real
+    state. The agent's own term's settled result is complete, so a flag slot (a field of study)
+    takes a nearest row it is 0.7 sure of as `closest` (the "Closest matches" list); sure of it
+    (0.95) it is a match; unsure (0.3) the field is the user's."""
     page = e2e_page
-    real_step(page, monkeypatch, _study_facts(), [("search:term", 0.9, "Statistics"),
+    real_step(page, monkeypatch, _study_facts(), [("search:value", 0.9), ("search:term", 0.9, "Statistics"),
                                                   ('Click the option "Statistics"', p)])
     out = _study_run(page, stepBackend=True)
     assert out["by_question"]["Field of Study"]["status"] == status, out["by_question"]["Field of Study"]
     assert oracle(page, "fieldOfStudy") == held
+    steps = bodies_of(out, "/api/autofill/step")
+    assert [s["complete"] for s in steps][:3] == [False, False, True]
+    assert [m[0] for m in _study_moves(out)][:2] == ["search:value", "search:term"]
+    if status != "needs_answer":
+        obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+        assert [o["outcome"] for o in obs if o["label"].startswith("Field of Study")] == [
+            "closest_filled" if status == "closest" else "verified"]
+
+
+def test_after_the_values_own_search_the_nearest_row_is_still_refused(e2e_page, monkeypatch):
+    """The fact "Stat" lists "Statistics" under search:value: a filtered view, so a 0.7 click is no match."""
+    from app.services import autofill_catalog
+
+    page = e2e_page
+    facts = autofill_catalog.build({"education": [{"discipline": "Stat"}]}, [], [])
+    real_step(page, monkeypatch, facts, [("search:value", 0.9), ('Click the option "Statistics"', 0.7)])
+    out = _run(page, html=fixture_html("workday_misses.html"), url="https://careers.acme.test/apply",
+               map={"Field of Study": {"route": "slot", "slot": "education.0.discipline", "value": "Stat"}},
+               limits={"MAX_ROUNDS": 1}, stepBackend=True)
+    assert out["by_question"]["Field of Study"]["status"] == "needs_answer" and oracle(page, "fieldOfStudy") == ""
     assert [s["complete"] for s in bodies_of(out, "/api/autofill/step")][:2] == [False, False]
-    assert _study_moves(out)[0] == ("search:term", "Statistics")
+
+
+def test_an_exact_policy_slot_never_takes_the_nearest_row_after_the_agents_search(e2e_page, monkeypatch):
+    """A language's name is exact (a near-miss language is a different one): the view is complete,
+    yet 0.7 is under the exact floor."""
+    from app.services import autofill_catalog
+
+    page = e2e_page
+    facts = autofill_catalog.build({"languages": [{"language": STUDY_FACT}]}, [], [])
+    assert facts["languages.0.language"].policy == "exact"
+    real_step(page, monkeypatch, facts, [("search:term", 0.9, "Statistics"), ('Click the option "Statistics"', 0.7)])
+    out = _run(page, html=fixture_html("workday_misses.html"), url="https://careers.acme.test/apply",
+               map={"Field of Study": {"route": "slot", "slot": "languages.0.language", "value": STUDY_FACT}},
+               limits={"MAX_ROUNDS": 1}, stepBackend=True)
+    assert out["by_question"]["Field of Study"]["status"] == "needs_answer" and oracle(page, "fieldOfStudy") == ""
+    assert [s["complete"] for s in bodies_of(out, "/api/autofill/step")][:2] == [False, True]

@@ -74,7 +74,8 @@
  * offered 50 options at a time, starting at the first one in view. The model chooses one of those ids; move() acts only
  * on the state it was chosen from, consumes that state (one move per state),
  * refuses an id the state did not offer, and treats a click on a list that
- * changed since as stale. A filtered search view is never complete.
+ * changed since as stale. A filtered search view is never complete, except the settled,
+ * fully shown result of the agent's own term (search:term): there the nearest option may be taken.
  *
  * A RECIPE'S ORDER (`variant`, shared/recipe-book.js) may reach explore,
  * choose and set: which of a known pair of moves to try FIRST — `open: keys`
@@ -119,6 +120,9 @@
   const opened = new WeakMap(); // el -> the page's popups before the engine last opened it
   const typed = new WeakMap(); // el -> { prior, query }: a search query the engine typed
   const searched = new WeakSet(); // fields whose held popup shows FILTERED results (a search move)
+  // The subset whose LAST search was the agent's own term (search:term). Its settled, fully shown
+  // result may be called complete (the nearest option is then allowed, flagged); the value's never.
+  const termSearched = new WeakSet();
   // Elements whose PRESS has visibly done something before: a pointer
   // widget. When its press later does nothing, something it opened is still
   // up (a role-less list), and a key would act on that — so no key is sent.
@@ -873,6 +877,7 @@
   const tidy = async (el, t, { cleanup = false } = {}) => {
     leftOpen.delete(el);
     searched.delete(el);
+    termSearched.delete(el);
     const before = opened.get(el);
     const q = typed.get(el);
     typed.delete(el);
@@ -1376,6 +1381,7 @@
     if (!pop) {
       leftOpen.delete(el);
       searched.delete(el);
+      termSearched.delete(el);
       return null;
     }
     b().markEnginePopup(pop);
@@ -1456,9 +1462,11 @@
     ] : [GIVE_UP];
     lastState.set(el, { version, mids: new Set(candidates.map((c) => c.mid)), clicks: ids(clicks), value: whole, words });
     // Complete = every option is in view: not capped, nothing to scroll, and
-    // not a filtered search result (a search widget's list always is one).
-    const complete = Boolean(held) && shape.open !== "search" && !searched.has(el)
-      && all.length <= MAX_CLICKS && !scroller;
+    // not a filtered search result (a search widget's list always is one) —
+    // except the settled result of the agent's own term (search:term), which
+    // lets the nearest option be taken, flagged. The value's search never does.
+    const inView = Boolean(held) && all.length <= MAX_CLICKS && !scroller;
+    const complete = inView && (termSearched.has(el) || (shape.open !== "search" && !searched.has(el)));
     // The options around the offered window (never-fill ones flagged, not dropped).
     const lo = clicks.length ? all.findIndex((o) => o.oid === clicks[0].oid) : 0;
     const hi = clicks.length ? all.findIndex((o) => o.oid === clicks.at(-1).oid) + 1 : MAX_CLICKS;
@@ -1534,6 +1542,8 @@
       // The search sequence, pressing the box only when no list is up yet.
       const { pop, unsettled } = await search(el, shape, box, term, before, t, null, { press: !held && box === el });
       searched.add(el);
+      if (mid === "search:term") termSearched.add(el);
+      else termSearched.delete(el);
       // The Enter committed a hit on its own (notes §2 rule 5). The value
       // itself is an answer; anything else is the page's pick, left for the
       // loop to name (`search_committed`), never called filled.
