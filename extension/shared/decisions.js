@@ -14,7 +14,7 @@
  *
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
  * postingId, sessionTenant, restorableSession, postingLink, samePosting,
- * reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite }.
+ * applyFacts, httpUrl, reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -89,15 +89,22 @@
    *   actually happens. It is still read HERE for one thing only — the
    *   shortcut's COPY, below — because "Ready to autofill" is a promise about
    *   the page rather than about the stage.
+   * - `applyHere` (full automation on, and the user has not asked to tailor
+   *   first) KEEPS THE JOB STEP OPEN on a saved job with no application: the
+   *   step's question is then "apply with this resume, or queue it", and a
+   *   chosen base is its input rather than its answer. Without it, picking a
+   *   row in the ranked list closed the step and took Apply out of the footer.
+   *   An application still answers the base question, so a tailored draft
+   *   moves the rail on as it always did.
    */
   function stageFor({
     match, hasApplication, pdfReady, status, touched, hasForm,
-    baseArmed, hasScores, baseChosen,
+    baseArmed, hasScores, baseChosen, applyHere,
   }) {
     const saved = match === "exact";
     const fillFromBase = baseArmed === true && !hasApplication;
     const baseAnswered = hasApplication === true || fillFromBase
-      || (hasScores === true && baseChosen === true);
+      || (hasScores === true && baseChosen === true && applyHere !== true);
     const jobDone = saved && baseAnswered;
     const resumeDone = saved && hasApplication === true && pdfReady === true;
     const resumeFilledPast = saved && hasApplication === true && !resumeDone
@@ -221,6 +228,56 @@
         if (b.score === null) return -1;
         return b.score - a.score;
       });
+  }
+
+  /** What Apply and Queue need to know about a saved job, read from the backend's own answers: the
+   * job's detail (`GET /api/jobs/{id}/detail`: the job, its newest application) and its tailoring
+   * sessions (`GET /api/tailoring-sessions?job_id=`). Nothing here is computed, only picked out:
+   *
+   * - `queued` and `applied` are the newest proposal's status and the application's. A queued job
+   *   shows Apply alone (it is already the user's yes); an applied one shows neither.
+   * - `sessionId` is an OPEN tailoring session: the user's own custom tailoring in the web app.
+   *   Apply never tailors over it.
+   * - `applicationId`/`hasPdf` are what the server holds, not what the panel last saw: the user may
+   *   have made a draft in Maestro CS since the page was read.
+   * - `ownership` is the sync view (`owned_here`, `owner`, `handover`, `can_keep_here`), null with
+   *   sync off, where every job is owned here.
+   * - `applyUrl`/`sourceUrl` come from the job as sync delivered them, so they are NOT yet vouched
+   *   for: `httpUrl` is how the run's link is chosen.
+   * Total: any part may be missing, and then it reads as nothing. */
+  function applyFacts(detail, sessions) {
+    const job = detail?.job ?? {};
+    const application = detail?.application ?? null;
+    const open = (Array.isArray(sessions) ? sessions : []).find((one) => one?.status === "open");
+    const status = job.proposal_status ?? null;
+    return {
+      jobId: job.id ?? null,
+      proposalId: job.proposal_id ?? null,
+      proposalStatus: status,
+      queued: status === "accepted",
+      applied: status === "submitted" || (application !== null && application.status != null
+        && application.status !== "draft"),
+      applicationId: application?.id ?? null,
+      baseResume: application?.base_resume ?? null,
+      hasPdf: Boolean(application?.pdf_path),
+      sessionId: open?.id ?? null,
+      ownership: job.ownership?.owner ? job.ownership : null,
+      applyUrl: job.apply_url ?? null,
+      sourceUrl: job.source_url ?? null,
+    };
+  }
+
+  /** The link, or null unless it is a plain http(s) URL with a host. Values that arrive through sync
+   * skipped the server's check, and a run navigates a tab to this. */
+  function httpUrl(value) {
+    if (typeof value !== "string") return null;
+    const text = value.trim();
+    try {
+      const url = new URL(text);
+      return /^https?:$/.test(url.protocol) && url.hostname ? text : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Origin + first path segment: multi-tenant boards (job-boards.greenhouse.io)
@@ -618,7 +675,7 @@
 
   ns.decisions = {
     stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession, postingLink,
-    samePosting,
+    samePosting, applyFacts, httpUrl,
     reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
   };
 })();
