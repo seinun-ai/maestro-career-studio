@@ -11,6 +11,7 @@ from app.companion_origin import is_companion
 from app.db import begin_write, get_db
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
+from app.models.consent_event import ConsentEvent
 from app.models.job import Job
 from app.models.qa_entry import QAEntry
 from app.schemas.job import JobSummary
@@ -154,6 +155,10 @@ def create_proposal(
                         409, detail="proposal already linked to an application",
                     )
                 _validate_and_stamp_application(db, payload.application_id, open_prop.job_id)
+                # The draft it leaves is the user's own again: being linked is what made it the agent's.
+                released = db.get(Application, open_prop.application_id)
+                if released is not None:
+                    released.source = "user"
                 open_prop.application_id = payload.application_id
                 db.commit()
                 db.refresh(open_prop)
@@ -206,12 +211,26 @@ def _may_relink(
 ) -> bool:
     """May this create move the open proposal to another application of its job?
 
-    Only the Companion's Apply: the user tailored a newer draft after Apply first linked one, and
-    every press since asked for the newer one. The proposal must still be queued (`accepted`, so no
-    approval or submit has happened), the new application a draft of THIS job, and the one it
-    holds gone or still a draft; a sent application is never unlinked from its proposal.
+    Only the Companion's Apply, for a job the Companion itself queued: the user tailored a newer draft
+    after Apply first linked one, and every press since asked for the newer one. The proposal must
+    still be queued (`accepted`, so no approval or submit has happened), its yes must have been given
+    under the Companion's own channel (a job queued from the web app or by an agent is not the panel's
+    to move), and no final review may have been taken of the draft it holds. The new application must
+    be a draft of THIS job, and the one the proposal holds gone or still a draft; a sent application is
+    never unlinked from its proposal.
     """
     if not is_companion(request) or open_prop.status != "accepted":
+        return False
+    if any(isinstance(item, dict) and item.get("kind") == "final_review"
+           for item in (open_prop.evidence_json or [])):
+        return False
+    yes = db.scalar(
+        select(ConsentEvent.channel)
+        .where(ConsentEvent.proposal_id == open_prop.id, ConsentEvent.action == "accepted")
+        .order_by(ConsentEvent.created_at.desc())
+        .limit(1)
+    )
+    if yes != svc.COMPANION_CHANNEL:
         return False
     new = db.get(Application, payload.application_id)
     if new is None or new.job_id != open_prop.job_id or new.status != "draft":

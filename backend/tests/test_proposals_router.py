@@ -846,3 +846,41 @@ def test_linking_another_jobs_application_is_refused_on_every_route(db_session):
     assert r.status_code == 409
     db_session.expire_all()
     assert db_session.get(ApplicationProposal, UUID(pid)).application_id is None
+
+
+def test_a_relink_is_refused_unless_the_companion_gave_the_yes(db_session):
+    """The relink exists for the Companion's own Apply; a job queued from the web app or by an agent is not
+    the panel's to move."""
+    job = _mk_job(db_session, company="OtherYesCo")
+    first = Application(job_id=job.id, base_resume="business_analyst", status="draft")
+    newer = Application(job_id=job.id, base_resume="data_scientist", status="draft")
+    db_session.add_all([first, newer])
+    db_session.commit()
+    pid = client.post("/api/proposals", json={"job_id": str(job.id), "application_id": str(first.id)}).json()["id"]
+    assert client.patch(f"/api/proposals/{pid}", json={
+        "status": "accepted", "consent": {"channel": "frontend"}}).status_code == 200
+    r = _link(job, newer)
+    assert r.status_code == 409 and "already linked" in r.json()["detail"]
+    db_session.expire_all()
+    assert db_session.get(ApplicationProposal, UUID(pid)).application_id == first.id
+
+
+def test_a_relink_is_refused_once_a_final_review_exists(db_session):
+    job, first, newer, pid = _accepted_with_draft(db_session, "ReviewedCo")
+    prop = db_session.get(ApplicationProposal, UUID(pid))
+    prop.evidence_json = [{"step": 99, "label": "final review", "path": "evidence/fr.png",
+                           "sha256": "fr", "kind": "final_review"}]
+    db_session.commit()
+    assert _link(job, newer).status_code == 409
+    db_session.expire_all()
+    assert db_session.get(ApplicationProposal, UUID(pid)).application_id == first.id
+
+
+def test_a_relink_hands_the_old_draft_back_to_the_user_lane(db_session):
+    job, first, newer, pid = _accepted_with_draft(db_session, "LaneCo")
+    db_session.refresh(first)
+    assert first.source == "agent"
+    assert _link(job, newer).status_code == 200
+    db_session.expire_all()
+    assert db_session.get(Application, first.id).source == "user"
+    assert db_session.get(Application, newer.id).source == "agent"
