@@ -1755,6 +1755,20 @@ def test_a_list_item_the_list_never_offers_is_missing_never_its_nearest_option(p
     assert (r["status"], r["answer"]) == ("partial", "1 of 2 added")
 
 
+@pytest.mark.parametrize("shape", ["select", "popup"])
+def test_a_list_item_never_takes_a_closest_pick(page, load, shape):
+    """/pick sees a fully read list and may answer `closest` for an item it has no option for. For a
+    list item that is no answer: the item is missing, its option is not ticked, the others land."""
+    options = [opt("o1", "SQL"), opt("o2", "Python"), opt("o3", "Go")]
+    out = run(page, load, frames=[[f("k", shape, "Skills", multi=True, options=options, optionsComplete=True)]] * 2,
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Rust", "Python"]}},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Rust": {"oids": ["o3"], "reason": "closest"},
+                    "k:Python": {"oids": ["o2"], "reason": "matched"}})
+    assert [a["texts"] for a in actions(out, "set")] == [["SQL"], ["Python"]]
+    r = row(out, "k")
+    assert (r["status"], r["answer"]) == ("partial", "2 of 3 added")
+
+
 def test_a_single_answer_field_still_gets_its_closest_rule(page, load):
     near = {"version": 1, "complete": True, "popupOpen": True, "options": [{"oid": "o1", "text": "Computer Science"}],
             "candidates": [{"mid": "click:o1", "describe": 'Click the option "Computer Science"'}, GIVE_UP]}

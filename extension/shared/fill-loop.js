@@ -1216,9 +1216,11 @@
               late.push(...todo.slice(i));
               break;
             }
-            if (p?.text) {
+            // A list item is exactly itself: a nearest option (`closest`) would be a pill the user
+            // could not tell from the real one, so it is treated as no pick at all.
+            if (p?.text && p.reason !== "closest") {
               if (!(await commitItem(item, p))) return undefined;
-            } else if (p?.abstained) missed.set(item, historyEntry("choose", "abstained"));
+            } else if (p?.abstained || p?.reason === "closest") missed.set(item, historyEntry("choose", "abstained"));
           }
         }
       } finally {
