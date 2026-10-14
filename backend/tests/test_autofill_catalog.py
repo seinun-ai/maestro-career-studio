@@ -812,3 +812,27 @@ def test_the_context_profile_drops_a_saved_answer_that_belongs_to_another_job():
 def test_a_scope_is_a_whole_word_in_the_field_it_came_from(row, company, location, offered):
     profile = {"custom": [{"question": "Q?", "answer": "Yes", **row}]}
     assert ("custom.0" in cat.build(profile, [], [], company=company, location=location)) is offered
+
+
+# ---------- J2: the phone's country, from the profile's country
+
+PHONE_COUNTRY_DESCRIBE = ("the phone number's country and calling code (a dialing-code picker); "
+                          "never the number itself")
+
+
+@pytest.mark.parametrize(("country", "expected"), [
+    ("United States", "+1 United States"), ("USA", "+1 United States"), ("us", "+1 United States"),
+    ("United States of America", "+1 United States"), ("Canada", "+1 Canada"),
+    ("UK", "+44 United Kingdom"), ("United Kingdom", "+44 United Kingdom"), ("India", "+91 India"),
+])
+def test_the_phone_country_is_built_from_the_profile_country(country, expected):
+    f = derived({"personal": {"country": country, "phone": "5551234567"}})
+    assert f["derived.phone_country"].value == expected
+    assert f["derived.phone_country"].describe == PHONE_COUNTRY_DESCRIBE
+    assert f["derived.phone_country"].policy == "flag"
+    assert "5551234567" not in f["derived.phone_country"].describe
+
+
+@pytest.mark.parametrize("personal", [{}, {"country": " "}, {"country": "Atlantis"}, {"phone": "5551234567"}])
+def test_a_phone_country_is_never_invented(personal):
+    assert "derived.phone_country" not in derived({"personal": personal})

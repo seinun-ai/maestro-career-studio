@@ -436,7 +436,7 @@ def format_of(slot: str | None) -> Format | None:
     holds."""
     if not slot:
         return None
-    if _PHONE.search(slot):
+    if _PHONE.search(slot) and slot != "derived.phone_country":
         return "phone"
     if _DATE.fullmatch(slot):
         return "date"

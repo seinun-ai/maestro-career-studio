@@ -106,6 +106,9 @@ _DESCRIBES: dict[str, str] = {
     # Facts built here rather than read from the profile: one lookup, so the
     # evaluation describes them as production does.
     "derived.full_name": "your full legal name, for name and signature boxes",
+    # A dialing-code picker ("Country dialing code", "+1 United States") asks for the country, not the number.
+    "derived.phone_country": ("the phone number's country and calling code (a dialing-code picker); "
+                              "never the number itself"),
     "derived.today": "today's date, for a date the applicant signs or fills in today",
     "derived.earliest_start_date": "the earliest date you can start, as a calendar date",
     "derived.previously_employed_here": ("works, or has worked, for this company (from the work history: "
@@ -134,6 +137,38 @@ _IMMEDIATE = re.compile(r"^\W*(available\W*)?(immedi[ae]?t\w*(\s+start)?|asap|no
                         re.IGNORECASE)
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+
+
+# The calling code and display name of the countries a profile's Country holds, by the names it is
+# written with (casefolded, punctuation dropped). A country this table does not know derives nothing.
+_CALLING: dict[str, tuple[str, str]] = {}
+for _code, _name, *_aliases in (
+        ("1", "United States", "us", "usa", "u s", "u s a", "united states of america", "america"),
+        ("1", "Canada", "ca"), ("44", "United Kingdom", "uk", "gb", "great britain", "england"),
+        ("91", "India", "in"), ("61", "Australia", "au"), ("49", "Germany", "de"), ("33", "France", "fr"),
+        ("34", "Spain", "es"), ("39", "Italy", "it"), ("31", "Netherlands", "nl", "the netherlands"),
+        ("353", "Ireland", "ie"), ("41", "Switzerland", "ch"), ("46", "Sweden", "se"), ("47", "Norway", "no"),
+        ("45", "Denmark", "dk"), ("358", "Finland", "fi"), ("48", "Poland", "pl"), ("351", "Portugal", "pt"),
+        ("32", "Belgium", "be"), ("43", "Austria", "at"), ("52", "Mexico", "mx"), ("55", "Brazil", "br"),
+        ("54", "Argentina", "ar"), ("57", "Colombia", "co"), ("56", "Chile", "cl"),
+        ("86", "China", "cn"), ("81", "Japan", "jp"), ("82", "South Korea", "kr", "korea"),
+        ("65", "Singapore", "sg"), ("852", "Hong Kong", "hk"), ("886", "Taiwan", "tw"),
+        ("66", "Thailand", "th"), ("84", "Vietnam", "vn"), ("63", "Philippines", "ph"),
+        ("62", "Indonesia", "id"), ("60", "Malaysia", "my"), ("92", "Pakistan", "pk"),
+        ("880", "Bangladesh", "bd"), ("94", "Sri Lanka", "lk"), ("971", "United Arab Emirates", "uae", "ae"),
+        ("966", "Saudi Arabia", "sa"), ("972", "Israel", "il"), ("90", "Turkey", "tr"),
+        ("20", "Egypt", "eg"), ("27", "South Africa", "za"), ("234", "Nigeria", "ng"), ("254", "Kenya", "ke"),
+        ("64", "New Zealand", "nz"), ("7", "Russia", "ru"), ("380", "Ukraine", "ua")):
+    for _key in (_name, *_aliases):
+        _CALLING[re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", _key.casefold())).strip()] = (_code, _name)
+
+
+def phone_country(country: object) -> str | None:
+    """"+1 United States" for a profile country written any usual way; None when it is unset or not in the table."""
+    if not isinstance(country, str):
+        return None
+    found = _CALLING.get(re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", country.casefold())).strip())
+    return f"+{found[0]} {found[1]}" if found else None
 
 
 # A company name as one key: casefold, no suffix (Inc, LLC, Co., GmbH…; dots
@@ -382,6 +417,8 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
         out["derived.full_name"] = make_fact("derived.full_name",
                                              f"{identity['legal_first']} {identity['legal_last']}")
     out["derived.today"] = make_fact("derived.today", today.isoformat())
+    if (dialing := phone_country(personal.get("country"))) is not None:
+        out["derived.phone_country"] = make_fact("derived.phone_country", dialing)
     work_auth = profile.get("work_auth") if isinstance(profile.get("work_auth"), dict) else {}
     status = work_auth.get("status")
     if isinstance(status, str) and status in _US_CITIZEN:

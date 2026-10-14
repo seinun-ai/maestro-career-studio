@@ -510,6 +510,8 @@ def test_page_text_is_quoted_as_data(db_session, monkeypatch):
     ("preferences.expected_compensation", "money"), ("custom.pay", "money"),
     ("personal.payroll_id", None), ("personal.paypal_email", None), ("custom.display_name", None),
     ("personal.city", None), ("experience.0.title", None), (None, None),
+    # The phone's COUNTRY ("+1 United States") is a picker's option, not a phone number to re-punctuate.
+    ("derived.phone_country", None),
     # A date slot: the loop writes only the part a Month or Year control holds.
     ("experience.0.start", "date"), ("experience.12.end", "date"), ("education.1.end_year", "date"),
     ("education.0.start_year", "date"), ("derived.today", "date"), ("derived.earliest_start_date", "date"),
@@ -1902,3 +1904,19 @@ def test_a_first_name_box_still_takes_the_first_name_whole(db_session, monkeypat
     fake_jev(monkeypatch, {"f": ("personal.first_name", 0.95)})
     got = autofill_map.map_fields([field("f", "First Name")], facts, db_session, eeo_consented=True, low_stakes=False)
     assert (got["f"].route, got["f"].value) == ("slot", "Jane Marie")
+
+
+# ---------- J2: a dialing-code picker takes the phone's country
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("shape", ["select", "search"])
+def test_a_country_dialing_code_field_maps_to_the_phone_country(db_session, monkeypatch, shape):
+    facts = autofill_catalog.build({"personal": {"country": "United States", "phone": "5551234567"}}, [], [])
+    calls = fake_jev(monkeypatch, {"d": ("derived.phone_country", 0.9)})
+    got = autofill_map.map_fields([field("d", "Country dialing code", shape)], facts, db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert (got["d"].route, got["d"].slot, got["d"].value) == ("slot", "derived.phone_country", "+1 United States")
+    criteria = calls[0]["questions"]["d"]["criteria"]
+    assert "calling code" in criteria["derived.phone_country"]
+    assert "5551234567" not in repr(calls)
+    assert "+1 United States" not in repr(calls)
