@@ -920,6 +920,16 @@ def test_a_lone_resume_or_unknown_required_box_gets_the_fix(tmp_path, box):
     assert out["record"]["status"] == "ready" and [c[1] for c in names(out, "fix")] == [["Upload"]]
 
 
+def test_the_resume_already_written_excuses_the_resume_box_but_never_a_cover_letters(tmp_path):
+    wrote = [{"outcome": "attached", "required": False}]
+    cover = _drive(tmp_path, [{**REVIEW, "needs": [_up("Cover letter", "other")]}], attaches=wrote, fixClears=True)
+    r = cover["record"]
+    assert (r["status"], r["why"], r["readyAt"]) == ("parked", "upload", None)
+    assert [o["question"] for o in r["open"]] == ["Cover letter"] and names(cover, "fix") == []
+    resume = _drive(tmp_path, [{**REVIEW, "needs": [_up("Resume", "resume")]}], attaches=wrote)
+    assert resume["record"]["status"] == "ready" and names(resume, "fix") == []
+
+
 def test_two_required_upload_boxes_are_the_users_to_choose_between(tmp_path):
     needs = [_up("Upload one", "unknown", "u1"), _up("Upload two", "unknown", "u2")]
     out = _drive(tmp_path, [step(1), {**REVIEW, "needs": needs}], fixClears=True)
@@ -958,6 +968,26 @@ def test_a_vouched_page_still_gets_its_errors_and_required_empties_checked(tmp_p
     assert (need["record"]["status"], need["record"]["why"]) == ("parked", "open_questions")
     clean = _drive(tmp_path, [{**UNSURE, "errs": [ERR]}], record=dict(parked), fixClears=True)
     assert clean["record"]["status"] == "ready" and clean["record"]["readyBy"] == "user"
+
+
+def test_a_review_page_with_no_heading_is_vouched_for_by_its_address_alone(tmp_path):
+    bare = {"t": "fields_only", "url": "/last", "key": ""}
+    first = _drive(tmp_path, [step(1), bare])
+    assert (first["record"]["why"], first["record"]["parkedPage"]["key"]) == ("unsure_page", "")
+    again = _drive(tmp_path, [bare], record=first["record"])
+    assert (again["record"]["status"], again["record"]["readyBy"]) == ("ready", "user")
+    elsewhere = _drive(tmp_path, [{**bare, "url": "/other"}], record=dict(first["record"]))
+    assert elsewhere["record"]["why"] == "unsure_page"
+
+
+def test_an_attach_the_earlier_run_could_not_confirm_does_not_park_the_vouched_page(tmp_path):
+    parked = {**_parked_unsure(tmp_path), "attach": {"outcome": "unconfirmed"}}
+    page = {**UNSURE, "needs": [_up("Upload", "unknown")]}
+    again = _drive(tmp_path, [page], record=parked)
+    assert (again["record"]["status"], again["record"]["readyBy"]) == ("ready", "user") and names(again, "fix") == []
+    clean = {**_parked_unsure(tmp_path), "attach": None}
+    stuck = _drive(tmp_path, [page], record=clean)
+    assert (stuck["record"]["status"], stuck["record"]["why"]) == ("parked", "open_questions")   # no excuse without the attach
 
 
 def test_a_resume_after_the_user_moved_on_does_not_vouch_for_the_new_page(tmp_path):

@@ -91,8 +91,16 @@
   // Named so by its class: "stepper", "...-steps" or "steps-item". A plain "steps" or "nextsteps" is not a
   // stepper, and a container that holds form fields is a form, whatever it is called.
   const STEPPER = '[class*="stepper" i], [class*="-steps" i], [class*="steps-item" i], [role="progressbar"]';
-  const OVERLAY = 'dialog, [role="dialog"], [role="alertdialog"], [aria-modal="true"], '
-    + '[id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [id*="onetrust" i]';
+  // A cookie or OneTrust notice is never the application's, whatever it holds. A dialog, an aria-modal overlay or a
+  // "consent" container is a notice only while it holds no visible field: a dialog wizard step, or a consent step
+  // of checkboxes, is the step itself and keeps its Next.
+  const COOKIE_BOX = '[id*="cookie" i], [class*="cookie" i], [id*="onetrust" i], [class*="onetrust" i]';
+  const SOFT_BOX = 'dialog, [role="dialog"], [role="alertdialog"], [aria-modal="true"], [id*="consent" i], [class*="consent" i]';
+  const overlayOf = (el) => {
+    if (el.closest(COOKIE_BOX)) return true;
+    const box = el.closest(SOFT_BOX);
+    return box !== null && ![...box.querySelectorAll(FIELD)].some((c) => shown(c));
+  };
   const REAL_BUTTON = 'button, input[type="submit"], input[type="button"], input[type="image"]';
   // A dialog or step heading that asks about submitting. Narrower than the button sort on purpose:
   // "Apply to Acme" and "Complete your application" head ordinary steps.
@@ -180,7 +188,7 @@
 
   const inFormOf = (forms) => (el) => {
     // No form holds fields: every button outside site chrome is the step's, except a dialog's or a cookie notice's.
-    if (!forms.length) return !inChrome(el) && !el.closest(OVERLAY);
+    if (!forms.length) return !inChrome(el) && !overlayOf(el);
     const form = el.form ?? el.closest(FORM);
     return forms.some((f) => f === form || f.contains(el));
   };
@@ -765,7 +773,7 @@
         // Site chrome (header, nav, a site footer): never the application step's Next.
         ...(inChrome(el) ? { chrome: true } : {}),
         // In a dialog or a cookie or consent notice: not the application step's Next unless a form holds it.
-        ...(el.closest(OVERLAY) ? { overlay: true } : {}),
+        ...(overlayOf(el) ? { overlay: true } : {}),
         // The error summary's own buttons ("Errors Found", "Error - <field>"): not part of the step.
         ...(inErrorRegion(el, regions) && isErrorText(labelOf(el)) ? { inErrors: true } : {}),
         ...(errorLineButton(el, regions) ? { errorLine: true } : {}),

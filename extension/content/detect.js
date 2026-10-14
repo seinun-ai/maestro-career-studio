@@ -263,13 +263,14 @@ function fillableControls() {
   let count = 0;
   // A POPUP BUTTON is a field too: Workday's question steps are made of them ("Select One"), and a step of
   // nothing else read as having nothing to fill. A `listbox` popup is a value picker. A bare `true` is a menu
-  // as often as a picker (Share, More), so it counts only inside a form field (a fieldset, a group, a form, a
+  // as often as a picker (Share, More), so it counts only inside a form field (a fieldset, a group, a
   // formField wrapper) or while it shows a placeholder ("Select One"). Never in the site's own header,
   // navigation or footer: those are language and account menus.
   const POPUP = 'button[aria-haspopup="listbox"], button[aria-haspopup="true"], '
     + '[role="button"][aria-haspopup="listbox"]:not(input), [role="button"][aria-haspopup="true"]:not(input)';
   const SITE_CHROME = 'header, nav, footer, [role="banner"], [role="navigation"], [role="contentinfo"], [role="menubar"]';
-  const FIELD_HOLDER = 'fieldset, form, [role="group"], [role="form"], [data-automation-id^="formField"]';
+  // Not `form`: an ASP.NET page wraps the whole page, in-content menus included, in one.
+  const FIELD_HOLDER = 'fieldset, [role="group"], [data-automation-id^="formField"]';
   const asksForAnAnswer = (el) => {
     if (el.getAttribute("aria-haspopup") === "listbox") return true;
     if (el.closest(FIELD_HOLDER)) return true;

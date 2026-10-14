@@ -235,6 +235,43 @@ def test_a_dialog_and_a_cookie_notice_buttons_carry_the_overlay_flag(page, load)
     assert classify(page)["kind"] == "form_step"
 
 
+def test_a_dialog_wizard_step_with_fields_and_no_form_element_keeps_its_next(page, load):
+    load(page, "<div role='dialog'><h2>Your details</h2><label for='a'>Name</label><input id='a'><button>Next</button></div>", SOURCES)
+    [nxt] = summary(page)["buttons"]
+    assert "overlay" not in nxt and nxt["inForm"] is True
+    assert classify(page)["kind"] == "form_step"
+
+
+def test_a_consent_step_that_holds_checkboxes_keeps_its_next(page, load):
+    load(page, """<div class='consent-step'><label><input type='checkbox'> I have read the notice</label>
+      <button>Next</button></div>""", SOURCES)
+    assert "overlay" not in summary(page)["buttons"][0]
+    assert classify(page)["kind"] == "form_step"
+
+
+@pytest.mark.parametrize("holder", ["<div class='cookie-banner'>{b}</div>", "<div id='onetrust-banner-sdk'>{b}</div>",
+                                    "<div class='consent-banner'>{b}</div>", "<div role='dialog'>{b}</div>",
+                                    "<div aria-modal='true'>{b}</div>"])
+def test_a_field_less_cookie_consent_or_dialog_continue_is_never_the_steps_next(page, load, holder):
+    load(page, holder.format(b="<button>Continue</button>") + "<label for='a'>Name</label><input id='a'>", SOURCES)
+    assert summary(page)["buttons"][0].get("overlay") is True
+    assert classify(page) == {"kind": "review", "by": "fields_no_next"}
+
+
+def test_a_cookie_banner_that_holds_a_checkbox_is_still_a_cookie_banner(page, load):
+    load(page, "<div class='cookie-banner'><label><input type='checkbox'> Analytics</label><button>Continue</button></div>"
+               "<label for='a'>Name</label><input id='a'>", SOURCES)
+    assert summary(page)["buttons"][0].get("overlay") is True
+
+
+def test_a_whole_page_form_around_a_posting_does_not_make_its_share_menu_a_field(page, load):
+    """ASP.NET: one <form> wraps the entire page, including the in-content menu."""
+    load(page, """<form id='aspnetForm'><h1>Analyst</h1><a href='https://jobs.acme.test/apply'>Apply now</a>
+      <div><button type='button' aria-haspopup='true'>Share</button></div></form>""", SOURCES)
+    assert page.evaluate(FILLABLE) == 0
+    assert classify(page)["kind"] == "posting"
+
+
 def test_the_confirmation_phrase_is_the_match_and_none_of_the_page_around_it(page, load):
     load(page, "<p>Hi Zelda-Secret-9, thank you for applying to Acme. Your reference is 4471.</p>", SOURCES)
     s = summary(page)

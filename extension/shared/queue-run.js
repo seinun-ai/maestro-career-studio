@@ -415,10 +415,15 @@
           if (resumeWhy) {
             const parked = record.parkedPage;
             // An empty step key proves nothing (the page named no heading): that page is filled as usual.
-            if (parked && parked.key !== "" && parked.where === where && parked.key === key) {
+            // An empty step key proves nothing for a fix or an upload, but a review page may simply have no
+            // heading: the address alone then says it is the page the user was asked to look at.
+            const vouching = resumeWhy === "unsure_page";
+            if (parked && (vouching || parked.key !== "") && parked.where === where && parked.key === key) {
               recheck = resumeWhy;
               pageFilled = true;
-              vouched = resumeWhy === "unsure_page";
+              vouched = vouching;
+              // What an earlier attach wrote (even one the page never confirmed) is not written twice or asked of the user.
+              if (vouched) wroteResume = FILE_WRITTEN.has(record.attach?.outcome);
             } else {
               // The user moved on by hand: nothing the park learnt is about this page (what moved() clears).
               fixRounds = 0;
@@ -607,7 +612,7 @@
           if ((summary.requiredEmpty ?? 0) > 0) {
             const found = await act(deps.pageRequired, record.tabId, frame.frameId);
             const pending = (Array.isArray(found?.items) ? found.items : [])
-              .filter((one) => !(one.kind === "upload" && wroteResume));
+              .filter((one) => !(one.kind === "upload" && wroteResume && one.box !== "other"));
             // The resume goes in a resume box and nowhere else: a box for another document (or the site's own
             // import), and a choice between several, are the user's.
             const uploads = pending.filter((one) => one.kind === "upload");
