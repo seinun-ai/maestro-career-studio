@@ -51,6 +51,7 @@ from app.services.autofill_catalog import (
     Fact,
     named_employer_fact,
     asks_worked_here,
+    asks_worked_here_of_other,
     lists_job_company,
     names_veteran_off_slot,
     question_names_company,
@@ -550,10 +551,12 @@ _MIDDLE_NAME = re.compile(r"\bmiddle\s*(name|initial)\b", re.IGNORECASE)
 
 
 def _rerouted(field: MapField, picked: tuple[str, float], facts: dict[str, Fact]) -> bool:
-    """Whether code takes this field for the worked-here question the map filed elsewhere."""
+    """Whether code takes this field for the worked-here question the map filed elsewhere: one that lists the
+    job's company, or that names a company the history does not hold while the derived answer is No."""
     return (picked[0] in _FILED_ELSEWHERE and field.shape not in _WRITTEN_SHAPES
-            and lists_job_company(facts, field.question, field.options)
-            and asks_worked_here(facts, field.question, field.options))
+            and ((lists_job_company(facts, field.question, field.options)
+                  and asks_worked_here(facts, field.question, field.options))
+                 or asks_worked_here_of_other(facts, field.question, field.options)))
 
 
 def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact], *,

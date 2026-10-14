@@ -1420,3 +1420,19 @@ def test_a_low_stakes_step_states_both_safe_default_directions_and_the_never_lis
     assert "No, or Not applicable when it is offered" in text and "Yes to willingness" in text
     assert _NEVER_LOW_STAKES in text and "licence" in text and "criminal history" in text
     assert (got.mid, got.reason) == ("click:o1", "assumed")
+
+
+# ---------- N3: a worked-here question naming another company is answered by the history's No
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize(("question", "answer"), [("Are you currently employed by Initrode?", "No"),
+                                                  ("Are you currently employed by Globex?", "Yes, previously")])
+def test_a_worked_here_step_states_the_histories_answer_for_the_company_the_question_names(
+        db_session, monkeypatch, question, answer):
+    facts = autofill_catalog.build({}, [{"employer": "Globex", "title": "Analyst", "start_date": "2019-01",
+                                         "end_date": "2021-06"}], [], company="Acme Wireless")
+    calls = fake_jev(monkeypatch, ("click:o1", 0.9))
+    r = req(slot=autofill_catalog.WORKED_HERE_SLOT, question=question,
+            candidates=[{"mid": "click:o1", "describe": 'Click the option "No"'}, {"mid": GIVE_UP, "describe": "Stop"}])
+    autofill_step.step(r, facts, db_session, None)
+    assert f"the answer to the question is {json.dumps(answer)}" in calls[0]["questions"]["f"]["instructions"]

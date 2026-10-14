@@ -2210,3 +2210,129 @@ def test_a_history_or_licence_question_is_asked_with_the_never_list_that_refuses
     assert got["q"].route == "none"
     text = calls[1]["questions"]["q"]["instructions"]
     assert "criminal history" in text and "licence" in text
+
+
+# ---------- N3: "Currently employed by <brand>" takes the history's No (2026-10-14)
+
+def _globex_history(company="Acme Wireless", employers=("Globex",)):
+    return autofill_catalog.build({}, [{"employer": e, "title": "Analyst", "start_date": "2019-01", "end_date": "2021-06"}
+                                       for e in employers], [], company=company)
+
+
+def _worked_here_answer(db_session, question, facts):
+    got = autofill_map.map_fields([field("q", question, "select", options=["Yes", "No"])], facts, db_session,
+                                  eeo_consented=True, low_stakes=False)
+    return got["q"]
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("key", ["history_unanswered", "none"])
+@pytest.mark.parametrize("question", [
+    "Are you currently employed by Initrode?",
+    "Have you ever worked for Initrode?",
+    "Were you previously employed by Initrode Holdings?",
+    "Are you a current or former Initrode employee?",
+    "Are you a current employee of Initrode?",
+])
+def test_a_worked_here_question_naming_a_company_in_neither_history_nor_job_takes_the_derived_no(
+        db_session, monkeypatch, key, question):
+    """The page names a brand; the job record holds the legal entity; the history lists neither. The history's
+    No stands: no employer of it is among the companies the question names."""
+    fake_jev(monkeypatch, {"q": (key, 0.95)})
+    got = _worked_here_answer(db_session, question, _globex_history())
+    assert (got.route, got.slot, got.value) == ("slot", autofill_catalog.WORKED_HERE_SLOT, "No"), question
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", ["Are you currently employed by Globex?",
+                                      "Have you ever worked for Initrode or Globex?"])
+def test_a_question_naming_a_history_employer_is_never_the_derived_no(db_session, monkeypatch, question):
+    """The derived No is about the job's company. A question that names an employer of the history stays
+    a history question, as before: the reasoning pass reads the history, or the user answers."""
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = _worked_here_answer(db_session, question, _globex_history())
+    assert got.slot != autofill_catalog.WORKED_HERE_SLOT and got.route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_company_akin_to_a_history_employer_is_left_to_the_user_not_a_no(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = _worked_here_answer(db_session, "Are you currently employed by Globex Labs?", _globex_history())
+    assert got.route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    "Are you eligible to work for Initrode?",
+    "Were you referred by an employee of Initrode?",
+    "Have you worked for Initrode in the last 12 months?",
+    "Have you ever worked for Initrode or a federal contractor?",
+    "Have you worked for a competitor of Initrode?",
+    "Have you ever worked for a government agency?",
+    "Are you currently employed by any of the following companies?",
+    "Do you know an Initrode employee?",
+    "Have you worked with Initrode products?",
+])
+def test_a_question_that_only_resembles_a_worked_here_one_is_not_the_derived_no(db_session, monkeypatch, question):
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = _worked_here_answer(db_session, question, _globex_history())
+    assert got.route == "none", question
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_derived_yes_is_about_the_jobs_company_alone_and_never_answers_another_company(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    facts = _globex_history(employers=("Acme Wireless",))
+    assert facts[autofill_catalog.WORKED_HERE_SLOT].value.startswith("Yes")
+    assert _worked_here_answer(db_session, "Are you currently employed by Initrode?", facts).route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_with_no_derived_fact_nothing_is_rerouted(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    facts = _globex_history(company=None)
+    assert autofill_catalog.WORKED_HERE_SLOT not in facts
+    assert _worked_here_answer(db_session, "Are you currently employed by Initrode?", facts).route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("key", ["protected_unanswered", "free_text", "personal.city"])
+def test_only_a_history_or_no_fact_answer_is_rerouted_to_the_derived_no(db_session, monkeypatch, key):
+    fake_jev(monkeypatch, {"q": (key, 0.95)})
+    got = _worked_here_answer(db_session, "Are you currently employed by Initrode?", _globex_history())
+    assert got.slot != autofill_catalog.WORKED_HERE_SLOT
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_text_box_is_not_rerouted_to_the_derived_no(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"q": ("none", 0.95)})
+    got = autofill_map.map_fields([field("q", "Are you currently employed by Initrode?")], _globex_history(), db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert got["q"].route == "none"
+
+
+def test_an_unreadable_map_answer_is_not_rerouted_to_the_derived_no():
+    mapped, _ = autofill_map._route(field("q", "Are you currently employed by Initrode?", "select",
+                                          options=["Yes", "No"]), None, _globex_history(), eeo_consented=True)
+    assert mapped.route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_derived_no_reroute_for_another_company_traces_as_the_codes_call(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = _worked_here_answer(db_session, "Are you currently employed by Initrode?", _globex_history())
+    assert got.trace.sentinel is None and got.trace.chose_none is False
+
+
+def test_asks_worked_here_of_another_company_reads_the_shape_the_company_and_the_history():
+    facts = _globex_history()
+    ask = autofill_catalog.asks_worked_here_of_other
+    assert ask(facts, "Are you currently employed by Initrode?")
+    assert ask(facts, "Have you ever worked for Initrode, Hooli or Vandelay?")
+    assert not ask(facts, "Are you currently employed by Globex?")               # a history employer
+    assert not ask(facts, "Are you currently employed by Globex Labs?")           # akin to one
+    assert not ask(facts, "Are you currently employed by the company?")           # names no company
+    assert not ask(facts, "Are you currently employed by Initrode or its subsidiaries?")   # a part is no name
+    assert not ask(facts, "Are you eligible to work for Initrode?")
+    assert not ask({}, "Are you currently employed by Initrode?")
+    assert not ask(_globex_history(employers=("Acme Wireless",)), "Are you currently employed by Initrode?")

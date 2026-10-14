@@ -765,6 +765,38 @@ def asks_worked_here(facts: dict[str, Fact], question: str, options: tuple[str, 
     return False
 
 
+def _worked_here_clause(question: str) -> str | None:
+    """The text that names the company after a worked-here shape (`_WORKED_SHAPES`, a former/current
+    employee), up to the end of its clause; None when no shape matches or none names a company."""
+    for shape in _WORKED_SHAPES:
+        if m := shape.search(question):
+            return _CLAUSE_END.split(_SUFFIX_STOP.sub(r"\1", question[m.end():]), maxsplit=1)[0]
+    if m := _FORMER_ROLE.search(question):
+        named = m["rest"] or m["co"]
+        return _CLAUSE_END.split(_SUFFIX_STOP.sub(r"\1", named), maxsplit=1)[0] if named else None
+    return None
+
+
+def asks_worked_here_of_other(facts: dict[str, Fact], question: str,
+                              options: tuple[str, ...] | list[str] = ()) -> bool:
+    """Whether a question asks whether the applicant worked for a company that is neither the job's (as the
+    job record spells it: a page says "Initrode", the record holds the legal entity) nor an employer of the
+    history, while the derived answer is No. The history lists jobs and none is at a company the question
+    names, so the derived No stands (`inv-worked-here-no`): same allowlisted shapes and exclusion list as
+    `asks_worked_here`, every name after the phrase a capitalised proper name, and `named_employer_fact` (an
+    employer, a parent or a subsidiary of one, or a mention it cannot read) has nothing to add."""
+    fact = facts.get(WORKED_HERE_SLOT)
+    options = tuple(options)
+    if fact is None or fact.value != "No" or _NOT_WORKED_HERE.search(question) or any(
+            _NOT_WORKED_HERE.search(o) for o in options):
+        return False
+    parts = _name_parts(clause) if (clause := _worked_here_clause(question)) else []
+    if not parts or not all(p[0].isupper() and not _NOT_A_NAME.match(p) and name_key(p) not in _NOT_AN_EMPLOYER
+                            for p in parts):
+        return False
+    return named_employer_fact(facts, question, options) is None
+
+
 def lists_job_company(facts: dict[str, Fact], question: str, options: tuple[str, ...] | list[str] = ()) -> bool:
     """Whether a question (or its options) lists the company applied to: "Have you worked for Acme, Globex or
     Initech?" on an Acme job. A listed name, or the company as capitalised words anywhere in it. False with no

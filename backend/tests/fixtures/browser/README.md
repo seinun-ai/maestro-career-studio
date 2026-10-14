@@ -42,6 +42,7 @@ missing key, so a typo never reads as "nothing committed".
 |---|---|---|
 | `workday_text.html` | §1 — draft on input, commit on a real focusout | `city`, `zip` |
 | `workday_search.html` | §2 — press, Enter on key-up, staged reused rows, radio/checkbox commits, virtualized skills | `heard`, `school` (string), `skills` (array) |
+| `workday_source_search.html` | owner's live run 2026-10-14 (made-up employer Acme) — a Workday "How Did You Hear About Us?" search box over six categories (Direct Source, Job Fair, Other, Referral, Social Media, Website) with LinkedIn under Social Media; the search lists the leaves of EVERY category, and two leaves share "LinkedIn" so it never commits by itself. Same widget behaviour as `workday_search.html` | `heard` (string) |
 | `workday_listbox.html` | §3, §8a — popup button + hidden backing input; outside click hides, `aria-expanded` stays `true` | `degree`, `auth` |
 | `workday_date.html` | §6 — the wrapper validates when focus has left it; Year moves focus to Month; MM/DD/YYYY variant | `from`, `signed` |
 | `workday_upload.html` | §7 — input emptied at once; the uploaded-file row is the proof | `files` |
