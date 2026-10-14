@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- A Workday "Start Your Application" chooser, owner's live run 2026-10-14 (tenant and employer made up).
+     The page after a posting's Apply: three same-tab links in a role=button anchor, none a form control. Two of
+     them do something to the user's data and are NEVER pressed: "Autofill with Resume" sends the resume to the
+     site's parser, "Use My Last Application" copies an earlier application's answers. Only "Apply Manually",
+     whose automation id is applyManually and whose path ends /apply/applyManually, is the run's to follow
+     (shared/ats-buttons.js, CHOOSERS). The header carries the signed-out "Sign In" button
+     (utilityButtonSignIn). Where the live page is silent (the exact query string), this takes a made-up one. -->
+<html><head><title>Start Your Application | Acme</title></head><body>
+<header>
+  <a href="/en-US/careers">Acme Careers</a>
+  <button type="button" data-automation-id="utilityButtonSignIn">Sign In</button>
+</header>
+<main>
+  <div data-automation-id="applyAdventurePage">
+    <h2>Start Your Application</h2>
+    <a role="button" data-automation-id="autofillWithResume"
+       href="/en-US/careers/job/Analyst_R1/apply/autofillWithResume?source=Board">Autofill with Resume</a>
+    <a role="button" data-automation-id="applyManually"
+       href="/en-US/careers/job/Analyst_R1/apply/applyManually?source=Board">Apply Manually</a>
+    <a role="button" data-automation-id="useMyLastApplication"
+       href="/en-US/careers/job/Analyst_R1/apply/useMyLastApplication?source=Board">Use My Last Application</a>
+  </div>
+</main>
+</body></html>

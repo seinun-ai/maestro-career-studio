@@ -59,6 +59,7 @@ const summaryOf = (p, banner = false) => {
     case "unknown": break;
     default: throw new Error(`no page type ${p.t}`);
   }
+  if (p.patch) Object.assign(s, p.patch);   // a read the page types above do not make
   // `late`: the page's fields mount after the run's first fill (a Workday question step draws them seconds
   // after its footer), so until then it reads as having nothing to fill.
   if (p.late && !fillAt[pages.indexOf(p)]) s.fillable = 0;
@@ -324,6 +325,89 @@ def test_a_sign_up_that_does_not_move_the_page_parks_account_not_created(tmp_pat
     out = _drive(tmp_path, [ACCOUNT], record=ON_WD)
     assert (out["record"]["status"], out["record"]["why"]) == ("parked", "create_account_failed")
     assert out["record"]["accountTried"] is True
+
+
+# ---------- the account settle (Phase 2d, M5) ----------
+
+def test_a_sign_up_that_lingers_for_two_reads_then_shows_a_step_is_taken_and_the_run_goes_on(tmp_path):
+    """Workday keeps showing the sign-up form for a while after Create Account; it was once called not created."""
+    lingers = {**step(1, host=WD), "early": [ACCOUNT, ACCOUNT]}
+    out = _drive(tmp_path, [ACCOUNT, lingers, {**REVIEW, "host": WD}], accountMoves=True, record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("ready", None)
+    assert len(names(out, "createAccount")) == 1 and out["pressed"] == ["next-1"]
+    assert "create_account_failed" not in str(out["record"])
+    assert len(names(out, "sleep")) >= 3, "it polled, a read at a time"
+
+
+def test_a_fresh_error_that_holds_is_the_sites_refusal(tmp_path):
+    rule = {**ACCOUNT, "key": "after", "errs": [{"label": "Password", "target": "f-pw", "kind": "field"}]}
+    out = _drive(tmp_path, [ACCOUNT, rule], accountMoves=True, record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "create_account_failed")
+    held = sum(c[1] for c in names(out, "sleep"))
+    assert 3000 <= held < 20000, "failed once the error had held, not at the end of the clock"
+
+
+def test_a_fresh_error_that_goes_away_again_is_not_a_refusal(tmp_path):
+    rule = {**ACCOUNT, "key": "after", "errs": [{"label": "Password", "target": "f-pw", "kind": "field"}]}
+    flicker = {**step(1, host=WD), "early": [rule, ACCOUNT, rule]}
+    out = _drive(tmp_path, [ACCOUNT, flicker, {**REVIEW, "host": WD}], accountMoves=True, record=ON_WD)
+    assert out["record"]["status"] == "ready"
+
+
+def test_an_error_that_was_already_on_the_page_before_the_press_is_not_a_fresh_one(tmp_path):
+    standing = {**ACCOUNT, "errs": [{"label": "Email", "target": "f-em", "kind": "field"}]}
+    moves = _drive(tmp_path, [standing, {**step(1, host=WD), "early": [standing]}, {**REVIEW, "host": WD}],
+                   accountMoves=True, record=ON_WD)
+    assert moves["record"]["status"] == "ready"
+    stays = _drive(tmp_path, [standing], record=ON_WD)
+    assert (stays["record"]["status"], stays["record"]["why"]) == ("parked", "create_account_failed")
+    assert sum(c[1] for c in names(stays, "sleep")) >= 20000, "a standing line is no refusal: it waits out the clock"
+
+
+def test_a_sign_up_still_showing_when_the_time_runs_out_is_not_created(tmp_path):
+    out = _drive(tmp_path, [ACCOUNT, {**ACCOUNT, "key": "after"}], accountMoves=True, record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "create_account_failed")
+    assert sum(c[1] for c in names(out, "sleep")) >= 20000
+
+
+def test_a_blank_read_after_the_press_is_waited_through(tmp_path):
+    out = _drive(tmp_path, [ACCOUNT, {**step(1, host=WD), "early": [{"t": "unknown"}, NONE, ACCOUNT]}, {**REVIEW, "host": WD}],
+                 accountMoves=True, record=ON_WD)
+    assert out["record"]["status"] == "ready"
+
+
+def test_a_sign_in_page_after_the_press_is_signed_in_once_by_the_existing_rule(tmp_path):
+    out = _drive(tmp_path, [ACCOUNT, SIGN_IN, step(1, host=WD), {**REVIEW, "host": WD}], accountMoves=True, signInMoves=True,
+                 record=ON_WD)
+    assert out["record"]["status"] == "ready"
+    assert len(names(out, "createAccount")) == 1 and len(names(out, "signIn")) == 1
+
+
+@pytest.mark.parametrize("wall", ["captcha", "verify"])
+def test_a_captcha_or_an_email_check_after_the_press_keeps_its_own_park(tmp_path, wall):
+    out = _drive(tmp_path, [ACCOUNT, {"t": wall, "host": WD}], accountMoves=True, record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", wall)
+
+
+def test_a_workday_read_with_the_header_sign_in_gone_and_a_next_is_a_taken_account(tmp_path):
+    """The sign-up form's password box can still be in the page after the account is made; the header says signed in."""
+    signed_in = {**ACCOUNT, "patch": {"passwordInputs": 1, "headerSignIn": False,
+                                      "buttons": [{"id": "n1", "text": "Next", "inForm": True, "visible": True, "enabled": True}]}}
+    still_out = {**signed_in, "patch": {**signed_in["patch"], "headerSignIn": True}}
+    lingers = {**step(1, host=WD), "early": [signed_in]}
+    ok = _drive(tmp_path, [ACCOUNT, lingers, {**REVIEW, "host": WD}], accountMoves=True, record=ON_WD)
+    assert ok["record"]["status"] == "ready"
+    stays = _drive(tmp_path, [ACCOUNT, {**still_out, "key": "after"}], accountMoves=True, record=ON_WD)
+    assert (stays["record"]["status"], stays["record"]["why"]) == ("parked", "create_account_failed")
+    no_next = {**signed_in, "key": "after", "patch": {**signed_in["patch"], "buttons": []}}
+    assert _drive(tmp_path, [ACCOUNT, no_next], accountMoves=True, record=ON_WD)["record"]["why"] == "create_account_failed"
+
+
+def test_a_sign_up_seen_again_after_a_settled_success_is_still_not_created(tmp_path):
+    """The 'seen again' rule is for a LATER read, after the settle took the account."""
+    out = _drive(tmp_path, [ACCOUNT, step(1, host=WD), {**ACCOUNT, "key": "back"}], accountMoves=True, record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "create_account_failed")
+    assert len(names(out, "createAccount")) == 1 and out["pressed"] == ["next-1"]
 
 
 def test_a_resume_on_the_same_sign_up_never_creates_a_second_time(tmp_path):

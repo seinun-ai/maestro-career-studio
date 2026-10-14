@@ -24,13 +24,14 @@ emit({
   classified: (spec.summaries || []).map((s) => ns.pageKind.classify(s)),
   kinds: ns.pageKind.KINDS,
   plain: (spec.plain || []).map((t) => ns.pageKind.isPlainNext(t)),
+  signed: (spec.signed || []).map((r) => ns.pageKind.signedUpRead(r)),
 });
 """
 
 
-def _run(tmp_path, buttons=(), summaries=(), plain=()):
-    return run_node(_DRIVER, {"buttons": list(buttons), "summaries": list(summaries), "plain": list(plain)}, tmp_path,
-                    source=PAGE_KIND_JS)
+def _run(tmp_path, buttons=(), summaries=(), plain=(), signed=()):
+    return run_node(_DRIVER, {"buttons": list(buttons), "summaries": list(summaries), "plain": list(plain),
+                              "signed": list(signed)}, tmp_path, source=PAGE_KIND_JS)
 
 
 def sort_all(tmp_path, texts, **extra):
@@ -361,6 +362,24 @@ def test_the_vendors_footer_next_makes_a_form_step_and_settles_several_nexts(tmp
     # A footer that cannot be pressed decides nothing.
     off = btn("Save and Continue", id="foot", navigation=True, enabled=False)
     assert kind(tmp_path, fillable=2, buttons=[off], submitSeen=True)["by"] == "submit_seen"
+
+
+def test_a_workday_read_with_the_header_sign_in_gone_a_next_and_one_password_box_left_is_a_signed_up_read(tmp_path):
+    read = summary(headerSignIn=False, passwordInputs=1, buttons=[btn("Next")])
+    out = _run(tmp_path, signed=[
+        read,
+        {**read, "headerSignIn": True},                       # the signed-out header is still there
+        {k: v for k, v in read.items() if k != "headerSignIn"},   # not Workday's host: the key is absent
+        {**read, "passwordInputs": 2},                       # the sign-up form itself
+        {**read, "otpInput": True},                          # an email code is asked
+        {**read, "buttons": []},                             # no step to go on to
+        {**read, "buttons": [btn("Next", visible=False)]},
+        {**read, "buttons": [btn("Next", chrome=True)]},
+        {**read, "buttons": [btn("Next", field_control=True)]},
+        {**read, "buttons": [btn("Back")]},
+        None,
+    ])
+    assert out["signed"] == [True, False, False, False, False, False, False, False, False, False, False]
 
 
 def test_review_says_why_it_is_review(tmp_path):

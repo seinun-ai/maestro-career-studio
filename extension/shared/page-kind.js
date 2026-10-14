@@ -10,7 +10,7 @@
  * words match as substrings (a "Reapply", an "Incomplete" and a "Submit_application" all stop),
  * the Next words must be the WHOLE label, and a visible-but-disabled Submit still counts.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageKind = { classify, sortButton, isPlainNext, submitMarked, movesOn, KINDS }.
+ * WHAT THIS FILE PUBLISHES: ns.pageKind = { classify, sortButton, isPlainNext, submitMarked, movesOn, signedUpRead, KINDS }.
  * (submitMarked and movesOn read one button element's attributes and words, nothing else of the DOM.)
  */
 (() => {
@@ -136,6 +136,15 @@
     return { kind: "unknown" };
   }
 
-  ns.pageKind = { classify, sortButton, isPlainNext, submitMarked, movesOn, KINDS: ["captcha", "create_account", "verify", "sign_in",
+  /** A read that still looks like the sign-up form but shows the account was taken: a Workday read (`headerSignIn` is only
+   * ever present on the vendor's host) whose header Sign In button is gone, with fewer than two password boxes left, no code
+   * box and a Next in the step. The queued run's account settle takes this as the success it is waiting for. */
+  function signedUpRead(s) {
+    return s?.headerSignIn === false && (s.passwordInputs ?? 0) < 2 && s.otpInput !== true
+      && (s.buttons ?? []).some((b) => b.visible !== false && b.enabled !== false && b.chrome !== true
+        && b.fieldControl !== true && b.errorLine !== true && sortButton(b) === "next");
+  }
+
+  ns.pageKind = { classify, sortButton, isPlainNext, submitMarked, movesOn, signedUpRead, KINDS: ["captcha", "create_account", "verify", "sign_in",
     "confirmation", "closed", "posting", "board_native", "form_step", "review", "unknown"] };
 })();

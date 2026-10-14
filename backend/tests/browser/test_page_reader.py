@@ -2290,6 +2290,17 @@ def test_a_popup_is_a_field_control_off_workday_too_but_the_footer_has_no_author
     assert classify(page) == {"kind": "review", "by": "submit_seen"}   # no vendor marker: a Submit-worded link stops
 
 
+def test_the_workday_header_sign_in_button_is_read_on_the_vendors_host_only(page):
+    """Recorded in fixtures/browser/workday_chooser.html: the signed-out header's utilityButtonSignIn."""
+    body = fixture_html("workday_chooser.html")
+    serve(page, WORKDAY_URL, body)
+    assert summary(page)["headerSignIn"] is True
+    serve(page, WORKDAY_URL + "2", body.replace('<button type="button" data-automation-id="utilityButtonSignIn">Sign In</button>', ""))
+    assert summary(page)["headerSignIn"] is False
+    serve(page, "https://careers.initech.test/apply", body)
+    assert "headerSignIn" not in summary(page)
+
+
 # ---------- a board's own hosts, and the ceiling on what is stored ----------
 
 def _target(page, href):

@@ -22,7 +22,11 @@
  *     → parked       the run needs the user or hit a wall; `why` says which:
  *         captcha | create_account | verify | board_native   the page kind, a wall by design
  *         create_account_failed   the sign-up page did not take the new account (a password rule, an account
- *                          that exists, no change); never retried
+ *                          that exists, no change); never retried. After the press the run SETTLES: it reads the page
+ *                          every POLL_MS for up to ACCOUNT_SETTLE_MS (the site shows the sign-up form for a while
+ *                          before the next page) and calls the account taken as soon as the page reads as anything
+ *                          else, failed only for an error that was not there before the press and holds, or a
+ *                          sign-up form still showing when the time runs out
  *         sign_in_failed   the saved login did not work; never retried (a lockout)
  *         sign_in_yourself the sign-in page is on a host that is not a known ATS (shared/ats-hosts.js):
  *                          the saved password is not typed there; the user signs in and presses Resume
@@ -158,6 +162,9 @@
   // count as the press's rejection (a slow save leaves the old banner up for a while).
   const REJECT_HOLD_MS = 3000;
   const REJECT_HOLD_STANDING_MS = 8000;
+  // After Create Account the site shows the sign-up form for a while before it shows the next page: the run waits this long
+  // for the page to move before it calls the account not created.
+  const ACCOUNT_SETTLE_MS = 20000;
   const HALT = Symbol("halt");
 
   /** The hostname of an http(s) address, lower-cased, else null (any other scheme, or not an address). */
@@ -355,6 +362,38 @@
       return await repair(Array.isArray(found?.items) ? found.items : []);
     };
 
+    // The account settle: after Create Account the site keeps showing the sign-up form (and may show errorish text that
+    // was already there) for a while before it shows the next page. Poll every POLL_MS for up to ACCOUNT_SETTLE_MS, the
+    // errors of the pre-press read as the baseline. Taken: the page reads as anything but the sign-up form or a blank
+    // (a step, an email check, a CAPTCHA or a sign-in page: the main loop parks or signs in as it does for any page), or a
+    // Workday read whose header Sign In button is gone with fewer than two password boxes and a Next in the form.
+    // Not taken: the sign-up form with an error that was NOT there before the press, held for REJECT_HOLD_MS, or still the
+    // sign-up form when the time runs out.
+    const accountTaken = async (before) => {
+      const baseline = new Set(before.errorKeys ?? []);
+      const startedAt = deps.now();
+      let heldSince = null;
+      for (;;) {
+        await act(deps.sleep, POLL_MS);
+        const read = pickFrame(await act(deps.classify, record.tabId));
+        const seen = read?.result.summary ?? null;
+        if (seen) {
+          const now = ns.pageKind.classify(seen).kind;
+          if (now !== "create_account" && now !== "unknown") return true;
+          if (now === "create_account") {
+            if (ns.pageKind.signedUpRead(seen)) return true;
+            if ((seen.errorKeys ?? []).some((key) => !baseline.has(key))) {
+              heldSince ??= deps.now();
+              if (deps.now() - heldSince >= REJECT_HOLD_MS) return false;
+            } else {
+              heldSince = null;
+            }
+          }
+        }
+        if (deps.now() - startedAt >= ACCOUNT_SETTLE_MS) return false;
+      }
+    };
+
     // A read of the page that looks unfinished is repeated, for a page the run has just arrived at.
     //   "blank"  no frame answering, or a page classed unknown (a skeleton, a spinner): re-read until
     //            it stops looking blank or the cap runs out. A matching pair proves nothing, a
@@ -524,10 +563,7 @@
             await update({ accountTried: false });
             return await park("create_account");
           }
-          const waited = await waitFor(fingerprint(url, summary));
-          if (waited?.changed !== true || (waited.sameStep === true && (waited.errors ?? 0) > 0)) {
-            return await park("create_account_failed");
-          }
+          if (!(await accountTaken(summary))) return await park("create_account_failed");
           moved();
           continue;
         }

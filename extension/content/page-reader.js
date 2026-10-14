@@ -866,6 +866,11 @@
       boardNative: BOARD_HOST.test(location.hostname),
       submitSeen: submitSeen(regions),
       submitContext: submitContext(),
+      // Workday's header holds the signed-out "Sign In" button (utilityButtonSignIn, recorded in
+      // fixtures/browser/workday_chooser.html) and drops it once an account is signed in: the run reads the
+      // sign-up as taken from that. Only on the vendor's host; elsewhere the key is absent.
+      ...(ns.atsButtons.HOSTS.workday.test(location.hostname)
+        ? { headerSignIn: [...document.querySelectorAll('[data-automation-id="utilityButtonSignIn"]')].some(shown) } : {}),
       ...errorSummary,
       // Required boxes still empty: a count and value-free keys, like the errors.
       requiredEmpty: needed.count,
