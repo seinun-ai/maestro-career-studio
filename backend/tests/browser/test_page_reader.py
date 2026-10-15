@@ -2963,7 +2963,7 @@ def _step_keys(page, load, template, steps, title="Senior Analyst - Acme"):
     keys = []
     for heading in steps:
         load(page, template.format(h=heading), SOURCES)
-        page.evaluate("(t) => { document.title = t; }", title)
+        page.evaluate("(t) => { document.title = t; }", title.format(h=heading))
         keys.append(summary(page)["stepKey"])
     return keys
 
@@ -2976,6 +2976,11 @@ JOB_TITLE_HEADERS = [
     # Inside the same region, named as the job header by its holder.
     ("<main><div data-automation-id='jobPostingHeader'><h2>Senior Analyst</h2></div><h2>{h}</h2>{body}</main>", "Careers"),
     ("<form><div class='job-title-bar'><h2>Senior Analyst</h2></div><h2>{h}</h2>{body}</form>", "Careers"),
+    # The tab's title FOLLOWS the step heading (the recorded chooser's does): the step's own heading is not the job's.
+    ("<h2>Senior Analyst</h2><main><h2>{h}</h2>{body}</main>", "{h} | Acme"),
+    # The whole application sits under a holder whose automation id names the job posting: that holder is not the heading's.
+    ("<div data-automation-id='jobPostingPage'><h2>Senior Analyst</h2><main><h2>{h}</h2>{body}</main></div>", "Careers"),
+    ("<div class='jobPostingPage'><h2>Senior Analyst</h2><form><h2>{h}</h2>{body}</form></div>", "{h} | Acme"),
 ]
 BODY = "<label for='a'>Q</label><input id='a'><button type='button'>Next</button>"
 
@@ -2986,11 +2991,6 @@ def test_a_constant_job_title_heading_above_each_step_does_not_make_every_step_o
     assert keys[0] != "" and keys[0] != keys[1]
 
 
-def test_a_progress_lists_current_step_names_the_step_when_the_page_has_no_other_heading(page, load):
-    template = ("<ol class='progress'><li aria-current='step'>{h}</li><li>Review</li></ol>"
-                "<h2>Senior Analyst</h2>" + BODY)
-    keys = _step_keys(page, load, template, ["My Experience", "Application Questions 1"], "Senior Analyst - Acme")
-    assert keys[0] != "" and keys[0] != keys[1]
 def test_a_field_dropdowns_shown_value_never_changes_the_pages_fingerprint(page, load):
     """Workday's dropdown is a button whose text is its value: picking 'Yes' over 'Select One' is not another page."""
     load(page, """<main><h2>Application Questions</h2>
@@ -3003,6 +3003,11 @@ def test_a_field_dropdowns_shown_value_never_changes_the_pages_fingerprint(page,
     assert page.evaluate(fingerprint) == before and "Yes" not in before and "Select One" not in before
 
 
+def test_a_progress_lists_current_step_names_the_step_when_the_page_has_no_other_heading(page, load):
+    template = ("<ol class='progress'><li aria-current='step'>{h}</li><li>Review</li></ol>"
+                "<h2>Senior Analyst</h2>" + BODY)
+    keys = _step_keys(page, load, template, ["My Experience", "Application Questions 1"], "Senior Analyst - Acme")
+    assert keys[0] != "" and keys[0] != keys[1]
 
 
 def test_the_steps_own_heading_wins_over_an_earlier_heading_outside_the_form(page, load):

@@ -316,16 +316,22 @@
   };
 
   /** The step's own heading text, outside site chrome. In order: the first visible h1/h2 inside the application's own
-   * region (a form, main), the progress list's current step, then the first visible h1/h2 anywhere. A heading that is
-   * the JOB's title (the tab's title says so, or its holder is named for it) is the same on every step and is no step's. */
+   * region (a form, main) that is not the JOB's title; the progress list's current step; any visible h1/h2 inside the region
+   * (even one the tab's title echoes: a title that follows the step names the step, not the job); the first heading that is
+   * not the job's; the first heading. A heading is the job's title when the tab's title contains its text, or it or a
+   * holder around it (up to the first region or field-holding ancestor) is named for the job posting. */
   let activeRegions = null;   // the error regions of the summary being built, so its headings are read against one set
   const REGION = 'main, form, [role="main"], [role="form"]';
   const JOB_HEADER = /job[-_ ]?(posting|title|header|name)|posting[-_ ]?(title|header)/i;
+  const named = (n) => JOB_HEADER.test(`${n.id} ${n.className?.baseVal ?? n.className} ${n.getAttribute("data-automation-id") ?? ""}`);
   const jobHeading = (el, title) => {
     const own = squash(el.textContent).toLowerCase();
     if (title && own.length > 3 && title.includes(own)) return true;
-    for (let n = el; n && n !== document.body; n = n.parentElement) {
-      if (JOB_HEADER.test(`${n.id} ${n.className?.baseVal ?? n.className} ${n.getAttribute("data-automation-id") ?? ""}`)) return true;
+    if (named(el)) return true;
+    // A holder that is the application's own region, or holds its fields, is the application's: it names no job.
+    for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+      if (n.matches(REGION) || n.querySelector(FIELD)) break;
+      if (named(n)) return true;
     }
     return false;
   };
@@ -340,7 +346,7 @@
     if (inside) return squash(inside.textContent);
     const current = [...document.querySelectorAll('[aria-current="step"]')].find((el) => shown(el) && !inChrome(el) && squash(el.textContent));
     if (current) return squash(current.textContent);
-    const heading = own[0] ?? found[0];
+    const heading = found.find((el) => el.closest(REGION)) ?? own[0] ?? found[0];
     return heading ? squash(heading.textContent) : "";
   };
 
