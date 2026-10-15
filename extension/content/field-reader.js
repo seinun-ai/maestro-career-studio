@@ -423,10 +423,15 @@
   // The nouns a question names: words of five letters or more, cut to six so "referring" and "referred" meet, less the words a
   // follow-up is made of.
   const FOLLOW_WORDS = new Set(["applicable", "please", "specify", "explain", "provide", "describe", "elaborate", "selected",
-    "details", "comments", "other", "answer", "above", "below", "question"]);
+    "details", "comments", "other", "answer", "above", "below", "question",
+    // stems every application shares: they join a follow-up to any question about the job or the employer
+    "employ", "compan", "positi", "experi", "curren", "applic", "inform", "provid", "please"]);
   const nouns = (text) => new Set((String(text).toLowerCase().match(/\p{L}{5,}/gu) ?? [])
-    .filter((word) => !FOLLOW_WORDS.has(word)).map((word) => word.slice(0, 6)));
+    .filter((word) => !FOLLOW_WORDS.has(word)).map((word) => word.slice(0, 6)).filter((stem) => !FOLLOW_WORDS.has(stem)));
   const EARLIER_MAX = 8;
+  // A control that asks for a pick: a select, a radio or checkbox, a combobox or a popup button.
+  const choosing = (c) => c.tagName === "SELECT" || isChoice(c) || /^(combobox|listbox)$/.test(c.getAttribute("role") ?? "")
+    || c.hasAttribute("aria-haspopup");
   const followed = (el, own) => {
     const root = el.closest("form") ?? el.getRootNode().body ?? document.body;
     const anchor = own ?? el;
@@ -456,9 +461,15 @@
     // employee?"), which is not always the nearest control: when the nearest names none of it, the nearest earlier one that does wins.
     const noun = nouns(bare);
     const shares = (text) => [...nouns(text)].some((word) => noun.has(word));
-    if (noun.size && before && !shares(before)) {
-      const better = earlierControls(el, anchor ?? el).reverse().slice(0, EARLIER_MAX).map(askedOf).find((q) => q && shares(q));
-      if (better) before = better;
+    // Only over a nearest control that is no choice question, by a choice question of the same section: a follow-up sits under the
+    // yes/no it depends on, and a free-text question above it that happens to share a word is not that.
+    const earlier = earlierControls(el, anchor ?? el);
+    const nearest = earlier.at(-1);
+    if (noun.size && before && !shares(before) && nearest && !choosing(nearest)) {
+      const section = sectionOf(el);
+      const better = earlier.reverse().slice(0, EARLIER_MAX)
+        .find((c) => choosing(c) && sectionOf(c) === section && shares(askedOf(c)));
+      if (better) before = askedOf(better);
     }
     return before ? `${before} — ${question}` : question;
   };

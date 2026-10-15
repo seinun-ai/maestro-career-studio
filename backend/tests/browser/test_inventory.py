@@ -885,6 +885,12 @@ def test_a_paragraph_that_asks_for_no_choice_is_still_no_question(page, load, pa
 # referring employee" sat under the question about phone numbers, and joined that).
 EMPLOYEE = "<label for=r>Were you referred by an Acme employee?</label><select id=r><option>No</option></select>"
 OTHER = "<label for=p>Mobile phone number</label><input id=p>"
+EMPLOYED = "<label for=e>Are you currently employed?</label><select id=e><option>No</option></select>"
+REFERRED = "<label for=r>Were you referred by someone at Acme?</label><select id=r><option>No</option><option>Yes</option></select>"
+FOLLOW_NAME = "<label for=a>If so, please provide the employee's name.</label><input id=a>"
+COMPANY = "<label for=c>Why do you want to join our company?</label><textarea id=c></textarea>"
+WORKED = "<label for=w>Have you worked here before?</label><select id=w><option>No</option></select>"
+FOLLOW_ROLE = "<label for=a>If yes, please list the position and company.</label><input id=a>"
 FOLLOW = "<label for=a>If applicable, please list the name of the referring employee.</label><input id=a>"
 
 
@@ -896,7 +902,13 @@ FOLLOW = "<label for=a>If applicable, please list the name of the referring empl
      "Were you referred by an Acme employee? — If applicable, please list the name of the referring employee."),
     # no earlier question shares it: the nearest control, as before
     (OTHER + FOLLOW, "Mobile phone number — If applicable, please list the name of the referring employee."),
-], ids=["earlier-sharing", "nearest-sharing", "none-sharing"])
+    # a stem every application shares (employ, compan) joins nothing: the nearest control stays
+    (EMPLOYED + REFERRED + FOLLOW_NAME, "Were you referred by someone at Acme? — If so, please provide the employee's name."),
+    (COMPANY + WORKED + FOLLOW_ROLE, "Have you worked here before? — If yes, please list the position and company."),
+    # a free-text question above does not beat the nearest, whatever it shares
+    (EMPLOYEE + OTHER + "<label for=t>Tell us about your employee referral</label><input id=t>" + FOLLOW,
+     "Tell us about your employee referral — If applicable, please list the name of the referring employee."),
+], ids=["earlier-sharing", "nearest-sharing", "none-sharing", "employ-stem", "company-stem", "free-text-nearest"])
 def test_a_follow_up_joins_the_earlier_question_that_shares_its_noun(page, load, html, question):
     load(page, html)
     got = page.evaluate("sel => window.careerStudioCompanion.readField(document.querySelector(sel))", "#a")
