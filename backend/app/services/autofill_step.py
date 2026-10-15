@@ -143,7 +143,7 @@ HOW_HEARD_SLOT = "preferences.how_heard"
 # A saved source the BOARD-first goal fits: a job board, or a board by name. A website / careers-page answer takes
 # the careers-site leaf first and names no board. Any other ("Referral", "Internet search", "Online") is walked to
 # its own leaf by the ordinary goal.
-_BOARD_ANSWER = re.compile(r"\bboards?\b", re.IGNORECASE)
+_BOARD_ANSWER = re.compile(r"\bboards?\b|\bjob\s+sites?\b", re.IGNORECASE)
 _SITE_ANSWER = re.compile(r"\bweb\s*sites?\b|\bcareers?\s+(?:site|page)s?\b|\bcompany\s+site\b", re.IGNORECASE)
 
 
@@ -199,23 +199,38 @@ def _tried_and_missed(history: list[str], mid: str) -> bool:
     return any(e.startswith(f"{mid} -> ") and not e.startswith(f"{mid} -> progressed") for e in history)
 
 
+GENERIC_BOARD = "LinkedIn"   # the assumed board when the answer is a kind ("Job board") and the job names none
+
+
+def _leaves(req: StepRequest) -> list[tuple[str, str]]:
+    """(move id, option text) of every leaf click the list offers: not a group, and not one that already failed."""
+    return [(c.mid, text) for c in req.candidates
+            if c.mid.startswith("click:") and not c.describe.startswith(GROUP_CLICK)
+            and (text := _quoted_text(c.describe)) is not None and not _tried_and_missed(req.history, c.mid)]
+
+
 def _board_move(req: StepRequest, value: str, hint: JobHint | None) -> StepResponse | None:
     """Code's own move for a board answer, before any model: the board's leaf if the list shows it, else a
     search for the board's name if one is offered and not yet tried. The search covers a tree whole (Workday's
     prompt lists the leaf of any category), where a model walking categories cannot back out of a wrong one.
-    None: neither applies, the model decides. The trace is code's call (no engine, nothing a model said)."""
-    if not (board := board_of(value, hint)):
-        return None
-    for c in req.candidates:
-        text = _quoted_text(c.describe)
-        if (c.mid.startswith("click:") and not c.describe.startswith(GROUP_CLICK) and text is not None
-                and text.casefold() == board.casefold() and not _tried_and_missed(req.history, c.mid)):
+    A saved kind ("Job board") with no board known for this job (owner decision 2026-10-15) is the same walk for
+    LinkedIn, then the first other specific job board the list offers: always `assumed`.
+    None: nothing applies, the model decides. The trace is code's call (no engine, nothing a model said)."""
+    known = board_of(value, hint)
+    board = known or GENERIC_BOARD
+    leaves = _leaves(req)
+    for mid, text in leaves:
+        if text.casefold() == board.casefold():
             # The saved word itself is the profile's answer; any other leaf is the Companion's pick.
-            return StepResponse(mid=c.mid, reason="matched" if text.casefold() == value.casefold() else "assumed",
+            return StepResponse(mid=mid, reason="matched" if text.casefold() == value.casefold() else "assumed",
                                 trace=DecisionTrace())
     tried = {t.strip().casefold() for t in req.tried_terms}
     if board.casefold() not in tried and any(c.mid == SEARCH_TERM for c in req.candidates):
         return StepResponse(mid=SEARCH_TERM, reason="progress", term=board, trace=DecisionTrace())
+    if known is None:
+        names = {n.casefold() for n in BOARD_NAMES}
+        if other := next((mid for mid, text in leaves if text.casefold() in names), None):
+            return StepResponse(mid=other, reason="assumed", trace=DecisionTrace())
     return None
 
 
@@ -238,7 +253,8 @@ def _how_heard_goal(field: str, value: str, kind: str, hint: JobHint | None) -> 
         "if the options are grouped, open the category most likely to hold it (job boards and social sites sit "
         "under names like Job Board, Online, Internet, Website, Social Media or Other); if it is not there, try "
         "the next, then select ")
-    leaf = f"the leaf for {json.dumps(board)}, otherwise " if board else ""
+    leaf = (f"the leaf for {json.dumps(board)}, otherwise " if board else
+            f"the leaf for {json.dumps(GENERIC_BOARD)}, otherwise any other specific job board's leaf, otherwise ")
     return (f"{head}{found} The goal is to select where the applicant heard about the job: {grouped}{leaf}"
             f"a job-board leaf, otherwise the company careers-site leaf. {NEVER_YES_NO}")
 

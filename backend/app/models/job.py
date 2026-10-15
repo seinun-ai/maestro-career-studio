@@ -25,6 +25,9 @@ class Job(Base):
     # The employer's own apply link, when the posting page exposed one; a run opens it in
     # preference to source_url (the board page the job was saved from).
     apply_url: Mapped[str | None] = mapped_column(Text)
+    # The job board the user came from when the job was saved on a page that is not a board's (services/board_visits):
+    # a name from autofill_job.BOARD_NAMES, never an address. "How did you hear about us?" reads it.
+    referrer_board: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(Text, nullable=False, server_default="user")
     owner_machine: Mapped[str | None] = mapped_column(String(32))  # NULL means owned here
     sync_rev: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

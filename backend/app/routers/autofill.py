@@ -443,6 +443,9 @@ def _job_hint(
     # No ?source=: the tracked URL's host may name the board it was found on (linkedin.com is "LinkedIn").
     if not source and job:
         source = autofill_job.board_of_url(job.source_url)
+    # The job was saved on the employer's own page after a board's: that board is where it was found.
+    if not source and job:
+        source = (job.referrer_board or "").lower()[:60] or None
     if job is None and not source:
         return None
     return autofill_pick.JobHint(
