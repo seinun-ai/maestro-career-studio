@@ -1045,6 +1045,29 @@ def test_a_protected_answer_a_click_landed_on_parks_and_is_not_listed_as_checked
     assert record.get("assumedRows", []) == []
 
 
+def test_an_optional_field_with_a_saved_answer_that_ended_unanswered_is_left_for_you_and_the_run_goes_on(tmp_path):
+    """Live check 7: an optional Veteran status the saved answer could not fill was left blank without a word. It is
+    listed as "Left for you" (never a park, never a value) beside the answered-for-you rows."""
+    left = needs("f2", "Veteran Status", required=False, slot="eeo.veteran_status", lastOutcome="abstained")
+    out = _three_pages(tmp_path, [verified("f1"), left])
+    shot = out["shots"][-1]
+    assert _record(shot)["status"] == "ready"
+    assert _record(shot)["assumedRows"] == [{"fid": "f2", "question": "Veteran Status", "step": 1, "note": None, "left": True}]
+    [flagged] = _by_class(_card(shot)["body"], "flags")
+    assert "Veteran Status" in _text(flagged) and "Left for you" in _text(flagged)
+
+
+@pytest.mark.parametrize("row", [
+    needs("f2", "Veteran Status", required=False),                                            # no saved answer to speak of
+    needs("f2", "Veteran Status", required=False, slot="eeo.veteran_status", lastOutcome="no_value"),
+    needs("f2", "Degree", slot="education.0.degree"),                                          # required: a question, not a left-over
+    {**verified("f2", "Veteran Status", slot="eeo.veteran_status"), "required": False},      # it was answered
+])
+def test_only_an_optional_field_with_a_saved_answer_that_ended_unanswered_is_left_for_you(tmp_path, row):
+    out = _three_pages(tmp_path, [verified("f1"), row])
+    assert [one for one in _record(out["shots"][-1]).get("assumedRows", []) if one.get("left")] == []
+
+
 def test_an_assumed_row_the_receipt_also_flagged_is_one_row_with_its_note(tmp_path):
     flags = {"flags": [{"index": 0, "question": "Start date", "flags": [{"reason": "Doesn't match your profile."}]}]}
     out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),

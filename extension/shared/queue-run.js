@@ -150,7 +150,7 @@
  * button ids are minted per read; judging the pre-fill read would stop every such wizard on its
  * first page as "review".
  *
- * WHAT THIS FILE PUBLISHES: ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, USER_NAVIGATES, THINKS, landedToCheck,
+ * WHAT THIS FILE PUBLISHES: ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, USER_NAVIGATES, THINKS, landedToCheck, leftForYou,
  * RUN_LIMITS, HIDDEN_TABS_OK }. The scheduler (`next`, the record list, pacing) is not here.
  */
 (() => {
@@ -327,6 +327,10 @@
   const PROTECTED_SLOT = /^(?:work_auth|eligibility|eeo)\.|^derived\.(?:sponsorship|previously_employed_here|us_citizen|agrees_to_terms)|^preferences\.desired_salary/;
   const landedToCheck = (f) => f.status === "needs_answer" && LANDED.test(f.lastOutcome ?? "")
     && !PROTECTED_SLOT.test(f.slot ?? "");
+  /** An optional field the profile had an answer for (a fact was filed under it) that ended unanswered: listed for the user as
+   * "Left for you" on the card, never a park. A fact with no value (`no_value`) is no saved answer. */
+  const leftForYou = (f) => f.status === "needs_answer" && !f.required && typeof f.slot === "string" && f.slot !== ""
+    && f.lastOutcome !== "no_value";
   const openQuestions = (report) => report.fields
     .filter((f) => OPEN_STATUSES.has(f.status) && !landedToCheck(f)
       && (f.required || (f.status === "needs_answer" && f.invalid === true)))
@@ -1198,5 +1202,5 @@
     return { classify, pageErrors, pageRequired, advance, signIn, createAccount, waitForChange };
   }
 
-  ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK, USER_NAVIGATES, THINKS, landedToCheck };
+  ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK, USER_NAVIGATES, THINKS, landedToCheck, leftForYou };
 })();

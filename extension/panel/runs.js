@@ -271,8 +271,8 @@
   }
 
   /** The rows of "Check before you submit": the last receipt's flags, then the answers the run made for the
-   * user on any page (a draft, a date set to the 1st) that the receipt did not name; one that it did gains
-   * its note. A row from another page is a name only: its field id means nothing on this one. */
+   * user on any page (a draft, a date set to the 1st) that the receipt did not name, and the optional fields it left
+   * for the user ("Left for you"); one that the receipt did name gains its note. A row from another page is a name only: its field id means nothing on this one. */
   function checkRows(run) {
     const rows = (run.flags ?? []).map((row) => ({ ...row }));
     for (const one of run.assumedRows ?? []) {
@@ -281,7 +281,7 @@
         if (!same.note && one.note) same.note = one.note;
       } else {
         rows.push({ fid: one.step === (run.step ?? 0) ? one.fid : null, question: one.question,
-                    reason: "Answered for you", ...(one.note ? { note: one.note } : {}) });
+                    reason: one.left === true ? "Left for you" : "Answered for you", ...(one.note ? { note: one.note } : {}) });
       }
     }
     return rows;

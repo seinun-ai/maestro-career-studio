@@ -359,11 +359,16 @@
 
   /** The run's answered-for-you rows, kept across pages (Ready lists them whatever page it lands on): a
    * drafted answer or a date set to the 1st, by its question and fixed note, never its value. One row per
-   * question and step. */
+   * question and step. A `left` row is an optional field the saved answer did not fill (`queueRun.leftForYou`). */
   function keepAssumed(record, report) {
     const rows = record.assumedRows ?? [];
     const step = record.step ?? 0;
     for (const row of report.fields) {
+      // An optional field with a saved answer that ended unanswered is the user's to look at, never a park: "Left for you".
+      if (ns.queueRun.leftForYou(row) && row.question && !rows.some((one) => one.question === row.question && one.step === step)) {
+        rows.push({ fid: row.fid, question: row.question, step, note: null, left: true });
+        continue;
+      }
       // A value the engine landed without choosing it (a search's one hit) is the user's to check: a fixed
       // sentence, never the text the page took.
       const landed = ns.queueRun.landedToCheck(row);
