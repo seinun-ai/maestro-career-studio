@@ -121,8 +121,11 @@ def protected(field: SnapField) -> bool:
 
 
 def _allowed(req: ReasonRequest) -> frozenset[str]:
-    """The action types this stuck reason allows; a one-page form allows no press."""
-    return ALLOWED[req.why] - PRESSES if req.one_page else ALLOWED[req.why]
+    """The action types this stuck reason allows. A one-page form allows no press, and works its fields only for open
+    questions or page errors; any other reason there (no change, a loop, an unknown page) is the user's."""
+    if not req.one_page:
+        return ALLOWED[req.why]
+    return ALLOWED[req.why] - PRESSES if req.why in ("open_questions", "page_errors") else frozenset({"ask_user"})
 
 
 def _offered(req: ReasonRequest, level: str) -> list[str]:

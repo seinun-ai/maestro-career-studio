@@ -543,8 +543,10 @@ def test_a_one_page_form_never_offers_a_press_to_the_model(why):
     offered = prompt.split("ACTIONS", 1)[1].split("\nANSWER TYPES the", 1)[0]
     assert not any(t in offered for t in ("press_next", "close_dialog", "follow_tab"))
     assert "ask_user" in offered
-    if why != "unknown_page":
+    if why in ("page_errors", "open_questions"):
         assert '"fill"' in offered and '"retry"' in offered
+    else:   # nothing else about a one-page form is the model's to work
+        assert '"fill"' not in offered and '"retry"' not in offered
     assert "press_next" in autofill_reason.build_prompt(req("page_errors"), [], "history")   # a multi-step page still may
 
 
@@ -570,3 +572,27 @@ def test_one_page_defaults_to_false_and_is_a_boolean():
     assert ReasonRequest.model_validate({"why": "page_errors", "round": 1}).one_page is False
     with pytest.raises(Exception):
         ReasonRequest.model_validate({"why": "page_errors", "round": 1, "one_page": "maybe"})
+
+
+def test_a_one_page_snapshot_carries_no_buttons_or_tabs_whatever_the_caller_sent():
+    page = req("page_errors", one_page=True, tabs=[{"ref": "t1", "host": "jobs.acme.test"}])
+    assert page.buttons == [] and page.tabs == [] and page.fields and page.errors
+    prompt = autofill_reason.build_prompt(page, [], "history")
+    assert '"buttons": []' in prompt and '"tabs": []' in prompt and "Save and Continue" not in prompt
+    assert req("page_errors", tabs=[{"ref": "t1", "host": "jobs.acme.test"}]).tabs   # a multi-step page still sends them
+
+
+@pytest.mark.parametrize("why", ["no_change", "loop", "unknown_page", "moved_away"])
+def test_a_one_page_form_allows_only_ask_user_unless_it_has_open_questions_or_page_errors(why):
+    page = req(why, one_page=True)
+    actions, rejected = autofill_reason.check(reply({"type": "fill", "fids": ["f1"]}), page, present=set(), level="history")
+    assert rejected == ["not_allowed"] and actions[0].type == "ask_user"
+    _, ok = autofill_reason.check(reply({"type": "ask_user", "fids": [], "note": "Pick a source."}), page, present=set(),
+                                  level="history")
+    assert ok == []
+
+
+@pytest.mark.parametrize("why", ["page_errors", "open_questions"])
+def test_a_one_page_form_with_open_questions_or_page_errors_still_works_its_fields(why):
+    _, rejected = autofill_reason.check(reply({"type": "fill", "fids": ["f1"]}), req(why, one_page=True), present=set(), level="history")
+    assert rejected == []

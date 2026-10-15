@@ -86,6 +86,8 @@ class ReasonRequest(Selector):
         site's words, and the snapshot carries none of them: dropped here, whatever the caller sent."""
         if self.why == "moved_away":
             self.fields, self.buttons, self.errors = [], [], []
+        if self.one_page:   # nothing is pressed or followed there: no button or tab to name
+            self.buttons, self.tabs = [], []
         return self
 
 
