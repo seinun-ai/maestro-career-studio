@@ -76,6 +76,13 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
 
+  // Open shadow roots (content/detect.js `ns.deep`, re-run with this file): the composed-tree querySelectorAll, closest, parent and
+  // contains, so a page of web components reads like any other. Looked up at call time, as `ns.fillableControls` is.
+  const deepAll = (sel, root = document) => ns.deep.all(sel, root);
+  const closestC = (el, sel) => ns.deep.closest(el, sel);
+  const up = (n) => ns.deep.up(n);
+  const containsC = (box, el) => ns.deep.contains(box, el);
+
   const BUTTONS = 'button, input[type="submit"], input[type="button"], a[role="button"]';
   const APPLY_TEXT = /^\s*apply( now| for this job)?\s*$/i;
   const CONFIRMATION = /thank you for (applying|your application)|application (was )?(submitted|received)|we('ve| have) received your application/i;
@@ -98,8 +105,8 @@
   // A footer inside the application's own content (a wizard's action bar) is not the site's.
   const CONTENT_BOX = 'main, article, section, form, dialog, [role="main"], [role="dialog"], [role="alertdialog"], [role="form"]';
   const inChrome = (el) => {
-    for (let n = el.closest(CHROME); n; n = n.parentElement?.closest(CHROME)) {
-      if (n.tagName !== "FOOTER" || !n.parentElement?.closest(CONTENT_BOX)) return true;
+    for (let n = closestC(el, CHROME); n; n = closestC(up(n), CHROME)) {
+      if (n.tagName !== "FOOTER" || !closestC(up(n), CONTENT_BOX)) return true;
     }
     return false;
   };
@@ -119,10 +126,10 @@
   const SOFT_BOX = 'dialog, [role="dialog"], [role="alertdialog"], [aria-modal="true"], [id*="consent" i], [class*="consent" i]';
   /** The notice or dialog `el` sits in (null: in none). */
   const overlayBox = (el) => {
-    const cookie = el.closest(COOKIE_BOX);
+    const cookie = closestC(el, COOKIE_BOX);
     if (cookie) return cookie;
-    const box = el.closest(SOFT_BOX);
-    return box !== null && ![...box.querySelectorAll(FIELD)].some((c) => shown(c)) ? box : null;
+    const box = closestC(el, SOFT_BOX);
+    return box !== null && !deepAll(FIELD, box).some((c) => shown(c)) ? box : null;
   };
   const overlayOf = (el) => overlayBox(el) !== null;
   const REAL_BUTTON = 'button, input[type="submit"], input[type="button"], input[type="image"]';
@@ -145,6 +152,8 @@
   let seq = 0;
 
   const squash = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+  /** The element `id` names, looked up in `el`'s own tree first (a shadow root has its own ids), else the document. */
+  const idFrom = (el, id) => (id ? el.getRootNode?.().getElementById?.(id) ?? document.getElementById(id) : null);
   const sortOf = (text) => ns.pageKind.sortButton({ text });
 
   /** What this vendor's table (shared/ats-buttons.js) says of the button, read from its own
@@ -177,13 +186,20 @@
   /** What the control shows: its text, or an input's value (an unlabelled submit input reads "Submit"). */
   const shownTextOf = (el) => squash(el instanceof HTMLInputElement
     ? el.value || (el.type === "submit" ? "Submit" : "")
-    : el.textContent);
+    : `${el.textContent} ${slotted(el)}`);
+  /** The text a shadow button's slots show: light-DOM text the page slots in (a component's "Submit"), which the button's own
+   * textContent does not hold. A slot with nothing assigned shows its fallback, which textContent already holds. */
+  const slotted = (el) => [...(el.querySelectorAll?.("slot") ?? [])].filter((s) => s.assignedNodes().length)
+    .flatMap((s) => s.assignedNodes({ flatten: true })).map((n) => n.textContent).join(" ");
+  /** The element a shadow root hangs from, for the control inside it (null in the light DOM). */
+  const hostOf = (el) => el.getRootNode?.().host ?? null;
   /** Every text a button answers to: what it shows, its accessible name, its tooltip, an image's alt. */
   const labels = (el) => {
     const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/)
-      .map((id) => el.ownerDocument.getElementById(id)?.textContent);
-    return [shownTextOf(el), ...named, el.getAttribute("aria-label"), el.getAttribute("title"), el.getAttribute("alt")]
-      .map(squash).filter(Boolean);
+      .map((id) => idFrom(el, id)?.textContent);
+    const host = hostOf(el);
+    return [shownTextOf(el), ...named, el.getAttribute("aria-label"), el.getAttribute("title"), el.getAttribute("alt"),
+      host?.getAttribute("aria-label"), host?.getAttribute("title")].map(squash).filter(Boolean);
   };
   /** The one label the sort reads: a Submit-worded one if ANY label is, else the shown text. */
   const labelOf = (el) => {
@@ -207,14 +223,14 @@
     const r = el.getBoundingClientRect();
     return r.right + window.scrollX > 0 && r.bottom + window.scrollY > 0;
   };
-  const fieldForms = () => [...document.querySelectorAll(FORM)]
-    .filter((f) => !inChrome(f) && [...f.querySelectorAll(FIELD)].some((c) => shown(c) && onPage(c)));
+  const fieldForms = () => deepAll(FORM)
+    .filter((f) => !inChrome(f) && deepAll(FIELD, f).some((c) => shown(c) && onPage(c)));
 
   const inFormOf = (forms) => (el) => {
     // No form holds fields: every button outside site chrome is the step's, except a dialog's or a cookie notice's.
     if (!forms.length) return !inChrome(el) && !overlayOf(el);
-    const form = el.form ?? el.closest(FORM);
-    return forms.some((f) => f === form || f.contains(el));
+    const form = el.form ?? closestC(el, FORM);
+    return forms.some((f) => f === form || containsC(f, el));
   };
 
   const challengeFrame = (iframe) => {
@@ -223,16 +239,16 @@
     if (r.width < 50 || r.height < 50) return false;
     // Parked out of sight (the usual home of a challenge that is not asked yet).
     if (r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0) return false;
-    for (let n = iframe; n; n = n.parentElement) {
+    for (let n = iframe; n; n = up(n)) {
       const s = getComputedStyle(n);
       if (s.visibility === "hidden" || s.display === "none" || Number(s.opacity) === 0) return false;
     }
     if (/recaptcha\/api2\/bframe|hcaptcha\.com|challenges\.cloudflare\.com/.test(src)) return true;
     // The "I'm not a robot" box. The invisible variant sits in a badge, or says size=invisible.
-    return /recaptcha\/api2\/anchor/.test(src) && !/size=invisible/.test(src) && !iframe.closest(".grecaptcha-badge");
+    return /recaptcha\/api2\/anchor/.test(src) && !/size=invisible/.test(src) && !closestC(iframe, ".grecaptcha-badge");
   };
 
-  const passwordInputs = () => [...document.querySelectorAll("input")].filter((el) => ns.fillBase.isPasswordBox(el) && shown(el));
+  const passwordInputs = () => deepAll("input").filter((el) => ns.fillBase.isPasswordBox(el) && shown(el));
 
   const isConfirmPassword = (el) => {
     // A token LIST ("section-signup new-password") counts: the token, not the whole attribute.
@@ -247,10 +263,11 @@
     return own.some((s) => ONE_TIME_CODE.test(s ?? ""));
   };
 
-  const hasCodeInput = () => [...document.querySelectorAll("input")]
+  const hasCodeInput = () => deepAll("input")
     .some((el) => !ns.fillBase.isPasswordBox(el) && shown(el) && isCodeInput(el));
 
-  const submitMarked = (el) => ns.pageKind.submitMarked(el);
+  // A mark on the component a shadow button sits in counts (its inner button carries none of its own).
+  const submitMarked = (el) => ns.pageKind.submitMarked(el) || (hostOf(el) !== null && ns.pageKind.submitMarked(hostOf(el)));
 
   // A field's own control (see the header): a popup button (the rule `fillableControls` uses), a pill-group member,
   // or a button inside a field holder. Never an action, so never sorted as a Submit or a Next, unless its shown text
@@ -266,8 +283,8 @@
   const ACTION_WORDS = /\b(?:submit|send)\b/i;
   const ACTION_PHRASE = /^\s*(?:submit|send)(?: (?:my|your|the|this))?(?: application| form)?(?: now)?\s*$/i;
   /** Whether another `aria-pressed` button shares this one's group: its parent, or its labelled list, group or fieldset. */
-  const pressedGroup = (el) => [el.parentElement, el.closest('fieldset, [role="group"], ul[role="list"][aria-label]')]
-    .some((box) => box && [...box.querySelectorAll("[aria-pressed]")].some((other) => other !== el));
+  const pressedGroup = (el) => [up(el), closestC(el, 'fieldset, [role="group"], ul[role="list"][aria-label]')]
+    .some((box) => box && deepAll("[aria-pressed]", box).some((other) => other !== el));
   function fieldControl(el) {
     // A real submit control stays one: a form's own submit button (the property, so a button with no type counts), the
     // type attribute, or a submit mark.
@@ -287,19 +304,19 @@
         // A shape that cannot be read says nothing.
       }
     }
-    const holder = el.closest(FIELD_HOLDER);
+    const holder = closestC(el, FIELD_HOLDER);
     if (!holder) return false;
     // A <button> with no type attribute is a form's default submit; a Next of any wording is the step's; Submit or Send
     // shown on it is an action.
     if (el.type === "submit" || ACTION_WORDS.test(shownTextOf(el)) || sortOf(labelOf(el)) === "next") return false;
     // A toolbar group of buttons holds no field. A vendor's formField wrapper always does.
     return holder.matches('[data-automation-id^="formField"]')
-      || [...holder.querySelectorAll(FIELD_BOX)].some((c) => c !== el && !el.contains(c));
+      || deepAll(FIELD_BOX, holder).some((c) => c !== el && !el.contains(c));
   }
 
   /** A Submit anywhere a person could press one (WIDE_BUTTONS), shown, enabled or not. Beyond
    * BUTTONS, site chrome is the site's, and a long block of text in a link is not a button label. */
-  const submitSeen = (regions) => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
+  const submitSeen = (regions) => deepAll(WIDE_BUTTONS).some((el) => {
     if (!shown(el)) return false;
     // A label that sorts as a Submit first (the cheap test): only then are the exemptions asked.
     if (!(submitMarked(el) || labels(el).some((text) => sortOf(text) === "submit"))) return false;
@@ -311,8 +328,8 @@
 
   /** Inside a progress stepper that holds no form field: a step's name, not a control. */
   const isStepperLabel = (el) => {
-    const holder = el.closest(STEPPER);
-    return holder !== null && !holder.querySelector(FIELD);
+    const holder = closestC(el, STEPPER);
+    return holder !== null && deepAll(FIELD, holder).length === 0;
   };
 
   /** The step's own heading text, outside site chrome. In order: the first visible h1/h2 inside the application's own
@@ -329,8 +346,8 @@
     if (title && own.length > 3 && title.includes(own)) return true;
     if (named(el)) return true;
     // A holder that is the application's own region, or holds its fields, is the application's: it names no job.
-    for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
-      if (n.matches(REGION) || n.querySelector(FIELD)) break;
+    for (let n = up(el); n && n !== document.body; n = up(n)) {
+      if (n.matches(REGION) || deepAll(FIELD, n).length) break;
       if (named(n)) return true;
     }
     return false;
@@ -339,14 +356,14 @@
     // An error summary's own heading ("Please correct the errors below") is not the step's.
     const regions = activeRegions ?? errorRegions();
     const title = squash(document.title).toLowerCase();
-    const found = [...document.querySelectorAll("h1, h2")].filter((el) => shown(el) && !inChrome(el)
+    const found = deepAll("h1, h2").filter((el) => shown(el) && !inChrome(el)
       && squash(el.textContent) && !ERROR_HEADING.test(squash(el.textContent)) && !inErrorRegion(el, regions));
     const own = found.filter((el) => !jobHeading(el, title));
-    const inside = own.find((el) => el.closest(REGION));
+    const inside = own.find((el) => closestC(el, REGION));
     if (inside) return squash(inside.textContent);
-    const current = [...document.querySelectorAll('[aria-current="step"]')].find((el) => shown(el) && !inChrome(el) && squash(el.textContent));
+    const current = deepAll('[aria-current="step"]').find((el) => shown(el) && !inChrome(el) && squash(el.textContent));
     if (current) return squash(current.textContent);
-    const heading = found.find((el) => el.closest(REGION)) ?? own[0] ?? found[0];
+    const heading = found.find((el) => closestC(el, REGION)) ?? own[0] ?? found[0];
     return heading ? squash(heading.textContent) : "";
   };
 
@@ -367,14 +384,14 @@
     const named = [
       d.getAttribute("aria-label"), d.getAttribute("title"),
       ...(d.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => d.ownerDocument.getElementById(id)?.textContent),
-      ...[...d.querySelectorAll("h1, h2, h3, h4, [role='heading']")].map((h) => h.textContent),
+      ...deepAll("h1, h2, h3, h4, [role='heading']", d).map((h) => h.textContent),
     ].map(squash);
     // The body: a question gets the full sort ("Ready to send?"); a statement only the narrow
     // words ("Your application will be submitted."), so a cookie notice's "confirm" does not park.
     return named.some((text) => text && sortOf(text) === "submit")
       || (body.includes("?") ? sortOf(body) === "submit" : SUBMIT_HEADING.test(body));
   };
-  const submitContext = () => [...document.querySelectorAll(DIALOG)].filter(shown).some(dialogAsks)
+  const submitContext = () => deepAll(DIALOG).filter(shown).some(dialogAsks)
     || SUBMIT_HEADING.test(stepHeading());
 
 
@@ -453,18 +470,18 @@
    * not a summary either. */
   function errorRegions() {
     const regions = new Set();
-    const hasField = (el) => el.querySelector(CONTROLS) !== null;
-    const onlyErrorButtons = (el) => [...el.querySelectorAll(BUTTONS)].every((b) => isErrorText(labelOf(b)));
-    for (const el of document.querySelectorAll(LIVE)) {
+    const hasField = (el) => deepAll(CONTROLS, el).length > 0;
+    const onlyErrorButtons = (el) => deepAll(BUTTONS, el).every((b) => isErrorText(labelOf(b)));
+    for (const el of deepAll(LIVE)) {
       if (ERRORISH.test(el.textContent ?? "") && shown(el) && !hasField(el)) regions.add(el);
     }
-    for (const el of document.querySelectorAll("body *")) {
+    for (const el of document.body ? deepAll("*", document.body) : []) {
       if (el.childElementCount > 1) continue;
       const own = squash(el.textContent);
       if (own.length > 60 || !ERROR_HEADING.test(own) || !shown(el)) continue;
       // The nearest block around the heading that holds more than the heading: the summary.
-      let region = el.parentElement;
-      for (let level = 0; level < 3 && region; level += 1, region = region.parentElement) {
+      let region = up(el);
+      for (let level = 0; level < 3 && region; level += 1, region = up(region)) {
         if (region === document.body || region.tagName === "FORM" || hasField(region)) break;
         if (squash(region.textContent).length > own.length + 8) {
           if (onlyErrorButtons(region)) regions.add(region);
@@ -473,15 +490,15 @@
       }
     }
     // Outermost only: an alert inside the banner is the banner's.
-    return [...regions].filter((r) => ![...regions].some((o) => o !== r && o.contains(r)));
+    return [...regions].filter((r) => ![...regions].some((o) => o !== r && containsC(o, r)));
   }
 
   /** The boxes an upload's own complaint may live in: climb from the input while the ancestor holds no
    * other field, never beyond (a fieldset around City and the upload is City's). */
   function uploadBox(input) {
     const boxes = [];
-    for (let n = input.parentElement; n && n !== document.body && n.tagName !== "FORM"; n = n.parentElement) {
-      if (n.querySelectorAll(CONTROLS).length > 1) break;
+    for (let n = up(input); n && n !== document.body && n.tagName !== "FORM"; n = up(n)) {
+      if (deepAll(CONTROLS, n).length > 1) break;
       boxes.push(n);
     }
     return boxes;
@@ -491,7 +508,7 @@
   const uploadInvalid = (input) => input.getAttribute("aria-invalid") === "true"
     || uploadBox(input).some((n) => n.getAttribute("aria-invalid") === "true") || ns.fillBase.invalid(input);
 
-  const boxShown = (el) => shown(el) || (isFileInput(el) && Boolean(el.parentElement) && shown(el.parentElement));
+  const boxShown = (el) => shown(el) || (isFileInput(el) && Boolean(up(el)) && shown(up(el)));
   /** The page's own words for a control's question, else "". */
   const questionOf = (el) => {
     let question = "";
@@ -501,7 +518,7 @@
       question = "";
     }
     if (!question) {
-      const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => byId(id)?.textContent);
+      const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => idFrom(el, id)?.textContent);
       question = squash([el.getAttribute("aria-label"), ...named].find((t) => squash(t)) ?? "");
     }
     return squash(question).replace(ERROR_LEAD, "").replace(/[\s.:]+$/, "").slice(0, MAX_TEXT * 2);
@@ -511,12 +528,12 @@
    * control and the pills a multi-select shows. An error line that echoes one is the user's. */
   function heldValues() {
     const out = new Set();
-    for (const el of document.querySelectorAll("input, textarea, select")) {
+    for (const el of deepAll("input, textarea, select")) {
       if (isFileInput(el) || ns.fillBase.isPasswordBox(el) || /^(hidden|checkbox|radio|submit|button)$/.test(el.type ?? "")) continue;
       const v = squash(el.value).toLowerCase();
       if (v.length >= 3) out.add(v);
     }
-    for (const el of document.querySelectorAll('[data-automation-id="promptOption"], [data-automation-id="selectedItem"]')) {
+    for (const el of deepAll('[data-automation-id="promptOption"], [data-automation-id="selectedItem"]')) {
       const v = squash(el.textContent).toLowerCase();
       if (v.length >= 3 && v.length <= 80) out.add(v);
     }
@@ -571,7 +588,7 @@
    * first non-empty line of its text, never from the text of the whole item run together. `sentence` is the X in a
    * "The field X is required" sentence of the same item, a second name for the same field. */
   function lineParts(line) {
-    const lead = [...line.querySelectorAll(LEAD_ITEM)].find((n) => ERROR_LEAD.test(squash(n.textContent)));
+    const lead = deepAll(LEAD_ITEM, line).find((n) => ERROR_LEAD.test(squash(n.textContent)));
     const rows = String(line.innerText ?? line.textContent ?? "").split(/\n+/).map(squash).filter(Boolean);
     const sentence = rows.map((row) => SENTENCE_NAME.exec(row)?.[1]).find(Boolean) ?? "";
     const clip = (name) => name.replace(/[\s.:]+$/, "").slice(0, MAX_TEXT * 2);
@@ -587,7 +604,7 @@
    * holds) is UNNAMED. `withTargets` false is the cheap read `summary()` makes: no handle, which would
    * re-list the fill inventory. `keys` are hashes of the labels: which errors, never what. */
   function collectErrors(withTargets, regions = errorRegions()) {
-    const controls = [...document.querySelectorAll(`${CONTROLS}, input[type="file"], ${POPUP_BUTTON}`)].filter(boxShown);
+    const controls = deepAll(`${CONTROLS}, input[type="file"], ${POPUP_BUTTON}`).filter(boxShown);
     const isInvalid = (el) => (isFileInput(el) ? uploadInvalid(el) : ns.fillBase.invalid(el));
     const questions = new Map();   // read lazily: only a control a line may name, or an invalid one
     const questionFor = (el) => {
@@ -618,8 +635,8 @@
       return same.length === 1 ? same[0] : bad.length === 1 ? bad[0] : null;
     };
     for (const region of regions) {
-      const all = [...region.querySelectorAll(REGION_ITEMS)].filter((n) => squash(n.textContent) && shown(n));
-      for (const line of all.filter((n) => !all.some((o) => o !== n && o.contains(n)))) {
+      const all = deepAll(REGION_ITEMS, region).filter((n) => squash(n.textContent) && shown(n));
+      for (const line of all.filter((n) => !all.some((o) => o !== n && containsC(o, n)))) {
         const parts = lineParts(line);
         if (!parts) continue;
         const el = parts.control ?? mapName(parts.name) ?? mapName(parts.sentence) ?? linkedControl(line);
@@ -685,19 +702,19 @@
    * input, which sits inside a dropzone full of its own prompts) keeps looking past text that marks
    * nothing, outward. `{required: false}` when nothing there names the control. */
   function labelBefore(own, { scan = false } = {}) {
-    const mine = (c) => own.some((o) => o === c || o.contains(c) || c.contains(o));
-    const foreign = (n) => (n.matches(FIELD_BOX) ? [n] : [...n.querySelectorAll(FIELD_BOX)])
+    const mine = (c) => own.some((o) => containsC(o, c) || containsC(c, o));
+    const foreign = (n) => (n.matches(FIELD_BOX) ? [n] : deepAll(FIELD_BOX, n))
       .some((c) => !mine(c) && boxShown(c) && !dummyBox(c));
-    for (let node = own[0], depth = 0; node && depth < MAX_CLIMB && !edgeOf(node); depth += 1, node = node.parentElement) {
+    for (let node = own[0], depth = 0; node && depth < MAX_CLIMB && !edgeOf(node); depth += 1, node = up(node)) {
       for (let sib = node.previousElementSibling; sib; sib = sib.previousElementSibling) {
         if (sib.matches(NOT_A_LABEL) || !shown(sib)) continue;
-        if (sib.matches(HEADINGS) || sib.querySelector(HEADINGS) || foreign(sib)) return { required: false, text: "" };
+        if (sib.matches(HEADINGS) || deepAll(HEADINGS, sib).length || foreign(sib)) return { required: false, text: "" };
         const text = squash(sib.innerText ?? sib.textContent);
         if (!text) continue;
         if (marksRequired(text)) return { required: true, text };
         if (!scan) return { required: false, text };
       }
-      if (edgeOf(node.parentElement) || foreign(node.parentElement)) break;
+      if (edgeOf(up(node)) || foreign(up(node))) break;
     }
     return { required: false, text: "" };
   }
@@ -705,8 +722,8 @@
   /** Whether the control's own labels say it is required, without the field reader's walk (the count
    * `summary()` takes on every poll stays cheap): a label for it, its aria name, its fieldset's legend. */
   function namedRequired(el) {
-    const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => byId(id)?.textContent);
-    const legend = el.closest("fieldset")?.querySelector(":scope > legend")?.textContent;
+    const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => idFrom(el, id)?.textContent);
+    const legend = closestC(el, "fieldset")?.querySelector(":scope > legend")?.textContent;
     // A popup's aria name ends "<value> Required" (Workday), whatever the question before it says.
     const aria = el.getAttribute("aria-label") ?? "";
     return /\brequired\s*$/i.test(aria) || [...(el.labels ?? [])].some((l) => marksRequired(l.innerText ?? l.textContent))
@@ -722,9 +739,9 @@
   };
   /** A button within a few levels of a file input: part of that uploader, not a field of its own. */
   const insideUploadBox = (button) => {
-    let n = button.parentElement;
-    for (let depth = 0; n && depth < 4 && !edgeOf(n); depth += 1, n = n.parentElement) {
-      if (n.querySelector('input[type="file"]')) return true;
+    let n = up(button);
+    for (let depth = 0; n && depth < 4 && !edgeOf(n); depth += 1, n = up(n)) {
+      if (deepAll('input[type="file"]', n).length) return true;
     }
     return false;
   };
@@ -739,17 +756,17 @@
   };
   const isChoiceBox = (el) => el instanceof HTMLInputElement && (el.type === "radio" || el.type === "checkbox");
   // Custom radios and checkboxes hide the input and show a label (the inventory's own rule).
-  const choiceShown = (el) => shown(el) || [...(el.labels ?? []), el.closest("label"), el.parentElement].some((n) => n && shown(n));
+  const choiceShown = (el) => shown(el) || [...(el.labels ?? []), closestC(el, "label"), up(el)].some((n) => n && shown(n));
   const hasPopupShape = (shape) => shape?.name === "popup";
 
   /** Whether an upload box shows a file: the input holds one, or its uploader draws a row naming it (a
    * file name, or a remove or replace control), the way Workday's does while its input reads empty. */
   function fileHeld(input) {
     if ((input.files?.length ?? 0) > 0) return true;
-    const box = uploadBox(input).slice(0, 4).at(-1) ?? input.parentElement;
+    const box = uploadBox(input).slice(0, 4).at(-1) ?? up(input);
     if (!box) return false;
     if (FILE_NAME.test(box.innerText ?? "")) return true;
-    return [...box.querySelectorAll('button, [role="button"]')]
+    return deepAll('button, [role="button"]', box)
       .some((c) => REMOVE_WORD.test(`${c.textContent} ${c.getAttribute("aria-label") ?? ""}`));
   }
 
@@ -760,7 +777,7 @@
     const safe = labeller();
     const seen = new Set();
     const items = [];
-    for (const el of document.querySelectorAll(FIELD_BOX)) {
+    for (const el of deepAll(FIELD_BOX)) {
       let shape = null;
       try {
         shape = ns.shapes?.of(el) ?? null;
@@ -773,7 +790,7 @@
       if (box === "parser") continue;   // the site's import-from-resume box: never owed a file
       if (el instanceof HTMLButtonElement && shape?.name !== "pills" && insideUploadBox(el)) continue;   // an uploader's own menu is not a question
       if (el.disabled || (el.readOnly && !hasPopupShape(shape)) || ns.fillBase.isPasswordBox(el) || inChrome(el)
-        || el.closest('[role="listbox"], [role="menu"], [aria-hidden="true"]')) continue;
+        || closestC(el, '[role="listbox"], [role="menu"], [aria-hidden="true"]')) continue;
       if (!(isChoiceBox(el) ? choiceShown(el) : boxShown(el)) || (!file && dummyBox(el))) continue;
       let key = el;
       let own = [el];
@@ -801,7 +818,7 @@
       if (!empty) continue;
 
       const flagged = own.some((c) => c.required === true || c.getAttribute("aria-required") === "true")
-        || el.closest('[role="radiogroup"][aria-required="true"], [role="group"][aria-required="true"]') !== null;
+        || closestC(el, '[role="radiogroup"][aria-required="true"], [role="group"][aria-required="true"]') !== null;
       let said = null;
       const before = () => (said ??= labelBefore(own, { scan: file }));
       let isRequired = flagged || own.some(namedRequired) || pillsRequired(shape, el);
@@ -829,11 +846,13 @@
     const { count, items } = collectRequired(true);
     return { count, items };
   };
-  const inErrorRegion = (el, regions) => regions.some((r) => r.contains(el));
+  const inErrorRegion = (el, regions) => regions.some((r) => containsC(r, el));
   /** A button that is only a line of the error summary ("Error - <what>"): it counts as neither a Next nor a
    * Submit, whatever its words. Not one the page itself marks as a submit, and not one without the lead. */
   const errorLineButton = (el, regions) => inErrorRegion(el, regions) && ERROR_LEAD.test(labelOf(el)) && !submitMarked(el);
 
+  /** The button the last `summary()` tagged `id` (null: none, or not a string). */
+  const tagged = (id) => (typeof id === "string" && id ? deepAll(`[data-maestro-btn="${CSS.escape(id)}"]`)[0] ?? null : null);
   const tag = (el) => {
     const id = `${FRAME_TAG}-${++seq}`;
     el.setAttribute("data-maestro-btn", id);
@@ -877,7 +896,7 @@
   /** The chooser page's one allowed link, or null: the page has no fillable control and exactly one link qualifies. */
   const chooserEl = () => {
     if (ns.fillableControls() > 0) return null;
-    const found = [...document.querySelectorAll("a[href]")].filter(chooserLink);
+    const found = deepAll("a[href]").filter(chooserLink);
     return found.length === 1 ? found[0] : null;
   };
 
@@ -895,14 +914,14 @@
   /** The page, as plain data for `ns.pageKind.classify`. Re-tags every button (`data-maestro-btn`)
    * so an id from an earlier call stops naming anything. */
   function summary() {
-    for (const old of document.querySelectorAll("[data-maestro-btn]")) old.removeAttribute("data-maestro-btn");
+    for (const old of deepAll("[data-maestro-btn]")) old.removeAttribute("data-maestro-btn");
     const inForm = inFormOf(fieldForms());
     const regions = errorRegions();
     activeRegions = regions;
     const found = collectErrors(false, regions);
     const errorSummary = { errors: found.count, errorKeys: found.keys };
     const needed = collectRequired(false);
-    const buttons = [...document.querySelectorAll(BUTTONS)].map((el) => {
+    const buttons = deepAll(BUTTONS).map((el) => {
       const id = tag(el);
       const known = knownOf(el);
       return {
@@ -929,7 +948,7 @@
     const passwords = passwordInputs();
     // The posting's plain Apply, named for the one narrow `advance(id, {apply: true})` call. A link
     // is not in `buttons`, so it is tagged here (a button keeps the id it was given above).
-    const applyEl = [...document.querySelectorAll(`a[href], ${BUTTONS}`)].find((el) => shown(el) && enabled(el) && isApply(el) && applyPressable(el, { blank: true }));
+    const applyEl = deepAll(`a[href], ${BUTTONS}`).find((el) => shown(el) && enabled(el) && isApply(el) && applyPressable(el, { blank: true }));
     const chooserLinkEl = chooserEl();
     const out = {
       host: location.hostname,
@@ -942,9 +961,9 @@
       passwordInputs: passwords.length,
       confirmPassword: passwords.some(isConfirmPassword),
       otpInput: hasCodeInput(),
-      captchaVisible: [...document.querySelectorAll("iframe")].some(challengeFrame),
+      captchaVisible: deepAll("iframe").some(challengeFrame),
       fillable: ns.fillableControls(),
-      hasApplyLink: [...document.querySelectorAll(`a[href], ${BUTTONS}`)].some((el) => shown(el) && labels(el).some((t) => APPLY_TEXT.test(t))),
+      hasApplyLink: deepAll(`a[href], ${BUTTONS}`).some((el) => shown(el) && labels(el).some((t) => APPLY_TEXT.test(t))),
       confirmationText: CONFIRMATION.test(bodyText),
       // The matched words alone (the run records them as the confirmation it saw), never the page around them.
       confirmationPhrase: CONFIRMATION.exec(bodyText)?.[0] ?? null,
@@ -956,7 +975,7 @@
       // fixtures/browser/workday_chooser.html) and drops it once an account is signed in: the run reads the
       // sign-up as taken from that. Only on the vendor's host; elsewhere the key is absent.
       ...(ns.atsButtons.HOSTS.workday.test(location.hostname)
-        ? { headerSignIn: [...document.querySelectorAll('[data-automation-id="utilityButtonSignIn"]')].some(shown) } : {}),
+        ? { headerSignIn: deepAll('[data-automation-id="utilityButtonSignIn"]').some(shown) } : {}),
       ...errorSummary,
       // Required boxes still empty: a count and value-free keys, like the errors.
       requiredEmpty: needed.count,
@@ -1035,7 +1054,7 @@
    * that goes nowhere or opens a new tab), "not_posting" (the page has fields: it is a form, and
    * its Apply-worded button is a Submit), "submit" (the vendor's table calls it one). */
   function pressApply(id, href = null) {
-    const el = typeof id === "string" && id ? document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`) : null;
+    const el = tagged(id);
     if (!el || !el.matches(`a[href], ${BUTTONS}`)) return { clicked: false, why: "not_apply" };
     if (ns.fillableControls() > 0) return { clicked: false, why: "not_posting" };
     if (knownOf(el) === "submit" || submitMarked(el)) return { clicked: false, why: "submit" };
@@ -1056,7 +1075,7 @@
    * plainly Apply Manually on this host), "submit" (the page marks it as a submit). NAVIGATES to the checked
    * address; never clicks, because a click runs the page's own script. */
   function pressChooser(id) {
-    const el = typeof id === "string" && id ? document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`) : null;
+    const el = tagged(id);
     if (!el || el.tagName !== "A" || chooserEl() !== el) return { clicked: false, why: "not_chooser" };
     if (submitMarked(el)) return { clicked: false, why: "submit" };
     location.assign(el.href);
@@ -1070,10 +1089,10 @@
   const overlayFlags = (el) => {
     const box = overlayBox(el);
     const text = box ? squash(`${box.textContent ?? ""} ${describedBy(box)}`.slice(0, DIALOG_TEXT)) : "";
-    const others = box ? [...box.querySelectorAll(BUTTONS)].filter((b) => b !== el && shown(b)
+    const others = box ? deepAll(BUTTONS, box).filter((b) => b !== el && shown(b)
       && !ns.pageKind.isDismiss(labelOf(b), { asks: true })) : [];
     return {
-      ...(el.closest(COOKIE_BOX) ? { cookie: true } : {}),
+      ...(closestC(el, COOKIE_BOX) ? { cookie: true } : {}),
       ...(box && (text.includes("?") || sortOf(text) === "submit" || others.length) ? { overlayAsks: true } : {}),
     };
   };
@@ -1088,9 +1107,9 @@
    * the page may have changed, and a consent bar's OK sits beside a submit dialog); then "not_dismiss" for one not
    * inside an overlay, not a dismiss word for THIS popup (`isDismiss`), hidden or disabled. Never a Next, never a Submit. */
   function pressDismiss(id) {
-    const el = typeof id === "string" && id ? document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`) : null;
+    const el = tagged(id);
     if (!el || !el.matches(BUTTONS)) return { clicked: false, why: "not_dismiss" };
-    const dialog = el.closest(DIALOG);
+    const dialog = closestC(el, DIALOG);
     const sends = el.type === "submit" && el.form && (el.getAttribute("formmethod") || el.form.method).toLowerCase() !== "dialog";
     if (ns.pageKind.sortButton({ text: labelOf(el), known: knownOf(el) }) === "submit" || submitMarked(el) || submitLink(el)
       || (dialog && dialogAsks(dialog)) || sends || submitContext()) return { clicked: false, why: "submit" };
@@ -1113,7 +1132,7 @@
     if (chooser === true) return pressChooser(id);
     if (dismiss === true) return pressDismiss(id);
     if (typeof id !== "string" || !id) return { clicked: false, why: "not_next" };
-    const el = document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`);
+    const el = tagged(id);
     if (!el || !el.matches(BUTTONS)) return { clicked: false, why: "not_next" };
     // Re-sorted from the CURRENT labels and the table's verdict for this very button, before any
     // other check: the Submit refusal never depends on what the panel was told earlier. A Submit
@@ -1130,7 +1149,7 @@
   // The email or username box of the sign-in form: by type, then by autocomplete token, then by a
   // label (or name, placeholder, aria-label) that says so. Only a text-like input that can be typed in.
   const emailBox = (scope) => {
-    const boxes = [...scope.querySelectorAll("input")].filter((el) => shown(el) && enabled(el) && !el.readOnly && !ns.fillBase.isPasswordBox(el)
+    const boxes = deepAll("input", scope).filter((el) => shown(el) && enabled(el) && !el.readOnly && !ns.fillBase.isPasswordBox(el)
       && !/^(password|hidden|checkbox|radio|file|submit|button|reset|image|search)$/.test(el.type));
     const named = (el) => [el.name, el.placeholder, el.getAttribute("aria-label"), ...[...(el.labels ?? [])].map((l) => l.textContent)]
       .some((text) => EMAIL_LABEL.test(text ?? ""));
@@ -1163,7 +1182,7 @@
     const text = (v) => typeof v === "string" && v !== "";
     if (!text(email) || !text(password) || !text(allowedHost)) return { signedIn: false, why: "missing" };
     if (location.hostname.toLowerCase() !== allowedHost.toLowerCase()) return { signedIn: false, why: "host" };
-    if ([...document.querySelectorAll("iframe")].some(challengeFrame)) return { signedIn: false, why: "captcha" };
+    if (deepAll("iframe").some(challengeFrame)) return { signedIn: false, why: "captcha" };
     const passwords = passwordInputs();
     if (!passwords.length) return { signedIn: false, why: "no_form" };
     if (passwords.length > 1 || isConfirmPassword(passwords[0])) return { signedIn: false, why: "create_account" };
@@ -1172,7 +1191,7 @@
     }
     const box = passwords[0];
     if (!enabled(box) || box.readOnly) return { signedIn: false, why: "locked" };
-    const scope = box.form ?? box.closest(FORM) ?? document;
+    const scope = box.form ?? closestC(box, FORM) ?? document;
     const emailEl = emailBox(scope);
     if (!emailEl) return { signedIn: false, why: "no_email" };
     // Found by wording and visibility; ENABLED is asked only at the click (below), because many
@@ -1180,7 +1199,7 @@
     const worded = (el) => el.isConnected && !inChrome(el) && shown(el)
       && SIGN_IN_BUTTON.test(labelOf(el)) && sortOf(labelOf(el)) !== "submit";
     const plain = (el) => worded(el) && enabled(el);
-    const go = [...scope.querySelectorAll(BUTTONS)].find(worded);
+    const go = deepAll(BUTTONS, scope).find(worded);
     if (!go) return { signedIn: false, why: "no_button" };
 
     const { typeText, enter, leave } = ns.fillBase;
@@ -1233,12 +1252,12 @@
    * marketing or sharing consent) refuses too: the sign-up could not succeed, and pressing Create Account
    * over it would only burn the attempt. */
   function agreementCheckbox(scope) {
-    const boxes = [...scope.querySelectorAll('input[type="checkbox"], [role="checkbox"]')].filter((el) => shown(el) || shown(el.parentElement));
+    const boxes = deepAll('input[type="checkbox"], [role="checkbox"]', scope).filter((el) => shown(el) || shown(up(el)));
     const ticked = (el) => el.checked === true || el.getAttribute("aria-checked") === "true";
     const wanted = [];
     let blocked = false;
     for (const el of boxes) {
-      const words = squash([labelTextOf(el), el.getAttribute("aria-label"), el.closest("label")?.textContent].join(" "));
+      const words = squash([labelTextOf(el), el.getAttribute("aria-label"), closestC(el, "label")?.textContent].join(" "));
       const required = el.required === true || el.getAttribute("aria-required") === "true" || marksRequired(words)
         || ACCOUNT_BOX_MARK.test(el.getAttribute("data-automation-id") ?? "");
       if (!required) continue;
@@ -1254,7 +1273,7 @@
    * site chrome, and never one with a Submit word in any label. A tenant whose only such control is the
    * aria-hidden, submit-marked button (no visible overlay) is REFUSED: the user creates that account. */
   function createAccountButton(scope) {
-    const found = [...scope.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"]')]
+    const found = deepAll('button, [role="button"], input[type="submit"], input[type="button"]', scope)
       .filter((el) => shown(el) && !inChrome(el) && !submitMarked(el) && el.getAttribute("aria-hidden") !== "true"
         && labels(el).some((t) => CREATE_ACCOUNT_BUTTON.test(t)) && !labels(el).some((t) => sortOf(t) === "submit"));
     return found.length === 1 ? found[0] : null;
@@ -1273,14 +1292,14 @@
     const text = (v) => typeof v === "string" && v !== "";
     if (!text(email) || !text(password) || !text(allowedHost)) return { created: false, why: "missing" };
     if (location.hostname.toLowerCase() !== allowedHost.toLowerCase()) return { created: false, why: "host" };
-    if ([...document.querySelectorAll("iframe")].some(challengeFrame)) return { created: false, why: "captcha" };
+    if (deepAll("iframe").some(challengeFrame)) return { created: false, why: "captcha" };
     if (hasCodeInput()) return { created: false, why: "verify" };
     // Exactly the shape of a sign-up: two new-password boxes, one email box. Anything else is not asked.
     const passwords = passwordInputs();
     if (passwords.length !== 2 || !passwords.every(newPasswordBox)) return { created: false, why: "not_account_form" };
     if (!passwords.every((box) => enabled(box) && !box.readOnly)) return { created: false, why: "locked" };
-    const scope = passwords[0].form ?? passwords[0].closest(FORM) ?? document;
-    const emails = [...scope.querySelectorAll("input")].filter((el) => shown(el) && enabled(el) && !el.readOnly
+    const scope = passwords[0].form ?? closestC(passwords[0], FORM) ?? document;
+    const emails = deepAll("input", scope).filter((el) => shown(el) && enabled(el) && !el.readOnly
       && !ns.fillBase.isPasswordBox(el) && !/^(hidden|checkbox|radio|file|submit|button|reset|image|search|password)$/.test(el.type)
       && !isHoneypot(el) && isAccountEmail(el));
     if (emails.length !== 1) return { created: false, why: emails.length ? "several_email" : "no_email" };

@@ -245,6 +245,50 @@ function detectPage() {
 }
 // ---- end detectPage ----
 
+// ---- open shadow roots ----
+//
+// A page built from web components (a hosted one-click application, live check 8) keeps its native inputs, file inputs and
+// buttons inside OPEN shadow roots, which `querySelectorAll`, `closest` and `contains` do not cross: such a page read as
+// "nothing to fill" while the fill inventory (content/inventory.js, its own walk) listed nine fields. These four are the
+// composed-tree versions the page reader, the fillable count and the upload reader share (`ns.deep`). They live in THIS file,
+// which every injection runs again, so a re-run file may call them without a fallback (a load-once file's newer export is
+// what tests/test_extension_manifest.py forbids); a page without a shadow root pays one extra pass over its elements.
+(() => {
+  const ns = (window.careerStudioCompanion ??= {});
+  /** The parent in the composed tree: the element's parent, else the host of the shadow root it sits at the top of. */
+  const up = (n) => n.parentElement ?? hostOf(n);
+  const hostOf = (n) => n.getRootNode?.().host ?? null;
+  /** `el.closest(sel)` through shadow boundaries: the DOM's own closest, then again from the host of the shadow root it stopped at. */
+  const closest = (el, sel) => {
+    for (let n = el; n; n = hostOf(n)) {
+      const hit = n.closest?.(sel);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  /** `box.contains(el)` through shadow boundaries. */
+  const contains = (box, el) => {
+    for (let n = el; n; n = hostOf(n)) if (box.contains(n)) return true;
+    return false;
+  };
+  /** Every match of `sel` under `root` (the document, a shadow root or an element), in document order, the open shadow
+   * roots below it (and the element's own) included in place. The light query alone when none is there. */
+  const all = (sel, root = document) => {
+    if (!root.shadowRoot && ![...root.querySelectorAll("*")].some((el) => el.shadowRoot)) return [...root.querySelectorAll(sel)];
+    const out = [];
+    const walk = (at) => {
+      for (const el of at.querySelectorAll("*")) {
+        if (el.matches(sel)) out.push(el);
+        if (el.shadowRoot) walk(el.shadowRoot);
+      }
+    };
+    if (root.shadowRoot) walk(root.shadowRoot);
+    walk(root);
+    return out;
+  };
+  ns.deep = { all, closest, contains, up };
+})();
+
 /** How many on-screen fields this frame has that a fill could answer.
  *
  * NOT PART OF `detectPage`, and never on its miss path: the panel asks for it
@@ -257,6 +301,7 @@ function detectPage() {
  * "Select One"), a site menu or a Search button does not. Capped: the answer only has to be "more than
  * none". */
 function fillableControls() {
+  const { all, closest } = window.careerStudioCompanion.deep;
   const CAP = 20;
   const SEARCH_NAME = /^(q|query)$|search|keyword/i;
   const SKIPPED_TYPES = ["hidden", "submit", "button", "reset", "image", "search", "password"];
@@ -273,18 +318,18 @@ function fillableControls() {
   const FIELD_HOLDER = 'fieldset, [role="group"], [data-automation-id^="formField"]';
   const asksForAnAnswer = (el) => {
     if (el.getAttribute("aria-haspopup") === "listbox") return true;
-    if (el.closest(FIELD_HOLDER)) return true;
+    if (closest(el, FIELD_HOLDER)) return true;
     return window.careerStudioCompanion?.isPlaceholderText?.((el.textContent || "").trim()) === true;
   };
-  for (const el of document.querySelectorAll(
+  for (const el of all(
     `input, select, textarea, [role="combobox"], [role="radio"], [role="checkbox"], ${POPUP}`)) {
-    if (el.matches?.(POPUP) && (el.closest?.(SITE_CHROME) || SEARCH_NAME.test(el.textContent || "") || !asksForAnAnswer(el))) continue;
+    if (el.matches?.(POPUP) && (closest(el, SITE_CHROME) || SEARCH_NAME.test(el.textContent || "") || !asksForAnAnswer(el))) continue;
     const type = (el.getAttribute("type") || "text").toLowerCase();
     if (el.tagName === "INPUT" && SKIPPED_TYPES.includes(type)) continue;
     const words = ["name", "id", "aria-label", "placeholder"].map((key) => el.getAttribute(key) || "");
     if (words.some((word) => SEARCH_NAME.test(word))
         || el.getAttribute("role") === "searchbox"
-        || el.closest?.('[role="search"]')) continue;
+        || closest(el, '[role="search"]')) continue;
     const onScreen = el.offsetWidth || el.offsetHeight || el.getClientRects?.().length;
     if (el.disabled || el.readOnly || el.getAttribute("aria-disabled") === "true"
         || !onScreen) continue;
@@ -297,9 +342,9 @@ function fillableControls() {
   const shapes = window.careerStudioCompanion?.shapes;
   const PILLS = 'button[aria-pressed], [role="button"][aria-pressed], ul[role="list"][aria-label] > li > button:only-child';
   if (shapes) {
-    for (const el of document.querySelectorAll(PILLS)) {
+    for (const el of all(PILLS)) {
       if (count >= CAP) break;
-      if (el.closest?.(SITE_CHROME) || shapes.of(el)?.name !== "pills") continue;
+      if (closest(el, SITE_CHROME) || shapes.of(el)?.name !== "pills") continue;
       const key = shapes.of(el).groupKey(el);
       if (groups.has(key)) continue;
       groups.add(key);
