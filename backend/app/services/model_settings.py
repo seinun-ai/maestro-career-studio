@@ -231,15 +231,17 @@ def _read(session: Session | None, key: str) -> str | None:
 
 
 def default_reasoning_model(session: Session | None = None) -> str:
-    """The smart model when it is itself a strong model, else its provider's strong one (Anthropic, OpenAI), else
-    the smart model (Gemini, OpenRouter, a user-added model; a custom endpoint always: its catalog is not ours)."""
+    """The smart model when it is itself a strong model, else the strong one of its SEEDED provider (Anthropic,
+    OpenAI), else the smart model (Gemini, OpenRouter, a user-added or unregistered id, a custom endpoint: those
+    are the user's own choice and their catalog is not ours)."""
     if session is None:
         with SessionLocal() as owned:
             return default_reasoning_model(owned)
     smart = get_smart_model(session)
     if smart in STRONG_MODELS or using_custom_endpoint(session):
         return smart
-    return STRONG_BY_PROVIDER.get(catalog_provider(smart, session) or _provider_for(smart), smart)
+    seeded = next((opt.provider for opt in MODEL_OPTIONS if opt.id == smart), None)
+    return STRONG_BY_PROVIDER.get(seeded, smart)
 
 
 def get_reasoning_model(session: Session | None = None) -> str:
@@ -248,6 +250,7 @@ def get_reasoning_model(session: Session | None = None) -> str:
 
 
 def validate_reasoning_model(session: Session, value: str | None) -> None:
+    value = (value or "").strip()
     if value and not using_custom_endpoint(session) and value not in usable_ids(session):
         raise ValueError(f"Unsupported model: {value}")
 
