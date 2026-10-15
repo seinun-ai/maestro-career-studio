@@ -141,6 +141,9 @@ Date.now = () => realNow() + skew;
 chrome.windows = { getCurrent: async () => ({ id: 1 }) };
 chrome.tabs.get = async (id) => ({ id, status: "complete", windowId: (spec.windowIds ?? {})[id] ?? 1,
   url: tabUrlOverride ?? (spec.tabUrls ?? {})[id] ?? here()?.url ?? "" });
+// The tabs of the panel's window with their addresses (`windowTabs`): the reasoning step's follow reads them.
+const sweepTabs = chrome.tabs.query;
+chrome.tabs.query = async (info) => (info.currentWindow ? (spec.windowTabs ?? []) : sweepTabs(info));
 chrome.tabs.update = async (id, props) => { updates.push([id, props]); if (props.url) at = spec.afterNavigate ?? at; };
 
 // What each save of the runs held AT THAT MOMENT (the harness keeps references, which later changes rewrite).
@@ -205,6 +208,7 @@ main(async () => {
     if (step.page !== undefined) at = step.page;
     if (step.skew) skew += step.skew;
     if (step.dropInventory) delete spec.frames.fill_inventory;
+    if (step.facts) ns.panel.actionStore().write(step.facts);
     if (step.seed) {
       ns.panel.actionStore().write({ runs: step.seed });
       ns.panel.actionStore().render();
@@ -2124,3 +2128,174 @@ def test_the_fill_log_note_is_kept_with_the_record(tmp_path):
                replies={"fill_trace": _reply({"posted": 0, "why": "off", "lastAt": "2026-10-13T12:00:00.000Z"})})
     saved = [runs[0] for runs in out["queueSaves"] if runs]
     assert saved[-1].get("logOff") is True and saved[-1].get("logLast") == "2026-10-13T12:00:00.000Z"
+
+
+# ---------- the reasoning step: the host asks it through the panel's api door (design 2026-10-14) ----------
+
+ON = {"fullAutomation": True, "companionApply": {"autoPick": True, "stopEachStep": False, "thinkWhenStuck": True,
+                                                  "floor": 60, "margin": 5}}
+ASK = {"note": "Degree has no saved answer.", "rejected": [], "model": "claude-sonnet-5-5", "ms": 900,
+       "actions": [{"type": "ask_user", "fids": ["f2"], "note": "Pick your degree."}]}
+NO_ERRORS = {"page_errors": [{"frameId": 0, "result": {"count": 0, "items": []}}]}
+
+
+def _assumed(fid, question, note):
+    return {"fid": fid, "question": question, "required": True, "status": "assumed", "note": note}
+
+
+def _stuck(tmp_path, reply, facts=ON, reports=None, inventory=None, **spec):
+    return _run(tmp_path, [{"facts": facts}, {"start": SEED}], pages=(STEP1, REVIEW),
+                reports=reports or [{"fields": [needs("f2", "Degree")]}],
+                inventory=inventory or [_field("f2", "", question="Degree")],
+                frames={**NO_ERRORS, **spec.pop("frames", {})}, api={"POST /api/autofill/reason": reply}, **spec)
+
+
+def test_a_stuck_run_asks_reason_through_the_panels_api_door_with_a_value_free_snapshot(tmp_path):
+    out = _stuck(tmp_path, _reply(ASK), inventory=[_field("f2", "", question="Degree"),
+                                                    _field("f1", "Ada Lovelace", question="Name")])
+    [call] = _api_calls(out, "/api/autofill/reason")
+    body = json.loads(call["init"]["body"])
+    assert body["why"] == "open_questions" and body["application_id"] == "app-1" and "Ada" not in call["init"]["body"]
+    assert [f["fid"] for f in body["fields"]] == ["f2", "f1"] and body["fields"][0]["filled"] is False
+    r = _record(out["shots"][-1])
+    assert (r["status"], r["why"]) == ("parked", "open_questions")
+    assert r["thought"] == {"note": "Degree has no saved answer.", "ask": "Pick your degree.", "tried": []}
+    assert "thinking" not in r or r["thinking"] is None
+
+
+@pytest.mark.parametrize("facts", [
+    {**ON, "companionApply": {**ON["companionApply"], "stopEachStep": True}},
+    {**ON, "companionApply": {**ON["companionApply"], "thinkWhenStuck": False}},
+    {**ON, "fullAutomation": False},
+    {**ON, "fullAutomation": None},
+])
+def test_stop_after_each_step_think_off_or_full_automation_off_never_asks(tmp_path, facts):
+    out = _stuck(tmp_path, _reply(ASK), facts=facts)
+    assert _api_calls(out, "/api/autofill/reason") == []
+    r = _record(out["shots"][-1])
+    assert (r["status"], r["why"]) == ("parked", "open_questions") and "thought" not in r
+
+
+def test_the_backends_think_when_stuck_switch_is_read_with_the_others(tmp_path):
+    api = {"/api/settings/auto-apply": _reply({"key": "auto_apply", "value": {"full_automation": True}}),
+           "/api/settings/companion-apply": _reply({"key": "companion_apply", "value": {"think_when_stuck": False}})}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW), reports=[{"fields": [needs("f2", "Degree")]}],
+               inventory=[_field("f2", "", question="Degree")], frames=NO_ERRORS,
+               api={**api, "POST /api/autofill/reason": _reply(ASK)})
+    assert _api_calls(out, "/api/autofill/reason") == []
+    on = {**api, "/api/settings/companion-apply": _reply({"key": "companion_apply", "value": {"stop_each_step": False}})}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW), reports=[{"fields": [needs("f2", "Degree")]}],
+               inventory=[_field("f2", "", question="Degree")], frames=NO_ERRORS,
+               api={**on, "POST /api/autofill/reason": _reply(ASK)})
+    assert len(_api_calls(out, "/api/autofill/reason")) == 1
+
+
+def test_a_reply_that_never_comes_parks_as_before_on_the_panels_own_clock(tmp_path):
+    # `hold` keeps the api reply back until `releaseApi`, which this test never gives; `fire` runs the held
+    # 30 s timer (the harness holds every timer of 8 s or more), so REASON_MS ends the wait, not the reply.
+    out = _run(tmp_path, [{"facts": ON}, {"start": SEED, "background": True}, {"fire": True}, {"finish": True}],
+               pages=(STEP1, REVIEW), reports=[{"fields": [needs("f2", "Degree")]}],
+               inventory=[_field("f2", "", question="Degree")], frames=NO_ERRORS,
+               api={"POST /api/autofill/reason": _reply(ASK)}, hold=["/api/autofill/reason"])
+    r = _record(out["shots"][-1])
+    assert (r["status"], r["why"]) == ("parked", "open_questions") and "thought" not in r
+    assert len(_api_calls(out, "/api/autofill/reason")) == 1
+
+
+def test_a_failed_reason_call_parks_as_before(tmp_path):
+    out = _stuck(tmp_path, {"ok": False, "error": "the model is down"})
+    r = _record(out["shots"][-1])
+    assert (r["status"], r["why"]) == ("parked", "open_questions") and "thought" not in r
+
+
+def test_a_write_the_step_made_is_listed_as_answered_for_you_and_the_run_reaches_ready(tmp_path):
+    write = {**ASK, "note": "Degree is a short answer.", "actions": [{"type": "write", "fid": "f2"}]}
+    out = _stuck(tmp_path, _reply(write),
+                 reports=[{"fields": [needs("f2", "Degree")]},
+                          {"fields": [_assumed("f2", "Degree", "Drafted from your history: read it")]},
+                          {"fields": [verified("f1")]}],
+                 inventoryByPage=[[_field("f2", "BSc", question="Degree", answered=True, touched=False)], [_field("f1", "x")]])
+    shot = out["shots"][-1]
+    assert _record(shot)["status"] == "ready"
+    assert out["fills"][1]["options"]["only"] == ["f2"] and out["fills"][1]["options"]["routes"] == {"f2": "free_text"}
+    assert out["fills"][1]["options"]["reasoner"] == {"f2": "short"}
+    text = _body_text(shot)
+    assert "Degree" in text and "Written for you: read it" in text and "BSc" not in json.dumps(out["queueSaves"])
+    assert "BSc" not in json.dumps(_record(shot))
+
+
+def test_what_the_step_wrote_is_posted_to_the_answer_record_and_the_pages_own_flags_stay(tmp_path):
+    write = {**ASK, "actions": [{"type": "write", "fid": "f2"}]}
+    out = _stuck(tmp_path, _reply(write),
+                 reports=[{"fields": [needs("f2", "Degree")]},
+                          {"fields": [_assumed("f2", "Degree", "Drafted from your history: read it")]},
+                          {"fields": [verified("f1")]}],
+                 inventoryByPage=[[_field("f2", "BSc", question="Degree", answered=True, touched=False)], [_field("f1", "x")]])
+    posted = [json.loads(m["init"]["body"]) for m in _api_calls(out, "/filled-answers")]
+    assert any(f["question"] == "Degree" for body in posted for f in body["fields"])
+
+
+def test_a_fill_the_step_asked_for_resolves_the_park_and_the_run_presses_on(tmp_path):
+    fill = {**ASK, "actions": [{"type": "fill", "fids": ["f2"]}]}
+    out = _stuck(tmp_path, _reply(fill),
+                 reports=[{"fields": [needs("f2", "Degree")]}, {"fields": [verified("f2", "Degree")]},
+                          {"fields": [verified("f1")]}],
+                 inventoryByPage=[[_field("f2", "BSc", question="Degree", answered=True, touched=False)], [_field("f1", "x")]])
+    r = _record(out["shots"][-1])
+    assert r["status"] == "ready" and r["step"] == 1
+    assert out["fills"][1]["options"]["only"] == ["f2"] and len(out["fills"]) == 3   # the page, the step's fill, the review
+    assert len(_page_messages(out, "page_advance")) == 1                           # one Next, the driver's own
+
+
+def test_follow_tab_rebinds_the_parked_run_and_never_drives(tmp_path):
+    follow = {**ASK, "note": "The application opened in another tab.", "actions": [{"type": "follow_tab", "tab": "t1"}]}
+    away = "https://other.test/landing"
+    record = _seeded("parked", why="captcha")
+    out = _run(tmp_path, [{"facts": ON}, {"seed": [record]}, {"press": "run-resume"}], pages=(page("step", 1, host="other.test"),),
+               tabUrls={7: away, 9: "https://jobs.acme.test/apply/step1"},
+               windowTabs=[{"id": 7, "url": away}, {"id": 9, "url": "https://jobs.acme.test/apply/step1"},
+                           {"id": 11, "url": "https://news.test/"}],
+               api={"POST /api/autofill/reason": _reply(follow)}, frames=NO_ERRORS)
+    [call] = _api_calls(out, "/api/autofill/reason")
+    body = json.loads(call["init"]["body"])
+    assert body["why"] == "moved_away" and body["tabs"] == [{"ref": "t1", "host": "jobs.acme.test"}]
+    r = _record(out["shots"][-1])
+    assert (r["status"], r["why"], r["tabId"], r["moved"]) == ("parked", "moved_away", 9, True)
+    assert out["fills"] == [] and _page_messages(out, "page_advance") == []
+
+
+def test_the_tabs_the_step_may_follow_are_only_this_jobs_application_with_no_run_of_its_own(tmp_path):
+    away = "https://other.test/landing"
+    follow = {**ASK, "actions": [{"type": "follow_tab", "tab": "t1"}]}
+    busy = _seeded("filling", id="run-2", tabId=9, startTabId=9)
+    out = _run(tmp_path, [{"facts": ON}, {"seed": [_seeded("parked", why="captcha"), busy]}, {"press": "run-resume"}],
+               pages=(page("step", 1, host="other.test"),), tabUrls={7: away, 9: "https://jobs.acme.test/apply/step1"},
+               windowTabs=[{"id": 9, "url": "https://jobs.acme.test/apply/step1"}, {"id": 11, "url": "https://jobs.acme.test/other-job"}],
+               api={"POST /api/autofill/reason": _reply(follow)}, frames=NO_ERRORS)
+    # With no tab to move to there is nothing for the model to choose: no call is made.
+    assert _api_calls(out, "/api/autofill/reason") == []
+    r = out["shots"][-1]["runs"][0]
+    assert (r["status"], r["why"], r["tabId"]) == ("parked", "moved_away", 7) and not r.get("thought")
+
+
+def test_the_snapshot_says_which_fields_the_run_filled_and_by_which_fact_never_what_they_hold(tmp_path):
+    done = {"fid": "f2", "question": "Degree", "required": True, "status": "assumed", "slot": "education.degree"}
+    out = _stuck(tmp_path, _reply(ASK), reports=[{"fields": [done, needs("f3", "Major")]}],
+                 inventory=[_field("f2", "BSc", question="Degree", answered=True, touched=False),
+                            _field("f3", "", question="Major")])
+    [call] = _api_calls(out, "/api/autofill/reason")
+    fields = {f["fid"]: f for f in json.loads(call["init"]["body"])["fields"]}
+    assert (fields["f2"]["by_run"], fields["f2"]["slot"], fields["f2"]["filled"]) == (True, "education.degree", True)
+    assert (fields["f3"]["by_run"], fields["f3"]["filled"]) == (False, False) and "BSc" not in call["init"]["body"]
+
+
+def test_a_popup_the_step_closes_goes_through_the_guarded_dismiss(tmp_path):
+    popup = page("step", 1, buttons=[_btn("next-1", "Next"), _btn("dlg-1", "Close", overlay=True)])
+    close = {**ASK, "actions": [{"type": "close_dialog", "button": "b2"}]}
+    out = _run(tmp_path, [{"facts": ON}, {"start": SEED}], pages=(popup, REVIEW),
+               reports=[{"fields": [needs("f2", "Degree")]}], inventory=[_field("f2", "", question="Degree")],
+               frames=NO_ERRORS, api={"POST /api/autofill/reason": _reply(close)})
+    [call] = _api_calls(out, "/api/autofill/reason")
+    assert {"ref": "b2", "text": "Close", "role": "dialog"} in json.loads(call["init"]["body"])["buttons"]
+    [advance] = _page_messages(out, "page_advance")[:1]
+    assert advance["message"]["dismiss"] is True and advance["message"]["id"] == "dlg-1" and advance["frameId"] == 0

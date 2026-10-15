@@ -87,6 +87,9 @@
     // New tabs a parked run's tab opened whose address has not arrived (tab id -> run id), and the
     // tab+address pairs already asked the backend about (one lookup each).
     openers: new Map(), looked: new Set(),
+    // Per run: what the last fills ended in, by field (`{step, rows: {fid: {status, slot}}}`): the reasoning step's
+    // "the run filled it" and "which fact answered it". Never a value; reset when the step changes.
+    lastFill: new Map(),
   };
 
   const tabOf = (record) => record.tabId ?? record.startTabId;
@@ -245,6 +248,8 @@
       fix: (one, errors, { limits }) => fixPage(store, one, errors, limits),
       attachTo: (one, box) => attachBox(store, one, box.target),
       uploads: (one) => uploadBoxes(host, one),
+      // The reasoning step runs only under its setting (Think when stuck on, Stop after each step off, full automation on).
+      ...(ns.panelRunReason.enabled(store.read()) ? { reason: (one, ctx) => think(store, one, ctx) } : {}),
     };
   }
 
@@ -367,6 +372,17 @@
     record.assumedRows = rows;
   }
 
+  /** What a fill ended in, by field: the reasoning step reads "the run filled it" and the fact that answered it. */
+  function noteFill(record, report) {
+    const step = record.step ?? 0;
+    let kept = state.lastFill.get(record.id);
+    if (kept?.step !== step) kept = { step, rows: {} };
+    for (const row of report.fields ?? []) {
+      if (row?.fid && row.status) kept.rows[row.fid] = { status: row.status, ...(typeof row.slot === "string" ? { slot: row.slot } : {}) };
+    }
+    state.lastFill.set(record.id, kept);
+  }
+
   /** The fill of one page, pinned to the run's tab: its job and application from the record, the
    * run's limits, and a `cancelled` that only the run's own Stop moves. Posts the answer receipt,
    * tries the resume attach as Autofill does, and sends the same value-free telemetry and trace. */
@@ -424,8 +440,12 @@
       // it. The record owns it; the driver clears it when the step changes, and it never reaches storage.
       memory: (record.memory ??= ns.fillLoop.newMemory()),
       ...(scoped ? { only: scope.only } : {}),
+      // The reasoning step's levers (shared/reason-loop.js): which route, fact, voice, redo or move order a field gets.
+      ...Object.fromEntries(["routes", "slotHints", "reasoner", "redo", "variants"]
+        .filter((key) => scope[key] !== undefined).map((key) => [key, scope[key]])),
     });
     ns.panelRunAttach.land(rs, auto);
+    noteFill(record, report);
     if (auto) record.attach = attachNote(auto);
     if (!scoped) {
       // The page's upload boxes, after the attach: one field each in the page's count, and a required
@@ -448,7 +468,13 @@
       keepAssumed(record, report);
       postGaps(store, record, leftovers(report.trace));
     }
-    // A repair of named fields posts no receipt and no gap rows: the page's own fill already did.
+    // A repair of named fields posts no receipt and no gap rows: the page's own fill already did. What the reasoning step
+    // wrote does post one, so What was submitted holds it; the page's own flags stay as the full fill left them.
+    if (scoped && scope.reasoned && report.fields.some((row) => WROTE.has(row.status))) {
+      await ns.panelRecordReceipt(rs, rs.read(), 0,
+        (frames) => ns.receipt.fromLoop(report, frames, null, rs.read().receiptSeen?.fids),
+        { consentForms: rs.read().consentForms === true, fields: report.fields });
+    }
     host.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(report), url);
     if (report.trace) noteLog(store, record, store.trace(report.trace));
     if (!report.stopped && !scoped) {
@@ -494,6 +520,49 @@
       remaining.push(...fields);
     }
     return { fixed: remaining.length === 0, remaining };
+  }
+
+  /** The one sentence the card shows when the reasoning step moved the run on. */
+  function sortedLine(out) {
+    const n = out.wrote.length;
+    return `Sorted it out${n ? `: answered ${n} question${n === 1 ? "" : "s"}` : ""} and moved on.`;
+  }
+
+  /** The reasoning step (shared/reason-loop.js) at a park the driver may think about: the loop gets this run's tab, the
+   * fill, the follow and the api door through `opsFor`, and the card gets a live line (`thinking`) while it works. What it
+   * wrote or chose joins "Check before you submit" as answered for you (a row per question and step, never a value);
+   * the one sentence (`sorted`) says it moved the run on. */
+  async function think(store, record, ctx) {
+    const host = store.run;
+    const url = await host.tabUrl(tabOf(record)).catch(() => "");
+    const day = new Date(host.now());
+    const today = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+    record.sorted = null;
+    const ops = ns.panelRunReason.opsFor(store, record, {
+      fill: (fids, scope) => fillPage(store, record, ns.queueRun.RUN_LIMITS, { only: fids, ...scope }),
+      rebind: async (tabId) => rebind(store, record, tabId, await host.tabUrl(tabId).catch(() => "")),
+      isTheApplication: (address) => isTheApplication(record, address),
+      occupied: (tabId) => store.read().runs.some((one) => one !== record && tabOf(one) === tabId && live(one)),
+      lastFill: () => ({ ...state.lastFill.get(record.id)?.rows }),
+      consent: () => runStore(store, record).read().consentForms === true,
+    });
+    let out;
+    try {
+      out = await ns.reasonLoop.think({ ...ctx, applicationId: record.applicationId,
+        base: record.applicationId ? null : record.baseSlug, pageUrl: ns.fillLoop.pageUrlOf(url), today }, ops);
+    } finally {
+      record.thinking = null;
+    }
+    const step = record.step ?? 0;
+    const rows = record.assumedRows ?? [];
+    for (const one of out.wrote) {
+      if (!rows.some((row) => row.question === one.question && row.step === step)) {
+        rows.push({ fid: one.fid, question: one.question, step, note: one.note });
+      }
+    }
+    record.assumedRows = rows;
+    if (out.moved) record.sorted = sortedLine(out);
+    return out;
   }
 
   /** Whether the worker posted the run's trace: it answers `why: "off"` when the fill log is off, and the card
@@ -634,6 +703,7 @@
     state.confirmed.delete(record.id);
     state.watching.delete(record.id);
     state.gapped.delete(record.id);
+    state.lastFill.delete(record.id);
     store.write({ runs: store.read().runs.filter((one) => one.id !== id) });
     store.run.unvouch(tabOf(record));
     persist(store);
@@ -711,7 +781,8 @@
     // moved here): the mark after the user's Submit then has exactly one owner.
     // A ready tab taken back to a form step is a new fill: it is no longer vouched for as the finished application.
     const wasReady = record.status === "ready";
-    Object.assign(record, { status: "filling", stopRequested: false, learned: null, moved: false, lease: state.lease },
+    Object.assign(record, { status: "filling", stopRequested: false, learned: null, moved: false, lease: state.lease,
+      thought: null, thinking: null, sorted: null },
       wasReady ? { readyAt: null, readyBy: null, movedOn: false } : {});
     persist(store);
     try {
@@ -782,9 +853,15 @@
    * on the new tab offers Continue here. Its old tab loses the vouch, and the new tab's host joins the run's. */
   async function followTo(store, record, tabId, url) {
     if (!movable(record) || tabOf(record) === tabId) return false;
+    return rebind(store, record, tabId, url, () => movable(record));
+  }
+
+  /** The move itself, for a follow and for the reasoning step's: not onto a tab another live run holds, nor one outside
+   * this panel's window; `still` is asked again once the window is known. */
+  async function rebind(store, record, tabId, url, still = () => true) {
     if (store.read().runs.some((one) => one !== record && tabOf(one) === tabId && live(one))) return false;
     // A side panel is one per window and every panel hears every tab: only the window's own tab is ours.
-    if (!(await store.run.ownsTab(tabId).catch(() => false)) || !movable(record)) return false;
+    if (!(await store.run.ownsTab(tabId).catch(() => false)) || !still()) return false;
     const old = tabOf(record);
     const host = hostOf(url);
     const hosts = record.hosts ?? [];
