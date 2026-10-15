@@ -229,6 +229,8 @@ def _judge_answer_from(action: Any, field: SnapField, present: set[str]) -> str 
         return "protected"
     if (bad := _untouched(field)) is not None:
         return bad
+    if field.multi and field.filled:
+        return "multi_value"   # a set of values is refilled whole by nobody: the user's to change
     if field.shape not in CHOICE_SHAPES and not (field.shape == "text" and not field.multiline):
         return "not_a_choice"
     return None if action.slot in present else "unknown_id"

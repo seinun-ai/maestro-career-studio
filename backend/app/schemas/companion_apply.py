@@ -5,7 +5,7 @@
 - `stop_each_step`: Apply stops after saving the job, after the resume, and before filling, so the
   user presses once per step.
 - `think_when_stuck`: before a run parks on a page it could not work, the Reasoning model looks at it
-  and tries up to three fixes.
+  and tries a few fixes, up to three rounds.
 """
 from pydantic import BaseModel, StrictBool
 

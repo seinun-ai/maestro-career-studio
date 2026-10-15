@@ -506,7 +506,7 @@ def get_openai_info(db: Annotated[Session, Depends(get_db)]):
 
 
 def _capability_map(db: Session) -> dict[str, dict]:
-    """Probes for the three configured models only — not every model ever tried."""
+    """Probes for the four configured models only (fast, smart, chat, Reasoning) — not every model ever tried."""
     out: dict[str, dict] = {}
     for model in {
         model_settings.get_fast_model(db),

@@ -103,6 +103,16 @@ def test_a_field_the_user_touched_or_a_multi_value_one_is_never_redone():
     assert codes == {"f1": ["multi_value"], "f2": ["users_field"], "f3": []}
 
 
+def test_answer_from_never_reworks_a_multi_value_field_the_run_filled():
+    fields = [{"fid": "f1", "question": "Skills", "shape": "select", "filled": True, "by_run": True, "multi": True},
+              {"fid": "f2", "question": "Skills", "shape": "select", "multi": True},
+              {"fid": "f3", "question": "Source", "shape": "select", "filled": True, "by_run": True}]
+    action = {"type": "answer_from", "slot": "preferences.how_heard"}
+    codes = {fid: autofill_reason.check(reply({**action, "fid": fid}), req(fields=fields),
+                                        present={"preferences.how_heard"}, level="history")[1] for fid in ("f1", "f2", "f3")}
+    assert codes == {"f1": ["multi_value"], "f2": [], "f3": []}
+
+
 def test_write_and_choose_only_fill_an_empty_field():
     fields = [{"fid": "f1", "question": "Field of study", "shape": "text", "filled": True},
               {"fid": "f2", "question": "Degree", "shape": "select", "filled": True}]
