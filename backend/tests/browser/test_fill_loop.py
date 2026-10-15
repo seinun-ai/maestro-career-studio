@@ -3846,3 +3846,13 @@ def test_the_reasoned_notes_are_known_notes(page, load):
     got = page.evaluate("""() => { const fl = window.careerStudioCompanion.fillLoop;
       return [fl.REASONED_NOTES, Object.values(fl.REASONED_NOTES).map((n) => fl.knownNote(n))]; }""")
     assert set(got[0]) == {"write", "choose", "answer_from", "redo"} and got[1] == list(got[0].values())
+
+
+def test_answer_from_on_a_text_box_the_run_filled_maps_it_again_with_the_hint_and_never_a_touched_one(page, load):
+    out = run(page, load, frames=[[f("a", question="Home town", committed="Old", answered=True),
+                                   f("b", question="Birthplace", committed="Mine", answered=True, touched=True)]],
+              options={"slotHints": {"a": "personal.city", "b": "personal.city"}, "redo": ["a", "b"]},
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
+    [body] = bodies(out, "/api/autofill/map")
+    assert [fl["fid"] for fl in body["fields"]] == ["a"] and body["fields"][0]["slot_hint"] == "personal.city"
+    assert statuses(out) == {"a": "verified", "b": "yours"}
