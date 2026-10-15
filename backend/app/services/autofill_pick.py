@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, replace
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, PolarityTrace, Reason
-from app.services import autofill_education, autofill_polarity, jev, llm, model_settings
+from app.services import autofill_education, autofill_polarity, autofill_sponsorship, jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
     NAMES_PROTECTED_CLASS,
@@ -544,10 +544,27 @@ def education_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[li
     return [f for f in fields if f.fid not in decided], decided
 
 
+def sponsorship_type_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
+    """A "what type of sponsorship" question under a saved No (autofill_sponsorship): the option that means none /
+    not applicable, else nobody. A saved Yes (or no fact) leaves the field to the ordinary path."""
+    decided = {}
+    for f in fields:
+        options = [(o.oid, o.text) for o in f.options]
+        fact = facts.get(f.slot or "")
+        if (f.route == "slot" and fact is not None and fact.value == "No"
+                and autofill_sponsorship.is_type_question(f.slot, f.question, options)):
+            oid = autofill_sponsorship.none_option(options)
+            decided[f.fid] = Picked(oids=[oid] if oid else [], reason="matched" if oid else "abstained",
+                                    trace=DecisionTrace())
+    return [f for f in fields if f.fid not in decided], decided
+
+
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> dict[str, Picked]:
     fields, facts, dropped = named_employers(fields, facts)
     fields, by_code = education_picks(fields, facts)
+    fields, sponsored = sponsorship_type_picks(fields, facts)
+    by_code |= sponsored
     # Another voluntary-disclosure answer never answers a question that names a veteran: final, the user's.
     cross = {f.fid for f in fields if names_veteran_off_slot(f.slot, f.question, facts.get(f.slot or ""))}
     dropped |= cross

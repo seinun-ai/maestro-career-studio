@@ -33,7 +33,7 @@ from dataclasses import asdict, dataclass
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import TERM, DecisionTrace, Engine, StepRequest, StepResponse
-from app.services import autofill_education, jev, llm, model_settings
+from app.services import autofill_education, autofill_sponsorship, jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
     WORKED_HERE_SLOT,
@@ -456,6 +456,16 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     if req.route == "slot" and not values:
         return ABSTAIN
     policy = fact.policy if fact else "any"
+    # A "what type of sponsorship" question under a saved No: the none / not applicable option, else the user's.
+    # A closed list is opened first (code's move; the options are what the rule reads).
+    shown_options = [(c.mid, t) for c in req.candidates if c.mid.startswith("click:") and (t := _option_text(c.describe))]
+    if (req.route == "slot" and getattr(fact, "value", None) == "No"
+            and autofill_sponsorship.is_type_question(req.slot, req.question, shown_options)):
+        if not shown_options and any(c.mid == "open" for c in req.candidates):
+            return StepResponse(mid="open", reason="progress", trace=DecisionTrace())
+        oid = autofill_sponsorship.none_option(shown_options)
+        return (StepResponse(mid=oid, reason="matched", trace=DecisionTrace()) if oid
+                else StepResponse(mid=None, reason="abstained"))
     # A Yes/No fact: this request decides its question's polarity itself; unsure, the step gives up.
     answer = polarity = None
     if req.route == "slot" and fact.yes_no:
