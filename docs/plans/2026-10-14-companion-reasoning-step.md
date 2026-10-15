@@ -2207,3 +2207,13 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - `python3 scripts/check_system_md.py`
 
 Then the live app update and the owner's live check with the fill log on: time and cost per round, and real replies added to `reason_replies.json`, scrubbed to Acme.
+
+---
+
+## Addendum (owner, 2026-10-14): cheaper reasoning models
+
+The owner asked whether the step works with Claude Haiku 5.5 or gpt-6-luna. It must work with any catalog model; the default stays the strong model.
+
+- **Task 1 addition:** add `ModelOption("gpt-6-luna", "OpenAI GPT-6 Luna", "openai", "fast")` to `MODEL_OPTIONS` (listed, never auto-assigned to any role), beside `gpt-6.1-sol`. Haiku 5.5 is already listed. The Reasoning model picker lists every catalog model; tests pin that `gpt-6-luna` and `claude-haiku-5-5` are selectable for the reasoning role and that the default rule is unchanged.
+- **Task 3 addition:** the reasoning call must not depend on Anthropic-only features beyond the schema (Haiku 5.5 takes the same `output_config.format`); for OpenAI models the plain `"json"` format plus the server-side checker. A test runs the checker against a reply from each provider shape (fake provider) with a small-model id.
+- **Task 12 addition — model comparison script:** `backend/scripts/eval_reason.py` (maintainer-run, not in CI). It reads reasoning rounds' snapshots from the local fill log (`autofill_runs` traces; snapshots are value-free) or a JSON file, replays each against one or more model ids given on the command line (`--models claude-sonnet-5-5,claude-haiku-5-5,gpt-6-luna`), runs the same server-side checker, and prints per model: valid-reply rate, actions chosen, ask_user rate, latency, token cost estimate. Needs the snapshot to be stored: the `reasoning` trace entry gains the value-free snapshot (capped) when the fill log is on. Unit test with the fake provider and a tiny fixture; never calls a real model in tests.
