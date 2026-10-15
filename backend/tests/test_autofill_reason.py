@@ -366,6 +366,16 @@ def test_retry_leaves_a_touched_field_and_a_filled_one_the_run_did_not_fill_alon
                                      level="history")[1] == expected, kw
 
 
+def test_step_by_step_is_a_retry_technique_judged_like_the_other_retries():
+    action = {"type": "retry", "fid": "f1", "technique": "step_by_step"}
+    for kw, expected in [({}, []), ({"touched": True}, ["users_field"]), ({"filled": True}, ["not_empty"]),
+                         ({"shape": "text"}, ["not_a_choice"])]:
+        fields = [{"fid": "f1", "question": "How did you hear about us?", "shape": "select", **kw}]
+        assert autofill_reason.check(reply(action), req(fields=fields), present=set(),
+                                     level="history")[1] == expected, kw
+    assert '"step_by_step"' in autofill_reason.build_prompt(req(), [], "history")
+
+
 def test_a_fill_of_several_fields_is_refused_when_any_of_them_failed_twice():
     actions, rejected = autofill_reason.check(reply({"type": "fill", "fids": ["f2", "f1"]}),
                                               req(excluded=["fill:f1"]), present=set(), level="history")

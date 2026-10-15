@@ -67,7 +67,8 @@ ACTION_HELP = {
               "the saved answers do not cover; history decides from the work and education history, default from "
               "the safe default.",
     "retry": '{"type": "retry", "fid": fid, "technique": "open_with_keys" or "search_with_enter" or '
-             '"search_and_wait" or "clear_and_set"}: fill the field again a different way.',
+             '"search_and_wait" or "clear_and_set" or "step_by_step"}: fill the field again a different way '
+             "(step_by_step works a long or nested list one step at a time).",
     "redo": '{"type": "redo", "fid": fid}: fill again over a field the run filled.',
     "close_dialog": '{"type": "close_dialog", "button": ref}: dismiss a popup by its dialog button.',
     "press_next": '{"type": "press_next", "button": ref}: press a button whose role is next. Last action only.',

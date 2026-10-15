@@ -20,7 +20,7 @@ SIGNATURE = r"^[a-z_]+:[A-Za-z0-9_-]{1,64}$"
 HISTORY = r"^[a-z_]+(:[A-Za-z0-9_-]{1,64})? -> [a-z_]+$"   # the loop's moves and the driver's, never page text
 
 Stuck = Literal["page_errors", "open_questions", "unknown_page", "no_change", "loop", "moved_away"]
-Technique = Literal["open_with_keys", "search_with_enter", "search_and_wait", "clear_and_set"]
+Technique = Literal["open_with_keys", "search_with_enter", "search_and_wait", "clear_and_set", "step_by_step"]
 Basis = Literal["history", "default"]
 Text = Annotated[str, Field(max_length=TEXT_MAX)]
 Fid = Annotated[str, Field(pattern=FID)]
