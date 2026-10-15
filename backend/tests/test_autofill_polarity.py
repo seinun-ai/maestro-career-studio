@@ -416,14 +416,14 @@ def test_a_claude_fast_model_gets_its_floor_for_the_polarity_call_not_one_and_a_
 
 @pytest.mark.usefixtures("jev_on")
 def test_the_polarity_floor_leaves_jevs_pick_its_two_seconds(db_session, monkeypatch):
-    """Asked 5 s in: the floor would end at 8 s and leave Jev's pick (2 s) too little of the 9 s request."""
+    """Asked 4 s in: the floor would end at 7 s and leave Jev's pick (2 s) and its fast fallback (1 s) too little of the 9 s request."""
     _fast_model_is(monkeypatch, "claude-haiku-5-5")
-    times = [0.0, 5.0]
+    times = [0.0, 4.0]
     monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
     fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
     prompts = fake_llm(monkeypatch)
     decide([ask("q")], db_session)
-    assert prompts[0]["timeout"] == pytest.approx(autofill_map.REQUEST_BUDGET_S - 5.0 - autofill_polarity.jev.TIMEOUT_S)
+    assert prompts[0]["timeout"] == pytest.approx(autofill_map.REQUEST_BUDGET_S - 4.0 - autofill_polarity.jev.TIMEOUT_S - autofill_map.MIN_CALL_S)
 
 
 @pytest.mark.usefixtures("jev_on")

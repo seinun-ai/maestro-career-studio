@@ -2883,7 +2883,7 @@ def test_a_second_opinion_that_names_a_fact_keeps_a_low_p_no_fact_off_the_judge(
 def test_no_answer_at_all_is_still_no_candidate(db_session, monkeypatch):
     """Omitted by Jev (None): not "no fact", nothing was said."""
     calls = fake_jev(monkeypatch, noul={"r": 0.99})
-    monkeypatch.setattr(autofill_map, "_with_jev", lambda fields, criteria, session: {})
+    monkeypatch.setattr(autofill_map, "_with_jev", lambda fields, criteria, session: ({}, {}))
     fake_llm(monkeypatch)
     got = run([field("r", REFERRAL, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
     assert got["r"].route == "none" and not asked_the_judge(calls)
@@ -2998,3 +2998,136 @@ def test_a_start_date_text_box_is_never_a_low_stakes_guess(db_session, monkeypat
     got = autofill_map.map_fields([field("d", "When can you start?", "text")], _start_facts("After my notice period"),
                                   db_session, eeo_consented=True, low_stakes=True)
     assert got["d"].route == "none" and not asked_the_judge(calls)
+
+
+# ---------- Opus review of Batch AE
+
+# finding 1: the willingness exception is narrow
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    "Are you able to pass a background check?",
+    "Would you be able to pass a drug test?",
+    "Are you able to clear a background check?",
+    "Are you able to provide proof of eligibility to work for the I-9?",
+    "Are you able to successfully complete E-Verify?",
+    "Do you agree to a background check, which will verify your criminal history?",
+    "I consent to a background check.",
+    "I agree to a background check and drug screen",
+    "I hereby authorize Acme to conduct a background check",
+    "Are you willing to be authorized through E-Verify?",
+])
+def test_a_box_or_a_pass_or_proof_question_filed_as_protected_stays_the_users(db_session, monkeypatch, question):
+    calls = fake_jev(monkeypatch, {"b": (PROTECTED, 0.9)}, noul={"b": 0.99})
+    fake_llm(monkeypatch)
+    got = run([field("b", question, "group", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["b"].route == "none" and not asked_the_judge(calls)
+
+
+# finding 4: choice lists read the stored words ("Immediately"), date and text boxes the derived date
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_start_date_choice_list_gets_immediately_a_date_box_the_date_and_a_text_box_no_typo(db_session, monkeypatch):
+    facts = _start_facts("Immedietly")
+    assert facts[PREFERRED_START].value == "Immediately"   # the typo is normalised where the fact is made
+    fake_jev(monkeypatch, {"c": (DERIVED_START, 0.9), "d": (DERIVED_START, 0.9), "t": (DERIVED_START, 0.9)})
+    got = autofill_map.map_fields(
+        [field("c", "Earliest start", "select", options=["Immediately", "Within 2 weeks", "1 month"]),
+         field("d", "Earliest start", "date"), field("t", "When can you start?", "text")],
+        facts, db_session, eeo_consented=True, low_stakes=False)
+    assert (got["c"].slot, got["c"].value) == (PREFERRED_START, "Immediately")
+    assert (got["d"].slot, got["d"].value) == (DERIVED_START, START_TODAY.isoformat())
+    assert (got["t"].slot, got["t"].value) == (DERIVED_START, START_TODAY.isoformat())
+    assert "Immedietly" not in repr(got)
+
+
+# finding 5: a below-floor "no fact" that looks like a protected question does not reach the judge
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_below_floor_none_on_a_background_history_question_never_reaches_the_judge(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"b": ("none", 0.35)}, noul={"b": 0.99})
+
+    def down(**kw):
+        raise llm.LLMProviderError("timed out")
+
+    monkeypatch.setattr(autofill_map.llm, "call_openai", down)
+    got = run([field("b", "Have you been convicted of a felony in the last 7 years?", "popup",
+                     options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["b"].route == "none" and not asked_the_judge(calls)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_below_floor_none_whose_runner_up_is_a_protected_kind_never_reaches_the_judge(db_session, monkeypatch):
+    """Jev's runner-up carries the doubt: none .35, protected .30 on a wording code does not recognise."""
+    calls = []
+
+    def decide(questions, state, session=None):
+        calls.append(questions)
+        out = {}
+        for fid, q in questions.items():
+            if q["type"] == "noul":
+                out[fid] = {"type": "noul", "noul": 0.99}
+                continue
+            others = [k for k in q["criteria"] if k not in ("none", PROTECTED)]
+            spread = 1 - 0.35 - 0.30
+            probs = {k: spread / len(others) for k in others} | {"none": 0.35, PROTECTED: 0.30}
+            out[fid] = {"choice": "none", "probabilities": probs, "confidence": 0.35}
+        return out
+
+    monkeypatch.setattr(autofill_map.jev, "decide", decide)
+    fake_llm(monkeypatch)
+    got = run([field("b", "Do you hold the necessary standing?", "popup", options=["Yes", "No"])], db_session,
+              low_stakes=True)
+    assert got["b"].route == "none" and not any(q["type"] == "noul" for c in calls for q in c.values())
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_below_floor_none_with_a_quiet_runner_up_still_reaches_the_judge(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"r": ("none", 0.54)}, noul={"r": 0.99})
+    fake_llm(monkeypatch)
+    assert run([field("r", REFERRAL, "popup", options=["Yes", "No"])], db_session,
+               low_stakes=True)["r"].route == "low_stakes" and asked_the_judge(calls)
+
+
+# finding 6: the floor follows the provider the model resolves to
+
+@pytest.mark.parametrize("model, base_url, floor", [
+    ("claude-haiku-5-5", None, 3.0),
+    ("gpt-5.6-luna", None, 1.0),
+    ("anthropic/claude-haiku-5-5", None, 1.0),   # an OpenRouter id: not the Anthropic API
+    ("claude-haiku-5-5", "http://localhost:1234/v1", 1.0),   # a custom server is the user's own endpoint
+    ("my-claude-finetune", None, 1.0),   # a name that merely contains it
+])
+def test_the_floor_follows_the_models_provider_not_its_name(monkeypatch, model, base_url, floor):
+    fast_model_is(monkeypatch, model)
+    monkeypatch.setattr(autofill_map.llm, "get_base_url", lambda: base_url)
+    assert autofill_map.second_opinion_floor(None) == pytest.approx(floor)
+
+
+# finding 7: a lifted second opinion still lets the low-stakes pass start
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_floor_lifted_second_opinion_still_leaves_the_low_stakes_pass_its_start(db_session, monkeypatch):
+    """Jev took 4.5 s, the Claude second opinion 3 s (7.5 s in): the low-stakes pass still starts, on what is left."""
+    fast_model_is(monkeypatch, CLAUDE_FAST)
+    monkeypatch.setattr(autofill_map, "_clock", clock_of(0.0, 4.5, 7.5))
+    calls = fake_jev(monkeypatch, {"s": ("work_auth.sponsorship_now", 0.7), "r": ("none", 0.9)},
+                     noul={"r": 0.99})
+    prompts = fake_llm(monkeypatch)
+    got = run([field("s", "Sponsorship?", "select"), field("r", REFERRAL, "popup", options=["Yes", "No"])],
+              db_session, low_stakes=True)
+    [asked] = second_opinions(prompts)
+    assert asked["timeout"] == pytest.approx(3.0) and got["r"].route == "low_stakes" and asked_the_judge(calls)
+
+
+def test_a_pass_still_never_starts_past_the_window_when_nothing_was_lifted():
+    times = iter([0.0, autofill_map.OPTIONAL_PASS_BUDGET_S + 0.1])
+    assert autofill_map.Budget(lambda: next(times)).left(floor=3.0, late_ok=True) is None
+
+
+def test_a_late_ok_floor_lifts_the_window_for_the_next_pass_only_until_one_second_is_left():
+    times = iter([0.0, 4.5, 7.5, 8.2])
+    budget = autofill_map.Budget(lambda: next(times))
+    assert budget.left(4.0, reserve=1.0, floor=3.0, keep=1.0, late_ok=True) == pytest.approx(3.0)
+    assert budget.left() == pytest.approx(1.5)
+    assert budget.left() is None   # 8.2 s: under MIN_CALL_S of the request left

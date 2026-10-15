@@ -181,8 +181,8 @@ def test_an_unknown_status_derives_no_citizenship(work_auth):
                                     "Immediatly", "Immediate start", "Available: now"])
 def test_an_immediate_start_is_also_a_date(stored):
     f = cat.build({"preferences": {"earliest_start_date": stored}}, [], [], today=TODAY)
-    # The words stay the answer to a question asked in words…
-    assert f["preferences.earliest_start_date"].value == stored.strip()
+    # The words stay the answer to a question asked in words, normalised: never the typo as typed…
+    assert f["preferences.earliest_start_date"].value == "Immediately"
     # …and a date box gets a date.
     assert f["derived.earliest_start_date"].value == "2026-09-26"
     assert f["derived.earliest_start_date"].describe == "the earliest date you can start, as a calendar date"

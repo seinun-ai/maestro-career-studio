@@ -386,7 +386,8 @@ def _second_opinion(fields: list[PickField], facts: dict[str, Fact], hint: JobHi
     failed, Jev's abstention stands. None: it did not run (the trace's
     `second` stays None for those fields)."""
     timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S if reasoning_next else 0.0,
-                          floor=second_opinion_floor(session))
+                          floor=second_opinion_floor(session), keep=MIN_CALL_S if reasoning_next else 0.0,
+                          late_ok=reasoning_next)
     if not fields or timeout is None:
         return None
     try:
@@ -524,6 +525,10 @@ def veteran_said(fact: Fact | None) -> str | None:
     return said if said in ("No", "Yes") else None
 
 
+# "I do not wish to disclose my veteran status" opens with a negation and mentions a veteran, and denies nothing.
+_DECLINES = re.compile(r"\b(?:wish|want|prefer|choose|disclose|answer|share|self-?identify|say)\b", re.IGNORECASE)
+
+
 def veteran_option(fact: Fact | None, question: str, options: list[tuple[str, str]]) -> tuple[str, Reason] | None:
     """A saved No answers a veteran list in code when EXACTLY ONE option opens with a negation and names a
     veteran ("I am not a protected veteran", "No, I am not a veteran"): (its id, the reason), never a model's
@@ -533,7 +538,8 @@ def veteran_option(fact: Fact | None, question: str, options: list[tuple[str, st
     if veteran_said(fact) != "No":
         return None
     denying = [(oid, text) for oid, text in options
-               if _OPENS_WITH_NEGATION.search(text) and _MENTIONS_VETERAN.search(text)]
+               if _OPENS_WITH_NEGATION.search(text) and _MENTIONS_VETERAN.search(text)
+               and not _DECLINES.search(text) and not _claims_veteran(text)]
     if len(denying) != 1:
         return None
     oid, text = denying[0]

@@ -449,6 +449,8 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
     start = preferences.get("earliest_start_date")
     if isinstance(start, str) and _IMMEDIATE.search(start):
         out["derived.earliest_start_date"] = make_fact("derived.earliest_start_date", today.isoformat())
+        # The words go out as the form's own ("Immediately"), never as typed ("Immedietly", "asap!").
+        out["preferences.earliest_start_date"] = make_fact("preferences.earliest_start_date", "Immediately")
 
 
 def _now_or_future(work_auth: dict[str, Any]) -> str | None:

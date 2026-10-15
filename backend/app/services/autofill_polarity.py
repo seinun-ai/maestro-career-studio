@@ -228,8 +228,9 @@ def _fast(asks: list[Ask], session: Session, budget: Budget, trace_name: str) ->
     model = None   # the fast model setting
     floor = second_opinion_floor(session)
     for attempt in (1, 2):
-        # A slow fast model's floor lifts the call over the cap and the reserve, but leaves Jev's pick (jev.TIMEOUT_S) its time.
-        timeout = budget.left(POLARITY_MAX_S, reserve=POLARITY_RESERVE_S, floor=floor, keep=jev.TIMEOUT_S)
+        # A slow fast model's floor lifts the call over the cap and the reserve, but leaves Jev's pick (jev.TIMEOUT_S) and its fast fallback (MIN_CALL_S) their time.
+        timeout = budget.left(POLARITY_MAX_S, reserve=POLARITY_RESERVE_S, floor=floor,
+                              keep=jev.TIMEOUT_S + MIN_CALL_S)
         if timeout is None:
             return {}
         try:

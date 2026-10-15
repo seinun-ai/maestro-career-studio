@@ -2348,3 +2348,53 @@ def test_a_question_on_another_slot_is_not_the_veteran_code_pick(db_session, mon
     autofill_pick.pick([pf("v", question="Disability status", slot="eeo.disability_status",
                            options=opts("Yes", "I am not a veteran"))], facts, db_session, None)
     assert calls
+
+
+# ---------- Opus review of Batch AE: the veteran code pick never takes a decline option
+
+@pytest.mark.parametrize("options", [
+    ("I am a veteran", "I do not wish to disclose my veteran status"),
+    ("I identify as a protected veteran", "I don't want to share my veteran status"),
+    ("Yes", "No", "I do not wish to self-identify my veteran status"),
+    ("I am a veteran", "I prefer not to answer about my veteran status"),
+])
+def test_a_decline_option_is_never_the_veteran_code_pick(db_session, monkeypatch, options):
+    assert autofill_pick.veteran_option(NO_VETERAN["eeo.veteran_status"], "Veteran Status",
+                                        [(f"o{i}", t) for i, t in enumerate(options, 1)]) is None
+
+
+def test_a_claim_is_filtered_before_the_denying_options_are_counted(db_session):
+    got = autofill_pick.veteran_option(
+        NO_VETERAN["eeo.veteran_status"], "Veteran Status",
+        [("o1", "No, I am a veteran but not a protected veteran"), ("o2", "I am not a veteran"), ("o3", "Yes")])
+    assert got == ("o2", "matched")
+
+
+# ---------- Opus review of Batch AE: the polarity floor leaves the fast fallback after a failed Jev pick its window
+
+@pytest.mark.usefixtures("jev_on")
+def test_polarity_retries_then_a_failed_jev_pick_and_its_fast_fallback_end_inside_the_request(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_map.model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
+    now = [0.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: now[0])
+    calls = []
+
+    def decide(questions, state, session=None):
+        now[0] += autofill_pick.jev.TIMEOUT_S   # Jev times out at its 2 s, polarity and pick alike
+        raise llm.LLMProviderError("Jev timed out")
+
+    def call_openai(**kw):
+        calls.append((kw["trace_name"], kw["timeout"]))
+        now[0] += kw["timeout"]   # a Claude call that runs out its whole timeout
+        if kw["trace_name"] == "autofill-polarity" and len(calls) == 2:   # the retry answers, at the last moment
+            return {"polarity": {"s": {"key": "same", "confidence": 0.95}}}
+        raise llm.LLMProviderError("Anthropic: read operation timed out")
+
+    monkeypatch.setattr(autofill_pick.jev, "decide", decide)
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    facts = autofill_catalog.build({"work_auth": {"sponsorship_now": False}}, [], [])
+    with pytest.raises(llm.LLMProviderError):
+        autofill_pick.pick([pf("s", question="Do you need sponsorship?", slot="work_auth.sponsorship_now",
+                               options=opts("Yes", "No"))], facts, db_session, None)
+    assert [name for name, _ in calls] == ["autofill-polarity", "autofill-polarity", "autofill-pick"]
+    assert now[0] <= autofill_map.REQUEST_BUDGET_S + 1e-9
