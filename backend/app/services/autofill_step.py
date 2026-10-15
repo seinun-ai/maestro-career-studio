@@ -72,6 +72,7 @@ from app.services.autofill_pick import (
     verdict,
     veteran_inferred,
     veteran_overreach,
+    veteran_option,
     veteran_said,
     worked_elsewhere,
 )
@@ -474,6 +475,10 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         oid = autofill_sponsorship.none_option(shown_options)
         return (StepResponse(mid=oid, reason="matched", trace=DecisionTrace()) if oid
                 else StepResponse(mid=None, reason="abstained"))
+    # A saved No over a veteran list that has exactly one "I am not a (protected) veteran" option: code's click,
+    # before polarity and any model (autofill_pick.veteran_option).
+    if req.slot == VETERAN_SLOT and req.route == "slot" and (coded := veteran_option(fact, req.question, shown_options)):
+        return StepResponse(mid=coded[0], reason=coded[1], trace=DecisionTrace())
     # A Yes/No fact: this request decides its question's polarity itself; unsure, the step gives up.
     answer = polarity = None
     if req.route == "slot" and fact.yes_no:

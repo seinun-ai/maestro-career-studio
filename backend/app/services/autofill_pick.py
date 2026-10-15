@@ -501,10 +501,17 @@ def veteran_inferred(said: str, question: str, chosen: list[str]) -> bool:
     return said == "No" and (bool(_ASKS_SERVICE.search(question)) or any(_SAYS_NEVER_SERVED.search(t) for t in chosen))
 
 
+# "No, I am a veteran but not a protected veteran" opens with a negation and still claims to be a veteran.
+_NEGATION_THEN_BUT = re.compile(r"\b(?:but|however|except|although|though)\b", re.IGNORECASE)
+
+
 def _claims_veteran(text: str) -> bool:
     """An option that does not open with a negation and that mentions a veteran, names a protected class, or
-    opens "I identify as" / "I belong to". A bare "Yes" claims nothing."""
-    return not _OPENS_WITH_NEGATION.search(text) and bool(
+    opens "I identify as" / "I belong to"; or one that opens with a negation and then takes it back ("No, I am a
+    veteran but not a protected veteran"). A bare "Yes" claims nothing."""
+    if _OPENS_WITH_NEGATION.search(text):
+        return bool(_NEGATION_THEN_BUT.search(text) and _MENTIONS_VETERAN.search(text))
+    return bool(
         _MENTIONS_VETERAN.search(text) or _NAMES_PROTECTED_CLASS.search(text) or _BARE_CLASS.search(text)
         or _OPENS_BY_IDENTIFYING.search(text))
 
@@ -515,6 +522,24 @@ def veteran_said(fact: Fact | None) -> str | None:
         return None
     said = yes_no_word(fact.value).split(",", 1)[0]
     return said if said in ("No", "Yes") else None
+
+
+def veteran_option(fact: Fact | None, question: str, options: list[tuple[str, str]]) -> tuple[str, Reason] | None:
+    """A saved No answers a veteran list in code when EXACTLY ONE option opens with a negation and names a
+    veteran ("I am not a protected veteran", "No, I am not a veteran"): (its id, the reason), never a model's
+    choice (live check 9: polarity timed out twice and the clear option was left). `assumed` when it is the
+    Companion's inference (`veteran_inferred`). Never an option that claims to be a veteran, a saved Yes, or
+    a list with two such options (the ordinary path decides those)."""
+    if veteran_said(fact) != "No":
+        return None
+    denying = [(oid, text) for oid, text in options
+               if _OPENS_WITH_NEGATION.search(text) and _MENTIONS_VETERAN.search(text)]
+    if len(denying) != 1:
+        return None
+    oid, text = denying[0]
+    if veteran_overreach("No", question, [t for _, t in options], text):
+        return None
+    return oid, "assumed" if veteran_inferred("No", question, [text]) else "matched"
 
 
 def veteran_overreach(said: str, question: str, options: list[str], chosen: str | list[str] | None = None) -> bool:
@@ -628,6 +653,17 @@ def sponsorship_type_picks(fields: list[PickField], facts: dict[str, Fact]) -> t
     return [f for f in fields if f.fid not in decided], decided
 
 
+def veteran_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
+    """The veteran list a saved No settles in code (`veteran_option`), before polarity and any model.
+    Returns the other fields, and the decided ones' answers."""
+    decided = {}
+    for f in fields:
+        if f.route == "slot" and f.slot == VETERAN_SLOT and (got := veteran_option(
+                facts.get(VETERAN_SLOT), f.question, [(o.oid, o.text) for o in f.options])):
+            decided[f.fid] = Picked(oids=[got[0]], reason=got[1], trace=DecisionTrace())
+    return [f for f in fields if f.fid not in decided], decided
+
+
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> dict[str, Picked]:
     fields, facts, dropped = named_employers(fields, facts)
@@ -636,6 +672,8 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
     by_code |= cities
     fields, sponsored = sponsorship_type_picks(fields, facts)
     by_code |= sponsored
+    fields, veterans = veteran_picks(fields, facts)
+    by_code |= veterans
     # Another voluntary-disclosure answer never answers a question that names a veteran: final, the user's.
     cross = {f.fid for f in fields if names_veteran_off_slot(f.slot, f.question, facts.get(f.slot or ""))}
     dropped |= cross

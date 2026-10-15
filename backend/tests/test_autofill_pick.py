@@ -1231,9 +1231,10 @@ def test_a_military_status_dropdown_is_picked_by_the_statement_of_the_veteran_an
     asked for the whole wordy answer over the page's statements, and the one
     stating it is matched under EEO's exact policy."""
     facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
+    options = MILITARY + ("Non-veteran",)   # two options deny it: code's pick (AE4) leaves the choice to the statement
     calls = fake_jev(monkeypatch, {"v": ("o3", 0.95)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question="Military Status:", slot="eeo.veteran_status",
-                                 options=opts(*MILITARY))], facts, db_session, None)
+                                 options=opts(*options))], facts, db_session, None)
     text = calls[0]["questions"]["v"]["instructions"]
     assert f'is {json.dumps("No, I am not a veteran")}' in text and "Which option states that answer?" in text
     assert facts["eeo.veteran_status"].policy == "exact"
@@ -1241,7 +1242,7 @@ def test_a_military_status_dropdown_is_picked_by_the_statement_of_the_veteran_an
     # A near miss is never taken for an EEO answer.
     fake_jev(monkeypatch, {"v": ("o2", 0.7)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question="Military Status:", slot="eeo.veteran_status",
-                                 options=opts(*MILITARY))], facts, db_session, None)
+                                 options=opts(*options))], facts, db_session, None)
     assert got["v"].reason == "abstained"
 
 
@@ -1258,6 +1259,8 @@ SERVED_OR_NOT = ("I am a Veteran, but not a Protected Veteran", "I am not a Vete
 ])
 def test_a_no_picks_every_option_that_denies_being_a_veteran_at_the_exact_floor(
         db_session, monkeypatch, question, options, wanted, text):
+    """With a second denying option the list is not code's (AE4: exactly one is), so the model picks at the floor."""
+    options = options + ("Non-veteran",)
     facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
     fake_jev(monkeypatch, {"v": (f"o{wanted}", 0.9)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question=question, slot="eeo.veteran_status", options=opts(*options))],
@@ -1372,7 +1375,7 @@ def test_a_no_never_lands_on_an_option_that_claims_to_be_a_veteran(db_session, m
     facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
     fake_jev(monkeypatch, {"v": ("o1", 0.99)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question="Veteran Status", slot="eeo.veteran_status",
-                                 options=opts(claim, "I am not a Veteran."))], facts, db_session, None)
+                                 options=opts(claim, "Choose not to disclose"))], facts, db_session, None)
     assert got["v"].oids == [] and got["v"].reason == "asked"
 
 
@@ -2260,3 +2263,88 @@ def test_the_step_reports_a_qualified_relocate_yes_assumed(db_session, monkeypat
         req = StepRequest(fid="r", question=question, route="slot", slot="preferences.willing_to_relocate", candidates=cands)
         got = autofill_step.step(req, RELOCATE_FACTS, db_session, None)
         assert (got.mid, got.reason) == ("click:o1", reason)
+
+
+# ---------- live check 9 (AE4): a saved No settles the one "I am not a (protected) veteran" option in code
+
+RIPPLING_STYLE = ("I am not a protected veteran",
+                  "I identify as one or more of the classifications of protected veteran", "Choose not to disclose")
+
+
+def no_model_may_be_asked(monkeypatch):
+    """Code decides: Jev, the fast model and polarity all raise if asked (live check 9: polarity timed out
+    twice and a clear option was left)."""
+    def boom(*a, **kw):
+        raise AssertionError("a model was asked")
+
+    monkeypatch.setattr(autofill_pick.jev, "decide", boom)
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", boom)
+    monkeypatch.setattr(autofill_pick.autofill_polarity, "decide",
+                        lambda asks, *a, **kw: boom() if asks else {})   # asked about no field: nothing to judge
+
+
+NO_VETERAN = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
+
+
+@pytest.mark.parametrize("question, options, wanted", [
+    ("Veteran Status", RIPPLING_STYLE, 1),
+    ("Protected veteran status", MILITARY, 3),
+    ("Veteran Status", SERVED_OR_NOT, 2),
+    ("Are you a veteran?", ("Yes, I am a veteran", "No, I am not a veteran"), 2),
+    ("Veteran Status", ("Non-veteran", "Veteran"), 1),
+])
+def test_a_saved_no_picks_the_one_option_that_denies_being_a_veteran_in_code(
+        db_session, monkeypatch, question, options, wanted):
+    no_model_may_be_asked(monkeypatch)
+    got = autofill_pick.pick([pf("v", question=question, slot="eeo.veteran_status", options=opts(*options))],
+                             NO_VETERAN, db_session, None)
+    assert sans_trace(got["v"]) == {"oids": [f"o{wanted}"], "reason": "matched"}
+    assert got["v"].trace == DecisionTrace() and got["v"].polarity is None
+
+
+def test_the_code_pick_of_a_not_served_veteran_option_is_reported_assumed_for_a_serving_question(db_session, monkeypatch):
+    no_model_may_be_asked(monkeypatch)
+    got = autofill_pick.pick([pf("v", question="Did you serve in the armed forces?", slot="eeo.veteran_status",
+                                 options=opts("I am not a veteran", "I am a veteran"))], NO_VETERAN, db_session, None)
+    assert sans_trace(got["v"]) == {"oids": ["o1"], "reason": "assumed"}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("options", [
+    ("I am a veteran, but not a protected veteran", RIPPLING_STYLE[1], "Choose not to disclose"),
+    ("No, I am a veteran but not a protected veteran", RIPPLING_STYLE[1], "Choose not to disclose"),
+    ("Non-protected veteran", RIPPLING_STYLE[1], "Choose not to disclose"),
+])
+def test_an_option_that_claims_to_be_a_veteran_is_never_picked_by_the_code_pick(db_session, monkeypatch, options):
+    calls = fake_jev(monkeypatch, {"v": ("o1", 0.99)}, ways={"v": ("same", 0.99)})
+    got = autofill_pick.pick([pf("v", question="Veteran Status", slot="eeo.veteran_status", options=opts(*options))],
+                             NO_VETERAN, db_session, None)
+    assert got["v"].reason == "asked" and got["v"].oids == []
+    assert calls   # the ordinary path asked the model, and the overreach guard took the claim back
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_two_options_that_deny_it_leave_the_choice_to_the_ordinary_path(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"v": ("o2", 0.95)}, ways={"v": ("same", 0.95)})
+    got = autofill_pick.pick([pf("v", question="Veteran Status", slot="eeo.veteran_status",
+                                 options=opts("I am not a veteran", "I am not a protected veteran", "I am a veteran"))],
+                             NO_VETERAN, db_session, None)
+    assert calls and sans_trace(got["v"]) == {"oids": ["o2"], "reason": "matched"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_saved_yes_is_not_decided_by_the_veteran_code_pick(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"v": ("o1", 0.95)}, ways={"v": ("same", 0.95)})
+    yes = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
+    got = autofill_pick.pick([pf("v", question="Are you a veteran?", slot="eeo.veteran_status",
+                                 options=opts("Yes, I am a veteran", "No, I am not a veteran"))], yes, db_session, None)
+    assert calls and sans_trace(got["v"]) == {"oids": ["o1"], "reason": "matched"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_question_on_another_slot_is_not_the_veteran_code_pick(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"v": ("o2", 0.95)}, ways={"v": ("same", 0.95)})
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "no", "disability_status": "no"}}, [], [])
+    autofill_pick.pick([pf("v", question="Disability status", slot="eeo.disability_status",
+                           options=opts("Yes", "I am not a veteran"))], facts, db_session, None)
+    assert calls
