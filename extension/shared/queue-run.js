@@ -330,7 +330,7 @@
   /** An optional field the profile had an answer for (a fact was filed under it) that ended unanswered: listed for the user as
    * "Left for you" on the card, never a park. A fact with no value (`no_value`) is no saved answer. */
   const leftForYou = (f) => f.status === "needs_answer" && !f.required && typeof f.slot === "string" && f.slot !== ""
-    && f.lastOutcome !== "no_value";
+    && f.lastOutcome !== "no_value" && !landedToCheck(f);   // a value a search or click landed on is the "Check" row's
   const openQuestions = (report) => report.fields
     .filter((f) => OPEN_STATUSES.has(f.status) && !landedToCheck(f)
       && (f.required || (f.status === "needs_answer" && f.invalid === true)))

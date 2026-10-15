@@ -62,6 +62,8 @@
   const MAX_LOOKED = 50;
   // What the fill report counts as filled on a page (the engine wrote it and checked it).
   const WROTE = new Set(["verified", "closest", "assumed"]);
+  // A field with an answer on it now (the run wrote or confirmed it, or it is the user's).
+  const ANSWERED = new Set(["verified", "closest", "assumed", "already", "partial", "yours"]);
   // What the card counts as answered: filled and verified, or found answered or the user's own (kept).
   const ANSWERED = new Set([...WROTE, "already", "yours"]);
   // The parks after which Resume reads what the user typed into the page (`afterTyping`).
@@ -361,8 +363,10 @@
    * drafted answer or a date set to the 1st, by its question and fixed note, never its value. One row per
    * question and step. A `left` row is an optional field the saved answer did not fill (`queueRun.leftForYou`). */
   function keepAssumed(record, report) {
-    const rows = record.assumedRows ?? [];
     const step = record.step ?? 0;
+    // A "Left for you" row goes once a later fill of the same page answers (or the user answered) that field.
+    const answered = new Set(report.fields.filter((row) => ANSWERED.has(row.status)).map((row) => row.question));
+    const rows = (record.assumedRows ?? []).filter((one) => !(one.left === true && one.step === step && answered.has(one.question)));
     for (const row of report.fields) {
       // An optional field with a saved answer that ended unanswered is the user's to look at, never a park: "Left for you".
       if (ns.queueRun.leftForYou(row) && row.question && !rows.some((one) => one.question === row.question && one.step === step)) {

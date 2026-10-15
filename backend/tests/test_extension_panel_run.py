@@ -1068,6 +1068,25 @@ def test_only_an_optional_field_with_a_saved_answer_that_ended_unanswered_is_lef
     assert [one for one in _record(out["shots"][-1]).get("assumedRows", []) if one.get("left")] == []
 
 
+def test_an_optional_field_a_search_landed_on_stays_a_check_row_not_a_left_for_you_row(tmp_path):
+    landed = {**needs("f2", "Field of Study", required=False), "lastOutcome": "search_committed", "slot": "education.0.discipline",
+              "answer": 'Searching picked "SECRET ANSWER TEXT". Check it.'}
+    out = _three_pages(tmp_path, [verified("f1"), landed])
+    rows = _record(out["shots"][-1])["assumedRows"]
+    assert rows == [{"fid": "f2", "question": "Field of Study", "step": 1, "note": "Searching picked a value. Check it."}]
+    assert "Left for you" not in _body_text(out["shots"][-1])
+
+
+def test_a_left_for_you_row_goes_when_a_later_fill_of_the_same_page_answers_the_field(tmp_path):
+    left = needs("q3", "Veteran Status", required=False, slot="eeo.veteran_status", lastOutcome="abstained")
+    answered = {**verified("q3", "Veteran Status"), "required": False}
+    out = _run(tmp_path, [{"start": SEED}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [*QUESTIONS, left]}, {"fields": [verified("q1"), verified("q2"), answered]}, {"fields": [verified("f1")]}],
+               inventory=TYPED, profileStore=json.loads(json.dumps(OLD_PROFILE)))
+    assert _record(out["shots"][1])["assumedRows"][0]["left"] is True                      # kept while the page is parked
+    assert [one for one in _record(out["shots"][-1]).get("assumedRows", []) if one.get("left")] == []
+
+
 def test_an_assumed_row_the_receipt_also_flagged_is_one_row_with_its_note(tmp_path):
     flags = {"flags": [{"index": 0, "question": "Start date", "flags": [{"reason": "Doesn't match your profile."}]}]}
     out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
