@@ -188,8 +188,10 @@
 
   // What the card says after "It tried": a phrase with no verb of its own, and how it went.
   const WENT = Object.freeze({ progress: "it took", moved: "it took", no_effect: "it didn't take", refused: "it was refused" });
+  // A question is cut short here so the card's own cut (100 characters) never loses how the attempt went.
+  const TRIED_Q = 55;
   const triedOf = (action, snap, outcome) => {
-    const q = cut(questionOf(snap, action.fid), 80);
+    const q = cut(questionOf(snap, action.fid), TRIED_Q) || "a field";
     const did = (() => {
       switch (action.type) {
         case "fill": return `filling ${plural(action.fids?.length ?? 0, "field")}`;
@@ -199,7 +201,7 @@
         case "retry": return `${q} a second way`;
         case "redo": return `${q} again`;
         case "close_dialog": return "closing a popup";
-        case "press_next": return `pressing ${cut(snap.body.buttons.find((b) => b.ref === action.button)?.text, 80)}`;
+        case "press_next": return `pressing ${cut(snap.body.buttons.find((b) => b.ref === action.button)?.text, TRIED_Q)}`;
         default: return "";
       }
     })();

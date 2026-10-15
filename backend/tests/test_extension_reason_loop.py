@@ -157,6 +157,25 @@ def test_what_it_tried_reads_after_it_tried_and_says_how_each_attempt_went(tmp_p
     assert pressed["out"]["tried"] == ["pressing Save and Continue; it took"]
 
 
+def test_a_long_question_is_cut_so_the_outcome_of_the_attempt_always_survives_the_cards_cut(tmp_path):
+    long = "Please tell us which of the following best describes where you first heard about this job opening today"[:80]
+    assert len(long) == 80
+    page = {**PAGE, "fields": [{**PAGE["fields"][0], "question": long}, PAGE["fields"][1]]}
+    for reply in (act(type="retry", fid="f1", technique="step_by_step"), act(type="choose", fid="f1", basis="history"),
+                  act(type="press_next", button="b1")):
+        out = run_node(_DRIVER, {"page": page, "replies": [reply], "why": "no_change"}, tmp_path, source=SOURCE)
+        [one] = out["out"]["tried"]
+        assert len(one) <= 100 and one.endswith(("; it didn't take", "; it took")), one
+
+
+def test_a_field_with_no_question_is_called_a_field(tmp_path):
+    page = {**PAGE, "fields": [{**PAGE["fields"][0], "question": ""}, PAGE["fields"][1]]}
+    out = run_node(_DRIVER, {"page": page, "replies": [act(type="retry", fid="f1", technique="step_by_step")]}, tmp_path, source=SOURCE)
+    assert out["out"]["tried"] == ["a field a second way; it didn't take"]
+    out = run_node(_DRIVER, {"page": page, "replies": [act(type="write", fid="f1")]}, tmp_path, source=SOURCE)
+    assert out["out"]["tried"][0].startswith("answering a field;")
+
+
 def test_each_attempt_is_a_phrase_to_follow_it_tried_not_a_sentence_with_its_own_verb(tmp_path):
     out = think(tmp_path, replies=[act(type="retry", fid="f1", technique="clear_and_set")], fixes=["f1"])
     [one] = out["out"]["tried"]
