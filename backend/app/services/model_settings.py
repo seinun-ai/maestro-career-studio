@@ -15,6 +15,7 @@ FAST_MODEL_KEY = "llm.fast_model"
 SMART_MODEL_KEY = "llm.smart_model"
 CHAT_MODEL_KEY = "llm.chat_model"
 EXTRA_MODELS_KEY = "llm.extra_models"
+REASONING_MODEL_KEY = "llm.reasoning_model"
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,10 @@ MODEL_OPTIONS = [
     # DEFAULT for every tier (same 2026-08 benchmark): the most complete
     # extraction measured and the cheapest per application; the slowest.
     ModelOption("gpt-5.6-luna", "OpenAI GPT-5.6 Luna", "openai", "smart"),
+    # The strong OpenAI model (2026-10 freshness check: $2/$10 per MTok) and the small cheap one. Listed for the
+    # Reasoning model (default and picker) and for a key that wants them; never assigned to the other three roles.
+    ModelOption("gpt-6.1-sol", "OpenAI GPT-6.1 Sol", "openai", "smart"),
+    ModelOption("gpt-6-luna", "OpenAI GPT-6 Luna", "openai", "fast"),
     # Claude 5.5 family: listed so a Claude key has models to pick; never
     # assigned to a role (no auto-pick). Fast Claude tier:
     ModelOption("claude-haiku-5-5", "Claude Haiku 5.5", "anthropic", "fast"),
@@ -91,6 +96,12 @@ def get_chat_model(session: Session | None = None) -> str:
         with SessionLocal() as owned:
             return _get_value(owned, CHAT_MODEL_KEY, settings.chat_model)
     return _get_value(session, CHAT_MODEL_KEY, settings.chat_model)
+
+
+# The models strong enough to reason over a stuck page, and each provider's one. NOT the catalog's `tier`:
+# `gpt-5.6-luna` is tagged "smart" and is the small cheap OpenAI model.
+STRONG_MODELS = frozenset({"claude-sonnet-5-5", "claude-opus-5-5", "gpt-6.1-sol"})
+STRONG_BY_PROVIDER = {"anthropic": "claude-sonnet-5-5", "openai": "gpt-6.1-sol"}
 
 
 API_KEY_SETTINGS = {
@@ -217,6 +228,35 @@ def _read(session: Session | None, key: str) -> str | None:
         with SessionLocal() as owned:
             return _get_raw_value(owned, key)
     return _get_raw_value(session, key)
+
+
+def default_reasoning_model(session: Session | None = None) -> str:
+    """The smart model when it is itself a strong model, else its provider's strong one (Anthropic, OpenAI), else
+    the smart model (Gemini, OpenRouter, a user-added model; a custom endpoint always: its catalog is not ours)."""
+    if session is None:
+        with SessionLocal() as owned:
+            return default_reasoning_model(owned)
+    smart = get_smart_model(session)
+    if smart in STRONG_MODELS or using_custom_endpoint(session):
+        return smart
+    return STRONG_BY_PROVIDER.get(catalog_provider(smart, session) or _provider_for(smart), smart)
+
+
+def get_reasoning_model(session: Session | None = None) -> str:
+    """The model the Companion's reasoning step calls (any catalog model; unset: the strong one)."""
+    return _read(session, REASONING_MODEL_KEY) or default_reasoning_model(session)
+
+
+def validate_reasoning_model(session: Session, value: str | None) -> None:
+    if value and not using_custom_endpoint(session) and value not in usable_ids(session):
+        raise ValueError(f"Unsupported model: {value}")
+
+
+def set_reasoning_model(session: Session, value: str | None) -> None:
+    """None or "" goes back to the default (no row)."""
+    cleaned = (value or "").strip() or None
+    validate_reasoning_model(session, cleaned)
+    _set_raw_value(session, REASONING_MODEL_KEY, cleaned)
 
 
 def get_jev_api_key(session: Session | None = None) -> str | None:
