@@ -170,15 +170,14 @@
 
   // The upload proof's reading of a widget (rows naming the file, errors, progress) lives in content/detect.js
   // (`ns.uploadProof`), a re-run file like this one, so this one's size stays a front door's.
-  const proof = ns.uploadProof;
-  const { NOT_AN_UPLOADER } = proof;
+  // Read where it is used, never at load: a page that loads this file alone (a re-injection) has no detect.js yet.
 
   /** The part of the page that belongs to ONE file input: where its uploader would print the row for a file it took.
    * `proof.chain`'s climb, three levels, and the widget is the highest level reached (null when there is none, and that
    * box can then prove itself only by `files`). Three levels covers Workday (the input sits directly in
    * `attachments-FileUpload`, the row a level below it) with room for a wrapper or two. */
   function uploadWidgetOf(input) {
-    const chain = proof.chain(input);
+    const chain = ns.uploadProof.chain(input);
     return chain[Math.min(chain.length, 3) - 1] ?? null;
   }
 
@@ -233,7 +232,7 @@
     let el = up(input);
     for (let level = 0; el && level < SECTION_CLIMB; level += 1, el = up(el)) {
       if (el === document.body || el === document.documentElement) break;
-      if (level >= NEAR_CLIMB && all(`${NOT_AN_UPLOADER}, input[type="file"]`, el).some((other) => other !== input)) break;
+      if (level >= NEAR_CLIMB && all(`${ns.uploadProof.NOT_AN_UPLOADER}, input[type="file"]`, el).some((other) => other !== input)) break;
       // Composed document order (a heading in the light DOM, the input in a shadow root): the headings listed before the input.
       const seq = all(`${SECTION_HEADING}, input[type="file"]`, el);
       const before = seq.slice(0, seq.indexOf(input)).filter((h) => h.matches(SECTION_HEADING) && !h.contains(input));
@@ -496,7 +495,7 @@
     // box's row. An EMPTY filename is in every text, so it proves nothing and
     // leaves such a box to `files` alone.
     const targets = inputs.map((input) => {
-      const watched = filename ? proof.levels(input, filename) : [];
+      const watched = filename ? ns.uploadProof.levels(input, filename) : [];
       return { input, watched, widget: watched[0]?.el ?? null };
     });
     for (const { input } of targets) {
@@ -509,7 +508,7 @@
       input.files = dt.files;
       input.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    const rowProof = (t) => proof.seen(t.watched, filename).row;
+    const rowProof = (t) => ns.uploadProof.seen(t.watched, filename).row;
     // Autofill's write takes a held `files` only from an input on screen (the
     // browser's own control shows it); a hidden one's uploader must show a row.
     const proven = (t) => ((t.input.isConnected && t.input.files?.length === 1)
@@ -532,7 +531,7 @@
     // A widget that shows PROGRESS (busy, a bar, "Uploading…") is still working, and gets longer: an uploader that parses the
     // file first (live check 9) prints the name when that is done. Bounded, and only the news counts.
     const patience = Date.now() + ATTACH_PROGRESS_WAIT_MS;
-    const working = (t) => Date.now() < patience && proof.seen(t.watched, filename).working;
+    const working = (t) => Date.now() < patience && ns.uploadProof.seen(t.watched, filename).working;
     while (targets.some((t) => t.widget !== null && !proven(t) && (Date.now() < deadline || working(t)))) {
       await sleep(ATTACH_POLL_MS);
     }
