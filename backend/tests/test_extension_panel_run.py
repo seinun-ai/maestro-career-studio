@@ -2299,3 +2299,72 @@ def test_a_popup_the_step_closes_goes_through_the_guarded_dismiss(tmp_path):
     assert {"ref": "b2", "text": "Close", "role": "dialog"} in json.loads(call["init"]["body"])["buttons"]
     [advance] = _page_messages(out, "page_advance")[:1]
     assert advance["message"]["dismiss"] is True and advance["message"]["id"] == "dlg-1" and advance["frameId"] == 0
+
+
+# ---------- the card: the live line, the one sentence, the note and what it tried ----------
+
+
+def test_a_working_card_shows_the_live_line_while_it_thinks(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("filling", thinking="Thinking: Degree looks empty, so it is answered next.")]}])
+    assert "Thinking: Degree looks empty, so it is answered next." in _body_text(out["shots"][1])
+
+
+def test_a_run_the_step_sorted_out_says_so_in_one_sentence(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("filling", step=1, sorted="Sorted it out: answered 2 questions and moved on.")]}])
+    assert "Sorted it out: answered 2 questions and moved on." in _body_text(out["shots"][1])
+
+
+def test_the_live_line_wins_over_the_sentence_and_neither_shows_on_a_run_that_is_not_working(tmp_path):
+    both = _seeded("filling", thinking="Thinking about this page…", sorted="Sorted it out and moved on.")
+    text = _body_text(_run(tmp_path, [{"seed": [both]}])["shots"][1])
+    assert "Thinking about this page…" in text and "Sorted it out" not in text
+    parked = _seeded("parked", why="captcha", thinking="Thinking about this page…", sorted="Sorted it out and moved on.")
+    text = _body_text(_run(tmp_path, [{"seed": [parked]}])["shots"][1])
+    assert "Thinking about this page…" not in text and "Sorted it out" not in text
+
+
+def test_a_park_after_a_thought_shows_its_note_and_what_it_tried_as_plain_text(tmp_path):
+    thought = {"note": "The error names <b>Source</b>, which no field is called.",
+               "tried": ["filled 1 field", "pressed Save and Continue"]}
+    out = _run(tmp_path, [{"seed": [_seeded("parked", why="page_errors", thought=thought)]}])
+    body = _card(out["shots"][1])["body"]
+    text = _text(body)
+    assert "The error names <b>Source</b>, which no field is called." in text
+    assert "Tried: filled 1 field, pressed Save and Continue." in text
+    assert not [n for n in _walk(body) if n["tag"] == "B"]
+
+
+def test_a_park_shows_what_the_model_asked_of_the_user_beside_its_note(tmp_path):
+    thought = {"note": "Degree has no saved answer.", "ask": "Pick your degree in the page.", "tried": []}
+    out = _run(tmp_path, [{"seed": [_seeded("parked", why="open_questions", thought=thought,
+                                            open=[{"fid": "f2", "question": "Degree", "required": True}])]}])
+    text = _body_text(out["shots"][1])
+    assert "Degree has no saved answer." in text and "Pick your degree in the page." in text and "Tried:" not in text
+    assert "Answer them in the page, then press Resume." in text                         # the fixed instruction stays
+
+
+def test_a_park_without_a_thought_is_what_it_was(tmp_path):
+    text = _body_text(_run(tmp_path, [{"seed": [_seeded("parked", why="captcha")]}])["shots"][1])
+    assert "Tried:" not in text and "Sorted" not in text and "Thinking" not in text
+
+
+def test_a_long_or_odd_thought_is_cut_and_never_markup(tmp_path):
+    thought = {"note": "x" * 400, "ask": "y" * 400, "tried": [f"step {i}" for i in range(30)]}
+    out = _run(tmp_path, [{"seed": [_seeded("parked", why="loop", thought=thought)]}])
+    body = _card(out["shots"][1])["body"]
+    assert "x" * 200 in _text(body) and "x" * 201 not in _text(body) and "y" * 201 not in _text(body)
+    assert len([n for n in _walk(body) if "run-tried" in n["class"].split()]) == 1
+
+
+def test_the_footer_note_says_the_live_line_while_the_step_thinks_and_goes_when_it_is_done(tmp_path):
+    # The reply is held, so the step is mid-thought when the second picture is taken.
+    out = _run(tmp_path, [{"facts": ON}, {"start": SEED, "background": True}, {"releaseApi": True}, {"finish": True}],
+               pages=(STEP1, REVIEW), reports=[{"fields": [needs("f2", "Degree")]}],
+               inventory=[_field("f2", "", question="Degree")], frames=NO_ERRORS,
+               api={"POST /api/autofill/reason": _reply(ASK)}, hold=["/api/autofill/reason"])
+    thinking = out["shots"][2]
+    assert "Thinking about this page…" in _text(thinking["regions"]["foot"])
+    assert "Thinking about this page…" in _body_text(thinking)
+    final = out["shots"][-1]
+    assert "Thinking" not in _text(final["regions"]["foot"]) and "Thinking" not in _body_text(final)
+    assert "Degree has no saved answer." in _body_text(final)

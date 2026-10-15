@@ -9,8 +9,10 @@
  * card's title and eyebrow from `title` and `working`.
  *
  * ONE CARD, FIVE KINDS OF STATE (design Part 5, direction C's "one next step"):
- *   working     opening, signing in, filling page N: a progress bar, the pages so far, Stop
- *   Needs you   parked: why in the user's words, what to do, Resume, Skip this job
+ *   working     opening, signing in, filling page N: a progress bar, the pages so far, Stop; while the reasoning step
+ *               works, its live line (`run.thinking`), and after it moved the run on, one sentence (`run.sorted`)
+ *   Needs you   parked: why in the user's words, what to do, Resume, Skip this job; after the reasoning step, its note,
+ *               what it asked of the user and what it tried (`run.thought`), as plain text
  *   Ready       a review page, filled: the answers to check; the Submit press is the user's (Done
                ends the record without marking anything)
  *   Marking     the confirmation page was seen: "Marking applied in 8 s · Undo"
@@ -179,6 +181,10 @@
     return line ? [bar, list, ctx.build.node("div", "sub", line)] : [bar, list];
   }
 
+  const MAX_NOTE = 200;
+  const MAX_LINE = 300;
+  const cut = (text, n) => String(text ?? "").slice(0, n);
+
   const WORKING_LINES = {
     opening: "Opening the employer's application page.",
     signing_in: "Signing in with your saved job-site login.",
@@ -190,6 +196,10 @@
     const body = [];
     if (WORKING_LINES[run.status]) body.push(node("div", "sub", WORKING_LINES[run.status]));
     else body.push(...pagesList(ctx, run));
+    // The reasoning step's live line, else the one sentence it leaves when it moved the run on. Plain text, and no live
+    // region here: the rail is rebuilt on every paint, so the footer note (set as the line changes) is the announcement.
+    if (run.thinking) body.push(node("div", "sub run-thinking", cut(run.thinking, MAX_LINE)));
+    else if (run.sorted) body.push(node("div", "sub run-sorted", cut(run.sorted, MAX_LINE)));
     body.push(node("div", "sub", FIXED_LINE));
     const stop = button(ctx, "stop", "run-stop", run.stopRequested ? "Stopping…" : "Stop", () => ctx.act.stopRun(run.id));
     stop.disabled = run.stopRequested === true;
@@ -218,12 +228,26 @@
     return list;
   }
 
+  /** What the reasoning step made of a park: its note, what it asks of the user, and what it tried. The model's words
+   * are untrusted text, so they go in through the builder (textContent), cut, never as markup. */
+  function thoughtLines(ctx, thought) {
+    const { node } = ctx.build;
+    if (!thought || typeof thought !== "object") return [];
+    const note = cut(thought.note, MAX_NOTE);
+    const ask = cut(thought.ask, MAX_NOTE);
+    const tried = (Array.isArray(thought.tried) ? thought.tried : []).slice(0, 6).map((one) => cut(one, 100)).filter(Boolean);
+    return [note ? node("div", "opts run-thought", note) : null,
+      ask && ask !== note ? node("div", "opts run-ask", ask) : null,
+      tried.length ? node("div", "opts run-tried", `Tried: ${tried.join(", ")}.`) : null];
+  }
+
   function parkedBody(ctx, run) {
     const { node, attach } = ctx.build;
     const [reason, say] = parkWords(run) ?? ["Needs you", "Do this step in the tab, then press Resume."];
     // A run that followed the user into this tab waits for one press here; it never carries on by itself.
     const moved = run.moved === true ? "The run moved to this tab. Press Continue here when this is the page to fill. " : "";
     const box = attach(node("div", "needs run-needs"), node("div", "run-reason", reason), node("div", "opts", `${moved}${say}`),
+      ...thoughtLines(ctx, run.thought),
       ["open_questions", "page_errors", "upload"].includes(run.why) ? questions(ctx, run) : null);
     const actions = node("div", "run-actions");
     if (canResume(run)) {

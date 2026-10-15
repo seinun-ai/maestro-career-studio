@@ -74,8 +74,11 @@
     return {
       now: run.now,
       cancelled: () => record.stopRequested === true,
+      // The card shows the line; the footer note (the panel's one live region: the rail is rebuilt on every paint) says it
+      // for the run on the tab in view.
       onLine: (text) => {
         record.thinking = String(text).slice(0, 300);
+        if (store.read().tabId === record.tabId) store.write({ note: { text: record.thinking } });
         store.render();
       },
       read,

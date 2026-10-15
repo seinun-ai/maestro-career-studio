@@ -551,6 +551,8 @@
       out = await ns.reasonLoop.think({ ...ctx, applicationId: record.applicationId,
         base: record.applicationId ? null : record.baseSlug, pageUrl: ns.fillLoop.pageUrlOf(url), today }, ops);
     } finally {
+      // The footer note says the live line while it lasts and goes with it; any other note is not ours to clear.
+      if (record.thinking && store.read().note?.text === record.thinking) store.write({ note: null });
       record.thinking = null;
     }
     const step = record.step ?? 0;
