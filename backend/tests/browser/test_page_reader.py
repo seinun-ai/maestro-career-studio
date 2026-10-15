@@ -2983,7 +2983,6 @@ def test_two_steps_inside_a_live_main_have_different_step_keys(page, load):
 
 POPUP = """<div role="dialog" aria-modal="true" class="cookie-banner"><p>We use cookies.</p>
   <button>Reject all</button><button>Accept all</button></div>
-  <div role="dialog" aria-modal="true"><button>Close and submit</button></div>
   <form><label>Name <input name="n"></label><button type="button">Next</button>
   <button type="submit">Submit application</button></form><button>Close</button>"""
 
@@ -2998,9 +2997,13 @@ def test_a_dismiss_press_closes_only_an_overlays_dismiss_button_and_never_a_subm
     assert dismiss(page, button(s, "Reject all")["id"]) == {"clicked": True}
     s = summary(page)
     assert dismiss(page, button(s, "Accept all")["id"]) == {"clicked": False, "why": "not_dismiss"}
-    assert dismiss(page, button(s, "Close and submit")["id"]) == {"clicked": False, "why": "submit"}
     assert dismiss(page, button(s, "Submit application")["id"])["clicked"] is False
     assert dismiss(page, button(s, "Close")["id"]) == {"clicked": False, "why": "not_dismiss"}   # not in an overlay
+
+
+def test_a_dismiss_press_refuses_a_submit_worded_button_in_a_dialog(page, load):
+    load(page, '<div role="dialog" aria-modal="true"><button>Close and submit</button></div>', sources=SOURCES)
+    assert dismiss(page, button(summary(page), "Close and submit")["id"]) == {"clicked": False, "why": "submit"}
 
 
 def test_a_dismiss_press_clicks_the_button_and_refuses_a_forged_id_a_submit_mark_and_two_modes(page, load):
@@ -3066,3 +3069,38 @@ def test_a_refusal_closes_a_cookie_notice_but_never_a_consent_box_and_ok_never_a
     assert ok.get("overlayAsks") is True
     assert dismiss(page, ok["id"]) == {"clicked": False, "why": "not_dismiss"}
     assert page.evaluate("() => window.sent === 1") is False
+
+
+FORM = ('<form><label>Name <input name="n"></label>'
+        '<button type="button" onclick="window.sent = \'next\'">Next</button></form>')
+HIT = 'onclick="window.sent = 1"'
+LONG = "Please read this carefully. " * 15   # 420 characters, past the first 300
+
+
+@pytest.mark.parametrize("name, html", [
+    ("a statement an OK would agree to, beside a Cancel", f'{FORM}<div role="dialog" aria-modal="true"><p>Your answers will be locked after this.</p><button {HIT}>OK</button><button>Cancel</button></div>'),
+    ("a statement that says it will be sent", f'{FORM}<div role="dialog"><p>We will send it to the hiring team.</p><button {HIT}>OK</button></div>'),
+    ("a long preamble that ends by saying the application will be submitted", f'{FORM}<div role="dialog"><p>{LONG} Your application will be submitted.</p><button {HIT}>OK</button></div>'),
+    ("a long preamble that asks to send", f'{FORM}<div role="dialog"><p>{LONG} Ready to send it now?</p><button {HIT}>Close</button></div>'),
+    ("a link whose address says submit", f'{FORM}<div role="dialog"><p>All set.</p><a role="button" href="#/application/submit" {HIT}>OK</a></div>'),
+    ("a consent bar OK beside a dialog that asks about submitting", f'{FORM}<div role="dialog"><h2>Submit your application?</h2></div><div class="consent-bar"><button {HIT}>OK</button></div>'),
+])
+def test_a_dismiss_press_refuses_what_could_submit_whatever_the_page_calls_it(page, load, name, html):
+    load(page, html, sources=SOURCES)
+    for b in summary(page)["buttons"]:
+        if b["text"] not in ("Next", "Cancel"):
+            assert dismiss(page, b["id"])["clicked"] is False, f"{name}: {b['text']}"
+    assert page.evaluate("() => window.sent ?? null") is None
+
+
+def test_a_long_preamble_that_ends_by_saying_the_application_will_be_submitted_walls_the_page(page, load):
+    load(page, f'{FORM}<div role="dialog"><p>{LONG} Your application will be submitted.</p><button>OK</button></div>', sources=SOURCES)
+    s = summary(page)
+    assert s["submitContext"] is True and classify(page)["kind"] == "review"
+
+
+def test_an_acknowledgement_that_asks_nothing_still_closes_and_a_close_word_always_does(page, load):
+    load(page, f'{FORM}<div role="dialog"><p>Your progress was saved.</p><button {HIT}>OK</button></div>', sources=SOURCES)
+    assert dismiss(page, button(summary(page), "OK")["id"]) == {"clicked": True}
+    load(page, f'{FORM}<div role="dialog"><p>Your answers will be locked after this.</p><button>OK</button><button {HIT}>Close</button></div>', sources=SOURCES)
+    assert dismiss(page, button(summary(page), "Close")["id"]) == {"clicked": True}
