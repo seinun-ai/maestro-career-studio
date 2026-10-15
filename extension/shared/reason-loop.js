@@ -91,13 +91,23 @@
       });
   };
 
-  /** The page's own Next and dialog-dismiss buttons, by role; refs `b1`.. in page order. */
+  /** Whether the page is one the step must not act on: a wall, a review page, or anything that asks about submitting.
+   * Only a form step (or a page not yet known) is worked. A moved_away read carries no page to judge. */
+  const walled = (ctx, read) => ctx.why !== "moved_away" && Boolean(read.summary)
+    && (read.summary.submitContext === true || !["form_step", "unknown"].includes(ns.pageKind.classify(read.summary).kind));
+
+  /** The page's own Next and dialog-dismiss buttons, by role; refs `b1`.. in page order. The Next is the ONE the
+   * classifier names (pressable, in the step); a dialog button is offered only while nothing asks about submitting. */
   const buttonRows = (read) => {
+    const verdict = read.summary ? ns.pageKind.classify(read.summary) : { kind: "unknown" };
+    const nextId = verdict.kind === "form_step" ? verdict.next : null;
+    const asking = read.summary?.submitContext === true;
     const out = [];
     for (const b of read.summary?.buttons ?? []) {
       if (out.length >= LIMITS.buttons) break;
       if (!b || typeof b.id !== "string" || b.visible === false || b.inErrors === true || b.fieldControl === true || b.chrome === true) continue;
-      const role = ns.pageKind.sortButton(b) === "next" ? "next" : b.overlay === true && ns.pageKind.isDismiss(b.text) ? "dialog" : null;
+      const role = b.id === nextId ? "next"
+        : !asking && b.overlay === true && ns.pageKind.isDismiss(b.text, { cookie: b.cookie === true, asks: b.overlayAsks === true }) ? "dialog" : null;
       if (role) out.push({ ref: `b${out.length + 1}`, text: cut(b.text), role, id: b.id });
     }
     return out;
@@ -177,7 +187,7 @@
   // user's (`touched`) never is.
   const PLANS = {
     fill: (a) => ({ fids: a.fids, scope: {} }),
-    answer_from: (a) => ({ fids: [a.fid], scope: { slotHints: { [a.fid]: a.slot }, redo: [a.fid], reasoned: "answer_from" } }),
+    answer_from: (a, f) => ({ fids: [a.fid], scope: { slotHints: { [a.fid]: a.slot }, ...(f?.multi ? {} : { redo: [a.fid] }), reasoned: "answer_from" } }),
     write: (a, f) => ({ fids: [a.fid], scope: { routes: { [a.fid]: "free_text" }, reasoner: { [a.fid]: f?.multiline ? "essay" : "short" },
       reasoned: "write" } }),
     choose: (a) => ({ fids: [a.fid], scope: { routes: { [a.fid]: a.basis === "history" ? "reasoned" : "low_stakes" }, reasoned: "choose" } }),
@@ -198,6 +208,10 @@
     const plan = PLANS[action.type]?.(action, fieldIn(snap, action.fid));
     const known = new Set(snap.body.fields.map((f) => f.fid));
     if (!plan || !plan.fids.length || !plan.fids.every((fid) => known.has(fid))) return { outcome: "rejected" };
+    // Reworking a field is for the run's own work: never the user's (touched), nor one the run did not fill, nor a set of values.
+    const field = fieldIn(snap, action.fid);
+    const reworks = action.type === "redo" || action.type === "answer_from" || (action.type === "retry" && action.technique === "clear_and_set");
+    if (reworks && field && (field.touched || (field.filled && (!field.by_run || field.multi)))) return { outcome: "rejected" };
     const report = await attempt(() => ops.fill(plan.fids, plan.scope));
     const { rows, outcomes, outcome } = judged(report, plan.fids);
     const extra = {};
@@ -214,18 +228,25 @@
 
   async function runButton(action, snap, ctx, ops, state) {
     const ref = snap.refs[action.button];
-    const role = snap.body.buttons.find((b) => b.ref === action.button)?.role;
-    if (!ref || role !== (action.type === "press_next" ? "next" : "dialog")) return { outcome: "rejected" };
+    const asked = snap.body.buttons.find((b) => b.ref === action.button);
+    const role = action.type === "press_next" ? "next" : "dialog";
+    if (!ref || asked?.role !== role) return { outcome: "rejected" };
     let target = { frameId: ref.frameId, id: ref.id, read: state.cur };
     if (state.dirty) {
-      // An earlier action this round changed the page: the Next is found again in a fresh read (its id is minted per
-      // read), and the press waits for change from THAT page's fingerprint.
+      // An earlier action this round changed the page: its button is found again in a fresh read (ids are minted per
+      // read), and a press waits for change from THAT page's fingerprint. A Next is the one the classifier names, with
+      // the words it had; a dialog button must be the only one with its role and words. A page that now asks about
+      // submitting, or is any wall, ends the step.
       const fresh = await attempt(() => ops.read(ctx.why));
-      const word = snap.body.buttons.find((b) => b.ref === action.button).text;
-      const again = fresh && buttonRows(fresh).find((b) => b.role === role && cut(b.text) === word);
-      if (!again) return { outcome: "refused" };
+      if (!fresh) return { outcome: "refused" };
       state.cur = fresh;
-      target = { frameId: fresh.frameId, id: again.id, read: fresh };
+      if (walled(ctx, fresh)) {
+        state.walled = true;
+        return { outcome: "refused" };
+      }
+      const same = buttonRows(fresh).filter((b) => b.role === role && b.text === asked.text);
+      if (same.length !== 1) return { outcome: "refused" };
+      target = { frameId: fresh.frameId, id: same[0].id, read: fresh };
     }
     if (action.type === "close_dialog") {
       const got = await attempt(() => ops.dismiss(target.frameId, target.id));
@@ -246,6 +267,24 @@
       return { outcome: (await attempt(() => ops.follow(tabId))) === true ? "moved" : "refused" };
     }
     return await runField(action, snap, ops, out);
+  }
+
+  // What failed is counted by what the action worked, so it survives the button list renumbering: a field by its
+  // signature, a button by its role and words, a tab by its host. `excludedFor` turns the counts back into the
+  // signatures THIS snapshot's refs carry.
+  const failKey = (action, snap) => {
+    if (action.button) return `${action.type}|${snap.body.buttons.find((b) => b.ref === action.button)?.text ?? ""}`;
+    if (action.tab) return `${action.type}|${snap.body.tabs.find((t) => t.ref === action.tab)?.host ?? ""}`;
+    return signatureOf(action);
+  };
+  function excludedFor(ctx, read, fails) {
+    const twice = (key) => (fails.get(key) ?? 0) >= 2;
+    const out = [...fails.keys()].filter((key) => !key.includes("|") && twice(key));
+    if (ctx.why !== "moved_away") {
+      for (const b of buttonRows(read)) if (twice(`${b.role === "next" ? "press_next" : "close_dialog"}|${b.text}`)) out.push(`${b.role === "next" ? "press_next" : "close_dialog"}:${b.ref}`);
+    }
+    for (const t of tabRows(read)) if (twice(`follow_tab|${t.host}`)) out.push(`follow_tab:${t.ref}`);
+    return out;
   }
 
   // ---- looking again
@@ -286,15 +325,18 @@
     };
     const first = await attempt(() => ops.read(ctx.why));
     if (!first) return out;
-    const state = { cur: first, dirty: false };
+    if (walled(ctx, first)) {
+      out.rounds.push({ round: 1, why: ctx.why, model: null, ms: 0, note: "", actions: [], rejected: [], stopped: "wall" });
+      return out;
+    }
+    const state = { cur: first, dirty: false, walled: false };
     const history = (ctx.recent ?? []).filter((h) => typeof h === "string" && HISTORY.test(h)).slice(-LIMITS.history);
     const fails = new Map();     // signature -> times it failed
     const idle = new Map();      // fid -> rounds an action left it unfilled
     for (let round = 1; round <= LIMITS.rounds && !over(); round += 1) {
       const entry = { round, why: ctx.why, model: null, ms: 0, note: "", actions: [], rejected: [], stopped: null };
       out.rounds.push(entry);
-      const snap = snapshotOf(ctx, state.cur, { round, history,
-        excluded: [...fails].filter(([, n]) => n >= 2).map(([sig]) => sig),
+      const snap = snapshotOf(ctx, state.cur, { round, history, excluded: excludedFor(ctx, state.cur, fails),
         dropped: new Set([...idle].filter(([, n]) => n >= 2).map(([fid]) => fid)) });
       say("Thinking about this page…");
       const asked = ops.now();
@@ -332,6 +374,11 @@
           ended = true;
           break;
         }
+        if (ops.now() - began >= LIMITS.pageMs) {
+          entry.stopped = "clock";
+          ended = true;
+          break;
+        }
         say(lineFor(action, snap));
         const last = i === actions.length - 1;
         const result = action.type === "press_next" && !last ? { outcome: "rejected" } : await perform(action, snap, ctx, ops, state, out);
@@ -340,8 +387,13 @@
         history.push(`${action.type}:${target} -> ${result.outcome}`);
         history.splice(0, Math.max(0, history.length - LIMITS.history));
         // A fill is judged per field (the backend checks its signatures that way); anything else by its own.
-        for (const [sig, outcome] of result.perFid ? result.perFid.map(([fid, o]) => [`fill:${fid}`, o]) : [[signatureOf(action), result.outcome]]) {
-          if (FAILED.has(outcome)) fails.set(sig, (fails.get(sig) ?? 0) + 1);
+        for (const [key, outcome] of result.perFid ? result.perFid.map(([fid, o]) => [`fill:${fid}`, o]) : [[failKey(action, snap), result.outcome]]) {
+          if (FAILED.has(outcome)) fails.set(key, (fails.get(key) ?? 0) + 1);
+        }
+        if (state.walled) {
+          entry.stopped = "wall";
+          ended = true;
+          break;
         }
         if (result.outcome !== "rejected" && triedOf(action, snap)) out.tried.push(triedOf(action, snap));
         for (const fid of action.fids ?? (action.fid ? [action.fid] : [])) {
@@ -372,6 +424,10 @@
         else if (!progressed.has(fid)) idle.set(fid, (idle.get(fid) ?? 0) + 1);
       }
       state.cur = after;
+      if (walled(ctx, after)) {
+        entry.stopped = "wall";
+        break;
+      }
       if (resolved(ctx, first, after)) {
         entry.stopped = "resolved";
         out.moved = true;

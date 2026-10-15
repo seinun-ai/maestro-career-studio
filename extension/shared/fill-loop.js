@@ -1641,7 +1641,7 @@
         else if (f.touched) finish(f, "yours", { lastOutcome: "yours" });
         else if (f.kind === "unknown" || f.shape === "unknown" || !FID.test(f.fid)) {
           finish(f, "cannot_operate", { lastOutcome: "unsupported" });
-        } else if (row.status === "new" && f.answered && !f.invalid && !row.leftover && !redo.has(f.fid)) {
+        } else if (row.status === "new" && f.answered && !f.invalid && !row.leftover && !(redo.has(f.fid) && !f.multi)) {   // a redo never refills a set of values
           // A URL the box holds is compared with the profile's before it counts as the answer
           // (a parsed resume left "example.dev" where the website belongs): mapped first.
           if (heldUrl(f)) {

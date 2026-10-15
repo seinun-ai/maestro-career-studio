@@ -3856,3 +3856,9 @@ def test_answer_from_on_a_text_box_the_run_filled_maps_it_again_with_the_hint_an
     [body] = bodies(out, "/api/autofill/map")
     assert [fl["fid"] for fl in body["fields"]] == ["a"] and body["fields"][0]["slot_hint"] == "personal.city"
     assert statuses(out) == {"a": "verified", "b": "yours"}
+
+
+def test_redo_never_remaps_a_multi_value_field(page, load):
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True, committed=["SQL"], answered=True)]],
+              options={"redo": ["k"]})
+    assert "/api/autofill/map" not in out["calls"] and statuses(out) == {"k": "already"}
