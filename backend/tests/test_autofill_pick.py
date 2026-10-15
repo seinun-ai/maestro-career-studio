@@ -2201,8 +2201,49 @@ def test_the_relocate_rule_needs_a_saved_yes(db_session, monkeypatch):
     "Do you require visa sponsorship, or are you willing to relocate?",
     "Are you willing to relocate?",
     "Are you located in Springfield, IL?",
+    # the two halves must be one question: a statement elsewhere in the text is not what is asked
+    "Do you live in New York? This role is onsite; candidates who are not local or willing to relocate will not be considered.",
+    "Are you located in Austin? Applicants based elsewhere or willing to move should note we do not offer relocation assistance.",
+    # a negation before the relocate verb flips what a Yes says
+    "Are you located in the area, or are you not willing to relocate?",
+    "Are you located in the area, or unwilling to relocate? (never willing to relocate)",
+    "Are you located in Boston or aren't you willing to relocate?",
 ])
 def test_the_relocate_rule_leaves_work_authorization_and_plain_questions_to_the_model(db_session, monkeypatch, question):
     seen = asked_polarity(monkeypatch)
     autofill_pick.pick([relocate_field(question)], RELOCATE_FACTS, db_session, None)
     assert set(seen) == {"r"}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    "Are you located in the Springfield area and/or willing to relocate on your own?",
+    "Are you located in Boston and/or willing to relocate at your own expense?",
+    "Are you located in Denver or willing to relocate without relocation assistance?",
+    "Are you located in Denver or willing to relocate (no relocation support is offered)?",
+])
+def test_a_relocate_yes_with_a_qualifier_is_assumed_so_the_user_checks_it(db_session, monkeypatch, question):
+    seen = asked_polarity(monkeypatch)
+    got = autofill_pick.pick([relocate_field(question)], RELOCATE_FACTS, db_session, None)
+    assert seen == [] and (got["r"].oids, got["r"].reason) == (["o1"], "assumed")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_plain_relocate_yes_stays_a_matched_fact(db_session, monkeypatch):
+    asked_polarity(monkeypatch)
+    got = autofill_pick.pick([relocate_field()], RELOCATE_FACTS, db_session, None)
+    assert got["r"].reason == "matched"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_step_reports_a_qualified_relocate_yes_assumed(db_session, monkeypatch):
+    from app.schemas.autofill_fill import StepRequest
+    from app.services import autofill_step
+    monkeypatch.setattr(autofill_step.jev, "decide", lambda qs, state, session=None: {
+        k: _answer(q["criteria"], "click:o1", 0.95) for k, q in qs.items()})
+    cands = [{"mid": "click:o1", "describe": 'Click the option "Yes"'}, {"mid": "click:o2", "describe": 'Click the option "No"'}]
+    for question, reason in ((LOCATED_OR_RELOCATE, "matched"),
+                             ("Are you located in Boston and/or willing to relocate at your own expense?", "assumed")):
+        req = StepRequest(fid="r", question=question, route="slot", slot="preferences.willing_to_relocate", candidates=cands)
+        got = autofill_step.step(req, RELOCATE_FACTS, db_session, None)
+        assert (got.mid, got.reason) == ("click:o1", reason)

@@ -64,6 +64,7 @@ from app.services.autofill_pick import (
     polarity_answers,
     polarity_trace,
     polarity_ways,
+    relocate_qualified,
     values_for,
     verdict,
     veteran_inferred,
@@ -517,6 +518,8 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     # An option that says the saved word itself ("Job board" for "Job board") is the profile's answer.
     if (req.slot == HOW_HEARD_SLOT and how_heard_kind(values[0]) and moved.mid and moved.reason in ("matched", "closest")
             and (text := shown.get(moved.mid)) is not None and text.casefold() != values[0].casefold()):
+        moved = moved.model_copy(update={"reason": "assumed"})
+    if moved.mid and moved.reason == "matched" and relocate_qualified(req, fact):
         moved = moved.model_copy(update={"reason": "assumed"})
     if said and veteran_overreach(said, req.question, [], shown.get(moved.mid or "")):
         return StepResponse(mid=None, reason="abstained", polarity=polarity)

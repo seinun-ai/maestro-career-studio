@@ -214,17 +214,44 @@ def _yes_no(fields, facts: dict[str, Fact]) -> dict[str, Fact]:
 
 
 # "Are you located in X and/or willing to relocate?" over a saved Yes to relocating: the second half is the applicant's
-# own answer, so the question reads the same as the fact, with no model. Not a work-authorization or sponsorship
-# question (those never ride on this slot), and not "located" alone or "relocate" alone.
+# own answer, so the question reads the same as the fact, with no model. ONE question: both halves in one sentence (a
+# statement elsewhere in the text, "candidates who are not local or willing to relocate will not be considered", is not
+# what is asked), no negation before the relocate verb, and not a work-authorization or sponsorship question (those
+# never ride on this slot). "Located" alone or "relocate" alone is the model's.
+_SENTENCE_END = re.compile(r"(?<=[?!])\s+|\n+|(?<=[a-z]{2}\.)\s+(?=[A-Z])")
 _LOCATED_OR_RELOCATE = re.compile(
-    r"\b(?:located|live|living|reside|residing|based)\b.*\b(?:and/or|or)\b.*\b(?:willing|open|able|prepared)\s+to\s+(?:re-?locat|move)",
-    re.IGNORECASE | re.DOTALL)
+    r"\b(?:located|live|living|reside|residing|based)\b[^?!\n]*?\b(?:and/or|or)\b[^?!\n]*?"
+    r"\b(?:willing|open|able|prepared)\s+to\s+(?:re-?locat|move)", re.IGNORECASE)
+_NEGATION = re.compile(r"\bnot\b|n['\u2019]t\b|\bnever\b", re.IGNORECASE)
 _AUTHORIZATION = re.compile(r"authori[sz]|sponsor|visa|eligible to work|legally|citizen|work permit", re.IGNORECASE)
+# A condition on the relocating ("on your own", "without relocation assistance"): the saved Yes is the applicant's word
+# for relocating, not for relocating on these terms, so the answer is reported assumed.
+_QUALIFIER = re.compile(
+    r"\bon\s+your\s+own\b|\bat\s+your\s+own\b|\bown\s+(?:expense|cost|dime)\b|\bself[- ]fund\w*|"
+    r"\bwithout\b[^?!\n]*\b(?:assistance|support|package|reimburse\w*|stipend|help)\b|"
+    r"\b(?:no|not)\b[^?!\n]*\brelocation\s+(?:assistance|support|package|help|reimburse\w*|stipend)\b", re.IGNORECASE)
+
+
+def _relocate_sentence(question: str) -> str | None:
+    """The sentence of `question` that asks "located … and/or willing to relocate" (a question, or an unpunctuated last
+    line addressed to "you"), else None."""
+    parts = [p.strip() for p in _SENTENCE_END.split(question) if p.strip()]
+    for i, part in enumerate(parts):
+        found = _LOCATED_OR_RELOCATE.search(part)
+        asked = part.endswith("?") or (i == len(parts) - 1 and re.search(r"\byou(?:r)?\b", part, re.IGNORECASE))
+        if found and asked and not _NEGATION.search(part[:found.end()]):
+            return part
+    return None
 
 
 def _located_or_relocate(field, fact: Fact) -> bool:
     return (field.slot == "preferences.willing_to_relocate" and str(fact.value) == "Yes"
-            and bool(_LOCATED_OR_RELOCATE.search(field.question)) and not _AUTHORIZATION.search(field.question))
+            and _relocate_sentence(field.question) is not None and not _AUTHORIZATION.search(field.question))
+
+
+def relocate_qualified(field, fact: Fact | None) -> bool:
+    """A coded relocate Yes whose question puts a condition on relocating: reported assumed."""
+    return fact is not None and _located_or_relocate(field, fact) and bool(_QUALIFIER.search(field.question))
 
 
 def polarity_ways(fields, facts: dict[str, Fact], session: Session,
@@ -661,5 +688,8 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
     if reasoned:
         out |= reason(reasoned, facts, session, budget, hint.company if hint else None, level)
     _veteran_claims(fields, facts, out)
+    for f in fields:
+        if f.fid in out and out[f.fid].reason == "matched" and relocate_qualified(f, facts.get(f.slot or "")):
+            out[f.fid] = out[f.fid].model_copy(update={"reason": "assumed"})
     _with_polarity(out, ways)
     return out | by_code | {fid: _ASKED for fid in dropped}
