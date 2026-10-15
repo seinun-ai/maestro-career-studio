@@ -460,7 +460,7 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     # A closed list is opened first (code's move; the options are what the rule reads).
     shown_options = [(c.mid, t) for c in req.candidates if c.mid.startswith("click:") and (t := _option_text(c.describe))]
     if (req.route == "slot" and getattr(fact, "value", None) == "No"
-            and autofill_sponsorship.is_type_question(req.slot, req.question, shown_options)):
+            and autofill_sponsorship.is_type_question(req.slot, req.question, shown_options, facts)):
         if not shown_options and any(c.mid == "open" for c in req.candidates):
             return StepResponse(mid="open", reason="progress", trace=DecisionTrace())
         oid = autofill_sponsorship.none_option(shown_options)

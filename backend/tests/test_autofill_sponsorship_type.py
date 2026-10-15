@@ -106,3 +106,67 @@ def test_the_step_opens_a_closed_list_before_reading_its_options(db_session):
                       candidates=[{"mid": "open", "describe": "Open the list"}, {"mid": "give_up", "describe": "Stop"}])
     got = autofill_step.step(req, facts_of(), db_session, None)
     assert (got.mid, got.reason) == ("open", "progress")
+
+
+# ---------- review: a whether-question is not a type question, and every saved sponsorship fact must say No
+
+@pytest.mark.parametrize("options", [["Yes, I will require sponsorship", "No, I will not require sponsorship"],
+                                     ["Yes - I will need sponsorship", "No - I do not need sponsorship"]])
+def test_a_whether_question_with_sentence_options_keeps_the_polarity_path(options):
+    question = "Will you now or in the future require any type of sponsorship?"
+    assert not autofill_sponsorship.asks_type(question)
+    assert not autofill_sponsorship.is_type_question("work_auth.sponsorship_now", "What type of sponsorship will you need?",
+                                                     [(f"o{i}", t) for i, t in enumerate(options)], facts_of())
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_whether_question_is_answered_by_the_polarity_path_as_a_no(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"s": ("o2", 0.95)})
+    question = "Will you now or in the future require any type of sponsorship?"
+    got = autofill_pick.pick([field(question, ["Yes, I will require sponsorship", "No, I will not require sponsorship"])],
+                             facts_of(), db_session, None)["s"]
+    assert calls and got.oids == ["o2"]
+
+
+def test_a_type_list_that_offers_no_sponsorship_as_an_option_is_still_a_type_list(db_session):
+    assert pick(db_session, NOW, ["H-1B", "TN", "No sponsorship required"]).oids == ["o3"]
+
+
+@pytest.mark.parametrize("question", ["What type of sponsorship do you currently hold?", "What type of sponsorship do you have?",
+                                      "Which sponsorship type is on file for you?"])
+def test_a_question_that_does_not_ask_what_is_needed_never_takes_the_rule(question):
+    options = [(f"o{i}", t) for i, t in enumerate(["F-1 OPT", "H-1B", "None"])]
+    assert not autofill_sponsorship.is_type_question("work_auth.sponsorship_now", question, options, facts_of())
+
+
+def _fires(question, facts, slot="work_auth.sponsorship_now"):
+    options = [(f"o{i}", t) for i, t in enumerate(TYPES)]
+    return autofill_sponsorship.is_type_question(slot, question, options, facts)
+
+
+def test_it_fires_only_when_every_saved_sponsorship_fact_is_no():
+    both_no = facts_of()
+    assert _fires(NOW, both_no) and _fires(FUTURE, both_no)
+    assert _fires("What type of sponsorship will you require?", both_no)
+    assert _fires("What type of sponsorship will you require?", both_no, "derived.sponsorship_now_or_future")
+    future_yes = facts_of(future=True)
+    assert not _fires(FUTURE, future_yes, "work_auth.sponsorship_future")
+    assert not _fires("What type of sponsorship will you require?", future_yes)
+    assert not _fires(NOW, facts_of(now=True))
+
+
+def test_a_question_naming_only_now_needs_only_the_now_fact_to_be_no():
+    future_yes = facts_of(future=True)
+    assert _fires(NOW, future_yes)
+    assert _fires("What type of sponsorship do you currently need?", future_yes)
+    assert not _fires("What type of sponsorship will you need now or in the future?", future_yes)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_future_yes_keeps_a_type_question_off_the_rule_end_to_end(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", lambda **kw: polarity_reply(kw) if kw["trace_name"].startswith(
+        "autofill-polarity") else {})
+    calls = fake_jev(monkeypatch)
+    got = autofill_pick.pick([field(FUTURE, TYPES, "work_auth.sponsorship_future")], facts_of(future=True), db_session,
+                             None)["s"]
+    assert got.oids == [] and calls

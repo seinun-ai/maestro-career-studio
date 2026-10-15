@@ -552,7 +552,7 @@ def sponsorship_type_picks(fields: list[PickField], facts: dict[str, Fact]) -> t
         options = [(o.oid, o.text) for o in f.options]
         fact = facts.get(f.slot or "")
         if (f.route == "slot" and fact is not None and fact.value == "No"
-                and autofill_sponsorship.is_type_question(f.slot, f.question, options)):
+                and autofill_sponsorship.is_type_question(f.slot, f.question, options, facts)):
             oid = autofill_sponsorship.none_option(options)
             decided[f.fid] = Picked(oids=[oid] if oid else [], reason="matched" if oid else "abstained",
                                     trace=DecisionTrace())
