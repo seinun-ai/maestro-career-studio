@@ -71,7 +71,7 @@
  * `applyLink` / `applyTarget` read the EMPLOYER's apply link off the posting page the user is
  * viewing (design Part 7): an absolute http(s) link to another site, never fetched, never followed.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, pageErrors, pageRequired, fieldWords, uploadTag, advance, signIn, createAccount, applyUrl, applyLink, applyTarget }.
+ * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, pageErrors, pageRequired, fieldWords, uploadTag, advance, fieldCount, signIn, createAccount, applyUrl, applyLink, applyTarget }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -1356,8 +1356,19 @@
     return { created: "clicked" };
   }
 
+  /** How many of the fields the fill inventory lists are an application's to fill: not a search box (the reader's own rule, the
+   * one `fillableControls` leaves them out by) and not rich text. The run asks it of an unknown first page before it parks
+   * (shared/queue-run.js): a page the reader's count missed a field on is still filled, a site's search page is not. */
+  async function fieldCount() {
+    const { fields } = await ns.fillOps.inventory({ readOnly: true, consentForms: false });
+    return ns.deep.scope(() => fields.filter((field) => {
+      const el = ns.fillInventory.resolve(field.fid);
+      return el !== null && !ns.deep.searchBox(el) && !el.isContentEditable;
+    }).length);
+  }
+
   // The reads that make many composed queries run inside one scope: the shadow hosts are found once for the whole read (content/detect.js).
   const scoped = (fn) => (...args) => ns.deep.scope(() => fn(...args));
   ns.pageReader = { summary: scoped(summary), pageErrors: scoped(pageErrors), pageRequired: scoped(pageRequired), fieldWords: questionOf, uploadTag: upTagOf,
-    advance, signIn, createAccount, applyUrl, applyLink, applyTarget };
+    advance, fieldCount, signIn, createAccount, applyUrl, applyLink, applyTarget };
 })();

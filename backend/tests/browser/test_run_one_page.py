@@ -160,9 +160,10 @@ def test_a_one_click_application_built_of_shadow_components_is_filled_at_step_ze
 
 
 def test_a_page_the_reader_counts_no_field_on_but_the_inventory_lists_one_is_filled_and_never_parked_as_unknown(page):
-    """Owner's rule: "when I am there the autofill should work". A read-only Ant select is a field the fill inventory lists and
-    the reader's count misses, so the page reads as unknown; the run asks the inventory before it parks, and fills."""
-    _serve(page, "antd_readonly_select.html")
+    """Owner's rule: "when I am there the autofill should work". A button that opens a dialog with its own search box
+    (`aria-haspopup="dialog"`) is a field the fill inventory lists and the reader's count does not know, so the page reads as
+    unknown; the run asks the page how many of its listed fields are an application's before it parks, and fills."""
+    _serve(page, "popup_with_search.html")
     s = page.evaluate("() => window.careerStudioCompanion.pageReader.summary()")
     assert s["fillable"] == 0 and page.evaluate("(s) => window.careerStudioCompanion.pageKind.classify(s).kind", s) == "unknown"
     page.set_default_timeout(60000)
@@ -170,3 +171,32 @@ def test_a_page_the_reader_counts_no_field_on_but_the_inventory_lists_one_is_fil
     r = out["record"]
     assert r["status"] == "parked" and r["why"] in ("open_questions", "unsure_page") and r["step"] == 0
     assert out["calls"] == [["fill", 0]]
+
+
+LANDING = """<!doctype html><html><head><title>Careers at Acme</title></head><body>
+<header><nav><a href="/">Acme</a></nav></header>
+<main><h1>Find your next role</h1>
+<div role="search"><input type="search" name="q" placeholder="Search jobs"><label>Location <input name="location"></label><button>Search</button></div>
+<p>We hire across many teams.</p></main></body></html>"""
+
+
+def test_a_careers_landing_page_with_only_a_search_box_and_a_location_is_still_an_unknown_page_and_nothing_is_filled(page):
+    """The inventory lists a search box and its Location as fields; neither is an application's. The count the run asks the
+    page for leaves out what the reader's own fillable count leaves out (a [role=search] region, a search-named or search-typed
+    box), so the widened rule does not fill a site's search or a newsletter box."""
+    page.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body=LANDING))
+    page.goto(URL)
+    page.evaluate("""() => {
+      window.chrome = window.chrome || {};
+      Object.defineProperty(window.chrome, "runtime", { configurable: true, value: {
+        id: "t", onMessage: { addListener: (fn) => { window.__pageListener = fn; } } } });
+    }""")
+    for src in SOURCES:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+    inventory = page.evaluate("""async () => (await new Promise((resolve) => window.__pageListener({ type: "fill_inventory", readOnly: true },
+        { id: "t" }, (reply) => resolve(reply.data)))).fields.length""")
+    assert inventory == 2   # the inventory does list them
+    page.set_default_timeout(60000)
+    out = page.evaluate(DRIVER, {})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert out["calls"] == []

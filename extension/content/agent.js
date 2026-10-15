@@ -798,6 +798,7 @@
       ? ns.pageReader.pageRequired()
       : { count: 0, items: [] }),
     page_uploads: (msg) => (frameMayReceiveUserData(msg) ? pageUploads() : []),
+    page_field_count: (msg) => (frameMayReceiveUserData(msg) ? ns.pageReader.fieldCount() : 0),   // the run's count for an unknown page
     page_advance: (msg) => (frameMayReceiveUserData(msg)
       ? ns.pageReader.advance(msg.id, { apply: msg.apply === true, chooser: msg.chooser === true, dismiss: msg.dismiss === true,
           ...(msg.apply === true && typeof msg.href === "string" ? { href: msg.href } : {}) })

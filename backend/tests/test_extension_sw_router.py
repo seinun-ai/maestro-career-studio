@@ -1335,6 +1335,8 @@ def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
         # The queued run's page reader and its Next click, gated on the receiving side like the
         # fill operations; `page_advance` presses a Next only and never a Submit.
         "page_classify", "page_advance", "page_errors", "page_required", "page_uploads",
+        # How many of the page's listed fields are an application's (not a search box): asked of an unknown first page.
+        "page_field_count",
         # Learn from the user's fix: a parked field's gestures (event types and a fixed few key
         # names, never what was typed), watched and then reported. Gated on the receiving side.
         "fill_watch", "fill_watch_report",

@@ -127,8 +127,9 @@
  *                                `baseline`: the error keys the page showed before the press
  *   pageErrors(tabId, frameId) → {count, items: [{label, target, kind}]}   what the page complains about
  *   uploads(record) → [{label, target, kind, required, occupied}]   the page's upload boxes, for a Resume's look
- *   fieldCount(tabId, frameId) → n   OPTIONAL: how many fields the fill inventory lists on the page (read-only). Asked of an unknown
- *                                first page the run has not filled: with fields it is filled like any page with fields
+ *   fieldCount(tabId, frameId) → n   OPTIONAL: how many of the fields the fill inventory lists on the page are an application's (not a
+ *                                search box; read-only). Asked of an unknown first page the run has not filled: with fields it is
+ *                                filled like any page with fields
  *   attachTo(record, box) → {attached}   the run's PDF into the one box `{label, target}` names: a box the
  *                                page itself named, or the ONE required empty box the fill's report found
  *                                (never one labelled for another document; at most one write per page)
@@ -1218,12 +1219,13 @@
       }
     }
 
-    /** How many fields the fill inventory lists on the frame's page (`fill_inventory`, read-only: it changes nothing and starts no
-     * run). 0 when the frame did not answer. The reader's own count can miss a control the inventory walks. */
+    /** How many of the fields the fill inventory lists on the frame's page are an application's (`page_field_count`: a read that
+     * changes nothing and starts no run; search boxes and rich text left out). 0 when the frame did not answer with a count. The
+     * reader's own count can miss a control the inventory walks. */
     async function fieldCount(tabId, frameId) {
-      const frames = await broadcast(tabId, { type: "fill_inventory", readOnly: true }, frameId);
+      const frames = await broadcast(tabId, { type: "page_field_count" }, frameId);
       const answer = (Array.isArray(frames) ? frames : []).find((f) => f.frameId === frameId)?.result;
-      return Array.isArray(answer?.fields) ? answer.fields.length : 0;
+      return Number.isInteger(answer) && answer > 0 ? answer : 0;
     }
 
     return { classify, pageErrors, pageRequired, advance, signIn, createAccount, waitForChange, fieldCount };

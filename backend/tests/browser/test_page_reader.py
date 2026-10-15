@@ -684,6 +684,18 @@ def test_a_text_field_item_carries_no_box_kind(page, load):
     assert "box" not in required(page)["items"][0]
 
 
+def test_a_read_only_combobox_that_opens_a_list_is_a_field_even_when_it_is_typed_search(page, load):
+    """An Ant Design select draws its box as `<input type=search readonly role=combobox aria-haspopup=listbox>`: a picker, not a
+    search box (live 2026-10-14). A typeahead that can be typed in, a search-named box and one in a search landmark still are not."""
+    load(page, fixture_html("antd_readonly_select.html"), SOURCES)
+    assert page.evaluate(FILLABLE) == 1
+    for html in ("<input type='search' role='combobox' aria-haspopup='listbox' aria-expanded='false'>",
+                 "<input type='search' role='combobox' aria-haspopup='listbox' readonly name='q'>",
+                 "<div role='search'><input type='search' role='combobox' aria-haspopup='listbox' readonly></div>"):
+        load(page, html, SOURCES)
+        assert page.evaluate(FILLABLE) == 0, html
+
+
 def test_a_popup_button_is_counted_like_a_combobox(page, load):
     load(page, "<div role='button' aria-haspopup='listbox'>Pick</div><button aria-haspopup='listbox' type='button'>Select One</button>", SOURCES)
     assert page.evaluate(FILLABLE) == 2

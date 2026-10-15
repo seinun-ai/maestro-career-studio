@@ -1938,6 +1938,7 @@ const ops = ns.queueRun.pageOps({
     if (message.type === "page_errors") {
       return [{ frameId: 3, result: { count: 1, items: [{ label: "City", target: "f-1", kind: "field" }] } }];
     }
+    if (message.type === "page_field_count") return spec.countFrames ?? [{ frameId: 0, result: 3 }];
     return spec.advanceFrames ?? [{ frameId: 0, result: { clicked: true } }];
   },
   frame0: async (tabId, message) => {
@@ -1973,6 +1974,7 @@ main(async () => {
     result = await ops.waitForChange(4, before, spec.ms ?? 3000, spec.stop ? () => true : undefined, spec.baseline);
   }
   if (spec.op === "errors") result = await ops.pageErrors(4, spec.frameId);
+  if (spec.op === "fieldCount") result = await ops.fieldCount(4, spec.frameId ?? 0);
   emit({ result, sent, logged, polls: pollN, slept: t });
 });
 """
@@ -3136,3 +3138,14 @@ def test_a_page_the_reader_calls_unknown_is_asked_only_once_the_wait_for_it_to_d
     """A skeleton that draws within the wait is a page like any other: the inventory is not asked while it is blank."""
     out = _drive(tmp_path, [{**step(1), "early": [UNKNOWN] * 2}, REVIEW], fieldCount=3)
     assert out["record"]["status"] == "ready" and names(out, "fieldCount") == []
+
+
+def test_the_field_count_asks_the_one_frame_the_page_reader_for_how_many_fields_are_an_applications(tmp_path):
+    out = _ops(tmp_path, "fieldCount", frameId=0)
+    assert out["result"] == 3 and out["sent"] == [["broadcast", 4, {"type": "page_field_count"}, 0]]
+
+
+@pytest.mark.parametrize("frames", [[], [{"frameId": 5, "result": 4}], [{"frameId": 0, "result": None}], [{"frameId": 0, "result": "3"}],
+                                    [{"frameId": 0, "result": -2}]])
+def test_a_frame_that_does_not_answer_with_a_count_has_no_fields(tmp_path, frames):
+    assert _ops(tmp_path, "fieldCount", countFrames=frames)["result"] == 0

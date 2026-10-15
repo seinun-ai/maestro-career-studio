@@ -349,7 +349,16 @@ function detectPage() {
 
   /** Every open shadow root under the document (nested ones included), in document order. */
   const roots = () => scan().map((host) => host.shadowRoot);
-  ns.deep = { all, any, closest, contains, up, roots, scope, text, kids };
+
+  // A SEARCH BOX is no field of an application: a keyword box on a careers page, a site's search landmark. What the fillable count
+  // and the run's field count both leave out. A read-only combobox that opens a list is a PICKER, not a box to type a search in
+  // (Ant Design draws its select as `<input type=search readonly role=combobox aria-haspopup=listbox>`).
+  const SEARCH_NAME = /^(q|query)$|search|keyword/i;
+  const picker = (el) => el.readOnly === true && el.getAttribute("role") === "combobox" && el.getAttribute("aria-haspopup") === "listbox";
+  const searchBox = (el) => (!picker(el) && (el.getAttribute("type") || "").toLowerCase() === "search")
+    || ["name", "id", "aria-label", "placeholder"].some((key) => SEARCH_NAME.test(el.getAttribute(key) || ""))
+    || el.getAttribute("role") === "searchbox" || closest(el, '[role="search"]') !== null;
+  ns.deep = { all, any, closest, contains, up, roots, scope, text, kids, searchBox, picker, SEARCH_NAME };
 })();
 
 /** How many on-screen fields this frame has that a fill could answer.
@@ -364,10 +373,9 @@ function detectPage() {
  * "Select One"), a site menu or a Search button does not. Capped: the answer only has to be "more than
  * none". */
 function fillableControls() {
-  const { all, closest } = window.careerStudioCompanion.deep;
+  const { all, closest, searchBox, picker, SEARCH_NAME } = window.careerStudioCompanion.deep;
   const CAP = 20;
-  const SEARCH_NAME = /^(q|query)$|search|keyword/i;
-  const SKIPPED_TYPES = ["hidden", "submit", "button", "reset", "image", "search", "password"];
+  const SKIPPED_TYPES = ["hidden", "submit", "button", "reset", "image", "password"];
   let count = 0;
   // A POPUP BUTTON is a field too: Workday's question steps are made of them ("Select One"), and a step of
   // nothing else read as having nothing to fill. A `listbox` popup is a value picker. A bare `true` is a menu
@@ -389,12 +397,9 @@ function fillableControls() {
     if (el.matches?.(POPUP) && (closest(el, SITE_CHROME) || SEARCH_NAME.test(el.textContent || "") || !asksForAnAnswer(el))) continue;
     const type = (el.getAttribute("type") || "text").toLowerCase();
     if (el.tagName === "INPUT" && SKIPPED_TYPES.includes(type)) continue;
-    const words = ["name", "id", "aria-label", "placeholder"].map((key) => el.getAttribute(key) || "");
-    if (words.some((word) => SEARCH_NAME.test(word))
-        || el.getAttribute("role") === "searchbox"
-        || closest(el, '[role="search"]')) continue;
+    if (searchBox(el)) continue;
     const onScreen = el.offsetWidth || el.offsetHeight || el.getClientRects?.().length;
-    if (el.disabled || el.readOnly || el.getAttribute("aria-disabled") === "true"
+    if (el.disabled || (el.readOnly && !picker(el)) || el.getAttribute("aria-disabled") === "true"
         || !onScreen) continue;
     count += 1;
     if (count >= CAP) break;
