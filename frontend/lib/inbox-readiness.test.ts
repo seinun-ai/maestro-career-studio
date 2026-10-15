@@ -190,3 +190,11 @@ test("only a proposal that is still open can expire", () => {
     assert.equal(proposalCanExpire(status), false, status);
   }
 });
+
+test("a skip holds its pill until the reason is known, so Skipped never flashes before Applied yourself", () => {
+  const args = { hasApplication: false, status: "rejected", reason: undefined, fallbackLabel: "Skipped" };
+  assert.equal(headerProposalPill({ ...args, reasonPending: true }), null);
+  assert.equal(headerProposalPill({ ...args, reasonPending: false })?.label, "Skipped");
+  // Only a skip needs the reason: another status shows at once.
+  assert.equal(headerProposalPill({ ...args, status: "accepted", fallbackLabel: "Queued", reasonPending: true })?.label, "Queued");
+});

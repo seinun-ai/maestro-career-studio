@@ -51,30 +51,55 @@ export type Standing = {
   pdf: boolean;
   /** Offer What was submitted (something was filled into the job's form). */
   submitted: boolean;
+  /** Point at the Companion and Score and tailor: a draft nobody is working on yet. */
+  pointer: boolean;
+};
+
+/** Where an open proposal stands, in words (a draft that is already with the agent has no pointer). */
+const OPEN_PROPOSAL: Record<string, string> = {
+  pending_review: "waiting for your review in the Agent inbox",
+  accepted: "queued for your agent",
+  approved: "your agent is applying",
+  needs_decision: "your agent needs you (below)",
+  needs_human: "your agent needs you (below)",
 };
 
 /**
- * "Where this stands", the line under the header. Applied: when, and with which resume. A draft: not
- * applied, and the best base resume. No application: not applied yet. A job counts as applied when its
- * application is in a submitted stage or carries an applied date (a rejection or withdrawal keeps it). `appliedOn` is the date in words, formatted by the caller.
+ * "Where this stands", the line under the header. Applied: when, and with which resume (named, with no score:
+ * the header's pill has it). A draft: not applied, its resume, and where its open proposal is. No application:
+ * not applied yet. A job counts as applied when its application is in a submitted stage or carries an applied
+ * date (a rejection or withdrawal keeps it), or when its proposal records that it went out (`status`
+ * "submitted"; `yourself`: you applied outside the agent, the History lane's Applied yourself). The dates are
+ * in words, formatted by the caller.
  */
 export function standingLine(args: {
   application: StandingApplication | null;
   appliedOn: string | null;
   /** The application's resume, named. */
   resumeName: string | null;
-  bestBase: { name: string; value: number } | null;
+  /** A tailored score exists for the application. */
+  tailored: boolean;
   hasFilledAnswers: boolean;
+  /** The newest proposal: its status as History reads it, and the day it last changed. */
+  proposal: { status: string; yourself: boolean; on: string | null } | null;
 }): Standing {
-  const { application, appliedOn, bestBase, hasFilledAnswers } = args;
-  const best = bestBase ? ` · best resume ${bestBase.name} ${bestBase.value.toFixed(1)}` : "";
-  if (application && (application.applied_at || SUBMITTED_STAGES.includes(application.status ?? ""))) {
-    const name = args.resumeName?.trim();
-    const text = ["Applied", appliedOn, name ? `with ${name} resume` : null].filter(Boolean).join(" ");
-    return { kind: "applied", text, pdf: Boolean(application.pdf_path), submitted: hasFilledAnswers };
+  const { application, appliedOn, hasFilledAnswers, proposal } = args;
+  const name = args.resumeName?.trim();
+  const resume = name ? `${name} resume${args.tailored ? ", tailored" : ""}` : null;
+  const pdf = Boolean(application?.pdf_path);
+  const sent = application && (application.applied_at || SUBMITTED_STAGES.includes(application.status ?? ""));
+  if (sent) {
+    const text = ["Applied", appliedOn, resume ? `with ${resume}` : null].filter(Boolean).join(" ");
+    return { kind: "applied", text, pdf, submitted: hasFilledAnswers, pointer: false };
+  }
+  if (proposal?.status === "submitted") {
+    const text = [proposal.yourself ? "Applied yourself" : "Applied", proposal.on].filter(Boolean).join(" ");
+    return { kind: "applied", text, pdf, submitted: hasFilledAnswers, pointer: false };
   }
   if (application) {
-    return { kind: "draft", text: `Not applied${best}`, pdf: false, submitted: hasFilledAnswers };
+    const open = proposal ? OPEN_PROPOSAL[proposal.status] : undefined;
+    const text = `Not applied${open ? ` · ${open}` : resume ? ` · ${resume}` : ""}`;
+    return { kind: "draft", text, pdf: false, submitted: hasFilledAnswers, pointer: !open };
   }
-  return { kind: "none", text: `Not applied yet${best}`, pdf: false, submitted: hasFilledAnswers };
+  return { kind: "none", text: "Not applied yet", pdf: false, submitted: hasFilledAnswers, pointer: false };
 }

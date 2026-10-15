@@ -54,7 +54,7 @@ def test_the_page_says_where_the_job_stands_under_the_header():
     # View PDF only with a PDF; What was submitted only with filled answers; the pointer only on a draft.
     assert "standing.pdf && application" in line and "View PDF" in line
     assert "standing.submitted" in line and 'setTab("submitted")' in line
-    assert 'standing.kind === "draft"' in line and "Tailor and Apply in the Companion" in line
+    assert "standing.pointer" in line and "Tailor and Apply in the Companion" in line
     assert 'setTab("fit")' in line
     # Built from data the detail response already carries: no new request.
     assert "hasFilledAnswers: Boolean(data.has_filled_answers)" in _JOB
@@ -223,3 +223,24 @@ def test_the_real_components_render_without_a_browser():
         pytest.skip("frontend packages are not installed; the frontend CI job runs this file")
     done = run_node_test("components/inbox-simplify.test.mjs")
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+# ── Review fixes: the line reads the proposal, the pill waits, an applied job has no Delete proposal ──────
+
+
+def test_the_standing_line_reads_the_proposal_and_names_the_resume_without_a_score():
+    standing = _JOB[_JOB.index("const standing = standingLine({") : _JOB.index("const salary = formatSalary(")]
+    assert "proposal: job.proposal_status" in standing and "historyStatusOf(" in standing
+    assert "tailored: scoreShown?.tailored === true" in standing
+    assert "bestBase" not in standing and "bestBaseRow" not in _JOB
+    assert "formatShortDate(proposalQuery.data.updated_at)" in standing
+
+
+def test_an_applied_job_has_no_delete_proposal_in_the_header():
+    delete = _JOB[_JOB.index("const showDeleteProposal =") : _JOB.index("const triagePending")]
+    assert 'standing.kind !== "applied"' in delete
+    assert _JOB.index("const standing = standingLine({") < _JOB.index("const showDeleteProposal =")
+
+
+def test_a_skip_holds_its_pill_until_the_reason_loads():
+    assert "reasonPending: proposalQuery.isLoading," in _JOB

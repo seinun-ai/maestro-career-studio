@@ -60,7 +60,7 @@ import { proposalByLine, queuedToast } from "@/lib/agent-name";
 import { apiFetch, apiUrlForBrowserPdf, listAtsScores, promoteJobToAgentQueue } from "@/lib/api";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
-import { headerProposalPill, proposalHasContent } from "@/lib/inbox-readiness";
+import { headerProposalPill, historyStatusOf, proposalHasContent } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
 import { formatShortDate } from "@/lib/format-date";
@@ -219,9 +219,6 @@ export default function JobDetailPage({
   const colorOf = useBaseResumeColor();
   // The header's one score: the application's tailored score, else the best base score.
   const scoreShown = scorePill(scoreRows.data ?? [], application?.id ?? null);
-  const bestBaseRow = (scoreRows.data ?? [])
-    .filter((s) => s.phase === "base")
-    .sort((a, b) => b.composite - a.composite)[0];
   const scoreResume = scoreShown?.tailored ? application?.base_resume ?? "" : scoreShown?.targetId ?? "";
   // The newest proposal, in full: the header pill's reason, Keep it's application link (the proposal says
   // whether it has one) and the Overview card all read it, so it is asked once (the card shares the key).
@@ -370,8 +367,15 @@ export default function JobDetailPage({
     application,
     appliedOn: application?.applied_at ? formatShortDate(application.applied_at) : null,
     resumeName: application ? data.base_resume_name ?? baseName(application.base_resume) : null,
-    bestBase: bestBaseRow ? { name: baseName(bestBaseRow.target_id), value: bestBaseRow.composite } : null,
+    tailored: scoreShown?.tailored === true,
     hasFilledAnswers: Boolean(data.has_filled_answers),
+    proposal: job.proposal_status
+      ? {
+          status: historyStatusOf(job.proposal_status as ProposalStatus, proposalQuery.data?.reason),
+          yourself: job.proposal_status === "rejected" && historyStatusOf("rejected", proposalQuery.data?.reason) === "submitted",
+          on: proposalQuery.data ? formatShortDate(proposalQuery.data.updated_at) : null,
+        }
+      : null,
   });
   const salary = formatSalary(
     job.salary_min,
@@ -397,6 +401,7 @@ export default function JobDetailPage({
         hasApplication: hasApp,
         status: proposalStatus,
         reason: proposalQuery.data?.reason,
+        reasonPending: proposalQuery.isLoading,
         fallbackLabel: STATUS_LABELS[proposalStatus],
       })
     : null;
@@ -408,8 +413,10 @@ export default function JobDetailPage({
     proposalStatus === "accepted" ||
     proposalStatus === "needs_decision" ||
     proposalStatus === "needs_human";
+  // A closed proposal on a job you applied to is history, not something to delete from the header.
   const showDeleteProposal =
     !!proposalId &&
+    standing.kind !== "applied" &&
     (proposalStatus === "needs_decision" ||
       proposalStatus === "needs_human" ||
       proposalStatus === "rejected" ||
@@ -670,7 +677,7 @@ export default function JobDetailPage({
               What was submitted
             </button>
           ) : null}
-          {standing.kind === "draft" ? (
+          {standing.pointer ? (
             <span>
               Tailor and Apply in the Companion, or open{" "}
               <button type="button" onClick={() => setTab("fit")} className="text-primary hover:underline">

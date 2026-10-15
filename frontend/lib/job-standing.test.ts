@@ -36,76 +36,88 @@ test("neither score, no pill", () => {
 });
 
 const draft = { status: "draft", applied_at: null, pdf_path: null };
-const none = { hasFilledAnswers: false, appliedOn: null, resumeName: null, bestBase: null };
+const standing0 = { application: null, appliedOn: null, resumeName: null, tailored: false, hasFilledAnswers: false, proposal: null };
+const sent = { ...draft, status: "applied", applied_at: "2026-10-03T12:00:00Z" };
 
-test("an applied job says when, with which resume, and links its PDF and receipt", () => {
+test("an applied job says when and with which resume, and links its PDF and receipt", () => {
   const line = standingLine({
-    application: { ...draft, status: "applied", applied_at: "2026-10-03T12:00:00Z", pdf_path: "x.pdf" },
-    appliedOn: "Oct 3",
-    resumeName: "Data Scientist",
-    bestBase: { name: "Other", value: 70 },
-    hasFilledAnswers: true,
+    ...standing0, application: { ...sent, pdf_path: "x.pdf" }, appliedOn: "Oct 3", resumeName: "Data Scientist", hasFilledAnswers: true,
   });
   assert.deepEqual(line, {
-    kind: "applied",
-    text: "Applied Oct 3 with Data Scientist resume",
-    pdf: true,
-    submitted: true,
+    kind: "applied", text: "Applied Oct 3 with Data Scientist resume", pdf: true, submitted: true, pointer: false,
   });
+});
+
+test("a tailored resume is said once, with its name and no score", () => {
+  const line = standingLine({ ...standing0, application: sent, appliedOn: "Oct 3", resumeName: "Data Scientist", tailored: true });
+  assert.equal(line.text, "Applied Oct 3 with Data Scientist resume, tailored");
 });
 
 test("an applied job leaves out the links it has nothing for", () => {
-  const line = standingLine({
-    application: { ...draft, status: "interviewing", applied_at: "2026-10-03T12:00:00Z" },
-    appliedOn: "Oct 3",
-    resumeName: "Data Scientist",
-    bestBase: null,
-    hasFilledAnswers: false,
-  });
-  assert.deepEqual(line, { kind: "applied", text: "Applied Oct 3 with Data Scientist resume", pdf: false, submitted: false });
+  const line = standingLine({ ...standing0, application: { ...sent, status: "interviewing" }, appliedOn: "Oct 3", resumeName: "Data Scientist" });
+  assert.deepEqual(line, { kind: "applied", text: "Applied Oct 3 with Data Scientist resume", pdf: false, submitted: false, pointer: false });
 });
 
 test("applied with no date or resume name still reads whole", () => {
-  const line = standingLine({
-    application: { ...draft, status: "applied", applied_at: null },
-    appliedOn: null,
-    resumeName: null,
-    bestBase: null,
-    hasFilledAnswers: false,
-  });
-  assert.equal(line.text, "Applied");
+  assert.equal(standingLine({ ...standing0, application: { ...sent, applied_at: null } }).text, "Applied");
 });
 
 test("a rejected application that was applied to still says it was applied", () => {
-  const line = standingLine({
-    application: { ...draft, status: "rejected", applied_at: "2026-10-03T12:00:00Z" },
-    appliedOn: "Oct 3",
-    resumeName: "Data Scientist",
-    bestBase: null,
-    hasFilledAnswers: false,
-  });
+  const line = standingLine({ ...standing0, application: { ...sent, status: "rejected" }, appliedOn: "Oct 3" });
   assert.equal(line.kind, "applied");
 });
 
-test("a draft says it is not applied and names the best resume", () => {
-  const line = standingLine({ application: draft, appliedOn: null, resumeName: null, bestBase: { name: "Data Scientist", value: 82.14 }, hasFilledAnswers: false });
-  assert.deepEqual(line, { kind: "draft", text: "Not applied · best resume Data Scientist 82.1", pdf: false, submitted: false });
+test("a draft names its resume and points at the Companion and Score and tailor", () => {
+  const line = standingLine({ ...standing0, application: draft, resumeName: "Data Scientist" });
+  assert.deepEqual(line, { kind: "draft", text: "Not applied · Data Scientist resume", pdf: false, submitted: false, pointer: true });
+  assert.equal(standingLine({ ...standing0, application: draft, resumeName: "Data Scientist", tailored: true }).text,
+    "Not applied · Data Scientist resume, tailored");
+  assert.equal(standingLine({ ...standing0, application: draft }).text, "Not applied");
 });
 
-test("a draft with no score says only that it is not applied", () => {
-  assert.equal(standingLine({ application: draft, ...none }).text, "Not applied");
+test("a draft with an open proposal says where the proposal is, and drops the pointer", () => {
+  const words: Record<string, string> = {
+    pending_review: "Not applied · waiting for your review in the Agent inbox",
+    accepted: "Not applied · queued for your agent",
+    approved: "Not applied · your agent is applying",
+    needs_decision: "Not applied · your agent needs you (below)",
+    needs_human: "Not applied · your agent needs you (below)",
+  };
+  for (const [status, text] of Object.entries(words)) {
+    const line = standingLine({ ...standing0, application: draft, resumeName: "Data Scientist", proposal: { status, yourself: false, on: null } });
+    assert.equal(line.text, text, status);
+    assert.equal(line.kind, "draft");
+    assert.equal(line.pointer, false, status);
+  }
 });
 
-test("no application: not applied yet, with the best base resume when scored", () => {
-  assert.deepEqual(standingLine({ application: null, appliedOn: null, resumeName: null, bestBase: { name: "ML Engineer", value: 77 }, hasFilledAnswers: false }), {
-    kind: "none",
-    text: "Not applied yet · best resume ML Engineer 77.0",
-    pdf: false,
-    submitted: false,
-  });
-  assert.equal(standingLine({ application: null, ...none }).text, "Not applied yet");
+test("a closed proposal that was skipped or expired leaves the draft's ordinary line", () => {
+  for (const status of ["rejected", "expired", "submission_uncertain"]) {
+    const line = standingLine({ ...standing0, application: draft, resumeName: "Data Scientist", proposal: { status, yourself: false, on: null } });
+    assert.equal(line.text, "Not applied · Data Scientist resume", status);
+    assert.equal(line.pointer, true);
+  }
+});
+
+test("no application: not applied yet, with no score to repeat", () => {
+  assert.deepEqual(standingLine(standing0), { kind: "none", text: "Not applied yet", pdf: false, submitted: false, pointer: false });
 });
 
 test("a job filled but never marked applied still links what was submitted", () => {
-  assert.equal(standingLine({ application: null, appliedOn: null, resumeName: null, bestBase: null, hasFilledAnswers: true }).submitted, true);
+  assert.equal(standingLine({ ...standing0, hasFilledAnswers: true }).submitted, true);
+});
+
+test("no application, but the proposal records an application that went out", () => {
+  const submitted = standingLine({ ...standing0, proposal: { status: "submitted", yourself: false, on: "Oct 4" } });
+  assert.deepEqual(submitted, { kind: "applied", text: "Applied Oct 4", pdf: false, submitted: false, pointer: false });
+  const yourself = standingLine({ ...standing0, proposal: { status: "submitted", yourself: true, on: "Oct 4" } });
+  assert.equal(yourself.kind, "applied");
+  assert.equal(yourself.text, "Applied yourself Oct 4");
+  assert.equal(standingLine({ ...standing0, proposal: { status: "submitted", yourself: true, on: null } }).text, "Applied yourself");
+});
+
+test("a draft whose proposal says it went out is applied too, and keeps its PDF link", () => {
+  const line = standingLine({ ...standing0, application: { ...draft, pdf_path: "x.pdf" }, proposal: { status: "submitted", yourself: false, on: "Oct 4" } });
+  assert.equal(line.kind, "applied");
+  assert.equal(line.pdf, true);
 });

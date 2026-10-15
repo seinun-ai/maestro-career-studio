@@ -76,8 +76,11 @@ export function headerProposalPill(args: {
   status: string | null | undefined;
   reason: string | null | undefined;
   fallbackLabel: string;
+  /** The reason is still loading: a skip holds its pill (it may read Applied yourself). */
+  reasonPending?: boolean;
 }): { label: string; styleStatus: ProposalStatus } | null {
   if (args.hasApplication || !args.status) return null;
+  if (args.status === "rejected" && args.reasonPending) return null;
   return {
     label: historyLabel(args.status, args.reason, args.fallbackLabel),
     styleStatus: historyStatusOf(args.status as ProposalStatus, args.reason),
