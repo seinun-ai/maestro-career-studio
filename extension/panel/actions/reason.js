@@ -52,7 +52,7 @@
   };
 
   /** `host`: { fill(fids, scope) → report, rebind(tabId) → bool, isTheApplication(url) → bool, occupied(tabId) → bool,
-   * lastFill() → {fid: {status, slot}}, consent() → bool } from actions/run.js. */
+   * lastFill(url) → {fid: {status, slot}}, consent() → bool } from actions/run.js. */
   function opsFor(store, record, host) {
     const run = store.run;
     const answer = (frames, frameId) => (Array.isArray(frames) ? frames : []).find((frame) => frame.frameId === frameId)?.result;
@@ -77,7 +77,7 @@
       const errors = answer(await run.tabBroadcast(record.tabId, { type: "page_errors" }, picked.frameId), picked.frameId);
       return { frameId: picked.frameId, url, summary: picked.result.summary, tabs,
         fields: (Array.isArray(inventory) ? inventory : []).flatMap((frame) => frame.result?.fields ?? []),
-        errors: Array.isArray(errors?.items) ? errors.items : [], lastFill: host.lastFill() };
+        errors: Array.isArray(errors?.items) ? errors.items : [], lastFill: host.lastFill(url) };
     };
 
     return {

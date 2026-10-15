@@ -93,6 +93,8 @@
   };
 
   const tabOf = (record) => record.tabId ?? record.startTabId;
+  /** An address without its query or fragment: the page's own place. */
+  const pathOf = (url) => String(url ?? "").split(/[?#]/)[0];
   const live = (record) => !TERMINAL.has(record.status);
   const warn = (what) => (err) => console.warn(`[maestro-cs] ${what}:`, err);
 
@@ -256,6 +258,7 @@
   /** Every change the driver makes: the user's time starts when it parks, a finished run stops being
    * vouched for, and the panel paints. */
   function onUpdate(store, record) {
+    if (record.sorted && (record.step ?? 0) !== record.sortedStep) record.sorted = null;
     if (record.status === "parked" && record.parkedAt == null) record.parkedAt = store.run.now();
     if (record.status === "parked" && record.why === "open_questions") watchParked(store, record);
     if (TERMINAL.has(record.status)) store.run.unvouch(tabOf(record));
@@ -373,10 +376,12 @@
   }
 
   /** What a fill ended in, by field: the reasoning step reads "the run filled it" and the fact that answered it. */
-  function noteFill(record, report) {
+  function noteFill(record, report, url) {
     const step = record.step ?? 0;
+    const page = pathOf(url);
     let kept = state.lastFill.get(record.id);
-    if (kept?.step !== step) kept = { step, rows: {} };
+    // What was filled on another page, or another step, says nothing about this one.
+    if (kept?.step !== step || kept.page !== page) kept = { step, page, rows: {} };
     for (const row of report.fields ?? []) {
       if (row?.fid && row.status) kept.rows[row.fid] = { status: row.status, ...(typeof row.slot === "string" ? { slot: row.slot } : {}) };
     }
@@ -445,7 +450,7 @@
         .filter((key) => scope[key] !== undefined).map((key) => [key, scope[key]])),
     });
     ns.panelRunAttach.land(rs, auto);
-    noteFill(record, report);
+    noteFill(record, report, url);
     if (auto) record.attach = attachNote(auto);
     if (!scoped) {
       // The page's upload boxes, after the attach: one field each in the page's count, and a required
@@ -534,22 +539,32 @@
    * the one sentence (`sorted`) says it moved the run on. */
   async function think(store, record, ctx) {
     const host = store.run;
+    const calm = { moved: false, advanced: null, followed: false, note: "", ask: null, tried: [], rounds: [], wrote: [] };
     const url = await host.tabUrl(tabOf(record)).catch(() => "");
     const day = new Date(host.now());
     const today = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
     record.sorted = null;
     const ops = ns.panelRunReason.opsFor(store, record, {
       fill: (fids, scope) => fillPage(store, record, ns.queueRun.RUN_LIMITS, { only: fids, ...scope }),
-      rebind: async (tabId) => rebind(store, record, tabId, await host.tabUrl(tabId).catch(() => "")),
+      rebind: async (tabId) => rebind(store, record, tabId, await host.tabUrl(tabId).catch(() => ""),
+        () => record.stopRequested !== true),
       isTheApplication: (address) => isTheApplication(record, address),
       occupied: (tabId) => store.read().runs.some((one) => one !== record && tabOf(one) === tabId && live(one)),
-      lastFill: () => ({ ...state.lastFill.get(record.id)?.rows }),
+      lastFill: (address) => {
+        const kept = state.lastFill.get(record.id);
+        return kept && kept.step === (record.step ?? 0) && kept.page === pathOf(address) ? { ...kept.rows } : {};
+      },
       consent: () => runStore(store, record).read().consentForms === true,
     });
-    let out;
+    let out = calm;
     try {
+      // A tab on another site is not this application's page: its address is not sent.
       out = await ns.reasonLoop.think({ ...ctx, applicationId: record.applicationId,
-        base: record.applicationId ? null : record.baseSlug, pageUrl: ns.fillLoop.pageUrlOf(url), today }, ops);
+        base: record.applicationId ? null : record.baseSlug, today,
+        pageUrl: ctx.why === "moved_away" ? null : ns.fillLoop.pageUrlOf(url) }, ops);
+    } catch (err) {
+      // A fault in the step is the normal park, never the run's end. The message may quote the page: not logged.
+      console.warn("[maestro-cs] the reasoning step failed:", err?.name ?? "error");
     } finally {
       // The footer note says the live line while it lasts and goes with it; any other note is not ours to clear.
       if (record.thinking && store.read().note?.text === record.thinking) store.write({ note: null });
@@ -558,12 +573,14 @@
     const step = record.step ?? 0;
     const rows = record.assumedRows ?? [];
     for (const one of out.wrote) {
-      if (!rows.some((row) => row.question === one.question && row.step === step)) {
-        rows.push({ fid: one.fid, question: one.question, step, note: one.note });
-      }
+      // By field and step: the run's own row may carry the whole question, this one is cut. The step's note is the true one.
+      const same = rows.find((row) => row.fid === one.fid && row.step === step);
+      if (same) same.note = one.note;
+      else rows.push({ fid: one.fid, question: one.question, step, note: one.note });
     }
     record.assumedRows = rows;
-    if (out.moved) record.sorted = sortedLine(out);
+    // The sentence belongs to the page the run is on when the thought ends (the next one, if it pressed Next).
+    if (out.moved) Object.assign(record, { sorted: sortedLine(out), sortedStep: step + (out.advanced ? 1 : 0) });
     return out;
   }
 

@@ -138,7 +138,11 @@ const realNow = Date.now;
 Date.now = () => realNow() + skew;
 
 // Two windows: the panel is the one with id 1, and `windowIds` moves a tab to another.
-chrome.windows = { getCurrent: async () => ({ id: 1 }) };
+// `stopOnWindow`: a Stop lands while the run's tab is being checked for the window (a follow in flight).
+chrome.windows = { getCurrent: async () => {
+  if (spec.stopOnWindow) for (const run of ns.panel.actionStore().read().runs) run.stopRequested = true;
+  return { id: 1 };
+} };
 chrome.tabs.get = async (id) => ({ id, status: "complete", windowId: (spec.windowIds ?? {})[id] ?? 1,
   url: tabUrlOverride ?? (spec.tabUrls ?? {})[id] ?? here()?.url ?? "" });
 // The tabs of the panel's window with their addresses (`windowTabs`): the reasoning step's follow reads them.
@@ -171,6 +175,8 @@ for (const root of [...Object.values(REGIONS), CONTROLS]) {
 const errors = [];
 console.error = (...args) => { errors.push(args.map(String).join(" ")); };
 const ns = loadModules();
+// `thinkThrows`: the reasoning loop itself failing (a bug in it must never end the run).
+if (spec.thinkThrows) ns.reasonLoop.think = async () => { throw new Error("boom: Ada Lovelace"); };
 // How many answer receipts the run posts (a scoped repair must post none).
 let receiptCalls = 0;
 const realReceipt = ns.panelRecordReceipt;
@@ -2390,3 +2396,82 @@ def test_stop_during_a_thought_ends_the_run_within_a_second_and_nothing_follows(
     assert (r["status"], r["why"]) == ("stopped", "user")
     assert len(out["fills"]) == 1 and _page_messages(out, "page_advance") == []
     assert not r.get("thinking")
+
+
+# ---------- review fixes: the smaller things ----------
+
+
+def test_the_request_names_the_page_it_is_about_except_for_a_tab_on_another_site(tmp_path):
+    out = _stuck(tmp_path, _reply(ASK))
+    assert json.loads(_api_calls(out, "/api/autofill/reason")[0]["init"]["body"])["page_url"] == START_URL
+    away = "https://other.test/landing"
+    follow = {**ASK, "actions": [{"type": "follow_tab", "tab": "t1"}]}
+    out = _run(tmp_path, [{"facts": ON}, {"seed": [_seeded("parked", why="captcha")]}, {"press": "run-resume"}],
+               pages=(page("step", 1, host="other.test"),), tabUrls={7: away, 9: "https://jobs.acme.test/apply/step1"},
+               windowTabs=[{"id": 9, "url": "https://jobs.acme.test/apply/step1"}],
+               api={"POST /api/autofill/reason": _reply(follow)}, frames=NO_ERRORS)
+    body = json.loads(_api_calls(out, "/api/autofill/reason")[0]["init"]["body"])
+    assert body["why"] == "moved_away" and "page_url" not in body
+
+
+def test_a_reasoning_loop_that_throws_is_the_normal_park(tmp_path):
+    out = _stuck(tmp_path, _reply(ASK), thinkThrows=True)
+    r = _record(out["shots"][-1])
+    assert (r["status"], r["why"]) == ("parked", "open_questions") and not r.get("thought") and not r.get("thinking")
+    assert "Ada" not in json.dumps(out["errors"]) and "Ada" not in json.dumps(r)
+
+
+def test_the_sentence_goes_when_the_run_moves_to_its_next_page(tmp_path):
+    fill = {**ASK, "actions": [{"type": "fill", "fids": ["f2"]}]}
+    out = _stuck(tmp_path, _reply(fill),
+                 reports=[{"fields": [needs("f2", "Degree")]}, {"fields": [verified("f2", "Degree")]}, {"fields": [verified("f1")]}],
+                 inventoryByPage=[[_field("f2", "BSc", question="Degree", answered=True, touched=False)], [_field("f1", "x")]])
+    r = _record(out["shots"][-1])
+    assert r["status"] == "ready" and r["step"] == 1 and not r.get("sorted")
+
+
+LONG = "Which of the following best describes the highest level of formal education you have completed to date?"
+
+
+def test_what_the_step_wrote_is_one_row_even_when_the_run_listed_the_same_field_with_its_whole_question(tmp_path):
+    write = {**ASK, "actions": [{"type": "write", "fid": "f2"}]}
+    out = _stuck(tmp_path, _reply(write),
+                 reports=[{"fields": [_assumed("f2", LONG, "Drafted from your history: read it"), needs("f3", "Major")]},
+                          {"fields": [_assumed("f2", LONG, "Drafted from your history: read it")]}, {"fields": [verified("f1")]}],
+                 inventory=[_field("f2", "BSc", question=LONG, answered=True, touched=False), _field("f3", "", question="Major")],
+                 inventoryByPage=[[_field("f2", "BSc", question=LONG, answered=True, touched=False), _field("f3", "", question="Major")],
+                                  [_field("f1", "x")]])
+    rows = [row for row in _record(out["shots"][-1]).get("assumedRows", []) if row["fid"] == "f2"]
+    assert len(rows) == 1 and rows[0]["note"] == "Written for you: read it"
+
+
+def test_a_stop_that_lands_while_a_follow_checks_the_window_leaves_the_run_where_it_was(tmp_path):
+    follow = {**ASK, "actions": [{"type": "follow_tab", "tab": "t1"}]}
+    away = "https://other.test/landing"
+    out = _run(tmp_path, [{"facts": ON}, {"seed": [_seeded("parked", why="captcha")]}, {"press": "run-resume"}],
+               pages=(page("step", 1, host="other.test"),), tabUrls={7: away, 9: "https://jobs.acme.test/apply/step1"},
+               windowTabs=[{"id": 9, "url": "https://jobs.acme.test/apply/step1"}], stopOnWindow=True,
+               api={"POST /api/autofill/reason": _reply(follow)}, frames=NO_ERRORS)
+    r = _record(out["shots"][-1])
+    assert r["tabId"] == 7 and not r.get("moved")
+
+
+def test_a_run_that_followed_to_a_tab_says_it_moved_and_not_that_the_tab_left_the_application(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("parked", why="moved_away", moved=True)]}])
+    text = _body_text(out["shots"][1])
+    assert "The run moved to this tab." in text and "different site" not in text and "run-resume" in _buttons(_card(out["shots"][1])["body"])
+    plain = _body_text(_run(tmp_path, [{"seed": [_seeded("parked", why="moved_away")]}])["shots"][1])
+    assert "The tab is on a different site now." in plain
+
+
+def test_what_the_run_filled_on_one_page_is_not_what_it_filled_on_another_page_of_the_same_step(tmp_path):
+    done = {"fid": "f2", "question": "Degree", "required": True, "status": "assumed", "slot": "education.degree"}
+    other = "https://jobs.acme.test/apply/other"
+    out = _run(tmp_path, [{"facts": ON}, {"start": SEED}, {"tabUrl": other}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [done, needs("f3", "Major")]}, {"fields": [needs("f4", "Minor")]}],
+               inventory=[_field("f2", "BSc", question="Degree", answered=True, touched=False), _field("f4", "", question="Minor")],
+               frames=NO_ERRORS, api={"POST /api/autofill/reason": _reply(ASK)})
+    calls = [json.loads(c["init"]["body"]) for c in _api_calls(out, "/api/autofill/reason")]
+    assert len(calls) == 2
+    assert {f["fid"]: f["by_run"] for f in calls[0]["fields"]}["f2"] is True
+    assert {f["fid"]: f["by_run"] for f in calls[1]["fields"]}["f2"] is False

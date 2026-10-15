@@ -246,7 +246,9 @@
     const [reason, say] = parkWords(run) ?? ["Needs you", "Do this step in the tab, then press Resume."];
     // A run that followed the user into this tab waits for one press here; it never carries on by itself.
     const moved = run.moved === true ? "The run moved to this tab. Press Continue here when this is the page to fill. " : "";
-    const box = attach(node("div", "needs run-needs"), node("div", "run-reason", reason), node("div", "opts", `${moved}${say}`),
+    // After a follow from a tab on another site, "the tab is on a different site" is no longer true: the move says it.
+    const said = run.moved === true && run.why === "moved_away" ? "" : say;
+    const box = attach(node("div", "needs run-needs"), node("div", "run-reason", reason), node("div", "opts", `${moved}${said}`.trim()),
       ...thoughtLines(ctx, run.thought),
       ["open_questions", "page_errors", "upload"].includes(run.why) ? questions(ctx, run) : null);
     const actions = node("div", "run-actions");
