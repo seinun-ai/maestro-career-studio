@@ -191,52 +191,70 @@ def _judge(action: Any, index: int, total: int, req: ReasonRequest, present: set
         return "careful_level"
     if signature(action) in req.excluded:
         return "excluded"
-    fields = {f.fid: f for f in req.fields}
-    buttons = {b.ref: b for b in req.buttons}
     if kind == "follow_tab":
         return None if action.tab in {t.ref for t in req.tabs} else "unknown_id"
     if kind in ("close_dialog", "press_next"):
-        button = buttons.get(action.button)
-        if button is None:
-            return "unknown_id"
-        if button.role != ("dialog" if kind == "close_dialog" else "next"):
-            return "not_allowed"
-        return "next_not_last" if kind == "press_next" and index != total - 1 else None
-    targets = list(getattr(action, "fids", None) or [])
-    if getattr(action, "fid", None):
-        targets.append(action.fid)
-    if any(fid not in fields for fid in targets):
+        return _judge_button(action, index == total - 1, req)
+    fields = {f.fid: f for f in req.fields}
+    targets = getattr(action, "fids", None) or [getattr(action, "fid", None)]
+    if any(fid is not None and fid not in fields for fid in targets):
         return "unknown_id"
     if kind in ("fill", "ask_user"):
         return None
     field = fields[action.fid]
-    if kind == "answer_from" and PROTECTED_SLOT.match(action.slot):
+    if protected(field) and (kind != "retry" or action.technique == "clear_and_set"):
         return "protected"
-    if kind != "retry" or action.technique == "clear_and_set":
-        if protected(field):
-            return "protected"
-    if kind == "answer_from":
-        if field.shape not in CHOICE_SHAPES:
-            return "not_a_choice"
-        return None if action.slot in present else "unknown_id"
-    if kind == "write":
-        if field.shape != "text":
-            return "not_free_text"
-        if field.multiline and not field.required:
-            return "optional_essay"
-        return "not_empty" if field.filled else None
-    if kind == "choose":
-        if field.shape not in CHOICE_SHAPES:
-            return "not_a_choice"
-        return "not_empty" if field.filled else None
-    if kind == "retry" and action.technique != "clear_and_set":
-        return None if field.shape in CHOICE_SHAPES else "not_a_choice"
-    # redo, and retry's clear_and_set: only a field the run filled, never the user's, never a multi-value one.
+    return _FIELD_JUDGES[kind](action, field, present)
+
+
+def _judge_button(action: Any, is_last: bool, req: ReasonRequest) -> str | None:
+    button = {b.ref: b for b in req.buttons}.get(action.button)
+    if button is None:
+        return "unknown_id"
+    if button.role != ("dialog" if action.type == "close_dialog" else "next"):
+        return "not_allowed"
+    return "next_not_last" if action.type == "press_next" and not is_last else None
+
+
+def _judge_answer_from(action: Any, field: SnapField, present: set[str]) -> str | None:
+    if PROTECTED_SLOT.match(action.slot):
+        return "protected"
+    if field.shape not in CHOICE_SHAPES:
+        return "not_a_choice"
+    return None if action.slot in present else "unknown_id"
+
+
+def _judge_write(action: Any, field: SnapField, present: set[str]) -> str | None:
+    if field.shape != "text":
+        return "not_free_text"
+    if field.multiline and not field.required:
+        return "optional_essay"
+    return "not_empty" if field.filled else None
+
+
+def _judge_choose(action: Any, field: SnapField, present: set[str]) -> str | None:
+    if field.shape not in CHOICE_SHAPES:
+        return "not_a_choice"
+    return "not_empty" if field.filled else None
+
+
+def _judge_redo(action: Any, field: SnapField, present: set[str]) -> str | None:
+    """A field the run filled, never the user's, never a multi-value one."""
     if not field.by_run:
         return "not_run_filled"
     if field.touched:
         return "users_field"
     return "multi_value" if field.multi else None
+
+
+def _judge_retry(action: Any, field: SnapField, present: set[str]) -> str | None:
+    if action.technique == "clear_and_set":
+        return _judge_redo(action, field, present)
+    return None if field.shape in CHOICE_SHAPES else "not_a_choice"
+
+
+_FIELD_JUDGES = {"answer_from": _judge_answer_from, "write": _judge_write, "choose": _judge_choose,
+                 "redo": _judge_redo, "retry": _judge_retry}
 
 
 def check(reply: ReasonReply, req: ReasonRequest, *, present: set[str], level: str) -> tuple[list, list[str]]:

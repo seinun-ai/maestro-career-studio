@@ -549,3 +549,66 @@ def test_the_narrow_phrases_do_not_block_ordinary_essays(db_session, monkeypatch
     Writer(monkeypatch, {"w": "Built a forecasting pipeline for 40 stores."})
     out = autofill_choose.choose([_written(label=label)], application.id, db_session)
     assert out["w"].reason == "assumed", label
+
+
+# ---------- the reasoning step's `write`: a short answer for an optional box, a draft with no stray contacts
+
+def test_a_reasoner_short_answer_is_drafted_for_an_optional_box_and_cut_short(db_session, monkeypatch):
+    application = _application(db_session)
+    sentence = "Built a forecasting pipeline for forty stores that cut stockouts by a third. "
+    writer = Writer(monkeypatch, {"w": sentence * 10})
+    out = autofill_choose.choose([_written(label="Field of study", kind="text", required=False, draft=False,
+                                           reasoner="short")], application.id, db_session)
+    assert out["w"].reason == "assumed" and len(out["w"].answer.split()) <= 60
+    [prompt] = writer.prompts   # the model is told to be short, not only cut after the fact
+    assert "Field of study (answer in a few words, facts only)" in prompt
+
+
+def test_an_optional_essay_the_reasoner_asks_for_is_skipped_not_padded(db_session, monkeypatch):
+    application = _application(db_session)
+    writer = Writer(monkeypatch, {"w": "Never asked."})
+    out = autofill_choose.choose([_written(required=False, reasoner="essay")], application.id, db_session)
+    assert (out["w"].answer, writer.prompts) == (None, [])
+
+
+def test_a_required_essay_the_reasoner_asks_for_is_drafted(db_session, monkeypatch):
+    application = _application(db_session)
+    Writer(monkeypatch, {"w": "Built a forecasting pipeline for forty stores that cut stockouts."})
+    out = autofill_choose.choose([_written(draft=False, reasoner="essay")], application.id, db_session)
+    assert out["w"].reason == "assumed" and out["w"].answer
+
+
+def test_a_reasoner_draft_still_never_answers_the_never_list(db_session, monkeypatch):
+    application = _application(db_session)
+    writer = Writer(monkeypatch, {"w": "Yes."})
+    autofill_choose.choose([_written(label="Are you legally authorized to work in the US?", kind="text",
+                                     reasoner="short")], application.id, db_session)
+    assert writer.prompts == []
+
+
+def test_a_reasoner_draft_is_off_at_careful(db_session, monkeypatch):
+    application = _application(db_session)
+    model_settings.set_answer_level(db_session, "facts")
+    writer = Writer(monkeypatch, {"w": "Built a pipeline for forty stores."})
+    out = autofill_choose.choose([_written(label="Field of study", kind="text", required=False, draft=False,
+                                           reasoner="short")], application.id, db_session)
+    assert (out["w"].answer, writer.prompts) == (None, [])
+
+
+def test_a_reasoner_flag_is_one_of_two_words():
+    with pytest.raises(ValueError):
+        ChooseField(qid="w", label="Field of study", kind="text", reasoner="long")
+
+
+@pytest.mark.parametrize("draft, kept", [
+    ("Reach me at jane@example.test about the pipeline work.", True),        # the owner's own email (resume contact)
+    ("From 2019-2023 I built the forecasting pipeline for forty stores.", True),   # a date range is not a phone
+    ("Ask recruiter@globex.test about the pipeline work at Globex.", False),
+    ("See https://github.com/someone-else for the pipeline I built.", False),
+    ("Call 555-010-0199 to hear about the pipeline I built.", False),
+])
+def test_a_draft_with_a_link_email_or_phone_that_is_not_the_owners_is_dropped(db_session, monkeypatch, draft, kept):
+    application = _application(db_session)
+    Writer(monkeypatch, {"w": draft})
+    out = autofill_choose.choose([_written()], application.id, db_session)
+    assert (out["w"].answer is not None) is kept

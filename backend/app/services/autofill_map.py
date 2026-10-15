@@ -47,6 +47,7 @@ from app.schemas.autofill_fill import DecisionTrace, Engine, EntryKind, Format, 
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
+    PROTECTED_SLOT,
     WORKED_HERE_SLOT,
     Fact,
     named_employer_fact,
@@ -57,7 +58,7 @@ from app.services.autofill_catalog import (
     question_names_company,
     websites,
 )
-from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR, SLOT_FLOOR
+from app.services.autofill_choose import _NEVER_DRAFTED, _PAGE_TEXT_IS_DATA, MATCH_FLOOR, SLOT_FLOOR
 from app.services.autofill_slots import FREE_TEXT, NO_SLOT
 
 logger = logging.getLogger(__name__)
@@ -744,24 +745,37 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
                queued: bool = False) -> dict[str, Mapped]:
     budget = Budget()
     criteria = _criteria(facts)
+    # The reasoning step's answer_from: a fact NAME it chose for a field, taken as a certain pick when it is a
+    # fact this profile holds, is not protected, and the question is not on the never-list. No model is asked
+    # about such a field; code still applies every guard below (`_traced`).
+    hinted = {f.fid: (f.slot_hint, 1.0) for f in fields
+              if f.slot_hint and f.slot_hint in facts and not PROTECTED_SLOT.match(f.slot_hint)
+              and not _NEVER_DRAFTED.search(f.question)}
+    asked = [f for f in fields if f.fid not in hinted]
     picked, second, unsure = None, None, []
     engine: Engine = "jev"
-    if model_settings.get_autofill_engine(session) == "jev":
-        try:
-            picked = _with_jev(fields, criteria, session)
-        except llm.LLMProviderError:
-            logger.warning("jev map failed; the fast model maps this batch")
-    if picked is None:
-        engine = "fast"
-        picked = main_call(
-            budget, lambda timeout: _with_llm(fields, criteria, session, timeout=timeout), "fast map")
+    if not asked:
+        picked, engine = {}, "fast"
     else:
-        unsure = [f for f in fields if _unsure(f, picked.get(f.fid), facts)]
-        second = _second_opinion(unsure, criteria, session, budget)
+        if model_settings.get_autofill_engine(session) == "jev":
+            try:
+                picked = _with_jev(asked, criteria, session)
+            except llm.LLMProviderError:
+                logger.warning("jev map failed; the fast model maps this batch")
+        if picked is None:
+            engine = "fast"
+            picked = main_call(
+                budget, lambda timeout: _with_llm(asked, criteria, session, timeout=timeout), "fast map")
+        else:
+            unsure = [f for f in asked if _unsure(f, picked.get(f.fid), facts)]
+            second = _second_opinion(unsure, criteria, session, budget)
     ran = second is not None
     second = second or {}
+    picked = {**picked, **hinted}
     out = {f.fid: _traced(f, picked.get(f.fid), facts, engine, eeo_consented=eeo_consented)
            for f in fields}
+    for fid in hinted:   # no model decided it: no decision to trace
+        out[fid] = out[fid].model_copy(update={"trace": None})
     # Only a fact or an EEO block is the second opinion's to decide: a field
     # Jev said no fact answers never becomes a model-drafted free-text answer.
     decided: dict[str, Mapped] = {}

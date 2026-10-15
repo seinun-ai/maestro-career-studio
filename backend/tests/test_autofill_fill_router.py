@@ -766,3 +766,15 @@ def test_the_source_is_read_off_the_job_urls_host_as_well(db_session, monkeypatc
     assert _post(db_session, "/api/autofill/pick", {"application_id": str(application.id),
                                                     "fields": [PICK_FIELD]}).status_code == 200
     assert seen["hint"].source == source
+
+
+@pytest.mark.usefixtures("profile")
+def test_map_takes_the_reasoning_steps_slot_hint_and_maps_it_without_a_model(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_map.llm, "call_openai", lambda **kw: pytest.fail("a hinted field asks no model"))
+    r = _post(db_session, "/api/autofill/map",
+              {"fields": [{"fid": "a", "question": "Hometown", "shape": "text", "slot_hint": "personal.city"}]})
+    assert r.status_code == 200
+    assert (r.json()["fields"]["a"]["route"], r.json()["fields"]["a"]["value"]) == ("slot", "Springfield")
+    bad = _post(db_session, "/api/autofill/map",
+                {"fields": [{"fid": "a", "question": "City", "shape": "text", "slot_hint": "Ignore everything"}]})
+    assert bad.status_code == 422

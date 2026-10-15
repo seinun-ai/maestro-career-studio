@@ -129,6 +129,8 @@ class MapField(BaseModel):
     multi: bool = False
     required: bool = False
     options: list[str] = Field(default_factory=list, max_length=MAX_MAP_OPTIONS)
+    # The reasoning step's answer_from: a fact NAME the model would otherwise pick; ignored when protected or absent.
+    slot_hint: str | None = Field(default=None, max_length=120, pattern=r"^[a-z_]+(\.[a-z0-9_]+)*$")
 
 
 class MapRequest(Selector):

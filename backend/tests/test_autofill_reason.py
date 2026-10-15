@@ -16,7 +16,7 @@ from tests.fake_provider import FakeProvider, install
 FACTS = autofill_catalog.build(
     {"personal": {"first_name": "Ada", "city": "Springfield"}, "work_auth": {"sponsorship_now": False},
      "preferences": {"how_heard": "Job fair"}}, [], [])
-REPLAYS = json.loads((Path(__file__).parent / "fixtures" / "autofill" / "reason_replies.json").read_text())
+REPLAYS = json.loads((Path(__file__).parent / "fixtures" / "autofill_reason" / "reason_replies.json").read_text())
 
 
 def req(why="page_errors", **kw):

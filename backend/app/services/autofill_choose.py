@@ -149,7 +149,15 @@ MAX_DRAFTS = 6
 
 def _draftable(field: ChooseField, answer: Choice | None) -> bool:
     """A REQUIRED written question the chooser had no answer for (text or textarea, no options,
-    no known value) that /map filed as free text or years (`draft`) and that is not on the never-list."""
+    no known value) that /map filed as free text or years (`draft`) and that is not on the never-list. The
+    reasoning step's `write` (`reasoner`) asks for its own: an empty text box, required or not, except an optional
+    essay (skipped, not padded), still never on the never-list."""
+    if field.reasoner is not None:
+        if field.reasoner == "essay" and not field.required:
+            return False
+        return (answer is not None and answer.answer is None and not field.known_value
+                and field.kind in ("text", "textarea") and not field.options
+                and not _NEVER_DRAFTED.search(field.label))
     if answer is None or answer.answer is not None or not (field.required and field.draft) or field.known_value:
         return False
     if field.kind not in ("text", "textarea") or field.options:
@@ -174,7 +182,8 @@ def _with_drafts(
     if not asked:
         return out
     try:
-        drafts = qa.draft_answers(application_id, asked, session, time_left=time_left)
+        short = {f.qid for f in fields if f.qid in asked and f.reasoner == "short"}
+        drafts = qa.draft_answers(application_id, asked, session, time_left=time_left, short=short)
     except (ValueError, llm.LLMProviderError) as exc:
         logger.warning("drafting %d written answers failed (%s); they stay open", len(asked), exc)
         return out
