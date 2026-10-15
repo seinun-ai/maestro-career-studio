@@ -7,6 +7,7 @@ from the source here.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
@@ -260,3 +261,30 @@ def test_an_applied_job_has_no_delete_proposal_in_the_header():
 
 def test_a_skip_holds_its_pill_until_the_reason_loads():
     assert "reasonPending: proposalQuery.isLoading," in _JOB
+
+
+# ── The fixed filing plans, and CI ──────────────────────────────────────────
+
+
+def test_the_fixed_plan_summaries_match_what_the_two_clients_file():
+    """`proposalHasContent` ignores a plan that is only the filing of a job you queued yourself. Those
+    sentences live in two clients; if either changes, the card would start showing the filing as a plan."""
+    lib = _read("lib/inbox-readiness.ts")
+    listed = re.search(r"FIXED_PLAN_SUMMARIES = \[(.*?)\];", lib, re.S).group(1)
+    summaries = re.findall(r'"([^"]+)"', listed)
+    web = re.search(r'plan: \{ summary: "([^"]+)" \}', _read("lib/api.ts")).group(1)
+    companion = re.search(
+        r'plan: \{ summary: "([^"]+)" \}',
+        (Path(__file__).resolve().parents[2] / "extension/panel/actions/job.js").read_text(encoding="utf-8"),
+    ).group(1)
+    assert sorted(summaries) == sorted({web, companion})
+
+
+def test_ci_runs_every_frontend_lib_test_and_the_inbox_render_test():
+    ci = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "run: cd frontend && node --test lib/*.test.ts" in ci
+    assert "run: cd frontend && node --test components/inbox-simplify.test.mjs" in ci
+    # Each step's comment sits directly above it.
+    second = ci.index("- name: Render the second-copy card")
+    assert "second-copy card under node" in ci[second - 400 : second]
+    assert "job page and Agent inbox pieces" not in ci[ci.index("# Renders the second-copy card") : second]
