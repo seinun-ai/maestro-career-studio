@@ -531,10 +531,12 @@ function fillableControls() {
         rest = rest.split(name).join(" ");
       }
     }
-    const known = [filename, stem].filter(Boolean).map((name) => name.toLowerCase());
+    // The tail must reach past the extension ("…e.pdf", not "….pdf"), or any file would end it.
+    const known = [[filename, filename.length - Math.max(dot, 0) + 2], [stem, 3]].filter(([name]) => name)
+      .map(([name, tailMin]) => [name.toLowerCase(), tailMin]);
     rest = rest.replace(SHORTENED, (span, left, right) => {
       const [head, tail] = [left, right].map((part) => part.replace(EDGE, "").toLowerCase());
-      const fits = known.some((name) => head.length >= 3 && tail.length >= 3 && head.length + tail.length >= 8
+      const fits = known.some(([name, tailMin]) => head.length >= 3 && tail.length >= tailMin && head.length + tail.length >= 8
         && head.length + tail.length < name.length && name.startsWith(head) && name.endsWith(tail));
       found ||= fits;
       return fits ? " " : span;

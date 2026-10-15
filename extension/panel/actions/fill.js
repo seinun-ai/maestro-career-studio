@@ -872,7 +872,7 @@
       // such a page is how Workday's `multiple` uploader ends up with two
       // copies, so the sentence sends them to look first.
       //
-      // "THE BOXES CHANGED" NEEDS A COUNT TO CHANGE FROM, and a written box that LEFT the page explains a fall by itself: an
+      // "THE BOXES CHANGED" NEEDS A COUNT TO CHANGE FROM, and written boxes that LEFT the page explain a fall of up to that many by themselves: an
       // uploader that swaps its own input for the file's chip (live check 9) leaves one box fewer, and that is the upload
       // taking the file. The count believed is the offer's `expect`, or the last detect's when the write named a box (the
       // targeted attach states none); with neither, the page cannot be said to have changed.
@@ -881,7 +881,7 @@
       if (store.current(token)) store.write({ fileInputs: now });
       const written = frames.reduce((total, frame) => total + (frame.result?.written ?? 0), 0);
       const changed = Number.isInteger(now) && Number.isInteger(believed)
-        && now !== believed && now !== believed - written;
+        && now !== believed && !(now < believed && now >= believed - written);
       // `written`: the file reached a box, so a second automatic copy is out.
       throw Object.assign(ns.guidedRun.shown(changed
         ? "Couldn't attach your resume. The page's upload boxes changed, so "

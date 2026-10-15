@@ -3419,6 +3419,27 @@ def test_a_page_that_grew_a_box_since_the_offer_attaches_nothing_and_says_why(tm
     assert _by_class(settled["rail"], "save")[0]["disabled"] is True
 
 
+def test_a_box_the_page_swapped_for_the_files_chip_after_the_press_is_hedged_not_a_change_of_boxes(tmp_path):
+    """The button's page reply carries how many boxes were written, so the box that left the page with the file in it explains
+    the fall from one box to none."""
+    swapped = _reply([{"frameId": 0, "result": {"written": 1, "proven": 0}}])
+    out = _attach(tmp_path, press=True, attach_reply=swapped,
+                  page={"detect_page": [_reply({"tier": "B", "form": True, "score": 2, "fileInputs": 1}),
+                                        _reply({"tier": "B", "form": True, "score": 2, "fileInputs": 0})]})
+    note = _by_class(out["settled"]["foot"], "note")[0]["text"]
+    assert "Couldn't confirm the upload" in note and "upload boxes changed" not in note
+
+
+def test_several_written_boxes_that_left_the_page_explain_a_fall_of_up_to_that_many(tmp_path):
+    """Two boxes written and one swapped for its chip: the page has one box fewer than the offer was made on, which the
+    writes explain. (The reply is the page's; the button offers one box, so the believed count is raised to two.)"""
+    two_written = _reply([{"frameId": 0, "result": {"written": 2, "proven": 0}}])
+    out = _attach(tmp_path, press=True, attach_reply=two_written,
+                  page={"detect_page": [_reply({"tier": "B", "form": True, "score": 2, "fileInputs": 1}),
+                                        _reply({"tier": "B", "form": True, "score": 2, "fileInputs": 0})]})
+    assert "upload boxes changed" not in _by_class(out["settled"]["foot"], "note")[0]["text"]
+
+
 def test_a_page_whose_boxes_simply_refused_keeps_its_own_sentence(tmp_path):
     """The other branch of the same zero, and what stops the message above from
     being printed over every failure: the re-ask agrees with what we sent, so

@@ -514,3 +514,28 @@ def test_a_shortened_name_of_another_file_is_not_this_files_row(swap_page):
     page = swap_page
     page.evaluate("() => { window.__shown = () => 'Other_Fi…ument.pdf '; window.__clear = true; }")
     assert _attach(page) == {"ok": True, "data": 0}
+
+
+def test_a_page_asked_to_report_how_many_boxes_were_written_answers_written_and_proven(swap_page):
+    page = swap_page
+    reply = page.evaluate("""([b64, filename]) => new Promise((resolve) => {
+      window.__pageListener({ type: "attach_resume_pdf", b64, filename, expect: 1, reportWritten: true }, { id: "t" }, resolve);
+    })""", [PDF, NAME])
+    assert reply == {"ok": True, "data": {"written": 1, "proven": 1}}
+
+
+def test_a_shortened_name_whose_tail_is_only_the_extension_is_not_this_files_row(swap_page):
+    """Any file ends in .pdf: the part after the ellipsis has to reach past it."""
+    page = swap_page
+    page.evaluate("() => { window.__shown = (name) => name.slice(0, 8) + '…' + '.pdf '; window.__clear = true; }")
+    assert _attach(page) == {"ok": True, "data": 0}
+
+
+def test_a_latched_stop_ends_the_extra_wait_for_a_widget_that_shows_progress(swap_page):
+    import time
+    page = swap_page
+    _slow(page, 40000)
+    page.evaluate("() => window.careerStudioCompanion.fillOps.cancel()")
+    began = time.monotonic()
+    assert _attach(page) == {"ok": True, "data": 0}
+    assert time.monotonic() - began < 8

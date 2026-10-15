@@ -874,6 +874,8 @@ const HANDLERS = {
       expect: Number.isInteger(msg.expect) ? msg.expect : undefined,
       // Autofill's own attach (`attachResumePdf`): only a literal true.
       resumeOnly: msg.resumeOnly === true,
+      // The panel reads how many boxes were WRITTEN as well as proven (it tells a swapped box from a changed page).
+      reportWritten: true,
       // The box a page's own error named (an opaque tag the page op handed out): a string or nothing.
       ...(typeof msg.target === "string" && msg.target ? { target: msg.target } : {}),
       // The origin the panel vouches for (`frameMayReceiveUserData`): a later

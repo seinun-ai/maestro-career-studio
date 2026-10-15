@@ -561,6 +561,13 @@ def test_autofills_resume_only_attach_reaches_the_frames(tmp_path, extra, forwar
     assert message["type"] == "attach_resume_pdf"
     assert message["resumeOnly"] is forwarded
 
+def test_every_attach_asks_the_frames_to_report_what_they_wrote(tmp_path):
+    """The panel tells a box the page swapped for the file's chip (written, then gone) from a page that changed its boxes."""
+    out = run_node(_ATTACH_FORWARD_DRIVER_JS, {"extra": {}}, tmp_path, source=SW_JS)
+    [message] = out["delivered"]
+    assert message["reportWritten"] is True
+
+
 @pytest.mark.parametrize("extra, forwarded", [
     ({"flowOrigin": "https://careers-acme.icims.com"}, "https://careers-acme.icims.com"),
     ({}, None),

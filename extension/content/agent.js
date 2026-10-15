@@ -476,10 +476,10 @@
    * proven}`, so "nothing written" differs from "not proven", and a HIDDEN
    * input in an upload widget counts only by its row (a held `files` proves a
    * bare or visible input, whose own control shows it). The button keeps both. */
-  async function attachResumePdf(b64, filename, expect, resumeOnly = false, target = null) {
+  async function attachResumePdf(b64, filename, expect, resumeOnly = false, target = null, reportWritten = false) {
     // `target`: write the box the page's own error named, and only it (`targetBox`).
     const targeted = typeof target === "string" && target !== "";
-    const reply = (written, proven) => (resumeOnly || targeted ? { written, proven } : proven);
+    const reply = (written, proven) => (resumeOnly || targeted || reportWritten ? { written, proven } : proven);
     const all = attachableFileInputs();
     if (!targeted && Number.isInteger(expect) && all.length !== expect) return reply(0, 0);
     // The button writes every box but a parser (the site's own fill-from-resume), one for another
@@ -531,7 +531,9 @@
     // A widget that shows PROGRESS (busy, a bar, "Uploading…") is still working, and gets longer: an uploader that parses the
     // file first (live check 9) prints the name when that is done. Bounded, and only the news counts.
     const patience = Date.now() + ATTACH_PROGRESS_WAIT_MS;
-    const working = (t) => Date.now() < patience && ns.uploadProof.seen(t.watched, filename).working;
+    // A latched Stop ends the extra wait (`fillBase.check` throws only then).
+    const stopped = () => { try { ns.fillBase?.check(); return false; } catch (_) { return true; } };
+    const working = (t) => Date.now() < patience && !stopped() && ns.uploadProof.seen(t.watched, filename).working;
     while (targets.some((t) => t.widget !== null && !proven(t) && (Date.now() < deadline || working(t)))) {
       await sleep(ATTACH_POLL_MS);
     }
@@ -652,7 +654,7 @@
       ? scrollToField(msg.qid)
       : false),
     attach_resume_pdf: (msg) => (frameMayReceiveUserData(msg)
-      ? attachResumePdf(msg.b64, msg.filename, msg.expect, msg.resumeOnly === true, msg.target)
+      ? attachResumePdf(msg.b64, msg.filename, msg.expect, msg.resumeOnly === true, msg.target, msg.reportWritten === true)
       : 0),
     /* The fill engine's page operations (content/fill-ops.js). Gated like
      * `guided_write`, each returning its empty shape in a refused frame: an
