@@ -1607,7 +1607,9 @@ footer alone).
   `filledPage.where` follows it) and, once the page's post-fill read is known, the same SHAPE (`shapeOf`: its step buttons and its count of controls; the error summary's buttons and a field's own control are out of it and out of `fingerprint`, since a
   tenant's dropdown is a button whose text is its VALUE and a value never tells pages apart). A tenant that keeps one
   address and one heading for every step is told apart by the shape. A change of shape alone, under the same path and key, counts as a step once per path and key in a
-  drive (`leftFilled`; a conditional field an answer revealed), then it is the same page changing. A different page counts as one step (`step + 1`, the old page's `here` goes into `seen`),
+  drive (`leftFilled`; a conditional field an answer revealed); a further shape change only refills the page (`pageFilled` off, no step added, the repair counts kept), so a page is
+  never pressed unfilled and a page that keeps changing is still bounded. `fingerprint` also carries the count of required boxes still empty, so a Next that only swaps
+  dropdowns (its fresh step shows them empty) still reads as a change. A different page counts as one step (`step + 1`, the old page's `here` goes into `seen`),
   `moved()` runs and the page is filled first. The count is bounded like any step: `step_limit` at the step cap and `loop` for a page already in `seen`, so a site that
   rewrites its address on every fill cannot walk the run through forty fills. A page that is `samePage` as the one filled is pressed again without a second fill. The reasoning
   step's `press_next` uses the same comparison. **A refused press is re-read before the run parks** (`movedOn`, ahead of a `page_errors` park): a press that read as refused only

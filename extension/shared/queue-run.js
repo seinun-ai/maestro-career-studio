@@ -225,7 +225,7 @@
   };
 
   /** One string for "which page is this": the address (no hash), the step heading's key, the
-   * visible button texts sorted, and how many controls a fill could answer. Value-free by
+   * visible button texts sorted, how many controls a fill could answer and how many required boxes are empty. Value-free by
    * construction. The host's waitForChange compares these, so there is exactly one definition. */
   function fingerprint(url, summary) {
     let where = "";
@@ -235,7 +235,8 @@
     } catch {
       // No address known: the page alone tells.
     }
-    return [where, summary?.stepKey ?? "", stepButtons(summary), summary?.fillable ?? 0].join("\n");
+    // `requiredEmpty` (a count): a step that only swaps its dropdowns shows its required boxes empty, which the buttons do not.
+    return [where, summary?.stepKey ?? "", stepButtons(summary), summary?.fillable ?? 0, summary?.requiredEmpty ?? 0].join("\n");
   }
 
   /** The visible button texts a step offers, sorted. Not the error summary's own buttons (a rejected Next adds them), and
@@ -471,19 +472,21 @@
     // line or upload box): before a repair parks, the page is read again, and one that is not the page this run filled counts
     // as a step. The loop then fills it.
     //
-    // `leftFilled`: whether `now` is not the page this run filled. Under the same address and heading only the shape differs
-    // (a conditional field an answer revealed): that is taken for the site's next step ONCE per address and heading in a drive,
-    // after that it is the same page changing, so a page that keeps changing cannot walk the run to its step limit.
+    // `leftFilled`: how `now` differs from the page this run filled: "step" (another page), "refill" or false (the same page).
+    // Under the same address and heading only the shape differs (a conditional field an answer revealed): the first such change
+    // in a drive is taken for the site's next step; a further one only refills the page, with no step added and the repair
+    // counts kept, so a page that keeps changing is neither pressed unfilled nor walked up to the step limit.
     const leftFilled = (now) => {
       if (samePage(filledPage, now)) return false;
-      if (pathOf(filledPage.where) !== pathOf(now.where) || filledPage.key !== now.key) return true;
+      if (pathOf(filledPage.where) !== pathOf(now.where) || filledPage.key !== now.key) return "step";
       const id = `${pathOf(now.where)}\n${now.key}`;
-      if (shapeMoves.has(id)) {
-        filledPage.shape = now.shape;
-        return false;
-      }
+      if (shapeMoves.has(id)) return "refill";
       shapeMoves.add(id);
-      return true;
+      return "step";
+    };
+    const refill = () => {
+      pageFilled = false;
+      filledPage = null;
     };
     const movedOn = async () => {
       if (!pageFilled || !filledPage || record.step + 1 >= LIMITS.stepMax) return false;
@@ -493,7 +496,12 @@
       // A page already pressed is not a new step: the errors' park, not a loop.
       const here = `${where}\n${key}`;
       if (record.seen.some((one) => one === here || one.startsWith(`${here}\n`))) return false;
-      if (!leftFilled({ where, key, shape: shapeOf(frame.result.summary) })) return false;
+      const left = leftFilled({ where, key, shape: shapeOf(frame.result.summary) });
+      if (!left) return false;
+      if (left === "refill") {
+        refill();
+        return true;
+      }
       await update({ step: record.step + 1, seen: [...record.seen, filledPage.here ?? `${filledPage.where}\n${filledPage.key}`] });
       moved();
       return true;
@@ -823,7 +831,10 @@
         // A PAGE IS PRESSED ONLY IF IT IS THE PAGE THIS RUN FILLED. A press the page refused, or a repair, can end
         // with the site on its next page; the page in hand is not the one that was filled, so the press that
         // brought it here counts as a step and the page is filled before anything else is done on it.
-        if (pageFilled && filledPage && leftFilled(thisPage)) {
+        const left = pageFilled && filledPage ? leftFilled(thisPage) : false;
+        if (left === "refill") {
+          refill();
+        } else if (left) {
           // Bounded like any step: a site that keeps rewriting its address cannot walk the run through forty fills.
           if (record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
           // `seen` holds a pressed page as its whole fingerprint and a page left unpressed as `where\nkey`.

@@ -2111,17 +2111,19 @@ def test_wait_for_change_survives_a_transport_that_throws_mid_navigation(tmp_pat
     assert out["result"]["changed"] is True
 
 
-def test_the_fingerprint_is_the_address_without_the_hash_the_step_key_the_sorted_buttons_and_the_count(tmp_path):
+def test_the_fingerprint_is_the_address_without_the_hash_the_step_key_the_sorted_buttons_the_count_and_the_required_boxes_empty(tmp_path):
     driver = r"""
     const ns = loadModules();
     const f = ns.queueRun.fingerprint;
     const s = { stepKey: "k1", fillable: 3, buttons: [{ text: "Next", visible: true }, { text: "Back", visible: true }, { text: "Hidden", visible: false }] };
     emit({ a: f("https://x.test/p?q=1#top", s), b: f("https://x.test/p?q=1#other", s), c: f("https://x.test/p?q=2", s),
-           d: f("https://x.test/p?q=1", { ...s, stepKey: "k2" }), e: f("not a url", s), g: f("https://x.test/p?q=1", { ...s, fillable: 4 }) });
+           d: f("https://x.test/p?q=1", { ...s, stepKey: "k2" }), e: f("not a url", s), g: f("https://x.test/p?q=1", { ...s, fillable: 4 }),
+           h: f("https://x.test/p?q=1", { ...s, requiredEmpty: 2 }) });
     """
     out = run_node(driver, {}, tmp_path, source=SOURCE)
-    assert out["a"] == out["b"] == "https://x.test/p?q=1\nk1\nBack,Next\n3"
-    assert len({out["a"], out["c"], out["d"], out["g"]}) == 4 and out["e"].startswith("\nk1")
+    assert out["a"] == out["b"] == "https://x.test/p?q=1\nk1\nBack,Next\n3\n0"
+    assert out["h"].endswith("\n3\n2")
+    assert len({out["a"], out["c"], out["d"], out["g"], out["h"]}) == 5 and out["e"].startswith("\nk1")
 
 
 def test_the_run_limits_cannot_be_changed_by_a_caller(tmp_path):
@@ -2553,6 +2555,47 @@ def test_a_page_that_changes_only_in_shape_counts_as_a_move_at_most_once_per_add
     r = out["record"]
     assert (r["status"], r["why"]) == ("parked", "page_errors") and r["step"] <= 1
     assert [c[0] for c in out["calls"]].count("fix") <= 2
+
+
+def test_three_steps_under_one_address_and_key_are_each_filled_before_they_are_pressed(tmp_path):
+    """Each press reads as refused while the site moves on under the repair, and the steps differ only in shape: the
+    first change is a step, a further one refills the page (no step added) and never presses it unfilled."""
+    pages = [step(1, url="/apply", key="k", rejects=1, errorItems=[CITY]),
+             step(2, url="/apply", key="k", fillable=7, rejects=1, errorItems=[STATE]),
+             step(3, url="/apply", key="k", fillable=5), REVIEW]
+    out = _drive(tmp_path, pages, fixMoves=True)
+    seq = []
+    for call in out["calls"]:
+        if call[0] == "fill" or call[0] == "advance":
+            seq.append(call[0])
+    # Never two presses without a fill between them.
+    assert all(not (a == b == "advance") for a, b in zip(seq, seq[1:])), seq
+    assert seq[0] == "fill" and out["pressed"].index("next-3") > 0
+    last = [i for i, name in enumerate(seq) if name == "advance"]
+    assert all(seq[i - 1] == "fill" for i in last), seq
+    assert out["record"]["status"] == "ready"
+
+
+def test_a_page_whose_shape_keeps_changing_under_one_address_and_key_adds_one_step_and_is_still_bounded(tmp_path):
+    fix = {"fixed": False, "remaining": [STATE]}
+    out = _drive(tmp_path, [step(1, url="/apply", key="k", rejects=99, drift=True, errorItems=[CITY, STATE])], fixWrites=True, fix=fix)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "page_errors") and r["step"] <= 1
+    assert [c[0] for c in out["calls"]].count("fix") <= 3
+
+
+FP_PAGE = {"host": "jobs.acme.test", "stepKey": "k", "fillable": 4, "requiredEmpty": 0,
+           "buttons": [{"id": "n", "text": "Save and Continue", "visible": True}, {"id": "p", "text": "Select One", "visible": True, "fieldControl": True}]}
+FP = r"""const ns = loadModules(); const url = "https://acme.wd1.myworkdayjobs.com/apply";
+const swapped = { ...spec.page, requiredEmpty: 3, buttons: [spec.page.buttons[0], { ...spec.page.buttons[1], text: "Yes" }] };
+emit({ a: ns.queueRun.fingerprint(url, spec.page), b: ns.queueRun.fingerprint(url, swapped),
+       c: ns.queueRun.fingerprint(url, { ...swapped, requiredEmpty: 0 }) });"""
+
+
+def test_a_fresh_step_that_shows_required_boxes_empty_is_a_different_page_in_the_fingerprint_though_only_a_dropdown_text_differs(tmp_path):
+    out = run_node(FP, {"page": FP_PAGE}, tmp_path, source=SOURCE)
+    assert out["a"] != out["b"], "required boxes now empty: the page changed"
+    assert out["a"] == out["c"], "the dropdown's value alone is no change"
 
 
 def test_a_repair_that_leaves_a_page_already_pressed_parks_page_errors_not_loop(tmp_path):

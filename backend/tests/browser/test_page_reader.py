@@ -3000,7 +3000,10 @@ def test_a_field_dropdowns_shown_value_never_changes_the_pages_fingerprint(page,
     fingerprint = "() => window.careerStudioCompanion.queueRun.fingerprint('https://acme.wd1.test/apply', window.careerStudioCompanion.pageReader.summary())"
     before = page.evaluate(fingerprint)
     page.evaluate("() => { const b = document.getElementById('pop'); b.textContent = 'Yes'; b.setAttribute('aria-label', 'Are you 18? Yes Required'); }")
-    assert page.evaluate(fingerprint) == before and "Yes" not in before and "Select One" not in before
+    after = page.evaluate(fingerprint)
+    # Address, heading key, buttons and control count are the same; only the count of required boxes still empty went 1 -> 0.
+    assert before.split("\n")[:4] == after.split("\n")[:4] and (before.split("\n")[4], after.split("\n")[4]) == ("1", "0")
+    assert "Yes" not in after and "Select One" not in before
 
 
 def test_a_progress_lists_current_step_names_the_step_when_the_page_has_no_other_heading(page, load):
