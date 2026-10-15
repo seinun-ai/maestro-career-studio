@@ -15,6 +15,7 @@
   const ns = (window.careerStudioCompanion ??= {});
   const REASON_MS = 30000;
   const MAX_TABS = 5;
+  const STOP_POLL_MS = 250;   // a Stop pressed mid-call ends the wait this soon
   // The parks a tab to follow can help: the page is not the application (unknown), or the tab left it.
   const FOLLOWS = new Set(["unknown_page", "moved_away"]);
 
@@ -22,16 +23,24 @@
   const enabled = (facts) => facts?.fullAutomation === true && facts.companionApply?.thinkWhenStuck !== false
     && facts.companionApply?.stopEachStep !== true;
 
-  /** `promise`, or null once `ms` ran out or it failed (never throws). */
-  const within = (promise, ms, after) => new Promise((resolve) => {
-    const cancel = after(ms, () => resolve(null));
-    promise.then((value) => {
-      cancel();
+  /** `promise`, or null once `ms` ran out, `stopped()` says so (polled every STOP_POLL_MS) or it failed (never throws). */
+  const within = (promise, ms, after, stopped) => new Promise((resolve) => {
+    const timers = [];
+    let over = false;
+    const end = (value) => {
+      if (over) return;
+      over = true;
+      for (const cancel of timers) cancel();
       resolve(value ?? null);
-    }, () => {
-      cancel();
-      resolve(null);
-    });
+    };
+    const poll = () => {
+      if (over) return;
+      if (stopped()) return end(null);
+      timers.push(after(STOP_POLL_MS, poll));
+    };
+    timers.push(after(ms, () => end(null)));
+    timers.push(after(STOP_POLL_MS, poll));
+    promise.then(end, () => end(null));
   });
 
   const addressHost = (url) => {
@@ -83,7 +92,7 @@
       },
       read,
       ask: (body, ms) => within(store.api("/api/autofill/reason", { method: "POST", body: JSON.stringify(body) }),
-        Math.min(ms, REASON_MS), run.after),
+        Math.min(ms, REASON_MS), run.after, () => record.stopRequested === true),
       fill: (fids, scope) => host.fill(fids, scope),
       // The guarded dismiss: the page refuses any button that asks about submitting (content/page-reader.js).
       dismiss: async (frameId, id) => answer(await run.tabBroadcast(record.tabId, { type: "page_advance", id, dismiss: true }, frameId),

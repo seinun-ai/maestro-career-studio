@@ -2377,3 +2377,16 @@ def test_a_companion_switch_read_that_failed_leaves_the_step_off(tmp_path):
                inventory=[_field("f2", "", question="Degree")], frames=NO_ERRORS,
                api={**api, "POST /api/autofill/reason": _reply(ASK)})
     assert _api_calls(out, "/api/autofill/reason") == []
+
+
+def test_stop_during_a_thought_ends_the_run_within_a_second_and_nothing_follows(tmp_path):
+    # The reply is held and never comes: only the Stop can end the wait (the 30 s clock is not fired).
+    out = _run(tmp_path, [{"facts": ON}, {"start": SEED, "background": True}, {"press": "run-stop"}, {"finish": True}],
+               pages=(STEP1, REVIEW), reports=[{"fields": [needs("f2", "Degree")]}],
+               inventory=[_field("f2", "", question="Degree")], frames=NO_ERRORS,
+               api={"POST /api/autofill/reason": _reply({**ASK, "actions": [{"type": "fill", "fids": ["f2"]}]})},
+               hold=["/api/autofill/reason"])
+    r = _record(out["shots"][-1])
+    assert (r["status"], r["why"]) == ("stopped", "user")
+    assert len(out["fills"]) == 1 and _page_messages(out, "page_advance") == []
+    assert not r.get("thinking")
