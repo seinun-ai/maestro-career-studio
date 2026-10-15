@@ -1131,6 +1131,19 @@ def test_the_second_opinion_is_capped(db_session, monkeypatch):
 
 
 @pytest.mark.usefixtures("jev_on")
+def test_a_claude_fast_models_second_opinion_keeps_its_floor_when_the_reasoning_call_is_next(db_session, monkeypatch):
+    """Live check 9: 3 s in the reserve would leave the Claude second opinion 2 s; its floor is 3."""
+    monkeypatch.setattr(autofill_map.model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
+    left = [0.0, 3.0, 5.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: left.pop(0) if len(left) > 1 else left[0])
+    fake_jev(monkeypatch, {"m": ("none", 0.9)})
+    prompts = fake_reasoner(monkeypatch)
+    pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No"),
+                       pf("m", slot="education.0.discipline", options=opts("Business Analytics"))], db_session)
+    assert {p["trace_name"]: p for p in prompts}[SECOND]["timeout"] == pytest.approx(3.0)
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_a_slot_only_second_opinion_carries_no_low_stakes_paragraph(db_session, monkeypatch):
     """The fast model is asked what Jev is: which option means the same as the fact."""
     from app.services.autofill_map import _NEVER_LOW_STAKES

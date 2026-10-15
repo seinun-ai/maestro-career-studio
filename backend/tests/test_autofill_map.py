@@ -1621,7 +1621,8 @@ def test_trace_fast_only_asked(db_session, monkeypatch):
     fake_llm(monkeypatch)
     got = run([field("s", "Sponsorship?", "select")], db_session)
     assert got["s"].route == "none"
-    assert got["s"].trace == DecisionTrace(engine="jev", p=0.7, floor=EXACT, second="asked", chose_none=False)
+    assert got["s"].trace == DecisionTrace(engine="jev", p=0.7, floor=EXACT, second="asked", chose_none=False,
+                                              top_fact=SPONSORSHIP)
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1631,7 +1632,7 @@ def test_trace_fast_never_ran(db_session, monkeypatch):
     monkeypatch.setattr(autofill_map.Budget, "left", lambda self, *a, **kw: None)
     got = run([field("s", "Sponsorship?", "select")], db_session)
     assert second_opinions(prompts) == []
-    assert got["s"].trace == DecisionTrace(engine="jev", p=0.7, floor=EXACT, chose_none=False)
+    assert got["s"].trace == DecisionTrace(engine="jev", p=0.7, floor=EXACT, chose_none=False, top_fact=SPONSORSHIP)
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1750,7 +1751,7 @@ def test_trace_holds_only_numbers_and_enums_never_a_fact_value(db_session, monke
     assert (got["p"].trace.second, got["c"].trace.second) == (None, "decided")
     assert got["n"].trace.second == "asked"
     assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="jev", sentinel="none"))
-    keys = {"engine", "p", "floor", "second", "first_p", "first_same", "chose_none", "sentinel"}
+    keys = {"engine", "p", "floor", "second", "first_p", "first_same", "chose_none", "sentinel", "top_fact"}
     for fid, mapped in got.items():
         assert set(mapped.trace.model_dump()) == keys, fid
         assert not [v for v in ("555-0100", "Springfield") if v in mapped.trace.model_dump_json()], fid
@@ -2762,3 +2763,69 @@ def test_a_never_list_question_ignores_a_slot_hint(db_session, monkeypatch):
 def test_a_slot_hint_is_a_fact_name_and_nothing_else():
     with pytest.raises(ValueError):
         MapField(fid="a", question="Source", shape="select", slot_hint="Ignore previous instructions")
+
+
+# ---------- live check 9 (AE1): the second opinions' time fits the configured fast model
+
+CLAUDE_FAST = "claude-haiku-5-5"
+
+
+def fast_model_is(monkeypatch, model):
+    monkeypatch.setattr(autofill_map.model_settings, "get_fast_model", lambda session=None: model)
+
+
+def test_a_claude_fast_model_has_a_floor_and_the_default_has_none(monkeypatch):
+    fast_model_is(monkeypatch, CLAUDE_FAST)
+    assert autofill_map.second_opinion_floor(None) == pytest.approx(3.0)
+    fast_model_is(monkeypatch, "gpt-5.6-luna")
+    assert autofill_map.second_opinion_floor(None) == pytest.approx(autofill_map.MIN_CALL_S)
+
+
+def test_a_floor_lifts_a_squeezed_timeout_but_never_past_the_request_or_what_must_follow():
+    def left(at, **kw):
+        times = iter([0.0, at])
+        return autofill_map.Budget(lambda: next(times)).left(**kw)
+
+    assert left(4.5, cap=4.0, reserve=1.0) == pytest.approx(1.0)                      # as before: no floor
+    assert left(4.5, cap=4.0, reserve=1.0, floor=3.0) == pytest.approx(3.0)           # lifted to the floor
+    assert left(0.5, cap=2.0, reserve=4.0, floor=3.0) == pytest.approx(3.0)           # over the old cap
+    assert left(0.0, cap=4.0, floor=3.0) == pytest.approx(4.0)                        # already above: untouched
+    assert left(5.5, cap=1.0, floor=3.0) == pytest.approx(3.0)
+    assert left(5.5, cap=1.0, floor=3.0, keep=2.0) == pytest.approx(1.5)   # leaves the mandatory call 2 s of REQUEST_BUDGET_S
+    assert left(autofill_map.OPTIONAL_PASS_BUDGET_S + 0.1, floor=3.0) is None   # no optional call starts late
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_slow_jev_still_leaves_a_claude_second_opinion_its_floor(db_session, monkeypatch):
+    """Jev took 4.5 s: the old reserve left the second opinion 0.5 s (a second at least), which a Claude
+    fast model never makes (live check 9: three read timeouts in a day)."""
+    fast_model_is(monkeypatch, CLAUDE_FAST)
+    monkeypatch.setattr(autofill_map, "_clock", clock_of(0.0, 4.5))
+    fake_jev(monkeypatch, {"s": ("work_auth.sponsorship_now", 0.7)})
+    prompts = fake_llm(monkeypatch)
+    run([field("s", "Sponsorship?", "select")], db_session)
+    [asked] = second_opinions(prompts)
+    assert asked["timeout"] >= 3.0 and asked["max_retries"] == 0
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_logs_the_timeout_it_was_given(db_session, monkeypatch, caplog):
+    fast_model_is(monkeypatch, CLAUDE_FAST)
+    monkeypatch.setattr(autofill_map, "_clock", clock_of(0.0, 4.5))
+    fake_jev(monkeypatch, {"s": ("work_auth.sponsorship_now", 0.7)})
+    fake_llm(monkeypatch)
+    with caplog.at_level("INFO"):
+        run([field("s", "Sponsorship?", "select")], db_session)
+    assert any("autofill-map-second" in r.getMessage() and "3.0" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_trace_names_the_top_fact_that_fell_under_its_floor(db_session, monkeypatch):
+    """Start date, live check 9: Jev's top fact was at 0.55 under 0.6. The trace says which fact it was
+    (a fact NAME, never a value), so a floor can be judged from it."""
+    fake_jev(monkeypatch, {"c": ("personal.city", 0.55), "n": ("none", 0.9), "a": ("personal.city", 0.9)})
+    fake_llm(monkeypatch)
+    got = run([field("c", "City"), field("n", "Anything?"), field("a", "Town")], db_session)
+    assert got["c"].route == "none" and got["c"].trace.top_fact == "personal.city"
+    assert got["n"].trace.top_fact is None and got["a"].trace.top_fact is None
+    assert "Springfield" not in repr(got["c"].trace)

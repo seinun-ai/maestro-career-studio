@@ -393,3 +393,45 @@ def test_no_retry_once_the_budget_is_spent(db_session, monkeypatch):
     fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
     calls = sequenced_llm(monkeypatch, [TIMEOUT, {"q": (SAME, 0.95)}])
     assert decide([ask("q")], db_session)["q"].way is None and len(calls) == 1
+
+
+# ---------- live check 9 (AE1): the fast polarity call fits the configured fast model
+
+def _fast_model_is(monkeypatch, model):
+    monkeypatch.setattr(model_settings, "get_fast_model", lambda session=None: model)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_claude_fast_model_gets_its_floor_for_the_polarity_call_not_one_and_a_half_seconds(db_session, monkeypatch, caplog):
+    _fast_model_is(monkeypatch, "claude-haiku-5-5")
+    times = [0.0, 0.5]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
+    prompts = fake_llm(monkeypatch)
+    with caplog.at_level("INFO"):
+        decide([ask("q")], db_session)
+    assert prompts[0]["timeout"] == pytest.approx(3.0) and prompts[0]["max_retries"] == 0
+    assert any("autofill-polarity-second" in r.getMessage() and "3.0" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_polarity_floor_leaves_jevs_pick_its_two_seconds(db_session, monkeypatch):
+    """Asked 5 s in: the floor would end at 8 s and leave Jev's pick (2 s) too little of the 9 s request."""
+    _fast_model_is(monkeypatch, "claude-haiku-5-5")
+    times = [0.0, 5.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
+    prompts = fake_llm(monkeypatch)
+    decide([ask("q")], db_session)
+    assert prompts[0]["timeout"] == pytest.approx(autofill_map.REQUEST_BUDGET_S - 5.0 - autofill_polarity.jev.TIMEOUT_S)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_default_fast_model_keeps_the_old_polarity_limits(db_session, monkeypatch):
+    _fast_model_is(monkeypatch, "gpt-5.6-luna")
+    times = [0.0, 0.5]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
+    prompts = fake_llm(monkeypatch)
+    decide([ask("q")], db_session)
+    assert prompts[0]["timeout"] == pytest.approx(1.5)

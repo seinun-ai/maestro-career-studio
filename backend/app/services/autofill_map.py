@@ -43,7 +43,7 @@ from typing import TypeVar, get_args
 
 from sqlalchemy.orm import Session
 
-from app.schemas.autofill_fill import DecisionTrace, Engine, EntryKind, Format, MapField, Mapped
+from app.schemas.autofill_fill import SLOT_NAME, DecisionTrace, Engine, EntryKind, Format, MapField, Mapped
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
@@ -81,6 +81,12 @@ MIN_CALL_S = 1.0
 # takes longer than this, and where an optional pass may follow it leaves that
 # pass MIN_CALL_S before OPTIONAL_PASS_BUDGET_S to start in.
 SECOND_OPINION_MAX_S = 4.0
+# The limits above were tuned on a fast model that answers in 1-1.5 s. A configured fast model that is
+# slower (a Claude one: three "read operation timed out" in a day, live check 9) is given at least this
+# long, when the request budget allows: the first substring of the lowercased model id that matches
+# decides, else MIN_CALL_S (the old limits stand). A floor lifts the second opinions (/map, /pick, /step)
+# and the fast polarity call, never past REQUEST_BUDGET_S and never into what must still follow.
+FAST_MODEL_FLOORS = (("claude", 3.0),)
 _clock = time.monotonic
 WORKED_HERE = "derived.previously_employed_here"
 _SENTINELS = {
@@ -284,6 +290,13 @@ def _with_jev(fields, criteria, session) -> dict[str, tuple[str, float]]:
     return out
 
 
+def second_opinion_floor(session: Session | None) -> float:
+    """The least a fast-model second opinion (and the fast polarity call) should be given, by the
+    configured fast model (`FAST_MODEL_FLOORS`): MIN_CALL_S for a model the old limits were tuned on."""
+    model = model_settings.get_fast_model(session).lower()
+    return next((floor for name, floor in FAST_MODEL_FLOORS if name in model), MIN_CALL_S)
+
+
 def fast_json(session: Session, prompt: str, trace_name: str, *, timeout: float | None = None,
               model: str | None = None) -> object:
     """One fast-model JSON call. JSON that stays malformed after the client's
@@ -291,6 +304,8 @@ def fast_json(session: Session, prompt: str, trace_name: str, *, timeout: float 
     `timeout`: an optional call on a budget — one request, that long, no retries.
     `model`: ask this one instead of the fast model setting."""
     budget = {"timeout": timeout, "max_retries": 0} if timeout is not None else {}
+    if timeout is not None:
+        logger.info("fast model call %s: timeout given %.1f s", trace_name, timeout)
     try:
         return llm.call_openai(prompt=prompt, model=model or model_settings.get_fast_model(session),
                                response_format="json", trace_name=trace_name, **budget)
@@ -327,10 +342,14 @@ class Budget:
     def _now(self) -> float:
         return (self._clock or _clock)()
 
-    def left(self, cap: float | None = None, *, reserve: float = 0.0) -> float | None:
+    def left(self, cap: float | None = None, *, reserve: float = 0.0, floor: float = 0.0,
+             keep: float = 0.0) -> float | None:
         """The timeout an optional call may take, or None once none should start.
         `cap`: at most that long. `reserve`: end that long before
-        OPTIONAL_PASS_BUDGET_S, so a later optional call can still start."""
+        OPTIONAL_PASS_BUDGET_S, so a later optional call can still start.
+        `floor`: at least that long (a slow fast model, `second_opinion_floor`), over `cap` and
+        `reserve` but not past what is left of REQUEST_BUDGET_S less `keep`: the time a main call
+        that follows still needs."""
         elapsed = self._now() - self._started
         if elapsed >= OPTIONAL_PASS_BUDGET_S:
             return None
@@ -339,6 +358,8 @@ class Budget:
             timeout = min(timeout, cap)
         if reserve:
             timeout = min(timeout, OPTIONAL_PASS_BUDGET_S - elapsed - reserve)
+        if floor:
+            timeout = max(timeout, min(floor, REQUEST_BUDGET_S - elapsed - keep))
         return max(MIN_CALL_S, timeout)
 
     def remaining(self) -> float:
@@ -651,6 +672,17 @@ def _sentinel_of(picked: tuple[str, float] | None) -> str | None:
     return picked[0] if picked and picked[0] in _SENTINELS else None
 
 
+_SLOT_NAME = re.compile(SLOT_NAME)
+
+
+def _under_floor_fact(picked: tuple[str, float] | None, facts: dict[str, Fact], floor: float) -> str | None:
+    """The NAME of the fact the model chose when it fell under that fact's floor (the route is then none): value-free
+    by pattern, so a Websites fact keyed by its URL is never named."""
+    if picked is None or picked[0] not in facts or picked[1] >= floor or not _SLOT_NAME.fullmatch(picked[0]):
+        return None
+    return picked[0]
+
+
 def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact],
             engine: Engine, *, eeo_consented: bool) -> Mapped:
     """`_route`, with the decision it came from: which engine answered, how
@@ -666,7 +698,7 @@ def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, 
     return mapped.model_copy(update={"trace": DecisionTrace(
         engine=engine, p=picked[1] if picked else None, floor=floor,
         chose_none=None if picked is None else _no_fact_key(picked[0], eeo_consented),
-        sentinel=_sentinel_of(picked))})
+        sentinel=_sentinel_of(picked), top_fact=_under_floor_fact(picked, facts, floor))})
 
 
 # The sentinels the reasoning pass also takes (a history question, a years question), and the one
@@ -721,13 +753,13 @@ def _second_opinion(fields: list[MapField], criteria: dict[str, str], session: S
     Out of time or failed, Jev's none stands. None: it never ran (no fields, no
     budget, or a failure), as against {}: it ran and answered nothing readable,
     which the trace tells apart (`second` "asked")."""
-    timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S)
+    timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S, floor=second_opinion_floor(session))
     if not fields or timeout is None:
         return None
     try:
         return _with_llm(fields, criteria, session, "autofill-map-second", timeout=timeout)
     except llm.LLMProviderError:
-        logger.warning("fast model second opinion failed; Jev's none stands")
+        logger.warning("fast model second opinion failed (timeout given %.1f s); Jev's none stands", timeout)
         return None
 
 

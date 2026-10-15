@@ -39,6 +39,7 @@ from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATC
 from app.services.autofill_map import (
     MIN_CALL_S,
     SECOND_OPINION_MAX_S,
+    second_opinion_floor,
     Budget,
     Top,
     asks_years,
@@ -384,13 +385,14 @@ def _second_opinion(fields: list[PickField], facts: dict[str, Fact], hint: JobHi
     follows time to start), through the same `verdict`. Out of time or
     failed, Jev's abstention stands. None: it did not run (the trace's
     `second` stays None for those fields)."""
-    timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S if reasoning_next else 0.0)
+    timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S if reasoning_next else 0.0,
+                          floor=second_opinion_floor(session))
     if not fields or timeout is None:
         return None
     try:
         return _with_llm(fields, facts, hint, session, answers, "autofill-pick-second", timeout=timeout)
     except llm.LLMProviderError:
-        logger.warning("fast model second opinion failed; Jev's abstentions stand")
+        logger.warning("fast model second opinion failed (timeout given %.1f s); Jev's abstentions stand", timeout)
         return None
 
 

@@ -45,6 +45,7 @@ from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from app.services.autofill_job import BOARD_NAMES
 from app.services.autofill_map import (
     SECOND_OPINION_MAX_S,
+    second_opinion_floor,
     Budget,
     Top,
     asks_years,
@@ -330,12 +331,12 @@ def _second_opinion(req: StepRequest, ask: _Ask, session: Session, budget: Budge
     the request's budget, capped (a give-up step costs at most Jev's 2 s plus
     this against the field's clock), at the same floors. None: it never ran
     (out of time, or it failed), and Jev's give-up stands."""
-    if (timeout := budget.left(SECOND_OPINION_MAX_S)) is None:
+    if (timeout := budget.left(SECOND_OPINION_MAX_S, floor=second_opinion_floor(session))) is None:
         return None
     try:
         second = _with_llm(req, ask, session, "autofill-step-second", timeout=timeout)
     except llm.LLMProviderError:
-        logger.warning("fast model second opinion failed; Jev's give-up stands")
+        logger.warning("fast model second opinion failed (timeout given %.1f s); Jev's give-up stands", timeout)
         return None
     if not abstained(second):
         logger.info("step: the fast model decided a move Jev gave up on")

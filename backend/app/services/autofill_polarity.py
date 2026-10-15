@@ -39,7 +39,7 @@ from app.schemas.autofill_fill import Engine
 from app.services import jev, llm, model_settings
 from app.services.llm_providers import registry
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR
-from app.services.autofill_map import MIN_CALL_S, Budget, _transient, fast_json
+from app.services.autofill_map import MIN_CALL_S, Budget, _transient, fast_json, second_opinion_floor
 
 logger = logging.getLogger(__name__)
 
@@ -226,14 +226,16 @@ def _fast(asks: list[Ask], session: Session, budget: Budget, trace_name: str) ->
     if not asks:
         return {}
     model = None   # the fast model setting
+    floor = second_opinion_floor(session)
     for attempt in (1, 2):
-        timeout = budget.left(POLARITY_MAX_S, reserve=POLARITY_RESERVE_S)
+        # A slow fast model's floor lifts the call over the cap and the reserve, but leaves Jev's pick (jev.TIMEOUT_S) its time.
+        timeout = budget.left(POLARITY_MAX_S, reserve=POLARITY_RESERVE_S, floor=floor, keep=jev.TIMEOUT_S)
         if timeout is None:
             return {}
         try:
             return _with_llm(asks, session, trace_name, timeout=timeout, model=model)
         except llm.LLMProviderError as exc:
-            logger.warning("fast model polarity (%s) failed (attempt %d)", trace_name, attempt)
+            logger.warning("fast model polarity (%s) failed (attempt %d, timeout given %.1f s)", trace_name, attempt, timeout)
             if attempt == 2:
                 break
             model = _other_provider_model(session)

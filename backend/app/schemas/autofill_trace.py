@@ -20,6 +20,7 @@ from app.schemas.autofill_fill import (
     PolarityWay,
     Route,
     Shape,
+    SLOT_NAME,
     StepReason,
     Why,
 )
@@ -49,7 +50,7 @@ Op = Literal["map", "polarity", "pick", "step",  # decisions
              "sweep", "recipe"]
 Effect = Literal["progress", "no_effect", "unexpected", "reverted", "unconfirmed", "refused", "late", "error", "took_back"]
 WORD = r"^[a-z_]{1,40}$"  # a page word or a status: lowercase only, so a value cannot hide in it
-SLOT = r"^[a-z_]+(\.[a-z0-9_]+)*$"  # a fact NAME (autofill_catalog), never its value
+SLOT = SLOT_NAME
 MAX_RUN_FIELDS, MAX_FIELD_STEPS, LABEL_MAX, MAX_OPTION_COUNT = 200, 40, 200, 5000
 MAX_REASON_ROUNDS, MAX_REASON_ACTIONS, MAX_REASON_REJECTS = 3, 3, 10
 MODEL = r"^[A-Za-z0-9._:/-]{1,120}$"
