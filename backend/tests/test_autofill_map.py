@@ -411,10 +411,10 @@ YEARS = autofill_map.YEARS_UNANSWERED
 
 
 @pytest.mark.usefixtures("jev_on")
-@pytest.mark.parametrize("answer", [None, ("none", 0.5)])
-def test_only_an_explicit_confident_no_fact_answer_is_a_low_stakes_candidate(
+@pytest.mark.parametrize("answer", [None])
+def test_only_an_explicit_no_fact_answer_is_a_low_stakes_candidate(
         db_session, monkeypatch, answer):
-    """An omitted, refused or unsure map answer is not "no fact answers this"."""
+    """An omitted or refused map answer is not "no fact answers this" (a low-probability one is: AE2, below)."""
     calls = fake_jev(monkeypatch, noul={"t": 0.99})
     real = autofill_map.jev.decide
 
@@ -2829,3 +2829,115 @@ def test_the_trace_names_the_top_fact_that_fell_under_its_floor(db_session, monk
     assert got["c"].route == "none" and got["c"].trace.top_fact == "personal.city"
     assert got["n"].trace.top_fact is None and got["a"].trace.top_fact is None
     assert "Springfield" not in repr(got["c"].trace)
+
+
+# ---------- live check 9 (AE2): "no fact" at any probability reaches the low-stakes judge; so does a willingness
+# ---------- to a pre-employment step that Jev filed as protected
+
+REFERRAL = "Were you referred by a current employee?"
+
+
+def asked_the_judge(calls):
+    return any(q["type"] == "noul" for c in calls for q in c["questions"].values())
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("p", [0.54, 0.3])
+def test_a_no_fact_answer_at_any_probability_reaches_the_low_stakes_judge(db_session, monkeypatch, p):
+    """Live check 9: Jev said "no fact" at 0.54 for the referral question and the old 0.6 floor kept it off the judge."""
+    calls = fake_jev(monkeypatch, {"r": ("none", p)}, noul={"r": 0.99})
+    fake_llm(monkeypatch)
+    got = run([field("r", REFERRAL, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["r"].route == "low_stakes" and asked_the_judge(calls)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_low_stakes_judge_still_decides_a_low_p_no_fact(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"r": ("none", 0.54)}, noul={"r": 0.3})
+    fake_llm(monkeypatch)
+    assert run([field("r", REFERRAL, "popup", options=["Yes", "No"])], db_session,
+               low_stakes=True)["r"].route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_failed_second_opinion_does_not_keep_a_no_fact_off_the_judge(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"r": ("none", 0.54)}, noul={"r": 0.99})
+
+    def down(**kw):
+        raise llm.LLMProviderError("Anthropic: read operation timed out")
+
+    monkeypatch.setattr(autofill_map.llm, "call_openai", down)
+    got = run([field("r", REFERRAL, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["r"].route == "low_stakes" and asked_the_judge(calls)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_second_opinion_that_names_a_fact_keeps_a_low_p_no_fact_off_the_judge(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"r": ("none", 0.54)}, noul={"r": 0.99})
+    fake_llm(monkeypatch, {"r": {"key": "preferences.how_heard", "confidence": 0.3}})
+    got = run([field("r", REFERRAL, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["r"].route == "none" and not asked_the_judge(calls)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_no_answer_at_all_is_still_no_candidate(db_session, monkeypatch):
+    """Omitted by Jev (None): not "no fact", nothing was said."""
+    calls = fake_jev(monkeypatch, noul={"r": 0.99})
+    monkeypatch.setattr(autofill_map, "_with_jev", lambda fields, criteria, session: {})
+    fake_llm(monkeypatch)
+    got = run([field("r", REFERRAL, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["r"].route == "none" and not asked_the_judge(calls)
+
+
+WILLING_BACKGROUND = [
+    "Are you willing to undergo a background check?",
+    "Will you consent to a background check as a condition of employment?",
+    "Are you able to complete a drug test before starting?",
+    "Do you agree to submit to a reference check?",
+    "Are you willing to complete the I-9 and E-Verify process?",
+]
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", WILLING_BACKGROUND)
+def test_a_willingness_to_a_pre_employment_step_filed_as_protected_reaches_the_judge(db_session, monkeypatch, question):
+    calls = fake_jev(monkeypatch, {"b": (PROTECTED, 0.64)}, noul={"b": 0.99})
+    fake_llm(monkeypatch)
+    got = run([field("b", question, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["b"].route == "low_stakes" and asked_the_judge(calls)
+    assert got["b"].trace.sentinel == "protected_unanswered"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    "Have you ever been convicted of a felony?",
+    "Are you willing to undergo a background check? Have you ever been charged with a crime?",
+    "Are you willing to share your criminal record for a background check?",
+    "Do you have a pending charge?",
+    "Are you eligible to work in the United States? We will run an E-Verify check.",
+    "Are you willing to disclose any arrests before the background check?",
+])
+def test_background_history_stays_the_users_and_never_reaches_the_judge(db_session, monkeypatch, question):
+    calls = fake_jev(monkeypatch, {"b": (PROTECTED, 0.9)}, noul={"b": 0.99})
+    fake_llm(monkeypatch)
+    got = run([field("b", question, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["b"].route == "none" and not asked_the_judge(calls)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_willingness_question_filed_as_something_else_is_not_widened(db_session, monkeypatch):
+    """Only the protected sentinel is widened, and only for a willingness shaped question."""
+    calls = fake_jev(monkeypatch, {"b": (HISTORY, 0.9), "w": (PROTECTED, 0.9)}, noul={"b": 0.99, "w": 0.99})
+    fake_llm(monkeypatch)
+    got = run([field("b", WILLING_BACKGROUND[0], "popup", options=["Yes", "No"]),
+               field("w", "Do you need sponsorship?", "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert (got["b"].route, got["w"].route) == ("none", "none") and not asked_the_judge(calls)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_willingness_exception_never_reaches_the_reasoning_pass(db_session, monkeypatch):
+    """A judge that says no leaves the field the user's: the history never answers a protected sentinel."""
+    fake_jev(monkeypatch, {"b": (PROTECTED, 0.9)}, noul={"b": 0.1})
+    prompts = fake_llm(monkeypatch, reasoned={"b": 0.99})
+    got = run([field("b", WILLING_BACKGROUND[0], "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["b"].route == "none" and not [p for p in prompts if p["trace_name"] == "autofill-reasoned"]

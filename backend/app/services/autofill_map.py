@@ -9,11 +9,13 @@ fact", or a fact under its floor. Jev's protected, history, EEO and free-text
 answers are its own and never asked again.
 
 Low-stakes (setting on, decided by the caller from the server-side setting) is
-a SECOND pass, asked only for fields whose best answer was an explicit,
-confident "no fact answers this": a real profile answer always wins, and a
-field that looked like a real fact but fell below its floor, that the model
-did not answer readably, or that it named a protected kind (work
-authorization, eligibility, background, EEO) is never turned into a guess.
+a SECOND pass, asked only for fields whose best answer was an explicit "no
+fact answers this" (at any probability, unless a second opinion named
+something else) or, by code's reading of its wording, a willingness to a
+pre-employment step that Jev filed as protected: a real profile answer always
+wins, and a field that looked like a real fact but fell below its floor, that
+the model did not answer readably, or that it named a protected kind (work
+authorization, eligibility, background history, EEO) is never turned into a guess.
 
 The REASONING pass (`reasoned`, whatever the low-stakes setting) comes last:
 a choice field still routed none, whose map answer was an explicit, confident
@@ -724,14 +726,38 @@ def asks_years(question: str, marked: bool = False) -> bool:
     return marked or bool(_YEARS_WORDING.search(question))
 
 
-def _said_no_fact(picked: tuple[str, float] | None, *, also: frozenset[str] = _NO_KEYS) -> bool:
+def _said_no_fact(picked: tuple[str, float] | None, *, also: frozenset[str] = _NO_KEYS,
+                  at_any_p: bool = False) -> bool:
     """An EXPLICIT, confident "no fact answers this". An omitted, refused or
     unsure answer, a fact below its floor, a protected or EEO kind all say
     something else, and none of them is a candidate for either pass.
     `also`: sentinels that count too (`_REASONED_KEYS` for the reasoning
-    route; a low-stakes guess takes only `_KEEN_YEARS_KEYS`, on a Queued job at the queued level)."""
+    route; a low-stakes guess takes only `_KEEN_YEARS_KEYS`, on a Queued job at the queued level).
+    `at_any_p`: the none key counts at ANY probability (the low-stakes pass, owner, live check 9: Jev's 0.54
+    on a referral question is still "no fact"; the judge and the never-list decide from there)."""
     key, p = picked or (None, 0.0)
-    return (key == NO_SLOT or key in also) and p >= SLOT_FLOOR
+    return (key == NO_SLOT and (at_any_p or p >= SLOT_FLOOR)) or (key in also and p >= SLOT_FLOOR)
+
+
+# A willingness to a standard pre-employment step, worded as one sentence ("Are you willing to undergo a
+# background check?", "Do you agree to submit to a reference check?"). Jev files these under the protected
+# sentinel; its text says willingness is not protected, but a sentinel counts as a classification, so
+# code lets this one wording through to the low-stakes judge (owner, live check 9). Background HISTORY in
+# the same question (ever, a conviction, a charge, a record, an arrest...) keeps it the user's.
+_PRE_EMPLOYMENT_STEP = (r"background\s+(?:check|screening|investigation)s?|drug\s+(?:test|screen)\w*|"
+                        r"reference\s+checks?|I-?9|e-?verify")
+_WILLING_TO_STEP = re.compile(rf"\b(?:willing|consent|agree|able)\b[^?.!\n]{{0,60}}?\b(?:{_PRE_EMPLOYMENT_STEP})\b",
+                              re.IGNORECASE)
+_BACKGROUND_HISTORY = re.compile(
+    r"\b(?:ever|convict\w*|charged?|charges|records?|felon\w*|misdemeanou?rs?|arrest\w*|pending|offen[cs]es?|"
+    r"crimes?|criminal\s+history|incarcerat\w*|sentenc\w*|plead\w*)\b", re.IGNORECASE)
+
+
+def _willing_to_step(field: MapField, picked: tuple[str, float] | None) -> bool:
+    """A field Jev filed as protected (at SLOT_FLOOR or more) that code reads as a willingness to a
+    pre-employment step and nothing about background history."""
+    return (picked is not None and picked[0] == PROTECTED_UNANSWERED and picked[1] >= SLOT_FLOOR
+            and bool(_WILLING_TO_STEP.search(field.question)) and not _BACKGROUND_HISTORY.search(field.question))
 
 
 def _unsure(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact]) -> bool:
@@ -831,9 +857,11 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
     def key(answer: tuple[str, float] | None) -> str | None:
         return answer[0] if answer else None
 
-    def leftovers(also: frozenset[str]) -> list[MapField]:
+    def leftovers(also: frozenset[str], *, low: bool = False) -> list[MapField]:
         return [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
-                and not _foreign(f) and _said_no_fact(picked.get(f.fid), also=also)
+                and not _foreign(f)
+                and (_said_no_fact(picked.get(f.fid), also=also, at_any_p=low)
+                     or (low and _willing_to_step(f, picked.get(f.fid))))
                 and _agrees_no_fact(second.get(f.fid), also=also)]
 
     # Out of time (`budget.left()`), a pass asks nothing: the open questions stay the user's.
@@ -843,7 +871,7 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
         # A years question is the reasoning pass's; at "queued" on a Queued job it is this pass's too
         # (/pick asks the history first, autofill_pick._years_first).
         keen_years = _KEEN_YEARS_KEYS if level == "queued" and queued else _NO_KEYS
-        for fid, judge in _low_stakes(leftovers(keen_years), facts, session, budget,
+        for fid, judge in _low_stakes(leftovers(keen_years, low=True), facts, session, budget,
                                       level=level, queued=queued).items():
             years = YEARS_UNANSWERED in (key(picked.get(fid)), key(second.get(fid)))
             out[fid] = Mapped(route="low_stakes", years=years,
