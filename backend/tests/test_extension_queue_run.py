@@ -2768,3 +2768,32 @@ def test_the_open_questions_the_step_is_told_carry_no_fact_name_into_the_record_
     protected = {**needs("f1", "Degree"), "slot": "education.degree"}
     out = _drive(tmp_path, [step(1), REVIEW], fills=[[protected]])
     assert out["record"]["open"] == [{"fid": "f1", "question": "Degree", "required": True, "slot": "education.degree"}]
+
+
+# ---------- the reasoning step cannot be walked round in circles (review of Batch 3) ----------
+
+def test_a_reasoner_that_always_presses_cannot_ping_pong_the_run_past_the_step_limit(tmp_path):
+    pages = [step(1, url="/a") if i % 2 == 0 else step(2, url="/b") for i in range(40)] + [REVIEW]
+    out = _drive(tmp_path, pages, reasons=[{"press": "next-x"} for _ in range(60)])
+    r = out["record"]
+    assert r["status"] == "parked" and r["step"] <= 15
+    # At most one thought for each page the run was on, however often it came back to it.
+    assert len(names(out, "reason")) <= 2
+
+
+def test_a_page_is_thought_about_once_per_drive_even_after_the_run_left_it_and_came_back(tmp_path):
+    again = {"url": "/same", "key": "same"}
+    out = _drive(tmp_path, [step(1, **again), step(2), step(1, **again), REVIEW], reasons=[{"moved": False}, {"moved": False}])
+    assert out["record"]["why"] == "loop" and len(names(out, "reason")) == 1
+
+
+def test_the_step_never_presses_on_a_loop_park(tmp_path):
+    again = {"url": "/same", "key": "same"}
+    out = _drive(tmp_path, [step(1, **again), step(2), step(1, **again), REVIEW], reasons=[{"press": "next-x"}])
+    assert out["record"]["why"] == "loop" and out["pressed"] == ["next-1", "next-2"]
+
+
+def test_the_step_is_not_asked_when_one_more_step_would_pass_the_step_limit(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UNMAPPED]), REVIEW], fix={"fixed": False, "remaining": [UNMAPPED]},
+                 reasons=[{"press": "next-1"}], record={"step": 14, "seen": [f"p{i}" for i in range(14)]})
+    assert out["record"]["why"] == "step_limit" and names(out, "reason") == []

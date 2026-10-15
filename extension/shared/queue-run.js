@@ -361,6 +361,7 @@
     let filledPage = null;   // {where, key, here} of the page this run last filled: the only page it presses
     let landing = null;      // the hosts a posting Apply may land on: the first read after the press must be on one
     let thought = false;     // the reasoning step has been asked on this page (`moved()` clears it)
+    const thoughtOn = new Set();  // ... and the pages (address path and step key) it was asked on in this drive: never twice
     let recent = [];         // the last presses and repairs, as "press_next -> rejected", for the step to read
     let pageKind = null;     // what the page in hand is, once judged (a review page is never thought about)
 
@@ -420,16 +421,22 @@
     const parkOr = async (why, extra = {}) => {
       const protectedOnly = why === "open_questions" && (extra.open ?? []).length > 0
         && extra.open.every((one) => PROTECTED_SLOT.test(one.slot ?? ""));
-      if (typeof deps.reason !== "function" || thought || !THINKS.has(why) || pageKind === "review" || protectedOnly) {
+      const here = `${pathOf(thisPage?.where ?? "")}\n${thisPage?.key ?? ""}`;
+      if (typeof deps.reason !== "function" || thought || thoughtOn.has(here) || !THINKS.has(why) || pageKind === "review" || protectedOnly) {
         return await park(why, extra);
       }
+      // A step the press could add must still fit the run's own limit: the step is never a way past it.
+      if (why !== "moved_away" && record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
       thought = true;
+      thoughtOn.add(here);
       await update({ status: "filling" });
       const out = await act(deps.reason, record, { why, open: extra.open ?? [], recent,
-        // Only the page this run filled is pressed (inv-rejected-next): anything else is refused before the page.
-        press: (frameId, id, before, baseline) => (pageFilled && filledPage && pathOf(filledPage.where) === pathOf(thisPage.where)
+        // Only the page this run filled is pressed (inv-rejected-next): anything else is refused before the page. A loop
+        // is a page already pressed once: the step never presses it again.
+        press: (frameId, id, before, baseline) => (why !== "loop" && pageFilled && filledPage && pathOf(filledPage.where) === pathOf(thisPage.where)
           && filledPage.key === thisPage.key ? press({ frameId }, id, before, undefined, baseline) : Promise.resolve("refused")) });
       if (why !== "moved_away" && out?.advanced) {
+        if (record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
         await update({ step: record.step + 1, seen: [...record.seen, out.advanced] });
         moved();
         return AGAIN;
