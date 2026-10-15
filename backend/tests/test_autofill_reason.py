@@ -535,3 +535,38 @@ def test_a_stored_option_keeps_only_the_facts_a_page_lists_as_its_own_choices():
         {"ref": f"o{i}", "text": t} for i, t in enumerate(["United States", "85000", "Two weeks", "Job fair", "Remote only"], 1)]}]}
     kept = autofill_reason.redact_trace(_trace(snap), facts).reasoning[0].snapshot.fields[0]
     assert [o.text for o in kept.options] == ["United States", "[saved answer]", "[saved answer]", "Job fair", "Remote only"]
+
+
+@pytest.mark.parametrize("why", ["page_errors", "open_questions", "no_change", "loop", "unknown_page"])
+def test_a_one_page_form_never_offers_a_press_to_the_model(why):
+    prompt = autofill_reason.build_prompt(req(why, one_page=True), [], "history")
+    offered = prompt.split("ACTIONS", 1)[1].split("\nANSWER TYPES the", 1)[0]
+    assert not any(t in offered for t in ("press_next", "close_dialog", "follow_tab"))
+    assert "ask_user" in offered
+    if why != "unknown_page":
+        assert '"fill"' in offered and '"retry"' in offered
+    assert "press_next" in autofill_reason.build_prompt(req("page_errors"), [], "history")   # a multi-step page still may
+
+
+@pytest.mark.parametrize("action", [{"type": "press_next", "button": "b1"}, {"type": "close_dialog", "button": "b2"}])
+def test_a_one_page_form_refuses_every_press_in_the_checker(action):
+    page = req("page_errors", one_page=True)
+    actions, rejected = autofill_reason.check(reply(action), page, present=set(), level="history")
+    assert rejected == ["not_allowed"] and actions[0].type == "ask_user"
+    _, ok = autofill_reason.check(reply(action), req("page_errors"), present=set(), level="history")
+    assert ok != ["not_allowed"]   # the same press is allowed on a multi-step page
+
+
+def test_a_one_page_form_refuses_follow_tab_and_still_takes_field_work():
+    page = req("unknown_page", one_page=True, tabs=[{"ref": "t1", "host": "jobs.acme.test"}])
+    _, rejected = autofill_reason.check(reply({"type": "follow_tab", "tab": "t1"}), page, present=set(), level="history")
+    assert rejected == ["not_allowed"]
+    good, rejected = autofill_reason.check(reply({"type": "retry", "fid": "f1", "technique": "step_by_step"}),
+                                           req("page_errors", one_page=True), present=set(), level="history")
+    assert rejected == [] and good[0].type == "retry"
+
+
+def test_one_page_defaults_to_false_and_is_a_boolean():
+    assert ReasonRequest.model_validate({"why": "page_errors", "round": 1}).one_page is False
+    with pytest.raises(Exception):
+        ReasonRequest.model_validate({"why": "page_errors", "round": 1, "one_page": "maybe"})

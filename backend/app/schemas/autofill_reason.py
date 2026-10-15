@@ -76,6 +76,9 @@ class ReasonRequest(Selector):
     tabs: list[SnapTab] = Field(default_factory=list, max_length=MAX_TABS)
     history: list[Annotated[str, Field(max_length=120, pattern=HISTORY)]] = Field(default_factory=list, max_length=MAX_HISTORY)
     excluded: list[Annotated[str, Field(pattern=SIGNATURE)]] = Field(default_factory=list, max_length=MAX_EXCLUDED)
+    # The page is one form with Submit on it (no Next): the run may work its fields but presses nothing there, so the
+    # prompt never offers a press and the checker refuses one (owner decision 2026-10-15).
+    one_page: bool = False
 
     @model_validator(mode="after")
     def _nothing_from_a_foreign_page(self) -> "ReasonRequest":
