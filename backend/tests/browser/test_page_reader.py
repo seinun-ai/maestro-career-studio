@@ -3188,3 +3188,19 @@ def test_an_overlay_described_by_a_question_is_not_a_plain_acknowledgement(page,
     s = summary(page)
     assert button(s, "OK").get("overlayAsks") is True
     assert dismiss(page, button(s, "OK")["id"]) == {"clicked": False, "why": "not_dismiss"}
+
+
+# ---------- an update under an open tab (live check 7) ----------
+
+
+def test_the_page_reader_survives_a_load_once_module_older_than_itself(page, load):
+    """panel_prepare re-injects every content script into the tab's same world; the load-once ones keep the OLD code. A
+    page reader that read a newer export of one of them at load (ERROR_HEADING) threw on every summary and the run could
+    not read any page. The older module here has not published it."""
+    load(page, fixture_html("wizard_step1.html"), SOURCES)
+    kind = classify(page)["kind"]
+    page.evaluate("() => { delete window.careerStudioCompanion.ERROR_HEADING; }")
+    for src in SOURCES:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))   # the re-injection
+    assert classify(page)["kind"] == kind
+    assert summary(page)["fillable"] > 0

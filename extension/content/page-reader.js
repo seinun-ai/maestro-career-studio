@@ -380,8 +380,10 @@
 
   // ---------- the page's own complaints ----------
 
-  // A heading that says the page has errors (never a line about one field).
-  const ERROR_HEADING = ns.ERROR_HEADING;
+  // A heading that says the page has errors (never a line about one field). Its OWN copy of content/field-reader.js's: that
+  // file loads once per tab, so after an update under an open tab it may be the older one, and a newer export read here is
+  // undefined (a re-run file never depends on one; tests/test_extension_manifest.py pins both copies equal).
+  const ERROR_HEADING = /errors? found|please (fix|correct)|there (is|are) \d+ errors?/i;
   const ERRORISH = /error|required|must|invalid|please (fix|correct|enter|select|provide|choose)|can(?:no|['’])t|unable/i;
   const ERROR_LEAD = /^\s*errors?\s*[-:–—]\s*/i;
   // How a line names its field: "The field X is required…", "X: This field is required", "X is

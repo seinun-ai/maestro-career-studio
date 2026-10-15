@@ -447,7 +447,6 @@
   ns.unmark = unmark;
   ns.repeatOf = repeatOf;
   ns.ANY_HEADING = ANY_HEADING;
-  ns.ERROR_HEADING = ERROR_HEADING;
   ns.byIdIn = byId; // an id, resolved in the element's own root
   ns.readField = (el) => {
     let question = "";

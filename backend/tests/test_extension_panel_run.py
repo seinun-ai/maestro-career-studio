@@ -425,6 +425,7 @@ def test_no_state_ever_draws_a_submit_control(tmp_path):
     ("sign_in_yourself", "Sign in yourself", True, True),
     ("posting", "Apply yourself", True, True),
     ("unknown_page", "Page not recognised", True, True),
+    ("page_stale", "Reload the page", True, True),
     ("chooser", "Choose how to apply", True, True),
     ("unsure_page", "Not sure about this page", True, True),
     ("confirm_page", "Check this page", True, True),
@@ -444,6 +445,12 @@ def test_every_park_has_words_and_the_resume_and_skip_it_allows(tmp_path, why, r
     assert ("run-resume" in buttons) is resume and ("run-skip" in buttons) is skip
     # A wall names the others; the card never says a thing it did not park for.
     assert "Do this step in the tab, then Resume." in _text(body) or why not in ("captcha", "verify", "create_account", "sign_in_failed")
+
+
+def test_a_stale_page_card_says_to_reload_the_page_then_resume(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("parked", why="page_stale")]}])
+    text = _text(_card(out["shots"][1])["body"])
+    assert "The Companion was updated while this page was open. Reload the page, then press Resume." in text
 
 
 @pytest.mark.parametrize("why,reason,resume", [

@@ -62,6 +62,9 @@
       "Press Apply Manually in the tab, then Resume."],
     unknown_page: ["Page not recognised",
       "The Companion doesn't recognise this page. Get to the application form in the tab, then press Resume."],
+    // The extension was updated while this page was open: its old and new scripts disagree until the page is reloaded.
+    page_stale: ["Reload the page",
+      "The Companion was updated while this page was open. Reload the page, then press Resume."],
     already_applied: ["Already sent?",
       "This page says an application was sent, but the Companion hadn't got that far. "
       + "Check it in the tab. Press Resume if this is the wrong page."],

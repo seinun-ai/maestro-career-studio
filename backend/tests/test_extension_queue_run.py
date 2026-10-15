@@ -120,7 +120,10 @@ const deps = {
     const early = (earlyReads[at] ??= [...(base.early ?? [])]);
     const p = base.always ?? (early.length ? early.shift() : base);
     if (p.t === "none") return [];
-    if (p.frames) return p.frames.map((f) => ({ frameId: f.frameId, result: f.page ? { summary: summaryOf(f.page), top: Boolean(f.top) } : { summary: null } }));
+    // `broken`: a frame whose page script answered with an error (the extension was updated under an open tab).
+    if (p.t === "broken") return [{ frameId: 0, url: "https://jobs.acme.test/", result: undefined, error: p.error ?? "the page reported an error" }];
+    if (p.frames) return p.frames.map((f) => (f.error ? { frameId: f.frameId, url: "https://ads.test/", result: undefined, error: f.error }
+      : { frameId: f.frameId, result: f.page ? { summary: summaryOf(f.page), top: Boolean(f.top) } : { summary: null } }));
     return [{ frameId: 0, result: { summary: summaryOf(p, banner[at] === true), top: true } }];
   },
   tabUrl: async () => {
@@ -2978,3 +2981,34 @@ def test_near_the_step_limit_the_step_is_skipped_and_the_park_keeps_its_own_reas
     resumable, and the user must keep their Resume)."""
     out = _drive(tmp_path, pages, reasons=[{"press": "next-1"}], record={"step": 14, "seen": [f"p{i}" for i in range(14)]}, **spec)
     assert out["record"]["status"] == "parked" and out["record"]["why"] == why and names(out, "reason") == []
+
+
+# ---------- an update under an open tab (live check 7) ----------
+
+
+def test_frames_that_answered_with_an_error_park_with_their_own_reason_not_page_not_recognised(tmp_path):
+    """The page script threw (the extension was updated while the tab was open and its old and new files disagree):
+    reading again cannot help, and "the page is not recognised" would send the user looking at a fine page."""
+    out = _drive(tmp_path, [{"t": "broken", "always": {"t": "broken"}}])
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "page_stale")
+    assert names(out, "fill") == [] and names(out, "advance") == []
+    # A few reads in case the page was mid-navigation, not the whole settle clock.
+    assert len(names(out, "classify")) <= 4
+
+
+@pytest.mark.parametrize("error", [
+    "Could not establish connection. Receiving end does not exist.",
+    "no reply from the page",
+    "The message port closed before a response was received.",
+])
+def test_frames_nothing_is_listening_in_are_not_an_update_they_stay_the_old_unknown_page(tmp_path, error):
+    out = _drive(tmp_path, [{"t": "broken", "error": error, "always": {"t": "broken", "error": error}}])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+
+
+def test_an_ad_frame_that_threw_beside_a_frame_that_answered_changes_nothing(tmp_path):
+    page = {"t": "step", "n": 1, "frames": [{"frameId": 0, "top": True, "page": {"t": "step", "n": 1}},
+                                           {"frameId": 4, "error": "the page reported an error"}]}
+    out = _drive(tmp_path, [page, REVIEW])
+    assert out["record"]["status"] == "ready"

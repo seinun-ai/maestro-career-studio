@@ -42,6 +42,8 @@
  *                          (Next is never pressed over a known-empty required upload)
  *         loop | step_limit   the same page again, or more than LIMITS.stepMax steps
  *         posting          an Apply it may not press (see below); unknown_page  nothing it knows
+ *         page_stale       every frame that answered, answered with an error (the extension was updated under an open tab
+ *                          and its old and new scripts disagree): the user reloads the page, then Resume
  *         chooser          Workday's "Start Your Application" page where the run may not press Apply Manually (below):
  *                          the user presses it in the tab, then Resume
  *         already_applied  a "thank you" page BEFORE the run reached review: not this run's Submit
@@ -259,6 +261,19 @@
   // These only mean something in the top document: the page around everything else.
   const WALL_ANYWHERE = new Set(["captcha", "create_account", "verify"]);
   const TOP_ONLY = new Set(["sign_in", "closed", "confirmation", "board_native"]);
+
+  // What a frame says when no content script is listening in it (an ad or analytics frame, a page not injected yet): not an
+  // error of ours.
+  const NOT_LISTENING = /receiving end does not exist|could not establish connection|no reply from the page|message port closed|frame with id|cannot access|no tab with id/i;
+  const BROKEN_READS = 3;
+  /** No frame gave a summary and one frame ANSWERED with an error: its page script threw. The usual cause is an extension
+   * update under an open tab: the load-once files keep their old code and the re-injected ones expect the new, so every read
+   * throws until the page is reloaded. */
+  const scriptThrew = (frames) => {
+    const all = Array.isArray(frames) ? frames : [];
+    return !all.some((f) => f?.result?.summary)
+      && all.some((f) => typeof f?.error === "string" && f.error !== "" && !NOT_LISTENING.test(f.error));
+  };
 
   /** The frame to judge the tab by. Only frames that answered with a summary count (a frame with
    * no form evidence says null). In order: the top document's own sign-in, closed, confirmation or
@@ -593,15 +608,21 @@
       if (kind === "unknown") return "blank";
       return record.step > 0 && kind === "form_step" && (summary.fillable ?? 0) === 0 ? "lone" : null;
     };
+    //   "broken" frames answered, but with an error: the page's own script threw (see `scriptThrew`). Reading again does not
+    //            heal that, so it is returned after BROKEN_READS in a row (a page mid-navigation may throw once) with `broken`.
     const readPage = async (settle) => {
       const startedAt = deps.now();
       let previous = null;
       let agreeing = 0;
+      let throwing = 0;
       for (;;) {
-        const frame = pickFrame(await act(deps.classify, record.tabId));
+        const frames = await act(deps.classify, record.tabId);
+        const frame = pickFrame(frames);
         const url = await act(deps.tabUrl, record.tabId);
+        const broken = !frame && scriptThrew(frames);
+        throwing = broken ? throwing + 1 : 0;
         const why = settle ? unfinished(frame) : null;
-        if (!why) return { frame, url };
+        if (!why || (broken && throwing >= BROKEN_READS)) return { frame, url, broken };
         const print = frame ? fingerprint(url, frame.result.summary) : null;
         agreeing = print !== null && print === previous ? agreeing + 1 : 1;
         previous = print;
@@ -636,10 +657,10 @@
 
       for (;;) {
         const arrived = navigated;
-        const { frame, url } = await readPage(arrived);
+        const { frame, url, broken } = await readPage(arrived);
         pageKind = null;
         // A finished run is only watching for the confirmation: a page not readable yet changes nothing.
-        if (!frame) return record.readyAt != null ? record : await park("unknown_page");
+        if (!frame) return record.readyAt != null ? record : await park(broken ? "page_stale" : "unknown_page");
         const summary = frame.result.summary;
         // Spent on this first read, whatever it finds: a later page (after a sign-in, a Resume, a
         // step) may be a saved draft's review page, and its "Apply" is a Submit.
