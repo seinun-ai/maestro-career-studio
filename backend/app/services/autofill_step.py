@@ -145,11 +145,15 @@ HOW_HEARD_SLOT = "preferences.how_heard"
 # its own leaf by the ordinary goal.
 # "Board member" is no board answer: the word must follow job / career, or be a known board named as whole tokens.
 _BOARD_ANSWER = re.compile(r"\b(?:jobs?|employment)\s+(?:boards?|sites?|portals?)\b|\bcareers?\s+boards?\b", re.IGNORECASE)
+# A referral is a person, not a board, even when it names the board the person works through.
+_REFERRAL_ANSWER = re.compile(r"\brefer(?:ral|red|rer)?s?\b", re.IGNORECASE)
 _SITE_ANSWER = re.compile(r"\bweb\s*sites?\b|\bcareers?\s+(?:site|page)s?\b|\bcompany\s+site\b", re.IGNORECASE)
 
 
 def how_heard_kind(value: str) -> str | None:
     """"board", "site" or None: which tree goal a saved "how did you hear" answer takes."""
+    if _REFERRAL_ANSWER.search(value):
+        return None
     if _BOARD_ANSWER.search(value) or any(_names_board(value, name) for name in BOARD_NAMES):
         return "board"
     return "site" if _SITE_ANSWER.search(value) else None

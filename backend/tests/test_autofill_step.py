@@ -1607,3 +1607,21 @@ def test_code_never_assumes_linkedin_for_another_saved_answer(db_session, monkey
               {"mid": "search:term", "describe": "Type a search term"}, {"mid": GIVE_UP, "describe": "Stop"}]
     got = autofill_step.step(heard(candidates=leaves), facts, db_session, None)
     assert got.mid is None
+
+
+@pytest.mark.parametrize("saved", ["Referral via LinkedIn", "Referred by a friend on LinkedIn", "I was indeed referred",
+                                   "Employee referrer on Indeed"])
+def test_a_referral_is_never_a_board_answer_even_when_it_names_a_board(db_session, monkeypatch, saved):
+    assert autofill_step.how_heard_kind(saved) != "board"
+    facts = autofill_catalog.build({"preferences": {"how_heard": saved}}, [], [])
+    monkeypatch.setattr(autofill_step, "_move", lambda *a, **kw: autofill_step.ABSTAIN)
+    monkeypatch.setattr(autofill_step, "_with_term", lambda r, a, s, b, moved: moved)
+    leaves = [{"mid": "click:o9", "describe": 'Click the option "LinkedIn"'},
+              {"mid": "click:o8", "describe": 'Click the option "Indeed"'},
+              {"mid": "search:term", "describe": "Type a search term"}, {"mid": GIVE_UP, "describe": "Stop"}]
+    assert autofill_step.step(heard(candidates=leaves), facts, db_session, JobHint(title=None, company=None, source="linkedin")).mid is None
+
+
+@pytest.mark.parametrize("saved", ["LinkedIn", "Job board"])
+def test_a_plain_board_answer_is_still_a_board_answer(saved):
+    assert autofill_step.how_heard_kind(saved) == "board"
