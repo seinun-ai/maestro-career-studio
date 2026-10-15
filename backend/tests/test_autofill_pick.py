@@ -2398,3 +2398,58 @@ def test_polarity_retries_then_a_failed_jev_pick_and_its_fast_fallback_end_insid
                                options=opts("Yes", "No"))], facts, db_session, None)
     assert [name for name, _ in calls] == ["autofill-polarity", "autofill-polarity", "autofill-pick"]
     assert now[0] <= autofill_map.REQUEST_BUDGET_S + 1e-9
+
+
+# ---------- the queued level's years questions stay inside the request
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_slow_years_check_leaves_the_keen_pick_and_its_fallback_their_time(db_session, monkeypatch):
+    """/pick at the queued level: the history check takes its whole timeout, then Jev's keen pick times out (2 s) and
+    the fast fallback runs out its own. The history check is bounded so all of it ends inside the 9 s request."""
+    model_settings.set_answer_level(db_session, "queued")
+    facts = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst", "start_date": "Aug 2021",
+                                         "current": True}], ["SQL"])
+    now = [0.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: now[0])
+    calls = []
+
+    def decide(questions, state, session=None):
+        now[0] += autofill_pick.jev.TIMEOUT_S
+        raise llm.LLMProviderError("Jev timed out")
+
+    def call_openai(**kw):
+        calls.append(kw["trace_name"])
+        now[0] += kw["timeout"]   # runs out its whole timeout
+        if kw["trace_name"] == "autofill-reasoned-pick":
+            return {"answers": {"y": {"years": "silent"}}}
+        raise llm.LLMProviderError("read operation timed out")
+
+    monkeypatch.setattr(autofill_pick.jev, "decide", decide)
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    got = autofill_pick.pick([pf("y", question="Do you have 5+ years of SQL?", route="low_stakes", years=True,
+                                 options=opts("Yes", "No"))], facts, db_session, None, queued=True)
+    assert calls == ["autofill-reasoned-pick", "autofill-pick"]
+    assert got["y"].reason == "asked"
+    assert now[0] <= autofill_map.REQUEST_BUDGET_S + 1e-9
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_years_check_that_leaves_no_room_for_the_keen_pick_leaves_the_field_to_the_user(db_session, monkeypatch):
+    """The history check ends 6.5 s in: 2.5 s are left, under Jev's 2 s plus the fallback's 1 s. Nothing more is asked."""
+    model_settings.set_answer_level(db_session, "queued")
+    facts = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst", "start_date": "Aug 2021",
+                                         "current": True}], ["SQL"])
+    now = [0.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: now[0])
+    asked = []
+    monkeypatch.setattr(autofill_pick.jev, "decide", lambda *a, **k: asked.append("jev") or {})
+
+    def call_openai(**kw):
+        asked.append(kw["trace_name"])
+        now[0] = 6.5
+        return {"answers": {"y": {"years": "silent"}}}
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    got = autofill_pick.pick([pf("y", question="Do you have 5+ years of SQL?", route="low_stakes", years=True,
+                                 options=opts("Yes", "No"))], facts, db_session, None, queued=True)
+    assert asked == ["autofill-reasoned-pick"] and got["y"].reason == "asked"

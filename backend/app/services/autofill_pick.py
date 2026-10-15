@@ -436,12 +436,17 @@ def _years_first(fields: list[PickField], facts: dict[str, Fact], hint: JobHint 
     years shown is its Yes; fewer, or anything it could not read, is left to the user; and only a
     history SILENT about the skill gets the keen Yes, asked as any low_stakes field is (never-list
     stated). An optional pass: a failure leaves its fields to the user."""
-    picks, silent = reason_years(fields, facts, session, budget, hint.company if hint else None)
+    # The keen pick that may follow (Jev's pick, then the fast fallback) needs its time of the request.
+    follow_up = jev.TIMEOUT_S + MIN_CALL_S
+    picks, silent = reason_years(fields, facts, session, budget, hint.company if hint else None, keep=follow_up)
     # Everything the history did not answer Yes and was not silent about is the user's, and final.
     out = {fid: p if p.oids else _ASKED for fid, p in picks.items()}
     rest = [f for f in fields if f.fid in silent]
     if not rest:
         return out
+    if budget.remaining() < follow_up:
+        logger.warning("no time left for the keen answer to a years question; its fields are left to the user")
+        return out | {f.fid: _ASKED for f in rest}
     try:
         picked = None
         if model_settings.get_autofill_engine(session) == "jev":

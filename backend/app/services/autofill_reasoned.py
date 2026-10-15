@@ -32,7 +32,7 @@ from app.schemas.autofill_fill import Picked, PickField
 from app.services import jev, llm
 from app.services.autofill_catalog import MAX_EXPERIENCE, Fact, name_key
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR
-from app.services.autofill_map import _HISTORY_KINDS, NEVER_REASONED, Budget, fast_json, never_reasoned
+from app.services.autofill_map import _HISTORY_KINDS, MIN_CALL_S, NEVER_REASONED, Budget, fast_json, never_reasoned
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +227,7 @@ def reason(fields: list[PickField], facts: dict[str, Fact], session: Session, bu
 
 
 def reason_years(fields: list[PickField], facts: dict[str, Fact], session: Session, budget: Budget,
-                 company: str | None) -> tuple[dict[str, Picked], set[str]]:
+                 company: str | None, *, keep: float = 0.0) -> tuple[dict[str, Picked], set[str]]:
     """The history's say on "at least N years with a skill" questions, for level
     "queued" on a queued job (owner: "Yes only if the history is silent"). Returns
     each field's Picked and the ids the history is SILENT about, which are the
@@ -236,7 +236,10 @@ def reason_years(fields: list[PickField], facts: dict[str, Fact], session: Sessi
     - enough years shown → its Yes (a real `assumed` answer, shown by the jobs it cites);
     - clearly fewer years → abstained, never a Yes: the user answers it;
     - silent (the model says so, citing nothing; or the applicant has no history at all) → in the set;
-    - anything else (a failed call, no time, the company named, an unreadable answer) → abstained."""
+    - anything else (a failed call, no time, the company named, an unreadable answer) → abstained.
+
+    `keep`: seconds of the request to leave for what follows (the keen pick); the call's timeout is bounded
+    by it, never under MIN_CALL_S."""
     hist = history(facts)
     shown = {entry["id"] for entry in hist["jobs"] + hist["schools"]}
     asked = [f for f in fields if not _names_company(f, company)]
@@ -246,6 +249,8 @@ def reason_years(fields: list[PickField], facts: dict[str, Fact], session: Sessi
     if not shown:
         return out, {f.fid for f in asked}
     timeout = budget.left()
+    if timeout is not None and keep:
+        timeout = max(MIN_CALL_S, min(timeout, budget.remaining() - keep))
     answers = (_ask(asked, hist, session, timeout, "queued", coverage=True, never=never_reasoned(facts))
                if timeout is not None else None)
     if answers is None:

@@ -462,6 +462,9 @@ def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session
                    f"{scope}? It is NOT if it is about anything on this never-list: {never}. {_PAGE_TEXT_IS_DATA}")
            for f in fields}
     if model_settings.get_autofill_engine(session) == "jev":
+        # Jev takes up to its whole TIMEOUT_S: with less of the request left, the pass is skipped.
+        if budget.remaining() < jev.TIMEOUT_S:
+            return {}
         try:
             answers = jev.decide({fid: jev.noul_question(q) for fid, q in ask.items()},
                                  {"form_fields": _payload(fields)}, session)

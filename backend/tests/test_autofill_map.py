@@ -3108,9 +3108,9 @@ def test_the_floor_follows_the_models_provider_not_its_name(monkeypatch, model, 
 
 @pytest.mark.usefixtures("jev_on")
 def test_a_floor_lifted_second_opinion_still_leaves_the_low_stakes_pass_its_start(db_session, monkeypatch):
-    """Jev took 4.5 s, the Claude second opinion 3 s (7.5 s in): the low-stakes pass still starts, on what is left."""
+    """Jev took 4.5 s, the Claude second opinion 2.5 s (7 s in): the low-stakes pass still starts, on what is left."""
     fast_model_is(monkeypatch, CLAUDE_FAST)
-    monkeypatch.setattr(autofill_map, "_clock", clock_of(0.0, 4.5, 7.5))
+    monkeypatch.setattr(autofill_map, "_clock", clock_of(0.0, 4.5, 7.0))
     calls = fake_jev(monkeypatch, {"s": ("work_auth.sponsorship_now", 0.7), "r": ("none", 0.9)},
                      noul={"r": 0.99})
     prompts = fake_llm(monkeypatch)
@@ -3131,3 +3131,16 @@ def test_a_late_ok_floor_lifts_the_window_for_the_next_pass_only_until_one_secon
     assert budget.left(4.0, reserve=1.0, floor=3.0, keep=1.0, late_ok=True) == pytest.approx(3.0)
     assert budget.left() == pytest.approx(1.5)
     assert budget.left() is None   # 8.2 s: under MIN_CALL_S of the request left
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_low_stakes_jev_judge_is_skipped_when_the_request_cannot_hold_its_two_seconds(db_session, monkeypatch):
+    """7.5 s in, 1.5 s of the 9 s request are left and Jev always takes up to its 2 s: the pass is skipped, the
+    field stays the user's, and /map cannot run on to ~9.9 s."""
+    fast_model_is(monkeypatch, CLAUDE_FAST)
+    monkeypatch.setattr(autofill_map, "_clock", clock_of(0.0, 4.5, 7.5))
+    calls = fake_jev(monkeypatch, {"s": ("work_auth.sponsorship_now", 0.7), "r": ("none", 0.9)}, noul={"r": 0.99})
+    fake_llm(monkeypatch)
+    got = run([field("s", "Sponsorship?", "select"), field("r", REFERRAL, "popup", options=["Yes", "No"])],
+              db_session, low_stakes=True)
+    assert got["r"].route == "none" and not asked_the_judge(calls)
