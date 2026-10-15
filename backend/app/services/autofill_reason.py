@@ -26,6 +26,7 @@ from app.schemas.autofill_reason import (
     ReasonResponse,
     SnapField,
     signature,
+    signatures,
 )
 from app.services import llm, model_settings
 from app.services.autofill_catalog import PROTECTED_SLOT
@@ -77,6 +78,10 @@ _CONTACT = re.compile(r"https?://\S+|www\.\S+|[\w.+-]+@[\w-]+\.[\w.-]+|\+?\d[\d\
 _YEAR_RANGE = re.compile(r"^\d{4}\s*[-–]\s*\d{4}$")
 
 
+# A bare host ("globex.test/apply", "careers.globex.test"): never in the note the panel shows.
+_BARE_HOST = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/\S*)?", re.IGNORECASE)
+
+
 def phone_like(run: str) -> bool:
     return sum(ch.isdigit() for ch in run) >= 7 and not _YEAR_RANGE.match(run.strip())
 
@@ -88,18 +93,24 @@ def contacts(text: str) -> list[str]:
 
 
 def _visible(text: str) -> str:
-    return "".join(ch for ch in text if unicodedata.category(ch) not in _INVISIBLE)
+    """`text` without invisible characters: Cf (zero-width, bidi, tags), Co, Cn, and the variation selectors
+    (Mn, but they carry hidden payloads the same way)."""
+    return "".join(ch for ch in text
+                   if unicodedata.category(ch) not in _INVISIBLE
+                   and not (0xFE00 <= ord(ch) <= 0xFE0F or 0xE0100 <= ord(ch) <= 0xE01EF))
 
 
 def _data(text: str) -> str:
-    """Page text as the prompt carries it: visible characters only, no angle brackets, whitespace datamarked."""
-    return re.sub(r"\s+", MARK, re.sub(r"[<>]", "", _visible(text)).strip())
+    """Page text as the prompt carries it: visible characters only, angle brackets swapped for lookalikes (they
+    can no longer close the data block, and a "> 5" still reads), whitespace datamarked."""
+    return re.sub(r"\s+", MARK, _visible(text).replace("<", "\u2039").replace(">", "\u203a").strip())
 
 
 def clean_note(text: str) -> str:
     out = _visible(text).replace(MARK, " ")
     for found in contacts(out):
         out = out.replace(found, "")
+    out = _BARE_HOST.sub("", out)
     return re.sub(r"\s+", " ", out).strip()[:NOTE_MAX]
 
 
@@ -190,7 +201,7 @@ def _judge(action: Any, index: int, total: int, req: ReasonRequest, present: set
         return "not_allowed"
     if level == "facts" and kind in CAREFUL_OFF:
         return "careful_level"
-    if signature(action) in req.excluded:
+    if any(sig in req.excluded for sig in signatures(action)):
         return "excluded"
     if kind == "follow_tab":
         return None if action.tab in {t.ref for t in req.tabs} else "unknown_id"
@@ -217,10 +228,20 @@ def _judge_button(action: Any, is_last: bool, req: ReasonRequest) -> str | None:
     return "next_not_last" if action.type == "press_next" and not is_last else None
 
 
+def _untouched(field: SnapField) -> str | None:
+    """A field the user's hands were on is never reworked; a filled one only if the run filled it."""
+    if field.touched:
+        return "users_field"
+    return "not_empty" if field.filled and not field.by_run else None
+
+
 def _judge_answer_from(action: Any, field: SnapField, present: set[str]) -> str | None:
+    """Re-map a choice, or a single-line text box, to a saved answer type (the value comes from /map's `slot_hint`)."""
     if PROTECTED_SLOT.match(action.slot):
         return "protected"
-    if field.shape not in CHOICE_SHAPES:
+    if (bad := _untouched(field)) is not None:
+        return bad
+    if field.shape not in CHOICE_SHAPES and not (field.shape == "text" and not field.multiline):
         return "not_a_choice"
     return None if action.slot in present else "unknown_id"
 
@@ -251,6 +272,8 @@ def _judge_redo(action: Any, field: SnapField, present: set[str]) -> str | None:
 def _judge_retry(action: Any, field: SnapField, present: set[str]) -> str | None:
     if action.technique == "clear_and_set":
         return _judge_redo(action, field, present)
+    if (bad := _untouched(field)) is not None:
+        return bad
     return None if field.shape in CHOICE_SHAPES else "not_a_choice"
 
 
@@ -270,7 +293,7 @@ def check(reply: ReasonReply, req: ReasonRequest, *, present: set[str], level: s
     if codes:
         return [AskUser(type="ask_user", fids=[], note=clean_note(reply.note) or FALLBACK_NOTE)], sorted(set(codes))
     # A passed ask_user's note is shown to the user: the same clean-up as the response's note.
-    return [a.model_copy(update={"note": clean_note(a.note)}) if a.type == "ask_user" else a
+    return [a.model_copy(update={"note": clean_note(a.note) or FALLBACK_NOTE}) if a.type == "ask_user" else a
             for a in reply.actions], []
 
 
@@ -304,15 +327,48 @@ def wire_schema() -> dict:
     return walk(raw)
 
 
+def _clip_notes(raw: Any) -> Any:
+    """The model's notes cut to NOTE_MAX before validation: a wordy note is not a bad reply (every other limit
+    stays strict)."""
+    if not isinstance(raw, dict):
+        return raw
+    clipped = {**raw}
+    if isinstance(clipped.get("note"), str):
+        clipped["note"] = clipped["note"][:NOTE_MAX]
+    if isinstance(clipped.get("actions"), list):
+        clipped["actions"] = [{**a, "note": a["note"][:NOTE_MAX]} if isinstance(a, dict) and isinstance(a.get("note"), str)
+                              else a for a in clipped["actions"]]
+    return clipped
+
+
+def _fact_values(facts: dict) -> list[str]:
+    """The values the profile holds, longest first: three characters or more, and not a Yes or a No."""
+    found = {v.strip() for fact in facts.values()
+             for v in ([fact.value] if isinstance(fact.value, str) else fact.value)}
+    return sorted((v for v in found if len(v) >= 3 and v.lower() not in {"yes", "no", "true", "false"}),
+                  key=len, reverse=True)
+
+
+def redact_errors(req: ReasonRequest, facts: dict) -> ReasonRequest:
+    """`req` with every saved answer's value taken out of the error lines (a page may echo what was typed: "ada@...
+    is already registered"). Options and questions stay: they are the page's words, not a value we hold."""
+    values = _fact_values(facts)
+    if not values or not req.errors:
+        return req
+    pattern = re.compile("|".join(re.escape(v) for v in values), re.IGNORECASE)
+    return req.model_copy(update={"errors": [e.model_copy(update={"text": pattern.sub("[saved answer]", e.text)})
+                                             for e in req.errors]})
+
+
 def reason(req: ReasonRequest, facts: dict, level: str, session: Session) -> ReasonResponse:
     model = model_settings.get_reasoning_model(session)
     present = present_slots(facts)
     began = time.monotonic()
     try:
-        raw = llm.call_openai(prompt=build_prompt(req, present, level), model=model, response_format="json",
+        raw = llm.call_openai(prompt=build_prompt(redact_errors(req, facts), present, level), model=model, response_format="json",
                               schema=wire_schema(), max_retries=0, timeout=REASON_TIMEOUT_S,
                               trace_name="autofill-reason")
-        parsed = REPLY.validate_python(raw)
+        parsed = REPLY.validate_python(_clip_notes(raw))
     except ValidationError:
         return _asked(model, began, "bad_reply")
     except (ValueError, llm.LLMProviderError):

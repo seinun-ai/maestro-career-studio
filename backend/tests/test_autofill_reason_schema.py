@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.autofill_reason import (
-    ACTION_TYPES, MAX_FIELDS, MAX_HISTORY, MAX_OPTIONS, REPLY, ReasonRequest, signature,
+    ACTION_TYPES, MAX_FIELDS, MAX_HISTORY, MAX_OPTIONS, REPLY, ReasonRequest, signature, signatures,
 )
 from app.services import autofill_catalog
 from tests.extension_harness import ROOT
@@ -62,3 +62,9 @@ def test_the_backends_protected_slots_are_the_drivers():
     js = (ROOT / "extension" / "shared" / "queue-run.js").read_text(encoding="utf-8")
     source = re.search(r"const PROTECTED_SLOT = /(.*)/;", js).group(1)
     assert autofill_catalog.PROTECTED_SLOT.pattern == source
+
+
+def test_a_fill_signs_every_field_it_names():
+    reply = REPLY.validate_python({"note": "", "actions": [{"type": "fill", "fids": ["f3", "f4"]},
+                                                          {"type": "ask_user"}]})
+    assert [signatures(a) for a in reply.actions] == [["fill:f3", "fill:f4"], ["ask_user:user"]]

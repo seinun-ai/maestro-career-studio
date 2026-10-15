@@ -7,7 +7,7 @@ plus the page's own words. Every id a reply names must be one this request carri
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from app.schemas.autofill_fill import FID, Selector, Shape
 
@@ -76,6 +76,14 @@ class ReasonRequest(Selector):
     tabs: list[SnapTab] = Field(default_factory=list, max_length=MAX_TABS)
     history: list[Annotated[str, Field(max_length=120, pattern=HISTORY)]] = Field(default_factory=list, max_length=MAX_HISTORY)
     excluded: list[Annotated[str, Field(pattern=SIGNATURE)]] = Field(default_factory=list, max_length=MAX_EXCLUDED)
+
+    @model_validator(mode="after")
+    def _nothing_from_a_foreign_page(self) -> "ReasonRequest":
+        """`moved_away`: the tab is on a site the run never went to. Its fields, buttons and error lines are that
+        site's words, and the snapshot carries none of them: dropped here, whatever the caller sent."""
+        if self.why == "moved_away":
+            self.fields, self.buttons, self.errors = [], [], []
+        return self
 
 
 class Fill(_Strict):
@@ -164,3 +172,11 @@ def signature(action: BaseModel) -> str:
     target = (getattr(action, "fid", None) or getattr(action, "button", None) or getattr(action, "tab", None)
               or (getattr(action, "fids", None) or ["user"])[0])
     return f"{action.type}:{target}"
+
+
+def signatures(action: BaseModel) -> list[str]:
+    """Every signature `action` carries: a fill signs each field it names, so a field that failed twice cannot
+    ride in behind another (`signature` names only the first)."""
+    if action.type == "fill":
+        return [f"fill:{fid}" for fid in action.fids]
+    return [signature(action)]
