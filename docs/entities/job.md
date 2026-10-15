@@ -59,6 +59,12 @@ the list never scores or backfills).
   posting of that employer. Reads are plain `str | None`
   on purpose, so one bad synced value cannot break job listing. Sync carries it; a duplicate resolution that keeps the laptop's twin drops
   the other copy's link.
+- **`referrer_board`** (nullable; migration `e5a1c2d77b04`): the job board the user came from, a name from `autofill_job.BOARD_NAMES` ("LinkedIn", "Built In"), never an address.
+  `POST /api/jobs` stamps it when the saved `source_url` is not a board's address, from `services/board_visits`: the last known job board page the Companion asked
+  `GET /api/jobs/match?url=` about (the Companion's origin only; an agent's lookup is not the user's browsing), kept 20 minutes in one in-memory slot. It
+  is the third place "How did you hear about us?" looks for the board after `?source=` and the host of `source_url` (`routers/autofill._job_hint`), so the answer
+  is the board the person actually used, listed as assumed. Dedup paths do not rewrite it; it travels with the job through sync (a jobs column). A restart forgets the slot, and
+  a job saved from any non-board address inside the window carries the board.
 - **Ownership under sync** (`owner_machine`, `sync_rev`, `handover`; docs/sync-setup.md). `owner_machine`
   is the machine id of the job's one writer; NULL means this machine. `sync_rev` is the job's revision
   from a local clock: any write to the job or a row attached to it bumps it (`services/sync/hooks.py`,

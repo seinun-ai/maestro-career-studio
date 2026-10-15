@@ -425,7 +425,8 @@ the **Reasoning model** looks at the page: the questions, the options and the er
 It picks up to three actions, such as filling a field again, writing a short answer, choosing an option, closing
 a popup or pressing Next, then looks again, for up to three rounds. While it works the card shows a live line
 ("Thinking: …"). If it sorted the page out you get one sentence ("Sorted it out: answered 2 questions and moved
-on."). If not, the usual **Needs you** card shows its note and a "Tried:" line. Anything it wrote or chose is
+on."). If not, the usual **Needs you** card says what it asks of you, or what it tried and whether it took ("It tried How
+Did You Hear About Us? a second way; it didn't take."). Anything it wrote or chose is
 listed under **Check before you submit** as answered for you. It never presses Submit, never answers
 work authorization, sponsorship, salary, demographic, background or signature questions, and asks you about a fact
 your profile does not have. By default the Reasoning model is your provider's strong model and costs a few cents a
@@ -443,6 +444,14 @@ listed under **Check before you submit**, and so is a required field that a sear
 which no longer stops the run; the page's own check decides. An optional Skills box stays empty in a run. What you type in the page
 while a run waits on "The page asks for more" or on an upload is remembered like any other answer. The Companion also reads a job posting that has no built-in job data, taking the
 description from the section under a "Job Description" or "About the role" heading.
+
+Three kinds of question are answered from what you saved, and said to be assumed or checkable under **Check before you submit**. "How did you
+hear about us?": if your answer is just "Job board" and the job names no board, Apply picks LinkedIn, or another job board the list offers; a job
+you saved on the employer's page right after a job board page remembers that board for about 20 minutes; a referral is never a board. An education
+level list ("Bachelor's degree or higher", "None of the above"): Apply picks the highest level your degrees meet, such as Bachelor's or higher
+for a Master's, never "None of the above", and leaves it to you when none is met or your degree is still in progress. "What type of sponsorship
+will you need?": when every sponsorship answer you saved is No, Apply picks Not applicable (or the option that says none), even when the
+question counts OPT as sponsorship; with no such option, or a Yes saved, it is yours.
 
 Veteran status is one question in **Profile › Autofill**: "Are you a veteran?" (Yes, No, or "I don't
 wish to answer"). A No answers every "I am not a protected veteran" option on a form. A Yes never picks

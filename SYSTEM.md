@@ -84,7 +84,7 @@ backend/
                        neutral parts; NULL `parts` = legacy row), llm_providers/ (neutral LLM types, errors,
                        registry (model id to provider), OpenAI-compatible, Gemini and Claude adapters),
                        attachment_extract (bounded DOCX/PPTX + notes; decks are documents),
-                       autofill_choose + autofill_reason + contact_scan + autofill_slots + jev (Companion fill), resumes_folder (visible PDF copies), …)
+                       autofill_choose + autofill_reason + contact_scan + autofill_slots + autofill_education + autofill_sponsorship + board_visits + jev (Companion fill), resumes_folder (visible PDF copies), …)
     automations/skills/  the agent prompts, one <name>/SKILL.md each: the Automations
                        source of the Automations page; indexed by docs/skills/README.md
     templates/         six seeded resume designs + both cover-letter sources (licenses: THIRD_PARTY_NOTICES.md)
@@ -594,7 +594,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   The loop never fills a robot trap (`fillBase.robotTrap`), leaves an optional field with no fact blank (`left_blank`, listed, not asked), reads pills,
   category rows, slow autocompletes, addresses, URLs and split dates as widgets of their own, commits and confirms each item of a list field (up to 20;
   never a closest pick), repeats no move that changed nothing (a run record's `memory` keeps what failed; `only` limits a call to named fields) and
-  waits for the page to settle before typing (`extension/INTERNALS.md`, "The fill agent's rules").
+  waits for the page to settle before typing (`extension/INTERNALS.md`, "The fill agent's rules"). **Answers decided in code** (`docs/entities/others.md`; `/pick`, `/step`): "How did you hear" takes the board the job came from (`jobs.referrer_board`, stamped from `services/board_visits`, the last board page the Companion looked up, 20 min, name only), else LinkedIn for a generic "Job board", always `assumed`; `derived.education_level` picks the highest threshold a finished degree meets, never "None of the above"; a "what type of sponsorship" list under a saved No takes none / not applicable (OPT counted as sponsorship uses the saved No: owner decision), else the user's.
   **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`; Settings › AI & models › **Form filling**): `docs/entities/others.md`, "Form-filling engines".
 - **Queued run, one job (Apply)** (`shared/queue-run.js` driver, pure with injected deps; host `panel/actions/run.js`; card `panel/runs.js`; `extension/INTERNALS.md`, "Queued
   run"): with full automation On the Job step offers **Apply**: save, score, pick the resume (never overwriting a tailored draft or an open session), queue as the user's yes
@@ -621,7 +621,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 - **Reasoning step** (`shared/reason-loop.js`, host `panel/actions/reason.js`, `POST /api/autofill/reason`, Companion origin only; INTERNALS, "The reasoning step"): before a run parks on errors it
   could not map, open questions, an unknown page, no change, a loop or another site (never a wall, a review page, **Stop after each step** On or **Think when stuck** Off), the **Reasoning model** sees
   a value-free snapshot and names 1–3 actions the backend checks (ids, protected list, failed signatures); `write`/`choose`/`answer_from` run through `/choose`, `/pick` and `/map`, so no value comes
-  from the model; 3 rounds, a minute a page; each round goes to the fill log (`reasoning`), replayable with `scripts/eval_reason.py`.
+  from the model; 3 rounds, a minute a page; each round goes to the fill log (`reasoning`), replayable with `scripts/eval_reason.py`. A parked card speaks in the code's words (what it asks, else "It tried …; it took / it didn't take"), never the model's note.
 - **Screening answers dial** (Settings › Form filling; `autofill.answer_level`, default **Balanced**, so an install that had
   the old low-stakes switch off now answers low-stakes questions; the one setting for the Companion, `/map` `/pick` `/step` and agents, via
   the brief's `applying.answer_level`; stored `facts`/`history`/`queued`, shown as the levels below): **Careful** (saved answers and history), **Balanced** (also low-stakes kinds in the

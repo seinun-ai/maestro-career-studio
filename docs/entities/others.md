@@ -289,8 +289,20 @@
   (`preferences.how_heard`): a saved source that reads as a board ("Job board", a board named) or a website ("Company website", a careers page)
   gets a `/step` goal that opens the website, online or job-board category (else Other) and then picks a leaf: a board answer picks the board
   that listed THIS job first (the posting URL's host names it, `autofill_job.board_of_url`; a careers site or an ATS host names none), a website
-  answer picks the careers-site leaf and never a board; any other saved word is walked to its own leaf by the ordinary goal. The leaf is the
-  Companion's pick, so the step reports it `assumed` unless an option says the saved word itself. **A middle name is never made from another
+  answer picks the careers-site leaf and never a board; any other saved word is walked to its own leaf by the ordinary goal. A referral is never a board answer
+  (even one that names a board), and "Board member" is none: the word must follow job, employment or career, or be a known board name as whole tokens. A kind with no board
+  known for the job ("Job board") takes `GENERIC_BOARD` (LinkedIn) when the list offers it, else the first other specific job board it offers. The leaf is the
+  Companion's pick, so the step reports it `assumed` unless an option says the saved word itself. The board a job came from is the page's `?source=`, else the host of
+  its `source_url`, else `jobs.referrer_board` (`services/board_visits`: the last known board page the Companion's `/api/jobs/match` was asked about, kept 20 minutes in
+  memory, name only; `POST /api/jobs` stamps it when the saved address is not a board's; `docs/entities/job.md`). **Education level**: `derived.education_level`
+  (`services/autofill_education.py`, policy `exact`) is the highest level a finished degree in the profile names, read with `answer_flags`' level words (a degree in progress,
+  a denial, an end date ahead or "present" does not count; an engineering BE or ME counts as a bachelor's or master's). A list of thresholds ("Bachelor's degree or higher",
+  "Combination of relevant education, experience, and training", "None of the above") is decided in code in `/pick` (`education_picks`) and `/step`: the highest threshold the level
+  meets, an option that names two levels met at the lower, never "None of the above", and nothing (the user answers) when no threshold is met, when the winning level has
+  several options or one tied to a field or a degree type; a list that names no level is not this rule's. **Type of sponsorship** (`services/autofill_sponsorship.py`,
+  `/pick` `sponsorship_type_picks` and `/step`): a question asking which TYPE is needed or required (not "any type of"), with a sponsorship slot and every saved sponsorship
+  answer No (a question about now needs only the now fact), takes the option that means none or not applicable (a closed list is opened first), else nothing; a Yes/No list
+  or a saved Yes is never this rule, and a question that counts OPT or STEM OPT as sponsorship still takes the saved No (owner decision 2026-10-15). **A middle name is never made from another
   name**: `/map` files any middle-name or middle-initial question as none unless the fact is `personal.middle_name`, and the stored name is used
   as entered. **Degrees** are compared by level when the page's value names only a level ("Master's/Advanced Degree" matches a Master of
   Science), "M.B.A." is a master's in business administration and no other business degree, a bare MS, MA, BS or BA is a degree in its own field
@@ -843,7 +855,10 @@
   answers 1 to 3 actions from a closed list, which `check` validates in code (allowed list per stuck reason, every id in the snapshot, the protected list, failed
   signatures, the Careful level) before the extension sees them; any failure becomes `ask_user` with its codes in `rejected`. With full automation or Think when
   stuck off the route asks the user and calls no model (`switched_off`). Page text is wrapped, datamarked and stripped of invisible Unicode; the model's note is
-  cleaned of links, emails and phone numbers (`contact_scan`, the finder every drafted answer is checked with too). A stored trace's `reasoning` rounds keep the snapshot
+  cleaned of links, emails and phone numbers (`contact_scan`, the finder every drafted answer is checked with too). The prompt has the note written to the applicant in the present
+  tense, about what is wrong on the page, never a plan, and a refused reply asks with the code's own line (`FALLBACK_NOTE`), never the model's note. `retry` takes `step_by_step`
+  (the field goes to the adaptive step agent) beside the move-order techniques and `clear_and_set`; a stored round keeps a retry's `technique` and a choose's `basis`, and its
+  `stopped` may be `no_read` (the page could not be read: a row with no model). A stored trace's `reasoning` rounds keep the snapshot
   (questions, options, error lines and the note redacted of saved answers and base-resume values); `scripts/eval_reason.py` replays them against other models.
   **The Companion's run** (SYSTEM.md §7; `routers/companion.py`, `app/companion_origin.py`): consent channel `companion` is legal only on the
   Companion extension's exact origin (403 otherwise). A PATCH with it queues (`accepted`, from `pending_review`) and refuses `approved` and

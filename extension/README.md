@@ -67,8 +67,8 @@ at to your local Maestro CS app.
   from a saved answer, write a short answer, choose an option, try a field another way, close a
   popup, press Next, move to the application's tab, or ask you. It tries at most three rounds
   and about a minute a page. The card shows a live line ("Thinking: …") while it works, then
-  one sentence if it sorted the page out, or the usual **Needs you** card with the model's note
-  and a "Tried:" line. Anything it wrote or chose is listed under **Check before you submit**
+  one sentence if it sorted the page out, or the usual **Needs you** card saying what it asks of
+  you, or what it tried and whether it took ("It tried How Did You Hear About Us? a second way; it didn't take."). Anything it wrote or chose is listed under **Check before you submit**
   as answered for you. It never presses Submit, never presses Next on a page it did not fill,
   and never answers work authorization, sponsorship, salary, demographic, background-history, signature
   or licence questions, or a fact your profile does not have. Settings › AI & models ›
@@ -95,6 +95,13 @@ at to your local Maestro CS app.
   defaulted, and every default is listed under **Check before you submit**, as is a
   required field that a search or a click filled for you (Field of Study, say), which no
   longer stops the run. An optional Skills box stays empty in a run.
+- **Some questions are answered from what you saved, and listed to check.** "How did you hear
+  about us?" with just "Job board" saved picks LinkedIn, or another job board the list offers, when
+  the job names no board (a job saved right after a job board page remembers that board; a referral is
+  never a board). An education list ("Bachelor's degree or higher", "None of the above") gets the highest
+  level your degrees meet, never "None of the above", and is yours when none is met. "What type of
+  sponsorship will you need?" gets Not applicable (or the option that says none) when every sponsorship
+  answer you saved is No, even when the question counts OPT as sponsorship, and is yours otherwise.
 - **Postings without built-in job data are read too.** The Job step reads the
   description from the section under a "Job Description" or "About the role"
   heading, and the title, company and location from a recorded page layout (a

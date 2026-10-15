@@ -64,8 +64,8 @@ view for several is still ahead.
     as any answer. Work authorization, sponsorship, salary, EEO, background history, signatures, licences and any fact you never gave are left to you.
     It never presses Submit and presses Next only on the button the page reader names.
   - **What you see.** A live line while it works ("Thinking: …"), one sentence if it sorted the page out ("Sorted it out: answered 2 questions and moved
-    on."), or the park card with its note, what it asks of you and a "Tried:" line. What it wrote or chose is listed under **Check before you submit** as
-    answered for you.
+    on."), or the park card, which says what it asks of you or what it tried and how each attempt went ("It tried How Did You Hear About Us? a second way; it didn't
+    take."). What it wrote or chose is listed under **Check before you submit** as answered for you.
   - **Reasoning model** (Settings › AI & models). Any model in the list; unset, it is the strong model of your provider (Claude Sonnet 5.5, GPT-6.1 Sol), or
     your smart model for other providers. Claude Haiku 5.5 and GPT-6 Luna are listed as cheaper choices.
   - **Fill log.** With the fill log on, each step is recorded as a run of its own: the model, time, its note, each action and outcome (a written answer as
@@ -229,6 +229,27 @@ view for several is still ahead.
 
 ### Fixed
 
+- **Fifth live check of Apply, on a Workday tenant with Think when stuck on.**
+  - A Workday step is told from the next one by its own heading (a job title shown above every step is skipped) and by its buttons and
+    number of fields. **Resume** after a stop on page errors now fills a page that only looks like the one it stopped on, instead of pressing
+    Next over empty fields. An "Errors Found" banner is no longer taken for a section name.
+  - A **Next** the site refused is checked again before Apply stops: if the site had already moved on, Apply fills the new step. A leftover
+    "upload a file" line for a box the new step no longer has no longer ends the run.
+  - A fill log row is kept when the thinking step could not read the page or met a wall, so a stuck page without a model call shows why. A retry
+    records its way and a choice its basis.
+  - **How did you hear about us?** now goes straight to the step that opens, searches and reads the list, so a category with a long list under
+    it no longer times out on a first guess. A choice that runs out of time is handed on instead of repeated, and a search gets time to settle on
+    top of its budget. The thinking step can ask for a field to be done step by step.
+  - If your answer is just **Job board** and the job names no board, Apply picks LinkedIn, or another job board the list offers, and lists it under
+    **Check before you submit** as assumed. A job you save on the employer's page right after a job board page remembers that board (about
+    20 minutes, name only), and a saved referral never counts as a board.
+  - An education question that lists levels ("Bachelor's degree or higher", "None of the above") is answered from your degree: the highest
+    level you have completed, never "None of the above". A degree still in progress does not count, and nothing is picked when none of the
+    levels is met.
+  - "What type of sponsorship will you need?" is answered "Not applicable" (or the option that says none) when every sponsorship answer you
+    saved is No, even when the question counts OPT as sponsorship. Without such an option, or with a Yes saved, it is left to you.
+  - When Apply stops after thinking, the card now says what it asks of you or what it tried and whether it took, in plain words. It no longer shows
+    the model's own note, which read like a plan.
 - **Fourth live check of Apply, from an employer's own career site to a Workday tenant.**
   - Apply on a job's own posting now opens the application link saved with the job, instead of staying on the
     posting. If you start Apply part-way through the form, it stays where you are.

@@ -1583,7 +1583,10 @@ footer alone).
   fingerprint, so the press read as a move and the card said "Page 3" over the same page. Now the buttons the error summary owns (`inErrors`,
   `errorLine`) are out of the fingerprint, the Submit sort and the page classifier, and `press` returns `rejected` instead of `moved` when the
   address and the step heading are those of the press and the page names an error that was not there before it (or nothing else changed). A
-  page with no heading is an unknown step, never "the same", and an error summary's own heading is not the step's; a standing "Fields marked * are
+  page with no heading is an unknown step, never "the same". **The step's heading is its own** (`stepHeading`): the first visible h1/h2 inside the
+  form or main region, else the progress list's `aria-current="step"` entry, else the first visible one anywhere; a heading that is the JOB's title (the tab's
+  title contains it, or its holder is named for a job posting / title / header) reads the same on every step and is skipped, and so is an error summary's
+  ("Errors Found", "Please correct": the field reader shares the pattern, so it is no field's section either). A standing "Fields marked * are
   required" line on a page that moved is a move. `waitForChange` ends the wait at once on a fresh error; one that is not new must stay for `REJECT_HOLD_MS` (3 s), or
   `REJECT_HOLD_STANDING_MS` (8 s) when the page already showed errors before the press (`baseline`, the press's `errorKeys`), since a slow save
   leaves the old banner up. `step` and `seen` do not change, and `moved()` clears the page's `fixRounds`, `attempted` set, resume-written flag, attach note and `record.memory`.
@@ -1596,12 +1599,16 @@ footer alone).
   rule below. An error is repaired once (`attempted`, by label), at most `MAX_FIX_ROUNDS` (3) rounds a page; the same error back, or a blocker, parks `page_errors` with `open` set to the
   errors' labels. The card says "The page asks for more" and lists them; a field the page named only by its words (an upload box) has nothing to
   jump to.
-- **A page the run did not fill is never pressed** (`filledPage`: `{where, key, here}` of the page the run last filled, set at every fill, cleared by `moved()`).
+- **A page the run did not fill is never pressed** (`filledPage`: `{where, key, shape, here}` of the page the run last filled, set at every fill, cleared by `moved()`).
   A refused press or a repair can end with the site on its NEXT page, whose Next the run would otherwise press unfilled. Before any press the current read is compared
-  with `filledPage` by PATH and step key (the query is left out: a session or tracking parameter that appears after a fill is the same page, and `filledPage.where`
-  follows it). A different page counts as one step (`step + 1`, the old page's `here` goes into `seen`), `moved()` runs and the page is filled first. The count is
-  bounded like any step: `step_limit` at the step cap and `loop` for a page already in `seen`, so a site that rewrites its address on every fill cannot walk the run
-  through forty fills. A page whose path and heading are those of the page filled is pressed again without a second fill.
+  with `filledPage` by `samePage`: the same PATH and step key (the query is left out: a session or tracking parameter that appears after a fill is the same page, and
+  `filledPage.where` follows it) and, once the page's post-fill read is known, the same SHAPE (`shapeOf`: its buttons and its count of controls). A tenant that keeps one
+  address and one heading for every step is told apart by the shape. A different page counts as one step (`step + 1`, the old page's `here` goes into `seen`),
+  `moved()` runs and the page is filled first. The count is bounded like any step: `step_limit` at the step cap and `loop` for a page already in `seen`, so a site that
+  rewrites its address on every fill cannot walk the run through forty fills. A page that is `samePage` as the one filled is pressed again without a second fill. The reasoning
+  step's `press_next` uses the same comparison. **A refused press is re-read before the run parks** (`movedOn`, ahead of a `page_errors` park): a press that read as refused only
+  because the new step drew its own error line or upload box leaves the site on a page that is not the one filled; that counts as a step and the loop fills it. `fixPage`
+  treats an upload error whose box the page no longer has as stale, like a box the user filled by hand (nothing is attached; the driver reads the page again).
 - **`page_errors` reads what the page itself complains about**, in its own words and never a value: `{count, items: [{label, target, kind}]}`, `kind`
   `field` | `upload` | `unknown`. Sources: a visible alert or `aria-live` region that reads like an error (not `aria-live="off"`; a region that holds a
   field is the step around it), a block headed "Errors Found" / "Please correct" and the like, and each control marked invalid (the field reader's
@@ -1638,9 +1645,10 @@ footer alone).
   saved as a standing one; after an `open_questions`, `page_errors` or `upload` park, `LEARNS`: a field the page named as wrong, or one typed in the page over an upload park,
   is an answer like any other, while a wall or a navigation park asked for none), posts a "you" receipt row, and continues; a record ended under the read is not driven. Resume also makes the
   record belong to the panel that pressed it (its lease), so the mark after the user's Submit has exactly one owner even when another window's
-  panel left the record. A `page_errors`, `upload` or `unsure_page` park remembers its page (`record.parkedPage`: address and step key, cleared on the first
-  read after the Resume; an `unsure_page` page is matched by address alone when it has no heading). A Resume after `page_errors` or `upload` skips the fill only when that first read is that page (an empty step key proves nothing, so that page is filled
-  as usual); then after a `page_errors` park the errors are read and any that remain get a repair round, and after an `upload` park the upload
+  panel left the record. A `page_errors`, `upload` or `unsure_page` park remembers its page (`record.parkedPage`: address, step key and shape, plus the labels of the errors a `page_errors` park named; cleared on the first
+  read after the Resume; an `unsure_page` page is matched by address alone when it has no heading). A Resume after `page_errors` or `upload` skips the fill only when that first read is that page: the same address and key and the same
+  shape (`samePage`), or, after `page_errors`, the named error still on it (an empty step key proves nothing, so that page is filled
+  as usual; a page that merely shares the address and heading with the parked one, a Workday step after the one parked, is filled); then after a `page_errors` park the errors are read and any that remain get a repair round, and after an `upload` park the upload
   boxes are only LOOKED at (`deps.uploads`, never an attach): a required box still empty parks `upload` again, naming only it, except the box
   an `unconfirmed` write went into (excused by its tag, or, if the page redrew it, when it is the only one left), and Next is pressed only when
   none is. After an `unsure_page` park the Resume FILLS the page (a fill never overwrites an answered field) and the user's word (`vouched`) feeds only the Ready
@@ -1783,7 +1791,8 @@ footer alone).
     presses there).
   - **Actions**, each through code that already exists: `fill` is `runFill({only})`; `answer_from` a `slotHints` entry for `/map`; `write` the `free_text` route with
     `reasoner` `short` (`essay` on a required multiline box) for `/choose`; `choose` the `reasoned` (basis history) or `low_stakes` (basis default) route for `/pick`;
-    `retry` a move-order variant (`open_with_keys`, `search_with_enter`, `search_and_wait`) or, for `clear_and_set`, a redo; `redo` refills over a field the run
+    `retry` a move-order variant (`open_with_keys`, `search_with_enter`, `search_and_wait`), for `clear_and_set` a redo, or for `step_by_step` the field sent straight to the adaptive
+    step agent (`options.stepByStep`; the backend judges it like the other techniques); `redo` refills over a field the run
     filled (never the user's `touched` one, never a multi-value field; no clear op exists, a text write replaces and a single choice re-picks); `close_dialog` is `page_advance` with `dismiss`, which the page refuses for any button that asks about
     submitting; `press_next` is the DRIVER's `press` (it re-sorts the label at click time, and only a page this run filled is pressed), the last action only;
     `follow_tab` is `rebind`, the Phase 2e move. The model names targets and never supplies a value: what is written comes from the profile, history and resume under
@@ -1795,7 +1804,10 @@ footer alone).
     reply into `ask_user`, with the codes in `rejected`. The note is cleaned (invisible characters, links, emails, phone numbers, 200 characters). Any failure,
     late reply or fault in the loop is the normal park.
   - **The card.** While it works the card shows a live line (`run.thinking`; also the footer note for the run in view); when it moved the run on, one sentence
-    (`run.sorted`, "Sorted it out: answered 2 questions and moved on."); when it parks, the model's note, what it asks of the user and a "Tried:" line (`run.thought`).
+    (`run.sorted`, "Sorted it out: answered 2 questions and moved on."); when it parks, the code's own words (`run.thought`): what it asks of the user, else one line per attempt, "It tried How Did You Hear About Us? a
+    second way; it didn't take." (`triedOf`: the doing as a phrase, then "it took" for progress or a move, "it didn't take" for no effect, "it was refused"; a rejected action is
+    not listed). The model's note is never on the card: it is on the live Thinking line and in the fill log, and the checker's refusal asks with the code's line, not the
+    model's plan. The prompt has the note written to the applicant, in the present tense, about what is wrong on the page ("The state is still empty."), never a plan.
     What it wrote, chose or redid is listed under **Check before you submit** as answered for you ("Written for you: read it", "Chosen for you: check it", "Filled
     again: check it"), by field and step, never the value.
   - **The fill log.** A step posts a run of its own (`traceOf`; `fields: []`, up to 3 `reasoning` rounds): the model, time, the model's note, each action with its outcome
@@ -1804,6 +1816,9 @@ footer alone).
 
 ### Known limits (Queued run)
 
+- **The board a job came from is one guess.** `board_visits` keeps only the last board page the Companion looked up, for 20 minutes, in memory, and is not tied to the tab: a job saved from
+  any non-board address inside the window carries that board, and a restart forgets it. The answer is `assumed` and listed for the user to check.
+- **A step with the same heading, buttons and count of controls as the page before it reads as that page** (`samePage`). A tenant whose steps share all three is filled once and pressed, as before.
 - **A Next drawn as a div is not seen.** The button list is `button`, `input[type=submit|button]` and `a[role=button]`; a page whose only Next is a div (even
   with `role=button`) reads as fields and no Next (`fields_no_next`), and the run parks after the unsure hold. The user presses that Next and Resume.
 - **The chooser needs a page with nothing fillable.** Any fillable control on the start chooser's page (a cookie notice's checkbox, a search box) means no
@@ -1835,7 +1850,7 @@ footer alone).
 - **A single-sign-on redirect after a career site's Apply parks.** The landing check allows the link's host, the queued link's host and a known ATS host only; an
   identity provider in between is none of them, so the run parks `moved_away` and the user signs in in the tab, then presses Resume.
 - **Query-only wizards read as one page.** The filled-page guard compares path and step heading with the query left out. A wizard whose steps differ only in a query
-  parameter AND share a heading (or have none) reads as the page already filled, so after a refused press or a repair that ended on its next step, that step
+  parameter AND share a heading (or have none) AND the same buttons and count of controls reads as the page already filled, so after a refused press or a repair that ended on its next step, that step
   is pressed without being filled first. A press that moved still resets the guard (`moved()`), so the ordinary path is not affected.
 - **Account creation has no password-rule retry**: a site whose rule the saved password fails parks `create_account_failed` and waits for the user.
 - **The reasoning step cannot see a dialog in another frame.** It reads the frame that holds the form; a popup drawn in an iframe of its own is out of reach, so
@@ -1883,6 +1898,11 @@ footer alone).
   clears the slot's floor. After a settled term search that shows the whole list (50 options or fewer, nothing to scroll), one
   flag-policy field may take the closest option, reported `closest_filled`. `/step` carries `kind` and `worked_here` (up to 4 moves
   that worked on this site, from the recipe book's axes).
+- **A tree or slow list goes to the step agent, not to a second try.** A single-value choose that runs out of time (a slow search list, a long tree) hands the
+  field to the adaptive step with `choose -> timeout` in its history, as the multi-value path already did; running the same choose again only burns the field's clock.
+  A "how did you hear" field (`preferences.how_heard`) on a popup or search goes to the step agent first, since a source list can be a category and then a long list under
+  it, and the reasoning step's `step_by_step` retry asks for the same on any popup or search. A search-shape choose has its settle on top of its budget
+  (`budgets.searchSettle`, 4 s, added to `apply`): it types its term again and waits for the list as the explore before it did.
 - **Technique cards.** `services/autofill_techniques.py` holds one card (at most 700 characters) per widget kind (search, multi, popup,
   group, select, date), appended to the adaptive step's instructions with the kind: what to try after which failure. Cards are widget
   craft, never per-site procedures. KNOWN LIMIT: the adaptive step runs for popup and search widgets only, so the group, select and date
@@ -2008,10 +2028,23 @@ empty. Such a box is the user's alone: `CONSENT_FORMS` refuses it without the Ag
   under Social Media, on another under Job Board); else the MODEL decides, with a goal that says to search the board's name first, then open the category most
   likely to hold it (names like Job Board, Online, Internet, Website, Social Media or Other) and try the next if it is not there. The goal never names one
   category. A website or careers-page answer picks the careers-site leaf and names no board; any other saved word ("Referral", "Internet search") is walked to
-  its own leaf by the ordinary goal. A leaf that is not the saved word itself is reported `assumed`.
+  its own leaf by the ordinary goal. A leaf that is not the saved word itself is reported `assumed`. **A generic board answer** ("Job board", "job site", "employment portal": a
+  kind, not a name) with no board known for this job takes LinkedIn (`GENERIC_BOARD`) when the list offers it, as a leaf or by search, else the first other specific job
+  board the list offers: always `assumed`, listed under "Check before you submit" (owner decision 2026-10-15). A referral is never a board answer, even one that names the board
+  the person works through, and "Board member" is none (the word must follow job or career, or be a known board name). **The board a job came from**: the job hint's `source`
+  also reads `jobs.referrer_board`, the board page the user opened just before saving the job from the employer's own page (`services/board_visits`: the last known board page
+  the Companion's `/api/jobs/match` was asked about, kept 20 minutes in memory, name only, never an address; `POST /api/jobs` stamps it when the saved address is not a board's).
 - **Degree levels (J7).** `answer_flags.differs_from_profile` compares a degree by level when the page's value names only a level ("Master's/Advanced Degree"
   matches a Master of Science), reads M.B.A. as a master's in business administration only, treats a bare MS, MA, BS or BA as a degree in its own field, and
   compares a named field by its words.
+- **Education level (threshold lists).** `derived.education_level` is the highest level a FINISHED degree in the profile names (`autofill_education.highest_completed`:
+  high school, associate, bachelor, master, doctorate; a degree still in progress, a candidate, a denial, an end date ahead or "present" does not count; policy `exact`). A list of thresholds ("Bachelor's
+  degree or higher", "Combination of relevant education, experience, and training", "None of the above") is answered in code by `/pick` and `/step`, never by a model: the highest threshold the level
+  meets, an option naming two levels taken at the lowest, never "None of the above". It abstains (the user answers) when none is met, when the winning level has several options or one tied to a field or
+  a degree type, and a list that names no level is left to the ordinary path.
+- **Type of sponsorship.** A question that asks what TYPE of sponsorship is needed (the question has a need / require verb and no "any type of") under a saved sponsorship slot, with every saved sponsorship answer No
+  (a question about now only needs the now fact), is answered by the option that means none or not applicable (`autofill_sponsorship`, in `/pick` and `/step`; a closed list is opened first); with no such
+  option it abstains. A Yes/No list and a saved Yes never take this rule. The saved No is used even when the question counts OPT or STEM OPT as sponsorship (owner decision 2026-10-15).
 - **Middle name.** `/map` files a middle-name or middle-initial question as none unless the fact is `personal.middle_name` (the profile has none), and
   `content/autofill.js` has a middle-name guard rule ahead of the first-name rule. The name is used as stored, never split.
 - **Drafted written answers.** Only a REQUIRED text or textarea field `/map` filed under `free_text` or `years_unanswered` (`Mapped.draft`) and `/choose` could not
@@ -2148,8 +2181,8 @@ database and refuses the live file.
 **The reasoning step's rounds.** A thought posts a second kind of run: `fields` is `[]` and `reasoning` holds up to 3 rounds
 (`TraceReasonRound`; `reasonLoop.traceOf` builds it, `sw.js` `TRACE_REASON_ROUND` and the backend schema bound it alike). A round has the model id, `ms`, the
 model's note (the same cleaned sentence the card shows, 200 characters), each action as `{type, target, outcome}` (the target a field id or an opaque
-`b<i>` / `t<i>` ref; `slot` for `answer_from`, the fact NAME; `written` for a write, the answer's LENGTH), the checker's rejection codes, how the
-round ended (`stopped`) and `snapshot`: what the model was shown, without the job's selectors, capped to 30 fields and 8 options each (a snapshot over 120 000
+`b<i>` / `t<i>` ref; `slot` for `answer_from`, the fact NAME; `technique` for a `retry`, `basis` for a `choose`, each from a closed list; `written` for a write, the answer's LENGTH), the checker's rejection codes, how the
+round ended (`stopped`: a reply the checker or the clock ended, or `no_read` / `wall` for an exit before any model call, which still posts a row with no model) and `snapshot`: what the model was shown, without the job's selectors, capped to 30 fields and 8 options each (a snapshot over 120 000
 characters is dropped and the round kept). The snapshot is screened in the panel before it is sent or stored (above); the table's backstop (`autofill_reason.redact_trace`, on
 `POST /runs`) takes every saved answer and every active base resume's employer, title, school and skill out of its questions, option texts, error lines and the round's note,
 each cut to the schema's cap (an option keeps the facts a page lists as its own choices: country, state, EEO, work authorization and preferences). A stored
