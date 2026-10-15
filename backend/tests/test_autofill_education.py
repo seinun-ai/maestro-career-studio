@@ -7,7 +7,7 @@ import pytest
 
 from app.schemas.autofill_fill import PickField, PickOption, StepRequest
 from app.schemas.autofill_reason import REPLY, ReasonRequest
-from app.services import autofill_catalog, autofill_pick, autofill_reason, autofill_step
+from app.services import autofill_catalog, autofill_education, autofill_pick, autofill_reason, autofill_step
 from app.services.autofill_education import SLOT
 
 TODAY = date(2026, 10, 15)
@@ -167,3 +167,101 @@ def test_the_reasoning_step_may_answer_a_choice_from_the_education_level():
     reply = REPLY.validate_python({"note": "x", "actions": [{"type": "answer_from", "fid": "f1", "slot": SLOT}]})
     assert autofill_reason.check(reply, request, present=set(autofill_reason.present_slots(facts)),
                                  level="history")[1] == []
+
+
+# ---------- review: negations, degrees in progress, degree-type and field-tied lists, several levels, dates, B.E./M.Tech
+
+def chosen(value, options, complete=True):
+    got = autofill_education.decide(value, [(f"o{i}", t) for i, t in enumerate(options)], complete=complete)
+    return dict((f"o{i}", t) for i, t in enumerate(options)).get(got.oid)
+
+
+B, M = "Bachelor's degree", "Master's degree"
+
+
+@pytest.mark.parametrize(("value", "options", "expected"), [
+    (B, ["I do not have a Bachelor's degree", "I have a Bachelor's degree or higher"], "I have a Bachelor's degree or higher"),
+    (B, ["Without a bachelor's degree", "Bachelor's degree"], "Bachelor's degree"),
+    (M, ["Do not have a master's degree", "Have a master's degree"], "Have a master's degree"),
+    (M, ["No Bachelor's degree", "Bachelor's degree"], "Bachelor's degree"),
+    (M, ["I don't have a degree", "Haven't finished a Bachelor's", "Master's degree"], "Master's degree"),
+    (M, ["Never completed a Bachelor's degree", "Bachelor's degree or higher"], "Bachelor's degree or higher")])
+def test_an_option_that_denies_a_level_is_never_picked(value, options, expected):
+    assert chosen(value, options) == expected
+
+
+@pytest.mark.parametrize("option", ["Without a bachelor's degree", "Do not have a master's degree", "No Bachelor's degree",
+                                    "I do not have a Bachelor's degree"])
+def test_a_denial_alone_is_not_a_level_to_claim(option):
+    assert chosen(M, [option, "None of the above"]) is None
+
+
+@pytest.mark.parametrize("degree", ["PhD candidate", "Bachelor's (in progress)", "Pursuing Master's", "Master's student",
+                                    "MBA, expected 2027", "Currently enrolled in a Master's"])
+def test_a_degree_still_in_progress_is_not_completed(degree):
+    assert SLOT not in facts_of((degree, "2020"))
+    kept = facts_of((degree, "2020"), ("Bachelor's", "2018"))
+    assert kept[SLOT].value == "Bachelor's degree"
+
+
+@pytest.mark.parametrize("options", [
+    ["BA", "BS", "MA", "MS", "MBA", "PhD"],
+    ["Bachelor of Arts", "Bachelor of Science", "Master of Arts", "Master of Science", "MBA"],
+    ["Master's degree in Computer Science or related field", "None of the above"],
+    ["Bachelor's degree or above in a STEM field", "Other"],
+    ["Bachelor's degree in Computer Science", "Bachelor's degree in Engineering", "Master's degree in Business"],
+    ["Master's degree (MS, MA, MBA) or higher", "Bachelor's degree"],
+    ["Master's degree", "Master's degree or higher", "Bachelor's degree"]])
+def test_a_degree_type_or_field_tied_list_is_not_claimed(options):
+    assert chosen(M, options) is None
+
+
+def test_a_field_tied_option_above_the_winner_still_stops_the_answer():
+    """The list is about fields, so the lower plain option is not a fair answer for a Master's holder."""
+    assert chosen(M, ["Bachelor's degree", "Master of Science"]) is None
+
+
+def test_an_option_naming_a_level_and_plain_filler_words_is_still_a_level():
+    options = ["High school diploma/GED", "Associate's or higher", "Bachelor's degree or higher",
+               "Master's degree or equivalent experience"]
+    assert chosen(M, options) == "Master's degree or equivalent experience"
+    assert chosen("Doctorate", ["Doctorate", "Master's degree"]) == "Doctorate"
+
+
+def test_an_option_naming_two_levels_is_met_at_the_lowest_it_names():
+    assert chosen(M, ["Master's or PhD", "Bachelor's degree or higher"]) == "Master's or PhD"
+    assert chosen(B, ["Master's or PhD", "Bachelor's degree or higher"]) == "Bachelor's degree or higher"
+    assert chosen("Doctorate", ["Associate degree", "Master's or PhD"]) == "Master's or PhD"
+
+
+@pytest.mark.parametrize("text", ["Undergraduate student", "Graduate student", "Current student", "Less than a Bachelor's",
+                                  "Up to an associate degree"])
+def test_a_student_or_a_ceiling_is_never_a_completed_level(text):
+    assert chosen(M, [text, "None of the above"]) is None
+
+
+def test_a_degree_ending_later_this_year_is_not_completed_yet():
+    assert SLOT not in autofill_catalog.build({"education": [{"degree": "Master's", "end_date": "2026-12"}]}, [], [], today=TODAY)
+    assert SLOT not in autofill_catalog.build({"education": [{"degree": "Master's", "end_date": "Dec 2026"}]}, [], [], today=TODAY)
+    done = autofill_catalog.build({"education": [{"degree": "Master's", "end_date": "2026-05"}]}, [], [], today=TODAY)
+    assert done[SLOT].value == "Master's degree"
+    # A year alone cannot say: this year counts.
+    assert autofill_catalog.build({"education": [{"degree": "Master's", "end_year": "2026"}]}, [], [], today=TODAY)[SLOT]
+
+
+@pytest.mark.parametrize("end", ["Present", "Current", "Ongoing"])
+def test_a_degree_that_has_no_end_yet_is_not_completed(end):
+    assert SLOT not in autofill_catalog.build({"education": [{"degree": "Master's", "end_date": end}]}, [], [], today=TODAY)
+
+
+@pytest.mark.parametrize(("degree", "value"), [
+    ("B.E.", "Bachelor's degree"), ("BE Computer Science", "Bachelor's degree"), ("B.Tech", "Bachelor's degree"),
+    ("BTech", "Bachelor's degree"), ("M.Tech", "Master's degree"), ("MTech in VLSI", "Master's degree"),
+    ("M.E.", "Master's degree"), ("ME Structural Engineering", "Master's degree")])
+def test_engineering_degree_abbreviations_are_read(degree, value):
+    assert facts_of((degree, "2020"))[SLOT].value == value
+
+
+@pytest.mark.parametrize("degree", ["be", "To be decided", "Me", "Certificate of Merit"])
+def test_ordinary_words_are_no_degree(degree):
+    assert SLOT not in facts_of((degree, "2020"))
