@@ -235,10 +235,15 @@
     } catch {
       // No address known: the page alone tells.
     }
-    // The error summary's own buttons are the banner's, not the step's: a rejected Next adds them.
-    const buttons = (summary?.buttons ?? []).filter((b) => b.visible !== false && b.inErrors !== true).map((b) => b.text).sort().join(",");
-    return [where, summary?.stepKey ?? "", buttons, summary?.fillable ?? 0].join("\n");
+    return [where, summary?.stepKey ?? "", stepButtons(summary), summary?.fillable ?? 0].join("\n");
   }
+
+  /** The visible button texts a step offers, sorted. Not the error summary's own buttons (a rejected Next adds them), and
+   * not a field's own control: a tenant's dropdown is a button whose text is its VALUE ("Select One", then the pick), and a
+   * value never tells one page from another. */
+  const stepButtons = (summary) => (summary?.buttons ?? [])
+    .filter((b) => b.visible !== false && b.inErrors !== true && b.errorLine !== true && b.fieldControl !== true)
+    .map((b) => b.text).sort().join(",");
 
   /** Page `now` is the page `was` describes: the same path and heading key, and the same buttons and control count when
    * `was` knows them (a page described before its post-fill read does not). One comparison for the Resume, the filled page and the
@@ -247,7 +252,7 @@
     && (was.shape == null || was.shape === now.shape);
 
   /** The part of the fingerprint that is not the address: the heading's key, the buttons and the count of controls. */
-  const shapeOf = (summary) => fingerprint("", summary).split("\n").slice(2).join("\n");
+  const shapeOf = (summary) => [stepButtons(summary), summary?.fillable ?? 0].join("\n");
 
   // A wall shows in whichever frame holds it (a challenge in the embedded form's own iframe).
   // These only mean something in the top document: the page around everything else.
@@ -371,6 +376,7 @@
     let resumeWhy = null;    // a Resume after page_errors or upload: decided on the first read, by whether it is the parked page
     let recheck = null;      // ... and then: don't refill, look at the page's errors or upload boxes
     let thisPage = null;     // {where, key, shape} of the page being read: remembered when a park names a page
+    const shapeMoves = new Set();   // address path and key of the pages whose shape-only change was taken for a step: once each
     let filledPage = null;   // {where, key, shape, here} of the page this run last filled: the only page it presses
     let landing = null;      // the hosts a posting Apply may land on: the first read after the press must be on one
     let thought = false;     // the reasoning step has been asked on this page (`moved()` clears it)
@@ -464,12 +470,30 @@
     // The site may be on its NEXT page already (a press that read as refused only because the new step drew its own error
     // line or upload box): before a repair parks, the page is read again, and one that is not the page this run filled counts
     // as a step. The loop then fills it.
+    //
+    // `leftFilled`: whether `now` is not the page this run filled. Under the same address and heading only the shape differs
+    // (a conditional field an answer revealed): that is taken for the site's next step ONCE per address and heading in a drive,
+    // after that it is the same page changing, so a page that keeps changing cannot walk the run to its step limit.
+    const leftFilled = (now) => {
+      if (samePage(filledPage, now)) return false;
+      if (pathOf(filledPage.where) !== pathOf(now.where) || filledPage.key !== now.key) return true;
+      const id = `${pathOf(now.where)}\n${now.key}`;
+      if (shapeMoves.has(id)) {
+        filledPage.shape = now.shape;
+        return false;
+      }
+      shapeMoves.add(id);
+      return true;
+    };
     const movedOn = async () => {
       if (!pageFilled || !filledPage || record.step + 1 >= LIMITS.stepMax) return false;
       const { frame, url } = await readPage(false);
       if (!frame) return false;
       const [where, key] = fingerprint(url, frame.result.summary).split("\n");
-      if (samePage(filledPage, { where, key, shape: shapeOf(frame.result.summary) })) return false;
+      // A page already pressed is not a new step: the errors' park, not a loop.
+      const here = `${where}\n${key}`;
+      if (record.seen.some((one) => one === here || one.startsWith(`${here}\n`))) return false;
+      if (!leftFilled({ where, key, shape: shapeOf(frame.result.summary) })) return false;
       await update({ step: record.step + 1, seen: [...record.seen, filledPage.here ?? `${filledPage.where}\n${filledPage.key}`] });
       moved();
       return true;
@@ -799,7 +823,7 @@
         // A PAGE IS PRESSED ONLY IF IT IS THE PAGE THIS RUN FILLED. A press the page refused, or a repair, can end
         // with the site on its next page; the page in hand is not the one that was filled, so the press that
         // brought it here counts as a step and the page is filled before anything else is done on it.
-        if (pageFilled && filledPage && !samePage(filledPage, thisPage)) {
+        if (pageFilled && filledPage && leftFilled(thisPage)) {
           // Bounded like any step: a site that keeps rewriting its address cannot walk the run through forty fills.
           if (record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
           // `seen` holds a pressed page as its whole fingerprint and a page left unpressed as `where\nkey`.

@@ -37,7 +37,11 @@ const summaryOf = (p, banner = false) => {
   const s = { ...base, host: p.host ?? base.host, stepKey: p.key ?? `${p.t}${p.n ?? ""}` };
   if (banner) s.errors = (p.errorItems ?? []).length;
   switch (p.t) {
-    case "step": s.fillable = p.fillable ?? 2; s.buttons = [btn(`next-${p.n}`, p.nextText ?? "Next"), btn(`back-${p.n}`, "Back")]; break;
+    case "step": s.fillable = (p.fillable ?? 2) + (p.drift ? (fixedAt[pages.indexOf(p)] ?? 0) : 0);
+      s.buttons = [btn(`next-${p.n}`, p.nextText ?? "Next"), btn(`back-${p.n}`, "Back")];
+      // A field's own popup button shows its value (Workday: "Select One", then the pick): a fix that writes changes its text.
+      if (p.popup) s.buttons.push(btn("pop", fixedAt[pages.indexOf(p)] ? `Yes${fixedAt[pages.indexOf(p)]}` : "Select One", { fieldControl: true }));
+      break;
     case "review_next": s.fillable = 2; s.buttons = [btn("next-r", "Next"), btn("submit-1", "Submit application")]; break;
     case "fields_only": s.fillable = 2; s.buttons = [btn("back-f", "Back")]; break;
     case "review": s.fillable = 2; s.buttons = [btn("submit-1", p.submitText ?? "Submit application"), btn("back-r", "Back")]; break;
@@ -97,6 +101,7 @@ const tick = (name, ...args) => {
 };
 const earlyReads = {};
 const cleared = {};        // page index -> a fix cleared what the page complained about
+const fixedAt = {};        // page index -> repairs that wrote on it (what the popup shows, what drift adds to the count)
 const fillAt = {};         // page index -> fills run on it
 const banner = { ...(spec.banner ?? {}) };   // page index -> the page is showing its error banner
 let lastRejected = false;  // the last press was one the page rejected
@@ -173,6 +178,7 @@ const deps = {
     // What the record says AT the moment of the fix: a rejected press is no step and no seen page.
     tick("fix", errors.map((e) => e.label), rec.step, rec.seen.length, rec.status);
     if (spec.fixClears) cleared[at] = true;
+    if (spec.fixWrites) fixedAt[at] = (fixedAt[at] ?? 0) + 1;
     // The page moved on by itself under the repair (a slow save the banner was left up for).
     if (spec.fixMoves) { at += 1; moved = false; }
     return spec.fix ?? { fixed: true };
@@ -2497,6 +2503,65 @@ def test_a_repair_that_leaves_the_site_on_another_page_counts_as_a_step_and_fill
     assert (r["status"], r["step"]) == ("ready", 2)
     order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance", "fix")]
     assert order == ["fill", "advance", "fix", "fill", "advance", "fill"], order
+
+
+# A tenant's dropdown is a button whose text is its VALUE: a repair that writes it changes the button, never the page.
+STATE = {"label": "State", "target": "f-8", "kind": "field"}
+
+
+def _pop(**extra):
+    return step(1, popup=True, **extra)
+
+
+def test_a_repair_that_writes_a_dropdown_is_not_a_new_page(tmp_path):
+    """A full repair: the dropdown now reads 'Yes'. The run presses again on the same page, as it does with no dropdown."""
+    plain = _drive(tmp_path, [step(1, rejects=1, errorItems=[CITY]), REVIEW])
+    out = _drive(tmp_path, [_pop(rejects=1, errorItems=[CITY]), REVIEW], fixWrites=True, record={"attach": {"outcome": "attached"}})
+    order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance", "fix")]
+    assert order == [c[0] for c in plain["calls"] if c[0] in ("fill", "advance", "fix")] == ["fill", "advance", "fix", "advance", "fill"]
+    assert (out["record"]["status"], out["record"]["step"]) == ("ready", 1)
+
+
+def test_a_partial_repair_that_writes_a_dropdown_parks_page_errors_naming_what_is_left(tmp_path):
+    fix = {"fixed": False, "remaining": [STATE]}
+    out = _drive(tmp_path, [_pop(rejects=9, errorItems=[CITY, STATE])], fixWrites=True, fix=fix)
+    r = out["record"]
+    assert (r["status"], r["why"], r["step"], len(r["seen"])) == ("parked", "page_errors", 0, 0)
+    assert [c[0] for c in out["calls"] if c[0] in ("fill", "advance", "fix")] == ["fill", "advance", "fix"]
+
+
+def test_two_repair_rounds_that_each_write_a_dropdown_park_page_errors_not_loop(tmp_path):
+    out = _drive(tmp_path, [_pop(rejects=2, errorItems=[CITY]), REVIEW], fixWrites=True)
+    r = out["record"]
+    assert (r["status"], r["why"], r["step"]) == ("parked", "page_errors", 0)
+
+
+def test_a_partial_repair_whose_dropdown_text_differs_every_round_is_repaired_once(tmp_path):
+    fix = {"fixed": False, "remaining": [STATE]}
+    out = _drive(tmp_path, [_pop(rejects=99, errorItems=[CITY, STATE])], fixWrites=True, fix=fix)
+    names_ = [c[0] for c in out["calls"]]
+    assert (out["record"]["why"], out["record"]["step"]) == ("page_errors", 0)
+    assert (names_.count("fill"), names_.count("advance"), names_.count("fix")) == (1, 1, 1)
+
+
+def test_a_page_that_changes_only_in_shape_counts_as_a_move_at_most_once_per_address_and_heading(tmp_path):
+    """Control counts that drift with every repair (a conditional field per answer): the first change is taken for the
+    site's next step, the second is not, so the run parks instead of climbing to the step limit."""
+    fix = {"fixed": False, "remaining": [STATE]}
+    out = _drive(tmp_path, [step(1, url="/apply", key="k", rejects=99, drift=True, errorItems=[CITY, STATE])],
+                 fixWrites=True, fix=fix)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "page_errors") and r["step"] <= 1
+    assert [c[0] for c in out["calls"]].count("fix") <= 2
+
+
+def test_a_repair_that_leaves_a_page_already_pressed_parks_page_errors_not_loop(tmp_path):
+    """The re-read before a park finds the address and heading of a page the run already pressed: not a step, the errors' park."""
+    first = step(1, url="/two", key="k2", rejects=9, errorItems=[CITY])
+    back = step(2, url="/three", key="k3", fillable=7)
+    out = _drive(tmp_path, [first, back], fixMoves=True, fix={"fixed": False, "remaining": [CITY]},
+                 record={"seen": ["https://jobs.acme.test/three\nk3\nBack,Next\n2"]})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "page_errors")
 
 
 def test_a_repair_that_leaves_the_same_page_still_parks_naming_what_is_left(tmp_path):

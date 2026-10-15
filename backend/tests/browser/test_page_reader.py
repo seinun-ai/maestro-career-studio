@@ -2991,6 +2991,18 @@ def test_a_progress_lists_current_step_names_the_step_when_the_page_has_no_other
                 "<h2>Senior Analyst</h2>" + BODY)
     keys = _step_keys(page, load, template, ["My Experience", "Application Questions 1"], "Senior Analyst - Acme")
     assert keys[0] != "" and keys[0] != keys[1]
+def test_a_field_dropdowns_shown_value_never_changes_the_pages_fingerprint(page, load):
+    """Workday's dropdown is a button whose text is its value: picking 'Yes' over 'Select One' is not another page."""
+    load(page, """<main><h2>Application Questions</h2>
+      <div data-automation-id="formField-q1"><label id="l1">Are you 18?</label>
+      <button id="pop" type="button" aria-haspopup="listbox" aria-label="Are you 18? Select One Required">Select One</button></div>
+      <div data-automation-id="pageFooter"><button type="button">Back</button><button type="button">Save and Continue</button></div></main>""", SOURCES)
+    fingerprint = "() => window.careerStudioCompanion.queueRun.fingerprint('https://acme.wd1.test/apply', window.careerStudioCompanion.pageReader.summary())"
+    before = page.evaluate(fingerprint)
+    page.evaluate("() => { const b = document.getElementById('pop'); b.textContent = 'Yes'; b.setAttribute('aria-label', 'Are you 18? Yes Required'); }")
+    assert page.evaluate(fingerprint) == before and "Yes" not in before and "Select One" not in before
+
+
 
 
 def test_the_steps_own_heading_wins_over_an_earlier_heading_outside_the_form(page, load):
