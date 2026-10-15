@@ -3,7 +3,7 @@
 > Reference tier, indexed from [SYSTEM.md](../../SYSTEM.md) §4. Its header contract governs this file too: integrate, present tense, no dated history, and update alongside the behavior described.
 
 One `agent_runs` row records a finished automation run reported by the user's agent.
-It feeds the Agent inbox's **Recent runs** panel and the Automations cards' **Last ran** line.
+It feeds the Automations page's **Recent runs** list, the Automations cards' **Last ran** line and the Agent inbox's one line about the newest run.
 The model is `backend/app/models/agent_run.py`; the SQLite revision is `7d3c1a9e5b20`.
 
 ## Stored fields
@@ -43,11 +43,14 @@ The model is `backend/app/models/agent_run.py`; the SQLite revision is `7d3c1a9e
   Both return `{items: [...]}`. `title` is resolved at read time from the catalog, or falls
   back to the custom name. Reads return `jobs` with id/title/company rather than `job_ids`;
   a job deleted since recording is omitted. There is no MCP read tool for the run log.
-- **Recent runs**: one expandable line per automation shows its title, relative finish time,
+- **Recent runs** (on the Automations page): one expandable line per automation shows its title, relative finish time,
   agent label, outcome and counts; expanding shows the digest and job links. Outcomes read
   **Done**, **Partly done**, **Failed**. Counts have a fixed order and omit zeros; all-zero
-  counts read **Nothing to report**. The empty state is **No runs yet. Set one up on
-  Automations.** A failed read says **Couldn't load recent runs.**
+  counts read **Nothing to report**. The empty state is **No runs yet. Copy a prompt into your
+  agent app and its reports show here.** A failed read says **Couldn't load recent runs.**
+- **Agent inbox line**: when the newest run's `found` count is above zero the inbox reads
+  "<title> found N new jobs <time ago> · See runs" (a link to Automations); otherwise it says
+  nothing about runs. Requests the other copy refused still show in the inbox, with their reason.
 - **Automations cards**: a successful latest-runs read shows **Last ran** plus relative time,
   or **Not run yet** when that automation has no retained record. When the read never
   produced data, no line appears. A failed background refetch keeps the cached Last ran

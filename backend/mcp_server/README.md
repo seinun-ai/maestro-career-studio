@@ -265,7 +265,7 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 - `record_filled_answers`: records what was filled on each form page and where each answer came from; its flags show again in `get_final_review`.
 - `record_consent`: record your approve/reject after you answer, or the agent's automatic approval with channel `auto` while full automation is On. Auto approval requires a Queued proposal, final-review evidence, a company off the skip list and a daily-cap slot.
 - `get_job_site_login`: the saved job-site email and password, only while full automation is On, for a Queued or approved proposal off the skip list. Each hand-off is audited without the value; the login passes through your agent's AI provider. Use it only for job-site accounts.
-- `record_run`: record one finished automation run; it appears under Recent runs in the Agent inbox.
+- `record_run`: record one finished automation run; it appears under Recent runs on the Automations page.
 - `attach_evidence`, `attach_evidence_file`: attach the final-review screenshot and, when using receipt evidence, the submission confirmation.
 - `mark_submitted`: mark an approved proposal as submitted with receipt evidence or the user's attestation. While full automation is On, channel `auto` records the agent's word with a note naming what confirmed submission (at least one letter or digit); a receipt is optional. It can also confirm `submission_uncertain`, without another submit click.
 

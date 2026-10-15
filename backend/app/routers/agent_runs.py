@@ -1,5 +1,5 @@
 """The run log over HTTP (`services/agent_runs.py`). Written by MCP `record_run`; read by the
-Agent inbox's Recent runs panel and the Automations page's Last ran line. No edit, no delete."""
+Automations page's Recent runs and Last ran line and the Agent inbox's new-jobs line. No edit, no delete."""
 
 from typing import Annotated
 

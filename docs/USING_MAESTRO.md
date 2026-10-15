@@ -149,7 +149,14 @@ job always get the same number.
 Every saved job also gets a **requirements check**: what the posting *states*
 about work authorization, visa (OPT) policy, salary and years of experience,
 compared with your profile — so a mismatch shows up now, not at the screening
-call.
+call. It is a banner only when something blocks you (a conflict, or an answer
+your profile is missing); otherwise it is one small line in the job's details.
+
+The top of a job's page answers two things: what you do next, and where the job
+stands. The header carries one status and one score (**Resume match** once the
+job has its own tailored resume, **Best base resume** before), and a line under
+it says whether you applied, when, and with which resume, with links to the PDF
+and to what was submitted.
 
 Then work through the **gaps** rather than accepting a rewrite. Maestro asks
 targeted questions to find things that are true but not yet written down. Your
@@ -478,7 +485,11 @@ Maestro CS can take an application right up to the submit button. Read this
 part rather than skim it.
 
 A job your agent finds becomes a **proposal**. You review proposals in the
-**Agent inbox** and **Queue** or **Skip** them (in bulk if you like). An
+**Agent inbox** and **Queue** or **Skip** them (in bulk if you like). The inbox
+opens with one line of what is waiting (how many need you, are queued, or went
+out this week), then only the lanes that have something in them. The search and
+filters appear once the inbox holds more than ten, and the daily limit shows when
+you are close to it. What each automation run did is on the **Automations** page. An
 apply run then works **only the ones you queued**: it tailors, renders and
 fills each application in a live agent session with a browser, asks you only
 for information the app doesn't have (and hands you logins, CAPTCHAs and

@@ -1,4 +1,4 @@
-"""The run log's wire shapes (MCP `record_run`, the Agent inbox's Recent runs panel).
+"""The run log's wire shapes (MCP `record_run`, the Automations page's Recent runs).
 
 Count keys and outcomes are a frozen vocabulary: the panel words them and phase 4 reads them.
 """

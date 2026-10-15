@@ -945,19 +945,23 @@
   (warning). Ready rows sort first in Queued (`accepted`), keeping
   the user's chosen sort within each group. Marks and sorting do not move rows between lanes.
 
-  **Arrivals summary**: `GET /api/proposals/summary?since=` returns `since` and four counts
+  **Arrivals summary**: `GET /api/proposals/summary?since=` returns `since` and five counts
   across the ledger, independently of the list's pagination or filters: `new` counts all
   proposals with `created_at > since` (default last 24 hours); `ready` counts Queued
   (`accepted`) rows satisfying `inbox_readiness.is_ready`; `needs_you` counts
-  `needs_decision` plus `needs_human`, the sidebar badge's same statuses; `applied_this_week`
+  `needs_decision` plus `needs_human`, the sidebar badge's same statuses; `queued` counts every
+  `accepted` row, ready or not (the Queued lane); `applied_this_week`
   counts `submitted` or `rejected` with reason `applied manually`, where `updated_at` is
   within the last 7 days, including the boundary. Naive `since` is interpreted as UTC.
   The browser remembers the previous visit in `cs-inbox-last-visit`, reads it once on mount,
   then stores now; absent, invalid or blocked storage falls back to the last 24 hours.
-  Rows created strictly after that visit get a **New** dot. The four tiles above Recent runs
-  and the lanes read **New since your last visit**, **Ready to apply**, **Needs you**,
-  **Applied this week**, and jump to their lanes. Recent runs reads the newest run per
-  automation ([agent-runs.md](agent-runs.md)), not every record in the run log.
+  Rows created strictly after that visit get a **New** dot. One line above the lanes reads
+  "N new · N need you · N queued · N applied this week" (`lib/inbox-summary.ts`): a zero part is left
+  out, each part jumps to its lane (New to the first lane drawn), all zero reads **Nothing waiting**. An
+  empty lane is not drawn; History starts collapsed. The search and filters render for more than ten
+  proposals or while one is on; the daily limit line renders from 80 percent used (Analytics always shows
+  it). The inbox also reads the newest run per automation ([agent-runs.md](agent-runs.md)) for one line,
+  "<automation> found N new jobs <time ago> · See runs", only when that run found something new.
 
   **Applied yourself in History**: `rejected` with reason `applied manually` reads
   **Applied yourself**, uses the Applied badge and counts/filters under Applied. This is

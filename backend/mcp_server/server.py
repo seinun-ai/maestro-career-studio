@@ -1953,9 +1953,9 @@ def record_run(
     report: RunReportArg = None,
     ctx: Context | None = None,
 ) -> Any:
-    """Stores one finished automation run. The Agent inbox lists the newest run of each
-    automation under Recent runs (its counts, digest and job links), and each Automations card
-    shows when its automation last ran. automation is the card id (mail-status, job-hunt,
+    """Stores one finished automation run. The Automations page lists the newest run of each
+    automation under Recent runs (its counts, digest and job links) and each card shows when its
+    automation last ran; the Agent inbox says so when the run found new jobs. automation is the card id (mail-status, job-hunt,
     referral-pages, tailor-run, apply-session) or a custom automation's own name, 40 characters
     at most. outcome: ok, partial (some of the work failed) or failed (none of it was done).
     The newest 200 runs are kept. Returns the stored run."""

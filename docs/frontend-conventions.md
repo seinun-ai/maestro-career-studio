@@ -1350,7 +1350,7 @@
     **Agent
     inbox** (`/proposals`), never Agent proposals; its lanes are **Needs
     you**, **To review**, **Queued**, **Applying** and **History** (one table,
-    `lib/inbox-lanes.ts`); its verbs **Queue** and **Skip** in the inbox and
+    `lib/inbox-lanes.ts`; a lane with nothing in it is not drawn); its verbs **Queue** and **Skip** in the inbox and
     **Queue in Agent inbox** on a tracker row and the job header; its chips
     (`PROPOSAL_STATUS_CHIP`) **Proposed**, **Queued**, **Approved**,
     **Applied** and **Skipped** (plus **Needs you**, **Expired**, **Check if

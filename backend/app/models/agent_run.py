@@ -10,8 +10,8 @@ from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 
 class AgentRun(Base):
     """One automation run an agent reported (MCP `record_run`): what it was, how it ended, its
-    counts, its digest and the jobs it touched. Read by the Agent inbox's Recent runs panel and
-    the Automations page's Last ran line. Only the newest `services/agent_runs.MAX_RUNS` rows
+    counts, its digest and the jobs it touched. Read by the Automations page's Recent runs and
+    Last ran line and the Agent inbox's new-jobs line. Only the newest `services/agent_runs.MAX_RUNS` rows
     are kept. The digest is the agent's own text: Maestro cannot check what it holds
     (docs/entities/agent-runs.md)."""
 

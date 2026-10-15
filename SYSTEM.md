@@ -156,30 +156,32 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    toggle; `?source=` deep-linkable; Analytics' copy reads All, as it counts every application).
    "Saved" = job with no application — agent-captured jobs stay out unless the toggle is `Agents`,
    which is why the default reads Tracked, not All (agent inventory lives in the Agent inbox,
-   `/proposals`, whose lanes are one table: `lib/inbox-lanes.ts`; above them an arrivals strip
-   (`/api/proposals/summary`; visit window kept until this tab reloads; its History tile opens History)
-   and Recent runs (`agent_runs`, docs/entities/agent-runs.md);
-   open rows carry read-time readiness (`services/inbox_readiness.py`)). Filter groups: All/Saved,
+   `/proposals`, whose lanes are one table: `lib/inbox-lanes.ts`, an empty lane not drawn; above them one summary
+   line (`/api/proposals/summary`; visit window kept until this tab reloads), filters only past ten proposals, the daily
+   limit only near it, and a new-jobs line from the newest run; Recent runs (`agent_runs`, docs/entities/agent-runs.md)
+   live on Automations; open rows carry read-time readiness (`services/inbox_readiness.py`)). Filter groups: All/Saved,
    **Your applications** and **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`, from
    the newest `proposal_status`); `skipped` absorbs proposal `rejected` AND `expired`, while
    the ROW chip still says Expired. Option rules: frontend-conventions, "Tracker filter".
-3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, inline
-   StatusChip + Details menu; when a proposal exists, its pill, naming its filer, + Queue/Skip; a Needs-you
+3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, ONE status: the application's inline
+   StatusChip + Details menu, else the proposal's pill worded like History (`headerProposalPill`), naming its filer,
+   + Queue/Skip; a score pill, **Resume match** (tailored) or **Best base resume**; a Needs-you
    question adds **Keep it**, PATCH `pending_review`, linking the job's application when the proposal has none),
    tabs Overview / Score and tailor / Resume / Q&A, plus **What was submitted** once the job has filled answers
    (tab URL values stay jd/fit/output/qa for deep-link compatibility; that one is `submitted`): the answer
    receipt, latest per question, a source pill each and warn-only flags, read before you submit too
    (docs/entities/filled-answers.md).
    `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`;
-   otherwise they use `cs-tracker-seq`. Overview mounts the proposal's card, titled with its
-   filer (`proposed_by`, worded by `lib/agent-name.ts`), when `proposal_id` is present; every
+   otherwise they use `cs-tracker-seq`. A **Where this stands** line under the header (`lib/job-standing.ts`) says whether
+   and how you applied. Overview mounts the proposal's card, titled with its filer (`proposed_by`, worded by
+   `lib/agent-name.ts`), only when it carries something (`proposalHasContent`); every
    job read derives `proposal_status`/`proposal_id` from the newest proposal. Overview also
    renders the **knock-out pre-scan** (`services/knockout.scan_for`, embedded in
    `GET /jobs/{id}/detail`, `get_final_review` and `/jobs/match` as `knockout`): stated JD
    requirements (work auth, OPT, salary, on-site vs where you live and relocation) vs the profile, recomputed on every read. Verdicts are `conflict` / `clear` /
    `incomplete_profile` / `unstated` — unstated is NEVER a pass, and salary only
-   warns (pay is negotiable). On screen a pass is one quiet line and a conflict the loud banner, each followed by a
-   per-check chip strip (OK / Conflict / Warning / Add answer / Not listed / Not run). Informational like G11 tier 2: it flags; the
+   warns (pay is negotiable). On screen only a conflict or a missing profile answer is a banner, with a per-check chip strip (OK / Conflict /
+   Warning / Add answer / Not listed / Not run); anything else is one small line in the Job details card. Informational like G11 tier 2: it flags; the
    consent/submit decision stays human unless the user's agent follows the full-automation prompt (§7).
 4. **Score** — Score and tailor auto-scores the bases set for the job's country (all when unknown) on first
    visit; per-base cards → **Analyze gaps** creates a session (one filled button, on the best match;

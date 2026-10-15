@@ -375,7 +375,7 @@ stay available: asking for a job back twice keeps one request.
 - **Sent at the next sync.** You queued, skipped, changed the status of, or
   added a note to a job the other copy owns. The request waits and is applied
   by the owner at the next round. If the rules refuse it (for example, a skip
-  on a job already submitted), Recent runs shows it with the reason.
+  on a job already submitted), the Agent inbox shows it with the reason.
 
 Everything else on the other copy's job is read-only, with a line naming the
 owner. This covers tailoring, Q&A, scores and applying. The Assistant, MCP tools
