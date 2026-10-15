@@ -284,13 +284,15 @@ def _with_jev(fields, criteria, session) -> dict[str, tuple[str, float]]:
     return out
 
 
-def fast_json(session: Session, prompt: str, trace_name: str, *, timeout: float | None = None) -> object:
+def fast_json(session: Session, prompt: str, trace_name: str, *, timeout: float | None = None,
+              model: str | None = None) -> object:
     """One fast-model JSON call. JSON that stays malformed after the client's
     retries is a provider failure (a 502 with a detail), not a crash.
-    `timeout`: an optional call on a budget — one request, that long, no retries."""
+    `timeout`: an optional call on a budget — one request, that long, no retries.
+    `model`: ask this one instead of the fast model setting."""
     budget = {"timeout": timeout, "max_retries": 0} if timeout is not None else {}
     try:
-        return llm.call_openai(prompt=prompt, model=model_settings.get_fast_model(session),
+        return llm.call_openai(prompt=prompt, model=model or model_settings.get_fast_model(session),
                                response_format="json", trace_name=trace_name, **budget)
     except ValueError as exc:
         raise llm.LLMProviderError("The AI model sent an answer we couldn't read.", str(exc)) from exc

@@ -282,3 +282,79 @@ def test_a_label_without_a_direction_of_its_own_is_offered_as_same(db_session, m
     model_settings.set_autofill_engine(db_session, "fast")
     decide([ask("q", question="Protected veteran status", describe="is a protected veteran")], db_session)
     assert "without a direction of its own" in prompts[0]["prompt"]
+
+
+# ---------- a provider error is not "unsure": retry once, on the other configured provider when there is one
+# (live 2026-10-15: "Anthropic API connection failed: The read operation timed out" left a known answer to the user)
+
+
+def sequenced_llm(monkeypatch, outcomes):
+    """Each call takes the next outcome: an exception to raise, or a {fid: (way, p)} answer. Returns the calls."""
+    calls, left = [], list(outcomes)
+
+    def call_openai(**kw):
+        calls.append(kw)
+        out = left.pop(0)
+        if isinstance(out, Exception):
+            raise out
+        return {"polarity": {k: {"key": w, "confidence": p} for k, (w, p) in out.items()}}
+
+    monkeypatch.setattr(autofill_polarity.llm, "call_openai", call_openai)
+    return calls
+
+
+def keys(monkeypatch, **held):
+    for provider in ("openai", "anthropic", "gemini"):
+        monkeypatch.setattr(autofill_polarity.llm, f"get_{provider}_key", lambda p=provider: "k" if p in held else None)
+
+
+TIMEOUT = llm.LLMProviderError("Anthropic API connection failed: The read operation timed out")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_timed_out_second_opinion_is_retried_once_on_the_same_model_when_no_other_provider_is_configured(db_session, monkeypatch):
+    monkeypatch.setattr(model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
+    keys(monkeypatch, anthropic=True)
+    fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
+    calls = sequenced_llm(monkeypatch, [TIMEOUT, {"q": (SAME, 0.95)}])
+    got = decide([ask("q")], db_session)["q"]
+    assert (got.way, got.engine) == (SAME, "fast")
+    assert [c["model"] for c in calls] == ["claude-haiku-5-5", "claude-haiku-5-5"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_failed_second_opinion_falls_back_to_the_other_configured_providers_fast_model(db_session, monkeypatch):
+    monkeypatch.setattr(model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
+    keys(monkeypatch, anthropic=True, openai=True)
+    fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
+    calls = sequenced_llm(monkeypatch, [TIMEOUT, {"q": (SAME, 0.95)}])
+    got = decide([ask("q")], db_session)["q"]
+    assert got.way == SAME
+    assert [c["model"] for c in calls] == ["claude-haiku-5-5", "gpt-6-luna"]
+    assert all(c["max_retries"] == 0 and c["timeout"] >= autofill_map.MIN_CALL_S for c in calls)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_second_failure_leaves_it_unsure_after_exactly_two_calls(db_session, monkeypatch):
+    monkeypatch.setattr(model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
+    keys(monkeypatch, anthropic=True, openai=True)
+    fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
+    calls = sequenced_llm(monkeypatch, [TIMEOUT, TIMEOUT, {"q": (SAME, 0.95)}])
+    assert decide([ask("q")], db_session)["q"].way is None and len(calls) == 2
+
+
+def test_the_fast_engine_and_a_jev_failure_get_the_same_retry(db_session, monkeypatch):
+    keys(monkeypatch, openai=True)
+    calls = sequenced_llm(monkeypatch, [TIMEOUT, {"q": (OPPOSITE, 0.95)}])
+    assert decide([ask("q")], db_session)["q"].way == OPPOSITE and len(calls) == 2
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_no_retry_once_the_budget_is_spent(db_session, monkeypatch):
+    times = [0.0, 0.5, autofill_map.OPTIONAL_PASS_BUDGET_S + 0.1]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    monkeypatch.setattr(model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
+    keys(monkeypatch, anthropic=True, openai=True)
+    fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
+    calls = sequenced_llm(monkeypatch, [TIMEOUT, {"q": (SAME, 0.95)}])
+    assert decide([ask("q")], db_session)["q"].way is None and len(calls) == 1

@@ -170,10 +170,11 @@ def _with_jev(asks: list[Ask], session: Session) -> dict[str, tuple[str, float]]
     return out
 
 
-def _with_llm(asks: list[Ask], session: Session, trace_name: str, *, timeout: float) -> dict[str, tuple[str, float]]:
+def _with_llm(asks: list[Ask], session: Session, trace_name: str, *, timeout: float,
+              model: str | None = None) -> dict[str, tuple[str, float]]:
     raw = fast_json(session, _LLM_PROMPT.format(
         rule=_PAGE_TEXT_IS_DATA, keys=json.dumps(CRITERIA), fields=json.dumps(_payload(asks))),
-        trace_name, timeout=timeout)
+        trace_name, timeout=timeout, model=model)
     got = raw.get("polarity") if isinstance(raw, dict) else None
     asked = {a.fid for a in asks}
     out = {}
@@ -186,17 +187,37 @@ def _with_llm(asks: list[Ask], session: Session, trace_name: str, *, timeout: fl
     return out
 
 
+# The fast model of each provider, in the order a fallback tries them: a one-label judgment any of them makes.
+_FALLBACK_MODELS = (("openai", "gpt-6-luna"), ("anthropic", "claude-haiku-5-5"), ("gemini", "gemini-3.7-flash"))
+
+
+def _other_provider_model(session: Session) -> str | None:
+    """The fast model of another provider that has a key, or None. Read when the first call failed, not before."""
+    current = model_settings.catalog_provider(model_settings.get_fast_model(session), session)
+    return next((model for provider, model in _FALLBACK_MODELS
+                if provider != current and getattr(llm, f"get_{provider}_key")()), None)
+
+
 def _fast(asks: list[Ask], session: Session, budget: Budget, trace_name: str) -> dict[str, tuple[str, float]]:
     """One fast-model call, capped (POLARITY_MAX_S) and ending in time for what
-    follows it (POLARITY_RESERVE_S). Out of time or failed: nothing."""
-    timeout = budget.left(POLARITY_MAX_S, reserve=POLARITY_RESERVE_S)
-    if not asks or timeout is None:
+    follows it (POLARITY_RESERVE_S). A provider error (a timeout is one) gets ONE
+    more call, on another provider's fast model when a key for one is set, else the
+    same model again, and only while the request has time (`Budget.left`). Out of
+    time or failed twice: nothing."""
+    if not asks:
         return {}
-    try:
-        return _with_llm(asks, session, trace_name, timeout=timeout)
-    except llm.LLMProviderError:
-        logger.warning("fast model polarity (%s) failed; its fields are left to the user", trace_name)
-        return {}
+    model = None   # the fast model setting
+    for attempt in (1, 2):
+        timeout = budget.left(POLARITY_MAX_S, reserve=POLARITY_RESERVE_S)
+        if timeout is None:
+            return {}
+        try:
+            return _with_llm(asks, session, trace_name, timeout=timeout, model=model)
+        except llm.LLMProviderError:
+            logger.warning("fast model polarity (%s) failed (attempt %d)", trace_name, attempt)
+            model = _other_provider_model(session) if attempt == 1 else None
+    logger.warning("fast model polarity (%s) failed twice; its fields are left to the user", trace_name)
+    return {}
 
 
 def _second_opinion(asks: list[Ask], session: Session, budget: Budget) -> dict[str, tuple[str, float]]:

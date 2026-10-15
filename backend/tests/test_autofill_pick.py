@@ -2143,3 +2143,66 @@ def test_a_long_sponsorship_question_full_of_visa_and_status_words_takes_the_der
                                  options=opts("Yes", "No"))], facts, db_session, None)
     assert got["s"].reason == "abstained"
 
+
+
+# ---------- "located in … and/or willing to relocate" with a saved yes is a Yes, decided in code (live 2026-10-15)
+
+RELOCATE_FACTS = autofill_catalog.build({"preferences": {"willing_to_relocate": "yes"}}, [], [])
+LOCATED_OR_RELOCATE = "Are you currently located in Springfield, IL and/or willing to relocate?"
+
+
+def relocate_field(question=LOCATED_OR_RELOCATE):
+    return pf("r", question=question, slot="preferences.willing_to_relocate", options=opts("Yes", "No"))
+
+
+def asked_polarity(monkeypatch):
+    """Every polarity question either engine is asked, by fid."""
+    seen = []
+    real = autofill_pick.jev.decide
+
+    def decide(questions, state, session=None):
+        if all(is_polarity(q) for q in questions.values()):
+            seen.extend(questions)
+            return {k: _answer(q["criteria"], "neither", 0.5) for k, q in questions.items()}   # the model is unsure
+        return {k: _answer(q["criteria"], "o1", 0.95) for k, q in questions.items()}
+
+    monkeypatch.setattr(autofill_pick.jev, "decide", decide)
+    monkeypatch.setattr(autofill_pick.llm, "call_openai",
+                        lambda **kw: (seen.extend(f["id"] for f in json.loads(kw["prompt"].split("Fields: ", 1)[1]))
+                                      or polarity_reply(kw, {"r": ("neither", 0.5)})) if kw["trace_name"].startswith("autofill-polarity") else {})
+    assert real
+    return seen
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    LOCATED_OR_RELOCATE,
+    "Do you live in the Springfield area or are you willing to relocate?",
+    "Are you based in Springfield, Illinois, and/or open to relocating?",
+])
+def test_located_or_willing_to_relocate_with_a_saved_yes_is_yes_without_asking_a_model(db_session, monkeypatch, question):
+    seen = asked_polarity(monkeypatch)
+    got = autofill_pick.pick([relocate_field(question)], RELOCATE_FACTS, db_session, None)
+    assert seen == [] and sans_trace(got["r"]) == {"oids": ["o1"], "reason": "matched"}
+    assert got["r"].polarity.way == "same"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_relocate_rule_needs_a_saved_yes(db_session, monkeypatch):
+    seen = asked_polarity(monkeypatch)
+    no = autofill_catalog.build({"preferences": {"willing_to_relocate": "no"}}, [], [])
+    got = autofill_pick.pick([relocate_field()], no, db_session, None)
+    assert set(seen) == {"r"} and got["r"].reason == "abstained"   # a No says nothing about where the applicant is now
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    "Are you legally authorized to work in the US and/or willing to relocate?",
+    "Do you require visa sponsorship, or are you willing to relocate?",
+    "Are you willing to relocate?",
+    "Are you located in Springfield, IL?",
+])
+def test_the_relocate_rule_leaves_work_authorization_and_plain_questions_to_the_model(db_session, monkeypatch, question):
+    seen = asked_polarity(monkeypatch)
+    autofill_pick.pick([relocate_field(question)], RELOCATE_FACTS, db_session, None)
+    assert set(seen) == {"r"}

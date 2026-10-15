@@ -213,15 +213,33 @@ def _yes_no(fields, facts: dict[str, Fact]) -> dict[str, Fact]:
     return {f.fid: facts[f.slot] for f in fields if f.route == "slot" and f.slot in facts and facts[f.slot].yes_no}
 
 
+# "Are you located in X and/or willing to relocate?" over a saved Yes to relocating: the second half is the applicant's
+# own answer, so the question reads the same as the fact, with no model. Not a work-authorization or sponsorship
+# question (those never ride on this slot), and not "located" alone or "relocate" alone.
+_LOCATED_OR_RELOCATE = re.compile(
+    r"\b(?:located|live|living|reside|residing|based)\b.*\b(?:and/or|or)\b.*\b(?:willing|open|able|prepared)\s+to\s+(?:re-?locat|move)",
+    re.IGNORECASE | re.DOTALL)
+_AUTHORIZATION = re.compile(r"authori[sz]|sponsor|visa|eligible to work|legally|citizen|work permit", re.IGNORECASE)
+
+
+def _located_or_relocate(field, fact: Fact) -> bool:
+    return (field.slot == "preferences.willing_to_relocate" and str(fact.value) == "Yes"
+            and bool(_LOCATED_OR_RELOCATE.search(field.question)) and not _AUTHORIZATION.search(field.question))
+
+
 def polarity_ways(fields, facts: dict[str, Fact], session: Session,
                   budget: Budget) -> dict[str, autofill_polarity.Polarity]:
     """Per slot field holding a Yes/No fact, which way its question reads against the
     fact (autofill_polarity: same, opposite, neither or unsure) and how that was decided.
-    The model calls; `polarity_answers` turns the ways into answers."""
+    The model calls; `polarity_answers` turns the ways into answers. "Located in … and/or
+    willing to relocate" over a saved Yes is decided here, by code (same, no engine)."""
     yes_no = _yes_no(fields, facts)
-    return autofill_polarity.decide([autofill_polarity.Ask(f.fid, polarity_question(f), facts[f.slot].describe,
-                                                           facts[f.slot].policy)
-                                     for f in fields if f.fid in yes_no], session, budget)
+    coded = {f.fid: autofill_polarity.Polarity(autofill_polarity.SAME, None, 1.0)
+             for f in fields if f.fid in yes_no and _located_or_relocate(f, yes_no[f.fid])}
+    asked = autofill_polarity.decide([autofill_polarity.Ask(f.fid, polarity_question(f), facts[f.slot].describe,
+                                                            facts[f.slot].policy)
+                                      for f in fields if f.fid in yes_no and f.fid not in coded], session, budget)
+    return coded | asked
 
 
 def polarity_trace(w: autofill_polarity.Polarity) -> PolarityTrace:
