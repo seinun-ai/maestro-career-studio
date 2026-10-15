@@ -280,6 +280,27 @@
   not carry the answer keeps the marker; an older Settings page or peer keeps reading what is stored, so an old peer can read a synced `yes` as a
   protected veteran). Profile › Autofill asks the question again ("Answer again: this question changed."). Known limits: a lowercase mention of an
   employer outside a parsed list still reads No, and the veteran-class guard errs toward asking.
+- **Answers decided in code, and the polarity retry** (live check 7; `services/autofill_pick.py`, `autofill_step.py`, `autofill_education.py`, `autofill_place.py`, `autofill_polarity.py`).
+  **Relocate**: "Are you located in X and/or willing to relocate?" over a saved `preferences.willing_to_relocate` Yes is the same way as the fact, decided by code with no model
+  (`_located_or_relocate`, in `/pick` and `/step`). It must be ONE question: both halves in one sentence that is a question (or an unpunctuated last line addressed to "you"),
+  no negation before the relocate verb ("not local or willing to relocate" elsewhere in the text is a statement, not the question), and no authorization or sponsorship wording.
+  "Located" alone or "relocate" alone is the model's. A condition on relocating in the question ("on your own", "at your own expense", "without relocation assistance"; `_QUALIFIER`)
+  turns the matched answer `assumed` (`relocate_qualified`), because the saved Yes is the applicant's word for relocating, not for relocating on those terms.
+  **Degree type** (`autofill_education.degree_type`): a list of degree TYPES ("Degree": Associate's, Bachelor's, Master of Business Administration (M.B.A.), Master's, …) over a saved
+  `education.N.degree` takes the generic option for the saved degree's level (Masters, MS, M.S. and M.Sc take "Master's Degree"; the same for Bachelor's, Associate's, Doctorate and
+  High School), reported `matched`; the MBA option only when the saved degree says MBA or Business Administration without "Science" (a Master of Science in Business
+  Administration is a generic Master's); on a partial list an MBA with no MBA option seen abstains. Several generic options for the level, or a degree naming several levels, abstain; a saved
+  degree that names no level ("BBA", "MD", "Diploma") or is in progress is left to the ordinary path (zero levels named is not this rule's), and so is a list with no option that
+  names exactly one level. It runs in `/pick` (`education_picks`) and `/step` before the model, without the education-level fact. **City** (`autofill_place.city_option`; `/pick`
+  `city_picks`, `/step`): a Places-style city list ("Springfield, IL, USA") over a saved `personal.city` and `personal.state` takes the one option whose first comma part is the
+  city (a whole name: "Springfield Gardens" is another place; `knockout.city_key`, so NYC is New York) and whose later parts name the state by code or full name (a ZIP dropped,
+  `knockout.state_code`), reported `matched`; two options naming the one place abstain, none leaves it to the ordinary path, and with no state saved nothing is claimed.
+  **The polarity retry** (`autofill_polarity._fast`): the fast-model call that judges which way a Yes/No question reads against a saved fact is retried ONCE when it fails with a
+  provider error (a timeout is one), and only while `Budget.left` still gives it time (it may run `MIN_CALL_S` past the planned 2 s, so a late reasoning call may be skipped; polarity
+  is the knockout answer, that call the optional one). The retry goes to the fast model of ANOTHER provider (`_FALLBACK_MODELS`) only when a model role (fast, smart, chat or
+  reasoning) is assigned to that provider AND its key was SAVED in the app (a key only in the environment is not a choice); never when a custom server is set
+  (`llm.get_base_url()`) or the current model is not a registered named provider's (OpenRouter and the like), where it is the same model again. The same-model retry runs only
+  for a transient error (`autofill_map._transient`): a missing or refused key is not retried. Failed twice, the field is left to the user.
 - **Derived facts, drafted answers and degree levels** (`services/autofill_catalog.py`, `autofill_choose.py`, `qa.py`, `autofill_step.py`, `answer_flags.py`).
   `derived.phone_type` is "Mobile" whenever the profile holds a number: the profile never says what kind of phone it is, so `autofill_pick`
   judges it at the assumed floor and reports `assumed` (`ASSUMED_SLOTS`), `differs_from_profile` ignores it, and a phone-type box never receives
@@ -299,7 +320,7 @@
   a denial, an end date ahead or "present" does not count; an engineering BE or ME counts as a bachelor's or master's). A list of thresholds ("Bachelor's degree or higher",
   "Combination of relevant education, experience, and training", "None of the above") is decided in code in `/pick` (`education_picks`) and `/step`: the highest threshold the level
   meets, an option that names two levels met at the lower, never "None of the above", and nothing (the user answers) when no threshold is met, when the winning level has
-  several options or one tied to a field or a degree type; a list that names no level is not this rule's. **Type of sponsorship** (`services/autofill_sponsorship.py`,
+  several options or one tied to a field or a degree type; a list that names no level is not this rule's (a list of degree TYPES is: see the live check 7 bullet above). **Type of sponsorship** (`services/autofill_sponsorship.py`,
   `/pick` `sponsorship_type_picks` and `/step`): a question asking which TYPE is needed or required (not "any type of"), with a sponsorship slot and every saved sponsorship
   answer No (a question about now needs only the now fact), takes the option that means none or not applicable (a closed list is opened first), else nothing; a Yes/No list
   or a saved Yes is never this rule, and a question that counts OPT or STEM OPT as sponsorship still takes the saved No (owner decision 2026-10-15). **A middle name is never made from another
@@ -858,7 +879,9 @@
   cleaned of links, emails and phone numbers (`contact_scan`, the finder every drafted answer is checked with too). The prompt has the note written to the applicant in the present
   tense, about what is wrong on the page, never a plan, and a refused reply asks with the code's own line (`FALLBACK_NOTE`), never the model's note. `retry` takes `step_by_step`
   (the field goes to the adaptive step agent) beside the move-order techniques and `clear_and_set`; a stored round keeps a retry's `technique` and a choose's `basis`, and its
-  `stopped` may be `no_read` (the page could not be read: a row with no model). A stored trace's `reasoning` rounds keep the snapshot
+  `stopped` may be `no_read` (the page could not be read: a row with no model). `ReasonRequest.one_page` (default false) says the page is one form with Submit on it: the
+  validator drops its buttons and tabs, `autofill_reason._allowed` removes every press (`PRESSES`: `press_next`, `close_dialog`, `follow_tab`) and allows only `open_questions` and
+  `page_errors` there (any other reason is `ask_user`), the prompt offers no press and says to work the fields only, and `check` refuses a press as `not_allowed`. A stored trace's `reasoning` rounds keep the snapshot
   (questions, options, error lines and the note redacted of saved answers and base-resume values); `scripts/eval_reason.py` replays them against other models.
   **The Companion's run** (SYSTEM.md §7; `routers/companion.py`, `app/companion_origin.py`): consent channel `companion` is legal only on the
   Companion extension's exact origin (403 otherwise). A PATCH with it queues (`accepted`, from `pending_review`) and refuses `approved` and

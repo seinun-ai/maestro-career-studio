@@ -84,7 +84,7 @@ backend/
                        neutral parts; NULL `parts` = legacy row), llm_providers/ (neutral LLM types, errors,
                        registry (model id to provider), OpenAI-compatible, Gemini and Claude adapters),
                        attachment_extract (bounded DOCX/PPTX + notes; decks are documents),
-                       autofill_choose + autofill_reason + contact_scan + autofill_slots + autofill_education + autofill_sponsorship + board_visits + jev (Companion fill), resumes_folder (visible PDF copies), …)
+                       autofill_choose + autofill_reason + contact_scan + autofill_slots + autofill_education + autofill_place + autofill_sponsorship + board_visits + jev (Companion fill), resumes_folder (visible PDF copies), …)
     automations/skills/  the agent prompts, one <name>/SKILL.md each: the Automations
                        source of the Automations page; indexed by docs/skills/README.md
     templates/         six seeded resume designs + both cover-letter sources (licenses: THIRD_PARTY_NOTICES.md)
@@ -286,7 +286,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   keys. `POST /runs` stores one strict `RunTrace` (newest 50 kept; a reasoning step's `reasoning` rounds hold the model, note, actions as ids and a written answer's LENGTH, and a value-free snapshot): a label or section holding a value the run wrote, was answered, left or found
   committed is blanked (`fill-loop.js` `rowKeys`/`siblingKeys`, which a scoped `only` fill still feeds from the fields it left alone; the exact rule, with its
   option-word exceptions: INTERNALS, "Run trace"); the page's option texts and the chosen option's index are kept on every field, EEO too, except a text holding another
-  TYPED field's value; the rest is enums and numbers (a /map step names its sentinel from a fixed list, `TRACE_SENTINELS`, in `fill-loop.js` and `sw.js`), never a typed or profile string in a free-text slot.
+  TYPED field's value, and a typed search's offered options keep only their count (the rows echo what was typed); the rest is enums and numbers (a /map step names its sentinel from a fixed list, `TRACE_SENTINELS`, in `fill-loop.js` and `sw.js`), never a typed or profile string in a free-text slot.
   `sw.js` `scrubTrace` whitelists against the schema; nothing posts unless `telemetryEnabled` is `true` (default off; Options › Keep a fill log). Runs
   fold into host/label-free `autofill_mechanism_stats`. Rows carry `host` + `first_seen_at`, runs `host` + `started_at`, so `DELETE /telemetry` clears
   rows, runs and gaps, keeps counters, never the capture toggle (`extension/INTERNALS.md`; `scripts/fill_trace.py last|report` reads a DB copy). The
@@ -619,7 +619,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   Done on the Ready card ends the record writing nothing (per-run limits, leases and Apply on a live tab: INTERNALS). The Ask box (QnA drawer) sits under the run card only
   while the run is paused. The job memory is per tab (`chrome.storage.session` `widget.sessions`, no clock; origin, tenant, sibling-posting and backend-wins guards).
 - **Reasoning step** (`shared/reason-loop.js`, host `panel/actions/reason.js`, `POST /api/autofill/reason`, Companion origin only; INTERNALS, "The reasoning step"): before a run parks on errors it
-  could not map, open questions, an unknown page, no change, a loop or another site (never a wall, a review page, **Stop after each step** On or **Think when stuck** Off), the **Reasoning model** sees
+  could not map, open questions, an unknown page, no change, a loop or another site (never a wall, a review page with no fields, **Stop after each step** On or **Think when stuck** Off; a one-page form, a step-0 review page with fields, is worked on open questions and page errors with `one_page: true`: fields only, nothing pressed), the **Reasoning model** sees
   a value-free snapshot and names 1–3 actions the backend checks (ids, protected list, failed signatures); `write`/`choose`/`answer_from` run through `/choose`, `/pick` and `/map`, so no value comes
   from the model; 3 rounds, a minute a page; each round goes to the fill log (`reasoning`), replayable with `scripts/eval_reason.py`. A parked card speaks in the code's words (what it asks, else "It tried …; it took / it didn't take"), never the model's note.
 - **Screening answers dial** (Settings › Form filling; `autofill.answer_level`, default **Balanced**, so an install that had
@@ -875,8 +875,7 @@ citation. Priority lives in the item text, not in the ordinal.
   write and hid a mocked outage → only caller-supplied sessions seed; startup seeds the rest (`tests/test_prompts_service.py`).
 - **Guard files before commit** (2026-10-06): refusal still deleted documents/changed previews → check before disk I/O, including helpers (`tests/sync/test_guard.py`).
 - **Retry keys must identify controls** (2026-09-25): rule attempts use composite labels, collection clean questions, so
-  `country | field-12` never reaches the `country` retry → use element identity; a model upgrade cannot repair fields
-  collection never sends (§11 item 40).
+  `country | field-12` never reaches the `country` retry → use element identity; a model upgrade cannot repair fields collection never sends (§11 item 40).
 - **Same page is not same URL** (2026-09-23): the leave guard stopped every same-pathname popstate, so Back between `?tab=`
   or `?session=` entries changed the URL, not the screen → `samePage` decides what asks, the URL what renders (`lib/leave-guard.ts`).
 - **A page's `searchParams` prop keeps its arrival value after a native `replaceState`** (2026-09-23): a link to
@@ -901,8 +900,7 @@ citation. Priority lives in the item text, not in the ordinal.
   (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's until checked.
 - **A starter that fails its own gate** (2026-09-01): the from-scratch template certified `false` on an untouched
   draft. What the app mints AND validates in one request must clear every probe.
-- **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed pickers, no MIME types. Every
-  picker reads `frontend/lib/upload-accept.ts`.
+- **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed pickers had no MIME types → every picker reads `frontend/lib/upload-accept.ts`.
 - **A guard test mocked away the guard** (2026-08-25): a green suite hid a 100%-failing rewrite path because it replaced
   `guarded_rewrite` → when a guard or validator is the subject, fake `llm.call_openai`, never the guard.
 - **The FAST model quietly caps score honesty** (2026-08-24): flash-lite extractions missed conceptual JD skills →
@@ -913,8 +911,7 @@ citation. Priority lives in the item text, not in the ordinal.
 - **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch it FIRST or 422s become 400s.
 - **Transient response attrs**: `already_existed` (Job), `health_warning` (TailoringSession) are instance attrs set after
   refresh; `base_anchors` (TailoringSession) is a model property. None is a column — don't "fix" them into the ORM.
-- **score_target(result=...)**: passes a precomputed engine result to persist; the double-run it replaced was audit
-  finding C18 — don't re-add a second run.
+- **score_target(result=...)**: passes a precomputed engine result to persist, replacing a double run (audit finding C18); don't re-add a second.
 - **The query cache keeps old key order** (2026-09-22): structural sharing made a refetch's `JSON.stringify` differ from
   the PATCH response, so a studio's own Save read as foreign → compare `serverKey` (sorted keys); §11 item 26.
 - **PDFium is not thread-safe** (2026-09-23): parallel gallery previews segfaulted libpdfium → every PDFium use under
@@ -941,6 +938,8 @@ citation. Priority lives in the item text, not in the ordinal.
   start, checks and stop in ONE call (`scripts/smoke_uv_install.py`), or use `maestro autostart`.
 - **Child-server startup signals have separate meanings** (2026-10-10): reverse DNS can stall listening, while
   “Started” precedes child output → fixtures bypass DNS, report bound ports, and wait for asserted output before stopping.
+- **Updating main under an open Chrome tab breaks the page reader** (2026-10-15): re-injection runs old load-once files with new re-run ones → a re-run file never
+  reads a newer load-once export (`tests/test_extension_manifest.py` scan); reload open job tabs after an update (a run parks `page_stale`).
 
 ## 13. Active migrations & deprecation ledger
 

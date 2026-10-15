@@ -1494,7 +1494,7 @@ footer alone).
   A site that bounces the application through a single-sign-on host the list does not hold therefore parks there; the user signs in in the tab and
   presses Resume.
 - **Walls park, they do not retry.** CAPTCHA, email code, account creation on a host that is not a known ATS or that the page refuses, a sign-up page seen again after the press (`create_account_failed`), board-native apply, a failed sign-in, a start chooser it may not follow (`chooser`), a page it does not
-  recognise, a "thank you" page before the run reached
+  recognise (`unknown_page`) or whose every frame threw (`page_stale`: the extension was updated under the open tab, see Install internals), a "thank you" page before the run reached
   review, the tab on a host the run never navigated to (`moved_away`, and the same park for a posting Apply that landed on a host nothing named; not after a park that told the user to go somewhere, `sign_in_yourself`,
   `verify`, `posting`, `chooser` or `unknown_page`: where they land on Resume is theirs, and that host joins the run's), the same page again, more than 15 steps, a Next that changes nothing
   (after one refill), a Next the page refuses and names (`page_errors`), a required upload it could not fill (`upload`), a review page that is not
@@ -1575,6 +1575,11 @@ footer alone).
   `fillLoop.landedNote`, `KNOWN_NOTES`). A field the engine gave up on (nothing landed) still parks, and a landed field beside one that needs an answer parks naming only the second.
   **Never one the protected list covers** (`PROTECTED_SLOT`: `work_auth.*`, `eligibility.*`, `eeo.*`, `derived.sponsorship`, `derived.previously_employed_here`, `derived.us_citizen`,
   `derived.agrees_to_terms`, `preferences.desired_salary`): a value a click happened to land on is not the applicant's answer to those, so they park and are never listed as checked.
+- **An optional field left unanswered is listed, not parked on** (`leftForYou`, `shared/queue-run.js`; `keepAssumed`, `panel/actions/run.js`). An optional field the profile had a
+  saved answer for (the map filed a fact under it; its last outcome is not `no_value`) that the fill still left `needs_answer`, and that no search or click landed a value on
+  (that is the "Check" row's), gets a row in `record.assumedRows` with `left: true`, shown under **Check before you submit** as "Left for you" (`runs.js` `checkRows`; never the
+  value). It never parks the run and never blocks the Next. A later fill of the same page that answers the field (any status in `ANSWERED`) removes the row at that step; a row
+  is one per question and step, like the others.
 - **A skills box that is not required is left empty in a run** (`skipOptionalSkills`, passed by `fillPage` for a full fill, not for a scoped repair; `shared/fill-loop.js`
   `optionalSkills`). A box the map put the resume's skills in (slot `skills`), or a multi-select or search box whose question names skills, that is neither required nor flagged
   invalid, finishes `left_blank` with `lastOutcome: optional_skills` and no explore, pick or step call: a list of tags is a set of searches, one step each, and nothing
@@ -1777,8 +1782,15 @@ footer alone).
   through code the run already has, looks again, and either carries on or parks with a plain note. The model decides; every wall stays in code.
   - **When.** The driver's `parkOr` calls `deps.reason` before the parks in `THINKS` (`page_errors`, `open_questions`, `unknown_page`, `no_change`, `loop`,
     `moved_away`), at most once per page per drive (`thought`, `thoughtOn`), and AGAIN when it moved the run on. Never on a wall (CAPTCHA, email code, an account on
-    an unknown host, a Submit page or any page that asks about submitting, a review page), never on open questions that are all protected, never within one step of
-    `stepMax` (the park keeps its own reason). The host passes `reason` only with full automation On, **Think when stuck** On (Settings › Form filling,
+    an unknown host, a Submit page or any page that asks about submitting, a review page with no fields), never on open questions that are all protected, never within one step of
+    `stepMax` (the park keeps its own reason). **A one-page form** (owner decision 2026-10-15) is the exception to "a review page": a page the driver judged `review`
+    at step 0 that HAS fields (`summary.fillable > 0`), with no `submitContext` and no dialog (`pageKind.dialogUp`; a cookie notice is none), is thought about for
+    `open_questions` and `page_errors` only, as `onePage`: the model works its fields (fill, answer from, write, choose, retry, redo) and nothing on the page is pressed.
+    The request carries `one_page: true` and no button or tab (`buttonRows` returns none), the backend allows no press for it (`PRESSES`: `press_next`, `close_dialog`,
+    `follow_tab`) and offers none in the prompt, `perform` rejects one here whatever the reply names, and the driver's own `press` refuses whatever the step asks. A wizard's
+    final review page (step above 0) is never thought about. The review branch's park for required boxes still empty (`requiredEmpty`) goes through `parkOr` too
+    (`open_questions`), so the same rule decides whether the step is asked; the other reasons on a one-page form (`no_change`, `loop`, `unknown_page`) are the user's.
+    The host passes `reason` only with full automation On, **Think when stuck** On (Settings › Form filling,
     `companion_apply.think_when_stuck`, default On, read like **Stop after each step**) and **Stop after each step** Off; the route reads all three itself
     (full automation, Think when stuck, Stop after each step: `switched_off`, ask the user, no model is paid, so a stale panel is not obeyed).
   - **Snapshot** (`snapshotOf`, exactly a `ReasonRequest`, never a value): the stuck reason, each field's `fid`, question, shape, required / filled / invalid /
@@ -1795,7 +1807,7 @@ footer alone).
     unchanged twice leaves the snapshot; a round after which the page key (fingerprint, error count, filled fields) is unchanged ends the loop, as do `ask_user`, a
     missing or late reply, Stop and the page clock. The reply is checked again here: ids in THIS snapshot, a button's role, the actions the stuck reason allows
     (`unknown_page` only `close_dialog`, `follow_tab`, `ask_user`; `moved_away` only `follow_tab`, `ask_user`; `open_questions` no `press_next`, which the driver never
-    presses there).
+    presses there; a one-page form no press of any kind, and only `open_questions` or `page_errors`).
   - **Actions**, each through code that already exists: `fill` is `runFill({only})`; `answer_from` a `slotHints` entry for `/map`; `write` the `free_text` route with
     `reasoner` `short` (`essay` on a required multiline box) for `/choose`; `choose` the `reasoned` (basis history) or `low_stakes` (basis default) route for `/pick`;
     `retry` a move-order variant (`open_with_keys`, `search_with_enter`, `search_and_wait`), for `clear_and_set` a redo, or for `step_by_step` the field sent straight to the adaptive
@@ -1872,6 +1884,14 @@ footer alone).
   copy's backstop (`redact_trace`) adds the profile's and every active base resume's values, no more. A screened question or error line keeps its words and reads
   `[your answer]` for the value, so a protected question stays recognisable; a field the backend receives with no question text is treated as protected.
 - **A follow never drives.** `follow_tab` rebinds the run to the application's tab and parks with **Continue here**; the model cannot press anything there.
+- **A one-page form is only worked on its fields.** The reasoning step on a one-page form presses nothing: a Next-looking button, a dialog's button and a tab are never offered, so
+  a page whose only way on is a press (a validation dialog, a button that reveals more fields) parks as before. A form that shows a dialog or asks about submitting is not
+  thought about at all, and a one-page form is only what the driver judges a review page at step 0 with fields.
+- **The update guard covers re-run files, not a stale load-once file.** A load-once file that an update changed keeps its OLD code in an open tab until the page is reloaded; the
+  scan only keeps the re-run files from reading what the old copy lacks. A run that finds the page unreadable parks `page_stale` ("Reload the page") after three reads.
+- **A list that no word and no whole-list read shows still goes to the step agent.** The word fallback is skipped for a list that never settled (`unsettled`), which is the
+  adaptive step's as before. "City, State" is typed only when the profile's state fact was filed under a field on the page this fill; a city box on a page with no state field is
+  searched by the city alone.
 
 ### The fill agent's rules (all Autofill, run or not)
 
@@ -1964,6 +1984,14 @@ footer alone).
   default port (80, 443), a trailing slash and a fragment, keeping path and query. A box shorter than the URL is refused (`too_long`), never truncated; a
   URL is never offered as search words or searched by a word. A box already holding a DIFFERENT site is flagged as holding something else and is never
   counted answered or overwritten; the same site in another spelling is already there.
+- **A search that finds nothing is tried by words, then the whole list is read** (`content/fill-core.js` `fallbackWords`, `shared/fill-loop.js`; live check 7). When a typed
+  term shows no options (and the list settled), explore types, in order, the term's first word of 3+ characters that is not the term, then that word with its apostrophes
+  and a trailing plural s removed (`Masters` finds `Master's Degree`, `Bachelors` finds `Bachelor's`); a word loses the punctuation it carried from the term (`Springfield,` is
+  `Springfield`); never for a URL; it stops at the first word that shows options, and `viaWord` tells the choose to type that word too. If the term and its words all leave the
+  box empty (a fixed list the page filters by substring, the saved wording matching no text), the loop reads the list once more with NO term; a list that shows goes to `/pick`
+  whole (`complete` says whether it is the full list), and only a box still empty after that goes to `/step` (`noOptions`). **A city box is searched as "City, State"**
+  when some field on the page was mapped to `personal.state` (`placeOf`); nothing found that way, the city alone is searched next. A Places-style list is then decided by
+  code (`autofill_place.city_option`, `/pick` `city_picks`, `/step`): see `docs/entities/others.md`.
 - **Dates take the 1st when the box wants more than the fact has** (owner decision: low stakes are decisive). A native date, month, pattern or section
   date widget given a month-only value gets day 01, and a year-only value gets January 1st, written and reported `assumed` with a fixed note ("Day set to
   the 1st", "Month set to January", "Set to the 1st of January"). A box that already shows every part the fact has is left as it is (2021-05-17 for the
@@ -2170,7 +2198,9 @@ field is typed (text, date, search, popup) and at 4+ otherwise; a word every for
 Office, Personal, Business; `COMMON_OPTION_WORDS`) never blanks ANOTHER row's label or option list, so an answer "Mobile" leaves a question that names a company
 called Acme-Mobile readable, while the row that holds it still blanks its own label. The page's own option texts and the
 chosen option's index are kept on every field, EEO included (owner decision), so a wrong pick can be
-read back. The index counts the field's own `options` list (the inventory's passive list, `o{i+1}`, as stored
+read back. A search box has no passive list, so the options its explore showed are kept as `offered` (`fill-loop.js`): a **typed** explore (a city, an employer, a
+word of the term: its rows echo what was typed) keeps only their COUNT (`option_count`, no texts); an explore with no term (a popup's click-open, the whole-list re-read) keeps
+the texts, screened by the same rule as any option text. The index of a pick is never kept for an explored row. The index counts the field's own `options` list (the inventory's passive list, `o{i+1}`, as stored
 in `options`), not the options /pick was offered (those drop placeholder and never-fill rows); it is left out
 when the field has no passive list, when the pick was an explored row (explore oids restart at o1, so a row
 counts only when its oid and text are the passive option's), or at 250 and over (the schema's bound). An
@@ -2228,6 +2258,14 @@ and ask_user rates, the actions chosen, latency, tokens and a cost estimate; it 
   injecting into a page nobody asked about is exactly the always-on cost the
   detection gate exists to avoid — so anywhere else the panel says it cannot see
   the page and to reload the tab, rather than claiming it had nothing on it.
+- **An update under an open tab: a re-run file never depends on a newer export of a load-once file.** Re-injecting runs the guarded files' OLD copy and every unguarded file's
+  new one in the tab's same world, so a re-run file that reads at load an `ns.X` only a load-once file publishes (page-reader's `ns.ERROR_HEADING`, live 2026-10-15) gets
+  `undefined` after an update and every page read throws ("Page not recognised" over a plain form). The rule: such a read keeps its own copy (`page-reader.js` has its own
+  `ERROR_HEADING`; `tests/test_extension_manifest.py` pins both equal) or a fallback (`ns.X ?? …`) or a `typeof ns.X` guard anywhere in the file. A static scan over the
+  manifest's content scripts fails on a plain or destructured read of a name past `SHIPPED_ONCE_EXPORTS` (the names the last release already published; a new name is
+  never added there to quiet the test). The runtime backstop: when no frame gave a summary and a frame answered with an error that is not "no script listening"
+  (`scriptThrew`, `NOT_LISTENING`), the read repeats up to 3 times (`BROKEN_READS`), then the run parks `page_stale`, not `unknown_page`; the card reads "Reload the page: The
+  Companion couldn't read this page (usually after an update). Reload the page, then press Resume." (`panel/runs.js`).
 
 ### The pinned id and the CORS allowlist
 

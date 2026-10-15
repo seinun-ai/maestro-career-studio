@@ -435,6 +435,11 @@ such as Claude Haiku 5.5 and GPT-6 Luna; a cheaper model costs less and may be l
 on, each round and the page it saw are recorded, so you can compare models on the same pages with
 `backend/scripts/eval_reason.py`.
 
+On a one-page form (Submit on the same page, no Next) it works the fields only, for open questions and page errors: it fills, answers, writes,
+chooses and retries, and presses nothing there, not Next, not Submit and not a popup's button. It stays out of a page that asks about
+submitting or shows a popup. After you update Maestro, **reload job tabs that were already open**: a tab opened before the update can
+leave the Companion unable to read the page, and the card says **Reload the page**; reload it and press Resume.
+
 A question your profile cannot answer gets a safe default from **Balanced** up: No (or Not
 applicable when offered) for membership of a tribe, union or association, a referral, or relatives at the
 company, and No (or "I don't wish to answer") for a spouse's or household member's military service; Yes for willingness to a standard step such as a background check, drug test, references,
@@ -452,6 +457,14 @@ level list ("Bachelor's degree or higher", "None of the above"): Apply picks the
 for a Master's, never "None of the above", and leaves it to you when none is met or your degree is still in progress. "What type of sponsorship
 will you need?": when every sponsorship answer you saved is No, Apply picks Not applicable (or the option that says none), even when the
 question counts OPT as sponsorship; with no such option, or a Yes saved, it is yours.
+
+Three more are decided from what you saved. A **Degree** list of types ("Bachelor's Degree", "Master's Degree", "Master of Business Administration"):
+Apply picks the plain option for your degree's level, and the MBA option only when your degree is an MBA or says Business Administration; a degree
+still in progress, or one that names no level, is left to you. "Are you located in … and/or willing to relocate?" is answered Yes when you saved
+that you would relocate; if the question adds a condition ("on your own"), the answer is listed as assumed. A **Location (City)** box is searched
+as "City, State" when the form also asks for a state, and Apply picks the option for your city in your state; two matches, or no saved state,
+leave it to you. An optional field you have a saved answer for that stayed empty is listed under **Check before you submit** as **Left for
+you**; it never stops the run.
 
 Veteran status is one question in **Profile › Autofill**: "Are you a veteran?" (Yes, No, or "I don't
 wish to answer"). A No answers every "I am not a protected veteran" option on a form. A Yes never picks

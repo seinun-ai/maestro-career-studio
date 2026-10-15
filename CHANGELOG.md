@@ -229,6 +229,24 @@ view for several is still ahead.
 
 ### Fixed
 
+- **Sixth live check of Apply, on a one-page application form.**
+  - **Update the extension, then reload your job tabs.** An extension update under a tab that was already open could leave the page reader broken, so a plain form read as
+    "Page not recognised". A page reader no longer depends on code only the newer version has, and when the page still cannot be read the card says **Reload the page**
+    (usually after an update) instead. Press Resume after you reload.
+  - **Think when stuck now works on a one-page form** (a form with Submit on the same page, no Next). It fills, answers, writes, chooses and retries fields there, and presses
+    nothing: no Next, no Submit, no popup button. It still stays out of a page that asks about submitting or shows a popup.
+  - A search box that finds nothing for your saved wording is tried by one word of it, then without apostrophes and plurals ("Masters" finds "Master's Degree"), and when it
+    stays empty the whole list is read and picked from, instead of the field being left to you. This fixed Degree and Veteran status lists.
+  - **Degree** lists that offer types ("Bachelor's Degree", "Master's Degree", "Master of Business Administration") take the plain option for your degree's level; the MBA
+    option only when your degree is an MBA or says Business Administration. A degree that is still in progress, or names no level, is left to you.
+  - **Are you located in … and/or willing to relocate?** is answered Yes when you saved that you would relocate, even when the model call times out. A condition such as
+    "on your own" makes it an assumed answer, and a question that says "not" before relocating is left to the model. The model call is retried once, on another provider only
+    when you assigned one to a model and saved its key in the app.
+  - **Location (City)** boxes are searched as "City, State" when the form also has a state field, and the Places-style option for your city in your state is picked. Two options
+    for one place, or no state saved, leave the box to you.
+  - An optional field that you have a saved answer for and that stayed empty is listed under **Check before you submit** as **Left for you**. It never stops the run, and goes
+    when a later fill of the page answers it.
+  - With the fill log on, a typed search keeps only how many options it showed, not their text, since they repeat what was typed.
 - **Fifth live check of Apply, on a Workday tenant with Think when stuck on.**
   - A Workday step is told from the next one by its own heading (a job title shown above every step is skipped) and by its buttons and
     number of fields. **Resume** after a stop on page errors now fills a page that only looks like the one it stopped on, instead of pressing

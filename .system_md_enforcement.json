@@ -80,6 +80,7 @@
       {"path": "backend/tests/test_autofill_trace_router.py", "symbol": "test_no_counter_key_or_count_holds_a_host_or_label"},
       {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_no_value_reaches_the_trace"},
       {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_what_the_trace_keeps_of_the_page_is_its_labels_and_options"},
+      {"path": "backend/tests/browser/test_live7_widgets.py", "symbol": "test_a_typed_search_keeps_only_how_many_options_it_offered_since_they_echo_what_was_typed"},
       {"path": "backend/tests/test_extension_sw_router.py", "symbol": "test_gaps_are_posted_only_for_a_user_who_turned_the_fill_log_on"},
       {"path": "backend/tests/test_autofill_gaps.py", "symbol": "test_any_extra_key_is_refused_and_nothing_is_stored"},
       {"path": "backend/tests/test_autofill_gaps.py", "symbol": "test_clearing_telemetry_also_clears_the_gaps_because_they_hold_hosts"},

@@ -69,7 +69,8 @@ at to your local Maestro CS app.
   and about a minute a page. The card shows a live line ("Thinking: …") while it works, then
   one sentence if it sorted the page out, or the usual **Needs you** card saying what it asks of
   you, or what it tried and whether it took ("It tried How Did You Hear About Us? a second way; it didn't take."). Anything it wrote or chose is listed under **Check before you submit**
-  as answered for you. It never presses Submit, never presses Next on a page it did not fill,
+  as answered for you. On a one-page form (Submit on the same page, no Next) it works the fields only and
+  presses nothing there. It never presses Submit, never presses Next on a page it did not fill,
   and never answers work authorization, sponsorship, salary, demographic, background-history, signature
   or licence questions, or a fact your profile does not have. Settings › AI & models ›
   Form filling has the **Think when stuck** switch (on by default; it needs full automation
@@ -101,7 +102,12 @@ at to your local Maestro CS app.
   never a board). An education list ("Bachelor's degree or higher", "None of the above") gets the highest
   level your degrees meet, never "None of the above", and is yours when none is met. "What type of
   sponsorship will you need?" gets Not applicable (or the option that says none) when every sponsorship
-  answer you saved is No, even when the question counts OPT as sponsorship, and is yours otherwise.
+  answer you saved is No, even when the question counts OPT as sponsorship, and is yours otherwise. A Degree
+  list of types gets the plain option for your degree's level (the MBA option only for an MBA or Business
+  Administration), "located in … and/or willing to relocate" is answered Yes when you saved that you would
+  relocate (a condition such as "on your own" makes it an assumed answer), and a Location (City) box is searched
+  as "City, State" when the form has a state field. An optional field you have an answer for that stayed empty
+  is listed under **Check before you submit** as **Left for you**.
 - **Postings without built-in job data are read too.** The Job step reads the
   description from the section under a "Job Description" or "About the role"
   heading, and the title, company and location from a recorded page layout (a
@@ -130,7 +136,8 @@ id, so there is no id to copy and no backend restart.
 **After an update**, press **Reload** on the extension's card at
 `chrome://extensions`, then reload any job tabs that were already open. A tab
 opened before the reload shows "No job description found on this page" even
-when the description is plainly visible, until you reload that tab.
+when the description is plainly visible, until you reload that tab. A run that
+cannot read such a tab stops with **Reload the page**; reload the tab, then press Resume.
 
 **Installed before the fixed id existed?** Reloading is not enough. On
 `chrome://extensions` press **Remove**, then **Load unpacked** on the
