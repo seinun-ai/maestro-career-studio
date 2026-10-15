@@ -1538,8 +1538,23 @@
         if (got.options?.length) {
           opts = got.options;
           complete = Boolean(got.complete);
+          // The rows a word of the term found are the ones the choose must search for, not the whole saved wording.
+          if (typeof got.viaWord === "string") term = got.viaWord;
         } else if (!opts.length) {
-          noOptions = historyEntry(term ? "search:value" : "open", "unexpected", got.error ?? "empty_popup");
+          // A typed search that emptied the box (a fixed list the page filters by substring: "Masters" in "Master's Degree"):
+          // the list is read once more with no term before the step agent is asked, and a list it shows goes to /pick whole.
+          if (term) {
+            const whole = await explore(f, undefined);
+            if (!whole) return lateOrHalted(f);
+            if (exploreRefused(f, whole, undefined)) return undefined;
+            if (holdsOne(f, row, whole)) return keepHeld(f, row);
+            if (whole.options?.length) {
+              opts = whole.options;
+              complete = Boolean(whole.complete);
+              term = undefined;
+            }
+          }
+          if (!opts.length) noOptions = historyEntry(term ? "search:value" : "open", "unexpected", got.error ?? "empty_popup");
         }
       }
       if (allBlocked(opts)) {

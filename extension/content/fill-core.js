@@ -1030,6 +1030,16 @@
     };
   };
 
+  // What to type when the whole term finds nothing in a search box, in order: the term's first long word, then that word
+  // without its apostrophes and a plural s ("Masters" finds "Master's Degree", "Bachelors Degree" finds "Bachelor's Degree";
+  // a box that filters by substring shows nothing for the saved wording). Never for a URL; never the term itself.
+  const fallbackWords = (term) => {
+    if (isUrl(term)) return [];
+    const first = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
+    const stem = (first ?? term.split(/\s+/)[0]).replace(/['’]/g, "").replace(/([^s])s$/i, "$1");
+    return [first, stem].filter((x, i, all) => x && x.length > 2 && x !== term && all.indexOf(x) === i);
+  };
+
   // `variant`: a recipe's order for the opens and searches (see `open`).
   // `keep` (a set's item): the list it settled stays up, with the query in the
   // box, for the item's own commit to click in — `kept` says it did (fill-ops
@@ -1049,15 +1059,19 @@
       let { pop, searchable, unsettled } = await open(el, shape, term, t, w, { reclaim: false, variant, used, address });
       let options = pop ? b().optionsOf(pop) : [];
       let byWord = false;
-      if (!options.length && term) {
-        const word = isUrl(term) ? undefined : term.split(/\s+/).find((x) => x.length > 2 && x !== term);
-        // A term that already committed something is not searched again by a
-        // word (fill-ops takes the commit back).
-        if (word && !address && !moved(el, shape, snap)) {
+      let viaWord;
+      // (A list that never settled is not an empty one: a word is not typed over it.)
+      if (!options.length && term && !address && !unsettled) {
+        for (const word of fallbackWords(term)) {
+          // A term that already committed something is not searched again by a
+          // word (fill-ops takes the commit back).
+          if (moved(el, shape, snap)) break;
           await tidy(el, t);
           ({ pop, searchable, unsettled } = await open(el, shape, word, t, w, { reclaim: false, variant, used }));
           options = pop ? b().optionsOf(pop) : [];
           byWord = true;
+          viaWord = word;
+          if (options.length) break;
         }
       }
       let got = pop && options.length ? await readAll(pop, t) : { options: [], complete: false };
@@ -1078,6 +1092,8 @@
       const rowsRead = byWord ? got.options.map(({ where, ...o }) => o) : got.options;
       const out = { options: flag(rowsRead, consentForms), complete: got.complete && !term, searchable };
       if (rows) out.multi = rows === "multi";
+      // The word typed when the whole term found nothing: a choose must type it too to see the rows explore read.
+      if (byWord && out.options.length) out.viaWord = viaWord;
       if (kept) out.kept = true;
       if (!out.options.length) {
         if (pop) out.error = "empty_popup";
