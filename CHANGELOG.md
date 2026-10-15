@@ -229,6 +229,16 @@ view for several is still ahead.
 
 ### Fixed
 
+- **Seventh live check of Apply, on a hosted careers platform and a one-click application page built from web components.**
+  - **Job descriptions on card-layout career sites.** A role-detail page drawn as sibling cards (a "General Information" card, then "Description &
+    Requirements") now reads the description card instead of "No job description found". The page's title comes from its banner when its only `h1` is the logo.
+  - **Forms built from web components are read like any other.** Fields, a Submit that takes its label from the page, required boxes and the page's errors
+    inside such a form are seen together, so Autofill is no longer withheld on it and a page is no longer called Ready, or empty, by mistake. The vendor's
+    "fill this from your resume" import box is never written; its resume box gets your PDF.
+  - **Apply never says "Page not recognised" over a page that has fields.** On the first page, a page the Companion cannot classify but that lists fields is filled and judged
+    like any page with fields; if it has no Next button the run then stops for you to look, and does not call it Ready. A careers landing page that has only a keyword search and a location filter is still left to you,
+    and search boxes are never filled.
+  - A DataDome slider is a verification wall: the run stops there for you to solve it, and does not ask a model.
 - **Sixth live check of Apply, on a one-page application form.**
   - **Update the extension, then reload your job tabs.** An extension update under a tab that was already open could leave the page reader broken, so a plain form read as
     "Page not recognised". A page reader no longer depends on code only the newer version has, and when the page still cannot be read the card says **Reload the page**
@@ -323,9 +333,6 @@ view for several is still ahead.
   - A job posting with no built-in job data (a Darwinbox careers page, for one) is read from the section under
     its description heading, with its title, company and location, and only from what is on screen.
     Darwinbox's apply page needs a CAPTCHA, so the run stops there.
-  - A role-detail page drawn as sibling cards (a "General Information" card, then "Description &
-    Requirements") now reads the description card instead of "No job description found". The
-    page's title comes from its banner when its only `h1` is the logo.
 
 ## [0.10.1] — 2026-10-12
 

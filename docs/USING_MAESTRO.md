@@ -448,7 +448,8 @@ history, salary, work authorization, demographic questions and your own military
 listed under **Check before you submit**, and so is a required field that a search or a click filled for you (Field of Study, say),
 which no longer stops the run; the page's own check decides. An optional Skills box stays empty in a run. What you type in the page
 while a run waits on "The page asks for more" or on an upload is remembered like any other answer. The Companion also reads a job posting that has no built-in job data, taking the
-description from the section under a "Job Description" or "About the role" heading.
+description from the section under a "Job Description" or "About the role" heading, or from a "Description & Requirements" card on a career site that draws its sections as cards.
+On the first page of an application, a page the Companion does not recognise but that has fields is filled like any other (and then waits for you if it has no Next button), instead of stopping at "Page not recognised"; search boxes are never filled. Forms built from web components are read like any other, and a vendor's "fill this from your resume" import box is never written. A DataDome slider is a verification wall, so Apply stops there for you.
 
 Three kinds of question are answered from what you saved, and said to be assumed or checkable under **Check before you submit**. "How did you
 hear about us?": if your answer is just "Job board" and the job names no board, Apply picks LinkedIn, or another job board the list offers; a job

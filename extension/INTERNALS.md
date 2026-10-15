@@ -593,6 +593,11 @@ know, and each one was learned from a live failure.
   box that names a plain resume. A **combined** box ("Resume (we'll use it to
   fill your profile)", `COMBINED_WORDS`) is the resume box when it is the page's
   only one, and a parser only beside a separate resume box (`readBoxes`).
+  **The vendor's own markers beat the words** (`BOX_MARKS`, found through shadow roots): a box inside an easy-apply container (`oc-easy-apply`,
+  `[data-test="easy-apply-container"]`, the vendor's "fill this from your resume" import) is a `parser` and never written; one inside `oc-resume-upload` /
+  `[data-test="resume-upload-container"]` is the `resume` box. Upload reading (`attachableFileInputs`, the widget climb, section heading, label ids, `occupied`)
+  uses `ns.deep` too, with the section heading found in composed document order and a file row drawn inside a shadow root proving a file through composed text
+  (`rowsNaming`, `hasFile`: a row is in no `textContent`).
   **The outside name:** a react-dropzone's hidden input reads nothing but the
   uploader's "Click to upload", while its name ("Resume *") is a sibling of the
   WIDGET; `outsideName` reads the text before the widget (a stray file name is
@@ -1442,7 +1447,7 @@ footer alone).
   a finished application.
 - **Page operations** are content-script messages through the existing fan-out and frame gate (`inv-frame-earns-data`):
   `page_classify` and `page_advance` (`content/page-reader.js`; broadcastable and gated like the `fill_*` ops; a broadcast may name the
-  one frame to ask), `page_errors`, `page_uploads` and `page_required` (broadcastable like the others; below), `page_sign_in` and `page_create_account` (top frame only, in
+  one frame to ask), `page_errors`, `page_uploads`, `page_required` and `page_field_count` (broadcastable like the others, so listed in `sw.js` `BROADCASTABLE`; below), `page_sign_in` and `page_create_account` (top frame only, in
   `panel_frame0`'s allow list and NOT broadcastable), `fill_watch` and `fill_watch_report` (below). `summary()` is counts, button texts and booleans, never a value or a password;
   its `errors` is a COUNT of what the page complains about, `errorKeys` are hashes of those errors (which ones, never what they say), and a
   button that is only a line of the error summary carries `inErrors` (and `errorLine` when its own text reads as "Error - <field>"). It also names
@@ -1462,6 +1467,28 @@ footer alone).
   bare "Continue" or "Proceed". **Closed** is the notice wordings only (this job, position, posting or requisition has been or is now closed, has
   been filled, no longer accepting applications, available or open; "has been filled" after until, once, when, after, before, if or unless is
   prose) and counts only on a page with nothing fillable and no Apply control, so a job description's own prose never ends a run.
+- **Open shadow roots: a page of web components reads like any other** (`ns.deep`, `content/detect.js`). A hosted one-click application draws its inputs, file
+  inputs and buttons inside OPEN shadow roots, which `querySelectorAll`, `closest` and `contains` do not cross, so the page read as "nothing to fill" while
+  `content/inventory.js` (its own walk) listed nine fields. `ns.deep` is the composed-tree version of those: `all(sel, root)` (document order, a host's shadow content right
+  after the host), `any` (the light DOM first, then only the shadow roots under `root`), `closest`, `contains`, `up` (parent, else the host), `text` (textContent or innerText plus the
+  shadow roots' text), `kids`, `roots`, `scope`, and the shared `searchBox` / `picker` rule. It lives in `detect.js` because every injection re-runs that file: a re-run file may
+  call it without a fallback, where a newer export of a load-once file is what `tests/test_extension_manifest.py` forbids. Cost: each call answers from the elements holding a shadow
+  root, found by ONE pass over the page (one per call outside a scope); `scope(fn)` keeps that list until it ends (the page reader wraps `summary`, `pageErrors` and `pageRequired` in one), and a page with no
+  host answers the plain light query. **Only OPEN roots are read**; a closed root is invisible to every read here (Known limits). The page reader's three uses: a shadow
+  button's label is its own text plus its slots' assigned text (a component's slotted "Submit"), and `ownHosts` adds the host's `aria-label`/`title` (and a Submit mark, a
+  required mark) **only when the host speaks for that control**: its shadow root holds exactly that one button and no field (or exactly one field), as a design system's
+  button or input does. A container component (a card holding a field, Back and Next) is not that: its title or id is never the label or mark of the buttons inside it, or every
+  one would sort as Submit and a middle step end as Ready. `aria-labelledby` and `aria-describedby` resolve inside the control's own shadow root first. A dismiss press on a
+  shadow submit inside a light form is refused. `detectPage` asks the light DOM first and, on a miss, each open shadow root (`roots()`, found once by that first miss, one `*`
+  pass), so the panel's manual Autofill is not withheld on such a page; its page text stays the light DOM's.
+- **The owner's rule: an unknown first page that has fields is filled** (`shared/queue-run.js`, owner, live check 8: "when I am there the autofill should work"). A page the reader
+  calls `unknown`, at step 0, that the run has not filled (`record.filled`, `pageFilled`), is asked `fieldCount` once before the run parks `unknown_page`: `page_field_count`
+  returns the fill inventory's fields minus search boxes and rich text (`ns.deep.searchBox`, the same rule `fillableControls` leaves them out by), so a careers landing page with
+  a keyword box and a Location in a search landmark is not an application. With a count above zero the summary is read as having that many `fillable` and classified again: it is
+  filled, then judged as any page with fields (a Next, a Submit, or `fields_no_next`, which parks `unsure_page` after the hold, never Ready); a real Submit beside the fields makes it a
+  one-page form as anywhere. With none it is the old `unknown_page`. A later step, a page already filled, a host without the dep and a page still blank during the wait to draw are not
+  asked. `fillableControls` counts a read-only combobox that opens a list (`picker`: `readOnly`, `role=combobox`, `aria-haspopup=listbox`, as Ant Design draws its select) and
+  excludes `type=search` and search-named boxes, so the common case needs no second opinion; the pair is pinned equal on the shadow fixture in `tests/browser/test_shadow_dom.py`.
 - **A field's own control is never an action** (`fieldControl` on the summary's button, `content/page-reader.js`). A Workday question popup carries its
   question in its aria-label ("... willing to submit to a background check? Select One Required"), which sorted by words is a Submit. So a popup button
   (`aria-haspopup` listbox or true), a member of a pill group (the shape reader's `pills`, or a real group of `aria-pressed` toggles; a lone toggle, one worded
@@ -1500,8 +1527,8 @@ footer alone).
   run parks `moved_away` before any fill, and that host never joins `record.hosts` (the fill, the sign-in and the frame vouch all follow `hosts`).
   A site that bounces the application through a single-sign-on host the list does not hold therefore parks there; the user signs in in the tab and
   presses Resume.
-- **Walls park, they do not retry.** CAPTCHA, email code, account creation on a host that is not a known ATS or that the page refuses, a sign-up page seen again after the press (`create_account_failed`), board-native apply, a failed sign-in, a start chooser it may not follow (`chooser`), a page it does not
-  recognise (`unknown_page`) or whose every frame threw (`page_stale`: the extension was updated under the open tab, see Install internals), a "thank you" page before the run reached
+- **Walls park, they do not retry.** CAPTCHA (a visible challenge frame of reCAPTCHA, hCaptcha, Cloudflare or DataDome's `captcha-delivery.com` reads as one, so the run parks without asking a model), email code, account creation on a host that is not a known ATS or that the page refuses, a sign-up page seen again after the press (`create_account_failed`), board-native apply, a failed sign-in, a start chooser it may not follow (`chooser`), a page it does not
+  recognise and that lists no field to fill (`unknown_page`) or whose every frame threw (`page_stale`: the extension was updated under the open tab, see Install internals), a "thank you" page before the run reached
   review, the tab on a host the run never navigated to (`moved_away`, and the same park for a posting Apply that landed on a host nothing named; not after a park that told the user to go somewhere, `sign_in_yourself`,
   `verify`, `posting`, `chooser` or `unknown_page`: where they land on Resume is theirs, and that host joins the run's), the same page again, more than 15 steps, a Next that changes nothing
   (after one refill), a Next the page refuses and names (`page_errors`), a required upload it could not fill (`upload`), a review page that is not
@@ -1860,6 +1887,10 @@ footer alone).
   held in a different frame of the page is not seen.
 - **Step mode, Save job:** on a wizard page whose restored job has no posting text, **Save job** dead-ends ("Nothing to save yet"); and a save from
   a page that escapes the backend's dedupe can create a second job (an older gap).
+- **Closed shadow roots are invisible.** `ns.deep` and every read built on it enter OPEN roots only; a form whose components attach `mode: "closed"` roots reads as no fields, no buttons
+  and no boxes, as before, and the run parks `unknown_page`.
+- **An icon-only Submit whose name is elsewhere reads as unclear and is never pressed.** A shadow button with no text, slotted text, own `aria-label`/`title` or speaking host has no
+  label to sort, so it is `unclear`: never pressed, and an unclear button stops the run like any other (no model picks one). The user presses it.
 - **Several required upload boxes** park `upload`, naming them: the run never guesses which one is the resume's.
 - **Modal wizards are handled.** A step drawn inside a dialog or `aria-modal` container that holds a visible field keeps its Next (`overlayOf`
   judges a dialog by what it holds); only a notice with no field, and a cookie or OneTrust box, is an overlay.

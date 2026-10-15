@@ -607,7 +607,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   real Submit: §6 inv-ready-real-review), and Next is pressed only by `page_advance` (`content/page-reader.js`), which re-sorts the button's labels at click time. A posting's
   Apply (a career site's too, even asking for a new tab: §6 inv-press-filled-page), and a Workday start chooser's Apply Manually link alone, are followed only as a same-tab
   http(s) link (no click handlers) on the first read of a tab the run opened. CAPTCHA, email code, an account on a site it does not know (on a known ATS it creates the account
-  itself, §6 inv-job-site-password-local), a job board's own apply, a review page that is not plainly the end, any other start chooser and any unrecognised page PARK (Needs
+  itself, §6 inv-job-site-password-local), a job board's own apply, a review page that is not plainly the end, any other start chooser and an unrecognised page with no field PARK (Needs
   you), as does a required field it could not answer, once per page, a refused Next it cannot repair (inv-rejected-next) and a required upload it cannot fill
   (inv-one-resume-write); a required field a search or click landed a value on is listed under **Check before you submit** instead (never a protected one), and an optional
   skills box stays empty. The user answers in the page and presses **Resume**: every typed answer is remembered (Undo; long written ones never; also over a page-errors or
@@ -618,6 +618,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   straight from the application's own pages, after an 8 s Undo (a tab closed during it marks at once); any other page sets `noAutoMark`, leaving the manual Mark applied, and
   Done on the Ready card ends the record writing nothing (per-run limits, leases and Apply on a live tab: INTERNALS). The Ask box (QnA drawer) sits under the run card only
   while the run is paused. The job memory is per tab (`chrome.storage.session` `widget.sessions`, no clock; origin, tenant, sibling-posting and backend-wins guards).
+- **Pages of web components** (`ns.deep`, `content/detect.js`, a re-run file; INTERNALS, "Open shadow roots"): the page reader, fillable count, upload reader and `detectPage` read OPEN shadow roots as one composed tree (closed roots stay invisible), a host speaks for a control only when its root holds that one control, and an unknown first page the fill inventory lists fields on (search boxes and rich text left out) is filled, never parked "Page not recognised" and never Ready; the vendor's easy-apply box is a parser, a visible DataDome frame a CAPTCHA wall.
 - **Reasoning step** (`shared/reason-loop.js`, host `panel/actions/reason.js`, `POST /api/autofill/reason`, Companion origin only; INTERNALS, "The reasoning step"): before a run parks on errors it
   could not map, open questions, an unknown page, no change, a loop or another site (never a wall, a review page with no fields, **Stop after each step** On or **Think when stuck** Off; a one-page form, a step-0 review page with fields, is worked on open questions and page errors with `one_page: true`: fields only, nothing pressed), the **Reasoning model** sees
   a value-free snapshot and names 1–3 actions the backend checks (ids, protected list, failed signatures); `write`/`choose`/`answer_from` run through `/choose`, `/pick` and `/map`, so no value comes
@@ -896,8 +897,7 @@ citation. Priority lives in the item text, not in the ordinal.
 - **SQLite and Alembic traps** (per-connection `foreign_keys`, TypeDecorator autogenerate, Boolean defaults, `commit()` flushing,
   unclosed `sqlite3.connect`, timestamp resolution): `docs/entities/others.md`, "SQLite and Alembic gotchas".
 - **One path, every job** (2026-09-01): LinkedIn's list rewrites only `?currentJobId=` and the matcher dropped the
-  query string, so every job was the first one saved. A query-keyed board needs its key in BOTH `posting_id` tables
-  (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's until checked.
+  query string, so every job was the first one saved. A query-keyed board needs its key in BOTH `posting_id` tables (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's.
 - **A starter that fails its own gate** (2026-09-01): the from-scratch template certified `false` on an untouched
   draft. What the app mints AND validates in one request must clear every probe.
 - **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed pickers had no MIME types → every picker reads `frontend/lib/upload-accept.ts`.
@@ -929,8 +929,7 @@ citation. Priority lives in the item text, not in the ordinal.
 - **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` moving children off a parent leaves its loaded
   collection stale, so `session.delete(parent)` cascades away the moved rows → expire the parent between (`career_kb.merge_entities`).
 - **Workday apply steps read as "no form"** (2026-09-25): no `<form>`/`<select>`, a `type="text"` phone and no email on My
-  Information, so every step but the résumé upload scored 1 and Fill was withheld → measure `detectPage`'s signals on the
-  live page before blaming timing; the fix is `workday-apply-route`.
+  Information, so every step but the résumé upload scored 1 and Fill was withheld → measure `detectPage`'s signals on the live page first (fix: `workday-apply-route`).
 - **Tailwind v4 compiles some classes to nothing** (2026-10-06): a variant on a plain class (`data-confirm:animate-confirm`
   until it was an `@utility`) and an unknown role (`border-outline`; check `--color-*` in `globals.css`); `translate-*`/`scale-*`
   set those properties, so `transition-[…transform]` jumps → register a class that takes a variant; name those properties.
@@ -940,6 +939,7 @@ citation. Priority lives in the item text, not in the ordinal.
   “Started” precedes child output → fixtures bypass DNS, report bound ports, and wait for asserted output before stopping.
 - **Updating main under an open Chrome tab breaks the page reader** (2026-10-15): re-injection runs old load-once files with new re-run ones → a re-run file never
   reads a newer load-once export (`tests/test_extension_manifest.py` scan); reload open job tabs after an update (a run parks `page_stale`).
+- **A page of web components read as "nothing to fill"** (2026-10-15): `querySelectorAll`, `closest` and `contains` stop at a shadow root while the fill inventory walks in → every page read goes through `ns.deep` (`tests/browser/test_shadow_dom.py` pins fillable count > 0 exactly when the inventory lists a field).
 
 ## 13. Active migrations & deprecation ledger
 

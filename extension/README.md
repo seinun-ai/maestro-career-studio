@@ -22,7 +22,7 @@ at to your local Maestro CS app.
   tab. It fills each page, clicks **Next** itself, and stops on the review page so
   that **Submit** is yours. It asks you only when it must: a CAPTCHA, an email
   code, an account on a site it does not know or one the site refused, a job
-  board's own apply button, a page it does not recognise, or a required question
+  board's own apply button, a page it does not recognise and that has no fields, or a required question
   it could not answer. Answer in the page, then
   press **Resume** in the panel. Your answers are saved to your profile (with
   an Undo). After you press Submit and the confirmation page shows, the panel
@@ -113,6 +113,16 @@ at to your local Maestro CS app.
   heading, and the title, company and location from a recorded page layout (a
   Darwinbox careers page) or the page's own heading. Darwinbox's apply page needs
   a CAPTCHA, so the run stops there and leaves the application to you.
+  A role-detail page drawn as cards is read from its "Description & Requirements"
+  card, with its banner as the title when its only top heading is the logo.
+- **Forms of web components and unfamiliar pages.** Fields inside the open shadow
+  parts of a page built from web components are read and filled like any others,
+  so Autofill is offered there. On the first page of an Apply run, a page the
+  Companion does not recognise but that has fields is filled like any other
+  instead of stopping at "Page not recognised"; search boxes are never filled and
+  the vendor's own "fill this from your resume" box is never written. A DataDome
+  slider counts as a CAPTCHA. Parts a page keeps closed cannot be read, so such a
+  form is left to you.
 - **Ask one question.** The **Ask** box at the foot of the Fill step takes any
   question from a form, answers it in one paragraph from your history and the job,
   and lets you copy it. It never writes into the page.
