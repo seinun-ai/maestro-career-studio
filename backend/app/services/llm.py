@@ -190,18 +190,25 @@ def _call_model(
     response_format: ResponseFormat,
     images: list[bytes] | None = None,
     timeout: float | None = None,
+    schema: dict[str, Any] | None = None,
 ) -> tuple[str, Usage]:
     """`timeout`: seconds for this one request, with no SDK retries behind it
     (a caller on a budget, such as the fill's optional passes); None keeps the
-    client's own timeout and retries."""
+    client's own timeout and retries. `schema`: a JSON Schema for the reply, sent only to Claude."""
     from app.services.llm_providers import registry
     from app.services.llm_providers.types import ImagePart, Message, TextPart
     from app.services.llm_providers.types import Request as ProviderRequest
 
     ref = registry.resolve(model)
     parts = [TextPart(prompt), *(ImagePart(img) for img in images or [])]
+    # A JSON Schema goes only to the provider that enforces one (anthropic.py: a dict `output` becomes
+    # output_config.format json_schema). The OpenAI-compatible adapter sends response_format json_object only
+    # for the literal "json" (openai_compat.build_generate_kwargs, when _json_mode_supported allows: a hosted
+    # key, or llm.json_mode "on"), and Gemini's _generation_config likewise reads only "json"; a dict would
+    # fall through to plain text. So every other provider gets "json", and the caller validates either way.
+    output = schema if schema is not None and ref.provider == "anthropic" else response_format
     response = registry.get(ref.provider).generate(ProviderRequest(
-        model=ref, messages=[Message("user", parts)], output=response_format, timeout=timeout,
+        model=ref, messages=[Message("user", parts)], output=output, timeout=timeout,
     ))
     return response.text, response.usage.as_langfuse() if response.usage else None
 
@@ -263,11 +270,15 @@ def call_openai(
     trace_name: str = "llm-call",
     images: list[bytes] | None = None,
     timeout: float | None = None,
+    schema: dict[str, Any] | None = None,
 ) -> dict[str, Any] | str:
     """`timeout`: per request, no SDK retries (see `_call_model`); pair it with
-    `max_retries=0` to bound the whole call."""
+    `max_retries=0` to bound the whole call. `schema`: a JSON Schema the reply must follow, enforced by Claude
+    only (every other provider gets plain JSON mode); the caller validates the reply either way."""
     if response_format not in {"json", "text"}:
         raise ValueError("response_format must be 'json' or 'text'")
+    if schema is not None and response_format != "json":
+        raise ValueError("schema needs response_format 'json'")
 
     last_error: JSONDecodeError | None = None
     total_attempts = max_retries + 1
@@ -283,7 +294,7 @@ def call_openai(
                 "image_count": len(images) if images else 0,
             },
         ) as record:
-            response_text, usage = _call_model(prompt, model, response_format, images, timeout)
+            response_text, usage = _call_model(prompt, model, response_format, images, timeout, schema)
             record(response_text, usage)
         _log_call(prompt, model, response_text, attempt)
 
