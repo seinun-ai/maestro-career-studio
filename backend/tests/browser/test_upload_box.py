@@ -681,3 +681,10 @@ def test_a_shadow_resume_box_that_already_shows_its_file_is_occupied_and_not_wri
     assert [box["occupied"] for box in _uploads(blank)] == [False, True]
     assert _attach(blank, expect=2) == {"written": 0, "proven": 0}
     assert _shadow_files(blank, "resume") == ["Old_Resume.pdf"]
+
+
+def test_the_panels_detect_answer_for_a_shadow_form_says_form_and_counts_its_fields(blank):
+    """What the panel's `hasForm` is made from (`detect_page`): a form, the fields the page has, the two boxes."""
+    _load(blank, SHADOW)
+    detected = _detect(blank)
+    assert (detected["form"], detected["tier"], detected["controls"], detected["fileInputs"]) == (True, "B", 9, 2)

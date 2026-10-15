@@ -85,7 +85,15 @@ function detectPage() {
   // document into a string is behind a gate below — no observer, no timer, no
   // allocation that outlives the call. And nothing is amortized across calls,
   // because the service worker re-runs this on every SPA route change.
-  const present = (selector) => document.querySelector(selector) !== null;
+  //
+  // OPEN SHADOW ROOTS (a page of web components, live check 8): `document.querySelector` does not enter them, so a form built of
+  // them scored nothing and the panel withheld its manual Autofill. A probe that misses in the light DOM is asked again of
+  // each open shadow root. The roots are found ONCE, by the first miss (one pass over the page's elements, `ns.deep.roots`):
+  // a probe that hits in the light DOM never looks, and the page text below stays the light DOM's `body.textContent`.
+  let inner = null;
+  const roots = () => (inner ??= window.careerStudioCompanion.deep.roots());
+  const present = (selector) => document.querySelector(selector) !== null
+    || roots().some((root) => root.querySelector(selector) !== null);
   const evidence = [];
 
   // The strongest single signal, and every clause is scoped to a FILE input on
@@ -213,15 +221,10 @@ function detectPage() {
   // Continue is recognised another way — its vendor's marker plus its identity
   // fields, or, on Workday, where neither of those is enough, the apply route.
   const APPLY_TEXT = /^\s*(apply|submit application)\b/i;
-  let affordance = false;
-  for (const el of document.querySelectorAll(
-    'button, input[type="submit"], input[type="button"], a[role="button"]'
-  )) {
-    // `value` first: a submit INPUT carries its visible text there and has no
-    // text between its tags at all.
-    if (APPLY_TEXT.test(el.value || el.textContent || "")) { affordance = true; break; }
-  }
-  if (affordance) evidence.push(["apply-affordance", 1]);
+  const APPLY_CONTROLS = 'button, input[type="submit"], input[type="button"], a[role="button"]';
+  // `value` first: a submit INPUT carries its visible text there and has no text between its tags at all.
+  const affords = (root) => [...root.querySelectorAll(APPLY_CONTROLS)].some((el) => APPLY_TEXT.test(el.value || el.textContent || ""));
+  if (affords(document) || roots().some(affords)) evidence.push(["apply-affordance", 1]);
 
   for (const [name] of evidence) signals.push(name);
   const score = evidence.reduce((total, [, weight]) => total + weight, 0);
@@ -286,7 +289,21 @@ function detectPage() {
     walk(root);
     return out;
   };
-  ns.deep = { all, closest, contains, up };
+  /** Every open shadow root under the document (nested ones included), in document order. */
+  const roots = () => {
+    const out = [];
+    const walk = (at) => {
+      for (const el of at.querySelectorAll("*")) {
+        if (el.shadowRoot) {
+          out.push(el.shadowRoot);
+          walk(el.shadowRoot);
+        }
+      }
+    };
+    walk(document);
+    return out;
+  };
+  ns.deep = { all, closest, contains, up, roots };
 })();
 
 /** How many on-screen fields this frame has that a fill could answer.

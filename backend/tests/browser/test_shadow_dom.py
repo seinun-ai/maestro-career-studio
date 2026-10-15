@@ -174,3 +174,31 @@ def test_the_fillable_count_is_above_zero_exactly_when_the_inventory_lists_a_fie
     assert listed == 7 and fillable == listed + 2   # the fields, and the two file inputs the count includes and the fill never types into
     load(page, shadow_page('<main><acme-button>Next</acme-button></main>'), SOURCES)
     assert page.evaluate(COUNTS)[:2] == [0, 0]
+
+
+# ---------- page detection (the panel's `hasForm`) ----------
+
+DETECT = "() => window.careerStudioCompanion.detectPage()"
+
+
+def test_page_detection_sees_the_application_form_a_page_of_shadow_components_holds(page, load):
+    """The panel withholds a manual Autofill on a page whose detection says there is no form; detection read only the light
+    DOM, where this page has none of the file input, the name boxes or the email and phone boxes it scores on."""
+    load(page, SHADOW, SOURCES)
+    verdict = page.evaluate(DETECT)
+    assert verdict["form"] is True and verdict["tier"] == "B"
+    assert {"resume-input", "identity-cluster"} <= set(verdict["signals"])
+
+
+def test_a_lone_email_box_in_a_shadow_root_is_still_no_form(page, load):
+    """The gate's own rule holds in the roots: a newsletter component is one field, and three different identity fields are the floor."""
+    load(page, shadow_page('<main><acme-input fid="news" label="Email" type="email"></acme-input></main>'), SOURCES)
+    verdict = page.evaluate(DETECT)
+    assert (verdict["form"], verdict["score"]) == (False, 0)
+
+
+def test_a_page_with_no_shadow_roots_is_detected_as_before(page, load):
+    load(page, "<form id='application_form'><input type='file' name='resume'><input name='first_name'><input name='last_name'>"
+               "<input type='email'></form>", SOURCES)
+    verdict = page.evaluate(DETECT)
+    assert verdict["form"] is True and "ats-dom-marker" in verdict["signals"]

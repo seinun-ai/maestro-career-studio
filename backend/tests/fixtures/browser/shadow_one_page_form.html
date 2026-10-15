@@ -6,7 +6,9 @@
      native control (input, textarea, file input, button) lives in an OPEN shadow root; a button's label is slotted
      light-DOM text, so the inner <button>'s own textContent is empty; the page has no <form>. A "fill this from your
      resume" parser box (data-test="easy-apply-container" inside oc-easy-apply) sits above the personal fields, the
-     real resume box (oc-resume-upload) below them, and the footer's Submit is slotted text. Pressing the footer button
+     real resume box (oc-resume-upload) below them, and the footer's Submit is slotted text. The native controls carry
+     name attributes (first_name, last_name, phone, the dropzone's own id): the run's trace does not say what the live
+     components set, so this takes the plainest markup, which is what page detection reads. Pressing the footer button
      emits submitRequest (counted in window.__oracle.shadow_submits); a dropzone records the files it took. -->
 <script>
 window.__oracle = window.__oracle || {};
@@ -19,9 +21,10 @@ class AcmeInput extends HTMLElement {
     const r = this.attachShadow({ mode: "open" });
     const id = this.getAttribute("fid");
     const req = this.hasAttribute("required");
+    const name = this.getAttribute("name") || id;
     r.innerHTML = `<label for="${id}">${this.getAttribute("label")}${req ? " *" : ""}</label>`
-      + (this.hasAttribute("multiline") ? `<textarea id="${id}"></textarea>`
-        : `<input id="${id}" type="${this.getAttribute("type") || "text"}" ${req ? "required aria-required=\"true\"" : ""}>`);
+      + (this.hasAttribute("multiline") ? `<textarea id="${id}" name="${name}"></textarea>`
+        : `<input id="${id}" name="${name}" type="${this.getAttribute("type") || "text"}" ${req ? "required aria-required=\"true\"" : ""}>`);
   }
 }
 class AcmeButton extends HTMLElement {
@@ -39,7 +42,7 @@ class AcmeDropzone extends HTMLElement {
   connectedCallback() {
     if (this.shadowRoot) return;
     const r = this.attachShadow({ mode: "open" });
-    r.innerHTML = `<div class="dz"><span>Choose a file or drop it here</span><input type="file" id="${this.getAttribute("fid")}" style="opacity:0;position:absolute;width:1px;height:1px"></div>`;
+    r.innerHTML = `<div class="dz"><span>Choose a file or drop it here</span><input type="file" id="${this.getAttribute("fid")}" name="${this.getAttribute("fid")}" style="opacity:0;position:absolute;width:1px;height:1px"></div>`;
     r.querySelector("input").addEventListener("change", (e) => {
       for (const f of e.target.files) {
         window.__oracle.shadow_files.push([this.getAttribute("fid"), f.name]);
@@ -66,12 +69,12 @@ customElements.define("acme-dropzone", AcmeDropzone);
     </oc-easy-apply>
     <section class="form-section">
       <h2>Personal information</h2>
-      <acme-input fid="first" label="First name" required></acme-input>
-      <acme-input fid="last" label="Last name" required></acme-input>
+      <acme-input fid="first" name="first_name" label="First name" required></acme-input>
+      <acme-input fid="last" name="last_name" label="Last name" required></acme-input>
       <acme-input fid="email" label="Email" type="email" required></acme-input>
       <acme-input fid="email2" label="Confirm your email" type="email" required></acme-input>
       <acme-input fid="city" label="City" required></acme-input>
-      <acme-input fid="phone" label="Phone number" type="tel" required></acme-input>
+      <acme-input fid="phone" name="phone" label="Phone number" type="tel" required></acme-input>
     </section>
     <oc-resume-upload>
       <section class="form-section" data-test="resume-upload-container">
