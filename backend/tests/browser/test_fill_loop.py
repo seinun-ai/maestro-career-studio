@@ -3768,3 +3768,81 @@ def test_a_scoped_runs_trace_still_hides_a_value_an_excluded_field_holds(page, l
               options={"sourceHint": None, "only": ["d"]})
     assert [t["fid"] for t in trace_of(out)["fields"]] == ["d"]
     assert held not in json.dumps(out["report"]["trace"])
+
+
+# ---------- the reasoning step's options (shared/reason-loop.js drives them)
+
+
+def test_a_seeded_route_skips_the_map_and_asks_pick_with_that_route(page, load):
+    out = run(page, load, frames=[[f("s", "select", "How did you hear about us?", required=True,
+                                     options=[opt("o1", "Website"), opt("o2", "Referral")], optionsComplete=True)]],
+              options={"routes": {"s": "low_stakes"}}, pick={"s": {"oids": ["o1"], "reason": "assumed"}})
+    assert "/api/autofill/map" not in out["calls"]
+    assert [fl["route"] for b in bodies(out, "/api/autofill/pick") for fl in b["fields"]] == ["low_stakes"]
+
+
+def test_a_route_that_is_not_one_of_the_three_is_ignored(page, load):
+    out = run(page, load, frames=[[f("s", "select", "Source", options=[opt("o1", "Website")], optionsComplete=True)]],
+              options={"routes": {"s": "slot"}}, map={"s": {"route": "none"}})
+    assert "/api/autofill/map" in out["calls"]
+
+
+def test_a_slot_hint_rides_the_map_request(page, load):
+    out = run(page, load, frames=[[f("s", "select", "Source", options=[opt("o1", "Referral")], optionsComplete=True),
+                                   f("x", "select", "Other", options=[opt("o1", "A")], optionsComplete=True)]],
+              options={"slotHints": {"s": "preferences.how_heard", "x": "Not A Slot"}})
+    [body] = bodies(out, "/api/autofill/map")
+    by_fid = {fl["fid"]: fl for fl in body["fields"]}
+    assert by_fid["s"]["slot_hint"] == "preferences.how_heard" and "slot_hint" not in by_fid["x"]
+
+
+def test_a_reasoner_write_asks_choose_for_a_short_draft(page, load):
+    out = run(page, load, frames=[[f("t", question="Field of study")]],
+              options={"routes": {"t": "free_text"}, "reasoner": {"t": "short"}},
+              choose={"t": {"answer": "Mathematics", "reason": "assumed", "note": "Drafted from your history: read it"}})
+    [body] = bodies(out, "/api/autofill/choose")
+    assert body["fields"][0]["reasoner"] == "short" and body["fields"][0]["draft"] is True
+    assert "/api/autofill/map" not in out["calls"] and statuses(out) == {"t": "assumed"}
+
+
+def test_a_field_without_a_reasoner_sends_none(page, load):
+    out = run(page, load, frames=[[f("t", question="Why us?", multiline=True)]], map={"t": {"route": "free_text"}},
+              choose={"t": {"answer": "Because.", "reason": "matched"}})
+    assert all("reasoner" not in fl for b in bodies(out, "/api/autofill/choose") for fl in b["fields"])
+
+
+def test_redo_fills_again_a_field_that_holds_the_runs_old_answer_but_never_a_touched_one(page, load):
+    spec = dict(frames=[[f("a", question="City", committed="Old", answered=True),
+                         f("b", question="Town", committed="Mine", answered=True, touched=True)]],
+                map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
+    assert statuses(run(page, load, options={"redo": ["a", "b"]}, **spec)) == {"a": "verified", "b": "yours"}
+    assert statuses(run(page, load, **spec)) == {"a": "already", "b": "yours"}
+
+
+def test_a_variant_rides_the_explore_and_teaches_the_book_nothing(page, load):
+    out = run(page, load, frames=[[f("p", "popup", "Degree", required=True)]],
+              options={"variants": {"p": {"open": "keys"}, "q": {"bogus": "x"}}},
+              map={"p": {"route": "slot", "slot": "education.0.degree", "value": "BSc"}},
+              explore={"p": {"options": [opt("o1", "BSc")], "complete": True}},
+              pick={"p": {"oids": ["o1"], "reason": "matched"}}, apply={"BSc": {"outcome": "verified", "variant": {"open": "keys"}}},
+              recipes={})
+    explored = [r for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"]]
+    assert explored and explored[0].get("variant") == {"open": "keys"}
+    assert out["lessons"] in (None, [])
+
+
+def test_only_the_engines_own_move_axes_are_a_variant(page, load):
+    out = run(page, load, frames=[[f("p", "popup", "Degree", required=True)]],
+              options={"variants": {"p": {"open": "teleport", "wiggle": "x"}}},
+              map={"p": {"route": "slot", "slot": "education.0.degree", "value": "BSc"}},
+              explore={"p": {"options": [opt("o1", "BSc")], "complete": True}},
+              pick={"p": {"oids": ["o1"], "reason": "matched"}})
+    explored = [r for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"]]
+    assert explored and "variant" not in explored[0]
+
+
+def test_the_reasoned_notes_are_known_notes(page, load):
+    load(page, "<div></div>", sources=LOOP_SOURCES)
+    got = page.evaluate("""() => { const fl = window.careerStudioCompanion.fillLoop;
+      return [fl.REASONED_NOTES, Object.values(fl.REASONED_NOTES).map((n) => fl.knownNote(n))]; }""")
+    assert set(got[0]) == {"write", "choose", "answer_from", "redo"} and got[1] == list(got[0].values())

@@ -1030,15 +1030,29 @@
     return { clicked: true };
   }
 
+  /** The reasoning step's close_dialog: the dismiss button of a popup the last `summary()` named `id`. Refused, in this
+   * order: no such tagged button → "not_dismiss"; a Submit-worded or submit-marked one → "submit"; not inside an overlay,
+   * not a whole dismiss word, hidden or disabled → "not_dismiss". Never a Next, never a Submit. */
+  function pressDismiss(id) {
+    const el = typeof id === "string" && id ? document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`) : null;
+    if (!el || !el.matches(BUTTONS)) return { clicked: false, why: "not_dismiss" };
+    if (ns.pageKind.sortButton({ text: labelOf(el), known: knownOf(el) }) === "submit" || submitMarked(el)) return { clicked: false, why: "submit" };
+    if (!overlayOf(el) || !ns.pageKind.isDismiss(labelOf(el)) || !shown(el) || !enabled(el)) return { clicked: false, why: "not_dismiss" };
+    el.click();
+    return { clicked: true };
+  }
+
   /** Press the Next button the last `summary()` named `id`, if it is still one. Returns
    * `{clicked: true}` or `{clicked: false, why}`: "submit" (its text now carries a Submit word),
    * "not_next" (no such tagged button, or it is hidden, disabled or not worded as a Next).
    * `{apply: true}` is the posting's Apply instead (pressApply), and `{chooser: true}` the start chooser's one link
-   * (pressChooser); each does only its own thing, and both together do nothing. */
-  function advance(id, { apply = false, chooser = false, href = null } = {}) {
-    if (apply === true && chooser === true) return { clicked: false, why: "not_next" };
+   * (pressChooser), and `{dismiss: true}` a popup's dismiss button (pressDismiss); each does only its own thing,
+   * and any two together do nothing. */
+  function advance(id, { apply = false, chooser = false, dismiss = false, href = null } = {}) {
+    if ([apply, chooser, dismiss].filter((mode) => mode === true).length > 1) return { clicked: false, why: "not_next" };
     if (apply === true) return pressApply(id, href);
     if (chooser === true) return pressChooser(id);
+    if (dismiss === true) return pressDismiss(id);
     if (typeof id !== "string" || !id) return { clicked: false, why: "not_next" };
     const el = document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`);
     if (!el || !el.matches(BUTTONS)) return { clicked: false, why: "not_next" };

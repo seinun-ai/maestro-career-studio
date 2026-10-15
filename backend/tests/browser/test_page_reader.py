@@ -2977,3 +2977,41 @@ def test_two_steps_inside_a_live_main_have_different_step_keys(page, load):
     load(page, step.format(h="Your experience"), SOURCES)
     second = summary(page)["stepKey"]
     assert first != "" and second != "" and first != second
+
+
+# ---------- the reasoning step's dismiss press ----------
+
+POPUP = """<div role="dialog" aria-modal="true"><p>We use cookies.</p>
+  <button>Reject all</button><button>Accept all</button><button>Close and submit</button></div>
+  <form><label>Name <input name="n"></label><button type="button">Next</button>
+  <button type="submit">Submit application</button></form><button>Close</button>"""
+
+
+def dismiss(page, button_id):
+    return page.evaluate(f"(id) => {READER}.advance(id, {{dismiss: true}})", button_id)
+
+
+def test_a_dismiss_press_closes_only_an_overlays_dismiss_button_and_never_a_submit(page, load):
+    load(page, POPUP, sources=SOURCES)
+    s = summary(page)
+    assert dismiss(page, button(s, "Reject all")["id"]) == {"clicked": True}
+    s = summary(page)
+    assert dismiss(page, button(s, "Accept all")["id"]) == {"clicked": False, "why": "not_dismiss"}
+    assert dismiss(page, button(s, "Close and submit")["id"]) == {"clicked": False, "why": "submit"}
+    assert dismiss(page, button(s, "Submit application")["id"])["clicked"] is False
+    assert dismiss(page, button(s, "Close")["id"]) == {"clicked": False, "why": "not_dismiss"}   # not in an overlay
+
+
+def test_a_dismiss_press_clicks_the_button_and_refuses_a_forged_id_a_submit_mark_and_two_modes(page, load):
+    load(page, """<div role="dialog" aria-modal="true"><button onclick="window.hits = (window.hits || 0) + 1">Close</button>
+      <button id="submit-x" onclick="window.hits = (window.hits || 0) + 1">Close</button>
+      <button disabled>Dismiss</button></div>""", sources=SOURCES)
+    s = summary(page)
+    first, marked, disabled = s["buttons"][0], s["buttons"][1], s["buttons"][2]
+    assert dismiss(page, first["id"]) == {"clicked": True} and page.evaluate("() => window.hits") == 1
+    assert dismiss(page, marked["id"]) == {"clicked": False, "why": "submit"}
+    assert dismiss(page, disabled["id"]) == {"clicked": False, "why": "not_dismiss"}
+    assert [dismiss(page, bad) for bad in ("nope", "", None, 3)] == [{"clicked": False, "why": "not_dismiss"}] * 4
+    both = page.evaluate(f"(id) => {READER}.advance(id, {{dismiss: true, chooser: true}})", first["id"])
+    assert both == {"clicked": False, "why": "not_next"} and page.evaluate("() => window.hits") == 1
+    assert page.evaluate("() => window.hits") == 1

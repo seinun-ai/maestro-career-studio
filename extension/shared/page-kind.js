@@ -10,7 +10,7 @@
  * words match as substrings (a "Reapply", an "Incomplete" and a "Submit_application" all stop),
  * the Next words must be the WHOLE label, and a visible-but-disabled Submit still counts.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageKind = { classify, sortButton, isPlainNext, submitMarked, movesOn, signedUpRead, KINDS }.
+ * WHAT THIS FILE PUBLISHES: ns.pageKind = { classify, sortButton, isPlainNext, isDismiss, submitMarked, movesOn, signedUpRead, KINDS }.
  * (submitMarked and movesOn read one button element's attributes and words, nothing else of the DOM.)
  */
 (() => {
@@ -48,6 +48,14 @@
     if (NEXT_WORDS.test(words.replace(/^[^a-z]+|[^a-z]+$/g, ""))) return "next";
     return "unclear";
   }
+
+  // A popup's way out, as the reasoning step's close_dialog presses it: the WHOLE label, never a Submit word
+  // (sortButton is asked first), never Cancel (it may cancel the application) or an Accept.
+  const DISMISS_WORDS = /^(close|dismiss|×|x|not now|no,? thanks|got it|ok(ay)?|reject( all)?( cookies)?|decline( all)?|skip)$/;
+  const isDismiss = (text) => {
+    const words = normalise(text);
+    return sortButton({ text: words }) !== "submit" && DISMISS_WORDS.test(words);
+  };
 
   /** Whether a button's text is a plain Next ("Next", "Next step", "Save and continue/next"). */
   function isPlainNext(text) {
@@ -149,6 +157,6 @@
         && b.fieldControl !== true && b.errorLine !== true && sortButton(b) === "next");
   }
 
-  ns.pageKind = { classify, sortButton, isPlainNext, submitMarked, movesOn, signedUpRead, KINDS: ["captcha", "create_account", "verify", "sign_in",
+  ns.pageKind = { classify, sortButton, isPlainNext, isDismiss, submitMarked, movesOn, signedUpRead, KINDS: ["captcha", "create_account", "verify", "sign_in",
     "confirmation", "closed", "chooser", "posting", "board_native", "form_step", "review", "unknown"] };
 })();

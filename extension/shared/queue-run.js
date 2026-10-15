@@ -105,7 +105,7 @@
  *                               readable itself, see SETTLING); `stop()` is the Stop check, so a
  *                               long load can be abandoned
  *   classify(tabId) → [{frameId, result: {summary, top}}]      tabUrl(tabId) → the tab's address
- *   advance(tabId, frameId, id, opts) → {clicked, why}         opts is {apply: true}, {chooser: true} or absent
+ *   advance(tabId, frameId, id, opts) → {clicked, why}         opts is {apply: true}, {chooser: true}, {dismiss: true} or absent
  *   fill(record, {limits}) → the fill-loop report              signIn(record, {allowedHost, stop}) → {signedIn}
  *   waitForChange(tabId, before, ms, stop, baseline) → {changed, url, errors, sameStep, fresh}
  *                                `baseline`: the error keys the page showed before the press
@@ -916,10 +916,11 @@
     async function advance(tabId, frameId, id, opts) {
       const apply = opts?.apply === true;
       const chooser = opts?.chooser === true;
+      const dismiss = opts?.dismiss === true;
       // The Apply press names the address it was judged on: the page refuses a link rewritten since the read.
       const href = apply && typeof opts.href === "string" ? opts.href : null;
       const frames = await broadcast(tabId, { type: "page_advance", id, ...(apply ? { apply: true } : {}), ...(href ? { href } : {}),
-                                              ...(chooser ? { chooser: true } : {}) }, frameId);
+                                              ...(chooser ? { chooser: true } : {}), ...(dismiss ? { dismiss: true } : {}) }, frameId);
       const answer = (Array.isArray(frames) ? frames : []).find((f) => f.frameId === frameId)?.result;
       return answer?.clicked === true ? { clicked: true } : { clicked: false, why: typeof answer?.why === "string" ? answer.why : "gate" };
     }

@@ -75,6 +75,12 @@
  *   field's adaptive step learnt (failed moves, how often each ran, terms
  *   tried), by the field's fingerprint, so a second call on the page keeps the
  *   twice cap and `tried_terms`. The record clears it when the step changes.
+ * - THE REASONING STEP's levers (`shared/reason-loop.js`; each keyed by fid, all optional, none a value):
+ *   `options.routes` (`low_stakes` | `reasoned` | `free_text`) seeds a field's route so /map is not asked (`free_text`
+ *   is a draft); `options.slotHints` (a fact NAME) rides /map as `slot_hint`; `options.reasoner` (`short` | `essay`)
+ *   rides /choose; `options.redo` fills a field the run already filled again (a touched field is still the user's);
+ *   `options.variants` (`{open?, search?}`, only the engine's own move axes) orders a popup or search's moves with
+ *   no recipe lookup, and teaches the book nothing.
  * - Exploring can commit (a search that finds one hit picks it): the page
  *   takes that back; one it could not take back leaves the field to the user,
  *   named (committed_while_exploring).
@@ -241,6 +247,10 @@
   const STEP_REASONS = new Set([...Object.keys(STATUS), "progress"]);
   const REFUSED = { yours: "yours", blocked: "blocked", unsupported: "cannot_operate" };
   const CAN_ADAPT = new Set(["popup", "search"]);
+  // The reasoning step's seeded routes, a fact name's shape, and the move axes a variant may order (shared/recipe-book.js AXES).
+  const SEEDED_ROUTES = new Set(["low_stakes", "reasoned", "free_text"]);
+  const SLOT_NAME = /^[a-z_]+(\.[a-z0-9_]+)*$/;
+  const VARIANT_AXES = { open: ["press", "keys"], search: ["enter", "debounce"] };
   // The widget kinds the step agent has a technique card for (backend autofill_techniques); a set of items is `multi`.
   const STEP_KINDS = new Set(["popup", "search", "group", "select", "date"]);
   // A recipe holds the moves of an axis; the page's own move of that axis is what worked here. Only
@@ -458,6 +468,16 @@
     const only = Array.isArray(options.only) ? new Set(options.only.map(String)) : null;
     const inScope = (fid) => !only || only.has(fid);
     const memory = options.memory && typeof options.memory === "object" ? options.memory : null;
+    // The reasoning step's levers (see the header): fid -> a checked value, anything else dropped.
+    const leversOf = (raw, ok) => new Map(Object.entries(raw && typeof raw === "object" ? raw : {})
+      .filter(([fid, v]) => FID.test(fid) && ok(v)));
+    const seededRoutes = leversOf(options.routes, (v) => SEEDED_ROUTES.has(v));
+    const slotHints = leversOf(options.slotHints, (v) => typeof v === "string" && v.length <= 120 && SLOT_NAME.test(v));
+    const reasoners = leversOf(options.reasoner, (v) => v === "short" || v === "essay");
+    const variants = new Map([...leversOf(options.variants, (v) => v && typeof v === "object")]
+      .map(([fid, v]) => [fid, Object.fromEntries(Object.entries(v).filter(([axis, move]) => VARIANT_AXES[axis]?.includes(move)))])
+      .filter(([, v]) => Object.keys(v).length));
+    const redo = new Set(Array.isArray(options.redo) ? options.redo.map(String) : []);
     const startedAt = new Date();
     const runDeadline = Date.now() + L.RUN_MS;
     const runId = newRunId();
@@ -773,6 +793,11 @@
     const lookUp = async (f) => {
       const row = rows.get(f.fid);
       if (row.recipeKeys !== undefined) return;
+      // The reasoning step's variant: the order it asked for, no book lookup and no keys, so nothing is taught.
+      if (variants.has(f.fid) && CAN_ADAPT.has(f.shape)) {
+        set(f.fid, { recipeKeys: null, recipe: { key: null, variant: variants.get(f.fid) } });
+        return;
+      }
       const keys = recipes && CAN_ADAPT.has(f.shape) && f.recipe?.family && f.recipe?.site
         ? { family: String(f.recipe.family), site: String(f.recipe.site) } : null;
       let found = null;
@@ -1556,7 +1581,7 @@
     const answerProse = async (fields) => {
       const got = await ns.requestChoose(
         fields.map((f) => ({ qid: f.fid, label: question(f), kind: "textarea", options: [], required: Boolean(f.required),
-          draft: rows.get(f.fid)?.draft === true })),
+          draft: rows.get(f.fid)?.draft === true, ...(reasoners.has(f.fid) ? { reasoner: reasoners.get(f.fid) } : {}) })),
         {
           postChoose: (body) => bounded(() => api("/api/autofill/choose", { method: "POST", body: JSON.stringify(body) })),
           applicationId: selector.application_id,
@@ -1608,13 +1633,15 @@
               : old.status === "open" ? "retry" : old.status;
           rows.set(f.fid, { ...(old ?? { attempts: 0, steps: [] }), fid: f.fid, status: carried });
         }
-        const row = set(f.fid, { field: f, frameId });
+        // A route the reasoning step seeded (a field /map has not filed): `free_text` is a draft.
+        const seeded = rows.get(f.fid)?.route ? null : seededRoutes.get(f.fid);
+        const row = set(f.fid, { field: f, frameId, ...(seeded ? { route: seeded, ...(seeded === "free_text" ? { draft: true } : {}) } : {}) });
         listed.push(f.fid);
         if (f.policyBlocked) finish(f, "blocked", { lastOutcome: "blocked" });
         else if (f.touched) finish(f, "yours", { lastOutcome: "yours" });
         else if (f.kind === "unknown" || f.shape === "unknown" || !FID.test(f.fid)) {
           finish(f, "cannot_operate", { lastOutcome: "unsupported" });
-        } else if (row.status === "new" && f.answered && !f.invalid && !row.leftover) {
+        } else if (row.status === "new" && f.answered && !f.invalid && !row.leftover && !redo.has(f.fid)) {
           // A URL the box holds is compared with the profile's before it counts as the answer
           // (a parsed resume left "example.dev" where the website belongs): mapped first.
           if (heldUrl(f)) {
@@ -1653,7 +1680,7 @@
           ...selector,
           fields: part.map((f) => ({
             fid: f.fid, question: question(f), section: f.section ? String(f.section).slice(0, 200) : null,
-            repeat_index: entryIndex(f.repeatIndex), ...placement(f), shape: f.shape,
+            repeat_index: entryIndex(f.repeatIndex), ...placement(f), ...(slotHints.has(f.fid) ? { slot_hint: slotHints.get(f.fid) } : {}), shape: f.shape,
             multi: Boolean(f.multi), required: Boolean(f.required),
             options: usable(f.options).slice(0, MAP_OPTIONS).map((o) => o.text.slice(0, 300)),
           })),
@@ -2472,11 +2499,16 @@
   // value-free lines for a value the engine landed without choosing it (`queueRun.LANDED`). Anything else /choose
   // sends is dropped, so server text never reaches the panel.
   const DRAFT_NOTE = "Drafted from your history: read it";
-  const KNOWN_NOTES = new Set([...Object.values(ASSUMED_DATE), DRAFT_NOTE, landedNote(null, "search_committed"), landedNote(null)]);
+  // The reasoning step's rows under "Check before you submit" (shared/reason-loop.js): what it answered for you, by
+  // a fixed sentence, never the value.
+  const REASONED_NOTES = Object.freeze({ write: "Written for you: read it", choose: "Chosen for you: check it",
+    answer_from: "Chosen for you: check it", redo: "Filled again: check it" });
+  const KNOWN_NOTES = new Set([...Object.values(ASSUMED_DATE), DRAFT_NOTE, landedNote(null, "search_committed"), landedNote(null),
+    ...Object.values(REASONED_NOTES)]);
   const knownNote = (note) => (KNOWN_NOTES.has(note) ? note : null);
 
   // The run record's memory for `runFill(..., { memory })`: made once per record and cleared when the
   // step changes. It holds search terms, which can carry a value, so it saves as nothing.
   const newMemory = () => Object.defineProperty({}, "toJSON", { value: () => undefined });
-  ns.fillLoop = { runFill, newMemory, knownNote, landedNote, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
+  ns.fillLoop = { runFill, newMemory, knownNote, landedNote, REASONED_NOTES, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
 })();

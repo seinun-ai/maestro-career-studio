@@ -147,7 +147,7 @@ ns.pageReader = {
   fieldWords: (el) => "Upload", uploadTag: (el) => "t-1",
   pageErrors: () => { calls.push(["pageReader.pageErrors"]); return { count: 1, items: [{ label: "City", target: "f-1", kind: "field" }] }; },
   // The Apply flag rides as a third element only when it was true: a plain Next click never carries it.
-  advance: (id, opts) => { calls.push(opts?.apply === true ? ["pageReader.advance", id, "apply", ...(opts.href ? [opts.href] : [])] : ["pageReader.advance", id]); return { clicked: true }; },
+  advance: (id, opts) => { calls.push(opts?.apply === true ? ["pageReader.advance", id, "apply", ...(opts.href ? [opts.href] : [])] : opts?.dismiss === true ? ["pageReader.advance", id, "dismiss"] : ["pageReader.advance", id]); return { clicked: true }; },
   // Records WHICH keys arrived and whether each value is the message's own, never the values: the
   // secret must not ride out in a call log. `spec.signInThrows` models page script throwing it.
   signIn: (a) => {
@@ -182,6 +182,7 @@ main(async () => {
     ...(spec.peek ? { peek: true } : {}),
     ...(spec.apply === undefined ? {} : { apply: spec.apply }),
     ...(spec.href === undefined ? {} : { href: spec.href }),
+    ...(spec.dismiss === undefined ? {} : { dismiss: spec.dismiss }),
     ...(spec.readOnly ? { readOnly: true } : {}),
     // The origin the panel vouches for (`withFlowOrigin`), only when stated.
     ...(spec.flowOrigin === undefined ? {} : { flowOrigin: spec.flowOrigin }),
@@ -193,12 +194,14 @@ main(async () => {
 
 def _run(tmp_path, *, type_, top_frame, form=False, detect_throws=False, file_inputs=(),
          expect=None, peek=False, flow_origin=None, origin=None, controls=None,
-         read_only=False, apply=None, href=None):
+         read_only=False, apply=None, href=None, dismiss=None):
     extra = {}
     if apply is not None:
         extra["apply"] = apply
     if href is not None:
         extra["href"] = href
+    if dismiss is not None:
+        extra["dismiss"] = dismiss
     if controls is not None:
         extra["controls"] = list(controls)
     if flow_origin is not None:
@@ -648,6 +651,17 @@ def test_page_errors_reads_the_page_and_forwards_nothing(tmp_path):
 ])
 def test_page_advance_forwards_the_apply_flag_only_when_it_is_exactly_true(tmp_path, apply, expected):
     out = _run(tmp_path, type_="page_advance", top_frame=True, apply=apply)
+    assert out["calls"] == expected
+
+
+@pytest.mark.parametrize("dismiss, expected", [
+    (None, [["pageReader.advance", "tag-3"]]),
+    (False, [["pageReader.advance", "tag-3"]]),
+    ("yes", [["pageReader.advance", "tag-3"]]),   # only a true boolean is the dismiss call
+    (True, [["pageReader.advance", "tag-3", "dismiss"]]),
+])
+def test_page_advance_forwards_the_dismiss_flag_only_when_it_is_exactly_true(tmp_path, dismiss, expected):
+    out = _run(tmp_path, type_="page_advance", top_frame=True, dismiss=dismiss)
     assert out["calls"] == expected
 
 
