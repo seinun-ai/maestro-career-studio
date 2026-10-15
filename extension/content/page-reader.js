@@ -781,7 +781,7 @@
     if ((input.files?.length ?? 0) > 0) return true;
     const box = uploadBox(input).slice(0, 4).at(-1) ?? up(input);
     if (!box) return false;
-    if (FILE_NAME.test(box.innerText ?? "")) return true;
+    if (FILE_NAME.test(ns.deep.text(box, "innerText"))) return true;
     return deepAll('button, [role="button"]', box)
       .some((c) => REMOVE_WORD.test(`${c.textContent} ${c.getAttribute("aria-label") ?? ""}`));
   }

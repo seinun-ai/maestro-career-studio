@@ -39,10 +39,15 @@ class AcmeButton extends HTMLElement {
   }
 }
 class AcmeDropzone extends HTMLElement {
+  // `hidden-input`: the file input is display:none (the visible face is the zone). `clears`: the component takes the file and
+  // empties its input in the same tick, showing the name in a row inside its shadow root (Workday's uploader does the same in
+  // the light DOM). `required`: the input is required.
   connectedCallback() {
     if (this.shadowRoot) return;
     const r = this.attachShadow({ mode: "open" });
-    r.innerHTML = `<div class="dz"><span>Choose a file or drop it here</span><input type="file" id="${this.getAttribute("fid")}" name="${this.getAttribute("fid")}" style="opacity:0;position:absolute;width:1px;height:1px"></div>`;
+    const hide = this.hasAttribute("hidden-input") ? "display:none" : "opacity:0;position:absolute;width:1px;height:1px";
+    const req = this.hasAttribute("required") ? " required aria-required=\"true\"" : "";
+    r.innerHTML = `<div class="dz"><span>Choose a file or drop it here</span><input type="file" id="${this.getAttribute("fid")}" name="${this.getAttribute("fid")}"${req} style="${hide}"></div>`;
     r.querySelector("input").addEventListener("change", (e) => {
       for (const f of e.target.files) {
         window.__oracle.shadow_files.push([this.getAttribute("fid"), f.name]);
@@ -50,6 +55,7 @@ class AcmeDropzone extends HTMLElement {
         row.textContent = f.name;
         r.querySelector(".dz").append(row);
       }
+      if (this.hasAttribute("clears")) e.target.value = "";
     });
   }
 }

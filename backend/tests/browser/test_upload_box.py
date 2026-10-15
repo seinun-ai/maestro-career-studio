@@ -696,3 +696,29 @@ def test_a_shadow_dropzone_named_by_a_label_in_its_own_shadow_root_is_that_docum
                  'this.attachShadow({mode: "open"}).innerHTML = this.getAttribute("tpl"); } });</script>'
                  '<main><x-drop tpl=\'<span id="lbl">Cover letter</span><div><input type="file" aria-labelledby="lbl" style="opacity:0;width:1px;height:1px"></div>\'></x-drop></main>')
     assert [box["kind"] for box in _uploads(blank)] == ["other"]
+
+
+# A component that takes the file, empties its own input and shows the file's name in a row INSIDE its shadow root (Workday's
+# uploader does this in the light DOM): the row is the only proof the file went in, and it is in text no textContent reads.
+CLEARING = SHADOW.replace('<acme-dropzone fid="resume">', '<acme-dropzone fid="resume" hidden-input clears required>')
+
+
+def test_a_shadow_uploader_that_empties_its_input_and_shows_a_row_in_its_shadow_root_is_written_and_proven(blank):
+    _load(blank, CLEARING)
+    assert _attach(blank, expect=2) == {"written": 1, "proven": 1}
+    assert oracle(blank, "shadow_files") == [["resume", "Jane_Doe_Resume.pdf"]]
+
+
+def test_the_row_in_the_shadow_root_makes_the_box_occupied_and_no_longer_a_required_empty(blank):
+    _load(blank, CLEARING)
+    assert [box["occupied"] for box in _uploads(blank)] == [False, False]
+    assert blank.evaluate("() => window.careerStudioCompanion.pageReader.summary().requiredEmpty") == 7   # six fields and the box
+    _attach(blank, expect=2)
+    assert [box["occupied"] for box in _uploads(blank)] == [False, True]
+    assert blank.evaluate("() => window.careerStudioCompanion.pageReader.summary().requiredEmpty") == 6
+
+
+def test_an_error_the_shadow_uploader_prints_beside_its_row_voids_the_proof(blank):
+    """The row proof is a difference with no new error: an error inside the shadow root counts, as it does in the light DOM."""
+    _load(blank, CLEARING.replace('row.textContent = f.name;', 'row.textContent = f.name + " could not be uploaded";'))
+    assert _attach(blank, expect=2) == {"written": 1, "proven": 0}

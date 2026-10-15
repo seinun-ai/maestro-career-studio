@@ -291,7 +291,7 @@
   function hasFile(input, box) {
     if ((input.files?.length ?? 0) > 0) return true;
     if (!box) return false;
-    if (FILE_ROW.test(String(box.innerText ?? ""))) return true;
+    if (FILE_ROW.test(ns.deep.text(box, "innerText"))) return true;
     if (ns.deep.all('[data-automation-id="file-upload-item"]', box).length) return true;
     return ns.deep.all('button, [role="button"]', box).some((control) =>
       REMOVE_CONTROL.test(`${control.textContent} ${control.getAttribute("aria-label") ?? ""}`));
@@ -451,12 +451,12 @@
    * success row, even where the widget's error total did not rise because the
    * page cleared an old error as it printed the new one. */
   function rowsNaming(widget, filename) {
-    if (!widget.textContent.includes(filename)) return 0;
-    return [widget, ...widget.querySelectorAll("*")].filter((el) =>
-      el.textContent.includes(filename)
-      && ![...el.children].some((child) => child.textContent.includes(filename))
+    const { all, text, kids, scope } = ns.deep;   // composed: a row drawn inside a shadow root is in no textContent
+    return scope(() => (!text(widget).includes(filename) ? 0 : [widget, ...all("*", widget)].filter((el) =>
+      text(el).includes(filename)
+      && !kids(el).some((child) => text(child).includes(filename))
       && isOnScreen(el)
-      && errorWords(el.textContent, filename) === 0).length;
+      && errorWords(text(el), filename) === 0).length));
   }
 
   /** The widget's error total: error words in its RENDERED text (a hidden
@@ -465,9 +465,9 @@
    * of a hidden element still returns its text, and an alert nobody can see
    * tells the user nothing. */
   function uploadErrors(widget, filename) {
-    const alarming = [widget, ...widget.querySelectorAll(UPLOAD_ALERT)].filter((el) =>
+    const alarming = [widget, ...ns.deep.all(UPLOAD_ALERT, widget)].filter((el) =>
       el.matches(UPLOAD_ALERT) && isOnScreen(el) && String(el.innerText ?? "").trim() !== "").length;
-    return errorWords(widget.innerText ?? widget.textContent, filename) + alarming;
+    return errorWords(ns.deep.text(widget, "innerText"), filename) + alarming;
   }
 
   /** Attach a PDF to every attachable file input in this frame, and report how
