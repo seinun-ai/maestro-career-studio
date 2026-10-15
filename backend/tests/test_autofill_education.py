@@ -349,3 +349,40 @@ def test_the_step_clicks_the_generic_degree_type_the_page_lists(db_session):
     assert (got.mid, got.reason) == ("click:o9", "matched")   # Master's Degree
     got = autofill_step.step(req, facts_of(("MBA", "2024")), db_session, None)
     assert got.mid == "click:o8"   # Master of Business Administration (M.B.A.)
+
+
+# ---------- review of the degree-type rule
+
+@pytest.mark.parametrize("saved", ["MD", "JD", "B.Com", "BCom", "BBA", "EMBA", "MCA", "Diploma", "Post Graduate Diploma",
+                                   "Certificate in Data"])
+def test_a_saved_degree_naming_no_level_is_not_this_rules_to_answer(saved):
+    """Not an abstain: the ordinary path may know what "BBA" or "JD" is."""
+    assert autofill_education.degree_type(saved, [(f"o{i}", t) for i, t in enumerate(GREENHOUSE_DEGREES, 1)]) is None
+
+
+@pytest.mark.parametrize("saved", ["MS in Business Administration", "M.S. in Business Administration",
+                                   "Master of Science in Business Administration", "MSc Business Administration"])
+def test_a_science_degree_in_business_administration_is_a_generic_masters_not_an_mba(db_session, saved):
+    assert degree_pick(saved, GREENHOUSE_DEGREES, db_session) == ("Master's Degree", "matched")
+
+
+@pytest.mark.parametrize("saved", ["Master's in Business Administration", "Master of Business Administration", "Executive MBA",
+                                   "MBA, Finance", "M.B.A."])
+def test_an_mba_is_read_from_the_mba_words_alone(db_session, saved):
+    assert degree_pick(saved, GREENHOUSE_DEGREES, db_session) == ("Master of Business Administration (M.B.A.)", "matched")
+
+
+@pytest.mark.parametrize("saved", ["Master of Science (in progress)", "Master of Science, expected 2027", "MBA (in progress)",
+                                   "Bachelor's, currently enrolled", "Some college, Bachelor's"])
+def test_a_degree_still_in_progress_is_left_to_the_ordinary_path(saved):
+    assert autofill_education.degree_type(saved, [(f"o{i}", t) for i, t in enumerate(GREENHOUSE_DEGREES, 1)]) is None
+
+
+def test_pick_decides_a_degree_type_whether_or_not_the_education_level_fact_exists(db_session):
+    """An unfinished entry (end year ahead) derives no education level, and the degree-type list is still answered in code,
+    as /step does."""
+    unfinished = facts_of(("Master of Science", "2030"))
+    assert SLOT not in unfinished
+    out = autofill_pick.pick([PickField(fid="d", question="Degree", route="slot", slot=DEG, options=opts(*GREENHOUSE_DEGREES))],
+                             unfinished, db_session, None)["d"]
+    assert (out.oids, out.reason) == (["o9"], "matched")

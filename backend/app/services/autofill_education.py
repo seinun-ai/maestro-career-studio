@@ -130,7 +130,14 @@ def decide(value: str, options: list[tuple[str, str]], *, complete: bool = True)
     return Decision(oid, "closest", True) if complete else Decision(None, "abstained", True)
 
 
-_MBA = re.compile(r"(?<![\w.'-])M\.?\s?B\.?\s?A\b|business\s+administration", re.IGNORECASE)
+# MBA: the abbreviation, or "Master('s) of/in Business Administration", and not a science degree in that field ("MS in
+# Business Administration", "Master of Science in Business Administration" are generic Master's).
+_MBA = re.compile(r"(?<![\w.'-])M\.?\s?B\.?\s?A\b|\bmasters?(?:['\u2019]s)?\s+(?:of|in)\s+business\s+administration\b", re.IGNORECASE)
+_SCIENCE = re.compile(r"\bscience\b|(?<![\w.'-])M\.?\s?S(?:\.?c)?\b", re.IGNORECASE)
+
+
+def _says_mba(text: str) -> bool:
+    return bool(_MBA.search(text)) and not _SCIENCE.search(text)
 
 
 def _level_named(text: str) -> list[str]:
@@ -143,7 +150,7 @@ def degree_type(value: str, options: list[tuple[str, str]], *, complete: bool = 
     names only one level, as "Master's Degree" does: the ordinary pick decides). The generic option for the saved
     level; an MBA option only when `value` says MBA or Business Administration (else the generic one, or on a
     partial list nobody: the MBA may be unseen). Ambiguous (several generic options for the level, or a degree that
-    names several levels) abstains."""
+    names several levels) abstains. A saved degree that names no level or says it is unfinished is not this rule's (None)."""
     generic: dict[str, list[str]] = {}
     mba: list[str] = []
     for oid, text in options:
@@ -151,14 +158,15 @@ def degree_type(value: str, options: list[tuple[str, str]], *, complete: bool = 
             continue
         if _plain(text):
             generic.setdefault(levels[0], []).append(oid)
-        elif levels[0] == "master" and _MBA.search(text):
+        elif levels[0] == "master" and _says_mba(text):
             mba.append(oid)
     if not generic:
         return None
-    mine = _level_named(value)
+    if _NOT_COMPLETED.search(value) or not (mine := _level_named(value)):
+        return None   # unfinished, or no level in its words ("BBA", "MD", "Diploma"): the ordinary path may know
     if len(mine) != 1 or len(generic.get(mine[0], [])) > 1:
         return Decision(None, "abstained", True)
-    if mine[0] == "master" and _MBA.search(value):
+    if mine[0] == "master" and _says_mba(value):
         if mba:
             return Decision(mba[0], "matched", True) if len(mba) == 1 else Decision(None, "abstained", True)
         if not complete:
