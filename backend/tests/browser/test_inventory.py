@@ -881,6 +881,28 @@ def test_a_paragraph_that_asks_for_no_choice_is_still_no_question(page, load, pa
 # free text and it was left. The question before it, and the answer the page
 # shows for it, go in front.
 
+# A follow-up that names a noun joins the earlier question that names it, not simply the nearest control (live check 9: "the
+# referring employee" sat under the question about phone numbers, and joined that).
+EMPLOYEE = "<label for=r>Were you referred by an Acme employee?</label><select id=r><option>No</option></select>"
+OTHER = "<label for=p>Mobile phone number</label><input id=p>"
+FOLLOW = "<label for=a>If applicable, please list the name of the referring employee.</label><input id=a>"
+
+
+@pytest.mark.parametrize("html, question", [
+    (EMPLOYEE + OTHER + FOLLOW,
+     "Were you referred by an Acme employee? — If applicable, please list the name of the referring employee."),
+    # the nearest control is the one that shares the noun: unchanged
+    (OTHER + EMPLOYEE + FOLLOW,
+     "Were you referred by an Acme employee? — If applicable, please list the name of the referring employee."),
+    # no earlier question shares it: the nearest control, as before
+    (OTHER + FOLLOW, "Mobile phone number — If applicable, please list the name of the referring employee."),
+], ids=["earlier-sharing", "nearest-sharing", "none-sharing"])
+def test_a_follow_up_joins_the_earlier_question_that_shares_its_noun(page, load, html, question):
+    load(page, html)
+    got = page.evaluate("sel => window.careerStudioCompanion.readField(document.querySelector(sel))", "#a")
+    assert got["question"] == question
+
+
 @pytest.mark.parametrize("html, question", [
     # the question and its shown answer are text, not a control
     ("<p>How did you hear about this opportunity?</p><p>Job Board (Indeed/Glassdoor)</p>"

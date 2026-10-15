@@ -408,11 +408,29 @@
   // question. Read only for such a label, never for one that asks.
   const FOLLOW_UP = /^(if (applicable|yes|no|so|other|selected|referred|any)\b|please (specify|explain|provide|describe|list|elaborate)\b|(other|explain|details?|specify|comments?)\b)/i;
   const CONTEXT_MAX = 160;
+  const earlierControls = (el, anchor) => [...(el.closest("form") ?? el.getRootNode().body ?? document.body).querySelectorAll(CONTROL)]
+    .filter((c) => c !== el && otherControl(c, el) && precedes(c, anchor) && ns.fillBase.visible(c));
+  // A control's own question: the first source that reads one.
+  const askedOf = (control) => {
+    for (const [, read] of SOURCES) {
+      try {
+        const q = unmark(read(control)).text;
+        if (q) return q.slice(0, CONTEXT_MAX);
+      } catch { /* the next source */ }
+    }
+    return "";
+  };
+  // The nouns a question names: words of five letters or more, cut to six so "referring" and "referred" meet, less the words a
+  // follow-up is made of.
+  const FOLLOW_WORDS = new Set(["applicable", "please", "specify", "explain", "provide", "describe", "elaborate", "selected",
+    "details", "comments", "other", "answer", "above", "below", "question"]);
+  const nouns = (text) => new Set((String(text).toLowerCase().match(/\p{L}{5,}/gu) ?? [])
+    .filter((word) => !FOLLOW_WORDS.has(word)).map((word) => word.slice(0, 6)));
+  const EARLIER_MAX = 8;
   const followed = (el, own) => {
     const root = el.closest("form") ?? el.getRootNode().body ?? document.body;
     const anchor = own ?? el;
-    const prev = [...root.querySelectorAll(CONTROL)].filter((c) => c !== el && otherControl(c, el)
-      && precedes(c, anchor) && ns.fillBase.visible(c)).at(-1) ?? null;
+    const prev = earlierControls(el, anchor).at(-1) ?? null;
     let between = "";
     const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     for (let t = walk.nextNode(); t; t = walk.nextNode()) {
@@ -426,20 +444,22 @@
       const start = Math.max(text.slice(0, asked).search(/[^.?!]*$/), 0);
       return clean(text.slice(start)).slice(0, CONTEXT_MAX);
     }
-    if (!prev) return "";
-    for (const [, read] of SOURCES) {
-      try {
-        const q = unmark(read(prev)).text;
-        if (q) return q.slice(0, CONTEXT_MAX);
-      } catch { /* the next source */ }
-    }
-    return "";
+    return prev ? askedOf(prev) : "";
   };
   const withFollowed = (el, question, source) => {
     const bare = unmark(question).text;
     if (!FOLLOW_UP.test(bare) || isChoice(el)) return question;
     const own = source === "label-for" ? rootOf(el).querySelector?.(`label[for="${CSS.escape(el.id)}"]`) : null;
-    const before = followed(el, own ?? el.closest("label") ?? null);
+    const anchor = own ?? el.closest("label") ?? null;
+    let before = followed(el, anchor);
+    // THE QUESTION IT FOLLOWS is the one that names its noun ("the referring employee" follows "Were you referred by an
+    // employee?"), which is not always the nearest control: when the nearest names none of it, the nearest earlier one that does wins.
+    const noun = nouns(bare);
+    const shares = (text) => [...nouns(text)].some((word) => noun.has(word));
+    if (noun.size && before && !shares(before)) {
+      const better = earlierControls(el, anchor ?? el).reverse().slice(0, EARLIER_MAX).map(askedOf).find((q) => q && shares(q));
+      if (better) before = better;
+    }
     return before ? `${before} — ${question}` : question;
   };
 
