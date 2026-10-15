@@ -515,6 +515,12 @@ NAMES_PROTECTED_CLASS = re.compile(
     r"|\bcovered\s+veterans?\b|\bservice[-\s]connected\b|\bvietnam[-\s]era\b"
     r"|\bactive\s+duty\b.*\b(?:war|campaign)", re.IGNORECASE)
 
+# The facts no reasoning step may answer or retarget: the driver's own list (extension/shared/queue-run.js
+# PROTECTED_SLOT, pinned identical by tests/test_autofill_reason_schema.py).
+PROTECTED_SLOT = re.compile(
+    r"^(?:work_auth|eligibility|eeo)\.|^derived\.(?:sponsorship|previously_employed_here|us_citizen|agrees_to_terms)"
+    r"|^preferences\.desired_salary")
+
 
 def names_veteran_off_slot(slot: str | None, question: str, fact: "Fact | None" = None) -> bool:
     """A question that names a veteran, under an answer that is not the veteran answer. Under another
