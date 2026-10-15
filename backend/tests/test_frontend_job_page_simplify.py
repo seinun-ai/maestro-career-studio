@@ -288,3 +288,18 @@ def test_ci_runs_every_frontend_lib_test_and_the_inbox_render_test():
     second = ci.index("- name: Render the second-copy card")
     assert "second-copy card under node" in ci[second - 400 : second]
     assert "job page and Agent inbox pieces" not in ci[ci.index("# Renders the second-copy card") : second]
+
+
+# ── Re-review: a Draft is not applied, and the line waits for a skip's reason ──────────────────────────
+
+
+def test_a_draft_application_never_reads_applied_from_its_old_proposal():
+    lib = _read("lib/job-standing.ts")
+    assert 'if (!application && proposal?.status === "submitted") {' in lib
+    assert "submission_uncertain:" in lib
+    delete = _JOB[_JOB.index("const showDeleteProposal =") : _JOB.index("const triagePending")]
+    assert 'hasApp && historyStatusOf(proposalStatus as ProposalStatus, proposalQuery.data?.reason) === "submitted"' in delete
+
+
+def test_the_standing_line_holds_its_words_while_a_skips_reason_loads():
+    assert '!hasApp && proposalStatus === "rejected" && proposalQuery.isLoading ? null : <span>{standing.text}</span>' in _JOB

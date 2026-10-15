@@ -417,6 +417,7 @@ export default function JobDetailPage({
   const showDeleteProposal =
     !!proposalId &&
     standing.kind !== "applied" &&
+    !(hasApp && historyStatusOf(proposalStatus as ProposalStatus, proposalQuery.data?.reason) === "submitted") &&
     (proposalStatus === "needs_decision" ||
       proposalStatus === "needs_human" ||
       proposalStatus === "rejected" ||
@@ -661,7 +662,8 @@ export default function JobDetailPage({
           data-testid="job-standing"
           className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-body-medium"
         >
-          <span>{standing.text}</span>
+          {/* A skip's reason decides whether it reads Applied yourself: hold the words until it loads. */}
+          {!hasApp && proposalStatus === "rejected" && proposalQuery.isLoading ? null : <span>{standing.text}</span>}
           {standing.pdf && application ? (
             <a
               href={apiUrlForBrowserPdf(`/api/applications/${application.id}/pdf`)}

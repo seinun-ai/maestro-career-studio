@@ -310,8 +310,8 @@ jobs:
         run: cd frontend && node --test lib/*.test.ts
 
       # Renders the job page and Agent inbox pieces (summary line, run line, daily limit, knock-out
-      # line, proposal card) the same way; the backend job skips its copy
-      # (backend/tests/test_frontend_job_page_simplify.py).
+      # line, proposal card) for real. Like the two steps below it needs the installed packages, so it
+      # runs here; the backend job skips its copy (backend/tests/test_frontend_job_page_simplify.py).
       - name: Render the job page and Agent inbox pieces
         run: cd frontend && node --test components/inbox-simplify.test.mjs
 

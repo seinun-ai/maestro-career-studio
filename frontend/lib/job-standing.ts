@@ -62,13 +62,14 @@ const OPEN_PROPOSAL: Record<string, string> = {
   approved: "your agent is applying",
   needs_decision: "your agent needs you (below)",
   needs_human: "your agent needs you (below)",
+  submission_uncertain: "your agent isn't sure it went through: check the Agent inbox",
 };
 
 /**
  * "Where this stands", the line under the header. Applied: when, and with which resume (named, with no score:
  * the header's pill has it). A draft: not applied, its resume, and where its open proposal is. No application:
  * not applied yet. A job counts as applied when its application is in a submitted stage or carries an applied
- * date (a rejection or withdrawal keeps it), or when its proposal records that it went out (`status`
+ * date (a rejection or withdrawal keeps it), or, with no application, when its proposal records that it went out (`status`
  * "submitted"; `yourself`: you applied outside the agent, the History lane's Applied yourself). The dates are
  * in words, formatted by the caller.
  */
@@ -92,7 +93,8 @@ export function standingLine(args: {
     const text = ["Applied", appliedOn, resume ? `with ${resume}` : null].filter(Boolean).join(" ");
     return { kind: "applied", text, pdf, submitted: hasFilledAnswers, pointer: false };
   }
-  if (proposal?.status === "submitted") {
+  // With an application the application decides: one set back to Draft is not applied, whatever its old proposal says.
+  if (!application && proposal?.status === "submitted") {
     const text = [proposal.yourself ? "Applied yourself" : "Applied", proposal.on].filter(Boolean).join(" ");
     return { kind: "applied", text, pdf, submitted: hasFilledAnswers, pointer: false };
   }

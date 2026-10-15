@@ -92,7 +92,7 @@ test("a draft with an open proposal says where the proposal is, and drops the po
 });
 
 test("a closed proposal that was skipped or expired leaves the draft's ordinary line", () => {
-  for (const status of ["rejected", "expired", "submission_uncertain"]) {
+  for (const status of ["rejected", "expired"]) {
     const line = standingLine({ ...standing0, application: draft, resumeName: "Data Scientist", proposal: { status, yourself: false, on: null } });
     assert.equal(line.text, "Not applied · Data Scientist resume", status);
     assert.equal(line.pointer, true);
@@ -116,8 +116,23 @@ test("no application, but the proposal records an application that went out", ()
   assert.equal(standingLine({ ...standing0, proposal: { status: "submitted", yourself: true, on: null } }).text, "Applied yourself");
 });
 
-test("a draft whose proposal says it went out is applied too, and keeps its PDF link", () => {
-  const line = standingLine({ ...standing0, application: { ...draft, pdf_path: "x.pdf" }, proposal: { status: "submitted", yourself: false, on: "Oct 4" } });
-  assert.equal(line.kind, "applied");
-  assert.equal(line.pdf, true);
+test("an application set back to Draft is not applied, whatever its old proposal says", () => {
+  const line = standingLine({
+    ...standing0, application: { ...draft, pdf_path: "x.pdf" }, resumeName: "Data Scientist",
+    proposal: { status: "submitted", yourself: true, on: "Oct 4" },
+  });
+  assert.equal(line.kind, "draft");
+  assert.equal(line.pointer, true);
+  assert.equal(line.pdf, false);
+  assert.equal(line.text, "Not applied · Data Scientist resume");
+});
+
+test("a draft whose submit the agent could not confirm says so and drops the pointer", () => {
+  const line = standingLine({
+    ...standing0, application: draft, resumeName: "Data Scientist",
+    proposal: { status: "submission_uncertain", yourself: false, on: null },
+  });
+  assert.equal(line.text, "Not applied · your agent isn't sure it went through: check the Agent inbox");
+  assert.equal(line.kind, "draft");
+  assert.equal(line.pointer, false);
 });
