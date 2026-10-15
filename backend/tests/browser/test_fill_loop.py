@@ -3152,7 +3152,9 @@ def test_a_timed_out_runs_trace_says_timeout(page, load):
     assert trace_of(out)["halted"] == "timeout"
 
 
-SENTINELS = ["SENTINEL-TYPED-77", "SENTINEL-COMMITTED-91", "SENTINEL-HELP-33", "SENTINEL-EXPLORE-55",
+# The page's own words an explore listed ("SENTINEL-EXPLORE-55 Inc", a search box's row) are kept in the trace since live check 7,
+# screened like the reasoning snapshot's options (a typed sibling's value is blanked), so they are not a sentinel.
+SENTINELS = ["SENTINEL-TYPED-77", "SENTINEL-COMMITTED-91", "SENTINEL-HELP-33",
              "555-0100", "Acme Corp", "Springfield"]
 
 
@@ -3196,7 +3198,8 @@ def test_what_the_trace_keeps_of_the_page_is_its_labels_and_options(page, load):
     # The page's own option texts are kept, the chosen one included (owner decision, 2026-10-03).
     assert (traced(out, "d")["options"], traced(out, "d")["option_count"]) == (
         ["No, I do not have a disability", "Yes, I have a disability"], 2)
-    assert (traced(out, "e")["options"], "explore" in ops(out, "e")) == (None, True)  # a search lists rows only on explore
+    # A search lists rows only on explore: the rows it showed are kept (live check 7), the same page words as a passive list.
+    assert (traced(out, "e")["options"], traced(out, "e")["option_count"], "explore" in ops(out, "e")) == (["SENTINEL-EXPLORE-55 Inc"], 1, True)
 
 
 def test_an_option_echoing_a_siblings_typed_value_is_blanked(page, load):
@@ -3614,14 +3617,14 @@ def test_a_picks_option_index_is_the_pages_own_not_the_offered_one(page, load):
 
 
 def test_no_option_index_is_recorded_for_a_field_with_no_passive_list(page, load):
-    """An explored popup's rows are oids o1.. of their own: they are not the page's list, and a
-    popup the inventory could not read has none (`options` stays null)."""
+    """An explored popup's rows are oids o1.. of their own: they are not the page's list, so a pick has no option index
+    (the rows an explore showed are kept as the field's `options` since live check 7, a popup the inventory could not read)."""
     out = run(page, load, frames=[[f("d", "popup", "Where?")]] * 2,
               map={"d": {"route": "slot", "slot": "education.0.discipline", "value": "LinkedIn"}},
               explore={"d": {"options": [opt("o1", "Referral"), opt("o2", "LinkedIn")], "complete": True}},
               pick={"d": {"oids": ["o2"], "reason": "matched"}})
     t = traced(out, "d")
-    assert t["options"] is None
+    assert t["options"] == ["Referral", "LinkedIn"] and t["option_count"] == 2
     assert [s["option"] for s in t["steps"] if s["op"] == "pick"] == [None]
 
 

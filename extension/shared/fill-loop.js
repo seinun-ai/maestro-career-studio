@@ -1440,6 +1440,13 @@
       const v = [...rows.values()].find((r) => r.slot === slot && r.route === "slot")?.value;
       return typeof v === "string" ? v : null;
     };
+    // "City, State" for a city fact, when some field on the page was mapped to the profile's state.
+    const placeOf = (city) => {
+      const state = factOf("personal.state");
+      return state && state.trim() ? `${city.trim()}, ${state.trim()}` : null;
+    };
+    // The options an explore showed, kept on the row for the fill log (texts only; the log screens them like any option list).
+    const offered = (f, options) => set(f.fid, { offered: { count: options.length, texts: options.slice(0, TRACE_FIELD_OPTIONS).map((o) => String(o?.text ?? "")) } });
     const fillAddress = async (f, row, line) => {
       const parsed = parseAddress(line);
       const hints = { city: factOf("personal.city"), zip: factOf("personal.postal_code") };
@@ -1531,13 +1538,24 @@
       let noOptions = null;
       if (!(isSet && f.shape === "search") && !(opts.length && complete)) {
         term = f.shape === "search" ? item ?? (typeof value === "string" ? value : undefined) : undefined;
-        const got = await explore(f, term);
+        // A city box (a Places-style search) is searched as "City, State" when the page also maps the profile's state: a city
+        // alone names many places. Nothing found that way, the city alone is searched next.
+        const place = term && row.slot === "personal.city" ? placeOf(term) : null;
+        let got = await explore(f, place ?? term);
         if (!got) return lateOrHalted(f);
-        if (exploreRefused(f, got, term)) return undefined;
+        if (exploreRefused(f, got, place ?? term)) return undefined;
+        if (place && !got.options?.length) {
+          got = await explore(f, term);
+          if (!got) return lateOrHalted(f);
+          if (exploreRefused(f, got, term)) return undefined;
+        } else if (place) {
+          term = place;
+        }
         if (holdsOne(f, row, got)) return keepHeld(f, row);
         if (got.options?.length) {
           opts = got.options;
           complete = Boolean(got.complete);
+          offered(f, opts);
           // The rows a word of the term found are the ones the choose must search for, not the whole saved wording.
           if (typeof got.viaWord === "string") term = got.viaWord;
         } else if (!opts.length) {
@@ -1551,6 +1569,7 @@
             if (whole.options?.length) {
               opts = whole.options;
               complete = Boolean(whole.complete);
+              offered(f, opts);
               term = undefined;
             }
           }
@@ -2473,10 +2492,11 @@
       section: f.section ? shown(f.section) : null,
       required: Boolean(f.required),
       changes: Math.min(Math.max(Number(row.changes) || 0, 0), TRACE_CHANGES_MAX),
-      // The inventory's passive list only (a static list, read before anything
-      // was typed): an explore's rows echo what a search typed.
-      options: options && options.slice(0, TRACE_FIELD_OPTIONS).map((o) => optionText(String(o?.text ?? ""))),
-      option_count: Math.min(options?.length ?? 0, TRACE_COUNT_MAX),
+      // The inventory's passive list (a static list, read before anything was typed); a search box has none, so it keeps the
+      // options its explore showed (`offered`), screened by the same rule: they are the page's words, a typed sibling's value blanked.
+      options: options?.length ? options.slice(0, TRACE_FIELD_OPTIONS).map((o) => optionText(String(o?.text ?? "")))
+        : row.offered ? row.offered.texts.map(optionText) : options && [],
+      option_count: Math.min(options?.length ? options.length : row.offered?.count ?? 0, TRACE_COUNT_MAX),
       ...(TRACE_FAMILY.test(f.recipe?.family) ? { family: f.recipe.family } : {}),
       steps: row.steps ?? [],
       outcome: status,

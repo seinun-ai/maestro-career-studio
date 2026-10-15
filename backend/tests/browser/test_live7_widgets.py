@@ -5,6 +5,8 @@ emptied a fixed list. `fixtures/browser/greenhouse_acme_form.html` filters its o
 Core tests drive the page operations (fill-core's explore); loop tests drive the real fill loop with the backend's answers scripted.
 """
 
+import json
+
 import pytest
 
 from tests.browser.conftest import fixture_html
@@ -81,3 +83,69 @@ def test_a_search_only_list_that_shows_nothing_without_a_term_still_goes_to_the_
     assert [p for p in posts_to(out, "/api/autofill/pick") if "Location" in str(p)] == []
     assert oracle(page, "gh_location") is None
 
+
+# ---------- Location (City): searched as "City, State"; the options offered are kept in the trace ----------
+
+# The page also asks for the state (a plain box), so the loop learns it from the profile through /map.
+WITH_STATE = ACME.replace("</form>", '<label for="state">State</label><input id="state" type="text" aria-label="State"></form>')
+CITY = {"Location (City)": {"route": "slot", "slot": "personal.city", "value": "Springfield"}}
+STATE = {"State": {"route": "slot", "slot": "personal.state", "value": "Illinois"}}
+SPRINGFIELD_IL = "Springfield, Illinois, United States"
+
+
+def city_terms(out):
+    """The terms the loop typed into the city box, in order (an explore with no term types nothing)."""
+    fid = next(r["fid"] for r in out["report"]["fields"] if r["question"] == "Location (City)")
+    return [req.get("term") for msg in out["sent"] if msg["type"] == "fill_explore" for req in msg["requests"] if req["fid"] == fid]
+
+
+def test_a_city_box_is_searched_as_city_and_state_when_the_profile_has_the_state(page):
+    out = _run(page, html=WITH_STATE, map={**CITY, **STATE}, picks={"Location (City)": {"text": SPRINGFIELD_IL, "reason": "matched"}})
+    assert city_terms(out)[0] == "Springfield, Illinois"
+    [pick] = [f for body in posts_to(out, "/api/autofill/pick") for f in body["fields"] if f["question"] == "Location (City)"]
+    assert [o["text"] for o in pick["options"]] == [SPRINGFIELD_IL]
+    assert oracle(page, "gh_location") == SPRINGFIELD_IL
+
+
+def test_a_city_box_without_a_known_state_is_searched_by_the_city_alone(page):
+    out = _run(page, html=ACME, map=CITY, picks={"Location (City)": {"text": SPRINGFIELD_IL, "reason": "matched"}})
+    assert city_terms(out)[0] == "Springfield"
+    [pick] = [f for body in posts_to(out, "/api/autofill/pick") for f in body["fields"] if f["question"] == "Location (City)"]
+    assert len(pick["options"]) == 2                      # both Springfields: the backend picks by the saved state
+    assert oracle(page, "gh_location") == SPRINGFIELD_IL
+
+
+def test_a_city_and_state_that_find_nothing_fall_back_to_the_city_alone(page):
+    out = _run(page, html=WITH_STATE, map={**CITY, "State": {**STATE["State"], "value": "Narnia"}},
+               picks={"Location (City)": {"text": SPRINGFIELD_IL, "reason": "matched"}})
+    assert city_terms(out)[:2] == ["Springfield, Narnia", "Springfield"]
+    assert oracle(page, "gh_location") == SPRINGFIELD_IL
+
+
+SPRINGFIELD_MA = "Springfield, Massachusetts, United States"
+
+
+def location_trace(out):
+    return next(f for f in out["report"]["trace"]["fields"] if f["label"] == "Location (City)")
+
+
+def test_the_options_a_search_box_offered_are_kept_in_the_trace(page):
+    out = _run(page, html=ACME, url="https://job-boards.greenhouse.io/acme/jobs/7", map=CITY,
+               picks={"Location (City)": {"text": SPRINGFIELD_IL, "reason": "matched"}})
+    field = location_trace(out)
+    assert field["options"] == [SPRINGFIELD_IL, SPRINGFIELD_MA] and field["option_count"] == 2
+
+
+def test_an_option_that_says_another_typed_fields_value_is_blanked_in_the_trace_as_in_the_snapshot(page):
+    out = _run(page, html=WITH_STATE, url="https://job-boards.greenhouse.io/acme/jobs/7", map={**CITY, **STATE},
+               picks={"Location (City)": {"text": SPRINGFIELD_IL, "reason": "matched"}})
+    field = location_trace(out)
+    assert field["options"] == [""] and field["option_count"] == 1                 # "Illinois" is the State box's value
+    assert "Illinois" not in json.dumps(out["report"]["trace"])
+
+
+def test_the_list_that_went_to_pick_after_a_typed_search_emptied_the_box_is_what_the_trace_keeps(page):
+    out = _run(page, html=ACME, url="https://job-boards.greenhouse.io/acme/jobs/7", map=degree_map("Graduate Degree"),
+               picks={"Degree": {"text": "Master's Degree", "reason": "matched"}})
+    degree = next(f for f in out["report"]["trace"]["fields"] if f["label"] == "Degree")
+    assert degree["option_count"] == 10 and degree["options"] == DEGREES

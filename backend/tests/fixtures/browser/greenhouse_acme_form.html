@@ -162,6 +162,10 @@
     "school--0": ["Acme State University", "University of Globex", "Initech Institute of Technology"],
   };
   const fold = (s) => s.toLowerCase();
+  // A Places-style search matches by word prefixes and knows a state's abbreviation ("Springfield, IL" finds Illinois).
+  const ABBR = { il: "illinois", ma: "massachusetts", tx: "texas" };
+  const words = (s) => fold(s).split(/[\s,]+/).filter(Boolean);
+  const placeMatch = (option, term) => words(term).every((w) => words(option).some((o) => o.startsWith(ABBR[w] ?? w)));
   for (const shell of document.querySelectorAll(".select-shell")) {
     const id = shell.dataset.rs;
     const input = shell.querySelector("input.select__input");
@@ -178,7 +182,7 @@
     const render = () => {
       const term = fold(input.value.trim());
       const all = STATIC[id] ?? (term.length >= 2 ? SEARCH[id] : []);
-      const shown = all.filter((o) => fold(o).includes(term));
+      const shown = all.filter((o) => (STATIC[id] ? fold(o).includes(term) : placeMatch(o, term)));
       close();
       menu = document.createElement("div");
       menu.className = "select__menu";
