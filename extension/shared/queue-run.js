@@ -425,8 +425,9 @@
       if (typeof deps.reason !== "function" || thought || thoughtOn.has(here) || !THINKS.has(why) || pageKind === "review" || protectedOnly) {
         return await park(why, extra);
       }
-      // A step the press could add must still fit the run's own limit: the step is never a way past it.
-      if (why !== "moved_away" && record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
+      // A step the press could add must still fit the run's own limit: the step is never a way past it. Near it the step
+      // is skipped and the park keeps its own reason (step_limit has no Resume).
+      if (why !== "moved_away" && record.step + 1 >= LIMITS.stepMax) return await park(why, extra);
       thought = true;
       thoughtOn.add(here);
       await update({ status: "filling" });

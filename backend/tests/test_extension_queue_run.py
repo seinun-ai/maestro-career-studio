@@ -2793,7 +2793,12 @@ def test_the_step_never_presses_on_a_loop_park(tmp_path):
     assert out["record"]["why"] == "loop" and out["pressed"] == ["next-1", "next-2"]
 
 
-def test_the_step_is_not_asked_when_one_more_step_would_pass_the_step_limit(tmp_path):
-    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UNMAPPED]), REVIEW], fix={"fixed": False, "remaining": [UNMAPPED]},
-                 reasons=[{"press": "next-1"}], record={"step": 14, "seen": [f"p{i}" for i in range(14)]})
-    assert out["record"]["why"] == "step_limit" and names(out, "reason") == []
+@pytest.mark.parametrize("pages, spec, why", [
+    ([step(1), REVIEW], {"fills": [[needs("f1", "Degree")]]}, "open_questions"),
+    ([step(1, rejects=1, errorItems=[UNMAPPED]), REVIEW], {"fix": {"fixed": False, "remaining": [UNMAPPED]}}, "page_errors"),
+])
+def test_near_the_step_limit_the_step_is_skipped_and_the_park_keeps_its_own_reason(tmp_path, pages, spec, why):
+    """One more step would pass the limit, so no thought is asked: the park is the one it was (step_limit is not
+    resumable, and the user must keep their Resume)."""
+    out = _drive(tmp_path, pages, reasons=[{"press": "next-1"}], record={"step": 14, "seen": [f"p{i}" for i in range(14)]}, **spec)
+    assert out["record"]["status"] == "parked" and out["record"]["why"] == why and names(out, "reason") == []
