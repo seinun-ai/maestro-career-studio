@@ -10,7 +10,7 @@
  *   `excluded`, which the backend refuses; a `fill` is judged per field;
  * - a field an action changed nothing on, twice, leaves the snapshot;
  * - a round that leaves the page's key (fingerprint, error count, filled fields) unchanged ends the loop;
- * - ask_user, a missing or late reply, Stop and the page clock end it too.
+ * - ask_user, a missing or late reply, Stop and the page clock end it too (no call starts with under 25 s of the page's 60 s left).
  * NEVER a value: a field is `filled` or not, a written answer is its length. NEVER a press of its own: press_next is
  * the driver's `ctx.press` (the page re-sorts it; Submit is refused there), close_dialog the host's guarded dismiss.
  * The reply is checked again here (ids in THIS snapshot, a button's role, the actions this stuck reason allows).
@@ -35,7 +35,7 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const LIMITS = Object.freeze({ rounds: 3, actions: 3, pageMs: 60000, callMs: 30000, fields: 60, options: 20,
-    history: 8, buttons: 20, errors: 20, tabs: 5, excluded: 30, note: 200, text: 300 });
+    history: 8, buttons: 20, errors: 20, tabs: 5, excluded: 30, note: 200, text: 300, minCallMs: 25000 });
   const ACTIONS = Object.freeze(["fill", "answer_from", "write", "choose", "retry", "redo", "close_dialog",
     "press_next", "follow_tab", "ask_user"]);
   const VARIANTS = Object.freeze({ open_with_keys: { open: "keys" }, search_with_enter: { search: "enter" },
@@ -338,6 +338,11 @@
       out.rounds.push(entry);
       const snap = snapshotOf(ctx, state.cur, { round, history, excluded: excludedFor(ctx, state.cur, fails),
         dropped: new Set([...idle].filter(([, n]) => n >= 2).map(([fid]) => fid)) });
+      // The backend gives the model 25 s: a call with less page clock left than that would be cut off, and paid for.
+      if (began + LIMITS.pageMs - ops.now() < LIMITS.minCallMs) {
+        entry.stopped = "clock";
+        break;
+      }
       say("Thinking about this page…");
       const asked = ops.now();
       const reply = saneReply(await attempt(() => ops.ask(snap.body, Math.max(0, Math.min(LIMITS.callMs, began + LIMITS.pageMs - ops.now())))));

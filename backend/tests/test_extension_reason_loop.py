@@ -351,3 +351,9 @@ def test_the_limits_and_actions_mirror_the_backends_schema():
         "history": R.MAX_HISTORY, "buttons": R.MAX_BUTTONS, "errors": R.MAX_ERRORS, "tabs": R.MAX_TABS,
         "excluded": R.MAX_EXCLUDED, "note": R.NOTE_MAX, "text": R.TEXT_MAX}
     assert re.findall(r'"([a-z_]+)"', re.search(r"const ACTIONS = Object\.freeze\(\[(.*?)\]\)", js, re.S).group(1)) == list(R.ACTION_TYPES)
+
+
+def test_the_model_is_not_asked_with_less_than_25_seconds_left_on_the_page_clock(tmp_path):
+    # The first reply takes 36 s: 24 s remain, too little for a call the backend gives 25 s.
+    out = think(tmp_path, open=[{"fid": "f1"}], flipEveryFill=True, askMs=36000, replies=[act(type="fill", fids=["f1"])] * 3)
+    assert len(out["asks"]) == 1 and out["out"]["rounds"][-1]["stopped"] == "clock"
