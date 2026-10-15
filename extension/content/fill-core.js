@@ -946,6 +946,27 @@
     else if (restore) b().leave(el, widgetOf(el)); // the undo focused the box: focus is not left in it
   };
 
+  // THE LIST'S OWN WORD FOR A PICK. A box can show a pick differently from its option — a phone-country select lists "Acmeland +1"
+  // and shows a flag and "+1" — so no text on the box equals the option, and the text check calls a taken pick unread. The widget
+  // still says what it holds: its list, reopened, marks the held option (react-select's `--is-selected`, or aria-selected). That
+  // is read only after the box CHANGED (something was committed), never for a field that takes several answers (Workday's
+  // aria-selected is a keyboard highlight, notes §2), and the marked option must be one of `wants` (the option chosen, the value),
+  // a dialing code ignored. Returns the marked option's text, or null; the list is closed again.
+  const HELD_ROW = '[class*="option--is-selected"]';
+  const DIAL_CODE = /\(?\+\d{1,4}\)?/g;
+  const sameOption = (shown, want) => b().equivalent(shown, want)
+    || b().equivalent(shown.replace(DIAL_CODE, " "), want.replace(DIAL_CODE, " "));
+  async function listHolds(el, shape, before, wants, t) {
+    const display = [shape.read(el)].flat().join("").trim();
+    if (!el.isConnected || !display || same(shape.read(el), before.display) || shape.multi?.(el) === true) return null;
+    const { pop, committed } = await open(el, shape, undefined, t, undefined);
+    if (!pop || committed) return null;
+    const held = b().optionsOf(pop).filter((o) => o.selected || o.el.matches(HELD_ROW));
+    await tidy(el, t);
+    const text = held.length === 1 ? held[0].text : null;
+    return text && wants.some((want) => typeof want === "string" && want.trim() && sameOption(text, want)) ? text : null;
+  }
+
   // What an explore must leave as it found it (fill-ops takes it before the
   // explore): the committed evidence, and a search box's pill texts.
   const snapshot = (el, shape) => ({
@@ -1363,6 +1384,7 @@
         // retried, with the next gesture — and a tick has no next one.
         if (!unchanged(shape.read(el), before.display) || attempt + 1 >= gestures.length + spare) break;
       }
+      if (!undo && await listHolds(el, shape, before, [text], t)) return { outcome: "verified", text };
       return { outcome: "unexpected", ...w.reason("not_committed") };
     } finally {
       w.stop();
@@ -1686,6 +1708,8 @@
         if (text && b().equivalent(text, last.value) && verify(el, shape, text, { before: snap.evidence }) === "verified") {
           return { outcome: "verified", text };
         }
+        const held = await listHolds(el, shape, snap.evidence, [last.value], t);
+        if (held) return { outcome: "verified", text: held };
         return { outcome: "unexpected", reason: "search_committed" };
       }
       if (!pop) { // nothing opened, or nothing settled: the query the engine typed is taken back
@@ -1739,6 +1763,7 @@
         await tidy(el, t);
         const got = verify(el, shape, hit.text, { before });
         if (got === "verified" || got === "unconfirmed") return { outcome: got, text: hit.text };
+        if (await listHolds(el, shape, before, [hit.text, last.value], t)) return { outcome: "verified", text: hit.text };
         return { outcome: "unexpected", ...w.reason("not_committed") };
       } finally {
         w.stop();

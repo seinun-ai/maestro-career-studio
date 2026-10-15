@@ -626,3 +626,31 @@ def test_a_choose_that_opened_an_unmarked_category_remembers_it(page, load):
     move(page, f, "close", "Webinar")
     move(page, f, "open", "Webinar")
     assert 'Open the group "Events"' in _clicks(state(page, f, "Webinar"))
+
+
+def test_a_search_the_enter_key_committed_is_verified_when_the_list_marks_the_value_held(page, load):
+    """Enter picked the one hit and the box shows only "+1": the page's pick, named — unless the reopened list marks the
+    option that is the value (a dial code does not make a different country)."""
+    load(page, fixture_html("acme_phone_country.html"))
+    page.evaluate("window.__autoPick = true")
+    f = inv(page)["Country"]
+    row = move(page, f, "search:value", "Betaland")
+    assert (row["outcome"], row.get("reason")) == ("verified", None), row
+    assert oracle(page, "country") == "Betaland +2"
+    assert not list_shown(page, "menu-root")
+
+
+def test_a_search_commit_into_another_country_stays_the_pages_pick(page, load):
+    load(page, fixture_html("acme_phone_country.html"))
+    page.evaluate("() => { window.__autoPick = true; window.__wrongPick = 'Betaland +2'; }")
+    f = inv(page)["Country"]
+    row = move(page, f, "search:value", "Acmeland North")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "search_committed")
+
+
+def test_a_search_commit_the_list_does_not_mark_stays_the_pages_pick(page, load):
+    load(page, fixture_html("acme_phone_country.html"))
+    page.evaluate("() => { window.__autoPick = true; window.__forget = true; }")
+    f = inv(page)["Country"]
+    row = move(page, f, "search:value", "Betaland")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "search_committed")

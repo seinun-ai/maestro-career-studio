@@ -713,3 +713,43 @@ def test_a_page_that_never_holds_still_costs_one_capped_wait_then_is_left_alone(
     took = _write_all(page, 10)
     slow = [t for t in took if t > 1.8]   # which write meets the page first is not fixed
     assert len(slow) == 1 and sorted(took)[-2] < 1.0 and sum(took) < 6, took   # unmarked: 10 x 2 s
+
+
+# ---------- a pick the box shows differently from its option (live check 9) ----------
+#
+# A phone-country picker lists "Acmeland +1" and shows only "+1" once it is picked, so the text of the option is nowhere on the
+# box. The widget still says what it holds: its reopened list marks the held option. That second proof is read only when the
+# box changed on the click, and only by an option that is the one chosen (or equals the value).
+
+def _country(page, load, mark="class", **flags):
+    load(page, fixture_html("acme_phone_country.html"))
+    page.evaluate("(f) => Object.assign(window, f)", {"__mark": mark, **flags})
+    return inv(page)["Country"]
+
+
+def test_a_pick_the_box_shows_as_a_dial_code_is_verified_by_the_option_the_list_marks_held(page, load):
+    f = _country(page, load)
+    row = apply(page, f, op="choose", text="Acmeland +1", term="Acme")
+    assert row["outcome"] == "verified", row
+    assert oracle(page, "country") == "Acmeland +1"
+    assert page.inner_text(".acme__single-value").strip().endswith("+1")
+    assert not list_shown(page, "menu-root")
+
+
+def test_the_marked_option_is_read_from_aria_selected_too(page, load):
+    f = _country(page, load, mark="aria")
+    assert apply(page, f, op="choose", text="Acmeland +1", term="Acme")["outcome"] == "verified"
+
+
+def test_a_pick_whose_reopened_list_marks_nothing_is_still_not_committed(page, load):
+    f = _country(page, load, __forget=True)
+    row = apply(page, f, op="choose", text="Acmeland +1", term="Acme")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "not_committed")
+
+
+def test_a_pick_the_page_made_into_another_option_is_not_verified(page, load):
+    """The box changed, and the list marks Betaland: not the option chosen."""
+    f = _country(page, load, __wrongPick="Betaland +2")
+    row = apply(page, f, op="choose", text="Acmeland +1", term="Acme")
+    assert row["outcome"] != "verified", row
+    assert oracle(page, "country") == "Betaland +2"
