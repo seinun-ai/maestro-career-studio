@@ -1,0 +1,34 @@
+<!-- An applicant-tracker upload box that swaps its whole button container, input included, for the file's chip once it takes the
+     file (live check 9). The input sits five levels under the group; only the group and the wrapper survive the swap. Made-up
+     vendor: Acme. -->
+<div class="file-upload" role="group" aria-labelledby="rl">
+  <label id="rl">Resume/CV</label>
+  <div class="file-upload__wrapper">
+    <div class="button-container">
+      <div class="secondary-button"><div><button type="button">Attach</button>
+        <input type="file" id="resume" style="position:absolute;opacity:0;width:1px;height:1px"></div></div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  const input = document.getElementById("resume");
+  input.addEventListener("change", () => {
+    const name = input.files[0]?.name;
+    if (!name) return;
+    const mode = window.__swap || "chip";
+    if (window.__clear) input.value = "";   // the uploader takes the file and empties its input at once
+    setTimeout(() => {
+      const container = document.querySelector(".button-container");
+      if (mode === "gone") { container.remove(); return; }
+      const chip = document.createElement("div");
+      chip.className = "file-upload__filename";
+      chip.append(document.createTextNode(window.__shown ? window.__shown(name) : name + " "));
+      const remove = document.createElement("button");
+      remove.type = "button"; remove.setAttribute("aria-label", "Remove file"); remove.textContent = "×";
+      chip.append(remove);
+      container.replaceWith(chip);
+    }, window.__after ?? 200);
+  });
+})();
+</script>

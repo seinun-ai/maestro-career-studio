@@ -456,3 +456,147 @@ function fillableControls() {
   ns.detectPage = detectPage;
   ns.fillableControls = fillableControls;
 })();
+
+// ---- the upload proof ----
+//
+// What an upload box's page shows once it has taken a file, read for `attachResumePdf` (content/agent.js): the widget around
+// the input, the rows in it that name the file, the errors it prints, and whether it is still working. Here, not in agent.js,
+// because this file is re-run on every injection and agent.js has a size cap.
+(() => {
+  const ns = (window.careerStudioCompanion ??= {});
+  const { all, any, up, text, kids, scope } = ns.deep;
+  const onScreen = (el) => !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects?.().length));
+
+  // What an upload widget says when the file did NOT go. Counted before and after the write, so standing help text ("Files that
+  // exceed 5 MB are not supported") is not news; only an error that APPEARS voids a row proof. A WIDE list on purpose: a
+  // phrasing it misses is the panel saying "Attached" over a refused upload, while a false hit only sends the user to look —
+  // which is why some SUCCESS copy ("No errors", "0 failed") appearing after the write errs to zero, by design. Apostrophes
+  // both straight and curly ("can’t").
+  const UPLOAD_ERROR = new RegExp(String.raw`\b(?:${[
+    String.raw`errors?`, String.raw`fail(?:s|ed|ure|ing)?`, "invalid", "unable",
+    "rejected", "denied", "disallowed", "unsupported", String.raw`unsuccessful(?:ly)?`,
+    String.raw`exceed(?:s|ed|ing)?`, String.raw`went\s+wrong`, String.raw`corrupt(?:ed)?`,
+    String.raw`virus(?:es)?`, "malware", String.raw`could\s*n(?:o|['’])t`,
+    String.raw`can(?:\s*not|['’]t)`, String.raw`too\s+(?:large|big)`,
+    String.raw`not\s+(?:allowed|supported|accepted|permitted)`, String.raw`try\s+again`,
+  ].join("|")})\b`, "gi");
+
+  // An element that ALARMS: a new ON-SCREEN alert, or an element marked invalid, with text in the widget is the page objecting
+  // to the write, so it voids the row proof even when its words ("Please choose another file.") are on no list. NOT
+  // `[aria-live]`: a polite live region that GAINS text is the standard upload-status pattern ("Successfully Uploaded!" into an
+  // empty region), and reading that as an error told the user to attach it again — a second copy on Workday's `multiple`
+  // uploader. A live region's words are still read, as part of the widget's text, against `UPLOAD_ERROR`.
+  const UPLOAD_ALERT = '[role="alert"], [aria-invalid="true"]';
+
+  // What an uploader never holds: a field of its own. An ancestor holding one is the application step around the uploader, not
+  // the uploader. Hidden inputs are left out — an uploader may keep the uploaded file's id in one.
+  const NOT_AN_UPLOADER = 'input:not([type="file"]):not([type="hidden"]), select, textarea, [role="combobox"]';
+
+  // Six levels: the uploader that swaps its whole button container for the file's chip (live check 9) keeps the group five
+  // levels above its input, and that group is where the chip is printed.
+  const CHAIN_LEVELS = 6;
+
+  /** The input's upload ancestors, nearest first: from its parent up to six levels, stopping BELOW an ancestor that holds any
+   * OTHER file input (the cover-letter box's row can never vouch for the résumé box's write), below one that holds any other
+   * field (`NOT_AN_UPLOADER`, so a whole step never becomes the widget) and below `<body>`, `<html>` and a `<form>`, which are
+   * the page or the application rather than the uploader: the proof is never a search of the whole document. */
+  function chain(input) {
+    const out = [];
+    let el = up(input);
+    for (let level = 0; el && level < CHAIN_LEVELS; level += 1, el = up(el)) {
+      if (el === document.body || el === document.documentElement || el.tagName === "FORM") break;
+      if (all('input[type="file"]', el).some((other) => other !== input)) break;
+      if (any(NOT_AN_UPLOADER, el)) break;
+      out.push(el);
+    }
+    return out;
+  }
+
+  // A page that SHORTENS the name it shows ("Jane_Doe_Re…esume.pdf"): the part before the ellipsis starts the file's name and
+  // the part after it ends it. The two parts together must be a real stretch of the name, so another file's chip does not pass.
+  const SHORTENED = /([^\s…]+?)(?:…|\.{3})([^\s…]+)/gu;
+  const EDGE = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+  const MIN_STEM = 6;
+
+  /** `{found, rest}`: whether `shown` names the file `filename` — whole, as its stem (no extension, six characters or more),
+   * or shortened by an ellipsis — and `shown` with every such mention cut out, which is what error words are read from. */
+  function nameScan(shown, filename) {
+    let rest = String(shown ?? "");
+    let found = false;
+    const dot = filename.lastIndexOf(".");
+    const stem = dot >= MIN_STEM ? filename.slice(0, dot) : "";
+    for (const name of [filename, stem].filter(Boolean)) {
+      if (rest.includes(name)) {
+        found = true;
+        rest = rest.split(name).join(" ");
+      }
+    }
+    const known = [filename, stem].filter(Boolean).map((name) => name.toLowerCase());
+    rest = rest.replace(SHORTENED, (span, left, right) => {
+      const [head, tail] = [left, right].map((part) => part.replace(EDGE, "").toLowerCase());
+      const fits = known.some((name) => head.length >= 3 && tail.length >= 3 && head.length + tail.length >= 8
+        && head.length + tail.length < name.length && name.startsWith(head) && name.endsWith(tail));
+      found ||= fits;
+      return fits ? " " : span;
+    });
+    return { found, rest };
+  }
+
+  const errorWords = (shown, filename) => nameScan(shown, filename).rest.match(UPLOAD_ERROR)?.length ?? 0;
+
+  /** How many on-screen elements in `widget` name `filename`: the DEEPEST ones whose text holds it, so a row and the wrappers
+   * around it count once. A row whose OWN text carries error words ("resume.pdf failed") is never a success row, even where
+   * the widget's error total did not rise because the page cleared an old error as it printed the new one. */
+  function rows(widget, filename) {
+    const names = (el) => nameScan(text(el), filename);
+    // composed: a row drawn inside a shadow root is in no textContent
+    return scope(() => (!names(widget).found ? 0 : [widget, ...all("*", widget)].filter((el) => {
+      const own = names(el);
+      return own.found && !kids(el).some((child) => names(child).found) && onScreen(el)
+        && (own.rest.match(UPLOAD_ERROR)?.length ?? 0) === 0;
+    }).length));
+  }
+
+  /** The widget's error total: error words in its RENDERED text (a hidden error template is not news until it shows), plus
+   * every ON-SCREEN alarming element (`UPLOAD_ALERT`) that holds text — on screen because `innerText` of a hidden element
+   * still returns its text, and an alert nobody can see tells the user nothing. */
+  function errors(widget, filename) {
+    const alarming = [widget, ...all(UPLOAD_ALERT, widget)].filter((el) =>
+      el.matches(UPLOAD_ALERT) && onScreen(el) && String(el.innerText ?? "").trim() !== "").length;
+    return errorWords(text(widget, "innerText"), filename) + alarming;
+  }
+
+  // A widget that is still WORKING: something marked busy, a progress bar, or the words of a transfer or a parse
+  // ("Uploading…", "Parsing your CV"). Present participles only, so standing help ("your CV will be parsed") is not one.
+  const WORKING = /\b(?:uploading|parsing|processing|scanning|analy[sz]ing)\b/gi;
+  // Three counts, not one, so a progress bar that was standing there before the write still lets a NEW busy mark or a NEW
+  // word of work show as news.
+  const busy = (widget) => [
+    all('[aria-busy="true"]', widget).filter(onScreen).length,
+    all('[role="progressbar"], progress', widget).filter(onScreen).length,
+    text(widget, "innerText").match(WORKING)?.length ?? 0,
+  ];
+
+  /** The levels of `chain(input)` the proof watches: the highest of the first three (the widget) and everything above it, each
+   * with what it showed before the write. Empty when the input has no widget. */
+  function levels(input, filename) {
+    const near = chain(input);
+    return near.slice(Math.max(0, Math.min(near.length, 3) - 1)).map((el) => ({
+      el, rows: rows(el, filename), errors: errors(el, filename), busy: busy(el),
+    }));
+  }
+
+  /** What the page shows now, read at the DEEPEST watched level still in the page: the widget itself while it is there, else
+   * the nearest ancestor that survived its being swapped for the file's chip. `row`: more rows naming the file than before
+   * and no new error; `working`: more progress than before. Both false when every level has left the page. */
+  function seen(watched, filename) {
+    const now = watched.find((level) => level.el.isConnected);
+    if (!now) return { row: false, working: false };
+    return {
+      row: rows(now.el, filename) > now.rows && errors(now.el, filename) <= now.errors,
+      working: busy(now.el).some((count, i) => count > now.busy[i]),
+    };
+  }
+
+  ns.uploadProof = { NOT_AN_UPLOADER, chain, levels, seen };
+})();

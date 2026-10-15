@@ -1819,6 +1819,16 @@ def test_a_write_the_page_may_have_taken_but_did_not_show_is_unconfirmed_not_lef
     assert len([ask for ask in _attach_asks(out) if ask.get("target")]) == 1
 
 
+def test_a_targeted_write_the_page_did_not_show_is_hedged_never_called_a_change_of_boxes(tmp_path):
+    """The targeted attach states no box count of its own (`expect` is undefined), and an undefined count never equalled the
+    page's real one: the card read "the page's upload boxes changed" over a page that had simply not shown the row."""
+    wrote_unproven = _reply([{"frameId": 0, "result": {"written": 1, "proven": 0}}])
+    out = _upload_run(tmp_path, wrote_unproven, api={"GET /api/applications/app-1": _reply(APPLICATION)})
+    text = _record(out["shots"][1])["attach"]["text"]
+    assert text.startswith("Couldn't confirm the upload.")
+    assert "boxes changed" not in text
+
+
 def test_an_error_that_names_an_upload_box_is_repaired_by_attaching_to_it(tmp_path):
     rejected = {**STEP1_REJECTED}
     here = {**BOX, "required": False}

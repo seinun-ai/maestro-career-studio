@@ -398,6 +398,30 @@ def test_an_attach_it_could_not_confirm_is_hedged_and_keeps_the_button(tmp_path)
     assert out["button"] == {"disabled": False}
 
 
+HEDGED = ("Couldn't confirm the upload. Check the upload box, and attach "
+          "your resume only if it isn't listed.")
+CHANGED = "Couldn't attach your resume. The page's upload boxes changed, so check them and try again."
+
+
+def test_a_box_that_left_the_page_with_the_file_in_it_is_unconfirmed_not_a_change_of_boxes(tmp_path):
+    """The page swaps the written box for the file's chip: the count falls by exactly the box we wrote. That is the upload
+    box taking the file, not the page growing another box (live check 9, an uploader that replaces its own input)."""
+    out = _autofill(tmp_path, attach_reply=ATTACH_UNPROVEN, page={"detect_page": [
+        _reply({"tier": "B", "form": True, "score": 2, "fileInputs": 1, "uploads": [EMPTY_RESUME_BOX]}),
+        _reply({"tier": "B", "form": True, "score": 2, "fileInputs": 1, "uploads": [EMPTY_RESUME_BOX]}),
+        _detect(0)]})
+    assert _note(out["settled"]).endswith(HEDGED)
+    assert CHANGED not in _note(out["settled"])
+
+
+def test_a_page_that_grew_a_box_after_the_write_is_still_a_change_of_boxes(tmp_path):
+    out = _autofill(tmp_path, attach_reply=ATTACH_UNPROVEN, page={"detect_page": [
+        _reply({"tier": "B", "form": True, "score": 2, "fileInputs": 1, "uploads": [EMPTY_RESUME_BOX]}),
+        _reply({"tier": "B", "form": True, "score": 2, "fileInputs": 1, "uploads": [EMPTY_RESUME_BOX]}),
+        _detect(3)]})
+    assert _note(out["settled"]).endswith(CHANGED)
+
+
 def test_a_second_autofill_never_attaches_a_second_copy(tmp_path):
     """Even when the page's row went unseen: this panel attached here once."""
     out = _autofill(tmp_path, EMPTY_RESUME_BOX, again=True)

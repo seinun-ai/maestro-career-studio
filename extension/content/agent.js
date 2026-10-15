@@ -164,67 +164,22 @@
   // The row proof's bounds (`attachResumePdf`): how long the page gets to show
   // its file row, how often we look, and how long a proof must keep holding.
   const ATTACH_PROOF_WAIT_MS = 3000;
+  const ATTACH_PROGRESS_WAIT_MS = 12000;
   const ATTACH_POLL_MS = 100;
   const ATTACH_HOLD_MS = 300;
 
-  // What an upload widget says when the file did NOT go. Counted before and
-  // after the write, so standing help text ("Files that exceed 5 MB are not
-  // supported") is not news; only an error that APPEARS voids a row proof. A
-  // WIDE list on purpose: a phrasing it misses is the panel saying "Attached"
-  // over a refused upload, while a false hit only sends the user to look —
-  // which is why some SUCCESS copy ("No errors", "0 failed") appearing after
-  // the write errs to zero, by design. Apostrophes both straight and curly
-  // ("can’t").
-  const UPLOAD_ERROR = new RegExp(String.raw`\b(?:${[
-    String.raw`errors?`, String.raw`fail(?:s|ed|ure|ing)?`, "invalid", "unable",
-    "rejected", "denied", "disallowed", "unsupported", String.raw`unsuccessful(?:ly)?`,
-    String.raw`exceed(?:s|ed|ing)?`, String.raw`went\s+wrong`, String.raw`corrupt(?:ed)?`,
-    String.raw`virus(?:es)?`, "malware", String.raw`could\s*n(?:o|['’])t`,
-    String.raw`can(?:\s*not|['’]t)`, String.raw`too\s+(?:large|big)`,
-    String.raw`not\s+(?:allowed|supported|accepted|permitted)`, String.raw`try\s+again`,
-  ].join("|")})\b`, "gi");
+  // The upload proof's reading of a widget (rows naming the file, errors, progress) lives in content/detect.js
+  // (`ns.uploadProof`), a re-run file like this one, so this one's size stays a front door's.
+  const proof = ns.uploadProof;
+  const { NOT_AN_UPLOADER } = proof;
 
-  // An element that ALARMS: a new ON-SCREEN alert, or an element marked
-  // invalid, with text in the widget is the page objecting to the write, so it
-  // voids the row proof even when its words ("Please choose another file.")
-  // are on no list. NOT `[aria-live]`: a polite live region that GAINS text is
-  // the standard upload-status pattern ("Successfully Uploaded!" into an empty
-  // region), and reading that as an error told the user to attach it again —
-  // a second copy on Workday's `multiple` uploader. A live region's words are
-  // still read, as part of the widget's text, against `UPLOAD_ERROR`.
-  const UPLOAD_ALERT = '[role="alert"], [aria-invalid="true"]';
-
-  // What an uploader never holds: a field of its own. An ancestor holding one
-  // is the application step around the uploader, not the uploader. Hidden
-  // inputs are left out — an uploader may keep the uploaded file's id in one.
-  const NOT_AN_UPLOADER = 'input:not([type="file"]):not([type="hidden"]), select, textarea, [role="combobox"]';
-
-  /** The part of the page that belongs to ONE file input: where its uploader
-   * would print the row for a file it took.
-   *
-   * THE CLIMB is from the input's parent up to three levels, and the widget is
-   * the highest level reached. It stops BELOW an ancestor that holds any OTHER
-   * file input — so the cover-letter box's row can never vouch for the résumé
-   * box's write — below one that holds any other field (`NOT_AN_UPLOADER`), so
-   * a whole step container never becomes the widget, and below `<body>`,
-   * `<html>` and a `<form>`, because those are the page or the application
-   * rather than the uploader: the proof is never a search of the whole
-   * document. A parent that already holds another
-   * file input leaves NO widget, and that box can then prove itself only by
-   * `files`. Three levels covers Workday (the input sits directly in
-   * `attachments-FileUpload`, the row a level below it) with room for a
-   * wrapper or two. */
+  /** The part of the page that belongs to ONE file input: where its uploader would print the row for a file it took.
+   * `proof.chain`'s climb, three levels, and the widget is the highest level reached (null when there is none, and that
+   * box can then prove itself only by `files`). Three levels covers Workday (the input sits directly in
+   * `attachments-FileUpload`, the row a level below it) with room for a wrapper or two. */
   function uploadWidgetOf(input) {
-    const { all, up } = ns.deep;
-    let widget = null;
-    let el = up(input);
-    for (let level = 0; el && level < 3; level += 1, el = up(el)) {
-      if (el === document.body || el === document.documentElement || el.tagName === "FORM") break;
-      if (all('input[type="file"]', el).some((other) => other !== input)) break;
-      if (ns.deep.any(NOT_AN_UPLOADER, el)) break;
-      widget = el;
-    }
-    return widget;
+    const chain = proof.chain(input);
+    return chain[Math.min(chain.length, 3) - 1] ?? null;
   }
 
   /** What an upload box is FOR, and whether it holds a file: `{kind,
@@ -439,37 +394,6 @@
     return readBoxes(attachableFileInputs());
   }
 
-  /** Error words in `text`, with the filename cut out first so a file called
-   * `error-log.pdf` is not its own failure. */
-  function errorWords(text, filename) {
-    return String(text ?? "").split(filename).join(" ").match(UPLOAD_ERROR)?.length ?? 0;
-  }
-
-  /** How many on-screen elements in `widget` name `filename`: the DEEPEST ones
-   * whose text holds it, so a row and the wrappers around it count once. A
-   * row whose OWN text carries error words ("resume.pdf failed") is never a
-   * success row, even where the widget's error total did not rise because the
-   * page cleared an old error as it printed the new one. */
-  function rowsNaming(widget, filename) {
-    const { all, text, kids, scope } = ns.deep;   // composed: a row drawn inside a shadow root is in no textContent
-    return scope(() => (!text(widget).includes(filename) ? 0 : [widget, ...all("*", widget)].filter((el) =>
-      text(el).includes(filename)
-      && !kids(el).some((child) => text(child).includes(filename))
-      && isOnScreen(el)
-      && errorWords(text(el), filename) === 0).length));
-  }
-
-  /** The widget's error total: error words in its RENDERED text (a hidden
-   * error template is not news until it shows), plus every ON-SCREEN alarming
-   * element (`UPLOAD_ALERT`) that holds text — on screen because `innerText`
-   * of a hidden element still returns its text, and an alert nobody can see
-   * tells the user nothing. */
-  function uploadErrors(widget, filename) {
-    const alarming = [widget, ...ns.deep.all(UPLOAD_ALERT, widget)].filter((el) =>
-      el.matches(UPLOAD_ALERT) && isOnScreen(el) && String(el.innerText ?? "").trim() !== "").length;
-    return errorWords(ns.deep.text(widget, "innerText"), filename) + alarming;
-  }
-
   /** Attach a PDF to every attachable file input in this frame, and report how
    * many of them actually took it.
    *
@@ -505,6 +429,12 @@
    *   it says (a live region only through its words — see `UPLOAD_ALERT`). Counting ELEMENTS
    *   rather than remembering nodes survives a widget that re-renders its old
    *   rows.
+   *
+   * THE WIDGET MAY BE SWAPPED, and the proof follows it: `proof.levels` watches the widget and the ancestors above it (up to six
+   * levels above the input), read at the deepest one still in the page. An uploader that replaces its own button container,
+   * input included, for the file's chip (Greenhouse) leaves the group around it, and the chip is the row. The name may be the
+   * stem or shortened by an ellipsis, and a widget that shows progress gets longer than `ATTACH_PROOF_WAIT_MS` (bounded by
+   * `ATTACH_PROGRESS_WAIT_MS`): a parser that prints the name when it is done (Rippling).
    *
    * A ROW STILL IN PROGRESS COUNTS. An uploader that prints the name while the
    * upload runs and fails more than about half a second later (past the hold
@@ -566,12 +496,8 @@
     // box's row. An EMPTY filename is in every text, so it proves nothing and
     // leaves such a box to `files` alone.
     const targets = inputs.map((input) => {
-      const widget = filename ? uploadWidgetOf(input) : null;
-      return {
-        input, widget,
-        rows: widget ? rowsNaming(widget, filename) : 0,
-        errors: widget ? uploadErrors(widget, filename) : 0,
-      };
+      const watched = filename ? proof.levels(input, filename) : [];
+      return { input, watched, widget: watched[0]?.el ?? null };
     });
     for (const { input } of targets) {
       // A FRESH DataTransfer PER BOX. The input adopts the very FileList it is
@@ -583,9 +509,7 @@
       input.files = dt.files;
       input.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    const rowProof = (t) => t.widget !== null && t.widget.isConnected
-      && rowsNaming(t.widget, filename) > t.rows
-      && uploadErrors(t.widget, filename) <= t.errors;
+    const rowProof = (t) => proof.seen(t.watched, filename).row;
     // Autofill's write takes a held `files` only from an input on screen (the
     // browser's own control shows it); a hidden one's uploader must show a row.
     const proven = (t) => ((t.input.isConnected && t.input.files?.length === 1)
@@ -605,7 +529,11 @@
     // THEN WAIT FOR THE ROW, bounded: Workday renders it ~200ms after
     // `change`, a slow upload later. Only a box that HAS a widget can still
     // prove itself this way, so a page of plain inputs does not wait at all.
-    while (Date.now() < deadline && targets.some((t) => t.widget !== null && !proven(t))) {
+    // A widget that shows PROGRESS (busy, a bar, "Uploading…") is still working, and gets longer: an uploader that parses the
+    // file first (live check 9) prints the name when that is done. Bounded, and only the news counts.
+    const patience = Date.now() + ATTACH_PROGRESS_WAIT_MS;
+    const working = (t) => Date.now() < patience && proof.seen(t.watched, filename).working;
+    while (targets.some((t) => t.widget !== null && !proven(t) && (Date.now() < deadline || working(t)))) {
       await sleep(ATTACH_POLL_MS);
     }
     // THE HOLD: a proof counts only if it held when the wait ended AND is
