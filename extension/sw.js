@@ -266,6 +266,30 @@ const TRACE_SLOT_MAX = 120;
 const TRACE_MOVE_MAX = 40;
 const TRACE_SOURCE_MAX = 40;
 const TRACE_FAMILY_MAX = 32;
+// The reasoning step's rounds (backend schemas/autofill_trace.py, schemas/autofill_reason.py): one round, what the model
+// saw (a value-free snapshot, bounded as the schema bounds it) and what it did.
+const TRACE_NOTE = 200;
+const TRACE_REASON_ROUNDS = 3;
+const TRACE_REASON_ACTIONS = 3;
+const TRACE_REASON_REJECTS_MAX = 10;
+const TRACE_TARGET_MAX = 64;
+const TRACE_WRITTEN_MAX = 5000;
+const TRACE_SNAP_FIELDS = 60;
+const TRACE_SNAP_OPTIONS = 20;
+const TRACE_SNAP_TEXT = 300;
+const TRACE_SNAP_BUTTONS = 20;
+const TRACE_SNAP_ERRORS = 20;
+const TRACE_SNAP_TABS = 5;
+const TRACE_SNAP_HISTORY = 8;
+const TRACE_SNAP_EXCLUDED = 30;
+const TRACE_SNAPSHOT_CHARS = 120000;
+const TRACE_MODEL = /^[A-Za-z0-9._:/-]{1,120}$/;
+const TRACE_TARGET = /^[A-Za-z0-9_-]{1,64}$/;
+const TRACE_REF_OPTION = /^o\d{1,2}$/;
+const TRACE_REF_BUTTON = /^b\d{1,2}$/;
+const TRACE_REF_TAB = /^t\d$/;
+const TRACE_HISTORY = /^[a-z_]+(:[A-Za-z0-9_-]{1,64})? -> [a-z_]+$/;
+const TRACE_SIGNATURE = /^[a-z_]+:[A-Za-z0-9_-]{1,64}$/;
 const TRACE_WORD = /^[a-z_]{1,40}$/;
 const TRACE_SLOT = /^[a-z_]+(\.[a-z0-9_]+)*$/;
 const TRACE_MOVE = /^(click:o\d+|search:value|search:term|search:word:\d|open|scroll|give_up)$/;
@@ -290,6 +314,16 @@ const TRACE_WAYS = new Set(["same", "opposite", "neither", "unsure"]);
 const TRACE_REASONS = new Set(["matched", "closest", "assumed", "progress", "abstained"]);
 const TRACE_MODES = new Set(["assist"]);
 const TRACE_HALTS = new Set(["stopped", "timeout"]);
+const TRACE_REASON_WHYS = new Set(["page_errors", "open_questions", "unknown_page", "no_change", "loop", "moved_away"]);
+const TRACE_REASON_TYPES = new Set(["fill", "answer_from", "write", "choose", "retry", "redo", "close_dialog",
+  "press_next", "follow_tab", "ask_user"]);
+const TRACE_REASON_OUTCOMES = new Set(["progress", "no_effect", "moved", "refused", "rejected", "asked"]);
+const TRACE_REASON_REJECTS = new Set(["bad_reply", "model_error", "not_allowed", "unknown_id", "protected", "excluded",
+  "careful_level", "not_free_text", "not_a_choice", "optional_essay", "not_run_filled", "users_field", "not_empty",
+  "multi_value", "next_not_last", "switched_off"]);
+const TRACE_REASON_STOPS = new Set(["moved", "resolved", "same_page", "asked", "no_reply", "rounds", "clock", "stopped",
+  "followed", "wall", "page_gone"]);
+const TRACE_SNAP_ROLES = new Set(["next", "dialog"]);
 
 // A coercer answers the value to post, or undefined to drop the key.
 const traceText = (max) => (v) => (typeof v === "string" ? cutText(v, max) : undefined);
@@ -304,6 +338,10 @@ const traceNumber = (v) => (typeof v === "number" ? v : NaN);
 const traceInt = (max) => (v) => {
   const n = traceNumber(v);
   return Number.isInteger(n) && n >= 0 && n <= max ? n : undefined;
+};
+const traceBetween = (min, max) => (v) => {
+  const n = traceNumber(v);
+  return Number.isInteger(n) && n >= min && n <= max ? n : undefined;
 };
 // `ms` alone is clamped: a slow call is still a fact, just capped.
 const traceClamped = (max) => (v) => {
@@ -379,6 +417,86 @@ const TRACE_FIELD = {
   outcome: traceMatch(TRACE_WORD),
   round: traceInt(TRACE_ROUNDS),
 };
+const TRACE_SNAP_OPTION = {
+  ref: traceMatch(TRACE_REF_OPTION),
+  text: traceText(TRACE_SNAP_TEXT),
+};
+const TRACE_SNAP_FIELD = {
+  fid: traceMatch(TRACE_FID),
+  question: traceText(TRACE_SNAP_TEXT),
+  shape: (v) => (TRACE_SHAPES.has(v) ? v : "unknown"),
+  required: traceBool,
+  filled: traceBool,
+  invalid: traceBool,
+  multi: traceBool,
+  multiline: traceBool,
+  by_run: traceBool,
+  touched: traceBool,
+  slot: traceMatch(TRACE_SLOT, TRACE_SLOT_MAX),
+  options: traceList((one) => {
+    const kept = traceKeep(TRACE_SNAP_OPTION, one);
+    return kept.ref && kept.text !== undefined ? kept : null;
+  }, TRACE_SNAP_OPTIONS),
+  option_count: traceInt(TRACE_COUNT_MAX),
+};
+const TRACE_SNAP_BUTTON = {
+  ref: traceMatch(TRACE_REF_BUTTON),
+  text: traceText(TRACE_SNAP_TEXT),
+  role: traceOneOf(TRACE_SNAP_ROLES),
+};
+const TRACE_SNAP_ERROR = {
+  text: traceText(TRACE_SNAP_TEXT),
+  fid: traceMatch(TRACE_FID),
+};
+const TRACE_SNAP_TAB = {
+  ref: traceMatch(TRACE_REF_TAB),
+  host: traceMatch(TRACE_HOST),
+};
+const TRACE_SNAPSHOT = {
+  fields: traceList((one) => {
+    const kept = traceKeep(TRACE_SNAP_FIELD, one);
+    return kept.fid && kept.question !== undefined ? kept : null;
+  }, TRACE_SNAP_FIELDS),
+  buttons: traceList((one) => {
+    const kept = traceKeep(TRACE_SNAP_BUTTON, one);
+    return kept.ref && kept.text !== undefined && kept.role ? kept : null;
+  }, TRACE_SNAP_BUTTONS),
+  errors: traceList((one) => {
+    const kept = traceKeep(TRACE_SNAP_ERROR, one);
+    return kept.text !== undefined ? kept : null;
+  }, TRACE_SNAP_ERRORS),
+  tabs: traceList((one) => {
+    const kept = traceKeep(TRACE_SNAP_TAB, one);
+    return kept.ref && kept.host ? kept : null;
+  }, TRACE_SNAP_TABS),
+  history: traceList((v) => (typeof v === "string" && v.length <= 120 && TRACE_HISTORY.test(v) ? v : null), TRACE_SNAP_HISTORY),
+  excluded: traceList((v) => (typeof v === "string" && TRACE_SIGNATURE.test(v) ? v : null), TRACE_SNAP_EXCLUDED),
+};
+const TRACE_REASON_ACTION = {
+  type: traceOneOf(TRACE_REASON_TYPES),
+  target: traceMatch(TRACE_TARGET, TRACE_TARGET_MAX),
+  outcome: traceOneOf(TRACE_REASON_OUTCOMES),
+  slot: traceMatch(TRACE_SLOT, TRACE_SLOT_MAX),
+  written: traceInt(TRACE_WRITTEN_MAX),
+};
+const TRACE_REASON_ROUND = {
+  round: traceBetween(1, TRACE_REASON_ROUNDS),
+  why: traceOneOf(TRACE_REASON_WHYS),
+  model: traceMatch(TRACE_MODEL),
+  ms: traceClamped(60000),
+  note: traceText(TRACE_NOTE),
+  actions: traceList((one) => {
+    const kept = traceKeep(TRACE_REASON_ACTION, one);
+    return kept.type && kept.outcome ? kept : null;
+  }, TRACE_REASON_ACTIONS),
+  rejected: traceList((v) => (typeof v === "string" && TRACE_REASON_REJECTS.has(v) ? v : null), TRACE_REASON_REJECTS_MAX),
+  stopped: traceOneOf(TRACE_REASON_STOPS),
+  // Over the schema's size the snapshot goes and the round stays: one oversize page must not lose the run.
+  snapshot: (v) => {
+    const kept = v && typeof v === "object" && !Array.isArray(v) ? traceKeep(TRACE_SNAPSHOT, v) : undefined;
+    return kept && JSON.stringify(kept).length <= TRACE_SNAPSHOT_CHARS ? kept : undefined;
+  },
+};
 const TRACE_RUN = {
   run_id: traceMatch(TRACE_RUN_ID),
   host: (v) => traceMatch(TRACE_HOST)(typeof v === "string" ? v.toLowerCase() : v),
@@ -391,6 +509,10 @@ const TRACE_RUN = {
     const kept = traceKeep(TRACE_FIELD, field);
     return kept.fid && kept.outcome ? kept : null;
   }, TRACE_FIELDS),
+  reasoning: traceList((round) => {
+    const kept = traceKeep(TRACE_REASON_ROUND, round);
+    return kept.round && kept.why ? kept : null;
+  }, TRACE_REASON_ROUNDS),
 };
 
 /** The trace to post, or null when there is nothing the schema would take.

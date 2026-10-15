@@ -60,7 +60,7 @@ if TYPE_CHECKING:  # the app is imported only after open_copy sets its environme
     from sqlalchemy.orm import Session
 
     from app.models.autofill_run import AutofillRun
-    from app.schemas.autofill_trace import RunTrace, TraceField, TraceStep
+    from app.schemas.autofill_trace import RunTrace, TraceField, TraceReasonRound, TraceStep
 
 
 # json leaves these raw with ensure_ascii=False, yet str.splitlines() splits on them.
@@ -169,6 +169,20 @@ def render_field(field: TraceField) -> list[str]:
     return [head, *(f"  {render_step(step, field.options)}" for step in field.steps)]
 
 
+def render_reasoning(round_: TraceReasonRound) -> list[str]:
+    """One round of the reasoning step: who, how long, why it stopped, then the model's note, each action's outcome, the
+    codes the checker rejected and the size of what the model was shown. The note is the model's sentence: a JSON string."""
+    head = _join(f"reasoning round {round_.round}", round_.why, round_.model, _ms(round_.ms),
+                 f"stopped={round_.stopped}" if round_.stopped else None)
+    actions = [_join(f"  {a.type} {a.target or ''}".rstrip() + f" → {a.outcome}",
+                     f"written={a.written}" if a.written is not None else a.slot) for a in round_.actions]
+    snap = round_.snapshot
+    return [head, *([f"  note {_label(round_.note)}"] if round_.note else []), *actions,
+            *([f"  rejected {' '.join(round_.rejected)}"] if round_.rejected else []),
+            *([f"  snapshot fields={len(snap.fields)} buttons={len(snap.buttons)} errors={len(snap.errors)} "
+               f"tabs={len(snap.tabs)}"] if snap else [])]
+
+
 def render_header(trace: RunTrace) -> str:
     """The key module's sets name how each field ended. prefilled: `already` (the page had the answer
     before the run). filled: the other KEPT outcomes. failed: FAILED outcomes. left: everything else."""
@@ -207,7 +221,8 @@ def render_run(run: AutofillRun) -> list[str]:
     trace, loc = _check(run)
     if trace is None:
         return [f"RUN {run.run_id}  {run.host}  unreadable trace at {loc} (it does not match the current schema)"]
-    return [render_header(trace), *(line for field in trace.fields for line in render_field(field))]
+    return [render_header(trace), *(line for field in trace.fields for line in render_field(field)),
+            *(line for round_ in trace.reasoning for line in render_reasoning(round_))]
 
 
 # ---------- report: counters and stored runs, aggregated

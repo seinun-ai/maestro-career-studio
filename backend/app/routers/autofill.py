@@ -161,6 +161,9 @@ def post_telemetry(
 @router.post("/runs", status_code=204)
 def post_run(payload: RunTrace, db: Annotated[Session, Depends(get_db)]):
     """Store one Companion run's value-free trace and fold it into the mechanism counters."""
+    if payload.reasoning:
+        # A page may echo a typed answer in an error line, and the stored snapshot keeps those lines for the replay script.
+        payload = autofill_reason.redact_trace(payload, _facts(db, None, None)[0])
     autofill_trace.store_run(db, payload)
     return Response(status_code=204)
 

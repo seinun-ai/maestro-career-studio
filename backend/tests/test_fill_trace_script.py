@@ -544,3 +544,29 @@ def test_a_map_step_that_chose_a_sentinel_names_it():
     assert fill_trace.render_step(step) == "map → route:none [years_unanswered]  jev 0.95 ≥0.80"
     plain = TraceStep(op="map", route="none", why="unclear_job")
     assert fill_trace.render_step(plain) == "map → route:none (unclear_job)  code"
+
+
+def test_a_reasoning_step_prints_its_rounds_after_the_header(tmp_path, script):
+    doc = trace("run-reason-1", "jobs.acme.test", T0, "x", fields=[], rounds=0, reasoning=[{
+        "round": 1, "why": "page_errors", "model": "claude-sonnet-5-5", "ms": 4200, "stopped": "moved",
+        "note": 'The error says "Source"\nfake',
+        "actions": [{"type": "write", "target": "f4", "outcome": "progress", "written": 42},
+                    {"type": "answer_from", "target": "f1", "outcome": "no_effect", "slot": "preferences.how_heard"},
+                    {"type": "press_next", "target": "b1", "outcome": "moved"}],
+        "rejected": ["unknown_id"],
+        "snapshot": {"fields": [{"fid": "f1", "question": "How did you hear?", "shape": "select"}],
+                     "buttons": [{"ref": "b1", "text": "Next", "role": "next"}], "errors": [{"text": "Source"}]}},
+        {"round": 2, "why": "page_errors", "ms": 0, "stopped": "wall"}])
+    done = script("--db", str(make_db(tmp_path / "copy" / "copy.sqlite3", [doc])), "last")
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines() == [
+        "RUN run-reason-1  jobs.acme.test  2026-10-03 14:02:11Z  fields=0 filled=0 left=0 failed=0 prefilled=0 halted=none rounds=0",
+        "reasoning round 1  page_errors  claude-sonnet-5-5  4.2s  stopped=moved",
+        '  note "The error says \\"Source\\"\\nfake"',
+        "  write f4 → progress  written=42",
+        "  answer_from f1 → no_effect  preferences.how_heard",
+        "  press_next b1 → moved",
+        "  rejected unknown_id",
+        "  snapshot fields=1 buttons=1 errors=1 tabs=0",
+        "reasoning round 2  page_errors  0ms  stopped=wall",
+    ]

@@ -544,6 +544,7 @@
     const day = new Date(host.now());
     const today = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
     record.sorted = null;
+    const began = new Date(host.now());
     const ops = ns.panelRunReason.opsFor(store, record, {
       fill: (fids, scope) => fillPage(store, record, ns.queueRun.RUN_LIMITS, { only: fids, ...scope }),
       rebind: async (tabId) => rebind(store, record, tabId, await host.tabUrl(tabId).catch(() => ""),
@@ -570,6 +571,11 @@
       if (record.thinking && store.read().note?.text === record.thinking) store.write({ note: null });
       record.thinking = null;
     }
+    // The fill log gets the step's rounds as a run of their own (never awaited: a park is not delayed by its log). A tab on
+    // another site is not the page: the run's own last host names it.
+    const trace = ns.reasonLoop.traceOf(out.rounds, { startedAt: began, endedAt: new Date(host.now()),
+      host: ctx.why === "moved_away" ? (record.hosts ?? []).at(-1) : hostOf(url) });
+    if (trace) noteLog(store, record, store.trace(trace));
     const step = record.step ?? 0;
     const rows = record.assumedRows ?? [];
     for (const one of out.wrote) {

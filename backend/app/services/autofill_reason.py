@@ -16,6 +16,7 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.schemas.autofill_trace import RunTrace
 from app.schemas.autofill_reason import (
     NOTE_MAX,
     REPLY,
@@ -345,19 +346,38 @@ def _fact_values(facts: dict) -> list[str]:
                   key=len, reverse=True)
 
 
+def _saved_answers(facts: dict) -> re.Pattern | None:
+    """The profile's values as one whole-word pattern, or None when there are none."""
+    values = _fact_values(facts)
+    return re.compile(r"(?<!\w)(?:" + "|".join(re.escape(v) for v in values) + r")(?!\w)", re.IGNORECASE) if values else None
+
+
 def redact_errors(req: ReasonRequest, facts: dict) -> ReasonRequest:
     """`req` with every saved answer's value taken out of the error lines (a page may echo what was typed: "ada@...
     is already registered"). Options and questions stay: they are the page's words, not a value we hold."""
-    values = _fact_values(facts)
-    if not values or not req.errors:
+    pattern = _saved_answers(facts)
+    if pattern is None or not req.errors:
         return req
-    pattern = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(v) for v in values) + r")(?!\w)", re.IGNORECASE)
     return req.model_copy(update={"errors": [e.model_copy(update={"text": pattern.sub("[saved answer]", e.text)})
                                              for e in req.errors]})
 
 
-def reason(req: ReasonRequest, facts: dict, level: str, session: Session) -> ReasonResponse:
-    model = model_settings.get_reasoning_model(session)
+def redact_trace(trace: RunTrace, facts: dict) -> RunTrace:
+    """`trace` with the same taken out of the error lines of each stored reasoning snapshot, so the fill log keeps no
+    value a page echoed (inv-autofill-telemetry-no-values)."""
+    pattern = _saved_answers(facts)
+    if pattern is None:
+        return trace
+    rounds = [r.model_copy(update={"snapshot": r.snapshot.model_copy(update={"errors": [
+        e.model_copy(update={"text": pattern.sub("[saved answer]", e.text)}) for e in r.snapshot.errors]})})
+        if r.snapshot is not None else r for r in trace.reasoning]
+    return trace.model_copy(update={"reasoning": rounds})
+
+
+def reason(req: ReasonRequest, facts: dict, level: str, session: Session | None, model: str | None = None) -> ReasonResponse:
+    """`model`: ask this one instead of the Reasoning model setting (scripts/eval_reason.py replays one snapshot against
+    several; then `session` is not read)."""
+    model = model or model_settings.get_reasoning_model(session)
     present = present_slots(facts)
     began = time.monotonic()
     try:

@@ -29,13 +29,20 @@
  * page a press left, `note` the model's last note, `ask` the ask_user note, `rounds` the trace entries (outcomes:
  * progress | no_effect | refused | rejected | moved | asked), `wrote` the rows to list as answered for you.
  *
- * WHAT THIS FILE PUBLISHES: ns.reasonLoop = { think, snapshotOf, signatureOf, lineFor, LIMITS, ACTIONS }.
+ * FILL LOG: `traceOf(rounds, {host, startedAt, endedAt})` is the run trace the host posts for a step (`fields: []`, the rounds).
+ * A round keeps its model, time, note, actions (a written answer as its LENGTH) and the value-free snapshot the model was
+ * shown, capped, without the job's selectors, so scripts/eval_reason.py can replay it against other models.
+ *
+ * WHAT THIS FILE PUBLISHES: ns.reasonLoop = { think, snapshotOf, signatureOf, lineFor, traceOf, LIMITS, ACTIONS }.
  * Every ns.* it uses is read at CALL time: it loads after queue-run.js and before page-kind.js.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const LIMITS = Object.freeze({ rounds: 3, actions: 3, pageMs: 60000, callMs: 30000, fields: 60, options: 20,
     history: 8, buttons: 20, errors: 20, tabs: 5, excluded: 30, note: 200, text: 300, minCallMs: 25000 });
+  // What a round keeps of its snapshot in the fill log (backend schemas/autofill_trace.py bounds it again): far under the
+  // schema's size, so a page of sixty long questions still posts.
+  const TRACE_CAPS = Object.freeze({ fields: 30, options: 8, optionText: 160 });
   const ACTIONS = Object.freeze(["fill", "answer_from", "write", "choose", "retry", "redo", "close_dialog",
     "press_next", "follow_tab", "ask_user"]);
   const VARIANTS = Object.freeze({ open_with_keys: { open: "keys" }, search_with_enter: { search: "enter" },
@@ -139,6 +146,14 @@
     };
     return { body, refs };
   }
+
+  /** The snapshot a round keeps: the request without the job's selectors (application, resume, address, day), capped. */
+  const keptSnapshot = (body) => ({
+    fields: body.fields.slice(0, TRACE_CAPS.fields).map((f) => ({
+      ...f, options: f.options.slice(0, TRACE_CAPS.options).map((o) => ({ ref: o.ref, text: o.text.slice(0, TRACE_CAPS.optionText) })),
+    })),
+    buttons: body.buttons, errors: body.errors, tabs: body.tabs, history: body.history, excluded: body.excluded,
+  });
 
   // ---- actions
 
@@ -343,6 +358,7 @@
         entry.stopped = "clock";
         break;
       }
+      entry.snapshot = keptSnapshot(snap.body);
       say("Thinking about this page…");
       const asked = ops.now();
       const reply = saneReply(await attempt(() => ops.ask(snap.body, Math.max(0, Math.min(LIMITS.callMs, began + LIMITS.pageMs - ops.now())))));
@@ -388,7 +404,9 @@
         const last = i === actions.length - 1;
         const result = action.type === "press_next" && !last ? { outcome: "rejected" } : await perform(action, snap, ctx, ops, state, out);
         const target = targetOf(action);
-        entry.actions.push({ type: action.type, target, outcome: result.outcome, ...(result.written !== undefined ? { written: result.written } : {}) });
+        entry.actions.push({ type: action.type, target, outcome: result.outcome,
+          ...(action.type === "answer_from" && SLOT.test(action.slot ?? "") ? { slot: action.slot } : {}),
+          ...(result.written !== undefined ? { written: result.written } : {}) });
         history.push(`${action.type}:${target} -> ${result.outcome}`);
         history.splice(0, Math.max(0, history.length - LIMITS.history));
         // A fill is judged per field (the backend checks its signatures that way); anything else by its own.
@@ -448,5 +466,28 @@
     return out;
   }
 
-  ns.reasonLoop = { think, snapshotOf, signatureOf, lineFor, LIMITS, ACTIONS };
+  const newRunId = () => `reason-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+  /** The run trace of one step (the fill log's `RunTrace` with `fields: []` and the `reasoning` rounds), or null when no
+   * round asked the model or `host` is not a hostname: a wall or the page clock alone is not worth a row. The service worker's
+   * whitelist and the backend's schema bound it again; a value has no key to ride on. */
+  function traceOf(rounds, meta = {}) {
+    try {
+      const host = String(meta.host ?? "").toLowerCase();
+      const kept = (Array.isArray(rounds) ? rounds : []).slice(0, LIMITS.rounds);
+      if (!HOST.test(host) || !kept.some((r) => r?.model)) return null;
+      return {
+        run_id: meta.runId ?? newRunId(), host, started_at: meta.startedAt.toISOString(), ended_at: meta.endedAt.toISOString(),
+        rounds: 0, fields: [],
+        reasoning: kept.map(({ round, why, model, ms, note, actions, rejected, stopped, snapshot }) => ({
+          round, why, ...(model ? { model } : {}), ms, note, actions, rejected, ...(stopped ? { stopped } : {}),
+          ...(snapshot ? { snapshot } : {}),
+        })),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  ns.reasonLoop = { think, snapshotOf, signatureOf, lineFor, traceOf, LIMITS, ACTIONS };
 })();

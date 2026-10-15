@@ -357,3 +357,57 @@ def test_the_model_is_not_asked_with_less_than_25_seconds_left_on_the_page_clock
     # The first reply takes 36 s: 24 s remain, too little for a call the backend gives 25 s.
     out = think(tmp_path, open=[{"fid": "f1"}], flipEveryFill=True, askMs=36000, replies=[act(type="fill", fids=["f1"])] * 3)
     assert len(out["asks"]) == 1 and out["out"]["rounds"][-1]["stopped"] == "clock"
+
+
+_TRACE = r"""const ns = loadModules(); emit(ns.reasonLoop.traceOf(spec.rounds, { host: spec.host ?? "acme.wd5.myworkdayjobs.test",
+  startedAt: new Date(0), endedAt: new Date(1000) }));"""
+
+
+def trace_of(tmp_path, rounds, **spec):
+    return run_node(_TRACE, {"rounds": rounds, **spec}, tmp_path, source=SOURCE)
+
+
+def test_the_trace_rounds_post_as_a_run_the_backend_accepts_and_hold_no_value(tmp_path):
+    out = think(tmp_path, open=[{"fid": "f1"}], fixes=["f1"], replies=[act(type="write", fid="f1")])
+    trace = trace_of(tmp_path, out["out"]["rounds"])
+    from app.schemas.autofill_trace import RunTrace
+    run = RunTrace.model_validate(trace)
+    assert run.fields == [] and run.reasoning[0].actions[0].written == 11 and "Mathematics" not in str(trace)
+    assert run.reasoning[0].model == "m" and run.reasoning[0].stopped == "resolved" and run.host == "acme.wd5.myworkdayjobs.test"
+    assert re.fullmatch(r"[0-9a-z-]{8,64}", run.run_id)
+
+
+def test_each_round_keeps_what_the_model_was_shown_without_the_jobs_selectors(tmp_path):
+    driver = _DRIVER.replace("const ctx = {", "const ctx = { applicationId: 'app-1', pageUrl: 'https://acme.test/apply?x=1', ")
+    out = run_node(driver, {"page": PAGE, "open": [{"fid": "f1"}], "replies": [act(type="fill", fids=["f1"])]}, tmp_path,
+                   source=SOURCE)
+    trace = trace_of(tmp_path, out["out"]["rounds"])
+    from app.schemas.autofill_trace import RunTrace
+    [round_] = RunTrace.model_validate(trace).reasoning
+    assert [f.fid for f in round_.snapshot.fields] == ["f1", "f2"] and round_.snapshot.buttons[0].role == "next"
+    assert not {"application_id", "base", "page_url", "today", "why", "round"} & set(trace["reasoning"][0]["snapshot"])
+    assert "app-1" not in str(trace) and "x=1" not in str(trace)
+
+
+def test_the_stored_snapshot_is_capped_far_under_the_schemas_size(tmp_path):
+    many = {**PAGE, "fields": [{**PAGE["fields"][0], "fid": f"f{i}", "question": "q" * 400,
+                                "options": [{"oid": f"o{j}", "text": "t" * 400} for j in range(25)]} for i in range(70)]}
+    out = run_node(_DRIVER, {"page": many, "replies": [act(type="fill", fids=["f0"])]}, tmp_path, source=SOURCE)
+    trace = trace_of(tmp_path, out["out"]["rounds"])
+    from app.schemas.autofill_trace import RunTrace
+    snap = RunTrace.model_validate(trace).reasoning[0].snapshot
+    assert len(snap.fields) == 30 and all(len(f.options) == 8 and f.option_count == 25 for f in snap.fields)
+    assert len(snap.model_dump_json()) < 80_000
+
+
+def test_a_round_records_the_fact_name_an_answer_from_chose_and_never_a_value(tmp_path):
+    out = think(tmp_path, replies=[act(type="answer_from", fid="f1", slot="preferences.how_heard")])
+    [round_] = trace_of(tmp_path, out["out"]["rounds"])["reasoning"]
+    assert round_["actions"][0] == {"type": "answer_from", "target": "f1", "outcome": "no_effect", "slot": "preferences.how_heard"}
+
+
+def test_a_step_that_never_asked_or_has_no_usable_host_posts_no_trace(tmp_path):
+    walled = [{"round": 1, "why": "page_errors", "model": None, "ms": 0, "note": "", "actions": [], "rejected": [], "stopped": "wall"}]
+    assert trace_of(tmp_path, walled) is None and trace_of(tmp_path, []) is None
+    asked = think(tmp_path, replies=[act(type="fill", fids=["f1"])])["out"]["rounds"]
+    assert trace_of(tmp_path, asked, host="not a host") is None and trace_of(tmp_path, asked, host="") is None

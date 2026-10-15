@@ -2475,3 +2475,31 @@ def test_what_the_run_filled_on_one_page_is_not_what_it_filled_on_another_page_o
     assert len(calls) == 2
     assert {f["fid"]: f["by_run"] for f in calls[0]["fields"]}["f2"] is True
     assert {f["fid"]: f["by_run"] for f in calls[1]["fields"]}["f2"] is False
+
+
+def _reasoning_traces(out):
+    return [m["trace"] for m in out["sent"] if m["type"] == "fill_trace" and m.get("trace", {}).get("reasoning")]
+
+
+def test_a_thought_posts_its_rounds_to_the_fill_log_with_no_field_and_no_value(tmp_path):
+    from app.schemas.autofill_trace import RunTrace
+
+    write = {**ASK, "note": "Degree is a short answer.", "actions": [{"type": "write", "fid": "f2"}]}
+    out = _stuck(tmp_path, _reply(write),
+                 reports=[{"fields": [needs("f2", "Degree")]},
+                          {"fields": [{**_assumed("f2", "Degree", "Drafted from your history: read it"), "answer": "BSc Mathematics"}]},
+                          {"fields": [verified("f1")]}],
+                 inventoryByPage=[[_field("f2", "BSc", question="Degree", answered=True, touched=False)], [_field("f1", "x")]])
+    [trace] = _reasoning_traces(out)
+    run = RunTrace.model_validate({**trace, "started_at": trace["started_at"], "ended_at": trace["ended_at"]})
+    [round_] = run.reasoning
+    assert run.fields == [] and run.host == "jobs.acme.test" and round_.model == "claude-sonnet-5-5" and round_.why == "open_questions"
+    assert [(a.type, a.target) for a in round_.actions] == [("write", "f2")] and round_.snapshot.fields[0].question == "Degree"
+    assert "Mathematics" not in json.dumps(trace) and "BSc" not in json.dumps(trace)
+
+
+def test_a_step_that_never_reached_the_model_posts_no_reasoning_trace(tmp_path):
+    out = _stuck(tmp_path, _reply(ASK), facts={**ON, "companionApply": {**ON["companionApply"], "thinkWhenStuck": False}})
+    assert _reasoning_traces(out) == []
+    out = _stuck(tmp_path, {"ok": False, "error": "the model is down"})
+    assert _reasoning_traces(out) == []

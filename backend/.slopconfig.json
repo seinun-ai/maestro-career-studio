@@ -10,6 +10,7 @@
     "scripts.ats_snapshot",
     "scripts.backfill_work_auth",
     "scripts.eval_fill_decisions",
+    "scripts.eval_reason",
     "scripts.fill_trace",
     "scripts.health_golden",
     "scripts.live_provider_check",

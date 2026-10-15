@@ -164,3 +164,54 @@ def test_a_run_id_is_stored_once(db_session):
         db_session.add(AutofillRun(run_id="run-12345678", host="jobs.example.com", started_at=NOW, trace={}))
     with pytest.raises(IntegrityError):
         db_session.flush()
+
+
+def _round(**kw):
+    return {"round": 1, "why": "page_errors", "model": "claude-sonnet-5-5", "ms": 4200,
+            "note": "The error names Source, which no field is called.",
+            "actions": [{"type": "fill", "target": "f1", "outcome": "progress"},
+                        {"type": "write", "target": "f4", "outcome": "progress", "written": 42},
+                        {"type": "press_next", "target": "b1", "outcome": "moved"}],
+            "rejected": [], "stopped": "moved", **kw}
+
+
+def _snapshot(**kw):
+    return {"fields": [{"fid": "f1", "question": "Field of study", "shape": "text", "required": True,
+                        "options": [{"ref": "o1", "text": "Maths"}], "option_count": 1}],
+            "buttons": [{"ref": "b1", "text": "Save and Continue", "role": "next"}],
+            "errors": [{"text": "Source", "fid": "f1"}], "tabs": [{"ref": "t1", "host": "jobs.acme.test"}],
+            "history": ["fill:f1 -> progress"], "excluded": ["write:f4"], **kw}
+
+
+def test_a_reasoning_step_is_a_run_with_no_fields_and_its_rounds():
+    run = RunTrace.model_validate(_run(fields=[], reasoning=[_round(snapshot=_snapshot())]))
+    assert run.reasoning[0].actions[1].written == 42 and run.reasoning[0].snapshot.fields[0].question == "Field of study"
+    assert RunTrace.model_validate(run.model_dump(mode="json")) == run
+
+
+def test_a_round_that_never_asked_has_no_model_and_no_snapshot():
+    run = RunTrace.model_validate(_run(fields=[], reasoning=[_round(model=None, actions=[], stopped="wall")]))
+    assert run.reasoning[0].model is None and run.reasoning[0].snapshot is None
+
+
+def test_a_reasoning_round_has_no_place_for_a_value():
+    for bad in (_round(actions=[{"type": "write", "target": "f4", "outcome": "progress", "value": "BSc"}]),
+                _round(note="x" * 201), _round(model="Claude Sonnet!"), _round(round=4), _round(round=0),
+                _round(actions=[{"type": "submit", "target": "b1", "outcome": "moved"}]),
+                _round(actions=[{"type": "write", "target": "Mathematics degree", "outcome": "progress"}]),
+                _round(rejected=["Mathematics"]), _round(stopped="Mathematics"),
+                _round(snapshot=_snapshot(value="BSc")),
+                _round(snapshot=_snapshot(fields=[{"fid": "f1", "question": "q", "shape": "text", "value": "BSc"}])),
+                _round(snapshot=_snapshot(history=["typed Mathematics"]))):
+        with pytest.raises(ValidationError):
+            RunTrace.model_validate(_run(reasoning=[bad]))
+
+
+def test_a_run_holds_at_most_three_rounds_and_a_snapshot_stays_capped():
+    with pytest.raises(ValidationError):
+        RunTrace.model_validate(_run(reasoning=[_round()] * 4))
+    big = _snapshot(fields=[{"fid": f"f{i}", "question": "q" * 300, "shape": "select",
+                             "options": [{"ref": f"o{j}", "text": "t" * 300} for j in range(1, 21)], "option_count": 20}
+                            for i in range(60)])
+    with pytest.raises(ValidationError):
+        RunTrace.model_validate(_run(reasoning=[_round(snapshot=big)]))
