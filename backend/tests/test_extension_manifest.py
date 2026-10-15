@@ -722,12 +722,30 @@ def test_the_explicit_route_injects_before_giving_up(manifest):
 
 # What the load-once files already published in the last release: an older module has them, so a re-run file may read
 # them as they are. A NEW name is never added here to quiet this test; the re-run file keeps its own copy or reads the
-# name with a fallback (`ns.X ?? …`).
-SHIPPED_ONCE_EXPORTS = {"fillBase", "fillInventory", "fillOps", "shapes", "recipes", "readField", "precedingLabel", "unmark"}
+# name with a fallback (`ns.X ?? …`) or a `typeof ns.X` guard anywhere in the file.
+SHIPPED_ONCE_EXPORTS = {"fillBase", "fillInventory", "fillOps", "shapes", "recipes", "readField"}
 
 
 def _publishes(text: str) -> set[str]:
     return set(re.findall(r"\bns\.([A-Za-z_]\w*)\s*(?:\?\?)?=(?!=)", text))
+
+
+def unsafe_reads(path: str, text: str, only_once: set[str]) -> list[str]:
+    """Reads in a re-run file of an export only a load-once file publishes, past the shipped ones, with no fallback and no
+    `typeof ns.X` guard in the file; a destructured read (`const { a } = ns;`) has no fallback."""
+    out = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        for m in re.finditer(r"\bns\.([A-Za-z_]\w*)\b(?!\s*(?:\?\?)?=(?!=))(\s*(?:\?\?|\|\|))?", line):
+            name, fallback = m.group(1), m.group(2)
+            guarded = re.search(rf"typeof\s+ns\.{name}\b", text) is not None
+            if name in only_once and name not in SHIPPED_ONCE_EXPORTS and name != "loadedOnce" and not fallback and not guarded:
+                out.append(f"{path}:{lineno} reads ns.{name} with no fallback")
+        for m in re.finditer(r"\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*ns\s*;", line):
+            for part in m.group(1).split(","):
+                name = re.split(r"[:=]", part)[0].strip()
+                if name in only_once and name not in SHIPPED_ONCE_EXPORTS:
+                    out.append(f"{path}:{lineno} destructures ns.{name} with no fallback")
+    return out
 
 
 def test_a_re_run_content_file_never_reads_a_newer_export_of_a_load_once_file(content_script):
@@ -737,15 +755,22 @@ def test_a_re_run_content_file_never_reads_a_newer_export_of_a_load_once_file(co
         (once if "loadedOnce" in text else rerun)[path] = text
     assert once, "the load-once files are the ones that carry the guard"
     only_once = set().union(*(_publishes(t) for t in once.values())) - set().union(*(_publishes(t) for t in rerun.values()))
-    unsafe = []
-    for path, text in rerun.items():
-        for lineno, line in enumerate(text.splitlines(), 1):
-            for m in re.finditer(r"\bns\.([A-Za-z_]\w*)\b(?!\s*(?:\?\?)?=(?!=))(\s*(?:\?\?|\|\|))?", line):
-                name, fallback = m.group(1), m.group(2)
-                if name in only_once and name not in SHIPPED_ONCE_EXPORTS and name != "loadedOnce" and not fallback:
-                    unsafe.append(f"{path}:{lineno} reads ns.{name} with no fallback")
+    unsafe = [line for path, text in rerun.items() for line in unsafe_reads(path, text, only_once)]
     assert unsafe == [], ("a re-injected file must not depend on a newer export of a load-once file (an older copy stays "
                           "in the tab): keep its own copy or read it with a fallback\n" + "\n".join(unsafe))
+
+
+@pytest.mark.parametrize("source, flagged", [
+    ("const h = ns.newThing;", True),
+    ("const h = ns.newThing ?? fallback;", False),
+    ("if (typeof ns.newThing !== 'function') return;\nns.newThing(1);", False),
+    ("const { newThing } = ns;", True),
+    ("const { fillBase, newThing: n } = ns;", True),
+    ("const { fillBase } = ns;", False),
+    ("const x = ns.fillBase.visible;", False),
+])
+def test_the_scan_catches_a_plain_or_destructured_read_and_accepts_a_fallback_or_a_typeof_guard(source, flagged):
+    assert bool(unsafe_reads("x.js", source, {"newThing", "fillBase"})) is flagged
 
 
 def test_the_page_readers_own_error_heading_is_the_field_readers():

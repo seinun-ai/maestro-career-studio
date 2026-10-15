@@ -450,7 +450,7 @@ def test_every_park_has_words_and_the_resume_and_skip_it_allows(tmp_path, why, r
 def test_a_stale_page_card_says_to_reload_the_page_then_resume(tmp_path):
     out = _run(tmp_path, [{"seed": [_seeded("parked", why="page_stale")]}])
     text = _text(_card(out["shots"][1])["body"])
-    assert "The Companion was updated while this page was open. Reload the page, then press Resume." in text
+    assert "The Companion couldn't read this page (usually after an update). Reload the page, then press Resume." in text
 
 
 @pytest.mark.parametrize("why,reason,resume", [
