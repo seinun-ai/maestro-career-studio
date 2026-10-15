@@ -406,6 +406,7 @@
     engine: (x) => TRACE_ENGINES.has(x), p: unit, floor: unit, second: (x) => TRACE_SECONDS.has(x), first_p: unit,
     first_same: (x) => typeof x === "boolean", chose_none: (x) => typeof x === "boolean",
     sentinel: (x) => TRACE_SENTINELS.has(x),
+    top_fact: (x) => typeof x === "string" && x.length <= 120 && TRACE_SLOT.test(x),
   };
   // A page word is sent only when the schema's pattern holds (a lowercase
   // word cannot carry a typed value); anything else is null, never "".
@@ -452,7 +453,7 @@
     return error === "stale" ? "error" : "no_effect";
   };
   // A model's trace, copied by name and checked: engine, p, floor, second,
-  // first_p, first_same, chose_none, sentinel; a value that is absent or invalid is left out.
+  // first_p, first_same, chose_none, sentinel, top_fact; a value that is absent or invalid is left out.
   const decisionOf = (t) => Object.fromEntries(Object.entries(DECISION_CHECKS)
     .filter(([k, ok]) => t?.[k] != null && ok(t[k])).map(([k]) => [k, t[k]]));
 

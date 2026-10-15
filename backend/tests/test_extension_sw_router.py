@@ -853,7 +853,8 @@ def test_a_trace_keeps_exactly_the_schemas_keys_at_each_level(tmp_path):
     full_step = {"op": "step", "ms": 5, "effect": "progress", "word": "ok", "route": "slot",
                  "slot": "a.b", "why": "unclear_job", "engine": "jev", "p": 0.9, "floor": 0.5,
                  "second": "decided", "first_p": 0.4, "first_same": True, "chose_none": False,
-                 "sentinel": "years_unanswered", "way": "same", "remembered": True, "option": 3, "reason": "matched", "move": "click:o3"}
+                 "sentinel": "years_unanswered", "top_fact": "preferences.earliest_start_date", "way": "same", "remembered": True, "option": 3,
+                 "reason": "matched", "move": "click:o3"}
     body = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=[full_step])], reasoning=[_reason_round()]))
     [field] = body["fields"]
     assert set(body) == set(RunTrace.model_fields)
@@ -963,6 +964,15 @@ def test_step_numbers_are_rounded_and_odd_ones_dropped(tmp_path):
         {"op": "set"},
         {"op": "set"},
     ]
+
+
+def test_the_top_fact_is_a_fact_name_or_it_is_dropped(tmp_path):
+    """`top_fact` is the NAME of the fact a /map answer left under its floor, never a value: a name the schema's pattern refuses
+    (capitals, a space, a typed value, over 120 characters) does not leave the browser."""
+    names = ["work_auth.authorized_now", "Jane Doe", "ab.CD", "x" * 121, 7, None, "personal.city; drop table"]
+    steps = [{"op": "map", "top_fact": name} for name in names]
+    got = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=steps)]))["fields"][0]["steps"]
+    assert [s.get("top_fact") for s in got] == ["work_auth.authorized_now", None, None, None, None, None, None]
 
 
 def test_a_remembered_flag_is_kept_only_as_a_boolean(tmp_path):

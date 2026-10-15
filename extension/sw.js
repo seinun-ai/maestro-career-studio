@@ -393,6 +393,7 @@ const TRACE_STEP = {
   first_same: traceBool,
   chose_none: traceBool,
   sentinel: traceOneOf(TRACE_SENTINELS),
+  top_fact: traceMatch(TRACE_SLOT, TRACE_SLOT_MAX),
   way: traceOneOf(TRACE_WAYS),
   remembered: traceBool,
   option: traceInt(TRACE_PICKS - 1),

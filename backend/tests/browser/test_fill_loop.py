@@ -3015,6 +3015,20 @@ def test_a_trace_lists_each_decision_and_page_action_in_order(page, load):
     assert (s_pick["second"], s_pick["chose_none"], "first_p" in s_pick) == ("asked", False, False)  # only what was sent
 
 
+def test_a_maps_top_fact_reaches_the_trace_only_as_a_fact_name(page, load):
+    """`top_fact` names the fact a /map answer left under its floor. A name rides the trace; anything else a model's trace
+    carried under that key (a typed value, a sentence) is left out."""
+    keep = dict(SELECT_AND_TEXT)
+    keep["map"] = {
+        "s": {**SELECT_AND_TEXT["map"]["s"], "trace": {"engine": "fast", "p": 0.97, "floor": 0.9, "top_fact": "personal.city"}},
+        "t": {**SELECT_AND_TEXT["map"]["t"], "trace": {"engine": "fast", "p": 0.4, "floor": 0.9, "top_fact": "Springfield, IL"}}}
+    out = run(page, load, **keep)
+    s_map, = [step for step in traced(out, "s")["steps"] if step["op"] == "map"]
+    t_map, = [step for step in traced(out, "t")["steps"] if step["op"] == "map"]
+    assert s_map["top_fact"] == "personal.city"
+    assert "top_fact" not in t_map and t_map["p"] == 0.4
+
+
 def test_every_trace_step_is_timed_in_whole_milliseconds(page, load):
     out = run(page, load, **SELECT_AND_TEXT)
     steps = [step for fid in ("s", "t") for step in traced(out, fid)["steps"]]
