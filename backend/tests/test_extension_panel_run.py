@@ -113,6 +113,9 @@ Object.defineProperty(spec.frames, "fill_inventory", { configurable: true, enume
     const fields = byPage ? byPage[Math.min(at, byPage.length - 1)] : (spec.inventory ?? []);
     return [{ frameId: 0, result: { fields } }];
   } });
+// `uploadsByPage`: the upload boxes the page shows, per site page (the box a banner names may be gone, or redrawn, on the next).
+if (spec.uploadsByPage) Object.defineProperty(spec.frames, "page_uploads", { configurable: true, enumerable: true,
+  get: () => [{ frameId: 0, result: spec.uploadsByPage[Math.min(at, spec.uploadsByPage.length - 1)] }] });
 spec.frames.fill_cancel = [{ frameId: 0, result: true }];
 spec.frames.fill_focus = [{ frameId: 0, result: true }];
 spec.page = spec.page ?? {};
@@ -1790,6 +1793,17 @@ def test_an_upload_error_whose_box_is_gone_is_stale_and_nothing_is_attached(tmp_
     record = _record(out["shots"][1])
     assert (record["status"], record["step"]) == ("ready", 1)
     assert _attach_asks(out) == []
+
+
+def test_an_upload_error_whose_box_was_redrawn_on_the_same_page_is_not_stale(tmp_path):
+    """The banner names t-up; the page now shows its drop zone under another tag, empty and required: that is the
+    same page still missing its file, so the repair is not 'fixed' and the run parks naming the box."""
+    redrawn = {**BOX, "target": "t-new", "required": True}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, STEP1_REJECTED, REVIEW), uploadsByPage=[[], [redrawn]],
+               frames={"page_errors": [{"frameId": 0, "result": UPLOAD_ERROR}]}, replies={"attach_pdf": ATTACHED_NONE})
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"], record["step"]) == ("parked", "page_errors", 0)
+    assert record["open"] == [{"fid": None, "question": "Upload a file (5MB max)", "required": True}]
 
 
 def test_an_upload_error_the_attach_cannot_repair_parks_page_errors(tmp_path):

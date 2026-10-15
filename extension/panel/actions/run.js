@@ -509,9 +509,11 @@
     else {
       for (const one of uploads) {
         // A banner left up over a box the user filled by hand, or over one the page no longer has (it moved on under the
-        // line), is a stale line: that box is repaired, and the driver reads the page again.
-        const box = (await uploadBoxes(store.run, record)).find((one_) => one_.target === one.target);
-        if (!box || box.occupied) continue;
+        // line), is a stale line: that box is repaired, and the driver reads the page again. A box that is gone while the
+        // page shows a required one still empty is the same box redrawn under another tag: not stale.
+        const boxes = await uploadBoxes(store.run, record);
+        const box = boxes.find((one_) => one_.target === one.target);
+        if (box?.occupied || (!box && !boxes.some((one_) => one_.required === true && one_.occupied !== true))) continue;
         if (record.stopRequested === true || !(await attachBox(store, record, one.target)).attached) remaining.push(one);
       }
     }
