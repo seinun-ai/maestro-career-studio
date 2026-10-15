@@ -2408,19 +2408,27 @@
   };
   /** The trace's value screens over an inventory's fields (`committed` is what each holds), for another reader of the page that
    * must not repeat a value either: the reasoning step's snapshot (shared/reason-loop.js). Same rule as the run trace:
-   * a question is blanked when its OWN keys or a sibling's (2+ characters when the sibling is typed, else 4+) match it,
-   * an option text against the TYPED siblings' keys (4+), never one a row's own list holds; an error line against every key.
-   * Each answers the text to keep: "" when it holds a value. */
+   * a question holds none of its OWN row's keys or a sibling's (2+ characters when the sibling is typed, else 4+), an option
+   * text none of the TYPED siblings' keys (4+), never one a row's own list holds, an error line none of the siblings' keys (the
+   * same floors, so a step number is not a value). A question or an error line keeps its words and loses only the value
+   * ("[your answer]"): the words are how the backend knows a question is protected. An option holding one is blanked ("").
+   * Answers, per kind, the text to keep. */
+  const HIDDEN = "[your answer]";
   const valueScreens = (fields) => {
     const rows = new Map(fields.map((f) => [f.fid, { fid: f.fid, field: f }]));
-    const others = denyRegex([...new Set([...rows.values()].flatMap(siblingKeys))]);
+    const sibling = denyRegex([...new Set([...rows.values()].flatMap(siblingKeys))]);
     const optionKeys = optionScreen(rows);
-    const lines = denyRegex([...new Set([...rows.values()].flatMap(rowKeys).filter(foreignKey))]);
     const own = new Map([...rows].map(([fid, row]) => [fid, denyRegex(rowKeys(row))]));
+    // A value, whole word, any case, replaced; twice so two matches that share a boundary character both go.
+    const hide = (text, pattern) => {
+      if (!pattern) return text;
+      const every = new RegExp(pattern.source, "giu");
+      return text.replace(every, `$1${HIDDEN}$2`).replace(every, `$1${HIDDEN}$2`);
+    };
     return {
-      question: (fid, text) => (others?.test(text) || own.get(fid)?.test(text) ? "" : text),
+      question: (fid, text) => hide(hide(text, own.get(fid)), sibling),
       option: (fid, text) => (optionKeys(rows.get(fid))?.test(text) ? "" : text),
-      line: (text) => (lines?.test(text) ? "" : text),
+      line: (text) => hide(text, sibling),
     };
   };
   const traceField = (status, row, others, optionKeys) => {

@@ -436,10 +436,10 @@ def test_a_value_the_user_typed_is_blanked_from_every_sibling_question_option_an
     R.ReasonRequest.model_validate(body)
     by_fid = {f["fid"]: f for f in body["fields"]}
     assert by_fid["e1"]["question"] == "Employer"                # the field's own question holds no value
-    assert by_fid["e2"]["question"] == ""                         # a sibling's question that says it back is blanked
+    assert by_fid["e2"]["question"] == "Do you still work at [your answer]?"   # only the value goes, the words stay
     assert [o["text"] for o in by_fid["e3"]["options"]] == ["", "Initech"]
     assert by_fid["e4"]["question"] == "Field of study"           # nothing else is touched
-    assert body["errors"] == [{"text": ""}]
+    assert body["errors"] == [{"text": "[your answer] is invalid"}]
     trace = trace_of(tmp_path, out["out"]["rounds"])
     assert "Globex" not in json.dumps(body) and "Globex" not in json.dumps(trace) and "Globex" not in json.dumps(out["out"])
 
@@ -454,3 +454,32 @@ def test_the_screens_leave_the_pages_own_words_and_common_option_words_alone(tmp
     assert [f["question"] for f in body["fields"]] == ["Phone type", "Do you use T-Mobile?"]
     assert [o["text"] for o in body["fields"][0]["options"]] == ["Mobile", "Home"]
     assert body["errors"] == [{"text": "Phone type is required"}]
+
+
+def test_a_protected_question_keeps_its_words_when_a_sibling_holds_a_value_it_names(tmp_path):
+    fields = [
+        {"fid": "c1", "question": "Country", "shape": "text", "kind": "text", "required": True, "answered": True,
+         "committed": "United States", "options": None},
+        {"fid": "c2", "question": "Are you legally authorized to work in the United States?", "shape": "select", "kind": "select",
+         "required": True, "answered": False, "committed": "", "options": [{"oid": "o1", "text": "Yes"}, {"oid": "o2", "text": "No"}]}]
+    [body] = run_node(_DRIVER, {"page": _globex(fields=fields, errors=[]), "replies": [act(type="fill", fids=["c2"])]}, tmp_path,
+                      source=SOURCE)["asks"]
+    question = {f["fid"]: f for f in body["fields"]}["c2"]["question"]
+    assert question == "Are you legally authorized to work in the [your answer]?"
+    from app.schemas.autofill_reason import SnapField
+    from app.services import autofill_reason
+    assert autofill_reason.protected(SnapField(fid="c2", question=question, shape="select"))     # the backend still sees the words
+
+
+def test_an_error_line_is_screened_with_the_sibling_floors_so_a_step_number_survives(tmp_path):
+    fields = [
+        {"fid": "n1", "question": "Years of experience", "shape": "text", "kind": "text", "required": True, "answered": True,
+         "committed": "5", "options": None},
+        {"fid": "n2", "question": "Hours", "shape": "text", "kind": "text", "required": True, "answered": True,
+         "committed": "Yes", "options": None},
+        {"fid": "n3", "question": "Employer", "shape": "text", "kind": "text", "required": True, "answered": True,
+         "committed": "Globex Corp", "options": None}]
+    errors = [{"label": "Error - Step 5 of 7: Source is required. Yes. Globex Corp too.", "kind": "other", "target": None}]
+    [body] = run_node(_DRIVER, {"page": _globex(fields=fields, errors=errors), "replies": [act(type="fill", fids=["n1"])]}, tmp_path,
+                      source=SOURCE)["asks"]
+    assert body["errors"] == [{"text": "Error - Step 5 of 7: Source is required. Yes. [your answer] too."}]

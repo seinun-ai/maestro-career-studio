@@ -32,6 +32,13 @@ from tests.extension_harness import ROOT
 T0 = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def _no_leaked_override():
+    """`_client` points the app's `get_db` at this test's session; left in place it leaks into the next test of the xdist worker."""
+    yield
+    app.dependency_overrides.pop(get_db, None)
+
+
 def _client(db_session):
     def _get_db():
         yield db_session

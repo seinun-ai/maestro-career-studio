@@ -112,7 +112,10 @@ def present_slots(facts: dict) -> list[str]:
 
 
 def protected(field: SnapField) -> bool:
-    return bool(PROTECTED_SLOT.match(field.slot or "")) or bool(_NEVER_DRAFTED.search(field.question))
+    """A field the model may not answer. One with no question text is: the panel blanks nothing but a question it could not
+    show safely, and its words are how a protected one is told (inv: the model never answers what it cannot read)."""
+    return (bool(PROTECTED_SLOT.match(field.slot or "")) or bool(_NEVER_DRAFTED.search(field.question))
+            or not field.question.strip())
 
 
 def _offered(why: str, level: str) -> list[str]:
@@ -367,7 +370,7 @@ def redact_errors(req: ReasonRequest, facts: dict) -> ReasonRequest:
 
 # Facts whose value is one of the page's own options (a country, a state, a Yes/No, a stated preference): a select that lists it
 # lists the page's words, so a stored option text keeps them. A question, an error line and a note never do.
-_CHOICE_FACTS = ("eeo.", "work_auth.", "preferences.", "personal.country", "personal.state")
+_CHOICE_FACTS = re.compile(r"personal\.(?:country|state)$|eeo\.|work_auth\.|eligibility\.|preferences\.(?:willing_to_relocate|how_heard)$")
 
 
 def _scrubbed(text: str, pattern: re.Pattern | None, limit: int) -> str:
@@ -383,7 +386,7 @@ def redact_trace(trace: RunTrace, facts: dict) -> RunTrace:
     pattern = _saved_answers(facts)
     if pattern is None:
         return trace
-    options = _saved_answers({k: f for k, f in facts.items() if not str(getattr(f, "slot", k)).startswith(_CHOICE_FACTS)})
+    options = _saved_answers({k: f for k, f in facts.items() if not _CHOICE_FACTS.match(str(getattr(f, "slot", k)))})
 
     def snapshot(snap: Any) -> Any:
         return snap.model_copy(update={

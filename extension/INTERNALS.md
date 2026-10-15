@@ -1772,8 +1772,9 @@ footer alone).
     tabs (`t<i>`, host only), the last 8 moves and the signatures excluded. The job selectors (`application_id` or `base`, `page_url`, `today`) ride along; a
     `moved_away` snapshot carries no field, button or error of the foreign site. Page text is cut to 300 characters and stripped of invisible Unicode (Cf, Co, Cn).
     The page can say a typed value back, so every question, option text and error line passes the run trace's own screens first (`fillLoop.valueScreens`, over the
-    inventory's `committed` values, same rule and thresholds as "Run trace"): a question is blanked when its own keys or a sibling's match, an option against the typed
-    siblings' keys (4+ characters), an error line against every key. A blank text is `""`; with no fill loop there is no snapshot.
+    inventory's `committed` values, same rule and thresholds as "Run trace"): a question loses its own keys and the siblings', an option against the typed
+    siblings' keys (4+ characters), an error line against the siblings' keys. A question or error line keeps its words and reads `[your answer]` for the value (the words are how a protected question is told; the floors are the sibling ones,
+    so a step number is not a value), an option text that holds one is `""`; with no fill loop there is no snapshot.
   - **Limits and guards** (`LIMITS`, mirrored by `schemas/autofill_reason.py`): 3 rounds, 3 actions a round, a minute a page, and no call is started with under 25 s of
     that minute left (the backend gives the model 25 s). An action's signature (`type:target`) that failed twice goes back as `excluded`; a field an action left
     unchanged twice leaves the snapshot; a round after which the page key (fingerprint, error count, filled fields) is unchanged ends the loop, as do `ask_user`, a
@@ -1843,6 +1844,11 @@ footer alone).
   `press_next` presses it (through the driver's `press`, which still refuses a button that turned into a Submit).
 - **A draft with a Socket.io-style word is dropped.** The link, email and phone check (`services/contact_scan.py`, on every drafted answer and every reasoning note)
   reads a bare dotted word on a country-code or common TLD (`socket.io`) as a link the owner did not give, and drops the draft; the question is then the user's.
+- **The snapshot's value screen covers what the page can read back, not everything the user ever typed.** It uses the inventory's `committed` values on THIS page:
+  a value typed on an earlier page (and held in neither the profile nor a base resume), or one the page cleared, is not known to it; a partial quote of a drafted answer
+  inside an error line is not caught; and the card's "answered for you" rows show the field's unscreened question (panel only, never sent or stored). The stored
+  copy's backstop (`redact_trace`) adds the profile's and every active base resume's values, no more. A screened question or error line keeps its words and reads
+  `[your answer]` for the value, so a protected question stays recognisable; a field the backend receives with no question text is treated as protected.
 - **A follow never drives.** `follow_tab` rebinds the run to the application's tab and parks with **Continue here**; the model cannot press anything there.
 
 ### The fill agent's rules (all Autofill, run or not)

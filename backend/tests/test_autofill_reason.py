@@ -478,3 +478,24 @@ def test_open_questions_never_offers_or_allows_press_next_because_the_driver_ref
     _, rejected = autofill_reason.check(reply({"type": "press_next", "button": "b1"}), req("open_questions"), present=set(), level="history")
     assert rejected == ["not_allowed"]
     assert "press_next" in autofill_reason.build_prompt(req("page_errors"), [], "history")
+
+
+@pytest.mark.parametrize("kind, action", [
+    ("write", {"type": "write", "fid": "f1"}), ("choose", {"type": "choose", "fid": "f1", "basis": "default"}),
+    ("answer_from", {"type": "answer_from", "fid": "f1", "slot": "personal.city"}), ("redo", {"type": "redo", "fid": "f1"})])
+def test_a_field_with_no_question_text_is_protected_because_its_words_may_have_been_screened_away(kind, action):
+    blank = req(fields=[{"fid": "f1", "question": "", "shape": "select", "by_run": True,
+                         "options": [{"ref": "o1", "text": "Yes"}], "option_count": 1}])
+    actions, rejected = autofill_reason.check(reply(action), blank, present={"personal.city"}, level="history")
+    assert rejected == ["protected"] and actions[0].type == "ask_user"
+
+
+def test_a_stored_option_keeps_only_the_facts_a_page_lists_as_its_own_choices():
+    facts = autofill_catalog.build(
+        {"personal": {"country": "United States"}, "preferences": {"desired_salary": "85000", "notice_period": "Two weeks",
+                                                                  "how_heard": "Job fair", "willing_to_relocate": "Remote only"}},
+        [], [])
+    snap = {"fields": [{"fid": "f1", "question": "Pick", "shape": "select", "options": [
+        {"ref": f"o{i}", "text": t} for i, t in enumerate(["United States", "85000", "Two weeks", "Job fair", "Remote only"], 1)]}]}
+    kept = autofill_reason.redact_trace(_trace(snap), facts).reasoning[0].snapshot.fields[0]
+    assert [o.text for o in kept.options] == ["United States", "[saved answer]", "[saved answer]", "Job fair", "Remote only"]
