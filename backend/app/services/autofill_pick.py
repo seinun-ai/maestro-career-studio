@@ -575,7 +575,7 @@ def named_employers(fields: list[PickField], facts: dict[str, Fact]
 
 
 CITY_SLOT = "personal.city"
-_DEGREE_SLOT = re.compile(r"education\.\d+\.degree")
+DEGREE_SLOT = re.compile(r"education\.\d+\.degree")
 
 
 def city_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
@@ -604,7 +604,7 @@ def education_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[li
             if level is not None and isinstance(level.value, str):
                 got = autofill_education.decide(level.value, [(o.oid, o.text) for o in f.options], complete=f.complete)
                 decided[f.fid] = Picked(oids=[got.oid] if got.oid else [], reason=got.reason, trace=DecisionTrace())
-        elif (f.route == "slot" and _DEGREE_SLOT.fullmatch(f.slot or "") and isinstance(getattr(facts.get(f.slot), "value", None), str)
+        elif (f.route == "slot" and DEGREE_SLOT.fullmatch(f.slot or "") and isinstance(getattr(facts.get(f.slot), "value", None), str)
               and (typed := autofill_education.degree_type(facts[f.slot].value, [(o.oid, o.text) for o in f.options],
                                                            complete=f.complete)) is not None):
             decided[f.fid] = Picked(oids=[typed.oid] if typed.oid else [], reason=typed.reason, trace=DecisionTrace())

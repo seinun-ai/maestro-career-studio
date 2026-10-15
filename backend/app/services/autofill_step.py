@@ -56,6 +56,8 @@ from app.services.autofill_map import (
     second_decided,
 )
 from app.services.autofill_pick import (
+    CITY_SLOT,
+    DEGREE_SLOT,
     NEVER_YES_NO,
     VETERAN_SLOT,
     WORKED_ELSEWHERE_SLOT,
@@ -496,12 +498,12 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         if got.saw_levels:
             return StepResponse(mid=None, reason="abstained", polarity=polarity)
     # A degree-TYPE list over a saved degree: the generic option for its level, the MBA one only when it says so.
-    if (re.fullmatch(r"education\.\d+\.degree", req.slot or "") and isinstance(getattr(fact, "value", None), str)
+    if (DEGREE_SLOT.fullmatch(req.slot or "") and isinstance(getattr(fact, "value", None), str)
             and (typed := autofill_education.degree_type(fact.value, shown_options, complete=req.complete)) is not None):
         return (StepResponse(mid=typed.oid, reason=typed.reason, trace=DecisionTrace(), polarity=polarity) if typed.oid
                 else StepResponse(mid=None, reason="abstained", polarity=polarity))
     # A Places-style city list over a saved city and state: the option that is that city in that state.
-    if (req.slot == "personal.city" and isinstance(getattr(fact, "value", None), str) and "personal.state" in facts
+    if (req.slot == CITY_SLOT and isinstance(getattr(fact, "value", None), str) and "personal.state" in facts
             and isinstance(facts["personal.state"].value, str)
             and (oid := autofill_place.city_option(fact.value, facts["personal.state"].value, shown_options))):
         return StepResponse(mid=oid, reason="matched", trace=DecisionTrace(), polarity=polarity)

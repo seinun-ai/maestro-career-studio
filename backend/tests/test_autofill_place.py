@@ -80,3 +80,29 @@ def test_the_step_clicks_the_option_the_page_offers(db_session):
     req = StepRequest(fid="c", question="Location (City)", route="slot", slot=CITY, candidates=cands)
     got = autofill_step.step(req, facts_of(), db_session, None)
     assert (got.mid, got.reason) == ("click:o2", "matched")
+
+
+@pytest.mark.parametrize(("city", "state", "options", "expected"), [
+    ("Arlington", "TX", ["Arlington, TX, USA", "Arlington, VA, USA", "Arlington Heights, IL, USA"], "Arlington, TX, USA"),
+    ("Arlington", "Texas", ["Arlington, VA, USA", "Arlington, Texas, United States"], "Arlington, Texas, United States"),
+    ("NYC", "New York", ["New York, NY, USA"], "New York, NY, USA"),
+    ("Kansas City", "MO", ["Kansas City, KS, USA", "Kansas City, MO, USA"], "Kansas City, MO, USA"),
+    ("Portland", "ME", ["Portland, OR, USA", "Portland, ME, USA"], "Portland, ME, USA"),
+    ("Irving", "tx", ["Irving, TX, USA"], "Irving, TX, USA"),
+    ("Irving", "Texas ", ["Irving , Texas , USA"], "Irving , Texas , USA"),
+    ("Bangalore", "Karnataka", ["Bengaluru, Karnataka, India", "Bangalore, Karnataka, India"], "Bangalore, Karnataka, India"),
+])
+def test_more_places_style_lists(city, state, options, expected):
+    ids = [(f"o{i}", t) for i, t in enumerate(options, start=1)]
+    assert dict(ids)[autofill_place.city_option(city, state, ids)] == expected
+
+
+@pytest.mark.parametrize(("city", "state", "options"), [
+    ("Arlington", "VA", ["Arlington, TX, USA"]),
+    ("Georgia", "GA", ["Georgia"]),
+    ("Paris", "TX", ["Paris, France", "Paris, Île-de-France, France"]),
+    ("Paris", "", ["Paris, TX, USA"]),
+    ("Washington", "DC", ["Washington, United States"]),
+])
+def test_the_wrong_state_or_no_state_matches_nothing(city, state, options):
+    assert autofill_place.city_option(city, state, [(f"o{i}", t) for i, t in enumerate(options, start=1)]) is None
