@@ -178,6 +178,12 @@ def _asked(model: str, began: float, code: str) -> ReasonResponse:
                           model=model[:120], ms=_ms(began))
 
 
+def switched_off(session: Session) -> ReasonResponse:
+    """The answer when Think when stuck or full automation is off in the settings: the user is asked, no model is paid.
+    The panel reads the switches once per bind, so a stale panel could still ask; the route does not obey it."""
+    return _asked(model_settings.get_reasoning_model(session), time.monotonic(), "switched_off")
+
+
 def _ms(began: float) -> int:
     return min(60_000, int((time.monotonic() - began) * 1000))
 

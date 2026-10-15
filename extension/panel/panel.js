@@ -3523,7 +3523,7 @@
    * Beside it, asked in the same breath: the pick limits Auto-apply holds (`auto_pick_floor`,
    * `auto_pick_margin`) and the Companion's two Apply switches (`/api/settings/companion-apply`), which
    * the panel obeys, with full automation on, now that the Companion picks a resume. A switch it cannot
-   * read is the default (on, off). */
+   * read is the default (on, off), except Think when stuck, which stays off. */
   async function loadAutomation(token) {
     let on = null;
     const mine = { autoPick: true, stopEachStep: false, thinkWhenStuck: true, floor: 60, margin: 5 };
@@ -3539,6 +3539,9 @@
     }
     // The switches only mean something with full automation on. Anything but a plain yes/no is the
     // default: a switch the panel could not read has not been turned.
+    // The one exception to "the default stands": Think when stuck spends the Reasoning model's money, so a switch that
+    // could not be read leaves it off (the backend obeys its own switches too).
+    if (on && companion.status !== "fulfilled") mine.thinkWhenStuck = false;
     if (on && companion.status === "fulfilled") {
       const value = companion.value?.value;
       if (value?.auto_pick === false) mine.autoPick = false;

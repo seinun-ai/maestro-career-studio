@@ -156,7 +156,7 @@ REPLY = TypeAdapter(ReasonReply)
 
 RejectCode = Literal["bad_reply", "model_error", "not_allowed", "unknown_id", "protected", "excluded", "careful_level",
                      "not_free_text", "not_a_choice", "optional_essay", "not_run_filled", "users_field", "not_empty",
-                     "multi_value", "next_not_last"]
+                     "multi_value", "next_not_last", "switched_off"]
 
 
 class ReasonResponse(BaseModel):

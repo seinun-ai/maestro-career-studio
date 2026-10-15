@@ -2368,3 +2368,12 @@ def test_the_footer_note_says_the_live_line_while_the_step_thinks_and_goes_when_
     final = out["shots"][-1]
     assert "Thinking" not in _text(final["regions"]["foot"]) and "Thinking" not in _body_text(final)
     assert "Degree has no saved answer." in _body_text(final)
+
+
+def test_a_companion_switch_read_that_failed_leaves_the_step_off(tmp_path):
+    """A switch the panel could not read has not been turned on: the step spends money, so it is off until it is read."""
+    api = {"/api/settings/auto-apply": _reply({"key": "auto_apply", "value": {"full_automation": True}})}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW), reports=[{"fields": [needs("f2", "Degree")]}],
+               inventory=[_field("f2", "", question="Degree")], frames=NO_ERRORS,
+               api={**api, "POST /api/autofill/reason": _reply(ASK)})
+    assert _api_calls(out, "/api/autofill/reason") == []

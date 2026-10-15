@@ -57,7 +57,9 @@ from app.services import (
     autofill_step,
     autofill_telemetry,
     autofill_trace,
+    auto_apply_settings,
     base_resume_data,
+    companion_apply,
     eeo_consent,
     job_url_match,
     model_settings,
@@ -501,8 +503,11 @@ def post_sections(payload: SectionsRequest, db: Annotated[Session, Depends(get_d
 def post_reason(payload: ReasonRequest, request: Request, db: Annotated[Session, Depends(get_db)]) -> ReasonResponse:
     """The reasoning step: a value-free snapshot of a page the queued run would park on, and at most three checked
     actions back (design 2026-10-14). The Companion's own origin only: it spends the Reasoning model's money, and
-    nothing else drives a run. The answer level and the facts are read here, never taken from the request."""
+    nothing else drives a run. The answer level and the facts are read here, never taken from the request, and so are the
+    two switches it runs under (full automation, Think when stuck): a panel with stale facts is not obeyed."""
     if not is_companion(request):
         raise HTTPException(status_code=403, detail="Only the Companion can ask the reasoning step.")
+    if not (auto_apply_settings.get_settings(db).full_automation and companion_apply.get_settings(db).think_when_stuck):
+        return autofill_reason.switched_off(db)
     facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
     return autofill_reason.reason(payload, facts, model_settings.get_answer_level(db), db)
