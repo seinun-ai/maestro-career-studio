@@ -57,7 +57,7 @@
   }
 
   // A heading that introduces a description, as the WHOLE text of its element.
-  const DESCRIPTION_HEADING = /^(job description|about the (job|role|position)|job summary|role (description|overview)|position (description|summary))\s*:?$/i;
+  const DESCRIPTION_HEADING = /^(job description|about the (job|role|position)|job summary|role (description|overview)|position (description|summary)|((job|role) )?description (&|and) (requirements|qualifications))\s*:?$/i;
   // Not `label` or `legend`: those name a form field ("Role Description" over a rich-text box).
   const HEADING_CANDIDATES = "h1, h2, h3, h4, h5, h6, [role=heading], p, div, span, strong, b, dt";
   // PAGE-level chrome only: a `header`/`footer` inside an article, section, aside or main belongs to that
@@ -82,15 +82,20 @@
    * ancestor holding the same heading twice, which is a list of cards and not a posting. The first
    * heading in document order that gives a section answers. */
   function descriptionUnderHeading() {
+    // An `article` beside another `article` is one card of a posting drawn as cards ("General Information",
+    // "Description & Requirements"), not the page's text; the same heading in a sibling makes them a list.
+    const cardArticle = (node, heading, key) => node.tagName === "ARTICLE"
+      && [...(node.parentElement?.children ?? [])].some((sib) => sib !== node && sib.tagName === "ARTICLE")
+      && !headings.some((other) => other !== heading && headingKey(other) === key && node.parentElement.contains(other));
     const found = [...document.querySelectorAll(HEADING_CANDIDATES)].filter((el) => el.childElementCount <= 2
-      && el.textContent.length <= 60 && DESCRIPTION_HEADING.test(oneLine(el.textContent))
+      && el.textContent.length <= 400 && oneLine(el.textContent).length <= 60 && DESCRIPTION_HEADING.test(oneLine(el.textContent))
       && isShown(el) && !el.closest(CHROME_SELECTOR));
     // A heading drawn as `div > span` matches twice; the inner one is the heading.
     const headings = found.filter((el) => !found.some((other) => other !== el && el.contains(other)));
     for (const heading of headings) {
       const key = headingKey(heading);
       for (let node = heading.parentElement; node; node = node.parentElement) {
-        if (PAGE_WIDE.test(node.tagName) || node.matches(CHROME_SELECTOR) || node.querySelector(FORM_CONTROL)
+        if ((PAGE_WIDE.test(node.tagName) && !cardArticle(node, heading, key)) || node.matches(CHROME_SELECTOR) || node.querySelector(FORM_CONTROL)
           || node.querySelector(CHROME_SELECTOR)
           || headings.some((other) => other !== heading && headingKey(other) === key && node.contains(other))) break;
         if (usableDescriptionNode(node)) return node.innerText.trim();
@@ -142,11 +147,12 @@
   /** The first visible `h1` outside site chrome that the page's own title names, for a page whose title
    * no recorded adapter gives. */
   function visibleH1Title() {
-    for (const h1 of document.querySelectorAll("h1")) {
-      const text = oneLine(h1.innerText);
-      if (text && text.length <= 200 && isShown(h1) && !h1.closest(CHROME_SELECTOR) && namedByPage(text)) return text;
-    }
-    return "";
+    const own = (el) => isShown(el) && !el.closest(CHROME_SELECTOR);
+    const named = (els) => els.map((el) => oneLine(el.innerText))
+      .find((text) => text && text.length <= 200 && namedByPage(text)) ?? "";
+    const h1s = [...document.querySelectorAll("h1")].filter(own);
+    // A page whose only h1 is the logo's (in the site header) titles the role in an h2 banner.
+    return h1s.length ? named(h1s) : named([...document.querySelectorAll("h2")].filter(own));
   }
 
   /** The `Title:` / `Company:` / `Location:` lines the JSON-LD path writes, for a page read as visible

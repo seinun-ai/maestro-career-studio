@@ -356,3 +356,90 @@ def test_a_sections_own_footer_beside_the_description_is_not_site_chrome(page):
     out = _generic(page, f"<section><div><h2>About the role</h2></div><p>{FILLER}</p><footer>Posted 3 days ago</footer></section>")
     assert out["source"] == "content"
     assert FILLER.strip() in out["text"]
+
+
+# ---------- live check 8: a role-detail page drawn as sibling article cards ----------
+
+ROLE_DETAIL = "https://careers.acme.test/en_US/careers/JobDetail/Data-Analyst/1001"
+
+
+def _role_detail(page):
+    _open(page, ROLE_DETAIL, fixture_html("acme_role_detail.html"))
+    return _read(page)
+
+
+def test_a_role_detail_page_of_sibling_article_cards_reads_the_description_card_and_the_banner_title(page):
+    out = _role_detail(page)
+    assert out["source"] == "content"
+    assert page.evaluate(DESCRIBES, out) is True
+    assert out["text"].startswith("Title: Data Analyst (Ads & Sponsorships)\n")
+    assert "Description & Requirements" in out["text"] and "SQL against the warehouse" in out["text"]
+    for left_out in ("General Information", "Share this role", "Similar roles", "Product Analyst", "Home | Open Roles"):
+        assert left_out not in out["text"], left_out
+
+
+@pytest.mark.parametrize("heading", [
+    "Description & Requirements", "Description and Requirements", "Job Description & Qualifications",
+    "description & requirements:", "Role Description and Qualifications",
+])
+def test_a_description_and_requirements_heading_reads_as_content(page, heading):
+    out = _generic(page, f"<div><h2>{heading}</h2><p>{FILLER}</p></div><div>Unrelated page text</div>")
+    assert out["source"] == "content"
+    assert FILLER.strip() in out["text"]
+    assert "Unrelated page text" not in out["text"]
+
+
+def test_a_heading_with_an_icon_and_indented_markup_is_still_a_heading(page):
+    """The element's raw text runs past 100 characters (indent, newlines); its words are 14."""
+    pad = "\n" + " " * 40
+    out = _generic(page, f"<div><h3>{pad}<i></i>{pad}About the role{pad}</h3><p>{FILLER}</p></div>")
+    assert out["source"] == "content"
+    assert FILLER.strip() in out["text"]
+
+
+def test_a_heading_whose_raw_text_is_very_long_is_not_a_heading(page):
+    out = _generic(page, f"<div><h3>Job Description{' ' * 500}</h3><p>{FILLER}</p></div>")
+    assert out["source"] == "body"
+
+
+def test_sibling_articles_that_repeat_the_heading_are_a_list_and_never_the_posting(page):
+    cards = "".join(f"<article class=card><h3>Analyst {i}</h3><h4>Description &amp; Requirements</h4><p>{FILLER}</p></article>"
+                    for i in range(5))
+    out = _generic(page, f"<main><div class=list>{cards}</div></main>")
+    assert out["source"] != "content"
+    assert not page.evaluate(DESCRIBES, out)
+
+
+def test_a_sibling_article_under_a_different_heading_makes_the_first_a_card_not_the_page(page):
+    out = _generic(page, f"<main><div><article><h2>About the role</h2><p>{FILLER}</p></article>"
+                         "<article><h2>Perks</h2><p>Snacks.</p></article></div></main>")
+    assert out["source"] == "content"
+    assert FILLER.strip() in out["text"] and "Snacks" not in out["text"]
+
+
+def test_a_lone_article_is_still_the_page_beside_an_aside_that_is_not_an_article(page):
+    out = _generic(page, f"<main><div><article><h2>About the role</h2><p>{FILLER}</p></article><aside>Related</aside></div></main>")
+    assert out["source"] == "page"
+
+
+@pytest.mark.parametrize("body", [
+    # a product page's Description tab
+    f"<div class=product><h1>Blue kettle</h1><div class=tabs><div><h3>Description</h3><p>{FILLER}{FILLER}</p></div>"
+    "<div><h3>Reviews</h3><p>Nice.</p></div></div></div>",
+    # a blog post's sections
+    f"<div class=post><h1>Hiring tips</h1><h2>Responsibilities</h2><p>{FILLER}{FILLER}</p>"
+    f"<h2>Requirements</h2><p>{FILLER}{FILLER}</p></div>",
+    f"<main><article><h1>Hiring tips</h1><h2>Responsibilities</h2><p>{FILLER}{FILLER}</p></article></main>",
+])
+def test_a_bare_description_responsibilities_or_requirements_heading_is_not_a_description_heading(page, body):
+    out = _generic(page, body, title="Page | Acme")
+    assert out["source"] != "content"
+
+
+def test_an_h2_banner_titles_a_page_whose_only_h1_is_the_logo_but_not_a_page_with_its_own_h1(page):
+    body = (f"<header><h1>Acme Games</h1></header><div><h2>Senior Data Analyst</h2></div>"
+            f"<div class=job-description>{FILLER}</div>")
+    assert _header(_generic(page, body, title="Senior Data Analyst - Acme Games")) == ["Title: Senior Data Analyst"]
+    body = (f"<div><h1>Careers</h1></div><div><h2>Senior Data Analyst</h2></div>"
+            f"<div class=job-description>{FILLER}</div>")
+    assert _header(_generic(page, body, title="Senior Data Analyst - Acme Games")) == []

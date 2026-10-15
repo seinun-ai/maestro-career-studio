@@ -209,14 +209,21 @@ asking permission of itself.
   a section or article is the section's own), an ancestor holding a form
   control, an ARIA text widget or site chrome, or one holding the same heading twice,
   which is a list of cards; the first heading in document order that gives a section
-  answers, and a label or legend is never a heading);
+  answers, and a label or legend is never a heading; the heading's length is measured on
+  its normalised text, so an icon and indented markup around it do not disqualify it;
+  the list is narrow on purpose, with "Description & Requirements" / "and" and "Job
+  Description & Qualifications" in it and never a bare "Description", "Responsibilities"
+  or "Requirements", which a product page or a blog post also carries; an `article`
+  beside another `article` is one card of a posting drawn as cards and does not stop
+  the climb, unless a sibling repeats the heading, which makes them a list);
   then `main`/`article`, then the body. A described page also gets the JSON-LD path's
   `Title:` / `Company:` / `Location:` lines (`postingHeaderLines`, `content/job-posting.js`):
   from the recorded Darwinbox adapter (host `darwinbox.in`/`.com`, path
   `/ms/candidatev2/<x>/careers/jobDetails/<id>`; DOM only: the header's `span.title`,
   the visible Job Snapshot "Location", the company only from the meta description
   "Job Title | <Company>" and not when that holds a translation key), else the first
-  visible `h1` outside `nav`/`header`/`footer` for the title, only when the document title
+  visible `h1` outside `nav`/`header`/`footer` for the title (the first such `h2`, a banner, when the page
+  has no shown `h1` outside site chrome, as when its only `h1` is the logo's), only when the document title
   or `og:title` contains its text and it is not `og:site_name`, not the last segment of a `Title | Site` title, and not a
   generic banner word (a hero or a "Careers" banner is no title). Darwinbox is not in
   `shared/ats-hosts.js`: its Apply leads to a CAPTCHA'd sign-in, so the run stays out of

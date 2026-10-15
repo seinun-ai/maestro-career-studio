@@ -323,6 +323,9 @@ view for several is still ahead.
   - A job posting with no built-in job data (a Darwinbox careers page, for one) is read from the section under
     its description heading, with its title, company and location, and only from what is on screen.
     Darwinbox's apply page needs a CAPTCHA, so the run stops there.
+  - A role-detail page drawn as sibling cards (a "General Information" card, then "Description &
+    Requirements") now reads the description card instead of "No job description found". The
+    page's title comes from its banner when its only `h1` is the logo.
 
 ## [0.10.1] — 2026-10-12
 
