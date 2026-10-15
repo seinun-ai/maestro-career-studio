@@ -154,10 +154,10 @@
    * input itself can legitimately have no box — an ancestor on screen is
    * accepted, and only what is invisible outright is refused. */
   function attachableFileInputs() {
-    return [...document.querySelectorAll('input[type="file"]')].filter((input) => {
+    return ns.deep.all('input[type="file"]').filter((input) => {
       const accept = (input.getAttribute("accept") ?? "").toLowerCase();
       if (accept && !accept.includes("pdf") && !accept.includes("*")) return false;
-      return isOnScreen(input) || isOnScreen(input.parentElement);
+      return isOnScreen(input) || isOnScreen(ns.deep.up(input));
     });
   }
 
@@ -215,12 +215,13 @@
    * `attachments-FileUpload`, the row a level below it) with room for a
    * wrapper or two. */
   function uploadWidgetOf(input) {
+    const { all, up } = ns.deep;
     let widget = null;
-    let el = input.parentElement;
-    for (let level = 0; el && level < 3; level += 1, el = el.parentElement) {
+    let el = up(input);
+    for (let level = 0; el && level < 3; level += 1, el = up(el)) {
       if (el === document.body || el === document.documentElement || el.tagName === "FORM") break;
-      if ([...el.querySelectorAll('input[type="file"]')].some((other) => other !== input)) break;
-      if (el.querySelector(NOT_AN_UPLOADER)) break;
+      if (all('input[type="file"]', el).some((other) => other !== input)) break;
+      if (all(NOT_AN_UPLOADER, el).length) break;
       widget = el;
     }
     return widget;
@@ -260,6 +261,11 @@
   const words = (value) => String(value ?? "")
     .replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_\-.]+/g, " ");
 
+  // The vendor's own containers (recorded live, check 8): its "fill this from your resume" import and its resume box. They name
+  // the box whatever the words around it say; a parser mark wins (never written).
+  const BOX_MARKS = { parser: 'oc-easy-apply, [data-test="easy-apply-container"]', resume: 'oc-resume-upload, [data-test="resume-upload-container"]' };
+  const markOf = (input) => Object.keys(BOX_MARKS).find((kind) => ns.deep.closest(input, BOX_MARKS[kind])) ?? null;
+
   function kindOf(texts) {
     const text = texts.filter(Boolean).join(" ");
     if (OTHER_DOC_WORDS.test(text)) return "other";
@@ -268,14 +274,14 @@
 
   /** The uploader's own section heading: see `uploadBoxOf`. */
   function sectionOf(input) {
-    let el = input.parentElement;
-    for (let level = 0; el && level < SECTION_CLIMB; level += 1, el = el.parentElement) {
+    const { all, up } = ns.deep;
+    let el = up(input);
+    for (let level = 0; el && level < SECTION_CLIMB; level += 1, el = up(el)) {
       if (el === document.body || el === document.documentElement) break;
-      if (level >= NEAR_CLIMB && [...el.querySelectorAll(`${NOT_AN_UPLOADER}, input[type="file"]`)]
-        .some((other) => other !== input)) break;
-      const precedes = (h) => h.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING;
-      const before = [...el.querySelectorAll(SECTION_HEADING)]
-        .filter((h) => !h.contains(input) && precedes(h));
+      if (level >= NEAR_CLIMB && all(`${NOT_AN_UPLOADER}, input[type="file"]`, el).some((other) => other !== input)) break;
+      // Composed document order (a heading in the light DOM, the input in a shadow root): the headings listed before the input.
+      const seq = all(`${SECTION_HEADING}, input[type="file"]`, el);
+      const before = seq.slice(0, seq.indexOf(input)).filter((h) => h.matches(SECTION_HEADING) && !h.contains(input));
       if (before.length) return before.at(-1).textContent;
       if (el.tagName === "FORM") break;
     }
@@ -286,8 +292,8 @@
     if ((input.files?.length ?? 0) > 0) return true;
     if (!box) return false;
     if (FILE_ROW.test(String(box.innerText ?? ""))) return true;
-    if (box.querySelector('[data-automation-id="file-upload-item"]')) return true;
-    return [...box.querySelectorAll('button, [role="button"]')].some((control) =>
+    if (ns.deep.all('[data-automation-id="file-upload-item"]', box).length) return true;
+    return ns.deep.all('button, [role="button"]', box).some((control) =>
       REMOVE_CONTROL.test(`${control.textContent} ${control.getAttribute("aria-label") ?? ""}`));
   }
 
@@ -330,11 +336,11 @@
 
   function uploadBoxOf(input) {
     const widget = uploadWidgetOf(input);
-    const box = widget ?? input.parentElement;
+    const box = widget ?? ns.deep.up(input);
     const read = typeof ns.readField === "function" ? ns.readField(input) : { question: "" };
     const outside = outsideName(input, read);
     const labels = [read.question, outside.text];
-    for (let el = input; el; el = el === box ? null : el.parentElement) {
+    for (let el = input; el; el = el === box ? null : ns.deep.up(el)) {
       labels.push(el.getAttribute("aria-label"), words(el.getAttribute("data-automation-id")));
       for (const id of (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean)) {
         labels.push(document.getElementById(id)?.textContent);
@@ -349,11 +355,12 @@
     const inside = (t) => Boolean(widget && t && hit(PARSER_WORDS, [t]) && widget.innerText.includes(t));
     const outer = labels.filter((t) => !inside(t));
     const plain = (texts) => kindOf(texts) === "resume" && !hit(PARSER_WORDS, texts);
-    const parser = hit(PARSER_WORDS, outer) || (hit(PARSER_WORDS, uploader) && !plain([section]))
+    const mark = markOf(input);
+    const parser = mark === "parser" || hit(PARSER_WORDS, outer) || (hit(PARSER_WORDS, uploader) && !plain([section]))
       || (hit(PARSER_WORDS, [section]) && !plain(outer) && !plain(uploader));
     const occupied = hasFile(input, box);
     if (parser) return { kind: "parser", occupied };
-    let kind = kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([section]) ?? "unknown";
+    let kind = mark === "resume" ? "resume" : kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([section]) ?? "unknown";
     // A REQUIRED box that is the page's only upload, and whose words name no document, is the resume's
     // (live Workday: "Upload a file (5MB max)", seven levels under the heading that says resume).
     if (kind === "unknown" && (read.required || outside.required) && attachableFileInputs().length === 1) kind = "resume";

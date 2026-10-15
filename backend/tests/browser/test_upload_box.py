@@ -623,3 +623,61 @@ def test_several_resume_boxes_none_in_a_resume_section_are_all_kept(blank):
     assert [box["kind"] for box in _uploads(blank)] == ["resume", "resume"]
     assert _attach(blank, expect=2)["written"] == 0
     assert _held_nth(blank, 0) == _held_nth(blank, 1) == []
+
+
+# ---------- upload boxes in open shadow roots (live check 8) ----------
+#
+# A hosted one-click application draws its dropzones inside web components: the file input sits in an open shadow root, the
+# parser's "fill this form from your resume" box is in the vendor's easy-apply container and the real resume box in its
+# resume-upload container. Both are found through the shadow roots; the parser box is never written.
+
+SHADOW = fixture_html("shadow_one_page_form.html")
+
+
+def _shadow_files(page, fid):
+    return page.evaluate("(fid) => [...document.querySelector(`acme-dropzone[fid=${fid}]`).shadowRoot"
+                         ".querySelector('input').files].map((f) => f.name)", fid)
+
+
+def test_dropzones_in_shadow_roots_are_counted_and_the_vendors_easy_apply_box_is_a_parser(blank):
+    _load(blank, SHADOW)
+    detected = _detect(blank)
+    assert detected["fileInputs"] == 2
+    assert [box["kind"] for box in detected["uploads"]] == ["parser", "resume"]
+
+
+def test_the_markers_alone_name_the_boxes_whatever_the_page_says_around_them(blank):
+    _load(blank, SHADOW.replace("<h2>Easy Apply</h2>", "<h2>Quick start</h2>").replace("<h2>Resume</h2>", "<h2>Your documents</h2>")
+          .replace("Upload your resume to fill in the form automatically", "Choose a file"))
+    assert [box["kind"] for box in _uploads(blank)] == ["parser", "resume"]
+
+
+def test_a_resume_box_in_the_vendors_resume_container_is_the_resume_even_beside_an_unnamed_neighbour(blank):
+    _load(blank, SHADOW.replace('<oc-easy-apply>', "<div>").replace("</oc-easy-apply>", "</div>")
+          .replace(' data-test="easy-apply-container"', "").replace("<h2>Easy Apply</h2>", "<h2>Quick start</h2>")
+          .replace("Upload your resume to fill in the form automatically", "Choose a file"))
+    assert [box["kind"] for box in _uploads(blank)] == ["unknown", "resume"]
+
+
+def test_the_resume_only_write_attaches_to_the_shadow_resume_box_and_never_to_the_parser(blank):
+    _load(blank, SHADOW)
+    assert _attach(blank, expect=2) == {"written": 1, "proven": 1}
+    assert _shadow_files(blank, "resume") == ["Jane_Doe_Resume.pdf"]
+    assert _shadow_files(blank, "parser") == []
+    assert oracle(blank, "shadow_files") == [["resume", "Jane_Doe_Resume.pdf"]]
+
+
+def test_the_button_write_skips_the_parser_box_too(blank):
+    _load(blank, SHADOW)
+    assert _proven(_attach(blank, resume_only=False, expect=2)) == 1
+    assert _shadow_files(blank, "parser") == []
+    assert _shadow_files(blank, "resume") == ["Jane_Doe_Resume.pdf"]
+
+
+def test_a_shadow_resume_box_that_already_shows_its_file_is_occupied_and_not_written_again(blank):
+    _load(blank, SHADOW)
+    blank.set_input_files("acme-dropzone[fid=resume] input", {"name": "Old_Resume.pdf", "mimeType": "application/pdf",
+                                                              "buffer": b"%PDF-1.4"})
+    assert [box["occupied"] for box in _uploads(blank)] == [False, True]
+    assert _attach(blank, expect=2) == {"written": 0, "proven": 0}
+    assert _shadow_files(blank, "resume") == ["Old_Resume.pdf"]
