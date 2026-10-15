@@ -127,6 +127,8 @@
  *                                `baseline`: the error keys the page showed before the press
  *   pageErrors(tabId, frameId) → {count, items: [{label, target, kind}]}   what the page complains about
  *   uploads(record) → [{label, target, kind, required, occupied}]   the page's upload boxes, for a Resume's look
+ *   fieldCount(tabId, frameId) → n   OPTIONAL: how many fields the fill inventory lists on the page (read-only). Asked of an unknown
+ *                                first page the run has not filled: with fields it is filled like any page with fields
  *   attachTo(record, box) → {attached}   the run's PDF into the one box `{label, target}` names: a box the
  *                                page itself named, or the ONE required empty box the fill's report found
  *                                (never one labelled for another document; at most one write per page)
@@ -135,7 +137,7 @@
  *                                step above; `press(frameId, id, fingerprint, baseline)` → "moved" | "rejected" | "same" | "refused"
  *   sleep(ms) · save(record) · onUpdate(record) · now() · cancelled(record)
  *                                (save is the host's: it owns the list)
- *   pageOps() builds classify, pageErrors, advance, signIn and waitForChange from a message transport.
+ *   pageOps() builds classify, pageErrors, advance, signIn, waitForChange and fieldCount from a message transport.
  *
  * A REJECTED NEXT IS NOT A MOVE. A press that leaves the address and the step heading where they
  * were while the page shows errors is "rejected": `step` and `seen` do not change (the banner's own
@@ -387,6 +389,7 @@
     let inPlaceFirst = false;  // a run in place has not read its first page yet
     let navigated = false;   // the last thing the run did moved the tab: its address is the run's own
     let pageFilled = false;  // this page has had its fill (judged afresh after it)
+    let inventoried = null;  // fields the fill inventory lists on an unknown first page (null: not asked); the page is read as having them
     let tried = 0;           // Next presses on this page that did nothing
     let movedChecked = false;  // a Resume's first read has been checked against the hosts the run reached
     let fixRounds = 0;       // repairs after a rejected Next on this page
@@ -435,6 +438,7 @@
     };
     const moved = () => {
       navigated = true;
+      inventoried = null;
       pageFilled = false;
       filledPage = null;
       tried = 0;
@@ -676,7 +680,7 @@
         pageKind = null;
         // A finished run is only watching for the confirmation: a page not readable yet changes nothing.
         if (!frame) return record.readyAt != null ? record : await park(broken ? "page_stale" : "unknown_page");
-        const summary = frame.result.summary;
+        let summary = frame.result.summary;
         // Spent on this first read, whatever it finds: a later page (after a sign-in, a Resume, a
         // step) may be a saved draft's review page, and its "Apply" is a Submit.
         const mayApply = applyOk;
@@ -753,7 +757,7 @@
           if (userNavigates) await noteHost(url);
           else if (url && record.hosts.length && !record.hosts.includes(hostOf(url))) return await parkOr("moved_away");
         }
-        const verdict = ns.pageKind.classify(summary);
+        let verdict = ns.pageKind.classify(summary);
         // A Resume's word that this was the last page is void once the page reads as a step with a real Next.
         if (vouched && verdict.kind === "form_step") vouched = false;
         let kind = verdict.kind;
@@ -780,6 +784,21 @@
           }
           await update({ noAutoMark: true });
           return record;
+        }
+        // THE OWNER'S RULE (live check 8: "when I am there the autofill should work"). A page the reader calls unknown, at the first
+        // step, that this run has not filled, is asked what the fill inventory lists on it (`fieldCount`, a read-only count). With
+        // fields it is read as having that many and judged as any page with fields (a Next, a Submit, or fields and no Next); with
+        // none it is the unknown page it was. The count is kept for the page, which is read again after its fill.
+        if (kind === "unknown" && record.step === 0) {
+          if (inventoried === null && record.filled !== true && !pageFilled && typeof deps.fieldCount === "function") {
+            inventoried = Math.max(0, Number(await act(deps.fieldCount, record.tabId, frame.frameId)) || 0);
+          }
+          if (inventoried > 0) {
+            summary = { ...summary, fillable: inventoried };
+            verdict = ns.pageKind.classify(summary);
+            kind = verdict.kind;
+            by = verdict.by ?? null;
+          }
         }
         // A "thank you" page before the run reached review is an application someone else sent
         // (a draft this browser's session already submitted): not ready, not this run's to mark.
@@ -1199,7 +1218,15 @@
       }
     }
 
-    return { classify, pageErrors, pageRequired, advance, signIn, createAccount, waitForChange };
+    /** How many fields the fill inventory lists on the frame's page (`fill_inventory`, read-only: it changes nothing and starts no
+     * run). 0 when the frame did not answer. The reader's own count can miss a control the inventory walks. */
+    async function fieldCount(tabId, frameId) {
+      const frames = await broadcast(tabId, { type: "fill_inventory", readOnly: true }, frameId);
+      const answer = (Array.isArray(frames) ? frames : []).find((f) => f.frameId === frameId)?.result;
+      return Array.isArray(answer?.fields) ? answer.fields.length : 0;
+    }
+
+    return { classify, pageErrors, pageRequired, advance, signIn, createAccount, waitForChange, fieldCount };
   }
 
   ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK, USER_NAVIGATES, THINKS, landedToCheck, leftForYou };

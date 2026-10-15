@@ -86,8 +86,8 @@ DRIVER = """async (spec) => {
 }"""
 
 
-def _serve(page):
-    body = fixture_html("greenhouse_acme_form.html")
+def _serve(page, name="greenhouse_acme_form.html"):
+    body = fixture_html(name)
     page.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body=body))
     page.goto(URL)
     page.evaluate("""() => {
@@ -137,3 +137,36 @@ def test_the_reasoning_step_works_the_one_page_forms_fields_and_presses_nothing_
     assert out["fills"] == [[degree]] and oracle(page, "gh_degree") == "Master's Degree"
     assert [c for c in out["calls"] if c[0] in ("advance", "dismiss")] == []
     assert page.evaluate("() => window.__sent ?? false") is False
+
+
+# ---------- a page the reader could not see into (live check 8) ----------
+
+
+def test_a_one_click_application_built_of_shadow_components_is_filled_at_step_zero_and_its_submit_is_never_pressed(page):
+    """The page has no <form>, every control in an open shadow root, a slotted Submit. The reader sees it as a review page that
+    HAS fields (it used to see nothing and the run parked "Page not recognised"), the run fills it at step 0, parks naming the
+    required boxes the stub fill left empty, and nothing on the page is pressed."""
+    _serve(page, "shadow_one_page_form.html")
+    s = page.evaluate("() => window.careerStudioCompanion.pageReader.summary()")
+    verdict = page.evaluate("(s) => window.careerStudioCompanion.pageKind.classify(s)", s)
+    assert s["fillable"] > 0 and (verdict["kind"], verdict.get("by")) == ("review", "submit_button")
+    page.set_default_timeout(60000)
+    out = page.evaluate(DRIVER, {})
+    r = out["record"]
+    assert (r["status"], r["why"], r["step"]) == ("parked", "open_questions", 0)
+    assert {"First name", "Email", "City"} <= {o["question"] for o in r["open"]}
+    assert out["calls"] == [["fill", 0]]
+    assert oracle(page, "shadow_submits") == 0 and oracle(page, "shadow_nexts") == 0
+
+
+def test_a_page_the_reader_counts_no_field_on_but_the_inventory_lists_one_is_filled_and_never_parked_as_unknown(page):
+    """Owner's rule: "when I am there the autofill should work". A read-only Ant select is a field the fill inventory lists and
+    the reader's count misses, so the page reads as unknown; the run asks the inventory before it parks, and fills."""
+    _serve(page, "antd_readonly_select.html")
+    s = page.evaluate("() => window.careerStudioCompanion.pageReader.summary()")
+    assert s["fillable"] == 0 and page.evaluate("(s) => window.careerStudioCompanion.pageKind.classify(s).kind", s) == "unknown"
+    page.set_default_timeout(60000)
+    out = page.evaluate(DRIVER, {})
+    r = out["record"]
+    assert r["status"] == "parked" and r["why"] in ("open_questions", "unsure_page") and r["step"] == 0
+    assert out["calls"] == [["fill", 0]]

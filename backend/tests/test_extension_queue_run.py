@@ -236,6 +236,10 @@ if (spec.reasons) {
     return out;
   };
 }
+// `fieldCount`: how many fields the fill inventory lists on the page (a read-only ask the host answers; absent: no such dep).
+if (spec.fieldCount !== undefined) {
+  deps.fieldCount = async (tabId, frameId) => { tick("fieldCount", frameId); return spec.fieldCount; };
+}
 if (spec.omitDep) delete deps[spec.omitDep];
 
 const record = { jobId: "j1", proposalId: "p1", applicationId: "a1", base: "Base", company: "Acme",
@@ -3089,3 +3093,46 @@ def test_a_wizards_final_review_page_is_not_a_one_page_form_and_never_asks(tmp_p
     """Only the first page of an application can be a whole one-page form; a review page behind a step is a wizard's last page."""
     out = _drive(tmp_path, [step(1), REVIEW], reasons=[dict(THOUGHT)], fills=[[DONE_FIELD], [needs("f1", "Degree"), DONE_FIELD]])
     assert out["record"]["why"] == "open_questions" and out["record"]["step"] == 1 and names(out, "reason") == []
+
+
+# ---------- an unknown page that has fields (owner's rule, live check 8) ----------
+#
+# "When I am there the autofill should work": a page the reader classes unknown, at the first step, that the run has not filled,
+# asks the fill inventory for a field count before it parks. With fields it is filled and judged as a page with fields and no
+# Next; with none it is the old unknown_page. The two counts (the reader's `fillable` and the inventory's list) are pinned equal
+# in tests/browser/test_shadow_dom.py.
+
+UNKNOWN = {"t": "unknown"}
+
+
+def test_an_unknown_page_the_inventory_lists_fields_on_is_filled_and_never_parked_unknown(tmp_path):
+    out = _drive(tmp_path, [UNKNOWN], fieldCount=3)
+    r = out["record"]
+    assert (r["status"], r["why"], r["lastBy"]) == ("parked", "unsure_page", "fields_no_next")
+    assert out["fillCalls"] == 1 and r["wrote"] is True
+    assert [c[:2] for c in names(out, "fieldCount")] == [["fieldCount", 0]]
+    assert out["pressed"] == []
+
+
+def test_an_unknown_page_with_no_listed_fields_is_the_old_unknown_page_and_nothing_is_filled(tmp_path):
+    out = _drive(tmp_path, [UNKNOWN], fieldCount=0)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert out["fillCalls"] == 0 and len(names(out, "fieldCount")) == 1
+
+
+@pytest.mark.parametrize("record", [{"filled": True}, {"step": 1}])
+def test_the_inventory_is_not_asked_about_a_page_the_run_already_filled_or_a_later_step(tmp_path, record):
+    out = _drive(tmp_path, [UNKNOWN], fieldCount=3, record={"tabId": 7, "hosts": ["jobs.acme.test"], **record})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert names(out, "fieldCount") == [] and out["fillCalls"] == 0
+
+
+def test_a_host_without_the_field_count_keeps_the_old_unknown_page(tmp_path):
+    out = _drive(tmp_path, [UNKNOWN])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page") and out["fillCalls"] == 0
+
+
+def test_a_page_the_reader_calls_unknown_is_asked_only_once_the_wait_for_it_to_draw_is_over(tmp_path):
+    """A skeleton that draws within the wait is a page like any other: the inventory is not asked while it is blank."""
+    out = _drive(tmp_path, [{**step(1), "early": [UNKNOWN] * 2}, REVIEW], fieldCount=3)
+    assert out["record"]["status"] == "ready" and names(out, "fieldCount") == []
