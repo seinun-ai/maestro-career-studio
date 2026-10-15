@@ -43,6 +43,7 @@ ALLOWED: dict[str, frozenset[str]] = {
     "unknown_page": frozenset({"close_dialog", "follow_tab", "ask_user"}),
     "moved_away": frozenset({"follow_tab", "ask_user"}),
 }
+SENTINEL_SLOTS = frozenset({"free_text", "none", "years_unanswered", "history_unanswered"})   # not facts
 CAREFUL_OFF = frozenset({"write", "choose"})   # answer level "facts": saved answers and history only
 WHY_WORDS = {
     "page_errors": "The page refused Next and names errors the run could not match to a field it can fill.",
@@ -225,8 +226,8 @@ def _judge_answer_from(action: Any, field: SnapField, present: set[str]) -> str 
 
 
 def _judge_write(action: Any, field: SnapField, present: set[str]) -> str | None:
-    if field.shape != "text":
-        return "not_free_text"
+    if field.shape != "text" or field.slot not in (None, *SENTINEL_SLOTS):
+        return "not_free_text"   # a box the map filed under a real fact is that fact's, not an essay
     if field.multiline and not field.required:
         return "optional_essay"
     return "not_empty" if field.filled else None

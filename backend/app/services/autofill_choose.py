@@ -137,7 +137,11 @@ _NEVER_DRAFTED = re.compile(
     r"(?:previously|formerly|ever|currently)\s+(?:been\s+)?(?:employed|work(?:ed|ing)?\s+(?:for|at|by))|"
     r"\b(?:have|has|were|are|did)\s+you\b[^?.]*?\b(?:work(?:ed|ing|s)?\s+(?:for|at)|employed|employee|"
     r"intern(?:ed)?\s+(?:for|at|with))|former\s+employee|current\s+employee|employee\s+of|"
-    r"related\s+to\s+(?:anyone|someone|any|an?\s)|\brelatives?\b(?!\s+to)",
+    r"related\s+to\s+(?:anyone|someone|any|an?\s)|\brelatives?\b(?!\s+to)|"
+    # Attestations and statuses worded without a protected noun, and pay worded without "salary".
+    r"initials|\be-?sign|true\s+and\s+(?:correct|accurate|complete)|\bi\s+(?:confirm|declare|certify)|petition|"
+    r"without\s+(?:any\s+)?restriction|unrestricted|\bopt\b|\bcpt\b|\btn\b|\be-?3\b|"
+    r"total\s+(?:comp|rewards)|\bote\b|annual\s+base",
     re.IGNORECASE)
 # A label that asks for something written, not a field's name: a question, or an instruction to
 # describe, explain or tell, or a sentence of six words or more.

@@ -264,3 +264,38 @@ def test_recorded_replies_replay_offline(db_session, monkeypatch, case):
 def test_a_schema_needs_json_format():
     with pytest.raises(ValueError):
         llm.call_openai(prompt="x", model="reasoner-test", response_format="text", schema={"type": "object"})
+
+
+# ---------- review round: protected questions with no slot, a slot that names a fact, the other limits
+
+PROTECTED_PHRASES = [
+    "Type your initials to confirm", "I confirm the information above is true",
+    "Will you now or in the future require us to file a petition on your behalf?",
+    "Are you able to work in the US without restriction?", "Do you have unrestricted rights to work in Canada?",
+    "Employment status in the US (OPT/CPT/STEM)?", "Would you need us to support a TN or E-3?",
+    "Desired annual base", "What is your target total comp?", "OTE expectation", "Total rewards expectation",
+    "Please type your full legal name as e-signature", "I certify this is true and correct",
+]
+
+
+@pytest.mark.parametrize("question", PROTECTED_PHRASES)
+def test_a_protected_question_with_no_slot_is_never_written_or_chosen(question):
+    fields = [{"fid": "f1", "question": question, "shape": "text", "required": True},
+              {"fid": "f2", "question": question, "shape": "select", "required": True}]
+    for action in ({"type": "write", "fid": "f1"}, {"type": "choose", "fid": "f2", "basis": "default"}):
+        actions, rejected = autofill_reason.check(reply(action), req(fields=fields), present=set(), level="history")
+        assert rejected == ["protected"] and actions[0].type == "ask_user", question
+
+
+@pytest.mark.parametrize("slot", ["personal.city", "preferences.how_heard", "skills"])
+def test_a_text_box_the_map_filed_under_a_fact_is_not_free_text(slot):
+    fields = [{"fid": "f1", "question": "Hometown", "shape": "text", "required": True, "slot": slot}]
+    assert autofill_reason.check(reply({"type": "write", "fid": "f1"}), req(fields=fields), present=set(),
+                                 level="history")[1] == ["not_free_text"]
+
+
+@pytest.mark.parametrize("slot", ["free_text", "none", "years_unanswered", "history_unanswered"])
+def test_a_sentinel_slot_is_still_free_text(slot):
+    fields = [{"fid": "f1", "question": "Field of study", "shape": "text", "required": True, "slot": slot}]
+    assert autofill_reason.check(reply({"type": "write", "fid": "f1"}), req(fields=fields), present=set(),
+                                 level="history")[1] == []

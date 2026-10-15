@@ -612,3 +612,34 @@ def test_a_draft_with_a_link_email_or_phone_that_is_not_the_owners_is_dropped(db
     Writer(monkeypatch, {"w": draft})
     out = autofill_choose.choose([_written()], application.id, db_session)
     assert (out["w"].answer is not None) is kept
+
+
+@pytest.mark.parametrize("label", [
+    "Type your initials to confirm", "I confirm the information above is true",
+    "Will you now or in the future require us to file a petition on your behalf?",
+    "Are you able to work in the US without restriction?", "Do you have unrestricted rights to work in Canada?",
+    "Employment status in the US (OPT/CPT/STEM)?", "Would you need us to support a TN or E-3?",
+    "Describe your desired annual base.", "What is your target total comp?", "Describe your OTE expectation.",
+    "Describe your total rewards expectation.", "Please type your full legal name as e-signature.",
+    "I declare that my answers are true and complete.", "I certify this is true and correct.",
+])
+def test_the_review_round_phrasings_are_never_drafted(db_session, monkeypatch, label):
+    application = _application(db_session)
+    writer = Writer(monkeypatch, {"w": "Should not be used."})
+    out = autofill_choose.choose([_written(label=label)], application.id, db_session)
+    assert (out["w"].answer, out["w"].reason) == (None, "abstained") and writer.prompts == [], label
+    out = autofill_choose.choose([_written(label=label, kind="text", draft=False, reasoner="short")],
+                                 application.id, db_session)
+    assert out["w"].answer is None and writer.prompts == [], label
+
+
+@pytest.mark.parametrize("label", [
+    "Describe a time you promoted a new process across teams.", "Tell us about a note-taking tool you built.",
+    "Describe a design you signed off on.", "Why do you want to work at Acme?",
+    "Describe your experience with test-driven development.",
+])
+def test_the_new_words_do_not_block_ordinary_essays(db_session, monkeypatch, label):
+    application = _application(db_session)
+    Writer(monkeypatch, {"w": "Built a forecasting pipeline for 40 stores."})
+    out = autofill_choose.choose([_written(label=label)], application.id, db_session)
+    assert out["w"].reason == "assumed", label
