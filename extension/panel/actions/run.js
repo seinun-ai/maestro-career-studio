@@ -62,8 +62,6 @@
   const MAX_LOOKED = 50;
   // What the fill report counts as filled on a page (the engine wrote it and checked it).
   const WROTE = new Set(["verified", "closest", "assumed"]);
-  // A field with an answer on it now (the run wrote or confirmed it, or it is the user's).
-  const ANSWERED = new Set(["verified", "closest", "assumed", "already", "partial", "yours"]);
   // What the card counts as answered: filled and verified, or found answered or the user's own (kept).
   const ANSWERED = new Set([...WROTE, "already", "yours"]);
   // The parks after which Resume reads what the user typed into the page (`afterTyping`).
