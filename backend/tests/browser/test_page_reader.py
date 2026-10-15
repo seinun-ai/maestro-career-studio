@@ -321,10 +321,19 @@ def test_an_invisible_recaptcha_badge_alone_is_not_a_captcha(page, load):
     "about:blank#recaptcha/api2/bframe",
     "about:blank#newassets.hcaptcha.com/captcha/challenge",
     "about:blank#challenges.cloudflare.com/turnstile",
+    "about:blank#geo.captcha-delivery.com/captcha/?initialCid=abc&cid=def",
 ])
 def test_a_visible_challenge_frame_is_a_captcha(page, load, src):
     load(page, f"<p>Check</p><iframe src='{src}' style='width:300px;height:300px'></iframe>", SOURCES)
     assert summary(page)["captchaVisible"] is True
+
+
+def test_a_bot_walls_challenge_frame_over_an_application_page_reads_as_a_captcha_wall_for_the_run(page, load):
+    """Live check 8: a one-click application page behind a DataDome challenge (a visible frame from captcha-delivery.com)
+    read as an unknown page and the run paid for three model calls. A captcha is a wall: the run parks without asking one."""
+    load(page, "<main><h1>Easy apply</h1><label>First name <input name='first_name'></label></main>"
+               "<iframe src='about:blank#geo.captcha-delivery.com/captcha/?cid=abc' style='width:400px;height:500px'></iframe>", SOURCES)
+    assert classify(page)["kind"] == "captcha"
 
 
 def test_a_visible_recaptcha_checkbox_is_a_captcha_but_a_tiny_hcaptcha_frame_is_not(page, load):

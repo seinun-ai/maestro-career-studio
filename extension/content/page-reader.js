@@ -243,7 +243,8 @@
       const s = getComputedStyle(n);
       if (s.visibility === "hidden" || s.display === "none" || Number(s.opacity) === 0) return false;
     }
-    if (/recaptcha\/api2\/bframe|hcaptcha\.com|challenges\.cloudflare\.com/.test(src)) return true;
+    // DataDome's (captcha-delivery.com) is the bot wall some hosted application pages sit behind (live check 8).
+    if (/recaptcha\/api2\/bframe|hcaptcha\.com|challenges\.cloudflare\.com|captcha-delivery\.com/.test(src)) return true;
     // The "I'm not a robot" box. The invisible variant sits in a badge, or says size=invisible.
     return /recaptcha\/api2\/anchor/.test(src) && !/size=invisible/.test(src) && !closestC(iframe, ".grecaptcha-badge");
   };
