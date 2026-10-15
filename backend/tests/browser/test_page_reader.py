@@ -3104,3 +3104,20 @@ def test_an_acknowledgement_that_asks_nothing_still_closes_and_a_close_word_alwa
     assert dismiss(page, button(summary(page), "OK")["id"]) == {"clicked": True}
     load(page, f'{FORM}<div role="dialog"><p>Your answers will be locked after this.</p><button>OK</button><button {HIT}>Close</button></div>', sources=SOURCES)
     assert dismiss(page, button(summary(page), "Close")["id"]) == {"clicked": True}
+
+
+def test_a_dialog_described_by_text_elsewhere_asks_what_that_text_asks(page, load):
+    load(page, f'{FORM}<div role="dialog" aria-describedby="d"><button {HIT}>OK</button></div>'
+               '<p id="d">Your application will be submitted.</p>', sources=SOURCES)
+    s = summary(page)
+    assert s["submitContext"] is True and classify(page)["kind"] == "review"
+    assert dismiss(page, button(summary(page), "OK")["id"]) == {"clicked": False, "why": "submit"}   # classify re-tagged the ids
+    assert page.evaluate("() => window.sent ?? null") is None
+
+
+def test_an_overlay_described_by_a_question_is_not_a_plain_acknowledgement(page, load):
+    load(page, f'{FORM}<div role="dialog" aria-describedby="d"><button {HIT}>OK</button></div><p id="d">Is your address correct?</p>',
+         sources=SOURCES)
+    s = summary(page)
+    assert button(s, "OK").get("overlayAsks") is True
+    assert dismiss(page, button(s, "OK")["id"]) == {"clicked": False, "why": "not_dismiss"}

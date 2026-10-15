@@ -333,9 +333,12 @@
    * that names its title that way is asking, and the cost of a wrong guess is a stopped run. Its
    * body text counts too (the full sort when it asks a question, the narrow words when it
    * states). The page's own STEP HEADING keeps the narrow SUBMIT_HEADING, since "Apply to Acme" and "Complete your profile" head ordinary steps. */
+  /** The text of the elements `d` names in aria-describedby (a dialog's message may sit outside it). */
+  const describedBy = (d) => (d.getAttribute("aria-describedby") ?? "").split(/\s+/)
+    .map((id) => d.ownerDocument.getElementById(id)?.textContent ?? "").join(" ");
   const DIALOG_TEXT = 2000;   // a long preamble ends in the question: the whole text is read, not its first lines
   const dialogAsks = (d) => {
-    const body = squash((d.textContent ?? "").slice(0, DIALOG_TEXT));
+    const body = squash(`${d.textContent ?? ""} ${describedBy(d)}`.slice(0, DIALOG_TEXT));
     const named = [
       d.getAttribute("aria-label"), d.getAttribute("title"),
       ...(d.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => d.ownerDocument.getElementById(id)?.textContent),
@@ -1039,7 +1042,7 @@
    * notice ("Your progress was saved.") closes it. */
   const overlayFlags = (el) => {
     const box = overlayBox(el);
-    const text = box ? squash((box.textContent ?? "").slice(0, DIALOG_TEXT)) : "";
+    const text = box ? squash(`${box.textContent ?? ""} ${describedBy(box)}`.slice(0, DIALOG_TEXT)) : "";
     const others = box ? [...box.querySelectorAll(BUTTONS)].filter((b) => b !== el && shown(b)
       && !ns.pageKind.isDismiss(labelOf(b), { asks: true })) : [];
     return {
