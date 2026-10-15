@@ -117,11 +117,14 @@
   // of checkboxes, is the step itself and keeps its Next.
   const COOKIE_BOX = '[id*="cookie" i], [class*="cookie" i], [id*="onetrust" i], [class*="onetrust" i]';
   const SOFT_BOX = 'dialog, [role="dialog"], [role="alertdialog"], [aria-modal="true"], [id*="consent" i], [class*="consent" i]';
-  const overlayOf = (el) => {
-    if (el.closest(COOKIE_BOX)) return true;
+  /** The notice or dialog `el` sits in (null: in none). */
+  const overlayBox = (el) => {
+    const cookie = el.closest(COOKIE_BOX);
+    if (cookie) return cookie;
     const box = el.closest(SOFT_BOX);
-    return box !== null && ![...box.querySelectorAll(FIELD)].some((c) => shown(c));
+    return box !== null && ![...box.querySelectorAll(FIELD)].some((c) => shown(c)) ? box : null;
   };
+  const overlayOf = (el) => overlayBox(el) !== null;
   const REAL_BUTTON = 'button, input[type="submit"], input[type="button"], input[type="image"]';
   // A dialog or step heading that asks about submitting. Narrower than the button sort on purpose:
   // "Apply to Acme" and "Complete your application" head ordinary steps.
@@ -330,21 +333,20 @@
    * that names its title that way is asking, and the cost of a wrong guess is a stopped run. Its
    * body text counts too (the full sort when it asks a question, the narrow words when it
    * states). The page's own STEP HEADING keeps the narrow SUBMIT_HEADING, since "Apply to Acme" and "Complete your profile" head ordinary steps. */
-  const submitContext = () => {
-    const asks = [...document.querySelectorAll(DIALOG)].filter(shown).some((d) => {
-      const body = squash((d.textContent ?? "").slice(0, 300));
-      const named = [
-        d.getAttribute("aria-label"), d.getAttribute("title"),
-        ...(d.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => d.ownerDocument.getElementById(id)?.textContent),
-        ...[...d.querySelectorAll("h1, h2, h3, h4, [role='heading']")].map((h) => h.textContent),
-      ].map(squash);
-      // The body: a question gets the full sort ("Ready to send?"); a statement only the narrow
-      // words ("Your application will be submitted."), so a cookie notice's "confirm" does not park.
-      return named.some((text) => text && sortOf(text) === "submit")
-        || (body.includes("?") ? sortOf(body) === "submit" : SUBMIT_HEADING.test(body));
-    });
-    return asks || SUBMIT_HEADING.test(stepHeading());
+  const dialogAsks = (d) => {
+    const body = squash((d.textContent ?? "").slice(0, 300));
+    const named = [
+      d.getAttribute("aria-label"), d.getAttribute("title"),
+      ...(d.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => d.ownerDocument.getElementById(id)?.textContent),
+      ...[...d.querySelectorAll("h1, h2, h3, h4, [role='heading']")].map((h) => h.textContent),
+    ].map(squash);
+    // The body: a question gets the full sort ("Ready to send?"); a statement only the narrow
+    // words ("Your application will be submitted."), so a cookie notice's "confirm" does not park.
+    return named.some((text) => text && sortOf(text) === "submit")
+      || (body.includes("?") ? sortOf(body) === "submit" : SUBMIT_HEADING.test(body));
   };
+  const submitContext = () => [...document.querySelectorAll(DIALOG)].filter(shown).some(dialogAsks)
+    || SUBMIT_HEADING.test(stepHeading());
 
 
   // ---------- the page's own complaints ----------
@@ -882,7 +884,7 @@
         // Site chrome (header, nav, a site footer): never the application step's Next.
         ...(inChrome(el) ? { chrome: true } : {}),
         // In a dialog or a cookie or consent notice: not the application step's Next unless a form holds it.
-        ...(overlayOf(el) ? { overlay: true } : {}),
+        ...(overlayOf(el) ? { overlay: true, ...overlayFlags(el) } : {}),
         // The error summary's own buttons ("Errors Found", "Error - <field>"): not part of the step.
         ...(inErrorRegion(el, regions) && isErrorText(labelOf(el)) ? { inErrors: true } : {}),
         ...(errorLineButton(el, regions) ? { errorLine: true } : {}),
@@ -1030,14 +1032,28 @@
     return { clicked: true };
   }
 
+  /** What a dismiss word needs to know about the popup it is in: a cookie notice (a refusal there is a dismissal), and
+   * whether its text asks a question (an OK there is an answer). */
+  const overlayFlags = (el) => {
+    const box = overlayBox(el);
+    return {
+      ...(el.closest(COOKIE_BOX) ? { cookie: true } : {}),
+      ...(box && squash(box.textContent ?? "").includes("?") ? { overlayAsks: true } : {}),
+    };
+  };
+
   /** The reasoning step's close_dialog: the dismiss button of a popup the last `summary()` named `id`. Refused, in this
-   * order: no such tagged button → "not_dismiss"; a Submit-worded or submit-marked one → "submit"; not inside an overlay,
-   * not a whole dismiss word, hidden or disabled → "not_dismiss". Never a Next, never a Submit. */
+   * order: no such tagged button → "not_dismiss"; a Submit-worded or submit-marked one, one in a dialog that asks
+   * about submitting, or a submit button of a form that sends something (not `method="dialog"`) → "submit"; not inside
+   * an overlay, not a dismiss word for THIS popup (`isDismiss`), hidden or disabled → "not_dismiss". Never a Next, never a Submit. */
   function pressDismiss(id) {
     const el = typeof id === "string" && id ? document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`) : null;
     if (!el || !el.matches(BUTTONS)) return { clicked: false, why: "not_dismiss" };
-    if (ns.pageKind.sortButton({ text: labelOf(el), known: knownOf(el) }) === "submit" || submitMarked(el)) return { clicked: false, why: "submit" };
-    if (!overlayOf(el) || !ns.pageKind.isDismiss(labelOf(el)) || !shown(el) || !enabled(el)) return { clicked: false, why: "not_dismiss" };
+    const dialog = el.closest(DIALOG);
+    const sends = el.type === "submit" && el.form && (el.getAttribute("formmethod") || el.form.method).toLowerCase() !== "dialog";
+    if (ns.pageKind.sortButton({ text: labelOf(el), known: knownOf(el) }) === "submit" || submitMarked(el)
+      || (dialog && dialogAsks(dialog)) || sends) return { clicked: false, why: "submit" };
+    if (!overlayOf(el) || !ns.pageKind.isDismiss(labelOf(el), { cookie: el.closest(COOKIE_BOX) !== null, asks: overlayFlags(el).overlayAsks === true }) || !shown(el) || !enabled(el)) return { clicked: false, why: "not_dismiss" };
     el.click();
     return { clicked: true };
   }

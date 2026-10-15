@@ -50,11 +50,17 @@
   }
 
   // A popup's way out, as the reasoning step's close_dialog presses it: the WHOLE label, never a Submit word
-  // (sortButton is asked first), never Cancel (it may cancel the application) or an Accept.
-  const DISMISS_WORDS = /^(close|dismiss|×|x|not now|no,? thanks|got it|ok(ay)?|reject( all)?( cookies)?|decline( all)?|skip)$/;
-  const isDismiss = (text) => {
+  // (sortButton is asked first), never Cancel (it may cancel the application) or an Accept. Close, dismiss, skip and
+  // the like close anything; OK and Got it only a popup that asks nothing (`asks`: its text holds a "?", the OK of
+  // "Is your address correct?" answers it); Reject and Decline only a cookie notice (`cookie`): in a consent box
+  // "Decline" is an answer, and declining a background check is not the run's to do.
+  const DISMISS_ANY = /^(close|dismiss|×|x|not now|no,? thanks|skip)$/;
+  const DISMISS_ACK = /^(ok(ay)?|got it)$/;
+  const DISMISS_COOKIE = /^(reject( all)?( cookies)?|decline( all)?)$/;
+  const isDismiss = (text, { cookie = false, asks = false } = {}) => {
     const words = normalise(text);
-    return sortButton({ text: words }) !== "submit" && DISMISS_WORDS.test(words);
+    if (sortButton({ text: words }) === "submit") return false;
+    return DISMISS_ANY.test(words) || (!asks && DISMISS_ACK.test(words)) || (cookie === true && DISMISS_COOKIE.test(words));
   };
 
   /** Whether a button's text is a plain Next ("Next", "Next step", "Save and continue/next"). */

@@ -25,7 +25,7 @@ emit({
   kinds: ns.pageKind.KINDS,
   plain: (spec.plain || []).map((t) => ns.pageKind.isPlainNext(t)),
   signed: (spec.signed || []).map((r) => ns.pageKind.signedUpRead(r)),
-  dismiss: (spec.dismiss || []).map((t) => ns.pageKind.isDismiss(t)),
+  dismiss: (spec.dismiss || []).map((t) => (typeof t === "string" ? ns.pageKind.isDismiss(t) : ns.pageKind.isDismiss(t.text, t.opts))),
 });
 """
 
@@ -528,6 +528,16 @@ def test_a_next_in_a_dialog_that_a_form_holds_is_still_the_step(tmp_path):
 
 
 def test_only_a_whole_dismiss_word_closes_a_popup(tmp_path):
-    yes = ["Close", "Dismiss", "×", "No thanks", "Not now", "Got it", "OK", "Reject all", "Decline"]
-    no = ["Accept", "Accept all cookies", "Confirm", "Submit", "Continue", "Apply", "Cancel", "Close and submit", "Next"]
+    yes = ["Close", "Dismiss", "×", "No thanks", "Not now", "Got it", "OK", "Skip"]
+    no = ["Accept", "Accept all cookies", "Confirm", "Submit", "Continue", "Apply", "Cancel", "Close and submit", "Next",
+          "Reject all", "Decline"]   # a refusal is a dismissal only in a cookie notice
     assert _run(tmp_path, dismiss=yes + no)["dismiss"] == [True] * len(yes) + [False] * len(no)
+
+
+def test_reject_and_decline_close_only_a_cookie_notice_and_ok_only_when_the_popup_asks_nothing(tmp_path):
+    cookie = {"cookie": True}
+    got = _run(tmp_path, dismiss=[{"text": "Reject all", "opts": cookie}, {"text": "Decline", "opts": cookie},
+                                  {"text": "Decline", "opts": {}}, {"text": "OK", "opts": {"asks": True}},
+                                  {"text": "Got it", "opts": {"asks": True}}, {"text": "Close", "opts": {"asks": True}},
+                                  {"text": "Submit", "opts": cookie}])["dismiss"]
+    assert got == [True, True, False, False, False, True, False]

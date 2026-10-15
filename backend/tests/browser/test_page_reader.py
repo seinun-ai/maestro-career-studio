@@ -2981,8 +2981,9 @@ def test_two_steps_inside_a_live_main_have_different_step_keys(page, load):
 
 # ---------- the reasoning step's dismiss press ----------
 
-POPUP = """<div role="dialog" aria-modal="true"><p>We use cookies.</p>
-  <button>Reject all</button><button>Accept all</button><button>Close and submit</button></div>
+POPUP = """<div role="dialog" aria-modal="true" class="cookie-banner"><p>We use cookies.</p>
+  <button>Reject all</button><button>Accept all</button></div>
+  <div role="dialog" aria-modal="true"><button>Close and submit</button></div>
   <form><label>Name <input name="n"></label><button type="button">Next</button>
   <button type="submit">Submit application</button></form><button>Close</button>"""
 
@@ -3015,3 +3016,53 @@ def test_a_dismiss_press_clicks_the_button_and_refuses_a_forged_id_a_submit_mark
     both = page.evaluate(f"(id) => {READER}.advance(id, {{dismiss: true, chooser: true}})", first["id"])
     assert both == {"clicked": False, "why": "not_next"} and page.evaluate("() => window.hits") == 1
     assert page.evaluate("() => window.hits") == 1
+
+
+CONFIRMS = {
+    "a submit button in a dialog that asks": """<form id="app"><label>Name <input name="n" value="Ada"></label></form>
+      <div role="dialog" aria-modal="true"><h2>Submit your application?</h2><p>Are you sure you want to submit?</p>
+      <form onsubmit="event.preventDefault(); window.sent = 1"><button type="submit">OK</button><button type="button">Cancel</button></form></div>""",
+    "a plain OK in a dialog that asks": """<div role="dialog" aria-modal="true"><h2>Ready to send your application?</h2>
+      <button onclick="window.sent = 1">OK</button><button>Cancel</button></div>""",
+    "a submit button in a dialog that never says submit": """<form onsubmit="event.preventDefault(); window.sent = 1">
+      <label>Name <input name="n"></label></form>
+      <div role="dialog" aria-modal="true"><p>Done here</p><form onsubmit="event.preventDefault(); window.sent = 1">
+      <button type="submit">OK</button></form></div>""",
+}
+
+
+@pytest.mark.parametrize("name", list(CONFIRMS))
+def test_a_dismiss_press_never_presses_the_ok_of_a_dialog_that_submits(page, load, name):
+    load(page, CONFIRMS[name], sources=SOURCES)
+    s = summary(page)
+    ok = button(s, "OK")
+    assert dismiss(page, ok["id"])["clicked"] is False
+    assert page.evaluate("() => window.sent === 1") is False
+
+
+def test_a_confirmation_dialogs_why_is_submit_not_just_not_dismiss(page, load):
+    load(page, CONFIRMS["a submit button in a dialog that asks"], sources=SOURCES)
+    assert dismiss(page, button(summary(page), "OK")["id"]) == {"clicked": False, "why": "submit"}
+
+
+def test_a_submit_button_may_close_a_dialog_form_that_only_closes(page, load):
+    load(page, """<dialog open><p>Welcome</p><form method="dialog"><button type="submit">Close</button></form></dialog>
+      <form><label>Name <input name="n"></label><button type="button">Next</button></form>""", sources=SOURCES)
+    assert dismiss(page, button(summary(page), "Close")["id"]) == {"clicked": True}
+
+
+def test_a_refusal_closes_a_cookie_notice_but_never_a_consent_box_and_ok_never_a_question(page, load):
+    load(page, """<div class="consent-box"><p>I agree to the background check terms.</p>
+      <button onclick="window.sent = 1">Decline</button><button>I agree</button></div>
+      <div id="cookie-notice"><p>We use cookies.</p><button>Decline</button></div>
+      <div role="dialog" aria-modal="true"><p>Is your address correct?</p><button onclick="window.sent = 1">OK</button></div>
+      <form><label>Name <input name="n"></label><button type="button">Next</button></form>""", sources=SOURCES)
+    s = summary(page)
+    declines = [b for b in s["buttons"] if b["text"] == "Decline"]
+    assert [b.get("cookie") for b in declines] == [None, True]
+    assert dismiss(page, declines[0]["id"]) == {"clicked": False, "why": "not_dismiss"}
+    assert dismiss(page, declines[1]["id"]) == {"clicked": True}
+    ok = button(s, "OK")
+    assert ok.get("overlayAsks") is True
+    assert dismiss(page, ok["id"]) == {"clicked": False, "why": "not_dismiss"}
+    assert page.evaluate("() => window.sent === 1") is False
