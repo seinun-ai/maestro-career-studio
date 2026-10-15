@@ -1,0 +1,99 @@
+<!-- A Workday-style "Application Questions" step whose Save and Continue is refused for a reason the page words
+     in a name no field carries (made up after the owner's live runs of 2026-10-13 and 2026-10-14; employer made up).
+     Pressing it with the required "How did you hear about this job?" select on Select One keeps the step and draws the
+     "Errors Found" banner: a collapse button and one button, "Error - Source", where "Source" is a column name inside
+     the page's own form model and no label, id or aria text on the page says it. Nothing is aria-invalid: only the
+     summary speaks. So an error repair that matches an error to a field by its words finds nothing to map, and the run
+     would park on page_errors. With Company website or Referral held, Save and Continue changes the step heading to
+     Review. Skills hold two pills already; Field of Study is an optional search box. -->
+<div data-automation-id="errorBanner" id="banner" hidden>
+  <button type="button" data-automation-id="errorCollapse" id="banner-toggle" aria-expanded="true">Errors Found</button>
+  <ul id="banner-list"></ul>
+</div>
+<h2 id="step">Application Questions</h2>
+<div data-automation-id="formField-skills"><label for="skills">Skills</label>
+  <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+    <ul data-automation-id="selectedItemList" role="listbox" id="pills"></ul>
+    <div data-automation-id="multiselectInputContainer"><div>
+      <input id="skills" type="text" data-uxi-widget-type="selectinput"></div></div>
+  </div></div>
+<div data-automation-id="formField-fos"><label for="fos">Field of Study</label>
+  <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+    <ul data-automation-id="selectedItemList" role="listbox"></ul>
+    <div data-automation-id="multiselectInputContainer"><div>
+      <input id="fos" type="text" data-uxi-widget-type="selectinput"></div></div>
+  </div></div>
+<div data-automation-id="formField-hearAbout">
+  <label for="hear">How did you hear about this job? *</label>
+  <select id="hear" required>
+    <option value="">Select One</option>
+    <option>Company website</option>
+    <option>Referral</option>
+  </select>
+</div>
+<div data-automation-id="pageFooter">
+  <button type="button" data-automation-id="pageFooterBackButton">Back</button>
+  <button type="button" data-automation-id="pageFooterNextButton" id="next">Save and Continue</button>
+</div>
+<style>
+  [data-automation-id="selectedItem"] { display: inline-flex; margin: 2px; padding: 2px 6px; border: 1px solid #888; }
+  #banner { border: 1px solid #b00; padding: 4px; }
+</style>
+<script>
+(() => {
+  // __oracle: `hear` is what the fake app HOLDS in the select; `step` is the step the app is on, moved only by a
+  // Save and Continue it accepted; `nexts` counts every press it got. The engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.hear = "";
+  oracle.step = "Application Questions";
+  oracle.nexts = 0;
+
+  const pills = document.getElementById("pills");
+  for (const text of ["SQL", "Python"]) {
+    const li = document.createElement("li");
+    const pill = document.createElement("div");
+    pill.setAttribute("data-automation-id", "selectedItem");
+    pill.setAttribute("role", "option");
+    pill.setAttribute("aria-label", `${text}, press delete to clear value.`);
+    const p = document.createElement("p");
+    p.setAttribute("data-automation-id", "promptOption");
+    p.textContent = text;
+    pill.append(p);
+    li.append(pill);
+    pills.append(li);
+  }
+
+  const select = document.getElementById("hear");
+  select.addEventListener("change", () => { oracle.hear = select.value; });
+
+  const banner = document.getElementById("banner");
+  const list = document.getElementById("banner-list");
+  function showError() {
+    list.replaceChildren();
+    const li = document.createElement("li");
+    const link = document.createElement("button");
+    link.type = "button";
+    link.textContent = "Error - Source";
+    link.addEventListener("click", () => select.scrollIntoView());
+    li.append(link);
+    list.append(li);
+    banner.hidden = false;
+  }
+  document.getElementById("banner-toggle").addEventListener("click", () => {
+    const open = list.hidden;
+    list.hidden = !open;
+    document.getElementById("banner-toggle").setAttribute("aria-expanded", String(open));
+  });
+  document.getElementById("next").addEventListener("click", () => {
+    oracle.nexts += 1;
+    if (!select.value) {
+      showError();
+      return;
+    }
+    banner.hidden = true;
+    list.replaceChildren();
+    document.getElementById("step").textContent = "Review";
+    oracle.step = "Review";
+  });
+})();
+</script>
