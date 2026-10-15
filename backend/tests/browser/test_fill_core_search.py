@@ -731,6 +731,7 @@ def test_a_pick_the_box_shows_as_a_dial_code_is_verified_by_the_option_the_list_
     f = _country(page, load)
     row = apply(page, f, op="choose", text="Acmeland +1", term="Acme")
     assert row["outcome"] == "verified", row
+    assert page.evaluate("window.__presses") == 2   # pressed open to pick, and again to read what it holds
     assert oracle(page, "country") == "Acmeland +1"
     assert page.inner_text(".acme__single-value").strip().endswith("+1")
     assert not list_shown(page, "menu-root")
@@ -753,3 +754,37 @@ def test_a_pick_the_page_made_into_another_option_is_not_verified(page, load):
     row = apply(page, f, op="choose", text="Acmeland +1", term="Acme")
     assert row["outcome"] != "verified", row
     assert oracle(page, "country") == "Betaland +2"
+
+
+def test_two_options_that_differ_only_in_their_dialing_code_are_two_options(page, load):
+    """The list marks +1809 held after the page committed it for a click on +1829: the code is part of the name when the
+    wanted text carries one."""
+    f = _country(page, load, __wrongPick="Dominicania +1809")
+    row = apply(page, f, op="choose", text="Dominicania +1829", term="Domin")
+    assert row["outcome"] != "verified", row
+    assert oracle(page, "country") == "Dominicania +1809"
+
+
+def test_a_set_items_or_kept_lists_pick_is_never_read_from_the_reopened_list(page, load):
+    """`chooseOne` passes `skip` for a set's item, a kept list or a several-answers field (no fixture reaches those through a
+    single-answer widget, so the helper is called as it calls it)."""
+    _country(page, load)
+    call = """async (skip) => {
+      const fc = window.careerStudioCompanion.fillCore;
+      const el = document.getElementById("cc");
+      el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      document.querySelector("[role=option]").click();       // the page commits "Acmeland +1" and shows "+1"
+      const presses = window.__presses;
+      const got = await fc.listHolds(el, window.careerStudioCompanion.shapes.of(el), { display: "" }, ["Acmeland +1"],
+        { cancelled: false }, { skip });
+      return [got, window.__presses - presses];
+    }"""
+    assert page.evaluate(call, True) == [None, 0]
+    assert page.evaluate(call, False)[0] == "Acmeland +1"
+
+
+def test_a_list_whose_close_commits_its_highlighted_row_proves_nothing(page, load):
+    """Reopening the list to read it must leave the box as it was: this page commits the first row when the box is left."""
+    f = _country(page, load, __commitOnBlur=True)
+    row = apply(page, f, op="choose", text="Betaland +2", term="Beta")
+    assert row["outcome"] != "verified", row
