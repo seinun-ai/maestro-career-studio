@@ -402,5 +402,17 @@ def test_the_service_sends_the_redacted_errors_to_the_model(db_session, monkeypa
 
 
 def test_a_bare_host_is_taken_out_of_the_note_too():
-    note = autofill_reason.clean_note("Visit globex.test/apply or careers.globex.test, built in Node.js.")
-    assert "globex" not in note and "Node.js" in note
+    note = autofill_reason.clean_note("Visit careers.globex.in/x or evil.site; call 5558675309. Check Source.")
+    assert note == "Visit or ; call . Check Source."
+
+
+def test_a_note_loses_anything_shaped_like_a_host_but_keeps_decimals():
+    note = autofill_reason.clean_note("Open globex.test/apply, careers.globex.zzz and Node.js, v2.0 of 3.5 pages.")
+    assert "globex" not in note and "Node" not in note and "v2.0" in note and "3.5" in note
+
+
+def test_a_first_name_inside_a_word_is_not_redacted_from_an_error_line():
+    facts = autofill_catalog.build({"personal": {"first_name": "Ann"}}, [], [])
+    request = req(errors=[{"text": "Annual salary is required, Ann."}])
+    redacted = autofill_reason.redact_errors(request, facts)
+    assert redacted.errors[0].text == "Annual salary is required, [saved answer]."

@@ -89,10 +89,16 @@ def _data(text: str) -> str:
     return re.sub(r"\s+", MARK, _visible(text).replace("<", "\u2039").replace(">", "\u203a").strip())
 
 
+def _hostlike(text: str) -> str:
+    """`text` without any dotted word that ends in letters ("globex.xyz", "Node.js"): a note is read, never linked."""
+    return contact_scan.HOSTLIKE.sub(lambda m: m.group() if not re.search(r"\.[A-Za-z]{2,}(?:/\S*)?$", m.group()) else "", text)
+
+
 def clean_note(text: str) -> str:
     out = _visible(text).replace(MARK, " ")
     for found in contacts(out):
         out = out.replace(found, "")
+    out = _hostlike(out)
     return re.sub(r"\s+", " ", out).strip()[:NOTE_MAX]
 
 
@@ -337,7 +343,7 @@ def redact_errors(req: ReasonRequest, facts: dict) -> ReasonRequest:
     values = _fact_values(facts)
     if not values or not req.errors:
         return req
-    pattern = re.compile("|".join(re.escape(v) for v in values), re.IGNORECASE)
+    pattern = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(v) for v in values) + r")(?!\w)", re.IGNORECASE)
     return req.model_copy(update={"errors": [e.model_copy(update={"text": pattern.sub("[saved answer]", e.text)})
                                              for e in req.errors]})
 
