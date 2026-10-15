@@ -3083,3 +3083,9 @@ def test_a_press_the_step_makes_on_a_filled_one_page_form_with_page_errors_is_re
     out = _drive(tmp_path, [{"t": "review", "errs": [UNMAPPED]}], reasons=[{"press": "submit-1"}], fix={"fixed": False, "remaining": [UNMAPPED]},
                  fills=[[DONE_FIELD]])
     assert out["record"]["why"] == "page_errors" and out["pressed"] == [] and len(names(out, "reason")) == 1
+
+
+def test_a_wizards_final_review_page_is_not_a_one_page_form_and_never_asks(tmp_path):
+    """Only the first page of an application can be a whole one-page form; a review page behind a step is a wizard's last page."""
+    out = _drive(tmp_path, [step(1), REVIEW], reasons=[dict(THOUGHT)], fills=[[DONE_FIELD], [needs("f1", "Degree"), DONE_FIELD]])
+    assert out["record"]["why"] == "open_questions" and out["record"]["step"] == 1 and names(out, "reason") == []

@@ -78,7 +78,7 @@
  *   pressed the page's Next: a step and a seen page), `moved` (the reason for the park is gone: the page is judged and
  *   pressed as any), else the park, carrying `thought` {note, ask?, tried} for the card. Never on a wall, a review page with
  *   no fields, a park that sends the user somewhere, or open questions that are ALL protected (`PROTECTED_SLOT`). A review
- *   page that HAS fields is a one-page form: thought about for open_questions and page_errors only, as `onePage`, on its
+ *   page at step 0 that HAS fields is a one-page form (a wizard's last page is not): thought about for open_questions and page_errors only, as `onePage`, on its
  *   fields alone: its press is refused here whatever the step asks, and it is skipped while the page asks about submitting or
  *   shows a dialog (owner decision 2026-10-15). A `moved_away`
  *   answer never drives (a follow only rebinds the tab). The step's press goes through the driver's own `press` and only
@@ -471,7 +471,7 @@
       const protectedOnly = why === "open_questions" && (extra.open ?? []).length > 0
         && extra.open.every((one) => PROTECTED_SLOT.test(one.slot ?? ""));
       const here = `${pathOf(thisPage?.where ?? "")}\n${thisPage?.key ?? ""}`;
-      const onePage = pageKind === "review" && ONE_PAGE_THINKS.has(why) && (pageSummary?.fillable ?? 0) > 0 && pageSummary?.submitContext !== true && !ns.pageKind.dialogUp(pageSummary);
+      const onePage = pageKind === "review" && record.step === 0 && ONE_PAGE_THINKS.has(why) && (pageSummary?.fillable ?? 0) > 0 && pageSummary?.submitContext !== true && !ns.pageKind.dialogUp(pageSummary);
       if (typeof deps.reason !== "function" || thought || thoughtOn.has(here) || !THINKS.has(why) || (pageKind === "review" && !onePage) || protectedOnly) {
         return await park(why, extra);
       }
