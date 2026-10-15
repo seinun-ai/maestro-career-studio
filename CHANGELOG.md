@@ -50,6 +50,29 @@ view for several is still ahead.
 
 ### Added
 
+- **Think when stuck: a stronger model looks before a run gives up.** A run used to stop the moment a page did something it had no rule for.
+  A Next refused over a name no field carries, a question nobody saved an answer for, a page it did not recognise. Every live check found one
+  more, and every fix was one more rule. Now the Companion asks a model to look at the page once first. Submit is still your click.
+  - **When it runs.** Before a run parks on page errors it could not map, open questions, an unknown page, no change after Next, a loop or a
+    tab on another site, with full automation On, **Think when stuck** On (Settings › AI & models › Form filling, default On) and **Stop after each
+    step** Off. Once per page, up to three rounds, about a minute. Never on a CAPTCHA, an email code, an account on a site it does not know, a
+    review page or a page that asks about submitting.
+  - **What it sees and does.** A snapshot of the page with no answer in it: the questions, whether each is filled, the options, the buttons, the
+    errors. It picks one to three actions from a fixed list (fill, answer from a saved answer, write a short answer, choose an option, retry a field
+    another way, redo a field the run filled, close a popup, press Next, follow the application's tab, ask you). The Companion carries them out with the code
+    it already has and looks again. The model never types a value: what is written comes from your profile, history and resume under the same rules
+    as any answer. Work authorization, sponsorship, salary, EEO, background history, signatures, licences and any fact you never gave are left to you.
+    It never presses Submit and presses Next only on the button the page reader names.
+  - **What you see.** A live line while it works ("Thinking: …"), one sentence if it sorted the page out ("Sorted it out: answered 2 questions and moved
+    on."), or the park card with its note, what it asks of you and a "Tried:" line. What it wrote or chose is listed under **Check before you submit** as
+    answered for you.
+  - **Reasoning model** (Settings › AI & models). Any model in the list; unset, it is the strong model of your provider (Claude Sonnet 5.5, GPT-6.1 Sol), or
+    your smart model for other providers. Claude Haiku 5.5 and GPT-6 Luna are listed as cheaper choices.
+  - **Fill log.** With the fill log on, each step is recorded as a run of its own: the model, time, its note, each action and outcome (a written answer as
+    its length) and the page snapshot it saw. `scripts/eval_reason.py` replays those snapshots against other models and prints the valid and ask-you rates,
+    latency, tokens and a cost estimate. `scripts/fill_trace.py last` prints the rounds.
+  - **Backend.** `POST /api/autofill/reason` (the Companion's origin only; every reply is checked in code against the snapshot's ids, the protected list
+    and failed actions before the extension sees it). Settings `think_when_stuck` (`GET/PUT /api/settings/companion-apply`) and `reasoning_model`.
 - **Apply on the Companion's Job step** (needs full automation On). It saves the job, settles the
   resume (it never replaces a tailored draft or an open tailoring session), queues the job as your
   yes, then drives the tab from the job's apply link to the review page. It never clicks Submit and

@@ -1757,6 +1757,46 @@ footer alone).
 - **Per-run fill limits.** `runFill` copies its limits per run; a driven tab passes `RUN_LIMITS` (60 s a field, 12 adaptive steps,
   10 minutes a page), the user's Autofill keeps 25 s, 8 and 3 minutes, and the module defaults are never written.
 
+- **The reasoning step** (`shared/reason-loop.js`; host ops `panel/actions/reason.js`, wired by `think` in `panel/actions/run.js`; backend
+  `POST /api/autofill/reason`, `app/services/autofill_reason.py`). Where the run would otherwise park, a model looks at the page once, acts a little
+  through code the run already has, looks again, and either carries on or parks with a plain note. The model decides; every wall stays in code.
+  - **When.** The driver's `parkOr` calls `deps.reason` before the parks in `THINKS` (`page_errors`, `open_questions`, `unknown_page`, `no_change`, `loop`,
+    `moved_away`), at most once per page per drive (`thought`, `thoughtOn`), and AGAIN when it moved the run on. Never on a wall (CAPTCHA, email code, an account on
+    an unknown host, a Submit page or any page that asks about submitting, a review page), never on open questions that are all protected, never within one step of
+    `stepMax` (the park keeps its own reason). The host passes `reason` only with full automation On, **Think when stuck** On (Settings › Form filling,
+    `companion_apply.think_when_stuck`, default On, read like **Stop after each step**) and **Stop after each step** Off; the route checks the same switches itself
+    (`switched_off`: ask the user, no model is paid, so a stale panel is not obeyed).
+  - **Snapshot** (`snapshotOf`, exactly a `ReasonRequest`, never a value): the stuck reason, each field's `fid`, question, shape, required / filled / invalid /
+    multi / multiline / by_run / touched, the fact NAME `/map` filed it under and up to 20 options; the page's Next and dialog buttons (`b<i>`, role `next` /
+    `dialog`: only the Next the classifier names, a dialog button only while nothing asks about submitting), error lines (with the field's id when they name one),
+    tabs (`t<i>`, host only), the last 8 moves and the signatures excluded. The job selectors (`application_id` or `base`, `page_url`, `today`) ride along; a
+    `moved_away` snapshot carries no field, button or error of the foreign site. Page text is cut to 300 characters and stripped of invisible Unicode (Cf, Co, Cn).
+  - **Limits and guards** (`LIMITS`, mirrored by `schemas/autofill_reason.py`): 3 rounds, 3 actions a round, a minute a page, and no call is started with under 25 s of
+    that minute left (the backend gives the model 25 s). An action's signature (`type:target`) that failed twice goes back as `excluded`; a field an action left
+    unchanged twice leaves the snapshot; a round after which the page key (fingerprint, error count, filled fields) is unchanged ends the loop, as do `ask_user`, a
+    missing or late reply, Stop and the page clock. The reply is checked again here: ids in THIS snapshot, a button's role, the actions the stuck reason allows
+    (`unknown_page` only `close_dialog`, `follow_tab`, `ask_user`; `moved_away` only `follow_tab`, `ask_user`).
+  - **Actions**, each through code that already exists: `fill` is `runFill({only})`; `answer_from` a `slotHints` entry for `/map`; `write` the `free_text` route with
+    `reasoner` `short` (`essay` on a required multiline box) for `/choose`; `choose` the `reasoned` (basis history) or `low_stakes` (basis default) route for `/pick`;
+    `retry` a move-order variant (`open_with_keys`, `search_with_enter`, `search_and_wait`) or, for `clear_and_set`, a redo; `redo` clears and refills a field the run
+    filled (never the user's `touched` one, never a multi-value field); `close_dialog` is `page_advance` with `dismiss`, which the page refuses for any button that asks about
+    submitting; `press_next` is the DRIVER's `press` (it re-sorts the label at click time, and only a page this run filled is pressed), the last action only;
+    `follow_tab` is `rebind`, the Phase 2e move. The model names targets and never supplies a value: what is written comes from the profile, history and resume under
+    the answer rules, so work authorization, sponsorship, salary, EEO, background history, signatures, licences and any fact the profile lacks are `ask_user`.
+  - **The route** is the Companion's exact origin only (`companion_origin.is_companion`; 403 otherwise), because it spends the strong model. The panel asks through its
+    ONE api door (`store.api`; the service worker stays the only fetch site) on its own clock, `REASON_MS` 30 s, polled every 250 ms for Stop. The server wraps and datamarks
+    page text, lists the answer types the profile holds by name, calls the Reasoning model (a JSON Schema for Claude, JSON mode for the rest) and checks every action
+    (`check`): allowed list, ids in the snapshot, the protected list, failed signatures, the Careful level (`write` and `choose` off). One failure turns the whole
+    reply into `ask_user`, with the codes in `rejected`. The note is cleaned (invisible characters, links, emails, phone numbers, 200 characters). Any failure,
+    late reply or fault in the loop is the normal park.
+  - **The card.** While it works the card shows a live line (`run.thinking`; also the footer note for the run in view); when it moved the run on, one sentence
+    (`run.sorted`, "Sorted it out: answered 2 questions and moved on."); when it parks, the model's note, what it asks of the user and a "Tried:" line (`run.thought`).
+    What it wrote, chose or redid is listed under **Check before you submit** as answered for you ("Written for you: read it", "Chosen for you: check it", "Filled
+    again: check it"), by field and step, never the value.
+  - **The fill log.** A step posts a run of its own (`traceOf`; `fields: []`, up to 3 `reasoning` rounds): the model, time, the model's note, each action with its outcome
+    (a written answer as its LENGTH) and the capped value-free snapshot the model saw (30 fields, 8 options each). `scripts/eval_reason.py` replays those snapshots
+    against other models. See "Run trace".
+
 ### Known limits (Queued run)
 
 - **A Next drawn as a div is not seen.** The button list is `button`, `input[type=submit|button]` and `a[role=button]`; a page whose only Next is a div (even
@@ -1793,6 +1833,13 @@ footer alone).
   parameter AND share a heading (or have none) reads as the page already filled, so after a refused press or a repair that ended on its next step, that step
   is pressed without being filled first. A press that moved still resets the guard (`moved()`), so the ordinary path is not affected.
 - **Account creation has no password-rule retry**: a site whose rule the saved password fails parks `create_account_failed` and waits for the user.
+- **The reasoning step cannot see a dialog in another frame.** It reads the frame that holds the form; a popup drawn in an iframe of its own is out of reach, so
+  `close_dialog` is never offered for it and the run parks as it always did.
+- **A status toast's Continue is the classifier's Next.** A page whose only button reading Next-like is a toast's "Continue" is what the page classifier names, so
+  `press_next` presses it (through the driver's `press`, which still refuses a button that turned into a Submit).
+- **A draft with a Socket.io-style word is dropped.** The link, email and phone check (`services/contact_scan.py`, on every drafted answer and every reasoning note)
+  reads a bare dotted word on a country-code or common TLD (`socket.io`) as a link the owner did not give, and drops the draft; the question is then the user's.
+- **A follow never drives.** `follow_tab` rebinds the run to the application's tab and parks with **Continue here**; the model cannot press anything there.
 
 ### The fill agent's rules (all Autofill, run or not)
 
@@ -2087,6 +2134,17 @@ the schema would reject dropped), and posts it to `POST /api/autofill/runs` only
 and folds each into counters with no host and no label; **Clear data** deletes the runs and keeps
 the counters. Read them with `backend/scripts/fill_trace.py last|report`, which opens a copy of the
 database and refuses the live file.
+
+**The reasoning step's rounds.** A thought posts a second kind of run: `fields` is `[]` and `reasoning` holds up to 3 rounds
+(`TraceReasonRound`; `reasonLoop.traceOf` builds it, `sw.js` `TRACE_REASON_ROUND` and the backend schema bound it alike). A round has the model id, `ms`, the
+model's note (the same cleaned sentence the card shows, 200 characters), each action as `{type, target, outcome}` (the target a field id or an opaque
+`b<i>` / `t<i>` ref; `slot` for `answer_from`, the fact NAME; `written` for a write, the answer's LENGTH), the checker's rejection codes, how the
+round ended (`stopped`) and `snapshot`: what the model was shown, without the job's selectors, capped to 30 fields and 8 options each (a snapshot over 120 000
+characters is dropped and the round kept). The error lines of a stored snapshot lose every saved answer a page echoed, on the way into the table
+(`autofill_reason.redact_trace`), as the same lines do on the way to the model. The model, the note and the page's own words are the only free text.
+`fill_trace.py last` prints the rounds after the fields. `backend/scripts/eval_reason.py` replays the snapshots against other models
+(`--models claude-sonnet-5-5,claude-haiku-5-5,gpt-6-luna`, from a database copy or a JSON file), runs the server's own checker and prints the valid
+and ask_user rates, the actions chosen, latency, tokens and a cost estimate; it spends your keys' money and is maintainer-run, never in CI.
 
 ## Install internals
 

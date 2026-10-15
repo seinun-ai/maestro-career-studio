@@ -419,6 +419,21 @@ read** ("Drafted from your history: read it"), never saved as a standing answer;
 drafting off. The **Ask** box at the foot of the Fill step answers any question from a form in one
 paragraph you can copy; it opens when a run pauses.
 
+When Apply would stop on a page it could not work, it first thinks. With **Think when stuck** on (Settings ›
+AI & models › Form filling, on by default, and only with full automation on and **Stop after each step** off),
+the **Reasoning model** looks at the page: the questions, the options and the errors, never what is in a field.
+It picks up to three actions, such as filling a field again, writing a short answer, choosing an option, closing
+a popup or pressing Next, then looks again, for up to three rounds. While it works the card shows a live line
+("Thinking: …"). If it sorted the page out you get one sentence ("Sorted it out: answered 2 questions and moved
+on."). If not, the usual **Needs you** card shows its note and a "Tried:" line. Anything it wrote or chose is
+listed under **Check before you submit** as answered for you. It never presses Submit, never answers
+work authorization, sponsorship, salary, demographic, background or signature questions, and asks you about a fact
+your profile does not have. By default the Reasoning model is your provider's strong model and costs a few cents a
+round. **Settings › AI & models › Reasoning model** lets you pick another from the list, including cheaper ones
+such as Claude Haiku 5.5 and GPT-6 Luna; a cheaper model costs less and may be less reliable. With the fill log
+on, each round and the page it saw are recorded, so you can compare models on the same pages with
+`backend/scripts/eval_reason.py`.
+
 A question your profile cannot answer gets a safe default from **Balanced** up: No (or Not
 applicable when offered) for membership of a tribe, union or association, a referral, or relatives at the
 company, and No (or "I don't wish to answer") for a spouse's or household member's military service; Yes for willingness to a standard step such as a background check, drug test, references,

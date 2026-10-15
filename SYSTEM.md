@@ -84,7 +84,7 @@ backend/
                        neutral parts; NULL `parts` = legacy row), llm_providers/ (neutral LLM types, errors,
                        registry (model id to provider), OpenAI-compatible, Gemini and Claude adapters),
                        attachment_extract (bounded DOCX/PPTX + notes; decks are documents),
-                       autofill_choose + autofill_slots + jev (Companion fill), resumes_folder (visible PDF copies), …)
+                       autofill_choose + autofill_reason + contact_scan + autofill_slots + jev (Companion fill), resumes_folder (visible PDF copies), …)
     automations/skills/  the agent prompts, one <name>/SKILL.md each: the Automations
                        source of the Automations page; indexed by docs/skills/README.md
     templates/         six seeded resume designs + both cover-letter sources (licenses: THIRD_PARTY_NOTICES.md)
@@ -93,7 +93,7 @@ backend/
   maestro_cs/          the `maestro` command (uv install, §9): CLI, supervisor, home layout, update, connect, stdio bridge
   migrations/          alembic: the SQLite chain, baseline 871d0425b64c + revisions (ids: §9; §12 has the revision-id gotcha)
   tests/               pytest on a throwaway SQLite file, no service; mcp_server/tests/ uses respx (no DB)
-  scripts/             calibration + parity tooling (ats_*, template_parity, health_golden, fill_trace), run from backend/
+  scripts/             calibration + parity tooling (ats_*, template_parity, health_golden, fill_trace, eval_reason), run from backend/
 frontend/              Next.js 16 (App Router) + React 19 + Tailwind v4 + Base UI-flavored
                        shadcn. AGENTS.md: read node_modules/next/dist/docs before writing code.
 data/                  the database: maestro_cs.sqlite3 + its -wal/-shm sidecars (bind-mounted, PII)
@@ -283,7 +283,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   unmistakable. Edit indices are **0-based into the full JSON array**, including `enabled: false` rows omitted from PDF; PATCH `/edits` echoes `applied[]`.
 - **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry` stores label, kind, rule
   id, option texts, outcome, host — never what was typed, was there before, or any AI answer: no value column, `extra="forbid"`, sw re-filters to six
-  keys. `POST /runs` stores one strict `RunTrace` (newest 50 kept): a label or section holding a value the run wrote, was answered, left or found
+  keys. `POST /runs` stores one strict `RunTrace` (newest 50 kept; a reasoning step's `reasoning` rounds hold the model, note, actions as ids and a written answer's LENGTH, and a value-free snapshot): a label or section holding a value the run wrote, was answered, left or found
   committed is blanked (`fill-loop.js` `rowKeys`/`siblingKeys`, which a scoped `only` fill still feeds from the fields it left alone; the exact rule, with its
   option-word exceptions: INTERNALS, "Run trace"); the page's option texts and the chosen option's index are kept on every field, EEO too, except a text holding another
   TYPED field's value; the rest is enums and numbers (a /map step names its sentinel from a fixed list, `TRACE_SENTINELS`, in `fill-loop.js` and `sw.js`), never a typed or profile string in a free-text slot.
@@ -600,9 +600,9 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   run"): with full automation On the Job step offers **Apply**: save, score, pick the resume (never overwriting a tailored draft or an open session), queue as the user's yes
   (consent channel `companion`), then drive THIS tab from the job's apply link (`apply_url`, else `source_url`; http(s) only; started on the job's saved posting it opens the
   saved link; on a job the user picked by hand, THIS page, saved as its `apply_url` if it has none, and `/api/jobs/match` reads both links) through sign-in, fill and Next to
-  **Ready to submit**. While it prepares, a live checklist with Stop (taken between steps; what was done stays) shows each step and the base list is locked. Two switches,
+  **Ready to submit**. While it prepares, a live checklist with Stop (taken between steps; what was done stays) shows each step and the base list is locked. Three switches,
   Settings › Form filling (`companion_apply`, `GET/PUT /api/settings/companion-apply`, synced, read only with full automation On): **Choose the base resume for me** (default
-  On: pick only when the top score reaches Auto-apply's floor and margin, else ask) and **Stop after each step** (default Off: three presses, the yes at Start filling).
+  On: pick only when the top score reaches Auto-apply's floor and margin, else ask), **Stop after each step** (default Off: three presses, the yes at Start filling) and **Think when stuck** (default On, below).
   **Submit is never clicked, at any setting**: `shared/page-kind.js` treats any Submit word, a dialog about submitting or an unseen Submit as the review page (Ready only on a
   real Submit: §6 inv-ready-real-review), and Next is pressed only by `page_advance` (`content/page-reader.js`), which re-sorts the button's labels at click time. A posting's
   Apply (a career site's too, even asking for a new tab: §6 inv-press-filled-page), and a Workday start chooser's Apply Manually link alone, are followed only as a same-tab
@@ -612,13 +612,16 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   (inv-one-resume-write); a required field a search or click landed a value on is listed under **Check before you submit** instead (never a protected one), and an optional
   skills box stays empty. The user answers in the page and presses **Resume**: every typed answer is remembered (Undo; long written ones never; also over a page-errors or
   upload park); one naming the job's company or city is held for that job only (`only_for` + `only_for_kind`, whole word, by `autofill_job.profile_for_job` for both `/context`
-  and `/choose`; Settings has Use for every job). The hand fix teaches the recipe book (§6 gesture report). A run parked on a step the user does by hand (posting, chooser,
-  unknown page, sign-in, code) follows them into the tab they open, only to the application itself (under the saved link or the posting's Apply link, a leading locale segment
-  such as /en-US/ ignored) or a page the backend matches to the job, never drives, and waits for one press, **Continue here**; the Job step's **Move the run to this tab** does
+  and `/choose`; Settings has Use for every job). The hand fix teaches the recipe book (§6 gesture report). A run parked on a step the user does by hand follows them into the tab they
+  open (only the application itself or a page the backend matches to the job: INTERNALS), never drives, and waits for one press, **Continue here**; the Job step's **Move the run to this tab** does
   the same from the other side; a driving run never moves. The user's own Submit is recorded only from a confirmation page on a host the run reached at the same employer,
   straight from the application's own pages, after an 8 s Undo (a tab closed during it marks at once); any other page sets `noAutoMark`, leaving the manual Mark applied, and
   Done on the Ready card ends the record writing nothing (per-run limits, leases and Apply on a live tab: INTERNALS). The Ask box (QnA drawer) sits under the run card only
   while the run is paused. The job memory is per tab (`chrome.storage.session` `widget.sessions`, no clock; origin, tenant, sibling-posting and backend-wins guards).
+- **Reasoning step** (`shared/reason-loop.js`, host `panel/actions/reason.js`, `POST /api/autofill/reason`, Companion origin only; INTERNALS, "The reasoning step"): before a run parks on errors it
+  could not map, open questions, an unknown page, no change, a loop or another site (never a wall, a review page, **Stop after each step** On or **Think when stuck** Off), the **Reasoning model** sees
+  a value-free snapshot and names 1–3 actions the backend checks (ids, protected list, failed signatures); `write`/`choose`/`answer_from` run through `/choose`, `/pick` and `/map`, so no value comes
+  from the model; 3 rounds, a minute a page; each round goes to the fill log (`reasoning`), replayable with `scripts/eval_reason.py`.
 - **Screening answers dial** (Settings › Form filling; `autofill.answer_level`, default **Balanced**, so an install that had
   the old low-stakes switch off now answers low-stakes questions; the one setting for the Companion, `/map` `/pick` `/step` and agents, via
   the brief's `applying.answer_level`; stored `facts`/`history`/`queued`, shown as the levels below): **Careful** (saved answers and history), **Balanced** (also low-stakes kinds in the

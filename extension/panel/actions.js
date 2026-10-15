@@ -87,8 +87,8 @@
  * candidate. TRIGGER for cutting it: a SECOND full-page pipeline beside
  * `runGuidedFill`. Do not cut it because it is the longest file here.
  *
- * SIZES: during 158 · job 432 · pick 266 · resume 269 · fill 720 ·
- * pause 360 · qna 145 · track 179 · run 567, this roster. Stated because a threshold
+ * SIZES: during 168 · job 730 · pick 273 · resume 271 · fill 1032 ·
+ * pause 491 · qna 145 · track 191 · run 1130 · reason 105, this roster. Stated because a threshold
  * nobody can measure against is not one.
  *
  * WHAT THIS FILE PUBLISHES: ns.panelActions = (store) => ({ addJob, queueJob,

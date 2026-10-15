@@ -59,6 +59,24 @@ at to your local Maestro CS app.
   with your saved job-site login, once, and waits up to 20 seconds for the site
   to finish before it says "Account not created" (see below). While a run is working the
   panel says "Ask opens when the run pauses"; the Ask box returns when it stops.
+- **Think when stuck.** Where a run would stop on a page it could not work (an error
+  it could not match to a field, a question it has no answer for, a page it does not
+  recognise, a Next that changed nothing, or a tab on another site), it first asks the
+  **Reasoning model** to look at the page. The model sees the questions, the options and
+  the errors, never what is in a field, and picks up to three actions: fill again, answer
+  from a saved answer, write a short answer, choose an option, try a field another way, close a
+  popup, press Next, move to the application's tab, or ask you. It tries at most three rounds
+  and about a minute a page. The card shows a live line ("Thinking: …") while it works, then
+  one sentence if it sorted the page out, or the usual **Needs you** card with the model's note
+  and a "Tried:" line. Anything it wrote or chose is listed under **Check before you submit**
+  as answered for you. It never presses Submit, never presses Next on a page it did not fill,
+  and never answers work authorization, sponsorship, salary, demographic, background-history, signature
+  or licence questions, or a fact your profile does not have. Settings › AI & models ›
+  Form filling has the **Think when stuck** switch (on by default; it needs full automation
+  on and **Stop after each step** off), and **Reasoning model** sits with the other models. By
+  default it is the strong model of your provider, which costs a few cents a round. Claude Haiku 5.5
+  and GPT-6 Luna are listed as cheaper choices. With the fill log on, each round and the page it saw are
+  recorded, so `backend/scripts/eval_reason.py` can compare models on the same pages.
 - **Written questions are drafted for you to read.** A required question such as
   "Why do you want to work here?" that your saved answers cannot answer is drafted
   from your career history and the job, in your own voice, about 120 words (or the

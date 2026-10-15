@@ -833,10 +833,18 @@
   the model is extra=forbid) and a **Full automation** card whose On switch
   asks for confirmation. Turning it Off refuses auto consent and login hand-offs.
   **The Companion's Apply switches**: the `Setting("companion_apply")` row (`services/companion_apply.py`, `JsonSetting`; local JSON at
-  `settings/companion_apply.json`, mirrored and carried in the synced profile bundle) is `{auto_pick: true, stop_each_step: false}`, both `StrictBool`.
+  `settings/companion_apply.json`, mirrored and carried in the synced profile bundle) is `{auto_pick: true, stop_each_step: false, think_when_stuck: true}`, all `StrictBool`.
   `GET`/`PUT /api/settings/companion-apply` (a SettingEnvelope); a blob that will not parse reads as the defaults. Settings › AI & models › Form
-  filling shows them as **Choose the base resume for me** and **Stop after each step**; the panel reads them on bind and obeys them only with full
-  automation On (`extension/INTERNALS.md`, "The switches"). The pick limits are Auto-apply's `auto_pick_floor` and `auto_pick_margin`.
+  filling shows them as **Choose the base resume for me**, **Stop after each step** and **Think when stuck**; the panel reads them on bind and obeys them only
+  with full automation On (`extension/INTERNALS.md`, "The switches"; the route checks full automation and Think when stuck itself). The pick limits are Auto-apply's `auto_pick_floor` and `auto_pick_margin`.
+  **The reasoning step** (`routers/autofill.py` `POST /api/autofill/reason`, `services/autofill_reason.py`, `services/contact_scan.py`, schemas `autofill_reason.py`;
+  `extension/INTERNALS.md`, "The reasoning step"): the Companion's exact origin only (403 otherwise). A value-free page snapshot in; the Reasoning model
+  (`llm.reasoning_model`, Settings › AI & models, any catalog model; unset it is the provider's strong model: `claude-sonnet-5-5`, `gpt-6.1-sol`, else the smart model)
+  answers 1 to 3 actions from a closed list, which `check` validates in code (allowed list per stuck reason, every id in the snapshot, the protected list, failed
+  signatures, the Careful level) before the extension sees them; any failure becomes `ask_user` with its codes in `rejected`. With full automation or Think when
+  stuck off the route asks the user and calls no model (`switched_off`). Page text is wrapped, datamarked and stripped of invisible Unicode; the model's note is
+  cleaned of links, emails and phone numbers (`contact_scan`, the finder every drafted answer is checked with too). A stored trace's `reasoning` rounds keep the snapshot
+  (error lines redacted of saved answers); `scripts/eval_reason.py` replays them against other models.
   **The Companion's run** (SYSTEM.md §7; `routers/companion.py`, `app/companion_origin.py`): consent channel `companion` is legal only on the
   Companion extension's exact origin (403 otherwise). A PATCH with it queues (`accepted`, from `pending_review`) and refuses `approved` and
   `submitted`; those come only from `POST /api/proposals/{id}/companion-submitted` (`{confirmation: {host, path, text}}`, `extra=forbid`),
