@@ -80,7 +80,8 @@
  *   is a draft); `options.slotHints` (a fact NAME) rides /map as `slot_hint`; `options.reasoner` (`short` | `essay`)
  *   rides /choose; `options.redo` fills a field the run already filled again (a touched field is still the user's);
  *   `options.variants` (`{open?, search?}`, only the engine's own move axes) orders a popup or search's moves with
- *   no recipe lookup, and teaches the book nothing.
+ *   no recipe lookup, and teaches the book nothing; `options.stepByStep` (fids) sends a popup or search straight to the
+ *   adaptive step, as a how-heard field always goes (a source list can be a tree).
  * - Exploring can commit (a search that finds one hit picks it): the page
  *   takes that back; one it could not take back leaves the field to the user,
  *   named (committed_while_exploring).
@@ -247,6 +248,7 @@
   const STEP_REASONS = new Set([...Object.keys(STATUS), "progress"]);
   const REFUSED = { yours: "yours", blocked: "blocked", unsupported: "cannot_operate" };
   const CAN_ADAPT = new Set(["popup", "search"]);
+  const TREE_SLOT = "preferences.how_heard";
   // The reasoning step's seeded routes, a fact name's shape, and the move axes a variant may order (shared/recipe-book.js AXES).
   const SEEDED_ROUTES = new Set(["low_stakes", "reasoned", "free_text"]);
   const SLOT_NAME = /^[a-z_]+(\.[a-z0-9_]+)*$/;
@@ -478,6 +480,7 @@
       .map(([fid, v]) => [fid, Object.fromEntries(Object.entries(v).filter(([axis, move]) => VARIANT_AXES[axis]?.includes(move)))])
       .filter(([, v]) => Object.keys(v).length));
     const redo = new Set(Array.isArray(options.redo) ? options.redo.map(String) : []);
+    const stepByStep = new Set(Array.isArray(options.stepByStep) ? options.stepByStep.map(String).filter((fid) => FID.test(fid)) : []);
     const startedAt = new Date();
     const runDeadline = Date.now() + L.RUN_MS;
     const runId = newRunId();
@@ -1191,6 +1194,9 @@
       if (out.outcome === "unexpected" && adapts(f, row)) {
         return settle(f, await adapt(f, row, historyEntry("choose", "unexpected", out.reason), item));
       }
+      // A choose that ran out of time (a slow search list, a long tree) is the step agent's: running the same choose again
+      // only burns the field's clock, as the multi-value path already knows.
+      if (out.outcome === "timeout" && adapts(f, row)) return settle(f, await adapt(f, row, historyEntry("choose", "timeout"), item));
       return fail(f, out.reason ?? out.outcome);
     };
 
@@ -1476,6 +1482,12 @@
       if (f.shape === "search" && row.route === "slot" && row.slot === "personal.address" && typeof value === "string"
         && value.trim()) return fillAddress(f, row, value.trim());
       await lookUp(f);
+      // A source list ("How did you hear about us?") can be a tree: a category, then a long list under it. The step agent
+      // opens, searches and reads what is under it, so the saved word is not chosen first, only to time out or open a category.
+      // The reasoning step's `step_by_step` retry (`options.stepByStep`) asks for the same on any popup or search.
+      if (adapts(f, row) && (stepByStep.has(f.fid) || (row.route === "slot" && row.slot === TREE_SLOT && typeof value === "string"))) {
+        return settle(f, await adapt(f, row, undefined, itemOf(f, row)));
+      }
       // A search widget says one answer or several only in the rows of an open
       // list (radios or checkboxes): a fact of several items on one whose
       // multiplicity is not known yet (`multi` null) explores its first item

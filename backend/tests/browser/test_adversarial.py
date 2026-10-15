@@ -139,7 +139,7 @@ def test_the_loop_carries_the_picked_options_category_into_its_choose(page, load
     """/pick sees oids and texts only; the choose names the picked option's path."""
     options = [{**opt("o1", "Other"), "where": "\u203aJob Board"}, {**opt("o2", "Other"), "where": "\u203aSocial Media"}]
     out = run(page, load, frames=[[f("d", "popup", FOUND)]],
-              map={"d": {"route": "slot", "slot": "preferences.how_heard", "value": "Facebook"}},
+              map={"d": {"route": "slot", "slot": "preferences.referral_channel", "value": "Facebook"}},
               explore={"d": {"options": options, "complete": True}},
               pick={"d": {"oids": ["o2"], "reason": "closest"}})
     [body] = bodies(out, "/api/autofill/pick")

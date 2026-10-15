@@ -446,7 +446,7 @@
       memory: (record.memory ??= ns.fillLoop.newMemory()),
       ...(scoped ? { only: scope.only } : {}),
       // The reasoning step's levers (shared/reason-loop.js): which route, fact, voice, redo or move order a field gets.
-      ...Object.fromEntries(["routes", "slotHints", "reasoner", "redo", "variants"]
+      ...Object.fromEntries(["routes", "slotHints", "reasoner", "redo", "variants", "stepByStep"]
         .filter((key) => scope[key] !== undefined).map((key) => [key, scope[key]])),
     });
     ns.panelRunAttach.land(rs, auto);

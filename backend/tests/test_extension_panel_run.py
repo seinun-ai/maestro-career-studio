@@ -2469,6 +2469,15 @@ def test_a_stop_that_lands_while_a_follow_checks_the_window_leaves_the_run_where
     assert r["tabId"] == 7 and not r.get("moved")
 
 
+def test_a_step_by_step_retry_reaches_the_fill_as_the_stepByStep_lever(tmp_path):
+    retry = {**ASK, "actions": [{"type": "retry", "fid": "f2", "technique": "step_by_step"}]}
+    out = _stuck(tmp_path, _reply(retry),
+                 reports=[{"fields": [needs("f2", "Degree")]}, {"fields": [verified("f2", "Degree")]}, {"fields": [verified("f1")]}],
+                 inventoryByPage=[[_field("f2", "", question="Degree", touched=False)], [_field("f1", "x")]])
+    scoped = [call["options"] for call in out["fills"] if call["options"].get("only")]
+    assert scoped and scoped[0]["only"] == ["f2"] and scoped[0]["stepByStep"] == ["f2"]
+
+
 def test_a_run_that_followed_to_a_tab_says_it_moved_and_not_that_the_tab_left_the_application(tmp_path):
     out = _run(tmp_path, [{"seed": [_seeded("parked", why="moved_away", moved=True)]}])
     text = _body_text(out["shots"][1])

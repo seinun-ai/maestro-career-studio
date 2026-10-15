@@ -27,7 +27,9 @@
   // from the explore's, so a slow explore never eats the undo (or the reverse).
   // `add`: one press of a section's Add and the wait for its entry (sections.js).
   // `address`: what an address search (rows that arrive up to 4 s late) adds to an explore or a choose.
-  const budgets = { explore: 5000, undo: 6000, apply: 6000, setItem: 6000, setMax: 20000, step: 2000, add: 4000, address: 3000 };
+  // `searchSettle`: a search choose types its term again and waits for the list to settle, as the explore before it did (~3.5 s
+  // on a slow tenant): that wait is on top of `apply`.
+  const budgets = { explore: 5000, undo: 6000, apply: 6000, setItem: 6000, setMax: 20000, step: 2000, add: 4000, address: 3000, searchSettle: 4000 };
   const inv = () => ns.fillInventory;
   const core = () => ns.fillCore;
   let runId = null;
@@ -233,7 +235,7 @@
     // A set's budget is its items' (one item: setItem); setMax only caps a batch.
     const ms = a.op === "set"
       ? Math.min(budgets.setMax, budgets.setItem * Math.max(1, (a.texts ?? []).length))
-      : budgets.apply + (a.address === true ? budgets.address : 0);
+      : budgets.apply + (a.address === true ? budgets.address : 0) + (a.op === "choose" && typeof a.term === "string" ? budgets.searchSettle : 0);
     const was = keyOf(shape.read(el));
     return { el, shape, was, ...(await run((t) => operate(a, el, shape, t), ms, el)) };
   };

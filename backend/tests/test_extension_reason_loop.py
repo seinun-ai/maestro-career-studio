@@ -134,6 +134,7 @@ def test_each_field_action_runs_through_the_fill_loops_own_options(tmp_path):
         (act(type="choose", fid="f1", basis="default"), {"routes": {"f1": "low_stakes"}, "reasoned": "choose"}),
         (act(type="retry", fid="f1", technique="open_with_keys"), {"variants": {"f1": {"open": "keys"}}}),
         (act(type="retry", fid="f1", technique="search_and_wait"), {"variants": {"f1": {"search": "debounce"}}}),
+        (act(type="retry", fid="f1", technique="step_by_step"), {"stepByStep": ["f1"]}),
         (act(type="retry", fid="f1", technique="clear_and_set"), {"redo": ["f1"], "reasoned": "redo"}),
         (act(type="redo", fid="f2"), {"redo": ["f2"], "reasoned": "redo"}),
     ]

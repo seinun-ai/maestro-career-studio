@@ -212,6 +212,7 @@
       reasoned: "write" } }),
     choose: (a) => ({ fids: [a.fid], scope: { routes: { [a.fid]: a.basis === "history" ? "reasoned" : "low_stakes" }, reasoned: "choose" } }),
     retry: (a) => (a.technique === "clear_and_set" ? redoPlan(a)
+      : a.technique === "step_by_step" ? { fids: [a.fid], scope: { stepByStep: [a.fid] } }
       : VARIANTS[a.technique] ? { fids: [a.fid], scope: { variants: { [a.fid]: VARIANTS[a.technique] } } } : null),
     redo: redoPlan,
   };
