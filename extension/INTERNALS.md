@@ -1584,8 +1584,10 @@ footer alone).
   `errorLine`) are out of the fingerprint, the Submit sort and the page classifier, and `press` returns `rejected` instead of `moved` when the
   address and the step heading are those of the press and the page names an error that was not there before it (or nothing else changed). A
   page with no heading is an unknown step, never "the same". **The step's heading is its own** (`stepHeading`): the first visible h1/h2 inside the
-  form or main region, else the progress list's `aria-current="step"` entry, else the first visible one anywhere; a heading that is the JOB's title (the tab's
-  title contains it, or its holder is named for a job posting / title / header) reads the same on every step and is skipped, and so is an error summary's
+  form or main region that is not the job's title, else the progress list's `aria-current="step"` entry, else any visible h1/h2 inside the region (even one the tab's title
+  echoes: a title that follows the step names the step), else the first one that is not the job's, else the first anywhere; a heading that is the JOB's title (the tab's
+  title contains it, or it or a holder around it is named for a job posting / title / header; the holder walk stops at the first region or field-holding ancestor, so a
+  page-wide `jobPostingPage` holder names no job) reads the same on every step and is skipped, and so is an error summary's
   ("Errors Found", "Please correct": the field reader shares the pattern, so it is no field's section either). A standing "Fields marked * are
   required" line on a page that moved is a move. `waitForChange` ends the wait at once on a fresh error; one that is not new must stay for `REJECT_HOLD_MS` (3 s), or
   `REJECT_HOLD_STANDING_MS` (8 s) when the page already showed errors before the press (`baseline`, the press's `errorKeys`), since a slow save
@@ -1602,13 +1604,16 @@ footer alone).
 - **A page the run did not fill is never pressed** (`filledPage`: `{where, key, shape, here}` of the page the run last filled, set at every fill, cleared by `moved()`).
   A refused press or a repair can end with the site on its NEXT page, whose Next the run would otherwise press unfilled. Before any press the current read is compared
   with `filledPage` by `samePage`: the same PATH and step key (the query is left out: a session or tracking parameter that appears after a fill is the same page, and
-  `filledPage.where` follows it) and, once the page's post-fill read is known, the same SHAPE (`shapeOf`: its buttons and its count of controls). A tenant that keeps one
-  address and one heading for every step is told apart by the shape. A different page counts as one step (`step + 1`, the old page's `here` goes into `seen`),
+  `filledPage.where` follows it) and, once the page's post-fill read is known, the same SHAPE (`shapeOf`: its step buttons and its count of controls; the error summary's buttons and a field's own control are out of it and out of `fingerprint`, since a
+  tenant's dropdown is a button whose text is its VALUE and a value never tells pages apart). A tenant that keeps one
+  address and one heading for every step is told apart by the shape. A change of shape alone, under the same path and key, counts as a step once per path and key in a
+  drive (`leftFilled`; a conditional field an answer revealed), then it is the same page changing. A different page counts as one step (`step + 1`, the old page's `here` goes into `seen`),
   `moved()` runs and the page is filled first. The count is bounded like any step: `step_limit` at the step cap and `loop` for a page already in `seen`, so a site that
   rewrites its address on every fill cannot walk the run through forty fills. A page that is `samePage` as the one filled is pressed again without a second fill. The reasoning
   step's `press_next` uses the same comparison. **A refused press is re-read before the run parks** (`movedOn`, ahead of a `page_errors` park): a press that read as refused only
-  because the new step drew its own error line or upload box leaves the site on a page that is not the one filled; that counts as a step and the loop fills it. `fixPage`
-  treats an upload error whose box the page no longer has as stale, like a box the user filled by hand (nothing is attached; the driver reads the page again).
+  because the new step drew its own error line or upload box leaves the site on a page that is not the one filled; that counts as a step and the loop fills it (a page already in
+  `seen` is not a step: the errors' park, not `loop`). `fixPage` treats an upload error whose box the page no longer has as stale, like a box the user filled by hand
+  (nothing is attached; the driver reads the page again), unless the page shows a required box still empty: that is the box redrawn under another tag, and the run parks.
 - **`page_errors` reads what the page itself complains about**, in its own words and never a value: `{count, items: [{label, target, kind}]}`, `kind`
   `field` | `upload` | `unknown`. Sources: a visible alert or `aria-live` region that reads like an error (not `aria-live="off"`; a region that holds a
   field is the step around it), a block headed "Errors Found" / "Please correct" and the like, and each control marked invalid (the field reader's
@@ -1806,7 +1811,7 @@ footer alone).
   - **The card.** While it works the card shows a live line (`run.thinking`; also the footer note for the run in view); when it moved the run on, one sentence
     (`run.sorted`, "Sorted it out: answered 2 questions and moved on."); when it parks, the code's own words (`run.thought`): what it asks of the user, else one line per attempt, "It tried How Did You Hear About Us? a
     second way; it didn't take." (`triedOf`: the doing as a phrase, then "it took" for progress or a move, "it didn't take" for no effect, "it was refused"; a rejected action is
-    not listed). The model's note is never on the card: it is on the live Thinking line and in the fill log, and the checker's refusal asks with the code's line, not the
+    not listed; a question is cut to 55 characters so the outcome survives the card's own 100-character cut, and a field with no question is "a field"). The model's note is never on the card: it is on the live Thinking line and in the fill log, and the checker's refusal asks with the code's line, not the
     model's plan. The prompt has the note written to the applicant, in the present tense, about what is wrong on the page ("The state is still empty."), never a plan.
     What it wrote, chose or redid is listed under **Check before you submit** as answered for you ("Written for you: read it", "Chosen for you: check it", "Filled
     again: check it"), by field and step, never the value.
