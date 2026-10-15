@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, replace
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, PolarityTrace, Reason
-from app.services import autofill_education, autofill_polarity, autofill_sponsorship, jev, llm, model_settings
+from app.services import autofill_education, autofill_place, autofill_polarity, autofill_sponsorship, jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
     NAMES_PROTECTED_CLASS,
@@ -547,7 +547,23 @@ def named_employers(fields: list[PickField], facts: dict[str, Fact]
     return (out, facts | moved, dropped) if (moved or dropped) else (fields, facts, dropped)
 
 
+CITY_SLOT = "personal.city"
 _DEGREE_SLOT = re.compile(r"education\.\d+\.degree")
+
+
+def city_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
+    """A city field whose options are Places-style ("Springfield, IL, USA"): the one that is the saved city in the saved
+    state is code's pick (autofill_place); any other list goes the ordinary way. Returns the other fields, and the decided."""
+    state = facts.get("personal.state")
+    if state is None or not isinstance(state.value, str):
+        return fields, {}
+    decided = {}
+    for f in fields:
+        fact = facts.get(f.slot or "")
+        if f.route == "slot" and f.slot == CITY_SLOT and isinstance(getattr(fact, "value", None), str) and (
+                oid := autofill_place.city_option(fact.value, state.value, [(o.oid, o.text) for o in f.options])):
+            decided[f.fid] = Picked(oids=[oid], reason="matched", trace=DecisionTrace())
+    return [f for f in fields if f.fid not in decided], decided
 
 
 def education_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
@@ -588,6 +604,8 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
          queued: bool = False) -> dict[str, Picked]:
     fields, facts, dropped = named_employers(fields, facts)
     fields, by_code = education_picks(fields, facts)
+    fields, cities = city_picks(fields, facts)
+    by_code |= cities
     fields, sponsored = sponsorship_type_picks(fields, facts)
     by_code |= sponsored
     # Another voluntary-disclosure answer never answers a question that names a veteran: final, the user's.

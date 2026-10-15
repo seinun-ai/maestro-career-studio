@@ -33,7 +33,7 @@ from dataclasses import asdict, dataclass
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import TERM, DecisionTrace, Engine, StepRequest, StepResponse
-from app.services import autofill_education, autofill_sponsorship, jev, llm, model_settings
+from app.services import autofill_education, autofill_place, autofill_sponsorship, jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
     WORKED_HERE_SLOT,
@@ -499,6 +499,11 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
             and (typed := autofill_education.degree_type(fact.value, shown_options, complete=req.complete)) is not None):
         return (StepResponse(mid=typed.oid, reason=typed.reason, trace=DecisionTrace(), polarity=polarity) if typed.oid
                 else StepResponse(mid=None, reason="abstained", polarity=polarity))
+    # A Places-style city list over a saved city and state: the option that is that city in that state.
+    if (req.slot == "personal.city" and isinstance(getattr(fact, "value", None), str) and "personal.state" in facts
+            and isinstance(facts["personal.state"].value, str)
+            and (oid := autofill_place.city_option(fact.value, facts["personal.state"].value, shown_options))):
+        return StepResponse(mid=oid, reason="matched", trace=DecisionTrace(), polarity=polarity)
     # A saved board answer: the board's leaf or its name in the search box is code's call, before a model.
     if req.slot == HOW_HEARD_SLOT and how_heard_kind(values[0]) == "board" and (coded := _board_move(req, values[0], hint)):
         return coded.model_copy(update={"polarity": polarity})
