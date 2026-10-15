@@ -303,18 +303,25 @@ def sequenced_llm(monkeypatch, outcomes):
     return calls
 
 
-def keys(monkeypatch, **held):
+def setup(db_session, monkeypatch, *, roles=("claude-haiku-5-5",), saved=(), env=(), base_url=None):
+    """The install: `roles` are the models of fast, smart, chat and reasoning (the last one repeats); `saved` the providers whose
+    key was saved in the app; `env` the ones whose key is only in the environment; `base_url` a custom OpenAI-compatible server."""
+    fast, smart, chat, reasoning = (list(roles) + [roles[-1]] * 4)[:4]
+    for name, model in (("fast", fast), ("smart", smart), ("chat", chat), ("reasoning", reasoning)):
+        monkeypatch.setattr(model_settings, f"get_{name}_model", lambda session=None, m=model: m)
+    model_settings.set_api_keys(db_session, {p: "k" for p in saved})
     for provider in ("openai", "anthropic", "gemini"):
-        monkeypatch.setattr(autofill_polarity.llm, f"get_{provider}_key", lambda p=provider: "k" if p in held else None)
+        monkeypatch.setattr(autofill_polarity.llm, f"get_{provider}_key",
+                            lambda p=provider: "k" if p in (*saved, *env) else None)
+    monkeypatch.setattr(autofill_polarity.llm, "get_base_url", lambda: base_url)
 
 
 TIMEOUT = llm.LLMProviderError("Anthropic API connection failed: The read operation timed out")
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_a_timed_out_second_opinion_is_retried_once_on_the_same_model_when_no_other_provider_is_configured(db_session, monkeypatch):
-    monkeypatch.setattr(model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
-    keys(monkeypatch, anthropic=True)
+def test_a_timed_out_second_opinion_is_retried_once_on_the_same_model_when_no_other_provider_is_assigned(db_session, monkeypatch):
+    setup(db_session, monkeypatch, saved=("anthropic",))
     fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
     calls = sequenced_llm(monkeypatch, [TIMEOUT, {"q": (SAME, 0.95)}])
     got = decide([ask("q")], db_session)["q"]
@@ -323,28 +330,57 @@ def test_a_timed_out_second_opinion_is_retried_once_on_the_same_model_when_no_ot
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_a_failed_second_opinion_falls_back_to_the_other_configured_providers_fast_model(db_session, monkeypatch):
-    monkeypatch.setattr(model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
-    keys(monkeypatch, anthropic=True, openai=True)
+def test_a_failed_second_opinion_falls_back_to_a_provider_the_user_assigned_and_saved_a_key_for(db_session, monkeypatch):
+    setup(db_session, monkeypatch, roles=("claude-haiku-5-5", "gpt-6.1-sol"), saved=("anthropic", "openai"))
     fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
     calls = sequenced_llm(monkeypatch, [TIMEOUT, {"q": (SAME, 0.95)}])
-    got = decide([ask("q")], db_session)["q"]
-    assert got.way == SAME
+    assert decide([ask("q")], db_session)["q"].way == SAME
     assert [c["model"] for c in calls] == ["claude-haiku-5-5", "gpt-6-luna"]
     assert all(c["max_retries"] == 0 and c["timeout"] >= autofill_map.MIN_CALL_S for c in calls)
 
 
 @pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("install", [
+    # the owner's: every role Claude, an OpenAI key only in the environment (and even one saved but assigned to no role)
+    {"roles": ("claude-haiku-5-5",), "env": ("openai",), "saved": ("anthropic",)},
+    {"roles": ("claude-haiku-5-5",), "saved": ("anthropic", "openai")},
+    # assigned, but the key is only in the environment
+    {"roles": ("claude-haiku-5-5", "gpt-6.1-sol"), "env": ("openai",), "saved": ("anthropic",)},
+    # a custom server, OpenRouter and an unregistered model never cross to a named provider
+    {"roles": ("claude-haiku-5-5", "gpt-6.1-sol"), "saved": ("anthropic", "openai"), "base_url": "http://ai.example.test/v1"},
+    {"roles": ("anthropic/claude-haiku-5-5", "gpt-6.1-sol"), "saved": ("openrouter", "openai")},
+])
+def test_no_other_provider_is_called_unless_assigned_with_a_saved_key(db_session, monkeypatch, install):
+    setup(db_session, monkeypatch, **install)
+    if install["roles"][0].startswith("anthropic/"):
+        monkeypatch.setattr(model_settings, "catalog_provider", lambda model, session=None: "openrouter")
+    fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
+    first = install["roles"][0]
+    calls = sequenced_llm(monkeypatch, [TIMEOUT, {"q": (SAME, 0.95)}])
+    got = decide([ask("q")], db_session)["q"]
+    assert {c["model"] for c in calls} == {first}      # only the user's own model, however many calls
+    assert got.way == SAME if len(calls) == 2 else got.way is None
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_a_second_failure_leaves_it_unsure_after_exactly_two_calls(db_session, monkeypatch):
-    monkeypatch.setattr(model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
-    keys(monkeypatch, anthropic=True, openai=True)
+    setup(db_session, monkeypatch, roles=("claude-haiku-5-5", "gpt-6.1-sol"), saved=("anthropic", "openai"))
     fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
     calls = sequenced_llm(monkeypatch, [TIMEOUT, TIMEOUT, {"q": (SAME, 0.95)}])
     assert decide([ask("q")], db_session)["q"].way is None and len(calls) == 2
 
 
-def test_the_fast_engine_and_a_jev_failure_get_the_same_retry(db_session, monkeypatch):
-    keys(monkeypatch, openai=True)
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("message", [llm.NO_KEY_MESSAGE, llm.NO_GEMINI_KEY_MESSAGE, "The provider refused your API key."])
+def test_a_missing_or_refused_key_is_not_retried_on_the_same_model(db_session, monkeypatch, message):
+    setup(db_session, monkeypatch, saved=("anthropic",))
+    fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
+    calls = sequenced_llm(monkeypatch, [llm.LLMProviderError(message), {"q": (SAME, 0.95)}])
+    assert decide([ask("q")], db_session)["q"].way is None and len(calls) == 1
+
+
+def test_the_fast_engine_gets_the_same_retry(db_session, monkeypatch):
+    setup(db_session, monkeypatch, roles=("gpt-6-luna",), saved=("openai",))
     calls = sequenced_llm(monkeypatch, [TIMEOUT, {"q": (OPPOSITE, 0.95)}])
     assert decide([ask("q")], db_session)["q"].way == OPPOSITE and len(calls) == 2
 
@@ -353,8 +389,7 @@ def test_the_fast_engine_and_a_jev_failure_get_the_same_retry(db_session, monkey
 def test_no_retry_once_the_budget_is_spent(db_session, monkeypatch):
     times = [0.0, 0.5, autofill_map.OPTIONAL_PASS_BUDGET_S + 0.1]
     monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
-    monkeypatch.setattr(model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
-    keys(monkeypatch, anthropic=True, openai=True)
+    setup(db_session, monkeypatch, roles=("claude-haiku-5-5", "gpt-6.1-sol"), saved=("anthropic", "openai"))
     fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
     calls = sequenced_llm(monkeypatch, [TIMEOUT, {"q": (SAME, 0.95)}])
     assert decide([ask("q")], db_session)["q"].way is None and len(calls) == 1
