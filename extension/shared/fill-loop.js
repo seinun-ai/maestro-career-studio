@@ -1445,8 +1445,10 @@
       const state = factOf("personal.state");
       return state && state.trim() ? `${city.trim()}, ${state.trim()}` : null;
     };
-    // The options an explore showed, kept on the row for the fill log (texts only; the log screens them like any option list).
-    const offered = (f, options) => set(f.fid, { offered: { count: options.length, texts: options.slice(0, TRACE_FIELD_OPTIONS).map((o) => String(o?.text ?? "")) } });
+    // The options an explore showed, kept on the row for the fill log. A TYPED explore's rows echo what was typed (a city, an
+    // employer), so only their count is kept; the texts are kept for an explore with no term (a popup's click-open, the whole-list re-read).
+    const offered = (f, options, typed) => set(f.fid, { offered: { count: options.length,
+      texts: typed ? [] : options.slice(0, TRACE_FIELD_OPTIONS).map((o) => String(o?.text ?? "")) } });
     const fillAddress = async (f, row, line) => {
       const parsed = parseAddress(line);
       const hints = { city: factOf("personal.city"), zip: factOf("personal.postal_code") };
@@ -1555,7 +1557,7 @@
         if (got.options?.length) {
           opts = got.options;
           complete = Boolean(got.complete);
-          offered(f, opts);
+          offered(f, opts, Boolean(place ?? term));
           // The rows a word of the term found are the ones the choose must search for, not the whole saved wording.
           if (typeof got.viaWord === "string") term = got.viaWord;
         } else if (!opts.length) {
@@ -1569,7 +1571,7 @@
             if (whole.options?.length) {
               opts = whole.options;
               complete = Boolean(whole.complete);
-              offered(f, opts);
+              offered(f, opts, false);
               term = undefined;
             }
           }

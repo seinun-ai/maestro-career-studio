@@ -3152,9 +3152,7 @@ def test_a_timed_out_runs_trace_says_timeout(page, load):
     assert trace_of(out)["halted"] == "timeout"
 
 
-# The page's own words an explore listed ("SENTINEL-EXPLORE-55 Inc", a search box's row) are kept in the trace since live check 7,
-# screened like the reasoning snapshot's options (a typed sibling's value is blanked), so they are not a sentinel.
-SENTINELS = ["SENTINEL-TYPED-77", "SENTINEL-COMMITTED-91", "SENTINEL-HELP-33",
+SENTINELS = ["SENTINEL-TYPED-77", "SENTINEL-COMMITTED-91", "SENTINEL-HELP-33", "SENTINEL-EXPLORE-55",
              "555-0100", "Acme Corp", "Springfield"]
 
 
@@ -3179,7 +3177,7 @@ def sentinel_run(page, load):
                    "d": {"route": "slot", "slot": "eeo.disability", "value": "No, I do not have a disability"}},
               apply={"SENTINEL-TYPED-77": [{"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]},
                                            {"outcome": "verified"}]},
-              explore={"Acme Corp": {"options": [opt("o9", "SENTINEL-EXPLORE-55 Inc")], "complete": True, "multi": False}},
+              explore={"Acme Corp": {"options": [opt("o9", "Acme Corp SENTINEL-EXPLORE-55 Inc")], "complete": True, "multi": False}},
               pick={"e": {"oids": ["o9"], "reason": "matched"},
                     "d": {"oids": ["o1"], "reason": "matched"}})
     assert set(statuses(out).values()) == {"verified"}
@@ -3198,8 +3196,8 @@ def test_what_the_trace_keeps_of_the_page_is_its_labels_and_options(page, load):
     # The page's own option texts are kept, the chosen one included (owner decision, 2026-10-03).
     assert (traced(out, "d")["options"], traced(out, "d")["option_count"]) == (
         ["No, I do not have a disability", "Yes, I have a disability"], 2)
-    # A search lists rows only on explore: the rows it showed are kept (live check 7), the same page words as a passive list.
-    assert (traced(out, "e")["options"], traced(out, "e")["option_count"], "explore" in ops(out, "e")) == (["SENTINEL-EXPLORE-55 Inc"], 1, True)
+    # A search lists rows only on explore, and they echo what it typed: only their COUNT is kept.
+    assert (traced(out, "e")["options"], traced(out, "e")["option_count"], "explore" in ops(out, "e")) == ([], 1, True)
 
 
 def test_an_option_echoing_a_siblings_typed_value_is_blanked(page, load):
@@ -3926,3 +3924,22 @@ def test_redo_never_remaps_a_multi_value_field(page, load):
     out = run(page, load, frames=[[f("k", "search", "Skills", multi=True, committed=["SQL"], answered=True)]],
               options={"redo": ["k"]})
     assert "/api/autofill/map" not in out["calls"] and statuses(out) == {"k": "already"}
+
+
+def test_a_city_and_an_employer_search_leave_no_typed_echo_in_the_trace(page, load):
+    """The options a typed search lists echo the typed city or employer: the trace keeps their count, never their words."""
+    out = run(page, load,
+              frames=[[f("c", "search", "Location (City)"), f("s", "select", "State", options=[opt("o1", "Illinois"), opt("o2", "Ohio")],
+                                                              optionsComplete=True), f("e", "search", "Employer")]] * 3,
+              map={"c": {"route": "slot", "slot": "personal.city", "value": "Springfield"},
+                   "s": {"route": "slot", "slot": "personal.state", "value": "Illinois"},
+                   "e": {"route": "slot", "slot": "experience.0.company", "value": "Acme Corp"}},
+              explore={"Springfield, Illinois": {"options": [opt("o1", "Springfield, Illinois, United States"),
+                                                            opt("o2", "Springfield, IL 62701")], "complete": True},
+                       "Acme Corp": {"options": [opt("o1", "Acme Corp"), opt("o2", "Acme Corporation Ltd")], "complete": True}},
+              pick={"c": {"oids": ["o1"], "reason": "matched"}, "s": {"oids": ["o1"], "reason": "matched"},
+                    "e": {"oids": ["o1"], "reason": "matched"}})
+    wire = json.dumps(trace_of(out))
+    assert "Springfield" not in wire and "Acme" not in wire
+    assert (traced(out, "c")["options"], traced(out, "c")["option_count"]) == ([], 2)
+    assert (traced(out, "e")["options"], traced(out, "e")["option_count"]) == ([], 2)

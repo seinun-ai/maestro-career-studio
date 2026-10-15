@@ -129,22 +129,23 @@ def location_trace(out):
     return next(f for f in out["report"]["trace"]["fields"] if f["label"] == "Location (City)")
 
 
-def test_the_options_a_search_box_offered_are_kept_in_the_trace(page):
+def test_a_typed_search_keeps_only_how_many_options_it_offered_since_they_echo_what_was_typed(page):
     out = _run(page, html=ACME, url="https://job-boards.greenhouse.io/acme/jobs/7", map=CITY,
                picks={"Location (City)": {"text": SPRINGFIELD_IL, "reason": "matched"}})
     field = location_trace(out)
-    assert field["options"] == [SPRINGFIELD_IL, SPRINGFIELD_MA] and field["option_count"] == 2
+    assert field["options"] == [] and field["option_count"] == 2
+    assert "Springfield" not in json.dumps(out["report"]["trace"])
 
 
-def test_an_option_that_says_another_typed_fields_value_is_blanked_in_the_trace_as_in_the_snapshot(page):
+def test_a_city_and_state_search_keeps_only_a_count_too(page):
     out = _run(page, html=WITH_STATE, url="https://job-boards.greenhouse.io/acme/jobs/7", map={**CITY, **STATE},
                picks={"Location (City)": {"text": SPRINGFIELD_IL, "reason": "matched"}})
     field = location_trace(out)
-    assert field["options"] == [""] and field["option_count"] == 1                 # "Illinois" is the State box's value
-    assert "Illinois" not in json.dumps(out["report"]["trace"])
+    assert field["options"] == [] and field["option_count"] == 1
+    assert "Illinois" not in json.dumps(out["report"]["trace"]) and "Springfield" not in json.dumps(out["report"]["trace"])
 
 
-def test_the_list_that_went_to_pick_after_a_typed_search_emptied_the_box_is_what_the_trace_keeps(page):
+def test_the_whole_list_read_with_no_term_keeps_its_texts_in_the_trace(page):
     out = _run(page, html=ACME, url="https://job-boards.greenhouse.io/acme/jobs/7", map=degree_map("Graduate Degree"),
                picks={"Degree": {"text": "Master's Degree", "reason": "matched"}})
     degree = next(f for f in out["report"]["trace"]["fields"] if f["label"] == "Degree")
