@@ -36,6 +36,12 @@ def test_a_typed_term_that_empties_the_list_is_searched_again_without_apostrophe
     assert wanted in texts(got), (term, texts(got))
 
 
+def test_the_fallback_word_loses_the_punctuation_it_carried_from_the_term(page, load):
+    load(page, ACME)
+    got = explore(page, inv(page)["Degree"], "Associate's, Nursing")
+    assert texts(got) == ["Associate's Degree"]
+
+
 def test_the_old_word_fallback_still_works(page, load):
     load(page, ACME)
     got = explore(page, inv(page)["Degree"], "Juris Practice")

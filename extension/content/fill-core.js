@@ -1035,8 +1035,9 @@
   // a box that filters by substring shows nothing for the saved wording). Never for a URL; never the term itself.
   const fallbackWords = (term) => {
     if (isUrl(term)) return [];
-    const first = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
-    const stem = (first ?? term.split(/\s+/)[0]).replace(/['’]/g, "").replace(/([^s])s$/i, "$1");
+    const words = term.split(/\s+/).map((x) => x.replace(/^[,;:.\s]+|[,;:.\s]+$/g, ""));   // "Springfield," is "Springfield"
+    const first = words.find((x) => x.length > 2 && x !== term);
+    const stem = (first ?? words[0]).replace(/['’]/g, "").replace(/([^s])s$/i, "$1");
     return [first, stem].filter((x, i, all) => x && x.length > 2 && x !== term && all.indexOf(x) === i);
   };
 
