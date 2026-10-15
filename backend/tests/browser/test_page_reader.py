@@ -2959,6 +2959,53 @@ def test_an_error_summarys_heading_is_not_the_steps_heading(page, load):
         assert summary(page)["stepKey"] == before and before != ""
 
 
+def _step_keys(page, load, template, steps, title="Senior Analyst - Acme"):
+    keys = []
+    for heading in steps:
+        load(page, template.format(h=heading), SOURCES)
+        page.evaluate("(t) => { document.title = t; }", title)
+        keys.append(summary(page)["stepKey"])
+    return keys
+
+
+JOB_TITLE_HEADERS = [
+    # The tenant's constant job-title heading sits outside the application's own region.
+    ("<h2>Senior Analyst</h2><main><h2>{h}</h2>{body}</main>", "Senior Analyst - Acme"),
+    # Inside the same region, but it is the job's title (the tab's title says so).
+    ("<main><h2>Senior Analyst</h2><h2>{h}</h2>{body}</main>", "Senior Analyst - Acme"),
+    # Inside the same region, named as the job header by its holder.
+    ("<main><div data-automation-id='jobPostingHeader'><h2>Senior Analyst</h2></div><h2>{h}</h2>{body}</main>", "Careers"),
+    ("<form><div class='job-title-bar'><h2>Senior Analyst</h2></div><h2>{h}</h2>{body}</form>", "Careers"),
+]
+BODY = "<label for='a'>Q</label><input id='a'><button type='button'>Next</button>"
+
+
+@pytest.mark.parametrize("template, title", JOB_TITLE_HEADERS)
+def test_a_constant_job_title_heading_above_each_step_does_not_make_every_step_one_key(page, load, template, title):
+    keys = _step_keys(page, load, template.replace("{body}", BODY), ["My Experience", "Application Questions 1"], title)
+    assert keys[0] != "" and keys[0] != keys[1]
+
+
+def test_a_progress_lists_current_step_names_the_step_when_the_page_has_no_other_heading(page, load):
+    template = ("<ol class='progress'><li aria-current='step'>{h}</li><li>Review</li></ol>"
+                "<h2>Senior Analyst</h2>" + BODY)
+    keys = _step_keys(page, load, template, ["My Experience", "Application Questions 1"], "Senior Analyst - Acme")
+    assert keys[0] != "" and keys[0] != keys[1]
+
+
+def test_the_steps_own_heading_wins_over_an_earlier_heading_outside_the_form(page, load):
+    load(page, "<h1>Acme Careers</h1><main><h2>Contact details</h2>" + BODY + "</main>", SOURCES)
+    one = summary(page)["stepKey"]
+    load(page, "<h1>Acme Careers</h1><main><h2>Work history</h2>" + BODY + "</main>", SOURCES)
+    assert one != "" and one != summary(page)["stepKey"]
+
+
+def test_a_page_whose_only_headings_are_the_job_title_still_reads_a_key(page, load):
+    load(page, "<main><h2>Senior Analyst</h2>" + BODY + "</main>", SOURCES)
+    page.evaluate("document.title = 'Senior Analyst - Acme'")
+    assert summary(page)["stepKey"] != ""
+
+
 # ---------- the cheap read stays cheap ----------
 
 def test_a_page_with_no_complaint_reads_no_field_questions(page, load):

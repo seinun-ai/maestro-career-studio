@@ -315,13 +315,32 @@
     return holder !== null && !holder.querySelector(FIELD);
   };
 
-  /** The step's first visible h1/h2 text, outside site chrome. */
+  /** The step's own heading text, outside site chrome. In order: the first visible h1/h2 inside the application's own
+   * region (a form, main), the progress list's current step, then the first visible h1/h2 anywhere. A heading that is
+   * the JOB's title (the tab's title says so, or its holder is named for it) is the same on every step and is no step's. */
   let activeRegions = null;   // the error regions of the summary being built, so its headings are read against one set
+  const REGION = 'main, form, [role="main"], [role="form"]';
+  const JOB_HEADER = /job[-_ ]?(posting|title|header|name)|posting[-_ ]?(title|header)/i;
+  const jobHeading = (el, title) => {
+    const own = squash(el.textContent).toLowerCase();
+    if (title && own.length > 3 && title.includes(own)) return true;
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      if (JOB_HEADER.test(`${n.id} ${n.className?.baseVal ?? n.className} ${n.getAttribute("data-automation-id") ?? ""}`)) return true;
+    }
+    return false;
+  };
   const stepHeading = () => {
     // An error summary's own heading ("Please correct the errors below") is not the step's.
     const regions = activeRegions ?? errorRegions();
-    const heading = [...document.querySelectorAll("h1, h2")].find((el) => shown(el) && !inChrome(el)
+    const title = squash(document.title).toLowerCase();
+    const found = [...document.querySelectorAll("h1, h2")].filter((el) => shown(el) && !inChrome(el)
       && squash(el.textContent) && !ERROR_HEADING.test(squash(el.textContent)) && !inErrorRegion(el, regions));
+    const own = found.filter((el) => !jobHeading(el, title));
+    const inside = own.find((el) => el.closest(REGION));
+    if (inside) return squash(inside.textContent);
+    const current = [...document.querySelectorAll('[aria-current="step"]')].find((el) => shown(el) && !inChrome(el) && squash(el.textContent));
+    if (current) return squash(current.textContent);
+    const heading = own[0] ?? found[0];
     return heading ? squash(heading.textContent) : "";
   };
 
@@ -356,7 +375,7 @@
   // ---------- the page's own complaints ----------
 
   // A heading that says the page has errors (never a line about one field).
-  const ERROR_HEADING = /errors? found|please (fix|correct)|there (is|are) \d+ errors?/i;
+  const ERROR_HEADING = ns.ERROR_HEADING;
   const ERRORISH = /error|required|must|invalid|please (fix|correct|enter|select|provide|choose)|can(?:no|['’])t|unable/i;
   const ERROR_LEAD = /^\s*errors?\s*[-:–—]\s*/i;
   // How a line names its field: "The field X is required…", "X: This field is required", "X is

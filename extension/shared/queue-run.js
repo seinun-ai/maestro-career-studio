@@ -55,7 +55,9 @@
  *   word counts as the Ready judgement only for a park whose `lastBy` was a Submit the reader could not be sure of
  *   (`submit_seen`, `submit_context`) or fields with no Next (`fields_no_next`); a page that now reads as a step
  *   is pressed on to its Next, not vouched for. After a
- *   `page_errors` or `upload` park, on the page it parked on (`record.parkedPage`: address and step key), the
+ *   `page_errors` or `upload` park, on the page it parked on (`record.parkedPage`: address, step key and shape, the
+ *   buttons and the count of controls; a page that keeps one address and heading for every step is told apart by the
+ *   shape unless the parked error is still on it), the
  *   page is NOT filled again (the user fixed what was named): after a page_errors park its errors are read and
  *   any that remain get a repair round; after an upload park a required box still empty parks again (a
  *   Resume never attaches); then Next is pressed. On any other page the Resume fills as usual.
@@ -238,6 +240,15 @@
     return [where, summary?.stepKey ?? "", buttons, summary?.fillable ?? 0].join("\n");
   }
 
+  /** Page `now` is the page `was` describes: the same path and heading key, and the same buttons and control count when
+   * `was` knows them (a page described before its post-fill read does not). One comparison for the Resume, the filled page and the
+   * reasoning step's press, so a tenant that keeps one address and heading for every step cannot pass for the page it left. */
+  const samePage = (was, now) => pathOf(was.where) === pathOf(now.where) && was.key === now.key
+    && (was.shape == null || was.shape === now.shape);
+
+  /** The part of the fingerprint that is not the address: the heading's key, the buttons and the count of controls. */
+  const shapeOf = (summary) => fingerprint("", summary).split("\n").slice(2).join("\n");
+
   // A wall shows in whichever frame holds it (a challenge in the embedded form's own iframe).
   // These only mean something in the top document: the page around everything else.
   const WALL_ANYWHERE = new Set(["captcha", "create_account", "verify"]);
@@ -325,7 +336,9 @@
       return record;
     };
     const park = (why, extra = {}) => finish("parked", why, { open: [], ...extra,
-      ...(why === "page_errors" || why === "upload" || why === "unsure_page" ? { parkedPage: thisPage } : {}) });
+      ...(why === "page_errors" || why === "upload" || why === "unsure_page"
+        ? { parkedPage: { ...thisPage, ...(why === "page_errors" && extra.open?.length ? { asked: extra.open.map((o) => String(o.question ?? "").toLowerCase()) } : {}) } }
+        : {}) });
 
     const gate = () => {
       if (deps.cancelled(record)) throw HALT;
@@ -357,8 +370,8 @@
     let wroteResume = false; // the resume has been written on this page (by the fill's attach or the gate): never twice
     let resumeWhy = null;    // a Resume after page_errors or upload: decided on the first read, by whether it is the parked page
     let recheck = null;      // ... and then: don't refill, look at the page's errors or upload boxes
-    let thisPage = null;     // {where, key} of the page being read: remembered when a park names a page
-    let filledPage = null;   // {where, key, here} of the page this run last filled: the only page it presses
+    let thisPage = null;     // {where, key, shape} of the page being read: remembered when a park names a page
+    let filledPage = null;   // {where, key, shape, here} of the page this run last filled: the only page it presses
     let landing = null;      // the hosts a posting Apply may land on: the first read after the press must be on one
     let thought = false;     // the reasoning step has been asked on this page (`moved()` clears it)
     const thoughtOn = new Set();  // ... and the pages (address path and step key) it was asked on in this drive: never twice
@@ -434,8 +447,8 @@
       const out = await act(deps.reason, record, { why, open: extra.open ?? [], recent,
         // Only the page this run filled is pressed (inv-rejected-next): anything else is refused before the page. A loop
         // is a page already pressed once: the step never presses it again.
-        press: (frameId, id, before, baseline) => (why !== "loop" && pageFilled && filledPage && pathOf(filledPage.where) === pathOf(thisPage.where)
-          && filledPage.key === thisPage.key ? press({ frameId }, id, before, undefined, baseline) : Promise.resolve("refused")) });
+        press: (frameId, id, before, baseline) => (why !== "loop" && pageFilled && filledPage && samePage(filledPage, thisPage)
+          ? press({ frameId }, id, before, undefined, baseline) : Promise.resolve("refused")) });
       if (why !== "moved_away" && out?.advanced) {
         if (record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
         await update({ step: record.step + 1, seen: [...record.seen, out.advanced] });
@@ -590,14 +603,21 @@
         chooserNext = false;
         {
           const [where, key] = fingerprint(url, summary).split("\n");
-          thisPage = { where, key };
+          thisPage = { where, key, shape: shapeOf(summary) };
           if (resumeWhy) {
             const parked = record.parkedPage;
             // An empty step key proves nothing (the page named no heading): that page is filled as usual.
             // An empty step key proves nothing for a fix or an upload, but a review page may simply have no
             // heading: the address alone then says it is the page the user was asked to look at.
             const vouching = resumeWhy === "unsure_page";
-            if (parked && (vouching || parked.key !== "") && parked.where === where && parked.key === key) {
+            // Its shape (buttons, control count) must also be the parked one, unless the error the park named is still on it.
+            const stillThere = async () => {
+              if (resumeWhy !== "page_errors" || !Array.isArray(parked.asked) || !parked.asked.length) return false;
+              const found = await act(deps.pageErrors, record.tabId, frame.frameId);
+              return (Array.isArray(found?.items) ? found.items : []).some((it) => parked.asked.includes(String(it.label ?? "").toLowerCase()));
+            };
+            if (parked && (vouching || parked.key !== "") && parked.where === where && parked.key === key
+              && (vouching || samePage(parked, thisPage) || await stillThere())) {
               recheck = resumeWhy;
               if (vouching) {
                 // The page is filled as any Resume's is (the fill answers nothing that already holds an answer); the
@@ -765,7 +785,7 @@
         // A PAGE IS PRESSED ONLY IF IT IS THE PAGE THIS RUN FILLED. A press the page refused, or a repair, can end
         // with the site on its next page; the page in hand is not the one that was filled, so the press that
         // brought it here counts as a step and the page is filled before anything else is done on it.
-        if (pageFilled && filledPage && (pathOf(filledPage.where) !== pathOf(thisPage.where) || filledPage.key !== thisPage.key)) {
+        if (pageFilled && filledPage && !samePage(filledPage, thisPage)) {
           // Bounded like any step: a site that keeps rewriting its address cannot walk the run through forty fills.
           if (record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
           // `seen` holds a pressed page as its whole fingerprint and a page left unpressed as `where\nkey`.
@@ -906,7 +926,7 @@
         }
 
         const here = fingerprint(url, summary);
-        if (filledPage) filledPage.here = here;
+        if (filledPage) Object.assign(filledPage, { here, shape: thisPage.shape });
         if (tried === 0 && fixRounds === 0) {
           if (record.seen.includes(here)) {
             const stop = await parkOr("loop");

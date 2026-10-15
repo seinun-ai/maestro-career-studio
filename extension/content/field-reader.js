@@ -100,6 +100,9 @@
   // preceding label's stop.
   const HEADING = "h1, h2, h3, h4, h5, [role=heading]";
   const ANY_HEADING = "h1, h2, h3, h4, h5, h6, [role=heading]";
+  // A heading that says the page has errors ("Errors Found"), never a line about one field. It names no section and no
+  // step (page-reader.js reads the same pattern).
+  const ERROR_HEADING = /errors? found|please (fix|correct)|there (is|are) \d+ errors?/i;
 
   // THE TEXT BEFORE A FIELD: the "preceding" source, and a group's question
   // in shapes.js. For a box nothing names — Gem's bare input under a
@@ -390,7 +393,8 @@
   const sectionOf = (el) => {
     for (let node = el.parentElement; node; node = node.parentElement) {
       const heads = [...node.querySelectorAll(HEADING)]
-        .filter((h) => !h.contains(el) && (h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));
+        .filter((h) => !h.contains(el) && (h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+          && !ERROR_HEADING.test(text(h)));
       if (heads.length) return text(heads.at(-1));
     }
     return "";
@@ -443,6 +447,7 @@
   ns.unmark = unmark;
   ns.repeatOf = repeatOf;
   ns.ANY_HEADING = ANY_HEADING;
+  ns.ERROR_HEADING = ERROR_HEADING;
   ns.byIdIn = byId; // an id, resolved in the element's own root
   ns.readField = (el) => {
     let question = "";

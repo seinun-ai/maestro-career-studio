@@ -98,6 +98,17 @@ def test_a_label_after_its_checkbox_is_read(page, load):
     assert [page.evaluate(READ, s)["question"] for s in ("#a", "#b")] == ["I agree to the terms", "Send me updates"]
 
 
+@pytest.mark.parametrize("banner", [
+    "<div role='alert'><h2>Errors Found</h2><ul><li>Error - Q</li></ul></div>",
+    "<div role='alert'><h3>Please correct the errors below</h3></div>",
+])
+def test_an_error_banners_heading_is_never_a_fields_section(page, load, banner):
+    load(page, f"<main>{banner}<label for='a'>City</label><input id='a'></main>")
+    assert page.evaluate(READ, "#a")["section"] == ""
+    load(page, f"<main><h3>My Experience</h3>{banner}<label for='a'>City</label><input id='a'></main>")
+    assert page.evaluate(READ, "#a")["section"] == "My Experience"
+
+
 def test_an_h6_sub_label_inside_an_entry_is_not_its_section(page, load):
     """Section names come from h1–h5: an <h6> sub-label ("Dates") inside
     "Work Experience 2" must not become the field's section, or its repeat

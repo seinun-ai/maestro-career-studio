@@ -2497,14 +2497,18 @@ def _resumed(tmp_path, why, pages, parked=PARKED_HERE, **spec):
     return _drive(tmp_path, pages, record=record, **spec)
 
 
-def test_a_page_errors_park_remembers_which_page_it_was(tmp_path):
+# What the fake step page looks like to the fingerprint: its buttons (sorted) and how many controls a fill could answer.
+STEP_SHAPE = "Back,Next\n2"
+
+
+def test_a_page_errors_park_remembers_which_page_it_was_and_what_it_looked_like(tmp_path):
     out = _drive(tmp_path, [step(1, rejects=9, errorItems=[CITY])])
-    assert out["record"]["parkedPage"] == PARKED_HERE
+    assert out["record"]["parkedPage"] == {**PARKED_HERE, "shape": STEP_SHAPE, "asked": ["city"]}
 
 
-def test_an_upload_park_remembers_which_page_it_was(tmp_path):
+def test_an_upload_park_remembers_which_page_it_was_and_what_it_looked_like(tmp_path):
     out = _drive(tmp_path, [step(1), REVIEW], attaches=[{"outcome": None, "required": True, "boxes": [COVER]}])
-    assert out["record"]["parkedPage"] == PARKED_HERE
+    assert out["record"]["parkedPage"] == {**PARKED_HERE, "shape": STEP_SHAPE}
 
 
 def test_a_resume_after_page_errors_does_not_refill_and_presses_when_the_page_names_nothing(tmp_path):
@@ -2519,6 +2523,48 @@ def test_a_resume_after_page_errors_repairs_only_what_the_page_still_names(tmp_p
     out = _resumed(tmp_path, "page_errors", [step(1, errorItems=[CITY]), REVIEW], banner={0: True})
     assert [c[1] for c in names(out, "fix")] == [["City"]]
     assert out["fillCalls"] == 1 and out["record"]["status"] == "ready"
+
+
+def test_a_resume_on_a_page_with_the_parked_address_and_key_but_another_shape_fills_it_before_any_press(tmp_path):
+    """A tenant that keeps one address and one heading for every step: the buttons and the count of controls tell them apart."""
+    out = _resumed(tmp_path, "page_errors", [step(1, fillable=7), REVIEW], parked={**PARKED_HERE, "shape": STEP_SHAPE})
+    order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance", "pageErrors")]
+    assert order[:2] == ["fill", "advance"], order
+    assert names(out, "pageErrors") == [] and out["fillCalls"] == 2 and out["record"]["status"] == "ready"
+
+
+def test_a_resume_on_the_parked_shape_is_still_the_parked_page(tmp_path):
+    out = _resumed(tmp_path, "page_errors", [step(1), REVIEW], parked={**PARKED_HERE, "shape": STEP_SHAPE})
+    assert out["fillCalls"] == 1 and out["pressed"] == ["next-1"]
+
+
+def test_a_resume_whose_page_looks_different_but_still_names_the_parked_error_is_still_the_parked_page(tmp_path):
+    """The user added a field the answer needed (the count changed); the same error is still on the page."""
+    out = _resumed(tmp_path, "page_errors", [step(1, fillable=3, errorItems=[CITY]), REVIEW], banner={0: True},
+                   parked={**PARKED_HERE, "shape": STEP_SHAPE, "asked": ["city"]})
+    assert [c[1] for c in names(out, "fix")] == [["City"]] and out["fillCalls"] == 1
+
+
+def test_a_resume_on_another_shape_whose_errors_are_not_the_parked_ones_fills_the_page(tmp_path):
+    out = _resumed(tmp_path, "page_errors", [step(1, fillable=3, errorItems=[CITY]), REVIEW], banner={0: True},
+                   parked={**PARKED_HERE, "shape": STEP_SHAPE, "asked": ["phone number"]})
+    order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance")]
+    assert order[0] == "fill", "a different error is not the parked page's: the page is filled first"
+
+
+def test_a_resume_after_an_upload_park_on_another_shape_fills_the_page(tmp_path):
+    out = _resumed(tmp_path, "upload", [step(1, fillable=7), REVIEW], parked={**PARKED_HERE, "shape": STEP_SHAPE})
+    assert out["fillCalls"] == 2 and names(out, "uploads") == []
+
+
+def test_a_page_the_site_swapped_in_under_the_same_address_and_key_is_filled_before_it_is_pressed(tmp_path):
+    """A rejected press, a repair, and the site is on its next step with the same path and heading key."""
+    first = step(1, url="/apply", key="k", rejects=1, errorItems=[CITY])
+    second = step(2, url="/apply", key="k", fillable=7)
+    out = _drive(tmp_path, [first, second, REVIEW], fixMoves=True)
+    assert out["record"]["status"] == "ready"
+    order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance")]
+    assert order == ["fill", "advance", "fill", "advance", "fill"], order
 
 
 def test_a_resume_after_an_upload_park_presses_when_no_required_box_is_empty_and_never_attaches(tmp_path):
