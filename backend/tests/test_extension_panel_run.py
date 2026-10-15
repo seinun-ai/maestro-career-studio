@@ -2578,6 +2578,24 @@ def test_what_the_step_wrote_is_one_row_even_when_the_run_listed_the_same_field_
     assert len(rows) == 1 and rows[0]["note"] == "Written for you: read it"
 
 
+@pytest.mark.parametrize("first", [
+    {"fid": "f2", "question": LONG, "required": False, "status": "left_blank", "lastOutcome": "no_fact"},
+    {"fid": "f2", "question": LONG, "required": False, "status": "needs_answer", "slot": "eeo.veteran_status", "lastOutcome": "abstained"},
+], ids=["left-blank", "left-for-you"])
+def test_a_field_the_reasoning_step_then_wrote_is_no_longer_listed_as_left(tmp_path, first):
+    """A left row said 'nothing was filled here'; once the step wrote the answer the same row reads as answered for you."""
+    write = {**ASK, "actions": [{"type": "write", "fid": "f2"}]}
+    out = _stuck(tmp_path, _reply(write),
+                 reports=[{"fields": [first, needs("f3", "Major")]},
+                          {"fields": [_assumed("f2", LONG, "Drafted from your history: read it")]}, {"fields": [verified("f1")]}],
+                 inventory=[_field("f2", "BSc", question=LONG, answered=True, touched=False), _field("f3", "", question="Major")],
+                 inventoryByPage=[[_field("f2", "BSc", question=LONG, answered=True, touched=False), _field("f3", "", question="Major")],
+                                  [_field("f1", "x")]])
+    rows = [row for row in _record(out["shots"][-1]).get("assumedRows", []) if row["fid"] == "f2"]
+    assert len(rows) == 1 and rows[0]["note"] == "Written for you: read it"
+    assert not rows[0].get("left") and not rows[0].get("blank")
+
+
 def test_a_step_by_step_retry_reaches_the_fill_as_the_stepByStep_lever(tmp_path):
     retry = {**ASK, "actions": [{"type": "retry", "fid": "f2", "technique": "step_by_step"}]}
     out = _stuck(tmp_path, _reply(retry),

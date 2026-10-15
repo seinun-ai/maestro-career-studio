@@ -601,7 +601,12 @@
     for (const one of out.wrote) {
       // By field and step: the run's own row may carry the whole question, this one is cut. The step's note is the true one.
       const same = rows.find((row) => row.fid === one.fid && row.step === step);
-      if (same) same.note = one.note;
+      // A row listed as left (for you, or blank) is answered now: it reads as the answer the step wrote.
+      if (same) {
+        same.note = one.note;
+        delete same.left;
+        delete same.blank;
+      }
       else rows.push({ fid: one.fid, question: one.question, step, note: one.note });
     }
     record.assumedRows = rows;
