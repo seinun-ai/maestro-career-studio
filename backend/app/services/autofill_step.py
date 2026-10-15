@@ -494,6 +494,11 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
             return StepResponse(mid=got.oid, reason=got.reason, trace=DecisionTrace(), polarity=polarity)
         if got.saw_levels:
             return StepResponse(mid=None, reason="abstained", polarity=polarity)
+    # A degree-TYPE list over a saved degree: the generic option for its level, the MBA one only when it says so.
+    if (re.fullmatch(r"education\.\d+\.degree", req.slot or "") and isinstance(getattr(fact, "value", None), str)
+            and (typed := autofill_education.degree_type(fact.value, shown_options, complete=req.complete)) is not None):
+        return (StepResponse(mid=typed.oid, reason=typed.reason, trace=DecisionTrace(), polarity=polarity) if typed.oid
+                else StepResponse(mid=None, reason="abstained", polarity=polarity))
     # A saved board answer: the board's leaf or its name in the search box is code's call, before a model.
     if req.slot == HOW_HEARD_SLOT and how_heard_kind(values[0]) == "board" and (coded := _board_move(req, values[0], hint)):
         return coded.model_copy(update={"polarity": polarity})

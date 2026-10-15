@@ -547,10 +547,13 @@ def named_employers(fields: list[PickField], facts: dict[str, Fact]
     return (out, facts | moved, dropped) if (moved or dropped) else (fields, facts, dropped)
 
 
+_DEGREE_SLOT = re.compile(r"education\.\d+\.degree")
+
+
 def education_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
     """The fields asking for the education level (`derived.education_level`) are decided in code, never by a
-    model: the highest threshold the applicant's completed level meets, else nobody (autofill_education).
-    Returns the other fields, and the decided ones' answers."""
+    model: the highest threshold the applicant's completed level meets, else nobody (autofill_education). So are the
+    degree-TYPE lists ("Degree": Master's Degree, M.B.A., …) over a saved degree (`autofill_education.degree_type`). Returns the other fields, and the decided ones' answers."""
     fact = facts.get(autofill_education.SLOT)
     if fact is None or not isinstance(fact.value, str):
         return fields, {}
@@ -559,6 +562,10 @@ def education_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[li
         if f.route == "slot" and f.slot == autofill_education.SLOT:
             got = autofill_education.decide(fact.value, [(o.oid, o.text) for o in f.options], complete=f.complete)
             decided[f.fid] = Picked(oids=[got.oid] if got.oid else [], reason=got.reason, trace=DecisionTrace())
+        elif (f.route == "slot" and _DEGREE_SLOT.fullmatch(f.slot or "") and isinstance(getattr(facts.get(f.slot), "value", None), str)
+              and (typed := autofill_education.degree_type(facts[f.slot].value, [(o.oid, o.text) for o in f.options],
+                                                           complete=f.complete)) is not None):
+            decided[f.fid] = Picked(oids=[typed.oid] if typed.oid else [], reason=typed.reason, trace=DecisionTrace())
     return [f for f in fields if f.fid not in decided], decided
 
 

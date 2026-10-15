@@ -265,3 +265,87 @@ def test_engineering_degree_abbreviations_are_read(degree, value):
 @pytest.mark.parametrize("degree", ["be", "To be decided", "Me", "Certificate of Merit"])
 def test_ordinary_words_are_no_degree(degree):
     assert SLOT not in facts_of((degree, "2020"))
+
+
+# ---------- a degree TYPE list (live 2026-10-15, Greenhouse "Degree"): the saved degree's level picks the generic option;
+# an MBA only when the saved degree says so; ambiguous or no generic option, nobody
+
+DEG = "education.0.degree"
+GREENHOUSE_DEGREES = ["Associate's Degree", "Bachelor's Degree", "Doctor of Medicine (M.D.)", "Doctor of Philosophy (Ph.D.)",
+                      "Engineer's Degree", "High School", "Juris Doctor (J.D.)", "Master of Business Administration (M.B.A.)",
+                      "Master's Degree", "Other"]
+
+
+def degree_pick(saved, options, session, **kw):
+    out = autofill_pick.pick([PickField(fid="d", question="Degree", route="slot", slot=DEG, options=opts(*options), **kw)],
+                             facts_of((saved, "2024")), session, None)["d"]
+    return dict((f"o{i}", t) for i, t in enumerate(options, start=1)).get(out.oids[0]) if out.oids else None, out.reason
+
+
+@pytest.mark.parametrize("saved", ["Masters of Business analytics", "Master of Science", "M.S. in Computer Science", "MS", "M.Sc",
+                                   "Master's", "Masters in Data Science", "M.Tech", "M.Eng"])
+def test_a_masters_degree_takes_the_generic_masters_option_not_the_mba(db_session, saved):
+    assert degree_pick(saved, GREENHOUSE_DEGREES, db_session) == ("Master's Degree", "matched")
+
+
+@pytest.mark.parametrize("saved", ["MBA", "M.B.A.", "Master of Business Administration", "Masters in Business Administration"])
+def test_an_mba_takes_the_mba_option_only_when_the_saved_degree_says_so(db_session, saved):
+    assert degree_pick(saved, GREENHOUSE_DEGREES, db_session) == ("Master of Business Administration (M.B.A.)", "matched")
+
+
+def test_an_mba_without_an_mba_option_takes_the_generic_masters_option_on_a_complete_list(db_session):
+    texts = [t for t in GREENHOUSE_DEGREES if "M.B.A." not in t]
+    assert degree_pick("MBA", texts, db_session, complete=True) == ("Master's Degree", "matched")
+    assert degree_pick("MBA", texts, db_session, complete=False) == (None, "abstained")   # a partial list may hold the MBA unseen
+
+
+@pytest.mark.parametrize(("saved", "expected"), [
+    ("Bachelor of Science", "Bachelor's Degree"), ("B.Tech", "Bachelor's Degree"), ("BE", "Bachelor's Degree"),
+    ("B.A. in History", "Bachelor's Degree"), ("Associate of Arts", "Associate's Degree"),
+    ("High School Diploma", "High School")])
+def test_bachelors_associates_and_high_school_take_their_generic_option(db_session, saved, expected):
+    assert degree_pick(saved, GREENHOUSE_DEGREES, db_session) == (expected, "matched")
+
+
+def test_a_doctorate_with_no_generic_doctorate_option_is_left_to_the_ordinary_path(db_session, monkeypatch):
+    """"Doctor of Philosophy (Ph.D.)" names a field; not this rule's pick. No generic option: the rule has no say (a model is asked)."""
+    monkeypatch.setattr(autofill_pick.jev, "decide", lambda *a, **k: {})
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", lambda **kw: {})
+    assert degree_pick("PhD", GREENHOUSE_DEGREES, db_session) == (None, "abstained")
+    assert degree_pick("PhD", ["Bachelor's Degree", "Doctorate", "Other"], db_session) == ("Doctorate", "matched")
+
+
+def test_two_generic_options_for_the_level_or_two_levels_in_the_saved_degree_abstain(db_session):
+    assert degree_pick("Master of Science", ["Master's Degree", "Masters degree", "Bachelor's Degree"], db_session) == (None, "abstained")
+    assert degree_pick("Bachelor's and Master's", GREENHOUSE_DEGREES, db_session) == (None, "abstained")
+
+
+def test_a_list_without_a_generic_option_for_the_level_is_not_this_rules(db_session, monkeypatch):
+    """A list of "Bachelor of Science" / "Bachelor of Arts" has no generic option: the ordinary pick decides."""
+    asked = []
+    monkeypatch.setattr(autofill_pick.jev, "decide", lambda *a, **k: asked.append(1) or {})
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", lambda **kw: asked.append(1) or {})
+    degree_pick("Bachelor of Science", ["Bachelor of Science", "Bachelor of Arts", "Master of Science"], db_session)
+    assert asked
+
+
+def test_a_degree_type_in_progress_or_a_denial_is_no_option(db_session):
+    texts = ["Master's Degree (in progress)", "No degree", "Bachelor's Degree", "Master's Degree"]
+    assert degree_pick("Masters of Business analytics", texts, db_session) == ("Master's Degree", "matched")
+
+
+def test_a_degree_type_field_is_decided_without_a_model(db_session, monkeypatch):
+    def boom(*a, **kw):
+        raise AssertionError("a model was asked")
+    monkeypatch.setattr(autofill_pick.jev, "decide", boom)
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", boom)
+    assert degree_pick("Masters of Business analytics", GREENHOUSE_DEGREES, db_session)[0] == "Master's Degree"
+
+
+def test_the_step_clicks_the_generic_degree_type_the_page_lists(db_session):
+    cands = [{"mid": f"click:o{i}", "describe": f'Click the option "{t}"'} for i, t in enumerate(GREENHOUSE_DEGREES, start=1)]
+    req = StepRequest(fid="d", question="Degree", route="slot", slot=DEG, candidates=cands)
+    got = autofill_step.step(req, facts_of(("Masters of Business analytics", "2024")), db_session, None)
+    assert (got.mid, got.reason) == ("click:o9", "matched")   # Master's Degree
+    got = autofill_step.step(req, facts_of(("MBA", "2024")), db_session, None)
+    assert got.mid == "click:o8"   # Master of Business Administration (M.B.A.)

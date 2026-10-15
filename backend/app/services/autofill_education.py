@@ -10,7 +10,12 @@ school or a job; a degree still in progress (a candidate, a student, an end date
 An option counts only when it names a level and nothing else (a degree TYPE such as "BA", or a field such as
 "in Computer Science or related field", is not a threshold), a denial ("I do not have a Bachelor's") is never a
 level, an option naming two levels is met at the lowest, and a list whose winning level has several options or a
-field-tied one is left to the ordinary path (nothing is claimed)."""
+field-tied one is left to the ordinary path (nothing is claimed).
+
+A list of degree TYPES ("Degree": Associate's Degree, Bachelor's Degree, Master of Business Administration (M.B.A.),
+Master's Degree, …) is read the same way from the saved degree's own words (`degree_type`): a saved Masters, MS, M.S.
+or M.Sc takes the generic "Master's Degree"; the MBA option only when the saved degree says Business Administration or
+MBA. The generic option is true of any degree at that level, so it is a match, not a guess."""
 
 import re
 from dataclasses import dataclass
@@ -123,3 +128,39 @@ def decide(value: str, options: list[tuple[str, str]], *, complete: bool = True)
     if top == rank or or_higher:
         return Decision(oid, "matched", True)
     return Decision(oid, "closest", True) if complete else Decision(None, "abstained", True)
+
+
+_MBA = re.compile(r"(?<![\w.'-])M\.?\s?B\.?\s?A\b|business\s+administration", re.IGNORECASE)
+
+
+def _level_named(text: str) -> list[str]:
+    """The levels a degree text names (a profile's or an option's), engineering abbreviations included."""
+    return sorted({*_levels_named(text), *(lv for lv, rx in _PROFILE_EXTRA if rx.search(text))}, key=_LEVELS.index)
+
+
+def degree_type(value: str, options: list[tuple[str, str]], *, complete: bool = True) -> Decision | None:
+    """The option of a degree-TYPE list for the saved degree `value`, or None when this rule has no say (no option
+    names only one level, as "Master's Degree" does: the ordinary pick decides). The generic option for the saved
+    level; an MBA option only when `value` says MBA or Business Administration (else the generic one, or on a
+    partial list nobody: the MBA may be unseen). Ambiguous (several generic options for the level, or a degree that
+    names several levels) abstains."""
+    generic: dict[str, list[str]] = {}
+    mba: list[str] = []
+    for oid, text in options:
+        if _NOT_COMPLETED.search(text) or len(levels := _level_named(text)) != 1:
+            continue
+        if _plain(text):
+            generic.setdefault(levels[0], []).append(oid)
+        elif levels[0] == "master" and _MBA.search(text):
+            mba.append(oid)
+    if not generic:
+        return None
+    mine = _level_named(value)
+    if len(mine) != 1 or len(generic.get(mine[0], [])) > 1:
+        return Decision(None, "abstained", True)
+    if mine[0] == "master" and _MBA.search(value):
+        if mba:
+            return Decision(mba[0], "matched", True) if len(mba) == 1 else Decision(None, "abstained", True)
+        if not complete:
+            return Decision(None, "abstained", True)
+    return Decision(generic[mine[0]][0], "matched", True) if mine[0] in generic else None
