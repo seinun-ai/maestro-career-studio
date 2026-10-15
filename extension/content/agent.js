@@ -221,7 +221,7 @@
     for (let level = 0; el && level < 3; level += 1, el = up(el)) {
       if (el === document.body || el === document.documentElement || el.tagName === "FORM") break;
       if (all('input[type="file"]', el).some((other) => other !== input)) break;
-      if (all(NOT_AN_UPLOADER, el).length) break;
+      if (ns.deep.any(NOT_AN_UPLOADER, el)) break;
       widget = el;
     }
     return widget;

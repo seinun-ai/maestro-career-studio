@@ -252,15 +252,20 @@ function detectPage() {
 //
 // A page built from web components (a hosted one-click application, live check 8) keeps its native inputs, file inputs and
 // buttons inside OPEN shadow roots, which `querySelectorAll`, `closest` and `contains` do not cross: such a page read as
-// "nothing to fill" while the fill inventory (content/inventory.js, its own walk) listed nine fields. These four are the
+// "nothing to fill" while the fill inventory (content/inventory.js, its own walk) listed nine fields. These are the
 // composed-tree versions the page reader, the fillable count and the upload reader share (`ns.deep`). They live in THIS file,
 // which every injection runs again, so a re-run file may call them without a fallback (a load-once file's newer export is
-// what tests/test_extension_manifest.py forbids); a page without a shadow root pays one extra pass over its elements.
+// what tests/test_extension_manifest.py forbids).
+//
+// COST. Every call answers from the elements that HOLD a shadow root (`hosts`), found by one pass over the page's elements.
+// Inside `scope(fn)` that pass is made once and kept until the scope ends (the page reader wraps a whole summary in one, where
+// the DOM does not change under it); outside a scope each call makes its own. With no host the answer is the plain light query,
+// and `any` asks the light DOM first, so an existence check that hits there pays what `querySelector` always did.
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
+  const hostOf = (n) => n.getRootNode?.().host ?? null;
   /** The parent in the composed tree: the element's parent, else the host of the shadow root it sits at the top of. */
   const up = (n) => n.parentElement ?? hostOf(n);
-  const hostOf = (n) => n.getRootNode?.().host ?? null;
   /** `el.closest(sel)` through shadow boundaries: the DOM's own closest, then again from the host of the shadow root it stopped at. */
   const closest = (el, sel) => {
     for (let n = el; n; n = hostOf(n)) {
@@ -274,28 +279,16 @@ function detectPage() {
     for (let n = el; n; n = hostOf(n)) if (box.contains(n)) return true;
     return false;
   };
-  /** Every match of `sel` under `root` (the document, a shadow root or an element), in document order, the open shadow
-   * roots below it (and the element's own) included in place. The light query alone when none is there. */
-  const all = (sel, root = document) => {
-    if (!root.shadowRoot && ![...root.querySelectorAll("*")].some((el) => el.shadowRoot)) return [...root.querySelectorAll(sel)];
-    const out = [];
-    const walk = (at) => {
-      for (const el of at.querySelectorAll("*")) {
-        if (el.matches(sel)) out.push(el);
-        if (el.shadowRoot) walk(el.shadowRoot);
-      }
-    };
-    if (root.shadowRoot) walk(root.shadowRoot);
-    walk(root);
-    return out;
-  };
-  /** Every open shadow root under the document (nested ones included), in document order. */
-  const roots = () => {
+
+  // Every element holding an open shadow root, nested ones included, parents before the hosts inside them.
+  let depth = 0;
+  let kept = null;
+  const scan = () => {
     const out = [];
     const walk = (at) => {
       for (const el of at.querySelectorAll("*")) {
         if (el.shadowRoot) {
-          out.push(el.shadowRoot);
+          out.push(el);
           walk(el.shadowRoot);
         }
       }
@@ -303,7 +296,60 @@ function detectPage() {
     walk(document);
     return out;
   };
-  ns.deep = { all, closest, contains, up, roots };
+  const hosts = () => (depth ? (kept ??= scan()) : scan());
+  /** Run `fn` with the host list found once. Nests; the list is dropped when the outermost scope ends. */
+  const scope = (fn) => {
+    depth += 1;
+    try {
+      return fn();
+    } finally {
+      depth -= 1;
+      if (!depth) kept = null;
+    }
+  };
+  /** The hosts at or under `root` (composed), none when the page has none. */
+  const hostsIn = (root) => {
+    const found = hosts();
+    return !found.length || root === document ? found : found.filter((host) => host === root || contains(root, host));
+  };
+
+  /** The matches of `sel` inside one shadow tree, nested trees in place, in order. */
+  const within = (tree, sel, out = []) => {
+    for (const el of tree.querySelectorAll("*")) {
+      if (el.matches(sel)) out.push(el);
+      if (el.shadowRoot) within(el.shadowRoot, sel, out);
+    }
+    return out;
+  };
+  /** Every match of `sel` under `root` (the document, a shadow root or an element), in document order, the open shadow
+   * roots below it (and the element's own) included in place: a host's shadow content follows the host. */
+  const all = (sel, root = document) => {
+    const light = [...root.querySelectorAll(sel)];
+    const tree = root.getRootNode?.() ?? document;
+    const pending = hostsIn(root).filter((host) => host.getRootNode() === tree && host !== root);
+    const own = root.shadowRoot ? within(root.shadowRoot, sel) : [];
+    if (!pending.length && !own.length) return light;
+    const out = [...own];
+    let at = 0;
+    for (const el of light) {
+      // Document position 4 is FOLLOWING: this element comes after the host (or sits inside it).
+      while (at < pending.length && pending[at].compareDocumentPosition(el) & 4) out.push(...within(pending[at++].shadowRoot, sel));
+      out.push(el);
+    }
+    while (at < pending.length) out.push(...within(pending[at++].shadowRoot, sel));
+    return out;
+  };
+  /** Whether anything under `root` matches `sel` (composed): the light DOM first, then only the shadow roots under it. */
+  const any = (sel, root = document) => root.querySelector(sel) !== null
+    || hostsIn(root).some((host) => host.shadowRoot.querySelector(sel) !== null);
+  /** `el[prop]` (textContent, or the rendered innerText) with the text of the open shadow roots under it: neither reads into them. */
+  const text = (el, prop = "textContent") => [el[prop] ?? "", ...hostsIn(el).map((host) => host.shadowRoot.textContent)].join(" ");
+  /** The children of `el` in the composed tree (its own, then those of its shadow root). */
+  const kids = (el) => [...el.children, ...(el.shadowRoot?.children ?? [])];
+
+  /** Every open shadow root under the document (nested ones included), in document order. */
+  const roots = () => scan().map((host) => host.shadowRoot);
+  ns.deep = { all, any, closest, contains, up, roots, scope, text, kids };
 })();
 
 /** How many on-screen fields this frame has that a fill could answer.

@@ -79,6 +79,7 @@
   // Open shadow roots (content/detect.js `ns.deep`, re-run with this file): the composed-tree querySelectorAll, closest, parent and
   // contains, so a page of web components reads like any other. Looked up at call time, as `ns.fillableControls` is.
   const deepAll = (sel, root = document) => ns.deep.all(sel, root);
+  const deepAny = (sel, root = document) => ns.deep.any(sel, root);
   const closestC = (el, sel) => ns.deep.closest(el, sel);
   const up = (n) => ns.deep.up(n);
   const containsC = (box, el) => ns.deep.contains(box, el);
@@ -344,7 +345,7 @@
   /** Inside a progress stepper that holds no form field: a step's name, not a control. */
   const isStepperLabel = (el) => {
     const holder = closestC(el, STEPPER);
-    return holder !== null && deepAll(FIELD, holder).length === 0;
+    return holder !== null && !deepAny(FIELD, holder);
   };
 
   /** The step's own heading text, outside site chrome. In order: the first visible h1/h2 inside the application's own
@@ -362,7 +363,7 @@
     if (named(el)) return true;
     // A holder that is the application's own region, or holds its fields, is the application's: it names no job.
     for (let n = up(el); n && n !== document.body; n = up(n)) {
-      if (n.matches(REGION) || deepAll(FIELD, n).length) break;
+      if (n.matches(REGION) || deepAny(FIELD, n)) break;
       if (named(n)) return true;
     }
     return false;
@@ -485,7 +486,7 @@
    * not a summary either. */
   function errorRegions() {
     const regions = new Set();
-    const hasField = (el) => deepAll(CONTROLS, el).length > 0;
+    const hasField = (el) => deepAny(CONTROLS, el);
     const onlyErrorButtons = (el) => deepAll(BUTTONS, el).every((b) => isErrorText(labelOf(b)));
     for (const el of deepAll(LIVE)) {
       if (ERRORISH.test(el.textContent ?? "") && shown(el) && !hasField(el)) regions.add(el);
@@ -723,7 +724,7 @@
     for (let node = own[0], depth = 0; node && depth < MAX_CLIMB && !edgeOf(node); depth += 1, node = up(node)) {
       for (let sib = node.previousElementSibling; sib; sib = sib.previousElementSibling) {
         if (sib.matches(NOT_A_LABEL) || !shown(sib)) continue;
-        if (sib.matches(HEADINGS) || deepAll(HEADINGS, sib).length || foreign(sib)) return { required: false, text: "" };
+        if (sib.matches(HEADINGS) || deepAny(HEADINGS, sib) || foreign(sib)) return { required: false, text: "" };
         const text = squash(sib.innerText ?? sib.textContent);
         if (!text) continue;
         if (marksRequired(text)) return { required: true, text };
@@ -756,7 +757,7 @@
   const insideUploadBox = (button) => {
     let n = up(button);
     for (let depth = 0; n && depth < 4 && !edgeOf(n); depth += 1, n = up(n)) {
-      if (deepAll('input[type="file"]', n).length) return true;
+      if (deepAny('input[type="file"]', n)) return true;
     }
     return false;
   };
@@ -1355,5 +1356,8 @@
     return { created: "clicked" };
   }
 
-  ns.pageReader = { summary, pageErrors, pageRequired, fieldWords: questionOf, uploadTag: upTagOf, advance, signIn, createAccount, applyUrl, applyLink, applyTarget };
+  // The reads that make many composed queries run inside one scope: the shadow hosts are found once for the whole read (content/detect.js).
+  const scoped = (fn) => (...args) => ns.deep.scope(() => fn(...args));
+  ns.pageReader = { summary: scoped(summary), pageErrors: scoped(pageErrors), pageRequired: scoped(pageRequired), fieldWords: questionOf, uploadTag: upTagOf,
+    advance, signIn, createAccount, applyUrl, applyLink, applyTarget };
 })();

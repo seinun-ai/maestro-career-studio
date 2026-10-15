@@ -270,3 +270,32 @@ def test_a_dialogs_description_in_the_same_shadow_root_is_read(page, load):
     s = summary(page)
     assert s["submitContext"] is True and classify(page)["kind"] == "review"
     assert dismiss(page, button(summary(page), "OK")["id"]) == {"clicked": False, "why": "submit"}
+
+
+# ---------- what reading a page costs ----------
+
+
+def long_posting(sections, with_shadow):
+    """A long posting with an apply link and a form (`sections` blocks of 40 paragraphs, nested three divs deep): about 125 elements a section."""
+    body = "".join(
+        "<div><div><div><section><h2>Section %d</h2>%s</section></div></div></div>"
+        % (i, "".join(f"<p>Para {i}.{j} <a href='#'>x</a> <span>y</span></p>" for j in range(40))) for i in range(sections))
+    chat = TPL + '<x-tpl tpl="<button><slot></slot></button>">Chat</x-tpl>' if with_shadow else ""
+    return f"<main><div><div><div>{body}</div></div></div></main><form><label>Name <input name=n></label><button>Next</button></form>{chat}"
+
+
+@pytest.mark.parametrize("with_shadow", [False, True])
+def test_a_summary_of_a_long_page_walks_its_elements_a_few_times_over_not_once_per_query(page, load, with_shadow):
+    """The composed queries find the shadow hosts once for a whole summary. Found afresh per query (a pass over every element
+    each) a 60-section posting read 2.4 times slower than before the shadow work; elements walked is the deterministic form."""
+    load(page, long_posting(60, with_shadow), SOURCES)
+    walked, total = page.evaluate("""() => {
+      let n = 0;
+      for (const proto of [Document.prototype, Element.prototype, ShadowRoot.prototype]) {
+        const native = proto.querySelectorAll;
+        proto.querySelectorAll = function (sel) { const found = native.call(this, sel); if (sel === "*") n += found.length; return found; };
+      }
+      window.careerStudioCompanion.pageReader.summary();
+      return [n, document.querySelectorAll("*").length];
+    }""")
+    assert walked <= 4 * total, (walked, total)
