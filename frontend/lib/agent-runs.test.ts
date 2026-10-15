@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { countsLine, lastRanLine, latestByAutomation, newJobsLine, outcomeWord } from "./agent-runs.ts";
+import { countsLine, lastRanLine, latestByAutomation, proposedLine, recentRefusals, outcomeWord } from "./agent-runs.ts";
 
 test("counts read in a fixed order, zeros left out", () => {
   assert.equal(countsLine({ skipped: 8, found: 12, proposed: 4, updated: 0 }),
@@ -59,19 +59,36 @@ test("a card formats only a known finish time", () => {
   assert.equal(lastRanLine("2026-10-05T10:00:00Z", ago), "Last ran 2 hours ago");
 });
 
-const hunt = (found: number, over: Record<string, unknown> = {}) => ({
-  title: "Job hunt", finished_at: "2026-10-05T10:00:00Z", counts: { found }, ...over,
+const hunt = (proposed: number, over: Record<string, unknown> = {}) => ({
+  title: "Job hunt", finished_at: "2026-10-05T10:00:00Z", counts: { proposed }, ...over,
 });
 
-test("the inbox says the newest run found new jobs, and links to the runs", () => {
-  assert.equal(newJobsLine([hunt(12)], () => "2 hours ago"), "Job hunt found 12 new jobs 2 hours ago");
-  assert.equal(newJobsLine([hunt(1)], () => "yesterday"), "Job hunt found 1 new job yesterday");
+test("the inbox says the newest run proposed jobs, and links to the runs", () => {
+  assert.equal(proposedLine([hunt(4)], () => "2 hours ago"), "Job hunt proposed 4 jobs 2 hours ago");
+  assert.equal(proposedLine([hunt(1)], () => "yesterday"), "Job hunt proposed 1 job yesterday");
 });
 
-test("the inbox says nothing when the newest run found nothing new", () => {
-  assert.equal(newJobsLine([hunt(0)], () => "now"), null);
-  assert.equal(newJobsLine([hunt(0, { counts: { proposed: 3 } })], () => "now"), null);
-  assert.equal(newJobsLine([], () => "now"), null);
-  // The newest run decides: an older run's finds are not news.
-  assert.equal(newJobsLine([hunt(0), hunt(9)], () => "now"), null);
+test("the inbox says nothing when the newest run proposed nothing", () => {
+  assert.equal(proposedLine([hunt(0)], () => "now"), null);
+  // Found is not proposed: jobs saved but filed nowhere are not in the inbox.
+  assert.equal(proposedLine([hunt(0, { counts: { found: 12 } })], () => "now"), null);
+  assert.equal(proposedLine([], () => "now"), null);
+  // The newest run decides: an older run's proposals are not news.
+  assert.equal(proposedLine([hunt(0), hunt(9)], () => "now"), null);
+});
+
+const NOW = Date.parse("2026-10-14T12:00:00Z");
+const refused = (answered_at: string | null) => ({ id: answered_at ?? "none", answered_at });
+
+test("only refusals since the last visit show, and none older than a week", () => {
+  const rows = [refused("2026-10-14T08:00:00Z"), refused("2026-10-12T08:00:00Z"), refused("2026-10-01T08:00:00Z")];
+  assert.deepEqual(recentRefusals(rows, "2026-10-13T00:00:00Z", NOW).map((r) => r.id), ["2026-10-14T08:00:00Z"]);
+  // With no visit known the week is the window.
+  assert.deepEqual(recentRefusals(rows, null, NOW).map((r) => r.id), ["2026-10-14T08:00:00Z", "2026-10-12T08:00:00Z"]);
+  // A long-ago visit never widens the window past a week.
+  assert.deepEqual(recentRefusals(rows, "2026-09-01T00:00:00Z", NOW).map((r) => r.id), ["2026-10-14T08:00:00Z", "2026-10-12T08:00:00Z"]);
+});
+
+test("a refusal with no answer time is kept", () => {
+  assert.equal(recentRefusals([refused(null)], "2026-10-13T00:00:00Z", NOW).length, 1);
 });

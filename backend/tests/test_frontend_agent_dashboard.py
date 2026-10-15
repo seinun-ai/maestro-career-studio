@@ -38,7 +38,8 @@ def test_the_page_renders_the_dashboard_in_order():
 def test_the_strip_reads_the_summary_and_is_one_line():
     assert "/api/proposals/summary" in _STRIP
     assert '["proposals", "summary", since]' in _STRIP  # refetches with every inbox action
-    assert "summaryParts(data)" in _STRIP and "Nothing waiting" in _STRIP
+    assert "summaryParts(data)" in _STRIP and "Nothing waiting" not in _STRIP
+    assert "if (parts.length === 0) return null;" in _STRIP
     for tile in ("StatTile", "grid-cols-4", "New since your last visit", "Ready to apply"):
         assert tile not in _STRIP
     assert "scrollIntoView" in _STRIP

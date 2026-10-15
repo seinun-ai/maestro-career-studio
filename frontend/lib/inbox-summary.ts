@@ -1,7 +1,7 @@
-// The Agent inbox's one summary line (`GET /api/proposals/summary`): what needs you, what is queued, what
-// went out this week, and what is new. Pure, so `node --test` loads it (no imports).
+// The Agent inbox's one summary line (`GET /api/proposals/summary`): what needs you, what waits for review, what
+// is queued, what went out this week, and what is new. Pure, so `node --test` loads it (no imports).
 
-type SummaryCounts = { new: number; queued: number; needs_you: number; applied_this_week: number };
+type SummaryCounts = { new: number; to_review: number; queued: number; needs_you: number; applied_this_week: number };
 
 export type SummaryPart = { key: keyof SummaryCounts; text: string; anchor: string };
 
@@ -16,6 +16,7 @@ export function summaryParts(counts: SummaryCounts): SummaryPart[] {
       anchor: "inbox-needs-you",
     });
   }
+  if (counts.to_review > 0) parts.push({ key: "to_review", text: `${counts.to_review} to review`, anchor: "inbox-to-review" });
   if (counts.queued > 0) parts.push({ key: "queued", text: `${counts.queued} queued`, anchor: "inbox-queued" });
   if (counts.applied_this_week > 0) {
     parts.push({ key: "applied_this_week", text: `${counts.applied_this_week} applied this week`, anchor: "inbox-history" });

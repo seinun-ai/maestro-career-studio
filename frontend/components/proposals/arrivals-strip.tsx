@@ -16,9 +16,9 @@ function jumpTo(anchor: string, onJump?: (anchor: string) => void) {
 }
 
 /**
- * One line over the lanes: "2 need you · 3 queued · 5 applied this week" (and "4 new" first when something
- * arrived since your last visit). Each part jumps to its lane; a zero part is left out, and none is
- * "Nothing waiting". While the counts load it shows nothing, which claims nothing.
+ * One line over the lanes: "2 need you · 4 to review · 3 queued · 5 applied this week" (and "4 new" first when
+ * something arrived since your last visit). Each part jumps to its lane; a zero part is left out, and no part
+ * at all shows nothing. While the counts load it shows nothing too, which claims nothing.
  */
 export function ArrivalsStrip({ since, onJump }: { since: string | null; onJump?: (anchor: string) => void }) {
   const { data } = useQuery({
@@ -28,9 +28,8 @@ export function ArrivalsStrip({ since, onJump }: { since: string | null; onJump?
   });
   if (!data) return null;
   const parts = summaryParts(data);
-  if (parts.length === 0) {
-    return <p className="text-muted-foreground text-body-medium">Nothing waiting</p>;
-  }
+  // All zero says nothing: the lanes (or the no-proposals empty state) are the answer.
+  if (parts.length === 0) return null;
   return (
     <p aria-label="Agent inbox summary" className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-body-medium">
       {parts.map((part, i) => (

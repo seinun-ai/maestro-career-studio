@@ -1,10 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { apiFetch } from "@/lib/api";
-import { AGENT_RUNS_LATEST_KEY, newJobsLine } from "@/lib/agent-runs";
+import { AGENT_RUNS_LATEST_KEY, RECENT_RUNS_HREF, proposedLine, recentRefusals } from "@/lib/agent-runs";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { formatTimeAgo } from "@/lib/format-date";
 import type { AgentRunList, RefusedJobRequest } from "@/lib/types";
@@ -25,27 +26,42 @@ function RefusedLine({ request }: { request: RefusedJobRequest }) {
   );
 }
 
-/**
- * What the inbox says about runs: one line when the newest run found new jobs ("Job hunt found 12 new jobs 2
- * hours ago · See runs"), and the requests the other copy refused, which answer something you asked for. All
- * the runs live on the Automations page. Nothing to say, nothing shown; a failed read says nothing too.
- */
-export function InboxRunNotice() {
-  const { data } = useQuery({
+function useLatestRuns() {
+  return useQuery({
     queryKey: AGENT_RUNS_LATEST_KEY,
     queryFn: () => apiFetch<AgentRunList>("/api/agent-runs/latest"),
   });
-  const line = data ? newJobsLine(data.items, formatTimeAgo) : null;
-  const refused = data?.refused_requests ?? [];
-  if (!line && refused.length === 0) return null;
+}
+
+/**
+ * What the inbox says about runs, above the lanes: one line when the newest run proposed jobs ("Job hunt
+ * proposed 4 jobs 2 hours ago · See runs"). All the runs live on the Automations page. Nothing to say,
+ * nothing shown; a failed read says nothing too.
+ */
+export function InboxRunNotice() {
+  const { data } = useLatestRuns();
+  const line = data ? proposedLine(data.items, formatTimeAgo) : null;
+  if (!line) return null;
+  return (
+    <p className="text-muted-foreground text-body-medium wrap-anywhere">
+      {line} ·{" "}
+      <Link href={RECENT_RUNS_HREF} className="text-primary underline underline-offset-4">See runs</Link>
+    </p>
+  );
+}
+
+/**
+ * The requests the other copy refused, below the lanes: they answer something you asked for, so they stay
+ * in the inbox, but only the recent ones (since your last visit, never older than a week).
+ */
+export function RefusedRequests({ since }: { since: string | null }) {
+  const { data } = useLatestRuns();
+  // The week's edge is read once, when the page opens.
+  const [now] = useState(() => Date.now());
+  const refused = recentRefusals(data?.refused_requests ?? [], since, now);
+  if (refused.length === 0) return null;
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      {line ? (
-        <p className="text-muted-foreground text-body-medium wrap-anywhere">
-          {line} ·{" "}
-          <Link href="/automations" className="text-primary underline underline-offset-4">See runs</Link>
-        </p>
-      ) : null}
       {refused.map((request) => <RefusedLine key={request.id} request={request} />)}
     </div>
   );

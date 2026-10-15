@@ -5,7 +5,7 @@ import { React, load, renderElement, withRouter } from "./render-harness.mjs";
 
 const { JobOwnershipMark, JobOwnershipNotice } = load("components/job-ownership.tsx");
 const { RecentRuns } = load("components/automations/recent-runs.tsx");
-const { InboxRunNotice } = load("components/proposals/inbox-run-notice.tsx");
+const { RefusedRequests } = load("components/proposals/inbox-run-notice.tsx");
 
 function renderMark(ownership) {
   return renderElement(React.createElement(JobOwnershipMark, { jobId: "example-job", ownership }));
@@ -66,7 +66,7 @@ test("the Agent inbox shows a refused request, and sync off shows no refusal blo
   const request = { id: "example-request", job_id: "example-job", reason, job_company: "Example employer",
     job_title: "Example role", answered_at: new Date(Date.now() - 3 * 3600 * 1000).toISOString() };
   // Static rendering never dispatches navigation; mount the real link and confirmation providers.
-  const html = renderElement(linked(React.createElement(InboxRunNotice)), [
+  const html = renderElement(linked(React.createElement(RefusedRequests, { since: null })), [
     [["agent-runs", "latest"], { items: [], refused_requests: [request] }],
   ]);
   assert.match(html, /Request refused/);
@@ -74,7 +74,7 @@ test("the Agent inbox shows a refused request, and sync off shows no refusal blo
   assert.match(html, /href="\/jobs\/example-job"/);
   assert.match(html, /Example role, Example employer/);
   assert.match(html, /3 hours ago/);
-  const quiet = renderElement(linked(React.createElement(InboxRunNotice)), [
+  const quiet = renderElement(linked(React.createElement(RefusedRequests, { since: null })), [
     [["agent-runs", "latest"], { items: [], refused_requests: [] }],
   ]);
   assert.doesNotMatch(quiet, /Request refused/);

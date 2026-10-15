@@ -150,7 +150,7 @@ view for several is still ahead.
   blocks you, and the proposal card appears only when it carries something. A job you applied to
   yourself reads **Applied yourself**, not Skipped. The inbox opens with one summary line, hides empty
   lanes, shows the search and filters only for a long list and the daily limit only near it, and the
-  runs list moved to the Automations page, leaving one line when the newest run found new jobs.
+  runs list moved to the Automations page, leaving one line when the newest run proposed jobs.
 
 - **Your tailored resume is written in first person.** Tailoring, rewrites, the Assistant and agents
   now write each line as you would ("Built X", never "He built X" or "Builds X"). If the AI slips,

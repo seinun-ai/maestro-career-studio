@@ -7,9 +7,9 @@ import { useInboxVisit } from "@/hooks/use-inbox-visit";
 
 import { ArrivalsStrip } from "./arrivals-strip";
 import { InboxHistoryContext, ProposalsSection } from "./proposals-section";
-import { InboxRunNotice } from "./inbox-run-notice";
+import { InboxRunNotice, RefusedRequests } from "./inbox-run-notice";
 
-/** What is waiting, a line about the newest run, then the inbox lanes. */
+/** What is waiting, a line about the newest run, the inbox lanes, then any recent refused requests. */
 export function InboxDashboard() {
   const since = useInboxVisit();
   const history = useState(false);
@@ -22,6 +22,7 @@ export function InboxDashboard() {
         <ArrivalsStrip since={since} onJump={openHistory} />
         <InboxRunNotice />
         <ProposalsSection since={since} />
+        <RefusedRequests since={since} />
       </div>
     </InboxHistoryContext.Provider>
   );

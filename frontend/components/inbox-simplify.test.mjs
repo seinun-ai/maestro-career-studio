@@ -5,33 +5,34 @@ import { React, load, renderElement, withRouter } from "./render-harness.mjs";
 
 const { ArrivalsStrip } = load("components/proposals/arrivals-strip.tsx");
 const { CapToday } = load("components/proposals/cap-today.tsx");
-const { InboxRunNotice } = load("components/proposals/inbox-run-notice.tsx");
+const { InboxRunNotice, RefusedRequests } = load("components/proposals/inbox-run-notice.tsx");
 const { RecentRuns } = load("components/automations/recent-runs.tsx");
 const { JobKnockoutCard, KnockoutLine } = load("components/job-knockout-card.tsx");
 const { ProposalAgentPanel } = load("components/proposals/proposal-agent-panel.tsx");
 
 const SINCE = "2026-10-01T00:00:00Z";
 const summary = (over) => [["proposals", "summary", SINCE],
-  { since: SINCE, new: 0, ready: 0, queued: 0, needs_you: 0, applied_this_week: 0, ...over }];
+  { since: SINCE, new: 0, ready: 0, to_review: 0, queued: 0, needs_you: 0, applied_this_week: 0, ...over }];
 const strip = (over) => renderElement(React.createElement(ArrivalsStrip, { since: SINCE }), [summary(over)]);
 
 // ── B1: one summary line ────────────────────────────────────────────────────
 
 test("the summary is one line, zero parts left out, new first", () => {
-  const html = strip({ new: 3, needs_you: 1, queued: 4, applied_this_week: 2 });
+  const html = strip({ new: 3, needs_you: 1, to_review: 2, queued: 4, applied_this_week: 2 });
   assert.match(html, /3 new/);
   assert.match(html, /1 needs you/);
+  assert.match(html, /2 to review/);
   assert.match(html, /4 queued/);
   assert.match(html, /2 applied this week/);
-  assert.equal((html.match(/<button/g) ?? []).length, 4);
+  assert.equal((html.match(/<button/g) ?? []).length, 5);
   assert.doesNotMatch(html, /Ready to apply|New since your last visit/);
   const some = strip({ queued: 4 });
   assert.match(some, /4 queued/);
   assert.doesNotMatch(some, /need|applied this week|new/);
 });
 
-test("all zero is Nothing waiting, and unloaded counts claim nothing", () => {
-  assert.match(strip({}), /Nothing waiting/);
+test("all zero renders nothing, so it never sits above the no-proposals empty state", () => {
+  assert.equal(strip({}), "");
   assert.equal(renderElement(React.createElement(ArrivalsStrip, { since: SINCE })), "");
 });
 
@@ -58,16 +59,31 @@ const run = (counts, over = {}) => ({ id: "r1", automation: "job-hunt", title: "
 const runs = (items) => [["agent-runs", "latest"], { items, refused_requests: [] }];
 const linked = (element) => withRouter(element);
 
-test("the inbox says the newest run found new jobs, with a link to the runs", () => {
-  const html = renderElement(linked(React.createElement(InboxRunNotice)), [runs([run({ found: 12 })])]);
-  assert.match(html, /Job hunt found 12 new jobs 2 hours ago/);
-  assert.match(html, /<a[^>]*href="\/automations"[^>]*>See runs<\/a>/);
+test("the inbox says the newest run proposed jobs, with a link to the runs on Automations", () => {
+  const html = renderElement(linked(React.createElement(InboxRunNotice)), [runs([run({ proposed: 4 })])]);
+  assert.match(html, /Job hunt proposed 4 jobs 2 hours ago/);
+  assert.match(html, /<a[^>]*href="\/automations#recent-runs"[^>]*>See runs<\/a>/);
   assert.doesNotMatch(html, /Looked at four boards/);
 });
 
-test("the inbox says nothing about a run that found nothing new", () => {
-  const html = renderElement(linked(React.createElement(InboxRunNotice)), [runs([run({ proposed: 2 })])]);
+test("the inbox says nothing about a run that proposed nothing, however much it found", () => {
+  const html = renderElement(linked(React.createElement(InboxRunNotice)), [runs([run({ found: 12 })])]);
   assert.equal(html, "");
+});
+
+const refusedRequest = (answered_at) => ({ id: "q1", job_id: "j1", reason: "Maestro couldn't apply this request.",
+  job_company: "Acme", job_title: "Data Scientist", answered_at });
+const refusals = (list, since) => renderElement(linked(React.createElement(RefusedRequests, { since })),
+  [[["agent-runs", "latest"], { items: [], refused_requests: list }]]);
+
+test("a recent refused request shows, an old one does not", () => {
+  const recent = new Date(Date.now() - 3600 * 1000).toISOString();
+  const old = new Date(Date.now() - 20 * 24 * 3600 * 1000).toISOString();
+  assert.match(refusals([refusedRequest(recent)], null), /Request refused/);
+  assert.equal(refusals([refusedRequest(old)], null), "");
+  // Answered before the last visit: already seen.
+  const since = new Date(Date.now() - 600 * 1000).toISOString();
+  assert.equal(refusals([refusedRequest(recent)], since), "");
 });
 
 test("Automations lists the runs, each with its digest and job links", () => {

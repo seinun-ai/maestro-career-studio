@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bot } from "lucide-react";
 
@@ -61,6 +61,16 @@ export default function AutomationsPage() {
   // knowable). Until a card has a Last ran, connecting the agent is the step that matters: it gets a callout.
   const anyRan = !!ran && !!data && data.cards.some((c) => ran.has(c.id));
   const noteReady = runs.isError || (!!runs.data && !!data);
+
+  // The inbox's "See runs" opens /automations#recent-runs. The list is not on the page until the catalog and
+  // the runs have loaded, so the browser's own jump finds nothing: scroll to it once, when they have.
+  const scrolled = useRef(false);
+  const listReady = !!data && !!runs.data;
+  useEffect(() => {
+    if (!listReady || scrolled.current || window.location.hash !== "#recent-runs") return;
+    scrolled.current = true;
+    document.getElementById("recent-runs")?.scrollIntoView({ block: "start" });
+  }, [listReady]);
 
   return (
     <PageShell>

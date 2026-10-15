@@ -48,9 +48,11 @@ The model is `backend/app/models/agent_run.py`; the SQLite revision is `7d3c1a9e
   **Done**, **Partly done**, **Failed**. Counts have a fixed order and omit zeros; all-zero
   counts read **Nothing to report**. The empty state is **No runs yet. Copy a prompt into your
   agent app and its reports show here.** A failed read says **Couldn't load recent runs.**
-- **Agent inbox line**: when the newest run's `found` count is above zero the inbox reads
-  "<title> found N new jobs <time ago> · See runs" (a link to Automations); otherwise it says
-  nothing about runs. Requests the other copy refused still show in the inbox, with their reason.
+- **Agent inbox line**: when the newest run's `proposed` count is above zero the inbox reads
+  "<title> proposed N jobs <time ago> · See runs" (a link to Automations' Recent runs, which scrolls to
+  the list); otherwise it says nothing about runs. Requests the other copy refused still show in the
+  inbox, below the lanes, with their reason, but only those answered since your last visit and never
+  older than a week.
 - **Automations cards**: a successful latest-runs read shows **Last ran** plus relative time,
   or **Not run yet** when that automation has no retained record. When the read never
   produced data, no line appears. A failed background refetch keeps the cached Last ran

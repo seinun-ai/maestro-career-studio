@@ -1,5 +1,5 @@
 """The run log: what each automation run reported (MCP `record_run`), for the Automations page's
-Recent runs and Last ran line and the Agent inbox's new-jobs line.
+Recent runs and Last ran line and the Agent inbox's proposed-jobs line.
 
 Maestro runs no scheduler and cannot tell a late run from a skipped one, so nothing here says
 "overdue". The digest is the agent's own text: Maestro cannot check it holds no email text

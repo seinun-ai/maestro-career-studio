@@ -646,7 +646,10 @@ def test_a_row_that_leaves_its_lane_hands_focus_on():
 
 
 def test_the_bulk_bar_hands_focus_to_the_lane_when_it_leaves():
-    assert _SECTION.count('leaving.current = { kind: "bar", next: () => toReview.current };') == 1
+    # The To review lane, or the page's content when that lane emptied with the selection and is not drawn.
+    assert _SECTION.count(
+        'leaving.current = { kind: "bar", next: () => toReview.current ?? document.getElementById("main-content") };'
+    ) == 1
     assert _SECTION.count("leaveBar();") == 3  # Queue, Skip and Clear
     assert '<Lane ref={toReview} title={`To review · ' in _SECTION
     bar = _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
@@ -855,7 +858,7 @@ def test_inbox_rows_use_actor_score_and_readiness_visuals():
 
 
 def test_empty_inbox_top_collapses():
-    assert "Nothing waiting" in _read("components/proposals/arrivals-strip.tsx")
+    assert "if (parts.length === 0) return null;" in _read("components/proposals/arrivals-strip.tsx")
 
 
 def test_run_outcome_is_a_glyph_and_a_word():

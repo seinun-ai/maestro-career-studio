@@ -486,8 +486,8 @@ part rather than skim it.
 
 A job your agent finds becomes a **proposal**. You review proposals in the
 **Agent inbox** and **Queue** or **Skip** them (in bulk if you like). The inbox
-opens with one line of what is waiting (how many need you, are queued, or went
-out this week), then only the lanes that have something in them. The search and
+opens with one line of what is waiting (how many need you, wait for review, are
+queued, or went out this week), then only the lanes that have something in them. The search and
 filters appear once the inbox holds more than ten, and the daily limit shows when
 you are close to it. What each automation run did is on the **Automations** page. An
 apply run then works **only the ones you queued**: it tailors, renders and

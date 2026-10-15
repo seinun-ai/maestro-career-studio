@@ -192,12 +192,28 @@ def test_recent_runs_live_on_automations_and_the_inbox_keeps_one_line():
 
 def test_the_inbox_line_names_the_run_and_links_to_see_runs():
     notice = _read("components/proposals/inbox-run-notice.tsx")
-    assert "newJobsLine(data.items, formatTimeAgo)" in notice
-    assert 'href="/automations"' in notice and "See runs" in notice
-    # Nothing new, nothing shown.
-    assert "if (!line && refused.length === 0) return null;" in notice
-    # A refused request answers something you asked for, so it stays where you would look for it.
-    assert "RefusedLine" in notice and "refused_requests" in notice
+    assert "proposedLine(data.items, formatTimeAgo)" in notice
+    assert "href={RECENT_RUNS_HREF}" in notice and "See runs" in notice
+    assert 'RECENT_RUNS_HREF = "/automations#recent-runs"' in _read("lib/agent-runs.ts")
+    # Nothing proposed, nothing shown.
+    assert "if (!line) return null;" in notice
+    # A refused request answers something you asked for, so it stays in the inbox: below the lanes, recent only.
+    assert "RefusedLine" in notice and "recentRefusals(data?.refused_requests" in notice
+    dash = _read("components/proposals/inbox-dashboard.tsx")
+    assert dash.index("<ProposalsSection") < dash.index("<RefusedRequests since={since} />")
+    assert dash.index("<InboxRunNotice />") < dash.index("<ProposalsSection")
+
+
+def test_see_runs_scrolls_to_the_list_once_the_page_has_it():
+    page = _read("app/automations/page.tsx")
+    assert 'window.location.hash !== "#recent-runs"' in page
+    assert 'document.getElementById("recent-runs")?.scrollIntoView' in page
+    assert "const listReady = !!data && !!runs.data;" in page and "scrolled.current" in page
+
+
+def test_the_summary_line_counts_to_review_from_the_backend():
+    assert '"to_review"' in _SUMMARY_LIB and "to review" in _SUMMARY_LIB
+    assert "to_review: number;" in _read("lib/types.ts")
 
 
 def test_the_run_line_node():

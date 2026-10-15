@@ -50,7 +50,7 @@ def _summary(since):
     response = client.get("/api/proposals/summary", params={"since": since.isoformat()})
     assert response.status_code == 200, response.text
     body = response.json()
-    return {k: body[k] for k in ("new", "ready", "queued", "needs_you", "applied_this_week")}
+    return {k: body[k] for k in ("new", "ready", "to_review", "queued", "needs_you", "applied_this_week")}
 
 
 def test_the_summary_counts_new_needs_you_and_applied_this_week(db_session):
@@ -65,7 +65,7 @@ def test_the_summary_counts_new_needs_you_and_applied_this_week(db_session):
     _prop(db_session, "submitted", updated_at=utcnow() - timedelta(days=8))
     after = _summary(since)
     assert {k: after[k] - before[k] for k in after} == {
-        "new": 7, "ready": 0, "queued": 1, "needs_you": 1, "applied_this_week": 2}
+        "new": 7, "ready": 0, "to_review": 1, "queued": 1, "needs_you": 1, "applied_this_week": 2}
 
 
 def test_the_summary_defaults_to_the_last_day():
@@ -73,7 +73,7 @@ def test_the_summary_defaults_to_the_last_day():
     response = client.get("/api/proposals/summary")
     assert response.status_code == 200, response.text
     body = response.json()
-    assert set(body) == {"since", "new", "ready", "queued", "needs_you", "applied_this_week"}
+    assert set(body) == {"since", "new", "ready", "to_review", "queued", "needs_you", "applied_this_week"}
     since = datetime.fromisoformat(body["since"])
     assert before - timedelta(hours=24) <= since <= utcnow() - timedelta(hours=24)
 
@@ -92,6 +92,16 @@ def test_ready_counts_only_queued_rows_with_a_pdf_and_no_answer_flags(db_session
     }]))
     db_session.commit()
     assert _summary(since)["ready"] - before["ready"] == 1
+
+
+def test_to_review_counts_pending_review_rows_regardless_of_since(db_session):
+    since = utcnow() + timedelta(days=1)
+    before = _summary(since)
+    _prop(db_session, "pending_review")
+    _prop(db_session, "pending_review")
+    _prop(db_session, "needs_decision")
+    after = _summary(since)
+    assert after["to_review"] - before["to_review"] == 2
 
 
 def test_queued_counts_every_accepted_row_ready_or_not(db_session):

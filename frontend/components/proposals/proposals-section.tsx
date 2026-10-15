@@ -487,9 +487,10 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
     selected,
     onToggleSelected: toggleSelected,
   };
-  // The bar leaves with its last shown selection: focus goes to the To review lane.
+  // The bar leaves with its last shown selection: focus goes to the To review lane, or, when that lane
+  // emptied with it and is not drawn, to the page's content.
   const leaveBar = () => {
-    leaving.current = { kind: "bar", next: () => toReview.current };
+    leaving.current = { kind: "bar", next: () => toReview.current ?? document.getElementById("main-content") };
   };
 
   return (

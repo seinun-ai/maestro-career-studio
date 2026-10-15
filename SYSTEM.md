@@ -158,7 +158,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    which is why the default reads Tracked, not All (agent inventory lives in the Agent inbox,
    `/proposals`, whose lanes are one table: `lib/inbox-lanes.ts`, an empty lane not drawn; above them one summary
    line (`/api/proposals/summary`; visit window kept until this tab reloads), filters only past ten proposals, the daily
-   limit only near it, and a new-jobs line from the newest run; Recent runs (`agent_runs`, docs/entities/agent-runs.md)
+   limit only near it, and a proposed-jobs line from the newest run; Recent runs (`agent_runs`, docs/entities/agent-runs.md)
    live on Automations; open rows carry read-time readiness (`services/inbox_readiness.py`)). Filter groups: All/Saved,
    **Your applications** and **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`, from
    the newest `proposal_status`); `skipped` absorbs proposal `rejected` AND `expired`, while

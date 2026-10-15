@@ -3,11 +3,12 @@ import { test } from "node:test";
 
 import { capNearLimit, summaryParts } from "./inbox-summary.ts";
 
-const none = { new: 0, queued: 0, needs_you: 0, applied_this_week: 0 };
+const none = { new: 0, to_review: 0, queued: 0, needs_you: 0, applied_this_week: 0 };
 
-test("the summary line names what needs you, what is queued and what went out this week", () => {
-  assert.deepEqual(summaryParts({ ...none, needs_you: 2, queued: 3, applied_this_week: 5 }), [
+test("the summary line names what needs you, what waits for review, what is queued and what went out this week", () => {
+  assert.deepEqual(summaryParts({ ...none, needs_you: 2, to_review: 4, queued: 3, applied_this_week: 5 }), [
     { key: "needs_you", text: "2 need you", anchor: "inbox-needs-you" },
+    { key: "to_review", text: "4 to review", anchor: "inbox-to-review" },
     { key: "queued", text: "3 queued", anchor: "inbox-queued" },
     { key: "applied_this_week", text: "5 applied this week", anchor: "inbox-history" },
   ]);

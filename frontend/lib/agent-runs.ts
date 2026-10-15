@@ -42,16 +42,38 @@ export function lastRanLine(finishedAt: string | null | undefined, ago: (iso: st
 
 export const AGENT_RUNS_LATEST_KEY = ["agent-runs", "latest"] as const;
 
+/** Where the inbox's "See runs" goes: the Recent runs list on the Automations page. */
+export const RECENT_RUNS_HREF = "/automations#recent-runs";
+
 /**
- * The Agent inbox's one line about runs: "Job hunt found 12 new jobs 2 hours ago", only when the newest run
- * (the list comes newest first) found something new. Every other run is on the Automations page.
+ * The Agent inbox's one line about runs: "Job hunt proposed 4 jobs 2 hours ago", only when the newest run
+ * (the list comes newest first) proposed jobs, which is what puts them in the inbox. Every other run is on
+ * the Automations page.
  */
-export function newJobsLine(
+export function proposedLine(
   runs: readonly { title: string; finished_at: string; counts: Record<string, number> }[],
   ago: (iso: string) => string,
 ): string | null {
   const newest = runs[0];
-  const found = newest?.counts.found ?? 0;
-  if (!newest || found <= 0) return null;
-  return `${newest.title} found ${found} new ${found === 1 ? "job" : "jobs"} ${ago(newest.finished_at)}`;
+  const proposed = newest?.counts.proposed ?? 0;
+  if (!newest || proposed <= 0) return null;
+  return `${newest.title} proposed ${proposed} ${proposed === 1 ? "job" : "jobs"} ${ago(newest.finished_at)}`;
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The refused requests worth showing now: answered since the last inbox visit (`since`), and never more than a
+ * week ago, so an old refusal does not sit in the inbox for good. With no visit known the week is the window;
+ * a request with no answer time is kept.
+ */
+export function recentRefusals<T extends { answered_at: string | null }>(
+  requests: readonly T[],
+  since: string | null,
+  nowMs: number,
+): T[] {
+  const weekAgo = nowMs - WEEK_MS;
+  const visit = since ? Date.parse(since) : Number.NaN;
+  const floor = Number.isNaN(visit) ? weekAgo : Math.max(visit, weekAgo);
+  return requests.filter((r) => r.answered_at == null || Date.parse(r.answered_at) >= floor);
 }
