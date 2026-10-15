@@ -3076,3 +3076,10 @@ def test_a_review_page_with_no_fields_is_not_a_one_page_form_and_never_asks(tmp_
     out = _drive(tmp_path, [step(1), {"t": "review", "errs": [UNMAPPED], "patch": {"fillable": 0}}], reasons=[dict(THOUGHT)],
                  fix={"fixed": False, "remaining": [UNMAPPED]})
     assert out["record"]["why"] == "page_errors" and names(out, "reason") == []
+
+
+def test_a_press_the_step_makes_on_a_filled_one_page_form_with_page_errors_is_refused_before_the_page(tmp_path):
+    """The page IS the one this run filled, so only the one-page rule keeps the press back (the step names the Submit's id)."""
+    out = _drive(tmp_path, [{"t": "review", "errs": [UNMAPPED]}], reasons=[{"press": "submit-1"}], fix={"fixed": False, "remaining": [UNMAPPED]},
+                 fills=[[DONE_FIELD]])
+    assert out["record"]["why"] == "page_errors" and out["pressed"] == [] and len(names(out, "reason")) == 1
