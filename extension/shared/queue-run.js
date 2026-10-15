@@ -76,8 +76,11 @@
  * THE REASONING STEP (design 2026-10-14). Before a park on page_errors, open_questions, unknown_page, no_change, loop or
  *   moved_away (`THINKS`), the driver asks `deps.reason` ONCE a page (`moved()` clears it) and takes its word: `advanced` (it
  *   pressed the page's Next: a step and a seen page), `moved` (the reason for the park is gone: the page is judged and
- *   pressed as any), else the park, carrying `thought` {note, ask?, tried} for the card. Never on a wall, a review page, a
- *   park that sends the user somewhere, or open questions that are ALL protected (`PROTECTED_SLOT`); a `moved_away`
+ *   pressed as any), else the park, carrying `thought` {note, ask?, tried} for the card. Never on a wall, a review page with
+ *   no fields, a park that sends the user somewhere, or open questions that are ALL protected (`PROTECTED_SLOT`). A review
+ *   page that HAS fields is a one-page form: thought about for open_questions and page_errors only, as `onePage`, on its
+ *   fields alone: its press is refused here whatever the step asks, and it is skipped while the page asks about submitting or
+ *   shows a dialog (owner decision 2026-10-15). A `moved_away`
  *   answer never drives (a follow only rebinds the tab). The step's press goes through the driver's own `press` and only
  *   on the page this run filled (inv-rejected-next). `reason` is optional: the host leaves it out with "Think when stuck"
  *   off, "Stop after each step" on, or full automation off.
@@ -194,6 +197,8 @@
   // not answer, a page it does not know, no change, a loop, a tab on another site. Never a wall, a review page (a Submit page),
   // a park that tells the user to go somewhere, or a page with no frame to read.
   const THINKS = new Set(["page_errors", "open_questions", "unknown_page", "no_change", "loop", "moved_away"]);
+  // The ones a one-page form (a review page with fields) is thought about for.
+  const ONE_PAGE_THINKS = new Set(["page_errors", "open_questions"]);
   const AGAIN = Symbol("again");
   const MAX_RECENT = 8;
 
@@ -398,7 +403,8 @@
     let thought = false;     // the reasoning step has been asked on this page (`moved()` clears it)
     const thoughtOn = new Set();  // ... and the pages (address path and step key) it was asked on in this drive: never twice
     let recent = [];         // the last presses and repairs, as "press_next -> rejected", for the step to read
-    let pageKind = null;     // what the page in hand is, once judged (a review page is never thought about)
+    let pageKind = null;     // what the page in hand is, once judged (a review page is thought about only as a one-page form)
+    let pageSummary = null;  // the reader's summary of that page
 
     const noteHost = async (url) => {
       const host = hostOf(url);
@@ -453,11 +459,16 @@
     // "Stop after each step" off). AGAIN when it moved the run on, else the park, with what it thought. Once a page (`moved()`
     // clears `thought`), never on a wall or a review page, and not on open questions that are all protected (design 1: those
     // are the user's). A follow (`followed`) never drives: the run parks where it was, on the tab it was moved to.
+    //
+    // A ONE-PAGE FORM (a review page that has fields: its one Submit is on the same page) is thought about too, for open_questions
+    // and page_errors only, on its fields alone (owner decision 2026-10-15): the step is told `onePage`, is offered no press, and
+    // the press it gets back refuses everything. Never while the page asks about submitting or shows a dialog.
     const parkOr = async (why, extra = {}) => {
       const protectedOnly = why === "open_questions" && (extra.open ?? []).length > 0
         && extra.open.every((one) => PROTECTED_SLOT.test(one.slot ?? ""));
       const here = `${pathOf(thisPage?.where ?? "")}\n${thisPage?.key ?? ""}`;
-      if (typeof deps.reason !== "function" || thought || thoughtOn.has(here) || !THINKS.has(why) || pageKind === "review" || protectedOnly) {
+      const onePage = pageKind === "review" && ONE_PAGE_THINKS.has(why) && (pageSummary?.fillable ?? 0) > 0 && pageSummary?.submitContext !== true && !ns.pageKind.dialogUp(pageSummary);
+      if (typeof deps.reason !== "function" || thought || thoughtOn.has(here) || !THINKS.has(why) || (pageKind === "review" && !onePage) || protectedOnly) {
         return await park(why, extra);
       }
       // A step the press could add must still fit the run's own limit: the step is never a way past it. Near it the step
@@ -466,10 +477,10 @@
       thought = true;
       thoughtOn.add(here);
       await update({ status: "filling" });
-      const out = await act(deps.reason, record, { why, open: extra.open ?? [], recent,
+      const out = await act(deps.reason, record, { why, open: extra.open ?? [], recent, ...(onePage ? { onePage: true } : {}),
         // Only the page this run filled is pressed (inv-rejected-next): anything else is refused before the page. A loop
-        // is a page already pressed once: the step never presses it again.
-        press: (frameId, id, before, baseline) => (why !== "loop" && pageFilled && filledPage && samePage(filledPage, thisPage)
+        // is a page already pressed once: the step never presses it again. A one-page form is never pressed.
+        press: (frameId, id, before, baseline) => (why !== "loop" && !onePage && pageFilled && filledPage && samePage(filledPage, thisPage)
           ? press({ frameId }, id, before, undefined, baseline) : Promise.resolve("refused")) });
       if (why !== "moved_away" && out?.advanced) {
         if (record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
@@ -775,6 +786,7 @@
           by = "submit_button";   // its Apply is a Submit-worded button
         }
         pageKind = kind;
+        pageSummary = summary;
         // A sign-up page on a known ATS host: the run creates the account with the saved login, once (owner
         // decision 2026-10-14). Everywhere else, and for anything the page refuses, it is still a wall.
         if (kind === "create_account") {
@@ -968,12 +980,21 @@
             }
             if (pending.length) {
               const open = errorsOpen(pending);
-              if (requiredTried) return await park("open_questions", { open });
+              const stuck = async (named) => {
+                const stop = await parkOr("open_questions", { open: named });
+                return stop === AGAIN ? null : stop;
+              };
+              if (requiredTried) {
+                const stop = await stuck(open);
+                if (stop) return stop;
+                continue;
+              }
               requiredTried = true;
               await update({ status: "filling" });
               const repaired = await act(deps.fix, record, pending, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
               if (repaired?.fixed !== true) {
-                return await park("open_questions", { open: Array.isArray(repaired?.remaining) ? errorsOpen(repaired.remaining) : open });
+                const stop = await stuck(Array.isArray(repaired?.remaining) ? errorsOpen(repaired.remaining) : open);
+                if (stop) return stop;
               }
               continue;
             }

@@ -7,6 +7,8 @@ it; ask_user, a missing reply and Stop end it; press_next goes only through the 
 import json
 import re
 
+import pytest
+
 from app.schemas import autofill_reason as R
 from tests.extension_harness import ROOT, run_node
 
@@ -43,7 +45,7 @@ const ops = {
   dismiss: async (frameId, id) => { done.push(["dismiss", frameId, id]); return { clicked: spec.dismissClicks ?? true }; },
   follow: async (tabId) => { done.push(["follow", tabId]); return true; },
 };
-const ctx = { why: spec.why ?? "open_questions", open: spec.open ?? [], recent: spec.recent ?? [],
+const ctx = { why: spec.why ?? "open_questions", open: spec.open ?? [], recent: spec.recent ?? [], ...(spec.onePage ? { onePage: true } : {}),
   press: async (frameId, id, before, baseline) => { done.push(["press", frameId, id, before]); return spec.pressOutcome ?? "moved"; } };
 main(async () => {
   const out = await ns.reasonLoop.think(ctx, ops);
@@ -553,3 +555,59 @@ def test_an_error_line_is_screened_with_the_sibling_floors_so_a_step_number_surv
     [body] = run_node(_DRIVER, {"page": _globex(fields=fields, errors=errors), "replies": [act(type="fill", fids=["n1"])]}, tmp_path,
                       source=SOURCE)["asks"]
     assert body["errors"] == [{"text": "Error - Step 5 of 7: Source is required. Yes. [your answer] too."}]
+
+
+# ---------- a one-page form: fields only, never a press (owner decision 2026-10-15) ----------
+
+SUBMIT = {"id": "sb-1", "text": "Submit application", "type": "submit", "visible": True, "enabled": True, "inForm": True}
+ONE_PAGE = {**PAGE, "summary": {**PAGE["summary"], "buttons": [SUBMIT]}}
+POPUP = {"id": "ok-1", "text": "Close", "type": "button", "visible": True, "enabled": True, "inForm": False, "overlay": True}
+
+
+def test_a_one_page_form_with_open_questions_is_worked_and_the_request_says_it_is_one_page(tmp_path):
+    out = think(tmp_path, page=ONE_PAGE, onePage=True, open=[{"fid": "f1"}], fixes=["f1"], replies=[act(type="write", fid="f1")])
+    [body] = out["asks"]
+    R.ReasonRequest.model_validate(body)
+    assert body["one_page"] is True and body["buttons"] == []                      # no press is ever offered
+    assert out["out"]["moved"] is True and out["done"][0][0] == "fill"
+
+
+def test_a_review_page_is_still_walled_unless_the_driver_called_it_a_one_page_form(tmp_path):
+    out = think(tmp_path, page=ONE_PAGE)
+    assert out["asks"] == [] and out["out"]["rounds"][0]["stopped"] == "wall"
+    assert "one_page" not in think(tmp_path)["asks"][0]                            # a form step sends no flag
+
+
+@pytest.mark.parametrize("why", ["no_change", "loop", "unknown_page"])
+def test_a_one_page_form_is_worked_only_for_open_questions_and_page_errors(tmp_path, why):
+    assert think(tmp_path, page=ONE_PAGE, onePage=True, why=why)["asks"] == []
+
+
+def test_a_one_page_form_with_page_errors_is_worked_too(tmp_path):
+    page = {**ONE_PAGE, "errors": [{"label": "Degree", "kind": "field", "target": "f1"}]}
+    out = think(tmp_path, page=page, onePage=True, why="page_errors", replies=[act(type="retry", fid="f1", technique="step_by_step")])
+    assert len(out["asks"]) == 1 and out["done"][0][2] == {"stepByStep": ["f1"]}
+
+
+@pytest.mark.parametrize("action", [
+    dict(type="press_next", button="b1"), dict(type="close_dialog", button="b1"), dict(type="follow_tab", tab="t1"),
+])
+def test_nothing_is_ever_pressed_on_a_one_page_form_whatever_the_model_says(tmp_path, action):
+    page = {**ONE_PAGE, "tabs": [{"tabId": 9, "host": "jobs.acme.test"}]}
+    out = think(tmp_path, page=page, onePage=True, replies=[act(**action)])
+    assert out["done"] == []
+    assert out["out"]["rounds"][0]["actions"][0]["outcome"] == "rejected"
+
+
+def test_a_one_page_form_that_asks_about_submitting_or_shows_a_dialog_is_walled(tmp_path):
+    asking = {**ONE_PAGE, "summary": {**ONE_PAGE["summary"], "submitContext": True}}
+    dialog = {**ONE_PAGE, "summary": {**ONE_PAGE["summary"], "buttons": [SUBMIT, POPUP]}}
+    for page in (asking, dialog):
+        out = think(tmp_path, page=page, onePage=True)
+        assert out["asks"] == [] and out["out"]["rounds"][0]["stopped"] == "wall"
+
+
+def test_a_cookie_notice_on_a_one_page_form_does_not_wall_it(tmp_path):
+    notice = {**POPUP, "text": "Accept", "cookie": True}
+    page = {**ONE_PAGE, "summary": {**ONE_PAGE["summary"], "buttons": [SUBMIT, notice]}}
+    assert len(think(tmp_path, page=page, onePage=True)["asks"]) == 1

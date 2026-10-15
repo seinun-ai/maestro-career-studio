@@ -11,6 +11,9 @@
  * - a field an action changed nothing on, twice, leaves the snapshot;
  * - a round that leaves the page's key (fingerprint, error count, filled fields) unchanged ends the loop;
  * - ask_user, a missing or late reply, Stop and the page clock end it too (no call starts with under 25 s of the page's 60 s left).
+ * A ONE-PAGE FORM (`ctx.onePage`, set by the driver for a review page with fields, for open_questions and page_errors only) is
+ * worked on its fields alone: the request says `one_page: true` and carries no button, and every press, dismiss and follow is
+ * refused here whatever the model names; a submit dialog or any dialog still walls it.
  * NEVER a value: a field is `filled` or not, a written answer is its length. NEVER a press of its own: press_next is
  * the driver's `ctx.press` (the page re-sorts it; Submit is refused there), close_dialog the host's guarded dismiss.
  * The reply is checked again here (ids in THIS snapshot, a button's role, the actions this stuck reason allows).
@@ -102,14 +105,26 @@
       });
   };
 
+  // A ONE-PAGE FORM (the driver's `ctx.onePage`: a review page that has fields, its one Submit on the same page) is worked for
+  // these stuck reasons only, on its fields only: nothing on it is ever pressed (owner decision 2026-10-15).
+  const ONE_PAGE_WHYS = new Set(["open_questions", "page_errors"]);
+  const PRESSES = new Set(["press_next", "close_dialog", "follow_tab"]);
+
   /** Whether the page is one the step must not act on: a wall, a review page, or anything that asks about submitting.
-   * Only a form step (or a page not yet known) is worked. A moved_away read carries no page to judge. */
-  const walled = (ctx, read) => ctx.why !== "moved_away" && Boolean(read.summary)
-    && (read.summary.submitContext === true || !["form_step", "unknown"].includes(ns.pageKind.classify(read.summary).kind));
+   * Only a form step (or a page not yet known) is worked; a one-page form is too while it asks nothing about submitting and
+   * shows no dialog (a cookie notice is no dialog). A moved_away read carries no page to judge. */
+  const walled = (ctx, read) => {
+    if (ctx.why === "moved_away" || !read.summary) return false;
+    if (read.summary.submitContext === true) return true;
+    const kind = ns.pageKind.classify(read.summary).kind;
+    if (["form_step", "unknown"].includes(kind)) return false;
+    return !(ctx.onePage === true && kind === "review" && ONE_PAGE_WHYS.has(ctx.why) && !ns.pageKind.dialogUp(read.summary));
+  };
 
   /** The page's own Next and dialog-dismiss buttons, by role; refs `b1`.. in page order. The Next is the ONE the
    * classifier names (pressable, in the step); a dialog button is offered only while nothing asks about submitting. */
-  const buttonRows = (read) => {
+  const buttonRows = (read, ctx = {}) => {
+    if (ctx.onePage === true) return [];   // a one-page form is offered no press at all
     const verdict = read.summary ? ns.pageKind.classify(read.summary) : { kind: "unknown" };
     const nextId = verdict.kind === "form_step" ? verdict.next : null;
     const asking = read.summary?.submitContext === true;
@@ -134,14 +149,14 @@
   /** `{ body, refs }`: `body` is exactly a ReasonRequest; `refs` maps `b<i>` to {frameId, id} and `t<i>` to a tabId, and is never sent. */
   function snapshotOf(ctx, read, { round = 1, history = [], excluded = [], dropped = new Set() } = {}) {
     const away = ctx.why === "moved_away";
-    const buttons = away ? [] : buttonRows(read);
+    const buttons = away ? [] : buttonRows(read, ctx);
     const tabs = tabRows(read);
     const screens = screensOf(read);
     const refs = {};
     for (const b of buttons) refs[b.ref] = { frameId: read.frameId, id: b.id };
     for (const t of tabs) refs[t.ref] = t.tabId;
     const body = {
-      ...selectorOf(ctx), why: ctx.why, round,
+      ...selectorOf(ctx), why: ctx.why, round, ...(ctx.onePage === true ? { one_page: true } : {}),
       fields: away ? [] : fieldRows(read, dropped, screens),
       buttons: buttons.map(({ ref, text, role }) => ({ ref, text, role })),
       errors: away ? [] : errorRows(read, screens),
@@ -272,7 +287,7 @@
         state.walled = true;
         return { outcome: "refused" };
       }
-      const same = buttonRows(fresh).filter((b) => b.role === role && b.text === asked.text);
+      const same = buttonRows(fresh, ctx).filter((b) => b.role === role && b.text === asked.text);
       if (same.length !== 1) return { outcome: "refused" };
       target = { frameId: fresh.frameId, id: same[0].id, read: fresh };
     }
@@ -287,6 +302,7 @@
   }
 
   async function perform(action, snap, ctx, ops, state, out) {
+    if (ctx.onePage === true && PRESSES.has(action.type)) return { outcome: "rejected" };
     if (ALLOWED_AT[ctx.why] && !ALLOWED_AT[ctx.why].includes(action.type)) return { outcome: "rejected" };
     if (action.type === "press_next" || action.type === "close_dialog") return await runButton(action, snap, ctx, ops, state);
     if (action.type === "follow_tab") {
@@ -309,7 +325,7 @@
     const twice = (key) => (fails.get(key) ?? 0) >= 2;
     const out = [...fails.keys()].filter((key) => !key.includes("|") && twice(key));
     if (ctx.why !== "moved_away") {
-      for (const b of buttonRows(read)) if (twice(`${b.role === "next" ? "press_next" : "close_dialog"}|${b.text}`)) out.push(`${b.role === "next" ? "press_next" : "close_dialog"}:${b.ref}`);
+      for (const b of buttonRows(read, ctx)) if (twice(`${b.role === "next" ? "press_next" : "close_dialog"}|${b.text}`)) out.push(`${b.role === "next" ? "press_next" : "close_dialog"}:${b.ref}`);
     }
     for (const t of tabRows(read)) if (twice(`follow_tab|${t.host}`)) out.push(`follow_tab:${t.ref}`);
     return out;

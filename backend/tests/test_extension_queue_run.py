@@ -226,7 +226,7 @@ const deps = {
 // `reason` dep at all, as the host leaves it out with "Think when stuck" off or "Stop after each step" on.
 if (spec.reasons) {
   deps.reason = async (rec, ctx) => {
-    tick("reason", ctx.why, ctx.recent.length, (ctx.open ?? []).length);
+    tick("reason", ctx.why, ctx.recent.length, (ctx.open ?? []).length, ...(ctx.onePage ? ["onePage"] : []));
     const out = spec.reasons.shift() ?? { moved: false };
     if (out.clears) cleared[at] = true;
     if (out.press) {
@@ -2844,7 +2844,7 @@ def test_a_thought_with_nothing_to_say_leaves_the_park_as_it_was(tmp_path):
     ([{"t": "posting", "applyId": None}], {}, "posting"),
     ([{"t": "confirmation"}], {}, "already_applied"),
     ([step(1), {"t": "review_next"}], {}, "unsure_page"),
-    ([step(1), {"t": "review", "errs": [UNMAPPED]}], {"fix": {"fixed": False, "remaining": [UNMAPPED]}}, "page_errors"),
+    ([step(1), {"t": "review", "errs": [UNMAPPED], "patch": {"submitContext": True}}], {"fix": {"fixed": False, "remaining": [UNMAPPED]}}, "page_errors"),
     ([step(1), step(2, fillable=0, nextText="Continue"), REVIEW], {"fills": [[needs("a", status="verified")], []]}, "confirm_page"),
     ([step(1), REVIEW], {"attaches": [{"outcome": None, "reason": None, "required": True, "boxes": [
         {"label": "Upload a file", "target": "t-up", "kind": "unknown", "written": False}]}], "attachTo": {"attached": False}}, "upload"),
@@ -3012,3 +3012,67 @@ def test_an_ad_frame_that_threw_beside_a_frame_that_answered_changes_nothing(tmp
                                            {"frameId": 4, "error": "the page reported an error"}]}
     out = _drive(tmp_path, [page, REVIEW])
     assert out["record"]["status"] == "ready"
+
+
+# ---------- a one-page form: the reasoning step works its fields and presses nothing (owner decision 2026-10-15) ----------
+
+DONE_FIELD = needs("f2", "Name", status="verified")          # the fill wrote something, so the page is the application
+SUBMIT_BTN = {"id": "submit-1", "text": "Submit application", "type": "button", "marker": "", "inForm": True, "visible": True, "enabled": True}
+A_DIALOG = {"id": "ok-1", "text": "Close", "type": "button", "marker": "", "inForm": False, "visible": True, "enabled": True, "overlay": True}
+ONE_PAGE_ASKS = {"fills": [[needs("f1", "Degree"), DONE_FIELD]]}
+
+
+def test_a_one_page_form_with_open_questions_asks_the_reasoning_step_told_it_is_one_page(tmp_path):
+    out = _drive(tmp_path, [REVIEW], reasons=[dict(THOUGHT)], **ONE_PAGE_ASKS)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "open_questions") and r["thought"]["note"] == THOUGHT["note"]
+    assert names(out, "reason") == [["reason", "open_questions", 0, 1, "onePage"]]
+    assert out["pressed"] == []
+
+
+def test_a_one_page_form_the_thought_fixed_ends_ready_with_nothing_pressed(tmp_path):
+    out = _drive(tmp_path, [REVIEW], reasons=[{"moved": True}], **ONE_PAGE_ASKS)
+    assert out["record"]["status"] == "ready" and out["pressed"] == []
+    assert len(names(out, "reason")) == 1
+
+
+def test_a_one_page_form_with_a_complaint_the_repair_cannot_map_asks_too(tmp_path):
+    out = _drive(tmp_path, [{"t": "review", "errs": [UNMAPPED]}], reasons=[dict(THOUGHT)], fix={"fixed": False, "remaining": [UNMAPPED]},
+                 fills=[[DONE_FIELD]])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "page_errors")
+    assert [c[1] for c in names(out, "reason")] == ["page_errors"] and out["pressed"] == []
+
+
+@pytest.mark.parametrize("press", ["submit-1", "next-r", "back-r", "ok-1"])
+def test_any_press_the_step_makes_on_a_one_page_form_is_refused_before_the_page(tmp_path, press):
+    out = _drive(tmp_path, [REVIEW], reasons=[{"press": press}], **ONE_PAGE_ASKS)
+    assert out["pressed"] == [] and names(out, "advance") == []
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "open_questions")
+
+
+@pytest.mark.parametrize("patch", [
+    {"submitContext": True},
+    {"buttons": [SUBMIT_BTN, A_DIALOG]},
+])
+def test_a_one_page_form_that_asks_about_submitting_or_shows_a_dialog_never_asks(tmp_path, patch):
+    out = _drive(tmp_path, [{"t": "review", "patch": patch}], reasons=[dict(THOUGHT)], **ONE_PAGE_ASKS)
+    assert out["record"]["why"] == "open_questions" and names(out, "reason") == []
+
+
+def test_a_cookie_notice_beside_a_one_page_form_does_not_stop_the_step(tmp_path):
+    notice = {**A_DIALOG, "text": "Accept", "cookie": True}
+    out = _drive(tmp_path, [{"t": "review", "patch": {"buttons": [SUBMIT_BTN, notice]}}], reasons=[dict(THOUGHT)], **ONE_PAGE_ASKS)
+    assert len(names(out, "reason")) == 1
+
+
+def test_a_required_box_still_empty_on_a_one_page_form_asks_before_it_parks(tmp_path):
+    out = _drive(tmp_path, [{"t": "review", "needs": [{"label": "Degree", "target": "f1", "kind": "field"}]}], reasons=[dict(THOUGHT)],
+                 fix={"fixed": False}, fills=[[DONE_FIELD]])
+    assert out["record"]["why"] == "open_questions" and [c[1] for c in names(out, "reason")] == ["open_questions"]
+    assert out["pressed"] == []
+
+
+def test_a_review_page_with_no_fields_is_not_a_one_page_form_and_never_asks(tmp_path):
+    out = _drive(tmp_path, [step(1), {"t": "review", "errs": [UNMAPPED], "patch": {"fillable": 0}}], reasons=[dict(THOUGHT)],
+                 fix={"fixed": False, "remaining": [UNMAPPED]})
+    assert out["record"]["why"] == "page_errors" and names(out, "reason") == []

@@ -6,9 +6,9 @@ test_run_reason_page.py. What this shows: the page reads as a review page that H
 nothing on it is ever pressed.
 """
 
-import json
 
 from tests.browser.conftest import EXTENSION, fixture_html
+from tests.browser.pages import oracle
 from tests.browser.test_fill_end_to_end import SOURCES as MANIFEST_SOURCES
 
 SOURCES = [*MANIFEST_SOURCES, "shared/queue-run.js", "shared/reason-loop.js"]
@@ -17,6 +17,8 @@ URL = "https://job-boards.greenhouse.io/acme/jobs/7?gh_src=abc"
 DRIVER = """async (spec) => {
   const ns = window.careerStudioCompanion;
   const calls = [];
+  const asks = [];
+  const fills = [];
   const deliver = (msg) => new Promise((resolve) => {
     const open = window.__pageListener(msg, { id: "t" }, (reply) => resolve(reply?.ok ? reply.data : null));
     if (open !== true) resolve(null);
@@ -39,7 +41,8 @@ DRIVER = """async (spec) => {
     sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 20))),
     fill: async (rec) => {
       calls.push(["fill", rec.step]);
-      return { fields: [{ fid: "x", question: "First Name", required: true, status: "verified" }] };
+      return { fields: [{ fid: "x", question: "Name", required: true, status: "verified" },
+                        ...(spec.reason ? [{ fid: spec.degree, question: "Degree", required: true, status: "needs_answer" }] : [])] };
     },
     fix: async () => ({ fixed: false }),
     attachTo: async () => ({ attached: false }),
@@ -49,9 +52,37 @@ DRIVER = """async (spec) => {
     onUpdate: () => {},
     now: () => Date.now(),
     cancelled: () => false,
+    ...(!spec.reason ? {} : {
+      reason: (rec, ctx) => ns.reasonLoop.think(ctx, {
+        now: () => Date.now(), cancelled: () => false, onLine: () => {},
+        read: async () => {
+          const [frame] = await ops.classify(7);
+          const inventory = await deliver({ type: "fill_inventory", readOnly: true });
+          const errors = await deliver({ type: "page_errors" });
+          return { frameId: 0, url: location.href, summary: frame.result.summary, fields: inventory.fields,
+                   errors: errors.items, tabs: [], lastFill: {} };
+        },
+        // The stub reasoner picks the Degree field by its question and, to be tested, also tries to press everything it can name.
+        ask: async (body) => {
+          asks.push(JSON.parse(JSON.stringify(body)));
+          const degree = body.fields.find((f) => /degree/i.test(f.question));
+          return { note: "Degree is empty.", rejected: [], model: "stub", ms: 1, actions: [
+            { type: "choose", fid: degree.fid, basis: "default" }, { type: "press_next", button: "b1" }] };
+        },
+        // The fill engine has its own tests: this clicks the real list's option the way a person would.
+        fill: async (fids) => {
+          fills.push(fids);
+          const shell = document.querySelector('[data-rs="degree--0"]');
+          shell.querySelector(".select__control").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+          [...shell.querySelectorAll("[role=option]")].find((o) => o.textContent === "Master's Degree").click();
+          return { fields: fids.map((fid) => ({ fid, question: "Degree", status: "assumed", answer: "Master's Degree" })) };
+        },
+        dismiss: async () => { calls.push(["dismiss"]); return { clicked: false }; }, follow: async () => false,
+      }),
+    }),
   };
   await ns.queueRun.drive(record, deps);
-  return { record: JSON.parse(JSON.stringify(record)), calls };
+  return { record: JSON.parse(JSON.stringify(record)), calls, asks, fills };
 }"""
 
 
@@ -87,4 +118,22 @@ def test_the_run_fills_the_one_page_form_at_step_zero_and_pressing_nothing_parks
     assert (r["status"], r["why"], r["step"]) == ("parked", "open_questions", 0)
     assert {"First Name", "Degree", "Location (City)"} <= {o["question"] for o in r["open"]}
     assert out["calls"] == [["fill", 0]]          # filled once, at step 0; nothing pressed
+    assert page.evaluate("() => window.__sent ?? false") is False
+
+
+def test_the_reasoning_step_works_the_one_page_forms_fields_and_presses_nothing_on_it(page):
+    """The seam the fakes cannot show: the snapshot is built from the real page, says it is one page and offers no button,
+    the Degree list is chosen in the real widget, and neither the Submit nor the header Apply is ever pressed."""
+    _serve(page)
+    page.set_default_timeout(60000)
+    degree = page.evaluate("""async () => {
+      const inv = await new Promise((resolve) => window.__pageListener({ type: "fill_inventory", readOnly: true }, { id: "t" },
+        (reply) => resolve(reply.data)));
+      return inv.fields.find((f) => /degree/i.test(f.question)).fid;
+    }""")
+    out = page.evaluate(DRIVER, {"reason": True, "degree": degree})
+    [ask] = out["asks"]
+    assert ask["one_page"] is True and ask["buttons"] == [] and ask["why"] == "open_questions"
+    assert out["fills"] == [[degree]] and oracle(page, "gh_degree") == "Master's Degree"
+    assert [c for c in out["calls"] if c[0] in ("advance", "dismiss")] == []
     assert page.evaluate("() => window.__sent ?? false") is False

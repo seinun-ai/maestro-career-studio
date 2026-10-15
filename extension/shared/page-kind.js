@@ -10,7 +10,7 @@
  * words match as substrings (a "Reapply", an "Incomplete" and a "Submit_application" all stop),
  * the Next words must be the WHOLE label, and a visible-but-disabled Submit still counts.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageKind = { classify, sortButton, isPlainNext, isDismiss, submitMarked, movesOn, signedUpRead, KINDS }.
+ * WHAT THIS FILE PUBLISHES: ns.pageKind = { classify, sortButton, isPlainNext, isDismiss, submitMarked, movesOn, signedUpRead, dialogUp, KINDS }.
  * (submitMarked and movesOn read one button element's attributes and words, nothing else of the DOM.)
  */
 (() => {
@@ -163,6 +163,9 @@
         && b.fieldControl !== true && b.errorLine !== true && sortButton(b) === "next");
   }
 
-  ns.pageKind = { classify, sortButton, isPlainNext, isDismiss, submitMarked, movesOn, signedUpRead, KINDS: ["captcha", "create_account", "verify", "sign_in",
+  /** Whether a dialog (not a cookie notice) is open on the page: a visible button of an overlay that is no cookie notice. */
+  const dialogUp = (summary) => (summary?.buttons ?? []).some((b) => b.overlay === true && b.cookie !== true && b.visible !== false);
+
+  ns.pageKind = { classify, sortButton, isPlainNext, isDismiss, submitMarked, movesOn, signedUpRead, dialogUp, KINDS: ["captcha", "create_account", "verify", "sign_in",
     "confirmation", "closed", "chooser", "posting", "board_native", "form_step", "review", "unknown"] };
 })();
