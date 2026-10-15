@@ -343,7 +343,7 @@
     for (let el = input; el; el = el === box ? null : ns.deep.up(el)) {
       labels.push(el.getAttribute("aria-label"), words(el.getAttribute("data-automation-id")));
       for (const id of (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean)) {
-        labels.push(document.getElementById(id)?.textContent);
+        labels.push((el.getRootNode().getElementById?.(id) ?? document.getElementById(id))?.textContent);
       }
     }
     const own = [...labels, words(input.id), words(input.name)];

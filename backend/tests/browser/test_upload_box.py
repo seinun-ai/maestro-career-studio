@@ -688,3 +688,11 @@ def test_the_panels_detect_answer_for_a_shadow_form_says_form_and_counts_its_fie
     _load(blank, SHADOW)
     detected = _detect(blank)
     assert (detected["form"], detected["tier"], detected["controls"], detected["fileInputs"]) == (True, "B", 9, 2)
+
+
+def test_a_shadow_dropzone_named_by_a_label_in_its_own_shadow_root_is_that_documents_box(blank):
+    """`aria-labelledby` names an element in the input's own tree: looked up in the document alone it named nothing."""
+    _load(blank, '<script>customElements.define("x-drop", class extends HTMLElement { connectedCallback() {'
+                 'this.attachShadow({mode: "open"}).innerHTML = this.getAttribute("tpl"); } });</script>'
+                 '<main><x-drop tpl=\'<span id="lbl">Cover letter</span><div><input type="file" aria-labelledby="lbl" style="opacity:0;width:1px;height:1px"></div>\'></x-drop></main>')
+    assert [box["kind"] for box in _uploads(blank)] == ["other"]

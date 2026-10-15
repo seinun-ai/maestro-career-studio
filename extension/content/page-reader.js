@@ -193,13 +193,27 @@
     .flatMap((s) => s.assignedNodes({ flatten: true })).map((n) => n.textContent).join(" ");
   /** The element a shadow root hangs from, for the control inside it (null in the light DOM). */
   const hostOf = (el) => el.getRootNode?.().host ?? null;
+  /** The components `el` is the whole point of: walking out through shadow hosts, each host whose shadow root holds exactly one
+   * control of `kind` ("button": one button and no field; "field": one field) and is therefore that control's own component, as
+   * a design system's button or input is. A container component (a card holding a field, Back and Next) is not: its title or id is
+   * about the step, never the label or the mark of a button inside it. */
+  const ownHosts = (el, kind) => {
+    const out = [];
+    for (let host = hostOf(el); host?.shadowRoot; host = hostOf(host)) {
+      const alone = kind === "button" ? deepAll(BUTTONS, host.shadowRoot).length === 1 && !deepAll(FIELD, host.shadowRoot).length
+        : deepAll(FIELD, host.shadowRoot).length === 1;
+      if (!alone) break;
+      out.push(host);
+    }
+    return out;
+  };
   /** Every text a button answers to: what it shows, its accessible name, its tooltip, an image's alt. */
   const labels = (el) => {
     const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/)
       .map((id) => idFrom(el, id)?.textContent);
-    const host = hostOf(el);
-    return [shownTextOf(el), ...named, el.getAttribute("aria-label"), el.getAttribute("title"), el.getAttribute("alt"),
-      host?.getAttribute("aria-label"), host?.getAttribute("title")].map(squash).filter(Boolean);
+    const hosts = ownHosts(el, "button").flatMap((host) => [host.getAttribute("aria-label"), host.getAttribute("title")]);
+    return [shownTextOf(el), ...named, el.getAttribute("aria-label"), el.getAttribute("title"), el.getAttribute("alt"), ...hosts]
+      .map(squash).filter(Boolean);
   };
   /** The one label the sort reads: a Submit-worded one if ANY label is, else the shown text. */
   const labelOf = (el) => {
@@ -268,7 +282,7 @@
     .some((el) => !ns.fillBase.isPasswordBox(el) && shown(el) && isCodeInput(el));
 
   // A mark on the component a shadow button sits in counts (its inner button carries none of its own).
-  const submitMarked = (el) => ns.pageKind.submitMarked(el) || (hostOf(el) !== null && ns.pageKind.submitMarked(hostOf(el)));
+  const submitMarked = (el) => ns.pageKind.submitMarked(el) || ownHosts(el, "button").some((host) => ns.pageKind.submitMarked(host));
 
   // A field's own control (see the header): a popup button (the rule `fillableControls` uses), a pill-group member,
   // or a button inside a field holder. Never an action, so never sorted as a Submit or a Next, unless its shown text
@@ -378,13 +392,13 @@
    * states). The page's own STEP HEADING keeps the narrow SUBMIT_HEADING, since "Apply to Acme" and "Complete your profile" head ordinary steps. */
   /** The text of the elements `d` names in aria-describedby (a dialog's message may sit outside it). */
   const describedBy = (d) => (d.getAttribute("aria-describedby") ?? "").split(/\s+/)
-    .map((id) => d.ownerDocument.getElementById(id)?.textContent ?? "").join(" ");
+    .map((id) => idFrom(d, id)?.textContent ?? "").join(" ");
   const DIALOG_TEXT = 2000;   // a long preamble ends in the question: the whole text is read, not its first lines
   const dialogAsks = (d) => {
     const body = squash(`${d.textContent ?? ""} ${describedBy(d)}`.slice(0, DIALOG_TEXT));
     const named = [
       d.getAttribute("aria-label"), d.getAttribute("title"),
-      ...(d.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => d.ownerDocument.getElementById(id)?.textContent),
+      ...(d.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => idFrom(d, id)?.textContent),
       ...deepAll("h1, h2, h3, h4, [role='heading']", d).map((h) => h.textContent),
     ].map(squash);
     // The body: a question gets the full sort ("Ready to send?"); a statement only the narrow
@@ -818,7 +832,8 @@
       }
       if (!empty) continue;
 
-      const flagged = own.some((c) => c.required === true || c.getAttribute("aria-required") === "true")
+      const marked = (c) => c.required === true || c.getAttribute("aria-required") === "true";
+      const flagged = own.some((c) => marked(c) || ownHosts(c, "field").some((host) => host.hasAttribute("required") || marked(host)))
         || closestC(el, '[role="radiogroup"][aria-required="true"], [role="group"][aria-required="true"]') !== null;
       let said = null;
       const before = () => (said ??= labelBefore(own, { scan: file }));
@@ -1111,7 +1126,9 @@
     const el = tagged(id);
     if (!el || !el.matches(BUTTONS)) return { clicked: false, why: "not_dismiss" };
     const dialog = closestC(el, DIALOG);
-    const sends = el.type === "submit" && el.form && (el.getAttribute("formmethod") || el.form.method).toLowerCase() !== "dialog";
+    // A submit button in a shadow root has no form owner, but the form around its component is the one it stands for.
+    const form = el.type === "submit" ? el.form ?? closestC(el, "form") : null;
+    const sends = form && (el.getAttribute("formmethod") || form.method).toLowerCase() !== "dialog";
     if (ns.pageKind.sortButton({ text: labelOf(el), known: knownOf(el) }) === "submit" || submitMarked(el) || submitLink(el)
       || (dialog && dialogAsks(dialog)) || sends || submitContext()) return { clicked: false, why: "submit" };
     const flags = overlayFlags(el);

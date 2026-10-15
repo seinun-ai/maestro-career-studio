@@ -202,3 +202,71 @@ def test_a_page_with_no_shadow_roots_is_detected_as_before(page, load):
                "<input type='email'></form>", SOURCES)
     verdict = page.evaluate(DETECT)
     assert verdict["form"] is True and "ats-dom-marker" in verdict["signals"]
+
+
+# ---------- review fixes: whose words a shadow button may carry, required marks on a host, dismiss ----------
+
+TPL = """<script>
+class XTpl extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const root = this.attachShadow({ mode: "open" });
+    root.innerHTML = this.getAttribute("tpl");
+    for (const b of root.querySelectorAll("button")) b.addEventListener("click", () => { window.__clicks = (window.__clicks || 0) + 1; });
+  }
+}
+customElements.define("x-tpl", XTpl);
+</script>"""
+STEP_IN_A_CARD = ("<label>City <input name=city value=Springfield></label><button type=button>Back</button>"
+                  "<button type=button>Next</button>")
+
+
+def clicks(page):
+    return page.evaluate("() => window.__clicks || 0")
+
+
+@pytest.mark.parametrize("host_attrs", ['title="Complete your profile"', 'aria-label="Submit your application"',
+                                        'id="application-submit-form"', 'data-qa="submit-section"'])
+def test_the_words_and_marks_of_a_container_component_are_not_those_of_the_buttons_inside_it(page, load, host_attrs):
+    """A component that holds a field, Back and Next is a step, not a button: its title or id is about the step. Read as the
+    label of each inner button it turned the middle step of a wizard into a Submit page and the run into a false Ready."""
+    load(page, TPL + f'<main><form><x-tpl {host_attrs} tpl="{STEP_IN_A_CARD}"></x-tpl></form></main>', SOURCES)
+    verdict = classify(page)
+    assert verdict["kind"] == "form_step"
+    s = summary(page)
+    assert s["submitSeen"] is False
+    assert advance(page, button(s, "Next")["id"]) == {"clicked": True} and clicks(page) == 1
+
+
+def test_a_component_that_is_just_a_button_still_speaks_with_its_hosts_words(page, load):
+    load(page, TPL + '<main><form><x-tpl title="Submit your application" tpl="<button type=button><slot></slot></button>">Go</x-tpl>'
+               '</form></main>', SOURCES)
+    s = summary(page)
+    assert s["submitSeen"] is True
+    assert advance(page, s["buttons"][0]["id"]) == {"clicked": False, "why": "submit"} and clicks(page) == 0
+
+
+def test_a_box_the_host_alone_marks_required_is_required(page, load):
+    """Design-system inputs put `required` on the component, not on the native control inside it."""
+    load(page, TPL + '<main><form><x-tpl required aria-required="true" tpl="<label>First name <input name=first></label>"></x-tpl>'
+               '<x-tpl tpl="<label>Last name <input name=last required></label>"></x-tpl>'
+               '<x-tpl tpl="<label>Nickname <input name=nick></label>"></x-tpl><button>Next</button></form></main>', SOURCES)
+    labels = [i["label"] for i in page.evaluate(f"() => {READER}.pageRequired().items")]
+    assert labels == ["First name", "Last name"] and summary(page)["requiredEmpty"] == 2
+
+
+def test_a_dismiss_press_on_a_shadow_submit_button_inside_a_light_form_is_refused(page, load):
+    from tests.browser.test_page_reader import dismiss
+    load(page, TPL + '<form><label>Name <input name=n></label><div role="dialog"><p>Saved.</p>'
+               '<x-tpl tpl="<button type=submit>OK</button>"></x-tpl></div></form>', SOURCES)
+    ok = button(summary(page), "OK")
+    assert dismiss(page, ok["id"]) == {"clicked": False, "why": "submit"} and clicks(page) == 0
+
+
+def test_a_dialogs_description_in_the_same_shadow_root_is_read(page, load):
+    from tests.browser.test_page_reader import dismiss
+    load(page, TPL + '<form><label>Name <input name=n></label><x-tpl tpl="<div role=dialog aria-describedby=d><button>OK</button></div>'
+               '<p id=d>Your application will be submitted.</p>"></x-tpl></form>', SOURCES)
+    s = summary(page)
+    assert s["submitContext"] is True and classify(page)["kind"] == "review"
+    assert dismiss(page, button(summary(page), "OK")["id"]) == {"clicked": False, "why": "submit"}
