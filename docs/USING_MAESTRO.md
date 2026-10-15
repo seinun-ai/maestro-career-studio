@@ -443,11 +443,13 @@ leave the Companion unable to read the page, and the card says **Reload the page
 A question your profile cannot answer gets a safe default from **Balanced** up: No (or Not
 applicable when offered) for membership of a tribe, union or association, a referral, or relatives at the
 company, and No (or "I don't wish to answer") for a spouse's or household member's military service; Yes for willingness to a standard step such as a background check, drug test, references,
-I-9 or providing documents, and for basic means such as transport and internet. Criminal or background
+I-9 or providing documents (a question of being willing to take such a step, even when the model took it for a protected one; a box that gives the consent itself, or asks whether you
+would pass, is yours), and for basic means such as transport and internet. A slow Claude fast model is given more time (3 s) for its second look, and a question the model could not match to
+anything of yours at any confidence reaches this check. A saved "Immediately" start date is offered as today's date in a date box and as "Immediately" in a list. Criminal or background
 history, salary, work authorization, demographic questions and your own military service are never defaulted. Every default is
 listed under **Check before you submit**, and so is a required field that a search or a click filled for you (Field of Study, say),
 which no longer stops the run; the page's own check decides. An optional Skills box stays empty in a run. What you type in the page
-while a run waits on "The page asks for more" or on an upload is remembered like any other answer. The Companion also reads a job posting that has no built-in job data, taking the
+while a run waits on "The page asks for more" or on an upload is remembered like any other answer. A resume that an uploader shows as a chip, or by its name some seconds later, is recognised as attached (the card says "Couldn't confirm the upload" rather than "boxes changed" when the page only swapped its box). The Companion also reads a job posting that has no built-in job data, taking the
 description from the section under a "Job Description" or "About the role" heading, or from a "Description & Requirements" card on a career site that draws its sections as cards.
 On the first page of an application, a page the Companion does not recognise but that has fields is filled like any other (and then waits for you if it has no Next button), instead of stopping at "Page not recognised"; search boxes are never filled. Forms built from web components are read like any other, and a vendor's "fill this from your resume" import box is never written. A DataDome slider is a verification wall, so Apply stops there for you.
 
@@ -465,10 +467,10 @@ still in progress, or one that names no level, is left to you. "Are you located 
 that you would relocate; if the question adds a condition ("on your own"), the answer is listed as assumed. A **Location (City)** box is searched
 as "City, State" when the form also asks for a state, and Apply picks the option for your city in your state; two matches, or no saved state,
 leave it to you. An optional field you have a saved answer for that stayed empty is listed under **Check before you submit** as **Left for
-you**; it never stops the run.
+you**; it never stops the run. An optional field the run left blank is listed there too, as **Left blank — optional**, and goes when a later fill answers it.
 
 Veteran status is one question in **Profile › Autofill**: "Are you a veteran?" (Yes, No, or "I don't
-wish to answer"). A No answers every "I am not a protected veteran" option on a form. A Yes never picks
+wish to answer"). A No answers every "I am not a protected veteran" option on a form, and picks the one such option on a list without asking a model. A Yes never picks
 a protected class for you, so the Companion leaves that list to you, and a Yes never answers "are you currently serving?" either. A No
 also answers "have you ever served?" with the never-served option, and says it was assumed. If your Profile still held the old
 "Not a protected veteran" answer, the question is empty and asks again.

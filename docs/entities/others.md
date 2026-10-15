@@ -301,6 +301,32 @@
   reasoning) is assigned to that provider AND its key was SAVED in the app (a key only in the environment is not a choice); never when a custom server is set
   (`llm.get_base_url()`) or the current model is not a registered named provider's (OpenRouter and the like), where it is the same model again. The same-model retry runs only
   for a transient error (`autofill_map._transient`): a missing or refused key is not retried. Failed twice, the field is left to the user.
+- **Slow fast models, the low-stakes reach, one start date and the veteran pick in code** (live check 9; `services/autofill_map.py`, `autofill_pick.py`, `autofill_step.py`, `autofill_polarity.py`, `autofill_reasoned.py`, `autofill_catalog.py`).
+  **Floors by provider.** The limits on the second opinions (`/map`, `/pick`, `/step`) and the fast polarity call were tuned on a fast model that answers in 1-1.5 s; a Claude one timed out three times in a
+  day and the safe answers were lost. `second_opinion_floor` gives such a call at least `FAST_PROVIDER_FLOORS` seconds by the provider the fast model resolves to (`registry.resolve`): 3 s for Claude
+  (`anthropic`), `MIN_CALL_S` (1 s, the old limits) for every other provider, a custom server (`llm.get_base_url()`) and an OpenRouter id included. `Budget.left(floor=, keep=, late_ok=)` applies it: the
+  floor lifts a call over its cap and its reserve but never past what is left of the 9 s request (`REQUEST_BUDGET_S`) less `keep`, the time a main call that follows still needs (polarity keeps Jev's pick and its
+  fast fallback, `jev.TIMEOUT_S` + `MIN_CALL_S`; `/map`'s second opinion keeps `MIN_CALL_S`; `/pick`'s keeps it only when the reasoning call follows). `late_ok` lets the optional passes after a floor-lifted call
+  still start (the 6 s window, `OPTIONAL_PASS_BUDGET_S`, moves to `REQUEST_BUDGET_S - MIN_CALL_S`), so a late second opinion no longer costs the low-stakes pass. The low-stakes Jev judge takes up to its whole
+  `jev.TIMEOUT_S` (2 s) and is skipped when less of the request is left; the queued years check (`reason_years(keep=)`) is bounded so the keen pick and its fallback keep their time, and with no room left the
+  years fields are the user's. Every fast call on a budget logs the timeout it was given, and a failed second opinion logs it too. **The trace** (`DecisionFields.top_fact`, `autofill_map._under_floor_fact`): a `/map`
+  field routed `none` because the model's top fact fell under its slot's floor names that fact (a fact NAME, `SLOT_NAME` pattern, never a value; a Websites fact keyed by its URL is never named), so "none for 0.55
+  against 0.6" reads as the fact, not as an empty answer; None when the top choice stood, was no fact, or was never given.
+  **The low-stakes reach** (`_said_no_fact(at_any_p=)`, `_doubtful_none`, `_willing_to_step`; `leftovers(low=True)`). A field whose best answer is "no fact" goes to the low-stakes judge at ANY probability, not
+  only at the slot floor, unless a second opinion named a fact (silence and a "no fact" second opinion keep it a candidate). A "no fact" under the floor is a shrug, so it is no candidate when the runner-up in
+  Jev's distribution is a protected or EEO kind at 0.2 (`RUNNER_UP_DOUBT`) or more, or when the question's wording is protected (work authorization, eligibility, sponsorship, visa, citizenship, veteran, disability,
+  gender, race, ethnicity, age, clearance, non-compete) or asks about background history. Jev files a willingness to a pre-employment step under the protected sentinel; code lets one wording through to the
+  judge: a QUESTION (not a first-person box such as "I consent to a background check") with willing / agree / consent / able to undergo, submit to, complete, take or participate in, beside a background check,
+  drug test, reference check, I-9 or E-Verify in one sentence, and none of pass, clear, satisfy, eligibility, authorization, proof, citizenship, sponsorship or visa, and none of the history words (ever, convicted,
+  charged, record, felony, arrest, pending, ...). Background HISTORY in any question is never judged. The never-list and the answer level still decide from there (§7 Screening answers dial).
+  **One start date.** When the stored start text means "now" (`_IMMEDIATE`: immediately, asap, now, right away, typos included) the catalog derives a calendar date from it (`derived.earliest_start_date`) and the
+  text fact itself is re-made as the normalised words "Immediately", whatever was typed. `/map` is offered ONE of the two (`_one_start_date`: the derived date), because two facts for the same box competed. A date
+  or text box (`_WRITTEN_SHAPES`) keeps the date; a choice field (a list, group, popup or search) gets the words (`_start_text_for_choices`, `preferences.earliest_start_date`), which an option can state and a
+  calendar date would match none of.
+  **The veteran pick in code** (`autofill_pick.veteran_option`, `veteran_picks` in `/pick`, the same call in `/step`). A saved No over a veteran list with EXACTLY ONE option that opens with a negation, names a
+  veteran and is neither a decline ("I do not wish to disclose my veteran status": wish, prefer, disclose, ...) nor a claim takes that option by code, before polarity and any model (polarity timed out twice in the
+  live run and the clear option was left). `matched`, or `assumed` when it is the Companion's inference (`veteran_inferred`); never over `veteran_overreach`, a saved Yes, another slot or a list with two such
+  options. `_claims_veteran` now counts a negation that takes itself back ("No, I am a veteran but not a protected veteran") as a claim.
 - **Derived facts, drafted answers and degree levels** (`services/autofill_catalog.py`, `autofill_choose.py`, `qa.py`, `autofill_step.py`, `answer_flags.py`).
   `derived.phone_type` is "Mobile" whenever the profile holds a number: the profile never says what kind of phone it is, so `autofill_pick`
   judges it at the assumed floor and reports `assumed` (`ASSUMED_SLOTS`), `differs_from_profile` ignores it, and a phone-type box never receives

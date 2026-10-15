@@ -448,17 +448,49 @@ asking permission of itself.
   the same tick, so `files` alone reported "No upload box took the file" over a
   page where it worked. The row must be NEW (more on-screen elements naming the
   file than before the write, so an earlier upload of the same name proves
-  nothing), inside that input's own widget (at most three levels up, never an
-  ancestor holding another file input or any other field, never the whole
-  document), with no new error words (a live region's text included) and no new
-  on-screen alert or invalid-marked element with text in the widget, no error
-  words in the row itself, and still there a beat later; the page gets up to 3 s
-  to show it. A row shown mid-upload that fails later still counts, which is why
-  the panel says "Check the upload before you submit." A detached input counts
-  only by that row. A zero on the same boxes is hedged — "Couldn't confirm the
-  upload. Check the upload box, and attach your resume only if it isn't
-  listed." — because a page can take the file without either proof, and a
-  second press there is a second copy. There is no second press.
+  nothing), inside that input's own widget (never an ancestor holding another
+  file input or any other field, never the whole document), with no new error
+  words (a live region's text included) and no new on-screen alert or
+  invalid-marked element with text in the widget, no error words in the row
+  itself, and still there a beat later; the page gets up to 3 s to show it.
+  **The upload proof** (`ns.uploadProof`, `content/detect.js`, a re-run file
+  because `agent.js` has a size cap; `agent.js` reads it where it is used, never
+  at load, so a re-injection of `agent.js` alone still loads): `chain(input)` is
+  the input's upload ancestors, nearest first, up to six levels, stopping below
+  an ancestor that holds another file input or another field, `<body>`, `<html>`
+  or a `<form>`; the widget is the highest of the first three, as before, and
+  `levels` watches it and every level above it (with the rows, errors and
+  progress each showed BEFORE the write). `seen` reads the DEEPEST watched level
+  still in the page: an uploader that replaces its whole button container, input
+  included, with the file's chip (Greenhouse) leaves the group around it, and the
+  chip is the row. All levels gone: no row. The name counts shown whole, as its
+  stem (no extension, six characters or more), or shortened by an ellipsis
+  ("Jane_Doe_Re…esume.pdf"): the head starts the name, the tail ends it, the tail
+  must reach past the extension into the name (at least two characters of it before ".pdf"; a stem's tail,
+  three), head and tail together at least eight characters and shorter than the
+  name, so another file's chip or a bare "….pdf" proves nothing; every such
+  mention is cut out before error words are read, so a file called
+  `error-log.pdf` is not its own failure. A widget that shows PROGRESS (a new
+  `aria-busy` mark, progress bar, or the words uploading, parsing, processing,
+  scanning, analyzing, counted against what it showed before the write, so
+  standing help is not news) gets longer than 3 s, up to 12 s
+  (`ATTACH_PROGRESS_WAIT_MS`): a parser that prints the name when it is done
+  (a parser-style uploader). A latched Stop ends that extra wait. A row shown mid-upload
+  that fails later still counts, which is why the panel says "Check the upload
+  before you submit." A detached input counts only by that row. A zero on the
+  same boxes is hedged — "Couldn't confirm the upload. Check the upload box, and
+  attach your resume only if it isn't listed." — because a page can take the
+  file without either proof, and a second press there is a second copy. There is
+  no second press. **Hedged, or "boxes changed"**: the panel (`panel/actions/
+  fill.js`) says "Couldn't attach your resume. The page's upload boxes changed…"
+  only when the count of boxes now differs from the one believed (the offer's
+  `expect`, or the last detect's when the write named a box, which states none)
+  AND the fall is not explained by the boxes the write reached: every frame
+  reports `written` (`reportWritten`, always set by `sw.js`), and a fall of up
+  to that many boxes (an uploader that swapped its own box for the chip) is the
+  upload taking the file, so it reads "Couldn't confirm". With no count to change
+  from, the page cannot be said to have changed; a page that GREW a box is still
+  a change.
 - **Autofill attaches the resume too** (owner, 2026-09-30), in both fill
   modes (the file is the user's own, not an AI answer), once per run, AFTER
   the fields and inside the run's `busy` span. "Saved answers + AI" attaches
@@ -887,7 +919,8 @@ know, and each one was learned from a live failure.
      ONE fast second opinion at the same floor. Its call is capped at
      2 s and ends by 2 s into the request, so Jev's pick (2 s), the
      pick's second opinion and the reasoning call (a second each) still
-     start before 6 s. On the fast engine, or when the Jev call fails,
+     start before 6 s. A slow fast model gets a floor over that cap
+     (below). On the fast engine, or when the Jev call fails,
      the fast model decides. Still unsure: the field is yours. Which
      engine decided is logged. A confident answer is remembered in the
      backend for 10 minutes (at most 500, by question, description and
@@ -929,7 +962,20 @@ know, and each one was learned from a live failure.
   job (its /pick prompt carries the low-stakes paragraph only when
   the batch holds a low-stakes field, which a second opinion never does).
   It is one call, with no retries, on what is left of the request's one
-  `Budget`, and never longer than 4 s (`SECOND_OPINION_MAX_S`). The fast
+  `Budget`, and never longer than 4 s (`SECOND_OPINION_MAX_S`).
+  **A floor for a slow fast model** (live check 9, where a Claude fast model timed out three times in a day
+  and the safe answers were lost): the second opinions of /map, /pick and /step and the fast polarity call
+  (both of its attempts) get at least `FAST_PROVIDER_FLOORS` seconds, by the provider the fast model resolves
+  to (`second_opinion_floor`): 3 s for `anthropic`, 1 s (`MIN_CALL_S`, the old limits) for every other
+  provider, a custom server and an OpenRouter id included. `Budget.left(floor=, keep=, late_ok=)` lifts a call
+  over its cap and its reserve but never past what is left of the 9 s less `keep`, the time a main call that
+  follows still needs: Jev's pick and its fast fallback (`jev.TIMEOUT_S` + `MIN_CALL_S`) for polarity, 1 s for
+  /map's second opinion, and for /pick's only when its reasoning call follows. `late_ok` lets the passes after
+  a floor-lifted call start although it ran past the 6 s window (until under `MIN_CALL_S` of the request is
+  left). The low-stakes Jev judge takes up to its whole 2 s and is skipped when less of the request is left;
+  the queued years check keeps the keen pick and its fallback their time (`reason_years(keep=)`), and with no
+  room left its fields are the user's. Each fast call on a budget logs the timeout it was given, and a failed
+  second opinion says so with it. The fast
   engine's own map, pick and step (and Jev's failure fallback) are one call
   of what is left of the 9 s too, asked once more after a malformed reply
   or a transient failure only while at least 2 s are left (never for a
@@ -1614,6 +1660,10 @@ footer alone).
   (that is the "Check" row's), gets a row in `record.assumedRows` with `left: true`, shown under **Check before you submit** as "Left for you" (`runs.js` `checkRows`; never the
   value). It never parks the run and never blocks the Next. A later fill of the same page that answers the field (any status in `ANSWERED`) removes the row at that step; a row
   is one per question and step, like the others.
+- **An optional field left blank is listed too** (`keepAssumed`, `panel/actions/run.js`; `checkRows`, `panel/runs.js`). A not-required field the fill left `left_blank` (no fact, no skill to add)
+  gets a row with `blank: true`, shown under **Check before you submit** as "Left blank — optional" (never a value), so nothing the run did not answer is silent. Like "Left for you" it never
+  parks and never blocks Next, is one per question and step, and goes when a later fill of the same page answers the field, or when the reasoning step then writes it (that row's flags
+  `left` and `blank` are removed and it reads as the answer the step wrote).
 - **A skills box that is not required is left empty in a run** (`skipOptionalSkills`, passed by `fillPage` for a full fill, not for a scoped repair; `shared/fill-loop.js`
   `optionalSkills`). A box the map put the resume's skills in (slot `skills`), or a multi-select or search box whose question names skills, that is neither required nor flagged
   invalid, finishes `left_blank` with `lastOutcome: optional_skills` and no explore, pick or step call: a list of tags is a set of searches, one step each, and nothing
@@ -2006,6 +2056,18 @@ footer alone).
   a strict widget that rejects the click and keeps the query looks the same. To make a real commit visible, a **weak box** (`weakBox`: select-style, with no
   selection node, no chip and no backing input to read a pick from) is typed a PREFIX of the option's text, its last character dropped, when the term would be the
   whole text and has at least 3 characters: after the click a real commit shows a change (`Canad` to `Canada`), while a widget that rejected the click keeps the prefix.
+- **A pick the box shows differently from its option is proven by its list** (`fill-core.js` `listHolds`; live check 9). A phone-country select lists "Acmeland +1" and shows a flag and
+  "+1", so no text on the box equals the option and the text check calls a taken pick unread. After the box CHANGED and the text check failed, in a list pick (`choose`), a searched pick's commit and its
+  whole-list re-read, the list is reopened and its marked option read (`option--is-selected`, or `aria-selected="true"`): if that is one of the wanted texts (the option chosen, the value)
+  the pick is `verified` with the option's text. Read only when the box displays something, changed since before, and is not a multi-answer field, a set's item, a kept list, a Workday box
+  (there `aria-selected` is a keyboard highlight) or an undo; and only if reopening and closing the list left the box showing what it showed (a page may take a highlighted row as a pick when
+  the box is left), exactly one option is marked, and the reopen committed nothing. A dialing code is ignored only when the wanted text carries none, so "+1809" and "+1829" stay two
+  countries. Text equality with the saved value stays the first check.
+- **A follow-up's question is the one it follows** (`field-reader.js` `withFollowed`). A label that opens like a follow-up ("If applicable, …", "Please specify …") on a non-choice field is
+  joined to the question before it ("Were you referred by an employee? — If applicable, name the referring employee"): the nearest earlier visible control's question, UNLESS that control
+  is no choice (select, radio, checkbox, combobox or popup) and names none of the follow-up's nouns, when the nearest of the last 8 earlier choice controls of the SAME section that does
+  name one wins. Nouns are words of five letters or more cut to six ("referring", "referred"), less the follow-up's own words and the stems every application shares (employ, company,
+  position, experience, current, application, information), which join nothing.
 - **A read-only select drawn with an invisible input is a field** (the antd opacity rule, `inventory.js` `invisibleButDrawn`). An Ant Design
   read-only select puts its combobox `input` at `opacity: 0` over the words it shows. Only opacity is forgiven: the input must be read-only, popup-shaped,
   still have client rects, not be `visibility: hidden`, and sit in a visible widget box; `display: none`, `visibility: hidden` and an empty box stay hidden.
@@ -2063,14 +2125,16 @@ At the top level a years question is Yes only when the history is silent or show
 middle level it is Yes when the history shows the skill and does not contradict the years. Clearance and agency questions are never
 a keen guess. An answer the level gives is an `inferred` receipt row, so the `guessed_screening` flag lists it under "Check before you submit".
 
-**The safe default** (owner decision, 2026-10-14; `autofill_map._LOW_STAKES_TEMPLATE`, `_KEEN_NO`, `_KEEN_YES`, read by `/map` and `keen()` for `/pick` and
+**The safe default** (owner decision, 2026-10-14; a "no fact" answer at any probability reaches the judge unless a second opinion named a fact or the runner-up was protected or EEO at 0.2 or more:
+`others.md`, "Slow fast models, the low-stakes reach…"; `autofill_map._LOW_STAKES_TEMPLATE`, `_KEEN_NO`, `_KEEN_YES`, read by `/map` and `keen()` for `/pick` and
 `/step`; from `history` up, never at `facts`). When the profile has no fact: a yes/no about a status, affiliation or circumstance that would only add
 something, from a CLOSED list (tribal, union or association membership, an employee referral, a relative or household member at the company), is No (Not
 applicable when offered); a yes/no about willingness, readiness or consent to a standard pre-employment step (background check, drug test, reference check,
 I-9/E-Verify, providing documents) or about basic means (reliable transportation, internet) is Yes, both directions stated outright to the model. Never
 defaulted (the never-list): work authorization, sponsorship, age or eligibility facts, EEO and voluntary self-identification (the safe answer there is
 "decline", never No), background or criminal HISTORY (a record, a conviction, a pending charge; the protected sentinel names only that, so willingness to a
-check is no longer protected), termination or discipline, non-competes and other agreements, debarment, clearance, salary, signatures and attestations, a box
+check is no longer protected; Jev still files some under it, and code lets a QUESTION of willingness (willing, agree, consent, able to undergo or submit to) to a background check, drug test, reference check,
+I-9 or E-Verify reach the judge, never a first-person consent box, a pass, clear, eligibility or proof, or a history word), termination or discipline, non-competes and other agreements, debarment, clearance, salary, signatures and attestations, a box
 that itself authorizes a check or a consumer report, licences and certifications, factual education or experience. A skills section that is not required stays
 empty. Such a box is the user's alone: `CONSENT_FORMS` refuses it without the Agreements permission, and with that standing consent (owner model, 2026-09-26) the consent-forms rule ticks it, never a model.
 
@@ -2221,7 +2285,8 @@ and its effect, and the final status. Failed model calls are noted as `{op, ms}`
 model chose when it filed the field under one of the six fixed words (`free_text`, `none`, `protected_unanswered`, `history_unanswered`,
 `years_unanswered`, `blocked_eeo`; `Sentinel` in `schemas/autofill_fill.py`, `TRACE_SENTINELS` declared in `shared/fill-loop.js` and again in
 `sw.js`, each side filtering to the list): a fixed word, never a value, kept by the reasoned and low-stakes routes too, and printed by
-`scripts/fill_trace.py`. A field notes its
+`scripts/fill_trace.py`. A /map field routed `none` because the model's top fact fell under that fact's floor also carries that fact's NAME (`top_fact`: a slot name such as
+`personal.email`, never a value; the schema's `SLOT_NAME` pattern, up to 120 characters, checked again by `shared/fill-loop.js` `DECISION_CHECKS` and `sw.js` `TRACE_STEP`, an invalid one left out). A field notes its
 polarity once (the first answer: later /pick and /step calls on a Yes/No field answer with the same way, recalled
 from memory; a recalled way carries `remembered` and the counters skip it). A field keeps at
 most 40 steps (the first 20 and the last 20), and any text is cut to 200 characters without

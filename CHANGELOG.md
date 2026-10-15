@@ -229,6 +229,25 @@ view for several is still ahead.
 
 ### Fixed
 
+- **Eighth live check of Apply, on two hosted application forms, with Claude as the fast model.**
+  - **Safe answers are no longer lost to a slow model.** The second look at an answer and the Yes/No direction check gave a Claude fast model about a second, which it often needed more of, so
+    a question that should have taken the safe default was left to you. They now get 3 s for Claude (a second for other models, a custom server and OpenRouter) inside the same time limit
+    for a field, and a question the model answered "nothing of yours" at any confidence reaches the safe-default check, unless a second look named one of your answers. With the fill log
+    on, a field left to you because an answer fell under its confidence limit names which of your answers it was (a name, never a value).
+  - **Willingness to a background check, drug test or reference check** is answered by your rules (Yes under Balanced and up) even when the model took the question for a protected one, as long
+    as it is a question about being willing. A box that gives the consent itself, a question about passing a check, your authorization or a record, stays yours. A referral question
+    you have no answer for is No under the same rules.
+  - **Start date.** When you saved "Immediately" (or ASAP, or a typo of it) the form is offered one start date: a date box gets today's date, and a list or choice gets the plain word "Immediately".
+  - **Veteran status.** With **No** saved, the one option that says "I am not a protected veteran" is picked without a model call, so a slow model can no longer leave it. An option that says "I do not
+    wish to disclose" or claims to be a veteran, even one that begins with "No, …", is never picked this way.
+  - **Correct picks are no longer flagged.** A phone-country list that shows a flag and "+1" for the option you chose is checked by reopening the list, which marks the option it holds, instead of
+    being listed as unconfirmed.
+  - **A resume that did attach is recognised.** One site swaps the whole upload box for the file's chip, and another prints the file name only after it reads the file (up to 12 s, and
+    Stop ends the wait); both now count, including a name shown without its extension or shortened with "…". "The page's upload boxes changed" is said only when the number of boxes
+    changed in a way the upload does not explain; otherwise the card says "Couldn't confirm the upload".
+  - **Optional fields left blank are listed.** Under **Check before you submit**, as **Left blank — optional**, so nothing the run did not answer is silent. They never stop the run, and go when
+    a later fill answers them.
+  - A follow-up such as "If applicable, name the referring employee" is read with the question it belongs to, even when another box sits between them.
 - **Seventh live check of Apply, on a hosted careers platform and a one-click application page built from web components.**
   - **Job descriptions on card-layout career sites.** A role-detail page drawn as sibling cards (a "General Information" card, then "Description &
     Requirements") now reads the description card instead of "No job description found". The page's title comes from its banner when its only `h1` is the logo.

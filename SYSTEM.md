@@ -453,7 +453,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   name no other document counts as the resume's (or a lone box under a resume heading, or the box a page error named, an opaque tag); never over a file
   already there, and never a second write after an `unconfirmed` one. **A parser box is never written** (the site's own import or fill-from-resume; the
   nearest name decides, `uploadBoxOf`), nor one for another document, by any press, the Attach button included. A required box still empty after the fill, a
-  required parser or other-document box, or a choice among several, parks `upload` before `page_advance`; a Resume never attaches.
+  required parser or other-document box, or a choice among several, parks `upload` before `page_advance`; a Resume never attaches. A file's proof follows an uploader that swaps its own box for the file's chip (`ns.uploadProof`).
   Pinned by `tests/test_extension_queue_run.py` and `tests/browser/test_upload_box.py`.
 - **A worked-here No is never wrong.** `{#inv-worked-here-no}` The history answers No to "Have you worked at X?" only when it lists jobs and no employer is among the companies
   the question names (the whole history, any wording); a match is Yes. ASKED instead (`autofill_catalog.named_employer_fact`, read by /pick, /step and /map): a parent,
@@ -465,7 +465,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   (`derived.previously_employed_here#other`, `ASSUMED_SLOTS`). An unsure map on "worked with X" (no employment verb) is the user's. Pinned by `tests/test_autofill_{catalog,map}.py`.
 - **Veteran status is one Yes/No.** `{#inv-veteran-yes-no}` A No settles every "not a (protected) veteran" option and "currently or ever served" (the never-served
   option, reported `assumed`: `veteran_inferred`); a Yes, and any other saved Yes/No fact, never picks or answers a protected class, and a Yes never claims CURRENT
-  service (a question about it alone, or an option that says so, is asked: `veteran_overreach`) (/pick, /step, /map and `content/eeo.js`). Legacy `veteran` reads as
+  service (a question about it alone, or an option that says so, is asked: `veteran_overreach`) (/pick, /step, /map and `content/eeo.js`); a No picks the one "I am not a (protected) veteran" option in code (`veteran_option`). Legacy `veteran` reads as
   yes; legacy `not_veteran` reads as UNANSWERED and the profile lists it under `stale_answers`. Pinned by `tests/test_autofill_pick.py`.
 - **Ready means a real review page with nothing missing.** `{#inv-ready-real-review}` The run reports Ready to submit only when the page is a review whose
   `by` is `submit_button` (a real Submit control inside the application and no real Next), shows no errors and has no required box empty (`requiredEmpty`:
@@ -594,8 +594,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   The loop never fills a robot trap (`fillBase.robotTrap`), leaves an optional field with no fact blank (`left_blank`, listed, not asked), reads pills,
   category rows, slow autocompletes, addresses, URLs and split dates as widgets of their own, commits and confirms each item of a list field (up to 20;
   never a closest pick), repeats no move that changed nothing (a run record's `memory` keeps what failed; `only` limits a call to named fields) and
-  waits for the page to settle before typing (`extension/INTERNALS.md`, "The fill agent's rules"). **Answers decided in code** (`docs/entities/others.md`; `/pick`, `/step`): "How did you hear" takes the board the job came from (`jobs.referrer_board`, stamped from `services/board_visits`, the last board page the Companion looked up, 20 min, name only), else LinkedIn for a generic "Job board", always `assumed`; `derived.education_level` picks the highest threshold a finished degree meets, never "None of the above"; a "what type of sponsorship" list under a saved No takes none / not applicable (OPT counted as sponsorship uses the saved No: owner decision), else the user's.
-  **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`; Settings › AI & models › **Form filling**): `docs/entities/others.md`, "Form-filling engines".
+  waits for the page to settle before typing (`extension/INTERNALS.md`, "The fill agent's rules"). **Answers decided in code** (`docs/entities/others.md`; `/pick`, `/step`): "How did you hear" takes the board the job came from (`jobs.referrer_board`, stamped from `services/board_visits`, the last board page the Companion looked up, 20 min, name only), else LinkedIn for a generic "Job board", always `assumed`; `derived.education_level` picks the highest threshold a finished degree meets, never "None of the above"; a "what type of sponsorship" list under a saved No takes none / not applicable (OPT counted as sponsorship uses the saved No: owner decision), else the user's; a saved No over a veteran list with exactly one "I am not a (protected) veteran" option takes it before polarity (`veteran_option`); `/map` is offered ONE start-date fact (the derived date), and a choice field gets the normalised words "Immediately".
+  **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`; Settings › AI & models › **Form filling**): `docs/entities/others.md`, "Form-filling engines". The second opinions and the fast polarity call get a floor by provider inside the 9 s request budget (Claude 3 s; every other, a custom server and OpenRouter 1 s: `autofill_map.second_opinion_floor`), and the trace names the fact a below-floor `none` fell under (`top_fact`).
 - **Queued run, one job (Apply)** (`shared/queue-run.js` driver, pure with injected deps; host `panel/actions/run.js`; card `panel/runs.js`; `extension/INTERNALS.md`, "Queued
   run"): with full automation On the Job step offers **Apply**: save, score, pick the resume (never overwriting a tailored draft or an open session), queue as the user's yes
   (consent channel `companion`), then drive THIS tab from the job's apply link (`apply_url`, else `source_url`; http(s) only; started on the job's saved posting it opens the
@@ -609,8 +609,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   http(s) link (no click handlers) on the first read of a tab the run opened. CAPTCHA, email code, an account on a site it does not know (on a known ATS it creates the account
   itself, §6 inv-job-site-password-local), a job board's own apply, a review page that is not plainly the end, any other start chooser and an unrecognised page with no field PARK (Needs
   you), as does a required field it could not answer, once per page, a refused Next it cannot repair (inv-rejected-next) and a required upload it cannot fill
-  (inv-one-resume-write); a required field a search or click landed a value on is listed under **Check before you submit** instead (never a protected one), and an optional
-  skills box stays empty. The user answers in the page and presses **Resume**: every typed answer is remembered (Undo; long written ones never; also over a page-errors or
+  (inv-one-resume-write); a required field a search or click landed a value on is listed under **Check before you submit** instead (never a protected one), an optional
+  skills box stays empty, and an optional field left blank is listed as "Left blank — optional". The user answers in the page and presses **Resume**: every typed answer is remembered (Undo; long written ones never; also over a page-errors or
   upload park); one naming the job's company or city is held for that job only (`only_for` + `only_for_kind`, whole word, by `autofill_job.profile_for_job` for both `/context`
   and `/choose`; Settings has Use for every job). The hand fix teaches the recipe book (§6 gesture report). A run parked on a step the user does by hand follows them into the tab they
   open (only the application itself or a page the backend matches to the job: INTERNALS), never drives, and waits for one press, **Continue here**; the Job step's **Move the run to this tab** does
@@ -634,8 +634,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   consent), licences, unsupported education or experience claims, the applicant's own military service. **Safe defaults** (owner; History level up): a status the profile lacks and that only
   adds something (tribal, union or association membership, a referral, a relative or household member at the company, a spouse's or household member's military
   service) is No (Not applicable, or "I don't wish to answer", if offered);
-  willingness or consent to a standard pre-employment step (background check, drug test, references, I-9/E-Verify, documents) and basic means
-  (transport, internet) is Yes. Every dial answer is marked on the receipt, so defaults are listed under **Check before you submit**; written drafts: §6 inv-drafted-answers.
+  willingness or consent to a standard pre-employment step (background check, drug test, references, I-9/E-Verify, documents; also when the model filed it as protected, but only as a question, never a first-person box, a pass/clear/eligibility/proof or a history) and basic means
+  (transport, internet) is Yes; a "no fact" answer at any probability reaches the judge unless a second opinion named a fact. Every dial answer is marked on the receipt, so defaults are listed under **Check before you submit**; written drafts: §6 inv-drafted-answers.
 - **Streaming chat** runs through `llm_providers` on any provider; eligibility is the tools probe.
 
 ## 8. Frontend conventions
@@ -935,11 +935,11 @@ citation. Priority lives in the item text, not in the ordinal.
   set those properties, so `transition-[…transform]` jumps → register a class that takes a variant; name those properties.
 - **Agent sandboxes kill what a tool call starts** (2026-10-10): a server vanished between calls, even with `setsid` → run
   start, checks and stop in ONE call (`scripts/smoke_uv_install.py`), or use `maestro autostart`.
-- **Child-server startup signals have separate meanings** (2026-10-10): reverse DNS can stall listening, while
-  “Started” precedes child output → fixtures bypass DNS, report bound ports, and wait for asserted output before stopping.
+- **Child-server startup signals have separate meanings** (2026-10-10): reverse DNS can stall listening, while “Started” precedes child output → fixtures bypass DNS, report bound ports, and wait for asserted output before stopping.
 - **Updating main under an open Chrome tab breaks the page reader** (2026-10-15): re-injection runs old load-once files with new re-run ones → a re-run file never
   reads a newer load-once export (`tests/test_extension_manifest.py` scan); reload open job tabs after an update (a run parks `page_stale`).
 - **A page of web components read as "nothing to fill"** (2026-10-15): `querySelectorAll`, `closest` and `contains` stop at a shadow root while the fill inventory walks in → every page read goes through `ns.deep` (`tests/browser/test_shadow_dom.py` pins fillable count > 0 exactly when the inventory lists a field).
+- **A slow fast model lost the safe answers** (2026-10-15): limits tuned on a 1.5 s model timed out a Claude one three times a day → floors by provider (`FAST_PROVIDER_FLOORS`), the timeout given is logged and `top_fact` names the fact that fell under its floor.
 
 ## 13. Active migrations & deprecation ledger
 

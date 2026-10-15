@@ -107,7 +107,13 @@ at to your local Maestro CS app.
   Administration), "located in … and/or willing to relocate" is answered Yes when you saved that you would
   relocate (a condition such as "on your own" makes it an assumed answer), and a Location (City) box is searched
   as "City, State" when the form has a state field. An optional field you have an answer for that stayed empty
-  is listed under **Check before you submit** as **Left for you**.
+  is listed under **Check before you submit** as **Left for you**, and an optional
+  field the run left blank as **Left blank — optional**. A saved "No" for veteran
+  status picks the one "I am not a protected veteran" option without a model call,
+  and a saved "Immediately" start date is a date in a date box and the word
+  "Immediately" in a list. A question of willingness to a background check, drug
+  test or reference check is answered by the safe-default rule; a Claude fast model
+  gets 3 s for its second look instead of being left to time out.
 - **Postings without built-in job data are read too.** The Job step reads the
   description from the section under a "Job Description" or "About the role"
   heading, and the title, company and location from a recorded page layout (a
@@ -115,6 +121,12 @@ at to your local Maestro CS app.
   a CAPTCHA, so the run stops there and leaves the application to you.
   A role-detail page drawn as cards is read from its "Description & Requirements"
   card, with its banner as the title when its only top heading is the logo.
+- **Uploads that change the page.** An upload box that is replaced by the file's
+  chip, or that prints the file's name only after it reads the file
+  (up to 12 s; Stop ends the wait), counts as attached, also when the
+  name is shown without its extension or shortened with "…". A phone-country list
+  that shows a flag and "+1" is checked by reopening it for the option it marks.
+  A follow-up ("If applicable, …") is read with the question it belongs to.
 - **Forms of web components and unfamiliar pages.** Fields inside the open shadow
   parts of a page built from web components are read and filled like any others,
   so Autofill is offered there. On the first page of an Apply run, a page the

@@ -22,6 +22,7 @@ Tests per the diagnosis.
 - **AF4 follow-up label:** a follow-up ("If applicable, … referring employee") joins the earlier question sharing its key noun, not simply the nearest control.
 Tests per the diagnosis with Acme fixtures.
 
-## Batch AG — docs and gate.
+## Batch AG — docs and gate
+`docs/entities/others.md` (floors by provider, `Budget` keep/late_ok, the Jev-judge and years-check bounds, `top_fact`, the low-stakes reach, one start date, the veteran pick in code), SYSTEM.md §7/§6/§12 (condensed to stay at 997 lines), `extension/INTERNALS.md` (second-opinion floors, `ns.uploadProof` and the hedged-or-changed rule, the list-proof of a searched pick, the follow-up label rule, "Left blank — optional" rows, the `top_fact` whitelist), CHANGELOG (one "Eighth live check" entry), USING_MAESTRO, the extension README. Gate as before. Review fixes that landed after the first build: AE (815132b7: narrow willingness reading, doubt guard on a below-floor none, decline options never a veteran pick, Claude floor by provider; 86190d35: Jev judge skipped under 2 s, years check bounded) and AF (19a086db, e7d008c4, 287d576b).
 
 ## Order: AE and AF in parallel.
