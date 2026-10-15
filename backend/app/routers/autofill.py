@@ -16,11 +16,12 @@ from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import delete, exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.companion_origin import is_companion
 from app.db import get_db
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
@@ -40,6 +41,7 @@ from app.schemas.autofill_fill import (
     StepResponse,
 )
 from app.schemas.autofill_gaps import GapBatch
+from app.schemas.autofill_reason import ReasonRequest, ReasonResponse
 from app.schemas.autofill_telemetry import TelemetryBatch, TelemetryObservation
 from app.schemas.autofill_trace import RunTrace
 from app.services import (
@@ -50,6 +52,7 @@ from app.services import (
     autofill_map,
     autofill_pick,
     autofill_profile,
+    autofill_reason,
     autofill_sections,
     autofill_step,
     autofill_telemetry,
@@ -492,3 +495,14 @@ def post_sections(payload: SectionsRequest, db: Annotated[Session, Depends(get_d
     the model or the response."""
     facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
     return SectionsResponse(sections=autofill_sections.plan(payload.sections, facts, db))
+
+
+@router.post("/reason", response_model=ReasonResponse)
+def post_reason(payload: ReasonRequest, request: Request, db: Annotated[Session, Depends(get_db)]) -> ReasonResponse:
+    """The reasoning step: a value-free snapshot of a page the queued run would park on, and at most three checked
+    actions back (design 2026-10-14). The Companion's own origin only: it spends the Reasoning model's money, and
+    nothing else drives a run. The answer level and the facts are read here, never taken from the request."""
+    if not is_companion(request):
+        raise HTTPException(status_code=403, detail="Only the Companion can ask the reasoning step.")
+    facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
+    return autofill_reason.reason(payload, facts, model_settings.get_answer_level(db), db)
