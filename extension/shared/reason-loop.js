@@ -343,10 +343,15 @@
         // A live line never stops the step.
       }
     };
+    // An exit before any model call still leaves a round, so the fill log says why a stuck page was not thought about.
+    const noModel = (stopped) => out.rounds.push({ round: 1, why: ctx.why, model: null, ms: 0, note: "", actions: [], rejected: [], stopped });
     const first = await attempt(() => ops.read(ctx.why));
-    if (!first) return out;
+    if (!first) {
+      noModel("no_read");
+      return out;
+    }
     if (walled(ctx, first)) {
-      out.rounds.push({ round: 1, why: ctx.why, model: null, ms: 0, note: "", actions: [], rejected: [], stopped: "wall" });
+      noModel("wall");
       return out;
     }
     const state = { cur: first, dirty: false, walled: false };
@@ -474,13 +479,13 @@
   const newRunId = () => `reason-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
   /** The run trace of one step (the fill log's `RunTrace` with `fields: []` and the `reasoning` rounds), or null when no
-   * round asked the model or `host` is not a hostname: a wall or the page clock alone is not worth a row. The service worker's
-   * whitelist and the backend's schema bound it again; a value has no key to ride on. */
+   * round asked the model nor left a reason without one (a page it could not read, a wall) or `host` is not a hostname: the
+   * page clock alone is not worth a row. The service worker's whitelist and the backend's schema bound it again; a value has no key to ride on. */
   function traceOf(rounds, meta = {}) {
     try {
       const host = String(meta.host ?? "").toLowerCase();
       const kept = (Array.isArray(rounds) ? rounds : []).slice(0, LIMITS.rounds);
-      if (!HOST.test(host) || !kept.some((r) => r?.model)) return null;
+      if (!HOST.test(host) || !kept.some((r) => r?.model || r?.stopped === "no_read" || r?.stopped === "wall")) return null;
       return {
         run_id: meta.runId ?? newRunId(), host, started_at: meta.startedAt.toISOString(), ended_at: meta.endedAt.toISOString(),
         rounds: 0, fields: [],

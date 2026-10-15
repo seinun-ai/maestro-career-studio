@@ -56,7 +56,7 @@ ReasonType = Literal["fill", "answer_from", "write", "choose", "retry", "redo", 
                      "follow_tab", "ask_user"]
 ReasonOutcome = Literal["progress", "no_effect", "moved", "refused", "rejected", "asked"]
 ReasonStop = Literal["moved", "resolved", "same_page", "asked", "no_reply", "rounds", "clock", "stopped", "followed",
-                     "wall", "page_gone"]
+                     "wall", "page_gone", "no_read"]
 
 
 class TraceStep(DecisionFields):

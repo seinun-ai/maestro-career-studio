@@ -322,7 +322,7 @@ const TRACE_REASON_REJECTS = new Set(["bad_reply", "model_error", "not_allowed",
   "careful_level", "not_free_text", "not_a_choice", "optional_essay", "not_run_filled", "users_field", "not_empty",
   "multi_value", "next_not_last", "switched_off"]);
 const TRACE_REASON_STOPS = new Set(["moved", "resolved", "same_page", "asked", "no_reply", "rounds", "clock", "stopped",
-  "followed", "wall", "page_gone"]);
+  "followed", "wall", "page_gone", "no_read"]);
 const TRACE_SNAP_ROLES = new Set(["next", "dialog"]);
 
 // A coercer answers the value to post, or undefined to drop the key.

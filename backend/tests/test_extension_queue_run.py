@@ -2481,8 +2481,30 @@ def test_a_press_that_moved_the_page_past_a_standing_error_line_is_a_step(tmp_pa
 
 def test_a_new_error_on_the_same_step_is_a_rejection_even_when_the_page_changed(tmp_path):
     waits = [{"moves": False, "result": {"changed": True, "url": "x", "errors": 1, "sameStep": True, "fresh": True}}] * 2
-    out = _drive(tmp_path, [step(1, errorItems=[CITY])], waits=waits, banner={0: True})
+    out = _drive(tmp_path, [step(1, url="/same", errorItems=[CITY])], waits=waits, banner={0: True})
     assert (out["record"]["step"], out["record"]["why"]) == (0, "page_errors")
+
+
+# ---------- a press the page seems to refuse, and the repair that finds the site on its next page ----------
+
+def test_a_repair_that_leaves_the_site_on_another_page_counts_as_a_step_and_fills_it_instead_of_parking(tmp_path):
+    """Live 2026-10-15: the 'refusal' was the next step's own upload line. The repair could not fix it and the run parked."""
+    box = {"label": "Drop files here", "target": "t-up", "kind": "upload"}
+    first = step(1, url="/apply", key="k", rejects=1, errorItems=[box])
+    second = step(2, url="/apply", key="k", fillable=7)
+    out = _drive(tmp_path, [first, second, REVIEW], fixMoves=True, fix={"fixed": False, "remaining": [box]})
+    r = out["record"]
+    assert (r["status"], r["step"]) == ("ready", 2)
+    order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance", "fix")]
+    assert order == ["fill", "advance", "fix", "fill", "advance", "fill"], order
+
+
+def test_a_repair_that_leaves_the_same_page_still_parks_naming_what_is_left(tmp_path):
+    box = {"label": "Drop files here", "target": "t-up", "kind": "upload"}
+    out = _drive(tmp_path, [step(1, url="/apply", key="k", rejects=9, errorItems=[box])], fix={"fixed": False, "remaining": [box]})
+    r = out["record"]
+    assert (r["status"], r["why"], r["step"]) == ("parked", "page_errors", 0)
+    assert [o["question"] for o in r["open"]] == ["Drop files here"]
 
 
 # ---------- a Resume after the user fixed what a park named: nothing is filled again ----------

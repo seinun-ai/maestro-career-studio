@@ -508,8 +508,10 @@
     if (uploads.length > 1) remaining.push(...uploads);
     else {
       for (const one of uploads) {
-        // A banner left up over a box the user filled by hand is a stale line: that box is repaired.
-        if ((await uploadBoxes(store.run, record)).some((box) => box.target === one.target && box.occupied)) continue;
+        // A banner left up over a box the user filled by hand, or over one the page no longer has (it moved on under the
+        // line), is a stale line: that box is repaired, and the driver reads the page again.
+        const box = (await uploadBoxes(store.run, record)).find((one_) => one_.target === one.target);
+        if (!box || box.occupied) continue;
         if (record.stopRequested === true || !(await attachBox(store, record, one.target)).attached) remaining.push(one);
       }
     }

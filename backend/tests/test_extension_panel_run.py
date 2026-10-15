@@ -1769,7 +1769,8 @@ def test_a_write_the_page_may_have_taken_but_did_not_show_is_unconfirmed_not_lef
 
 def test_an_error_that_names_an_upload_box_is_repaired_by_attaching_to_it(tmp_path):
     rejected = {**STEP1_REJECTED}
-    frames = {"page_errors": [{"frameId": 0, "result": UPLOAD_ERROR}], "page_uploads": [{"frameId": 0, "result": []}]}
+    here = {**BOX, "required": False}
+    frames = {"page_errors": [{"frameId": 0, "result": UPLOAD_ERROR}], "page_uploads": [{"frameId": 0, "result": [here]}]}
     out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, rejected, REVIEW), frames=frames,
                replies={"attach_pdf": ATTACHED_ONE},
                reports=[{"fields": [verified("f1")]}, {"fields": [verified("f1")]}])
@@ -1780,8 +1781,20 @@ def test_an_error_that_names_an_upload_box_is_repaired_by_attaching_to_it(tmp_pa
     assert [call["options"].get("only") for call in out["fills"]] == [None, None]
 
 
-def test_an_upload_error_the_attach_cannot_repair_parks_page_errors(tmp_path):
+def test_an_upload_error_whose_box_is_gone_is_stale_and_nothing_is_attached(tmp_path):
+    """The page moved on under the banner: its line names a box that no longer exists."""
     frames = {"page_errors": [{"frameId": 0, "result": UPLOAD_ERROR}], "page_uploads": [{"frameId": 0, "result": []}]}
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, STEP1_REJECTED, REVIEW), frames=frames,
+               replies={"attach_pdf": ATTACHED_NONE},
+               reports=[{"fields": [verified("f1")]}, {"fields": [verified("f1")]}])
+    record = _record(out["shots"][1])
+    assert (record["status"], record["step"]) == ("ready", 1)
+    assert _attach_asks(out) == []
+
+
+def test_an_upload_error_the_attach_cannot_repair_parks_page_errors(tmp_path):
+    here = {**BOX, "required": False}   # on the page, empty, and not one the first fill's gate stops at
+    frames = {"page_errors": [{"frameId": 0, "result": UPLOAD_ERROR}], "page_uploads": [{"frameId": 0, "result": [here]}]}
     out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, STEP1_REJECTED, REVIEW), frames=frames,
                replies={"attach_pdf": ATTACHED_NONE})
     record = _record(out["shots"][1])

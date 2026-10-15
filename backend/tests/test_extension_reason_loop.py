@@ -24,7 +24,7 @@ const ops = {
   now: () => clock,
   cancelled: () => spec.stopAt != null && asks.length >= spec.stopAt,
   onLine: (text) => lines.push(text),
-  read: async () => JSON.parse(JSON.stringify(page)),
+  read: async () => (spec.noRead ? null : JSON.parse(JSON.stringify(page))),
   ask: async (body) => {
     asks.push(body);
     clock += spec.askMs ?? 1000;
@@ -407,11 +407,28 @@ def test_a_round_records_the_fact_name_an_answer_from_chose_and_never_a_value(tm
     assert round_["actions"][0] == {"type": "answer_from", "target": "f1", "outcome": "no_effect", "slot": "preferences.how_heard"}
 
 
-def test_a_step_that_never_asked_or_has_no_usable_host_posts_no_trace(tmp_path):
-    walled = [{"round": 1, "why": "page_errors", "model": None, "ms": 0, "note": "", "actions": [], "rejected": [], "stopped": "wall"}]
-    assert trace_of(tmp_path, walled) is None and trace_of(tmp_path, []) is None
+def test_a_step_with_no_rounds_or_no_usable_host_posts_no_trace(tmp_path):
+    clock = [{"round": 1, "why": "page_errors", "model": None, "ms": 0, "note": "", "actions": [], "rejected": [], "stopped": "clock"}]
+    assert trace_of(tmp_path, clock) is None and trace_of(tmp_path, []) is None
     asked = think(tmp_path, replies=[act(type="fill", fids=["f1"])])["out"]["rounds"]
     assert trace_of(tmp_path, asked, host="not a host") is None and trace_of(tmp_path, asked, host="") is None
+
+
+def test_a_step_that_could_not_read_the_page_leaves_a_round_that_says_so(tmp_path):
+    out = think(tmp_path, noRead=True, replies=[act(type="fill", fids=["f1"])])
+    assert out["asks"] == [] and out["done"] == []
+    [round_] = out["out"]["rounds"]
+    assert (round_["stopped"], round_["model"], round_["why"]) == ("no_read", None, "open_questions")
+
+
+def test_an_exit_with_no_model_call_still_posts_a_trace_row_the_backend_accepts(tmp_path):
+    from app.schemas.autofill_trace import RunTrace
+    unread = think(tmp_path, noRead=True)["out"]["rounds"]
+    walled = think(tmp_path, page=with_buttons(button("n", "Next"), captchaVisible=True))["out"]["rounds"]
+    for rounds, stop in ((unread, "no_read"), (walled, "wall")):
+        trace = trace_of(tmp_path, rounds)
+        run = RunTrace.model_validate(trace)
+        assert run.fields == [] and [r.stopped for r in run.reasoning] == [stop] and run.reasoning[0].model is None
 
 
 def _globex(**over):

@@ -461,12 +461,26 @@
       return await park(why, { ...extra, ...said });
     };
 
+    // The site may be on its NEXT page already (a press that read as refused only because the new step drew its own error
+    // line or upload box): before a repair parks, the page is read again, and one that is not the page this run filled counts
+    // as a step. The loop then fills it.
+    const movedOn = async () => {
+      if (!pageFilled || !filledPage || record.step + 1 >= LIMITS.stepMax) return false;
+      const { frame, url } = await readPage(false);
+      if (!frame) return false;
+      const [where, key] = fingerprint(url, frame.result.summary).split("\n");
+      if (samePage(filledPage, { where, key, shape: shapeOf(frame.result.summary) })) return false;
+      await update({ step: record.step + 1, seen: [...record.seen, filledPage.here ?? `${filledPage.where}\n${filledPage.key}`] });
+      moved();
+      return true;
+    };
     // One repair round for the errors a page names: null to press again, else the park that ends the run. The
     // same error back after a repair, one that cannot be repaired, or too many rounds, parks naming them.
     const repair = async (items) => {
       const open = errorsOpen(items);
       const key = (it) => String(it.label ?? "").toLowerCase();
       const parkErrors = async (named) => {
+        if (await movedOn()) return null;
         const stop = await parkOr("page_errors", { open: named });
         return stop === AGAIN ? null : stop;
       };
