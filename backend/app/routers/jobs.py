@@ -7,11 +7,12 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.companion_origin import is_companion
 from app.db import begin_write, get_db
 from app.models.application import Application
 from app.models.job import Job
@@ -495,7 +496,7 @@ def export_jobs(
 
 
 @router.get("/match", response_model=JobMatchResult)
-def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
+def match_job_by_url(url: str, request: Request, db: Annotated[Session, Depends(get_db)]):
     """The tracked job the browser extension is currently looking at, if any.
 
     Registered before /{job_id} so the literal path wins over UUID parsing —
@@ -511,7 +512,8 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
     postings (see _find_existing), so the same source_url can legitimately
     belong to several rows.
     """
-    board_visits.seen(url)
+    if is_companion(request):   # the user's own browsing, not an agent's lookup
+        board_visits.seen(url)
     # Projected scan: the loop reads source_url only, and this fires on every
     # SPA route change. Selecting whole Job rows would hydrate raw_text (the
     # full JD) and extracted_json (JSONB) for every candidate, making the

@@ -143,14 +143,14 @@ HOW_HEARD_SLOT = "preferences.how_heard"
 # A saved source the BOARD-first goal fits: a job board, or a board by name. A website / careers-page answer takes
 # the careers-site leaf first and names no board. Any other ("Referral", "Internet search", "Online") is walked to
 # its own leaf by the ordinary goal.
-_BOARD_ANSWER = re.compile(r"\bboards?\b|\bjob\s+sites?\b", re.IGNORECASE)
+# "Board member" is no board answer: the word must follow job / career, or be a known board named as whole tokens.
+_BOARD_ANSWER = re.compile(r"\b(?:jobs?|employment)\s+(?:boards?|sites?|portals?)\b|\bcareers?\s+boards?\b", re.IGNORECASE)
 _SITE_ANSWER = re.compile(r"\bweb\s*sites?\b|\bcareers?\s+(?:site|page)s?\b|\bcompany\s+site\b", re.IGNORECASE)
 
 
 def how_heard_kind(value: str) -> str | None:
     """"board", "site" or None: which tree goal a saved "how did you hear" answer takes."""
-    folded = value.casefold()
-    if _BOARD_ANSWER.search(value) or any(name.casefold() in folded for name in BOARD_NAMES):
+    if _BOARD_ANSWER.search(value) or any(_names_board(value, name) for name in BOARD_NAMES):
         return "board"
     return "site" if _SITE_ANSWER.search(value) else None
 

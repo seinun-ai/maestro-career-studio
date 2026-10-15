@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 
+from app.config import settings
 from app.models.job import Job
 from app.routers import autofill as autofill_router
 from app.routers import jobs
@@ -12,6 +13,7 @@ from app.services import autofill_job, autofill_step, board_visits
 
 BOARD_PAGE = "https://builtin.com/job/data-engineer/1"
 ATS_PAGE = "https://acme.wd1.myworkdayjobs.com/en-US/careers/job/Remote/Data-Engineer_R-1"
+COMPANION = {"Origin": f"chrome-extension://{settings.maestro_cs_extension_ids[0]}"}
 BODY = {"raw_text": "Title: Data Engineer\nCompany: Acme", "source_url": ATS_PAGE}
 
 
@@ -30,20 +32,20 @@ def _saved(db_session, job_id):
 
 
 def test_a_job_saved_on_the_employers_page_after_a_board_page_remembers_the_board(client, db_session):
-    assert client.get("/api/jobs/match", params={"url": BOARD_PAGE}).json()["match"] == "none"
-    assert client.get("/api/jobs/match", params={"url": ATS_PAGE}).json()["match"] == "none"
+    assert client.get("/api/jobs/match", params={"url": BOARD_PAGE}, headers=COMPANION).json()["match"] == "none"
+    assert client.get("/api/jobs/match", params={"url": ATS_PAGE}, headers=COMPANION).json()["match"] == "none"
     job = client.post("/api/jobs", json=BODY).json()
     assert _saved(db_session, job["id"]).referrer_board == "Built In"
 
 
 def test_with_no_board_page_seen_the_job_has_no_referrer_board(client, db_session):
-    client.get("/api/jobs/match", params={"url": ATS_PAGE})
+    client.get("/api/jobs/match", params={"url": ATS_PAGE}, headers=COMPANION)
     job = client.post("/api/jobs", json=BODY).json()
     assert _saved(db_session, job["id"]).referrer_board is None
 
 
 def test_a_job_saved_from_a_board_page_has_the_board_in_its_url_not_a_referrer(client, db_session):
-    client.get("/api/jobs/match", params={"url": "https://www.indeed.com/viewjob?jk=1"})
+    client.get("/api/jobs/match", params={"url": "https://www.indeed.com/viewjob?jk=1"}, headers=COMPANION)
     job = client.post("/api/jobs", json={**BODY, "source_url": BOARD_PAGE}).json()
     assert _saved(db_session, job["id"]).referrer_board is None
 
@@ -51,30 +53,30 @@ def test_a_job_saved_from_a_board_page_has_the_board_in_its_url_not_a_referrer(c
 def test_a_board_page_seen_long_ago_is_forgotten(client, db_session, monkeypatch):
     now = [1000.0]
     monkeypatch.setattr(board_visits.time, "monotonic", lambda: now[0])
-    client.get("/api/jobs/match", params={"url": BOARD_PAGE})
+    client.get("/api/jobs/match", params={"url": BOARD_PAGE}, headers=COMPANION)
     now[0] += board_visits.TTL_S + 1
     job = client.post("/api/jobs", json=BODY).json()
     assert _saved(db_session, job["id"]).referrer_board is None
 
 
 def test_the_latest_board_page_wins(client, db_session):
-    client.get("/api/jobs/match", params={"url": BOARD_PAGE})
-    client.get("/api/jobs/match", params={"url": "https://uk.linkedin.com/jobs/view/9"})
+    client.get("/api/jobs/match", params={"url": BOARD_PAGE}, headers=COMPANION)
+    client.get("/api/jobs/match", params={"url": "https://uk.linkedin.com/jobs/view/9"}, headers=COMPANION)
     job = client.post("/api/jobs", json=BODY).json()
     assert _saved(db_session, job["id"]).referrer_board == "LinkedIn"
 
 
 def test_a_job_saved_again_keeps_the_board_it_had(client, db_session):
-    client.get("/api/jobs/match", params={"url": BOARD_PAGE})
+    client.get("/api/jobs/match", params={"url": BOARD_PAGE}, headers=COMPANION)
     first = client.post("/api/jobs", json=BODY).json()
-    client.get("/api/jobs/match", params={"url": "https://www.indeed.com/viewjob?jk=1"})
+    client.get("/api/jobs/match", params={"url": "https://www.indeed.com/viewjob?jk=1"}, headers=COMPANION)
     again = client.post("/api/jobs", json=BODY).json()
     assert again["id"] == first["id"] and _saved(db_session, first["id"]).referrer_board == "Built In"
 
 
 def test_a_blank_or_unparseable_match_url_records_nothing(client):
-    client.get("/api/jobs/match", params={"url": ""})
-    client.get("/api/jobs/match", params={"url": "not a url"})
+    client.get("/api/jobs/match", params={"url": ""}, headers=COMPANION)
+    client.get("/api/jobs/match", params={"url": "not a url"}, headers=COMPANION)
     assert board_visits.recent() is None
 
 
@@ -88,14 +90,14 @@ def _hint(db_session, job, source_hint=None):
 
 
 def test_the_referrer_board_feeds_the_how_heard_board(client, db_session):
-    client.get("/api/jobs/match", params={"url": BOARD_PAGE})
+    client.get("/api/jobs/match", params={"url": BOARD_PAGE}, headers=COMPANION)
     job = _saved(db_session, client.post("/api/jobs", json=BODY).json()["id"])
     hint = _hint(db_session, job)
     assert autofill_step.board_of("Job board", hint) == "Built In"
 
 
 def test_the_pages_own_source_and_a_board_in_the_url_come_before_the_referrer(client, db_session):
-    client.get("/api/jobs/match", params={"url": BOARD_PAGE})
+    client.get("/api/jobs/match", params={"url": BOARD_PAGE}, headers=COMPANION)
     job = _saved(db_session, client.post("/api/jobs", json=BODY).json()["id"])
     assert autofill_step.board_of("Job board", _hint(db_session, job, "rec_linkedin")) == "LinkedIn"
     job.source_url = "https://www.indeed.com/viewjob?jk=1"
@@ -106,5 +108,14 @@ def test_the_pages_own_source_and_a_board_in_the_url_come_before_the_referrer(cl
 def test_the_board_names_the_registry_knows_are_what_gets_stored(client):
     for url, name in [(BOARD_PAGE, "Built In"), ("https://www.glassdoor.com/job/1", "Glassdoor")]:
         board_visits.forget()
-        client.get("/api/jobs/match", params={"url": url})
+        client.get("/api/jobs/match", params={"url": url}, headers=COMPANION)
         assert board_visits.recent() == name and name in autofill_job.BOARD_NAMES
+
+
+def test_a_match_call_that_is_not_the_companions_records_no_board(client, db_session):
+    """An agent's find_job_by_url (MCP) or another site's request is not the user's browsing."""
+    client.get("/api/jobs/match", params={"url": BOARD_PAGE})
+    client.get("/api/jobs/match", params={"url": BOARD_PAGE}, headers={"Origin": "https://evil.test"})
+    assert board_visits.recent() is None
+    job = client.post("/api/jobs", json=BODY).json()
+    assert _saved(db_session, job["id"]).referrer_board is None

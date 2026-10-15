@@ -1581,3 +1581,29 @@ def test_a_dealer_contractor_or_directly_employed_step_reports_the_no_assumed(db
     got = autofill_step.step(r, _acme_job_facts(), db_session, None)
     assert (got.mid, got.reason) == ("click:o1", "assumed")
 
+
+
+# ---------- review: a saved answer is a board only as whole words, and a board is never assumed for any other answer
+
+@pytest.mark.parametrize("saved", ["Prejudice", "Board member", "Boardroom", "Dicey friend", "Referral", "Career fair",
+                                   "Company website", "Recruiter"])
+def test_a_saved_answer_that_only_contains_a_board_word_is_no_board_answer(saved):
+    assert autofill_step.how_heard_kind(saved) != "board"
+
+
+@pytest.mark.parametrize("saved", ["Job board", "Job boards", "Online job boards", "Career board", "Job site", "Indeed",
+                                   "linkedin", "Built In", "Monster.com"])
+def test_a_job_board_or_a_named_board_is_a_board_answer(saved):
+    assert autofill_step.how_heard_kind(saved) == "board"
+
+
+@pytest.mark.parametrize("saved", ["Referral", "Career fair", "Company website", "Board member", "Prejudice"])
+def test_code_never_assumes_linkedin_for_another_saved_answer(db_session, monkeypatch, saved):
+    facts = autofill_catalog.build({"preferences": {"how_heard": saved}}, [], [])
+    monkeypatch.setattr(autofill_step, "_move", lambda *a, **kw: autofill_step.ABSTAIN)
+    monkeypatch.setattr(autofill_step, "_with_term", lambda r, a, s, b, moved: moved)
+    leaves = [{"mid": "click:o9", "describe": 'Click the option "LinkedIn"'},
+              {"mid": "click:o8", "describe": 'Click the option "Indeed"'},
+              {"mid": "search:term", "describe": "Type a search term"}, {"mid": GIVE_UP, "describe": "Stop"}]
+    got = autofill_step.step(heard(candidates=leaves), facts, db_session, None)
+    assert got.mid is None
