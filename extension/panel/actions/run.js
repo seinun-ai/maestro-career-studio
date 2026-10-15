@@ -359,16 +359,25 @@
 
   /** The run's answered-for-you rows, kept across pages (Ready lists them whatever page it lands on): a
    * drafted answer or a date set to the 1st, by its question and fixed note, never its value. One row per
-   * question and step. A `left` row is an optional field the saved answer did not fill (`queueRun.leftForYou`). */
+   * question and step. A `left` row is an optional field the saved answer did not fill (`queueRun.leftForYou`); a `blank` row, an optional
+   * field the run left blank. */
   function keepAssumed(record, report) {
     const step = record.step ?? 0;
     // A "Left for you" row goes once a later fill of the same page answers (or the user answered) that field.
     const answered = new Set(report.fields.filter((row) => ANSWERED.has(row.status)).map((row) => row.question));
-    const rows = (record.assumedRows ?? []).filter((one) => !(one.left === true && one.step === step && answered.has(one.question)));
+    const rows = (record.assumedRows ?? []).filter((one) => !((one.left === true || one.blank === true) && one.step === step
+      && answered.has(one.question)));
     for (const row of report.fields) {
       // An optional field with a saved answer that ended unanswered is the user's to look at, never a park: "Left for you".
       if (ns.queueRun.leftForYou(row) && row.question && !rows.some((one) => one.question === row.question && one.step === step)) {
         rows.push({ fid: row.fid, question: row.question, step, note: null, left: true });
+        continue;
+      }
+      // An optional field the run chose to leave blank (no fact, no skill to add) is listed too, so nothing it did not answer
+      // is silent. Never a park, never a value.
+      if (row.status === "left_blank" && row.required !== true && row.question
+          && !rows.some((one) => one.question === row.question && one.step === step)) {
+        rows.push({ fid: row.fid, question: row.question, step, note: null, blank: true });
         continue;
       }
       // A value the engine landed without choosing it (a search's one hit) is the user's to check: a fixed

@@ -1087,6 +1087,42 @@ def test_a_left_for_you_row_goes_when_a_later_fill_of_the_same_page_answers_the_
     assert [one for one in _record(out["shots"][-1]).get("assumedRows", []) if one.get("left")] == []
 
 
+def _blank(fid, question, **extra):
+    return {"fid": fid, "question": question, "required": False, "status": "left_blank", "lastOutcome": "no_fact", **extra}
+
+
+def test_an_optional_field_left_blank_is_listed_as_left_blank_and_the_run_goes_on(tmp_path):
+    """Live check 9: ten fields went through the fill and the optional ones left blank for their own reasons never appeared
+    on the Ready card. Each is listed, "Left blank — optional" (never a park, never a value), beside the other rows."""
+    out = _three_pages(tmp_path, [verified("f1"), _blank("f2", "Referral name"), _blank("f3", "Pronouns")])
+    shot = out["shots"][-1]
+    assert _record(shot)["status"] == "ready"
+    assert _record(shot)["assumedRows"] == [
+        {"fid": "f2", "question": "Referral name", "step": 1, "note": None, "blank": True},
+        {"fid": "f3", "question": "Pronouns", "step": 1, "note": None, "blank": True}]
+    [flagged] = _by_class(_card(shot)["body"], "flags")
+    assert "Referral name" in _text(flagged) and "Pronouns" in _text(flagged)
+    assert _text(flagged).count("Left blank \u2014 optional") == 2
+
+
+def test_a_required_or_answered_field_is_never_a_left_blank_row(tmp_path):
+    out = _three_pages(tmp_path, [verified("f1"), _blank("f2", "Pronouns", required=True),
+                                  {**verified("f3", "Website"), "required": False}])
+    rows = _record(out["shots"][-1]).get("assumedRows", [])
+    assert [one for one in rows if one.get("blank")] == []
+    assert "Left blank" not in _body_text(out["shots"][-1])
+
+
+def test_a_left_blank_row_goes_when_a_later_fill_of_the_same_page_answers_the_field(tmp_path):
+    left = needs("q3", "Veteran Status", required=False, slot="eeo.veteran_status", lastOutcome="abstained")
+    blank = _blank("q3", "Veteran Status")
+    answered = {**verified("q3", "Veteran Status"), "required": False}
+    out = _run(tmp_path, [{"start": SEED}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [*QUESTIONS, left, blank]}, {"fields": [verified("q1"), verified("q2"), answered]}, {"fields": [verified("f1")]}],
+               inventory=TYPED, profileStore=json.loads(json.dumps(OLD_PROFILE)))
+    assert [one for one in _record(out["shots"][-1]).get("assumedRows", []) if one.get("blank") or one.get("left")] == []
+
+
 def test_an_assumed_row_the_receipt_also_flagged_is_one_row_with_its_note(tmp_path):
     flags = {"flags": [{"index": 0, "question": "Start date", "flags": [{"reason": "Doesn't match your profile."}]}]}
     out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
