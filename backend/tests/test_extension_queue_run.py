@@ -213,6 +213,20 @@ const deps = {
   now: () => (clock += 10),
   cancelled: () => cancelFlag,
 };
+// `reasons`: the reasoning step's answers, one per think ({moved, followed, note, ask, tried, press, clears}). Absent: no
+// `reason` dep at all, as the host leaves it out with "Think when stuck" off or "Stop after each step" on.
+if (spec.reasons) {
+  deps.reason = async (rec, ctx) => {
+    tick("reason", ctx.why, ctx.recent.length, (ctx.open ?? []).length);
+    const out = spec.reasons.shift() ?? { moved: false };
+    if (out.clears) cleared[at] = true;
+    if (out.press) {
+      const outcome = await ctx.press(0, out.press, "fp-before", []);
+      return outcome === "moved" ? { ...out, moved: true, advanced: "fp-before" } : { ...out, moved: false };
+    }
+    return out;
+  };
+}
 if (spec.omitDep) delete deps[spec.omitDep];
 
 const record = { jobId: "j1", proposalId: "p1", applicationId: "a1", base: "Base", company: "Acme",
@@ -2608,3 +2622,149 @@ def test_a_resume_after_open_questions_still_fills_the_page(tmp_path):
 def test_the_attach_note_belongs_to_a_page_and_goes_with_it(tmp_path):
     out = _drive(tmp_path, [step(1), REVIEW], record={"attach": {"outcome": "attached"}})
     assert out["record"]["attach"] is None
+
+
+# ---------- the reasoning step: asked once before an eligible park (design 2026-10-14) ----------
+
+UNMAPPED = {"label": "Source", "target": None, "kind": "unknown"}
+THOUGHT = {"moved": False, "note": "The error names Source, which no field is called.", "tried": ["filled 1 field"]}
+
+
+@pytest.mark.parametrize("why, pages, spec", [
+    ("page_errors", [step(1, rejects=1, errorItems=[UNMAPPED]), REVIEW], {"fix": {"fixed": False, "remaining": [UNMAPPED]}}),
+    ("open_questions", [step(1), REVIEW], {"fills": [[needs("f1", "Degree")]]}),
+    ("unknown_page", [{"t": "unknown"}], {}),
+    ("no_change", [step(1, stuck=9), REVIEW], {}),
+    ("loop", [step(1, url="/same"), step(1, url="/same"), REVIEW], {}),
+])
+def test_every_eligible_park_asks_the_reasoning_step_once_and_parks_with_its_note(tmp_path, why, pages, spec):
+    out = _drive(tmp_path, pages, reasons=[dict(THOUGHT)], **spec)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", why)
+    assert [c[1] for c in names(out, "reason")] == [why]
+    assert r["thought"] == {"note": THOUGHT["note"], "tried": THOUGHT["tried"]}
+
+
+def test_a_park_after_the_model_asked_the_user_keeps_what_it_asked(tmp_path):
+    asked = {"moved": False, "note": "Degree has no saved answer.", "ask": "Pick your degree.", "tried": []}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]], reasons=[asked])
+    assert out["record"]["thought"] == {"note": "Degree has no saved answer.", "ask": "Pick your degree.", "tried": []}
+
+
+def test_a_thought_with_nothing_to_say_leaves_the_park_as_it_was(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]], reasons=[{"moved": False}])
+    assert out["record"]["why"] == "open_questions" and "thought" not in out["record"]
+
+
+@pytest.mark.parametrize("pages, spec, why", [
+    ([{"t": "captcha"}], {}, "captcha"),
+    ([{"t": "verify"}], {}, "verify"),
+    ([{"t": "board_native"}], {}, "board_native"),
+    ([{"t": "create_account", "host": "careers.initech.test"}], {"record": {"openUrl": "https://careers.initech.test/apply"}}, "create_account"),
+    ([{"t": "sign_in"}], {}, "sign_in_yourself"),
+    ([{"t": "posting", "applyId": None}], {}, "posting"),
+    ([{"t": "confirmation"}], {}, "already_applied"),
+    ([step(1), {"t": "review_next"}], {}, "unsure_page"),
+    ([step(1), {"t": "review", "errs": [UNMAPPED]}], {"fix": {"fixed": False, "remaining": [UNMAPPED]}}, "page_errors"),
+    ([step(1), step(2, fillable=0, nextText="Continue"), REVIEW], {"fills": [[needs("a", status="verified")], []]}, "confirm_page"),
+    ([step(1), REVIEW], {"attaches": [{"outcome": None, "reason": None, "required": True, "boxes": [
+        {"label": "Upload a file", "target": "t-up", "kind": "unknown", "written": False}]}], "attachTo": {"attached": False}}, "upload"),
+])
+def test_walls_and_review_pages_never_ask(tmp_path, pages, spec, why):
+    out = _drive(tmp_path, pages, reasons=[dict(THOUGHT)], **spec)
+    assert out["record"]["why"] == why and names(out, "reason") == []
+
+
+def test_a_wall_after_a_page_the_thought_worked_never_asks_either(tmp_path):
+    # Page one asked and moved on; the captcha behind it is a wall by design, so the one ask is the only ask.
+    out = _drive(tmp_path, [step(1), {"t": "captcha"}], fills=[[needs("f1", "Degree")]], reasons=[{"moved": True}, dict(THOUGHT)])
+    assert out["record"]["why"] == "captcha" and len(names(out, "reason")) == 1
+
+
+def test_without_the_reason_dep_a_park_is_what_it_was(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]])
+    assert out["record"]["why"] == "open_questions" and "thought" not in out["record"]
+
+
+def test_a_thought_that_pressed_next_and_moved_counts_a_step_and_the_run_goes_on(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UNMAPPED]), REVIEW],
+                 fix={"fixed": False, "remaining": [UNMAPPED]}, reasons=[{"press": "next-1"}])
+    r = out["record"]
+    assert (r["status"], r["step"]) == ("ready", 1) and r["seen"] == ["fp-before"]
+    assert out["pressed"] == ["next-1", "next-1"]                      # the page's Next, never its Submit
+
+
+def test_a_thought_that_fixed_the_page_in_place_presses_next_again(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]], reasons=[{"moved": True}])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+    assert out["fillCalls"] == 2                                        # no refill of the page the thought fixed
+
+
+def test_a_thought_on_open_questions_may_not_press_over_the_unfilled_page(tmp_path):
+    """inv-rejected-next: only a page the run filled is pressed. At the open-questions park the fill gate (the known-empty
+    upload check) has not run, so the step's own press is refused there; the driver presses after its gates."""
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]], reasons=[{"press": "next-1", "note": "x"}])
+    assert out["pressed"] == [] and out["record"]["why"] == "open_questions"
+
+
+def test_a_thought_may_not_press_a_page_the_run_did_not_fill(tmp_path):
+    """The loop park of a page swapped under the run: the page in hand is not the one that was filled."""
+    out = _drive(tmp_path, [step(1, drift="toggle")], reasons=[{"press": "next-1"}])
+    assert out["record"]["why"] == "loop" and out["pressed"] == []
+
+
+def test_the_reasoning_step_runs_once_a_page(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=9, errorItems=[UNMAPPED]), REVIEW],
+                 fix={"fixed": False, "remaining": [UNMAPPED]}, reasons=[{"moved": True}, dict(THOUGHT)])
+    assert out["record"]["why"] == "page_errors" and len(names(out, "reason")) == 1
+
+
+def test_a_new_page_may_think_again(tmp_path):
+    two = [step(1, rejects=1, errorItems=[UNMAPPED]), step(2, rejects=9, errorItems=[UNMAPPED]), REVIEW]
+    out = _drive(tmp_path, two, fix={"fixed": False, "remaining": [UNMAPPED]}, reasons=[{"press": "next-1"}, dict(THOUGHT)])
+    assert out["record"]["why"] == "page_errors" and len(names(out, "reason")) == 2
+
+
+def test_the_think_is_told_what_the_run_just_did(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UNMAPPED]), REVIEW],
+                 fix={"fixed": False, "remaining": [UNMAPPED]}, reasons=[dict(THOUGHT)])
+    # One press that the page rejected, one repair that left the error.
+    assert [c[2] for c in names(out, "reason")] == [2]
+
+
+def test_a_stop_during_the_thought_ends_the_run_as_stopped(tmp_path):
+    # openTab, classify, tabUrl, fill, then the reason call is the fifth.
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]], reasons=[dict(THOUGHT)], cancelAfter=5)
+    assert (out["record"]["status"], out["record"]["why"]) == ("stopped", "user")
+    assert out["callsWhenCancelled"] == 5 and len(out["calls"]) == 5
+
+
+def test_a_follow_never_drives_the_run_parks_moved_away(tmp_path):
+    out = _drive(tmp_path, [step(1, urlHost="elsewhere.test")], reasons=[{"moved": False, "followed": True}],
+                 record={"tabId": 7, "hosts": ["jobs.acme.test"], "status": "parked", "why": "captcha"})
+    assert out["record"]["why"] == "moved_away" and out["pressed"] == [] and out["fillCalls"] == 0
+    assert [c[1] for c in names(out, "reason")] == ["moved_away"]
+
+
+def test_a_thought_on_a_moved_away_tab_never_drives_even_when_it_says_it_moved(tmp_path):
+    out = _drive(tmp_path, [step(1, urlHost="elsewhere.test")], reasons=[{"moved": True, "advanced": "x"}],
+                 record={"tabId": 7, "hosts": ["jobs.acme.test"], "status": "parked", "why": "captcha"})
+    assert out["record"]["why"] == "moved_away" and out["pressed"] == [] and out["fillCalls"] == 0
+    assert out["record"]["step"] == 0 and out["record"]["seen"] == []
+
+
+def test_open_questions_that_are_all_protected_never_ask(tmp_path):
+    """Design 1: never on protected questions. The driver knows the fact NAME /map gave; a saved-fact-less
+    work-authorization question parks as it did, with no model call."""
+    protected = {**needs("f1", "Are you legally authorized to work in the US?"), "slot": "work_auth.authorized_now"}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[protected]], reasons=[dict(THOUGHT)])
+    assert out["record"]["why"] == "open_questions" and names(out, "reason") == []
+    mixed = _drive(tmp_path, [step(1), REVIEW], fills=[[protected, needs("f2", "Degree")]], reasons=[dict(THOUGHT)])
+    assert len(names(mixed, "reason")) == 1
+
+
+def test_the_open_questions_the_step_is_told_carry_no_fact_name_into_the_record_card(tmp_path):
+    # The card draws `question` and `required` only; the slot is a fact NAME (never a value) kept for the gate.
+    protected = {**needs("f1", "Degree"), "slot": "education.degree"}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[protected]])
+    assert out["record"]["open"] == [{"fid": "f1", "question": "Degree", "required": True, "slot": "education.degree"}]
