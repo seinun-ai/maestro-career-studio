@@ -14,6 +14,7 @@ from app.services import (
     autofill_profile,
     base_resume_data,
     career_kb,
+    contact_scan,
     llm,
     model_settings,
     persona,
@@ -268,48 +269,14 @@ def _within_chars(text: str, chars: int) -> str:
     return " ".join(kept) if kept else text[:chars].rsplit(" ", 1)[0].rstrip(",;:") + "."
 
 
-# A link, an email, or a phone-like run (the same patterns and rule as services/autofill_reason.contacts, copied so
-# qa does not import the reasoning module): a phone has at least SEVEN digits and is never two four-digit years
-# joined by a dash ("2019-2023" is a date range).
-_CONTACT = re.compile(r"https?://\S+|www\.\S+|[\w.+-]+@[\w-]+\.[\w.-]+|\+?\d[\d\s().-]{6,}\d")
-_YEAR_RANGE = re.compile(r"^\d{4}\s*[-\u2013]\s*\d{4}$")
-
-
-def _strings(node: Any) -> list[str]:
-    if isinstance(node, str):
-        return [node]
-    if isinstance(node, dict):
-        return [t for v in node.values() for t in _strings(v)]
-    if isinstance(node, list):
-        return [t for v in node for t in _strings(v)]
-    return []
-
-
 def _owner_contacts(session: Session, resume_json: dict[str, Any]) -> list[str]:
     """What the owner has said is theirs to publish: the profile's personal section (email, phone, links) and the
     resume's contact block, lowercased."""
     personal = autofill_profile.get_profile(session).get("personal", {})
-    return [t.lower() for t in _strings(personal) + _strings(resume_json.get("contact", {}))]
+    return [t.lower() for t in contact_scan.strings(personal) + contact_scan.strings(resume_json.get("contact", {}))]
 
 
-def _bare(link: str) -> str:
-    return re.sub(r"^(?:https?://)?(?:www\.)?", "", link.lower()).rstrip("/")
-
-
-def _foreign_contact(text: str, owner: list[str]) -> bool:
-    """Whether `text` carries a link, email or phone number the owner did not give: those are never an invented
-    answer's to include (a model that writes one has made it up)."""
-    for run in _CONTACT.findall(text):
-        run = run.rstrip(".,;:!?)\"'")
-        if "@" in run or run.startswith(("http", "www.")):
-            needle = _bare(run)
-            if not any(needle in _bare(o) or needle in o for o in owner):
-                return True
-        elif sum(c.isdigit() for c in run) >= 7 and not _YEAR_RANGE.match(run.strip()):
-            digits = re.sub(r"\D", "", run)
-            if not any(digits in re.sub(r"\D", "", o) for o in owner):
-                return True
-    return False
+_foreign_contact = contact_scan.foreign   # a draft with a link, email or phone the owner did not give is dropped
 
 
 def _in_owners_voice(text: str, resume_json: dict[str, Any]) -> str | None:
@@ -355,6 +322,7 @@ def draft_answers(
     raw = response.get("answers") if isinstance(response, dict) else None
     out: dict[str, str] = {}
     owner = _owner_contacts(session, resume_json)
+    known = " ".join(contact_scan.strings(resume_json)).lower()
     for qid, label in questions.items():
         text = raw.get(qid) if isinstance(raw, dict) else None
         if not isinstance(text, str) or not (text := _plain_text(text)):
@@ -363,7 +331,7 @@ def draft_answers(
         text = _within(text, int(stated[1]) if stated else (SHORT_WORDS if qid in short else DRAFT_WORDS))
         if chars := _STATED_CHARS.search(label):
             text = _within_chars(text, int(chars[1] or chars[2]))
-        if (text := _in_owners_voice(text, resume_json)) and not _foreign_contact(text, owner):
+        if (text := _in_owners_voice(text, resume_json)) and not _foreign_contact(text, owner, known):
             out[qid] = text
     return out
 

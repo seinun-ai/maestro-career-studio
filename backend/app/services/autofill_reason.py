@@ -25,10 +25,9 @@ from app.schemas.autofill_reason import (
     ReasonRequest,
     ReasonResponse,
     SnapField,
-    signature,
     signatures,
 )
-from app.services import llm, model_settings
+from app.services import contact_scan, llm, model_settings
 from app.services.autofill_catalog import PROTECTED_SLOT
 from app.services.autofill_choose import _NEVER_DRAFTED, _PAGE_TEXT_IS_DATA
 
@@ -72,24 +71,8 @@ ACTION_HELP = {
     "ask_user": '{"type": "ask_user", "fids": [fid, ...], "note": "what the applicant must do"}: stop and ask.',
 }
 _INVISIBLE = {"Cf", "Co", "Cn"}
-# A link, an email, or a phone-like run. A phone has at least SEVEN digits and is never two four-digit years
-# joined by a dash ("2019-2023" is a date range): `phone_like` decides, the regex only finds candidates.
-_CONTACT = re.compile(r"https?://\S+|www\.\S+|[\w.+-]+@[\w-]+\.[\w.-]+|\+?\d[\d\s().-]{6,}\d")
-_YEAR_RANGE = re.compile(r"^\d{4}\s*[-–]\s*\d{4}$")
-
-
-# A bare host ("globex.test/apply", "careers.globex.test"): never in the note the panel shows.
-_BARE_HOST = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/\S*)?", re.IGNORECASE)
-
-
-def phone_like(run: str) -> bool:
-    return sum(ch.isdigit() for ch in run) >= 7 and not _YEAR_RANGE.match(run.strip())
-
-
-def contacts(text: str) -> list[str]:
-    """Every link, email and phone-like run in `text` (shared with qa._foreign_contact, which copies the two
-    patterns and this rule rather than import this module)."""
-    return [m for m in _CONTACT.findall(text) if "@" in m or m.startswith(("http", "www.")) or phone_like(m)]
+# A link, an email, or a phone number: one finder shared with the draft check (services/contact_scan.py).
+contacts = contact_scan.contacts
 
 
 def _visible(text: str) -> str:
@@ -110,7 +93,6 @@ def clean_note(text: str) -> str:
     out = _visible(text).replace(MARK, " ")
     for found in contacts(out):
         out = out.replace(found, "")
-    out = _BARE_HOST.sub("", out)
     return re.sub(r"\s+", " ", out).strip()[:NOTE_MAX]
 
 

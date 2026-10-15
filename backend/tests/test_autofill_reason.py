@@ -399,3 +399,8 @@ def test_the_service_sends_the_redacted_errors_to_the_model(db_session, monkeypa
     request = req(errors=[{"text": "ada@example.test is already registered"}])
     autofill_reason.reason(request, facts, "history", db_session)
     assert "ada@example.test" not in fake.requests[0].messages[0].parts[0].text
+
+
+def test_a_bare_host_is_taken_out_of_the_note_too():
+    note = autofill_reason.clean_note("Visit globex.test/apply or careers.globex.test, built in Node.js.")
+    assert "globex" not in note and "Node.js" in note
