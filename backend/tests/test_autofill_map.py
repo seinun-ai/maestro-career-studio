@@ -2941,3 +2941,60 @@ def test_the_willingness_exception_never_reaches_the_reasoning_pass(db_session, 
     prompts = fake_llm(monkeypatch, reasoned={"b": 0.99})
     got = run([field("b", WILLING_BACKGROUND[0], "popup", options=["Yes", "No"])], db_session, low_stakes=True)
     assert got["b"].route == "none" and not [p for p in prompts if p["trace_name"] == "autofill-reasoned"]
+
+
+# ---------- live check 9 (AE3): one start-date fact when a derived date exists
+
+from datetime import date  # noqa: E402
+
+START_TODAY = date(2026, 10, 15)
+PREFERRED_START = "preferences.earliest_start_date"
+DERIVED_START = "derived.earliest_start_date"
+
+
+def _start_facts(stored):
+    return autofill_catalog.build({"preferences": {"earliest_start_date": stored}}, [], [], today=START_TODAY)
+
+
+def _map_start(db_session, facts, **kw):
+    return autofill_map.map_fields([field("d", "Earliest start date", "date")], facts, db_session,
+                                   eeo_consented=True, low_stakes=False, **kw)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_with_a_derived_start_date_only_that_one_start_fact_is_offered(db_session, monkeypatch):
+    facts = _start_facts("Immedietly")
+    assert PREFERRED_START in facts and DERIVED_START in facts
+    calls = fake_jev(monkeypatch, {"d": (DERIVED_START, 0.9)})
+    got = _map_start(db_session, facts)
+    offered = calls[0]["questions"]["d"]["criteria"]
+    assert DERIVED_START in offered and PREFERRED_START not in offered
+    assert (got["d"].route, got["d"].slot, got["d"].value, got["d"].format) == (
+        "slot", DERIVED_START, START_TODAY.isoformat(), "date")
+
+
+def test_the_fast_model_is_offered_only_the_derived_start_date_too(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, {"d": {"key": DERIVED_START, "confidence": 0.9}})
+    got = _map_start(db_session, _start_facts("Immediately"))
+    assert PREFERRED_START not in prompts[0]["prompt"] and DERIVED_START in prompts[0]["prompt"]
+    assert got["d"].value == START_TODAY.isoformat()
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_without_a_derived_date_the_stored_start_text_is_still_offered(db_session, monkeypatch):
+    facts = _start_facts("After my notice period ends")
+    assert DERIVED_START not in facts
+    calls = fake_jev(monkeypatch, {"d": (PREFERRED_START, 0.9)})
+    got = _map_start(db_session, facts)
+    assert PREFERRED_START in calls[0]["questions"]["d"]["criteria"]
+    assert got["d"].value == "After my notice period ends"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_start_date_text_box_is_never_a_low_stakes_guess(db_session, monkeypatch):
+    """Live check 9: a text start-date box Jev was unsure of stays the user's, whatever the judge says."""
+    calls = fake_jev(monkeypatch, {"d": ("none", 0.4)}, noul={"d": 0.99})
+    fake_llm(monkeypatch)
+    got = autofill_map.map_fields([field("d", "When can you start?", "text")], _start_facts("After my notice period"),
+                                  db_session, eeo_consented=True, low_stakes=True)
+    assert got["d"].route == "none" and not asked_the_judge(calls)

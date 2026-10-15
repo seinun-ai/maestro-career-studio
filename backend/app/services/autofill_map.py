@@ -800,10 +800,25 @@ def _has_history(facts: dict[str, Fact]) -> bool:
     return any((m := _ENTRY.fullmatch(slot)) and m[1] in _HISTORY_KINDS for slot in facts)
 
 
+START_TEXT_SLOT = "preferences.earliest_start_date"
+START_DATE_SLOT = "derived.earliest_start_date"
+
+
+def _one_start_date(facts: dict[str, Fact]) -> dict[str, Fact]:
+    """The facts /map offers, with ONE start-date fact: when the stored start text means "now" the catalog
+    derives a calendar date from it (`derived.earliest_start_date`), and that date is what a form takes.
+    Offered beside the text itself, two facts compete for the same box (live check 9: Jev's 0.55 on the
+    text kept a start date from being filled; the stored text, typo included, was sent verbatim)."""
+    if START_DATE_SLOT in facts and START_TEXT_SLOT in facts:
+        return {slot: fact for slot, fact in facts.items() if slot != START_TEXT_SLOT}
+    return facts
+
+
 def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session, *,
                eeo_consented: bool, low_stakes: bool, level: str = "history",
                queued: bool = False) -> dict[str, Mapped]:
     budget = Budget()
+    facts = _one_start_date(facts)
     criteria = _criteria(facts)
     # The reasoning step's answer_from: a fact NAME it chose for a field, taken as a certain pick when it is a
     # fact this profile holds, is not protected, and the question is not on the never-list. No model is asked
