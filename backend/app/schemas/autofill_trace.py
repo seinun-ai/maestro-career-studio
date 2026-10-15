@@ -24,6 +24,7 @@ from app.schemas.autofill_fill import (
     Why,
 )
 from app.schemas.autofill_reason import (
+    Basis,
     HISTORY,
     SIGNATURE,
     MAX_BUTTONS,
@@ -40,6 +41,7 @@ from app.schemas.autofill_reason import (
     SnapTab,
     Stuck,
     TARGET,
+    Technique,
 )
 
 Op = Literal["map", "polarity", "pick", "step",  # decisions
@@ -124,6 +126,8 @@ class TraceReasonAction(BaseModel):
     target: str | None = Field(default=None, pattern=TARGET)
     outcome: ReasonOutcome
     slot: str | None = Field(default=None, max_length=120, pattern=SLOT)   # answer_from's fact NAME
+    technique: Technique | None = None                                      # a retry's way (a closed list)
+    basis: Basis | None = None                                              # a choose's ground (a closed list)
     written: int | None = Field(default=None, ge=0, le=5000)               # a written answer's LENGTH, never it
 
 

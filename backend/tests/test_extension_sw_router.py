@@ -1443,7 +1443,8 @@ def _reason_round(**over):
     return {"round": 1, "why": "page_errors", "model": "claude-sonnet-5-5", "ms": 4200,
             "note": "The error names Source.", "stopped": "moved",
             "actions": [{"type": "write", "target": "f4", "outcome": "progress", "written": 42, "slot": "a.b"},
-                        {"type": "press_next", "target": "b1", "outcome": "moved"}],
+                        {"type": "retry", "target": "f5", "outcome": "no_effect", "technique": "step_by_step"},
+                        {"type": "choose", "target": "f6", "outcome": "progress", "basis": "history"}],
             "rejected": ["unknown_id"],
             "snapshot": {"fields": [{"fid": "f1", "question": "Field of study", "shape": "text", "required": True,
                                      "filled": False, "invalid": True, "multi": False, "multiline": False,
@@ -1463,7 +1464,7 @@ def test_a_reasoning_step_posts_its_rounds_with_exactly_the_schemas_keys(tmp_pat
     [got] = body["reasoning"]
     assert body["fields"] == [] and got == _reason_round()
     assert set(got) == set(TraceReasonRound.model_fields)
-    assert set(got["actions"][0]) == set(TraceReasonAction.model_fields)
+    assert set().union(*(set(one) for one in got["actions"])) == set(TraceReasonAction.model_fields)
     assert set(got["snapshot"]) == set(TraceSnapshot.model_fields)
     assert set(got["snapshot"]["fields"][0]) == set(SnapField.model_fields)
     assert set(got["snapshot"]["fields"][0]["options"][0]) == set(SnapOption.model_fields)
@@ -1542,6 +1543,18 @@ def test_a_reasoning_round_that_never_asked_posts_without_a_model(tmp_path):
     RunTrace.model_validate(body)
 
 
+def test_a_retrys_technique_and_a_chooses_basis_are_posted_and_a_word_the_schema_lacks_is_not(tmp_path):
+    from app.schemas.autofill_trace import RunTrace
+
+    actions = [{"type": "retry", "target": "f4", "outcome": "no_effect", "technique": "step_by_step"},
+               {"type": "choose", "target": "f5", "outcome": "progress", "basis": "history"},
+               {"type": "retry", "target": "f6", "outcome": "no_effect", "technique": "rm -rf", "basis": "a value"}]
+    body = _posted_trace(tmp_path, _run_trace(fields=[], reasoning=[_reason_round(actions=actions)]))
+    assert [(a.get("technique"), a.get("basis")) for a in body["reasoning"][0]["actions"]] == [
+        ("step_by_step", None), (None, "history"), (None, None)]
+    RunTrace.model_validate(body)
+
+
 def test_the_reasoning_whitelist_mirrors_the_backends_schema():
     from typing import get_args
 
@@ -1558,6 +1571,7 @@ def test_the_reasoning_whitelist_mirrors_the_backends_schema():
     assert _sw_keys("TRACE_SNAP_TAB") == set(R.SnapTab.model_fields)
     for name, literal in [("TRACE_REASON_WHYS", R.Stuck), ("TRACE_REASON_TYPES", T.ReasonType),
                           ("TRACE_REASON_OUTCOMES", T.ReasonOutcome), ("TRACE_REASON_REJECTS", R.RejectCode),
+                          ("TRACE_REASON_TECHNIQUES", R.Technique), ("TRACE_REASON_BASES", R.Basis),
                           ("TRACE_REASON_STOPS", T.ReasonStop)]:
         assert _sw_vocab(name) == set(get_args(literal)), name
     assert _sw_vocab("TRACE_SNAP_ROLES") == _literal_args(R.SnapButton, "role") == {"next", "dialog"}

@@ -123,7 +123,7 @@ def test_an_action_that_answers_the_open_question_moves_the_run_on(tmp_path):
     [entry] = out["out"]["rounds"]
     assert entry["actions"] == [{"type": "write", "target": "f1", "outcome": "progress", "written": 11}]
     assert out["out"]["wrote"] == [{"fid": "f1", "question": "Q", "note": "Written for you: read it"}] and "Mathematics" not in str(out["out"])
-    assert out["out"]["tried"] == ["answered Field of study"]
+    assert out["out"]["tried"] == ["answering Field of study; it took"]
 
 
 def test_each_field_action_runs_through_the_fill_loops_own_options(tmp_path):
@@ -140,6 +140,39 @@ def test_each_field_action_runs_through_the_fill_loops_own_options(tmp_path):
     ]
     for reply, scope in cases:
         assert think(tmp_path, replies=[reply])["done"][0][2] == scope
+
+
+def test_what_it_tried_reads_after_it_tried_and_says_how_each_attempt_went(tmp_path):
+    cases = [
+        (act(type="retry", fid="f1", technique="search_with_enter"), "Field of study a second way; it didn't take", {}),
+        (act(type="retry", fid="f1", technique="step_by_step"), "Field of study a second way; it didn't take", {}),
+        (act(type="fill", fids=["f1"]), "filling 1 field; it took", {"fixes": ["f1"]}),
+        (act(type="choose", fid="f1", basis="history"), "choosing an option for Field of study; it didn't take", {}),
+        (act(type="redo", fid="f2"), "First name again; it didn't take", {}),
+    ]
+    for reply, tried, spec in cases:
+        out = think(tmp_path, replies=[reply], **spec)
+        assert out["out"]["tried"] == [tried], (reply, out["out"]["tried"])
+    pressed = think(tmp_path, replies=[act(type="press_next", button="b1")], why="no_change")
+    assert pressed["out"]["tried"] == ["pressing Save and Continue; it took"]
+
+
+def test_each_attempt_is_a_phrase_to_follow_it_tried_not_a_sentence_with_its_own_verb(tmp_path):
+    out = think(tmp_path, replies=[act(type="retry", fid="f1", technique="clear_and_set")], fixes=["f1"])
+    [one] = out["out"]["tried"]
+    assert not re.match(r"(tried|filled|answered|chose|pressed|closed)\b", one)
+
+
+def test_the_trace_keeps_the_retry_technique_and_the_choose_basis_and_nothing_else_about_them(tmp_path):
+    from app.schemas.autofill_trace import RunTrace
+
+    retry = think(tmp_path, replies=[act(type="retry", fid="f1", technique="step_by_step")])["out"]["rounds"]
+    choose = think(tmp_path, replies=[act(type="choose", fid="f1", basis="history")])["out"]["rounds"]
+    assert retry[0]["actions"][0]["technique"] == "step_by_step" and "basis" not in retry[0]["actions"][0]
+    assert choose[0]["actions"][0]["basis"] == "history" and "technique" not in choose[0]["actions"][0]
+    for rounds, key, word in ((retry, "technique", "step_by_step"), (choose, "basis", "history")):
+        [round_] = RunTrace.model_validate(trace_of(tmp_path, rounds)).reasoning
+        assert getattr(round_.actions[0], key) == word
 
 
 def test_a_multiline_write_asks_for_an_essay(tmp_path):

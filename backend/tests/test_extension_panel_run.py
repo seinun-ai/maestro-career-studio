@@ -2342,23 +2342,30 @@ def test_the_live_line_wins_over_the_sentence_and_neither_shows_on_a_run_that_is
     assert "Thinking about this page…" not in text and "Sorted it out" not in text
 
 
-def test_a_park_after_a_thought_shows_its_note_and_what_it_tried_as_plain_text(tmp_path):
-    thought = {"note": "The error names <b>Source</b>, which no field is called.",
-               "tried": ["filled 1 field", "pressed Save and Continue"]}
+def test_a_park_after_a_thought_with_no_ask_says_what_was_tried_in_the_codes_words_and_never_the_models_note(tmp_path):
+    thought = {"note": "I will retry it by <b>typing</b> and pressing Enter.",
+               "tried": ["How Did You Hear About Us? a second way; it didn't take", "pressing Save and Continue; it took"]}
     out = _run(tmp_path, [{"seed": [_seeded("parked", why="page_errors", thought=thought)]}])
     body = _card(out["shots"][1])["body"]
     text = _text(body)
-    assert "The error names <b>Source</b>, which no field is called." in text
-    assert "Tried: filled 1 field, pressed Save and Continue." in text
+    assert "It tried How Did You Hear About Us? a second way; it didn't take." in text
+    assert "It tried pressing Save and Continue; it took." in text
+    assert "I will retry it" not in text and "typing" not in text and "Tried:" not in text
     assert not [n for n in _walk(body) if n["tag"] == "B"]
 
 
-def test_a_park_shows_what_the_model_asked_of_the_user_beside_its_note(tmp_path):
+def test_a_park_whose_thought_tried_nothing_and_asked_nothing_says_nothing_of_it(tmp_path):
+    thought = {"note": "Degree is empty, so I will pick one.", "tried": []}
+    text = _body_text(_run(tmp_path, [{"seed": [_seeded("parked", why="page_errors", thought=thought)]}])["shots"][1])
+    assert "Degree is empty" not in text and "It tried" not in text
+
+
+def test_a_park_shows_what_the_model_asked_of_the_user_and_not_its_note(tmp_path):
     thought = {"note": "Degree has no saved answer.", "ask": "Pick your degree in the page.", "tried": []}
     out = _run(tmp_path, [{"seed": [_seeded("parked", why="open_questions", thought=thought,
                                             open=[{"fid": "f2", "question": "Degree", "required": True}])]}])
     text = _body_text(out["shots"][1])
-    assert "Degree has no saved answer." in text and "Pick your degree in the page." in text and "Tried:" not in text
+    assert "Pick your degree in the page." in text and "Degree has no saved answer." not in text and "It tried" not in text
     assert "Answer them in the page, then press Resume." in text                         # the fixed instruction stays
 
 
@@ -2371,8 +2378,12 @@ def test_a_long_or_odd_thought_is_cut_and_never_markup(tmp_path):
     thought = {"note": "x" * 400, "ask": "y" * 400, "tried": [f"step {i}" for i in range(30)]}
     out = _run(tmp_path, [{"seed": [_seeded("parked", why="loop", thought=thought)]}])
     body = _card(out["shots"][1])["body"]
-    assert "x" * 200 in _text(body) and "x" * 201 not in _text(body) and "y" * 201 not in _text(body)
-    assert len([n for n in _walk(body) if "run-tried" in n["class"].split()]) == 1
+    assert "y" * 200 in _text(body) and "y" * 201 not in _text(body) and "x" * 50 not in _text(body)
+    assert len([n for n in _walk(body) if "run-ask" in n["class"].split()]) == 1
+    ask_less = {"note": "x" * 400, "tried": [f"step {i} " + "z" * 200 for i in range(30)]}
+    body = _card(_run(tmp_path, [{"seed": [_seeded("parked", why="loop", thought=ask_less)]}])["shots"][1])["body"]
+    tried = [n for n in _walk(body) if "run-tried" in n["class"].split()]
+    assert 1 <= len(tried) <= 6 and all(len(_text(n)) <= 120 for n in tried) and "x" * 50 not in _text(body)
 
 
 def test_the_footer_note_says_the_live_line_while_the_step_thinks_and_goes_when_it_is_done(tmp_path):
@@ -2386,7 +2397,7 @@ def test_the_footer_note_says_the_live_line_while_the_step_thinks_and_goes_when_
     assert "Thinking about this page…" in _body_text(thinking)
     final = out["shots"][-1]
     assert "Thinking" not in _text(final["regions"]["foot"]) and "Thinking" not in _body_text(final)
-    assert "Degree has no saved answer." in _body_text(final)
+    assert "Pick your degree." in _body_text(final) and "Degree has no saved answer." not in _body_text(final)
 
 
 def test_a_companion_switch_read_that_failed_leaves_the_step_off(tmp_path):
@@ -2458,6 +2469,15 @@ def test_what_the_step_wrote_is_one_row_even_when_the_run_listed_the_same_field_
     assert len(rows) == 1 and rows[0]["note"] == "Written for you: read it"
 
 
+def test_a_step_by_step_retry_reaches_the_fill_as_the_stepByStep_lever(tmp_path):
+    retry = {**ASK, "actions": [{"type": "retry", "fid": "f2", "technique": "step_by_step"}]}
+    out = _stuck(tmp_path, _reply(retry),
+                 reports=[{"fields": [needs("f2", "Degree")]}, {"fields": [verified("f2", "Degree")]}, {"fields": [verified("f1")]}],
+                 inventoryByPage=[[_field("f2", "", question="Degree", touched=False)], [_field("f1", "x")]])
+    scoped = [call["options"] for call in out["fills"] if call["options"].get("only")]
+    assert scoped and scoped[0]["only"] == ["f2"] and scoped[0]["stepByStep"] == ["f2"]
+
+
 def test_a_stop_that_lands_while_a_follow_checks_the_window_leaves_the_run_where_it_was(tmp_path):
     follow = {**ASK, "actions": [{"type": "follow_tab", "tab": "t1"}]}
     away = "https://other.test/landing"
@@ -2467,15 +2487,6 @@ def test_a_stop_that_lands_while_a_follow_checks_the_window_leaves_the_run_where
                api={"POST /api/autofill/reason": _reply(follow)}, frames=NO_ERRORS)
     r = _record(out["shots"][-1])
     assert r["tabId"] == 7 and not r.get("moved")
-
-
-def test_a_step_by_step_retry_reaches_the_fill_as_the_stepByStep_lever(tmp_path):
-    retry = {**ASK, "actions": [{"type": "retry", "fid": "f2", "technique": "step_by_step"}]}
-    out = _stuck(tmp_path, _reply(retry),
-                 reports=[{"fields": [needs("f2", "Degree")]}, {"fields": [verified("f2", "Degree")]}, {"fields": [verified("f1")]}],
-                 inventoryByPage=[[_field("f2", "", question="Degree", touched=False)], [_field("f1", "x")]])
-    scoped = [call["options"] for call in out["fills"] if call["options"].get("only")]
-    assert scoped and scoped[0]["only"] == ["f2"] and scoped[0]["stepByStep"] == ["f2"]
 
 
 def test_a_run_that_followed_to_a_tab_says_it_moved_and_not_that_the_tab_left_the_application(tmp_path):

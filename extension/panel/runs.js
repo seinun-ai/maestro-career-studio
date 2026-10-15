@@ -228,17 +228,17 @@
     return list;
   }
 
-  /** What the reasoning step made of a park: its note, what it asks of the user, and what it tried. The model's words
-   * are untrusted text, so they go in through the builder (textContent), cut, never as markup. */
+  /** What the reasoning step made of a park, in the code's words: what it asked of the user, else what it tried and how each
+   * attempt went ("It tried How Did You Hear About Us? a second way; it didn't take."). The model's own note is not shown
+   * here (it is on the live Thinking line and in the fill log). What it asked is untrusted text, so it goes in through the
+   * builder (textContent), cut, never as markup. */
   function thoughtLines(ctx, thought) {
     const { node } = ctx.build;
     if (!thought || typeof thought !== "object") return [];
-    const note = cut(thought.note, MAX_NOTE);
     const ask = cut(thought.ask, MAX_NOTE);
+    if (ask) return [node("div", "opts run-ask", ask)];
     const tried = (Array.isArray(thought.tried) ? thought.tried : []).slice(0, 6).map((one) => cut(one, 100)).filter(Boolean);
-    return [note ? node("div", "opts run-thought", note) : null,
-      ask && ask !== note ? node("div", "opts run-ask", ask) : null,
-      tried.length ? node("div", "opts run-tried", `Tried: ${tried.join(", ")}.`) : null];
+    return tried.map((one) => node("div", "opts run-tried", `It tried ${one}.`));
   }
 
   function parkedBody(ctx, run) {

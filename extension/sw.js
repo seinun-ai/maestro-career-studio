@@ -323,6 +323,8 @@ const TRACE_REASON_REJECTS = new Set(["bad_reply", "model_error", "not_allowed",
   "multi_value", "next_not_last", "switched_off"]);
 const TRACE_REASON_STOPS = new Set(["moved", "resolved", "same_page", "asked", "no_reply", "rounds", "clock", "stopped",
   "followed", "wall", "page_gone", "no_read"]);
+const TRACE_REASON_TECHNIQUES = new Set(["open_with_keys", "search_with_enter", "search_and_wait", "clear_and_set", "step_by_step"]);
+const TRACE_REASON_BASES = new Set(["history", "default"]);
 const TRACE_SNAP_ROLES = new Set(["next", "dialog"]);
 
 // A coercer answers the value to post, or undefined to drop the key.
@@ -477,6 +479,8 @@ const TRACE_REASON_ACTION = {
   target: traceMatch(TRACE_TARGET, TRACE_TARGET_MAX),
   outcome: traceOneOf(TRACE_REASON_OUTCOMES),
   slot: traceMatch(TRACE_SLOT, TRACE_SLOT_MAX),
+  technique: traceOneOf(TRACE_REASON_TECHNIQUES),   // a retry's way
+  basis: traceOneOf(TRACE_REASON_BASES),             // a choose's ground
   written: traceInt(TRACE_WRITTEN_MAX),
 };
 const TRACE_REASON_ROUND = {

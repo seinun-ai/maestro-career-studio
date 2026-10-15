@@ -186,19 +186,24 @@
     }
   }
 
-  const triedOf = (action, snap) => {
+  // What the card says after "It tried": a phrase with no verb of its own, and how it went.
+  const WENT = Object.freeze({ progress: "it took", moved: "it took", no_effect: "it didn't take", refused: "it was refused" });
+  const triedOf = (action, snap, outcome) => {
     const q = cut(questionOf(snap, action.fid), 80);
-    switch (action.type) {
-      case "fill": return `filled ${plural(action.fids?.length ?? 0, "field")}`;
-      case "write": return `answered ${q}`;
-      case "choose":
-      case "answer_from": return `chose an option for ${q}`;
-      case "retry": return `tried ${q} another way`;
-      case "redo": return `filled ${q} again`;
-      case "close_dialog": return "closed a popup";
-      case "press_next": return `pressed ${cut(snap.body.buttons.find((b) => b.ref === action.button)?.text, 80)}`;
-      default: return "";
-    }
+    const did = (() => {
+      switch (action.type) {
+        case "fill": return `filling ${plural(action.fids?.length ?? 0, "field")}`;
+        case "write": return `answering ${q}`;
+        case "choose":
+        case "answer_from": return `choosing an option for ${q}`;
+        case "retry": return `${q} a second way`;
+        case "redo": return `${q} again`;
+        case "close_dialog": return "closing a popup";
+        case "press_next": return `pressing ${cut(snap.body.buttons.find((b) => b.ref === action.button)?.text, 80)}`;
+        default: return "";
+      }
+    })();
+    return did && WENT[outcome] ? `${did}; ${WENT[outcome]}` : "";
   };
 
   const redoPlan = (a) => ({ fids: [a.fid], scope: { redo: [a.fid], reasoned: "redo" } });
@@ -417,6 +422,8 @@
         const target = targetOf(action);
         entry.actions.push({ type: action.type, target, outcome: result.outcome,
           ...(action.type === "answer_from" && SLOT.test(action.slot ?? "") ? { slot: action.slot } : {}),
+          ...(action.type === "retry" && WORD.test(action.technique ?? "") ? { technique: action.technique } : {}),
+          ...(action.type === "choose" && WORD.test(action.basis ?? "") ? { basis: action.basis } : {}),
           ...(result.written !== undefined ? { written: result.written } : {}) });
         history.push(`${action.type}:${target} -> ${result.outcome}`);
         history.splice(0, Math.max(0, history.length - LIMITS.history));
@@ -429,7 +436,8 @@
           ended = true;
           break;
         }
-        if (result.outcome !== "rejected" && triedOf(action, snap)) out.tried.push(triedOf(action, snap));
+        const tried = triedOf(action, snap, result.outcome);
+        if (tried) out.tried.push(tried);
         for (const fid of action.fids ?? (action.fid ? [action.fid] : [])) {
           targeted.add(fid);
           if (result.perFid ? result.perFid.some(([f, o]) => f === fid && o === "progress") : result.outcome === "progress") progressed.add(fid);
