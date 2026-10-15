@@ -173,6 +173,32 @@ def test_an_ask_user_note_is_cleaned_and_its_ids_must_exist():
     assert rejected == ["unknown_id"] and bad[0].fids == []
 
 
+def test_the_prompt_asks_for_a_note_about_the_page_to_the_applicant_never_a_plan():
+    prompt = autofill_reason.build_prompt(req(), [], "history")
+    rules = prompt.split("RULES", 1)[1].split("ACTIONS", 1)[0]
+    assert "to the applicant, in the present tense" in rules and "is still empty" in rules
+    assert "never what you plan to do" in rules
+    assert 'Reply with JSON only: {"note": "one plain sentence about the page, to the applicant"' in prompt
+    assert "what the applicant must do" in prompt   # an ask_user's note is the one line that tells them the step
+
+
+def test_a_rejected_reply_asks_with_the_code_note_not_the_models_plan():
+    plan = "I will retry the search and then press Next."
+    bad = reply({"type": "write", "fid": "f2"}, note=plan)   # f2 is protected: refused
+    actions, rejected = autofill_reason.check(bad, req(), present=set(), level="history")
+    assert rejected == ["protected"] and actions[0].type == "ask_user"
+    assert actions[0].note == autofill_reason.FALLBACK_NOTE and plan not in actions[0].note
+
+
+def test_a_passed_ask_user_keeps_its_own_note_and_the_response_keeps_the_models_note_for_the_log(db_session, monkeypatch):
+    out = _service_reply(monkeypatch, db_session, {"note": "Source is still empty.", "actions": [
+        {"type": "ask_user", "fids": ["f4"], "note": "Choose Source in the page."}]})
+    assert out.actions[0].note == "Choose Source in the page." and out.note == "Source is still empty."
+    refused = _service_reply(monkeypatch, db_session, {"note": "I will retry it.", "actions": [
+        {"type": "write", "fid": "f2"}]})
+    assert refused.actions[0].note == autofill_reason.FALLBACK_NOTE and refused.note == "I will retry it."
+
+
 def test_the_wire_schema_uses_only_the_subset_claude_takes():
     schema = autofill_reason.wire_schema()
     text = json.dumps(schema)

@@ -151,6 +151,8 @@ def build_prompt(req: ReasonRequest, present: list[str], level: str) -> str:
         "history, signatures or legal attestations, or licences, and never invent a fact the applicant has not "
         "given (a date, a certificate): ask the applicant instead.",
         f"Keep the note to {NOTE_MAX} characters of plain words, with no links, emails or phone numbers.",
+        "Write the note to the applicant, in the present tense, about what is wrong on the page (for example "
+        '"The state is still empty."), never what you plan to do.',
         "Do not repeat an action named under EXCLUDED.",
     ]
     if "press_next" in offered:
@@ -176,7 +178,7 @@ def build_prompt(req: ReasonRequest, present: list[str], level: str) -> str:
         "",
         "<page_data>" + json.dumps(_page(req), ensure_ascii=False) + "</page_data>",
         "",
-        'Reply with JSON only: {"note": "one plain sentence", "actions": [ ... ]}',
+        'Reply with JSON only: {"note": "one plain sentence about the page, to the applicant", "actions": [ ... ]}',
     ]
     return "\n".join(lines)
 
@@ -295,7 +297,8 @@ def check(reply: ReasonReply, req: ReasonRequest, *, present: set[str], level: s
     codes = [c for i, a in enumerate(reply.actions)
              if (c := _judge(a, i, len(reply.actions), req, present, level))]
     if codes:
-        return [AskUser(type="ask_user", fids=[], note=clean_note(reply.note) or FALLBACK_NOTE)], sorted(set(codes))
+        # The code's own line, never the model's note: that reads as its plan for actions that were just refused.
+        return [AskUser(type="ask_user", fids=[], note=FALLBACK_NOTE)], sorted(set(codes))
     # A passed ask_user's note is shown to the user: the same clean-up as the response's note.
     return [a.model_copy(update={"note": clean_note(a.note) or FALLBACK_NOTE}) if a.type == "ask_user" else a
             for a in reply.actions], []
