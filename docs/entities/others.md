@@ -844,7 +844,7 @@
   signatures, the Careful level) before the extension sees them; any failure becomes `ask_user` with its codes in `rejected`. With full automation or Think when
   stuck off the route asks the user and calls no model (`switched_off`). Page text is wrapped, datamarked and stripped of invisible Unicode; the model's note is
   cleaned of links, emails and phone numbers (`contact_scan`, the finder every drafted answer is checked with too). A stored trace's `reasoning` rounds keep the snapshot
-  (error lines redacted of saved answers); `scripts/eval_reason.py` replays them against other models.
+  (questions, options, error lines and the note redacted of saved answers and base-resume values); `scripts/eval_reason.py` replays them against other models.
   **The Companion's run** (SYSTEM.md §7; `routers/companion.py`, `app/companion_origin.py`): consent channel `companion` is legal only on the
   Companion extension's exact origin (403 otherwise). A PATCH with it queues (`accepted`, from `pending_review`) and refuses `approved` and
   `submitted`; those come only from `POST /api/proposals/{id}/companion-submitted` (`{confirmation: {host, path, text}}`, `extra=forbid`),

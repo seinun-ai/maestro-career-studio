@@ -81,18 +81,22 @@
     ...(ctx.today ? { today: String(ctx.today) } : {}),
   });
 
-  const fieldRows = (read, dropped) => {
+  /** What the page's fields hold, as screens over the texts the model is shown (fill-loop.js `valueScreens`, the run trace's own
+   * rule): a question, option or error line that says a value back is sent blank. Fails closed: no fill loop, no snapshot. */
+  const screensOf = (read) => ns.fillLoop.valueScreens((read.fields ?? []).filter((f) => f && typeof f.fid === "string"));
+
+  const fieldRows = (read, dropped, screens) => {
     const last = read.lastFill ?? {};
     return (read.fields ?? []).filter((f) => f && typeof f.fid === "string" && FID.test(f.fid) && !f.policyBlocked && !dropped.has(f.fid))
       .slice(0, LIMITS.fields).map((f) => {
         const options = (Array.isArray(f.options) ? f.options : []).filter((o) => o && !o.policyBlocked);
         const slot = last[f.fid]?.slot;
         return {
-          fid: f.fid, question: cut(f.question), shape: SHAPES.has(f.shape) ? f.shape : "unknown",
+          fid: f.fid, question: screens.question(f.fid, cut(f.question)), shape: SHAPES.has(f.shape) ? f.shape : "unknown",
           required: f.required === true, filled: f.answered === true, invalid: f.invalid === true, multi: f.multi === true,
           multiline: f.multiline === true, by_run: WRITTEN.has(last[f.fid]?.status), touched: f.touched === true,
           ...(typeof slot === "string" && slot.length <= 120 && SLOT.test(slot) ? { slot } : {}),
-          options: options.slice(0, LIMITS.options).map((o, i) => ({ ref: `o${i + 1}`, text: cut(o.text) })),
+          options: options.slice(0, LIMITS.options).map((o, i) => ({ ref: `o${i + 1}`, text: screens.option(f.fid, cut(o.text)) })),
           option_count: Math.min(options.length, 5000),
         };
       });
@@ -120,8 +124,8 @@
     return out;
   };
 
-  const errorRows = (read) => (read.errors ?? []).slice(0, LIMITS.errors).map((e) => ({
-    text: cut(e?.label), ...(e?.kind === "field" && typeof e.target === "string" && FID.test(e.target) ? { fid: e.target } : {}),
+  const errorRows = (read, screens) => (read.errors ?? []).slice(0, LIMITS.errors).map((e) => ({
+    text: screens.line(cut(e?.label)), ...(e?.kind === "field" && typeof e.target === "string" && FID.test(e.target) ? { fid: e.target } : {}),
   }));
 
   const tabRows = (read) => (read.tabs ?? []).filter((t) => t && t.tabId !== undefined && HOST.test(String(t.host ?? "").toLowerCase()))
@@ -132,14 +136,15 @@
     const away = ctx.why === "moved_away";
     const buttons = away ? [] : buttonRows(read);
     const tabs = tabRows(read);
+    const screens = screensOf(read);
     const refs = {};
     for (const b of buttons) refs[b.ref] = { frameId: read.frameId, id: b.id };
     for (const t of tabs) refs[t.ref] = t.tabId;
     const body = {
       ...selectorOf(ctx), why: ctx.why, round,
-      fields: away ? [] : fieldRows(read, dropped),
+      fields: away ? [] : fieldRows(read, dropped, screens),
       buttons: buttons.map(({ ref, text, role }) => ({ ref, text, role })),
-      errors: away ? [] : errorRows(read),
+      errors: away ? [] : errorRows(read, screens),
       tabs: tabs.map(({ ref, host }) => ({ ref, host })),
       history: history.filter((h) => typeof h === "string" && h.length <= 120 && HISTORY.test(h)).slice(-LIMITS.history),
       excluded: excluded.slice(0, LIMITS.excluded),

@@ -4,13 +4,14 @@ Pins: the snapshot is value-free and capped; at most 3 rounds, 3 actions each, 6
 failed twice is sent back as excluded; a field with no effect twice is dropped; a round that changes nothing ends
 it; ask_user, a missing reply and Stop end it; press_next goes only through the driver's own press."""
 
+import json
 import re
 
 from app.schemas import autofill_reason as R
 from tests.extension_harness import ROOT, run_node
 
 SOURCE = "\n".join((ROOT / "extension" / "shared" / name).read_text(encoding="utf-8")
-                   for name in ("decisions.js", "page-kind.js", "queue-run.js", "reason-loop.js"))
+                   for name in ("decisions.js", "fill-loop.js", "page-kind.js", "queue-run.js", "reason-loop.js"))
 
 _DRIVER = r"""
 const ns = loadModules();
@@ -121,7 +122,7 @@ def test_an_action_that_answers_the_open_question_moves_the_run_on(tmp_path):
     assert out["done"][0][2]["routes"] == {"f1": "free_text"} and out["done"][0][2]["reasoner"] == {"f1": "short"}
     [entry] = out["out"]["rounds"]
     assert entry["actions"] == [{"type": "write", "target": "f1", "outcome": "progress", "written": 11}]
-    assert out["out"]["wrote"] == [{"fid": "f1", "question": "Q", "note": None}] and "Mathematics" not in str(out["out"])
+    assert out["out"]["wrote"] == [{"fid": "f1", "question": "Q", "note": "Written for you: read it"}] and "Mathematics" not in str(out["out"])
     assert out["out"]["tried"] == ["answered Field of study"]
 
 
@@ -411,3 +412,45 @@ def test_a_step_that_never_asked_or_has_no_usable_host_posts_no_trace(tmp_path):
     assert trace_of(tmp_path, walled) is None and trace_of(tmp_path, []) is None
     asked = think(tmp_path, replies=[act(type="fill", fids=["f1"])])["out"]["rounds"]
     assert trace_of(tmp_path, asked, host="not a host") is None and trace_of(tmp_path, asked, host="") is None
+
+
+def _globex(**over):
+    """A page where the user typed an employer, and the page says it back in a sibling's question, an option list and an error."""
+    fields = [
+        {"fid": "e1", "question": "Employer", "shape": "text", "kind": "text", "required": True, "answered": True,
+         "committed": "Globex Corp", "options": None},
+        {"fid": "e2", "question": "Do you still work at Globex Corp?", "shape": "text", "kind": "text", "required": True,
+         "answered": False, "committed": "", "options": None},
+        {"fid": "e3", "question": "Which employer was your longest?", "shape": "select", "kind": "select", "required": True,
+         "answered": False, "committed": "", "options": [{"oid": "o1", "text": "Globex Corp"}, {"oid": "o2", "text": "Initech"}]},
+        {"fid": "e4", "question": "Field of study", "shape": "text", "kind": "text", "required": True, "answered": False,
+         "committed": "", "options": None},
+    ]
+    return {**PAGE, "fields": fields, "errors": [{"label": "Globex Corp is invalid", "kind": "other", "target": None}],
+            "lastFill": {}, **over}
+
+
+def test_a_value_the_user_typed_is_blanked_from_every_sibling_question_option_and_error_line(tmp_path):
+    out = run_node(_DRIVER, {"page": _globex(), "replies": [act(type="fill", fids=["e4"])]}, tmp_path, source=SOURCE)
+    [body] = out["asks"]
+    R.ReasonRequest.model_validate(body)
+    by_fid = {f["fid"]: f for f in body["fields"]}
+    assert by_fid["e1"]["question"] == "Employer"                # the field's own question holds no value
+    assert by_fid["e2"]["question"] == ""                         # a sibling's question that says it back is blanked
+    assert [o["text"] for o in by_fid["e3"]["options"]] == ["", "Initech"]
+    assert by_fid["e4"]["question"] == "Field of study"           # nothing else is touched
+    assert body["errors"] == [{"text": ""}]
+    trace = trace_of(tmp_path, out["out"]["rounds"])
+    assert "Globex" not in json.dumps(body) and "Globex" not in json.dumps(trace) and "Globex" not in json.dumps(out["out"])
+
+
+def test_the_screens_leave_the_pages_own_words_and_common_option_words_alone(tmp_path):
+    page = _globex(fields=[
+        {"fid": "e1", "question": "Phone type", "shape": "select", "kind": "select", "required": True, "answered": True,
+         "committed": "Mobile", "options": [{"oid": "o1", "text": "Mobile"}, {"oid": "o2", "text": "Home"}]},
+        {"fid": "e2", "question": "Do you use T-Mobile?", "shape": "text", "kind": "text", "required": False, "answered": False,
+         "committed": "", "options": None}], errors=[{"label": "Phone type is required", "kind": "other", "target": None}])
+    [body] = run_node(_DRIVER, {"page": page, "replies": [act(type="fill", fids=["e2"])]}, tmp_path, source=SOURCE)["asks"]
+    assert [f["question"] for f in body["fields"]] == ["Phone type", "Do you use T-Mobile?"]
+    assert [o["text"] for o in body["fields"][0]["options"]] == ["Mobile", "Home"]
+    assert body["errors"] == [{"text": "Phone type is required"}]

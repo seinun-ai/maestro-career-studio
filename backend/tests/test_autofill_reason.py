@@ -426,3 +426,55 @@ def test_a_first_name_inside_a_word_is_not_redacted_from_an_error_line():
     request = req(errors=[{"text": "Annual salary is required, Ann."}])
     redacted = autofill_reason.redact_errors(request, facts)
     assert redacted.errors[0].text == "Annual salary is required, [saved answer]."
+
+
+def _trace(snapshot, note="Employer next.", **over):
+    from app.schemas.autofill_trace import RunTrace
+
+    return RunTrace.model_validate({
+        "run_id": "run-reason-0001", "host": "acme.test", "started_at": "2026-10-14T10:00:00Z",
+        "ended_at": "2026-10-14T10:00:05Z", "fields": [],
+        "reasoning": [{"round": 1, "why": "page_errors", "model": "m", "ms": 5, "note": note, "snapshot": snapshot, **over}]})
+
+
+RESUME_FACTS = autofill_catalog.build(
+    {"personal": {"country": "United States"}},
+    [{"employer": "Globex Corp", "title": "Data Analyst", "start_date": "Aug 2021", "current": True}], ["Python"])
+
+
+def test_a_stored_snapshot_loses_every_saved_or_resume_value_in_a_question_option_error_line_or_note():
+    snap = {"fields": [{"fid": "f1", "question": "Do you still work at Globex Corp?", "shape": "select",
+                        "options": [{"ref": "o1", "text": "Globex Corp"}, {"ref": "o2", "text": "Initech"}]}],
+            "errors": [{"text": "Globex Corp is invalid"}]}
+    kept = autofill_reason.redact_trace(_trace(snap, note="Pick Globex Corp."), RESUME_FACTS).reasoning[0]
+    assert kept.snapshot.fields[0].question == "Do you still work at [saved answer]?"
+    assert [o.text for o in kept.snapshot.fields[0].options] == ["[saved answer]", "Initech"]
+    assert kept.snapshot.errors[0].text == "[saved answer] is invalid" and kept.note == "Pick [saved answer]."
+
+
+def test_a_choice_answer_the_page_lists_as_its_own_option_stays_readable_in_a_stored_snapshot():
+    snap = {"fields": [{"fid": "f1", "question": "Country", "shape": "select",
+                        "options": [{"ref": "o1", "text": "United States"}, {"ref": "o2", "text": "Canada"}]}]}
+    kept = autofill_reason.redact_trace(_trace(snap), RESUME_FACTS).reasoning[0].snapshot.fields[0]
+    assert [o.text for o in kept.options] == ["United States", "Canada"]
+
+
+def test_a_redaction_never_pushes_a_text_over_the_schemas_cap():
+    from app.schemas.autofill_reason import NOTE_MAX, TEXT_MAX
+    from app.schemas.autofill_trace import RunTrace
+
+    facts = autofill_catalog.build({"personal": {"city": "Ada"}}, [], [])
+    snap = {"fields": [{"fid": "f1", "question": "Ada " * 75, "shape": "text"}], "errors": [{"text": "Ada " * 75}]}
+    kept = autofill_reason.redact_trace(_trace(snap, note="Ada " * 49), facts)
+    [round_] = kept.reasoning
+    assert len(round_.snapshot.fields[0].question) <= TEXT_MAX and len(round_.snapshot.errors[0].text) <= TEXT_MAX
+    assert len(round_.note) <= NOTE_MAX
+    RunTrace.model_validate(kept.model_dump(mode="json"))     # still a trace the schema takes
+
+
+def test_open_questions_never_offers_or_allows_press_next_because_the_driver_refuses_it_there():
+    prompt = autofill_reason.build_prompt(req("open_questions"), [], "history")
+    assert "press_next" not in prompt and '"fill"' in prompt
+    _, rejected = autofill_reason.check(reply({"type": "press_next", "button": "b1"}), req("open_questions"), present=set(), level="history")
+    assert rejected == ["not_allowed"]
+    assert "press_next" in autofill_reason.build_prompt(req("page_errors"), [], "history")

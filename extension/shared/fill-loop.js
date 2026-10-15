@@ -2406,6 +2406,23 @@
       return own.length ? denyRegex([...new Set([...typedKeys].filter(([r]) => r !== row).flatMap(([, k]) => k))]) : all;
     };
   };
+  /** The trace's value screens over an inventory's fields (`committed` is what each holds), for another reader of the page that
+   * must not repeat a value either: the reasoning step's snapshot (shared/reason-loop.js). Same rule as the run trace:
+   * a question is blanked when its OWN keys or a sibling's (2+ characters when the sibling is typed, else 4+) match it,
+   * an option text against the TYPED siblings' keys (4+), never one a row's own list holds; an error line against every key.
+   * Each answers the text to keep: "" when it holds a value. */
+  const valueScreens = (fields) => {
+    const rows = new Map(fields.map((f) => [f.fid, { fid: f.fid, field: f }]));
+    const others = denyRegex([...new Set([...rows.values()].flatMap(siblingKeys))]);
+    const optionKeys = optionScreen(rows);
+    const lines = denyRegex([...new Set([...rows.values()].flatMap(rowKeys).filter(foreignKey))]);
+    const own = new Map([...rows].map(([fid, row]) => [fid, denyRegex(rowKeys(row))]));
+    return {
+      question: (fid, text) => (others?.test(text) || own.get(fid)?.test(text) ? "" : text),
+      option: (fid, text) => (optionKeys(rows.get(fid))?.test(text) ? "" : text),
+      line: (text) => (lines?.test(text) ? "" : text),
+    };
+  };
   const traceField = (status, row, others, optionKeys) => {
     const f = row.field ?? {};
     const own = denyRegex(rowKeys(row));
@@ -2510,5 +2527,5 @@
   // The run record's memory for `runFill(..., { memory })`: made once per record and cleared when the
   // step changes. It holds search terms, which can carry a value, so it saves as nothing.
   const newMemory = () => Object.defineProperty({}, "toJSON", { value: () => undefined });
-  ns.fillLoop = { runFill, newMemory, knownNote, landedNote, REASONED_NOTES, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
+  ns.fillLoop = { runFill, newMemory, valueScreens, knownNote, landedNote, REASONED_NOTES, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
 })();

@@ -7,7 +7,8 @@ models named on the command line and prints, per model:
 
     valid=      replies that parsed AND passed the checker with no rejection, out of all snapshots
     parsed=     replies that were JSON in the reply schema (the rest are `model_error` / `bad_reply`)
-    ask_user=   responses that end in ask_user: the model's own ask, or the checker's turn of a bad reply into one
+    ask_user=   responses with an ask_user anywhere in them (the live loop stops at one): the model's own ask, or the checker's
+                turn of a bad reply into one
     actions     how many of each action type came back
     latency     median / p95 / mean, in ms, as the server measures it
     tokens=     input/output, summed, as the provider reports them
@@ -97,7 +98,9 @@ def _rounds(trace: dict) -> list[dict]:
             if isinstance(r, dict) and r.get("snapshot") is not None]
 
 
-def requests_from_json(data: Any) -> "list[ReasonRequest]":
+def requests_from_json(data: Any, skipped: list[str] | None = None) -> "list[ReasonRequest]":
+    """The requests in `data`. One the schema refuses aborts, named by its place; with a `skipped` list it is left out and
+    named there instead (stored rounds were valid when written, and a schema that has moved since must not end the run)."""
     items = data.get("snapshots", []) if isinstance(data, dict) else data
     if not isinstance(items, list):
         raise BadSnapshot("the file is not a list of snapshots")
@@ -107,11 +110,19 @@ def requests_from_json(data: Any) -> "list[ReasonRequest]":
             out.extend(_rounds(item))
         else:
             out.append(item["request"] if isinstance(item, dict) and "request" in item else item)
-    return [_request(item, f"snapshot {i}") for i, item in enumerate(out, 1)]
+    kept = []
+    for i, item in enumerate(out, 1):
+        try:
+            kept.append(_request(item, f"snapshot {i}"))
+        except BadSnapshot as e:
+            if skipped is None:
+                raise
+            skipped.append(str(e))
+    return kept
 
 
-def requests_from_runs(runs: "list[AutofillRun]") -> "list[ReasonRequest]":
-    return requests_from_json([run.trace for run in runs if isinstance(run.trace, dict)])
+def requests_from_runs(runs: "list[AutofillRun]", skipped: list[str] | None = None) -> "list[ReasonRequest]":
+    return requests_from_json([run.trace for run in runs if isinstance(run.trace, dict)], skipped)
 
 
 # ---------- one model over every snapshot
@@ -140,7 +151,7 @@ def evaluate(requests: "list[ReasonRequest]", model: str, *, present: list[str],
             stats.latencies.append(reply.ms)
             stats.parsed += not NOT_PARSED & set(reply.rejected)
             stats.valid += not reply.rejected
-            stats.asked += reply.actions[0].type == "ask_user"
+            stats.asked += any(a.type == "ask_user" for a in reply.actions)
             stats.actions.update(a.type for a in reply.actions)
             stats.rejected.update(reply.rejected)
             stats.notes.append(reply.note)
@@ -220,23 +231,35 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
-def _stored_requests(session: Any, limit: int) -> "list[ReasonRequest]":
+def _stored_requests(session: Any, limit: int, skipped: list[str]) -> "list[ReasonRequest]":
     from sqlalchemy import select
 
     from app.models.autofill_run import AutofillRun
 
     runs = session.scalars(select(AutofillRun).order_by(AutofillRun.started_at.desc())).all()
-    found = requests_from_runs([run for run in runs if (run.trace or {}).get("reasoning")])
+    found = requests_from_runs([run for run in runs if (run.trace or {}).get("reasoning")], skipped)
     return found[:limit] if limit else found
 
 
 def _profile_answer_types(session: Any) -> list[str]:
-    from app.services import autofill_catalog, autofill_profile, autofill_reason, eeo_consent
+    """The answer types the copy's profile holds, by name, with the first active base resume's employers, titles, schools and
+    skills when its file can be read (BASE_RESUMES_DIR); without a resume an `answer_from` of an `experience.*` type or
+    `skills` replays as `unknown_id` on every model alike."""
+    from app.services import autofill_catalog, autofill_profile, autofill_reason, base_resume_data, eeo_consent
+    from app.services.autofill_context import employment_blocks, resume_skills
 
+    resume = None
+    try:
+        slugs = base_resume_data.active_base_resume_slugs(session)
+        resume = base_resume_data.load_base_resume(slugs[0], session) if slugs else None
+    except Exception:   # noqa: BLE001 — no readable resume file: the profile alone answers
+        print("note: no base resume could be read, so experience.* and skills are not answer types here "
+              "(set BASE_RESUMES_DIR to the checkout's base_resumes/)", file=sys.stderr)
     # PEEKED, as the fill evaluation does: get_profile / get_consent lazily seed a row, and the copy is read-only.
     profile = eeo_consent.withhold_unconsented(autofill_profile.peek_profile(session),
                                                eeo_consent.peek_consent(session).model_dump(mode="json"))
-    return autofill_reason.present_slots(autofill_catalog.build(profile, [], []))
+    facts = autofill_catalog.build(profile, employment_blocks(resume) if resume else [], resume_skills(resume) if resume else [])
+    return autofill_reason.present_slots(facts)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -257,7 +280,10 @@ def main(argv: list[str] | None = None) -> int:
             from app.db import SessionLocal
 
             session = SessionLocal()
-            requests = _stored_requests(session, args.limit)
+            skipped: list[str] = []
+            requests = _stored_requests(session, args.limit, skipped)
+            if skipped:
+                print(f"note: skipped {len(skipped)} stored round(s) the reasoning schema no longer takes", file=sys.stderr)
             present = present if present is not None else _profile_answer_types(session)
         else:
             requests = requests_from_json(json.loads(args.snapshots.read_text(encoding="utf-8")))

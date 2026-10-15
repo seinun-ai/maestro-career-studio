@@ -1764,22 +1764,26 @@ footer alone).
     `moved_away`), at most once per page per drive (`thought`, `thoughtOn`), and AGAIN when it moved the run on. Never on a wall (CAPTCHA, email code, an account on
     an unknown host, a Submit page or any page that asks about submitting, a review page), never on open questions that are all protected, never within one step of
     `stepMax` (the park keeps its own reason). The host passes `reason` only with full automation On, **Think when stuck** On (Settings › Form filling,
-    `companion_apply.think_when_stuck`, default On, read like **Stop after each step**) and **Stop after each step** Off; the route checks the same switches itself
-    (`switched_off`: ask the user, no model is paid, so a stale panel is not obeyed).
+    `companion_apply.think_when_stuck`, default On, read like **Stop after each step**) and **Stop after each step** Off; the route reads all three itself
+    (full automation, Think when stuck, Stop after each step: `switched_off`, ask the user, no model is paid, so a stale panel is not obeyed).
   - **Snapshot** (`snapshotOf`, exactly a `ReasonRequest`, never a value): the stuck reason, each field's `fid`, question, shape, required / filled / invalid /
     multi / multiline / by_run / touched, the fact NAME `/map` filed it under and up to 20 options; the page's Next and dialog buttons (`b<i>`, role `next` /
     `dialog`: only the Next the classifier names, a dialog button only while nothing asks about submitting), error lines (with the field's id when they name one),
     tabs (`t<i>`, host only), the last 8 moves and the signatures excluded. The job selectors (`application_id` or `base`, `page_url`, `today`) ride along; a
     `moved_away` snapshot carries no field, button or error of the foreign site. Page text is cut to 300 characters and stripped of invisible Unicode (Cf, Co, Cn).
+    The page can say a typed value back, so every question, option text and error line passes the run trace's own screens first (`fillLoop.valueScreens`, over the
+    inventory's `committed` values, same rule and thresholds as "Run trace"): a question is blanked when its own keys or a sibling's match, an option against the typed
+    siblings' keys (4+ characters), an error line against every key. A blank text is `""`; with no fill loop there is no snapshot.
   - **Limits and guards** (`LIMITS`, mirrored by `schemas/autofill_reason.py`): 3 rounds, 3 actions a round, a minute a page, and no call is started with under 25 s of
     that minute left (the backend gives the model 25 s). An action's signature (`type:target`) that failed twice goes back as `excluded`; a field an action left
     unchanged twice leaves the snapshot; a round after which the page key (fingerprint, error count, filled fields) is unchanged ends the loop, as do `ask_user`, a
     missing or late reply, Stop and the page clock. The reply is checked again here: ids in THIS snapshot, a button's role, the actions the stuck reason allows
-    (`unknown_page` only `close_dialog`, `follow_tab`, `ask_user`; `moved_away` only `follow_tab`, `ask_user`).
+    (`unknown_page` only `close_dialog`, `follow_tab`, `ask_user`; `moved_away` only `follow_tab`, `ask_user`; `open_questions` no `press_next`, which the driver never
+    presses there).
   - **Actions**, each through code that already exists: `fill` is `runFill({only})`; `answer_from` a `slotHints` entry for `/map`; `write` the `free_text` route with
     `reasoner` `short` (`essay` on a required multiline box) for `/choose`; `choose` the `reasoned` (basis history) or `low_stakes` (basis default) route for `/pick`;
-    `retry` a move-order variant (`open_with_keys`, `search_with_enter`, `search_and_wait`) or, for `clear_and_set`, a redo; `redo` clears and refills a field the run
-    filled (never the user's `touched` one, never a multi-value field); `close_dialog` is `page_advance` with `dismiss`, which the page refuses for any button that asks about
+    `retry` a move-order variant (`open_with_keys`, `search_with_enter`, `search_and_wait`) or, for `clear_and_set`, a redo; `redo` refills over a field the run
+    filled (never the user's `touched` one, never a multi-value field; no clear op exists, a text write replaces and a single choice re-picks); `close_dialog` is `page_advance` with `dismiss`, which the page refuses for any button that asks about
     submitting; `press_next` is the DRIVER's `press` (it re-sorts the label at click time, and only a page this run filled is pressed), the last action only;
     `follow_tab` is `rebind`, the Phase 2e move. The model names targets and never supplies a value: what is written comes from the profile, history and resume under
     the answer rules, so work authorization, sponsorship, salary, EEO, background history, signatures, licences and any fact the profile lacks are `ask_user`.
@@ -2140,8 +2144,11 @@ database and refuses the live file.
 model's note (the same cleaned sentence the card shows, 200 characters), each action as `{type, target, outcome}` (the target a field id or an opaque
 `b<i>` / `t<i>` ref; `slot` for `answer_from`, the fact NAME; `written` for a write, the answer's LENGTH), the checker's rejection codes, how the
 round ended (`stopped`) and `snapshot`: what the model was shown, without the job's selectors, capped to 30 fields and 8 options each (a snapshot over 120 000
-characters is dropped and the round kept). The error lines of a stored snapshot lose every saved answer a page echoed, on the way into the table
-(`autofill_reason.redact_trace`), as the same lines do on the way to the model. The model, the note and the page's own words are the only free text.
+characters is dropped and the round kept). The snapshot is screened in the panel before it is sent or stored (above); the table's backstop (`autofill_reason.redact_trace`, on
+`POST /runs`) takes every saved answer and every active base resume's employer, title, school and skill out of its questions, option texts, error lines and the round's note,
+each cut to the schema's cap (an option keeps the facts a page lists as its own choices: country, state, EEO, work authorization and preferences). A stored
+snapshot can therefore read `[saved answer]` where a page named one of your own values. A reasoning step is a run row of its own, so its rounds count against the
+newest-50 `RUNS_KEPT` with the fill runs. The model, the note and the page's own words are the only free text.
 `fill_trace.py last` prints the rounds after the fields. `backend/scripts/eval_reason.py` replays the snapshots against other models
 (`--models claude-sonnet-5-5,claude-haiku-5-5,gpt-6-luna`, from a database copy or a JSON file), runs the server's own checker and prints the valid
 and ask_user rates, the actions chosen, latency, tokens and a cost estimate; it spends your keys' money and is maintainer-run, never in CI.

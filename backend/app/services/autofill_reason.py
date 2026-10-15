@@ -20,6 +20,7 @@ from app.schemas.autofill_trace import RunTrace
 from app.schemas.autofill_reason import (
     NOTE_MAX,
     REPLY,
+    TEXT_MAX,
     SLOT,
     AskUser,
     ReasonReply,
@@ -40,7 +41,9 @@ CHOICE_SHAPES = frozenset({"select", "group", "search", "popup"})
 _FIELD_WORK = frozenset({"fill", "answer_from", "write", "choose", "retry", "redo", "close_dialog", "press_next",
                          "ask_user"})
 ALLOWED: dict[str, frozenset[str]] = {
-    "page_errors": _FIELD_WORK, "open_questions": _FIELD_WORK, "no_change": _FIELD_WORK, "loop": _FIELD_WORK,
+    # The driver presses only a page this run filled and never one with open questions (inv-rejected-next), so a press there is
+    # a refusal at the other end: not offered. A loop is never pressed either (reason-loop.js), but a reply naming it is checked, not hidden.
+    "page_errors": _FIELD_WORK, "open_questions": _FIELD_WORK - {"press_next"}, "no_change": _FIELD_WORK, "loop": _FIELD_WORK,
     "unknown_page": frozenset({"close_dialog", "follow_tab", "ask_user"}),
     "moved_away": frozenset({"follow_tab", "ask_user"}),
 }
@@ -65,7 +68,7 @@ ACTION_HELP = {
               "the safe default.",
     "retry": '{"type": "retry", "fid": fid, "technique": "open_with_keys" or "search_with_enter" or '
              '"search_and_wait" or "clear_and_set"}: fill the field again a different way.',
-    "redo": '{"type": "redo", "fid": fid}: clear and fill again a field the run filled.',
+    "redo": '{"type": "redo", "fid": fid}: fill again over a field the run filled.',
     "close_dialog": '{"type": "close_dialog", "button": ref}: dismiss a popup by its dialog button.',
     "press_next": '{"type": "press_next", "button": ref}: press a button whose role is next. Last action only.',
     "follow_tab": '{"type": "follow_tab", "tab": ref}: move the run to another open tab.',
@@ -362,15 +365,37 @@ def redact_errors(req: ReasonRequest, facts: dict) -> ReasonRequest:
                                              for e in req.errors]})
 
 
+# Facts whose value is one of the page's own options (a country, a state, a Yes/No, a stated preference): a select that lists it
+# lists the page's words, so a stored option text keeps them. A question, an error line and a note never do.
+_CHOICE_FACTS = ("eeo.", "work_auth.", "preferences.", "personal.country", "personal.state")
+
+
+def _scrubbed(text: str, pattern: re.Pattern | None, limit: int) -> str:
+    """`text` with the pattern's values replaced, then cut to `limit`: the replacement is longer than a short value."""
+    return (pattern.sub("[saved answer]", text) if pattern else text)[:limit]
+
+
 def redact_trace(trace: RunTrace, facts: dict) -> RunTrace:
-    """`trace` with the same taken out of the error lines of each stored reasoning snapshot, so the fill log keeps no
-    value a page echoed (inv-autofill-telemetry-no-values)."""
+    """`trace` with every saved answer and resume value taken out of what a stored reasoning round holds: each snapshot
+    question, option text and error line, and the round's note (a page may echo what was typed, and the model may quote it),
+    so the fill log keeps no value (inv-autofill-telemetry-no-values). Options keep the facts the page lists as its own
+    choices. Every text stays inside the schema's cap, which `model_copy` does not check."""
     pattern = _saved_answers(facts)
     if pattern is None:
         return trace
-    rounds = [r.model_copy(update={"snapshot": r.snapshot.model_copy(update={"errors": [
-        e.model_copy(update={"text": pattern.sub("[saved answer]", e.text)}) for e in r.snapshot.errors]})})
-        if r.snapshot is not None else r for r in trace.reasoning]
+    options = _saved_answers({k: f for k, f in facts.items() if not str(getattr(f, "slot", k)).startswith(_CHOICE_FACTS)})
+
+    def snapshot(snap: Any) -> Any:
+        return snap.model_copy(update={
+            "fields": [f.model_copy(update={
+                "question": _scrubbed(f.question, pattern, TEXT_MAX),
+                "options": [o.model_copy(update={"text": _scrubbed(o.text, options, TEXT_MAX)}) for o in f.options]})
+                for f in snap.fields],
+            "errors": [e.model_copy(update={"text": _scrubbed(e.text, pattern, TEXT_MAX)}) for e in snap.errors]})
+
+    rounds = [r.model_copy(update={"note": _scrubbed(r.note, pattern, NOTE_MAX),
+                                   "snapshot": snapshot(r.snapshot) if r.snapshot is not None else None})
+              for r in trace.reasoning]
     return trace.model_copy(update={"reasoning": rounds})
 
 

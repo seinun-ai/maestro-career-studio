@@ -30,6 +30,9 @@ GOOD = [say({"type": "choose", "fid": "f1", "basis": "default"}, {"type": "press
         say({"type": "write", "fid": "f4"}),
         say({"type": "ask_user", "fids": [], "note": "Open the application tab."})]
 # Small-model-like: one reply that is not JSON, one that targets a field the page never had, one honest ask.
+# Asks while it also acts: the live loop stops at an ask_user anywhere in the reply, so that is an ask.
+MIXED = [say({"type": "fill", "fids": ["f1"]}, {"type": "ask_user", "fids": [], "note": "Help."}), say({"type": "write", "fid": "f4"}),
+         say({"type": "ask_user", "fids": [], "note": "Open the application tab."})]
 SLOPPY = ["I would press next.", say({"type": "write", "fid": "f99"}), say({"type": "ask_user", "fids": [], "note": "Help."})]
 
 
@@ -53,6 +56,12 @@ def test_each_model_is_replayed_over_every_snapshot_and_scored_by_the_servers_ow
     assert (small.n, small.valid, small.asked) == (3, 1, 3)       # a bad reply and a rejected one both end in ask_user
     assert small.rejected == {"model_error": 1, "unknown_id": 1} and (strong.parsed, small.parsed) == (3, 2)
     assert strong.input_tokens == strong.output_tokens == 3 and len(strong.latencies) == 3
+
+
+def test_an_ask_user_beside_other_actions_counts_as_an_ask(monkeypatch):
+    _install(monkeypatch, mixed=MIXED)
+    stats = ev.evaluate(ev.requests_from_json(SNAPSHOTS), "mixed", present=[], level="history")
+    assert stats.asked == 2 and stats.actions["fill"] == 1 and stats.actions["ask_user"] == 2
 
 
 def test_the_report_prints_a_row_per_model_with_rates_latency_and_cost(monkeypatch):
@@ -94,10 +103,33 @@ def test_a_stored_run_gives_back_each_round_the_model_was_shown(db_session):
     assert (one.why, one.fields[0].question) == ("page_errors", "How did you hear about this job?")
 
 
-def test_a_snapshot_the_schema_would_refuse_is_named_and_skipped_not_replayed():
+def test_a_snapshot_the_schema_would_refuse_is_named_and_aborts_a_hand_made_file():
     bad = {"why": "page_errors", "round": 1, "fields": [{**SELECT, "value": "Mathematics"}]}
     with pytest.raises(ev.BadSnapshot, match="snapshot 2"):
         ev.requests_from_json([SNAPSHOTS[0], bad])
+
+
+def test_a_snapshot_the_schema_would_refuse_is_named_and_skipped_when_a_collector_is_given():
+    bad = {"why": "page_errors", "round": 1, "fields": [{**SELECT, "value": "Mathematics"}]}
+    skipped = []
+    kept = ev.requests_from_json([SNAPSHOTS[0], bad, SNAPSHOTS[1]], skipped=skipped)
+    assert [r.why for r in kept] == ["page_errors", "open_questions"] and len(skipped) == 1 and "snapshot 2" in skipped[0]
+    assert "Mathematics" not in skipped[0]
+
+
+def test_stored_rounds_a_later_schema_refuses_are_skipped_and_counted_not_fatal():
+    from datetime import UTC, datetime
+
+    good = {"run_id": "run-reason-0002", "host": "acme.test", "started_at": "2026-10-14T10:00:00Z",
+            "ended_at": "2026-10-14T10:00:05Z", "fields": [],
+            "reasoning": [{"round": 1, "why": "page_errors", "snapshot": {"fields": [SELECT]}}]}
+    old = {**good, "run_id": "run-reason-0003", "reasoning": [{"round": 1, "why": "page_errors",
+                                                              "snapshot": {"fields": [{**SELECT, "question": "x" * 400}]}}]}
+    rows = [AutofillRun(run_id=d["run_id"], host="acme.test", started_at=datetime(2026, 10, 14, tzinfo=UTC), trace=d)
+            for d in (good, old)]
+    skipped = []
+    kept = ev.requests_from_runs(rows, skipped=skipped)
+    assert len(kept) == 1 and len(skipped) == 1
 
 
 def test_the_script_asks_for_a_source_and_models():
@@ -121,13 +153,13 @@ def test_main_replays_a_file_and_prints_the_report(tmp_path, monkeypatch, capsys
     assert json.loads(out.read_text())["strong"]["n"] == 3
 
 
-def _script(tmp_path, *args):
+def _script(tmp_path, *args, **extra):
     import os
     import subprocess
     import sys
     from pathlib import Path
 
-    env = {**os.environ, "SETTINGS_DIR": str(tmp_path), "LOGS_DIR": str(tmp_path)}
+    env = {**os.environ, "SETTINGS_DIR": str(tmp_path), "LOGS_DIR": str(tmp_path), **extra}
     return subprocess.run([sys.executable, "-m", "scripts.eval_reason", *args], cwd=Path(__file__).resolve().parents[1],
                           capture_output=True, text=True, env=env, timeout=120)
 
@@ -143,10 +175,9 @@ def test_a_database_copy_with_no_reasoning_round_says_there_is_nothing_to_replay
 
 
 def test_a_database_in_a_live_data_dir_is_refused(tmp_path):
-    from pathlib import Path
+    from tests.test_fill_trace_script import make_db
 
-    live = Path(__file__).resolve().parents[2] / "data"
-    if not live.is_dir():
-        pytest.skip("no data/ directory in this checkout")
-    done = _script(tmp_path, "--db", str(live / "no-such.sqlite3"), "--models", "m")
-    assert done.returncode == 2
+    live = tmp_path / "live"
+    copy = make_db(live / "maestro_cs.sqlite3", [])       # a real database file inside the directory DATA_DIR names
+    done = _script(tmp_path, "--db", str(copy), "--models", "m", DATA_DIR=str(live))
+    assert done.returncode == 2 and "where a live database lives" in done.stderr

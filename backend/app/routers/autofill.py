@@ -163,7 +163,7 @@ def post_run(payload: RunTrace, db: Annotated[Session, Depends(get_db)]):
     """Store one Companion run's value-free trace and fold it into the mechanism counters."""
     if payload.reasoning:
         # A page may echo a typed answer in an error line, and the stored snapshot keeps those lines for the replay script.
-        payload = autofill_reason.redact_trace(payload, _facts(db, None, None)[0])
+        payload = autofill_reason.redact_trace(payload, _redaction_facts(db))
     autofill_trace.store_run(db, payload)
     return Response(status_code=204)
 
@@ -414,6 +414,19 @@ def _facts(
     return autofill_catalog.with_agreement(facts, agrees), consented
 
 
+MAX_REDACTION_BASES = 8
+
+
+def _redaction_facts(db: Session) -> dict[str, autofill_catalog.Fact]:
+    """Every value a stored page text must not repeat: the profile's, and each active base resume's employers, titles, schools
+    and skills (a trace names no application, so it cannot say which resume the run used). Later bases' facts keep
+    their value under a numbered key."""
+    out = dict(_facts(db, None, None)[0])
+    for n, slug in enumerate(base_resume_data.active_base_resume_slugs(db)[:MAX_REDACTION_BASES], 1):
+        out.update({f"{key}#{n}": fact for key, fact in _facts(db, None, slug)[0].items()})
+    return out
+
+
 def _job_hint(
     db: Session, application_id: UUID | None, source_hint: str | None
 ) -> autofill_pick.JobHint | None:
@@ -510,7 +523,8 @@ def post_reason(payload: ReasonRequest, request: Request, db: Annotated[Session,
     two switches it runs under (full automation, Think when stuck): a panel with stale facts is not obeyed."""
     if not is_companion(request):
         raise HTTPException(status_code=403, detail="Only the Companion can ask the reasoning step.")
-    if not (auto_apply_settings.get_settings(db).full_automation and companion_apply.get_settings(db).think_when_stuck):
+    steps = companion_apply.get_settings(db)
+    if not (auto_apply_settings.get_settings(db).full_automation and steps.think_when_stuck and not steps.stop_each_step):
         return autofill_reason.switched_off(db)
     facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
     return autofill_reason.reason(payload, facts, model_settings.get_answer_level(db), db)

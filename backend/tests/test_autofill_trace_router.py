@@ -372,3 +372,19 @@ def test_a_run_without_reasoning_is_stored_as_posted(db_session):
     assert client.post("/api/autofill/runs", json=_run("run-plain-0001")).status_code == 204
     [row] = db_session.scalars(select(AutofillRun)).all()
     assert row.trace["fields"] == [] and row.trace["reasoning"] == []
+
+
+def test_a_resume_employer_an_error_echoed_is_taken_out_of_the_stored_snapshot_too(db_session, monkeypatch):
+    from app.services import autofill_profile, base_resume_data
+
+    autofill_profile.set_profile({"personal": {"city": "Springfield"}}, db_session)
+    monkeypatch.setattr(base_resume_data, "active_base_resume_slugs", lambda session: ["analyst"])
+    monkeypatch.setattr(base_resume_data, "load_base_resume", lambda slug, session=None: {
+        "experience": [{"company": "Globex Corp", "role": "Data Analyst", "start_date": "Aug 2021", "end_date": "Present"}],
+        "skills": {"Languages": ["Python"]}})
+    client = _client(db_session)
+    doc = _reasoned("Globex Corp is invalid")
+    doc["reasoning"][0]["note"] = "Globex Corp looks like the employer."
+    assert client.post("/api/autofill/runs", json=doc).status_code == 204
+    [row] = db_session.scalars(select(AutofillRun)).all()
+    assert "Globex" not in json.dumps(row.trace)

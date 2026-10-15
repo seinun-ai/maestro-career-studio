@@ -12,10 +12,10 @@ from tests.fake_provider import FakeProvider, install
 EXT = {"Origin": "chrome-extension://abcdefghijklmnopabcdefghijklmnop"}
 
 
-def _switches(db, *, full=True, think=True):
+def _switches(db, *, full=True, think=True, stop=False):
     """The two switches the route obeys on its own: stale panel facts never decide whether the model is paid."""
     auto_apply_settings.set_settings(AutoApplySettings(full_automation=full), db)
-    companion_apply.set_settings(CompanionApplySettings(think_when_stuck=think), db)
+    companion_apply.set_settings(CompanionApplySettings(think_when_stuck=think, stop_each_step=stop), db)
 
 
 BODY = {"why": "open_questions", "round": 1,
@@ -78,4 +78,13 @@ def test_a_fresh_install_has_full_automation_off_so_the_route_does_not_spend(cli
     calls = []
     monkeypatch.setattr(llm, "call_openai", lambda **kw: calls.append(kw))
     assert client.post("/api/autofill/reason", json=BODY, headers=EXT).json()["rejected"] == ["switched_off"]
+    assert calls == []
+
+
+def test_with_stop_after_each_step_on_the_route_asks_the_user_without_calling_the_model(client, db_session, monkeypatch):
+    calls = []
+    monkeypatch.setattr(llm, "call_openai", lambda **kw: calls.append(kw))
+    _switches(db_session, stop=True)
+    r = client.post("/api/autofill/reason", json=BODY, headers=EXT)
+    assert r.status_code == 200 and r.json()["actions"][0]["type"] == "ask_user" and r.json()["rejected"] == ["switched_off"]
     assert calls == []
