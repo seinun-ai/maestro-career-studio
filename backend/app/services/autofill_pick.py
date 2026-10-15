@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, replace
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, PolarityTrace, Reason
-from app.services import autofill_polarity, jev, llm, model_settings
+from app.services import autofill_education, autofill_polarity, jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
     NAMES_PROTECTED_CLASS,
@@ -529,9 +529,25 @@ def named_employers(fields: list[PickField], facts: dict[str, Fact]
     return (out, facts | moved, dropped) if (moved or dropped) else (fields, facts, dropped)
 
 
+def education_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
+    """The fields asking for the education level (`derived.education_level`) are decided in code, never by a
+    model: the highest threshold the applicant's completed level meets, else nobody (autofill_education).
+    Returns the other fields, and the decided ones' answers."""
+    fact = facts.get(autofill_education.SLOT)
+    if fact is None or not isinstance(fact.value, str):
+        return fields, {}
+    decided = {}
+    for f in fields:
+        if f.route == "slot" and f.slot == autofill_education.SLOT:
+            got = autofill_education.decide(fact.value, [(o.oid, o.text) for o in f.options], complete=f.complete)
+            decided[f.fid] = Picked(oids=[got.oid] if got.oid else [], reason=got.reason, trace=DecisionTrace())
+    return [f for f in fields if f.fid not in decided], decided
+
+
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> dict[str, Picked]:
     fields, facts, dropped = named_employers(fields, facts)
+    fields, by_code = education_picks(fields, facts)
     # Another voluntary-disclosure answer never answers a question that names a veteran: final, the user's.
     cross = {f.fid for f in fields if names_veteran_off_slot(f.slot, f.question, facts.get(f.slot or ""))}
     dropped |= cross
@@ -586,4 +602,4 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
         out |= reason(reasoned, facts, session, budget, hint.company if hint else None, level)
     _veteran_claims(fields, facts, out)
     _with_polarity(out, ways)
-    return out | {fid: _ASKED for fid in dropped}
+    return out | by_code | {fid: _ASKED for fid in dropped}

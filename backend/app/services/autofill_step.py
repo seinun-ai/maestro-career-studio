@@ -33,7 +33,7 @@ from dataclasses import asdict, dataclass
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import TERM, DecisionTrace, Engine, StepRequest, StepResponse
-from app.services import jev, llm, model_settings
+from app.services import autofill_education, jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
     WORKED_HERE_SLOT,
@@ -470,6 +470,16 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     shown = {c.mid: _option_text(c.describe) for c in req.candidates}
     if said and veteran_overreach(said, req.question, [t for t in shown.values() if t]):
         return StepResponse(mid=None, reason="abstained", polarity=polarity)
+    # The education level: a threshold the page lists is code's pick (autofill_education); a list that names no level
+    # is not ours to read, and the ordinary step opens or searches it.
+    if req.slot == autofill_education.SLOT and isinstance(getattr(fact, "value", None), str):
+        got = autofill_education.decide(fact.value, [(c.mid, t) for c in req.candidates
+                                                     if c.mid.startswith("click:") and (t := _option_text(c.describe))],
+                                  complete=req.complete)
+        if got.oid:
+            return StepResponse(mid=got.oid, reason=got.reason, trace=DecisionTrace(), polarity=polarity)
+        if got.saw_levels:
+            return StepResponse(mid=None, reason="abstained", polarity=polarity)
     # A saved board answer: the board's leaf or its name in the search box is code's call, before a model.
     if req.slot == HOW_HEARD_SLOT and how_heard_kind(values[0]) == "board" and (coded := _board_move(req, values[0], hint)):
         return coded.model_copy(update={"polarity": polarity})

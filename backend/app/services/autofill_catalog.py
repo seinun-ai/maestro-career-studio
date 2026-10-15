@@ -116,6 +116,10 @@ _DESCRIBES: dict[str, str] = {
     # The profile holds a number, never what kind of phone it is: a device-type picker is answered Mobile
     # (autofill_pick reports it assumed).
     "derived.phone_type": "the kind of phone the number is (mobile, home or work)",
+    # A level is met by every level above it: a "Bachelor's degree or higher" option is met by a Master's. The pick
+    # is code's (autofill_education), so the words only let /map file a threshold list under it.
+    "derived.education_level": ("the highest level of education completed (a threshold such as \"Bachelor's degree "
+                                "or higher\" is met by any level above it)"),
     "derived.today": "today's date, for a date the applicant signs or fills in today",
     "derived.earliest_start_date": "the earliest date you can start, as a calendar date",
     "derived.previously_employed_here": ("works, or has worked, for this company (from the work history: "
@@ -436,6 +440,11 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
         out["derived.us_citizen"] = make_fact("derived.us_citizen", _US_CITIZEN[status])
     if (either := _now_or_future(work_auth)) is not None:
         out["derived.sponsorship_now_or_future"] = make_fact("derived.sponsorship_now_or_future", either)
+    # Lazy: autofill_education reads answer_flags, which imports this module.
+    from app.services import autofill_education
+
+    if (level := autofill_education.highest_completed(profile.get("education"), today)) is not None:
+        out[autofill_education.SLOT] = make_fact(autofill_education.SLOT, level)
     preferences = profile.get("preferences") if isinstance(profile.get("preferences"), dict) else {}
     start = preferences.get("earliest_start_date")
     if isinstance(start, str) and _IMMEDIATE.search(start):
