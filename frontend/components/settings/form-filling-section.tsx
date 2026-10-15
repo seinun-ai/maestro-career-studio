@@ -29,9 +29,10 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import type { JevInfo, SettingEnvelope } from "@/lib/types";
 
-/** The Companion's Apply switches (`companion_apply`): who picks the base resume, and whether Apply
- *  stops between steps. The panel reads them when it binds a tab. */
-type CompanionApply = { auto_pick: boolean; stop_each_step: boolean };
+/** The Companion's Apply switches (`companion_apply`): who picks the base resume, whether Apply
+ *  stops between steps, and whether a stuck run asks the Reasoning model first. The panel reads
+ *  them when it binds a tab. */
+type CompanionApply = { auto_pick: boolean; stop_each_step: boolean; think_when_stuck: boolean };
 const COMPANION_APPLY_PATH = "/api/settings/companion-apply";
 const COMPANION_APPLY_KEY = ["settings", "companion-apply"] as const;
 
@@ -66,7 +67,7 @@ function KnownGapsLine() {
   return <p className="text-muted-foreground text-body-small">{gapsLine(gaps.data)}</p>;
 }
 
-/** Two switches for Apply in the Companion. Each saves on toggle and shows at once; the saved value
+/** Three switches for Apply in the Companion. Each saves on toggle and shows at once; the saved value
  *  replaces it. The match-score limits that decide a clear win are Auto-apply's. */
 function CompanionApplySwitches() {
   const qc = useQueryClient();
@@ -74,6 +75,8 @@ function CompanionApplySwitches() {
   const stopId = useId();
   const pickHintId = useId();
   const stopHintId = useId();
+  const thinkId = useId();
+  const thinkHintId = useId();
   const setting = useQuery({
     queryKey: COMPANION_APPLY_KEY,
     queryFn: () => apiFetch<SettingEnvelope<CompanionApply>>(COMPANION_APPLY_PATH),
@@ -104,7 +107,7 @@ function CompanionApplySwitches() {
           onRetry={() => void setting.refetch()}
         />
       ) : !shown ? (
-        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-36 w-full" />
       ) : (
         <>
           <SwitchRow htmlFor={pickId} label="Choose the base resume for me">
@@ -130,6 +133,19 @@ function CompanionApplySwitches() {
           <p id={stopHintId} className="text-muted-foreground text-body-small">
             Apply stops after saving the job, after the resume, and before filling, so you press
             once for each.
+          </p>
+          <SwitchRow htmlFor={thinkId} label="Think when stuck">
+            <Switch
+              id={thinkId}
+              aria-describedby={thinkHintId}
+              checked={shown.think_when_stuck}
+              onCheckedChange={(checked) => change({ think_when_stuck: checked })}
+            />
+          </SwitchRow>
+          <p id={thinkHintId} className="text-muted-foreground text-body-small">
+            When a run would stop on a page, the Reasoning model looks at it and tries a few fixes
+            first. Each round costs a few cents. It never answers protected questions and never
+            presses Submit. Off, the run stops and asks you.
           </p>
         </>
       )}
