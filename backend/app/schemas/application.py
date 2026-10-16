@@ -6,7 +6,7 @@ from pydantic import AliasChoices, AwareDatetime, BaseModel, Field, field_valida
 
 from app.schemas.job import JobOwnership, JobRead
 from app.schemas.resume_edit import ResumeEdit
-from app.services.stage import Rung
+from app.schemas.stage import Rung
 
 # The one status vocabulary. The frontend renders exactly these; PATCH rejects
 # anything else so no writer (web, MCP, raw REST) can invent a status the

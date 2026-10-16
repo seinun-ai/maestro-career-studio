@@ -374,28 +374,6 @@ def _stamp_stage(job: Job, st: stage.Stage) -> None:
     job.gaps_total = st.gaps_total
 
 
-def _newest_applications(db: Session, job_ids: list[UUID]) -> dict[UUID, Application]:
-    newest: dict[UUID, Application] = {}
-    for application in db.scalars(
-        select(Application)
-        .where(Application.job_id.in_(job_ids))
-        .order_by(Application.created_at.desc(), Application.id.desc())  # id: stable tie-break only
-    ):
-        newest.setdefault(application.job_id, application)
-    return newest
-
-
-def _job_stages(db: Session, jobs: list[Job]) -> dict[UUID, stage.Stage]:
-    """One rung per job: its newest application's (`for_applications`), else the job's own
-    (`for_jobs`). Four bulk queries for the page, however many jobs it holds."""
-    by_app = _newest_applications(db, [job.id for job in jobs])
-    app_stages = stage.for_applications(db, list(by_app.values()))
-    bare = stage.for_jobs(db, [job for job in jobs if job.id not in by_app])
-    return {
-        job.id: app_stages[by_app[job.id].id] if job.id in by_app else bare[job.id] for job in jobs
-    }
-
-
 @router.get("", response_model=list[JobSummary])
 def list_jobs(
     db: Annotated[Session, Depends(get_db)],
@@ -439,7 +417,7 @@ def list_jobs(
         for job_id, *fields in proposal_rows:
             newest.setdefault(job_id, fields)
         best = ats_score.best_base_scores(db, [job.id for job in rows])
-        stages = _job_stages(db, rows)
+        stages = stage.for_job_rows(db, rows, scored=set(best))
         for job in rows:
             _stamp_newest_proposal(job, newest.get(job.id))
             job.best_ats_score = best.get(job.id)
@@ -570,9 +548,13 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
     application = db.scalar(
         select(Application)
         .where(Application.job_id == job.id)
-        .order_by(Application.created_at.desc())
+        # id: the same tie-break as stage.newest_applications, so the rung is this application's
+        .order_by(Application.created_at.desc(), Application.id.desc())
         .limit(1)
     )
+    # The job's rung is its newest application's, so both summaries carry the same one.
+    st = stage.for_job_rows(db, [job])[job.id]
+    _stamp_stage(job, st)
     summary = None
     if application is not None:
         # Same flat job-field join as list_applications: ApplicationSummary
@@ -583,6 +565,12 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
         summary.job_location = job.location
         summary.ownership = job.ownership
         summary.base_resume_name = base_resume_data.display_name_of(db, application.base_resume)
+        summary.has_draft = bool(application.customized_json)
+        summary.has_pdf = bool(application.pdf_path)
+        summary.stage = st.rung
+        summary.open_session_id = st.open_session_id
+        summary.gaps_done = st.gaps_done
+        summary.gaps_total = st.gaps_total
 
     return JobMatchResult(
         match="exact",
@@ -656,18 +644,15 @@ def get_job_detail(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     application = db.scalar(
         select(Application)
         .where(Application.job_id == job_id)
-        .order_by(Application.created_at.desc())
+        # id: the same tie-break as stage.newest_applications, so the rung is this application's
+        .order_by(Application.created_at.desc(), Application.id.desc())
         .limit(1)
     )
     # Same derived proposal_status / proposal_id / proposal_proposed_by as the list endpoint
     # (transient attrs) so the job page can triage and load proposal detail.
     _with_newest_proposal(db, job)
     scan = knockout.scan_for(db, job)
-    st = (
-        stage.for_applications(db, [application])[application.id]
-        if application
-        else stage.for_jobs(db, [job])[job.id]
-    )
+    st = stage.for_job_rows(db, [job])[job.id]
     return JobDetail(
         job=JobRead.model_validate(job),
         application=ApplicationRead.model_validate(application) if application else None,

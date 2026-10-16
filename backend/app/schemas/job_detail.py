@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from app.schemas.application import ApplicationRead
 from app.schemas.job import JobRead
 from app.schemas.knockout import KnockoutScan
-from app.services.stage import Rung
+from app.schemas.stage import Rung
 
 
 class JobDetail(BaseModel):

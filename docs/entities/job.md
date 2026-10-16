@@ -9,9 +9,12 @@ job-without-application (`GET /api/jobs?without_application=true`). The list sum
 `best_ats_score`, the max `composite` over the job's `base` AtsScore rows (null
 when none; `ats_score.best_base_scores`, one grouped query per page, read-only:
 the list never scores or backfills). It also carries the step the job is on: `stage`,
-`open_session_id`, `gaps_done` and `gaps_total`, read at request time by `services/stage.py`
-from the job's newest application (`for_applications`), else the job alone (`for_jobs`), in
-bounded queries per page. `GET /api/jobs/{id}/detail` carries the same four fields.
+`open_session_id`, `gaps_done` and `gaps_total`, read at request time by
+`services/stage.for_job_rows`: the job's newest application (`created_at`, then the higher id)
+rated by the application rule, else the job alone. That costs two more queries per page however
+many jobs it holds (the newest application per job, the open sessions), reusing the best base
+scores the list already reads. `GET /api/jobs/{id}/detail` and the `job` of `GET
+/api/jobs/match` carry the same four fields from the same rule (three queries for the one job).
 
 - **Salary is optional and often absent** (~40%+ of US postings state no
   pay; some laws let a posting hyperlink a pay page — capture that as

@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import AfterValidator, BaseModel, Field
 
 from app.schemas.job_extraction import JobExtraction
-from app.services.stage import Rung
+from app.schemas.stage import Rung
 
 APPLY_URL_MAX = 2048
 
