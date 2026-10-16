@@ -188,6 +188,7 @@ export function ResumeStep({
       qc.invalidateQueries({ queryKey: ["tailoring-sessions", jobId] });
       qc.invalidateQueries({ queryKey: ["applications"] });
       qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["resume-diff"] }); // the draft was replaced: its changes are new
       // Awaited: step 3 opens on the application, never on "Nothing tailored yet".
       await qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       toast.success("Application created from your base resume");
@@ -236,6 +237,7 @@ export function ResumeStep({
       qc.invalidateQueries({ queryKey: ["jobs", "without-application"] });
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["proposals"] });
+      qc.invalidateQueries({ queryKey: ["resume-diff"] }); // the draft was replaced: its changes are new
     },
     onError: (err: Error) => toast.error(couldnt("mark the job applied", err)),
   });

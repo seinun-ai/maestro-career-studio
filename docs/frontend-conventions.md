@@ -1219,22 +1219,30 @@
   resume you applied with; the label names the action ("Switch and analyze gaps", "Switch and continue",
   "Switch and use as is"). Use resume as is on the job's own resume over a draft keeps the gap page's
   "Replace the existing tailored draft?" words, and opens step 3. Pinned by `test_frontend_jobs_honest_words.py`.
-- **Tailored resume** (step 3, `TailoredResumeStep` in `components/application-panel.tsx`), inside one card: a score
-  strip on `surface-container-low` (`AtsComparePanel compact`: before → after, the `DeltaChip` and the subscores
-  that moved as text), then ⋯ (**More actions for the tailored resume**: Tailor again opens step 2, Delete
-  application with the Details menu's confirm), **Edit resume** (outline, to the studio), a **Score breakdown**
-  popover holding the full compare (each skill Gained, Lost or Same, Update score) and the view's one filled
-  button: **Create PDF** before a PDF, **Continue to Apply** once one exists. Then **Changes (N)**, the studio's
-  resume diff (one query key): a provenance chip in the studio's words (`PROVENANCE_CHIPS`: **From your career
-  history**, **You**; an unattributed change has none, since the server cannot tell an AI rewrite from a hand edit), where it sits, the text,
-  and a **Revert this change** icon button that writes the draft through the PATCH the studio's Save uses (one
-  write at a time), scores it again and, when a PDF existed, creates it again. Five rows, then "Show N more
-  changes"; once a PDF exists only the rows fold (Show); the header, "No changes yet", a load error and **Check
-  wording** (the studio's results) stay outside the fold. A draft change removes the PDF on the server, so a
-  PDF that exists is the draft's own.
-  The PDF card (`canvas`) exists only with a PDF: the file name, pages and the resumes folder line ("In Documents
-  › … · Change folder"), Download PDF, Open PDF in new tab and Show in Finder as icon buttons, Update PDF (small,
-  outline), then the page preview. Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_first_read_words.py`.
+- **Tailored resume** (step 3, `components/tailored-resume-step.tsx`), inside one card: a score strip on
+  `surface-container-low` (`AtsComparePanel compact`: before → after, the `DeltaChip` and the subscores that moved,
+  shown as "Keywords +21.3" and read as "Keywords up 21.3 points", `lib/ats-words` `subscoreMoves`), a **Score
+  breakdown** disclosure (`aria-expanded`, `aria-controls`) that opens the full compare without its card frame
+  under the strip, ⋯ (**More actions for the tailored resume**: Tailor again opens step 2, Delete application
+  with the Details menu's confirm), **Edit resume** (outline, to the studio) and the view's one filled button:
+  **Create PDF** before a PDF, **Continue to Apply** once one exists. Then **Changes (N)**, the resume diff keyed
+  on the draft (`resumeDiffQuery` in `lib/api.ts`: `["resume-diff", id, updated_at]`, shared with the studio and
+  the page's step line). The header tallies each provenance as the studio's chip (`PROVENANCE_CHIPS`: **From your
+  career history**, **You**; an unattributed change has none, since the server cannot tell an AI rewrite from a
+  hand edit) and a count badge. Each row: where it sits (`lib/resume-diff` `hunkPlace`), the chip, the old text
+  in `<del>` and the new in `<ins>` with "Before:" and "Now:" for screen readers, and a **Revert this change**
+  icon button described by the row's place. Rows are keyed without their position (`hunkIds`), so after a revert
+  focus moves to a neighbour and a polite live region says "Change reverted". A revert refuses a diff older than
+  the draft it edits ("The draft changed. Reload the changes."), writes through the PATCH the studio's Save uses
+  (one write at a time) and scores again, one pending state with the breakdown's Update score
+  (`tailoredRescoreKey`). The server removes the PDF with every draft write, and nothing creates it again: the
+  PDF card goes, Create PDF is the filled button again and the toast says to create it when you are done. Five
+  rows, then "Show N more changes"; once a PDF exists only the rows fold (Show); the header, "No changes yet", a
+  load error and **Check wording** (the studio's results, cleared by a new list) stay outside the fold. The PDF
+  card exists only with a PDF: a line on `surface-container-low` (the file name, pages, the resumes folder line
+  "In Documents › … · Change folder", Download PDF, Open PDF in new tab and Show in Finder as icon buttons,
+  Update PDF small and outline), then the page preview, the only `canvas`. Pinned by
+  `test_frontend_jobs_honest_words.py` and `test_frontend_first_read_words.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Jobs** (see *Canonical terms*). A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means

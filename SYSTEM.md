@@ -191,12 +191,12 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    checks (§6 inv-resume-voice) → application + version row → draft-KBPoint write-back → session `tailored` → tailored score, one
    transaction (tailor() commits once at its end). The UI then lands in review mode (`?review=1`). Internals:
    docs/entities/tailoring-session.md, "The tailor pipeline".
-7. **Output** — Step 3 (**Tailored resume**, `TailoredResumeStep`): a score strip (the compact before/after compare, ⋯ with Tailor
-   again and Delete application, **Edit resume** → the studio `/applications/[id]/resume`, where Save chains render → re-score) and one
-   filled button, **Create PDF** then **Continue to Apply**. Below it the changes tailoring made (`GET …/resume-diff`, the studio's
-   provenance), each with a Revert that PATCHes the draft and re-scores it, and **Check wording**. A draft write removes the PDF,
-   so the PDF card shows only a current one: name, pages, the resumes folder line, Download / Open / **Show in Finder** (§6
-   inv-resumes-folder-one-way), **Update PDF** and the rasterized page preview.
+7. **Output** — Step 3 (**Tailored resume**, `components/tailored-resume-step.tsx`): a score strip (the compact before/after compare
+   and its Score breakdown, ⋯ with Tailor again and Delete application, **Edit resume** → the studio `/applications/[id]/resume`,
+   where Save chains render → re-score) and one filled button, **Create PDF** then **Continue to Apply**. Below it the changes
+   tailoring made (`GET …/resume-diff`, keyed on the draft's `updated_at`), each with a Revert that PATCHes the draft and re-scores
+   it, and **Check wording**. A draft write removes the PDF (Create PDF again): the PDF card shows only the draft's own, with
+   Download / Open / **Show in Finder** (§6 inv-resumes-folder-one-way), **Update PDF** and the rasterized page preview.
 8. **Apply package** — Q&A tab: questions, cover letter (tone). Outreach/cold messages are asked as free-form questions (no
    dedicated cold-message generator); the QA prompt injects the application's linked referral contact.
 9. **Track to terminal** — StatusChip anywhere (tracker row or job header): draft → applied → interviewing → offered → accepted /

@@ -8,8 +8,10 @@ import {
   placementLabel,
   requirementLabel,
   skippedCountriesLine,
+  subscoreMoves,
   undatedEvidence,
 } from "./ats-words.ts";
+import { formatDelta } from "./visual.ts";
 
 test("every engine placement reads as words", () => {
   for (const key of ["dual", "experience_only", "skills_list_only", "undated_only", "extra_only", "credential_only"]) {
@@ -70,4 +72,16 @@ test("the skipped line counts its resumes and names the job's country", () => {
 
 test("the fallback note names the country no resume is set for", () => {
   assert.equal(noResumeForCountry("United States"), "None of your resumes is set for United States.");
+});
+
+test("the strip names the subscores that moved, with the full panel's one decimal", () => {
+  const moves = subscoreMoves({ keyword: 0.213, title: 0.004, format: 0, semantic_fit: -0.05 }, formatDelta);
+  assert.deepEqual(moves.map((m) => m.text), ["Keywords +21.3", "Job duties covered −5.0", "Job title +0.4"]);
+  assert.deepEqual(moves.map((m) => m.spoken), [
+    "Keywords up 21.3 points",
+    "Job duties covered down 5.0 points",
+    "Job title up 0.4 points",
+  ]);
+  // Nothing moved, or a move that rounds to zero: nothing to say.
+  assert.deepEqual(subscoreMoves({ keyword: 0.0004 }, formatDelta), []);
 });

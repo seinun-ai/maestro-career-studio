@@ -119,3 +119,21 @@ const REQUIREMENT_LABELS: Record<string, string> = {
 export function requirementLabel(key: string | null | undefined): string | null {
   return (key && REQUIREMENT_LABELS[key]) || null;
 }
+
+/**
+ * The subscores that moved between two scores, in SUBSCORE_LABELS order: the shown text ("Keywords +21.3") and the
+ * spoken one ("Keywords up 21.3 points"). `format` is lib/visual `formatDelta` (passed in: this file has no
+ * imports), so the strip rounds as the full compare panel does. `subscores` are 0–1 deltas.
+ */
+export function subscoreMoves(
+  subscores: Record<string, number | undefined>,
+  format: (points: number) => { text: string; sign: "up" | "down" | "flat" },
+): { label: string; text: string; spoken: string }[] {
+  return SUBSCORE_LABELS.map(({ key, label }) => ({ label, delta: format((subscores[key] ?? 0) * 100) }))
+    .filter(({ delta }) => delta.sign !== "flat")
+    .map(({ label, delta }) => ({
+      label,
+      text: `${label} ${delta.text}`,
+      spoken: `${label} ${delta.sign} ${delta.text.slice(1)} points`,
+    }));
+}

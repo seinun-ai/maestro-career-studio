@@ -29,16 +29,17 @@ def test_the_tracker_names_its_status_filter():
 
 
 def test_the_tailored_resume_step_says_what_a_draft_lacks():
-    panel = _read("components/application-panel.tsx")
+    step = _read("components/tailored-resume-step.tsx")
     # No Draft → PDF stepper (the job's own steps carry it), and no sentence or badge repeats the state:
     # before a PDF there is no PDF card, and the strip's filled button says what comes next.
-    assert '{pdfReady ? "PDF ready" : hasDraft ? "Not yet a PDF" : "Not started"}' not in panel
-    assert "ResumeSteps" not in panel and "CONCEPT_ICONS.notRun" not in panel
-    assert "{renderPdf.isPending ? pdfWords.pending : pdfWords.label}" in panel
-    assert "Continue to Apply" in panel
+    assert '{pdfReady ? "PDF ready" : hasDraft ? "Not yet a PDF" : "Not started"}' not in step
+    assert "ResumeSteps" not in step and "CONCEPT_ICONS.notRun" not in step
+    assert "ResumeSteps" not in _read("components/application-panel.tsx")
+    assert "{renderPdf.isPending ? pdfWords.pending : pdfWords.label}" in step
+    assert "Continue to Apply" in step
     # No draft of its own (marked applied without tailoring): say so and point at step 2, by its name.
-    assert "<p>No tailored resume yet.</p>" in panel and "Go to Resume and gaps" in panel
-    assert "Score and tailor" not in panel
+    assert "<p>No tailored resume yet.</p>" in step and "Go to Resume and gaps" in step
+    assert "Score and tailor" not in step
 
 
 def test_dates_read_as_words():
@@ -75,12 +76,13 @@ def test_the_inbox_names_its_own_numbers():
 
 
 def test_tailored_resume_step_says_its_state_once():
-    src = _read("components/application-panel.tsx")
+    src = _read("components/tailored-resume-step.tsx")
     assert "Your PDF is ready." not in src and '"Not yet a PDF"' not in src
     # The folder is the PDF card's one small line, not a second notice under the buttons.
     folder = _read("components/resumes-folder-actions.tsx")
     assert "In {data.folder_display}" in folder and "A copy is saved in" not in folder
-    assert "<ResumesFolderNote copyMissed={renderPdf.data?.copy_path === null} />" in src
+    card = src[src.index("function PdfCard(") :]
+    assert "<ResumesFolderNote" in card[: card.index("</section>")]
 
 
 def test_compare_shows_what_changed():
@@ -88,8 +90,8 @@ def test_compare_shows_what_changed():
     for word in ("Gained", "Lost", "Same"):
         assert f'"{word}"' in src or f">{word}<" in src
     assert "formatDelta" in src or "DeltaChip" in src
-    # Step 3's strip: one line, before → after, the delta, and the subscores that moved as text.
-    assert "compact = false," in src and "subscoreDeltaLine(delta.subscores)" in src
-    assert '.map(({ label, delta }) => `${label} ${delta.text}`)' in src and '.join(" · ")' in src
-    assert "<AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} compact />" in _read(
-        "components/application-panel.tsx")
+    # Step 3's strip: one line, before → after, the delta, and the subscores that moved, shown and spoken
+    # (lib/ats-words `subscoreMoves`, rounded by the panel's own formatDelta; its node test holds the cases).
+    assert "compact = false," in src and "subscoreMoves(delta.subscores, formatDelta)" in src
+    assert '<span aria-hidden="true">{m.text}</span>' in src and "{m.spoken}</span>" in src
+    assert "<AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} compact />" in _read("components/tailored-resume-step.tsx")

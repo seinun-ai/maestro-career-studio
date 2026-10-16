@@ -606,7 +606,7 @@ def test_job_page_preview_box_has_no_hidden_fill():
     # The preview paints its own canvas over the whole box, so a fill on the
     # box is hidden weight. Checked per class token (variants included), so
     # reordering the class list cannot slip a background past the pin.
-    panel = _read("components/application-panel.tsx")
+    panel = _read("components/tailored-resume-step.tsx")
     head = panel[: panel.index("<PdfPagesPreview")]
     tokens = re.findall(r'<div className="([^"]*)"', head)[-1].split()
     assert "h-[80vh]" in tokens

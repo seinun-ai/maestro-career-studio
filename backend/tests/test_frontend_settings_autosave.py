@@ -199,7 +199,7 @@ def test_idle_line_is_words_only_and_outside_the_live_region():
 
 
 def test_a_rendering_pdf_preview_dims():
-    assert 'data-pending={renderPdf.isPending ? "true" : undefined}' in _read("components/application-panel.tsx")
+    assert 'data-pending={renderPdf.isPending ? "true" : undefined}' in _read("components/tailored-resume-step.tsx")
     studio = _read("components/resume-editor/tailored-resume-studio.tsx")
     assert 'data-pending={render.isPending ? "true" : undefined}' in studio
 

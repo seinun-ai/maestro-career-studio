@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, MoveRight, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { ApiError, getAtsCompare, runAtsScoreTarget } from "@/lib/api";
 import { DeltaChip } from "@/components/visual";
-import { SUBSCORE_LABELS, fixHintLabel, placementLabel } from "@/lib/ats-words";
+import { SUBSCORE_LABELS, fixHintLabel, placementLabel, subscoreMoves } from "@/lib/ats-words";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
 import { cn } from "@/lib/utils";
@@ -87,34 +87,35 @@ function SkillNowCell({ row }: { row: AtsSkillRow | null }) {
   return <span className="text-muted-foreground text-body-small">{note ?? (row.matched ? "Matched" : "Missing")}</span>;
 }
 
-/** The subscores that moved, as text with the full panel's one decimal: "Keywords +21.3 · Job title +0.4". Empty when none moved. */
-function subscoreDeltaLine(subscores: Record<string, number | undefined>): string {
-  return SUBSCORE_LABELS.map(({ key, label }) => ({ label, delta: formatDelta((subscores[key] ?? 0) * 100) }))
-    .filter(({ delta }) => delta.sign !== "flat")
-    .map(({ label, delta }) => `${label} ${delta.text}`)
-    .join(" · ");
-}
+/** The tailored score's re-score, as one mutation key: the full panel's Update score and step 3's re-score after a
+ *  revert share one pending state through it (`useIsMutating`). */
+export const tailoredRescoreKey = (applicationId: string) => ["ats-rescore", applicationId] as const;
 
 /**
  * Before-and-after ATS score for a tailored application: the headline score,
  * subscore delta bars, and the per-skill diff. A 422 from the compare
  * endpoint (engine/config version drift between the stored base and tailored
  * rows) is recoverable by scoring both again. `compact` is step 3's strip: one
- * line, `{before} → {after} {+delta}` and the subscores that moved as text; the
- * full panel stays for the studio.
+ * line, `{before} → {after} {+delta}` and the subscores that moved as text.
+ * `bare` is the full panel without its card frame, for step 3's Score
+ * breakdown disclosure.
  */
 export function AtsComparePanel({
   app,
   jobId,
   readOnly = false,
   compact = false,
+  bare = false,
 }: {
   app: Application;
   jobId: string;
   readOnly?: boolean;
   compact?: boolean;
+  bare?: boolean;
 }) {
   const qc = useQueryClient();
+  // Any re-score of this tailored resume, from here or from step 3's revert.
+  const rescoring = useIsMutating({ mutationKey: tailoredRescoreKey(app.id) }) > 0;
 
   const compare = useQuery({
     queryKey: ["ats-compare", app.id],
@@ -143,6 +144,7 @@ export function AtsComparePanel({
   });
 
   const rescoreTailored = useMutation({
+    mutationKey: tailoredRescoreKey(app.id),
     mutationFn: () => runAtsScoreTarget(jobId, "application", app.id, "tailored"),
     onSuccess: () => {
       toast.success("Match score updated");
@@ -174,9 +176,14 @@ export function AtsComparePanel({
       );
     }
     const { base, tailored, delta } = compare.data;
-    const moved = subscoreDeltaLine(delta.subscores);
+    const moved = subscoreMoves(delta.subscores, formatDelta);
     return (
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+      // Dims while the tailored score is being scored again: the numbers are about to change.
+      <div
+        className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"
+        data-pending={rescoring ? "true" : undefined}
+        aria-busy={rescoring || undefined}
+      >
         <span className="inline-flex items-center gap-1.5 text-title-medium tabular-nums">
           <span className="sr-only">Match score before and after: </span>
           <span className="text-muted-foreground">{base.composite.toFixed(1)}</span>
@@ -185,7 +192,17 @@ export function AtsComparePanel({
           <span>{tailored.composite.toFixed(1)}</span>
         </span>
         <DeltaChip value={delta.composite} unit="points" />
-        {moved ? <span className="text-muted-foreground min-w-0 text-body-small tabular-nums">{moved}</span> : null}
+        {moved.length > 0 ? (
+          <span className="text-muted-foreground min-w-0 text-body-small tabular-nums">
+            {moved.map((m, i) => (
+              <span key={m.label}>
+                {i > 0 ? <span aria-hidden="true"> · </span> : null}
+                <span aria-hidden="true">{m.text}</span>
+                <span className="sr-only">{i > 0 ? ", " : ""}{m.spoken}</span>
+              </span>
+            ))}
+          </span>
+        ) : null}
       </div>
     );
   }
@@ -197,6 +214,29 @@ export function AtsComparePanel({
   if (compare.isError) {
     const err = compare.error;
     const recoverable = err instanceof ApiError && err.status === 422;
+    const retry = recoverable ? (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => rescoreBoth.mutate()}
+        disabled={rescoreBoth.isPending || readOnly}
+      >
+        {rescoreBoth.isPending ? (
+          <Loader2 className="animate-spin" />
+        ) : (
+          <RefreshCw />
+        )}
+        {rescoreBoth.isPending ? "Updating…" : "Update both scores"}
+      </Button>
+    ) : null;
+    if (bare) {
+      return (
+        <div className="space-y-3">
+          <p className="text-muted-foreground text-body-medium">{couldnt("compare the scores", err)}</p>
+          {retry}
+        </div>
+      );
+    }
     return (
       <Card>
         <CardHeader className="pb-2">
@@ -204,21 +244,7 @@ export function AtsComparePanel({
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-muted-foreground text-body-medium">{couldnt("compare the scores", err)}</p>
-          {recoverable ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => rescoreBoth.mutate()}
-              disabled={rescoreBoth.isPending || readOnly}
-            >
-              {rescoreBoth.isPending ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <RefreshCw />
-              )}
-              {rescoreBoth.isPending ? "Updating…" : "Update both scores"}
-            </Button>
-          ) : null}
+          {retry}
         </CardContent>
       </Card>
     );
@@ -233,72 +259,95 @@ export function AtsComparePanel({
     .map((row) => ({ row, change: changeOf(row.before, row.after) }))
     .sort((a, b) => CHANGE_ORDER[a.change] - CHANGE_ORDER[b.change]);
 
+  const updateScore = (
+    <Button
+      variant="outline"
+      size="sm"
+      className="shrink-0"
+      onClick={() => rescoreTailored.mutate()}
+      disabled={rescoring || readOnly}
+    >
+      <RefreshCw
+        className={rescoring ? "animate-spin" : undefined}
+      />
+      {rescoring ? "Updating…" : "Update score"}
+    </Button>
+  );
+  const headline = (
+    <div className="flex items-baseline gap-2 text-headline-small tabular-nums">
+      <span className="text-muted-foreground">
+        {data.base.composite.toFixed(1)}
+      </span>
+      <MoveRight className="text-muted-foreground size-4 self-center" />
+      <span>{data.tailored.composite.toFixed(1)}</span>
+      <DeltaChip value={deltaPts} unit="points" className="self-center" />
+    </div>
+  );
+  const details = (
+    <>
+      <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+        {SUBSCORE_LABELS.map(({ key, label }) => (
+          <DeltaBar
+            key={key}
+            label={label}
+            value={data.delta.subscores[key] ?? 0}
+          />
+        ))}
+      </div>
+
+      {data.skill_diff.length > 0 ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Skill</TableHead>
+              <TableHead>Change</TableHead>
+              <TableHead>Now</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {skillRows.map(({ row, change }) => (
+              <TableRow key={row.jd_skill}>
+                <TableCell className="font-medium whitespace-normal">{row.jd_skill}</TableCell>
+                <TableCell className="whitespace-normal">
+                  <ChangeCell change={change} />
+                </TableCell>
+                <TableCell className="whitespace-normal">
+                  <SkillNowCell row={row.after} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <p className="text-muted-foreground text-body-medium">
+          No skill changes.
+        </p>
+      )}
+    </>
+  );
+
+  if (bare) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {headline}
+          {updateScore}
+        </div>
+        {details}
+      </div>
+    );
+  }
+
   return (
     <Card>
       {/* Wraps: at 375 the title kept one word per line beside the button. */}
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2">
         <CardTitle>Match score before and after</CardTitle>
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          onClick={() => rescoreTailored.mutate()}
-          disabled={rescoreTailored.isPending || readOnly}
-        >
-          <RefreshCw
-            className={rescoreTailored.isPending ? "animate-spin" : undefined}
-          />
-          {rescoreTailored.isPending ? "Updating…" : "Update score"}
-        </Button>
+        {updateScore}
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-baseline gap-2 text-headline-small tabular-nums">
-          <span className="text-muted-foreground">
-            {data.base.composite.toFixed(1)}
-          </span>
-          <MoveRight className="text-muted-foreground size-4 self-center" />
-          <span>{data.tailored.composite.toFixed(1)}</span>
-          <DeltaChip value={deltaPts} unit="points" className="self-center" />
-        </div>
-
-        <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-          {SUBSCORE_LABELS.map(({ key, label }) => (
-            <DeltaBar
-              key={key}
-              label={label}
-              value={data.delta.subscores[key] ?? 0}
-            />
-          ))}
-        </div>
-
-        {data.skill_diff.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Skill</TableHead>
-                <TableHead>Change</TableHead>
-                <TableHead>Now</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {skillRows.map(({ row, change }) => (
-                <TableRow key={row.jd_skill}>
-                  <TableCell className="font-medium whitespace-normal">{row.jd_skill}</TableCell>
-                  <TableCell className="whitespace-normal">
-                    <ChangeCell change={change} />
-                  </TableCell>
-                  <TableCell className="whitespace-normal">
-                    <SkillNowCell row={row.after} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <p className="text-muted-foreground text-body-medium">
-            No skill changes.
-          </p>
-        )}
+        {headline}
+        {details}
       </CardContent>
     </Card>
   );

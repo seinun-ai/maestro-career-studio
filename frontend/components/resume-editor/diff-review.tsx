@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ActorChip } from "@/components/visual";
 import { resumeDataSchema } from "@/lib/resume-schema";
+import { KIND_LABELS, SECTION_LABELS } from "@/lib/resume-diff";
 import type {
   CoherenceFlag,
   HealthGate,
@@ -53,17 +54,6 @@ const SECTION_TABS: Record<string, string> = {
   extra_sections: "extra",
 };
 
-export const SECTION_LABELS: Record<string, string> = {
-  summary: "Summary",
-  contact: "Contact",
-  skills: "Skills",
-  experience: "Experience",
-  projects: "Projects",
-  education: "Education",
-  certifications: "Certifications",
-  extra_sections: "Other sections",
-};
-
 const SECTION_ORDER = [
   "summary",
   "contact",
@@ -74,24 +64,6 @@ const SECTION_ORDER = [
   "certifications",
   "extra_sections",
 ];
-
-export const KIND_LABELS: Record<ResumeDiffHunk["kind"], string> = {
-  summary_changed: "Summary rewritten",
-  contact_changed: "Contact details changed",
-  bullet_added: "Bullet added",
-  bullet_removed: "Bullet removed",
-  bullet_edited: "Bullet reworded",
-  entry_added: "Item added",
-  entry_removed: "Item removed",
-  entry_enabled: "Item shown",
-  entry_disabled: "Item hidden",
-  skills_group_changed: "Skill group changed",
-  extra_section_added: "Section added",
-  extra_section_removed: "Section removed",
-  extra_section_changed: "Section changed",
-  extra_section_enabled: "Section shown",
-  extra_section_disabled: "Section hidden",
-};
 
 /** Stable per-hunk identity. The endpoint has no hunk ids, and (kind, section,
  *  index) repeats for several bullets of one entry — so position is part of it. */

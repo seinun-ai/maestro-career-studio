@@ -378,6 +378,7 @@ export default function TailorSessionPage({
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["ats-scores", jobId] });
       qc.invalidateQueries({ queryKey: ["tailoring-sessions", jobId] });
+      qc.invalidateQueries({ queryKey: ["resume-diff"] }); // a new draft: its changes are new
       qc.setQueryData(["tailoring-session", sessionId], result.session);
       if (result.compare) {
         const { base, tailored, delta } = result.compare;
@@ -518,6 +519,7 @@ export default function TailorSessionPage({
       qc.invalidateQueries({ queryKey: ["ats-scores", jobId] });
       qc.invalidateQueries({ queryKey: ["tailoring-session", sessionId] });
       qc.invalidateQueries({ queryKey: ["tailoring-sessions", jobId] });
+      qc.invalidateQueries({ queryKey: ["resume-diff"] }); // the draft was replaced: its changes are new
       toast.success("Application created from your base resume");
       router.push(`/jobs/${jobId}?tab=output`);
     },

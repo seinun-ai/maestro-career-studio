@@ -23,6 +23,7 @@ from app.services.ats.config import load_config
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 _GAP_PAGE = "app/jobs/[id]/tailor/[sessionId]/page.tsx"
 _JOB_PAGE = "app/jobs/[id]/page.tsx"
+_STEP_THREE = "components/tailored-resume-step.tsx"
 
 
 def _read(rel: str) -> str:
@@ -213,7 +214,7 @@ def test_the_ats_score_is_our_estimate_everywhere_it_is_explained():
     ("rel", "marker"),
     [
         ("components/resume-step.tsx", "onClick={() => runOnce()}"),
-        ("components/application-panel.tsx", "onClick={() => renderOnce()}"),
+        ("components/tailored-resume-step.tsx", "onClick={() => renderOnce()}"),
         (_GAP_PAGE, "applyAsIsOnce();"),
         ("app/referrals/page.tsx", 'type="submit"'),
     ],
@@ -496,8 +497,7 @@ def test_mark_applied_hides_once_the_job_is_applied():
 
 
 def test_the_tailored_resume_step_names_what_it_holds():
-    panel = _read("components/application-panel.tsx")
-    step = panel[panel.index("export function TailoredResumeStep(") : panel.index("function TailoredResumeMenu(")]
+    step = _read(_STEP_THREE)
     # The stepper names the step: the card repeats no title. Its body is the changes, counted, and a resume
     # used as is (no changes) says so plainly rather than "tailored".
     assert "<CardTitle>" not in step
@@ -583,6 +583,7 @@ def _title_cased(name: str) -> list[str]:
         _GAP_PAGE,
         "components/resume-step.tsx",
         "components/application-panel.tsx",
+        "components/tailored-resume-step.tsx",
         "components/qa-tab.tsx",
         "app/analytics/page.tsx",
         "components/analytics/analytics-overview.tsx",
@@ -647,50 +648,82 @@ def _button_tags(src: str) -> list[str]:
     return [open_tag(src[m.start() :], "Button") for m in re.finditer(r"<Button(?=[\s/>])", src)]
 
 
+def _slice(src: str, start: str, end: str) -> str:
+    return src[src.index(start) : src.index(end, src.index(start))]
+
+
 def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions():
-    panel = _read("components/application-panel.tsx")
-    step = panel[panel.index("export function TailoredResumeStep(") : panel.index("function TailoredResumeMenu(")]
+    src = _read(_STEP_THREE)
+    step = _slice(src, "export function TailoredResumeStep(", "function ScoreStrip(")
     # One filled button: Create PDF before a PDF, Continue to Apply once one exists (the two arms of one ternary).
-    filled = [t for t in _button_tags(step) if "variant=" not in t]
+    filled = [t for t in _button_tags(src) if "variant=" not in t]
     assert len(filled) == 2, filled
     assert 'onClick={() => onOpenStep("qa")}' in filled[0] and "onClick={() => renderOnce()}" in filled[1]
-    assert step.index("{hasPdf ? (") < step.index('onOpenStep("qa")') < step.index(") : (") < step.index(
+    assert step.index("const filled = hasPdf ? (") < step.index('onOpenStep("qa")') < step.index(") : (") < step.index(
         "{renderPdf.isPending ? pdfWords.pending : pdfWords.label}")
     # Edit resume is in the strip, an outline link; the page no longer places it above the step.
-    assert "<Link href={`/applications/${app.id}/resume`}>" in step
+    strip = _slice(src, "function ScoreStrip(", "function ChangesList(")
+    assert "<Link href={`/applications/${app.id}/resume`}>" in strip and "{filled}" in strip
     assert "Edit resume" not in _read(_JOB_PAGE)
     # The PDF card: the file's own actions as named icon buttons, then Update PDF (small, outline).
-    card = step[step.index('<div className="bg-canvas') :]
+    card = _slice(src, "function PdfCard(", "function TailoredResumeMenu(")
     for name in ('label="Download PDF"', 'label="Open PDF in new tab"'):
         assert name in card
-    assert '<ShowCopyButton applicationId={app.id} variant="ghost" iconOnly />' in card
-    update = [t for t in _button_tags(card) if "renderOnce()" in t]
+    assert "<ShowCopyButton applicationId={app.id} variant=\"ghost\" iconOnly />" in card and "{update}" in card
+    update = [t for t in _button_tags(step) if "renderOnce()" in t and "variant=" in t]
     assert len(update) == 1 and 'variant="outline"' in update[0] and 'size="sm"' in update[0]
-    # Each change reverts on its own, and the rare actions sit behind the strip's ⋯.
-    assert 'label="Revert this change"' in step and 'data-revert=""' in step
-    menu = panel[panel.index("function TailoredResumeMenu(") :]
+    # canvas is only the ground the preview paints: the card's own line sits on surface-container-low.
+    assert "bg-canvas" not in src
+    # The rare actions sit behind the strip's ⋯.
+    menu = src[src.index("function TailoredResumeMenu(") :]
     assert 'label="More actions for the tailored resume"' in menu
     assert 'onClick={() => onOpenStep("fit")}' in menu and "Tailor again" in menu and "Delete application" in menu
-    # Five changes, then the rest behind one toggle; once a PDF exists the list folds to its header.
-    assert "const SHOWN_CHANGES = 5;" in panel and "`Show ${hunks.length - SHOWN_CHANGES} more changes`" in step
-    assert "const listOpen = listShown ?? !hasPdf;" in step and "aria-expanded={listOpen}" in step
-    # Only the rows fold: the 409 line, a load error and Check wording sit outside the folded block.
-    fold = step[step.index("<div id={listId} hidden={!listOpen}") : step.index("{hunks.length > 0 ? (")]
-    assert "No changes yet." not in fold and "Try again" not in fold and "Check wording" not in fold
-    assert 'label="Revert this change"' in fold
-    # The full compare (each skill Gained, Lost or Same, Update score) stays one click away.
-    breakdown = step[step.index("<Popover open={breakdownOpen}") : step.index("</Popover>")]
-    assert "aria-expanded={breakdownOpen}" in breakdown and "Score breakdown" in breakdown
-    assert "shadow-level2" in breakdown and "<AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} />" in breakdown
+    # The full compare (each skill Gained, Lost or Same, Update score): a disclosure under the strip, frameless.
+    toggle = open_tag(step, "Button", "breakdown={")
+    assert "aria-expanded={breakdownOpen}" in toggle and "aria-controls={breakdownId}" in toggle
+    assert "<div id={breakdownId} hidden={!breakdownOpen}" in step
+    assert "<AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} bare />" in step
     # A failed Create PDF says so without naming an action it may not have been.
     assert "Creating the PDF failed. Try again." in step
 
 
+def test_step_three_change_rows_read_and_revert_one_by_one():
+    src = _read(_STEP_THREE)
+    rows = _slice(src, "function ChangesList(", "function PdfCard(")
+    # Five changes, then the rest behind one toggle; once a PDF exists only the rows fold.
+    assert "const SHOWN_CHANGES = 5;" in src and "`Show ${hunks.length - SHOWN_CHANGES} more changes`" in rows
+    assert "const listOpen = listShown ?? !hasPdf;" in rows and "aria-expanded={listOpen}" in rows
+    fold = _slice(rows, "<div id={listId} hidden={!listOpen}", "{hunks.length > 0 ? (")
+    assert "No changes yet." not in fold and "Try again" not in fold and "{check}" not in fold
+    # Each row: where it sits (first, with an id the Revert button points at), the chip, what it was and is now.
+    assert fold.index("{hunkPlace(hunk, draft)}") < fold.index("<ProvenanceTag value={hunk.provenance} />")
+    assert '<span className="sr-only">Before: </span>' in fold and "<del>" in fold
+    assert '<span className="sr-only">Now: </span>' in fold and "<ins" in fold
+    revert = open_tag(fold, "IconButton")
+    assert 'label="Revert this change"' in revert and "aria-describedby={placeId}" in revert
+    assert 'data-revert=""' in revert and "focusableWhenDisabled" in revert
+    # Keys ignore position (lib/resume-diff `hunkIds`), so the neighbour that takes focus keeps its node.
+    assert "<li key={id}" in fold and "const id = ids[position];" in fold and "hunkIds(hunks)" in src
+    assert '<p className="sr-only" aria-live="polite">' in rows
+    # A revert edits the draft the list describes, and never creates the PDF again behind your back.
+    step = _slice(src, "export function TailoredResumeStep(", "function ScoreStrip(")
+    assert "if (!diffIsCurrent(diff.dataUpdatedAt, draftLoadedAt)) {" in step
+    assert 'toast.error("The draft changed. Reload the changes.");' in step
+    writes = _slice(src, "function useDraftWrites(", "export function TailoredResumeStep(")
+    assert "renderOnce" not in writes and "render" not in writes.replace("re-render", "")
+    assert "Create the PDF again when you are done." in writes
+    assert "mutationKey: tailoredRescoreKey(app.id)," in writes
+    # The diff is keyed on the draft it describes.
+    api = _read("lib/api.ts")
+    assert 'queryKey: ["resume-diff", application.id, application.updated_at],' in api
+
+
 def test_step_three_says_provenance_in_the_studios_words():
-    panel = _read("components/application-panel.tsx")
-    assert "PROVENANCE_CHIPS[value]" in panel and "const PROVENANCE:" not in panel
-    assert '"Yours"' not in panel and '"From career history"' not in panel
+    src = _read(_STEP_THREE)
+    assert "PROVENANCE_CHIPS[value]" in src and "const PROVENANCE:" not in src
+    assert '"Yours"' not in src and '"From career history"' not in src
     review = _read("components/resume-editor/diff-review.tsx")
     assert "export const PROVENANCE_CHIPS:" in review
     assert 'name: "From your career history"' in review and 'user: { kind: "you",' in review
-
+    # The header's count is its own badge, read as a number of changes.
+    assert '{count === 1 ? "1 change" : `${count} changes`}' in src

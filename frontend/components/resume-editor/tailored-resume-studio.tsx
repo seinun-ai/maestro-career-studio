@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Check,
@@ -72,7 +72,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   apiFetch,
   apiUrlForBrowserPdf,
-  getResumeDiff,
+  resumeDiffQuery,
   runAtsScoreTarget,
   runCoherenceCheck,
 } from "@/lib/api";
@@ -513,12 +513,9 @@ function StudioEditor({
   // away rather than shouting at someone who came to edit a resume.
   const [review, setReview] = useState(reviewDefault);
   const [revertedKeys, setRevertedKeys] = useState<Set<string>>(new Set());
-  const diff = useQuery({
-    queryKey: ["resume-diff", applicationId],
-    queryFn: () => getResumeDiff(applicationId),
-    retry: false,
-    staleTime: 30_000,
-  });
+  // Keyed on the draft's updated_at: after a Save the previous list stays up while the new one loads, as it did
+  // when a Save only invalidated it (no "No changes" flash).
+  const diff = useQuery({ ...resumeDiffQuery(application), placeholderData: keepPreviousData });
   const reviewAvailable = !diff.isError;
   const hunks = useMemo(() => diff.data?.hunks ?? [], [diff.data]);
   const changeCounts = useMemo(() => sectionChangeCounts(hunks), [hunks]);

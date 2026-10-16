@@ -72,10 +72,10 @@ _SITES = [
     ("hooks/use-resume-switch.ts", "createSession"),
     ("components/resume-step.tsx", "appliedAsIs"),
     ("components/resume-step.tsx", "asIs"),
-    ("components/application-panel.tsx", "renderPdf"),
+    ("components/tailored-resume-step.tsx", "renderPdf"),
     # Step 3: a Revert or a wording fix writes the whole draft (one at a time), and Check wording runs once.
-    ("components/application-panel.tsx", "writeDraft"),
-    ("components/application-panel.tsx", "checkWording"),
+    ("components/tailored-resume-step.tsx", "writeDraft"),
+    ("components/tailored-resume-step.tsx", "checkWording"),
     ("app/jobs/[id]/tailor/[sessionId]/page.tsx", "useAsIs"),
     # Lane 8 first-read: a double click sent each of these twice (the pill's Add
     # now wrote every draft twice; the second Discard or Merge came back "not

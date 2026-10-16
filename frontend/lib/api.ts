@@ -1,3 +1,5 @@
+import { queryOptions } from "@tanstack/react-query";
+
 import type { QueueResult } from "./agent-name";
 import type {
   Application,
@@ -260,6 +262,22 @@ export function getAtsCompare(applicationId: UUID) {
  */
 export function getResumeDiff(applicationId: UUID) {
   return apiFetch<ResumeDiff>(`/api/applications/${applicationId}/resume-diff`);
+}
+
+/**
+ * The diff as one query for every reader (the studio's review mode, the job page's step 3 and its step line),
+ * keyed on the draft's identity: a draft write moves the application's `updated_at`, so the diff on screen is
+ * always the one for the draft on screen, never a cached one a positional revert would misapply. `enabled`:
+ * step 3 asks only once the application has a draft (a 409 is "nothing tailored yet", never retried).
+ */
+export function resumeDiffQuery(application: Pick<Application, "id" | "updated_at">, enabled = true) {
+  return queryOptions({
+    queryKey: ["resume-diff", application.id, application.updated_at],
+    queryFn: () => getResumeDiff(application.id),
+    retry: false,
+    staleTime: 30_000,
+    enabled,
+  });
 }
 
 /**
