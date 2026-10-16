@@ -1571,6 +1571,8 @@ export interface ResumeDiff {
   hunks: ResumeDiffHunk[];
   /** The tailoring session the provenance was attributed from; null when none exists. */
   session_id: UUID | null;
+  /** The application's updated_at this diff was computed against: a revert is allowed only while it matches. */
+  updated_at: string;
 }
 
 export type CoherenceIssue =

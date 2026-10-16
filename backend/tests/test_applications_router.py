@@ -575,6 +575,61 @@ def test_materialize_resume_sets_customized_without_pdf(db_session, monkeypatch,
     assert body["pdf_path"] is None
 
 
+_EDITED_DRAFT = {
+    "contact": {"name": "Riley Quill", "email": "x@y.com"},
+    "summary": "Edited",
+    "skills": [],
+    "experience": [],
+    "projects": [],
+    "education": [],
+    "certifications": [],
+}
+
+
+def test_patch_with_a_stale_expected_updated_at_is_refused_and_writes_nothing(db_session, tmp_path, client):
+    job = _job(db_session)
+    pdf_path = tmp_path / "kept.pdf"
+    pdf_path.write_bytes(b"%PDF kept")
+    application = Application(
+        job_id=job.id, base_resume="hybrid", status="draft", customized_json={"summary": "x"},
+        pdf_path=str(pdf_path),
+    )
+    db_session.add(application)
+    db_session.commit()
+    loaded = client.get(f"/api/applications/{application.id}").json()["updated_at"]
+    # Someone else writes the row after the caller loaded it.
+    moved = client.patch(f"/api/applications/{application.id}", json={"notes": "moved"})
+    assert moved.status_code == 200 and moved.json()["updated_at"] != loaded
+
+    response = client.patch(
+        f"/api/applications/{application.id}",
+        json={"customized_json": _EDITED_DRAFT, "expected_updated_at": loaded},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "The resume changed since you loaded it. Reload and try again."
+    after = client.get(f"/api/applications/{application.id}").json()
+    assert after["customized_json"] == {"summary": "x"} and after["updated_at"] == moved.json()["updated_at"]
+    assert after["pdf_path"] == str(pdf_path) and pdf_path.exists()
+
+
+def test_patch_with_the_current_expected_updated_at_writes(db_session, client):
+    job = _job(db_session)
+    application = Application(job_id=job.id, base_resume="hybrid", status="draft", customized_json={"summary": "x"})
+    db_session.add(application)
+    db_session.commit()
+    loaded = client.get(f"/api/applications/{application.id}").json()["updated_at"]
+
+    response = client.patch(
+        f"/api/applications/{application.id}",
+        json={"customized_json": _EDITED_DRAFT, "expected_updated_at": loaded},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["customized_json"]["summary"] == "Edited"
+    assert response.json()["updated_at"] != loaded
+
+
 def test_patch_customized_json_unlinks_pdf(db_session, tmp_path, client):
     job = _job(db_session)
     pdf_path = tmp_path / "old.pdf"
@@ -1712,6 +1767,8 @@ def test_resume_diff_happy_path_attributes_via_newest_session(db_session, monkey
     kinds = {(h["kind"], h.get("provenance")) for h in body["hunks"]}
     assert ("entry_enabled", "kb_auto") in kinds
     assert ("summary_changed", "llm") in kinds
+    # The draft it describes, worded exactly as the application's own read: the client compares the strings.
+    assert body["updated_at"] == client.get(f"/api/applications/{application.id}").json()["updated_at"]
 
 
 def test_resume_diff_no_session_defaults_all_llm(db_session, monkeypatch, client):

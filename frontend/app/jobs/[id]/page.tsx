@@ -3,7 +3,7 @@
 import { use, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -168,7 +168,7 @@ export default function JobDetailPage({
   });
   const headerFirst = () => actionsRef.current && focusTarget(actionsRef.current);
 
-  const { data, dataUpdatedAt, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
+  const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: ["job-detail", id],
     queryFn: () => apiFetch<JobDetail>(`/api/jobs/${id}/detail`),
     // A Companion fill happens in another window: coming back asks again, so the What was
@@ -189,16 +189,12 @@ export default function JobDetailPage({
     queryKey: ["tailoring-sessions", id],
     queryFn: () => listTailoringSessions(id),
   });
-  // When this draft arrived: the detail's fetch time when the application's updated_at last changed (a refetch
-  // that brings the same draft keeps it). Step 3 reverts only against a diff fetched after it.
-  const [draftLoaded, setDraftLoaded] = useState<{ updatedAt: string | null; at: number }>({ updatedAt: null, at: 0 });
-  if ((application?.updated_at ?? null) !== draftLoaded.updatedAt) {
-    setDraftLoaded({ updatedAt: application?.updated_at ?? null, at: dataUpdatedAt });
-  }
-  // Step 3's own query (the same key): its line counts the changes to review.
-  const resumeDiff = useQuery(
-    resumeDiffQuery(application ?? { id: "", updated_at: "" }, !!application?.customized_json),
-  );
+  // Step 3's own query (the same key): its line counts the changes to review, the previous count standing in
+  // while a new draft's list loads.
+  const resumeDiff = useQuery({
+    ...resumeDiffQuery(application ?? { id: "", updated_at: "" }, !!application?.customized_json),
+    placeholderData: keepPreviousData,
+  });
   const baseName = useBaseResumeLabel();
   const colorOf = useBaseResumeColor();
   // The header's one score: the application's tailored score, else the best base score.
@@ -757,7 +753,6 @@ export default function JobDetailPage({
                   app={application}
                   jobId={id}
                   readOnly={!ownership.canWrite}
-                  draftLoadedAt={draftLoaded.at}
                   onOpenStep={(key) => {
                     focusOpenedStep.current = true;
                     setStep(key);

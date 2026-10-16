@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   ChevronDown,
@@ -57,7 +57,7 @@ import { couldnt } from "@/lib/error-text";
 import { focusIfDropped, focusSuccessorIn } from "@/lib/focus";
 import type { StepKey } from "@/lib/job-steps";
 import { notifyRenderNote } from "@/lib/render-note";
-import { diffIsCurrent, hunkIds, hunkPlace } from "@/lib/resume-diff";
+import { hunkIds, hunkPlace } from "@/lib/resume-diff";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import { RESUMES_FOLDER_KEY } from "@/lib/resumes-folder";
 import { pdfActionWords } from "@/lib/studio";
@@ -99,8 +99,15 @@ const SHOWN_CHANGES = 5;
 
 const NO_COHERENCE: CoherenceState = { checked: false, loading: false, flags: [], appliedKeys: new Set() };
 
-/** A draft change written from step 3: a revert, or a wording fix from Check wording. */
-type DraftWrite = { data: ResumeData; id: string; kind: "revert" | "apply"; pdfRemoved: boolean };
+/** A draft change written from step 3: a revert, or a wording fix from Check wording. `expectedUpdatedAt` is the
+ *  draft the edit was computed from: the server refuses it (409, nothing written) if the row has moved since. */
+type DraftWrite = {
+  data: ResumeData;
+  id: string;
+  kind: "revert" | "apply";
+  pdfRemoved: boolean;
+  expectedUpdatedAt: string;
+};
 
 /**
  * Step 3's draft writes: one PATCH of `customized_json` at a time (each writes the whole draft, so two would
@@ -108,7 +115,16 @@ type DraftWrite = { data: ResumeData; id: string; kind: "revert" | "apply"; pdfR
  * behind your back: the PDF card goes, Create PDF is the filled button again, and the toast says so. Focus moves
  * to a neighbouring row once the list without the reverted one is in, and a polite live region says what happened.
  */
-function useDraftWrites({ app, jobId, diffData }: { app: Application; jobId: string; diffData: ResumeDiff | undefined }) {
+function useDraftWrites({
+  app,
+  jobId,
+  diffData,
+}: {
+  app: Application;
+  jobId: string;
+  /** The list on screen once it is the real one for the current draft (undefined while a previous one stands in). */
+  diffData: ResumeDiff | undefined;
+}) {
   const qc = useQueryClient();
   const [announced, setAnnounced] = useState({ text: "", n: 0 });
   const rescore = useMutation({
@@ -126,7 +142,7 @@ function useDraftWrites({ app, jobId, diffData }: { app: Application; jobId: str
     mutationFn: (write: DraftWrite) =>
       apiFetch<Application>(`/api/applications/${app.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ customized_json: write.data }),
+        body: JSON.stringify({ customized_json: write.data, expected_updated_at: write.expectedUpdatedAt }),
       }),
     onSuccess: (_result, write) => {
       rescore.mutate();
@@ -138,7 +154,7 @@ function useDraftWrites({ app, jobId, diffData }: { app: Application; jobId: str
       focusAfterWrite.current = null;
       toast.error(couldnt(write.kind === "revert" ? "revert the change" : "apply the fix", err));
     },
-    // Returned, so the row stays pending until the list without it is in.
+    // Returned, so the row stays pending until the list without it is in. A 409 (the row moved) refreshes both too.
     onSettled: () =>
       Promise.all([
         qc.invalidateQueries({ queryKey: ["resume-diff", app.id] }),
@@ -148,9 +164,10 @@ function useDraftWrites({ app, jobId, diffData }: { app: Application; jobId: str
   });
   const writeOnce = useSingleFlight(writeDraft.mutate);
   // A reverted row leaves the list: focus goes to its neighbour, or to the list, never to <body>.
+  // Only on the real list: the previous one standing in still holds the reverted row.
   useLayoutEffect(() => {
     const next = focusAfterWrite.current;
-    if (!next) return;
+    if (!next || !diffData) return;
     focusAfterWrite.current = null;
     focusIfDropped(next());
   }, [diffData]);
@@ -168,21 +185,19 @@ function useDraftWrites({ app, jobId, diffData }: { app: Application; jobId: str
 
 /**
  * Step 3, Tailored resume, inside one card: the score strip, the full compare behind Score breakdown, the changes
- * tailoring made with a Revert on each and Check wording, and once a PDF exists the PDF card. `draftLoadedAt` is
- * the job detail's `dataUpdatedAt` when the application's `updated_at` last changed: a revert waits for a diff
- * fetched after it (lib/resume-diff `diffIsCurrent`).
+ * tailoring made with a Revert on each and Check wording, and once a PDF exists the PDF card. A revert is computed
+ * from the draft the diff describes (the diff's `updated_at` is the application's) and sent with it, so the server
+ * refuses one the row has moved past.
  */
 export function TailoredResumeStep({
   app,
   jobId,
   readOnly = false,
-  draftLoadedAt,
   onOpenStep,
 }: {
   app: Application;
   jobId: string;
   readOnly?: boolean;
-  draftLoadedAt: number;
   onOpenStep: (key: StepKey) => void;
 }) {
   const qc = useQueryClient();
@@ -216,10 +231,13 @@ export function TailoredResumeStep({
   // A double click rendered twice and toasted twice.
   const renderOnce = useSingleFlight(renderPdf.mutate);
 
-  const diff = useQuery(resumeDiffQuery(app, hasDraft));
+  // A new draft is a new key: the previous list stands in while the new one loads (no "No changes" flash), and
+  // nothing in it can be reverted until the real one is in.
+  const diff = useQuery({ ...resumeDiffQuery(app, hasDraft), placeholderData: keepPreviousData });
+  const diffSettled = !diff.isPlaceholderData && !diff.isFetching;
   const hunks = diff.data?.hunks ?? [];
   const ids = hunkIds(hunks);
-  const writes = useDraftWrites({ app, jobId, diffData: diff.data });
+  const writes = useDraftWrites({ app, jobId, diffData: diff.isPlaceholderData ? undefined : diff.data });
 
   // Check wording's results describe one list: a new list (a revert, a fix, a new draft) clears them.
   const [coherence, setCoherence] = useState<CoherenceState>(NO_COHERENCE);
@@ -251,8 +269,10 @@ export function TailoredResumeStep({
   const unreadable = () =>
     toast.error("Couldn't read this tailored resume, so nothing changed. Open Edit resume to fix it.");
   const onRevert = (hunk: ResumeDiffHunk, id: string, button: HTMLElement) => {
-    if (!diffIsCurrent(diff.dataUpdatedAt, draftLoadedAt)) {
-      toast.error("The draft changed. Reload the changes.");
+    // The diff must describe the draft the revert edits: the server says which one it diffed.
+    if (diff.data?.updated_at !== app.updated_at) {
+      toast.error("The changes were out of date and have been refreshed. Try again.");
+      void qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       void diff.refetch();
       return;
     }
@@ -263,7 +283,10 @@ export function TailoredResumeStep({
       toast.error("Couldn't revert this change because the text has changed since. Edit it yourself.");
       return;
     }
-    writes.write({ data: next, id, kind: "revert", pdfRemoved: hasPdf }, focusSuccessorIn(button, "[data-revert]"));
+    writes.write(
+      { data: next, id, kind: "revert", pdfRemoved: hasPdf, expectedUpdatedAt: app.updated_at },
+      focusSuccessorIn(button, "[data-revert]"),
+    );
   };
   const onApplyFix = (flag: ApplicableCoherenceProposal, key: string) => {
     const current = parsedDraft();
@@ -273,7 +296,7 @@ export function TailoredResumeStep({
       toast.error("Couldn't find that text. It may have changed. Make the fix yourself.");
       return;
     }
-    writes.write({ data: next, id: key, kind: "apply", pdfRemoved: hasPdf });
+    writes.write({ data: next, id: key, kind: "apply", pdfRemoved: hasPdf, expectedUpdatedAt: app.updated_at });
   };
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -373,7 +396,7 @@ export function TailoredResumeStep({
           ids={ids}
           draft={app.customized_json}
           hasPdf={hasPdf}
-          disabled={busy || readOnly}
+          disabled={busy || readOnly || !diffSettled}
           writing={writes.writing}
           announcement={writes.announcement}
           onRevert={onRevert}
@@ -387,6 +410,7 @@ export function TailoredResumeStep({
             coherence.checked && !checkWording.isPending ? (
               <CoherenceResults
                 coherence={coherence}
+                disabled={writes.pending || !diffSettled}
                 onApply={readOnly ? undefined : (flag, key) => onApplyFix(flag, key)}
                 onApplyHygiene={
                   readOnly

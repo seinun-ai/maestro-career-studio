@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { diffIsCurrent, hunkIds, hunkPlace } from "./resume-diff.ts";
+import { hunkIds, hunkPlace } from "./resume-diff.ts";
 import type { ResumeDiffHunk } from "./types.ts";
 
 const hunk = (over: Partial<ResumeDiffHunk>): ResumeDiffHunk => ({
@@ -38,11 +38,4 @@ test("a change's id ignores its position, so the rows after a reverted one keep 
   const twice = hunkIds([a, a]);
   assert.notEqual(twice[0], twice[1]);
   assert.equal(twice[1], `${twice[0]}#1`);
-});
-
-test("a revert waits for a diff fetched after the draft it edits", () => {
-  assert.equal(diffIsCurrent(2000, 1000), true);
-  assert.equal(diffIsCurrent(1000, 1000), true);
-  assert.equal(diffIsCurrent(999, 1000), false);
-  assert.equal(diffIsCurrent(0, 0), false);
 });

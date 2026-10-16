@@ -1227,14 +1227,16 @@
   with Application details' confirm), **Edit resume** (outline, to the studio) and the view's one filled button:
   **Create PDF** before a PDF, **Continue to Apply** once one exists. Then **Changes (N)**, the resume diff keyed
   on the draft (`resumeDiffQuery` in `lib/api.ts`: `["resume-diff", id, updated_at]`, shared with the studio and
-  the page's step line). The header tallies each provenance as the studio's chip (`PROVENANCE_CHIPS`: **From your
+  the page's step line; the previous list stands in while a new draft's loads, and Revert and Apply wait for the
+  real one). The header tallies each provenance as the studio's chip (`PROVENANCE_CHIPS`: **From your
   career history**, **You**; an unattributed change has none, since the server cannot tell an AI rewrite from a
   hand edit) and a count badge. Each row: where it sits (`lib/resume-diff` `hunkPlace`), the chip, the old text
   in `<del>` and the new in `<ins>` with "Before:" and "Now:" for screen readers, and a **Revert this change**
   icon button described by the row's place. Rows are keyed without their position (`hunkIds`), so after a revert
-  focus moves to a neighbour and a polite live region says "Change reverted". A revert refuses a diff older than
-  the draft it edits ("The draft changed. Reload the changes."), writes through the PATCH the studio's Save uses
-  (one write at a time) and scores again, one pending state with the breakdown's Update score
+  focus moves to a neighbour and a polite live region says "Change reverted". A revert goes only against the draft the diff names (the diff's `updated_at` equals the application's, else
+  "The changes were out of date and have been refreshed. Try again." and both reload), sends it as
+  `expected_updated_at` (the server answers 409 if the row moved since), writes through the PATCH the studio's
+  Save uses (one write at a time) and scores again, one pending state with the breakdown's Update score
   (`tailoredRescoreKey`). The server removes the PDF with every draft write, and nothing creates it again: the
   PDF card goes, Create PDF is the filled button again and the toast says to create it when you are done. Five
   rows, then "Show N more changes"; once a PDF exists only the rows fold (Show); the header, "No changes yet", a

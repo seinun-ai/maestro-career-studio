@@ -40,6 +40,9 @@ class ApplicationPatch(BaseModel):
     referral_id: UUID | None = None
     formatting: dict[str, Any] | None = None
     template_id: str | None = None
+    # The row's updated_at the caller computed its edit from (a revert from the diff). When given and the row has
+    # moved since, the PATCH is refused with a 409 and writes nothing. Never stored.
+    expected_updated_at: AwareDatetime | None = None
 
     @field_validator("status")
     @classmethod
@@ -49,6 +52,15 @@ class ApplicationPatch(BaseModel):
                 f"Unknown status {value!r}; allowed: {', '.join(ALLOWED_STATUSES)}"
             )
         return value
+
+
+class ResumeDiffRead(BaseModel):
+    """GET /applications/{id}/resume-diff: the hunks, the gap analysis they were attributed from, and the
+    application's updated_at the diff was computed against (a revert sends it back as expected_updated_at)."""
+
+    hunks: list[dict[str, Any]]
+    session_id: str | None
+    updated_at: datetime
 
 
 class ApplicationSummary(BaseModel):

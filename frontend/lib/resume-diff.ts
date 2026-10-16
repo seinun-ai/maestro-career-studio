@@ -68,13 +68,3 @@ export function hunkIds(hunks: readonly ResumeDiffHunk[]): string[] {
     return n === 0 ? base : `${base}#${n}`;
   });
 }
-
-/**
- * Whether the diff on screen describes the draft a revert would edit: it was fetched no earlier than the job
- * detail that brought this draft (`draftLoadedAt`, the detail's `dataUpdatedAt` when the application's
- * `updated_at` last changed). A revert matches by position and text, so one against an older diff could undo the
- * wrong thing. Zero means "not loaded": never current.
- */
-export function diffIsCurrent(diffUpdatedAt: number, draftLoadedAt: number): boolean {
-  return diffUpdatedAt > 0 && diffUpdatedAt >= draftLoadedAt;
-}

@@ -24,6 +24,7 @@ from app.schemas.application import (
     ApplicationRead,
     ApplicationSummary,
     RenderResult,
+    ResumeDiffRead,
 )
 from app.schemas.ats_score import AtsCompareRead
 from app.schemas.formatting import validate_formatting
@@ -58,6 +59,9 @@ from app.schemas.proposal import AssertOpenProposalBody
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
+
+# PATCH with an expected_updated_at the row has moved past: a plain sentence, shown as is.
+STALE_APPLICATION_EDIT = "The resume changed since you loaded it. Reload and try again."
 
 
 def _detail(
@@ -235,7 +239,7 @@ def compare_application_ats(application_id: UUID, db: Annotated[Session, Depends
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/{application_id}/resume-diff")
+@router.get("/{application_id}/resume-diff", response_model=ResumeDiffRead)
 def get_application_resume_diff(
     application_id: UUID, db: Annotated[Session, Depends(get_db)]
 ):
@@ -271,6 +275,8 @@ def get_application_resume_diff(
     return {
         "hunks": labeled,
         "session_id": str(session_row.id) if session_row is not None else None,
+        # The draft this diff describes: serialized as ApplicationRead serializes it, so the client compares strings.
+        "updated_at": application.updated_at,
     }
 
 
@@ -327,7 +333,10 @@ def patch_application(
     if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    fields = payload.model_fields_set
+    fields = payload.model_fields_set - {"expected_updated_at"}
+    # An edit computed from an older copy of the row (a revert from a diff of an earlier draft) writes nothing.
+    if payload.expected_updated_at is not None and payload.expected_updated_at != application.updated_at:
+        raise HTTPException(status_code=409, detail=STALE_APPLICATION_EDIT)
     queued = sync_requests.queue_application_patch(
         db, application, {name: getattr(payload, name) for name in fields})
     if queued is not None:

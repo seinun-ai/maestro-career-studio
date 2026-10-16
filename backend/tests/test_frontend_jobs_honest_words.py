@@ -742,8 +742,17 @@ def test_step_three_change_rows_read_and_revert_one_by_one():
     assert '<p className="sr-only" aria-live="polite">' in rows
     # A revert edits the draft the list describes, and never creates the PDF again behind your back.
     step = _slice(src, "export function TailoredResumeStep(", "function ScoreStrip(")
-    assert "if (!diffIsCurrent(diff.dataUpdatedAt, draftLoadedAt)) {" in step
-    assert 'toast.error("The draft changed. Reload the changes.");' in step
+    # The diff names the draft it was computed from; a revert goes only against that one, and says so to the
+    # server, which refuses it (409) if the row has moved since.
+    assert "if (diff.data?.updated_at !== app.updated_at) {" in step
+    assert 'toast.error("The changes were out of date and have been refreshed. Try again.");' in step
+    assert "expected_updated_at: write.expectedUpdatedAt" in src
+    # A new draft's list loads behind the previous one, and nothing in that stand-in can be reverted or applied.
+    assert "placeholderData: keepPreviousData" in step
+    assert "const diffSettled = !diff.isPlaceholderData && !diff.isFetching;" in step
+    assert "disabled={busy || readOnly || !diffSettled}" in step and "disabled={writes.pending || !diffSettled}" in step
+    assert "diffData: diff.isPlaceholderData ? undefined : diff.data" in step
+    assert "draftLoaded" not in _read(_JOB_PAGE) + src
     writes = _slice(src, "function useDraftWrites(", "export function TailoredResumeStep(")
     assert "renderOnce" not in writes and "render" not in writes.replace("re-render", "")
     assert "Create the PDF again when you are done." in writes
