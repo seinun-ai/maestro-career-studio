@@ -49,7 +49,9 @@ about a penny per application.
   recent experience counts more, so a score can shift slightly as months pass
   ([`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md)).
 - **Tailoring.** Suggested changes arrive as a before/after view you accept or
-  undo, one by one.
+  undo, one by one. Tailored lines are written as you would say them ("Built X",
+  never "He built X"). **Use resume as is** keeps your base text unchanged, so fix
+  a line written about you in the third person in the base resume itself.
 - **PDFs.** Built on your computer with LaTeX or Typst, two professional
   typesetting systems.
 
@@ -134,7 +136,7 @@ what keeps a generated resume defensible.
 
 ### 3. Save the job, then close the gaps
 
-![Every job you have saved, from saved to signed](assets/applications.png)
+![Every job you have saved, each with its Next step, from saved to signed](assets/applications.png)
 
 Paste the job description (**Add job**) or save it with the Companion. Saving
 scores it against your base resumes. Scoring uses no AI service, so the same
@@ -145,7 +147,7 @@ says what the job is waiting for.
      fictional demo persona (Jordan Ellis, example.com, sample-company names);
      sources live in the private marketing repo (site-media/). -->
 
-![The job's details and Match score, with a check of its stated requirements against your profile](assets/job-overview.png)
+![A job's four numbered steps, its score and details, with a check of its stated requirements against your profile](assets/job-overview.png)
 
 Every saved job also gets a **requirements check**: what the posting *states*
 about work authorization, visa (OPT) policy, salary and years of experience,
@@ -381,20 +383,24 @@ evidence for can only go in your skills list, never into an invented bullet.
 
 ### The Companion browser extension
 
-<!-- P4 extension.gif — CLEARED for publish 2026-08-20. Contact header scrubbed;
-     the Job/Score/Resume/Fill/Track ladder and the multi-base scoring panel
-     ("4 base resumes scored against this JD") are the feature moments. The Fill
-     step is never executed in this take, so NO autofill values are ever on
-     screen — preserve that if re-recording. Real employer careers page and the
-     "Liberty Hill, TX" experience location reviewed and accepted by the owner.
-     1000px / 10fps / 64 colors, 2.6 MB; re-encode any replacement to match. -->
+<!-- extension.gif: the Companion's four-step panel (Job, Resume, Fill, Track)
+     on a fictional job page, captured with the fictional demo persona (Jordan
+     Ellis, example.com, sample-company names); sources live in the private
+     marketing repo (site-media/). Only fictional values may ever be on screen.
+     1000px wide; keep any replacement under 2 MB. -->
 
 ![The Companion on a job page](assets/extension.gif)
 
 The **Companion** is a side panel in Chrome: save a job from the job board you're reading, score
 it, and fill application forms from your saved answers (**Profile › Autofill**). It leaves
-signatures, agreement boxes, passwords and government IDs to you unless you turn
-on the agreement permission in Profile, and it never submits. Autofill does not move to the next page either; only **Apply** does, with full automation on (see the Companion's README).
+signatures, agreement boxes and government IDs to you unless you turn
+on the agreement permission in Profile. Autofill never types a password, and the Companion never submits. Autofill does not move to the next page either; only **Apply** does, with full automation on in Settings › Connected agents (see the Companion's README).
+
+**Screening answers** (Profile › Autofill) sets how far the Companion answers a question your saved answers
+do not cover. **Careful** uses only your saved answers and career history. **Balanced**, the default, also
+answers low-stakes questions (how you heard about the job, travel, relocation) in the job's favor, and
+years-with-a-skill questions when your history shows the skill. **Confident** also answers Yes to requirement
+and years questions on jobs you queued, and asks you when your history shows fewer years.
 
 With full automation on, a job page you have not saved yet shows **Add job** beside **Apply**: it saves the job and
 scores your resumes, then stops on the ranked list without tailoring or starting anything. **Apply** shows a live checklist while it gets ready (save, score, the resume it
@@ -418,13 +424,20 @@ new tab, Apply presses it in the same tab, but only when it leads to that link o
 a step you do by hand, it follows you into the tab you open for the application and says "The run moved to this tab"; press
 **Continue here** to carry on (nothing is filled until you do). If you are on the job's tab and its run waits in another one, the
 Job step offers **Move the run to this tab**; a run that is filling never moves. On a known application
+site (Workday, Greenhouse, Lever, Ashby, iCIMS and a few more) that asks you to sign in, Apply signs in with the
+job-site login you saved under Settings › Connected agents, in the page itself, and never retries a failed
+sign-in; anywhere else it waits for you to sign in. On a known application
 site that asks you to make an account, Apply makes it with your saved job-site login, once, waits up to
 20 seconds for the site to finish, and only then stops with **Account not created** if the site refuses
 it, **Email code** if the site wants an email check and **CAPTCHA** if it shows one. A required
 written question your saved answers cannot answer is **drafted from your career history for you to
 read** ("Drafted from your history: read it"), never saved as a standing answer; **Careful** turns
 drafting off. The **Ask** box at the foot of the Fill step answers any question from a form in one
-paragraph you can copy; it opens when a run pauses.
+paragraph you can copy; it opens when a run pauses. When you fix a field by hand while a run waits, the
+Companion notes which clicks and keys you used (never what you typed) and tries them first on that kind of
+field next time. After you press **Submit** and the confirmation page shows, the panel marks the job applied
+after 8 seconds unless you press **Undo**. If the tab goes anywhere else first, **Mark applied** is yours to
+press. The Companion remembers which job each tab is on until you close the tab.
 
 When Apply would stop on a page it could not work, it first thinks. With **Think when stuck** on (Settings ›
 AI & models › Form filling, on by default, and only with full automation on and **Stop after each step** off),
@@ -504,7 +517,7 @@ tailoring is helping.
 
 ### Hunt with the agent you already use
 
-![What a hunt found, waiting in your Agent inbox for your review](assets/agent-inbox.png)
+![Your Agent inbox: one line of what is waiting, then what a hunt found for your review](assets/agent-inbox.png)
 
 Your AI assistant can job-hunt for you. It reads your job preferences from the
 app, finds postings on whatever sites it can use, saves and scores them against

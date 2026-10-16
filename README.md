@@ -24,7 +24,7 @@ Maestro tailors it from your whole career history in under a minute, and every b
 
 - **Same score, every time.** The match score runs on fixed rules and a small model on your own computer, with no AI service involved. Same resume, same job, same number.
 - **Every AI edit is a diff.** Suggested changes arrive as a before and after. You accept or undo them one by one.
-- **It fills the form and stops there.** The Companion fills job applications from your saved answers and attaches your resume. It never submits. That click is yours. With full automation on, **Apply** can also click Next through the pages for you and stops on the review page.
+- **It fills the form and stops there.** The Companion fills job applications from your saved answers and attaches your resume. It never submits. That click is yours. With full automation on, **Apply** can also click Next through the pages for you and stops on the review page. On known application sites it signs in, or makes the account, with the job-site login you saved.
 
 **[Install in two commands](#quickstart)**, or follow the [Getting Started guide](docs/GETTING_STARTED.md) if this is all new to you.
 

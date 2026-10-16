@@ -277,7 +277,9 @@ Five steps from nothing to a PDF:
 
 The **Companion** is a Chrome side panel: save the job posting you're looking at, score your
 resumes against it, fill the application form from your saved answers (Profile › Autofill), and
-mark it applied — without leaving the tab. The app must be running.
+mark it applied — without leaving the tab. The app must be running. With **Full automation** on
+(Settings › Connected agents), its **Apply** button fills each page, presses Next and stops on the
+review page. Submit is always yours.
 
 1. Open `chrome://extensions` and switch on **Developer mode** (top right).
 2. Click **Load unpacked** and select the `extension` folder inside
