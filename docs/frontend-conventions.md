@@ -1254,8 +1254,8 @@
   Save uses (one write at a time) and scores again, one pending state with the breakdown's Update score
   (`tailoredRescoreKey`). The server removes the PDF with every draft write, and nothing creates it again: the
   PDF card goes, Create PDF is the filled button again and the toast says to create it when you are done. Five
-  rows, then "Show N more changes"; once a PDF exists only the rows fold (Show); the header, "No changes yet", a
-  load error and **Check wording** (the studio's results, cleared by a new list) stay outside the fold. The PDF
+  rows, then "Show N more changes"; once a PDF exists only the rows fold (Show); the header, "No changes yet" and a
+  load error stay outside the fold. Check wording is the studio's (Edit resume), not step 3's. The PDF
   card exists only with a PDF: a line on `surface-container-low` (the file name, pages, the resumes folder line
   "In Documents › … · Change folder", Download PDF, Open PDF in new tab and Show in Finder as icon buttons,
   Update PDF small and outline), then the page preview, the only `canvas`. Pinned by

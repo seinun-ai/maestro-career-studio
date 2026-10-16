@@ -867,8 +867,10 @@ def test_step_three_change_rows_read_and_revert_one_by_one():
     # Five changes, then the rest behind one toggle; once a PDF exists only the rows fold.
     assert "const SHOWN_CHANGES = 5;" in src and "`Show ${hunks.length - SHOWN_CHANGES} more changes`" in rows
     assert "const listOpen = listShown ?? !hasPdf;" in rows and "aria-expanded={listOpen}" in rows
-    fold = _slice(rows, "<div id={listId} hidden={!listOpen}", "{hunks.length > 0 ? (")
-    assert "No changes yet." not in fold and "Try again" not in fold and "{check}" not in fold
+    fold = _slice(rows, "<div id={listId} hidden={!listOpen}", "</section>")
+    assert "No changes yet." not in fold and "Try again" not in fold
+    # Check wording is the studio's (Edit resume); step 3 has no copy of it (owner, 2026-10-16).
+    assert "Check wording" not in src and "runCoherenceCheck" not in src
     # Each row: where it sits (first, with an id the Revert button points at), the chip, what it was and is now.
     assert fold.index("{hunkPlace(hunk, draft)}") < fold.index("<ProvenanceChip value={hunk.provenance} tinted />")
     assert '<span className="sr-only">Before: </span>' in fold and "<del>" in fold

@@ -197,7 +197,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    compare and its Score breakdown, ⋯ with Tailor again and Delete application, **Edit resume** → the studio
    `/applications/[id]/resume`, where Save chains render → re-score) and one filled button, **Create PDF** then **Continue to
    Apply**. Below it the changes tailoring made (`GET …/resume-diff`, which carries the draft's `updated_at`), each with a Revert
-   that PATCHes the draft with `expected_updated_at` (409, nothing written, if it moved) and re-scores it, and **Check wording**.
+   that PATCHes the draft with `expected_updated_at` (409, nothing written, if it moved) and re-scores it (wording checks
+   stay in the studio).
    A draft write removes the PDF (Create PDF again): the PDF card shows only the draft's own, with Download / Open / **Show in
    Finder** (§6 inv-resumes-folder-one-way), **Update PDF** and the rasterized page preview.
 8. **Apply** — step 4 (**Apply**, `components/apply-step.tsx`), one card: **Open the job post and apply** (apply link, else source

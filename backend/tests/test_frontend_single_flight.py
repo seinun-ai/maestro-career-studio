@@ -75,9 +75,8 @@ _SITES = [
     ("components/resume-step.tsx", "appliedAsIs"),
     ("components/resume-step.tsx", "asIs"),
     ("components/tailored-resume-step.tsx", "renderPdf"),
-    # Step 3: a Revert or a wording fix writes the whole draft (one at a time), and Check wording runs once.
+    # Step 3: a Revert writes the whole draft (one at a time). Check wording lives in the studio, not here.
     ("components/tailored-resume-step.tsx", "writeDraft"),
-    ("components/tailored-resume-step.tsx", "checkWording"),
     ("app/jobs/[id]/tailor/[sessionId]/page.tsx", "useAsIs"),
     # Lane 8 first-read: a double click sent each of these twice (the pill's Add
     # now wrote every draft twice; the second Discard or Merge came back "not

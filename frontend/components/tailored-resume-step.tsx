@@ -7,7 +7,6 @@ import {
   ChevronDown,
   FileOutput,
   Pencil,
-  SpellCheck,
   Trash2,
   TriangleAlert,
   Undo2,
@@ -20,15 +19,7 @@ import { GuardedLink as Link } from "@/components/guarded-link";
 import { IconButton } from "@/components/icon-button";
 import { PdfFileLine } from "@/components/pdf-file-line";
 import { ResumesFolderNote } from "@/components/resumes-folder-actions";
-import {
-  type ApplicableCoherenceProposal,
-  applyCoherenceProposal,
-  CoherenceResults,
-  type CoherenceState,
-  ProvenanceChip,
-  revertHunk,
-  sideText,
-} from "@/components/resume-editor/diff-review";
+import { ProvenanceChip, revertHunk, sideText } from "@/components/resume-editor/diff-review";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -46,7 +37,6 @@ import {
   apiFetch,
   resumeDiffQuery,
   runAtsScoreTarget,
-  runCoherenceCheck,
 } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
@@ -79,14 +69,12 @@ function ProvenanceCount({ value, count }: { value: ResumeDiffHunk["provenance"]
 
 const SHOWN_CHANGES = 5;
 
-const NO_COHERENCE: CoherenceState = { checked: false, loading: false, flags: [], appliedKeys: new Set() };
-
-/** A draft change written from step 3: a revert, or a wording fix from Check wording. `expectedUpdatedAt` is the
- *  draft the edit was computed from: the server refuses it (409, nothing written) if the row has moved since. */
+/** A draft change written from step 3: a revert. `expectedUpdatedAt` is the draft the revert was computed from:
+ *  the server refuses it (409, nothing written) if the row has moved since. Wording checks live in the studio
+ *  (Edit resume), not here. */
 type DraftWrite = {
   data: ResumeData;
   id: string;
-  kind: "revert" | "apply";
   pdfRemoved: boolean;
   expectedUpdatedAt: string;
 };
@@ -128,13 +116,12 @@ function useDraftWrites({
       }),
     onSuccess: (_result, write) => {
       rescore.mutate();
-      const said = write.kind === "revert" ? "Change reverted" : "Fix applied";
-      setAnnounced((prev) => ({ text: said, n: prev.n + 1 }));
-      if (write.pdfRemoved) toast.success(`${said}. Create the PDF again when you are done.`);
+      setAnnounced((prev) => ({ text: "Change reverted", n: prev.n + 1 }));
+      if (write.pdfRemoved) toast.success("Change reverted. Create the PDF again when you are done.");
     },
-    onError: (err: Error, write) => {
+    onError: (err: Error) => {
       focusAfterWrite.current = null;
-      toast.error(couldnt(write.kind === "revert" ? "revert the change" : "apply the fix", err));
+      toast.error(couldnt("revert the change", err));
     },
     // Returned, so the row stays pending until the list without it is in. A 409 (the row moved) refreshes both too.
     onSettled: () =>
@@ -167,7 +154,7 @@ function useDraftWrites({
 
 /**
  * Step 3, Tailored resume, inside one card: the score strip, the full compare behind Score breakdown, the changes
- * tailoring made with a Revert on each and Check wording, and once a PDF exists the PDF card. A revert is computed
+ * tailoring made with a Revert on each, and once a PDF exists the PDF card. A revert is computed
  * from the draft the diff describes (the diff's `updated_at` is the application's) and sent with it, so the server
  * refuses one the row has moved past.
  */
@@ -221,27 +208,6 @@ export function TailoredResumeStep({
   const ids = hunkIds(hunks);
   const writes = useDraftWrites({ app, jobId, diffData: diff.isPlaceholderData ? undefined : diff.data });
 
-  // Check wording's results describe one list: a new list (a revert, a fix, a new draft) clears them.
-  const [coherence, setCoherence] = useState<CoherenceState>(NO_COHERENCE);
-  const [coherenceFor, setCoherenceFor] = useState(diff.data);
-  if (coherenceFor !== diff.data) {
-    setCoherenceFor(diff.data);
-    setCoherence(NO_COHERENCE);
-  }
-  const checkWording = useMutation({
-    mutationFn: () => runCoherenceCheck(app.id),
-    onSuccess: (result) =>
-      setCoherence({
-        checked: true,
-        loading: false,
-        flags: result.flags,
-        hygiene: result.hygiene,
-        gates: result.gates,
-        appliedKeys: new Set(),
-      }),
-    onError: () => toast.error("Couldn't run the checks. Try again."),
-  });
-  const checkOnce = useSingleFlight(checkWording.mutate);
 
   /** The draft as the editor reads it; null when it does not parse (the toast names that, not a moved text). */
   const parsedDraft = (): ResumeData | null => {
@@ -266,19 +232,9 @@ export function TailoredResumeStep({
       return;
     }
     writes.write(
-      { data: next, id, kind: "revert", pdfRemoved: hasPdf, expectedUpdatedAt: app.updated_at },
+      { data: next, id, pdfRemoved: hasPdf, expectedUpdatedAt: app.updated_at },
       focusSuccessorIn(button, "[data-revert]"),
     );
-  };
-  const onApplyFix = (flag: ApplicableCoherenceProposal, key: string) => {
-    const current = parsedDraft();
-    if (!current) return unreadable();
-    const next = applyCoherenceProposal(current, flag);
-    if (!next) {
-      toast.error("Couldn't find that text. It may have changed. Make the fix yourself.");
-      return;
-    }
-    writes.write({ data: next, id: key, kind: "apply", pdfRemoved: hasPdf, expectedUpdatedAt: app.updated_at });
   };
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -382,28 +338,6 @@ export function TailoredResumeStep({
           writing={writes.writing}
           announcement={writes.announcement}
           onRevert={onRevert}
-          check={
-            <Button variant="ghost" size="sm" pending={checkWording.isPending} onClick={() => checkOnce()}>
-              <SpellCheck className="size-3.5" />
-              {checkWording.isPending ? "Checking…" : coherence.checked ? "Check again" : "Check wording"}
-            </Button>
-          }
-          results={
-            coherence.checked && !checkWording.isPending ? (
-              <CoherenceResults
-                coherence={coherence}
-                disabled={writes.pending || !diffSettled}
-                onApply={readOnly ? undefined : (flag, key) => onApplyFix(flag, key)}
-                onApplyHygiene={
-                  readOnly
-                    ? undefined
-                    : (flag, key) => {
-                        if (flag.proposal !== null) onApplyFix({ ...flag, proposal: flag.proposal }, key);
-                      }
-                }
-              />
-            ) : null
-          }
         />
 
         {hasPdf ? (
@@ -473,7 +407,7 @@ function ScoreStrip({
 
 /**
  * Changes (N): the header with its provenance tallies, then what the list could not show (loading, "No changes
- * yet" for a 409, a load error), the rows (the only part that folds once a PDF exists) and Check wording.
+ * yet" for a 409, a load error) and the rows (the only part that folds once a PDF exists).
  */
 function ChangesList({
   diff,
@@ -485,8 +419,6 @@ function ChangesList({
   writing,
   announcement,
   onRevert,
-  check,
-  results,
 }: {
   diff: { isLoading: boolean; isError: boolean; error: Error | null; data: ResumeDiff | undefined; refetch: () => unknown };
   hunks: ResumeDiffHunk[];
@@ -497,8 +429,6 @@ function ChangesList({
   writing: DraftWrite | null | undefined;
   announcement: string;
   onRevert: (hunk: ResumeDiffHunk, id: string, button: HTMLElement) => void;
-  check: ReactNode;
-  results: ReactNode;
 }) {
   const listId = useId();
   const [listShown, setListShown] = useState<boolean | null>(null);
@@ -533,7 +463,7 @@ function ChangesList({
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>
-      {/* Outside the fold: what the list could not show, and Check wording. Only the rows fold. */}
+      {/* Outside the fold: what the list could not show. Only the rows fold. */}
       {diff.isLoading ? (
         <Skeleton className="animate-shimmer h-16 w-full" />
       ) : nothingTailored ? (
@@ -586,7 +516,7 @@ function ChangesList({
                     label="Revert this change"
                     aria-describedby={placeId}
                     icon={<Undo2 className="size-4" />}
-                    pending={writing?.kind === "revert" && writing.id === id}
+                    pending={writing?.id === id}
                     disabled={disabled}
                     focusableWhenDisabled
                     className="shrink-0 data-disabled:pointer-events-none data-disabled:opacity-50"
@@ -603,12 +533,6 @@ function ChangesList({
           ) : null}
         </div>
       )}
-      {hunks.length > 0 ? (
-        <div className="space-y-2">
-          {check}
-          {results}
-        </div>
-      ) : null}
     </section>
   );
 }
