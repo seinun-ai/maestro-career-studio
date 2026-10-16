@@ -192,6 +192,41 @@ def test_add_skill_item_is_case_insensitive_dedupe():
     assert langs["items"] == ["Python"]  # already present (ci) -> no dup
 
 
+_MLOPS_LINE = [
+    "Airflow", "Kafka", "Docker", "Kubernetes", "AWS (SageMaker, EKS, S3)", "Terraform", "CI/CD", "model monitoring",
+]
+
+
+@pytest.mark.parametrize("keyword", ["AWS", "SageMaker", "aws", "sagemaker", "EKS", "s3", " SageMaker "])
+def test_add_skill_item_skips_a_keyword_the_line_already_has_inside_parentheses(keyword):
+    """Issue #50: the gap step's Different wording fill appended "AWS" and "SageMaker" to a line that already read
+    "AWS (SageMaker, EKS, S3)", so it ended "…, AWS, SageMaker, MLOps"."""
+    resume = deepcopy(BASE)
+    resume["skills"].append({"category": "MLOps & Infrastructure", "items": list(_MLOPS_LINE)})
+    result = apply_edits(
+        resume, _ops({"kind": "add_skill_item", "category": "MLOps & Infrastructure", "item": keyword})
+    )
+    line = [g for g in result["skills"] if g["category"] == "MLOps & Infrastructure"][0]
+    assert line["items"] == _MLOPS_LINE
+
+
+def test_add_skill_item_still_adds_a_keyword_the_line_lacks():
+    resume = deepcopy(BASE)
+    resume["skills"].append({"category": "MLOps & Infrastructure", "items": list(_MLOPS_LINE)})
+    result = apply_edits(
+        resume,
+        _ops(
+            {"kind": "add_skill_item", "category": "MLOps & Infrastructure", "item": "AWS"},
+            {"kind": "add_skill_item", "category": "MLOps & Infrastructure", "item": "SageMaker"},
+            {"kind": "add_skill_item", "category": "MLOps & Infrastructure", "item": "MLOps"},
+            # Only whole terms count: "CI" is not "CI/CD", whose slash joins one term.
+            {"kind": "add_skill_item", "category": "MLOps & Infrastructure", "item": "CI"},
+        ),
+    )
+    line = [g for g in result["skills"] if g["category"] == "MLOps & Infrastructure"][0]
+    assert line["items"] == [*_MLOPS_LINE, "MLOps", "CI"]
+
+
 def test_add_skill_item_strips_whitespace_before_storing():
     result = apply_edits(
         deepcopy(BASE),

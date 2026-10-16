@@ -1,4 +1,5 @@
 import logging
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -234,13 +235,29 @@ def _apply_replace_skills_group(resume: dict[str, Any], op: ReplaceSkillsGroup) 
     }
 
 
+_SKILL_TERM_SPLIT = re.compile(r"[(),;]")
+
+
+def _skill_terms(items: list[Any]) -> set[str]:
+    """Every term a skills line already names, casefolded: each item whole, and each part of it split at
+    parentheses, commas and semicolons, so "AWS (SageMaker, EKS, S3)" names AWS, SageMaker, EKS and S3 too.
+    A slash or a space joins one term ("CI/CD", "model monitoring")."""
+    terms: set[str] = set()
+    for item in items:
+        text = " ".join(str(item).split()).casefold()
+        terms.add(text)
+        terms.update(part.strip() for part in _SKILL_TERM_SPLIT.split(text) if part.strip())
+    return terms
+
+
 def _apply_add_skill_item(resume: dict[str, Any], op: AddSkillItem) -> dict[str, Any]:
     groups = _entries(resume, "skills")
     target = op.category.casefold()
     matches = [g for g in groups if str(g.get("category", "")).casefold() == target]
     if matches:
         items = matches[0].setdefault("items", [])
-        if op.item.casefold() not in {str(i).casefold() for i in items}:
+        # A keyword the line already names, even inside parentheses, is not added again (issue #50).
+        if " ".join(op.item.split()).casefold() not in _skill_terms(items):
             items.append(op.item)
         category = matches[0].get("category")
     else:

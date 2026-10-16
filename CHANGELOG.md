@@ -300,6 +300,9 @@ Less hunting, more applying.
   "Not saved yet" and there was nowhere to mark it applied after your own Submit. The panel now stays on the job it was applying
   to, as a Draft, with **Draft / Applied** in the footer; nothing is marked for you. A tab you browsed on to another employer is
   left unbound.
+- **A tailored skills line names a skill once.** A line that read "AWS (SageMaker, EKS, S3)" ended "…, AWS,
+  SageMaker, MLOps" after tailoring: the gap step's **Different wording** fill added a keyword the line already had.
+  A keyword the line already names, inside parentheses too and in any case, is no longer added again (#50).
 - **Eighth live check of Apply, on two hosted application forms, with Claude as the fast model.**
   - **Safe answers are no longer lost to a slow model.** The second look at an answer and the Yes/No direction check gave a Claude fast model about a second, which it often needed more of, so
     a question that should have taken the safe default was left to you. They now get 3 s for Claude (a second for other models, a custom server and OpenRouter) inside the same time limit
