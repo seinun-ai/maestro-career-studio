@@ -12,7 +12,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
 
 from tests.extension_harness import run_node
 

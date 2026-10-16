@@ -21,7 +21,6 @@ the next author will not find.
 """
 import json
 import re
-import time
 
 import pytest
 

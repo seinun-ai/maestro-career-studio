@@ -273,7 +273,7 @@ def test_a_different_host_is_not_the_same_url(page, load):
     apply(page, f, op="write", value="https://example.dev", format="url")
     assert page.input_value("#u") == "https://example.dev"
     # Verifying a different site against what the box holds is a revert, never a match.
-    ok = page.evaluate(f"() => window.careerStudioCompanion.fillBase.equivalent('example.dev', 'sample-one-site.example.dev', {{ format: 'url' }})")
+    ok = page.evaluate("() => window.careerStudioCompanion.fillBase.equivalent('example.dev', 'sample-one-site.example.dev', { format: 'url' })")
     assert ok is False
 
 

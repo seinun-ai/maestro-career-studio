@@ -1615,7 +1615,7 @@ def test_the_press_re_checks_the_link_if_the_page_rewrites_it_after_naming(page,
 
 def test_the_apply_call_re_checks_that_it_is_still_a_link_at_press_time(page, load):
     """Named while it was a link; the page then swaps it for a button of the same id and text."""
-    load(page, f"<h1>A</h1><a id='b' href='https://jobs.acme.test/9'>Apply</a>", SOURCES)
+    load(page, "<h1>A</h1><a id='b' href='https://jobs.acme.test/9'>Apply</a>", SOURCES)
     apply_id = summary(page)["applyId"]
     assert apply_id
     page.evaluate("""() => { const b = document.createElement('button'); b.id = 'b2'; b.textContent = 'Apply';
@@ -2060,7 +2060,7 @@ def test_a_disabled_or_read_only_box_parks_before_anything_is_typed(page, attrs,
 # ---------- the ordinary fill never lists a password input ----------
 
 def _inventory(page, **opts):
-    return page.evaluate(f"async (o) => (await window.careerStudioCompanion.fillOps.inventory(o)).fields", opts)
+    return page.evaluate("async (o) => (await window.careerStudioCompanion.fillOps.inventory(o)).fields", opts)
 
 
 @pytest.mark.parametrize("name", ["signin.html", "create_account.html"])
@@ -2708,7 +2708,9 @@ def test_the_banner_and_the_boxs_own_complaint_are_one_error_not_two(page, load)
 def test_the_banners_buttons_are_marked_so_the_fingerprint_can_leave_them_out(page, load):
     load(page, ERRORS_PAGE, SOURCES)
     before = summary(page)
-    shown = lambda s, **kw: sorted(b["text"] for b in s["buttons"] if b["visible"] and bool(b.get("inErrors")) == kw["errors"])
+    def shown(s, **kw):
+        return sorted(b["text"] for b in s["buttons"] if b["visible"] and bool(b.get("inErrors")) == kw["errors"])
+
     assert shown(before, errors=True) == []
     press_next(page)
     after = summary(page)
@@ -2724,7 +2726,7 @@ def test_a_field_error_is_mapped_by_its_describedby_to_the_field(page, load):
       <label for="city">City</label><input id="city">""", SOURCES)
     (item,) = page_errors(page)["items"]
     assert (item["label"], item["kind"]) == ("Phone Number", "field")
-    fid = page.evaluate(f"() => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById('phone'))")
+    fid = page.evaluate("() => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById('phone'))")
     assert item["target"] == fid
 
 
@@ -2734,7 +2736,7 @@ def test_a_summary_item_with_no_link_is_mapped_by_its_exact_label(page, load):
       <label for="city">City*</label><input id="city" aria-required="true">""", SOURCES)
     (item,) = page_errors(page)["items"]
     assert (item["label"], item["kind"]) == ("City", "field")
-    fid = page.evaluate(f"() => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById('city'))")
+    fid = page.evaluate("() => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById('city'))")
     assert item["target"] == fid
 
 
@@ -2744,7 +2746,7 @@ def test_a_summary_link_to_a_field_names_that_field_whatever_its_label(page, loa
       <label for="c1">Name</label><input id="c1"><label for="c2">Anything</label><input id="c2">""", SOURCES)
     (item,) = page_errors(page)["items"]
     assert item["kind"] == "field"
-    fid = page.evaluate(f"() => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById('c2'))")
+    fid = page.evaluate("() => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById('c2'))")
     assert item["target"] == fid
 
 
@@ -2791,7 +2793,7 @@ def joined_page(question=GUILD_Q, line=None, control=None):
 
 
 def target_fid(page, element_id):
-    return page.evaluate(f"(id) => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById(id))", element_id)
+    return page.evaluate("(id) => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById(id))", element_id)
 
 
 def test_a_joined_error_line_is_named_by_its_button_and_maps_to_the_field(page, load):

@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from tests.browser.conftest import EXTENSION, fixture_html
+from tests.browser.conftest import fixture_html
 from tests.browser.test_page_reader import SOURCES, READER, advance, button, classify, summary
 
 SHADOW = fixture_html("shadow_one_page_form.html")

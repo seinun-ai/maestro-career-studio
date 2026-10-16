@@ -12,7 +12,6 @@ context is offline), because the driver parks a Resume on a host the run never r
 
 import json
 
-import pytest
 
 from tests.browser.conftest import EXTENSION, fixture_html
 from tests.browser.pages import oracle

@@ -6,7 +6,6 @@ The loop runs in the page with the real content scripts behind a captured `chrom
 fill could map, so a field that is touched anyway is the loop's doing, not the script's.
 """
 
-import json
 
 from tests.browser.conftest import EXTENSION, fixture_html
 from tests.browser.test_fill_end_to_end import SOURCES

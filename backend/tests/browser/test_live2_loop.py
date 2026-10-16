@@ -4,8 +4,6 @@ test_fill_end_to_end.py; every page is a fixture or inline made-up markup."""
 
 import pytest
 
-from tests.browser.conftest import fixture_html
-from tests.browser.pages import oracle
 from tests.browser.test_fill_end_to_end import _run
 
 
