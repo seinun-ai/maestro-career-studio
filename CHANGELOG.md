@@ -28,6 +28,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-10-16
+
 The Companion used to fill one page and wait for you to click through the rest. Turn on full
 automation and the Job step now has an **Apply** button that takes one job through its whole
 application in the tab you are on: it fills a page, clicks Next, fills the next, and stops on the
@@ -40,6 +42,11 @@ and each one says in a line what is done and what comes next. The Jobs list does
 row with a **Next step** column. Every job is scored the moment you save it, and a job holds one
 application, so trying another resume replaces the draft instead of quietly starting a second one.
 Less hunting, more applying.
+
+Apply also signs in, or makes an account, on the application sites it knows, with the job-site
+login you saved, and when a page does something it has no rule for, a stronger model takes one look
+before the run gives up. When the confirmation shows after your Submit, the job is marked applied for
+you. And the Companion's fill log is now off until you turn it on.
 
 ### Breaking changes
 

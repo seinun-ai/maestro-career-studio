@@ -1,6 +1,6 @@
 {
   "name": "maestro-career-studio",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "Connect to Maestro Career Studio by local HTTP URL: capture and score jobs, tailor resumes, render PDFs, and track applications. Requires Maestro running on this computer. AI features send content to the model provider you configure.",
   "author": {
     "name": "Ajey Dhayashanker Loganathan"

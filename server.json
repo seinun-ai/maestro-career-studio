@@ -8,13 +8,13 @@
     "source": "github"
   },
   "websiteUrl": "https://maestrocareerstudio.com",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/seinun-ai/maestro-career-studio/releases/download/v0.10.1/maestro-career-studio.mcpb",
-      "version": "0.10.1",
-      "fileSha256": "faf6d76e68c13703e4193888d276d18187b00c61389918a523e027a658f6ed52",
+      "identifier": "https://github.com/seinun-ai/maestro-career-studio/releases/download/v0.11.0/maestro-career-studio.mcpb",
+      "version": "0.11.0",
+      "fileSha256": "8761838ae398d747c18b1da09eec56d4a829bd8f887c35a69c2931486e4d2bfd",
       "transport": {
         "type": "stdio"
       }
