@@ -1879,8 +1879,9 @@ def get_proposal(proposal_id: str) -> Any:
 @_guard
 def record_decision(proposal_id: str, fit: dict, application_id: str | None = None) -> Any:
     """Record user decision when proposal is in needs_decision state. Resolves back to
-    pending_review. application_id may be omitted; the backend then links the newest
-    application matching the proposal job and fit.chosen_base (409 if none)."""
+    pending_review. application_id may be omitted; the backend then links the job's
+    application on fit.chosen_base when there is one, else the job's one application
+    (409 only when the job has no application)."""
     return _client.record_decision(
         proposal_id, fit=fit, application_id=application_id
     )

@@ -1,5 +1,6 @@
 """Late linking (design §1): a job's receipt rows posted before it had an application are
-linked, for their base, when one is created, marked applied, or submitted by an agent."""
+linked to the job's one application (by base on a legacy multi-application job) when one is
+created, marked applied, or submitted by an agent."""
 
 import copy
 from datetime import UTC, datetime, timedelta
@@ -109,6 +110,17 @@ def test_rows_link_to_the_application_of_their_base(db_session):
     _link(db_session, swe)
     _link(db_session, ds)
     assert (_owner(db_session, ds_row), _owner(db_session, swe_row)) == (ds.id, swe.id)
+
+
+def test_the_jobs_one_application_claims_rows_posted_for_its_old_base(db_session):
+    """The resume was switched from data_scientist to swe: the job's one application still
+    owns what was filled while it was on data_scientist."""
+    job = _mk_job(db_session)
+    app_row = _app(db_session, job, "swe")
+    old_base = _unlinked(db_session, job, base_resume="data_scientist")
+    no_base = _unlinked(db_session, job)
+    assert _link(db_session, app_row) == 2
+    assert (_owner(db_session, old_base), _owner(db_session, no_base)) == (app_row.id, app_row.id)
 
 
 def test_a_row_without_a_base_links_only_to_the_jobs_sole_application(db_session):

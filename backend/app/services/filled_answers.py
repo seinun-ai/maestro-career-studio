@@ -271,15 +271,18 @@ def _stamped(fields: list[dict[str, Any]], version: int | None) -> list[dict[str
 
 
 def _claimed_rows(session: Session, application: Application) -> list[FilledAnswer]:
-    """The job's unlinked rows this application owns: posted for its base, or posted without
-    saying which base while the job has just this one application."""
+    """The job's unlinked rows this application owns. A job has one application, so while it
+    is the job's only one it owns them all, whatever base each was posted for (its resume may
+    have been switched since). A job still holding several from before that rule splits them
+    by base, and a row posted without a base stays unlinked."""
     rows = session.scalars(select(FilledAnswer).where(
         FilledAnswer.job_id == application.job_id, FilledAnswer.application_id.is_(None))).all()
     mine = [row for row in rows if row.base_resume == application.base_resume]
-    if any(row.base_resume is None for row in rows):
+    if len(mine) < len(rows):
         sole = session.scalar(select(func.count()).select_from(Application).where(
             Application.job_id == application.job_id)) == 1
-        mine += [row for row in rows if row.base_resume is None and sole]
+        if sole:
+            return list(rows)
     return mine
 
 

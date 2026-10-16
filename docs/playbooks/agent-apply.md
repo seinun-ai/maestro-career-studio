@@ -128,15 +128,15 @@ declines are posting-scoped and permanent; there is no company cooldown.)
      an `application_id`, then call
      `request_decision(proposal_id, reason)`. This new MCP operation, delivered
      by this implementation, is idempotent and transitions the unlinked
-     proposal to `needs_decision`. After the user chooses a base, tailor and
-     create the application through the existing reuse-by-job-and-base policy,
-     so a retry after successful tailoring does not duplicate either artifact.
+     proposal to `needs_decision`. After the user chooses a base, tailor with
+     it: a job has one application, so tailoring reuses it (another base
+     replaces its draft) and a retry does not duplicate either artifact.
      Then call `record_decision(proposal_id, fit, application_id?)`, or retry
      `propose_application` with `application_id` to late-link while still in
-     an open status. `record_decision` may omit `application_id`; the target
-     backend atomically links the newest application matching `proposal.job_id`
-     and `fit.chosen_base`. If none exists, it returns 409; return to safe
-     tailoring/application preparation and retry rather than inventing a link.
+     an open status. `record_decision` may omit `application_id`; the backend
+     then links the job's application on `fit.chosen_base` when there is one,
+     else the job's one application. It returns 409 only when the job has no
+     application; return to safe tailoring and retry rather than inventing a link.
 3. **Count and respect refusals:** increment the run counter only when
    `propose_application` creates a new proposal (HTTP 201). An existing open
    proposal returns 200 with the same ID — resume it, do not count again.

@@ -298,7 +298,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   trace with `why: "off"` and `lastAt`, the time of the last trace this device posted (an ISO time and nothing else), and the run card says so.
 - **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an agent filled into an
   application form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`) lives only in the local `filled_answers` table
-  (`services/filled_answers.py`; `docs/entities/filled-answers.md`): one row per page run, linked to an application by job + base resume. It
+  (`services/filled_answers.py`; `docs/entities/filled-answers.md`): one row per page run, linked to the job's application (by base on a legacy multi-application job). It
   never enters telemetry, run traces, Langfuse or exports. An EEO value is stored only under recorded EEO consent (the fill's own gate,
   `eeo_consent.withhold_unconsented`, asked at write; without it the row keeps the question with `answer: null`); withdrawing consent clears
   stored EEO answers (`eeo_answered` stays true) and reads are gated again as a second guard. No agent read returns an EEO value, marked or

@@ -44,9 +44,10 @@ appended and never pruned; the values live here and nowhere else (SYSTEM.md §6 
 - **Linking.** Rows posted before the job has an application are unlinked; `filled_answers.link_unlinked`
   claims them when an application is NEW (`POST /api/applications/from-base`, a tailoring that inserts
   one; a rebuild keeps what is linked), when `PATCH /api/applications/{id}` marks it applied or later, and
-  in `proposals.transition(..., "submitted")`. It claims the job's unlinked rows posted for that
-  application's `base_resume`, and rows posted with no base only while the job has exactly one
-  application; another base's rows stay unlinked. Stamps are honest: a resume upload takes the version
+  in `proposals.transition(..., "submitted")`. A job has one application, so while it is the job's
+  only one it claims every unlinked row, whatever base each was posted for (its resume may have been
+  switched since). A job still holding several from before that rule splits them: each claims the rows
+  posted for its `base_resume`, and a row with no base stays unlinked. Stamps are honest: a resume upload takes the version
   the application had when the row was posted (a writer-named application gets the newest at post time),
   and none when it had no version yet.
 - **EEO lifecycle.** A field is EEO when the writer says so, its slot is `eeo.*`, or its question names a
