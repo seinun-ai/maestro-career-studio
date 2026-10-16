@@ -73,7 +73,7 @@ That is 88 tools and ready-made skills for a daily hunt, an apply run and email 
 
 If your resume folder has a `v2finalcopy(3)` in it, this is for you. Maestro keeps one record of what you have actually done, and every resume is a view of that record. Approved bullets go into a resume word for word, and rewording one is a separate step that asks you first. When a job asks for something your resume does not show, Maestro asks you about it. If it is true, it is saved for every future application. If it is not, it stays a gap.
 
-The score is fixed rules, so the same resume and job always get the same number. It is not an employer's score or a prediction of an interview, so use it to compare your own drafts. Saving a job and tailoring for it took about 10 seconds on Gemini and about 40 on the OpenAI default in our tests, at about a penny (OpenAI) or under 3¢ (Gemini) per application ([the numbers](docs/USING_MAESTRO.md#5-choose-your-models-deliberately)).
+The score is fixed rules, so the same resume and job always get the same number. It is not an employer's score or a prediction of an interview, so use it to compare your own drafts. Saving a job and tailoring for it took about 10 seconds on Gemini and about 40 on the OpenAI default in our tests, at about $0.01 (OpenAI) or under $0.03 (Gemini) per application ([the numbers](docs/USING_MAESTRO.md#5-choose-your-models-deliberately)).
 
 Nothing here is rented. It is free and open source (Apache 2.0), with no account, and you pay only for the AI you use. Your career has one history. Your resume should too.
 

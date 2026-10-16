@@ -33,7 +33,7 @@ without touching your content, or bring your own design.
 
 **Nothing here is rented.** Free and open source (Apache 2.0), no account, no
 subscription. Use the AI service you choose and pay only for what you use —
-about a penny per application.
+about $0.01 per application.
 
 ### How it works
 
@@ -69,7 +69,7 @@ gone stale):
 | Career record | None (per document) | Plain markdown/YAML files | **Organized, versioned — exports to one `career.md`** |
 | Works with AI assistants | No | Command-line skill files | **88 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
 | Submits applications for you | N/A | Never (stated) | **Only with your yes per application, or with Full automation you turn on** |
-| Cost | $15–75/month | Free + AI usage | **Free (Apache 2.0) + your own AI usage — [≈1¢ per application](SETUP_REFERENCE.md#do-you-need-an-api-key)** |
+| Cost | $15–75/month | Free + AI usage | **Free (Apache 2.0) + your own AI usage — [about $0.01 per application](SETUP_REFERENCE.md#do-you-need-an-api-key)** |
 
 ---
 
@@ -206,7 +206,7 @@ tested setups, one per AI service:
 | The one key you need | OpenAI | Gemini |
 | Job requirements captured | the most complete we measured | about ¾ of that, strongest on named tools |
 | Save + tailor takes | ~40 seconds | ~10 seconds |
-| Cost per application | **about a penny** | **under 3¢** *(Gemini promo pricing doubles Jan 2027)* |
+| Cost per application | **about $0.01** | **under $0.03** *(Gemini promo pricing doubles Jan 2027)* |
 | Made-up skills | none measured | none measured |
 
 | | **Claude** · your key, your roles |
