@@ -54,6 +54,9 @@ const KIND_LABELS: Record<string, string> = {
   cover_letter: "Cover letter",
 };
 
+/** The cover-letter card's id: What was submitted's "Cover letter attached" line jumps to it on step 4. */
+export const COVER_LETTER_ID = "cover-letter";
+
 export function QATab({ applicationId, readOnly = false }: { applicationId: string; readOnly?: boolean }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -230,7 +233,11 @@ export function QATab({ applicationId, readOnly = false }: { applicationId: stri
         </CardContent>
       </Card>
 
-      <Card>
+      <Card
+        id={COVER_LETTER_ID}
+        tabIndex={-1}
+        className="scroll-mt-6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
         <CardHeader>
           <CardTitle>Cover letter</CardTitle>
         </CardHeader>

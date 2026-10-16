@@ -78,9 +78,9 @@ import { headerProposalPill, historyStatusOf, proposalHasContent } from "@/lib/i
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
 import { formatShortDate } from "@/lib/format-date";
-import { gapCounts, type GapCounts } from "@/lib/gap-counts";
+import { gapCounts } from "@/lib/gap-counts";
 import { scorePill, standingLine } from "@/lib/job-standing";
-import { TAB_TO_STEP, currentStep, jobSteps, stepForTab, type StepKey } from "@/lib/job-steps";
+import { TAB_TO_STEP, currentStep, jobSteps, jobStepsInput, stepForTab, type StepKey } from "@/lib/job-steps";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { knockoutWords } from "@/lib/knockout-line";
 import { cn } from "@/lib/utils";
@@ -141,10 +141,8 @@ export default function JobDetailPage({
   const setStep = (key: StepKey) => setChosenStep(key);
   // Once opened by link, What was submitted stays on step 4: the job's own flag may predate the fill.
   const [submittedSeen] = useState(requestedTab === "submitted");
-  // ?tab=submitted lands on the receipt, below step 4's questions: it is scrolled to once it renders.
-  const scrollToReceipt = useRef(requestedTab === "submitted");
   const receiptRef = useRef<HTMLElement | null>(null);
-  // Step 1's job details: null follows the stage (open only while the job is just saved).
+  // Step 1's job details: set once from the first data (open only while the job is just saved).
   const [detailsOpen, setDetailsOpen] = useState<boolean | null>(null);
   const detailsId = useId();
   // A step's panel mounts when first shown and then stays, hidden: an answer being edited on step 4
@@ -224,9 +222,6 @@ export default function JobDetailPage({
     onError: (err: Error) => toast.error(couldnt("refresh the job details", err)),
   });
 
-  // Queue for agent leaves the header once the job has a proposal, taking focus with it: the
-  // header's first control (the new proposal's Skip) takes it, in the commit that drops the button.
-  const queued = useRef(false);
   // One-click promote into the agent queue (same rule as the tracker action:
   // only offered when the job has no proposal yet).
   const promote = useMutation({
@@ -238,19 +233,10 @@ export default function JobDetailPage({
       qc.invalidateQueries({ queryKey: ["proposals"] });
       qc.invalidateQueries({ queryKey: ["jobs", "without-application"] });
     },
-    onError: (err: Error) => {
-      queued.current = false;
-      toast.error(couldnt("queue the job", err));
-    },
+    onError: (err: Error) => toast.error(couldnt("queue the job", err)),
   });
   // A double click filed two accepted proposals for one job.
   const promoteOnce = useSingleFlight(promote.mutate);
-  const hasProposal = Boolean(data?.job.proposal_status);
-  useLayoutEffect(() => {
-    if (!queued.current || !hasProposal) return;
-    queued.current = false;
-    if (actionsRef.current) focusIfDropped(focusTarget(actionsRef.current));
-  }, [hasProposal]);
   const triagedStatus = data?.job.proposal_status;
   useLayoutEffect(() => {
     if (!triaged.current) return;
@@ -284,7 +270,8 @@ export default function JobDetailPage({
   });
 
   // The header's ⋯: confirms opened from its items return focus to it (the item is gone by then).
-  const moreTrigger = () => actionsRef.current?.querySelector<HTMLElement>('[aria-label="More actions"]') ?? null;
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const moreTrigger = () => moreRef.current;
 
   // Before the loading gate: `data` stays undefined after a failure, so the
   // gate below would hold the skeleton on screen for good.
@@ -384,68 +371,46 @@ export default function JobDetailPage({
   // The four steps (lib/job-steps.ts), from what the detail and the two lists already carry: no new request.
   const stage = job.stage ?? "saved";
   const skills = extractSkills(job.extracted_json);
-  const topBase = scorePill(scoreRows.data ?? [], null);
-  const baseScoreOf = (slug: string) =>
-    (scoreRows.data ?? []).find((s) => s.phase === "base" && s.target_id === slug)?.composite ?? null;
-  const openSession = (sessions.data ?? []).find((s) => s.id === job.open_session_id);
-  // The analysis that made the draft: the application's newest tailored session.
-  const madeDraft = application
-    ? (sessions.data ?? [])
-        .filter((s) => s.status === "tailored" && s.application_id === application.id)
-        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
-    : undefined;
-  const stepBase = (() => {
-    if (stage === "gaps") {
-      const slug = openSession?.base_resume ?? topBase?.targetId ?? null;
-      return { name: slug ? baseName(slug) : null, score: slug ? baseScoreOf(slug) : null };
-    }
-    if (application && stage !== "saved" && stage !== "scored") {
-      return {
-        name: data.base_resume_name ?? baseName(application.base_resume),
-        score: baseScoreOf(application.base_resume),
-      };
-    }
-    return { name: topBase ? baseName(topBase.targetId) : null, score: topBase?.value ?? null };
-  })();
-  // A current step 2 prints only the closed count, which the detail carries (the server's own count, done =
-  // answered or skipped): no full session needed. A done step 2 splits answered from skipped.
-  const stepGaps: GapCounts | null =
-    stage === "gaps"
-      ? {
-          answered: job.gaps_done ?? 0,
-          skipped: 0,
-          open: Math.max(0, (job.gaps_total ?? 0) - (job.gaps_done ?? 0)),
-          total: job.gaps_total ?? 0,
-        }
-      : madeDraft
-        ? gapCounts(
-            madeDraft.gaps_json.categories.flatMap((c) => c.gaps.map((g) => g.gap_id)),
-            madeDraft.resolutions_json,
-          )
-        : null;
   // A skip's reason decides whether it reads Applied yourself: hold the words until it loads.
   const standingText =
     !hasApp && proposalStatus === "rejected" && proposalQuery.isLoading ? "" : standing.text;
-  const steps = jobSteps({
-    stage,
-    skills: { total: skills.length, required: skills.filter((s) => s.requirement_level === "required").length },
-    knockout: knockoutWords(
-      data.knockout?.status ?? null,
-      data.knockout ? knockoutNotChecked(data.knockout, job) : false,
-    ),
-    base: stepBase,
-    gaps: stepGaps,
-    // Null without a draft: a draft from before a re-analysis keeps step 3 reachable (lib/job-steps.ts).
-    draft: application?.customized_json
-      ? { score: scoreShown?.tailored ? scoreShown.value : null, changes: null }
-      : null,
-    // The application carries no render time, so the line says "PDF created" without a date.
-    pdf: application?.pdf_path ? { pages: application.pdf_pages, createdOn: null } : null,
-    standing: standingText,
-  });
-  const step: StepKey =
-    chosenStep ?? (proposalStatus && PROPOSAL_WAITS_ON_YOU.has(proposalStatus) ? "job" : currentStep(stage));
+  const steps = jobSteps(
+    jobStepsInput({
+      job,
+      application,
+      applicationResumeName: data.base_resume_name ?? null,
+      scoreRows: scoreRows.data ?? [],
+      scoreShown,
+      sessions: sessions.data ?? [],
+      skills: { total: skills.length, required: skills.filter((s) => s.requirement_level === "required").length },
+      knockout: knockoutWords(
+        data.knockout?.status ?? null,
+        data.knockout ? knockoutNotChecked(data.knockout, job) : false,
+      ),
+      standing: standingText,
+      baseName,
+      countGaps: gapCounts,
+    }),
+  );
+  // The step and step 1's details are fixed once, from the first data: a refetch or a triage that moves the
+  // stage never switches the panel under you. A link's ?tab= wins; a proposal waiting on you opens step 1.
+  const initialStep: StepKey =
+    proposalStatus && PROPOSAL_WAITS_ON_YOU.has(proposalStatus) ? "job" : currentStep(stage);
+  if (chosenStep == null) setChosenStep(initialStep);
+  const step: StepKey = chosenStep ?? initialStep;
+  if (detailsOpen == null) setDetailsOpen(stage === "saved");
   const showDetails = detailsOpen ?? stage === "saved";
+  // Not behind an application: a form can be filled before one exists.
+  const receipt = showSubmitted ? (
+    <section
+      aria-label="What was submitted"
+      tabIndex={-1}
+      ref={receiptRef}
+      className="scroll-mt-6 rounded-corner-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    >
+      <JobSubmittedTab jobId={id} active={step === "qa"} onOpenTab={application ? setStep : undefined} />
+    </section>
+  ) : null;
   if (!visited.has(step)) setVisited(new Set(visited).add(step));
 
   return (
@@ -642,6 +607,7 @@ export default function JobDetailPage({
               <DropdownMenuTrigger
                 render={
                   <IconButton
+                    ref={moreRef}
                     label="More actions"
                     icon={<MoreIcon className="size-4" />}
                     size="icon-sm"
@@ -653,10 +619,7 @@ export default function JobDetailPage({
                 {!hasApp && !job.proposal_status ? (
                   <DropdownMenuItem
                     disabled={promote.isPending || !ownership.canWrite}
-                    onClick={() => {
-                      queued.current = true;
-                      promoteOnce();
-                    }}
+                    onClick={() => promoteOnce()}
                   >
                     <SendHorizontal />
                     {promote.isPending ? "Queueing…" : "Queue in Agent inbox"}
@@ -823,28 +786,14 @@ export default function JobDetailPage({
                   ) : null}
                 </div>
               ) : null}
+              {/* A link that opened the receipt (?tab=submitted) puts it first; else it follows the questions. */}
+              {submittedSeen ? receipt : null}
               {application ? (
                 <QATab applicationId={application.id} readOnly={!ownership.canWrite} />
               ) : (
                 <NothingTailoredYet onOpenFit={() => setStep("fit")} />
               )}
-              {/* Not behind an application: a form can be filled before one exists. */}
-              {showSubmitted ? (
-                <section
-                  aria-label="What was submitted"
-                  tabIndex={-1}
-                  ref={(el) => {
-                    receiptRef.current = el;
-                    if (el && scrollToReceipt.current) {
-                      scrollToReceipt.current = false;
-                      el.scrollIntoView({ block: "start" });
-                    }
-                  }}
-                  className="scroll-mt-6 rounded-corner-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                >
-                  <JobSubmittedTab jobId={id} active={step === "qa"} onOpenTab={application ? setStep : undefined} />
-                </section>
-              ) : null}
+              {submittedSeen ? null : receipt}
               {/* The application's details (applied date, tracking link, referral, notes, delete), out of the header. */}
               {application ? (
                 <ApplicationDetailsMenu

@@ -51,11 +51,9 @@ export type Standing = {
   pdf: boolean;
   /** Offer What was submitted (something was filled into the job's form). */
   submitted: boolean;
-  /** Point at the Companion and Score and tailor: a draft nobody is working on yet. */
-  pointer: boolean;
 };
 
-/** Where an open proposal stands, in words (a draft that is already with the agent has no pointer). */
+/** Where an open proposal stands, in words. */
 const OPEN_PROPOSAL: Record<string, string> = {
   pending_review: "waiting for your review in the Agent inbox",
   accepted: "queued for your agent",
@@ -91,17 +89,17 @@ export function standingLine(args: {
   const sent = application && (application.applied_at || SUBMITTED_STAGES.includes(application.status ?? ""));
   if (sent) {
     const text = ["Applied", appliedOn, resume ? `with ${resume}` : null].filter(Boolean).join(" ");
-    return { kind: "applied", text, pdf, submitted: hasFilledAnswers, pointer: false };
+    return { kind: "applied", text, pdf, submitted: hasFilledAnswers };
   }
   // With an application the application decides: one set back to Draft is not applied, whatever its old proposal says.
   if (!application && proposal?.status === "submitted") {
     const text = [proposal.yourself ? "Applied yourself" : "Applied", proposal.on].filter(Boolean).join(" ");
-    return { kind: "applied", text, pdf, submitted: hasFilledAnswers, pointer: false };
+    return { kind: "applied", text, pdf, submitted: hasFilledAnswers };
   }
   if (application) {
     const open = proposal ? OPEN_PROPOSAL[proposal.status] : undefined;
     const text = `Not applied${open ? ` · ${open}` : resume ? ` · ${resume}` : ""}`;
-    return { kind: "draft", text, pdf: false, submitted: hasFilledAnswers, pointer: !open };
+    return { kind: "draft", text, pdf: false, submitted: hasFilledAnswers };
   }
-  return { kind: "none", text: "Not applied yet", pdf: false, submitted: hasFilledAnswers, pointer: false };
+  return { kind: "none", text: "Not applied yet", pdf: false, submitted: hasFilledAnswers };
 }

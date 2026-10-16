@@ -5,6 +5,7 @@
  */
 import type { GapCounts } from "./gap-counts";
 import type { Rung } from "./next-step";
+import type { Application, Job, TailoringSession } from "./types";
 
 /** The tab values, kept so old deep links (`?tab=`) still land on a step. */
 export type StepKey = "job" | "fit" | "output" | "qa";
@@ -19,12 +20,21 @@ export function stepForTab(tab: string | null | undefined): StepKey {
   return (tab != null && Object.hasOwn(TAB_TO_STEP, tab) && TAB_TO_STEP[tab]) || "job";
 }
 
-/**
- * `done` may follow `current`: a later step whose result already exists (a draft from before a re-analysis
- * of the gaps) is done, so it stays reachable. Only a later step with nothing to show is `next`.
- */
+/** Where the stage is: before it, at it, after it. A step after it is `next` even when it has something to show. */
 export type StepState = "done" | "current" | "next";
-export type Step = { key: StepKey; number: 1 | 2 | 3 | 4; title: string; state: StepState; summary: string };
+/**
+ * `reachable`: the step has a panel worth opening. Steps 1 and 2 always; step 3 once there is a draft or a
+ * PDF (a draft from before a re-analysis included); step 4 once the job has an application. A `next` step
+ * that is reachable is still a button: nothing with content is locked, and nothing is ticked that is not done.
+ */
+export type Step = {
+  key: StepKey;
+  number: 1 | 2 | 3 | 4;
+  title: string;
+  state: StepState;
+  reachable: boolean;
+  summary: string;
+};
 
 /**
  * The current step from the stage: saved/scored/gaps → fit; tailored/pdf_ready → output; applied/closed → qa.
@@ -50,14 +60,18 @@ export type JobStepsInput = {
   /** The knock-out card's words (lib/knockout-line `knockoutWords`, computed by the page); null = say nothing. */
   knockout: string | null;
   base: { name: string | null; score: number | null };
-  /** From lib/gap-counts; null = no gap analysis yet. */
-  gaps: GapCounts | null;
+  /** The open gap analysis's count while step 2 is current (the server's: closed = answered or skipped); null = none. */
+  openGaps: { closed: number; total: number } | null;
+  /** The gaps of the analysis that made the draft, for a done step 2 (lib/gap-counts); null = none. */
+  draftGaps: GapCounts | null;
   /** Null = no draft (the application's customized_json is absent). */
   draft: { score: number | null; changes: number | null } | null;
   /** Null = no PDF (from the application's pdf_path, not the page count). createdOn is formatted by the caller. */
   pdf: { pages: number | null; createdOn: string | null } | null;
   /** lib/job-standing's text, for step 4. */
   standing: string;
+  /** The job has an application: step 4 has a panel. */
+  hasApplication: boolean;
 };
 
 const TITLES: Record<StepKey, string> = { job: "Job", fit: "Resume and gaps", output: "Tailored resume", qa: "Apply" };
@@ -80,27 +94,27 @@ function jobSummary(i: JobStepsInput): string {
 /** Step 2 is current or done: "next" never reaches here, as currentStep never returns "job". */
 function fitSummary(i: JobStepsInput, state: StepState): string {
   const { name } = i.base;
-  const g = i.gaps;
   if (state === "done") {
+    const g = i.draftGaps;
     const gaps = !g ? null
       : g.total === 0 ? "no gaps found"
       : `${count(g.answered, "gap", "gaps")} answered, ${g.skipped} skipped`;
     return join(name, score(i.base.score), gaps) || "No gaps analyzed";
   }
+  const g = i.openGaps;
   if (!g) return "Pick a resume and analyze its gaps";
   if (g.total === 0) return join(name, "no gaps found");
-  // Resolved is answered or skipped, as the server's stage counts gaps_done.
-  return join(name, `${g.answered + g.skipped} of ${count(g.total, "gap", "gaps")} closed`);
+  return join(name, `${g.closed} of ${count(g.total, "gap", "gaps")} closed`);
 }
 
 /** Step 3 has a result to show: a draft, or a PDF made from one. */
 const hasOutput = (i: JobStepsInput) => i.draft != null || i.pdf != null;
 
-function outputSummary(i: JobStepsInput, state: StepState, ahead: boolean): string {
+function outputSummary(i: JobStepsInput, state: StepState): string {
   const tailored = score(i.draft?.score ?? null);
-  if (state === "next") return "Review the changes, edit, Create PDF";
-  if (ahead) {
+  if (state === "next") {
     // Back on gaps after tailoring: the draft is still there until the next tailor.
+    if (!hasOutput(i)) return "Review the changes, edit, Create PDF";
     return join(tailored ? `Draft from before, ${tailored}` : "Draft from before", "Tailor again to replace it");
   }
   if (i.pdf) {
@@ -125,14 +139,89 @@ function applySummary(i: JobStepsInput, state: StepState): string {
 export function jobSteps(input: JobStepsInput): Step[] {
   const at = STEP_KEYS.indexOf(currentStep(input.stage));
   return STEP_KEYS.map((key, index) => {
-    const ahead = index > at;
-    // A later step with a result keeps it reachable (only step 3 can: step 4's result is the stage itself).
-    const state: StepState = index < at ? "done" : index === at ? "current" : key === "output" && hasOutput(input) ? "done" : "next";
+    const state: StepState = index < at ? "done" : index === at ? "current" : "next";
+    const reachable = key === "output" ? hasOutput(input) : key === "qa" ? input.hasApplication : true;
     const summary =
       key === "job" ? jobSummary(input)
       : key === "fit" ? fitSummary(input, state)
-      : key === "output" ? outputSummary(input, state, ahead)
+      : key === "output" ? outputSummary(input, state)
       : applySummary(input, state);
-    return { key, number: (index + 1) as Step["number"], title: TITLES[key], state, summary };
+    return { key, number: (index + 1) as Step["number"], title: TITLES[key], state, reachable, summary };
   });
+}
+
+type ScoreRow = { phase: string; target_id: string; composite: number };
+type SessionRow = Pick<
+  TailoringSession,
+  "id" | "status" | "application_id" | "base_resume" | "created_at" | "gaps_json" | "resolutions_json"
+>;
+
+/**
+ * `jobSteps`'s input from what the job page already holds: the detail (`job`, `application` and its
+ * resume's name), the job's score rows, the header's score pill, the job's gap analyses, and what the
+ * page words itself (the skills count and the knock-out words, both the Job details card's own reading;
+ * the standing text). `baseName` names a base resume; `countGaps` is lib/gap-counts `gapCounts`, passed in
+ * so this file keeps only type imports.
+ */
+export function jobStepsInput(a: {
+  job: Pick<Job, "stage" | "open_session_id" | "gaps_done" | "gaps_total">;
+  application: Pick<Application, "id" | "base_resume" | "customized_json" | "pdf_path" | "pdf_pages"> | null;
+  /** The detail's `base_resume_name` (null on an older backend: `baseName` names it then). */
+  applicationResumeName: string | null;
+  scoreRows: readonly ScoreRow[];
+  scoreShown: { value: number; tailored: boolean } | null;
+  sessions: readonly SessionRow[];
+  skills: { total: number; required: number };
+  knockout: string | null;
+  standing: string;
+  baseName: (slug: string) => string;
+  countGaps: (gapIds: readonly string[], resolutions: SessionRow["resolutions_json"]) => GapCounts;
+}): JobStepsInput {
+  const { job, application, scoreRows, sessions, baseName } = a;
+  const stage = job.stage ?? "saved";
+  const baseScoreOf = (slug: string) =>
+    scoreRows.find((s) => s.phase === "base" && s.target_id === slug)?.composite ?? null;
+  const top = scoreRows.filter((s) => s.phase === "base").sort((x, y) => y.composite - x.composite)[0];
+  const named = (slug: string | null) => ({ name: slug ? baseName(slug) : null, score: slug ? baseScoreOf(slug) : null });
+
+  let base: JobStepsInput["base"];
+  if (stage === "gaps") {
+    // The open analysis's resume; the best base until the sessions list has loaded.
+    base = named(sessions.find((s) => s.id === job.open_session_id)?.base_resume ?? top?.target_id ?? null);
+  } else if (application && stage !== "saved" && stage !== "scored") {
+    base = {
+      name: a.applicationResumeName ?? baseName(application.base_resume),
+      score: baseScoreOf(application.base_resume),
+    };
+  } else {
+    base = { name: top ? baseName(top.target_id) : null, score: top?.composite ?? null };
+  }
+
+  // The analysis that made the draft: the application's newest tailored session.
+  const madeDraft = application
+    ? sessions
+        .filter((s) => s.status === "tailored" && s.application_id === application.id)
+        .sort((x, y) => y.created_at.localeCompare(x.created_at))[0]
+    : undefined;
+
+  return {
+    stage,
+    skills: a.skills,
+    knockout: a.knockout,
+    base,
+    openGaps: stage === "gaps" ? { closed: job.gaps_done ?? 0, total: job.gaps_total ?? 0 } : null,
+    draftGaps: madeDraft
+      ? a.countGaps(
+          madeDraft.gaps_json.categories.flatMap((c) => c.gaps.map((g) => g.gap_id)),
+          madeDraft.resolutions_json,
+        )
+      : null,
+    draft: application?.customized_json
+      ? { score: a.scoreShown?.tailored ? a.scoreShown.value : null, changes: null }
+      : null,
+    // The application carries no render time, so the line says "PDF created" without a date.
+    pdf: application?.pdf_path ? { pages: application.pdf_pages, createdOn: null } : null,
+    standing: a.standing,
+    hasApplication: application != null,
+  };
 }

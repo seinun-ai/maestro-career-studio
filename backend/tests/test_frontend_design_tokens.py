@@ -590,6 +590,10 @@ def _trigger(tabs: str) -> str:
     return tabs[tabs.index("function TabsTrigger") : tabs.index("function TabsContent")]
 
 
+# Pages whose panels stay mounted without `TabsContent`: the job page's steps (components/job-steps.tsx).
+_MOUNTED_PANEL_PAGES = ("app/jobs/[id]/page.tsx",)
+
+
 def _tab_sources():
     for rel in _frontend_sources():
         if rel.endswith(".tsx") and not rel.startswith("components/ui/"):
@@ -619,6 +623,11 @@ def test_every_tab_panel_stays_mounted():
     for rel in _tab_sources():
         for number, _, tag in _jsx_tags(rel, ("TabsContent",)):
             assert "keepMounted={false}" not in tag, f"{rel}:{number}: a panel opts out of staying mounted"
+    # The job page's step panels: each mounts when first shown, then stays, hidden.
+    job = _read("app/jobs/[id]/page.tsx")
+    assert "if (!visited.has(step)) setVisited(new Set(visited).add(step));" in job
+    for key in ("job", "fit", "output", "qa"):
+        assert f'{{visited.has("{key}") ? (' in job and f'hidden={{step !== "{key}"}}' in job, key
 
 
 def test_a_page_with_tab_panels_never_repeats_a_literal_control_id():
@@ -630,7 +639,7 @@ def test_a_page_with_tab_panels_never_repeats_a_literal_control_id():
     hits = []
     for rel in _tab_sources():
         text = _read(rel)
-        if "<TabsContent" not in text:
+        if "<TabsContent" not in text and rel not in _MOUNTED_PANEL_PAGES:
             continue
         seen: dict[str, int] = {}
         for match in re.finditer(r"""(?<![\w-])id="([\w-]+)\"""", text):

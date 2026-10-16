@@ -28,7 +28,9 @@ _TYPES = _read("lib/types.ts")
 def test_the_receipt_is_deep_linkable_and_shown_once_something_was_filled():
     # ?tab=submitted still lands: step 4 (lib/job-steps.ts), with the receipt scrolled to.
     assert 'submitted: "qa"' in _read("lib/job-steps.ts")
-    assert 'const scrollToReceipt = useRef(requestedTab === "submitted");' in _PAGE
+    # Opened by the link, the receipt comes first on step 4, above the questions (nothing to scroll past).
+    assert "{submittedSeen ? receipt : null}" in _PAGE and "{submittedSeen ? null : receipt}" in _PAGE
+    assert _PAGE.index("{submittedSeen ? receipt : null}") < _PAGE.index("<QATab") < _PAGE.index("{submittedSeen ? null : receipt}")
     assert 'aria-label="What was submitted"' in _PAGE
     assert 'Boolean(data.has_filled_answers) || submittedSeen' in _PAGE
     assert "has_filled_answers: boolean;" in _TYPES
@@ -45,11 +47,11 @@ def test_the_job_refetches_on_focus_so_the_trigger_appears_after_a_fill_elsewher
 
 
 def test_the_receipt_is_not_behind_an_application():
-    # On step 4 the receipt follows the questions (or the quiet panel), under its own condition only.
-    step4 = _PAGE[_PAGE.index('{visited.has("qa") ? (') :]
-    receipt = step4[step4.index("{showSubmitted ? (") : step4.index("<JobSubmittedTab")]
+    # The receipt has its own condition only, and step 4 shows it beside the quiet panel too.
+    receipt = _PAGE[_PAGE.index("const receipt = showSubmitted ? (") : _PAGE.index("<JobSubmittedTab")]
     assert "application" not in receipt and "hasApp" not in receipt
-    assert step4.index("<NothingTailoredYet") < step4.index("{showSubmitted ? (")
+    step4 = _PAGE[_PAGE.index('{visited.has("qa") ? (') :]
+    assert step4.index("{submittedSeen ? receipt : null}") < step4.index("<NothingTailoredYet") < step4.index("{submittedSeen ? null : receipt}")
 
 
 def test_the_receipt_is_fetched_only_while_its_tab_is_open_and_never_from_a_stale_cache():

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { TriangleAlert, ClipboardList } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
+import { COVER_LETTER_ID } from "@/components/qa-tab";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ import { formatShortDate } from "@/lib/format-date";
 import { isLoadFailure } from "@/lib/query-state";
 import type { FilledAnswers, FilledField, FilledStep } from "@/lib/types";
 
-/** Opens the Resume or Q&A tab. Absent while the job has no application: both tabs are locked. */
+/** Opens the job page's Tailored resume or Apply step. Absent while the job has no application. */
 type OpenTab = (tab: "output" | "qa") => void;
 
 /** A jump target: clear of the top edge when scrolled to, and a solid ring when focused. */
@@ -259,11 +260,18 @@ function UploadLine({ field, onOpenTab }: { field: FilledField; onOpenTab?: Open
     ? `Resume attached: ${name}${field.version ? ` (version ${field.version})` : ""}`
     : `Cover letter attached: ${name}`;
   if (!onOpenTab) return <p className="text-body-medium wrap-anywhere">{label}</p>;
+  // The receipt sits on step 4 with the questions: a cover letter is the card above, so jump to it there.
+  const open = () => {
+    const card = resume ? null : document.getElementById(COVER_LETTER_ID);
+    if (!card) return onOpenTab(resume ? "output" : "qa");
+    card.scrollIntoView({ block: "start" });
+    card.focus({ preventScroll: true });
+  };
   return (
     <button
       type="button"
       className="text-left text-body-medium text-primary wrap-anywhere hover:underline"
-      onClick={() => onOpenTab(resume ? "output" : "qa")}
+      onClick={open}
     >
       {label}
     </button>

@@ -161,19 +161,20 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    (tailored) or **Best base resume**; a Needs-you question adds **Keep it**, PATCH `pending_review`, linking the job's application
    when the proposal has none; the job link; a ⋯ **More actions**: Queue in Agent inbox, Refresh details, Delete job). Under it
    four numbered steps replace tabs (`components/job-steps.tsx`, `lib/job-steps.ts`): **Job**, **Resume and gaps**, **Tailored
-   resume**, **Apply**, each with one line (a done step's receipt, a later step's hint). The stage's step opens (step 1 while a
-   proposal waits on you); a later step is plain text, never locked. `?tab=` keeps jd/fit/output/qa/submitted so deep links land.
-   Step 1: the proposal's card, titled with its filer (`proposed_by`, worded by `lib/agent-name.ts`), only when it carries
-   something (`proposalHasContent`), then a receipt row whose **View details** shows the **knock-out pre-scan**
-   (`services/knockout.scan_for`: stated JD requirements vs the profile, flagged; the decision stays yours (or your agent's);
-   verdicts and chips: docs/entities/job.md, "Knock-out pre-scan"), the job details and tracking link. Step 4's line is **Where
+   resume**, **Apply**, each with one line (a done step's receipt, a later step's hint). The stage's step opens, set once on load
+   (step 1 while a proposal waits on you). A step with something to show is a button (3: a draft or PDF; 4: an application),
+   one with nothing plain text, never locked. `?tab=` keeps jd/fit/output/qa/submitted so deep links land. Step 1: the
+   proposal's card, titled with its filer (`proposed_by`, worded by `lib/agent-name.ts`), only when it carries something
+   (`proposalHasContent`), then a receipt row whose **View details** shows the **knock-out pre-scan** (`services/knockout.scan_for`:
+   stated JD requirements vs the profile, flagged; the decision stays yours (or your agent's); verdicts and chips:
+   docs/entities/job.md, "Knock-out pre-scan"), the job details and tracking link. Step 4's line, when it is current, is **Where
    this stands** (`lib/job-standing.ts`); it shows View PDF, the Details menu and, once the job has filled answers, **What was
    submitted**: the answer receipt, latest per question, source pills and warn-only flags (docs/entities/filled-answers.md).
    `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`, else `cs-tracker-seq`. Every job read derives
    `proposal_status`/`proposal_id` from the newest proposal.
-4. **Score** — Score and tailor shows the bases set for the job's country (all when unknown), scored at save; its first-visit
-   auto-run is the fallback for a job saved before any base resume existed or whose save-time scoring failed; per-base cards →
-   **Analyze gaps** creates a session (one filled button, on the best match; Restart gap analysis and Mark applied without
+4. **Score** — Score and tailor shows the bases set for the job's country (all when unknown), scored at save; the auto-run on the
+   first visit of step 2 is the fallback for a job saved before any base resume existed or whose save-time scoring failed; per-base
+   cards → **Analyze gaps** creates a session (one filled button, on the best match; Restart gap analysis and Mark applied without
    tailoring sit in each card's ⋯). When every card draws the low-coverage warning, or the same gate warning, one banner says it
    instead; the lowest subscore of a card wears a Weakest word. With no base resume the tab offers Import resumes and documents
    instead, and scores once that dialog closes.

@@ -1180,14 +1180,17 @@
   Pinned by `test_frontend_jobs_where.py`.
 - **Job steps** (`components/job-steps.tsx`, data from `lib/job-steps.ts`): the job page has four numbered
   steps where its tab row was, **Job**, **Resume and gaps**, **Tailored resume** and **Apply**, each a disc
-  (done: a Check on `bg-success`; the stage's step: a 2px `ring` circle, its number in `primary`; later: a
+  (done: a Check on `success-container`; the stage's step: a 2px `ring` circle, its number in `primary`; later: a
   `surface-container` disc), a `title-small` name and one `body-small` muted line, the receipt under a done
   step or the hint under a later one. The step whose panel shows is underlined (2px `primary`) and
-  `aria-current="step"`. Done and current steps are buttons; a later step is plain text, not focusable and
+  `aria-current="step"`. A step is a button when it is done, current or has something to show (`reachable`:
+  step 3 with a draft or PDF, step 4 with an application), named "Step N: title, done" (or ", current step")
+  with its line as the description; a later step with nothing to show is plain text, not focusable and
   **never disabled**: no lock, no tooltip with a reason, its line says what opens it. `?tab=` keeps the values
   the app has always written (`TAB_TO_STEP`: jd → Job, fit, output, qa, submitted → Apply's receipt), so
   `/new`'s and the Companion's `?tab=fit` and the gap page's and the studio's `?tab=output` still land; with no
-  `?tab=` the stage's step opens, or Job while a proposal waits on you. A panel mounts when first shown and
+  `?tab=` the stage's step opens, or Job while a proposal waits on you, set once from the first data so a
+  refetch never switches the panel; a `?tab=submitted` link puts the receipt above the questions. A panel mounts when first shown and
   then stays, hidden (an answer being edited survives a look at another step). The header keeps the
   proposal's triage, the score pill, the StatusChip and the job link; the rare actions sit behind one ⋯
   (**More actions**): Queue in Agent inbox, Refresh details and Delete job, each with its confirm.

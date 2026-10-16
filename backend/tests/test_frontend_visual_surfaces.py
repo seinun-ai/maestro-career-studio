@@ -71,11 +71,14 @@ def test_job_header_shows_the_best_score_and_the_steps_below_it():
     assert src.index("</header>") < src.index("<JobSteps")
     # The stepper: a done disc ticks, the stage's step is ringed, a later one is quiet; the shown one is underlined.
     steps = _read("components/job-steps.tsx")
-    assert 'done: "bg-success text-primary-foreground",' in steps
+    assert 'done: "bg-success-container text-on-success-container",' in steps  # the README pair
     assert 'current: "border-2 border-ring text-primary",' in steps
     assert 'next: "bg-surface-container text-muted-foreground",' in steps
     assert 'const edge = shown ? "border-primary" : "border-transparent";' in steps
     assert 'aria-current={shown ? "step" : undefined}' in steps and '<nav aria-label="Steps"' in steps
+    # A button is named "Step N: title, done" (or ", current step"); its line is the description.
+    assert "aria-labelledby={nameId}" in steps and "aria-describedby={step.summary ? lineId : undefined}" in steps
+    assert 'done: ", done", current: ", current step", next: ""' in steps
     # The pill's visible words repeat the meter's aria-label ("Best base resume, <resume>").
     assert 'aria-hidden="true" className="text-muted-foreground">{scoreShown.label}</span>' in src
     # The resume name is visible only at 2xl (a long title wrapped at 1280); hover and the meter name it always.

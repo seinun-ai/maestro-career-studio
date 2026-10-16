@@ -280,8 +280,8 @@ def test_a_gap_row_hands_focus_to_what_replaces_it():
 def test_no_step_is_locked_and_a_future_step_says_what_opens_it():
     page = _read(_JOB_PAGE)
     steps = _read("components/job-steps.tsx")
-    # A later step is plain text: not a button, never disabled, no lock and no tooltip with a reason.
-    cell = steps[steps.index('{step.state === "next" ? (') : steps.index(") : (\n                <button")]
+    # A later step with nothing to show is plain text: not a button, never disabled, no lock, no tooltip.
+    cell = steps[steps.index("              ) : (\n                <div") : steps.index("</li>")]
     assert "<div className={cn(CELL, edge)}" in cell and "<button" not in cell and "tabIndex" not in cell
     assert "disabled=" not in steps and "title=" not in steps and "Lock" not in steps and "Tooltip" not in steps
     for gone in ("LOCKED_REASON", "lockedReasonId", "CONCEPT_ICONS.locked", "aria-describedby", "Unlocks after you tailor"):
@@ -294,19 +294,20 @@ def test_no_step_is_locked_and_a_future_step_says_what_opens_it():
     assert page.count('<NothingTailoredYet onOpenFit={() => setStep("fit")} />') == 2
 
 
-def test_a_draft_from_before_a_re_analysis_keeps_step_three_a_button():
+def test_a_step_with_something_to_show_is_a_button():
+    """Step 3 with a draft (one from before a re-analysis too) and step 4 whenever the job has an application
+    are buttons: `reachable` in lib/job-steps.ts (node-tested) decides, and the stepper honours it."""
     page = _read(_JOB_PAGE)
-    lib = _read("lib/job-steps.ts")
     steps = _read("components/job-steps.tsx")
-    # The page says whether a draft exists; on a `gaps` stage that makes step 3 done, not next (node-tested).
-    assert "draft: application?.customized_json\n      ? {" in page and "      : null," in page
-    assert 'key === "output" && hasOutput(input) ? "done" : "next"' in lib
-    assert "const hasOutput = (i: JobStepsInput) => i.draft != null || i.pdf != null;" in lib
-    assert '"Tailor again to replace it"' in lib
-    # Only a `next` step is plain text: a done one, wherever it sits, renders as the button.
-    assert steps.count('step.state === "next" ? (') == 1 and "onClick={() => onSelect(step.key)}" in steps
-    # Step 1's knock-out words are the card's own, computed by the page (no copy in the lib).
-    assert "knockout: knockoutWords(" in page and "KNOCKOUT_WORDS" not in lib
+    assert "const button = step.reachable || step.state !== \"next\";" in steps and "{button ? (" in steps
+    # The page hands the builder the application itself, so `hasApplication` and the draft come from it.
+    assert "jobStepsInput({\n      job,\n      application,\n" in page
+
+
+def test_step_one_reads_the_knockout_card_words():
+    page = _read(_JOB_PAGE)
+    assert 'import { knockoutWords } from "@/lib/knockout-line";' in page
+    assert "knockout: knockoutWords(\n        data.knockout?.status ?? null,\n        data.knockout ? knockoutNotChecked(data.knockout, job) : false,\n      )," in page
 
 
 def test_every_old_tab_link_still_lands_on_a_step():
@@ -324,7 +325,10 @@ def test_every_old_tab_link_still_lands_on_a_step():
         assert value in (root / rel).read_text(encoding="utf-8"), rel
     # Given, the link's step; else the stage's (step 1 while a proposal waits on you).
     assert "Object.hasOwn(TAB_TO_STEP, requestedTab) ? stepForTab(requestedTab) : null" in page
-    assert '(proposalStatus && PROPOSAL_WAITS_ON_YOU.has(proposalStatus) ? "job" : currentStep(stage))' in page
+    assert 'proposalStatus && PROPOSAL_WAITS_ON_YOU.has(proposalStatus) ? "job" : currentStep(stage);' in page
+    # Fixed once, from the first data: a refetch or a triage never switches the panel under you.
+    assert "if (chosenStep == null) setChosenStep(initialStep);" in page
+    assert 'if (detailsOpen == null) setDetailsOpen(stage === "saved");' in page
 
 
 def test_the_rare_actions_sit_behind_one_more_actions_menu():
