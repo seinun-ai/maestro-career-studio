@@ -55,7 +55,7 @@ LEDGER = ROOT / ".slopledger.json"          # sidecar: baselines live under "sys
 ENFORCEMENT_MAP = ROOT / ".system_md_enforcement.json"
 
 # Reference tier — extracted from the root file, same contract, same checks.
-REFERENCE_GLOBS = ("docs/entities/*.md", "docs/frontend-conventions.md")
+REFERENCE_GLOBS = ("docs/entities/*.md", "docs/agent-surfaces.md", "docs/frontend-conventions.md")
 
 LEVEL = "large"
 
@@ -285,6 +285,7 @@ def main() -> int:
     cand = max(ref, key=lambda t: t[1])[0] if ref else None
     hint = (f" — extraction candidate: '{cand}' ({sizes[cand]:,} B) → docs/ with an index left behind"
             if cand else "")
+    warned = total > CAP_BYTES * WARN_AT
     if total > CAP_BYTES:
         errs.append(f"SYSTEM.md is {total:,} B (> cap {CAP_BYTES:,} B; {len(lines)} lines). Groom or "
                     f"extract before feature work; the cap may be raised only immediately after a pass "
@@ -292,7 +293,9 @@ def main() -> int:
     elif total > CAP_BYTES * WARN_AT:
         warns.append(f"{total:,}/{CAP_BYTES:,} B ({total / CAP_BYTES:.0%}, {len(lines)} lines) — plan "
                      f"an extraction now, not under fail pressure{hint}")
-    if cand and prev_cands[-2:] == [cand, cand]:
+    # The candidate is recorded, and escalates, only while the warning actually fires: an extracted
+    # section stays the largest reference-shaped one left and must not re-name itself at the next baseline.
+    if cand and warned and prev_cands[-2:] == [cand, cand]:
         errs.append(f"'{cand}' has been the extraction candidate across the last two baselines — "
                     f"a warning that persists is no longer advice; extract it or record why not")
 
@@ -344,7 +347,7 @@ def main() -> int:
                   'a baseline needs an auditable justification', file=sys.stderr)
             return 1
         reason = argv[argv.index("--reason") + 1]
-        hist = (prev_cands + [cand])[-3:] if cand else prev_cands
+        hist = (prev_cands + [cand])[-3:] if (cand and warned) else prev_cands
         save_baselines(sizes, total, len(lines), hist, reason)
         print(f"baselines updated in {LEDGER.name} (reason: {reason})")
         return 0

@@ -2,8 +2,8 @@
 
 How the Chrome extension is built and the rules its code depends on, for
 contributors and agents changing `extension/`. If you only want to install and
-use it, read [README.md](README.md) instead. SYSTEM.md §7 owns the panel's
-shape; this file owns the mechanics, and each rule here was learned from a live
+use it, read [README.md](README.md) instead. SYSTEM.md §7 and its reference file
+`docs/agent-surfaces.md` own the panel's shape; this file owns the mechanics, and each rule here was learned from a live
 failure.
 
 ## Surfaces and files
@@ -578,7 +578,7 @@ asking permission of itself.
 
 ## Rules the code depends on
 
-Extracted from SYSTEM.md §7 (which still owns the panel's shape); these are the
+Extracted from SYSTEM.md §7 (now `docs/agent-surfaces.md`, which still owns the panel's shape); these are the
 mechanics a reader of `sw.js`, `content/agent.js` and the fill engine has to
 know, and each one was learned from a live failure.
 
