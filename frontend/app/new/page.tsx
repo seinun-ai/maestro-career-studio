@@ -8,7 +8,6 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { JobExtractionSummary } from "@/components/job-extraction-summary";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -62,6 +61,7 @@ export default function NewApplicationPage() {
     return job;
   }
 
+  // A saved job is scored on save, so Save job opens it on step 2 (Resume and gaps), new or already saved.
   const extractJob = useMutation({
     mutationFn: ensureJob,
     onSuccess: (job) => {
@@ -72,18 +72,16 @@ export default function NewApplicationPage() {
       } else {
         toast.success("Job saved.");
       }
+      router.push(`/jobs/${job.id}?tab=fit`);
     },
     onError: (err: Error) => toast.error(couldnt("save the job", err)),
   });
   const extract = useSingleFlight(extractJob.mutate);
   useLeaveGuard(rawText.trim().length > 0 && savedJob === null);
 
-  const openResumeAndGaps = () => {
-    if (savedJob) router.push(`/jobs/${savedJob.id}?tab=fit`);
-  };
-
   const disabled = rawText.trim().length === 0;
-  const busy = extractJob.isPending;
+  // Pending until the job page takes over: a saved job is on its way there.
+  const busy = extractJob.isPending || extractJob.isSuccess;
 
   return (
     <PageShell>
@@ -141,7 +139,7 @@ export default function NewApplicationPage() {
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
           aria-describedby={needsKey ? keyNoticeId : undefined}
         >
-          {extractJob.isPending ? "Saving…" : "Save job"}
+          {extractJob.isSuccess ? "Opening the job…" : extractJob.isPending ? "Saving…" : "Save job"}
         </Button>
         {/* No key: the amber notice above already says why, and names the button. */}
         {needsKey ? null : (
@@ -150,10 +148,6 @@ export default function NewApplicationPage() {
           </p>
         )}
       </div>
-
-      {savedJob && (
-        <JobExtractionSummary job={savedJob} onOpenResumeAndGaps={openResumeAndGaps} />
-      )}
     </PageShell>
   );
 }

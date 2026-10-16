@@ -844,17 +844,9 @@ def test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state(mode):
         assert ratio >= 4.5, f"{mode}: needs-you badge on {name} is {ratio:.2f}:1"
 
 
-def test_the_add_job_summary_names_each_requirement_group():
-    src = (_FRONTEND / "components/job-extraction-summary.tsx").read_text()
-    for word in ("Required", "Preferred", "Mentioned"):
-        assert word in src
-    assert "SkillGroup" in src and "function SkillGroup" not in src
-
-
-def test_preferred_skills_are_tonal_in_both_places():
-    for f in ("components/job-extraction-summary.tsx", "components/job-extracted-fields.tsx"):
-        src = (_FRONTEND / f).read_text()
-        assert 'variant="tonal"' in src, f
+def test_preferred_skills_are_tonal():
+    src = (_FRONTEND / "components/job-extracted-fields.tsx").read_text()
+    assert 'variant="tonal"' in src
 
 
 def test_a_done_setup_step_says_done_in_words():

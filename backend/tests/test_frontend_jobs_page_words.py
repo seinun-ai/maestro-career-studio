@@ -59,8 +59,7 @@ def test_every_way_back_names_jobs():
 
 
 def test_a_saved_job_says_where_it_went():
-    summary = _flat(_read("components/job-extraction-summary.tsx"))
-    assert 'Saved to{" "} <Link href="/applications?status=saved" className="underline"> Jobs </Link> .' in summary
+    # Save job opens the job itself (test_frontend_jobs_honest_words.py); the hint names where saved jobs are listed.
     assert "Saved jobs appear on the Jobs page, ready to score." in _read("app/new/page.tsx")
 
 

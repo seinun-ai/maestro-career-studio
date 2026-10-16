@@ -311,6 +311,9 @@ Less hunting, more applying.
 - **The gap analysis page's steps describe the analysis below them.** On a job already tailored, Resume and gaps above
   a new gap analysis still read the earlier one ("7 gaps answered, 1 skipped") while the page said "3 answered, 7 open".
   The line now counts the analysis on the page, and changes as you answer.
+- **Save job opens the job.** On **Add job**, Save job saved and scored the job but stayed on the form, with a summary
+  card under it that was easy to miss, so it looked as if nothing happened. It now opens the job on **Resume and gaps**,
+  a job you had already saved too, and the message says which.
 - **Eighth live check of Apply, on two hosted application forms, with Claude as the fast model.**
   - **Safe answers are no longer lost to a slow model.** The second look at an answer and the Yes/No direction check gave a Claude fast model about a second, which it often needed more of, so
     a question that should have taken the safe default was left to you. They now get 3 s for Claude (a second for other models, a custom server and OpenRouter) inside the same time limit

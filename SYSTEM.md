@@ -174,8 +174,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 
 ## 5. The application workflow, end to end (web)
 
-1. **Capture** — `/new` (**Add job**): paste a job description → **Save job** → `POST /api/jobs` (LLM extract, dedup) → summary
-   card (**Go to Resume and gaps**; "This job is already saved." on dedup). Or Companion/MCP `store_extracted_jd` → `POST
+1. **Capture** — `/new` (**Add job**): paste a job description → **Save job** → `POST /api/jobs` (LLM extract, dedup) → the
+   job's page on step 2 (`?tab=fit`; the toast says "This job is already saved." on dedup). Or Companion/MCP `store_extracted_jd` → `POST
    /api/jobs/ingest` (pre-extracted; the client agent is the extractor by design). Both save paths score a new job against every
    selectable base after its commit (`_persist_job` → `score_all_bases`, inline); a failure rolls back only the scores, and a
    dedup hit is not re-scored.

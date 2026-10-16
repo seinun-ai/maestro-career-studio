@@ -248,7 +248,7 @@ Five steps from nothing to a PDF:
 4. **Save a job.** Click **Add job**, paste the job description or
    its link, and click **Save job** — or save it from the job page with the
    [Companion](#4-the-companion-browser-extension-optional). Maestro reads the
-   job description and gives it a match score against your resumes.
+   job description, gives it a match score against your resumes and opens the job.
 5. **Tailor and download the PDF.** A job's page has four numbered steps. On
    step 2, **Resume and gaps**, pick a resume and click **Analyze gaps**. Each gap
    is a requirement your resume doesn't show yet. Answer its questions honestly —

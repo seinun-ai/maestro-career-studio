@@ -165,26 +165,22 @@ def test_one_selectable_list_query():
 
 
 # A job's role family is the catalog's label, never its key: the job page's
-# chip read "Ai ml engineer" (the key title-cased) and the /new summary badge
+# chip read "Ai ml engineer" (the key title-cased) and the old /new summary badge
 # printed `ai_ml_engineer`. `useRoleLabel` falls back to the acronym-safe
 # humanizer only while the catalog loads or for a key it lacks.
 _FIELDS = _read("components/job-extracted-fields.tsx")
-_SUMMARY = _read("components/job-extraction-summary.tsx")
 
 
 def test_a_job_role_family_is_the_catalog_label():
     assert 'import { useRoleLabel } from "@/components/role-category-picker";' in _FIELDS
     assert "const roleLabelOf = useRoleLabel();" in _FIELDS
     assert '["Role", job.role_category ? roleLabelOf(job.role_category) : null],' in _FIELDS
-    assert "const roleLabelOf = useRoleLabel();" in _SUMMARY
-    assert "<Badge variant=\"outline\">{roleLabelOf(job.role_category)}</Badge>" in _SUMMARY
 
 
-def test_the_extraction_summary_prints_no_enum_key():
-    # `full_time`, `onsite`: the same words the job page's chips use.
-    assert 'import { humanizeEnum, SkillGroup, type ExtractedSkill } from "@/components/job-extracted-fields";' in _SUMMARY
-    for field in ("level", "employment_type", "work_mode"):
-        assert f'<Badge variant="outline">{{humanizeEnum(job.{field})}}</Badge>' in _SUMMARY, field
+def test_the_job_fields_print_no_enum_key():
+    # `full_time`, `onsite`: words, never the stored keys.
+    for field in ("level", "employment_type"):
+        assert f"humanizeEnum(job.{field})" in _FIELDS, field
     # The map keys the STORED value: `on_site` never matched, so every on-site
     # job read "Onsite" (appendix D10.4).
     assert 'onsite: "On-site"' in _FIELDS

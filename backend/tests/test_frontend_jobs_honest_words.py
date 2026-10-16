@@ -677,8 +677,21 @@ def test_opt_and_proposal_dates_read_plainly():
 
 
 def test_saved_twice_says_it_plainly():
-    assert '"This job is already saved."' in _read("app/new/page.tsx")
-    assert "This job is already saved." in _read("components/job-extraction-summary.tsx")
+    assert 'toast.info("This job is already saved.");' in _read("app/new/page.tsx")
+
+
+def test_save_job_opens_the_job_on_resume_and_gaps():
+    """Save job left /new as it was and drew a summary card under the form, at or below the fold, so a save looked like
+    nothing happened. The job is scored on save, so Save job opens it on step 2 (Resume and gaps), a new job or one
+    already saved, and the toast says which. The button stays pending until the job page takes over."""
+    page = _read("app/new/page.tsx")
+    on_success = page[page.index("onSuccess: (job) => {") : page.index("onError:", page.index("onSuccess: (job) => {"))]
+    assert on_success.index("toast.") < on_success.index("router.push(`/jobs/${job.id}?tab=fit`);")
+    assert "JobExtractionSummary" not in page and "openResumeAndGaps" not in page
+    assert not (_FRONTEND / "components/job-extraction-summary.tsx").exists()
+    assert "const busy = extractJob.isPending || extractJob.isSuccess;" in page
+    assert '{extractJob.isSuccess ? "Opening the job…" : extractJob.isPending ? "Saving…" : "Save job"}' in page
+    assert "pending={busy}" in page
 
 
 def test_the_tracker_says_where_agent_jobs_are():

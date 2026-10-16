@@ -152,7 +152,7 @@ function StatLine({
 }
 
 /** The three requirement groups, each under its word (colour alone never says Required vs Preferred). */
-export function SkillGroup({
+function SkillGroup({
   title,
   variant,
   skills,

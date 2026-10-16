@@ -139,7 +139,8 @@ what keeps a generated resume defensible.
 ![Every job you have saved, each with its Next step, from saved to signed](assets/applications.png)
 
 Paste the job description (**Add job**) or save it with the Companion. Saving
-scores it against your base resumes. Scoring uses no AI service, so the same
+scores it against your base resumes, and **Save job** opens the job on its
+**Resume and gaps** step. Scoring uses no AI service, so the same
 resume and job always get the same number. On **Jobs**, each row's **Next step**
 says what the job is waiting for.
 
