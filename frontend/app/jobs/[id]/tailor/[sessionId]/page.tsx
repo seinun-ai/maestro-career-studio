@@ -877,7 +877,7 @@ export default function TailorSessionPage({
                 variant="outline"
                 onClick={async () => {
                   // Reuse policy makes from-base overwrite the job's newest
-                  // application for this base — never clobber a tailored
+                  // application, whatever its base — never clobber a tailored
                   // draft silently (review finding).
                   const existing = jobDetail.data?.application;
                   if (existing?.customized_json) {

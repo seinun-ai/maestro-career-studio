@@ -154,7 +154,7 @@ def test_withdrawn_from_draft_has_no_applied_at(db_session):
 
 def test_from_base_reuses_existing_application(db_session, tmp_path, monkeypatch):
     """Without application_id, from-base updates the job's newest application
-    for that base instead of inserting an unreachable duplicate (audit C2)."""
+    instead of inserting an unreachable duplicate (audit C2)."""
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch)
     existing = _seed_application(

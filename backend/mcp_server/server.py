@@ -1048,8 +1048,8 @@ def tailor_application(
     computed fresh from the base, not layered on top. edit_application is the
     in-place alternative that preserves the current tailored draft (refining
     wording, swapping a bullet, retrying after a PDF preview).
-    Does NOT trigger AI suggestions. With no application_id, the job's newest
-    application for this base resume is updated in place (still replaced wholesale);
+    Does NOT trigger AI suggestions. A job has one application: with no application_id,
+    the job's newest is updated in place and takes this base (still replaced wholesale);
     pass application_id to target a specific application explicitly. `ops` accepts
     the FULL vocabulary documented on edit_base_resume — every kind, not just
     the bullet/summary ones: replace_entry is how you change an entry's dates, title,

@@ -45,7 +45,11 @@ from app.services import (
     stage,
 )
 from app.services import proposals as proposal_svc
-from app.services.application_writes import NO_TAILORED_RESUME, stage_resume_update
+from app.services.application_writes import (
+    NO_TAILORED_RESUME,
+    newest_for_job,
+    stage_resume_update,
+)
 from app.services.base_resume_data import resume_label
 from app.services.resume_edit import ContentChangedError, apply_edits
 from app.schemas.proposal import AssertOpenProposalBody
@@ -79,11 +83,11 @@ def create_application_from_base(
     """Create or update an application by applying typed edit ops to a base resume.
 
     The server loads the stored base, applies only the supplied ops, validates,
-    and stores the result as customized_json. Reuse policy matches tailor():
-    with no application_id, the job's newest application for this base resume
-    is updated in place (the job page only ever surfaces the newest application,
-    so a second insert would strand the first — audit C2/C9). Pass
-    application_id to target a specific application explicitly.
+    and stores the result as customized_json. Reuse policy matches tailor(): a
+    job has one application, so with no application_id the job's newest
+    application is updated in place whatever its base resume, and its base moves
+    to this one (the web UI confirms before replacing a tailored draft; version
+    history keeps it). Pass application_id to target a specific application.
     """
     if db.get(Job, payload.job_id) is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -93,15 +97,7 @@ def create_application_from_base(
         if application is None:
             raise HTTPException(status_code=404, detail="Application not found")
     else:
-        application = db.scalar(
-            select(Application)
-            .where(
-                Application.job_id == payload.job_id,
-                Application.base_resume == payload.base_resume,
-            )
-            .order_by(Application.created_at.desc())
-            .limit(1)
-        )
+        application = newest_for_job(db, payload.job_id)
 
     try:
         base = base_resume_data.load_base_resume(payload.base_resume, db)
@@ -117,11 +113,13 @@ def create_application_from_base(
 
     created = application is None
     if application is not None:
+        switched = application.base_resume != payload.base_resume
         application.job_id = payload.job_id
         application.base_resume = payload.base_resume
         if payload.user_prompt is not None:
             application.user_prompt = payload.user_prompt.strip() or None
-        summary = f"Rebuilt from {resume_label(db, payload.base_resume)}"
+        verb = "Switched to" if switched else "Rebuilt from"
+        summary = f"{verb} {resume_label(db, payload.base_resume)}"
     else:
         application = Application(
             job_id=payload.job_id,

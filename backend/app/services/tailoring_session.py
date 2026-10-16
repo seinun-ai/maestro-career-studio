@@ -1488,24 +1488,22 @@ def tailor(
                 if missing:
                     customized = _keyword_fallback(customized, missing)
 
-        # Re-tailoring must REUSE the job's existing application for this base
-        # rather than orphan it: the job page surfaces only the newest application,
-        # so a second INSERT would strand the prior application's studio edits,
-        # rendered PDF, Q&A, and applied-status (finding F#4). Update the stored
-        # draft (customized_json + user_prompt) and drop the now-stale rendered
-        # artifacts, but PRESERVE status, applied_at, notes,
-        # referral_id, and the Q&A rows keyed to this application_id.
-        existing = session.scalar(
-            select(Application)
-            .where(
-                Application.job_id == tailoring.job_id,
-                Application.base_resume == tailoring.base_resume,
-            )
-            .order_by(Application.created_at.desc())
-            .limit(1)
-        )
+        # A job has one application: tailoring REUSES the job's newest one, whatever
+        # its base, rather than orphan it (the job page surfaces only the newest, so a
+        # second INSERT would strand its studio edits, rendered PDF, Q&A and
+        # applied-status; finding F#4). Update the stored draft (customized_json +
+        # user_prompt, and base_resume when this session tailored another base) and
+        # drop the now-stale rendered artifacts, but PRESERVE status, applied_at,
+        # notes, referral_id, and the Q&A rows keyed to this application_id.
+        existing = application_writes.newest_for_job(session, tailoring.job_id)
         created = existing is None
+        switch_summary = None
         if existing is not None:
+            if existing.base_resume != tailoring.base_resume:
+                existing.base_resume = tailoring.base_resume
+                switch_summary = (
+                    f"Switched to {base_resume_data.resume_label(session, tailoring.base_resume)}"
+                )
             existing.user_prompt = user_prompt
             application = existing
         else:
@@ -1523,6 +1521,7 @@ def tailor(
             application,
             customized,
             source="tailor",
+            summary=switch_summary,
             source_ref=str(session_id),
         )
         if created:

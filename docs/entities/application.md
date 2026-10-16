@@ -2,9 +2,11 @@
 
 > Reference tier, extracted from [SYSTEM.md](../../SYSTEM.md) (§4 Core entities). The header contract there governs this file too: integrate don't append, present tense, no dates outside the ledgers, update in the same change that alters the behaviour described.
 
-One per (job, base_resume) in practice. Holds `status`, `applied_at`, `notes`,
-`referral_id`, `customized_json` (the tailored draft), `formatting_json`,
-`template_id`, `pdf_path`/`tex_path`/`pdf_pages`/`render_error`, `user_prompt`.
+One per job: its `base_resume` is the base the draft was last tailored or built from. A job
+that already holds several applications from before this rule keeps them (no migration): the
+detail shows the newest, and the Jobs list shows each row until one is deleted. Holds
+`status`, `applied_at`, `notes`, `referral_id`, `customized_json` (the tailored draft),
+`formatting_json`, `template_id`, `pdf_path`/`tex_path`/`pdf_pages`/`render_error`, `user_prompt`.
 The list summary, the detail and the extension's `GET /api/jobs/match` summary
 all carry `base_resume_name`, the résumé's own name read from its row
 (`base_resume_data.display_name_of`, or an outer join in the list; archived
@@ -31,9 +33,14 @@ list shows.
   interviewing implies you applied); moving to draft clears it;
   rejected/withdrawn preserve whatever is there. An explicit `applied_at` in
   the same PATCH always wins.
-- **Reuse policy** (both `POST /applications/from-base` and `tailor()`):
-  with no explicit `application_id`, the job's newest application for that
-  base is updated in place — never a second insert (a second insert becomes
-  an unreachable orphan). Consequence: from-base can overwrite a tailored
-  draft — the web UI confirms first; version history keeps every prior draft.
+- **Reuse policy** (both `POST /applications/from-base` and `tailor()`,
+  `application_writes.newest_for_job`): with no explicit `application_id`, the
+  job's newest application (`created_at desc, id desc`, the order the detail
+  reads), whatever its base, is updated in place — never a second insert (a
+  second insert becomes an unreachable orphan). Its `base_resume` moves with the
+  tailor, and the version row reads "Switched to {resume}" when the base changed;
+  `status`, `applied_at`, `notes`, `referral_id` and the Q&A rows stay.
+  Consequence: a tailor with another resume, or from-base, can replace a
+  tailored draft and remove its PDF — the web UI confirms first; version history
+  keeps every prior draft.
 
