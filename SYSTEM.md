@@ -148,7 +148,10 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 1. **Capture** — `/new` (**Add job**): paste a job description → **Save job** → `POST /api/jobs` (LLM
    extract, dedup) → summary card ("This job is already saved." on dedup). Or Companion/MCP
    `store_extracted_jd` → `POST /api/jobs/ingest` (pre-extracted; the client
-   agent is the extractor by design).
+   agent is the extractor by design). Both save paths score a NEW job against every selectable base
+   resume right after its commit (`_persist_job` → `score_all_bases`); a scoring error (no extracted
+   skills, a corrupt base file) is logged and rolls back only the scores, never the save, and a dedup
+   hit is not re-scored.
 2. **Track** — **Jobs** (`/applications`; the URL, `?status=`/`?source=` and `cs-tracker-*` keep their
    names): the tracker. Two queries (summary list with server-joined job fields + saved jobs of the
    toggle's source), a grouped status `Select` with counts, inline `StatusChip` per row (PATCHes
@@ -183,8 +186,9 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    warns (pay is negotiable). On screen only a conflict or a missing profile answer is a banner, with a per-check chip strip (OK / Conflict /
    Warning / Add answer / Not listed / Not run); anything else is one small line in the Job details card. Informational like G11 tier 2: it flags; the
    consent/submit decision stays human unless the user's agent follows the full-automation prompt (§7).
-4. **Score** — Score and tailor auto-scores the bases set for the job's country (all when unknown) on first
-   visit; per-base cards → **Analyze gaps** creates a session (one filled button, on the best match;
+4. **Score** — Score and tailor shows the bases set for the job's country (all when unknown), scored at
+   save; its first-visit auto-run is the fallback for a job saved before any base resume existed or whose
+   save-time scoring failed; per-base cards → **Analyze gaps** creates a session (one filled button, on the best match;
    Restart gap analysis and Mark applied without tailoring sit in each card's ⋯).
    When every card draws the low-coverage warning, or the same gate warning, one banner says it instead; the lowest subscore of a card wears a Weakest word.
    With no base resume the tab

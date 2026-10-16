@@ -311,7 +311,22 @@ def _persist_job(
     _insert_skills(db, job.id, extraction)
     db.commit()
     db.refresh(job)
+    _score_new_job(db, job)
     return _with_ownership(db, job)
+
+
+def _score_new_job(db: Session, job: Job) -> None:
+    """Score a just-saved job against every selectable base so the Jobs list's Match column
+    is filled from the save on. Runs after the job's own commit: a job with no extracted
+    skills, no base resume or a corrupt base file logs here and rolls back only the scores,
+    never the save. A dedup hit never reaches this, so a saved job is scored once."""
+    try:
+        ats_score.score_all_bases(job.id, session=db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning("Scoring job %s at save failed; it saves unscored", job.id, exc_info=True)
+    db.refresh(job)
 
 
 @router.post("", response_model=JobRead)
