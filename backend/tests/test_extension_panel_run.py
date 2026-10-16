@@ -1243,6 +1243,54 @@ def test_done_on_a_ready_card_ends_the_record_writes_nothing_and_frees_the_tab(t
     assert _record(again["shots"][-1])["status"] == "ready"
 
 
+def _remembered(out):
+    """The tab's job memory entries the panel wrote (the pick shorthand: `widget.session` per write)."""
+    return [one["widget.session"] for one in out["writes"] if "widget.session" in one]
+
+
+def test_done_on_a_ready_card_keeps_the_job_on_its_tab(tmp_path):
+    """Done ends the run, not the job: the review page still shows the job it was applying to, as a Draft, so
+    the user can Submit and then press Applied. The run's record was the tab's only binding (the review page is
+    no posting the backend knows), so the record hands its job to the tab's memory as it comes off."""
+    out = _run(tmp_path, [{"start": SEED}, {"update": {"tab": 7, "change": {"url": REVIEW["url"]}}},
+                          {"press": "run-done"}], pages=(STEP1, REVIEW))
+    shot = out["shots"][-1]
+    assert shot["runs"] == []
+    identity = _text(shot["regions"]["identity"])
+    assert "Data Scientist" in identity and "Draft application" in identity and "Not saved yet" not in identity
+    assert _text(shot["regions"]["progress"]).endswith("Step 4 of 4 · Track")
+    assert "Draft" in _text(shot["regions"]["foot"]) and "Applied" in _text(shot["regions"]["foot"])
+    [kept] = _remembered(out)
+    assert (kept["applicationId"], kept["jobId"], kept["status"]) == ("app-1", "job-1", "draft")
+    assert kept["link"] == REVIEW["url"] and kept["tenant"] == "https://jobs.acme.test/apply"
+    # Still nothing written to the server: the memory is this browser's.
+    assert not [m for m in out["sent"] if m["type"] == "api" and (m.get("init") or {}).get("method") in ("POST", "PATCH")
+                and "companion-submitted" in m["path"]]
+
+
+def test_done_on_an_applied_card_keeps_the_job_on_its_thank_you_page(tmp_path):
+    out = _ready_then_confirmation(
+        tmp_path, [{"fire": True}, {"press": "run-done"}],
+        api={**POSTED, "GET /api/applications/app-1": _reply({**APPLICATION, "status": "applied"})})
+    shot = out["shots"][-1]
+    assert shot["runs"] == []
+    identity = _text(shot["regions"]["identity"])
+    assert "Data Scientist" in identity and "Applied" in identity and "Not saved yet" not in identity
+    [kept] = _remembered(out)
+    assert (kept["applicationId"], kept["status"]) == ("app-1", "applied")
+
+
+def test_done_on_a_ready_card_at_another_employer_hands_no_job_to_that_page(tmp_path):
+    """After Ready the user browsed the tab on to another employer: that page is not the job's, so Done leaves
+    it unbound, as the auto-mark already does."""
+    other = page("closed", 9, host="careers.globex.test")
+    out = _run(tmp_path, [{"start": SEED}, {"page": 2, "update": {"tab": 7, "change": {"url": other["url"]}}},
+                          {"press": "run-done"}], pages=(STEP1, REVIEW, other))
+    shot = out["shots"][-1]
+    assert shot["runs"] == [] and not _remembered(out)
+    assert "Not saved yet" in _text(shot["regions"]["identity"])
+
+
 def test_done_on_a_ready_card_is_not_undone_by_a_confirmation_read_in_flight(tmp_path):
     out = _run(tmp_path, [{"start": SEED}, {"press": "run-done"},
                           {"page": 2, "update": {"tab": 7, "change": {"url": CONFIRM["url"]}}}, {"fire": True}],

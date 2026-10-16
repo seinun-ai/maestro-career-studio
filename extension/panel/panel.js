@@ -4967,6 +4967,12 @@
         // The fill memory is stripped by name, not left to a serialiser's toJSON; the live records keep it.
         save: (records) => chrome.storage.session.set({ queueRun: records.map(({ memory, ...rest }) => rest) }),
         load: async () => (await chrome.storage.session.get("queueRun"))?.queueRun ?? [],
+        // A run's job handed to its tab's memory as its record comes off (`closeRun`): `facts` is
+        // card-shaped, so the entry is the one a pick on this page would write (`sessionEntryFrom`).
+        keep: (tabId, facts) => {
+          const entry = sessionEntryFrom(facts);
+          return entry ? updateSessions((sessions) => ({ ...sessions, [tabId]: entry })) : Promise.resolve();
+        },
       },
       // Record that the scorer was asked about this job (`autoScored`).
       scored: (jobId) => autoScored.add(jobId),

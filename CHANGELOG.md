@@ -292,6 +292,10 @@ Less hunting, more applying.
 
 ### Fixed
 
+- **Done on the Ready card keeps the job.** Done ended the run and also dropped the job from the tab, so the review page showed
+  "Not saved yet" and there was nowhere to mark it applied after your own Submit. The panel now stays on the job it was applying
+  to, as a Draft, with **Draft / Applied** in the footer; nothing is marked for you. A tab you browsed on to another employer is
+  left unbound.
 - **Eighth live check of Apply, on two hosted application forms, with Claude as the fast model.**
   - **Safe answers are no longer lost to a slow model.** The second look at an answer and the Yes/No direction check gave a Claude fast model about a second, which it often needed more of, so
     a question that should have taken the safe default was left to you. They now get 3 s for Claude (a second for other models, a custom server and OpenRouter) inside the same time limit

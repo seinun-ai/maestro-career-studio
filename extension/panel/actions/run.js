@@ -38,7 +38,7 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
-  const { samePosting, boardHost } = ns.decisions;
+  const { samePosting, boardHost, sessionTenant } = ns.decisions;
 
   // 8 s between the confirmation page and the mark, so an Undo is a real chance (`submitted` is
   // terminal on the server: the delay is the undo, not a reversal).
@@ -736,9 +736,29 @@
     persist(store);
   }
 
+  /** What a record leaving its tab hands to the tab's job memory, or null. The record was the tab's
+   * binding (`bindFromRun`): a review page is no posting the backend matches, so without this Done
+   * left the user on "Not saved yet" with Submit still to press. Only a record that reached Ready
+   * knows its employer (`tenant`), and only while the tab still shows that employer's pages is the
+   * job this page's: a tab browsed on to another employer is left unbound, as the auto-mark is. The
+   * entry is an ordinary pick from then on (`restorableSession` scopes it to this page's posting). */
+  function keptBinding(store, record) {
+    const facts = store.read();
+    if (facts.tabId !== tabOf(record) || !record.applicationId || !record.tenant) return null;
+    if (sessionTenant(facts.url) !== record.tenant) return null;
+    return {
+      url: facts.url,
+      application: { id: record.applicationId, status: record.status === "applied" ? "applied" : "draft" },
+      job: { id: record.jobId, company: record.company, title: record.title },
+      // The run had its PDF and filled here: the rail lands on Track, where Draft/Applied is.
+      pdfReady: true, touched: true, baseSlug: record.baseSlug ?? null, baseArmed: false,
+    };
+  }
+
   /** Done: take a finished or stopped record off the tab, so the page's own steps show again. A
-   * ready one too (the user is not submitting this job): it ends as stopped first, so a read of the
-   * tab already in flight cannot start a countdown for a record that is gone. Nothing is written. */
+   * ready one too (the user is not submitting this job, or will press Submit by hand): it ends as
+   * stopped first, so a read of the tab already in flight cannot start a countdown for a record that
+   * is gone. Nothing is written to the server; the job stays the tab's (`keptBinding`). */
   function closeRun(store, id) {
     const record = recordById(store, id);
     if (!record || (live(record) && record.status !== "ready")) return;
@@ -754,10 +774,14 @@
     state.watching.delete(record.id);
     state.gapped.delete(record.id);
     state.lastFill.delete(record.id);
+    const kept = keptBinding(store, record);
     store.write({ runs: store.read().runs.filter((one) => one.id !== id) });
     store.run.unvouch(tabOf(record));
     persist(store);
-    if (store.read().tabId === tabOf(record)) store.loadContext(store.token());
+    // The memory is written before the reload reads it back.
+    (kept ? store.run.keep(tabOf(record), kept) : Promise.resolve()).then(() => {
+      if (store.read().tabId === tabOf(record)) store.loadContext(store.token());
+    });
   }
 
   /** The text a field holds, as an answer to save; empty when it holds none (a lone checkbox's

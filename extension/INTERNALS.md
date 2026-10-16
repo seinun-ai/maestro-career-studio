@@ -575,7 +575,14 @@ asking permission of itself.
   active tab if it is under 30 minutes old and on that tab's site, and removed.
   `done.fill` rides the same entry, which is why reopening the ticked Fill row is
   how you reach Autofill again on page three of a form the extension has
-  already finished once.
+  already finished once. **A run's job is handed to this memory as its record
+  leaves the tab** (`closeRun`'s `keptBinding`, the `run.keep` door): while a run
+  holds the tab its record is the binding (`bindFromRun`) and nothing is written
+  here, so Done on a review page the backend does not match used to leave "Not
+  saved yet". A record that reached Ready knows its employer (`tenant`); when the
+  tab still shows that employer, Done writes the entry a pick on this page would
+  (application, job, base, `pdfReady`, `touched`), so the rail lands on Track
+  with Draft/Applied. A tab browsed on to another employer gets nothing.
 
 ## Rules the code depends on
 
@@ -1795,7 +1802,7 @@ footer alone).
   after the tab closed (also one already in flight when it closed) ends the record as `stopped` / `tab_closed`, where its note shows on the
   stopped card, not as a ready card nobody would see. Undo posts nothing and offers Mark applied. A 409 shows the server's own sentence and falls back to the status PATCH. The
   user's time ends when the confirmation is detected. The Ready card's **Done** ends the record as stopped with no server write and frees the
-  tab for a new Apply. A read that fails on a ready tab leaves it ready (the driver does not stop a run mid-Submit). Each record carries the
+  tab for a new Apply; the job stays the tab's (per-tab memory, under "What the panel does"). A read that fails on a ready tab leaves it ready (the driver does not stop a run mid-Submit). Each record carries the
   lease of the panel that owns it, and only that panel arms its auto-mark (every window's panel hears every tab; a reopened panel takes over the
   records on tabs of its own window). A run tab that navigates to a host the run never reached loses its frame vouch until a Resume reads it.
 - **Apply on the Job step** (`panel/actions/job.js`, `shared/decisions.js` `applyPress`/`preselect`): re-reads the job and its tailoring
