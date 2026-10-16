@@ -48,7 +48,7 @@ dependencies = [
     # every new user, immediately. Lift this only together with the 2.x
     # migration; `pip install -e ".[mcp]"` is otherwise silently broken.
     # HTTP session idle timeout and request body size require 1.29.1 or later.
-    "mcp>=1.29.1,<2",
+    "mcp>=1.30.0,<2",
     # The `maestro` command (maestro_cs): process identity and tree kill on every OS,
     # and the install's maestro.env read in-process.
     "psutil>=7",
