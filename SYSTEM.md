@@ -4,42 +4,51 @@
 > to this repo: **update this file after your change** whenever it alters an
 > entity, lifecycle, endpoint, invariant, workflow step, or convention described
 > here. The next agent starts from this file; stale docs cost more than no docs.
+> Why these rules: `docs/system-md-contract.md`.
 >
 > **1. Integrate, don't append.** When your change alters described behavior,
 > REWRITE the affected description in present tense — do not add a dated
-> paragraph below it. Dates and change narratives belong in `git log`, not
-> in §1–§10. Dated entries are legal ONLY in §11–§13 (the ledgers).
-> **2. Ledgers must shrink.** §11: delete items when shipped (git remembers).
-> §13: cut the row when the migration completes. If your change supersedes
-> something without deleting it, add a §13 row — and cut the prose it replaces.
+> paragraph below it. Dates and change narratives belong in `git log`, not in
+> the descriptive sections. Dated entries are legal ONLY in the three ledgers
+> (Known deferred items, Gotchas, Active migrations).
+> **2. Ledgers must shrink.** A deferred item leaves when shipped (git
+> remembers) or when 30 days pass without a "do when" trigger; a migration row
+> leaves when the migration completes; a gotcha leaves when its cause becomes
+> enforced. If your change supersedes something without deleting it, add a
+> migration row — and cut the prose it replaces.
 > **3. Log what you paid for.** After a session, append genuinely new lessons
-> to §12 (dated, symptom → cause → rule, ≤3 lines) and deliberately-not-fixed
-> observations to §11. Not a diary — only what would have saved you time.
+> to Gotchas (dated, symptom → cause → rule, ≤3 lines) and deliberately-not-fixed
+> observations to Known deferred items, each with its trigger. Not a diary —
+> only what would have saved you time.
 > **4. Cover what you touched.** Working in an area this file does not
 > describe? Add the section for it.
-> **5. Caps are earned.** The size cap moves only immediately after a grooming
-> pass that failed to get under it — prove incompressibility before buying
-> budget. `scripts/check_system_md.py` records every movement with its reason.
+> **5. Caps are earned.** The size cap is in BYTES; lines are reported, never
+> gated, because a line cap is met by widening lines. The cap moves only
+> immediately after a grooming or extraction pass that failed to get under it —
+> prove incompressibility before buying budget. `scripts/check_system_md.py`
+> records every movement with its reason and writes the revision stamp below;
+> no hand maintains it.
 >
-> **Section numbers are frozen.** §1–§13 keep their numbers permanently; new
-> sections append at the end. Code, migrations, and handoff docs cite "§N" from
-> ~129 places, and the last renumbering silently invalidated every one of them.
-> Invariants in §6 additionally carry stable ids (`{#inv-slug}`) — cite those
-> from code in preference to a section number, since they survive any grooming.
+> **Section numbers are frozen.** Sections 1–13 keep their numbers permanently;
+> new sections append at the end. Code, migrations, and handoff docs cite "§N"
+> from ~129 places, and the last renumbering silently invalidated every one of
+> them. Cross-cutting invariants additionally carry stable ids (`{#inv-slug}`) —
+> cite those from code in preference to a section number, since they survive
+> any grooming.
 > **Two tiers.** This file is the ORIENTATION tier and stays whole. Pure
 > reference — entity lifecycles (`docs/entities/`) and frontend conventions
-> (`docs/frontend-conventions.md`) — is extracted, indexed from §4 and §8, and
-> carries this same contract. When the cap is hit, extract more reference; never
-> split orientation content.
-> **Style rule:** every rule bullet in §6 and in `docs/entities/` opens with a
-> **bolded subject** naming what the rule governs, so the section scans by lead
-> terms. Every §6 invariant states its enforcement point — the test or module
-> that fails if it breaks — and is pinned in `.system_md_enforcement.json`.
-> **Do not accrete "Prior:" entries in this header** — REPLACE the latest
-> entry per line; older change history lives in `git log SYSTEM.md`.
-> Last full revision: 2026-08-28, doc↔code audit (§6 consent invariants, counts, paths,
-> §13 work-auth readers). §13 is machine-checked via `.slopledger.json`; the whole file via
-> `scripts/check_system_md.py`.
+> (`docs/frontend-conventions.md`) — is extracted, indexed from Core entities
+> and Frontend conventions, and carries this same contract. When the cap is hit,
+> extract more reference; never split orientation content.
+> **Style rule:** every rule bullet in Cross-cutting invariants and in
+> `docs/entities/` opens with a **bolded subject** naming what the rule governs,
+> so the section scans by lead terms. Every invariant states its enforcement
+> point — the test or module that fails if it breaks — and is pinned in
+> `.system_md_enforcement.json`. Active migrations is machine-checked via
+> `.slopledger.json`; the whole file via `scripts/check_system_md.py`.
+>
+> contract: v5
+> Last revision: (gate-written; run `python3 scripts/check_system_md.py --stamp`)
 
 **Contents**
 - [§1 What this is](#1-what-this-is) — the product in one paragraph
