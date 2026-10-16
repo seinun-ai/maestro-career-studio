@@ -174,6 +174,8 @@ export function jobStepsInput(a: {
   skills: { total: number; required: number };
   knockout: string | null;
   standing: string;
+  /** The tailored draft's changes from its base (step 3's list: the resume diff's hunks); null until it loads. */
+  draftChanges?: number | null;
   baseName: (slug: string) => string;
   countGaps: (gapIds: readonly string[], resolutions: SessionRow["resolutions_json"]) => GapCounts;
 }): JobStepsInput {
@@ -217,9 +219,10 @@ export function jobStepsInput(a: {
         )
       : null,
     draft: application?.customized_json
-      ? { score: a.scoreShown?.tailored ? a.scoreShown.value : null, changes: null }
+      ? { score: a.scoreShown?.tailored ? a.scoreShown.value : null, changes: a.draftChanges ?? null }
       : null,
-    // The application carries no render time, so the line says "PDF created" without a date.
+    // The application carries no render time, so the line says "PDF created" without a date. A draft change
+    // removes the PDF on the server, so a PDF that exists is the draft's own: never out of date.
     pdf: application?.pdf_path ? { pages: application.pdf_pages, createdOn: null } : null,
     standing: a.standing,
     hasApplication: application != null,

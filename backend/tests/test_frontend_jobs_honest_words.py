@@ -446,10 +446,14 @@ def test_mark_applied_hides_once_the_job_is_applied():
     assert "stepsRef.current?.querySelector<HTMLElement>('[aria-current=\"step\"]')?.focus({ preventScroll: true });" in page
 
 
-def test_the_resume_tab_names_what_it_holds():
+def test_the_tailored_resume_step_names_what_it_holds():
     panel = _read("components/application-panel.tsx")
-    assert "<CardTitle>Resume for this job</CardTitle>" in panel
-    assert "<CardTitle>Tailored resume</CardTitle>" not in panel
+    step = panel[panel.index("export function TailoredResumeStep(") : panel.index("function TailoredResumeMenu(")]
+    # The stepper names the step: the card repeats no title. Its body is the changes, counted, and a resume
+    # used as is (no changes) says so plainly rather than "tailored".
+    assert "<CardTitle>" not in step
+    assert "`Changes (${hunks.length})`" in step
+    assert "No changes from your base resume." in step and "No changes yet." in step
     qa = _read("components/qa-tab.tsx")
     assert 'label="Write a new version"' in qa and 'label="Regenerate"' not in qa
 
@@ -587,3 +591,43 @@ def test_a_skill_with_no_example_never_contradicts_mentioned_in():
 def test_the_tracker_names_its_match_score_column():
     page = _read("app/applications/page.tsx")
     assert 'header("ats", "Match score",' in page
+
+
+def _opening_tags(src: str, tag: str = "<Button") -> list[str]:
+    """Each `tag`'s opening tag: up to its own `>` line or its `/>`."""
+    out = []
+    for m in re.finditer(re.escape(tag) + r"\b", src):
+        rest = src[m.start() :]
+        ends = [e for e in (re.search(r"\n\s*>\n", rest), re.search(r"/>", rest)) if e]
+        out.append(rest[: min(e.end() for e in ends)])
+    return out
+
+
+def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions():
+    panel = _read("components/application-panel.tsx")
+    step = panel[panel.index("export function TailoredResumeStep(") : panel.index("function TailoredResumeMenu(")]
+    # One filled button: Create PDF before a PDF, Continue to Apply once one exists (the two arms of one ternary).
+    filled = [t for t in _opening_tags(step) if "variant=" not in t]
+    assert len(filled) == 2, filled
+    assert 'onClick={() => onOpenStep("qa")}' in filled[0] and "onClick={() => renderOnce()}" in filled[1]
+    assert step.index("{hasPdf ? (") < step.index('onOpenStep("qa")') < step.index(") : (") < step.index(
+        "{renderPdf.isPending ? pdfWords.pending : pdfWords.label}")
+    # Edit resume is in the strip, an outline link; the page no longer places it above the step.
+    assert "<Link href={`/applications/${app.id}/resume`}>" in step
+    assert "Edit resume" not in _read(_JOB_PAGE)
+    # The PDF card: the file's own actions as named icon buttons, then Update PDF (small, outline).
+    card = step[step.index('<div className="bg-canvas') :]
+    for name in ('label="Download PDF"', 'label="Open PDF in new tab"'):
+        assert name in card
+    assert '<ShowCopyButton applicationId={app.id} variant="ghost" iconOnly />' in card
+    update = [t for t in _opening_tags(card) if "renderOnce()" in t]
+    assert len(update) == 1 and 'variant="outline"' in update[0] and 'size="sm"' in update[0]
+    # Each change reverts on its own, and the rare actions sit behind the strip's ⋯.
+    assert 'label="Revert this change"' in step and 'data-revert=""' in step
+    menu = panel[panel.index("function TailoredResumeMenu(") :]
+    assert 'label="More actions for the tailored resume"' in menu
+    assert 'onClick={() => onOpenStep("fit")}' in menu and "Tailor again" in menu and "Delete application" in menu
+    # Five changes, then the rest behind one toggle; once a PDF exists the list folds to its header.
+    assert "const SHOWN_CHANGES = 5;" in panel and "`Show ${hunks.length - SHOWN_CHANGES} more changes`" in step
+    assert "const listOpen = listShown ?? !hasPdf;" in step and "aria-expanded={listOpen}" in step
+

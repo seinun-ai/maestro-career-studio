@@ -52,7 +52,7 @@ const SECTION_TABS: Record<string, string> = {
   extra_sections: "extra",
 };
 
-const SECTION_LABELS: Record<string, string> = {
+export const SECTION_LABELS: Record<string, string> = {
   summary: "Summary",
   contact: "Contact",
   skills: "Skills",
@@ -74,7 +74,7 @@ const SECTION_ORDER = [
   "extra_sections",
 ];
 
-const KIND_LABELS: Record<ResumeDiffHunk["kind"], string> = {
+export const KIND_LABELS: Record<ResumeDiffHunk["kind"], string> = {
   summary_changed: "Summary rewritten",
   contact_changed: "Contact details changed",
   bullet_added: "Bullet added",
@@ -124,7 +124,7 @@ function joinStrings(value: unknown): string {
 }
 
 /** One line describing a hunk side, whatever shape the schema gave it. */
-function sideText(side: unknown): string {
+export function sideText(side: unknown): string {
   if (side === null || side === undefined) return "";
   if (typeof side === "string") return side;
   if (Array.isArray(side)) return joinStrings(side);
@@ -613,7 +613,7 @@ function HygieneGroup({
  * flags. Each group renders only when non-empty; if all three are empty a
  * single line replaces three empty headers.
  */
-function CoherenceResults({
+export function CoherenceResults({
   coherence,
   onApply,
   onApplyHygiene,

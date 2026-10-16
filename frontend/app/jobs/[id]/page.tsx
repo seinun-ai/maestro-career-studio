@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  Pencil,
   RefreshCw,
   SendHorizontal,
   Trash2,
@@ -20,7 +19,8 @@ import { toast } from "sonner";
 
 import {
   ApplicationDetailsMenu,
-  OutputTab,
+  TailoredResumeStep,
+  resumeDiffQuery,
   useApplicationMutations,
 } from "@/components/application-panel";
 import { LoadErrorState } from "@/components/load-error-state";
@@ -193,6 +193,8 @@ export default function JobDetailPage({
     queryKey: ["tailoring-sessions", id],
     queryFn: () => listTailoringSessions(id),
   });
+  // Step 3's own query (the same key): its line counts the changes to review.
+  const resumeDiff = useQuery(resumeDiffQuery(application?.id ?? "", !!application?.customized_json));
   const baseName = useBaseResumeLabel();
   const colorOf = useBaseResumeColor();
   // The header's one score: the application's tailored score, else the best base score.
@@ -244,7 +246,8 @@ export default function JobDetailPage({
     focusIfDropped(actionsRef.current && focusTarget(actionsRef.current));
   }, [triagedStatus]);
 
-  // Use resume as is on step 2 opens step 3 and hides the button that held focus: the step it opened takes it.
+  // Use resume as is on step 2, and Continue to Apply or Tailor again on step 3, open another step and hide the
+  // button that held focus: the step it opened takes it.
   const stepsRef = useRef<HTMLDivElement>(null);
   const focusOpenedStep = useRef(false);
   useLayoutEffect(() => {
@@ -399,6 +402,7 @@ export default function JobDetailPage({
         data.knockout ? knockoutNotChecked(data.knockout, job) : false,
       ),
       standing: standingText,
+      draftChanges: resumeDiff.data?.hunks.length ?? null,
       baseName,
       countGaps: gapCounts,
     }),
@@ -744,27 +748,16 @@ export default function JobDetailPage({
           {visited.has("output") ? (
             application ? (
               <div hidden={step !== "output"} className="space-y-4">
-                {/* Here until step 3's own layout places it (outline: Create PDF is this view's filled button). */}
-                {application.customized_json ? (
-                  <div className="flex justify-end">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!ownership.canWrite}
-                      aria-disabled={!ownership.canWrite || undefined}
-                      // A link rendered as a button: `disabled:` never matches it, `data-disabled` does.
-                      className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                      nativeButton={false}
-                      render={
-                        <Link href={`/applications/${application.id}/resume`}>
-                          <Pencil className="size-4" />
-                          Edit resume
-                        </Link>
-                      }
-                    />
-                  </div>
-                ) : null}
-                <OutputTab app={application} jobId={id} readOnly={!ownership.canWrite} />
+                {/* Continue to Apply and Tailor again open another step and hide the button that held focus. */}
+                <TailoredResumeStep
+                  app={application}
+                  jobId={id}
+                  readOnly={!ownership.canWrite}
+                  onOpenStep={(key) => {
+                    focusOpenedStep.current = true;
+                    setStep(key);
+                  }}
+                />
               </div>
             ) : (
               // A link to ?tab=output on a job with no resume of its own yet.

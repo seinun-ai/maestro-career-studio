@@ -87,20 +87,32 @@ function SkillNowCell({ row }: { row: AtsSkillRow | null }) {
   return <span className="text-muted-foreground text-body-small">{note ?? (row.matched ? "Matched" : "Missing")}</span>;
 }
 
+/** The subscores that moved, as text: "Keywords +21 · Job title +40". Empty when none moved. */
+function subscoreDeltaLine(subscores: Record<string, number | undefined>): string {
+  return SUBSCORE_LABELS.map(({ key, label }) => ({ label, delta: formatDelta((subscores[key] ?? 0) * 100, 0) }))
+    .filter(({ delta }) => delta.sign !== "flat")
+    .map(({ label, delta }) => `${label} ${delta.text}`)
+    .join(" · ");
+}
+
 /**
  * Before-and-after ATS score for a tailored application: the headline score,
  * subscore delta bars, and the per-skill diff. A 422 from the compare
  * endpoint (engine/config version drift between the stored base and tailored
- * rows) is recoverable by scoring both again.
+ * rows) is recoverable by scoring both again. `compact` is step 3's strip: one
+ * line, `{before} → {after} {+delta}` and the subscores that moved as text; the
+ * full panel stays for the studio.
  */
 export function AtsComparePanel({
   app,
   jobId,
   readOnly = false,
+  compact = false,
 }: {
   app: Application;
   jobId: string;
   readOnly?: boolean;
+  compact?: boolean;
 }) {
   const qc = useQueryClient();
 
@@ -138,6 +150,45 @@ export function AtsComparePanel({
     },
     onError: (err: Error) => toast.error(couldnt("update the score", err)),
   });
+
+  if (compact) {
+    if (compare.isLoading) return <Skeleton className="animate-shimmer h-6 w-64" />;
+    if (compare.isError || !compare.data) {
+      const recoverable = compare.error instanceof ApiError && compare.error.status === 422;
+      return (
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="text-muted-foreground text-body-small">{couldnt("compare the scores", compare.error)}</span>
+          {recoverable ? (
+            <Button
+              variant="outline"
+              size="sm"
+              pending={rescoreBoth.isPending}
+              disabled={readOnly}
+              onClick={() => rescoreBoth.mutate()}
+            >
+              <RefreshCw />
+              {rescoreBoth.isPending ? "Updating…" : "Update both scores"}
+            </Button>
+          ) : null}
+        </div>
+      );
+    }
+    const { base, tailored, delta } = compare.data;
+    const moved = subscoreDeltaLine(delta.subscores);
+    return (
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="inline-flex items-center gap-1.5 text-title-medium tabular-nums">
+          <span className="sr-only">Match score before and after: </span>
+          <span className="text-muted-foreground">{base.composite.toFixed(1)}</span>
+          <MoveRight aria-hidden="true" className="text-muted-foreground size-4" />
+          <span className="sr-only"> to </span>
+          <span>{tailored.composite.toFixed(1)}</span>
+        </span>
+        <DeltaChip value={delta.composite} unit="points" />
+        {moved ? <span className="text-muted-foreground min-w-0 text-body-small tabular-nums">{moved}</span> : null}
+      </div>
+    );
+  }
 
   if (compare.isLoading) {
     return <Skeleton className="h-40 w-full" />;

@@ -261,6 +261,10 @@ test("gaps on the current step are the detail's own count; other stages have non
 
 test("the draft, the PDF and the application are what the application holds", () => {
   assert.deepEqual(built().draft, { score: 88, changes: null });
+  // Step 3's list counts the changes once the diff is in; the line then reads "7 changes to review".
+  assert.deepEqual(built({ draftChanges: 7 }).draft, { score: 88, changes: 7 });
+  assert.equal(built({ application: { ...app, customized_json: null }, draftChanges: 7 }).draft, null);
+  assert.equal(jobSteps(built({ draftChanges: 7 }))[2].summary, "7 changes to review · 88.0 / 100 · no PDF yet");
   assert.equal(built({ application: { ...app, customized_json: null } }).draft, null);
   assert.equal(built({ scoreShown: { value: 70, tailored: false } }).draft?.score, null);
   assert.equal(built().pdf, null);

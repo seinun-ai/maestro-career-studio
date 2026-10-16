@@ -1,14 +1,11 @@
 "use client";
 
-import { useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import { toast } from "sonner";
 
 import { GuardedLink } from "@/components/guarded-link";
+import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
-import { useFocusHandoff } from "@/hooks/use-focus-return";
-import { parseFlag, serializeFlag, useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
@@ -16,8 +13,7 @@ import { couldnt } from "@/lib/error-text";
 import { copiesOn, RESUMES_FOLDER_KEY, RESUMES_FOLDER_URL, revealLabel } from "@/lib/resumes-folder";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { ResumesFolderSettings } from "@/lib/types";
-
-const NOTE_DISMISSED_KEY = "maestro-cs:resumes-folder-note-dismissed";
+import { cn } from "@/lib/utils";
 
 /** The resumes-folder setting, shared by every surface that offers the copy (one query key, one cache). */
 export function useResumesFolder() {
@@ -32,7 +28,7 @@ type ShowCopyButtonProps = {
   applicationId: string;
   variant?: "outline" | "ghost" | "link";
   size?: "default" | "sm" | "icon-sm";
-  /** The label moves to `aria-label` and only the folder glyph shows. */
+  /** An icon button: the label moves to `aria-label` and the tooltip, and only the folder glyph shows. */
   iconOnly?: boolean;
   disabled?: boolean;
   className?: string;
@@ -59,68 +55,52 @@ export function ShowCopyButton({
   const revealOnce = useSingleFlight(reveal.mutate);
   if (!copiesOn(data)) return null;
   const label = revealLabel(data!.platform);
+  if (iconOnly) {
+    return (
+      <IconButton
+        label={label}
+        icon={<CONCEPT_ICONS.resumesFolder className="size-4" aria-hidden="true" />}
+        variant={variant}
+        size="icon-sm"
+        className={className}
+        pending={reveal.isPending}
+        disabled={disabled}
+        onClick={() => revealOnce(undefined)}
+      />
+    );
+  }
   return (
     <Button
       variant={variant}
       size={size}
       className={className}
-      aria-label={iconOnly ? label : undefined}
       pending={reveal.isPending}
       disabled={disabled}
       onClick={() => revealOnce(undefined)}
     >
       <CONCEPT_ICONS.resumesFolder className="size-4" aria-hidden="true" />
-      {iconOnly ? null : label}
+      {label}
     </Button>
   );
 }
 
-/** A one-time line under the PDF card's buttons that says where the copy went. `copyMissed`: the render just
- *  answered with no copy, so the line stays quiet while the saved error is still on its way. */
-export function ResumesFolderNote({ applicationId, copyMissed = false }: { applicationId: string; copyMissed?: boolean }) {
+/** One small line for the PDF card's header: where the copy went, and Change folder. Nothing when copies are off,
+ *  when the last copy failed (Settings shows the error) or when `copyMissed`: the render just answered with no
+ *  copy, so the line stays quiet while the saved error is still on its way. Always shown otherwise: it is the
+ *  card's metadata, not a notice to dismiss. */
+export function ResumesFolderNote({ copyMissed = false, className }: { copyMissed?: boolean; className?: string }) {
   const { data } = useResumesFolder();
-  const [dismissed, setDismissed] = useLocalStorageState(NOTE_DISMISSED_KEY, parseFlag, serializeFlag);
-  // With an error the copy may not exist: Settings shows the error, so the note stays quiet.
-  if (!data || !copiesOn(data) || data.last_error || copyMissed || dismissed) return null;
+  if (!data || !copiesOn(data) || data.last_error || copyMissed || !data.folder_display) return null;
   return (
-    <NoteBody applicationId={applicationId} folderDisplay={data.folder_display} onDismiss={() => setDismissed(true)} />
-  );
-}
-
-// Its own component so dismissing UNMOUNTS it: useFocusHandoff hands focus on in its unmount cleanup, and
-// the ref exists when the hook first runs (the outer note mounts before the query has answered).
-function NoteBody({
-  applicationId,
-  folderDisplay,
-  onDismiss,
-}: {
-  applicationId: string;
-  folderDisplay: string | null;
-  onDismiss: () => void;
-}) {
-  const noteRef = useRef<HTMLDivElement>(null);
-  useFocusHandoff(noteRef);
-  return (
-    <div
-      ref={noteRef}
-      className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 rounded-corner-md bg-surface-container-low py-1.5 pr-1.5 pl-3 text-body-small"
-    >
-      <span>A copy is saved in {folderDisplay}.</span>
-      <ShowCopyButton
-        applicationId={applicationId}
-        variant="link"
-        size="sm"
-        className="h-auto px-0 py-0 text-body-small"
-      />
+    <span className={cn("text-muted-foreground inline-flex min-w-0 items-center gap-1 text-body-small", className)}>
+      <span className="truncate" title={data.folder_display}>In {data.folder_display}</span>
+      <span aria-hidden="true">·</span>
       <GuardedLink
         href={anchorHref("/settings", "resumes-folder")}
-        className="text-primary underline underline-offset-4"
+        className="text-primary shrink-0 underline-offset-4 hover:underline"
       >
         Change folder
       </GuardedLink>
-      <Button variant="ghost" size="icon-sm" aria-label="Dismiss" className="ml-auto" onClick={onDismiss}>
-        <X className="size-4" />
-      </Button>
-    </div>
+    </span>
   );
 }

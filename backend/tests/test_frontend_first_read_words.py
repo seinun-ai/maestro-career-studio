@@ -28,12 +28,17 @@ def test_the_tracker_names_its_status_filter():
     assert "{`Status: ${filterLabel(filter)} · ${countOf(filter)}`}" in tracker
 
 
-def test_the_resume_tab_says_what_a_draft_lacks():
+def test_the_tailored_resume_step_says_what_a_draft_lacks():
     panel = _read("components/application-panel.tsx")
-    # Two steps (Draft, PDF) carry the state; no sentence or badge repeats it.
+    # No Draft → PDF stepper (the job's own steps carry it), and no sentence or badge repeats the state:
+    # before a PDF there is no PDF card, and the strip's filled button says what comes next.
     assert '{pdfReady ? "PDF ready" : hasDraft ? "Not yet a PDF" : "Not started"}' not in panel
-    assert "<ResumeSteps" in panel and "CONCEPT_ICONS.done" in panel and "CONCEPT_ICONS.notRun" in panel
-    assert "No tailored resume yet. Start on the Score and tailor tab." in panel
+    assert "ResumeSteps" not in panel and "CONCEPT_ICONS.notRun" not in panel
+    assert "{renderPdf.isPending ? pdfWords.pending : pdfWords.label}" in panel
+    assert "Continue to Apply" in panel
+    # No draft of its own (marked applied without tailoring): say so and point at step 2, by its name.
+    assert "<p>No tailored resume yet.</p>" in panel and "Go to Resume and gaps" in panel
+    assert "Score and tailor" not in panel
 
 
 def test_dates_read_as_words():
@@ -69,9 +74,13 @@ def test_the_inbox_names_its_own_numbers():
     assert 'description: "This also deletes the screenshots your agent took.",' in triage
 
 
-def test_resume_tab_says_its_state_once():
+def test_tailored_resume_step_says_its_state_once():
     src = _read("components/application-panel.tsx")
     assert "Your PDF is ready." not in src and '"Not yet a PDF"' not in src
+    # The folder is the PDF card's one small line, not a second notice under the buttons.
+    folder = _read("components/resumes-folder-actions.tsx")
+    assert "In {data.folder_display}" in folder and "A copy is saved in" not in folder
+    assert "<ResumesFolderNote copyMissed={renderPdf.data?.copy_path === null} />" in src
 
 
 def test_compare_shows_what_changed():
@@ -79,3 +88,8 @@ def test_compare_shows_what_changed():
     for word in ("Gained", "Lost", "Same"):
         assert f'"{word}"' in src or f">{word}<" in src
     assert "formatDelta" in src or "DeltaChip" in src
+    # Step 3's strip: one line, before → after, the delta, and the subscores that moved as text.
+    assert "compact = false," in src and "subscoreDeltaLine(delta.subscores)" in src
+    assert '.map(({ label, delta }) => `${label} ${delta.text}`)' in src and '.join(" · ")' in src
+    assert "<AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} compact />" in _read(
+        "components/application-panel.tsx")
