@@ -389,7 +389,7 @@ evidence for can only go in your skills list, never into an invented bullet.
      marketing repo (site-media/). Only fictional values may ever be on screen.
      1000px wide; keep any replacement under 2 MB. -->
 
-![The Companion on a job page](assets/extension.gif)
+![The Companion beside a job: it saves the job, picks the resume, and with full automation on, Apply fills each page, clicks Next and stops on the review page. You press Submit.](assets/extension.gif)
 
 The **Companion** is a side panel in Chrome: save a job from the job board you're reading, score
 it, and fill application forms from your saved answers (**Profile › Autofill**). It leaves
