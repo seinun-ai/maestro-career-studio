@@ -167,8 +167,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    (`hooks/use-job-steps.ts`, shared with the gap page). The stage's step opens, set once on load (step 1 while a proposal waits on you). A step with something to show
    is a button (3: a draft or PDF; 4: an application), one with nothing plain text, never locked. `?tab=` keeps
    jd/fit/output/qa/submitted so deep links land. Step 1 (**Job**): the proposal's card, titled with its filer (`proposed_by`,
-   worded by `lib/agent-name.ts`), only when it carries something (`proposalHasContent`), then a receipt row whose **View details**
-   shows the **knock-out pre-scan** (`services/knockout.scan_for`: stated JD requirements vs the profile, flagged; the decision
+   worded by `lib/agent-name.ts`), only when it carries something (`proposalHasContent`), then a receipt row (details open by default;
+   **Hide details** folds them) over the **knock-out pre-scan** (`services/knockout.scan_for`: stated JD requirements vs the profile, flagged; the decision
    stays yours (or your agent's); verdicts and chips: docs/entities/job.md, "Knock-out pre-scan"), the job details and tracking
    link. `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`, else `cs-tracker-seq`. Every job read derives
    `proposal_status`/`proposal_id` from the newest proposal.

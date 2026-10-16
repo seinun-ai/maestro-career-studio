@@ -185,11 +185,17 @@ def test_the_gap_page_draws_step_two_with_the_resume_chips():
         disabled = page.index("disabled={", page.rindex("<Button", 0, page.index(label)))
         assert page[disabled : page.index("\n", disabled)].endswith(end), label
     assert "jobDetail.isPending}" not in page
-    failed = page[page.index("{isLoadFailure(jobDetail) ? (") :]
-    failed = open_tag(failed, "LoadErrorState")
-    assert 'title="Couldn\'t load this job, so Tailor, Use resume as is and the resume chips wait for it."' in failed
-    assert 'detail={loadErrorDetail(jobDetail.error, "job")}' in failed and "onRetry={() => void jobDetail.refetch()}" in failed
-    assert page.index("{isLoadFailure(jobDetail) ? (") < page.index('<div className="bg-background/95 sticky bottom-0')
+    # A failed gap analyses list locks Use resume as is and the chips too: the same block names it, and its one
+    # Try again asks for both.
+    assert "const detailFailed = isLoadFailure(jobDetail);" in page and "const sessionsFailed = isLoadFailure(sessions);" in page
+    start = page.index("{detailFailed || sessionsFailed ? (")
+    failed = squash(page[start : page.index(") : null}", start)])
+    assert "\"Couldn't load this job, so Tailor, Use resume as is and the resume chips wait for it.\"" in failed
+    assert "\"Couldn't load this job's gap analyses, so Use resume as is and the resume chips wait for them.\"" in failed
+    assert 'detail={loadErrorDetail(detailFailed ? jobDetail.error : sessions.error, "job")}' in failed
+    assert "retrying={jobDetail.isFetching || sessions.isFetching}" in failed
+    assert "onRetry={() => { void jobDetail.refetch(); void sessions.refetch(); }}" in failed
+    assert start < page.index('<div className="bg-background/95 sticky bottom-0')
     # A superseded or closed analysis made no draft: its way on is step 2, not step 3.
     done = page[page.index('if (session.data.status !== "open") {') :]
     done = done[: done.index("</main>")]
@@ -554,7 +560,9 @@ def test_every_old_tab_link_still_lands_on_a_step():
     assert 'proposalStatus && PROPOSAL_WAITS_ON_YOU.has(proposalStatus) ? "job" : currentStep(stage);' in page
     # Fixed once, from the first data: a refetch or a triage never switches the panel under you.
     assert "if (chosenStep == null) setChosenStep(initialStep);" in page
-    assert 'if (detailsOpen == null) setDetailsOpen(stage === "saved");' in page
+    # Step 1's details are open by default on every stage (owner, 2026-10-16); Hide details is the reader's choice.
+    assert "const [detailsOpen, setDetailsOpen] = useState(true);" in page
+    assert 'setDetailsOpen(stage === "saved")' not in page
 
 
 def test_the_rare_actions_sit_behind_one_more_actions_menu():

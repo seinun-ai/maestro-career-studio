@@ -128,8 +128,8 @@ export default function JobDetailPage({
   // Once opened by link, What was submitted stays on step 4: the job's own flag may predate the fill.
   const [submittedSeen] = useState(requestedTab === "submitted");
   const receiptRef = useRef<HTMLElement | null>(null);
-  // Step 1's job details: set once from the first data (open only while the job is just saved).
-  const [detailsOpen, setDetailsOpen] = useState<boolean | null>(null);
+  // Step 1's job details open by default on every stage; Hide details is the reader's own choice.
+  const [detailsOpen, setDetailsOpen] = useState(true);
   const detailsId = useId();
   // A step's panel mounts when first shown and then stays, hidden: an answer being edited on step 4
   // survives a look at step 2 (the tabs' keepMounted rule).
@@ -337,14 +337,13 @@ export default function JobDetailPage({
 
   // The rung sits beside `job` on the detail, not in it (useJobSteps reads it the same way).
   const stage = data.stage ?? "saved";
-  // The step and step 1's details are fixed once, from the first data: a refetch or a triage that moves the
-  // stage never switches the panel under you. A link's ?tab= wins; a proposal waiting on you opens step 1.
+  // The step is fixed once, from the first data: a refetch or a triage that moves the stage never switches
+  // the panel under you. A link's ?tab= wins; a proposal waiting on you opens step 1.
   const initialStep: StepKey =
     proposalStatus && PROPOSAL_WAITS_ON_YOU.has(proposalStatus) ? "job" : currentStep(stage);
   if (chosenStep == null) setChosenStep(initialStep);
   const step: StepKey = chosenStep ?? initialStep;
-  if (detailsOpen == null) setDetailsOpen(stage === "saved");
-  const showDetails = detailsOpen ?? stage === "saved";
+  const showDetails = detailsOpen;
   // Not behind an application: a form can be filled before one exists.
   const receipt = showSubmitted ? (
     <section
@@ -624,7 +623,7 @@ export default function JobDetailPage({
               {proposalId && (proposalQuery.isError || (proposalQuery.data && proposalHasContent(proposalQuery.data))) ? (
                 <ProposalAgentPanel proposalId={proposalId} />
               ) : null}
-              {/* The receipt: step 1's line, and the details behind it (open while the job is just saved). */}
+              {/* The receipt: step 1's line, and the details under it, open by default. */}
               <div className="bg-surface-container-low flex items-center justify-between gap-3 rounded-corner-md px-4 py-2">
                 <p className="text-body-medium">{steps[0].summary}</p>
                 <Button
