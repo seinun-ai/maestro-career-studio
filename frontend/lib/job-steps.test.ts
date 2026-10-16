@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { Rung } from "./next-step.ts";
 import { gapCounts } from "./gap-counts.ts";
-import { currentStep, jobSteps, jobStepsInput, jobWithStage, stepForTab, type JobStepsInput } from "./job-steps.ts";
+import { currentStep, jobSteps, jobStepsInput, stepForTab, type JobStepsInput } from "./job-steps.ts";
 
 const input = (over: Partial<JobStepsInput> = {}): JobStepsInput => ({
   stage: "scored",
@@ -211,7 +211,7 @@ const rows = [
 ];
 const built = (over: Partial<Parameters<typeof jobStepsInput>[0]> = {}) =>
   jobStepsInput({
-    job: { stage: "tailored", open_session_id: null, gaps_done: 0, gaps_total: 0 },
+    rung: { stage: "tailored", open_session_id: null, gaps_done: 0, gaps_total: 0 },
     application: app,
     applicationResumeName: null,
     scoreRows: rows,
@@ -238,25 +238,25 @@ test("the draft's gaps come from the application's newest tailored session", () 
 });
 
 test("the resume on step 2: the open analysis's, the application's, or the best base", () => {
-  const job = { stage: "gaps" as const, open_session_id: "o", gaps_done: 2, gaps_total: 5 };
+  const rung = { stage: "gaps" as const, open_session_id: "o", gaps_done: 2, gaps_total: 5 };
   const open = session({ id: "o", status: "open", base_resume: "ds" });
   // gaps: the open analysis's resume, else the best base until the sessions load.
-  assert.deepEqual(built({ job, sessions: [open] }).base, { name: "Resume ds", score: 70 });
-  assert.deepEqual(built({ job, sessions: [] }).base, { name: "Resume ml", score: 80 });
+  assert.deepEqual(built({ rung, sessions: [open] }).base, { name: "Resume ds", score: 70 });
+  assert.deepEqual(built({ rung, sessions: [] }).base, { name: "Resume ml", score: 80 });
   // A draft: the application's resume, its own name first.
   assert.deepEqual(built().base, { name: "Resume ds", score: 70 });
   assert.deepEqual(built({ applicationResumeName: "Data scientist" }).base, { name: "Data scientist", score: 70 });
   // Before a draft: the best base.
   const scored = { stage: "scored" as const, open_session_id: null, gaps_done: 0, gaps_total: 0 };
-  assert.deepEqual(built({ job: scored, application: null }).base, { name: "Resume ml", score: 80 });
-  assert.deepEqual(built({ job: scored, application: null, scoreRows: [] }).base, { name: null, score: null });
+  assert.deepEqual(built({ rung: scored, application: null }).base, { name: "Resume ml", score: 80 });
+  assert.deepEqual(built({ rung: scored, application: null, scoreRows: [] }).base, { name: null, score: null });
 });
 
 test("gaps on the current step are the detail's own count; other stages have none", () => {
-  const job = { stage: "gaps" as const, open_session_id: "o", gaps_done: 2, gaps_total: 5 };
-  assert.deepEqual(built({ job }).openGaps, { closed: 2, total: 5 });
+  const rung = { stage: "gaps" as const, open_session_id: "o", gaps_done: 2, gaps_total: 5 };
+  assert.deepEqual(built({ rung }).openGaps, { closed: 2, total: 5 });
   assert.equal(built().openGaps, null);
-  assert.equal(jobSteps(built({ job, applicationResumeName: "Data scientist" }))[1].summary, "Resume ml · 2 of 5 gaps closed");
+  assert.equal(jobSteps(built({ rung, applicationResumeName: "Data scientist" }))[1].summary, "Resume ml · 2 of 5 gaps closed");
 });
 
 test("the draft, the PDF and the application are what the application holds", () => {
@@ -271,17 +271,14 @@ test("the draft, the PDF and the application are what the application holds", ()
   assert.deepEqual(built({ application: { ...app, pdf_path: "x.pdf", pdf_pages: 2 } }).pdf, { pages: 2, createdOn: null });
   assert.equal(built().hasApplication, true);
   assert.equal(built({ application: null }).hasApplication, false);
-  assert.equal(built({ job: { stage: undefined, open_session_id: null } }).stage, "saved");
+  assert.equal(built({ rung: { stage: undefined, open_session_id: null } }).stage, "saved");
 });
 
-test("the detail's stage reaches the steps: it sits beside the job, not in it", () => {
+test("the steps read the rung from the detail, where it sits beside the job", () => {
   const detail = { job: { id: "j1", title: "Analyst" }, stage: "applied" as const, open_session_id: null, gaps_done: 0, gaps_total: 0 };
-  const job = jobWithStage(detail);
-  assert.equal(job.stage, "applied");
-  assert.equal(job.title, "Analyst");
-  assert.equal(built({ job }).stage, "applied");
+  assert.equal(built({ rung: detail }).stage, "applied");
   // The nested job alone carries no stage: read that way, every job looked saved.
-  assert.equal(built({ job: detail.job as never }).stage, "saved");
-  const gaps = jobWithStage({ job: {}, stage: "gaps", open_session_id: "s1", gaps_done: 2, gaps_total: 5 });
-  assert.deepEqual(built({ job: gaps }).openGaps, { closed: 2, total: 5 });
+  assert.equal(built({ rung: detail.job as never }).stage, "saved");
+  const gaps = { job: {}, stage: "gaps" as const, open_session_id: "s1", gaps_done: 2, gaps_total: 5 };
+  assert.deepEqual(built({ rung: gaps }).openGaps, { closed: 2, total: 5 });
 });

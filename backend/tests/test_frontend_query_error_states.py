@@ -263,7 +263,7 @@ _FAILURE_BRANCHES = {
     "app/templates/[id]/page.tsx": "if (isLoadFailure(tq)) {",
     "app/jobs/[id]/tailor/[sessionId]/page.tsx": "if (sessionError != null) {",
     "components/resume-versions/version-history-sheet.tsx": "{isLoadFailure(versions) && (",
-    "components/job-submitted-tab.tsx": "if (isLoadFailure(query)) {",
+    "components/job-submitted-tab.tsx": "if (isLoadFailure(query)) return <FilledAnswersError query={query} />;",
 }
 
 
@@ -305,7 +305,8 @@ _LOADING_GATES = [
     ("components/analytics/gap-tiers-panel.tsx", "areas.isLoading", "isLoadFailure(areas)"),
     ("components/charts/top-skills-chart.tsx", "if (isLoading)", "isLoadFailure(query)"),
     ("components/explore/explore-overview.tsx", "q.isLoading", "isLoadFailure(q)"),
-    ("components/job-submitted-tab.tsx", '<Skeleton className="h-48 w-full" />', "if (isLoadFailure(query)) {"),
+    ("components/job-submitted-tab.tsx", '<Skeleton className="h-48 w-full" />', "if (isLoadFailure(query)) return <FilledAnswersError"),
+    ("components/job-submitted-tab.tsx", '<Skeleton className="h-24 w-full" />', 'return <FilledAnswersError query={query} className="py-4" />;'),
 ]
 
 

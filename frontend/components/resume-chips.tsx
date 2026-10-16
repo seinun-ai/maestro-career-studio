@@ -6,6 +6,7 @@ import { Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ResumeSwatch } from "@/components/visual";
+import { useBaseResumeColor, useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { cn } from "@/lib/utils";
 
 /** How many chips show before "N more": the design's top 3 by score. */
@@ -18,6 +19,25 @@ export type ResumeChipOption = {
   score: number;
   hue: number | null | undefined;
 };
+
+/**
+ * Step 2's and the gap page's chips from the job's score rows: the base rows, best first (`baseRows[0]` wears
+ * Best), and each one's name, score and colour.
+ */
+export function useResumeChipOptions<R extends { phase: string; target_id: string; composite: number }>(
+  rows: readonly R[],
+): { baseRows: R[]; chips: ResumeChipOption[] } {
+  const baseName = useBaseResumeLabel();
+  const colorOf = useBaseResumeColor();
+  const baseRows = rows.filter((row) => row.phase === "base").sort((a, b) => b.composite - a.composite);
+  const chips = baseRows.map((row) => ({
+    slug: row.target_id,
+    name: baseName(row.target_id),
+    score: row.composite,
+    hue: colorOf(row.target_id),
+  }));
+  return { baseRows, chips };
+}
 
 /**
  * The base resumes as a row of chips, one picked: step 2 of the job page, and the gap page. On step 2 a pick is a

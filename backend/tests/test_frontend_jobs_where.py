@@ -91,6 +91,10 @@ def test_the_next_step_cell_links_the_one_control_from_the_servers_stage():
 
     assert "stage" in JobSummary.model_fields and "stage" in ApplicationSummary.model_fields
     assert "stage" not in JobRead.model_fields  # the detail's nested job: its rung sits beside it
+    # The frontend type matches: JobDetail's `job` leaves the rung out, so a job page cannot read it there.
+    types = squash(_src("lib/types.ts"))
+    detail = types[types.index("export interface JobDetail {") :]
+    assert 'job: Omit<Job, "stage" | "open_session_id" | "gaps_done" | "gaps_total">;' in detail[: detail.index("}")]
     cell = _TABLE[_TABLE.index("{step ? (") :]
     cell = cell[: cell.index("</TableCell>")]
     # The button keeps its click from opening the row; the rest of the cell opens the job like the row.

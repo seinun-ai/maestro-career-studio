@@ -881,7 +881,11 @@ def test_alpha_fills_of_primary_and_destructive_only_shrink():
 def test_restored_and_you_are_neutral_not_status():
     sheet = _read("components/resume-versions/version-history-sheet.tsx")
     assert 'restore: "bg-warning-container' not in sheet
-    assert "success-container" not in _read("components/resume-editor/diff-review.tsx")
+    # The studio's review chips are neutral: the container pairs are step 3's (`tinted`), and the studio never asks.
+    review = _read("components/resume-editor/diff-review.tsx")
+    tone = review[review.index("const PROVENANCE_TONE") : review.index("};", review.index("const PROVENANCE_TONE"))]
+    assert review.count("success-container") == tone.count("success-container") == 2
+    assert "{ value, tinted = false }" in review and "<ProvenanceChip value={hunk.provenance} />" in review
 
 
 def test_required_is_not_an_error():

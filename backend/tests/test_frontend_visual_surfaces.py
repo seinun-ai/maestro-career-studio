@@ -86,7 +86,9 @@ def test_job_header_shows_the_best_score_and_the_steps_below_it():
     tag = open_tag(src[src.index("<ResumeTag hue={colorOf(scoreResume)}") :], "ResumeTag")
     assert {"hidden", "2xl:inline-flex"} <= tokens(tag)
     assert "${scoreShown.value.toFixed(1)}, ${baseName(scoreResume)}`}" in src
-    assert 'queryKey: ["ats-scores", id]' in src and "scorePill(scoreRows.data" in src
+    steps = _read("hooks/use-job-steps.ts")
+    assert 'queryKey: ["ats-scores", jobId]' in steps and "scorePill(scoreRows.data" in steps
+    assert "useJobSteps(id, data)" in src
 
 
 # --- Task 18: score and tailor cards (step 2 since the job steps) ---------------------------------------------------

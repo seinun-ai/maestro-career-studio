@@ -3,7 +3,7 @@
 import { use, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -26,11 +26,10 @@ import { CompanyMonogram } from "@/components/company-monogram";
 import { IconButton } from "@/components/icon-button";
 import {
   JobExtractedFields,
-  extractSkills,
   formatSalary,
   humanizeEnum,
 } from "@/components/job-extracted-fields";
-import { JobKnockoutCard, KnockoutLine, knockoutNotChecked } from "@/components/job-knockout-card";
+import { JobKnockoutCard, KnockoutLine } from "@/components/job-knockout-card";
 import { JobSteps } from "@/components/job-steps";
 import { JobSubmittedTab } from "@/components/job-submitted-tab";
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
@@ -58,29 +57,20 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ResumeTag } from "@/components/visual/resume-swatch";
 import { ScoreBar } from "@/components/visual/score-bar";
-import { useBaseResumeColor, useBaseResumeLabel } from "@/hooks/use-base-resume-label";
+import { useBaseResumeColor } from "@/hooks/use-base-resume-label";
+import { useJobSteps } from "@/hooks/use-job-steps";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
-import {
-  apiFetch,
-  listAtsScores,
-  listTailoringSessions,
-  promoteJobToAgentQueue,
-  resumeDiffQuery,
-} from "@/lib/api";
+import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { headerProposalPill, historyStatusOf, proposalHasContent } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
-import { formatShortDate } from "@/lib/format-date";
-import { gapCounts } from "@/lib/gap-counts";
-import { scorePill, standingLine } from "@/lib/job-standing";
-import { TAB_TO_STEP, currentStep, jobSteps, jobStepsInput, jobWithStage, stepForTab, type StepKey } from "@/lib/job-steps";
+import { TAB_TO_STEP, currentStep, stepForTab, type StepKey } from "@/lib/job-steps";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
-import { knockoutWords } from "@/lib/knockout-line";
 import { cn } from "@/lib/utils";
-import type { Job, JobDetail, ProposalDetail, ProposalStatus } from "@/lib/types";
+import type { Job, JobDetail, ProposalStatus } from "@/lib/types";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
 const QueueIcon = CONCEPT_ICONS.queue;
@@ -178,36 +168,11 @@ export default function JobDetailPage({
 
   const application = data?.application ?? null;
   const ownership = jobOwnershipView(data?.job.ownership);
-  // The Score tab's own query (list only, never scores): the header shows its best base score.
-  const scoreRows = useQuery({
-    queryKey: ["ats-scores", id],
-    queryFn: () => listAtsScores(id),
-  });
-  // The Score tab's own query too (the same key): step 2's line names the open gap analysis's resume and,
-  // once the job is tailored, counts the gaps of the analysis that made the draft.
-  const sessions = useQuery({
-    queryKey: ["tailoring-sessions", id],
-    queryFn: () => listTailoringSessions(id),
-  });
-  // Step 3's own query (the same key): its line counts the changes to review, the previous count standing in
-  // while a new draft's list loads.
-  const resumeDiff = useQuery({
-    ...resumeDiffQuery(application ?? { id: "", updated_at: "" }, !!application?.customized_json),
-    placeholderData: keepPreviousData,
-  });
-  const baseName = useBaseResumeLabel();
+  // The four steps and what the header reads with them (the score pill, the proposal, where the job stands).
+  const { proposalQuery, baseName, scoreShown, standing, steps } = useJobSteps(id, data);
   const colorOf = useBaseResumeColor();
-  // The header's one score: the application's tailored score, else the best base score.
-  const scoreShown = scorePill(scoreRows.data ?? [], application?.id ?? null);
   const scoreResume = scoreShown?.tailored ? application?.base_resume ?? "" : scoreShown?.targetId ?? "";
-  // The newest proposal, in full: the header pill's reason, Keep it's application link (the proposal says
-  // whether it has one) and the Overview card all read it, so it is asked once (the card shares the key).
   const proposalId = data?.job.proposal_id ?? null;
-  const proposalQuery = useQuery({
-    queryKey: ["proposal", proposalId],
-    queryFn: () => apiFetch<ProposalDetail>(`/api/proposals/${proposalId}`),
-    enabled: proposalId !== null,
-  });
   const { patch } = useApplicationMutations({
     applicationId: application?.id ?? "",
     jobId: id,
@@ -311,7 +276,7 @@ export default function JobDetailPage({
     );
   }
 
-  if (isLoading || !data) {
+  if (isLoading || !data || !standing || !steps) {
     return (
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 p-6">
         <Skeleton className="animate-shimmer h-16 w-2/3" />
@@ -323,20 +288,6 @@ export default function JobDetailPage({
   const { job } = data;
   const hasApp = !!application;
   const showSubmitted = Boolean(data.has_filled_answers) || submittedSeen;
-  const standing = standingLine({
-    application,
-    appliedOn: application?.applied_at ? formatShortDate(application.applied_at) : null,
-    resumeName: application ? data.base_resume_name ?? baseName(application.base_resume) : null,
-    tailored: scoreShown?.tailored === true,
-    hasFilledAnswers: Boolean(data.has_filled_answers),
-    proposal: job.proposal_status
-      ? {
-          status: historyStatusOf(job.proposal_status as ProposalStatus, proposalQuery.data?.reason),
-          yourself: job.proposal_status === "rejected" && historyStatusOf("rejected", proposalQuery.data?.reason) === "submitted",
-          on: proposalQuery.data ? formatShortDate(proposalQuery.data.updated_at) : null,
-        }
-      : null,
-  });
   const salary = formatSalary(
     job.salary_min,
     job.salary_max,
@@ -384,33 +335,8 @@ export default function JobDetailPage({
       proposalStatus === "expired");
   const triagePending = proposalActions.pending;
 
-  // The four steps (lib/job-steps.ts), from what the detail and the two lists already carry: no new request.
-  // The rung sits beside `job` on the detail, not in it: `jobWithStage` puts them together.
-  const stagedJob = jobWithStage(data);
-  const stage = stagedJob.stage ?? "saved";
-  const skills = extractSkills(job.extracted_json);
-  // A skip's reason decides whether it reads Applied yourself: hold the words until it loads.
-  const standingText =
-    !hasApp && proposalStatus === "rejected" && proposalQuery.isLoading ? "" : standing.text;
-  const steps = jobSteps(
-    jobStepsInput({
-      job: stagedJob,
-      application,
-      applicationResumeName: data.base_resume_name ?? null,
-      scoreRows: scoreRows.data ?? [],
-      scoreShown,
-      sessions: sessions.data ?? [],
-      skills: { total: skills.length, required: skills.filter((s) => s.requirement_level === "required").length },
-      knockout: knockoutWords(
-        data.knockout?.status ?? null,
-        data.knockout ? knockoutNotChecked(data.knockout, job) : false,
-      ),
-      standing: standingText,
-      draftChanges: resumeDiff.data?.hunks.length ?? null,
-      baseName,
-      countGaps: gapCounts,
-    }),
-  );
+  // The rung sits beside `job` on the detail, not in it (useJobSteps reads it the same way).
+  const stage = data.stage ?? "saved";
   // The step and step 1's details are fixed once, from the first data: a refetch or a triage that moves the
   // stage never switches the panel under you. A link's ?tab= wins; a proposal waiting on you opens step 1.
   const initialStep: StepKey =

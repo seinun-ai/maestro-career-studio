@@ -7,7 +7,7 @@ import { Check, Loader2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
-import { ResumeChips } from "@/components/resume-chips";
+import { ResumeChips, useResumeChipOptions } from "@/components/resume-chips";
 import { ScoreSummary, coverageWarning } from "@/components/score-summary";
 import { useBaseResumeLabel, useBaseResumes } from "@/hooks/use-base-resume-label";
 import { useResumeSwitch } from "@/hooks/use-resume-switch";
@@ -103,6 +103,8 @@ export function ResumeStep({
     queryFn: () => getAtsCandidates(jobId),
   });
   const jobCountry = candidates.data?.job_country ?? null;
+  // The chips: the base rows, best first, each with its name, score and colour.
+  const { baseRows, chips } = useResumeChipOptions(scores.data ?? []);
   // Once they are scored anyway, the line would be untrue.
   const skipped = includeOtherCountries ? [] : (candidates.data?.skipped ?? []);
 
@@ -248,10 +250,6 @@ export function ResumeStep({
     });
     if (ok) markAppliedOnce(baseResume);
   };
-
-  const baseRows = (scores.data ?? [])
-    .filter((s) => s.phase === "base")
-    .sort((a, b) => b.composite - a.composite);
 
   // The picked resume, a preview: the reader's own pick, else the default, set once when the scores and the gap
   // analyses have both settled (a refetch never moves it under you). A pick the list no longer holds (scored away
@@ -454,13 +452,6 @@ export function ResumeStep({
       }
       await switcher.analyze(pickedSlug, () => moreRef.current);
     };
-    const chips = baseRows.map((row) => ({
-      slug: row.target_id,
-      name: baseName(row.target_id),
-      score: row.composite,
-      hue: allResumes?.find((r) => r.slug === row.target_id)?.color_hue,
-    }));
-
     // Focusable while it runs: a natively disabled button dropped focus to <body>.
     const asIsButton = (sessionId: string | null) => (
       <Button

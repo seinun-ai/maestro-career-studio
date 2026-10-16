@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from app.schemas.job_extraction import RequirementLevel
-from tests._jsx_pins import open_tag
+from tests._jsx_pins import open_tag, squash
 from app.services import gap_analysis, knockout
 from app.services.ats.config import load_config
 
@@ -24,6 +24,7 @@ _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 _GAP_PAGE = "app/jobs/[id]/tailor/[sessionId]/page.tsx"
 _JOB_PAGE = "app/jobs/[id]/page.tsx"
 _STEP_THREE = "components/tailored-resume-step.tsx"
+_STEPS_HOOK = "hooks/use-job-steps.ts"
 
 
 def _read(rel: str) -> str:
@@ -152,16 +153,22 @@ def test_the_gap_page_draws_step_two_with_the_resume_chips():
     assert "const sessionBase = session.data.base_resume;" in page
     assert "const switcher = useResumeSwitch({ jobId, application, sessions: sessions.data ?? [], replace: true });" in page
     assert "if (await saveNow()) await switcher.openOrCreate(pick);" in page
-    # The job page's keys, so the cache is shared; the steps are fed as the job page feeds them.
+    # The steps come from the job page's own hook (the same keys, so the cache is shared), called before any
+    # early return; the chips from step 2's.
+    assert "const { scoreRows, sessions, baseName, steps } = useJobSteps(jobId, jobDetail.data);" in page
+    assert page.index("useJobSteps(jobId, jobDetail.data)") < page.index("if (sessionError != null) {")
+    assert "const { baseRows, chips } = useResumeChipOptions(scoreRows.data ?? []);" in page
+    for gone in ("listAtsScores", "listTailoringSessions", "resumeDiffQuery", "standingLine", "jobStepsInput"):
+        assert gone not in page, gone
+    hook = _read(_STEPS_HOOK)
     for key in ('queryKey: ["ats-scores", jobId],', 'queryKey: ["tailoring-sessions", jobId],', 'queryKey: ["proposal", proposalId],'):
-        assert key in page, key
-    assert "jobStepsInput({\n        job: jobWithStage(detail),\n        application,\n" in page
-    assert "const standing = standingLine({" in page
+        assert key in hook, key
+    assert "const standing = standingLine({" in hook and "rung: detail," in hook
     # Steps 1, 3 and 4 open the job page at the tab it already honours; step 2 is this page.
     assert 'const STEP_TABS: Partial<Record<StepKey, string>> = { job: "jd", output: "output", qa: "qa" };' in page
     assert "if (tab && (await saveNow())) router.push(`/jobs/${jobId}?tab=${tab}`);" in page
     # No switch before the confirm can be worded and the right gap analysis found.
-    assert "!detail || !sessions.data || switcher.creating != null || tailorBusy" in page
+    assert "!jobDetail.data || !sessions.data || switcher.creating != null || tailorBusy" in page
     assert '? switcher.confirmSwitch(session.data.base_resume, "tailor")' in page
     assert page.count("(await confirmTailorAgain()) &&") == 2  # Tailor and Quick tailor
     assert "if (!(await confirm({ ...asIsOverDraftConfirm(applied), destructive: true }))) return;" in page
@@ -314,7 +321,7 @@ def test_step_two_has_one_filled_button():
     restart = menu[menu.index("{openSession && (") : menu.index("Restart gap analysis")]
     assert "disabled={busy || readOnly} onClick={() => void restartClick()}" in restart
     # With answers given it asks first (they are dropped), then the switch guard, then a new gap analysis.
-    click = step[step.index("const restartClick = async () => {") : step.index("const chips = ")]
+    click = step[step.index("const restartClick = async () => {") : step.index("const asIsButton = ")]
     assert "if (answered > 0) {" in click and 'title: "Start over?",' in click
     assert 'description: `Your ${answered} ${answered === 1 ? "answer" : "answers"} for ${pickedName} are dropped.`,' in click
     assert click.index("if (!ok) return;") < click.index("await switcher.analyze(pickedSlug, () => moreRef.current);")
@@ -467,8 +474,11 @@ def test_a_step_with_something_to_show_is_a_button():
     page = _read(_JOB_PAGE)
     steps = _read("components/job-steps.tsx")
     assert "const button = step.reachable || step.state !== \"next\";" in steps and "{button ? (" in steps
-    # The page hands the builder the application itself, so `hasApplication` and the draft come from it.
-    assert "jobStepsInput({\n      job: stagedJob,\n      application,\n" in page
+    # The hook hands the builder the application itself, so `hasApplication` and the draft come from it.
+    hook = _read(_STEPS_HOOK)
+    assert "const application = detail?.application ?? null;" in hook
+    assert "jobStepsInput({" in hook and "      application,\n" in hook
+    assert "useJobSteps(id, data)" in page
 
 
 def test_the_steps_read_the_details_own_stage():
@@ -476,25 +486,29 @@ def test_the_steps_read_the_details_own_stage():
     that read `data.job.stage` saw every job as saved, so step 2 was always current and step 4 never was."""
     detail = (Path(knockout.__file__).parents[1] / "schemas/job_detail.py").read_text(encoding="utf-8")
     assert "    job: JobRead\n" in detail and "    stage: Rung\n" in detail
-    lib = _read("lib/job-steps.ts")
-    assert "export function jobWithStage<J extends object>(detail: {" in lib
-    assert "    ...detail.job,\n    stage: detail.stage,\n    open_session_id: detail.open_session_id," in lib
-    page = _read(_JOB_PAGE)
-    assert "const stagedJob = jobWithStage(data);\n  const stage = stagedJob.stage ?? \"saved\";" in page
-    assert "job.stage" not in page
-    gap = _read(_GAP_PAGE)
-    assert "job: jobWithStage(detail)," in gap and "job.stage" not in gap
+    # The type says so: the detail's `job` leaves the rung out, so `detail.job.stage` does not compile, and the
+    # builder takes the rung from the detail itself.
     types = _read("lib/types.ts")
     detail_type = types[types.index("export interface JobDetail {") :]
     detail_type = detail_type[: detail_type.index("\n}")]
+    assert 'job: Omit<Job, "stage" | "open_session_id" | "gaps_done" | "gaps_total">;' in detail_type
     for field in ("stage?: Rung;", "open_session_id?: UUID | null;", "gaps_done?: number;", "gaps_total?: number;"):
         assert field in detail_type, field
+    lib = _read("lib/job-steps.ts")
+    assert 'rung: Pick<JobDetail, "stage" | "open_session_id" | "gaps_done" | "gaps_total">;' in lib
+    assert "jobWithStage" not in lib
+    assert "rung: detail," in _read(_STEPS_HOOK)
+    page = _read(_JOB_PAGE)
+    assert 'const stage = data.stage ?? "saved";' in page
+    for rel in (_JOB_PAGE, _GAP_PAGE, _STEPS_HOOK):
+        assert "job.stage" not in _read(rel), rel
 
 
 def test_step_one_reads_the_knockout_card_words():
-    page = _read(_JOB_PAGE)
-    assert 'import { knockoutWords } from "@/lib/knockout-line";' in page
-    assert "knockout: knockoutWords(\n        data.knockout?.status ?? null,\n        data.knockout ? knockoutNotChecked(data.knockout, job) : false,\n      )," in page
+    hook = _read(_STEPS_HOOK)
+    assert 'import { knockoutWords } from "@/lib/knockout-line";' in hook
+    assert ("knockout: knockoutWords( detail.knockout?.status ?? null, "
+            "detail.knockout ? knockoutNotChecked(detail.knockout, job) : false, )") in squash(hook)
 
 
 def test_every_old_tab_link_still_lands_on_a_step():
@@ -820,7 +834,7 @@ def test_step_three_change_rows_read_and_revert_one_by_one():
     fold = _slice(rows, "<div id={listId} hidden={!listOpen}", "{hunks.length > 0 ? (")
     assert "No changes yet." not in fold and "Try again" not in fold and "{check}" not in fold
     # Each row: where it sits (first, with an id the Revert button points at), the chip, what it was and is now.
-    assert fold.index("{hunkPlace(hunk, draft)}") < fold.index("<ProvenanceTag value={hunk.provenance} />")
+    assert fold.index("{hunkPlace(hunk, draft)}") < fold.index("<ProvenanceChip value={hunk.provenance} tinted />")
     assert '<span className="sr-only">Before: </span>' in fold and "<del>" in fold
     assert '<span className="sr-only">Now: </span>' in fold and "<ins" in fold
     revert = open_tag(fold, "IconButton")
@@ -853,10 +867,13 @@ def test_step_three_change_rows_read_and_revert_one_by_one():
 
 def test_step_three_says_provenance_in_the_studios_words():
     src = _read(_STEP_THREE)
-    assert "PROVENANCE_CHIPS[value]" in src and "const PROVENANCE:" not in src
+    # One chip, the studio's: step 3 asks for it tinted.
+    assert "ProvenanceTag" not in src and "PROVENANCE_TONE" not in src and "const PROVENANCE:" not in src
+    assert "<ProvenanceChip value={value} tinted />" in src
     assert '"Yours"' not in src and '"From career history"' not in src
     review = _read("components/resume-editor/diff-review.tsx")
-    assert "export const PROVENANCE_CHIPS:" in review
+    assert "const PROVENANCE_CHIPS:" in review and "export function ProvenanceChip(" in review
+    assert "className={tinted ? PROVENANCE_TONE[value] : undefined}" in review
     assert 'name: "From your career history"' in review and 'user: { kind: "you",' in review
     # The header's count is its own badge, read as a number of changes.
     assert '{count === 1 ? "1 change" : `${count} changes`}' in src

@@ -85,8 +85,8 @@ export interface Job {
   /** The best base-resume score, list endpoint only; null when never scored. */
   best_ats_score?: number | null;
   /** The job lists only (services/stage.py): the rung the job sits on, and the open gap analysis
-   *  behind a `gaps` rung with its closed/listed counts. The detail sends them beside `job` (JobDetail;
-   *  lib/job-steps `jobWithStage`). Optional: an older backend omits them. */
+   *  behind a `gaps` rung with its closed/listed counts. The detail sends them beside `job` (JobDetail,
+   *  whose `job` leaves them out). Optional: an older backend omits them. */
   stage?: Rung;
   open_session_id?: UUID | null;
   gaps_done?: number;
@@ -192,7 +192,8 @@ export interface KnockoutScan {
 }
 
 export interface JobDetail {
-  job: Job;
+  /** The plain JobRead: the rung is not on it but beside it (below), so `detail.job.stage` does not compile. */
+  job: Omit<Job, "stage" | "open_session_id" | "gaps_done" | "gaps_total">;
   application: Application | null;
   knockout: KnockoutScan | null;
   /** Whether anything was recorded as filled into this job's form (the What was submitted tab). */
@@ -200,7 +201,7 @@ export interface JobDetail {
   /** The application's base resume's own name; null with no application or no name. Optional: an older backend omits it. */
   base_resume_name?: string | null;
   /** The rung the job page is on (services/stage.py), and the open gap analysis behind a `gaps` rung with its
-   *  closed/listed counts. Here, not on `job`: lib/job-steps `jobWithStage` puts them together. */
+   *  closed/listed counts. Here, not on `job`: lib/job-steps `jobStepsInput` reads them from the detail. */
   stage?: Rung;
   open_session_id?: UUID | null;
   gaps_done?: number;

@@ -5,7 +5,7 @@
  */
 import type { GapCounts } from "./gap-counts";
 import type { Rung } from "./next-step";
-import type { Application, Job, TailoringSession } from "./types";
+import type { Application, JobDetail, TailoringSession } from "./types";
 
 /** The tab values, kept so old deep links (`?tab=`) still land on a step. */
 export type StepKey = "job" | "fit" | "output" | "qa";
@@ -150,27 +150,6 @@ export function jobSteps(input: JobStepsInput): Step[] {
   });
 }
 
-/**
- * The detail's job with the stage on it. `GET /api/jobs/{id}/detail` sends the rung and the open gap analysis
- * beside `job`, not in it (the nested job is the plain JobRead), so a page that handed `detail.job` to
- * `jobStepsInput` saw every job as saved. Both job pages build the steps from this.
- */
-export function jobWithStage<J extends object>(detail: {
-  job: J;
-  stage?: Rung;
-  open_session_id?: string | null;
-  gaps_done?: number;
-  gaps_total?: number;
-}): J & Pick<Job, "stage" | "open_session_id" | "gaps_done" | "gaps_total"> {
-  return {
-    ...detail.job,
-    stage: detail.stage,
-    open_session_id: detail.open_session_id,
-    gaps_done: detail.gaps_done,
-    gaps_total: detail.gaps_total,
-  };
-}
-
 type ScoreRow = { phase: string; target_id: string; composite: number };
 type SessionRow = Pick<
   TailoringSession,
@@ -178,14 +157,16 @@ type SessionRow = Pick<
 >;
 
 /**
- * `jobSteps`'s input from what the job page already holds: the detail (`job`, `application` and its
+ * `jobSteps`'s input from what the job page already holds: the detail (its rung, `application` and its
  * resume's name), the job's score rows, the header's score pill, the job's gap analyses, and what the
  * page words itself (the skills count and the knock-out words, both the Job details card's own reading;
  * the standing text). `baseName` names a base resume; `countGaps` is lib/gap-counts `gapCounts`, passed in
  * so this file keeps only type imports.
  */
 export function jobStepsInput(a: {
-  job: Pick<Job, "stage" | "open_session_id" | "gaps_done" | "gaps_total">;
+  /** The detail itself: `GET /api/jobs/{id}/detail` sends the rung and the open gap analysis beside `job`, not in
+   *  it (JobDetail's `job` has no stage, so a page that read `detail.job.stage` saw every job as saved). */
+  rung: Pick<JobDetail, "stage" | "open_session_id" | "gaps_done" | "gaps_total">;
   application: Pick<Application, "id" | "base_resume" | "customized_json" | "pdf_path" | "pdf_pages"> | null;
   /** The detail's `base_resume_name` (null on an older backend: `baseName` names it then). */
   applicationResumeName: string | null;
@@ -200,8 +181,8 @@ export function jobStepsInput(a: {
   baseName: (slug: string) => string;
   countGaps: (gapIds: readonly string[], resolutions: SessionRow["resolutions_json"]) => GapCounts;
 }): JobStepsInput {
-  const { job, application, scoreRows, sessions, baseName } = a;
-  const stage = job.stage ?? "saved";
+  const { rung, application, scoreRows, sessions, baseName } = a;
+  const stage = rung.stage ?? "saved";
   const baseScoreOf = (slug: string) =>
     scoreRows.find((s) => s.phase === "base" && s.target_id === slug)?.composite ?? null;
   const top = scoreRows.filter((s) => s.phase === "base").sort((x, y) => y.composite - x.composite)[0];
@@ -210,7 +191,7 @@ export function jobStepsInput(a: {
   let base: JobStepsInput["base"];
   if (stage === "gaps") {
     // The open analysis's resume; the best base until the sessions list has loaded.
-    base = named(sessions.find((s) => s.id === job.open_session_id)?.base_resume ?? top?.target_id ?? null);
+    base = named(sessions.find((s) => s.id === rung.open_session_id)?.base_resume ?? top?.target_id ?? null);
   } else if (application && stage !== "saved" && stage !== "scored") {
     base = {
       name: a.applicationResumeName ?? baseName(application.base_resume),
@@ -232,7 +213,7 @@ export function jobStepsInput(a: {
     skills: a.skills,
     knockout: a.knockout,
     base,
-    openGaps: stage === "gaps" ? { closed: job.gaps_done ?? 0, total: job.gaps_total ?? 0 } : null,
+    openGaps: stage === "gaps" ? { closed: rung.gaps_done ?? 0, total: rung.gaps_total ?? 0 } : null,
     draftGaps: madeDraft
       ? a.countGaps(
           madeDraft.gaps_json.categories.flatMap((c) => c.gaps.map((g) => g.gap_id)),

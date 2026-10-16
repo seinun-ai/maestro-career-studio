@@ -164,7 +164,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    when the proposal has none; the job link; a ⋯ **More actions**: Queue in Agent inbox, Refresh details, Delete job). Under it
    four numbered steps (`components/job-steps.tsx`, `lib/job-steps.ts`): **Job**, **Resume and gaps**, **Tailored resume**,
    **Apply**, each with one line (a done step's receipt, a later step's hint), read from the detail's top-level `stage`
-   (`jobWithStage`). The stage's step opens, set once on load (step 1 while a proposal waits on you). A step with something to show
+   (`hooks/use-job-steps.ts`, shared with the gap page). The stage's step opens, set once on load (step 1 while a proposal waits on you). A step with something to show
    is a button (3: a draft or PDF; 4: an application), one with nothing plain text, never locked. `?tab=` keeps
    jd/fit/output/qa/submitted so deep links land. Step 1 (**Job**): the proposal's card, titled with its filer (`proposed_by`,
    worded by `lib/agent-name.ts`), only when it carries something (`proposalHasContent`), then a receipt row whose **View details**
@@ -841,8 +841,8 @@ citation. Priority lives in the item text, not in the ordinal.
 ## 12. Gotchas that have bitten before
 
 - **A detail's derived fields sit beside `job`** (2026-10-16): the job page read `detail.job.stage`, optional and absent, so every
-  job read as saved (step 2 always current) and still type-checked → the detail's `stage` and gap counts are top-level; read them
-  through `jobWithStage(detail)` (`lib/job-steps.ts`).
+  job read as saved (step 2 always current) and still type-checked → the detail's `stage` and gap counts are top-level, and
+  `JobDetail.job` is typed without them so `detail.job.stage` no longer compiles; `jobStepsInput` takes the detail as `rung`.
 - **A hidden tab stalled saves** (2026-10-13): TanStack v5 scoped mutations queue as paused and continue only while the tab
   is focused → serialize saves with a per-key promise chain (`lib/in-order.ts`), never a mutation scope.
 - **An update served the old version's pages** (2026-10-12, 0.10.0): Next writes `.next/server/route-cache` inside the

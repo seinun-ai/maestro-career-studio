@@ -48,6 +48,19 @@ function useFilledAnswers(jobId: string, active: boolean) {
   });
 }
 
+/** The receipt's load failure, with Try again: the full receipt and step 4's card say it the same way. */
+function FilledAnswersError({ query, className }: { query: ReturnType<typeof useFilledAnswers>; className?: string }) {
+  return (
+    <LoadErrorState
+      className={className}
+      title="Couldn't load what was submitted."
+      detail={loadErrorDetail(query.error)}
+      retrying={query.isFetching}
+      onRetry={() => void query.refetch()}
+    />
+  );
+}
+
 /**
  * What was submitted: every answer the Companion or a connected agent filled into this job's form,
  * the latest per question, with where it came from and what to check. Read-only.
@@ -63,16 +76,7 @@ export function JobSubmittedTab({
   onOpenTab?: OpenTab;
 }) {
   const query = useFilledAnswers(jobId, active);
-  if (isLoadFailure(query)) {
-    return (
-      <LoadErrorState
-        title="Couldn't load what was submitted."
-        detail={loadErrorDetail(query.error)}
-        retrying={query.isFetching}
-        onRetry={() => void query.refetch()}
-      />
-    );
-  }
+  if (isLoadFailure(query)) return <FilledAnswersError query={query} />;
   if (!query.data) return <Skeleton className="h-48 w-full" />;
   if (query.data.steps.length === 0) {
     return (
@@ -107,17 +111,7 @@ export function SubmittedLatest({
   onToggleReceipt: () => void;
 }) {
   const query = useFilledAnswers(jobId, active);
-  if (isLoadFailure(query)) {
-    return (
-      <LoadErrorState
-        className="py-4"
-        title="Couldn't load what was submitted."
-        detail={loadErrorDetail(query.error)}
-        retrying={query.isFetching}
-        onRetry={() => void query.refetch()}
-      />
-    );
-  }
+  if (isLoadFailure(query)) return <FilledAnswersError query={query} className="py-4" />;
   if (!query.data) return <Skeleton className="h-24 w-full" />;
   const { fields, total } = latestAnswers(query.data, LATEST_SHOWN);
   if (total === 0) return <p className="text-muted-foreground text-body-medium">Nothing filled yet.</p>;

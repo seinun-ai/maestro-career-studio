@@ -25,7 +25,7 @@ import {
   applyCoherenceProposal,
   CoherenceResults,
   type CoherenceState,
-  PROVENANCE_CHIPS,
+  ProvenanceChip,
   revertHunk,
   sideText,
 } from "@/components/resume-editor/diff-review";
@@ -40,7 +40,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ActorChip } from "@/components/visual";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import {
   ApiError,
@@ -64,26 +63,12 @@ import { cn } from "@/lib/utils";
 const MoreIcon = CONCEPT_ICONS.more;
 const TailorIcon = CONCEPT_ICONS.tailor;
 
-/** Each provenance's container pair; the words are the studio's (`PROVENANCE_CHIPS`). `llm` has none: it is the
- *  server's word for a change it could not attribute (an edit in the studio reads as one too), so calling it an AI
- *  rewrite would claim what nobody knows. */
-const PROVENANCE_TONE: Record<Exclude<ResumeDiffHunk["provenance"], "llm">, string> = {
-  kb_auto: "bg-success-container text-on-success-container",
-  user: "bg-primary-container text-on-primary-container",
-};
-
-function ProvenanceTag({ value }: { value: ResumeDiffHunk["provenance"] }) {
-  if (value === "llm") return null;
-  const { kind, name, title } = PROVENANCE_CHIPS[value];
-  return <ActorChip kind={kind} name={name} title={title} className={PROVENANCE_TONE[value]} />;
-}
-
 /** The header's tally for one provenance: its chip, then the count as its own badge ("3", read "3 changes"). */
 function ProvenanceCount({ value, count }: { value: ResumeDiffHunk["provenance"]; count: number }) {
   if (value === "llm" || count === 0) return null;
   return (
     <span className="inline-flex items-center gap-1">
-      <ProvenanceTag value={value} />
+      <ProvenanceChip value={value} tinted />
       <span className="bg-surface-container inline-flex h-5 items-center rounded-full px-1.5 text-label-small tabular-nums">
         <span aria-hidden="true">{count}</span>
         <span className="sr-only">{count === 1 ? "1 change" : `${count} changes`}</span>
@@ -577,7 +562,7 @@ function ChangesList({
                       <span id={placeId} className="text-muted-foreground text-body-small">
                         {hunkPlace(hunk, draft)}
                       </span>
-                      <ProvenanceTag value={hunk.provenance} />
+                      <ProvenanceChip value={hunk.provenance} tinted />
                     </div>
                     {before ? (
                       <p className="text-muted-foreground text-body-small">

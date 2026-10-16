@@ -1194,10 +1194,11 @@
   then stays, hidden (an answer being edited survives a look at another step). The header keeps the
   proposal's triage, the score pill, the StatusChip and the job link; the rare actions sit behind one ⋯
   (**More actions**): Queue in Agent inbox, Refresh details and Delete job, each with its confirm. The stage
-  is the detail's own `stage`, sent beside `job` (`jobWithStage`); the nested job carries none, and read alone
-  every job looked saved. Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_visual_surfaces.py`.
+  is the detail's own `stage`, sent beside `job`; the nested job carries none (`JobDetail.job` is typed without it),
+  and read alone every job looked saved. One hook, `hooks/use-job-steps.ts`, holds the steps' queries and words for
+  the job page and the gap page. Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_visual_surfaces.py`.
 - **Resume and gaps** (step 2, `components/resume-step.tsx`), inside one card: the Match score lead, then
-  `ResumeChips` (`components/resume-chips.tsx`), a group named "Base resume" of toggle chips with FilterChips'
+  `ResumeChips` (`components/resume-chips.tsx`; its options from `useResumeChipOptions`, shared with the gap page), a group named "Base resume" of toggle chips with FilterChips'
   semantics (`aria-pressed`, 28px, `label-medium`, a 12px leading Check and `secondary-container` when picked;
   square, name, score in `tabular-nums`, a `secondary` Best badge on the top one), sorted by score, the top 3
   then "N more" (`aria-expanded`), and ⋯ (**More actions for resumes**: Update scores, Restart gap analysis
@@ -1234,7 +1235,7 @@
   **Create PDF** before a PDF, **Continue to Apply** once one exists. Then **Changes (N)**, the resume diff keyed
   on the draft (`resumeDiffQuery` in `lib/api.ts`: `["resume-diff", id, updated_at]`, shared with the studio and
   the page's step line; the previous list stands in while a new draft's loads, and Revert and Apply wait for the
-  real one). The header tallies each provenance as the studio's chip (`PROVENANCE_CHIPS`: **From your
+  real one). The header tallies each provenance as the studio's chip (`ProvenanceChip tinted`: **From your
   career history**, **You**; an unattributed change has none, since the server cannot tell an AI rewrite from a
   hand edit) and a count badge. Each row: where it sits (`lib/resume-diff` `hunkPlace`), the chip, the old text
   in `<del>` and the new in `<ins>` with "Before:" and "Now:" for screen readers, and a **Revert this change**

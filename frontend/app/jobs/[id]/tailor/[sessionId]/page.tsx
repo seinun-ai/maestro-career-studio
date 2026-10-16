@@ -9,7 +9,7 @@ import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { useRouter } from "next/navigation";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CircleCheck, ChevronDown, Loader2, Wand2, Zap } from "lucide-react";
 import { toast } from "sonner";
 
@@ -25,10 +25,8 @@ import {
 } from "@/components/gap-analysis/resolution-controls";
 import { IconButton } from "@/components/icon-button";
 import { useConfirm } from "@/components/confirm-dialog";
-import { extractSkills } from "@/components/job-extracted-fields";
-import { knockoutNotChecked } from "@/components/job-knockout-card";
 import { JobSteps } from "@/components/job-steps";
-import { ResumeChips } from "@/components/resume-chips";
+import { ResumeChips, useResumeChipOptions } from "@/components/resume-chips";
 import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
@@ -36,16 +34,13 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ResumeTag, SegmentedBar } from "@/components/visual";
-import { useBaseResumeLabel, useBaseResumes } from "@/hooks/use-base-resume-label";
+import { useBaseResumes } from "@/hooks/use-base-resume-label";
+import { useJobSteps } from "@/hooks/use-job-steps";
 import { useResumeSwitch } from "@/hooks/use-resume-switch";
 import { couldnt, errorDetail, loadErrorDetail } from "@/lib/error-text";
-import { formatShortDate } from "@/lib/format-date";
 import { gapCounts } from "@/lib/gap-counts";
-import { historyStatusOf } from "@/lib/inbox-readiness";
 import { isOwnershipRefusal, jobOwnershipView } from "@/lib/job-ownership";
-import { scorePill, standingLine } from "@/lib/job-standing";
-import { jobSteps, jobStepsInput, jobWithStage, type Step, type StepKey } from "@/lib/job-steps";
-import { knockoutWords } from "@/lib/knockout-line";
+import type { StepKey } from "@/lib/job-steps";
 import { asIsOverDraftConfirm } from "@/lib/resume-pick";
 import { cn } from "@/lib/utils";
 import {
@@ -55,9 +50,6 @@ import {
   createApplicationFromBase,
   createTailoringSession,
   getTailoringSession,
-  listAtsScores,
-  listTailoringSessions,
-  resumeDiffQuery,
   saveResolutions,
   tailorSession,
 } from "@/lib/api";
@@ -68,8 +60,6 @@ import {
   type BaseResumeDetail,
   type GapCategory,
   type JobDetail,
-  type ProposalDetail,
-  type ProposalStatus,
   type Resolution,
 } from "@/lib/types";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
@@ -263,29 +253,12 @@ export default function TailorSessionPage({
     enabled: !!slug,
   });
 
-  // The job page's own queries (the same keys, so the cache is shared): the steps above the gaps read them as
-  // the job page does, and the resume chips are the base score rows.
+  // The job page's four steps from the job page's own queries (the same keys, so the cache is shared); this page is
+  // step 2. The resume chips are the base score rows, as on step 2.
   const application = jobDetail.data?.application ?? null;
-  const scoreRows = useQuery({
-    queryKey: ["ats-scores", jobId],
-    queryFn: () => listAtsScores(jobId),
-  });
-  const sessions = useQuery({
-    queryKey: ["tailoring-sessions", jobId],
-    queryFn: () => listTailoringSessions(jobId),
-  });
-  const resumeDiff = useQuery({
-    ...resumeDiffQuery(application ?? { id: "", updated_at: "" }, !!application?.customized_json),
-    placeholderData: keepPreviousData,
-  });
-  const proposalId = jobDetail.data?.job.proposal_id ?? null;
-  const proposalQuery = useQuery({
-    queryKey: ["proposal", proposalId],
-    queryFn: () => apiFetch<ProposalDetail>(`/api/proposals/${proposalId}`),
-    enabled: proposalId !== null,
-  });
-  const baseName = useBaseResumeLabel();
-  // The archived-inclusive list: a chip's colour, and whether this analysis's resume was archived.
+  const { scoreRows, sessions, baseName, steps } = useJobSteps(jobId, jobDetail.data);
+  const { baseRows, chips } = useResumeChipOptions(scoreRows.data ?? []);
+  // The archived-inclusive list: whether this analysis's resume was archived.
   const { data: allResumes } = useBaseResumes(true);
   // A chip opens that resume's newest open gap analysis, or starts one, after step 2's confirm.
   const switcher = useResumeSwitch({ jobId, application, sessions: sessions.data ?? [], replace: true });
@@ -807,64 +780,13 @@ export default function TailorSessionPage({
   const targets = baseResume.data ? buildPlacementTargets(baseResume.data.data) : null;
   const projects = baseResume.data ? enabledProjectNames(baseResume.data.data) : null;
 
-  // The job page's four steps, fed as the job page feeds them; this page is step 2.
-  const detail = jobDetail.data;
-  let steps: Step[] | null = null;
-  if (detail) {
-    const { job } = detail;
-    const scoreShown = scorePill(scoreRows.data ?? [], application?.id ?? null);
-    const standing = standingLine({
-      application,
-      appliedOn: application?.applied_at ? formatShortDate(application.applied_at) : null,
-      resumeName: application ? detail.base_resume_name ?? baseName(application.base_resume) : null,
-      tailored: scoreShown?.tailored === true,
-      hasFilledAnswers: Boolean(detail.has_filled_answers),
-      proposal: job.proposal_status
-        ? {
-            status: historyStatusOf(job.proposal_status as ProposalStatus, proposalQuery.data?.reason),
-            yourself: job.proposal_status === "rejected" && historyStatusOf("rejected", proposalQuery.data?.reason) === "submitted",
-            on: proposalQuery.data ? formatShortDate(proposalQuery.data.updated_at) : null,
-          }
-        : null,
-    });
-    const skills = extractSkills(job.extracted_json);
-    steps = jobSteps(
-      jobStepsInput({
-        job: jobWithStage(detail),
-        application,
-        applicationResumeName: detail.base_resume_name ?? null,
-        scoreRows: scoreRows.data ?? [],
-        scoreShown,
-        sessions: sessions.data ?? [],
-        skills: { total: skills.length, required: skills.filter((s) => s.requirement_level === "required").length },
-        knockout: knockoutWords(
-          detail.knockout?.status ?? null,
-          detail.knockout ? knockoutNotChecked(detail.knockout, job) : false,
-        ),
-        standing: !application && job.proposal_status === "rejected" && proposalQuery.isLoading ? "" : standing.text,
-        draftChanges: resumeDiff.data?.hunks.length ?? null,
-        baseName,
-        countGaps: gapCounts,
-      }),
-    );
-  }
-
-  // The chips are the base score rows, as on step 2; this analysis's resume is the picked one. Without one (an
-  // archived resume, or one this job's country leaves out), no chip is on and a line says why.
-  const baseRows = (scoreRows.data ?? [])
-    .filter((row) => row.phase === "base")
-    .sort((a, b) => b.composite - a.composite);
-  const chips = baseRows.map((row) => ({
-    slug: row.target_id,
-    name: baseName(row.target_id),
-    score: row.composite,
-    hue: allResumes?.find((r) => r.slug === row.target_id)?.color_hue,
-  }));
+  // The chips: this analysis's resume is the picked one. Without one (an archived resume, or one this job's country
+  // leaves out), no chip is on and a line says why.
   const sessionBase = session.data.base_resume;
   const sessionBaseArchived = allResumes?.find((r) => r.slug === sessionBase)?.archived_at != null;
   // A switch needs the job's application (its confirm) and the gap analyses (which one to open) first.
   const switchBusy =
-    !detail || !sessions.data || switcher.creating != null || tailorBusy || useAsIs.isPending ||
+    !jobDetail.data || !sessions.data || switcher.creating != null || tailorBusy || useAsIs.isPending ||
     startOver.isPending || !ownership.canWrite;
 
   return (

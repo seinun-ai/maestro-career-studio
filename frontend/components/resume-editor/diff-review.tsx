@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 // Each provenance as its register chip, for the studio's review mode and the job page's step 3 (one set of words).
 // The "llm" entry is never drawn: ProvenanceChip returns null for an llm hunk (an unattributed change), and the
 // entry only completes the Record over every provenance.
-export const PROVENANCE_CHIPS: Record<
+const PROVENANCE_CHIPS: Record<
   ResumeDiffHunk["provenance"],
   { kind: "careerHistory" | "you" | "ai"; name?: string; title: string }
 > = {
@@ -361,13 +361,20 @@ export function applyCoherenceProposal(
 
 // --- UI ----------------------------------------------------------------------
 
-function ProvenanceChip({ value }: { value: ResumeDiffHunk["provenance"] }) {
+/** Step 3's container pair for each provenance (`tinted`); the studio's review mode draws the plain chip. */
+const PROVENANCE_TONE: Record<Exclude<ResumeDiffHunk["provenance"], "llm">, string> = {
+  kb_auto: "bg-success-container text-on-success-container",
+  user: "bg-primary-container text-on-primary-container",
+};
+
+/** One provenance's chip, in the studio's review mode and on the job page's step 3 (`tinted`). */
+export function ProvenanceChip({ value, tinted = false }: { value: ResumeDiffHunk["provenance"]; tinted?: boolean }) {
   // "llm" is the server's default for a change it could not attribute
   // (resume_diff.attribute): an edit made here, or a change in the base resume
   // after this copy was made, read as "AI". Unknown says nothing.
   if (value === "llm") return null;
   const { kind, name, title } = PROVENANCE_CHIPS[value];
-  return <ActorChip kind={kind} name={name} title={title} />;
+  return <ActorChip kind={kind} name={name} title={title} className={tinted ? PROVENANCE_TONE[value] : undefined} />;
 }
 
 function HunkRow({

@@ -79,7 +79,11 @@ def test_each_resume_chip_and_the_breakdown_carry_the_resumes_square():
     # The chip names one resume: its square, then its name, which truncates with its whole value on the chip.
     assert "<ResumeSwatch hue={r.hue} />" in chips
     assert "title={r.name}" in open_tag(chips[chips.index("<button") :], "button")
-    assert "hue: allResumes?.find((r) => r.slug === row.target_id)?.color_hue," in _src("components/resume-step.tsx")
+    # Step 2 and the gap page build their chips with one hook, the colour from the archived-inclusive list.
+    assert "hue: colorOf(row.target_id)," in chips and "const colorOf = useBaseResumeColor();" in chips
+    assert "const { baseRows, chips } = useResumeChipOptions(scores.data ?? []);" in _src("components/resume-step.tsx")
+    gap = _src("app/jobs/[id]/tailor/[sessionId]/page.tsx")
+    assert "const { baseRows, chips } = useResumeChipOptions(scoreRows.data ?? []);" in gap
     summary = _src("components/score-summary.tsx")
     title = squash(summary[summary.index("<PopoverTitle") : summary.index("</PopoverTitle>")])
     assert "<ResumeTag hue={resume?.color_hue}" in title and 'title={name}' in title

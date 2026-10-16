@@ -18,6 +18,8 @@ def _read(rel: str) -> str:
 
 
 _JOB = _read("app/jobs/[id]/page.tsx")
+# The steps, the score pill, the proposal and the standing line: one hook, read by the job page and the gap page.
+_STEPS = _read("hooks/use-job-steps.ts")
 
 
 # ── A1: one status in the header ────────────────────────────────────────────
@@ -28,14 +30,15 @@ def test_the_header_shows_one_status_and_the_proposal_pill_reads_like_history():
     assert "STATUS_LABELS[proposalStatus]" in _JOB  # the fallback label only
     assert "STATUS_BADGE_CLASS[pill.styleStatus]" in _JOB
     # The pill's reason comes from the proposal itself (the same query the Overview card shares).
-    assert 'queryKey: ["proposal", proposalId]' in _JOB
+    assert 'queryKey: ["proposal", proposalId]' in _STEPS
+    assert "const { proposalQuery, baseName, scoreShown, standing, steps } = useJobSteps(id, data);" in _JOB
 
 
 # ── A2: a clear score ───────────────────────────────────────────────────────
 
 
 def test_the_score_pill_says_what_it_scores():
-    assert "const scoreShown = scorePill(scoreRows.data ?? [], application?.id ?? null);" in _JOB
+    assert "const scoreShown = scorePill(scoreRows.data ?? [], application?.id ?? null);" in _STEPS
     pill = _JOB[_JOB.index("{scoreShown ? (") :]
     pill = pill[: pill.index("{hasApp && application ? (")]
     assert "{scoreShown.label}" in pill and "(tailored)" in pill
@@ -48,10 +51,10 @@ def test_the_score_pill_says_what_it_scores():
 
 
 def test_the_page_says_where_the_job_stands_on_step_four():
-    assert "const standing = standingLine({" in _JOB
+    assert "const standing = standingLine({" in _STEPS
     # The line under the header is gone: its words are step 4's summary (lib/job-steps.ts, applySummary).
     assert 'data-testid="job-standing"' not in _JOB
-    assert "standing: standingText," in _JOB and 'if (state === "current") return i.standing;' in _read("lib/job-steps.ts")
+    assert "standing: standingText," in _STEPS and 'if (state === "current") return i.standing;' in _read("lib/job-steps.ts")
     # The old View PDF / What was submitted link row went: step 4's PDF line and its What was submitted card
     # (components/apply-step.tsx) say the same, and the card's link opens and jumps to the receipt.
     assert "View PDF" not in _JOB and "standing.pdf" not in _JOB
@@ -61,10 +64,10 @@ def test_the_page_says_where_the_job_stands_on_step_four():
     # The draft's pointer to the Companion and step 2 went with the line: the steps say what is next.
     assert "standing.pointer" not in _JOB and "Tailor and Apply in the Companion" not in _JOB
     # Built from data the detail response already carries: no new request.
-    assert "hasFilledAnswers: Boolean(data.has_filled_answers)" in _JOB
+    assert "hasFilledAnswers: Boolean(detail.has_filled_answers)" in _STEPS
     # The detail names the application's resume (backend test_jobs_router.py); an older backend's gap
     # falls back to the label hook.
-    assert "data.base_resume_name ?? baseName(application.base_resume)" in _JOB
+    assert "detail.base_resume_name ?? baseName(application.base_resume)" in _STEPS
 
 
 # ── A4: knock-outs only when they block ─────────────────────────────────────
@@ -249,7 +252,7 @@ def test_the_real_components_render_without_a_browser():
 
 
 def test_the_standing_line_reads_the_proposal_and_names_the_resume_without_a_score():
-    standing = _JOB[_JOB.index("const standing = standingLine({") : _JOB.index("const salary = formatSalary(")]
+    standing = _STEPS[_STEPS.index("const standing = standingLine({") : _STEPS.index("const standingText =")]
     assert "proposal: job.proposal_status" in standing and "historyStatusOf(" in standing
     assert "tailored: scoreShown?.tailored === true" in standing
     assert "bestBase" not in standing and "bestBaseRow" not in _JOB
@@ -259,7 +262,8 @@ def test_the_standing_line_reads_the_proposal_and_names_the_resume_without_a_sco
 def test_an_applied_job_has_no_delete_proposal_in_the_header():
     delete = _JOB[_JOB.index("const showDeleteProposal =") : _JOB.index("const triagePending")]
     assert 'standing.kind !== "applied"' in delete
-    assert _JOB.index("const standing = standingLine({") < _JOB.index("const showDeleteProposal =")
+    # The page waits for the hook's standing with the detail, so the header never reads it unset.
+    assert "if (isLoading || !data || !standing || !steps) {" in _JOB
 
 
 def test_a_skip_holds_its_pill_until_the_reason_loads():
@@ -305,4 +309,4 @@ def test_a_draft_application_never_reads_applied_from_its_old_proposal():
 
 
 def test_the_standing_line_holds_its_words_while_a_skips_reason_loads():
-    assert '!hasApp && proposalStatus === "rejected" && proposalQuery.isLoading ? "" : standing.text;' in _JOB
+    assert '!application && job.proposal_status === "rejected" && proposalQuery.isLoading ? "" : standing.text;' in _STEPS
