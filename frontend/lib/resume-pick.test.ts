@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { defaultResumePick, jobResumeState, switchConfirm } from "./resume-pick.ts";
+import { asIsOverDraftConfirm, defaultResumePick, jobResumeState, switchConfirm } from "./resume-pick.ts";
 
 const open = (base: string, at: string) => ({ base_resume: base, status: "open", created_at: at });
 const app = (over: Partial<{ id: string; base_resume: string; status: string | null; customized_json: unknown }> = {}) => ({
@@ -74,4 +74,33 @@ test("each state has its own words, and the same resume asks nothing", () => {
   assert.equal(switchConfirm({ ...base, state: "applied", action: "as_is" })?.confirmLabel, "Switch and use as is");
   assert.equal(switchConfirm({ ...base, state: null, action: "analyze" }), null);
   assert.equal(switchConfirm({ ...base, toSlug: "ds", state: "tailored", action: "analyze" }), null);
+});
+
+test("once applied, re-tailoring the same resume still asks; Use resume as is keeps its own words", () => {
+  const same = { from: "Data Scientist", to: "Data Scientist", fromSlug: "ds", toSlug: "ds" } as const;
+  const again = {
+    title: "Tailor Data Scientist again?",
+    description: "You applied with Data Scientist. Tailoring again replaces that resume and its PDF. Version history keeps them.",
+    confirmLabel: "Tailor again",
+  };
+  for (const action of ["analyze", "continue", "tailor"] as const) {
+    assert.deepEqual(switchConfirm({ ...same, state: "applied", action }), again, action);
+  }
+  assert.equal(switchConfirm({ ...same, state: "applied", action: "as_is" }), null);
+  // Before applying, the same resume asks nothing: the draft is still a draft.
+  assert.equal(switchConfirm({ ...same, state: "tailored", action: "tailor" }), null);
+  assert.equal(switchConfirm({ ...same, state: "as_is", action: "analyze" }), null);
+  // Another resume at Tailor: the switch words, labelled for the action.
+  assert.equal(
+    switchConfirm({ ...same, to: "ML Engineer", toSlug: "ml", state: "applied", action: "tailor" })?.confirmLabel,
+    "Switch and tailor",
+  );
+  assert.deepEqual(asIsOverDraftConfirm(false), {
+    title: "Replace the existing tailored draft?",
+    description:
+      "Using your base resume as is replaces this job's tailored resume and removes its PDF. Version history keeps the old one.",
+    confirmLabel: "Replace draft",
+  });
+  assert.equal(asIsOverDraftConfirm(true).title, "Replace the existing tailored resume?");
+  assert.equal(asIsOverDraftConfirm(true).confirmLabel, "Replace resume");
 });

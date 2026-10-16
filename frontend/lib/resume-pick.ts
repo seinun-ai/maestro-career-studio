@@ -67,18 +67,21 @@ export function jobResumeState(
   return application.customized_json ? "as_is" : null;
 }
 
-/** The action a switch confirm guards: its label names it. */
-export type SwitchAction = "analyze" | "continue" | "as_is";
+/** The action a switch confirm guards: its label names it. `tailor` is the gap page's Tailor and Quick tailor. */
+export type SwitchAction = "analyze" | "continue" | "as_is" | "tailor";
 
 const CONFIRM_LABELS: Record<SwitchAction, string> = {
   analyze: "Switch and analyze gaps",
   continue: "Switch and continue",
   as_is: "Switch and use as is",
+  tailor: "Switch and tailor",
 };
 
 /**
  * The confirm before acting on `to` while the job's resume came from `from` (names, not slugs). Null when
- * nothing would be replaced: no application, the same resume, or a draft with no resume yet.
+ * nothing would be replaced: no application, a draft with no resume yet, or the same resume, except once
+ * applied: tailoring the resume you applied with again replaces it, so the actions that re-tailor still ask
+ * (Use resume as is keeps its own confirm, `asIsOverDraftConfirm`).
  */
 export function switchConfirm({
   state,
@@ -95,7 +98,15 @@ export function switchConfirm({
   toSlug: string;
   action: SwitchAction;
 }): { title: string; description: string; confirmLabel: string } | null {
-  if (state == null || fromSlug === toSlug) return null;
+  if (state == null) return null;
+  if (fromSlug === toSlug) {
+    if (state !== "applied" || action === "as_is") return null;
+    return {
+      title: `Tailor ${from} again?`,
+      description: `You applied with ${from}. Tailoring again replaces that resume and its PDF. Version history keeps them.`,
+      confirmLabel: "Tailor again",
+    };
+  }
   // Use resume as is does not tailor: the sentence names what it does.
   const doing = action === "as_is" ? "Using another resume as is" : "Tailoring with another resume";
   const description =
@@ -107,4 +118,19 @@ export function switchConfirm({
         : `This job's resume is ${from}, used as is. ${doing} replaces it and removes its PDF. ` +
           "Version history keeps the old one.";
   return { title: `Switch to ${to}?`, description, confirmLabel: CONFIRM_LABELS[action] };
+}
+
+/**
+ * Use resume as is on the job's own resume over a draft: from-base replaces that draft, so it asks. Once
+ * applied, the draft is the resume you sent, and the words say so.
+ */
+export function asIsOverDraftConfirm(applied: boolean): { title: string; description: string; confirmLabel: string } {
+  const noun = applied ? "resume" : "draft";
+  return {
+    title: `Replace the existing tailored ${noun}?`,
+    description:
+      "Using your base resume as is replaces this job's tailored resume and removes its PDF. " +
+      "Version history keeps the old one.",
+    confirmLabel: `Replace ${noun}`,
+  };
 }

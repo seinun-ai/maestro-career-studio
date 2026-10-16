@@ -85,9 +85,12 @@ def test_quick_tailor_fills_only_what_its_settings_allow():
 
 
 def test_replacing_a_draft_says_the_pdf_goes_and_history_keeps_it():
-    page = _read(_GAP_PAGE)
-    assert "\"Using your base resume as is replaces this job's tailored resume and removes its PDF. \" +" in page
-    assert '"Version history keeps the old one.",' in page
+    # One set of words (lib/resume-pick.ts), used by the gap page and step 2.
+    words = _read("lib/resume-pick.ts")
+    assert "\"Using your base resume as is replaces this job's tailored resume and removes its PDF. \" +" in words
+    assert '"Version history keeps the old one.",' in words
+    for rel in (_GAP_PAGE, "components/resume-step.tsx"):
+        assert "asIsOverDraftConfirm(applied)" in _read(rel), rel
 
 
 def test_gap_counts_come_from_one_helper():
@@ -131,6 +134,40 @@ def test_the_gap_page_names_the_ats_score_and_every_action():
         assert f'"{word}"' in labels, word
     assert "→" not in page  # the score toast says "to"
     assert "`Match score: ${base.composite.toFixed(1)} to ${tailored.composite.toFixed(1)}" in page
+
+
+def test_the_gap_page_draws_step_two_with_the_resume_chips():
+    """The gap page is step 2 of the same four steps: under its header, `JobSteps` with step 2 shown (fed by
+    `jobStepsInput` from the job page's own queries) and `ResumeChips` with the analysis's resume picked. A chip goes
+    through `useResumeSwitch` (step 2's confirm, then the resume's open gap analysis or a new one, replacing the
+    address), after a save; the Tailor and Quick tailor confirm re-tailoring the resume you applied with."""
+    page = _read(_GAP_PAGE)
+    header_end = page.index("</header>")
+    stepper = page.index('<JobSteps steps={steps} current="fit" onSelect={(key) => void openStep(key)} />')
+    chips = page.index("<ResumeChips")
+    assert header_end < stepper < chips < page.index("<GapLocked value=")
+    chip_tag = open_tag(page[chips:], "ResumeChips")
+    assert "picked={sessionBase}" in chip_tag and "onPick={(pick) => void pickResume(pick)}" in chip_tag
+    assert "busy={switchBusy}" in chip_tag and "actions=" not in chip_tag
+    assert "const sessionBase = session.data.base_resume;" in page
+    assert "const switcher = useResumeSwitch({ jobId, application, sessions: sessions.data ?? [], replace: true });" in page
+    assert "if (await saveNow()) await switcher.openOrCreate(pick);" in page
+    # The job page's keys, so the cache is shared; the steps are fed as the job page feeds them.
+    for key in ('queryKey: ["ats-scores", jobId],', 'queryKey: ["tailoring-sessions", jobId],', 'queryKey: ["proposal", proposalId],'):
+        assert key in page, key
+    assert "jobStepsInput({\n        job,\n        application,\n" in page and "const standing = standingLine({" in page
+    # Steps 1, 3 and 4 open the job page at the tab it already honours; step 2 is this page.
+    assert 'const STEP_TABS: Partial<Record<StepKey, string>> = { job: "jd", output: "output", qa: "qa" };' in page
+    assert "if (tab && (await saveNow())) router.push(`/jobs/${jobId}?tab=${tab}`);" in page
+    # No switch before the confirm can be worded and the right gap analysis found.
+    assert "!detail || !sessions.data || switcher.creating != null || tailorBusy" in page
+    assert '? switcher.confirmSwitch(session.data.base_resume, "tailor")' in page
+    assert page.count("(await confirmTailorAgain()) &&") == 2  # Tailor and Quick tailor
+    assert "if (!(await confirm({ ...asIsOverDraftConfirm(applied), destructive: true }))) return;" in page
+    # An analysis whose resume has no chip says why.
+    assert "is archived, so it has no chip here." in page and "has no Match score for this job, so it has no chip here." in page
+    # Step 2's no-session panel says where Analyze gaps goes.
+    assert "It opens on its own page, with these steps\n                  on top." in _read("components/resume-step.tsx")
 
 
 def test_gap_rows_read_whole():
@@ -305,7 +342,8 @@ def test_a_resume_pick_is_a_preview_and_the_writes_confirm():
     as_is = step[step.index("const asIsClick = async") : step.index("asIsOnce({ baseResume, sessionId });")]
     assert 'if (switcher.switchWords(baseResume, "as_is")) {' in as_is
     assert 'if (!(await switcher.confirmSwitch(baseResume, "as_is"))) return;' in as_is
-    assert "} else if (application?.customized_json) {" in as_is and 'title: "Replace the existing tailored draft?",' in as_is
+    assert "} else if (application?.customized_json) {" in as_is
+    assert "if (!(await confirm({ ...asIsOverDraftConfirm(applied), destructive: true }))) return;" in as_is
     hook = _read("hooks/use-resume-switch.ts")
     assert "const state = jobResumeState(application, sessions);" in hook
     assert "return words == null || confirm({ ...words, destructive: true, returnFocus });" in hook
@@ -326,8 +364,14 @@ def test_the_switch_confirm_says_what_the_job_holds():
     assert "? `This job already has a tailored ${from} resume. ${doing} replaces that draft and removes its PDF. ` +" in words
     assert "`Version history keeps the old one. Answers you gave in the gaps for ${from} stay with it.`" in words
     assert ": `This job's resume is ${from}, used as is. ${doing} replaces it and removes its PDF. ` +" in words
-    for label in ('analyze: "Switch and analyze gaps",', 'continue: "Switch and continue",', 'as_is: "Switch and use as is",'):
+    for label in ('analyze: "Switch and analyze gaps",', 'continue: "Switch and continue",', 'as_is: "Switch and use as is",',
+                  'tailor: "Switch and tailor",'):
         assert label in words, label
+    # Once applied, re-tailoring the same resume still asks; Use resume as is keeps its own words, "resume" once applied.
+    assert 'if (state !== "applied" || action === "as_is") return null;' in words
+    assert "description: `You applied with ${from}. Tailoring again replaces that resume and its PDF. Version history keeps them.`," in words
+    assert 'confirmLabel: "Tailor again",' in words
+    assert 'const noun = applied ? "resume" : "draft";' in words and "title: `Replace the existing tailored ${noun}?`," in words
     result = run_node_test("lib/resume-pick.test.ts")
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -544,7 +588,7 @@ def test_the_inbox_explains_mcp_and_the_skill_once():
     ("rel", "sentence"),
     [
         ("components/job-knockout-card.tsx", "That doesn't mean you qualify."),
-        (_GAP_PAGE, "Version history keeps the old one."),
+        ("lib/resume-pick.ts", '"Version history keeps the old one.",'),
         ("components/resume-step.tsx", '"It replaces any tailored draft (Version history keeps it) " +'),
         (_GAP_PAGE, "Your changes here won&apos;t be saved."),
         (_GAP_PAGE, "You can review and undo each change afterward."),

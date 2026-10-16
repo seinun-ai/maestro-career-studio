@@ -179,13 +179,14 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    filled button, and **Use resume as is**; Update scores, Restart gap analysis, Score them anyway, Mark applied without tailoring
    and Import resumes and documents sit in ⋯. One application per job: an action on another base asks first, worded for what the
    job holds (`hooks/use-resume-switch.ts`). Shared warnings show once above the chips; with no base resume the step offers the import.
-5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions (add_keyword / user_input / attach_project / skip +
-   enable_entry / port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip for the document + a durable
-   `user_cannot_confirm` KB record written at SAVE time, so the claim is never re-asked — see §6 inv-provenance-no-decay)
-   autosaved debounced with replace=true semantics (omitted gap_ids are deleted server-side); KB-auto-resolved gaps arrive
-   pre-selected with provenance + Undo and a counting banner; optional per-session note (`user_prompt`, falls back into tailor()).
-   **Use resume as is** (visible at 0 addressed) → from-base + closes the session; confirms first if it would replace an existing
-   tailored draft.
+5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`, under step 2's stepper and resume chips (a chip opens that resume's gap
+   analysis, `useResumeSwitch`; re-tailoring the resume you applied with asks first): per-gap resolutions (add_keyword /
+   user_input / attach_project / skip + enable_entry / port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip
+   for the document + a durable `user_cannot_confirm` KB record written at SAVE time, so the claim is never re-asked — see §6
+   inv-provenance-no-decay) autosaved debounced with replace=true semantics (omitted gap_ids are deleted server-side);
+   KB-auto-resolved gaps arrive pre-selected with provenance + Undo and a counting banner; optional per-session note
+   (`user_prompt`, falls back into tailor()). **Use resume as is** (visible at 0 addressed) → from-base + closes the session;
+   confirms first if it would replace an existing tailored draft.
 6. **Tailor** — `POST /tailoring-sessions/{id}/tailor`: deterministic pre-ops → smart-model edit ops → keyword-survival and voice
    checks (§6 inv-resume-voice) → application + version row → draft-KBPoint write-back → session `tailored` → tailored score, one
    transaction (tailor() commits once at its end). The UI then lands in review mode (`?review=1`). Internals:

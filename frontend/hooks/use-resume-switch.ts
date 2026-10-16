@@ -13,10 +13,11 @@ import { jobResumeState, switchConfirm, type SwitchAction } from "@/lib/resume-p
 import type { Application, TailoringSession } from "@/lib/types";
 
 /**
- * The guard on every action that writes with a base resume other than the job's (step 2 today, the gap page's
- * resume chips in Task 11). A pick is only a preview; the action asks first when the job's resume would be
- * replaced (`lib/resume-pick.ts` words it for the job's state), then starts or opens the gap analysis.
- * `replace` navigates without a history entry (the gap page swapping one analysis for another).
+ * The guard on every action that writes with a base resume other than the job's, or re-tailors the one you
+ * applied with: step 2's actions, and the gap page's resume chips and Tailor. A pick on step 2 is only a preview;
+ * the action asks first when the job's resume would be replaced (`lib/resume-pick.ts` words it for the job's
+ * state), then starts or opens the gap analysis. `replace` navigates without a history entry (the gap page
+ * swapping one analysis for another).
  */
 export function useResumeSwitch({
   jobId,

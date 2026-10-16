@@ -35,7 +35,7 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { countryName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
-import { defaultResumePick } from "@/lib/resume-pick";
+import { asIsOverDraftConfirm, defaultResumePick } from "@/lib/resume-pick";
 import {
   ApiError,
   apiFetch,
@@ -205,15 +205,7 @@ export function ResumeStep({
     if (switcher.switchWords(baseResume, "as_is")) {
       if (!(await switcher.confirmSwitch(baseResume, "as_is"))) return;
     } else if (application?.customized_json) {
-      const ok = await confirm({
-        title: "Replace the existing tailored draft?",
-        description:
-          "Using your base resume as is replaces this job's tailored resume and removes its PDF. " +
-          "Version history keeps the old one.",
-        confirmLabel: "Replace draft",
-        destructive: true,
-      });
-      if (!ok) return;
+      if (!(await confirm({ ...asIsOverDraftConfirm(applied), destructive: true }))) return;
     }
     asIsOnce({ baseResume, sessionId });
   };
@@ -611,7 +603,8 @@ export function ResumeStep({
                 </p>
                 <p className="text-muted-foreground max-w-[70ch] text-body-medium">
                   Analyze gaps finds the skills this job asks for that the resume does not show. It fills what your
-                  career history can answer and asks you about the rest.
+                  career history can answer and asks you about the rest. It opens on its own page, with these steps
+                  on top.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Focusable while it starts: a natively disabled button dropped focus to <body>. */}

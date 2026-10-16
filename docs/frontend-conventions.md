@@ -1217,8 +1217,12 @@
   is) asks first through `hooks/use-resume-switch.ts`, which the gap page shares, in words for what the job
   holds (`switchConfirm`): a tailored draft (a `tailored` gap analysis made it), the base used as is, or the
   resume you applied with; the label names the action ("Switch and analyze gaps", "Switch and continue",
-  "Switch and use as is"). Use resume as is on the job's own resume over a draft keeps the gap page's
-  "Replace the existing tailored draft?" words, and opens step 3. Pinned by `test_frontend_jobs_honest_words.py`.
+  "Switch and use as is"). Once applied, re-tailoring the same resume (Analyze gaps, Continue, the gap page's
+  Tailor and Quick tailor) asks "Tailor X again?" too. Use resume as is on the job's own resume over a draft
+  asks "Replace the existing tailored draft?" (`asIsOverDraftConfirm`; "resume" once applied), and opens step 3.
+  The gap page draws the same `JobSteps` (step 2 shown; 1, 3 and 4 open the job page's `?tab=`) and
+  `ResumeChips` under its header, its resume picked; a chip opens that resume's open gap analysis or starts one
+  (`openOrCreate`, `router.replace`), saving first. Pinned by `test_frontend_jobs_honest_words.py`.
 - **Tailored resume** (step 3, `components/tailored-resume-step.tsx`), inside one card: a score strip on
   `surface-container-low` (`AtsComparePanel compact`: before → after, the `DeltaChip` and the subscores that moved,
   shown as "Keywords +21.3" and read as "Keywords up 21.3 points", `lib/ats-words` `subscoreMoves`), a **Score

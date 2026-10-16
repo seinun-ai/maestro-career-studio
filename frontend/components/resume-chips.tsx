@@ -20,8 +20,9 @@ export type ResumeChipOption = {
 };
 
 /**
- * The base resumes as a row of chips, one picked: step 2 of the job page, and the gap page (Task 11). A pick is a
- * preview: it changes what the step shows and never writes, so each chip is a toggle button (FilterChips'
+ * The base resumes as a row of chips, one picked: step 2 of the job page, and the gap page. On step 2 a pick is a
+ * preview: it changes what the step shows and never writes; on the gap page it opens that resume's gap analysis
+ * (`useResumeSwitch`). Each chip is a toggle button (FilterChips'
  * semantics: `aria-pressed`, 28px, a leading Check and `secondary-container` when on), one on at a time. Sorted
  * by score; the top 3 show, then "N more" reveals the rest, and the picked chip always shows. While `busy`, a chip
  * stays focusable (`aria-disabled`) and a press does nothing. `actions` sits at the row's right end (step 2's ⋯).
