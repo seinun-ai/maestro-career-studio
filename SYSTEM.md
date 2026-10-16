@@ -655,104 +655,30 @@ overflow moves to `docs/deferred.md` under this same contract, each item keeping
 
 1. Extra-section op **payloads** stay loosely typed (op *kinds* are one source, `schemas/resume_edit.py`):
    `add_extra_section` / `replace_extra_section` `value` is `dict[str, Any]`, validated in the service
-   (`resume_edit._validate_extra_section`, like `AddEntry`), so a bad extras payload is a 400, not a 422.
+   (`resume_edit._validate_extra_section`, like `AddEntry`), so a bad extras payload is a 400, not a 422. Do when `schemas/resume_edit.py` or `resume_edit._validate_extra_section` is next changed.
 2. One post-render readiness pipeline ("Ready to apply" gate: health, em-dash, pages, contact checks on the exact
    rendered artifact), consuming the shared rasterized preview + slim MCP `get_rendered_pdf` metadata. The JD-level
-   half (stated requirements vs profile) is the knock-out pre-scan, §5 step 3.
-3. Base-score staleness on from-base: re-score only when the base's updated_at is newer than the score row — never unconditionally.
-4. JD promoted-field correction before gap freezing (today only source_url is editable) + score provenance
-   (engine/config version) surfaced in the UI.
-5. Server-side pagination for the tracker (client caps at 500 rows and says so).
-6. Chat KB document provenance: `ChatAttachment` stores extracted text only, so a chat-added document never becomes a
-   KB source document — persist bytes, or hand chat a `kb_ingest_document` tool.
-8. Agentic job-search phase 2: JobBoard registry (kind/tags/last_checked), SavedSearch model, Job triage state,
-   cross-session search-run logging.
-10. Work-auth warning CODES: `services/job_search_brief` still reads the two legacy keys and pattern-matches loose
-    strings in `warnings[]`; it should understand the typed `WorkAuth` shape.
-12. Extension identity-combobox reconciliation (ARIA-widget overwrite is riskier), and block-scoped
-    education-vs-employment rule matching (`not:` label guards miss unheaded education containers).
-13. Quick-tailor: derive `applied` from the committed resume DIFF, not planned intent; employment-blocks v2.
-14. Telemetry v2: option-set fingerprint + normalization; capture-session record for per-site/per-kind saturation;
-    failure-count ranking + Analytics drill-down/export; label/option-text redaction; summary pagination.
-15. Typst phase 2 (the LaTeX retirement itself is §13): `typst query` AST introspection over source-text capability heuristics; web engine
-    picker; in-product .tex→Typst conversion (expose `backend/scripts/template_parity.py --compare` as a backend tool).
-16. Onboarding intake: entity resolution ACROSS kinds (a certificate merges into its experience entity, not a
-    sibling); a re-runnable "import more"; bounding LLM cost (file cap of 10 in `services/kb_import`).
-17. ATS follow-ups: (a) alias/adjacency vocabulary via an OFFLINE human-gated miner over stored `extracted_json`,
-    guarded by `SkillMatcher._tokens_contained`; (b) education-as-evidence stays OFF pending a dot-stripping degree
-    normalizer; (c) lexical-vs-semantic cert attribution, 1 row in 6,993 — re-check if it grows; (d) stamp `as_of` +
-    `jd_extraction_hash` on `AtsScore` and add both to `compare()`'s guard.
-19. Auto-apply follow-ups: `source` threading through the explore builders; Telegram consent channel (rejected for
-    v1); extension-less CDP fill (HARD constraint: backend CORS must never admit ATS/web origins).
+   half (stated requirements vs profile) is the knock-out pre-scan, §5 step 3. Do when one of its checks (health, em-dash, pages, contact) is next changed or a third surface reads them.
+13. Quick-tailor: derive `applied` from the committed resume DIFF, not planned intent; employment-blocks v2. Do when `applied` disagrees with the committed resume diff, or employment blocks are next changed.
 20. `extra_sections` remainder: calibrate the `extra_only` multiplier; nested extra-section entry/bullet ops are
-    unbuilt (a bullet op would make the health check's custom-section suggestions appliable, not copy-only).
-21. MCP onboarding follow-ups: `near_duplicate_of` hints in the ingest report (normalized-distance vs existing points, so the agent can
-    retire one copy without the LLM clusterer); a batch `sources` variant of `kb_ingest_resume` (single-source calls make profile seeding
-    order-dependent); a consent story for `_seed_profile`/`_merge_skills` — profile contact and skills have no draft state yet compose onto
-    EVERY base; `enabled: false` entries still ingest (LLM-path parity, revisit).
-22. Guided Apply follow-ups (design doc has R2 stepper + R3 vault): checkbox collection needs its own safe design (group-level collection,
-    legend-level policy screening, mirroring radios; `skipped_checkbox` holds until then); per-ATS selector blueprints; the essay path onto
-    qid-keyed `/choose`; `guidedIsListboxButton` stays looser than the two pinned strict discriminators (it rechecks vetted elements only).
-23. **Some §6 invariants have no enforcement pin** (`unpinned` in `.system_md_enforcement.json`): when next working in
-    one of those areas, add the pin or demote the rule to a convention note.
-24. Surface `schemas/job_extraction._coerce_enum` warnings through the jobs-ingest response, so `store_extracted_jd`
-    callers see that input X was stored as `unstated` (audit 2026-08-22, finding A1).
+    unbuilt (a bullet op would make the health check's custom-section suggestions appliable, not copy-only). Do when the `extra_only` multiplier is calibrated or a custom-section suggestion has to be appliable.
 25. SQLite has one write lock, and two transactions hold it across LLM calls: `kb_consolidation.consolidate` (flush, one LLM call per
     entity, one commit — `seeding.seed_career_kb` relies on that via `commit=False`) and `tailoring_session.create_session` with enrichment
     (score flush + supersede UPDATE, then the call). A concurrent writer waits `busy_timeout` (30 s), then fails "database is locked". Fix:
-    compute every LLM result first, then write in one short transaction, keeping the seeder's `commit=False` contract.
-26. Tailored-studio adoption gaps (`TailoredResumeStudio`): (a) two Saves in one refetch window, the second returning
-    to adopted content, read as foreign (`onSaved` queues no key equal to `adoptedKey`): a false "changed outside the
-    editor" banner; (b) the parent-held `templateId` never re-syncs from the server, so it survives Rebuild and Load
-    latest, and a foreign template-only change reads as an unsaved local edit.
-27. `FullscreenEditorPage` is `h-dvh` (both studios, the template editor), and `VersionBanner` renders above it in
-    `SidebarGutter`, so the page overflows by the banner's height whenever the banner shows.
-28. Dark `--ring` on `--primary-container` (the FAB) is 2.88:1, so that surface is not in `_RING_SURFACES` (1.4.11).
-29. Focus lands on `<body>` on Escape from the <768px sidebar sheet (which stays open after a nav tap) and after any
-    client-side link navigation. `Button nativeButton={false} render={<a>}` announces a link as a button (~40 sites,
-    21 files): use `buttonVariants` on a plain `<a>` or `GuardedLink`, the sidebar's pattern.
-30. Raw keys or jargon still reach the user or an agent: MCP `explore_*` results carry role slugs with no `role_label`; the Assistant's
-    Edited and project cards call an application target only "tailored resume"; `resume_diff.attribute` labels any unmatched change `"llm"`
-    (the Review changes chip is hidden for it; an `"unknown"` value would change the endpoint's response).
-32. Small UI gaps: `/base-resumes/<unknown>/health` shows a skeleton ~7 s before its error (the 404 takes react-query's three default
-    retries; `app/providers.tsx` sets no `retry`); `/templates`' stale-chip tooltip sits under `GalleryCard`'s `z-10` stretched link; three
-    hint/control pairs keep hardcoded ids (`new_id_hint`/`new_id_error`, `kb-profile-notes-hint`, `job-preferences-locations-hint`); Escape
-    out of the job Details date field blur-saves `applied_at: null`; an Assistant edit card's Discard stays clickable while Apply runs; a
-    failing settings autosave toasts once per keystroke; a failed send in a NEW chat leaves an "Untitled chat" (the session is created
-    before the message); the proposal's Overview card shows "expires" on a Queued proposal, which never expires.
-33. inv-render-fallback-explained gaps: `PUT /base-resumes/{slug}` commits, then a pdflatex failure is a 500 over the
-    saved change; `POST /{slug}/render` answers 500, not 400, on a generic failure; the preview-page route's unlocked
-    `exists()` can race a re-render; `STARTER_SOURCE` fails on a blank email with a link present.
-34. A model tested with no key is stored as unable to do anything: `NO_KEY_MESSAGE` is not among
-    `llm_capabilities._UNREACHABLE_SIGNS`, so the probe counts it as reached and saves text/json/tools all No, and
-    `require` then blocks the Assistant until the model is tested again after a key is added.
+    compute every LLM result first, then write in one short transaction, keeping the seeder's `commit=False` contract. Do when "database is locked" appears under a consolidation or an enriched session.
 35. Settings seed race: `text_settings.get_text` lazily INSERTs a missing `Setting` row and commits, so two first
     reads at once both insert and one fails on the key; the commit also ends an open transaction (hence `POST
-    /api/proposals` reads `get_settings` before `begin_write`). Seed at startup or insert-or-ignore.
-37. ATS reads "Mon YYYY" dates only (`resume_indexer.parse_month_year`): "2021-03", "03/2021", "2021" leave a job
-    undated (the UI says so). More formats move scores: calibrate first (§9 `ats_calibration`).
-38. A double-clicked "Tailor resume" opens and closes its confirm; with the backend down, every card on Settings,
-    Analytics and Career repeats one error (a page-level message needs a shared mechanism).
-39. Windows is unverified end to end: install, update, Companion load from `\\wsl.localhost\...` (GETTING_STARTED
-    gives a copy-to-`C:` fallback), `.mcpb` on Windows Claude Desktop, and the WSL upload host root.
-40. Companion reliability: ARIA label resolution, retry identity, unmatched combobox discovery, live-option decisions,
-    popup ownership and committed-selection verification remain open. Reproductions and Jev-first proposal: [extension
-    research report](docs/reports/2026-09-25-extension-reliability-research.md).
-41. Health check follow-ups: one-at-a-time question mode; repeated-opener notes; a rubric check on tailored drafts; a dispute MCP tool
-    (disputes are web-only); a **Not right?** reply on a row queued for Write is overwritten by its draft; a hand-set "Shows a result"
-    leaves the report, so Done can't reset it; rename `BaseResumeDetail.version_number` to `edit_version_number`.
-42. Answer trust follow-ups: fix-and-learn from the receipt; the auto-submit preview; a "What Maestro knows about you"
-    page; a JD-extracted graduation/enrollment knock-out; `RECORD_NEVER` folded into `NEVER_FILLED`; receipt capture
-    across a full-page navigation and for a manual Attach press. Phase-4 source limits: `docs/entities/filled-answers.md`.
-43. "In N resumes" (`services/career_kb.used_in_bases`) reads `kb_port_log`, which is append-only: it means "added to or came
-    from", so it can overcount; `create_from_kb` and base duplication write no rows, so those bases are missed.
+    /api/proposals` reads `get_settings` before `begin_write`). Seed at startup or insert-or-ignore. Do when two first reads race on a `Setting` row, or a startup seeder is added.
 44. Companion run limits left on purpose: a robot-trap option inside a real checkbox/radio group (shared name) is not filtered
     (honeypots are standalone text boxes); sync's duplicate resolution that keeps the laptop's twin drops the other copy's
     `apply_url`, and a replica's link is never sent to its owner; a password-only second sign-in screen parks (`no_email`); technique
     cards for group, select and date widgets are never reached (the adaptive step runs for popup and search only); a page with no
     heading never reads as a rejected Next, `heldValues` misses a select's shown text and a custom combobox, and the hand-attached-file
     check reads the run's own frame only; the run list, Queue view and parallel tabs wait for Phase 3 (`docs/plans/2026-10-10-companion-queued-run.md`);
-    the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits".
+    the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits". Do when Phase 3 (run list, Queue view, parallel tabs) is built or a listed limit is reproduced.
+
+The other 31 items (3–6, 8, 10, 12, 14–17, 19, 21–24, 26–30, 32–34, 37–43) live in [`docs/deferred.md`](docs/deferred.md), each keeping its number and carrying its trigger; code
+citing "§11 item N" for one of them lands there.
 
 ## 12. Gotchas that have bitten before
 

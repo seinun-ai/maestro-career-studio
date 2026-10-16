@@ -55,7 +55,7 @@ LEDGER = ROOT / ".slopledger.json"          # sidecar: baselines live under "sys
 ENFORCEMENT_MAP = ROOT / ".system_md_enforcement.json"
 
 # Reference tier — extracted from the root file, same contract, same checks.
-REFERENCE_GLOBS = ("docs/entities/*.md", "docs/agent-surfaces.md", "docs/frontend-conventions.md")
+REFERENCE_GLOBS = ("docs/entities/*.md", "docs/agent-surfaces.md", "docs/frontend-conventions.md", "docs/deferred.md")
 
 LEVEL = "large"
 
