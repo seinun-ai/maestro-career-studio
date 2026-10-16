@@ -156,7 +156,7 @@ Less hunting, more applying.
 - **Notes under a field.** The answered list and **Check before you submit** show a short fixed note
   under a field name: "Drafted from your history: read it", "Day set to the 1st".
 - **Four numbered steps on the job page**, where its five tabs were: **Job** (the job's details and
-  the knock-out check behind **View details**), **Resume and gaps** (resume chips, a one-line score
+  the knock-out check, open by default; **Hide details** folds them), **Resume and gaps** (resume chips, a one-line score
   with a Score breakdown, **Analyze gaps** or **Continue gap analysis**, **Use resume as is**),
   **Tailored resume** (the before and after score, the changes tailoring made with a Revert on each,
   **Create PDF**, the PDF card) and **Apply** (the job post link, the questions, the cover letter, what
