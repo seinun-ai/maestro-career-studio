@@ -1881,7 +1881,8 @@ def record_decision(proposal_id: str, fit: dict, application_id: str | None = No
     """Record user decision when proposal is in needs_decision state. Resolves back to
     pending_review. application_id may be omitted; the backend then links the job's
     application on fit.chosen_base when there is one, else the job's one application
-    (409 only when the job has no application)."""
+    (409 only when the job has no application); an automatic link sets fit.chosen_base
+    to the linked application's resume."""
     return _client.record_decision(
         proposal_id, fit=fit, application_id=application_id
     )

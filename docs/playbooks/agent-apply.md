@@ -135,8 +135,9 @@ declines are posting-scoped and permanent; there is no company cooldown.)
      `propose_application` with `application_id` to late-link while still in
      an open status. `record_decision` may omit `application_id`; the backend
      then links the job's application on `fit.chosen_base` when there is one,
-     else the job's one application. It returns 409 only when the job has no
-     application; return to safe tailoring and retry rather than inventing a link.
+     else the job's one application, and sets `fit.chosen_base` to the linked
+     application's resume. It returns 409 only when the job has no application;
+     return to safe tailoring and retry rather than inventing a link.
 3. **Count and respect refusals:** increment the run counter only when
    `propose_application` creates a new proposal (HTTP 201). An existing open
    proposal returns 200 with the same ID — resume it, do not count again.
