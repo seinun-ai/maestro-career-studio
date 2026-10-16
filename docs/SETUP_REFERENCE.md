@@ -138,6 +138,11 @@ using every feature daily, has cost under **$2**. (The
 [Gemini setup](USING_MAESTRO.md#5-choose-your-models-deliberately) is faster and costs under 3¢
 per application.)
 
+One cost is not in that table. With full automation on, the Companion's **Think
+when stuck** calls your Reasoning model only when an Apply run is stuck on a
+page. By default that is your provider's strong model, which costs a few cents
+a round; **Settings › AI & models › Reasoning model** takes a cheaper one.
+
 **Your key stays with you.** It's stored on your computer and sent only to the
 AI service you configured. The app never shows a saved key back; its logs never
 record keys, and record your prompts only if you turn that on.
