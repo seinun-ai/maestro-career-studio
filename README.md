@@ -41,16 +41,16 @@ Maestro tailors it from your whole career history in under a minute, and every b
 
 ## Give your AI your career
 
-Connect Claude, ChatGPT or Codex (`maestro connect`) and it gets your career history, your resumes and your jobs. Then just ask.
+Connect Claude, Codex or the ChatGPT desktop app and your assistant gets your career history, your resumes and your jobs. Then just ask.
 
 | | You ask | What happens |
 |---|---|---|
-| **Extract** | "Here's a posting. Should I even apply?" | It saves the job, scores every one of your resumes against it and flags knock-outs like visa or years. |
+| **Extract** | "Here's a posting. Should I even apply?" | It saves the job, scores your resumes against it and flags knock-outs like visa or years of experience. |
 | **Maintain** | "I shipped the fraud model this quarter. Add it." | A new bullet, as a draft you approve, that every resume can use. |
 | **Maintain** | "Make me a resume for fintech ML roles in the UK." | A specialist resume built from your history, targeted to that role and country. |
 | **Hunt** | "Every morning, find new ML roles that fit and file the good ones." | The job-hunt skill files them to your Agent inbox. You queue or skip each one. |
 | **Hunt** | "Which skills keep showing up that I don't have?" | The gaps across every job you saved, most frequent first. |
-| **Apply** | "Tailor this one, walk me through the gaps, then make the PDF." | It asks about each gap instead of inventing, shows every change as a diff and renders the PDF. |
+| **Apply** | "Tailor this one, walk me through the gaps, then make the PDF." | It asks about each gap instead of inventing, keeps every change as a diff you can undo and renders the PDF. |
 | **Apply** | "Fill the applications I queued. Show me each one before it goes." | Nothing is submitted without your yes, unless you turn on full automation. |
 
 That is 88 tools and ready-made skills for a daily hunt, an apply run and email status: see the [MCP guide](backend/mcp_server/README.md).
