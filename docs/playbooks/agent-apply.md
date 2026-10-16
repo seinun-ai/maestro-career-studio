@@ -155,7 +155,9 @@ declines are posting-scoped and permanent; there is no company cooldown.)
    tailoring replaces it). Never overwrite it; from `pending_review` call
    `request_decision`, from `accepted` or `approved` call
    `report_failure(proposal_id, reason=...)` (to `needs_human`). A draft on the
-   `fit.chosen_base` the user chose in `needs_decision` is the base to tailor with.
+   `fit.chosen_base` the user chose in `needs_decision` is the base to tailor with,
+   and a tailor with that chosen base, after the question named the draft it
+   replaces, is the user's own decision, not an overwrite.
 
 ## Triage and the accepted queue (2026-08-01)
 
@@ -199,8 +201,9 @@ identity.
   (and not the user's `fit.chosen_base`), `report_failure(proposal_id,
   reason=...)` and leave it for the user: `request_decision` is refused (409)
   from `accepted`.
-- `needs_decision`: if no durable `fit.chosen_base` exists, ask the user again.
-  Once the choice is durable, tailor with that base (a job has one application;
+- `needs_decision`: if no durable `fit.chosen_base` exists, ask the user again;
+  when the job already has a draft on another base, the question names it
+  ("the job's draft is on A; choosing B replaces it"). Once the choice is durable, tailor with that base (a job has one application;
   tailoring with another base resume replaces its draft, version history keeps
   the old one), then retry `record_decision` with the updated `fit` and optional
   `application_id`; resume from `pending_review`.

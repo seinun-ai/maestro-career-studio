@@ -174,11 +174,16 @@ def test_apply_execution_never_tailors_over_a_draft_on_another_base():
     assert "from `accepted` or `approved`, `report_failure(proposal_id, reason=...)`" in check
     assert "from `pending_review`, `request_decision`" in check
     assert "`fit.chosen_base` the user chose in `needs_decision`" in check
+    # The one case line 34 allows: after the needs_decision question named the draft, a tailor with the chosen
+    # base is the user's decision, so the pre-check cannot send the agent back to the user in a loop.
+    assert "after the question named the draft it replaces, is the user's own decision, not an overwrite" in check
+    assert "the question names it" in text
     playbook = " ".join(
         (Path(__file__).resolve().parents[2] / "docs" / "playbooks" / "agent-apply.md").read_text().split()
     )
     assert "from `pending_review` call `request_decision`, from `accepted` or `approved` call `report_failure(" in playbook
     assert "`request_decision` is refused (409) from `accepted`" in playbook
+    assert "the question names it" in playbook and "is the user's own decision, not an overwrite" in playbook
 
 
 def _card_text(name, **meta):
