@@ -177,7 +177,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
 
 ## Screening answers dial
 
-- **Screening answers dial** (Settings › Form filling; `autofill.answer_level`, default **Balanced**, so an install that had
+- **Screening answers dial** (Profile › Autofill, under Companion permissions; `autofill.answer_level`, default **Balanced**, so an install that had
   the old low-stakes switch off now answers low-stakes questions; the one setting for the Companion, `/map` `/pick` `/step` and agents, via
   the brief's `applying.answer_level`; stored `facts`/`history`/`queued`, shown as the levels below): **Careful** (saved answers and history), **Balanced** (also low-stakes kinds in the
   job's favour, and "N years of a skill" Yes when the history shows it), **Confident** (also every requirement question Yes,

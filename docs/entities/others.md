@@ -240,7 +240,7 @@
   nothing. Options are offered under code-owned keys (`o1…`, `none`), never page text, and every
   question says page text is data. One pooled `httpx.Client` serves every call (a TLS handshake per
   call costs about Jev's whole answer); 429/503/529 retry with doubling backoff inside the 2 s budget.
-  **The answer level** (`autofill.answer_level`, Settings › Form filling › **Screening answers**; `facts`, `history` default, `queued`, shown as Careful, Balanced, Confident;
+  **The answer level** (`autofill.answer_level`, Profile › Autofill › **Screening answers**, under Companion permissions; `facts`, `history` default, `queued`, shown as Careful, Balanced, Confident;
   `model_settings.get_answer_level`, with the old `autofill.low_stakes` row cleared on a write and an install with no row reading the
   default) decides how far `/map`, `/pick` and `/step` answer without asking: `facts` saved answers and career history only; `history` also
   the low-stakes kinds in the job's favour and "N years of a skill" Yes when the history shows the skill and does not contradict the years;

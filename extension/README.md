@@ -83,11 +83,11 @@ at to your local Maestro CS app.
   from your career history and the job, in your own voice, about 120 words (or the
   length the question names). The row says "Drafted from your history: read it".
   It is never saved as a standing answer and never submitted for you; edit it in
-  the page and press **Resume** to keep your version. **Careful** (Settings ›
-  Form filling) turns drafting off, and pay, work authorization, demographic,
+  the page and press **Resume** to keep your version. **Careful** (Profile ›
+  Autofill › Screening answers) turns drafting off, and pay, work authorization, demographic,
   background and "have you worked here" questions are never drafted.
 - **Safe defaults for questions your profile cannot answer.** From **Balanced**
-  up, a Yes/No about membership or relatives at the company is answered
+  up (the **Screening answers** setting in Profile › Autofill), a Yes/No about membership or relatives at the company is answered
   No (Not applicable when offered), and willingness to a standard step (background
   check, drug test, references, I-9, documents) or basic means (transport,
   internet) is answered Yes, and a spouse's or household member's military service

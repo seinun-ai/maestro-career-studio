@@ -2115,7 +2115,7 @@ footer alone).
 
 ### Screening answers
 
-`autofill.answer_level` (Settings › Form filling; `facts` | `history` | `queued`, default `history`) is read by `/map`, `/pick` and
+`autofill.answer_level` (Profile › Autofill › Screening answers, in the Companion permissions block; `facts` | `history` | `queued`, default `history`) is read by `/map`, `/pick` and
 `/step` (the same level in each prompt), by the Companion and by agents through the Job Search Brief's `applying.answer_level`. The
 protected list (work authorization and sponsorship, salary, EEO, criminal or background history, termination or discipline, agreements, debarment, security
 clearance and agency employment, signatures, attestations and authorization boxes, licences and certifications, unsupported education or experience claims)
