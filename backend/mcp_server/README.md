@@ -205,8 +205,8 @@ Each tool's own description (which your assistant sees) has the full details.
 - `get_job_search_brief`: your profile, constraints, resume summaries, sync status (`enabled`, `role`) and an `applying` block (`answer_level`: your Screening answers setting, `facts`, `history` or `queued`); call first in a job-search chat.
 - `sync_now`: ask the always-on copy to sync now; returns the round's outcome and per-step counts. On your laptop, it explains that your bot runs the sync; with sync off, it says "Sync isn't set up."
 - `find_job_by_url`: check whether a posting is already saved.
-- `store_extracted_jd`: save a job. Your assistant fills in the job's details in the format the tool describes.
-- `list_jobs`, `get_job`: saved jobs (a short paginated list, then one job in full), with ownership to identify jobs owned here and replicas.
+- `store_extracted_jd`: save a job. Your assistant fills in the job's details in the format the tool describes. Saving scores the job against every base resume you can pick for it.
+- `list_jobs`, `get_job`: saved jobs (a short paginated list, then one job in full), with ownership to identify jobs owned here and replicas. Each job carries its `stage`: `saved`, `scored`, `gaps`, `tailored`, `pdf_ready`, `applied` or `closed`.
 - `list_referrals`: referral contacts.
 
 **Tracking**
@@ -231,9 +231,9 @@ Each tool's own description (which your assistant sees) has the full details.
 - `compare_ats`: before/after scores for a tailored application.
 - `create_tailoring_session`, `list_tailoring_sessions`, `get_tailoring_session`, `close_tailoring_session`: start, find, resume or abandon a gap walkthrough. These are the same sessions as the web app's gap page, so you can start in one and finish in the other.
 - `resolve_gaps`: save your answer for each gap (add a keyword, describe real experience, attach a project, skip, or "can't confirm" so it's never asked again).
-- `tailor_session`: turn your answers into a tailored application and show the before/after score.
+- `tailor_session`: turn your answers into a tailored application and show the before/after score. Edits your assistant writes itself must read in first person ("Built X"); a third-person line is refused with an error naming it.
 - `quick_tailor`: fill the gaps from your saved quick-tailor profile instead of walking them one by one.
-- `tailor_application`: create a tailored application from a base resume with the edits your assistant chose.
+- `tailor_application`: tailor the job's one application from a base resume with the edits your assistant chose. It replaces the draft and takes the new base; status, notes and answers stay, and the old PDF is removed.
 - `edit_application`: make a further fix to a tailored application, keeping earlier edits.
 
 Scoring compares your resume with the job using fixed rules plus a small model
