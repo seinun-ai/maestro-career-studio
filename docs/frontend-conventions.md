@@ -1199,8 +1199,8 @@
   `ResumeChips`, a radio group named "Base resume" of 32px round chips (a label over a visually hidden radio:
   square, name, score in `tabular-nums`, Best on the top one; picked is `secondary-container` with a leading
   Check), sorted by score, the top 3 then "N more" (`aria-expanded`), and ⋯ (**More actions for resumes**:
-  Update scores, Score them anyway, Mark applied without tailoring until the job is applied, Import resumes
-  and documents). The pick defaults to the newest open gap analysis's resume, else the application's, else the
+  Update scores, Restart gap analysis while the picked resume has an open one, Score them anyway, Mark applied
+  without tailoring until the job is applied, Import resumes and documents). The pick defaults to the newest open gap analysis's resume, else the application's, else the
   best match. Under them one line on `surface-container-low`: the score out of 100, Skills covered m of n, the
   Weakest subscore (none when all are equal) and a **Score breakdown** popover (the subscores, the skills meter,
   the Target pills, the dates note, that resume's own warnings; warnings every resume shares, and the

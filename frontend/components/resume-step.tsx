@@ -722,11 +722,11 @@ export function ResumeStep({
       hue: allResumes?.find((r) => r.slug === row.target_id)?.color_hue,
     }));
 
+    // Focusable while it runs: a natively disabled button dropped focus to <body>.
     const asIsButton = (sessionId: string | null) => (
       <Button
         variant="outline"
         onClick={() => void asIsClick(pickedSlug, sessionId)}
-        // Focusable while it runs: a natively disabled button dropped focus to <body>.
         focusableWhenDisabled
         pending={asIs.isPending}
         disabled={busy || readOnly}
@@ -784,6 +784,12 @@ export function ResumeStep({
                           <RefreshCw />
                           {run.isPending ? "Updating scores…" : "Update scores"}
                         </DropdownMenuItem>
+                        {/* A new gap analysis for the picked resume; it replaces the open one (the old card's ⋯). */}
+                        {openSession && (
+                          <DropdownMenuItem disabled={createSession.isPending || readOnly} onClick={() => createOnce(pickedSlug)}>
+                            <RefreshCw /> Restart gap analysis
+                          </DropdownMenuItem>
+                        )}
                         {jobCountry && skipped.length > 0 && (
                           // A run in flight would drop this one (one at a time), and the view would switch unscored.
                           <DropdownMenuItem disabled={run.isPending || readOnly} onClick={scoreOtherCountries}>
@@ -851,13 +857,12 @@ export function ResumeStep({
                 </p>
                 <p className="text-muted-foreground max-w-[70ch] text-body-medium">
                   Analyze gaps finds the skills this job asks for that the resume does not show. It fills what your
-                  career history can answer and asks you about the rest. About 10 seconds. It opens on its own page,
-                  with these steps on top.
+                  career history can answer and asks you about the rest.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* Focusable while it starts: a natively disabled button dropped focus to <body>. */}
                   <Button
                     onClick={() => createOnce(pickedSlug)}
-                    // Focusable while it starts: a natively disabled button dropped focus to <body>.
                     focusableWhenDisabled
                     pending={creating}
                     disabled={busy || readOnly}

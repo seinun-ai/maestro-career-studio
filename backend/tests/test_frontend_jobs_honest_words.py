@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from app.schemas.job_extraction import RequirementLevel
+from tests._jsx_pins import open_tag
 from app.services import gap_analysis, knockout
 from app.services.ats.config import load_config
 
@@ -229,7 +230,7 @@ def test_a_running_button_keeps_focus(rel: str, marker: str):
 def test_find_gaps_keeps_focus_while_it_starts():
     step = _read("components/resume-step.tsx")
     # Analyze gaps, the step's own button: pending keeps focus on it while the gap analysis starts.
-    button = step[step.rfind("<Button", 0, step.index("onClick={() => createOnce(pickedSlug)}")) :]
+    button = step[step.rfind("<Button", 0, step.index('{creating ? "Analyzing gaps…" : "Analyze gaps"}')) :]
     button = button[: button.index("</Button>")]
     assert "focusableWhenDisabled" in button and "pending={creating}" in button
     assert '{creating ? "Analyzing gaps…" : "Analyze gaps"}' in button
@@ -248,14 +249,17 @@ def test_step_two_has_one_filled_button():
     body = step[step.index("export function ResumeStep(") :]
     body = body[body.index("const asIsButton = ") : body.index("<UploadDialog")]
     # Filled = the default variant: no `variant=` on the two actions; everything else names its own.
-    analyze = body[body.rfind("<Button", 0, body.index("onClick={() => createOnce(pickedSlug)}")) :]
-    analyze = analyze[: analyze.index(">")]
-    assert "variant=" not in analyze
-    cont = body[body.rfind("<Button", 0, body.index("Continue gap analysis")) : body.index("Continue gap analysis")]
-    assert "variant=" not in cont
+    # The whole opening tag (open_tag skips the `>` of `=>` and braces), so a variant anywhere in it fails.
+    analyze_at = body.rfind("<Button", 0, body.index('{creating ? "Analyzing gaps…" : "Analyze gaps"}'))
+    analyze = open_tag(body[analyze_at:], "Button")
+    assert "pending={creating}" in analyze and "variant=" not in analyze
+    assert "disabled={busy || readOnly}" in analyze  # the tag's last attribute: the slice runs past onClick
+    cont_at = body.rfind("<Button", 0, body.index("Continue gap analysis"))
+    cont = open_tag(body[cont_at:], "Button")
+    assert "Continue gap analysis" in cont and "variant=" not in cont
     # The two are the branches of one ternary on the picked resume's open gap analysis: never both.
-    assert body.index("{openSession && !creating ? (") < body.index("Continue gap analysis") < body.index(") : (") < body.index("onClick={() => createOnce(pickedSlug)}")
-    buttons = re.findall(r"<Button\b[^>]*?>", body, re.S)
+    assert body.index("{openSession && !creating ? (") < cont_at < body.index(") : (") < analyze_at
+    buttons = [open_tag(body[m.start() :], "Button") for m in re.finditer(r"<Button(?=[\s/>])", body)]
     unnamed = [b for b in buttons if "variant=" not in b]
     assert len(unnamed) == 2, unnamed  # Continue gap analysis, Analyze gaps
     assert '"Analyze gaps"' in body and "Find gaps" not in step
@@ -263,8 +267,12 @@ def test_step_two_has_one_filled_button():
     assert 'variant="outline"' in as_is
     # The ⋯: Update scores, Score them anyway (only with skipped countries), Mark applied, Import.
     menu = body[body.index('aria-label="More actions for resumes"') : body.index("</DropdownMenuContent>")]
-    for item in ("Update scores", "Score them anyway", "Mark applied without tailoring", "Import resumes and documents"):
+    for item in ("Update scores", "Score them anyway", "Mark applied without tailoring", "Import resumes and documents",
+                 "Restart gap analysis"):
         assert item in menu, item
+    # Restart gap analysis: only while the picked resume has an open gap analysis; a new one replaces it.
+    restart = menu[menu.index("{openSession && (") : menu.index("Restart gap analysis")]
+    assert "disabled={createSession.isPending || readOnly} onClick={() => createOnce(pickedSlug)}" in restart
     assert '{run.isPending ? "Updating scores…" : "Update scores"}' in menu
     assert "{jobCountry && skipped.length > 0 && (" in menu
     assert "returnFocus: () => moreRef.current," in step  # the confirm returns to ⋯, not the gone item
@@ -439,6 +447,8 @@ def test_mark_applied_hides_once_the_job_is_applied():
     assert "const applied = applicationStatus != null && applicationStatus !== \"draft\";" in step
     menu = step[step.index('aria-label="More actions for resumes"') : step.index("</DropdownMenuContent>")]
     assert "{applied ? null : (" in menu and "Mark applied without tailoring" in menu
+    # Its neighbour, Restart gap analysis, shows only while the picked resume has an open gap analysis.
+    assert "{openSession && (" in menu and "<RefreshCw /> Restart gap analysis" in menu
     page = " ".join(_read(_JOB_PAGE).split())
     assert "<ResumeStep jobId={id} application={application} readOnly={!ownership.canWrite} onUsedAsIs={() => {" in page
     # Use resume as is opens step 3 and hides the button that held focus: the opened step takes it.

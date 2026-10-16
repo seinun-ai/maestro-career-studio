@@ -176,8 +176,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    unknown), scored at save; its auto-run on first visit is the fallback for a job saved before any base resume existed or whose
    save-time scoring failed. The bases are radio chips (top 3 by score, then "N more"); the picked one (the newest open session's
    base, else the application's, else the best match) gets a one-line summary with a Score breakdown popover, then **Analyze gaps**
-   (creates a session) or **Continue gap analysis**, the view's one filled button, and **Use resume as is**; Update scores, Score
-   them anyway, Mark applied without tailoring and Import resumes and documents sit in ⋯. Picking another base while the job has
+   (creates a session) or **Continue gap analysis**, the view's one filled button, and **Use resume as is**; Update scores,
+   Restart gap analysis, Score them anyway, Mark applied without tailoring and Import resumes and documents sit in ⋯. Picking another base while the job has
    a tailored draft confirms first (one application per job: tailoring it replaces the draft). Shared warnings show once above
    the chips; with no base resume the step offers the import and scores once that dialog closes.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions (add_keyword / user_input / attach_project / skip +
