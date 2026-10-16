@@ -250,7 +250,17 @@ def test_a_save_with_nothing_new_sends_nothing():
 
 
 def test_no_step_or_chip_leaves_while_a_write_runs():
-    assert "const actionRunning = () => tailorLock.current || useAsIs.isPending || startOver.isPending;" in _PAGE
+    # A chip's new gap analysis too: its POST lands after a step click and `router.replace`s you off that page.
+    running = _flat(_PAGE[_PAGE.index("const actionRunning = () =>") : _PAGE.index("const picking = useRef(false);")])
+    assert ("const actionRunning = () => tailorLock.current || useAsIs.isPending || startOver.isPending"
+            " || switcher.creating != null;") in running
+    # The steps say so while it holds, as the chips do: dimmed, focusable, a press does nothing.
+    assert ("const stepsBusy = tailorBusy || useAsIs.isPending || startOver.isPending"
+            " || switcher.creating != null;") in _PAGE
+    assert "onSelect={(key) => void openStep(key)} busy={stepsBusy} />" in _PAGE
+    steps = (_FRONTEND / "components/job-steps.tsx").read_text()
+    assert "aria-disabled={busy || undefined}" in steps and "if (!busy) onSelect(step.key);" in steps
+    assert "aria-disabled:opacity-50" in steps and 'busy && "opacity-50"' in steps
     pick = _arrow(_PAGE, "const pickResume = async (")
     assert "if (picking.current || actionRunning()) return;" in pick
     assert pick.index("actionRunning()") < pick.index("await saveNow()")

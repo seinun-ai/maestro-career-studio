@@ -25,16 +25,19 @@ const CELL =
  * button when it is done, current or reachable (a later step with something to show, such as a draft from
  * before a re-analysis); a later step with nothing to show is plain text, never a disabled button or a
  * tooltip: its line says what opens it, and nothing is locked. A button's name is "Step N: title" and its
- * state; its line is the description.
+ * state; its line is the description. While `busy` (the gap page's tailor or another write runs), the cells dim
+ * and a button stays focusable (`aria-disabled`) while a press does nothing, as `ResumeChips busy` does.
  */
 export function JobSteps({
   steps,
   current,
   onSelect,
+  busy = false,
 }: {
   steps: readonly Step[];
   current: StepKey;
   onSelect: (key: StepKey) => void;
+  busy?: boolean;
 }) {
   const ids = useId();
   return (
@@ -82,18 +85,22 @@ export function JobSteps({
                   aria-current={shown ? "step" : undefined}
                   aria-labelledby={nameId}
                   aria-describedby={step.summary ? lineId : undefined}
-                  onClick={() => onSelect(step.key)}
+                  aria-disabled={busy || undefined}
+                  onClick={() => {
+                    if (!busy) onSelect(step.key);
+                  }}
                   className={cn(
                     CELL,
                     edge,
                     "hover:bg-surface-container-low transition-colors duration-(--duration-short3) ease-(--ease-standard)",
                     "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                    "aria-disabled:cursor-default aria-disabled:opacity-50 aria-disabled:hover:bg-transparent",
                   )}
                 >
                   {body}
                 </button>
               ) : (
-                <div className={cn(CELL, edge)} aria-current={shown ? "step" : undefined}>
+                <div className={cn(CELL, edge, busy && "opacity-50")} aria-current={shown ? "step" : undefined}>
                   {body}
                 </div>
               )}

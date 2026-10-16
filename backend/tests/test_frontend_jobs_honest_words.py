@@ -149,7 +149,7 @@ def test_the_gap_page_draws_step_two_with_the_resume_chips():
     address), after a save; the Tailor and Quick tailor confirm re-tailoring the resume you applied with."""
     page = _read(_GAP_PAGE)
     header_end = page.index("</header>")
-    stepper = page.index('<JobSteps steps={steps} current="fit" onSelect={(key) => void openStep(key)} />')
+    stepper = page.index('<JobSteps steps={steps} current="fit" onSelect={(key) => void openStep(key)} busy={stepsBusy} />')
     chips = page.index("<ResumeChips")
     assert header_end < stepper < chips < page.index("<GapLocked value=")
     chip_tag = open_tag(page[chips:], "ResumeChips")
@@ -176,15 +176,18 @@ def test_the_gap_page_draws_step_two_with_the_resume_chips():
     assert "!jobDetail.data || !sessions.data || switcher.creating != null || tailorBusy" in page
     assert '? switcher.confirmSwitch(session.data.base_resume, "tailor")' in page
     assert page.count("(await confirmTailorAgain()) &&") == 2  # Tailor and Quick tailor
-    # The actions that confirm on the job's application wait for the detail; a failed detail says why the chips
-    # are off instead of locking the page (`isPending`, not `!data`).
-    for label in ("onClick={onQuickTailorClick}", "onClick={onTailorClick}", "Use resume as is\n"):
+    # The actions that confirm on the job's application need the detail: without it Use resume as is would replace a
+    # tailored draft, and Tailor an applied resume, unasked. A failed detail says what waits, with Try again.
+    # Use resume as is needs the gap analyses too: with none, a tailored draft reads as used as is.
+    ends = {"onClick={onQuickTailorClick}": "|| !jobDetail.data}", "onClick={onTailorClick}": "|| !jobDetail.data}",
+            "Use resume as is\n": "|| !jobDetail.data || !sessions.data}"}
+    for label, end in ends.items():
         disabled = page.index("disabled={", page.rindex("<Button", 0, page.index(label)))
-        assert page[disabled : page.index("\n", disabled)].endswith("|| jobDetail.isPending}"), label
-    assert "!jobDetail.data}" not in page
+        assert page[disabled : page.index("\n", disabled)].endswith(end), label
+    assert "jobDetail.isPending}" not in page
     failed = page[page.index("{isLoadFailure(jobDetail) ? (") :]
     failed = open_tag(failed, "LoadErrorState")
-    assert 'title="Couldn\'t load this job, so the resume chips are off."' in failed
+    assert 'title="Couldn\'t load this job, so Tailor, Use resume as is and the resume chips wait for it."' in failed
     assert 'detail={loadErrorDetail(jobDetail.error, "job")}' in failed and "onRetry={() => void jobDetail.refetch()}" in failed
     assert page.index("{isLoadFailure(jobDetail) ? (") < page.index('<div className="bg-background/95 sticky bottom-0')
     # A superseded or closed analysis made no draft: its way on is step 2, not step 3.
@@ -476,8 +479,10 @@ def test_no_step_is_locked_and_a_future_step_says_what_opens_it():
     steps = _read("components/job-steps.tsx")
     # A later step with nothing to show is plain text: not a button, never disabled, no lock, no tooltip.
     cell = steps[steps.index("              ) : (\n                <div") : steps.index("</li>")]
-    assert "<div className={cn(CELL, edge)}" in cell and "<button" not in cell and "tabIndex" not in cell
-    assert "disabled=" not in steps and "title=" not in steps and "Lock" not in steps and "Tooltip" not in steps
+    assert '<div className={cn(CELL, edge, busy && "opacity-50")}' in cell and "<button" not in cell and "tabIndex" not in cell
+    # Never natively disabled; `aria-disabled` only while the gap page's write runs (it stays focusable).
+    assert not re.search(r"(?<!aria-)disabled=", steps)
+    assert "title=" not in steps and "Lock" not in steps and "Tooltip" not in steps
     for gone in ("LOCKED_REASON", "lockedReasonId", "CONCEPT_ICONS.locked", "aria-describedby", "Unlocks after you tailor"):
         assert gone not in page, gone
     # Its line says what opens it (lib/job-steps.ts, node-tested).

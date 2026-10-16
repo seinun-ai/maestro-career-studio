@@ -67,7 +67,7 @@ def test_tailor_page_reads_ownership_and_locks_every_write():
     assert "readOnly={tailorBusy || !ownership.canWrite}" in text
     assert text.count("|| !ownership.canWrite}") >= 2  # the gaps and the notes
     # Use resume as is, Quick tailor and Tailor (they also wait for the job's detail).
-    assert text.count("|| !ownership.canWrite || jobDetail.isPending}") == 3
+    assert text.count("|| !ownership.canWrite || !jobDetail.data") == 3
     assert "<JobOwnershipMark" in text and "<JobOwnershipNotice" in text
     assert "isOwnershipRefusal" in text
 

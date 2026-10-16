@@ -67,7 +67,10 @@ export function jobResumeState(
   return application.customized_json ? "as_is" : null;
 }
 
-/** The action a switch confirm guards: its label names it. `tailor` is the gap page's Tailor and Quick tailor. */
+/**
+ * The action a switch confirm guards: its label names it. `tailor` (the gap page's Tailor and Quick tailor) asks only
+ * on the applied, same-resume case: tailoring the resume you applied with again.
+ */
 export type SwitchAction = "analyze" | "continue" | "as_is" | "tailor";
 
 const CONFIRM_LABELS: Record<Exclude<SwitchAction, "tailor">, string> = {

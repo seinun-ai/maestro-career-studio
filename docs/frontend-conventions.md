@@ -1226,10 +1226,12 @@
   resume as is asks too. Tailor on another resume never asks: Analyze gaps or Continue asked on the way in.
   The gap page draws the same `JobSteps` (step 2 shown; 1, 3 and 4 open the job page's `?tab=`) and
   `ResumeChips` under its header, its resume picked; a chip opens that resume's open gap analysis or starts one
-  (`openOrCreate`, `router.replace`), saving first. While a tailor, Use resume as is or a new gap analysis runs,
-  a step or chip does nothing, and a save with no edit since the last one sends nothing (it would 409 against the
-  tailor). Tailor, Quick tailor and Use resume as is wait for the job's detail (their confirms read its
-  application); a failed detail shows a Try again block above the footer naming why the chips are off. A
+  (`openOrCreate`, `router.replace`), saving first. While a tailor, Use resume as is or a new gap analysis (a
+  chip's included) runs, the steps dim (`JobSteps busy`, `aria-disabled`) and neither a step nor a chip does
+  anything, and a save with no edit since the last one sends nothing (it would 409 against the tailor). Tailor,
+  Quick tailor and Use resume as is need the job's detail, as the chips do (their confirms read its application:
+  without it a tailored draft would be replaced unasked), and Use resume as is the gap analyses too (the job's
+  resume state); a failed detail shows a Try again block above the footer saying what waits for it. A
   superseded or closed analysis's page offers **Go to Resume and gaps**. Pinned by `test_frontend_jobs_honest_words.py`
   and `test_frontend_gap_autosave.py`.
 - **Tailored resume** (step 3, `components/tailored-resume-step.tsx`), inside one card: a score strip on

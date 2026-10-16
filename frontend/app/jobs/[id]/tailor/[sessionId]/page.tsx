@@ -574,9 +574,11 @@ export default function TailorSessionPage({
   // --- The steps and the resume chips ------------------------------------------
   // Leaving through either saves first (`saveNow`): a pending save is flushed and waited for, and a failed one keeps
   // you here with its toast; a stale session sends nothing and lets you go. Back to job is a plain link: only the
-  // unmount flush saves behind it. Nothing leaves while a tailor, Use resume as is or a new gap analysis runs: the
-  // save would race the tailor (409), and each of them navigates when it lands.
-  const actionRunning = () => tailorLock.current || useAsIs.isPending || startOver.isPending;
+  // unmount flush saves behind it. Neither a step nor a chip leaves while a tailor, Use resume as is or a new gap
+  // analysis (Start new gap analysis, or a chip's) runs: the save would race the tailor (409), and each of them
+  // navigates when it lands, pulling you off the page you went to.
+  const actionRunning = () =>
+    tailorLock.current || useAsIs.isPending || startOver.isPending || switcher.creating != null;
   const picking = useRef(false);
   const pickResume = async (pick: string) => {
     if (picking.current || actionRunning()) return;
@@ -801,6 +803,8 @@ export default function TailorSessionPage({
   const sessionBase = session.data.base_resume;
   const sessionBaseArchived = allResumes?.find((r) => r.slug === sessionBase)?.archived_at != null;
   // A switch needs the job's application (its confirm) and the gap analyses (which one to open) first.
+  // The steps do nothing while a write runs (`actionRunning`): they say so, as the chips do.
+  const stepsBusy = tailorBusy || useAsIs.isPending || startOver.isPending || switcher.creating != null;
   const switchBusy =
     !jobDetail.data || !sessions.data || switcher.creating != null || tailorBusy || useAsIs.isPending ||
     startOver.isPending || !ownership.canWrite;
@@ -852,7 +856,7 @@ export default function TailorSessionPage({
       </header>
 
       {steps ? (
-        <JobSteps steps={steps} current="fit" onSelect={(key) => void openStep(key)} />
+        <JobSteps steps={steps} current="fit" onSelect={(key) => void openStep(key)} busy={stepsBusy} />
       ) : jobDetail.isPending ? (
         <Skeleton className="h-14 w-full" />
       ) : null}
@@ -955,12 +959,13 @@ export default function TailorSessionPage({
         </section>
       </div>
 
-      {/* The confirms read the job's application, so the actions wait for the detail, and a switch needs it too. A
-          failed detail says why the chips are off; Tailor and Use resume as is still run. */}
+      {/* The confirms read the job's application: without it Use resume as is would replace a tailored draft, and
+          Tailor an applied resume, unasked. So the actions and the chips wait for the detail; a failed one says so
+          here, with Try again as the way out. */}
       {isLoadFailure(jobDetail) ? (
         <LoadErrorState
           className="py-4"
-          title="Couldn't load this job, so the resume chips are off."
+          title="Couldn't load this job, so Tailor, Use resume as is and the resume chips wait for it."
           detail={loadErrorDetail(jobDetail.error, "job")}
           retrying={jobDetail.isFetching}
           onRetry={() => void jobDetail.refetch()}
@@ -994,7 +999,7 @@ export default function TailorSessionPage({
                 // Focusable while it runs: a natively disabled button dropped focus to <body>.
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 focusableWhenDisabled
-                disabled={useAsIs.isPending || tailorBusy || !!staleReason || !ownership.canWrite || jobDetail.isPending}
+                disabled={useAsIs.isPending || tailorBusy || !!staleReason || !ownership.canWrite || !jobDetail.data || !sessions.data}
               >
                 {useAsIs.isPending && <Loader2 className="animate-spin" />}
                 Use resume as is
@@ -1006,7 +1011,7 @@ export default function TailorSessionPage({
                 className="data-disabled:opacity-50"
                 onClick={onQuickTailorClick}
                 focusableWhenDisabled
-                disabled={tailorBusy || useAsIs.isPending || !!staleReason || !ownership.canWrite || jobDetail.isPending}
+                disabled={tailorBusy || useAsIs.isPending || !!staleReason || !ownership.canWrite || !jobDetail.data}
                 title="Fill open gaps from your Quick tailor settings, then tailor"
               >
                 <Zap />
@@ -1018,7 +1023,7 @@ export default function TailorSessionPage({
               className="data-disabled:opacity-50"
               onClick={onTailorClick}
               focusableWhenDisabled
-              disabled={tailorBusy || useAsIs.isPending || !!staleReason || !ownership.canWrite || jobDetail.isPending}
+              disabled={tailorBusy || useAsIs.isPending || !!staleReason || !ownership.canWrite || !jobDetail.data}
             >
               {tailor.isPending ? <Loader2 className="animate-spin" /> : <Wand2 />}
               {tailor.isPending ? "Tailoring… about 30 seconds" : "Tailor resume"}
