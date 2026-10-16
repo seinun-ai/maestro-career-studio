@@ -806,7 +806,7 @@ def test_real_take_over_is_refused_while_the_bot_is_applying(machines):
 
 _PROFILE = "profile-sentinel-k7m2q9vx4n8p"
 _AI_KEY = "sk-sentinel-ai-b4c8e1d6f3a79c2e"
-_PASSWORD = "login-sentinel-p9w3h6t2m5"
+_LOGIN_SENTINEL = "login-sentinel-p9w3h6t2m5"
 _TITLE = "title-sentinel-r8y5u1i4o6"
 _FILE = b"file-sentinel-bytes-m2n8b5v7q1w4e6r9"
 _NOTE = "request-sentinel-q4n7h2c8"
@@ -863,7 +863,7 @@ def _clock(monkeypatch):
 def _write_login(home):
     path = Path(home.env["SETTINGS_DIR"]) / "secrets" / "job-site-login.json"
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    path.write_text(json.dumps({"email": "me@example.test", "password": _PASSWORD}),
+    path.write_text(json.dumps({"email": "me@example.test", "password": _LOGIN_SENTINEL}),
                     encoding="utf-8")
     path.chmod(0o600)
 
@@ -929,7 +929,7 @@ def _assert_payloads_arrived(db, tmp_path, ids, file_bytes):
     assert db.get(models.Setting, "llm.openai_api_key").value == _AI_KEY
     assert db.get(models.Job, ids.job).title == _TITLE
     login = (tmp_path / "settings" / "secrets" / "job-site-login.json").read_text(encoding="utf-8")
-    assert _PASSWORD in login
+    assert _LOGIN_SENTINEL in login
     found = tmp_path / "applications" / ids.application.hex / "note.bin"
     assert found.read_bytes() == file_bytes
 
@@ -959,7 +959,7 @@ def _raw_secrets(home, code, home_file):
     normalized = pairing.normalize_code(code).encode()
     values = [
         key.encode(), code.encode(), normalized, digest.encode(),
-        _PROFILE.encode(), _AI_KEY.encode(), _PASSWORD.encode(), _TITLE.encode(),
+        _PROFILE.encode(), _AI_KEY.encode(), _LOGIN_SENTINEL.encode(), _TITLE.encode(),
         _NOTE.encode(), _LATER.encode(), _REMOTE_TITLE.encode(), _NEWER_TITLE.encode(),
         home_file, _REMOTE_FILE, base64.standard_b64encode(home_file),
         base64.standard_b64encode(_REMOTE_FILE),

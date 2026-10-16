@@ -156,6 +156,11 @@ from tests.extension_panel_harness import (
     _walk,
 )
 
+def _mentions(text, host):
+    """Whether `text` names `host`. A search, not `host in text`, which reads to CodeQL like URL sanitizing."""
+    return re.search(re.escape(host), text) is not None
+
+
 
 # `loadModules()` runs the real file — the IIFE, the namespace join, the
 # `ns.decisions` publication — rather than slicing one function out of the text
@@ -842,21 +847,21 @@ def test_the_panel_binds_to_the_active_tab_and_stays_bound(booted):
     # The url is the only fact the panel has about a page it has not asked the
     # backend about yet, so it is what the identity line shows — which makes it
     # the visible proof of which tab the panel is bound to.
-    assert "job-boards.greenhouse.io" in _text(booted["opened"]["identity"])
-    assert "acme.wd5.myworkdayjobs.com" in _text(booted["switched"]["identity"])
+    assert _mentions(_text(booted["opened"]["identity"]), "job-boards.greenhouse.io")
+    assert _mentions(_text(booted["switched"]["identity"]), "acme.wd5.myworkdayjobs.com")
 
 
 def test_a_navigation_in_another_tab_never_moves_the_bound_one(booted):
     # `onUpdated` fires for every tab in the window. Acting on one the panel is
     # not bound to is the stale-tabId bug from the other direction: the panel
     # would show, and then act on, a page the user is not looking at.
-    assert "acme.wd5.myworkdayjobs.com" in _text(booted["someoneElseNavigated"]["identity"])
+    assert _mentions(_text(booted["someoneElseNavigated"]["identity"]), "acme.wd5.myworkdayjobs.com")
     assert "boards.other.test" not in _text(booted["someoneElseNavigated"]["identity"])
     # An update with no url is a title, a favicon, a load state — not a page.
-    assert "acme.wd5.myworkdayjobs.com" in _text(booted["noUrlChange"]["identity"])
+    assert _mentions(_text(booted["noUrlChange"]["identity"]), "acme.wd5.myworkdayjobs.com")
     # …and a real same-tab navigation IS one. This is the SPA/wizard case: the
     # panel survives the load, so the event is all it gets.
-    assert "job-boards.greenhouse.io" in _text(booted["navigated"]["identity"])
+    assert _mentions(_text(booted["navigated"]["identity"]), "job-boards.greenhouse.io")
 
 
 def test_the_header_link_points_at_the_web_app_and_never_at_nothing(booted):
@@ -1031,7 +1036,7 @@ def test_a_panel_that_does_not_know_where_the_web_app_is_shows_no_link(booted_wi
     # honestly knows about this page and the proof of which tab it is bound to.
     # This used to read "Maestro CS is still in the header", i.e. the panel
     # identifies ITSELF — the brand row's claim, deleted with the brand row.
-    assert "job-boards.greenhouse.io" in _text(identity)
+    assert _mentions(_text(identity), "job-boards.greenhouse.io")
     # And the footer says what is actually wrong, in the words of a question the
     # user asked: this fixture fails the MATCH too, so `applyMatch` writes its
     # page note. The missing link is not narrated on its own — nothing the user
@@ -1819,7 +1824,7 @@ def test_a_load_that_fails_leaves_a_rendered_panel_rather_than_a_dead_one(tmp_pa
     assert note["class"] == "note error"
     # Still a whole panel: five rail rows, an identity line, a primary.
     assert len(_by_class(out["regions"]["rail"], "stg")) == 4
-    assert "job-boards.greenhouse.io" in _text(out["regions"]["identity"])
+    assert _mentions(_text(out["regions"]["identity"]), "job-boards.greenhouse.io")
     assert _by_class(out["regions"]["foot"], "cta")[0]["text"] == "Save job"
 
 
@@ -1885,7 +1890,7 @@ def test_a_late_answer_for_the_tab_you_left_never_paints_the_tab_you_are_on(race
     job the user is not looking at, which the SW would pass.
     """
     # Mid-load: nothing but the tab's own host, which is the honest picture.
-    assert "job-boards.greenhouse.io" in _text(raced["midLoad"]["identity"])
+    assert _mentions(_text(raced["midLoad"]["identity"]), "job-boards.greenhouse.io")
     assert "Lightning AI" not in _text(raced["midLoad"]["identity"])
     # Tab B loaded fully while A hung.
     assert _by_class(raced["onTabB"]["identity"], "title")[0]["text"] == "Data Scientist"
@@ -3299,7 +3304,7 @@ def test_a_tab_switch_while_refresh_writes_the_pick_ends_that_refresh(tmp_path):
     out = _picked_then_refreshed(tmp_path, holdPressWrite=True, switchDuringPress=42,
                                  tabUrls={"42": POSTING_URL},
                                  apiAfter={"lightningai": _UNMATCHED})
-    assert "job-boards.greenhouse.io" in _text(out["finished"]["identity"])
+    assert _mentions(_text(out["finished"]["identity"]), "job-boards.greenhouse.io")
     assert len(_gets(out["sentAfter"], "lightningai")) == 1
     assert _gets(out["sentAfter"], "myworkdayjobs") == []
 

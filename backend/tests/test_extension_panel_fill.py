@@ -522,7 +522,7 @@ def test_learned_moves_have_their_own_documented_storage_key():
     fill = (EXTENSION / "panel" / "actions" / "fill.js").read_text(encoding="utf-8")
     assert re.search(r"recipes: store\.recipes\(\)", fill)
     html = (EXTENSION / "panel" / "panel.html").read_text(encoding="utf-8")
-    srcs = re.findall(r'<script src="([^"]+)"></script>', html)
+    srcs = re.findall(r'<script src="([^"]+)"></script\s*>', html)
     assert "../shared/recipe-book.js" in srcs and srcs.index("../shared/recipe-book.js") < srcs.index("panel.js")
 
 

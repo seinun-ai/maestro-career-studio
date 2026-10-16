@@ -50,7 +50,7 @@ def test_no_emoji_or_text_glyph_in_panel_code():
 
 
 def test_icons_module_is_on_the_roster():
-    srcs = re.findall(r'<script src="([^"]+)"></script>',
+    srcs = re.findall(r'<script src="([^"]+)"></script\s*>',
                       (_PANEL / "panel.html").read_text())
     assert "icons.js" in srcs
     # Before every stage and action script, after the shared decisions module.

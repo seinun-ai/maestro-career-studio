@@ -4,6 +4,7 @@ Extracted from the (removed) legacy fit_score service: these helpers are the
 canonical way to resolve which base resumes exist and to load their JSON data.
 """
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -86,13 +87,19 @@ def write_base_resume_json(slug: str, data: dict) -> None:
     Creates the base-resumes dir if absent and writes ``<slug>.json`` with
     2-space indentation, matching the historical on-disk format.
     """
-    base_dir = Path(settings.base_resumes_dir)
-    base_dir.mkdir(parents=True, exist_ok=True)
-    (base_dir / f"{slug}.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+    Path(settings.base_resumes_dir).mkdir(parents=True, exist_ok=True)
+    base_resume_path(slug).write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def base_resume_path(slug: str) -> Path:
-    return Path(settings.base_resumes_dir) / f"{slug}.json"
+    """``<base-resumes dir>/<slug>.json``. A slug that would land outside that folder ("..", a separator, an
+    absolute path) is refused with ValueError: callers validate slugs against the table, and this keeps a
+    future caller that forgets from reading or writing anywhere else."""
+    base = os.path.normpath(str(settings.base_resumes_dir))
+    target = os.path.normpath(os.path.join(base, f"{slug}.json"))
+    if os.path.dirname(target) != base:
+        raise ValueError(f"not a base resume slug: {slug!r}")
+    return Path(target)
 
 
 def _read_base_resume_data(slug: str) -> dict[str, Any]:

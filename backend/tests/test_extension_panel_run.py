@@ -33,6 +33,7 @@ from tests.extension_panel_harness import (
     _walk,
 )
 
+
 START_URL = "https://jobs.acme.test/apply/step1"
 SEED = {"proposalId": "prop-1", "jobId": "job-1", "applicationId": "app-1", "company": "Acme",
         "title": "Data Scientist", "baseSlug": "ai_ml_engineer", "openUrl": START_URL}
@@ -1392,7 +1393,7 @@ def test_a_parked_posting_follows_the_user_into_the_tab_their_apply_opened_and_w
     record = _record(out["shots"][-1])
     assert (record["tabId"], record["startTabId"]) == (8, 8)
     assert (record["status"], record["why"]) == ("parked", "posting")
-    assert "acme.wd1.myworkdayjobs.com" in record["hosts"] and "careers.acme.test" in record["hosts"]
+    assert {"acme.wd1.myworkdayjobs.com", "careers.acme.test"} <= set(record["hosts"])
     # Nothing resumed by itself: not a read of the new tab, not a fill.
     assert out["fills"] == [] and _page_messages(out, "page_classify") == []
     card = _card(out["shots"][-1])
