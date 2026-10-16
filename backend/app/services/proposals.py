@@ -16,7 +16,7 @@ from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.consent_event import ConsentEvent
 from app.models.job import Job
-from app.services import auto_apply_settings, filled_answers, job_site_login
+from app.services import application_writes, auto_apply_settings, filled_answers, job_site_login
 from app.services.sync import offers as sync_offers
 
 
@@ -428,6 +428,10 @@ def record_decision(session: Session, prop: ApplicationProposal, *, fit: dict,
             .order_by(Application.created_at.desc())
             .limit(1)
         )
+        if app_row is None:
+            # A job has one application: after the user switched its resume away from
+            # the agent's chosen base, the job's newest application is still the one.
+            app_row = application_writes.newest_for_job(session, prop.job_id)
         if app_row is None:
             raise TransitionError(NO_APPLICATION_TO_LINK)
         application_id = app_row.id

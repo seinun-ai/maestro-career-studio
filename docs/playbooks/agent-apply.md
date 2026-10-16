@@ -189,8 +189,9 @@ identity.
   review without further triage prompting. Decline (with reason) if the
   posting is dead or the linked application turns out to be already applied.
 - `needs_decision`: if no durable `fit.chosen_base` exists, ask the user again.
-  Once the choice is durable, safely reuse-or-create tailoring/application by
-  job and base, then retry `record_decision` with the updated `fit` and optional
+  Once the choice is durable, tailor with that base (a job has one application;
+  tailoring with another base resume replaces its draft, version history keeps
+  the old one), then retry `record_decision` with the updated `fit` and optional
   `application_id`; resume from `pending_review`.
 - `needs_human`: call the target MCP operation
   `resume_proposal(proposal_id)` to return it to `pending_review`, then resume

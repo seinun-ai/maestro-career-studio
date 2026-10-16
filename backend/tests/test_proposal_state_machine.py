@@ -409,6 +409,20 @@ def test_final_review_has_no_base_country_without_a_base(db_session):
     assert review["base_country"] is None
 
 
+def test_record_decision_links_the_jobs_application_after_a_resume_switch(db_session):
+    """The agent chose "hybrid", then the user switched the job's one application to
+    another resume: no row matches the chosen base, and the decision still links it."""
+    prop = _mk_proposal(db_session, with_app=False)
+    svc.request_decision(db_session, prop, reason="pick base")
+    switched = Application(job_id=prop.job_id, base_resume="us", source="user", status="draft")
+    db_session.add(switched)
+    db_session.commit()
+    svc.record_decision(db_session, prop, fit={"chosen_base": "hybrid"})
+    assert prop.status == "pending_review"
+    assert prop.application_id == switched.id
+    assert switched.source == "agent"
+
+
 def test_record_decision_409_when_no_matching_application(db_session):
     prop = _mk_proposal(db_session, with_app=False)
     svc.request_decision(db_session, prop, reason="pick base")
