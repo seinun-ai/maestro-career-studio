@@ -28,6 +28,7 @@ none of them is captured DOM and what may never be pasted into them.
 import json
 import shutil
 import subprocess
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -1525,3 +1526,17 @@ def run_node(driver_js: str, spec: dict, tmp_path: Path, source: str | None = No
         f"settled, so emit() was never reached.\nstderr:\n{completed.stderr}"
     )
     return json.loads(completed.stdout)
+
+
+def script_srcs(html: str) -> list[str]:
+    """The `src` of every <script> on a page, in document order, read by an HTML parser."""
+    found: list[str] = []
+
+    class _Scripts(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            src = dict(attrs).get("src") if tag == "script" else None
+            if src:
+                found.append(src)
+
+    _Scripts().feed(html)
+    return found

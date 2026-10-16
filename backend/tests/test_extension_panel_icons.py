@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.extension_harness import run_node
+from tests.extension_harness import run_node, script_srcs
 from tests.extension_panel_harness import (
     PANEL_SCRIPT_SRCS,
     SVG_NS,
@@ -50,8 +50,7 @@ def test_no_emoji_or_text_glyph_in_panel_code():
 
 
 def test_icons_module_is_on_the_roster():
-    srcs = re.findall(r'<script src="([^"]+)"></script\s*>',
-                      (_PANEL / "panel.html").read_text())
+    srcs = script_srcs((_PANEL / "panel.html").read_text())
     assert "icons.js" in srcs
     # Before every stage and action script, after the shared decisions module.
     assert srcs.index("icons.js") < srcs.index("stages/job.js")

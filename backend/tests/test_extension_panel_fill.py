@@ -35,7 +35,7 @@ from tests.extension_fixtures import (
     LIGHTNING_TENANT,
     entry,
 )
-from tests.extension_harness import run_node, run_profile_fill
+from tests.extension_harness import run_node, run_profile_fill, script_srcs
 from tests.extension_panel_harness import (
     BASE_RESUMES,
     DECISIONS_JS,
@@ -522,7 +522,7 @@ def test_learned_moves_have_their_own_documented_storage_key():
     fill = (EXTENSION / "panel" / "actions" / "fill.js").read_text(encoding="utf-8")
     assert re.search(r"recipes: store\.recipes\(\)", fill)
     html = (EXTENSION / "panel" / "panel.html").read_text(encoding="utf-8")
-    srcs = re.findall(r'<script src="([^"]+)"></script\s*>', html)
+    srcs = script_srcs(html)
     assert "../shared/recipe-book.js" in srcs and srcs.index("../shared/recipe-book.js") < srcs.index("panel.js")
 
 

@@ -97,7 +97,7 @@ def base_resume_path(slug: str) -> Path:
     future caller that forgets from reading or writing anywhere else."""
     base = os.path.normpath(str(settings.base_resumes_dir))
     target = os.path.normpath(os.path.join(base, f"{slug}.json"))
-    if os.path.dirname(target) != base:
+    if not target.startswith(base + os.sep) or os.path.dirname(target) != base:
         raise ValueError(f"not a base resume slug: {slug!r}")
     return Path(target)
 
