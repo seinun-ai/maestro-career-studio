@@ -62,7 +62,7 @@
 - [§7 Agent surfaces](#7-agent-surfaces) — INDEX into `docs/agent-surfaces.md`: MCP server, in-app chat, extension
 - [§8 Frontend conventions](#8-frontend-conventions) — INDEX into `docs/frontend-conventions.md`: layout, a11y, naming, copy rules
 - [§9 Dev & test environment](#9-dev--test-environment) — interpreter, DBs, calibration, deploy, gates
-- [§10 Design-decision record](#10-design-decision-record) — lineage of superseding decisions
+- [§10 Design-decision record](#10-design-decision-record) — lineage, then one line per owner decision with the alternative it superseded
 - [§11 Known deferred items](#11-known-deferred-items-priority-order) — ledger of work not yet built
 - [§12 Gotchas that have bitten before](#12-gotchas-that-have-bitten-before) — dated symptom → cause → rule entries
 - [§13 Active migrations & deprecation ledger](#13-active-migrations--deprecation-ledger) — built-twice rows with removal triggers
@@ -649,9 +649,10 @@ with the failure mode that bought it. Code citing "§8" lands here.
 
 ## 10. Design-decision record
 
-**The dated design docs are NOT published.** They live in the upstream private repository; this file is the
-public record of what they decided (they are agent handoff scripts — publishing them would ship instructions for
-a machine no reader has). This section carries the lineage: which decision superseded which.
+**Design docs dated before 2026-09-17 are not published.** They live in the upstream private repository (they are agent handoff
+scripts — publishing them would ship instructions for a machine no reader has), and this file is the public record of what they
+decided. From 2026-09-17 the design and implementation plans are in `docs/plans/`, named by date. The lineage of the unpublished docs
+is one paragraph; after it, one line per owner decision: what was decided, the alternative it superseded, and why.
 
 Key lineage: 2026-04-22 greenfield → 2026-05-29 jobs/applications consolidation → 2026-07-06 deterministic ATS
 gap workflow (fit_scores deprecated; dropped in migration `09265240aade`) → 2026-07-08 tailoring refinements →
@@ -662,9 +663,70 @@ KB + extension Q&A) → **2026-07-16 custom resume sections (`extra_sections`) p
 (fixed-core-plus-typed-extras, then versioned ATS evidence + stable-key gap placement) → MCP guided tailoring
 (caller-authored ops, hint envelope) → MCP onboarding: reversed "approving from MCP is unrepresentable" — a
 draft gate needs an approver wherever review happens, and agent transcription is NOT the verbatim-file
-exception, so ingest lands drafts and consent-gated `kb_approve_points` is the one approval path from MCP. →
-Health check v3: a concrete result stated in words earns full credit (no number quota), and the evaluator asks
-each bullet its own question, a number only where one is natural.
+exception, so ingest lands drafts and consent-gated `kb_approve_points` is the one approval path from MCP.
+
+- 2026-08-09 — LaTeX stays and both engines remain first-class (§13 `typst-default-flip`, HELD); superseded the Typst-default flip and
+  the LaTeX retirement queued behind it because nothing waits on them and the parity corpus predates the extractor swap.
+- 2026-09-17 — SQLite is the only database, one file per install; superseded Postgres (kept for one release, inside the exporter)
+  because a single-user, local-first app needs no daemon, and a later installer then has nothing to run, sign or port-manage.
+- 2026-09-25 — Form filling routes Jev first with one fast-model fallback and no smart-model tier; superseded a smart tier because the
+  fast tier drives coverage, honesty and latency and Smart barely moves outcomes (§12).
+- 2026-09-25 — Health check v3: a concrete result stated in words earns full credit and the evaluator asks each bullet its own question;
+  superseded the number quota because a number is natural in some bullets and not others.
+- 2026-10-02 — The fill trace is a dedicated local store the extension assembles, the last 50 runs, outcomes only; superseded Langfuse
+  (opt-in, usually off, and it holds values), two halves joined by a run id (two writers, a join and partial-run cleanup) and logs only
+  (no per-run record).
+- 2026-10-03 — Option texts and the chosen index are kept on every traced field, EEO included; superseded blanking them because a wrong
+  pick must be readable back; a typed search keeps only its count because its rows echo what was typed.
+- 2026-10-04 — Automations are prompts the user copies to their own agent, served from the skill files; superseded a Maestro scheduler
+  (timing is the user's and their agent's), prompt text in the frontend (it would exist twice and drift) and MCP prompts alone (support
+  differs by app and there is no copy button).
+- 2026-10-05 — Under full automation the agent's prompt decides eligibility and its word, labelled channel `auto`, is proof of submission;
+  superseded a server-side eligibility gate and the Companion submitting because the server still enforces the cap, the blocklist and
+  already-applied on every approval.
+- 2026-10-05 — Inbox readiness is computed when the list is read; superseded a second readiness request (two loading states, rows
+  redraw) and readiness stored on the proposal (stale after profile edits, hooks in tailoring code).
+- 2026-10-05 — Base resume identity is typed anchors (`base_anchors`); superseded the free-text "Target note" fed to five prompt readers
+  because the owner cut it to a scope that scoring and the best-base pick can read.
+- 2026-10-06 — Sync is split ownership: one writer per job, the laptop owns the profile, nothing merges; superseded CRDT sync (7 unique
+  constraints, 23 cascading foreign keys and the state machine cannot survive last-writer-wins), cloud-hub engines, SQLite's session
+  extension, one database on the always-on machine (the laptop would lose Maestro when it is down) and a job lease (runs dry while the
+  laptop is off).
+- 2026-10-06 — Pairing has no attempt limit; superseded a lockout because 80 bits make online guessing hopeless and a limit would only
+  let outsiders burn the owner's code.
+- 2026-10-06 — On small machines ATS scoring embeds in a short-lived helper process; superseded in-process embedding because the
+  always-on machine has 640 MB and no swap, so the model's memory must be freed after each call.
+- 2026-10-09 — The desktop shell is Electron, macOS Apple Silicon first, and a `uv tool` install (B′, the `maestro` command) ships
+  first; superseded building the shell straight away because the first public desktop release waits for a Developer ID, and other
+  shells because Electron has the most mature in-app updater and needs no frontend refactor.
+- 2026-10-10 — LLM providers are official SDKs owned in `llm_providers/`, Claude native; superseded LiteLLM, Pydantic AI and LangChain
+  runtime dependencies, and Anthropic's OpenAI-compatible endpoint, because provider quirks must live in one place.
+- 2026-10-10 — The Companion's queued run clicks Next and stops on the review page, for Queued jobs only; superseded the 2026-09-26 rule
+  "Next and Submit stay the user's" for the Next half alone, because the queue is the consent step; Submit stays the user's at every
+  setting.
+- 2026-10-11 — Answers typed into a parked run are always remembered, with Undo; superseded a save checkbox because an answer asked once
+  must never park again.
+- 2026-10-11 — The fill engine works in hidden and covered tabs; superseded taking turns in the foreground because a background tab ran
+  fills 6.5× slower and failed every dropdown.
+- 2026-10-11 — Each finished PDF is copied into a visible resumes folder; superseded leaving them only under the app's `applications/`
+  because the owner's newly tailored resumes looked missing.
+- 2026-10-14 — Low stakes are decisive: a format or precision gap (a day, a scheme, a dialing code) is filled and flagged, never parked,
+  and facts are still never invented; superseded parking on every such gap because the filled field is listed under Check before you
+  submit.
+- 2026-10-14 — Safe defaults when the profile has no fact (No for a status that only adds something, Yes for willingness to a standard
+  pre-employment step), from Balanced up; superseded parking on every unknown yes/no because the owner's rule is N/A or No for most and
+  Yes for a readiness check, each listed under Check before you submit.
+- 2026-10-14 — On a known ATS host the run creates the account with the saved login, once; superseded "account creation always parks"
+  from the 2026-10-10 design because the saved login is already typed on those hosts; every other host keeps the wall.
+- 2026-10-14 — Veteran status is one Yes/No question; superseded the `veteran` / `not_veteran` values because "not a protected veteran"
+  is true of a veteran who is not protected.
+- 2026-10-14 — A reasoning model runs only where the run would otherwise stop; superseded parking at once because a few cents a round
+  buys an answer only where one is needed.
+- 2026-10-15 — On a one-page form the reasoning step works fields only and never presses; superseded treating a step-0 review page as a
+  review that parks because Submit sits on the same page.
+- 2026-10-15 — A generic "How did you hear" answer takes LinkedIn or a specific board the list offers, assumed, and the saved sponsorship
+  No holds even when a question counts OPT as sponsorship; superseded asking, and an extra OPT guard, because both are listed under Check
+  before you submit.
 
 ## 11. Known deferred items (priority order)
 
