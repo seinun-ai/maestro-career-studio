@@ -448,6 +448,10 @@ Desktop, Codex or any MCP agent. Your agent asks you when to run it:
 - **`apply-session`** — works through the jobs you accepted. It prepares each
   application on its own and asks you only for information the app doesn't
   have, plus one yes per application before the final submit.
+- **`apply-auto`**: for **Full automation** only (Settings › Connected agents,
+  off by default). It works the jobs you accepted and submits each one whose
+  final review shows nothing to check, without asking. Anything else waits for
+  you.
 - **`mail-status`** — reads your job email and moves each application to
   applied, interviewing, rejected or offered. It never sends mail.
 - **`referral-pages`** — checks your referrals' careers pages for new roles that
@@ -458,8 +462,8 @@ Desktop, Codex or any MCP agent. Your agent asks you when to run it:
   you, then builds your own version with your client's skill creator and
   scheduler.
 
-Nothing is ever submitted without your yes, and everything is written down —
-proposals, your yes/no decisions, and evidence.
+Nothing is submitted without your yes unless you turn on Full automation, and
+everything is written down: proposals, your yes/no decisions, and evidence.
 
 To keep that work going while your laptop is off, see
 [Run an always-on bot](always-on-bot.md).

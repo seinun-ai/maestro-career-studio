@@ -66,7 +66,7 @@ gone stale):
 | PDF output | House web templates | HTML → PDF | **LaTeX and Typst, bring your own template** |
 | Career record | None (per document) | Plain markdown/YAML files | **Organized, versioned — exports to one `career.md`** |
 | Works with AI assistants | No | Command-line skill files | **88 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
-| Submits applications for you | N/A | Never (stated) | **Never without your yes, per application** |
+| Submits applications for you | N/A | Never (stated) | **Only with your yes per application, or with Full automation you turn on** |
 | Cost | $15–75/month | Free + AI usage | **Free (Apache 2.0) + your own AI usage — [≈1¢ per application](SETUP_REFERENCE.md#do-you-need-an-api-key)** |
 
 ---
@@ -511,7 +511,7 @@ app, finds postings on whatever sites it can use, saves and scores them against
 your resumes, and hands back a ranked shortlist for you to review. There's no
 job-board integration to be locked into.
 
-Ready-made skills (`job-hunt`, `apply-session`, `mail-status`, `referral-pages`,
+Ready-made skills (`job-hunt`, `apply-session`, `apply-auto`, `mail-status`, `referral-pages`,
 `tailor-run`) are in [`docs/skills/`](skills/) — copy a prompt from the
 app's **Automations** page into Claude Desktop, Codex or any MCP agent (your
 agent asks when to run it), copy the skills into your assistant's skills folder
@@ -542,6 +542,13 @@ fills each application in a live agent session with a browser, asks you only
 for information the app doesn't have (and hands you logins, CAPTCHAs and
 signatures), and **waits for your yes before each submit**. Nothing is ever submitted from the web app itself, and a daily limit
 you set caps how many submissions are possible.
+
+**Full automation** is off by default, in Settings › Connected agents. Turned on, your agent may submit a
+queued job without asking when its final review shows nothing to check, within the daily limit and never
+for a company under **Companies to skip**. A job with anything to check goes to **Needs you**, and the
+agent asks you. Your agent can also get the job-site login you save there, so that login passes through
+your agent's AI provider. The **Apply automatically** prompt (`apply-auto`) on the Automations page runs
+this. The same switch turns on the Companion's **Apply**, which never presses Submit.
 
 Be clear about what that yes is: the agent records it, so the record shows *that
 the agent said you agreed*. It's an audit trail and a volume limit, not a lock
