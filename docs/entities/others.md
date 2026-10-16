@@ -269,7 +269,11 @@
   that is an employer is Yes, a listed company that is a parent or subsidiary of one, or an employer standing in the question or its options as
   capitalised words (a leading or trailing stop-word such as Current or United is ignored), is asked, never No; entries that are no company
   (Freelance, Contractor) never count. The `HISTORY_UNANSWERED` description reaches a "worked at named companies" question, and the reasoned pass's
-  never-list drops its worked-here clause only while the fact is absent. **Veteran** is one question, "Are you a veteran?"
+  never-list drops its worked-here clause only while the fact is absent. An employer under another name — a parent, subsidiary or alias (`_ALIASES`), a name whose initials spell an acronym employer, a list
+  beside one, or an employer standing in the question as capitalised words — is asked, never No. `asks_worked_here_of_other` takes employment
+  verbs only, up to 4 proper names (no group, generic noun, public body, pronoun phrase or "its affiliates"), none in the history and no
+  history entry that is no company; a dealer or contractor of a company (the job's own included) is rerouted the same way; an unsure map on
+  "worked with X" (no employment verb) is the user's. **Veteran** is one question, "Are you a veteran?"
   (`eeo.veteran_status`: `no` "No, I am not a veteran", `yes` "Yes, I am a veteran", `decline` "I don't wish to answer"). A No settles every
   "not a (protected) veteran" option at the exact floor; a Yes alone never says which protected class, so a classification question (the VEVRAA
   classes by name, "protected", "classification", covered, service-connected, Vietnam-era, active duty during a war or campaign) is asked, an
@@ -278,7 +282,9 @@
   mapped when the profile is READ, not migrated: `veteran` reads as `yes`; `not_veteran` ("not a protected veteran", true of a veteran who is not
   protected) reads as unanswered, and the profile lists `stale_answers: ["eeo.veteran_status"]` until the question is answered (a save that does
   not carry the answer keeps the marker; an older Settings page or peer keeps reading what is stored, so an old peer can read a synced `yes` as a
-  protected veteran). Profile › Autofill asks the question again ("Answer again: this question changed."). Known limits: a lowercase mention of an
+  protected veteran). Profile › Autofill asks the question again ("Answer again: this question changed."). A No also settles "currently or ever served" with
+  the never-served option, reported `assumed` (`veteran_inferred`); a Yes never claims CURRENT service — a question about it alone, or an option
+  that says so, is asked (`veteran_overreach`); the readers are /pick, /step, /map and `content/eeo.js`. Known limits: a lowercase mention of an
   employer outside a parsed list still reads No, and the veteran-class guard errs toward asking.
 - **Answers decided in code, and the polarity retry** (live check 7; `services/autofill_pick.py`, `autofill_step.py`, `autofill_education.py`, `autofill_place.py`, `autofill_polarity.py`).
   **Relocate**: "Are you located in X and/or willing to relocate?" over a saved `preferences.willing_to_relocate` Yes is the same way as the fact, decided by code with no model
@@ -765,6 +771,7 @@
   case-folded and by inode (`services/sync/folders.py`: APFS ignores case), also before a tombstone removes a folder. Settings' **Second
   copy** shows a 16-character code, once, for 10 minutes, with no attempt limit. `GET /api/settings/second-copy/setup-prompt` serves
   `backend/app/automations/bot-setup.md` (no sync lock; 409 on the always-on copy).
+  `POST /api/sync/round` is the always-on copy's own loopback call (404 on the laptop, 403 for an `Origin`, as is `/api/sync-setup/*`).
 - **ApplicationProposal + ConsentEvent** (auto-apply ledger; migrations
   `56ade310b259` + `11b61fe1ace9`, lifecycle fields `0c677ba4cbcb`, filer
   `9a5744f9b9d9`, the one revision after the SQLite baseline): the
@@ -1137,3 +1144,76 @@
     every connection in a `finally`; the context manager is not a closer.
   - **SQLite's `CURRENT_TIMESTAMP` has no microseconds**: same-second rows tied against the ORM's `.ffffff` binds and "oldest wins" fell to a
     uuid4 tie-break. The APP writes every timestamp; never test `updated_at == created_at` for "never edited".
+- **Cross-cutting invariant mechanics** (SYSTEM.md §6 holds each rule, its "because" and its pins; this is the worked detail moved out of
+  the orientation tier, one entry per invariant, named as §6 cites it).
+  - **Environment boundary details** (inv-empty-env-unset): the symptom that bought the rule is the OpenAI SDK adopting an empty
+    `OPENAI_BASE_URL`, after which every request loses its scheme and surfaces as a misleading `APIConnectionError`. Related: `llm._get_client`
+    raises a named error when there is no key AND no custom endpoint; Langfuse tracing requires an explicit `LANGFUSE_HOST` alongside both keys
+    (opt-in by DESTINATION — keys without a host fall back to Langfuse Cloud and would ship resume text to a third party); compose does not
+    forward the Langfuse vars.
+  - **Placement target details** (inv-placement-validation-twins): extra targets require `section="extra"`, a stable `section_key`, and either
+    an enabled entry's original index or, for a flat bullets section, the same stable key as `index_or_category`.
+  - **Em-dash backstop** (inv-em-dash): the MCP client's slim `get_rendered_pdf` scan returns metadata + page paths and no `page_images_b64`
+    — use `get_rendered_pdf_page_image` for one page.
+  - **Autofill telemetry details** (inv-autofill-telemetry-no-values): a reasoning step's `reasoning` rounds hold the model, note, actions as
+    ids and a written answer's LENGTH, and a value-free snapshot. The blanking of `rowKeys`/`siblingKeys` is fed by a scoped `only` fill too,
+    from the fields it left alone (the exact rule, with its option-word exceptions: `extension/INTERNALS.md`, "Run trace"). The page's option
+    texts and the chosen option's index are kept on every field, EEO too, except a text holding another TYPED field's value, and a typed
+    search's offered options keep only their count (the rows echo what was typed); the rest is enums and numbers (a /map step names its
+    sentinel from a fixed list, `TRACE_SENTINELS`, in `fill-loop.js` and `sw.js`), never a typed or profile string in a free-text slot. Runs
+    fold into host/label-free `autofill_mechanism_stats`. Rows carry `host` + `first_seen_at`, runs `host` + `started_at`, which is why
+    `DELETE /telemetry` clears rows, runs and gaps and keeps counters (`scripts/fill_trace.py last|report` reads a DB copy). The known-gaps
+    table (`autofill_widget_gap`, `POST /api/autofill/gaps`, `extra="forbid"`, closed enums) holds only a widget family hash, host, field
+    shape, outcome and counts, posted only while `telemetryEnabled === true`; the gesture report behind the recipe book (`content/recipes.js`)
+    holds event types and a few allowlisted key names, never `value`, and stays local with the fill log off too. With the log off the worker
+    answers a run's trace with `why: "off"` and `lastAt`, the time of the last trace this device posted (an ISO time and nothing else), and
+    the run card says so.
+  - **Frame gate details** (inv-frame-earns-data): the gated fan-out writes are `profile_fill`, the `fill_*` ops and attach; the vouched
+    `flowOrigin` is the origin whose frame held a confirmed form in this tab, same employer, within the hour (panel.js `withFlowOrigin`;
+    iCIMS EEO steps score 0).
+  - **Policy deny-list details** (inv-policy-deny-list-single-source): the four consumers are `fillFormFromProfile` ahead of rule matching
+    and `collectOpenQuestions` ahead of EXCLUDE and the per-type ladder — so a consent question rendered as a select/radio is never offered
+    to the model or tagged `data-rt-qid` — plus the panel's PAIR: the pause row renders no input for a blocked label AND `submitAnswer`
+    refuses one again (the first decides what to draw, the second touches the page). Salary history/current/CTC and unqualified
+    salary/wage/compensation mentions are also blocked without consent; explicit salary expectations are allowed only AFTER both lists.
+  - **Label-pattern table details** (inv-one-label-pattern-table): `profile-fields.js` throws at load if `shared/policy.js` has not run (it
+    borrows `salaryExpectationRe`), and `autofill.js`'s `pf()` throws on an unknown id — an undefined pattern does not error, it just never
+    matches.
+  - **EEO consent details** (inv-eeo-standing-consent): the server's stamp is `acknowledged_at` + `policy_version`, and `consent_forms` turns
+    on only on its own yes carrying the current policy (`agreed_policy`). The outward readers' model providers — OpenAI, Gemini, Claude,
+    OpenRouter, Jev — are recipients too. Never solicit pasted demographic answers in chat when consented values are in Profile. The callers
+    `consent_forms` lifts label refusals for are the fill loop, a model included, never the old collector/pause rows; `derived.agrees_to_terms`
+    is added only as served (lapsed or unreadable: absent).
+  - **PDF word-spacing details** (inv-pdf-word-spacing): pdfTeX 1.40.27 misplaces the inter-word space for many Type 1 fonts (e.g. Helvetica,
+    Charter, Garamond, Fira); `engines` warns on that build, where boot re-validates ready LaTeX templates once
+    (`template_registry.recheck_ready_latex_for_engine_warning`). A uv install uses the HOST's TeX, not Docker's TL 2026 — a PDF's
+    `PTEX.Fullbanner` names the pdfTeX that made it.
+  - **Render fallback details** (inv-render-fallback-explained): seed-render failures persist `render_error`, warn with tracebacks and leave
+    the base usable; its first save retries.
+  - **KB provenance details** (inv-provenance-no-decay): a retired `user_cannot_confirm` point lands on the entity its placement names, else
+    the archived "Unconfirmed claims" holder; later sessions pre-resolve the claim by normalized-text match, and evidence autos win.
+  - **Job-site login file details** (inv-job-site-password-local): writes serialize and replace from unique temp files; damaged JSON and
+    non-object files read empty.
+  - **Proposal relink from the Companion** (inv-auto-consent-gated): `POST /api/proposals` moves an `accepted` proposal to a newer draft of
+    its job only for the Companion's exact origin, when the yes came on channel `companion`, no final review exists and the old draft is gone
+    or still a draft; every other mismatch stays a 409, and an application of another job is refused on every linking route. The
+    Companion's submit record goes approved then attested submitted with host/path/text as the receipt and, past the daily cap or skip
+    list, files an applied-yourself record. The full-automation setting itself is `{value: bool}`.
+  - **Flush guard details** (inv-flush-guard): `hooks.standing_aside(db)` sets `session.info["sync_apply"]` and restores the earlier value;
+    a missing previous parent allows repair.
+  - **Voice check details** (inv-resume-voice): an ambiguous shape is the health advisory `voice.third_person`; the tailor response lists
+    repaired paths as `voice_repairs`.
+  - **Queued-run invariant mechanics** (inv-rejected-next, inv-one-resume-write, inv-ready-real-review; the code: `extension/INTERNALS.md`,
+    "Queued run"). *Rejected Next*: the repair is `fix`, `runFill({only})`, each error once; a repeat, or an error it cannot work, parks
+    `page_errors` naming only what is left; `filledPage` is path and step key, query ignored; a refused press or repair that ends on another
+    page counts as a step (`step_limit`, `loop`); a posting's Apply is pressed as a same-tab link even if it asks for a new tab, the address
+    re-checked, and the first read after it must be on the link's host, the queued host or a known ATS. *One resume write*: the box a page
+    error named is an opaque tag; the nearest name decides a parser box (`uploadBoxOf`); no press writes a parser or other-document box, the
+    Attach button included; a Resume never attaches; a file's proof follows an uploader that swaps its own box for the file's chip
+    (`ns.uploadProof`). *Ready*: `requiredEmpty` gets one scoped fix, then `open_questions`; the other reasons a page reads as a review are
+    a Submit the reader could not see, a dialog about submitting, several Nexts, and fields with no Next, and a page with errors or empties
+    gets its fix before the 4-read hold; a Resume on an `unsure_page` FILLS the page; the user's word counts only for `submit_seen`,
+    `submit_context` and `fields_no_next`; the one resume the run already wrote on the page excuses ONE required resume box, never a second;
+    closed is a strict notice, nothing fillable and no Apply, and resumable.
+  - **Drafted answers** (inv-drafted-answers): a draft is returned `assumed` and `/choose` saves nothing of it; `""` when the history cannot
+    answer; the never-list, the 120-word default and the label's stated limit: "Derived facts, drafted answers and degree levels" above.
