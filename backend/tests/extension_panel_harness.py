@@ -47,10 +47,9 @@ message the panel sends and the fake does not know about must be VISIBLE
 (recorded in `sent`) rather than quietly answered.
 """
 
-import re
 
 from tests.extension_fixtures import POSTING_URL, entry
-from tests.extension_harness import ROOT, js_code, run_node
+from tests.extension_harness import ROOT, js_code, run_node, script_srcs
 
 
 EXTENSION = ROOT / "extension"
@@ -79,7 +78,7 @@ def _panel_script_srcs() -> list[str]:
     in a browser, and dropping a tag from the document would otherwise leave
     every test green.
     """
-    srcs = re.findall(r'<script src="([^"]+)"></script>', PANEL_HTML)
+    srcs = script_srcs(PANEL_HTML)
     assert srcs, "panel.html loads no scripts — the pattern moved"
     return srcs
 
