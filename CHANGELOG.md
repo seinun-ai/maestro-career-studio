@@ -292,6 +292,10 @@ Less hunting, more applying.
 
 ### Fixed
 
+- **A tie between two resumes no longer reads as a choice.** When the top two scores are too close (or the top one too low)
+  for **Choose the base resume for me**, the Job step said "Apply picks the resume and runs every step." over a list waiting for
+  your pick, with one of the tied scores in green. It now says why Apply did not choose and that a pick lets it run the rest, and
+  scores that show the same number are not coloured as the best match.
 - **Done on the Ready card keeps the job.** Done ended the run and also dropped the job from the tab, so the review page showed
   "Not saved yet" and there was nowhere to mark it applied after your own Submit. The panel now stays on the job it was applying
   to, as a Draft, with **Draft / Applied** in the footer; nothing is marked for you. A tab you browsed on to another employer is

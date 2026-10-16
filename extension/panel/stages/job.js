@@ -28,7 +28,7 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
-  const { rankBaseResumes, describesJob, offersApply } = ns.decisions;
+  const { rankBaseResumes, describesJob, offersApply, pickHeldBack, bestIndex } = ns.decisions;
 
   /** Thousands separators without a locale. `toLocaleString` would read the
    * user's, and this is one number inside an English sentence. */
@@ -68,16 +68,27 @@
       : "No job description found on this page.";
   }
 
+  /** Why "Choose the base resume for me" left the pick to the user (`pickHeldBack`), as the line's
+   * first sentence. Without it the line promised "Apply picks the resume" under a list waiting for a pick. */
+  const HELD_BACK = {
+    close: "The top two scores are too close for Apply to choose.",
+    low: "The top score is too low for Apply to choose.",
+  };
+
   /** The Companion's Apply switches in one line, with the way to change them (Settings, Form filling).
    * Said once, where Apply is: the user should not have to open Settings to learn why Apply asked, or
    * why it stopped. Null with no web app address to send them to would still say the line; it only
-   * drops the link. */
+   * drops the link. While Apply waits for a pick it would have made on a clear win, the line says why
+   * it did not and what a pick does instead. */
   function modeLine({ facts, build }) {
     const { node, attach } = build;
     const picks = facts.companionApply?.autoPick !== false;
     const stops = facts.companionApply?.stopEachStep === true;
-    const words = `${picks ? "Apply picks the resume and" : "You pick the resume. Apply"} ${
-      stops ? "stops after each step" : "runs every step"}.`;
+    const held = facts.needsPick === true
+      ? pickHeldBack(facts, rankBaseResumes(facts.resumes, facts.scores)) : null;
+    const runs = stops ? "stops after each step" : "runs every step";
+    const words = held ? `${HELD_BACK[held]} Pick one and Apply ${runs}.`
+      : `${picks ? "Apply picks the resume and" : "You pick the resume. Apply"} ${runs}.`;
     const line = node("div", "sub mode", `${words} `);
     if (!facts.appUrl) return line;
     const link = attach(node("a", null, "Change in Settings"), build.icon("external-link", { size: 12 }));
@@ -421,7 +432,8 @@
    *
    * `best` is the top of the RANKING rather than the top of the list: an
    * all-unscored library has no best, and the green chip must not land on
-   * whichever row happens to be first.
+   * whichever row happens to be first. Nor does a tie (`bestIndex`): two rows
+   * that read the same number, one of them green, is a winner nobody chose.
    *
    * READ-ONLY BESIDE AN APPLICATION (owner decision, 2026-09-27): its own base
    * answered the question, so the body names that base and shows the ranking
@@ -431,7 +443,7 @@
   function baseBody(ctx) {
     const { node, attach } = ctx.build;
     const ranked = rankBaseResumes(ctx.facts.resumes, ctx.facts.scores);
-    const best = ranked.findIndex((entry) => entry.score !== null);
+    const best = bestIndex(ranked);
     const body = attach(node("div", "stg-body"), checklist(ctx));
     if (ctx.facts.application) {
       const usedSlug = ctx.facts.application.base_resume || ctx.facts.baseSlug;

@@ -1853,7 +1853,9 @@ footer alone).
   setting in one breath and obeys them only with full automation On; a switch it cannot read is the default. **Choose the base resume for me**
   (`decisions.preselect`): the top match score must reach Auto-apply's `auto_pick_floor` and lead the next scored base by `auto_pick_margin` (a lone
   scored base has no rival); a close call, a low top or a re-score that made the race close clears an earlier preselection (`null`), and Apply stops
-  after scoring at "Pick a resume to apply with" with the list unlocked. With the switch Off nothing is preselected, an unsaved posting's footer is
+  after scoring at "Pick a resume to apply with" with the list unlocked. The mode line then says why (`decisions.pickHeldBack`: "The top two
+  scores are too close for Apply to choose." or "The top score is too low for Apply to choose.", then "Pick one and Apply runs every step.")
+  instead of "Apply picks the resume", and two rows that show the same rounded score are a tie with no green chip (`decisions.bestIndex`). With the switch Off nothing is preselected, an unsaved posting's footer is
   **Save job** (a pick comes after the save) and a saved job with nothing picked waits (`needsPick`). **Stop after each step** (`decisions.applyPress`):
   the footer names the NEXT press, **Save job** (save, score, pick), **Tailor resume** (or **Make PDF** when a draft has no PDF), **Start filling**
   (queue as the user's yes, claim, link, run), and each press re-reads what the server holds so it is idempotent; no `/api/proposals` call happens

@@ -1367,6 +1367,44 @@ def test_the_job_step_says_how_apply_is_set_with_a_link_to_the_switches(tmp_path
         assert PROMISE in _text(shot["regions"]["rail"])
 
 
+def _score_classes(shot):
+    """Each base row's score chip as `(text, class)`, in list order."""
+    return [(_text(chip), chip["class"]) for row in _rows_in_rail(shot) for chip in _by_class(row, "score")]
+
+
+@pytest.mark.parametrize("ai,ds,stop,words", [
+    (73, 73, False, "The top two scores are too close for Apply to choose. Pick one and Apply runs every step."),
+    (80, 77, False, "The top two scores are too close for Apply to choose. Pick one and Apply runs every step."),
+    (73, 73, True, "The top two scores are too close for Apply to choose. Pick one and Apply stops after each step."),
+    (50, 20, False, "The top score is too low for Apply to choose. Pick one and Apply runs every step."),
+], ids=["tie", "thin-lead", "tie-stepwise", "low-top"])
+def test_when_apply_waits_for_the_pick_the_line_says_why_instead_of_promising_to_pick(tmp_path, ai, ds, stop, words):
+    """"Apply picks the resume" under "Pick a resume to apply with" and a disabled Apply contradicted itself
+    (store screenshot 1): with Choose for me on, the line says why it did not choose and what a pick does."""
+    api = _saved(**_companion(True, stop), **{"GET /api/ats-scores": _reply(_rows(ai, ds))})
+    shot = _apply(tmp_path, api=api)["shots"][0]
+    rail = _text(shot["regions"]["rail"])
+    assert PICK_NOTE.rstrip(".") in rail and "Apply picks the resume" not in rail
+    [line] = [one for one in _by_class(shot["regions"]["rail"], "mode")]
+    assert words in _text(line)
+    [link] = [one for one in line["children"] if one["tag"] == "A"]
+    assert link["href"] == "http://localhost:3000/settings#form-filling"
+
+
+@pytest.mark.parametrize("ai,ds", [(73, 73), (73.4, 72.6)], ids=["tie", "tie-as-shown"])
+def test_a_tie_has_no_best_match_chip(tmp_path, ai, ds):
+    """Two rows that read the same number: neither is coloured as the winner (the green chip is the best match)."""
+    shot = _apply(tmp_path, api=_saved(**{"GET /api/ats-scores": _reply(_rows(ai, ds))}))["shots"][0]
+    assert _score_classes(shot) == [("73", "score"), ("73", "score")]
+
+
+def test_a_clear_win_keeps_its_best_match_chip_and_the_usual_line(tmp_path):
+    shot = _apply(tmp_path, api=_saved(**{"GET /api/ats-scores": _reply(_rows(71.8, 63.6))}))["shots"][0]
+    assert _score_classes(shot) == [("72", "score good"), ("64", "score")]
+    assert "Apply picks the resume and runs every step." in _text(shot["regions"]["rail"])
+    assert "too close" not in _text(shot["regions"]["rail"])
+
+
 def test_a_setting_the_panel_cannot_read_leaves_apply_picking_and_running_every_step(tmp_path):
     shot = _apply(tmp_path, api=_saved())["shots"][0]
     assert "Apply picks the resume and runs every step." in _text(shot["regions"]["rail"])

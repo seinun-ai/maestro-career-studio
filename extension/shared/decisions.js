@@ -15,7 +15,7 @@
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
  * postingId, sessionTenant, restorableSession, postingLink, samePosting, withoutLocale,
  * applyFacts, httpUrl, reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
- * preselect, applyPress, offersAddJob }.
+ * preselect, pickHeldBack, bestIndex, applyPress, offersAddJob }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -256,14 +256,38 @@
    * re-score that made the race close must not leave the old winner looking chosen. Choosing between
    * near-equal resumes is the user's; a guess there is a resume nobody chose going to an employer. A lone
    * scored base has no rival to lead. */
-  function preselect({ fullAutomation, companionApply }, ranked) {
-    const scored = (ranked ?? []).filter((one) => one.score !== null && one.score !== undefined);
-    if (fullAutomation !== true) return scored.length ? scored[0].slug : undefined;
-    if (!scored.length || companionApply?.autoPick === false) return null;
+  function preselect(facts, ranked) {
+    const scored = scoredOnly(ranked);
+    if (facts.fullAutomation !== true) return scored.length ? scored[0].slug : undefined;
+    if (!scored.length || facts.companionApply?.autoPick === false) return null;
+    return pickHeldBack(facts, ranked) ? null : scored[0].slug;
+  }
+
+  const scoredOnly = (ranked) => (ranked ?? []).filter((one) => one.score !== null && one.score !== undefined);
+
+  /** Why "Choose the base resume for me" chose nothing, in `preselect`'s own order: `"low"` (the top score
+   * is under `floor`), `"close"` (it leads the next scored base by less than `margin`), or null (a clear
+   * win, nothing scored, full automation off, or the switch off, where the pick was never the
+   * Companion's). The Job step says it in words while Apply waits for the user's pick. */
+  function pickHeldBack({ fullAutomation, companionApply }, ranked) {
+    const scored = scoredOnly(ranked);
+    if (fullAutomation !== true || companionApply?.autoPick === false || !scored.length) return null;
     const [top, next] = scored;
-    if (top.score < (companionApply?.floor ?? 60)) return null;
-    if (next && top.score - next.score < (companionApply?.margin ?? 5)) return null;
-    return top.slug;
+    if (top.score < (companionApply?.floor ?? 60)) return "low";
+    if (next && top.score - next.score < (companionApply?.margin ?? 5)) return "close";
+    return null;
+  }
+
+  /** The ranking's index of the best match, the one row whose score is coloured as the winner, or -1.
+   * Compared as the rows SHOW them (rounded): two rows that read the same number are a tie, and a tie
+   * has no best. */
+  function bestIndex(ranked) {
+    const best = (ranked ?? []).findIndex((entry) => entry.score !== null && entry.score !== undefined);
+    if (best === -1) return -1;
+    const next = ranked[best + 1];
+    const tied = next && next.score !== null && next.score !== undefined
+      && Math.round(next.score) === Math.round(ranked[best].score);
+    return tied ? -1 : best;
   }
 
   /** What the Job step's footer button says and does, for a saved or unsaved posting.
@@ -799,7 +823,7 @@
   ns.decisions = {
     stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession, postingLink,
     samePosting, withoutLocale, applyFacts, httpUrl, namesPosting, applyLink, offersApply, boardHost,
-    preselect, applyPress, offersAddJob,
+    preselect, pickHeldBack, bestIndex, applyPress, offersAddJob,
     reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
   };
 })();
