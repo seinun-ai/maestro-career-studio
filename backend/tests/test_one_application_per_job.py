@@ -74,6 +74,7 @@ def test_tailoring_with_another_base_replaces_the_jobs_draft(
     versions = client.get(f"/api/resume-versions/application/{app_a.id}").json()
     newest = max(versions, key=lambda row: row["version_number"])
     assert newest["version_number"] == 2 and newest["summary"].startswith("Switched to ")
+    assert "; " in newest["summary"]  # the change list follows the switch
 
 
 def test_from_base_with_another_base_updates_in_place(db_session, tmp_path, monkeypatch, client):

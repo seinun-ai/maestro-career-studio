@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, load_only
 
-from app.models.application import Application
+from app.models.application import NEWEST_FIRST, Application
 from app.models.job import Job
 from app.models.tailoring_session import TailoringSession
 from app.schemas.stage import RUNGS, Rung  # noqa: F401  (RUNGS re-exported for callers)
@@ -133,8 +133,8 @@ def newest_applications(db: Session, job_ids: list[UUID]) -> dict[UUID, Applicat
             func.row_number()
             .over(
                 partition_by=Application.job_id,
-                # id: stable tie-break only, the same order the job detail reads
-                order_by=(Application.created_at.desc(), Application.id.desc()),
+                # the same order the job detail reads (application_writes.newest_for_job)
+                order_by=NEWEST_FIRST,
             )
             .label("rn"),
         )

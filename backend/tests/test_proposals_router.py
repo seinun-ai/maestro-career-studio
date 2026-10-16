@@ -742,6 +742,28 @@ def test_keep_it_answers_the_agents_question_from_the_web(db_session):
     assert re.match(r"^[A-Z][^{}[\]<>_`|\\]*[.!?]$", detail)
 
 
+def test_keep_it_with_no_fit_links_the_jobs_one_application_and_names_its_resume(db_session):
+    """The agent picked "hybrid", the user switched the job's one application to
+    "backend_eng", then pressed Keep it (no fit, no application_id): the decision links
+    that application and the fit names the resume that is actually sent."""
+    job = _mk_job(db_session, company="Switch Co")
+    app_row = Application(job_id=job.id, base_resume="backend_eng", source="user", status="draft")
+    db_session.add(app_row)
+    db_session.commit()
+    pid = client.post("/api/proposals", json={
+        "job_id": str(job.id), "fit": {"chosen_base": "hybrid", "decided_by": "auto"},
+    }).json()["id"]
+    client.post(f"/api/proposals/{pid}/request-decision", json={"reason": "Pay is below your floor. Keep it?"})
+
+    r = client.patch(f"/api/proposals/{pid}", json={"status": "pending_review"})
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "pending_review"
+    assert body["application_id"] == str(app_row.id)
+    assert body["fit_json"]["chosen_base"] == app_row.base_resume
+
+
 # ---------- relink: the Companion's Apply moves an accepted proposal to the job's newer draft ----------
 
 COMPANION = {"Origin": "chrome-extension://abcdefghijklmnopabcdefghijklmnop"}

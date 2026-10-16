@@ -421,6 +421,7 @@ def test_record_decision_links_the_jobs_application_after_a_resume_switch(db_ses
     assert prop.status == "pending_review"
     assert prop.application_id == switched.id
     assert switched.source == "agent"
+    assert prop.fit_json["chosen_base"] == "us"
 
 
 def test_record_decision_409_when_no_matching_application(db_session):

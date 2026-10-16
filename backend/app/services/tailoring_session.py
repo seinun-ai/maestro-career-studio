@@ -1501,9 +1501,13 @@ def tailor(
         if existing is not None:
             if existing.base_resume != tailoring.base_resume:
                 existing.base_resume = tailoring.base_resume
-                switch_summary = (
-                    f"Switched to {base_resume_data.resume_label(session, tailoring.base_resume)}"
+                # Name the switch, then the change list record_version would have written.
+                latest = resume_versions.latest_version(session, "application", str(existing.id))
+                changes = resume_versions.summarize_changes(
+                    resume_versions.diff_versions(latest.snapshot if latest else None, customized)
                 )
+                label = base_resume_data.resume_label(session, tailoring.base_resume)
+                switch_summary = f"Switched to {label}; {changes}"
             existing.user_prompt = user_prompt
             application = existing
         else:

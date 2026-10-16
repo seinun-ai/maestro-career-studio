@@ -15,7 +15,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.application import Application
+from app.models.application import NEWEST_FIRST, Application
 from app.models.resume_version import ResumeVersion
 from app.services import artifacts
 from app.services.resume_versions import record_version
@@ -28,13 +28,10 @@ NO_TAILORED_RESUME = "This application has no tailored resume yet. Tailor it fir
 def newest_for_job(db: Session, job_id: UUID) -> Application | None:
     """The application both write paths reuse: the job's newest, whatever its base resume
     (a job has one application; a tailor or from-base with another base replaces its draft).
-    Ordered `created_at desc, id desc`, the order the job detail and `stage` read, so a job
-    holding several from before that rule updates the one its page shows."""
+    Ordered `NEWEST_FIRST`, the order the job detail and `stage` read, so a job holding
+    several from before that rule updates the one its page shows."""
     return db.scalar(
-        select(Application)
-        .where(Application.job_id == job_id)
-        .order_by(Application.created_at.desc(), Application.id.desc())
-        .limit(1)
+        select(Application).where(Application.job_id == job_id).order_by(*NEWEST_FIRST).limit(1)
     )
 
 

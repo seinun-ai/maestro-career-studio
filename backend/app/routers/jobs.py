@@ -33,6 +33,7 @@ from app.schemas.job_detail import JobDetail
 from app.schemas.job_match import JobMatchResult
 from app.schemas.job_search_brief import JobSearchBriefResponse
 from app.services import (
+    application_writes,
     artifacts,
     ats_score,
     base_eligibility,
@@ -576,13 +577,8 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
 
     job = db.get(Job, matched_id)
     sync_ownership.stamp(db, [job])
-    application = db.scalar(
-        select(Application)
-        .where(Application.job_id == job.id)
-        # id: the same tie-break as stage.newest_applications, so the rung is this application's
-        .order_by(Application.created_at.desc(), Application.id.desc())
-        .limit(1)
-    )
+    # The same newest as stage.newest_applications, so the rung is this application's.
+    application = application_writes.newest_for_job(db, job.id)
     # The job's rung is its newest application's, so both summaries carry the same one.
     st = stage.for_job_rows(db, [job])[job.id]
     _stamp_stage(job, st)
@@ -672,13 +668,8 @@ def get_job_detail(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    application = db.scalar(
-        select(Application)
-        .where(Application.job_id == job_id)
-        # id: the same tie-break as stage.newest_applications, so the rung is this application's
-        .order_by(Application.created_at.desc(), Application.id.desc())
-        .limit(1)
-    )
+    # The same newest as stage.newest_applications, so the rung is this application's.
+    application = application_writes.newest_for_job(db, job_id)
     # Same derived proposal_status / proposal_id / proposal_proposed_by as the list endpoint
     # (transient attrs) so the job page can triage and load proposal detail.
     _with_newest_proposal(db, job)

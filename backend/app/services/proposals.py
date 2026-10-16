@@ -12,7 +12,7 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models.application import Application
+from app.models.application import NEWEST_FIRST, Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.consent_event import ConsentEvent
 from app.models.job import Job
@@ -415,26 +415,25 @@ NO_APPLICATION_TO_LINK = (
 
 def record_decision(session: Session, prop: ApplicationProposal, *, fit: dict,
                     application_id: UUID | None = None) -> ApplicationProposal:
+    linked_base = None
     if application_id is None and prop.application_id is None:
-        chosen = (fit or {}).get("chosen_base")
-        if not chosen:
-            raise TransitionError(NO_APPLICATION_TO_LINK)
-        app_row = session.scalar(
-            select(Application)
-            .where(
-                Application.job_id == prop.job_id,
-                Application.base_resume == chosen,
+        chosen = (fit or {}).get("chosen_base") or (prop.fit_json or {}).get("chosen_base")
+        app_row = None
+        if chosen:
+            app_row = session.scalar(
+                select(Application)
+                .where(Application.job_id == prop.job_id, Application.base_resume == chosen)
+                .order_by(*NEWEST_FIRST)
+                .limit(1)
             )
-            .order_by(Application.created_at.desc())
-            .limit(1)
-        )
         if app_row is None:
-            # A job has one application: after the user switched its resume away from
-            # the agent's chosen base, the job's newest application is still the one.
+            # A job has one application: with no pick, or after the user switched its
+            # resume away from the agent's pick, the job's newest application is the one.
             app_row = application_writes.newest_for_job(session, prop.job_id)
         if app_row is None:
             raise TransitionError(NO_APPLICATION_TO_LINK)
         application_id = app_row.id
+        linked_base = app_row.base_resume
 
     if application_id is not None:
         if prop.application_id is not None and prop.application_id != application_id:
@@ -447,6 +446,9 @@ def record_decision(session: Session, prop: ApplicationProposal, *, fit: dict,
 
     merged = dict(prop.fit_json or {})
     merged.update(fit or {})
+    if linked_base is not None:
+        # The inbox card and get_final_review name the resume that is actually sent.
+        merged["chosen_base"] = linked_base
     merged["decided_by"] = "user"
     prop.fit_json = merged
     return transition(session, prop, "pending_review")

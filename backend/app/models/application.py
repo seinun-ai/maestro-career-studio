@@ -54,3 +54,8 @@ class Application(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+
+# A job's newest application first: the one its page shows and both write paths reuse. id is a
+# stable tie-break only (two rows with the same created_at).
+NEWEST_FIRST = (Application.created_at.desc(), Application.id.desc())

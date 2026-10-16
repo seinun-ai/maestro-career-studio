@@ -277,19 +277,20 @@ def _claimed_rows(session: Session, application: Application) -> list[FilledAnsw
     by base, and a row posted without a base stays unlinked."""
     rows = session.scalars(select(FilledAnswer).where(
         FilledAnswer.job_id == application.job_id, FilledAnswer.application_id.is_(None))).all()
-    mine = [row for row in rows if row.base_resume == application.base_resume]
-    if len(mine) < len(rows):
-        sole = session.scalar(select(func.count()).select_from(Application).where(
-            Application.job_id == application.job_id)) == 1
-        if sole:
-            return list(rows)
-    return mine
+    if not rows:
+        return []
+    sole = session.scalar(select(func.count()).select_from(Application).where(
+        Application.job_id == application.job_id)) == 1
+    if sole:
+        return list(rows)
+    return [row for row in rows if row.base_resume == application.base_resume]
 
 
 def link_unlinked(session: Session, application: Application) -> int:
     """Late linking, for a NEW application or one marked applied or submitted (never on a
-    rebuild): the job's rows posted before it had an application, for this one's base, belong
-    to it. Their resume uploads take the version the application had when the row was posted,
+    rebuild): the job's unlinked rows belong to it, all of them while it is the job's only
+    application, else (a job holding several from before one-per-job) those posted for its
+    base (`_claimed_rows`). Their resume uploads take the version the application had when the row was posted,
     none when it had no version yet. The caller commits; `application.id` must be set
     (flushed) and the version recorded first."""
     rows = _claimed_rows(session, application)

@@ -1169,6 +1169,10 @@ def test_a_needs_decision_proposal_with_no_application_cannot_go_to_review(
     ids = _owned_case(db_session, roots, status_="needs_decision")
     proposal = db_session.get(models.ApplicationProposal, ids.proposal)
     proposal.application_id = None
+    # The job's newest application would be linked instead (proposals.record_decision): the
+    # job must hold none for the decision to have nothing to link.
+    for app_id in (ids.app, ids.app2):
+        db_session.delete(db_session.get(models.Application, app_id))
     db_session.commit()
     item = _request(ids.job, "proposal_transition", {
         "proposal_id": str(ids.proposal), "to": "pending_review", "consent": SECRET_CONSENT})
