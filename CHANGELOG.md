@@ -109,7 +109,7 @@ Less hunting, more applying.
 - **Sign-in with your saved job-site login**, on known application sites only (Workday, Greenhouse,
   Lever, Ashby, iCIMS and a few more), in the page's top frame. Anywhere else the run waits for you.
   The password never reaches an AI model, a trace or a log, and a failed sign-in is never retried.
-- **Screening answers**, a three-level setting under Settings › Form filling that replaces
+- **Screening answers**, a three-level setting under Profile › Autofill that replaces
   "Answer low-stakes questions for me": **Careful**, **Balanced** (the default) and
   **Confident**. Work authorization, salary, demographic, criminal-history and clearance
   questions, signatures and claims your history does not support are outside every level. Agents
@@ -205,6 +205,20 @@ Less hunting, more applying.
   `expected_updated_at`: when the draft changed since, it answers 409 and writes nothing. The job page's
   Revert sends it.
 - **Version history names a resume switch**: "Switched to {resume}", then what changed.
+- **Each base resume has its own colour.** A new base resume starts on a free colour picked at
+  random; change it in the resume's ⋯ › **Target** › **Color** (ten presets, or any hue). Resumes
+  you already have are coloured when you update, live ones first, each with its own preset. The
+  colour is a square beside the resume's name wherever it is named: the job page's resume chips and
+  score cards, gap analysis, the resume's own title, Agent inbox rows, Assistant cards, the resume pickers, Analytics
+  and the Companion's Job step. The Base resumes gallery gives each card a band and a footer in its
+  colour and groups the cards under a heading per role. Career history cards end with "In N resumes"
+  and those resumes' squares, and the Analytics fit distribution fills each resume's bars with its
+  colour.
+- **A Where column on Jobs, with sync on.** When a job has an owner, a narrow **Where** column after
+  Status says where it lives (**Laptop**, **Bot** or **Moving**, with the full sentence as its
+  tooltip), and a request still waiting for the next sync shows as **Queued**. A status that cannot
+  change while the job moves shows a lock with the reason. **Work on it here** and **Keep it here**
+  are in the row's menu. With sync off the table has no new column.
 
 ### Changed
 
@@ -242,6 +256,8 @@ Less hunting, more applying.
   a skill" only when your history shows the skill. If you want the old behaviour, pick **Careful**.
   If your laptop and your second copy run different versions, saving the level on the newer one
   clears the old switch, which the older copy reads as off until you update it.
+- **The Companion's colours are the web app's**, in light and dark, and every text on a coloured
+  fill in the panel reads at 4.5:1 or better.
 - **The Companion remembers the job per tab, not for 30 minutes.** A long application no longer
   forgets its job halfway, and a second tab's pick no longer overwrites the first. The memory lasts
   while the tab is open.
@@ -260,9 +276,9 @@ Less hunting, more applying.
 - **A closed posting means closed.** A job description that says a position "is filled" no longer
   ends the run. A page counts as closed only when it shows a closed notice and nothing to fill or
   apply to, and the stop offers **Resume** in case it is not.
-- **Resumes that were not scored for the job are tucked away.** The Job step lists the scored base
-  resumes and the one selected; **Show N more (not scored for this job)** reveals the rest. With
-  nothing scored, every base shows.
+- **Resumes that were not scored for the job are left out.** Once any base resume is scored for
+  the job, the Job step lists only the scored ones and the one selected; the rest are base resumes
+  the scorer skipped (set for another country or role). With nothing scored, every base shows.
 - **The resume goes only into a resume box.** A box that imports or fills the form from a resume
   (the site's own parser) is never given the file, a required one stops the run naming it, and the
   **Attach resume** button skips a box meant for a cover letter or another document.
