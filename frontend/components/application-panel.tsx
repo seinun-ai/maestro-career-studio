@@ -1,19 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { isSyncQueued } from "@/lib/job-ownership";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,8 +21,6 @@ import {
 } from "@/components/ui/select";
 
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
-import { ResumeTag } from "@/components/visual";
-import { useBaseResumeColor, useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import type { Application, JobDetail, Referral } from "@/lib/types";
@@ -50,7 +43,7 @@ function referralLabel(referral: Referral): string {
 
 /**
  * Hook returning the patch + delete mutations for an application.
- * Used by ApplicationDetailsMenu, the header StatusChip, and any consumer
+ * Used by ApplicationDetails, the header StatusChip, step 4's Mark applied, and any consumer
  * that wants to mutate.
  */
 export function useApplicationMutations({
@@ -120,7 +113,7 @@ function useDeleteApplication({ applicationId, jobId }: { applicationId: string;
   return deleteApp;
 }
 
-/** Delete application with its confirm, for the Details menu and step 3's ⋯ (one sentence, one request). */
+/** Delete application with its confirm, for step 4's Application details and step 3's ⋯ (one sentence, one request). */
 export function useConfirmDeleteApplication({
   applicationId,
   jobId,
@@ -148,12 +141,11 @@ export function useConfirmDeleteApplication({
 }
 
 /**
- * The application's tracking details behind one quiet menu button: applied
- * date, tracking URL, base, referral, notes, delete. Status is NOT here — it
- * lives in the always-visible StatusChip beside this menu (one click, no
- * drill-down).
+ * The application's details, inline under step 4's Application details disclosure: applied date, tracking URL,
+ * referral, notes and Delete application. Status is NOT here: it lives in the header's StatusChip and step 4's
+ * Mark applied. Mounted only while the disclosure is open, so the referrals are read only then.
  */
-export function ApplicationDetailsMenu({
+export function ApplicationDetails({
   app,
   jobId,
   jobSourceUrl,
@@ -166,24 +158,17 @@ export function ApplicationDetailsMenu({
   readOnly?: boolean;
   canRequest?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  // Job detail embeds ApplicationRead, which carries no joined name. The hook
-  // names it from the list, and reads the résumé's own row only when the list
-  // lacks it (soft-deleted) and the menu is open.
-  const listedName = useBaseResumeName(app.base_resume, open && !app.base_resume_name);
-  const resumeName = app.base_resume_name || listedName;
-  const colorOf = useBaseResumeColor();
+  const appliedId = useId();
+  const referralId = useId();
+  const notesId = useId();
   const { patch } = useApplicationMutations({
     applicationId: app.id,
     jobId,
   });
   const { onDelete, deleting } = useConfirmDeleteApplication({ applicationId: app.id, jobId });
-  // Referrals are only visible inside the opened menu — don't fetch them on
-  // every job-detail view (review finding).
   const { data: referrals } = useQuery({
     queryKey: ["referrals"],
     queryFn: () => apiFetch<Referral[]>("/api/referrals"),
-    enabled: open,
   });
 
   const onPatch = (body: Partial<Application>) => {
@@ -192,118 +177,97 @@ export function ApplicationDetailsMenu({
   };
 
   const [appliedAt, setAppliedAt] = useState(formatDateInput(app.applied_at));
+  // Mark applied (or the status chip) stamps the date while this is open: the field follows it.
+  const [appliedSeen, setAppliedSeen] = useState(app.applied_at);
+  if (app.applied_at !== appliedSeen) {
+    setAppliedSeen(app.applied_at);
+    setAppliedAt(formatDateInput(app.applied_at));
+  }
   const [notes, setNotes] = useState(app.notes ?? "");
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-muted-foreground h-8 gap-1.5 px-3 text-body-small"
-            aria-label="Application details"
-          >
-            <SlidersHorizontal className="size-3.5 opacity-60" />
-            Details
-          </Button>
-        }
+    <div className="grid max-w-md gap-3">
+      <div className="grid gap-1.5">
+        <Label htmlFor={appliedId} className="text-label-medium">
+          Applied on
+        </Label>
+        <Input
+          id={appliedId}
+          type="date"
+          className="h-8 w-44 text-body-medium"
+          value={appliedAt}
+          disabled={readOnly}
+          onChange={(e) => setAppliedAt(e.target.value)}
+          onBlur={() => onPatch({ applied_at: toIsoDate(appliedAt) })}
+        />
+      </div>
+
+      <JobTrackingUrlField
+        jobId={jobId}
+        sourceUrl={jobSourceUrl ?? null}
+        id="details-tracking-url"
+        readOnly={readOnly}
       />
-      <DropdownMenuContent
-        align="end"
-        className="w-72 p-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="space-y-3">
-          <p className="text-title-small">Application</p>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="menu-applied" className="text-label-medium">
-              Applied on
-            </Label>
-            <Input
-              id="menu-applied"
-              type="date"
-              className="h-8 text-body-medium"
-              value={appliedAt}
-              disabled={readOnly}
-              onChange={(e) => setAppliedAt(e.target.value)}
-              onBlur={() => onPatch({ applied_at: toIsoDate(appliedAt) })}
-            />
-          </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor={referralId} className="text-label-medium">
+          Referral
+        </Label>
+        <Select
+          disabled={readOnly}
+          value={app.referral_id ?? "__none__"}
+          onValueChange={(v) =>
+            onPatch({ referral_id: v === "__none__" ? null : v })
+          }
+        >
+          <SelectTrigger id={referralId} size="sm" className="w-full">
+            <SelectValue placeholder="None">
+              {(() => {
+                if (!app.referral_id) return "None";
+                const selected = referrals?.find(
+                  (r) => r.id === app.referral_id,
+                );
+                return selected ? referralLabel(selected) : "None";
+              })()}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">None</SelectItem>
+            {(referrals ?? []).map((r) => (
+              <SelectItem key={r.id} value={r.id}>
+                {referralLabel(r)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-          <JobTrackingUrlField
-            jobId={jobId}
-            sourceUrl={jobSourceUrl ?? null}
-            id="menu-tracking-url"
-            readOnly={readOnly}
-          />
+      <div className="grid gap-1.5">
+        <Label htmlFor={notesId} className="text-label-medium">
+          Notes
+        </Label>
+        <Textarea
+          id={notesId}
+          className="text-body-medium"
+          value={notes}
+          disabled={!canRequest}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={() => onPatch({ notes })}
+          rows={3}
+        />
+      </div>
 
-          <div className="grid gap-1">
-            <span className="text-muted-foreground text-body-small">Base resume</span>
-            <ResumeTag hue={colorOf(app.base_resume)} className="text-body-medium">{resumeName}</ResumeTag>
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="menu-referral" className="text-label-medium">
-              Referral
-            </Label>
-            <Select
-              disabled={readOnly}
-              value={app.referral_id ?? "__none__"}
-              onValueChange={(v) =>
-                onPatch({ referral_id: v === "__none__" ? null : v })
-              }
-            >
-              <SelectTrigger id="menu-referral" size="sm" className="w-full">
-                <SelectValue placeholder="None">
-                  {(() => {
-                    if (!app.referral_id) return "None";
-                    const selected = referrals?.find(
-                      (r) => r.id === app.referral_id,
-                    );
-                    return selected ? referralLabel(selected) : "None";
-                  })()}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">None</SelectItem>
-                {(referrals ?? []).map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {referralLabel(r)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="menu-notes" className="text-label-medium">
-              Notes
-            </Label>
-            <Textarea
-              id="menu-notes"
-              className="text-body-medium"
-              value={notes}
-              disabled={!canRequest}
-              onChange={(e) => setNotes(e.target.value)}
-              onBlur={() => onPatch({ notes })}
-              rows={3}
-            />
-          </div>
-
-          <Button
-            variant="destructive"
-            size="sm"
-            className="w-full"
-            onClick={onDelete}
-            disabled={deleting || readOnly}
-          >
-            {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-            {deleting ? "Deleting…" : "Delete application"}
-          </Button>
-        </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      <div>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={onDelete}
+          disabled={deleting || readOnly}
+        >
+          {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+          {deleting ? "Deleting…" : "Delete application"}
+        </Button>
+      </div>
+    </div>
   );
 }

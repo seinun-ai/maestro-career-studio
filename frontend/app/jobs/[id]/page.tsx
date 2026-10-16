@@ -17,13 +17,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  ApplicationDetailsMenu,
-  useApplicationMutations,
-} from "@/components/application-panel";
+import { useApplicationMutations } from "@/components/application-panel";
+import { ApplyStep } from "@/components/apply-step";
 import { TailoredResumeStep } from "@/components/tailored-resume-step";
 import { LoadErrorState } from "@/components/load-error-state";
-import { QATab } from "@/components/qa-tab";
 import { ResumeStep } from "@/components/resume-step";
 import { CompanyMonogram } from "@/components/company-monogram";
 import { IconButton } from "@/components/icon-button";
@@ -66,7 +63,6 @@ import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
 import {
   apiFetch,
-  apiUrlForBrowserPdf,
   listAtsScores,
   listTailoringSessions,
   promoteJobToAgentQueue,
@@ -778,50 +774,32 @@ export default function JobDetailPage({
 
           {visited.has("qa") ? (
             <div hidden={step !== "qa"} className="space-y-4">
-              {(standing.pdf && application) || standing.submitted ? (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-medium">
-                  {standing.pdf && application ? (
-                    <a
-                      href={apiUrlForBrowserPdf(`/api/applications/${application.id}/pdf`)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      View PDF
-                    </a>
-                  ) : null}
-                  {standing.submitted ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        receiptRef.current?.scrollIntoView({ block: "start" });
-                        receiptRef.current?.focus({ preventScroll: true });
-                      }}
-                      className="text-primary hover:underline"
-                    >
-                      What was submitted
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-              {/* A link that opened the receipt (?tab=submitted) puts it first; else it follows the questions. */}
-              {submittedSeen ? receipt : null}
               {application ? (
-                <QATab applicationId={application.id} readOnly={!ownership.canWrite} />
-              ) : (
-                <NothingTailoredYet onOpenFit={() => setStep("fit")} />
-              )}
-              {submittedSeen ? null : receipt}
-              {/* The application's details (applied date, tracking link, referral, notes, delete), out of the header. */}
-              {application ? (
-                <ApplicationDetailsMenu
+                // Step 4: the questions, Mark applied and the application's details; the PDF line and the cover letter.
+                <ApplyStep
                   app={application}
+                  job={job}
                   jobId={id}
-                  jobSourceUrl={job.source_url}
                   readOnly={!ownership.canWrite}
                   canRequest={ownership.canRequest}
+                  patch={patch}
+                  active={step === "qa"}
+                  receipt={receipt}
+                  receiptRef={receiptRef}
+                  receiptFirst={submittedSeen}
+                  onOpenStep={(key) => {
+                    focusOpenedStep.current = true;
+                    setStep(key);
+                  }}
                 />
-              ) : null}
+              ) : (
+                <>
+                  {/* A link that opened the receipt (?tab=submitted) puts it first; else it follows. */}
+                  {submittedSeen ? receipt : null}
+                  <NothingTailoredYet onOpenFit={() => setStep("fit")} />
+                  {submittedSeen ? null : receipt}
+                </>
+              )}
             </div>
           ) : null}
         </div>

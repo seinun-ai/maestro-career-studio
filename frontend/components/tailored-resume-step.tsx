@@ -608,8 +608,8 @@ function ChangesList({
 }
 
 /**
- * The PDF card, only while a PDF exists: its line on `surface-container-low` (the file, its pages, where its copy
- * is, and its own actions), then the page preview. `canvas` is only the ground the preview paints behind the page.
+ * The PDF card, only while a PDF exists: its line (the file, its pages, where its copy is, and its own actions),
+ * then the page preview. `canvas` is only the ground the preview paints behind the page.
  */
 function PdfCard({
   app,
@@ -622,46 +622,65 @@ function PdfCard({
   update: ReactNode;
   preview: ReactNode;
 }) {
-  const pdfHref = apiUrlForBrowserPdf(`/api/applications/${app.id}/pdf`);
-  const pdfFilename = app.pdf_path?.split(/[\\/]/).pop() ?? "tailored-resume.pdf";
-  const pages = app.pdf_pages ? `${app.pdf_pages} ${app.pdf_pages === 1 ? "page" : "pages"}` : null;
   return (
     <section aria-label="PDF" className="space-y-3">
-      <div className="bg-surface-container-low flex flex-wrap items-center gap-x-2 gap-y-1 rounded-corner-md py-2 pr-2 pl-4">
-        <FileText aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
-        <span className="truncate text-title-small" title={pdfFilename}>
-          {pdfFilename}
-        </span>
-        {pages ? (
-          <span className="text-muted-foreground text-body-small">
-            <span aria-hidden="true">· </span>
-            {pages}
-          </span>
-        ) : null}
-        <ResumesFolderNote copyMissed={copyMissed} />
-        <div className="ml-auto flex items-center gap-1">
-          <IconButton
-            label="Download PDF"
-            icon={<Download className="size-4" />}
-            nativeButton={false}
-            render={<a href={pdfHref} download={pdfFilename} />}
-          />
-          <IconButton
-            label="Open PDF in new tab"
-            icon={<ExternalLink className="size-4" />}
-            nativeButton={false}
-            render={<a href={pdfHref} target="_blank" rel="noopener noreferrer" />}
-          />
-          <ShowCopyButton applicationId={app.id} variant="ghost" iconOnly />
-          {update}
-        </div>
-      </div>
+      <PdfFileLine app={app} note={<ResumesFolderNote copyMissed={copyMissed} />} actions={update} />
       {preview}
     </section>
   );
 }
 
-/** The strip's ⋯: Tailor again (step 2) and Delete application, with the Details menu's confirm. */
+/**
+ * The application's PDF as one line on `surface-container-low`: the file name, its pages, then Download PDF, Open
+ * PDF in new tab and Show in Finder as icon buttons. Step 3 adds the resumes folder line and Update PDF; step 4
+ * shows the line alone. Only for an application with a PDF.
+ */
+export function PdfFileLine({
+  app,
+  note,
+  actions,
+}: {
+  app: Application;
+  note?: ReactNode;
+  actions?: ReactNode;
+}) {
+  const pdfHref = apiUrlForBrowserPdf(`/api/applications/${app.id}/pdf`);
+  const pdfFilename = app.pdf_path?.split(/[\\/]/).pop() ?? "tailored-resume.pdf";
+  const pages = app.pdf_pages ? `${app.pdf_pages} ${app.pdf_pages === 1 ? "page" : "pages"}` : null;
+  return (
+    <div className="bg-surface-container-low flex flex-wrap items-center gap-x-2 gap-y-1 rounded-corner-md py-2 pr-2 pl-4">
+      <FileText aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
+      <span className="min-w-0 truncate text-title-small" title={pdfFilename}>
+        {pdfFilename}
+      </span>
+      {pages ? (
+        <span className="text-muted-foreground text-body-small">
+          <span aria-hidden="true">· </span>
+          {pages}
+        </span>
+      ) : null}
+      {note}
+      <div className="ml-auto flex items-center gap-1">
+        <IconButton
+          label="Download PDF"
+          icon={<Download className="size-4" />}
+          nativeButton={false}
+          render={<a href={pdfHref} download={pdfFilename} />}
+        />
+        <IconButton
+          label="Open PDF in new tab"
+          icon={<ExternalLink className="size-4" />}
+          nativeButton={false}
+          render={<a href={pdfHref} target="_blank" rel="noopener noreferrer" />}
+        />
+        <ShowCopyButton applicationId={app.id} variant="ghost" iconOnly />
+        {actions}
+      </div>
+    </div>
+  );
+}
+
+/** The strip's ⋯: Tailor again (step 2) and Delete application, with Application details' confirm. */
 function TailoredResumeMenu({
   app,
   jobId,

@@ -462,7 +462,9 @@ def test_the_rare_actions_sit_behind_one_more_actions_menu():
     assert menu.count("returnFocus: moreTrigger,") == 2  # each confirm returns to ⋯
     # Out of the header: the Details menu lives on step 4; nothing else is an icon-only delete.
     assert "<ApplicationDetailsMenu" not in header and 'label="Delete job"' not in page
-    assert page.index('{visited.has("qa") ? (') < page.index("<ApplicationDetailsMenu")
+    assert page.index('{visited.has("qa") ? (') < page.index("<ApplyStep")
+    assert "<ApplicationDetails" in _read("components/apply-step.tsx")
+    assert "ApplicationDetailsMenu" not in _read("components/application-panel.tsx")
     assert "actionsSlot=" not in page
 
 
@@ -685,6 +687,39 @@ def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions()
     assert "<AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} bare />" in step
     # A failed Create PDF says so without naming an action it may not have been.
     assert "Creating the PDF failed. Try again." in step
+
+
+def test_step_four_applies_with_the_pdf_at_hand_and_the_details_under_it():
+    src = _read("components/apply-step.tsx")
+    flat = " ".join(src.split())
+    # The job post opens in a new tab: its apply link, else its source link; without either, Mark applied is filled.
+    assert "const postHref = job.apply_url || job.source_url || null;" in src
+    assert "Open the job post and apply" in src and 'target="_blank" rel="noopener noreferrer"' in src
+    assert 'variant={postHref ? "tonal" : "default"}' in src
+    filled = [t for t in _button_tags(src) if "variant=" not in t]
+    assert len(filled) == 1 and "render={<a href={postHref}" in filled[0], filled
+    # Mark applied is the header chip's transition through the page's one PATCH, one request per click, and only
+    # while the job is a draft; its line says what it sets and where the later statuses are.
+    assert "const markOnce = useSingleFlight(patch.mutate);" in src and 'markOnce({ status: "applied" });' in src
+    assert "{isDraft ? (" in src and '{applying ? "Applying…" : "Mark applied"}' in src
+    assert "Sets today as the applied date." in src
+    assert "Interviewing, Offer and Rejected come after, on the status chip." in src
+    assert "patch={patch}" in _read(_JOB_PAGE)
+    # The application's details: a disclosure, closed by default, mounting the fields only while open.
+    assert "const [detailsOpen, setDetailsOpen] = useState(false);" in src
+    toggle = open_tag(src[src.rindex("<button", 0, src.index("ref={detailsToggle}")) :], "button")
+    assert "aria-expanded={detailsOpen}" in toggle and "aria-controls={detailsId}" in toggle
+    assert "{detailsOpen ? ( <ApplicationDetails" in flat
+    # The right column: the PDF line without a preview (step 3 has it), else where to create one.
+    assert "<PdfFileLine app={app} />" in src and "PdfPagesPreview" not in src
+    assert "No PDF yet" in src and 'onClick={() => onOpenStep("output")}' in src and "Create it on Tailored resume" in src
+    # The cover letter card moves to the right column; QATab keeps its state and lays out nothing new.
+    assert "arrange={({ questions, coverLetter, history }) => (" in src
+    qa = _read("components/qa-tab.tsx")
+    assert "return arrange({ questions: questionsCard, coverLetter: coverLetterCard, history });" in qa
+    assert "entries !== undefined && !hasCoverLetter ? (" in qa and "Not written" in qa
+    # Edit resume lives on step 3; the Companion button waits for a way to tell it is paired.
+    assert "Edit resume" not in src and "Let the Companion fill it" not in src
 
 
 def test_step_three_change_rows_read_and_revert_one_by_one():

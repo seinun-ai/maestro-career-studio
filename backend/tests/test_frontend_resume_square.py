@@ -14,7 +14,8 @@ _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 # Every site that names a base resume and has its slug or its summary. `career/points-list.tsx` and
 # `use-resume-key-label.ts` are left out on purpose: their keys can be application ids.
-# The Jobs list is not one: its Resume column went, and only its Match score names a resume, on hover.
+# The Jobs list is not one: its Resume column went, and only its Match score names a resume, on hover. Nor is
+# step 4's Application details: the resume chips (step 2) and step 4's own line name the job's resume.
 _SITES = [
     "components/resume-chips.tsx",
     "components/score-summary.tsx",
@@ -24,7 +25,6 @@ _SITES = [
     "components/chat/proposal-card.tsx",
     "components/chat/edit-proposal-card.tsx",
     "components/chat/change-card.tsx",
-    "components/application-panel.tsx",
     "app/jobs/[id]/page.tsx",
     "components/chat/chat-page.tsx",
     "components/base-resumes/new-base-resume-dialog.tsx",

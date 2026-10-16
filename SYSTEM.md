@@ -168,8 +168,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    (`proposalHasContent`), then a receipt row whose **View details** shows the **knock-out pre-scan** (`services/knockout.scan_for`:
    stated JD requirements vs the profile, flagged; the decision stays yours (or your agent's); verdicts and chips:
    docs/entities/job.md, "Knock-out pre-scan"), the job details and tracking link. Step 4's line, when it is current, is **Where
-   this stands** (`lib/job-standing.ts`); it shows View PDF, the Details menu and, once the job has filled answers, **What was
-   submitted**: the answer receipt, latest per question, source pills and warn-only flags (docs/entities/filled-answers.md).
+   this stands** (`lib/job-standing.ts`).
    `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`, else `cs-tracker-seq`. Every job read derives
    `proposal_status`/`proposal_id` from the newest proposal.
 4. **Score** — Step 2 (**Resume and gaps**, `components/resume-step.tsx`) shows the bases set for the job's country (all when
@@ -197,8 +196,11 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    tailoring made (`GET …/resume-diff`, keyed on the draft's `updated_at`), each with a Revert that PATCHes the draft and re-scores
    it, and **Check wording**. A draft write removes the PDF (Create PDF again): the PDF card shows only the draft's own, with
    Download / Open / **Show in Finder** (§6 inv-resumes-folder-one-way), **Update PDF** and the rasterized page preview.
-8. **Apply package** — Q&A tab: questions, cover letter (tone). Outreach/cold messages are asked as free-form questions (no
-   dedicated cold-message generator); the QA prompt injects the application's linked referral contact.
+8. **Apply** — Step 4 (`components/apply-step.tsx`), one card: **Open the job post and apply** (apply link, else source link),
+   the questions and history (`QATab`), **Mark applied** while a draft (the StatusChip's PATCH) and an **Application details**
+   disclosure (applied date, tracking link, referral, notes, Delete application); beside them the PDF line, **Cover letter** (tone)
+   and, once filled answers exist, **What was submitted**'s latest answers, linking the whole receipt (docs/entities/filled-answers.md).
+   Cold messages are free-form questions; the QA prompt injects the application's linked referral contact.
 9. **Track to terminal** — StatusChip anywhere (tracker row or job header): draft → applied → interviewing → offered → accepted /
    rejected / withdrawn. A base resume grown past your career history shows an "Add N things to career history" toolbar pill (N
    excludes already-recorded drift); its **Add now** drafts new and drifted items with no LLM, near-matching entities instead of

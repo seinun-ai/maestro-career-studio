@@ -116,7 +116,6 @@ _ONE_SLUG_SURFACES = {
     "components/chat/proposal-card.tsx": "useBaseResumeName(proposal.target_key,",
     "components/chat/edit-proposal-card.tsx": "useBaseResumeName(proposal.target_key,",
     "components/proposals/proposals-section.tsx": "useBaseResumeName(base ??",
-    "components/application-panel.tsx": "useBaseResumeName(app.base_resume, open && !app.base_resume_name)",
 }
 
 

@@ -1024,7 +1024,7 @@
   `surface-container-highest` with `text-foreground`; never a status container,
   because StatusChip is the only place a state is coloured and the tint is
   identity. `test_company_monogram_tones_are_not_statuses` pins it),
-  `ApplicationDetailsMenu` (status lives in the chip, not the menu). "Needs
+  `ApplicationDetails` (step 4's disclosure; status lives in the chip, not there). "Needs
   you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object, the
   `attention` container pair; "Submission uncertain" is its own entry with the
   same pair. Every status and grade chip is a role container pair (Applied
@@ -1224,7 +1224,7 @@
   shown as "Keywords +21.3" and read as "Keywords up 21.3 points", `lib/ats-words` `subscoreMoves`), a **Score
   breakdown** disclosure (`aria-expanded`, `aria-controls`) that opens the full compare without its card frame
   under the strip, ⋯ (**More actions for the tailored resume**: Tailor again opens step 2, Delete application
-  with the Details menu's confirm), **Edit resume** (outline, to the studio) and the view's one filled button:
+  with Application details' confirm), **Edit resume** (outline, to the studio) and the view's one filled button:
   **Create PDF** before a PDF, **Continue to Apply** once one exists. Then **Changes (N)**, the resume diff keyed
   on the draft (`resumeDiffQuery` in `lib/api.ts`: `["resume-diff", id, updated_at]`, shared with the studio and
   the page's step line). The header tallies each provenance as the studio's chip (`PROVENANCE_CHIPS`: **From your
@@ -1243,6 +1243,22 @@
   "In Documents › … · Change folder", Download PDF, Open PDF in new tab and Show in Finder as icon buttons,
   Update PDF small and outline), then the page preview, the only `canvas`. Pinned by
   `test_frontend_jobs_honest_words.py` and `test_frontend_first_read_words.py`.
+- **Apply** (step 4, `components/apply-step.tsx`), inside one card, two columns (`flex-wrap`; the right one
+  300 to 360px). Left: **Open the job post and apply** (the view's one filled button, a new tab on the job's
+  apply link, else its source link; without either, Mark applied is the filled one), then `QATab`'s questions and
+  History, laid out by its `arrange` prop (the state stays in `QATab`; the cover letter card goes right), then
+  What was submitted in full once opened, then "Done applying?" with **Mark applied** (tonal, Check: the
+  StatusChip's `applied` transition through the page's one PATCH, single-flight, "Applying…", shown only while
+  the status is Draft; its line says it sets today as the applied date and that the later statuses are on the
+  chip), then an **Application details** disclosure (`aria-expanded`, closed, `title-small`) mounting
+  `ApplicationDetails`: Applied on and Notes save on blur, the tracking link, Referral, Delete application with
+  its confirm. Right: step 3's `PdfFileLine` (no preview: steps 2 and 3 showed the resume), or "No PDF yet"
+  with Create it on Tailored resume; the **Cover letter** card (`COVER_LETTER_ID`, the receipt's jump target)
+  with a "Not written" chip until one exists; and, once something was filled, **What was submitted**: three
+  answers, newest page first and never a voluntary one (`lib/filled-answers` `latestAnswers`), each with its
+  source pill, and **All N answers**, which opens the receipt and moves focus to it (a `?tab=submitted` link
+  opens it first). No Companion button: the web app cannot tell whether the Companion is paired. Edit resume
+  stays on step 3. Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_job_submitted_tab.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Jobs** (see *Canonical terms*). A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means
@@ -1700,8 +1716,7 @@
   them (AI/ML, MLOps, BI, QA, IT), never blank. A resume is named by
   a row's `display_name` / `base_resume_name` when the payload has one, else by
   `useBaseResumeLabel()` (lists of slugs) or `useBaseResumeName(slug)` (one
-  slug that may be soft-deleted: the Assistant's cards, the proposal pill, the job
-  page's Details menu). The name hook reads the archived-inclusive list, and
+  slug that may be soft-deleted: the Assistant's cards, the proposal pill). The name hook reads the archived-inclusive list, and
   for a slug it lacks, that resume's own row — so every surface names a
   soft-deleted resume the same way. `humanizeSlug`, through `baseResumeLabel`,
   is only the loading, failed, or unknown-slug fallback.

@@ -30,7 +30,14 @@ def test_the_receipt_is_deep_linkable_and_shown_once_something_was_filled():
     assert 'submitted: "qa"' in _read("lib/job-steps.ts")
     # Opened by the link, the receipt comes first on step 4, above the questions (nothing to scroll past).
     assert "{submittedSeen ? receipt : null}" in _PAGE and "{submittedSeen ? null : receipt}" in _PAGE
-    assert _PAGE.index("{submittedSeen ? receipt : null}") < _PAGE.index("<QATab") < _PAGE.index("{submittedSeen ? null : receipt}")
+    # With an application step 4 places it (components/apply-step.tsx): first when the link asked, else after
+    # the questions; closed until What was submitted's card opens it.
+    assert "receiptFirst={submittedSeen}" in _PAGE and "receipt={receipt}" in _PAGE
+    apply = _read("components/apply-step.tsx")
+    assert apply.index("{receiptFirst ? receiptBlock : null}") < apply.index("{questions}") < apply.index(
+        "{receiptFirst ? null : receiptBlock}")
+    assert "const [receiptOpen, setReceiptOpen] = useState(receiptFirst);" in apply
+    assert "hidden={!receiptOpen}" in apply
     assert 'aria-label="What was submitted"' in _PAGE
     assert 'Boolean(data.has_filled_answers) || submittedSeen' in _PAGE
     assert "has_filled_answers: boolean;" in _TYPES

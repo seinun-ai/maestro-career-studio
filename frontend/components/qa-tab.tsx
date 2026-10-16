@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
@@ -57,7 +57,25 @@ const KIND_LABELS: Record<string, string> = {
 /** The cover-letter card's id: What was submitted's "Cover letter attached" line jumps to it on step 4. */
 export const COVER_LETTER_ID = "cover-letter";
 
-export function QATab({ applicationId, readOnly = false }: { applicationId: string; readOnly?: boolean }) {
+/** QATab's three parts, for a caller that lays them out itself (step 4: the cover letter goes in its right column). */
+export type QAParts = { questions: ReactNode; coverLetter: ReactNode; history: ReactNode };
+
+export function QATab({
+  applicationId,
+  readOnly = false,
+  arrange = ({ questions, coverLetter, history }) => (
+    <>
+      {questions}
+      {coverLetter}
+      {history}
+    </>
+  ),
+}: {
+  applicationId: string;
+  readOnly?: boolean;
+  /** Places the parts; by default one after another. The state stays here, whatever the layout. */
+  arrange?: (parts: QAParts) => ReactNode;
+}) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { data: entries, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
@@ -197,148 +215,163 @@ export function QATab({ applicationId, readOnly = false }: { applicationId: stri
     onError: (err: Error) => toast.error(couldnt("create the PDF", err)),
   });
 
-  return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Application questions</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <p id={questionsHintId} className="text-muted-foreground text-body-small">
-            One question per line.
+  const questionsCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle>Application questions</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p id={questionsHintId} className="text-muted-foreground text-body-small">
+          One question per line.
+        </p>
+        <Textarea
+          aria-label="Application questions"
+          disabled={readOnly}
+          aria-describedby={questionsHintId}
+          value={questions}
+          onChange={(e) => setQuestions(e.target.value)}
+          rows={4}
+        />
+        <Button
+          variant="outline"
+          onClick={() => askOnce(questions)}
+          pending={askQuestions.isPending}
+          disabled={noQuestions}
+          {...ownershipControlProps(readOnly)}
+          focusableWhenDisabled
+          aria-describedby={noQuestions ? needQuestionId : undefined}
+        >
+          {askQuestions.isPending ? "Answering…" : "Answer questions"}
+        </Button>
+        {noQuestions ? (
+          <p id={needQuestionId} className="text-muted-foreground text-body-small">
+            Type at least one question.
           </p>
-          <Textarea
-            aria-label="Application questions"
-            disabled={readOnly}
-            aria-describedby={questionsHintId}
-            value={questions}
-            onChange={(e) => setQuestions(e.target.value)}
-            rows={4}
-          />
-          <Button
-            onClick={() => askOnce(questions)}
-            pending={askQuestions.isPending}
-            disabled={noQuestions}
-            {...ownershipControlProps(readOnly)}
-            focusableWhenDisabled
-            aria-describedby={noQuestions ? needQuestionId : undefined}
-          >
-            {askQuestions.isPending ? "Answering…" : "Answer questions"}
-          </Button>
-          {noQuestions ? (
-            <p id={needQuestionId} className="text-muted-foreground text-body-small">
-              Type at least one question.
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card
-        id={COVER_LETTER_ID}
-        tabIndex={-1}
-        className="scroll-mt-6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-      >
-        <CardHeader>
-          <CardTitle>Cover letter</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-2">
-          <div className="grid gap-1.5">
-            <Label htmlFor="tone">Tone</Label>
-            <Select disabled={readOnly} value={tone} onValueChange={(v) => setTone(v ?? "balanced")}>
-              <SelectTrigger id="tone" className="w-44">
-                <SelectValue>{TONE_LABELS[tone] ?? tone}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {TONES.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {TONE_LABELS[t] ?? t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button
-            onClick={() => void generateCoverLetter()}
-            pending={coverLetter.isPending}
-            disabled={letterEditing}
-            {...ownershipControlProps(readOnly)}
-            focusableWhenDisabled
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
-          >
-            {coverLetter.isPending ? "Writing…" : "Write cover letter"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* tabIndex={-1}: where focus lands when the error below recovers. Named
-          by its heading, since it can hold focus. */}
-      <section tabIndex={-1} aria-labelledby={historyHeadingId} className="space-y-3 outline-none">
-        <h3 id={historyHeadingId} className="text-title-small">History</h3>
-        {isLoadFailure({ data: entries, isError, fetchStatus, errorUpdateCount }) ? (
-          <LoadErrorState
-            className="py-8"
-            title="Couldn't load your answers."
-            detail={loadErrorDetail(error)}
-            retrying={isFetching}
-            onRetry={() => void refetch()}
-          />
-        ) : entries === undefined ? (
-          <div role="status" aria-busy="true" className="space-y-3">
-            <span className="sr-only">Loading answers…</span>
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : entries.length === 0 ? (
-          <p className="text-muted-foreground text-body-medium">No answers yet.</p>
-        ) : (
-          entries.map((entry, i) => {
-            const isRegenerating =
-              regenerateEntry.isPending && regenerateEntry.variables?.id === entry.id;
-            const isSaving =
-              editEntry.isPending && editEntry.variables?.id === entry.id;
-            const isRendering =
-              renderEntry.isPending && renderEntry.variables === entry.id;
-            return (
-              <QAEntryCard
-                readOnly={readOnly}
-                key={entry.id}
-                entry={entry}
-                index={i}
-                isDeleting={deleteEntry.isPending}
-                isRegenerating={isRegenerating}
-                regenerateBusy={regenerateEntry.isPending}
-                editing={editingIds.includes(entry.id)}
-                onEditingChange={(on) => setLetterEditing(entry.id, on)}
-                letterEditing={letterEditing}
-                generating={coverLetter.isPending}
-                isRendering={isRendering}
-                isSaving={isSaving}
-                onDelete={async () => {
-                  const ok = await confirm({
-                    title: "Delete this answer?",
-                    description:
-                      entry.kind === "cover_letter"
-                        ? "This deletes the cover letter."
-                        : "This deletes the question and its answer.",
-                    confirmLabel: "Delete",
-                    destructive: true,
-                  });
-                  if (!ok) return;
-                  deleteEntry.mutate(entry.id);
-                }}
-                onRegenerate={async () => {
-                  if (entry.kind === "cover_letter" && entry.answer && !(await confirmReplaceLetter())) return;
-                  regenerateOnce(entry);
-                }}
-                onRender={() => renderEntry.mutate(entry.id)}
-                onSave={(answer) => editEntry.mutateAsync({ id: entry.id, answer })}
-              />
-            );
-          })
-        )}
-      </section>
-    </>
+        ) : null}
+      </CardContent>
+    </Card>
   );
+
+  const coverLetterCard = (
+    <Card
+      id={COVER_LETTER_ID}
+      tabIndex={-1}
+      className="scroll-mt-6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    >
+      <CardHeader className="flex flex-row flex-wrap items-center gap-2">
+        <CardTitle>Cover letter</CardTitle>
+        {/* Said only once the answers loaded: while they load nobody knows. */}
+        {entries !== undefined && !hasCoverLetter ? (
+          <span className="bg-surface-container text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-label-medium">
+            Not written
+          </span>
+        ) : null}
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-end gap-2">
+        <div className="grid gap-1.5">
+          <Label htmlFor="tone">Tone</Label>
+          <Select disabled={readOnly} value={tone} onValueChange={(v) => setTone(v ?? "balanced")}>
+            <SelectTrigger id="tone" className="w-44">
+              <SelectValue>{TONE_LABELS[tone] ?? tone}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {TONES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {TONE_LABELS[t] ?? t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => void generateCoverLetter()}
+          pending={coverLetter.isPending}
+          disabled={letterEditing}
+          {...ownershipControlProps(readOnly)}
+          focusableWhenDisabled
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
+        >
+          {coverLetter.isPending ? "Writing…" : "Write cover letter"}
+        </Button>
+        {hasCoverLetter ? (
+          <p className="text-muted-foreground w-full text-body-small">Edit it or create its PDF under History.</p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+
+  // tabIndex={-1}: where focus lands when the error below recovers. Named
+  // by its heading, since it can hold focus.
+  const history = (
+    <section tabIndex={-1} aria-labelledby={historyHeadingId} className="space-y-3 outline-none">
+      <h3 id={historyHeadingId} className="text-title-small">History</h3>
+      {isLoadFailure({ data: entries, isError, fetchStatus, errorUpdateCount }) ? (
+        <LoadErrorState
+          className="py-8"
+          title="Couldn't load your answers."
+          detail={loadErrorDetail(error)}
+          retrying={isFetching}
+          onRetry={() => void refetch()}
+        />
+      ) : entries === undefined ? (
+        <div role="status" aria-busy="true" className="space-y-3">
+          <span className="sr-only">Loading answers…</span>
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      ) : entries.length === 0 ? (
+        <p className="text-muted-foreground text-body-medium">No answers yet.</p>
+      ) : (
+        entries.map((entry, i) => {
+          const isRegenerating =
+            regenerateEntry.isPending && regenerateEntry.variables?.id === entry.id;
+          const isSaving =
+            editEntry.isPending && editEntry.variables?.id === entry.id;
+          const isRendering =
+            renderEntry.isPending && renderEntry.variables === entry.id;
+          return (
+            <QAEntryCard
+              readOnly={readOnly}
+              key={entry.id}
+              entry={entry}
+              index={i}
+              isDeleting={deleteEntry.isPending}
+              isRegenerating={isRegenerating}
+              regenerateBusy={regenerateEntry.isPending}
+              editing={editingIds.includes(entry.id)}
+              onEditingChange={(on) => setLetterEditing(entry.id, on)}
+              letterEditing={letterEditing}
+              generating={coverLetter.isPending}
+              isRendering={isRendering}
+              isSaving={isSaving}
+              onDelete={async () => {
+                const ok = await confirm({
+                  title: "Delete this answer?",
+                  description:
+                    entry.kind === "cover_letter"
+                      ? "This deletes the cover letter."
+                      : "This deletes the question and its answer.",
+                  confirmLabel: "Delete",
+                  destructive: true,
+                });
+                if (!ok) return;
+                deleteEntry.mutate(entry.id);
+              }}
+              onRegenerate={async () => {
+                if (entry.kind === "cover_letter" && entry.answer && !(await confirmReplaceLetter())) return;
+                regenerateOnce(entry);
+              }}
+              onRender={() => renderEntry.mutate(entry.id)}
+              onSave={(answer) => editEntry.mutateAsync({ id: entry.id, answer })}
+            />
+          );
+        })
+      )}
+    </section>
+  );
+
+  return arrange({ questions: questionsCard, coverLetter: coverLetterCard, history });
 }
 
 function QAEntryCard({

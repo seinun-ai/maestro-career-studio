@@ -14,9 +14,12 @@ import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
 import {
   SOURCE_LABELS,
+  allAnswersToggle,
+  answerPreview,
   fieldAnchor,
   firstFlagged,
   isBlankAnswer,
+  latestAnswers,
   receiptHeading,
   splitVoluntary,
 } from "@/lib/filled-answers";
@@ -36,16 +39,9 @@ const JUMP_TARGET =
  * the latest per question, with where it came from and what to check. Read-only.
  * `active`: tab panels stay mounted, so the receipt is fetched only once its tab is opened.
  */
-export function JobSubmittedTab({
-  jobId,
-  active,
-  onOpenTab,
-}: {
-  jobId: string;
-  active: boolean;
-  onOpenTab?: OpenTab;
-}) {
-  const query = useQuery({
+/** The receipt's one query: the full receipt and step 4's card share it. */
+function useFilledAnswers(jobId: string, active: boolean) {
+  return useQuery({
     queryKey: ["filled-answers", jobId],
     queryFn: () => apiFetch<FilledAnswers>(`/api/jobs/${jobId}/filled-answers`),
     enabled: active,
@@ -55,6 +51,18 @@ export function JobSubmittedTab({
     // A fill happens in another window: coming back to this one asks again.
     refetchOnWindowFocus: true,
   });
+}
+
+export function JobSubmittedTab({
+  jobId,
+  active,
+  onOpenTab,
+}: {
+  jobId: string;
+  active: boolean;
+  onOpenTab?: OpenTab;
+}) {
+  const query = useFilledAnswers(jobId, active);
   if (isLoadFailure(query)) {
     return (
       <LoadErrorState
@@ -76,6 +84,72 @@ export function JobSubmittedTab({
     );
   }
   return <Receipt receipt={query.data} onOpenTab={onOpenTab} />;
+}
+
+/** How many answers step 4's What was submitted card shows before its link to the whole receipt. */
+const LATEST_SHOWN = 3;
+
+/**
+ * Step 4's What was submitted card: the latest few answers, each with its source pill, then a link that opens the
+ * whole receipt (`receiptId`, the section on the left) and says how many answers it holds.
+ */
+export function SubmittedLatest({
+  jobId,
+  active,
+  receiptId,
+  receiptOpen,
+  onToggleReceipt,
+}: {
+  jobId: string;
+  active: boolean;
+  receiptId: string;
+  receiptOpen: boolean;
+  onToggleReceipt: () => void;
+}) {
+  const query = useFilledAnswers(jobId, active);
+  if (isLoadFailure(query)) {
+    return (
+      <LoadErrorState
+        className="py-4"
+        title="Couldn't load what was submitted."
+        detail={loadErrorDetail(query.error)}
+        retrying={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
+  if (!query.data) return <Skeleton className="h-24 w-full" />;
+  const { fields, total } = latestAnswers(query.data, LATEST_SHOWN);
+  if (total === 0) return <p className="text-muted-foreground text-body-medium">Nothing filled yet.</p>;
+  return (
+    <div className="space-y-3">
+      {fields.length > 0 ? (
+        <ul className="space-y-2">
+          {fields.map((field, i) => (
+            <li key={`${field.question}-${i}`} className="grid gap-0.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 truncate text-title-small" title={field.question}>
+                  {field.question}
+                </span>
+                <Badge variant="secondary" className="shrink-0">{SOURCE_LABELS[field.source]}</Badge>
+              </div>
+              <p className="text-muted-foreground line-clamp-2 text-body-small break-words">{answerPreview(field)}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <Button
+        variant="link"
+        size="sm"
+        className="h-auto px-0"
+        aria-expanded={receiptOpen}
+        aria-controls={receiptId}
+        onClick={onToggleReceipt}
+      >
+        {allAnswersToggle(total, receiptOpen)}
+      </Button>
+    </div>
+  );
 }
 
 function Receipt({ receipt, onOpenTab }: { receipt: FilledAnswers; onOpenTab?: OpenTab }) {
