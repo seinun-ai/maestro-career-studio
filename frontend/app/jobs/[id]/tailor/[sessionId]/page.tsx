@@ -773,13 +773,13 @@ export default function TailorSessionPage({
     // e.g. "Start over"), or "abandoned" (closed without tailoring — e.g.
     // "Use resume as is").
     let heading = "This gap analysis is done";
-    let description = "Your tailored resume is on the job's Resume tab.";
+    let description = "Your tailored resume is on the job's Tailored resume step.";
     if (session.data.status === "superseded") {
       heading = "A newer gap analysis replaced this one";
-      description = "Continue from the job's Score and tailor tab.";
+      description = "Continue from the job's Resume and gaps step.";
     } else if (session.data.status === "abandoned") {
       heading = "This gap analysis was closed";
-      description = "Start a new one from the job's Score and tailor tab.";
+      description = "Start a new one from the job's Resume and gaps step.";
     }
     return (
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">

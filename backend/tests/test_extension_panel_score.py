@@ -1231,7 +1231,7 @@ def test_the_base_list_explains_the_ats_score_once(tmp_path):
     """The glossary's rule: Match score is explained once per surface, as the
     app's own fixed-rules match, where the numbers first appear. In the Companion that
     is the Job step's base list, which shows one number per base resume; the
-    web app's Score and tailor tab says the same sentence (`ATS_SCORE_LEAD`)."""
+    web app's Resume and gaps step says the same sentence (`ATS_SCORE_LEAD`)."""
     out = _score(tmp_path, reopen="job")
     lines = [line["text"] for line in _by_class(out["loaded"]["rail"], "sub")]
     assert lines.count(ATS_LEAD) == 1

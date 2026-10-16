@@ -146,32 +146,33 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 ## 5. The application workflow, end to end (web)
 
 1. **Capture** — `/new` (**Add job**): paste a job description → **Save job** → `POST /api/jobs` (LLM extract, dedup) → summary
-   card ("This job is already saved." on dedup). Or Companion/MCP `store_extracted_jd` → `POST /api/jobs/ingest` (pre-extracted;
-   the client agent is the extractor by design). Both save paths score a new job against every selectable base after its commit
-   (`_persist_job` → `score_all_bases`, inline); a failure rolls back only the scores, and a dedup hit is not re-scored.
-2. **Track** — **Jobs** (`/applications`; the URL, `?status=`/`?source=` and `cs-tracker-*` keep their names): the tracker.
-   Columns Role, Match score, Status, Where, Applied, Next step and Added, with search, sort, a grouped status `Select` and a
-   Tracked/Yours/Agents `SourceToggle`; Next step and the quick filters read the server's stage (`services/stage.py`,
-   docs/entities/job.md). "Saved" = job with no application; agent-captured jobs stay out unless the toggle is `Agents`, so the
-   default reads Tracked, not All. Filter groups: All/Saved, **Your applications** and **Agent inbox**
-   (`proposed`/`queued`/`needs_you`/`skipped`). Rows, options and the Agent inbox page (`/proposals`): frontend-conventions,
-   "Jobs row" and "Tracker filter".
-3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, ONE status: the application's inline StatusChip, else the
-   proposal's pill worded like History (`headerProposalPill`), naming its filer, + Queue/Skip; a score pill, **Resume match**
+   card (**Go to Resume and gaps**; "This job is already saved." on dedup). Or Companion/MCP `store_extracted_jd` → `POST
+   /api/jobs/ingest` (pre-extracted; the client agent is the extractor by design). Both save paths score a new job against every
+   selectable base after its commit (`_persist_job` → `score_all_bases`, inline); a failure rolls back only the scores, and a
+   dedup hit is not re-scored.
+2. **Jobs** — `/applications` (the URL, `?status=`/`?source=` and `cs-tracker-*` keep their names): the tracker. Columns Role,
+   Match score, Status, Where, Applied, **Next step** and Added, with search, sort, a grouped status `Select`, a Tracked/Yours/Agents
+   `SourceToggle` and quick filters (Ready to apply, Tailored, review, Gaps open, Needs you). Next step and the quick filters read
+   the server's stage, one ladder per job (saved → scored → gaps → tailored → pdf_ready → applied | closed; `services/stage.py`,
+   docs/entities/job.md), sent on both list shapes and the detail. "Saved" = job with no application; agent-captured jobs stay out
+   unless the toggle is `Agents`, so the default reads Tracked, not All. Filter groups: All/Saved, **Your applications** and
+   **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`). Rows, options and the Agent inbox page (`/proposals`):
+   frontend-conventions, "Jobs row" and "Tracker filter".
+3. **The job page** — `/jobs/[id]`: identity header (monogram, meta line, ONE status: the application's inline StatusChip, else
+   the proposal's pill worded like History (`headerProposalPill`), naming its filer, + Queue/Skip; a score pill, **Resume match**
    (tailored) or **Best base resume**; a Needs-you question adds **Keep it**, PATCH `pending_review`, linking the job's application
    when the proposal has none; the job link; a ⋯ **More actions**: Queue in Agent inbox, Refresh details, Delete job). Under it
-   four numbered steps replace tabs (`components/job-steps.tsx`, `lib/job-steps.ts`): **Job**, **Resume and gaps**, **Tailored
-   resume**, **Apply**, each with one line (a done step's receipt, a later step's hint). The stage's step opens, set once on load
-   (step 1 while a proposal waits on you). A step with something to show is a button (3: a draft or PDF; 4: an application),
-   one with nothing plain text, never locked. `?tab=` keeps jd/fit/output/qa/submitted so deep links land. Step 1: the
-   proposal's card, titled with its filer (`proposed_by`, worded by `lib/agent-name.ts`), only when it carries something
-   (`proposalHasContent`), then a receipt row whose **View details** shows the **knock-out pre-scan** (`services/knockout.scan_for`:
-   stated JD requirements vs the profile, flagged; the decision stays yours (or your agent's); verdicts and chips:
-   docs/entities/job.md, "Knock-out pre-scan"), the job details and tracking link. Step 4's line, when it is current, is **Where
-   this stands** (`lib/job-standing.ts`).
-   `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`, else `cs-tracker-seq`. Every job read derives
+   four numbered steps (`components/job-steps.tsx`, `lib/job-steps.ts`): **Job**, **Resume and gaps**, **Tailored resume**,
+   **Apply**, each with one line (a done step's receipt, a later step's hint), read from the detail's top-level `stage`
+   (`jobWithStage`). The stage's step opens, set once on load (step 1 while a proposal waits on you). A step with something to show
+   is a button (3: a draft or PDF; 4: an application), one with nothing plain text, never locked. `?tab=` keeps
+   jd/fit/output/qa/submitted so deep links land. Step 1 (**Job**): the proposal's card, titled with its filer (`proposed_by`,
+   worded by `lib/agent-name.ts`), only when it carries something (`proposalHasContent`), then a receipt row whose **View details**
+   shows the **knock-out pre-scan** (`services/knockout.scan_for`: stated JD requirements vs the profile, flagged; the decision
+   stays yours (or your agent's); verdicts and chips: docs/entities/job.md, "Knock-out pre-scan"), the job details and tracking
+   link. `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`, else `cs-tracker-seq`. Every job read derives
    `proposal_status`/`proposal_id` from the newest proposal.
-4. **Score** — Step 2 (**Resume and gaps**, `components/resume-step.tsx`) shows the bases set for the job's country (all when
+4. **Score** — step 2 (**Resume and gaps**, `components/resume-step.tsx`) shows the bases set for the job's country (all when
    unknown), scored at save; its auto-run on first visit is the fallback for a job saved before any base resume existed or whose
    save-time scoring failed. The bases are toggle chips (top 3 by score, then "N more"); a pick is a preview, never a write. The
    default (`lib/resume-pick.ts`: the newest open session's base, else the application's, else the best match) gets a one-line
@@ -179,33 +180,36 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    filled button, and **Use resume as is**; Update scores, Restart gap analysis, Score them anyway, Mark applied without tailoring
    and Import resumes and documents sit in ⋯. One application per job: an action on another base asks first, worded for what the
    job holds (`hooks/use-resume-switch.ts`). Shared warnings show once above the chips; with no base resume the step offers the import.
-5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`, under step 2's stepper and resume chips (a chip opens that resume's gap
-   analysis, `useResumeSwitch`; its Tailor asks first on the resume you applied with): per-gap resolutions (add_keyword /
-   user_input / attach_project / skip + enable_entry / port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip
-   for the document + a durable `user_cannot_confirm` KB record written at SAVE time, so the claim is never re-asked — see §6
-   inv-provenance-no-decay) autosaved debounced with replace=true semantics (omitted gap_ids are deleted server-side);
+5. **Gap analysis** — still step 2, on its own page `/jobs/[id]/tailor/[sessionId]` under the same stepper and resume chips (a chip
+   opens that resume's gap analysis, `useResumeSwitch`; its Tailor asks first on the resume you applied with): per-gap resolutions
+   (add_keyword / user_input / attach_project / skip + enable_entry / port_kb_point — see §4; plus cannot_confirm on claim-asking
+   gaps: skip for the document + a durable `user_cannot_confirm` KB record written at SAVE time, so the claim is never re-asked —
+   see §6 inv-provenance-no-decay) autosaved debounced with replace=true semantics (omitted gap_ids are deleted server-side);
    KB-auto-resolved gaps arrive pre-selected with provenance + Undo and a counting banner; optional per-session note
    (`user_prompt`, falls back into tailor()). **Use resume as is** (visible at 0 addressed) → from-base + closes the session;
    confirms first if it would replace an existing tailored draft.
-6. **Tailor** — `POST /tailoring-sessions/{id}/tailor`: deterministic pre-ops → smart-model edit ops → keyword-survival and voice
-   checks (§6 inv-resume-voice) → application + version row → draft-KBPoint write-back → session `tailored` → tailored score, one
-   transaction (tailor() commits once at its end). The UI then lands in review mode (`?review=1`). Internals:
-   docs/entities/tailoring-session.md, "The tailor pipeline".
-7. **Output** — Step 3 (**Tailored resume**, `components/tailored-resume-step.tsx`): a score strip (the compact before/after compare
-   and its Score breakdown, ⋯ with Tailor again and Delete application, **Edit resume** → the studio `/applications/[id]/resume`,
-   where Save chains render → re-score) and one filled button, **Create PDF** then **Continue to Apply**. Below it the changes
-   tailoring made (`GET …/resume-diff`, keyed on the draft's `updated_at`), each with a Revert that PATCHes the draft and re-scores
-   it, and **Check wording**. A draft write removes the PDF (Create PDF again): the PDF card shows only the draft's own, with
-   Download / Open / **Show in Finder** (§6 inv-resumes-folder-one-way), **Update PDF** and the rasterized page preview.
-8. **Apply** — Step 4 (`components/apply-step.tsx`), one card: **Open the job post and apply** (apply link, else source link),
-   the questions and history (`QASections`), **Mark applied** while a draft (the StatusChip's PATCH) and an **Application details**
-   disclosure (applied date, tracking link, referral, notes, Delete application); beside them the PDF line, **Cover letter** (tone)
-   and, once filled answers exist, **What was submitted**'s latest answers, linking the whole receipt (docs/entities/filled-answers.md).
-   Cold messages are free-form questions; the QA prompt injects the application's linked referral contact.
-9. **Track to terminal** — StatusChip anywhere (tracker row or job header): draft → applied → interviewing → offered → accepted /
-   rejected / withdrawn. A base resume grown past your career history shows an "Add N things to career history" toolbar pill (N
-   excludes already-recorded drift); its **Add now** drafts new and drifted items with no LLM, near-matching entities instead of
-   forking duplicates.
+6. **Tailor** — the gap page's **Tailor resume** → `POST /tailoring-sessions/{id}/tailor`: deterministic pre-ops → smart-model
+   edit ops → keyword-survival and voice checks (§6 inv-resume-voice) → the job's one application (new, or the newest one taking
+   the new base: "Switched to {resume}" in version history) + version row → draft-KBPoint write-back → session `tailored` →
+   tailored score, one transaction (tailor() commits once at its end). The UI then lands in the studio's review mode
+   (`?review=1`); step 3 shows the same changes. Internals: docs/entities/tailoring-session.md, "The tailor pipeline".
+7. **Output** — step 3 (**Tailored resume**, `components/tailored-resume-step.tsx`): a score strip (the compact before/after
+   compare and its Score breakdown, ⋯ with Tailor again and Delete application, **Edit resume** → the studio
+   `/applications/[id]/resume`, where Save chains render → re-score) and one filled button, **Create PDF** then **Continue to
+   Apply**. Below it the changes tailoring made (`GET …/resume-diff`, which carries the draft's `updated_at`), each with a Revert
+   that PATCHes the draft with `expected_updated_at` (409, nothing written, if it moved) and re-scores it, and **Check wording**.
+   A draft write removes the PDF (Create PDF again): the PDF card shows only the draft's own, with Download / Open / **Show in
+   Finder** (§6 inv-resumes-folder-one-way), **Update PDF** and the rasterized page preview.
+8. **Apply** — step 4 (**Apply**, `components/apply-step.tsx`), one card: **Open the job post and apply** (apply link, else source
+   link), the questions and history (`QASections`), **Mark applied** while a draft (the StatusChip's PATCH) and an **Application
+   details** disclosure (applied date, tracking link, referral, notes, Delete application); beside them the PDF line, **Cover
+   letter** (tone) and, once filled answers exist, **What was submitted**'s latest answers, linking the whole receipt
+   (docs/entities/filled-answers.md). Step 4's line, while current, is **Where this stands** (`lib/job-standing.ts`). Cold
+   messages are free-form questions; the QA prompt injects the application's linked referral contact.
+9. **Track** — StatusChip anywhere (Jobs row or job header): draft → applied → interviewing → offered → accepted / rejected /
+   withdrawn; the Jobs row's Next step gives way to "Waiting to hear back" while Applied, then nothing. A base resume grown past
+   your career history shows an "Add N things to career history" toolbar pill (N excludes already-recorded drift); its **Add
+   now** drafts new and drifted items with no LLM, near-matching entities instead of forking duplicates.
 
 ## 6. Cross-cutting invariants (do not break these)
 
@@ -793,7 +797,7 @@ citation. Priority lives in the item text, not in the ordinal.
 32. Small UI gaps: `/base-resumes/<unknown>/health` shows a skeleton ~7 s before its error (the 404 takes react-query's three default
     retries; `app/providers.tsx` sets no `retry`); `/templates`' stale-chip tooltip sits under `GalleryCard`'s `z-10` stretched link; three
     hint/control pairs hardcode ids (`new_id_hint`/`new_id_error`, `kb-profile-notes-hint`, `job-preferences-locations-hint`); Escape from
-    the job Details date field blur-saves `applied_at: null`; an Assistant edit card's Discard works while Apply runs; a failing settings
+    step 4's Applied on field may blur-save `applied_at: null`; an Assistant edit card's Discard works while Apply runs; a failing settings
     autosave toasts once per keystroke; a failed send in a NEW chat leaves an "Untitled chat" (the session is made before the message).
 33. inv-render-fallback-explained gaps: `PUT /base-resumes/{slug}` commits, then a pdflatex failure is a 500 over the
     saved change; `POST /{slug}/render` answers 500, not 400, on a generic failure; the preview-page route's unlocked
@@ -825,15 +829,20 @@ citation. Priority lives in the item text, not in the ordinal.
     heading never reads as a rejected Next, `heldValues` misses a select's shown text and a custom combobox, and the hand-attached-file
     check reads the run's own frame only; the run list, Queue view and parallel tabs wait for Phase 3 (`docs/plans/2026-10-10-companion-queued-run.md`);
     the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits".
-45. Scoring at save is inline on both paths; a background task for the ingest path raced the Companion's own `POST /api/ats-scores`
-    on the base-score unique key (two concurrent `score_all_bases` runs always collide). Revisit with a savepoint-tolerant upsert in
-    `score_target` if ingest latency on native installs needs it.
-46. The Companion's `addJob` still scores after its ingest (`extension/panel/actions/job.js`), a harmless second upsert whose comment
-    at lines 116-117 is stale; and the capture pipeline (`_find_existing`, `_persist_job`, `_insert_skills`, `_score_new_job`) lives
-    in `routers/jobs.py` and could move to a `services/job_capture.py`.
+45. Scoring at save is inline: on ingest a background task raced the Companion's own `POST /api/ats-scores` (two `score_all_bases`
+    runs collide on the base-score unique key). Revisit with a savepoint-tolerant upsert in `score_target` if ingest latency needs it.
+46. The Companion's `addJob` still scores after its ingest (`panel/actions/job.js`; a harmless second upsert, stale comment), and the
+    capture pipeline (`_find_existing`, `_persist_job`, `_insert_skills`, `_score_new_job`) could leave `routers/jobs.py` for a service.
+47. Step 2 offers **Continue gap analysis** on a stale open gap analysis (its base or job changed): `GET /api/tailoring-sessions`
+    sets no `stale_reason`, only the single GET does, so only the gap page's banner says so.
+48. The Companion's from-base calls (`panel/actions/track.js` `trackThis`, `actions/job.js` `newResume`) ask nothing: they trust the
+    panel's "no application bound" state, so a stale binding over a tailored draft replaces the draft silently (one application per job).
 
 ## 12. Gotchas that have bitten before
 
+- **A detail's derived fields sit beside `job`** (2026-10-16): the job page read `detail.job.stage`, optional and absent, so every
+  job read as saved (step 2 always current) and still type-checked → the detail's `stage` and gap counts are top-level; read them
+  through `jobWithStage(detail)` (`lib/job-steps.ts`).
 - **A hidden tab stalled saves** (2026-10-13): TanStack v5 scoped mutations queue as paused and continue only while the tab
   is focused → serialize saves with a per-key promise chain (`lib/in-order.ts`), never a mutation scope.
 - **An update served the old version's pages** (2026-10-12, 0.10.0): Next writes `.next/server/route-cache` inside the

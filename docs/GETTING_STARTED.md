@@ -249,12 +249,12 @@ Five steps from nothing to a PDF:
    its link, and click **Save job** — or save it from the job page with the
    [Companion](#4-the-companion-browser-extension-optional). Maestro reads the
    job description and gives it a match score against your resumes.
-5. **Tailor and download the PDF.** On the job's **Score and tailor** tab, click
-   **Analyze gaps**. Each gap is a requirement your resume doesn't show
-   yet. Answer its questions honestly — new true facts are saved to your career
-   history for next time — then click **Tailor resume**. Every AI change is shown
-   for you to accept or undo. On the **Resume** tab, click **Create PDF**, then
-   **Download PDF**.
+5. **Tailor and download the PDF.** A job's page has four numbered steps. On
+   step 2, **Resume and gaps**, pick a resume and click **Analyze gaps**. Each gap
+   is a requirement your resume doesn't show yet. Answer its questions honestly —
+   new true facts are saved to your career history for next time — then click
+   **Tailor resume**. Every AI change is shown for you to accept or undo. On step
+   3, **Tailored resume**, click **Create PDF**, then **Download PDF**.
    A copy of every PDF is also saved in the `applications/` folder, so you can
    always check what you sent.
 

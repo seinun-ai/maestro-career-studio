@@ -86,7 +86,7 @@ export function JobExtractionSummary({
           />
           {onScoreAts && (
             <Button size="sm" onClick={onScoreAts}>
-              Score and tailor
+              Go to Resume and gaps
             </Button>
           )}
         </div>

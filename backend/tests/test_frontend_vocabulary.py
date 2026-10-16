@@ -118,6 +118,17 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("library", re.compile(r"\blibrary\b", re.I), "career history (the sidebar group is Career library)"),
     ("posting", re.compile(r"\bpostings?\b", re.I), "job or job post"),
     ("as-is", re.compile(r"\bas-is\b", re.I), "as is"),
+    ("find gaps", re.compile(r"\bfind (?:the )?gaps\b", re.I), "Analyze gaps"),
+    (
+        "Score and tailor",
+        re.compile(r"\bScore and tailor\b", re.I),
+        "Resume and gaps, the job page's step 2 (only ?tab=fit keeps the old tab)",
+    ),
+    (
+        "job page tab",
+        re.compile(r"\b(?:Overview|Score|Resume|Fit|Q&A|Submitted) tab\b"),
+        "the job page has steps: Job, Resume and gaps, Tailored resume, Apply",
+    ),
     ("could not", re.compile(r"\b(?:Could not|Cannot)\b"), "Couldn't or Can't"),
     ("extract", re.compile(r"\bextract(?:s|ed|ion|ing)?\b", re.I), "save, read, or find"),
     ("evidence", re.compile(r"\bevidence\b", re.I), "say what shows it"),
@@ -597,6 +608,9 @@ def test_the_manifest_is_read():
         ("Open the session", "session"),
         ("Submitted", "Submitted"),
         ("Accepted", "bare Accepted"),
+        ("Find gaps", "find gaps"),
+        ("Open Score and tailor", "Score and tailor"),
+        ("Your tailored resume is on the job's Resume tab.", "job page tab"),
     ],
 )
 def test_the_glossary_terms_have_rules(text: str, rule: str):

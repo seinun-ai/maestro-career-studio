@@ -136,9 +136,10 @@ what keeps a generated resume defensible.
 
 ![Every job you have saved, from saved to signed](assets/applications.png)
 
-Paste the job description (**Add job**) or save it with the Companion, then score it
-against your base resumes. Scoring uses no AI service, so the same resume and
-job always get the same number.
+Paste the job description (**Add job**) or save it with the Companion. Saving
+scores it against your base resumes. Scoring uses no AI service, so the same
+resume and job always get the same number. On **Jobs**, each row's **Next step**
+says what the job is waiting for.
 
 <!-- Screenshots in this guide were retaken 2026-10-12 on v0.10.1 with the
      fictional demo persona (Jordan Ellis, example.com, sample-company names);
@@ -154,9 +155,11 @@ your profile is missing); otherwise it is one small line in the job's details.
 
 The top of a job's page answers two things: what you do next, and where the job
 stands. The header carries one status and one score (**Resume match** once the
-job has its own tailored resume, **Best base resume** before), and a line under
-it says whether you applied, when, and with which resume, with links to the PDF
-and to what was submitted.
+job has its own tailored resume, **Best base resume** before). Under it are four
+numbered steps, **Job**, **Resume and gaps**, **Tailored resume** and **Apply**,
+each with one line saying what is done or what comes next. A job has one
+application: tailoring it with another resume replaces the draft after asking,
+and version history keeps the old one.
 
 Then work through the **gaps** rather than accepting a rewrite. Maestro asks
 targeted questions to find things that are true but not yet written down. Your

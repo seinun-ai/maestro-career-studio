@@ -857,7 +857,7 @@
   (`frontend/lib/inbox-lanes.ts`: `INBOX_LANES`, `laneOf`, `NEEDS_YOU_STATUSES`); a
   Queue accepts only a Proposed proposal and otherwise says which lane it is in;
   the job page mirrors Queue/Skip and
-  shows the proposal pill + the proposal's Overview card, titled with its filer; prev/next walks
+  shows the proposal pill + the proposal's card on step 1, titled with its filer; prev/next walks
   `cs-proposals-seq`. Delete on non-submitted rows; still NO browser execution
   from the web — execution only happens in a live agent session holding a
   browser, and final submit consent stays in that session. Funnel: `GET

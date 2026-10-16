@@ -541,7 +541,7 @@
   preset is secondary container led by a `Check`, and each preset is 24px tall
   (`h-6`, 44px on a coarse pointer). ONE saved
   choice (`pdfPreview.zoom`) serves all four surfaces: both studios, the job
-  page's Resume tab and the template editor. It is read through
+  page's Tailored resume step and the template editor. It is read through
   `useLocalStorageState` during render, so a stored zoom paints on the first
   frame and stays in sync across every mounted preview. The zoom row and the render-error
   banner sit ABOVE the scroller in normal flow: sticky inside it, the group
@@ -1281,7 +1281,7 @@
   value `"declined by user"` (agent-visible vocabulary echoed verbatim by
   `list_proposals`/`get_proposal`); only its label reads "Not interested"
   (`reasonLabel` in `components/proposals/triage-actions.tsx`, which the
-  job's Overview card reads too). The agent words, Add job and the Agent
+  proposal's card on the job's step 1 reads too). The agent words, Add job and the Agent
   inbox's lanes and chips are in *Canonical terms* (Microcopy rules), the one
   glossary; `test_frontend_agent_words.py` pins the agent words. The
   tracker's Agent inbox filter reads To review for `proposed`.
@@ -1430,7 +1430,16 @@
     reads **All**, since it counts every application, **Yours** and **Agents**.
     The URL, `?status=`/`?source=` and the `cs-tracker-*` keys keep their names.
     **Refresh details**, never re-extract. **gap analysis**, never session
-    or tailoring session. **Quick tailor**, always capitalized, never Fast
+    or tailoring session. A job page has four numbered **steps**, never tabs:
+    **Job**, **Resume and gaps**, **Tailored resume** and **Apply** (a step's
+    name reads "Step 2: Resume and gaps"; a pointer to one says "the job's
+    Resume and gaps step"). **Score and tailor** was the old tab: it is off
+    every screen (the ratchet refuses it, and "Resume tab"-style names), and
+    lives on only as `?tab=fit`, which opens Resume and gaps (`TAB_TO_STEP`).
+    **Analyze gaps** starts a gap analysis and **Continue gap analysis**
+    opens one, never Find gaps. **Next step** is the Jobs column whose one
+    control (`lib/next-step.ts`) reads Score, Analyze gaps, Continue gaps · 2
+    of 5, Review resume or Apply. **Quick tailor**, always capitalized, never Fast
     tailor; its settings are Quick tailor settings. **Create PDF** and
     **Update PDF** (Update once a PDF exists), never render or compile (the
     template editor's button is **Update preview**). **Update score**, never

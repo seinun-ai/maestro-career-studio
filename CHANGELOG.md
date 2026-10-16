@@ -34,6 +34,13 @@ application in the tab you are on: it fills a page, clicks Next, fills the next,
 review page. Submit is still your click, at every setting. One job at a time for now, and a Queue
 view for several is still ahead.
 
+A job's page used to have five tabs, and finding out where a job stood meant opening them one by
+one. Now it has four numbered steps, **Job**, **Resume and gaps**, **Tailored resume** and **Apply**,
+and each one says in a line what is done and what comes next. The Jobs list does the same for every
+row with a **Next step** column. Every job is scored the moment you save it, and a job holds one
+application, so trying another resume replaces the draft instead of quietly starting a second one.
+Less hunting, more applying.
+
 ### Breaking changes
 
 - **`PUT /api/settings/autofill-options` takes `{"answer_level": …}` now.** The old
@@ -47,6 +54,13 @@ view for several is still ahead.
   veteran" option. A Yes never picks a protected class for you. If your second copy has not been
   updated, it reads a synced Yes or No as "I don't wish to answer", so update the always-on copy at
   the same time as your laptop.
+- **A job holds one application.** `POST /api/applications/from-base` (and MCP `tailor_application`,
+  which goes through it) and tailoring a gap analysis now reuse the job's newest application whatever
+  its base resume: the application takes the new base and draft, keeps its status, applied date,
+  notes, referral and answers, and its PDF is removed as stale. Neither creates a second application for
+  another base any more. A job that already holds two keeps both; the newest takes the new base.
+- **The job header's Details menu is gone.** Applied on, the tracking link, Referral, Notes and Delete
+  application are under **Application details** on the job page's Apply step.
 
 ### Added
 
@@ -141,12 +155,39 @@ view for several is still ahead.
   log last recorded a run, so a gap in Analytics has a reason.
 - **Notes under a field.** The answered list and **Check before you submit** show a short fixed note
   under a field name: "Drafted from your history: read it", "Day set to the 1st".
+- **Four numbered steps on the job page**, where its five tabs were: **Job** (the job's details and
+  the knock-out check behind **View details**), **Resume and gaps** (resume chips, a one-line score
+  with a Score breakdown, **Analyze gaps** or **Continue gap analysis**, **Use resume as is**),
+  **Tailored resume** (the before and after score, the changes tailoring made with a Revert on each,
+  **Create PDF**, the PDF card) and **Apply** (the job post link, the questions, the cover letter, what
+  was submitted, **Mark applied**). Each step has a one-line receipt or hint, the step the job is on
+  opens first, and no step is locked. Queue in Agent inbox, Refresh details and Delete job sit in the
+  header's ⋯ (**More actions**). Old `?tab=` links still land on the matching step.
+- **The gap analysis page shows the same steps and resume chips** above the gaps. A chip opens that
+  resume's gap analysis or starts one.
+- **A Next step column on Jobs.** Each row shows one control from the job's stage: **Score**,
+  **Analyze gaps**, **Continue gaps · N of M**, **Review resume** or **Apply**. An applied row reads
+  "Waiting to hear back" while its status is Applied; later rows show nothing.
+- **Quick filters on Jobs**: **Ready to apply**, **Tailored, review**, **Gaps open** and **Needs you**,
+  each with its count. The first three filter by stage and combine with the Status filter (`?stage=`).
+- **Every job is scored when it is saved**, on the web (**Save job**) and through ingest (the Companion
+  and `store_extracted_jd`), against every base resume you can pick for it. A job that cannot be scored
+  then still saves, and Resume and gaps tries again on its first visit.
+- **A stage on every job for API clients.** `ApplicationSummary` gains `has_draft`, `has_pdf`, `stage`,
+  `open_session_id`, `gaps_done` and `gaps_total`; `JobSummary` and `JobDetail` gain `stage`,
+  `open_session_id`, `gaps_done` and `gaps_total` (on `JobDetail` beside `job`, not inside it). `stage`
+  is one of `saved`, `scored`, `gaps`, `tailored`, `pdf_ready`, `applied` and `closed`.
+- **A revert checks the draft it was made from.** `GET /api/applications/{id}/resume-diff` now carries
+  the `updated_at` of the draft it compared, and `PATCH /api/applications/{id}` takes an optional
+  `expected_updated_at`: when the draft changed since, it answers 409 and writes nothing. The job page's
+  Revert sends it.
+- **Version history names a resume switch**: "Switched to {resume}", then what changed.
 
 ### Changed
 
 - **The job page and the Agent inbox lead with what you need to do.** A job's header shows one
-  status and one score (**Resume match** once tailored, **Best base resume** before), and a **Where
-  this stands** line says whether and how you applied. The knock-out check is a banner only when it
+  status and one score (**Resume match** once tailored, **Best base resume** before), and the Apply
+  step's line, **Where this stands**, says whether and how you applied. The knock-out check is a banner only when it
   blocks you, and the proposal card appears only when it carries something. A job you applied to
   yourself reads **Applied yourself**, not Skipped. The inbox opens with one summary line, hides empty
   lanes, shows the search and filters only for a long list and the daily limit only near it, and the
@@ -165,6 +206,12 @@ view for several is still ahead.
   apply to connected agents and the Companion.
 - **Tailoring after Apply no longer wedges it.** Apply links the draft it made; a draft you tailor
   afterwards is now linked in its place instead of failing with "proposal already linked".
+- **The Jobs list drops its Resume column.** The Match score's hover names an application's resume
+  instead. The table scrolls sideways below 57rem (it was 52rem).
+- **Agents' `record_decision` links the job's application after a resume switch.** It still prefers
+  the application on the agent's chosen base, falls back to the job's one application, and answers
+  409 only when the job has none. An automatic link writes that application's resume into
+  `fit.chosen_base`. Answers filled before a switch stay linked to the job's one application.
 
 - **Screening answers start at Balanced.** The old switch stored nothing when it was
   off, so an install that had it off cannot be told apart from one that never touched it. Both now
