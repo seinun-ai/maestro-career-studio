@@ -55,7 +55,8 @@
 - [§1 What this is](#1-what-this-is) — the product in one paragraph
 - [§2 Repo layout](#2-repo-layout) — directory map with one-line roles
 - [§3 Architecture at a glance](#3-architecture-at-a-glance) — data-flow diagram, where state lives
-- [§4 Core entities and their lifecycles](#4-core-entities-and-their-lifecycles) — INDEX into `docs/entities/`: per-model rules, state machines, scoring semantics
+- [§4 Core entities and their lifecycles](#4-core-entities-and-their-lifecycles) — INDEX into `docs/entities/`: per-model rules, state machines,
+  scoring semantics
 - [§5 The application workflow, end to end (web)](#5-the-application-workflow-end-to-end-web) — the nine user-facing steps
 - [§6 Cross-cutting invariants (do not break these)](#6-cross-cutting-invariants-do-not-break-these) — rules that must never break, with enforcement points
 - [§7 Agent surfaces](#7-agent-surfaces) — INDEX into `docs/agent-surfaces.md`: MCP server, in-app chat, extension
@@ -139,11 +140,17 @@ scripts/               setup-mcp.sh (deprecated stdio, §13), update.sh (Docker 
         status tracking (StatusChip)        QA router (cover letter / answers)
 ```
 
-`data/maestro_cs.sqlite3` (SQLite, WAL) holds rows and local sync clocks; ORM flushes stamp jobs/profile, including imports and both sides of moves. A job still at revision 0 is stamped from that clock when this copy pushes or lists its jobs. Deleted jobs leave tombstones; Core writers touch their subtree (`services/sync/hooks.py`; the write guard is §6
-inv-flush-guard). Resume JSON/rendered files stay on disk (`base_resumes` row + file required); job-site login: `settings/secrets/` (§6). A uv install keeps all of it in one per-user folder (inv-one-home). **LLM calls** go through the front door `llm.py` (`call_openai`, key getters; four keys, env keys as fallback). `llm_providers/registry.resolve` routes a model id by catalog tag, then keys/prefix, to an adapter (OpenAI-compatible incl. custom servers and the privacy-locked OpenRouter preset, Claude, Gemini); chat streams through the same adapters.
+`data/maestro_cs.sqlite3` (SQLite, WAL) holds rows and local sync clocks; ORM flushes stamp jobs/profile, including imports and both sides of moves. A
+job still at revision 0 is stamped from that clock when this copy pushes or lists its jobs. Deleted jobs leave tombstones; Core writers touch their
+subtree (`services/sync/hooks.py`; the write guard is §6
+inv-flush-guard). Resume JSON/rendered files stay on disk (`base_resumes` row + file required); job-site login: `settings/secrets/` (§6). A uv install
+keeps all of it in one per-user folder (inv-one-home). **LLM calls** go through the front door `llm.py` (`call_openai`, key getters; four keys, env
+keys as fallback). `llm_providers/registry.resolve` routes a model id by catalog tag, then keys/prefix, to an adapter (OpenAI-compatible incl. custom
+servers and the privacy-locked OpenRouter preset, Claude, Gemini); chat streams through the same adapters.
 
 **Sync** is optional, on only while a key file exists (`docs/sync-setup.md`): the laptop owns the profile, each job has one owner
-(docs/entities/job.md), nothing merges (inv-one-writer-ownership). The always-on copy drives: `sync.sh` (cron; `--now` forces a round) or MCP `sync_now` asks its
+(docs/entities/job.md), nothing merges (inv-one-writer-ownership). The always-on copy drives: `sync.sh` (cron; `--now` forces a round) or MCP
+`sync_now` asks its
 backend for a round (`POST /api/sync/round`, `services/sync/round.py`), which calls the laptop's `/api/sync/*` on the sealed channel
 (inv-sync-channel), one transaction per step; failures back off 5 to 30 minutes. Changes to the other copy's job wait as `sync_requests`;
 a laptop job is offered only when queued `accepted` on the laptop with full automation on (`offers.mark_when_queued`); switching it off withdraws offers.
@@ -174,7 +181,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 2. **Track** — **Jobs** (`/applications`; the URL, `?status=`/`?source=` and `cs-tracker-*` keep their
    names): the tracker. Two queries (summary list with server-joined job fields + saved jobs of the
    toggle's source), a grouped status `Select` with counts, inline `StatusChip` per row (PATCHes
-   directly; locked while the job is moving between copies), a Where column (Laptop/Bot/Moving) once sync is on, a read-only Match score column (`ats_score` / `best_ats_score`), search, sort, and a Tracked/Yours/Agents provenance `SourceToggle` (counts follow the
+   directly; locked while the job is moving between copies), a Where column (Laptop/Bot/Moving) once sync is on, a read-only Match score column
+   (`ats_score` / `best_ats_score`), search, sort, and a Tracked/Yours/Agents provenance `SourceToggle` (counts follow the
    toggle; `?source=` deep-linkable; Analytics' copy reads All, as it counts every application).
    "Saved" = job with no application — agent-captured jobs stay out unless the toggle is `Agents`,
    which is why the default reads Tracked, not All (agent inventory lives in the Agent inbox,
@@ -241,7 +249,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 7. **Output** — Resume tab: the ONE before/after compare panel + PDF card;
    **Create PDF** renders the tailored draft and shows the shared rasterized
    page preview inline (**Update PDF** refreshes it); download/open actions become
-   available immediately, and a copy lands in the visible resumes folder (**Show in Finder**; §6 inv-resumes-folder-one-way). "Edit resume" → the studio (`/applications/[id]/resume`),
+   available immediately, and a copy lands in the visible resumes folder (**Show in Finder**; §6 inv-resumes-folder-one-way). "Edit resume" → the
+   studio (`/applications/[id]/resume`),
    where Save chains render → re-score automatically.
 8. **Apply package** — Q&A tab: questions, cover letter (tone). Outreach/cold messages
    are asked as free-form questions (no dedicated cold-message generator); the QA
@@ -289,7 +298,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   just the UI).
 - **Placement validation twins** `{#inv-placement-validation-twins}`: `_validate_placement_target` (tailoring_session, raises) and
   `placement_targets.coerce` (scrubs LLM output) both call the pure `placement_targets.canonicalize` — `services/placement_targets.py` owns the
-  placement-target contract, and the frontend's `buildPlacementTargets` hand-mirrors its targets shape. What an extra target requires: `docs/entities/others.md`,
+  placement-target contract, and the frontend's `buildPlacementTargets` hand-mirrors its targets shape. What an extra target requires:
+  `docs/entities/others.md`,
   "Placement target details".
 - **MCP control invariants** `{#inv-mcp-controls}`: no tool name contains "delete"; no set-default-template tool (`mcp_server/tests/test_server.py`).
 - **MCP lives inside the app.** `{#inv-mcp-inside-the-app}` `/mcp` and `/mcp/{profile}` are routed inside FastAPI behind REST's
@@ -315,7 +325,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   never enters telemetry, run traces, Langfuse or exports. An EEO value is stored only under recorded EEO consent (the fill's own gate,
   `eeo_consent.withhold_unconsented`, asked at write; the read is gated again as a second guard); withdrawing consent clears stored EEO answers;
   no agent read returns an EEO value, marked or not (the server classifies by question words too, the MCP client strips again, and no MCP path
-  reads the web UI's `GET /api/jobs/{id}/filled-answers`). The Companion panel posts the receipt through the generic `api` door, never `telemetry`/`fill_trace`, so it works
+  reads the web UI's `GET /api/jobs/{id}/filled-answers`). The Companion panel posts the receipt through the generic `api` door, never
+  `telemetry`/`fill_trace`, so it works
   with telemetry off; it reads only frames that earn the data (inv-frame-earns-data), records no never-fill field even under standing consent,
   and its values never reach the run-trace builders. Pinned by `tests/test_filled_answers_invariant.py`, `test_extension_panel_receipt.py`,
   `test_filled_answers_api.py`, `test_filled_answers_agent.py` and `mcp_server/tests/test_client_filled_answers.py`.
@@ -351,7 +362,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`), TWO permissions kept apart on purpose: `enabled` authorizes disclosing
   protected characteristics; `consent_forms` lifts the label policy (inv-policy-deny-list-single-source), only if agreed under policy ≥ 2 (an
   older yes is served off, `consent_forms_lapsed`); one flag for both would make an EEO yes agree to terms. The server owns the stamp, and
-  `consent_forms` turns on only on its own yes carrying the current policy (`test_eeo_consent.py`). ONE gate, `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled` for every outward reader —
+  `consent_forms` turns on only on its own yes carrying the current policy (`test_eeo_consent.py`). ONE gate, `eeo_consent.withhold_unconsented`,
+  strips `profile.eeo` unless `enabled` for every outward reader —
   `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's slot catalog (model providers are recipients too) — and fails CLOSED
   when consent cannot be computed; the MCP client keeps its OWN strip (two gates, not a relocated one). Which path asks never decides whether
   protected-class data is served. Pins (router, `/choose`, Jev): `.system_md_enforcement.json`. No inference or invented EEO answers. Human-only
@@ -374,7 +386,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `tests/test_render_note_coverage.py`. Pins: `tests/test_render_fallback.py`, `tests/test_seeding.py`.
 - **`user_cannot_confirm` is durable.** `{#inv-provenance-no-decay}` No code path upgrades that provenance to anything else — including the
   gap flow that writes it: a "cannot confirm" gap outcome stores a retired `user_cannot_confirm` point and future sessions pre-resolve the
-  claim instead of re-asking (where it lands and how it matches: `docs/entities/others.md`, "KB provenance details"). Base-sync of the same claim drafts a NEW `user_authored` point and leaves the record untouched — new first-party
+  claim instead of re-asking (where it lands and how it matches: `docs/entities/others.md`, "KB provenance details"). Base-sync of the same claim
+  drafts a NEW `user_authored` point and leaves the record untouched — new first-party
   evidence beats an old "don't know"; the draft queue is where the user reconciles. Pinned by `tests/test_kb_provenance_stamping.py`
   (`test_no_writer_flips_user_cannot_confirm`) and `tests/test_gap_cannot_confirm.py` (`test_nothing_upgrades_user_cannot_confirm`).
 - **Column types come from ONE module.** `{#inv-single-dialect}` SQLite is the only runtime database. `app/models/types.py` (`JSONDoc`,
@@ -404,7 +417,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   (Queued only); `POST /api/proposals` moves an `accepted` proposal to a newer draft of its job only for that origin and only under the
   relink conditions (every other mismatch stays a 409; an application of another job is refused on every linking route); the user's real
   Submit, seen as a confirmation page, is recorded only by `POST /api/proposals/{id}/companion-submitted`, which clicks nothing. The relink
-  conditions and what the submit record holds: `docs/entities/others.md`, "Proposal relink from the Companion" and "The Companion's run". A skipped (rejected) proposal blocks queuing its job again, except an
+  conditions and what the submit record holds: `docs/entities/others.md`, "Proposal relink from the Companion" and "The Companion's run". A skipped
+  (rejected) proposal blocks queuing its job again, except an
   "applied manually" one, which blocks only while an application of the job is still applied. Pins: `tests/test_full_automation_setting.py`,
   `test_proposal_state_machine.py`, `test_companion_submitted.py`, `test_proposals_router.py` (symbols in `.system_md_enforcement.json`).
 - **One writer per job; the laptop owns the profile.** `{#inv-one-writer-ownership}` With sync on (a key file exists) every job has one owner
@@ -430,7 +444,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   key file every `/api/sync/*` route is that 404 and the always-on copy serves no home routes. Only `/api/sync` may be published (Tailscale
   Funnel); while `SYNC_PUBLIC_HOST` is set every response on it is sealed or the bare 404, whatever Host says, and the public name stays
   refused off that tree. The profile, the AI key and the job-site login ride only this channel, and no key, pairing code, seal plaintext,
-  bundle value or local path reaches a log or an error (fixed sentences). The round and setup routes, the post-seal checks (protocol, one request at a time, body cap, chunk
+  bundle value or local path reaches a log or an error (fixed sentences). The round and setup routes, the post-seal checks (protocol, one request at a
+  time, body cap, chunk
   timeout), replay refusal, path rules, the proxy rule for `SYNC_REMOTE_URL`, artifact-folder containment and the pairing code's life:
   `docs/entities/others.md`, "Sync channel details". Pinned by `tests/sync/test_seal.py`, `test_sealed_home.py`, `test_public_host.py`,
   `test_pairing.py` and `test_two_machines.py`.
@@ -488,7 +503,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   defaults are in the §7 dial; a middle name is never made from the first name, and the name is used as stored. `/choose` DRAFTS only a
   REQUIRED text or textarea that `/map` filed as `free_text` or `years_unanswered`, never at **Careful**, never when the never-list matches,
   in the owner's voice; it returns `assumed` with "Drafted from your history: read it" and saves nothing. The never-list, the length and
-  the grounding: `docs/entities/others.md`, "Derived facts, drafted answers and degree levels". Pinned by `tests/test_autofill_choose.py`, `test_autofill_map.py` and
+  the grounding: `docs/entities/others.md`, "Derived facts, drafted answers and degree levels". Pinned by `tests/test_autofill_choose.py`,
+  `test_autofill_map.py` and
   `tests/browser/test_fill_core_fields.py`.
 
 ## 7. Agent surfaces
@@ -534,7 +550,8 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 Reference tier, like §4: consulted while working in `frontend/`, not read for orientation. Lives in
 [`docs/frontend-conventions.md`](docs/frontend-conventions.md): layout and sidebar rules, Tailwind v4 tokens and
 M3 colour roles, the studios' save and preview model, a11y and focus behaviour, naming, the copy rules and the one
-glossary (the app calls its fixed-rules score **Match score**; *Canonical terms*; ratchets `test_frontend_vocabulary.py`, `test_frontend_sentence_length.py`), each
+glossary (the app calls its fixed-rules score **Match score**; *Canonical terms*; ratchets `test_frontend_vocabulary.py`,
+`test_frontend_sentence_length.py`), each
 with the failure mode that bought it. Code citing "§8" lands here.
 
 ## 9. Dev & test environment
@@ -564,7 +581,8 @@ with the failure mode that bought it. Code citing "§8" lands here.
 - Backend tests: `pytest tests/ mcp_server/tests/ -q -n auto --dist loadfile` from `backend/`; bare `tests/` skips MCP.
   CI cold-installs `.[mcp]`, checks six stdio profiles and `/mcp` + `/mcp/hunt` over HTTP. xdist (~15 → ~3.5 min)
   uses `loadfile` to keep browser tests per file. conftest makes a SQLite file per process/worker (`TEST_DATABASE_URL` may name another,
-  never under `data/` or with `-n`) and blanks the four provider keys (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`): a worker's `load_dotenv()` finds the
+  never under `data/` or with `-n`) and blanks the four provider keys (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`):
+  a worker's `load_dotenv()` finds the
   nearest `.env`, so unstubbed tests made billed calls. Parity tests (`tests/node_ts.py`) need node 24: skip locally, FAIL in `CI`.
 - **Deploying a local change = rebuilding BOTH images** (MAINTAINER path, MAIN checkout): `docker build -t maestro-career-studio-backend
   backend/` AND `…-frontend frontend/`, then `docker compose up -d --no-build --force-recreate backend frontend`. A frontend-only change
@@ -572,12 +590,14 @@ with the failure mode that bought it. Code citing "§8" lands here.
 - **A USER updates instead** — `./scripts/update.sh`: online SQLite snapshot
   (`app.tools.backup_db --stdout` through the running backend container, else the checkout's own image tag —
   `.env`'s `latest` can predate the tool; 0600, magic-byte checked) → ff-only to the newest `v*` tag → images pinned to that tag →
-  health poll → extension/MCP reminders (only legacy stdio re-runs setup-mcp.sh; an old Docker `.mcpb` is reinstalled once; README "Updating"). Checkout and images
+  health poll → extension/MCP reminders (only legacy stdio re-runs setup-mcp.sh; an old Docker `.mcpb` is reinstalled once; README "Updating").
+  Checkout and images
   move TOGETHER: a bare `docker compose pull` skews an install. Contributors build. The pre-v0.4.0 guard (a `<project>_pgdata` volume with no
   `data/.migrated-from-postgres.json`) and recovery steps: docs/UPDATING.md.
 - **Windows = WSL for Docker; the uv install runs natively.** Docker needs Desktop's WSL 2 engine with the clone in the WSL home, never
   `/mnt/c` (SQLite WAL over the Windows share is untrusted; the scripts are bash). `.gitattributes` forces LF
-  so a clone cannot CRLF scripts or `.env`; `setup-mcp.sh` is not a Windows route. The `.mcpb` uses HTTP on macOS, Windows and Linux without Docker on the assistant's side.
+  so a clone cannot CRLF scripts or `.env`; `setup-mcp.sh` is not a Windows route. The `.mcpb` uses HTTP on macOS, Windows and Linux without Docker on
+  the assistant's side.
   The upload host root is `${PWD}` (compose cwd; `update.sh` pins it to the repo) unless `MAESTRO_CS_UPLOAD_HOST_ROOT` overrides it; Windows joins with `\`.
 - **uv install (B′, `maestro`)** — `uv tool install --python 3.12 maestro-career-studio`: a `py3-none-any` PyPI wheel of `backend/`
   (version = `backend/pyproject.toml`) plus the Next standalone bundle (`maestro_cs/web/`; `scripts/build_wheel.py`, gated by
@@ -586,8 +606,10 @@ with the failure mode that bought it. Code citing "§8" lands here.
   uvicorn (127.0.0.1:8001) and `node server.js` (:3000); stop = `run/stop.request` + a signal; process identity = pid + psutil
   create_time. `maestro update` = verified snapshot → stop → `uv tool install --force …==NEW` (Windows: a detached `cmd` script) → start. The web
   process gets no API keys (`home._WEB_STRIPPED`). CI: `maestro-cli`, `uv-wheel`, `uv-smoke`, `uv-upgrade`; `pypi.yml` publishes on
-  `v*` tags. `maestro import-docker` copies a Docker checkout's data in once (the checkout is read, never written). Detail: `docs/entities/others.md`, "The uv install".
-- **Native run (no Docker)** — `docs/native-install.md`: `backend/scripts/native/` runs one loopback worker under `$MAESTRO_HOME`; URLs follow the MCP rule above, `MCPB_BUNDLE_PATH` uses the checkout's `mcpb/maestro-career-studio.mcpb` (`tests/test_native_scripts.py`).
+  `v*` tags. `maestro import-docker` copies a Docker checkout's data in once (the checkout is read, never written). Detail: `docs/entities/others.md`,
+  "The uv install".
+- **Native run (no Docker)** — `docs/native-install.md`: `backend/scripts/native/` runs one loopback worker under `$MAESTRO_HOME`; URLs follow the MCP
+  rule above, `MCPB_BUNDLE_PATH` uses the checkout's `mcpb/maestro-career-studio.mcpb` (`tests/test_native_scripts.py`).
   `slow` tests skip with `MAESTRO_SKIP_SLOW` (CI); `integration` MCP loopback and `tests/sync/test_two_machines.py`
   run in CI ON PURPOSE, never `slow`: no downloads. With `EMBEDDINGS_OUT_OF_PROCESS` at most ONE embedding
   helper runs per process (`embeddings._HELPER_LOCK`); two ~290 MB helpers OOM. `GET /health/memory` reports memory.
@@ -655,30 +677,37 @@ overflow moves to `docs/deferred.md` under this same contract, each item keeping
 
 1. Extra-section op **payloads** stay loosely typed (op *kinds* are one source, `schemas/resume_edit.py`):
    `add_extra_section` / `replace_extra_section` `value` is `dict[str, Any]`, validated in the service
-   (`resume_edit._validate_extra_section`, like `AddEntry`), so a bad extras payload is a 400, not a 422. Do when `schemas/resume_edit.py` or `resume_edit._validate_extra_section` is next changed.
+   (`resume_edit._validate_extra_section`, like `AddEntry`), so a bad extras payload is a 400, not a 422. Do when `schemas/resume_edit.py` or
+   `resume_edit._validate_extra_section` is next changed.
 2. One post-render readiness pipeline ("Ready to apply" gate: health, em-dash, pages, contact checks on the exact
    rendered artifact), consuming the shared rasterized preview + slim MCP `get_rendered_pdf` metadata. The JD-level
-   half (stated requirements vs profile) is the knock-out pre-scan, §5 step 3. Do when one of its checks (health, em-dash, pages, contact) is next changed or a third surface reads them.
-13. Quick-tailor: derive `applied` from the committed resume DIFF, not planned intent; employment-blocks v2. Do when `applied` disagrees with the committed resume diff, or employment blocks are next changed.
+   half (stated requirements vs profile) is the knock-out pre-scan, §5 step 3. Do when one of its checks (health, em-dash, pages, contact) is next
+   changed or a third surface reads them.
+13. Quick-tailor: derive `applied` from the committed resume DIFF, not planned intent; employment-blocks v2. Do when `applied` disagrees with the
+    committed resume diff, or employment blocks are next changed.
 20. `extra_sections` remainder: calibrate the `extra_only` multiplier; nested extra-section entry/bullet ops are
-    unbuilt (a bullet op would make the health check's custom-section suggestions appliable, not copy-only). Do when the `extra_only` multiplier is calibrated or a custom-section suggestion has to be appliable.
+    unbuilt (a bullet op would make the health check's custom-section suggestions appliable, not copy-only). Do when the `extra_only` multiplier is
+    calibrated or a custom-section suggestion has to be appliable.
 25. SQLite has one write lock, and two transactions hold it across LLM calls: `kb_consolidation.consolidate` (flush, one LLM call per
     entity, one commit — `seeding.seed_career_kb` relies on that via `commit=False`) and `tailoring_session.create_session` with enrichment
     (score flush + supersede UPDATE, then the call). A concurrent writer waits `busy_timeout` (30 s), then fails "database is locked". Fix:
-    compute every LLM result first, then write in one short transaction, keeping the seeder's `commit=False` contract. Do when "database is locked" appears under a consolidation or an enriched session.
+    compute every LLM result first, then write in one short transaction, keeping the seeder's `commit=False` contract. Do when "database is locked"
+    appears under a consolidation or an enriched session.
 35. Settings seed race: `text_settings.get_text` lazily INSERTs a missing `Setting` row and commits, so two first
     reads at once both insert and one fails on the key; the commit also ends an open transaction (hence `POST
-    /api/proposals` reads `get_settings` before `begin_write`). Seed at startup or insert-or-ignore. Do when two first reads race on a `Setting` row, or a startup seeder is added.
+    /api/proposals` reads `get_settings` before `begin_write`). Seed at startup or insert-or-ignore. Do when two first reads race on a
+    `Setting` row, or a startup seeder is added.
 44. Companion run limits left on purpose: a robot-trap option inside a real checkbox/radio group (shared name) is not filtered
     (honeypots are standalone text boxes); sync's duplicate resolution that keeps the laptop's twin drops the other copy's
     `apply_url`, and a replica's link is never sent to its owner; a password-only second sign-in screen parks (`no_email`); technique
     cards for group, select and date widgets are never reached (the adaptive step runs for popup and search only); a page with no
     heading never reads as a rejected Next, `heldValues` misses a select's shown text and a custom combobox, and the hand-attached-file
     check reads the run's own frame only; the run list, Queue view and parallel tabs wait for Phase 3 (`docs/plans/2026-10-10-companion-queued-run.md`);
-    the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits". Do when Phase 3 (run list, Queue view, parallel tabs) is built or a listed limit is reproduced.
+    the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits". Do when Phase 3 (run list, Queue view, parallel tabs) is
+    built or a listed limit is reproduced.
 
-The other 31 items (3–6, 8, 10, 12, 14–17, 19, 21–24, 26–30, 32–34, 37–43) live in [`docs/deferred.md`](docs/deferred.md), each keeping its number and carrying its trigger; code
-citing "§11 item N" for one of them lands there.
+The other 31 items (3–6, 8, 10, 12, 14–17, 19, 21–24, 26–30, 32–34, 37–43) live in [`docs/deferred.md`](docs/deferred.md),
+each keeping its number and carrying its trigger; code citing "§11 item N" for one of them lands there.
 
 ## 12. Gotchas that have bitten before
 
@@ -698,7 +727,8 @@ the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
   uvicorn → `http.offload_tools` uses its own worker limiter; pinned by `tests/test_mcp_http_loopback.py`.
 - **Owned-session prompt reads never seed** (2026-10-10): a lazy INSERT waited out `busy_timeout` behind a caller's
   write and hid a mocked outage → only caller-supplied sessions seed; startup seeds the rest (`tests/test_prompts_service.py`).
-- **Guard files before commit** (2026-10-06): refusal still deleted documents/changed previews → check before disk I/O, including helpers (`tests/sync/test_guard.py`).
+- **Guard files before commit** (2026-10-06): refusal still deleted documents/changed previews → check before disk I/O, including helpers
+  (`tests/sync/test_guard.py`).
 - **Retry keys must identify controls** (2026-09-25): rule attempts use composite labels, collection clean questions, so
   `country | field-12` never reaches the `country` retry → use element identity; a model upgrade cannot repair fields collection never sends (§11 item 40).
 - **Same page is not same URL** (2026-09-23): the leave guard stopped every same-pathname popstate, so Back between `?tab=`
@@ -721,10 +751,12 @@ the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 - **SQLite and Alembic traps** (per-connection `foreign_keys`, TypeDecorator autogenerate, Boolean defaults, `commit()` flushing,
   unclosed `sqlite3.connect`, timestamp resolution): `docs/entities/others.md`, "SQLite and Alembic gotchas".
 - **One path, every job** (2026-09-01): LinkedIn's list rewrites only `?currentJobId=` and the matcher dropped the
-  query string, so every job was the first one saved. A query-keyed board needs its key in BOTH `posting_id` tables (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's.
+  query string, so every job was the first one saved. A query-keyed board needs its key in BOTH `posting_id` tables (§7); an SPA's `<head>` JSON-LD is
+  the PREVIOUS job's.
 - **A starter that fails its own gate** (2026-09-01): the from-scratch template certified `false` on an untouched
   draft. What the app mints AND validates in one request must clear every probe.
-- **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed pickers had no MIME types → every picker reads `frontend/lib/upload-accept.ts`.
+- **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed pickers had no MIME types → every picker reads
+  `frontend/lib/upload-accept.ts`.
 - **A guard test mocked away the guard** (2026-08-25): a green suite hid a 100%-failing rewrite path because it replaced
   `guarded_rewrite` → when a guard or validator is the subject, fake `llm.call_openai`, never the guard.
 - **The FAST model quietly caps score honesty** (2026-08-24): flash-lite extractions missed conceptual JD skills →
@@ -753,17 +785,23 @@ the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 - **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` moving children off a parent leaves its loaded
   collection stale, so `session.delete(parent)` cascades away the moved rows → expire the parent between (`career_kb.merge_entities`).
 - **Workday apply steps read as "no form"** (2026-09-25): no `<form>`/`<select>`, a `type="text"` phone and no email on My
-  Information, so every step but the résumé upload scored 1 and Fill was withheld → measure `detectPage`'s signals on the live page first (fix: `workday-apply-route`).
+  Information, so every step but the résumé upload scored 1 and Fill was withheld → measure `detectPage`'s signals on the live page first (fix:
+  `workday-apply-route`).
 - **Tailwind v4 compiles some classes to nothing** (2026-10-06): a variant on a plain class (`data-confirm:animate-confirm`
   until it was an `@utility`) and an unknown role (`border-outline`; check `--color-*` in `globals.css`); `translate-*`/`scale-*`
   set those properties, so `transition-[…transform]` jumps → register a class that takes a variant; name those properties.
 - **Agent sandboxes kill what a tool call starts** (2026-10-10): a server vanished between calls, even with `setsid` → run
   start, checks and stop in ONE call (`scripts/smoke_uv_install.py`), or use `maestro autostart`.
-- **Child-server startup signals have separate meanings** (2026-10-10): reverse DNS can stall listening, while “Started” precedes child output → fixtures bypass DNS, report bound ports, and wait for asserted output before stopping.
-- **Updating main under an open Chrome tab breaks the page reader** (2026-10-15): re-injection runs old load-once files with new re-run ones → a re-run file never
+- **Child-server startup signals have separate meanings** (2026-10-10): reverse DNS can stall listening, while “Started” precedes child output →
+  fixtures bypass DNS, report bound ports, and wait for asserted output before stopping.
+- **Updating main under an open Chrome tab breaks the page reader** (2026-10-15): re-injection runs old load-once files with new re-run ones → a
+  re-run file never
   reads a newer load-once export (`tests/test_extension_manifest.py` scan); reload open job tabs after an update (a run parks `page_stale`).
-- **A page of web components read as "nothing to fill"** (2026-10-15): `querySelectorAll`, `closest` and `contains` stop at a shadow root while the fill inventory walks in → every page read goes through `ns.deep` (`tests/browser/test_shadow_dom.py` pins fillable count > 0 exactly when the inventory lists a field).
-- **A slow fast model lost the safe answers** (2026-10-15): limits tuned on a 1.5 s model timed out a Claude one three times a day → floors by provider (`FAST_PROVIDER_FLOORS`), the timeout given is logged and `top_fact` names the fact that fell under its floor.
+- **A page of web components read as "nothing to fill"** (2026-10-15): `querySelectorAll`, `closest` and `contains` stop at a shadow root while the
+  fill inventory walks in → every page read goes through `ns.deep` (`tests/browser/test_shadow_dom.py` pins fillable count > 0 exactly when the
+  inventory lists a field).
+- **A slow fast model lost the safe answers** (2026-10-15): limits tuned on a 1.5 s model timed out a Claude one three times a day → floors by
+  provider (`FAST_PROVIDER_FLOORS`), the timeout given is logged and `top_fact` names the fact that fell under its floor.
 
 ## 13. Active migrations & deprecation ledger
 
