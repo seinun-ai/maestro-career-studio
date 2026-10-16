@@ -34,33 +34,85 @@ def test_the_where_head_sits_after_status_and_only_shows_when_a_row_has_a_mark()
     assert "const showWhere = filtered.some((r) => ownershipWhere(" in squash(_PAGE)
 
 
-def test_columns_with_fixed_content_are_in_rem_and_role_and_resume_share_the_rest_as_percentages():
-    """A percentage of a table that scrolls at 52rem gave "Offer accepted" less room than its chip needs;
-    Role and Resume take what the fixed columns leave, and share it 65/35 with or without Where."""
+def test_columns_with_fixed_content_are_in_rem_and_role_takes_the_rest_as_a_percentage():
+    """A percentage of a table that scrolls at its min width gave "Offer accepted" less room than its chip
+    needs; Role takes what the fixed columns leave, with or without Where."""
     head = squash(_TABLE[: _TABLE.index("</TableHeader>")])
     for key in ("ats", "status", "applied_at", "created_at"):
         width = re.search(rf'header\("{key}", "[^"]+", "(w-[^"]+)"\)', head)
         assert width and "%" not in width.group(1), key
         assert "px-3" in width.group(1), key  # head and cell share the tighter padding
-    where = tokens(open_tag(head, "TableHead", after="{showWhere ?"))
-    assert any(re.fullmatch(r"w-(\d+|\[[\d.]+rem\])", t) for t in where), where
-    assert "px-3" in where
+    for after in ("{showWhere ?", '{header("applied_at"'):  # Where, then Next step
+        fixed = tokens(open_tag(head, "TableHead", after=after))
+        assert any(re.fullmatch(r"w-(\d+|\[[\d.]+rem\])", t) for t in fixed), fixed
+        assert "px-3" in fixed
 
 
-def test_the_fixed_columns_pad_their_cells_like_their_heads_and_role_and_resume_keep_the_table_padding():
+def test_the_fixed_columns_pad_their_cells_like_their_heads_and_role_keeps_the_table_padding():
     row = _TABLE[_TABLE.index("<TableRow\n                    key={key}") :]
     starts = [m.start() for m in re.finditer("<TableCell", row)]
     padded = ["px-3" in open_tag(row[i:], "TableCell") for i in starts]
-    # Role, Resume, then Match score, Status, Where, Applied, Added carry px-3; the actions cell is last.
-    assert padded == [False, False, True, True, True, True, True, False]
+    # Role, then Match score, Status, Where, Applied, Next step, Added carry px-3; the actions cell is last.
+    assert padded == [False, True, True, True, True, True, True, False]
 
 
-def test_role_and_resume_split_the_rest_65_35_whether_or_not_where_shows():
-    """72/28 with Where hidden truncated "Data Scientist (India)" at 1280; Role does not take what Where gives up."""
+def test_role_is_the_only_percentage_column_and_the_resume_column_is_gone():
+    """The fixed columns take 45.5rem with Where and 41rem without, so at the 57rem min width Role keeps
+    11.5rem and 16rem (it had 11.7rem and 14.6rem at 52rem beside Resume). The Match score names the resume on hover."""
     head = squash(_TABLE[: _TABLE.index("</TableHeader>")])
-    assert 'header("role", "Role", "w-[65%]")' in head
-    assert '<TableHead className="w-[35%]">Resume</TableHead>' in head
-    assert 'minWidth="52rem"' in _PAGE
+    assert 'header("role", "Role", "w-[100%]")' in head
+    assert head.count("%") == 1
+    assert ">Resume</TableHead>" not in head
+    assert 'minWidth="57rem"' in _PAGE
+
+
+def test_the_match_score_names_the_resume_on_hover_and_the_page_draws_no_resume_square():
+    cell = _TABLE[_TABLE.index("const score = rowScore(r);") :]
+    cell = cell[: cell.index("</TableCell>")]
+    assert "title={resumeName || undefined}" in open_tag(cell, "span", after=": (")
+    assert "<ScoreBar" in cell
+    # A saved job's best base is not named by the API, so its resumeName is "" and the title is left off.
+    assert 'const resumeName = r.kind === "application" ? r.app.base_resume_name || baseName(r.app.base_resume) : "";' in _PAGE
+    assert "ResumeTag" not in _PAGE and "useBaseResumeColor" not in _PAGE
+
+
+def test_the_next_step_cell_links_the_one_control_from_the_servers_stage():
+    head = squash(_TABLE[: _TABLE.index("</TableHeader>")])
+    assert head.index('header("applied_at"') < head.index(">Next step</TableHead>") < head.index('header("created_at"')
+    assert 'import { nextStep, nextStepHref, type Rung } from "@/lib/next-step";' in _PAGE
+    assert 'const step = nextStep(stage, r.kind === "saved" ? r.job : r.app);' in squash(_PAGE)
+    cell = _TABLE[_TABLE.index("{step ? (") :]
+    cell = cell[: cell.index("</TableCell>")]
+    # The cell keeps a click from opening the row, like the actions cell.
+    opener = _TABLE[_TABLE.rindex("<TableCell", 0, _TABLE.index("{step ? (")) :]
+    assert "onClick={(e) => e.stopPropagation()}" in open_tag(opener, "TableCell")
+    button = squash(open_tag(cell, "Button"))
+    assert 'size="sm"' in button and "variant={step.variant}" in button and "nativeButton={false}" in button
+    assert "disabled={!ownership.canWrite}" in button and "data-disabled:opacity-50" in button
+    assert "tabular-nums" in tokens(open_tag(cell, "Button"))
+    assert "render={<Link href={nextStepHref(jobId, step)}>{step.label}</Link>}" in button
+    # Applied rows say they wait only while the status is applied; later statuses and closed say nothing.
+    assert ('const waiting = stage === "applied" && r.kind === "application" && r.app.status === "applied";'
+            in squash(_PAGE))
+    waiting = open_tag(cell, "span", after="waiting ? (")
+    assert {"text-muted-foreground", "text-body-small"} <= tokens(waiting)
+    assert ">Waiting to hear back</span>" in cell and ") : null}" in squash(cell)
+
+
+def test_the_stage_chips_are_their_own_filter_in_the_url_and_the_session():
+    src = squash(_PAGE)
+    assert 'const STAGE_FILTERS = ["pdf_ready", "tailored", "gaps"] as const;' in src
+    assert 'asStageFilter(searchParams.get("stage") ?? storedValue(STAGE_STORE_KEY))' in src
+    assert 'const STAGE_STORE_KEY = "cs-tracker-stage";' in src
+    assert 'if (nextStage) params.set("stage", nextStage);' in src
+    assert 'storeValue(STAGE_STORE_KEY, next ?? "");' in src
+    # It ANDs with the Status select, which keeps its options.
+    filtered = src[src.index("const filtered = useMemo(") : src.index("const needle")]
+    assert "list.filter((r) => rowFilterKey(r) === filter)" in filtered
+    assert "list.filter((r) => rowStage(r) === stageFilter)" in filtered
+    # A chip counts what pressing it shows, and stays while it is on.
+    assert "(filter === \"all\" || rowFilterKey(r) === filter) && rowStage(r) === stage" in src
+    assert ".filter((s) => s.count > 0 || s.on)" in src
 
 
 def test_the_where_cell_is_an_icon_and_a_word_with_the_long_sentence_for_the_tooltip_and_for_readers():

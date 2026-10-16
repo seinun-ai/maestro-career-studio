@@ -291,7 +291,7 @@ def test_the_tracker_toolbar_and_header_stick():
     # A direct child of the page's <main>: no wrapper that could scroll or end early.
     shell = _TRACKER[_TRACKER.index("<PageShell>") : _TRACKER.index("<ListToolbar>")]
     assert "<div" not in shell
-    assert '<Table minWidth="52rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>' in _TRACKER
+    assert '<Table minWidth="57rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>' in _TRACKER
 
 
 def test_a_filter_change_keeps_the_scroll_position():

@@ -655,7 +655,7 @@
   768` (`hooks/use-mobile.ts`), so the sidebar becomes a sheet only BELOW
   768 — at exactly 768 the 256px rail is still pinned and a `max-w-6xl` page
   has 462px of usable width. Below 1024 is best-effort (see the header): the
-  wrap rules here stay, but a change isn't held for 768. The Jobs table carries `minWidth="52rem"` because
+  wrap rules here stay, but a change isn't held for 768. The Jobs table carries `minWidth="57rem"` because
   `table-fixed` cannot grow a starved column. The base studio's Contact
   block is the worked case: its read grid is `@xs:grid-cols-[8rem_minmax(0,1fr)]`
   with `wrap-anywhere`, and below 20rem each label/value pair stacks, so a
@@ -1132,7 +1132,11 @@
   `?status=` falls back to `all` via the `FILTERS.includes` guard. The status
   filter and the source toggle (Tracked, Yours, Agents) write the URL with
   `router.replace(…, { scroll: false })`: the default scrolls to the top, off the rows being read
-  (`test_a_filter_change_keeps_the_scroll_position`).
+  (`test_a_filter_change_keeps_the_scroll_position`). The quick-filter strip under the toolbar is tonal
+  `aria-pressed` buttons reading "label · count": **Ready to apply**, **Tailored, review** and **Gaps
+  open** filter by the server's stage (`pdf_ready`, `tailored`, `gaps`), a filter of their own that
+  ANDs with the Status select (`?stage=`, `cs-tracker-stage`), and **Needs you** is the Status value.
+  A chip counts the rows pressing it shows and is hidden at zero unless it is on.
 - **Jobs row** (`app/applications/page.tsx`): every row is two lines (company, then role and
   location), so every row is one height; nothing a row can gain (an ownership mark, a notice) goes
   inside the Role cell. Ownership is the **Where** column after Status: a muted icon (whoever holds
@@ -1140,14 +1144,19 @@
   long sentence as its tooltip and an sr-only sentence, and a small "Waiting" under the label while a
   request of yours waits for the next sync (any request, so it is only a note; "Queued" is a saved job's
   chip). It shows only when some visible row has an owner (sync
-  off: no column; Role and Resume share its room, 65/35 either way, since 72/28 truncated "Data Scientist
-  (India)" at 1280). The page reads only each row's own `ownership`, never
+  off: no column, and Role takes its room). The page reads only each row's own `ownership`, never
   `use-job-ownership`. A chip locks while the job is moving between copies (`StatusChip`
   `lockedReason`: a lock, the reason as title and `aria-describedby`, `aria-disabled` so it stays
   focusable). **Work on it here** / **Keep it here** are in the row's ⋯ menu (`OwnershipMenuItem`,
   disabled only while its own request is in flight); the header mark and the menu share one request
-  state per job (`ownershipKey`). Columns with fixed content are in rem (the table scrolls at 52rem,
-  where a percentage of it left "Offer accepted" no room); Role and Resume share the rest, 65/35.
+  state per job (`ownershipKey`). **Next step** sits between Applied and Added: the one control
+  `lib/next-step.ts` gives the row's stage (Score, Analyze gaps, Continue gaps · 2 of 5, Review resume,
+  Apply; only Apply is filled), a link that stops the row's click and is disabled when the job is not
+  this copy's to change; an applied row reads "Waiting to hear back" only while its status is Applied,
+  and a later or closed row shows nothing. The Match score's hover names the row's resume (an
+  application's; a saved job's best base is not named). Columns with fixed content are in rem (the
+  table scrolls at 57rem, where a percentage of it left "Offer accepted" no room); Role takes the rest,
+  11.5rem at that width with Where.
   The job header, gap page and proposals keep `JobOwnershipMark`/`Notice`.
   Pinned by `test_frontend_jobs_where.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
@@ -1687,7 +1696,7 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   | A status's own colour where no chip fits (filters, analytics, a lane) | `StatusDot` (application) or `LaneDot` (proposal), from `status-chip.tsx` |
   | Which base resume a thing names | `ResumeSwatch` beside the name (`ResumeTag` is the pair) |
 - **A base resume's name that truncates carries its whole value in `title`.** Every `truncate` span inside a
-  `ResumeTag` (the Jobs Resume cell, the score card title, the select triggers, the import list) has
+  `ResumeTag` (the score card title, the select triggers, the import list) has
   `title={name}`: a trigger shows only its value and a cell has no other way to widen. Pinned by
   `test_frontend_resume_square.py`.
 - **A dialog footer can be sticky** (`<DialogFooter sticky>`: `sticky -bottom-4 z-10 shadow-level2`, keeping the

@@ -14,8 +14,8 @@ _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 # Every site that names a base resume and has its slug or its summary. `career/points-list.tsx` and
 # `use-resume-key-label.ts` are left out on purpose: their keys can be application ids.
+# The Jobs list is not one: its Resume column went, and only its Match score names a resume, on hover.
 _SITES = [
-    "app/applications/page.tsx",
     "components/ats-score-panel.tsx",
     "app/jobs/[id]/tailor/[sessionId]/page.tsx",
     "components/resume-editor/editable-title.tsx",
@@ -71,18 +71,6 @@ def test_a_name_that_truncates_beside_the_square_carries_its_whole_value_in_titl
 @pytest.mark.parametrize("path", ["components/career/points-list.tsx", "components/career/use-resume-key-label.ts"])
 def test_a_key_that_can_be_an_application_id_gets_no_square(path):
     assert "ResumeSwatch" not in _src(path) and "ResumeTag" not in _src(path)
-
-
-def test_the_jobs_resume_cell_names_the_resume_in_foreground_and_keeps_the_dash_for_a_saved_job():
-    page = _src("app/applications/page.tsx")
-    assert "const colorOf = useBaseResumeColor();" in squash(page)
-    at = page.index("colorOf(r.app.base_resume)")
-    cell = page[page.rindex("<TableCell", 0, at) : page.index("</TableCell>", at)]
-    assert 'r.kind === "saved"' in cell and "—" in cell
-    name = open_tag(cell, "span", after="<ResumeTag")
-    assert "text-foreground" in tokens(name) and "text-muted-foreground" not in tokens(name)
-    # The cell itself is no longer muted: only the dash is.
-    assert "text-muted-foreground" not in tokens(open_tag(cell, "TableCell"))
 
 
 def test_a_score_card_carries_its_resumes_color_as_a_top_band_and_a_square_beside_the_title():

@@ -1,5 +1,6 @@
 import { humanizeSlug } from "./humanize-slug";
 import type { Provider } from "./model-catalog";
+import type { Rung } from "./next-step";
 
 export type UUID = string;
 
@@ -83,6 +84,12 @@ export interface Job {
   proposal_proposed_by?: string | null;
   /** The best base-resume score, list endpoint only; null when never scored. */
   best_ats_score?: number | null;
+  /** Lists and the detail (services/stage.py): the rung the job sits on, and the open gap analysis
+   *  behind a `gaps` rung with its closed/listed counts. Optional: an older backend omits them. */
+  stage?: Rung;
+  open_session_id?: UUID | null;
+  gaps_done?: number;
+  gaps_total?: number;
 }
 
 export interface JobCreate {
@@ -152,6 +159,14 @@ export interface ApplicationSummary {
   base_resume_name?: string | null;
   /** Newest tailored score, else the base resume's; list endpoint only, null when unscored. */
   ats_score?: number | null;
+  /** List endpoint only (services/stage.py): the rung, the open gap analysis behind a `gaps` rung with
+   *  its closed/listed counts, and whether a draft or a PDF exists. Optional: an older backend omits them. */
+  stage?: Rung;
+  open_session_id?: UUID | null;
+  gaps_done?: number;
+  gaps_total?: number;
+  has_draft?: boolean;
+  has_pdf?: boolean;
 }
 
 export type KnockoutStatus =

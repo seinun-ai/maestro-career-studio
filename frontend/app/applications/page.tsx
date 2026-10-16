@@ -23,7 +23,7 @@ import {
   type SourceFilter,
 } from "@/components/source-toggle";
 import { LaneDot, SavedJobChip, StatusChip, StatusDot, statusLabel } from "@/components/status-chip";
-import { ResumeTag, ScoreBar } from "@/components/visual";
+import { ScoreBar } from "@/components/visual";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,6 +57,7 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { focusIfDropped, focusReturnPoint, focusSuccessor } from "@/lib/focus";
 import { formatShortDate } from "@/lib/format-date";
 import { isListCapped } from "@/lib/list-cap";
+import { nextStep, nextStepHref, type Rung } from "@/lib/next-step";
 import { isLoadFailure } from "@/lib/query-state";
 import { anchorHref } from "@/lib/settings-tabs";
 import { cn } from "@/lib/utils";
@@ -68,7 +69,7 @@ import {
   type SetupStatus,
 } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
-import { useBaseResumeColor, useBaseResumeLabel } from "@/hooks/use-base-resume-label";
+import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
@@ -116,9 +117,10 @@ function filterLabel(value: Filter): string {
 }
 
 // Session-scoped memory: coming back via the sidebar link (no URL params)
-// restores the last filter/source instead of resetting to All, and the job
+// restores the last filter, stage chip and source instead of resetting to All, and the job
 // page's prev/next arrows walk the tracker's last visible row order.
 const FILTER_STORE_KEY = "cs-tracker-filter";
+const STAGE_STORE_KEY = "cs-tracker-stage";
 const SOURCE_STORE_KEY = "cs-tracker-source";
 const SEQUENCE_STORE_KEY = "cs-tracker-seq";
 
@@ -204,12 +206,24 @@ function FilterDot({ value }: { value: Filter }) {
   return null;
 }
 
-// "What needs me" strip: each is a shortcut to one Status filter value.
-const NEEDS_STRIP: { filter: Filter; label: string }[] = [
-  { filter: "needs_you", label: "Needs you" },
-  { filter: "interviewing", label: "Interviewing" },
-  { filter: "draft", label: "Drafts not applied" },
+/** The row's rung from the server (services/stage.py); undefined from a backend that predates it. */
+function rowStage(r: Row): Rung | undefined {
+  return r.kind === "saved" ? r.job.stage : r.app.stage;
+}
+
+// The quick-filter strip's stage chips: a filter of their own that ANDs with the Status select,
+// whose options stay the statuses. Needs you, the strip's last chip, is a Status value.
+const STAGE_FILTERS = ["pdf_ready", "tailored", "gaps"] as const;
+type StageFilter = (typeof STAGE_FILTERS)[number];
+const STAGE_STRIP: { stage: StageFilter; label: string }[] = [
+  { stage: "pdf_ready", label: "Ready to apply" },
+  { stage: "tailored", label: "Tailored, review" },
+  { stage: "gaps", label: "Gaps open" },
 ];
+
+function asStageFilter(v: string | null): StageFilter | null {
+  return v && (STAGE_FILTERS as readonly string[]).includes(v) ? (v as StageFilter) : null;
+}
 
 function formatDate(value: string | null): string {
   return (value && formatShortDate(value)) || "—";
@@ -235,13 +249,15 @@ function ApplicationsContent() {
   const confirm = useConfirm();
   const sidebarHidden = useSidebarHidden();
   const baseName = useBaseResumeLabel();
-  const colorOf = useBaseResumeColor();
   const [filter, setFilter] = useState<Filter>(() => {
     const v = searchParams.get("status") ?? storedValue(FILTER_STORE_KEY);
     return v && (FILTERS as readonly string[]).includes(v)
       ? (v as Filter)
       : "all";
   });
+  const [stageFilter, setStageFilter] = useState<StageFilter | null>(() =>
+    asStageFilter(searchParams.get("stage") ?? storedValue(STAGE_STORE_KEY)),
+  );
   const [source, setSource] = useState<SourceFilter>(() => {
     const v = searchParams.get("source") ?? storedValue(SOURCE_STORE_KEY);
     return v === "user" || v === "agent" ? v : "all";
@@ -409,6 +425,9 @@ function ApplicationsContent() {
     if (filter !== "all") {
       list = list.filter((r) => rowFilterKey(r) === filter);
     }
+    if (stageFilter) {
+      list = list.filter((r) => rowStage(r) === stageFilter);
+    }
 
     const needle = q.trim().toLowerCase();
     if (needle) {
@@ -446,17 +465,38 @@ function ApplicationsContent() {
       if (av === bv) return 0;
       return av < bv ? -dir : dir;
     });
-  }, [sourceScopedRows, filter, q, sortKey, sortDir]);
+  }, [sourceScopedRows, filter, stageFilter, q, sortKey, sortDir]);
 
   // With sync off no row carries ownership and the table stays as it was, with no Where column.
   const showWhere = filtered.some((r) => ownershipWhere(r.kind === "saved" ? r.job.ownership : r.app.ownership));
 
   // Kept rows are only worth keeping when there are some: an empty kept list would say "Nothing
   // matches" about rows that are still on their way.
-  // The strip counts what the Status filter counts (source-scoped, nothing while the other source loads).
+  // Each chip counts the rows pressing it shows (source-scoped, before the search; nothing while the
+  // other source loads). An empty chip is hidden unless it is on, so it can never vanish under the user.
+  const stageCount = (stage: StageFilter) =>
+    sourceScopedRows.filter((r) => (filter === "all" || rowFilterKey(r) === filter) && rowStage(r) === stage).length;
+  const needsYouCount = sourceScopedRows.filter(
+    (r) => rowFilterKey(r) === "needs_you" && (!stageFilter || rowStage(r) === stageFilter),
+  ).length;
   const needsStrip = stale
     ? []
-    : NEEDS_STRIP.map((s) => ({ ...s, count: Number(countOf(s.filter)) })).filter((s) => s.count > 0);
+    : [
+        ...STAGE_STRIP.map(({ stage, label }) => ({
+          key: stage,
+          label,
+          count: stageCount(stage),
+          on: stageFilter === stage,
+          toggle: () => setStageAndUrl(stageFilter === stage ? null : stage),
+        })),
+        {
+          key: "needs_you",
+          label: "Needs you",
+          count: needsYouCount,
+          on: filter === "needs_you",
+          toggle: () => setFilterAndUrl(filter === "needs_you" ? "all" : "needs_you"),
+        },
+      ].filter((s) => s.count > 0 || s.on);
   const loading = apps.isLoading || savedJobs.isLoading || (stale && filtered.length === 0);
   // Checked BEFORE the empty state, which is the whole bug: with `data`
   // undefined after a failure, `filtered.length === 0` is true and the branch
@@ -473,9 +513,10 @@ function ApplicationsContent() {
     },
   ].filter(isListCapped);
 
-  const writeUrl = (nextFilter: Filter, nextSource: SourceFilter) => {
+  const writeUrl = (nextFilter: Filter, nextSource: SourceFilter, nextStage: StageFilter | null) => {
     const params = new URLSearchParams();
     if (nextFilter !== "all") params.set("status", nextFilter);
+    if (nextStage) params.set("stage", nextStage);
     if (nextSource !== "all") params.set("source", nextSource);
     const qs = params.toString();
     // A filter switch keeps the reader where they are, not at the top.
@@ -485,13 +526,19 @@ function ApplicationsContent() {
   const setFilterAndUrl = (next: Filter) => {
     setFilter(next);
     storeValue(FILTER_STORE_KEY, next);
-    writeUrl(next, source);
+    writeUrl(next, source, stageFilter);
+  };
+
+  const setStageAndUrl = (next: StageFilter | null) => {
+    setStageFilter(next);
+    storeValue(STAGE_STORE_KEY, next ?? "");
+    writeUrl(filter, source, next);
   };
 
   const setSourceAndUrl = (next: SourceFilter) => {
     setSource(next);
     storeValue(SOURCE_STORE_KEY, next);
-    writeUrl(filter, next);
+    writeUrl(filter, next, stageFilter);
   };
 
   // Record the visible row order (job ids) so the job page's prev/next arrows
@@ -645,22 +692,12 @@ function ApplicationsContent() {
 
       {!loadFailed && !loading && needsStrip.length > 0 ? (
         <div role="group" aria-label="Quick filters" className="flex flex-wrap items-center gap-2">
-          {needsStrip.map(({ filter: f, label, count }) => {
-            const on = filter === f;
-            return (
-              <Button
-                key={f}
-                type="button"
-                size="sm"
-                variant="tonal"
-                aria-pressed={on}
-                onClick={() => setFilterAndUrl(on ? "all" : f)}
-              >
-                {on ? <Check className="size-3.5" aria-hidden="true" /> : null}
-                {`${label} · ${count}`}
-              </Button>
-            );
-          })}
+          {needsStrip.map(({ key, label, count, on, toggle }) => (
+            <Button key={key} type="button" size="sm" variant="tonal" aria-pressed={on} onClick={toggle}>
+              {on ? <Check className="size-3.5" aria-hidden="true" /> : null}
+              {`${label} · ${count}`}
+            </Button>
+          ))}
         </div>
       ) : null}
 
@@ -735,15 +772,15 @@ function ApplicationsContent() {
               over the Applied date instead. It is also the width the header
               sticks from: a table wider than its frame scrolls sideways, and
               then its header cannot stick to the window. */}
-          <Table minWidth="52rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
+          <Table minWidth="57rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
             <TableHeader>
               <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
-                {header("role", "Role", "w-[65%]")}
-                <TableHead className="w-[35%]">Resume</TableHead>
+                {header("role", "Role", "w-[100%]")}
                 {header("ats", "Match score", "w-[6.75rem] px-3")}
                 {header("status", "Status", "w-[9.25rem] px-3")}
                 {showWhere ? <TableHead className="w-[4.5rem] px-3">Where</TableHead> : null}
                 {header("applied_at", "Applied", "w-[5.5rem] px-3")}
+                <TableHead className="w-[11.5rem] px-3">Next step</TableHead>
                 {header("created_at", "Added", "w-[5.5rem] px-3")}
                 <TableHead className="w-10" />
               </TableRow>
@@ -763,6 +800,10 @@ function ApplicationsContent() {
                 const company = rowCompany(r) || "—";
                 const title = rowTitle(r) || "Untitled role";
                 const resumeName = r.kind === "application" ? r.app.base_resume_name || baseName(r.app.base_resume) : "";
+                const stage = rowStage(r);
+                const step = nextStep(stage, r.kind === "saved" ? r.job : r.app);
+                // Applied and closed rows have no control: only a plain applied one says it is waiting.
+                const waiting = stage === "applied" && r.kind === "application" && r.app.status === "applied";
                 // A saved job an agent captured names its filer; an application is "agent" only
                 // because a proposal was linked to it, whoever made it.
                 const mark =
@@ -819,17 +860,6 @@ function ApplicationsContent() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="max-w-0 text-body-small">
-                      {r.kind === "saved" ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        <ResumeTag hue={colorOf(r.app.base_resume)} className="max-w-full">
-                          <span className="text-foreground min-w-0 truncate" title={resumeName}>
-                            {resumeName}
-                          </span>
-                        </ResumeTag>
-                      )}
-                    </TableCell>
                     <TableCell className="px-3">
                       {(() => {
                         const score = rowScore(r);
@@ -839,12 +869,15 @@ function ApplicationsContent() {
                             <span className="sr-only">No score yet</span>
                           </span>
                         ) : (
-                          <ScoreBar
-                            value={score}
-                            label={r.kind === "saved" ? "Best match score" : "Match score"}
-                            valueText={score.toFixed(1)}
-                            width="w-10"
-                          />
+                          // The hover names the resume behind the score; a saved job's best base is not named by the API.
+                          <span className="inline-flex" title={resumeName || undefined}>
+                            <ScoreBar
+                              value={score}
+                              label={r.kind === "saved" ? "Best match score" : "Match score"}
+                              valueText={score.toFixed(1)}
+                              width="w-10"
+                            />
+                          </span>
                         );
                       })()}
                     </TableCell>
@@ -894,6 +927,22 @@ function ApplicationsContent() {
                     ) : null}
                     <TableCell className="px-3 text-muted-foreground text-body-small tabular-nums">
                       {r.kind === "saved" ? "—" : formatDate(r.app.applied_at)}
+                    </TableCell>
+                    <TableCell className="px-3" onClick={(e) => e.stopPropagation()}>
+                      {step ? (
+                        <Button
+                          size="sm"
+                          variant={step.variant}
+                          disabled={!ownership.canWrite}
+                          aria-disabled={!ownership.canWrite || undefined}
+                          // A link rendered as a button: `disabled:` never matches it, `data-disabled` does.
+                          className="tabular-nums data-disabled:pointer-events-none data-disabled:opacity-50"
+                          nativeButton={false}
+                          render={<Link href={nextStepHref(jobId, step)}>{step.label}</Link>}
+                        />
+                      ) : waiting ? (
+                        <span className="text-muted-foreground text-body-small">Waiting to hear back</span>
+                      ) : null}
                     </TableCell>
                     <TableCell className="px-3 text-muted-foreground text-body-small tabular-nums">
                       {formatDate(

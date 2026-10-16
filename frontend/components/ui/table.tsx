@@ -25,10 +25,10 @@ const MIN_WIDTH = {
     fits: "@min-[48rem]/table:overflow-x-clip",
     head: "@min-[48rem]/table:tall:sticky",
   },
-  "52rem": {
-    table: "min-w-[52rem]",
-    fits: "@min-[52rem]/table:overflow-x-clip",
-    head: "@min-[52rem]/table:tall:sticky",
+  "57rem": {
+    table: "min-w-[57rem]",
+    fits: "@min-[57rem]/table:overflow-x-clip",
+    head: "@min-[57rem]/table:tall:sticky",
   },
 } as const
 

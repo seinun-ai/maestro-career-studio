@@ -201,11 +201,15 @@ def test_preview_thumbnail_shows_a_skeleton_until_the_image_loads():
 
 def test_tracker_shows_scores_dots_and_a_needs_strip():
     src = _read("app/applications/page.tsx")
-    assert "ScoreBar" in src and "StatusDot" in src and "Drafts not applied" in src
-    # The dots are Task 14's own (reused, not copied), and the strip filters through the Status filter.
-    assert "LaneDot" in src and "setFilterAndUrl(on ? \"all\" : f)" in src
-    assert 'filter: "needs_you"' in src and 'filter: "interviewing"' in src and 'filter: "draft"' in src
-    assert "aria-pressed={on}" in src and "<Check " in src
+    assert "ScoreBar" in src and "StatusDot" in src
+    # The dots are Task 14's own (reused, not copied). Three chips filter by the server's stage, and
+    # Needs you through the Status filter.
+    assert "LaneDot" in src and 'setFilterAndUrl(filter === "needs_you" ? "all" : "needs_you")' in src
+    assert "setStageAndUrl(stageFilter === stage ? null : stage)" in src
+    assert '{ stage: "pdf_ready", label: "Ready to apply" }' in src
+    assert '{ stage: "tailored", label: "Tailored, review" }' in src and '{ stage: "gaps", label: "Gaps open" }' in src
+    assert 'label: "Needs you"' in src and "Drafts not applied" not in src
+    assert "aria-pressed={on}" in src and "<Check " in src and 'variant="tonal"' in src
     # An unscored row is a dash with words, never 0; it sorts last whichever way.
     assert "No score yet" in src and 'header("ats", "Match score"' in src
     assert "valueText={score.toFixed(1)}" in src
