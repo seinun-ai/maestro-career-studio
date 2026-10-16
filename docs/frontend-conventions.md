@@ -1273,9 +1273,8 @@
   details** disclosure (a small link button with its chevron, as Score breakdown; `aria-expanded`, closed)
   mounting `ApplicationDetails` only while open, on purpose unlike Settings' disclosures: each open reseeds from
   the server, so a stale local note cannot overwrite an agent's. Applied on and Notes save on blur, only when
-  changed; the tracking link, Referral, Delete application with its confirm. Right: `PdfFileLine`
-  (`components/pdf-file-line.tsx`, shared with step 3; no preview: steps 2 and 3 showed the resume), or "No PDF
-  yet" with Create the PDF on Tailored resume; the **Cover letter** card with a "Not written" chip until one
+  changed; the tracking link, Referral, Delete application with its confirm. Right: no PDF line and no preview
+  (step 3 holds the PDF and its download); the **Cover letter** card with a "Not written" chip until one
   exists; and, once something was filled, **What was submitted**: three answers, newest page first and never a
   voluntary one (`lib/filled-answers` `latestAnswers`), each with its source pill, and **All N answers**, which
   opens the receipt and moves focus to it (a `?tab=submitted` link opens it first). The receipt's "Cover letter

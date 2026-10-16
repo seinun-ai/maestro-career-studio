@@ -1,25 +1,23 @@
 "use client";
 
 import { type ReactNode, type RefObject, useId, useLayoutEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ExternalLink, FileText } from "lucide-react";
+import { Check, ChevronDown, ExternalLink } from "lucide-react";
 
 import { ApplicationDetails } from "@/components/application-panel";
 import { SubmittedLatest } from "@/components/job-submitted-tab";
 import { QASections } from "@/components/qa-tab";
-import { PdfFileLine } from "@/components/pdf-file-line";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { focusIfDropped } from "@/lib/focus";
 import { ownershipControlProps } from "@/lib/job-ownership";
-import type { StepKey } from "@/lib/job-steps";
 import type { Application, Job } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
  * Step 4, Apply, inside one card. Left: Open the job post and apply (just Open the job post once applied or
  * closed), the application's questions and their history, What was submitted in full once opened, Mark
- * applied while the job is a draft, and the Application details disclosure. Right: the PDF line, the Cover
- * letter card and, once something was filled, What was submitted's latest answers. No button hands the form
+ * applied while the job is a draft, and the Application details disclosure. Right: the Cover letter card
+ * and, once something was filled, What was submitted's latest answers. No PDF line: step 3 holds the PDF. No button hands the form
  * to the Companion: the web app cannot tell whether the Companion is paired.
  */
 export function ApplyStep({
@@ -35,7 +33,6 @@ export function ApplyStep({
   receipt,
   receiptRef,
   receiptFirst,
-  onOpenStep,
 }: {
   app: Application;
   job: Job;
@@ -54,7 +51,6 @@ export function ApplyStep({
   receiptRef: RefObject<HTMLElement | null>;
   /** A ?tab=submitted link opened the page: the receipt is open, above everything else. */
   receiptFirst: boolean;
-  onOpenStep: (key: StepKey) => void;
 }) {
   const postHref = job.apply_url || job.source_url || null;
   const isDraft = (app.status ?? "draft") === "draft";
@@ -173,20 +169,6 @@ export function ApplyStep({
             </div>
 
             <div className="min-w-0 max-w-[360px] flex-[1_1_300px] space-y-4">
-              {app.pdf_path ? (
-                <PdfFileLine app={app} />
-              ) : (
-                <div className="bg-surface-container-low flex flex-wrap items-center gap-x-2 gap-y-1 rounded-corner-md px-4 py-2">
-                  <FileText aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
-                  <span className="text-body-medium">No PDF yet</span>
-                  {/* A job with no resume of its own (marked applied as is) has nothing step 3 can make a PDF of. */}
-                  {app.customized_json ? (
-                    <Button variant="link" size="sm" className="ml-auto h-auto px-0" onClick={() => onOpenStep("output")}>
-                      Create the PDF on Tailored resume
-                    </Button>
-                  ) : null}
-                </div>
-              )}
               {coverLetter}
               {receipt ? (
                 <Card>

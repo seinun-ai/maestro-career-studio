@@ -203,8 +203,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    Finder** (§6 inv-resumes-folder-one-way), **Update PDF** and the rasterized page preview.
 8. **Apply** — step 4 (**Apply**, `components/apply-step.tsx`), one card: **Open the job post and apply** (apply link, else source
    link; just **Open the job post** once applied or closed), the questions and history (`QASections`), **Mark applied** while a draft (the StatusChip's PATCH) and an **Application
-   details** disclosure (applied date, tracking link, referral, notes, Delete application); beside them the PDF line, **Cover
-   letter** (tone) and, once filled answers exist, **What was submitted**'s latest answers, linking the whole receipt
+   details** disclosure (applied date, tracking link, referral, notes, Delete application); beside them **Cover
+   letter** (tone, no PDF line: step 3 holds the PDF) and, once filled answers exist, **What was submitted**'s latest answers, linking the whole receipt
    (docs/entities/filled-answers.md). Step 4's line, while current, is **Where this stands** (`lib/job-standing.ts`). Cold
    messages are free-form questions; the QA prompt injects the application's linked referral contact.
 9. **Track** — StatusChip anywhere (Jobs row or job header): draft → applied → interviewing → offered → accepted / rejected /

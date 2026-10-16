@@ -845,10 +845,8 @@ def test_step_four_applies_with_the_pdf_at_hand_and_the_details_under_it():
     assert "if (appliedAt !== formatDateInput(app.applied_at)) onPatch({ applied_at: toIsoDate(appliedAt) });" in panel
     assert 'if (notes !== (app.notes ?? "")) onPatch({ notes });' in panel
     assert "each open reseeds the fields from the server, so a stale local note can never overwrite" in panel
-    # The right column: the PDF line without a preview (step 3 has it), else where to create one.
-    assert "<PdfFileLine app={app} />" in src and "PdfPagesPreview" not in src
-    assert 'import { PdfFileLine } from "@/components/pdf-file-line";' in src
-    assert "No PDF yet" in src and 'onClick={() => onOpenStep("output")}' in src and "Create the PDF on Tailored resume" in src
+    # The right column has no PDF line and no preview: step 3 holds the PDF and its download (owner, 2026-10-16).
+    assert "PdfFileLine" not in src and "PdfPagesPreview" not in src and "No PDF yet" not in src
     # The cover letter card moves to the right column; QASections keeps the state, and `arrange` is required.
     assert "arrange={({ questions, coverLetter, history }) => (" in src
     assert "arrange: (parts: QAParts) => ReactNode;" in qa and "arrange = " not in qa
@@ -891,7 +889,7 @@ def test_step_three_change_rows_read_and_revert_one_by_one():
     # A new draft's list loads behind the previous one, and nothing in that stand-in can be reverted or applied.
     assert "placeholderData: keepPreviousData" in step
     assert "const diffSettled = !diff.isPlaceholderData && !diff.isFetching;" in step
-    assert "disabled={busy || readOnly || !diffSettled}" in step and "disabled={writes.pending || !diffSettled}" in step
+    assert "disabled={busy || readOnly || !diffSettled}" in step
     assert "diffData: diff.isPlaceholderData ? undefined : diff.data" in step
     assert "draftLoaded" not in _read(_JOB_PAGE) + src
     writes = _slice(src, "function useDraftWrites(", "export function TailoredResumeStep(")

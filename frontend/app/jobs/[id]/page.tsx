@@ -713,10 +713,6 @@ export default function JobDetailPage({
                   receipt={receipt}
                   receiptRef={receiptRef}
                   receiptFirst={submittedSeen}
-                  onOpenStep={(key) => {
-                    focusOpenedStep.current = true;
-                    setStep(key);
-                  }}
                 />
               ) : (
                 <>

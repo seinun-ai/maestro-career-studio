@@ -55,11 +55,11 @@ def test_the_page_says_where_the_job_stands_on_step_four():
     # The line under the header is gone: its words are step 4's summary (lib/job-steps.ts, applySummary).
     assert 'data-testid="job-standing"' not in _JOB
     assert "standing: standingText," in _STEPS and 'if (state === "current") return i.standing;' in _read("lib/job-steps.ts")
-    # The old View PDF / What was submitted link row went: step 4's PDF line and its What was submitted card
-    # (components/apply-step.tsx) say the same, and the card's link opens and jumps to the receipt.
+    # The old View PDF / What was submitted link row went: step 4's What was submitted card
+    # (components/apply-step.tsx) says the same, and the card's link opens and jumps to the receipt.
     assert "View PDF" not in _JOB and "standing.pdf" not in _JOB
     apply = _read("components/apply-step.tsx")
-    assert "<PdfFileLine app={app} />" in apply and "<SubmittedLatest" in apply
+    assert "<SubmittedLatest" in apply
     assert "receiptRef.current?.scrollIntoView" in apply
     # The draft's pointer to the Companion and step 2 went with the line: the steps say what is next.
     assert "standing.pointer" not in _JOB and "Tailor and Apply in the Companion" not in _JOB
