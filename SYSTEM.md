@@ -65,6 +65,18 @@
 - [§12 Gotchas that have bitten before](#12-gotchas-that-have-bitten-before) — dated symptom → cause → rule entries
 - [§13 Active migrations & deprecation ledger](#13-active-migrations--deprecation-ledger) — built-twice rows with removal triggers
 
+**Read for the task** — the file is read in slices; this names the slice. Every slice starts with the header.
+
+| Work | Read |
+|---|---|
+| Any first visit | §1, §3, §12 |
+| Backend write path, model, endpoint, migration | §5, §6, §9, `docs/entities/`, §13 |
+| Extension, Companion, MCP server, in-app chat | §7, §6, §12 |
+| Frontend | §8 → `docs/frontend-conventions.md`, §6, §12 |
+| Planning a feature or a redesign | §3, §5, §6, §10, §11, §13 |
+| Release, install, CI | §9, §13, `docs/RELEASING.md` |
+| Docs-only change | the section you touch, §12 |
+
 ## 1. What this is
 
 A single-user job-application copilot: capture job descriptions, score base resumes against them with a
@@ -767,6 +779,9 @@ each bullet its own question, a number only where one is natural.
 **Item numbers are stable, not positional.** Code and migrations cite "§11 item N" from a dozen places,
 so new items APPEND here and shipped items are deleted in place — renumbering silently invalidates every
 citation. Priority lives in the item text, not in the ordinal.
+**Every item carries a trigger** — "do when X", the observable condition that makes it worth building now;
+an item 30 days without one is given one or deleted. This file keeps the items read every session (target ≤7);
+overflow moves to `docs/deferred.md` under this same contract, each item keeping its number.
 
 1. Extra-section op **payloads** stay loosely typed (op *kinds* are one source, `schemas/resume_edit.py`):
    `add_extra_section` / `replace_extra_section` `value` is `dict[str, Any]`, validated in the service
@@ -870,6 +885,10 @@ citation. Priority lives in the item text, not in the ordinal.
     the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits".
 
 ## 12. Gotchas that have bitten before
+
+**Ledger — evict when the cause becomes enforced.** A gotcha whose cause now has a test, type, lint or pinned
+invariant has done its job: promote it (into Cross-cutting invariants or `.system_md_enforcement.json`) and delete
+the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 
 - **A hidden tab stalled saves** (2026-10-13): TanStack v5 scoped mutations queue as paused and continue only while the tab
   is focused → serialize saves with a per-key promise chain (`lib/in-order.ts`), never a mutation scope.
