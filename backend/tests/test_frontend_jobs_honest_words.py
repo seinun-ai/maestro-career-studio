@@ -160,8 +160,8 @@ def test_the_gap_page_draws_step_two_with_the_resume_chips():
     assert "if (await saveNow()) await switcher.openOrCreate(pick);" in page
     # The steps come from the job page's own hook (the same keys, so the cache is shared), called before any
     # early return; the chips from step 2's.
-    assert "const { scoreRows, sessions, baseName, steps } = useJobSteps(jobId, jobDetail.data);" in page
-    assert page.index("useJobSteps(jobId, jobDetail.data)") < page.index("if (sessionError != null) {")
+    assert "const { scoreRows, sessions, baseName, steps } = useJobSteps(jobId, jobDetail.data, shownAnalysis);" in page
+    assert page.index("useJobSteps(jobId, jobDetail.data, shownAnalysis)") < page.index("if (sessionError != null) {")
     assert "const { baseRows, chips } = useResumeChipOptions(scoreRows.data ?? []);" in page
     for gone in ("listAtsScores", "listTailoringSessions", "resumeDiffQuery", "standingLine", "jobStepsInput"):
         assert gone not in page, gone
@@ -390,6 +390,23 @@ def test_step_two_shows_the_gap_analysis_that_made_the_job_s_tailored_resume():
     # The job page opens step 3 from it, as from Use resume as is.
     page = squash(_read(_JOB_PAGE))
     assert "onOpenTailored={() => { focusOpenedStep.current = true; setStep(\"output\"); }}" in page
+
+
+def test_the_gap_page_s_step_line_describes_the_analysis_on_screen():
+    """The gap page's step 2 line read the analysis that made the job's draft ("7 answered, 1 skipped") while the page
+    below it showed a newer one ("3 answered, 7 open"). The page hands the hook its own analysis and its working copy
+    of the answers, so the line and the footer count the same gaps as they change (lib/job-steps.ts `shown`)."""
+    page = squash(_read(_GAP_PAGE))
+    assert ("const shownAnalysis = session.data?.status === \"open\" ? { base_resume: session.data.base_resume, "
+            "gapIds: session.data.gaps_json.categories.flatMap((c) => c.gaps.map((g) => g.gap_id)), "
+            "resolutions, } : null;") in page
+    assert "useJobSteps(jobId, jobDetail.data, shownAnalysis);" in page
+    # `resolutions` is the working copy (edited ?? stored), declared before the hook reads it.
+    src = _read(_GAP_PAGE)
+    assert src.index("const resolutions: Resolution[] = edited ??") < src.index("const shownAnalysis =")
+    hook = squash(_read(_STEPS_HOOK))
+    assert "export function useJobSteps(jobId: string, detail: JobDetail | undefined, shown?: ShownAnalysis | null)" in hook
+    assert "countGaps: gapCounts, shown," in hook
 
 
 def test_a_resume_pick_is_a_preview_and_the_writes_confirm():

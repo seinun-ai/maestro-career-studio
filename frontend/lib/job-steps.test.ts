@@ -282,3 +282,25 @@ test("the steps read the rung from the detail, where it sits beside the job", ()
   const gaps = { job: {}, stage: "gaps" as const, open_session_id: "s1", gaps_done: 2, gaps_total: 5 };
   assert.deepEqual(built({ rung: gaps }).openGaps, { closed: 2, total: 5 });
 });
+
+test("on the gap page, step 2's line is the analysis on screen, whatever the stage", () => {
+  // An applied job tailored from an earlier analysis (its line read "1 gap answered, 0 skipped") while the page shows a
+  // new one: the line and the footer below it describe the same analysis.
+  const made = session({ id: "made" });
+  const applied = { stage: "applied" as const, open_session_id: null, gaps_done: 0, gaps_total: 0 };
+  const shown = {
+    base_resume: "ml",
+    gapIds: ["g1", "g2", "g3", "g4"],
+    resolutions: [{ gap_id: "g1", action: "add_keyword" }, { gap_id: "g2", action: "skip" }],
+  };
+  assert.equal(jobSteps(built({ rung: applied, sessions: [made] }))[1].summary, "Resume ds · 70.0 / 100 · 1 gap answered, 0 skipped");
+  const steps = jobSteps(built({ rung: applied, sessions: [made], shown }));
+  assert.equal(steps[1].summary, "Resume ml · 2 of 4 gaps closed");
+  assert.equal(steps[1].state, "done"); // the stage still says where the job is
+  // Another open analysis than the server's newest: the page's, counted from its own answers as they change.
+  const gaps = { stage: "gaps" as const, open_session_id: "o", gaps_done: 2, gaps_total: 5 };
+  assert.equal(jobSteps(built({ rung: gaps, shown }))[1].summary, "Resume ml · 2 of 4 gaps closed");
+  assert.equal(jobSteps(built({ rung: gaps, shown: { ...shown, gapIds: [], resolutions: [] } }))[1].summary, "Resume ml · no gaps found");
+  // No analysis on screen (the job page): the stage's line as before.
+  assert.equal(jobSteps(built({ rung: gaps, shown: null }))[1].summary, "Resume ml · 2 of 5 gaps closed");
+});

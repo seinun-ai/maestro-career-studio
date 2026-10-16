@@ -1197,7 +1197,9 @@
   (**More actions**): Queue in Agent inbox, Refresh details and Delete job, each with its confirm. The stage
   is the detail's own `stage`, sent beside `job`; the nested job carries none (`JobDetail.job` is typed without it),
   and read alone every job looked saved. One hook, `hooks/use-job-steps.ts`, holds the steps' queries and words for
-  the job page and the gap page. Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_visual_surfaces.py`.
+  the job page and the gap page. The gap page passes it the analysis on screen (`shown`: its resume, gaps and working
+  copy of the answers), and step 2's line then counts that analysis whatever the stage, so it never names an earlier
+  analysis's counts above a page showing a newer one. Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_visual_surfaces.py`.
 - **Resume and gaps** (step 2, `components/resume-step.tsx`), inside one card: the Match score lead, then
   `ResumeChips` (`components/resume-chips.tsx`; its options from `useResumeChipOptions`, shared with the gap page), a group named "Base resume" of toggle chips with FilterChips'
   semantics (`aria-pressed`, 28px, `label-medium`, a 12px leading Check and `secondary-container` when picked;

@@ -253,16 +253,6 @@ export default function TailorSessionPage({
     enabled: !!slug,
   });
 
-  // The job page's four steps from the job page's own queries (the same keys, so the cache is shared); this page is
-  // step 2. The resume chips are the base score rows, as on step 2.
-  const application = jobDetail.data?.application ?? null;
-  const { scoreRows, sessions, baseName, steps } = useJobSteps(jobId, jobDetail.data);
-  const { baseRows, chips } = useResumeChipOptions(scoreRows.data ?? []);
-  // The archived-inclusive list: whether this analysis's resume was archived.
-  const { data: allResumes } = useBaseResumes(true);
-  // A chip opens that resume's newest open gap analysis, or starts one, after step 2's confirm.
-  const switcher = useResumeSwitch({ jobId, application, sessions: sessions.data ?? [], replace: true });
-
   // Working copy of the resolution list: the server list until the first local
   // edit, then the edited list. `latestRef` mirrors the edited list for the
   // async save path (null = no edits this visit, nothing to flush).
@@ -277,6 +267,24 @@ export default function TailorSessionPage({
   const [edited, setEdited] = useState<Resolution[] | null>(null);
   const resolutions: Resolution[] = edited ?? session.data?.resolutions_json ?? [];
   const latestRef = useRef<Resolution[] | null>(null);
+  // Step 2's line describes this analysis, counted from the answers on screen, so it agrees with the footer below.
+  const shownAnalysis = session.data?.status === "open"
+    ? {
+        base_resume: session.data.base_resume,
+        gapIds: session.data.gaps_json.categories.flatMap((c) => c.gaps.map((g) => g.gap_id)),
+        resolutions,
+      }
+    : null;
+
+  // The job page's four steps from the job page's own queries (the same keys, so the cache is shared); this page is
+  // step 2. The resume chips are the base score rows, as on step 2.
+  const application = jobDetail.data?.application ?? null;
+  const { scoreRows, sessions, baseName, steps } = useJobSteps(jobId, jobDetail.data, shownAnalysis);
+  const { baseRows, chips } = useResumeChipOptions(scoreRows.data ?? []);
+  // The archived-inclusive list: whether this analysis's resume was archived.
+  const { data: allResumes } = useBaseResumes(true);
+  // A chip opens that resume's newest open gap analysis, or starts one, after step 2's confirm.
+  const switcher = useResumeSwitch({ jobId, application, sessions: sessions.data ?? [], replace: true });
 
   // Optional "how should this be tailored?" note. Mirrors the resolutions pattern:
   // `promptDraft` is null until the first local edit, then the edited string.

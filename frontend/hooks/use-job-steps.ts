@@ -14,12 +14,15 @@ import { jobSteps, jobStepsInput } from "@/lib/job-steps";
 import { knockoutWords } from "@/lib/knockout-line";
 import type { JobDetail, ProposalDetail, ProposalStatus } from "@/lib/types";
 
+/** The gap page's analysis (lib/job-steps.ts `jobStepsInput`'s `shown`): its resume, gaps and the answers on screen. */
+export type ShownAnalysis = NonNullable<Parameters<typeof jobStepsInput>[0]["shown"]>;
+
 /**
  * The four steps (lib/job-steps.ts) for the job page and the gap page, from what the detail and the job's own
  * lists carry: no request of its own. Call it before a page's early returns; `standing` and `steps` stay null
- * until the detail loads.
+ * until the detail loads. The gap page passes `shown`, its own analysis, which step 2's line then describes.
  */
-export function useJobSteps(jobId: string, detail: JobDetail | undefined) {
+export function useJobSteps(jobId: string, detail: JobDetail | undefined, shown?: ShownAnalysis | null) {
   const application = detail?.application ?? null;
   // Step 2's own query (list only, never scores, the same key): the header shows its best base score.
   const scoreRows = useQuery({
@@ -87,6 +90,7 @@ export function useJobSteps(jobId: string, detail: JobDetail | undefined) {
       draftChanges: resumeDiff.data?.hunks.length ?? null,
       baseName,
       countGaps: gapCounts,
+      shown,
     }),
   );
   return { scoreRows, sessions, proposalQuery, baseName, scoreShown, standing, steps };

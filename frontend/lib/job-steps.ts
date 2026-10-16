@@ -62,6 +62,8 @@ export type JobStepsInput = {
   base: { name: string | null; score: number | null };
   /** The open gap analysis's count while step 2 is current (the server's: closed = answered or skipped); null = none. */
   openGaps: { closed: number; total: number } | null;
+  /** The gap page's analysis, counted from its answers on screen: step 2's line describes it whatever the stage. */
+  shownGaps?: { closed: number; total: number } | null;
   /** The gaps of the analysis that made the draft, for a done step 2 (lib/gap-counts); null = none. */
   draftGaps: GapCounts | null;
   /** Null = no draft (the application's customized_json is absent). */
@@ -91,9 +93,17 @@ function jobSummary(i: JobStepsInput): string {
   return join(skills, i.knockout);
 }
 
+/** An analysis still being answered: its resume and how many of its gaps are closed. */
+function openGapsLine(name: string | null, g: { closed: number; total: number }): string {
+  if (g.total === 0) return join(name, "no gaps found");
+  return join(name, `${g.closed} of ${count(g.total, "gap", "gaps")} closed`);
+}
+
 /** Step 2 is current or done: "next" never reaches here, as currentStep never returns "job". */
 function fitSummary(i: JobStepsInput, state: StepState): string {
   const { name } = i.base;
+  // The gap page: the line says what the page below it says, even on a job past step 2.
+  if (i.shownGaps) return openGapsLine(name, i.shownGaps);
   if (state === "done") {
     const g = i.draftGaps;
     const gaps = !g ? null
@@ -103,8 +113,7 @@ function fitSummary(i: JobStepsInput, state: StepState): string {
   }
   const g = i.openGaps;
   if (!g) return "Pick a resume and analyze its gaps";
-  if (g.total === 0) return join(name, "no gaps found");
-  return join(name, `${g.closed} of ${count(g.total, "gap", "gaps")} closed`);
+  return openGapsLine(name, g);
 }
 
 /** Step 3 has a result to show: a draft, or a PDF made from one. */
@@ -180,6 +189,8 @@ export function jobStepsInput(a: {
   draftChanges?: number | null;
   baseName: (slug: string) => string;
   countGaps: (gapIds: readonly string[], resolutions: SessionRow["resolutions_json"]) => GapCounts;
+  /** The gap page's analysis: its resume, its gaps and the answers on screen (the page's working copy). */
+  shown?: { base_resume: string; gapIds: readonly string[]; resolutions: SessionRow["resolutions_json"] } | null;
 }): JobStepsInput {
   const { rung, application, scoreRows, sessions, baseName } = a;
   const stage = rung.stage ?? "saved";
@@ -189,7 +200,9 @@ export function jobStepsInput(a: {
   const named = (slug: string | null) => ({ name: slug ? baseName(slug) : null, score: slug ? baseScoreOf(slug) : null });
 
   let base: JobStepsInput["base"];
-  if (stage === "gaps") {
+  if (a.shown) {
+    base = named(a.shown.base_resume);
+  } else if (stage === "gaps") {
     // The open analysis's resume; the best base until the sessions list has loaded.
     base = named(sessions.find((s) => s.id === rung.open_session_id)?.base_resume ?? top?.target_id ?? null);
   } else if (application && stage !== "saved" && stage !== "scored") {
@@ -200,6 +213,8 @@ export function jobStepsInput(a: {
   } else {
     base = { name: top ? baseName(top.target_id) : null, score: top?.composite ?? null };
   }
+
+  const shownCounts = a.shown ? a.countGaps(a.shown.gapIds, a.shown.resolutions) : null;
 
   // The analysis that made the draft: the application's newest tailored session.
   const madeDraft = application
@@ -214,6 +229,7 @@ export function jobStepsInput(a: {
     knockout: a.knockout,
     base,
     openGaps: stage === "gaps" ? { closed: rung.gaps_done ?? 0, total: rung.gaps_total ?? 0 } : null,
+    shownGaps: shownCounts ? { closed: shownCounts.answered + shownCounts.skipped, total: shownCounts.total } : null,
     draftGaps: madeDraft
       ? a.countGaps(
           madeDraft.gaps_json.categories.flatMap((c) => c.gaps.map((g) => g.gap_id)),

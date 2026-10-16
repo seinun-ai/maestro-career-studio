@@ -308,6 +308,9 @@ Less hunting, more applying.
 - **Resume and gaps shows a finished gap analysis.** On a job tailored from its gap analysis, the step offered a fresh
   **Analyze gaps** and **Use resume as is**, as if none had run. For the resume that analysis tailored, it now says "Gap
   analysis done" with its answered and skipped counts, and offers **View tailored resume** and **Analyze gaps again**.
+- **The gap analysis page's steps describe the analysis below them.** On a job already tailored, Resume and gaps above
+  a new gap analysis still read the earlier one ("7 gaps answered, 1 skipped") while the page said "3 answered, 7 open".
+  The line now counts the analysis on the page, and changes as you answer.
 - **Eighth live check of Apply, on two hosted application forms, with Claude as the fast model.**
   - **Safe answers are no longer lost to a slow model.** The second look at an answer and the Yes/No direction check gave a Claude fast model about a second, which it often needed more of, so
     a question that should have taken the safe default was left to you. They now get 3 s for Claude (a second for other models, a custom server and OpenRouter) inside the same time limit
