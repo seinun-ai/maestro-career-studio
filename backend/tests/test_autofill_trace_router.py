@@ -32,6 +32,13 @@ from tests.extension_harness import ROOT
 T0 = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def _no_leaked_override():
+    """`_client` points the app's `get_db` at this test's session; left in place it leaks into the next test of the xdist worker."""
+    yield
+    app.dependency_overrides.pop(get_db, None)
+
+
 def _client(db_session):
     def _get_db():
         yield db_session
@@ -346,3 +353,45 @@ def test_the_status_sets_are_pinned_to_the_fill_loop_header():
 def test_the_op_sets_cover_every_op_a_step_can_carry():
     assert DECISIONS | ACTIONS | {"sweep", "recipe"} == set(get_args(Op))
     assert not DECISIONS & ACTIONS
+
+
+def _reasoned(error):
+    return {**_run("run-reason-0001"), "reasoning": [{
+        "round": 1, "why": "page_errors", "model": "claude-sonnet-5-5", "ms": 900, "stopped": "asked",
+        "actions": [{"type": "ask_user", "target": "user", "outcome": "asked"}],
+        "snapshot": {"fields": [{"fid": "f1", "question": "Email", "shape": "text"}], "errors": [{"text": error, "fid": "f1"}]}}]}
+
+
+def test_a_stored_reasoning_snapshot_loses_the_saved_answers_an_error_line_echoed(db_session):
+    from app.services import autofill_profile
+
+    autofill_profile.set_profile({"personal": {"email": "ada@example.test", "city": "Springfield"}}, db_session)
+    client = _client(db_session)
+    assert client.post("/api/autofill/runs", json=_reasoned("ada@example.test is already registered")).status_code == 204
+    [row] = db_session.scalars(select(AutofillRun)).all()
+    [error] = row.trace["reasoning"][0]["snapshot"]["errors"]
+    assert error == {"text": "[saved answer] is already registered", "fid": "f1"}
+    assert row.trace["reasoning"][0]["snapshot"]["fields"][0]["question"] == "Email"   # the page's own words stay
+
+
+def test_a_run_without_reasoning_is_stored_as_posted(db_session):
+    client = _client(db_session)
+    assert client.post("/api/autofill/runs", json=_run("run-plain-0001")).status_code == 204
+    [row] = db_session.scalars(select(AutofillRun)).all()
+    assert row.trace["fields"] == [] and row.trace["reasoning"] == []
+
+
+def test_a_resume_employer_an_error_echoed_is_taken_out_of_the_stored_snapshot_too(db_session, monkeypatch):
+    from app.services import autofill_profile, base_resume_data
+
+    autofill_profile.set_profile({"personal": {"city": "Springfield"}}, db_session)
+    monkeypatch.setattr(base_resume_data, "active_base_resume_slugs", lambda session: ["analyst"])
+    monkeypatch.setattr(base_resume_data, "load_base_resume", lambda slug, session=None: {
+        "experience": [{"company": "Globex Corp", "role": "Data Analyst", "start_date": "Aug 2021", "end_date": "Present"}],
+        "skills": {"Languages": ["Python"]}})
+    client = _client(db_session)
+    doc = _reasoned("Globex Corp is invalid")
+    doc["reasoning"][0]["note"] = "Globex Corp looks like the employer."
+    assert client.post("/api/autofill/runs", json=doc).status_code == 204
+    [row] = db_session.scalars(select(AutofillRun)).all()
+    assert "Globex" not in json.dumps(row.trace)

@@ -1131,6 +1131,19 @@ def test_the_second_opinion_is_capped(db_session, monkeypatch):
 
 
 @pytest.mark.usefixtures("jev_on")
+def test_a_claude_fast_models_second_opinion_keeps_its_floor_when_the_reasoning_call_is_next(db_session, monkeypatch):
+    """Live check 9: 3 s in the reserve would leave the Claude second opinion 2 s; its floor is 3."""
+    monkeypatch.setattr(autofill_map.model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
+    left = [0.0, 3.0, 5.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: left.pop(0) if len(left) > 1 else left[0])
+    fake_jev(monkeypatch, {"m": ("none", 0.9)})
+    prompts = fake_reasoner(monkeypatch)
+    pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No"),
+                       pf("m", slot="education.0.discipline", options=opts("Business Analytics"))], db_session)
+    assert {p["trace_name"]: p for p in prompts}[SECOND]["timeout"] == pytest.approx(3.0)
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_a_slot_only_second_opinion_carries_no_low_stakes_paragraph(db_session, monkeypatch):
     """The fast model is asked what Jev is: which option means the same as the fact."""
     from app.services.autofill_map import _NEVER_LOW_STAKES
@@ -1218,9 +1231,10 @@ def test_a_military_status_dropdown_is_picked_by_the_statement_of_the_veteran_an
     asked for the whole wordy answer over the page's statements, and the one
     stating it is matched under EEO's exact policy."""
     facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
+    options = MILITARY + ("Non-veteran",)   # two options deny it: code's pick (AE4) leaves the choice to the statement
     calls = fake_jev(monkeypatch, {"v": ("o3", 0.95)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question="Military Status:", slot="eeo.veteran_status",
-                                 options=opts(*MILITARY))], facts, db_session, None)
+                                 options=opts(*options))], facts, db_session, None)
     text = calls[0]["questions"]["v"]["instructions"]
     assert f'is {json.dumps("No, I am not a veteran")}' in text and "Which option states that answer?" in text
     assert facts["eeo.veteran_status"].policy == "exact"
@@ -1228,7 +1242,7 @@ def test_a_military_status_dropdown_is_picked_by_the_statement_of_the_veteran_an
     # A near miss is never taken for an EEO answer.
     fake_jev(monkeypatch, {"v": ("o2", 0.7)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question="Military Status:", slot="eeo.veteran_status",
-                                 options=opts(*MILITARY))], facts, db_session, None)
+                                 options=opts(*options))], facts, db_session, None)
     assert got["v"].reason == "abstained"
 
 
@@ -1245,6 +1259,8 @@ SERVED_OR_NOT = ("I am a Veteran, but not a Protected Veteran", "I am not a Vete
 ])
 def test_a_no_picks_every_option_that_denies_being_a_veteran_at_the_exact_floor(
         db_session, monkeypatch, question, options, wanted, text):
+    """With a second denying option the list is not code's (AE4: exactly one is), so the model picks at the floor."""
+    options = options + ("Non-veteran",)
     facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
     fake_jev(monkeypatch, {"v": (f"o{wanted}", 0.9)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question=question, slot="eeo.veteran_status", options=opts(*options))],
@@ -1359,7 +1375,7 @@ def test_a_no_never_lands_on_an_option_that_claims_to_be_a_veteran(db_session, m
     facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
     fake_jev(monkeypatch, {"v": ("o1", 0.99)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question="Veteran Status", slot="eeo.veteran_status",
-                                 options=opts(claim, "I am not a Veteran."))], facts, db_session, None)
+                                 options=opts(claim, "Choose not to disclose"))], facts, db_session, None)
     assert got["v"].oids == [] and got["v"].reason == "asked"
 
 
@@ -2143,3 +2159,297 @@ def test_a_long_sponsorship_question_full_of_visa_and_status_words_takes_the_der
                                  options=opts("Yes", "No"))], facts, db_session, None)
     assert got["s"].reason == "abstained"
 
+
+
+# ---------- "located in … and/or willing to relocate" with a saved yes is a Yes, decided in code (live 2026-10-15)
+
+RELOCATE_FACTS = autofill_catalog.build({"preferences": {"willing_to_relocate": "yes"}}, [], [])
+LOCATED_OR_RELOCATE = "Are you currently located in Springfield, IL and/or willing to relocate?"
+
+
+def relocate_field(question=LOCATED_OR_RELOCATE):
+    return pf("r", question=question, slot="preferences.willing_to_relocate", options=opts("Yes", "No"))
+
+
+def asked_polarity(monkeypatch):
+    """Every polarity question either engine is asked, by fid."""
+    seen = []
+    real = autofill_pick.jev.decide
+
+    def decide(questions, state, session=None):
+        if all(is_polarity(q) for q in questions.values()):
+            seen.extend(questions)
+            return {k: _answer(q["criteria"], "neither", 0.5) for k, q in questions.items()}   # the model is unsure
+        return {k: _answer(q["criteria"], "o1", 0.95) for k, q in questions.items()}
+
+    monkeypatch.setattr(autofill_pick.jev, "decide", decide)
+    monkeypatch.setattr(autofill_pick.llm, "call_openai",
+                        lambda **kw: (seen.extend(f["id"] for f in json.loads(kw["prompt"].split("Fields: ", 1)[1]))
+                                      or polarity_reply(kw, {"r": ("neither", 0.5)})) if kw["trace_name"].startswith("autofill-polarity") else {})
+    assert real
+    return seen
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    LOCATED_OR_RELOCATE,
+    "Do you live in the Springfield area or are you willing to relocate?",
+    "Are you based in Springfield, Illinois, and/or open to relocating?",
+])
+def test_located_or_willing_to_relocate_with_a_saved_yes_is_yes_without_asking_a_model(db_session, monkeypatch, question):
+    seen = asked_polarity(monkeypatch)
+    got = autofill_pick.pick([relocate_field(question)], RELOCATE_FACTS, db_session, None)
+    assert seen == [] and sans_trace(got["r"]) == {"oids": ["o1"], "reason": "matched"}
+    assert got["r"].polarity.way == "same"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_relocate_rule_needs_a_saved_yes(db_session, monkeypatch):
+    seen = asked_polarity(monkeypatch)
+    no = autofill_catalog.build({"preferences": {"willing_to_relocate": "no"}}, [], [])
+    got = autofill_pick.pick([relocate_field()], no, db_session, None)
+    assert set(seen) == {"r"} and got["r"].reason == "abstained"   # a No says nothing about where the applicant is now
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    "Are you legally authorized to work in the US and/or willing to relocate?",
+    "Do you require visa sponsorship, or are you willing to relocate?",
+    "Are you willing to relocate?",
+    "Are you located in Springfield, IL?",
+    # the two halves must be one question: a statement elsewhere in the text is not what is asked
+    "Do you live in New York? This role is onsite; candidates who are not local or willing to relocate will not be considered.",
+    "Are you located in Austin? Applicants based elsewhere or willing to move should note we do not offer relocation assistance.",
+    # a negation before the relocate verb flips what a Yes says
+    "Are you located in the area, or are you not willing to relocate?",
+    "Are you located in the area, or unwilling to relocate? (never willing to relocate)",
+    "Are you located in Boston or aren't you willing to relocate?",
+])
+def test_the_relocate_rule_leaves_work_authorization_and_plain_questions_to_the_model(db_session, monkeypatch, question):
+    seen = asked_polarity(monkeypatch)
+    autofill_pick.pick([relocate_field(question)], RELOCATE_FACTS, db_session, None)
+    assert set(seen) == {"r"}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    "Are you located in the Springfield area and/or willing to relocate on your own?",
+    "Are you located in Boston and/or willing to relocate at your own expense?",
+    "Are you located in Denver or willing to relocate without relocation assistance?",
+    "Are you located in Denver or willing to relocate (no relocation support is offered)?",
+])
+def test_a_relocate_yes_with_a_qualifier_is_assumed_so_the_user_checks_it(db_session, monkeypatch, question):
+    seen = asked_polarity(monkeypatch)
+    got = autofill_pick.pick([relocate_field(question)], RELOCATE_FACTS, db_session, None)
+    assert seen == [] and (got["r"].oids, got["r"].reason) == (["o1"], "assumed")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_plain_relocate_yes_stays_a_matched_fact(db_session, monkeypatch):
+    asked_polarity(monkeypatch)
+    got = autofill_pick.pick([relocate_field()], RELOCATE_FACTS, db_session, None)
+    assert got["r"].reason == "matched"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_step_reports_a_qualified_relocate_yes_assumed(db_session, monkeypatch):
+    from app.schemas.autofill_fill import StepRequest
+    from app.services import autofill_step
+    monkeypatch.setattr(autofill_step.jev, "decide", lambda qs, state, session=None: {
+        k: _answer(q["criteria"], "click:o1", 0.95) for k, q in qs.items()})
+    cands = [{"mid": "click:o1", "describe": 'Click the option "Yes"'}, {"mid": "click:o2", "describe": 'Click the option "No"'}]
+    for question, reason in ((LOCATED_OR_RELOCATE, "matched"),
+                             ("Are you located in Boston and/or willing to relocate at your own expense?", "assumed")):
+        req = StepRequest(fid="r", question=question, route="slot", slot="preferences.willing_to_relocate", candidates=cands)
+        got = autofill_step.step(req, RELOCATE_FACTS, db_session, None)
+        assert (got.mid, got.reason) == ("click:o1", reason)
+
+
+# ---------- live check 9 (AE4): a saved No settles the one "I am not a (protected) veteran" option in code
+
+RIPPLING_STYLE = ("I am not a protected veteran",
+                  "I identify as one or more of the classifications of protected veteran", "Choose not to disclose")
+
+
+def no_model_may_be_asked(monkeypatch):
+    """Code decides: Jev, the fast model and polarity all raise if asked (live check 9: polarity timed out
+    twice and a clear option was left)."""
+    def boom(*a, **kw):
+        raise AssertionError("a model was asked")
+
+    monkeypatch.setattr(autofill_pick.jev, "decide", boom)
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", boom)
+    monkeypatch.setattr(autofill_pick.autofill_polarity, "decide",
+                        lambda asks, *a, **kw: boom() if asks else {})   # asked about no field: nothing to judge
+
+
+NO_VETERAN = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
+
+
+@pytest.mark.parametrize("question, options, wanted", [
+    ("Veteran Status", RIPPLING_STYLE, 1),
+    ("Protected veteran status", MILITARY, 3),
+    ("Veteran Status", SERVED_OR_NOT, 2),
+    ("Are you a veteran?", ("Yes, I am a veteran", "No, I am not a veteran"), 2),
+    ("Veteran Status", ("Non-veteran", "Veteran"), 1),
+])
+def test_a_saved_no_picks_the_one_option_that_denies_being_a_veteran_in_code(
+        db_session, monkeypatch, question, options, wanted):
+    no_model_may_be_asked(monkeypatch)
+    got = autofill_pick.pick([pf("v", question=question, slot="eeo.veteran_status", options=opts(*options))],
+                             NO_VETERAN, db_session, None)
+    assert sans_trace(got["v"]) == {"oids": [f"o{wanted}"], "reason": "matched"}
+    assert got["v"].trace == DecisionTrace() and got["v"].polarity is None
+
+
+def test_the_code_pick_of_a_not_served_veteran_option_is_reported_assumed_for_a_serving_question(db_session, monkeypatch):
+    no_model_may_be_asked(monkeypatch)
+    got = autofill_pick.pick([pf("v", question="Did you serve in the armed forces?", slot="eeo.veteran_status",
+                                 options=opts("I am not a veteran", "I am a veteran"))], NO_VETERAN, db_session, None)
+    assert sans_trace(got["v"]) == {"oids": ["o1"], "reason": "assumed"}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("options", [
+    ("I am a veteran, but not a protected veteran", RIPPLING_STYLE[1], "Choose not to disclose"),
+    ("No, I am a veteran but not a protected veteran", RIPPLING_STYLE[1], "Choose not to disclose"),
+    ("Non-protected veteran", RIPPLING_STYLE[1], "Choose not to disclose"),
+])
+def test_an_option_that_claims_to_be_a_veteran_is_never_picked_by_the_code_pick(db_session, monkeypatch, options):
+    calls = fake_jev(monkeypatch, {"v": ("o1", 0.99)}, ways={"v": ("same", 0.99)})
+    got = autofill_pick.pick([pf("v", question="Veteran Status", slot="eeo.veteran_status", options=opts(*options))],
+                             NO_VETERAN, db_session, None)
+    assert got["v"].reason == "asked" and got["v"].oids == []
+    assert calls   # the ordinary path asked the model, and the overreach guard took the claim back
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_two_options_that_deny_it_leave_the_choice_to_the_ordinary_path(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"v": ("o2", 0.95)}, ways={"v": ("same", 0.95)})
+    got = autofill_pick.pick([pf("v", question="Veteran Status", slot="eeo.veteran_status",
+                                 options=opts("I am not a veteran", "I am not a protected veteran", "I am a veteran"))],
+                             NO_VETERAN, db_session, None)
+    assert calls and sans_trace(got["v"]) == {"oids": ["o2"], "reason": "matched"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_saved_yes_is_not_decided_by_the_veteran_code_pick(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"v": ("o1", 0.95)}, ways={"v": ("same", 0.95)})
+    yes = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
+    got = autofill_pick.pick([pf("v", question="Are you a veteran?", slot="eeo.veteran_status",
+                                 options=opts("Yes, I am a veteran", "No, I am not a veteran"))], yes, db_session, None)
+    assert calls and sans_trace(got["v"]) == {"oids": ["o1"], "reason": "matched"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_question_on_another_slot_is_not_the_veteran_code_pick(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"v": ("o2", 0.95)}, ways={"v": ("same", 0.95)})
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "no", "disability_status": "no"}}, [], [])
+    autofill_pick.pick([pf("v", question="Disability status", slot="eeo.disability_status",
+                           options=opts("Yes", "I am not a veteran"))], facts, db_session, None)
+    assert calls
+
+
+# ---------- Opus review of Batch AE: the veteran code pick never takes a decline option
+
+@pytest.mark.parametrize("options", [
+    ("I am a veteran", "I do not wish to disclose my veteran status"),
+    ("I identify as a protected veteran", "I don't want to share my veteran status"),
+    ("Yes", "No", "I do not wish to self-identify my veteran status"),
+    ("I am a veteran", "I prefer not to answer about my veteran status"),
+])
+def test_a_decline_option_is_never_the_veteran_code_pick(db_session, monkeypatch, options):
+    assert autofill_pick.veteran_option(NO_VETERAN["eeo.veteran_status"], "Veteran Status",
+                                        [(f"o{i}", t) for i, t in enumerate(options, 1)]) is None
+
+
+def test_a_claim_is_filtered_before_the_denying_options_are_counted(db_session):
+    got = autofill_pick.veteran_option(
+        NO_VETERAN["eeo.veteran_status"], "Veteran Status",
+        [("o1", "No, I am a veteran but not a protected veteran"), ("o2", "I am not a veteran"), ("o3", "Yes")])
+    assert got == ("o2", "matched")
+
+
+# ---------- Opus review of Batch AE: the polarity floor leaves the fast fallback after a failed Jev pick its window
+
+@pytest.mark.usefixtures("jev_on")
+def test_polarity_retries_then_a_failed_jev_pick_and_its_fast_fallback_end_inside_the_request(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_map.model_settings, "get_fast_model", lambda session=None: "claude-haiku-5-5")
+    now = [0.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: now[0])
+    calls = []
+
+    def decide(questions, state, session=None):
+        now[0] += autofill_pick.jev.TIMEOUT_S   # Jev times out at its 2 s, polarity and pick alike
+        raise llm.LLMProviderError("Jev timed out")
+
+    def call_openai(**kw):
+        calls.append((kw["trace_name"], kw["timeout"]))
+        now[0] += kw["timeout"]   # a Claude call that runs out its whole timeout
+        if kw["trace_name"] == "autofill-polarity" and len(calls) == 2:   # the retry answers, at the last moment
+            return {"polarity": {"s": {"key": "same", "confidence": 0.95}}}
+        raise llm.LLMProviderError("Anthropic: read operation timed out")
+
+    monkeypatch.setattr(autofill_pick.jev, "decide", decide)
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    facts = autofill_catalog.build({"work_auth": {"sponsorship_now": False}}, [], [])
+    with pytest.raises(llm.LLMProviderError):
+        autofill_pick.pick([pf("s", question="Do you need sponsorship?", slot="work_auth.sponsorship_now",
+                               options=opts("Yes", "No"))], facts, db_session, None)
+    assert [name for name, _ in calls] == ["autofill-polarity", "autofill-polarity", "autofill-pick"]
+    assert now[0] <= autofill_map.REQUEST_BUDGET_S + 1e-9
+
+
+# ---------- the queued level's years questions stay inside the request
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_slow_years_check_leaves_the_keen_pick_and_its_fallback_their_time(db_session, monkeypatch):
+    """/pick at the queued level: the history check takes its whole timeout, then Jev's keen pick times out (2 s) and
+    the fast fallback runs out its own. The history check is bounded so all of it ends inside the 9 s request."""
+    model_settings.set_answer_level(db_session, "queued")
+    facts = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst", "start_date": "Aug 2021",
+                                         "current": True}], ["SQL"])
+    now = [0.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: now[0])
+    calls = []
+
+    def decide(questions, state, session=None):
+        now[0] += autofill_pick.jev.TIMEOUT_S
+        raise llm.LLMProviderError("Jev timed out")
+
+    def call_openai(**kw):
+        calls.append(kw["trace_name"])
+        now[0] += kw["timeout"]   # runs out its whole timeout
+        if kw["trace_name"] == "autofill-reasoned-pick":
+            return {"answers": {"y": {"years": "silent"}}}
+        raise llm.LLMProviderError("read operation timed out")
+
+    monkeypatch.setattr(autofill_pick.jev, "decide", decide)
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    got = autofill_pick.pick([pf("y", question="Do you have 5+ years of SQL?", route="low_stakes", years=True,
+                                 options=opts("Yes", "No"))], facts, db_session, None, queued=True)
+    assert calls == ["autofill-reasoned-pick", "autofill-pick"]
+    assert got["y"].reason == "asked"
+    assert now[0] <= autofill_map.REQUEST_BUDGET_S + 1e-9
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_years_check_that_leaves_no_room_for_the_keen_pick_leaves_the_field_to_the_user(db_session, monkeypatch):
+    """The history check ends 6.5 s in: 2.5 s are left, under Jev's 2 s plus the fallback's 1 s. Nothing more is asked."""
+    model_settings.set_answer_level(db_session, "queued")
+    facts = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst", "start_date": "Aug 2021",
+                                         "current": True}], ["SQL"])
+    now = [0.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: now[0])
+    asked = []
+    monkeypatch.setattr(autofill_pick.jev, "decide", lambda *a, **k: asked.append("jev") or {})
+
+    def call_openai(**kw):
+        asked.append(kw["trace_name"])
+        now[0] = 6.5
+        return {"answers": {"y": {"years": "silent"}}}
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    got = autofill_pick.pick([pf("y", question="Do you have 5+ years of SQL?", route="low_stakes", years=True,
+                                 options=opts("Yes", "No"))], facts, db_session, None, queued=True)
+    assert asked == ["autofill-reasoned-pick"] and got["y"].reason == "asked"

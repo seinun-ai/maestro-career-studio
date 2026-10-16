@@ -104,11 +104,13 @@ def test_remove_seed_rejected(db_session):
         model_settings.remove_extra_model(db_session, "gpt-5.6-luna")
 
 
-def test_seed_catalog_is_exactly_the_six_listed():
+def test_seed_catalog_is_exactly_the_eight_listed():
     assert model_settings.VALID_MODEL_IDS == {
         "gemini-3.5-flash-lite",
         "gemini-3.7-flash",
         "gpt-5.6-luna",
+        "gpt-6.1-sol",
+        "gpt-6-luna",
         "claude-haiku-5-5",
         "claude-sonnet-5-5",
         "claude-opus-5-5",

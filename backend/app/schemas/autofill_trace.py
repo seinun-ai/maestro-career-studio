@@ -10,7 +10,7 @@ a typed answer out of those three; the schema bounds everything else.
 
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.autofill_fill import (
     FID,
@@ -20,8 +20,29 @@ from app.schemas.autofill_fill import (
     PolarityWay,
     Route,
     Shape,
+    SLOT_NAME,
     StepReason,
     Why,
+)
+from app.schemas.autofill_reason import (
+    Basis,
+    HISTORY,
+    SIGNATURE,
+    MAX_BUTTONS,
+    MAX_ERRORS,
+    MAX_EXCLUDED,
+    MAX_FIELDS as MAX_SNAPSHOT_FIELDS,
+    MAX_HISTORY,
+    MAX_TABS,
+    NOTE_MAX,
+    RejectCode,
+    SnapButton,
+    SnapError,
+    SnapField,
+    SnapTab,
+    Stuck,
+    TARGET,
+    Technique,
 )
 
 Op = Literal["map", "polarity", "pick", "step",  # decisions
@@ -29,8 +50,16 @@ Op = Literal["map", "polarity", "pick", "step",  # decisions
              "sweep", "recipe"]
 Effect = Literal["progress", "no_effect", "unexpected", "reverted", "unconfirmed", "refused", "late", "error", "took_back"]
 WORD = r"^[a-z_]{1,40}$"  # a page word or a status: lowercase only, so a value cannot hide in it
-SLOT = r"^[a-z_]+(\.[a-z0-9_]+)*$"  # a fact NAME (autofill_catalog), never its value
+SLOT = SLOT_NAME
 MAX_RUN_FIELDS, MAX_FIELD_STEPS, LABEL_MAX, MAX_OPTION_COUNT = 200, 40, 200, 5000
+MAX_REASON_ROUNDS, MAX_REASON_ACTIONS, MAX_REASON_REJECTS = 3, 3, 10
+MODEL = r"^[A-Za-z0-9._:/-]{1,120}$"
+SNAPSHOT_CHARS = 120_000   # one round's stored snapshot, as JSON: the extension caps it far under, this is the backstop
+ReasonType = Literal["fill", "answer_from", "write", "choose", "retry", "redo", "close_dialog", "press_next",
+                     "follow_tab", "ask_user"]
+ReasonOutcome = Literal["progress", "no_effect", "moved", "refused", "rejected", "asked"]
+ReasonStop = Literal["moved", "resolved", "same_page", "asked", "no_reply", "rounds", "clock", "stopped", "followed",
+                     "wall", "page_gone", "no_read"]
 
 
 class TraceStep(DecisionFields):
@@ -87,3 +116,56 @@ class RunTrace(BaseModel):
     halted: Literal["stopped", "timeout"] | None = None
     rounds: int = Field(default=0, ge=0, le=10)
     fields: list[TraceField] = Field(max_length=MAX_RUN_FIELDS)
+    reasoning: list["TraceReasonRound"] = Field(default_factory=list, max_length=MAX_REASON_ROUNDS)  # the reasoning step's rounds (fields is [] then)
+
+
+class TraceReasonAction(BaseModel):
+    """What the reasoning step did to one target: a field id, or an opaque button / tab ref, never a value."""
+
+    model_config = ConfigDict(extra="forbid")
+    type: ReasonType
+    target: str | None = Field(default=None, pattern=TARGET)
+    outcome: ReasonOutcome
+    slot: str | None = Field(default=None, max_length=120, pattern=SLOT)   # answer_from's fact NAME
+    technique: Technique | None = None                                      # a retry's way (a closed list)
+    basis: Basis | None = None                                              # a choose's ground (a closed list)
+    written: int | None = Field(default=None, ge=0, le=5000)               # a written answer's LENGTH, never it
+
+
+class TraceSnapshot(BaseModel):
+    """What the reasoning model was shown, kept for scripts/eval_reason.py to replay against other models: the
+    value-free request (questions, option and button words, booleans, fact NAMES), without its job selectors."""
+
+    model_config = ConfigDict(extra="forbid")
+    fields: list[SnapField] = Field(default_factory=list, max_length=MAX_SNAPSHOT_FIELDS)
+    buttons: list[SnapButton] = Field(default_factory=list, max_length=MAX_BUTTONS)
+    errors: list[SnapError] = Field(default_factory=list, max_length=MAX_ERRORS)
+    tabs: list[SnapTab] = Field(default_factory=list, max_length=MAX_TABS)
+    history: list[Annotated[str, Field(max_length=120, pattern=HISTORY)]] = Field(default_factory=list, max_length=MAX_HISTORY)
+    excluded: list[Annotated[str, Field(pattern=SIGNATURE)]] = Field(default_factory=list, max_length=MAX_EXCLUDED)
+
+    @model_validator(mode="after")
+    def _capped(self) -> "TraceSnapshot":
+        if len(self.model_dump_json()) > SNAPSHOT_CHARS:
+            raise ValueError("snapshot too large")
+        return self
+
+
+class TraceReasonRound(BaseModel):
+    """One round of the reasoning step (design 2026-10-14 §3). `note` is the model's own sentence, cleaned by the
+    backend (no link, email or phone) and capped: page words, as `label` is, never a value. A round that never
+    asked (a wall, the page clock) has no model and no snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+    round: int = Field(ge=1, le=MAX_REASON_ROUNDS)
+    why: Stuck
+    model: str | None = Field(default=None, pattern=MODEL)
+    ms: int = Field(default=0, ge=0, le=60_000)
+    note: str = Field(default="", max_length=NOTE_MAX)
+    actions: list[TraceReasonAction] = Field(default_factory=list, max_length=MAX_REASON_ACTIONS)
+    rejected: list[RejectCode] = Field(default_factory=list, max_length=MAX_REASON_REJECTS)
+    stopped: ReasonStop | None = None
+    snapshot: TraceSnapshot | None = None
+
+
+RunTrace.model_rebuild()

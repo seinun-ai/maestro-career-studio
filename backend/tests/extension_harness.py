@@ -1263,6 +1263,8 @@ const parseCompound = (text) => {
   const compound = { tag: null, id: null, attrs: [] };
   const tag = /^[a-zA-Z][\w-]*/.exec(rest);
   if (tag) { compound.tag = tag[0].toLowerCase(); rest = rest.slice(tag[0].length); }
+  // The universal selector: any element (the gate asks it once, to find open shadow roots; the fake nodes hold none).
+  else if (rest.startsWith("*")) rest = rest.slice(1);
   while (rest.length) {
     const id = /^#([\w-]+)/.exec(rest);
     if (id) { compound.id = id[1]; rest = rest.slice(id[0].length); continue; }

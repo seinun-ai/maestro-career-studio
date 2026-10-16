@@ -37,7 +37,11 @@ const summaryOf = (p, banner = false) => {
   const s = { ...base, host: p.host ?? base.host, stepKey: p.key ?? `${p.t}${p.n ?? ""}` };
   if (banner) s.errors = (p.errorItems ?? []).length;
   switch (p.t) {
-    case "step": s.fillable = p.fillable ?? 2; s.buttons = [btn(`next-${p.n}`, p.nextText ?? "Next"), btn(`back-${p.n}`, "Back")]; break;
+    case "step": s.fillable = (p.fillable ?? 2) + (p.drift ? (fixedAt[pages.indexOf(p)] ?? 0) : 0);
+      s.buttons = [btn(`next-${p.n}`, p.nextText ?? "Next"), btn(`back-${p.n}`, "Back")];
+      // A field's own popup button shows its value (Workday: "Select One", then the pick): a fix that writes changes its text.
+      if (p.popup) s.buttons.push(btn("pop", fixedAt[pages.indexOf(p)] ? `Yes${fixedAt[pages.indexOf(p)]}` : "Select One", { fieldControl: true }));
+      break;
     case "review_next": s.fillable = 2; s.buttons = [btn("next-r", "Next"), btn("submit-1", "Submit application")]; break;
     case "fields_only": s.fillable = 2; s.buttons = [btn("back-f", "Back")]; break;
     case "review": s.fillable = 2; s.buttons = [btn("submit-1", p.submitText ?? "Submit application"), btn("back-r", "Back")]; break;
@@ -97,6 +101,7 @@ const tick = (name, ...args) => {
 };
 const earlyReads = {};
 const cleared = {};        // page index -> a fix cleared what the page complained about
+const fixedAt = {};        // page index -> repairs that wrote on it (what the popup shows, what drift adds to the count)
 const fillAt = {};         // page index -> fills run on it
 const banner = { ...(spec.banner ?? {}) };   // page index -> the page is showing its error banner
 let lastRejected = false;  // the last press was one the page rejected
@@ -115,7 +120,10 @@ const deps = {
     const early = (earlyReads[at] ??= [...(base.early ?? [])]);
     const p = base.always ?? (early.length ? early.shift() : base);
     if (p.t === "none") return [];
-    if (p.frames) return p.frames.map((f) => ({ frameId: f.frameId, result: f.page ? { summary: summaryOf(f.page), top: Boolean(f.top) } : { summary: null } }));
+    // `broken`: a frame whose page script answered with an error (the extension was updated under an open tab).
+    if (p.t === "broken") return [{ frameId: 0, url: "https://jobs.acme.test/", result: undefined, error: p.error ?? "the page reported an error" }];
+    if (p.frames) return p.frames.map((f) => (f.error ? { frameId: f.frameId, url: "https://ads.test/", result: undefined, error: f.error }
+      : { frameId: f.frameId, result: f.page ? { summary: summaryOf(f.page), top: Boolean(f.top) } : { summary: null } }));
     return [{ frameId: 0, result: { summary: summaryOf(p, banner[at] === true), top: true } }];
   },
   tabUrl: async () => {
@@ -173,6 +181,7 @@ const deps = {
     // What the record says AT the moment of the fix: a rejected press is no step and no seen page.
     tick("fix", errors.map((e) => e.label), rec.step, rec.seen.length, rec.status);
     if (spec.fixClears) cleared[at] = true;
+    if (spec.fixWrites) fixedAt[at] = (fixedAt[at] ?? 0) + 1;
     // The page moved on by itself under the repair (a slow save the banner was left up for).
     if (spec.fixMoves) { at += 1; moved = false; }
     return spec.fix ?? { fixed: true };
@@ -213,6 +222,24 @@ const deps = {
   now: () => (clock += 10),
   cancelled: () => cancelFlag,
 };
+// `reasons`: the reasoning step's answers, one per think ({moved, followed, note, ask, tried, press, clears}). Absent: no
+// `reason` dep at all, as the host leaves it out with "Think when stuck" off or "Stop after each step" on.
+if (spec.reasons) {
+  deps.reason = async (rec, ctx) => {
+    tick("reason", ctx.why, ctx.recent.length, (ctx.open ?? []).length, ...(ctx.onePage ? ["onePage"] : []));
+    const out = spec.reasons.shift() ?? { moved: false };
+    if (out.clears) cleared[at] = true;
+    if (out.press) {
+      const outcome = await ctx.press(0, out.press, "fp-before", []);
+      return outcome === "moved" ? { ...out, moved: true, advanced: "fp-before" } : { ...out, moved: false };
+    }
+    return out;
+  };
+}
+// `fieldCount`: how many fields the fill inventory lists on the page (a read-only ask the host answers; absent: no such dep).
+if (spec.fieldCount !== undefined) {
+  deps.fieldCount = async (tabId, frameId) => { tick("fieldCount", frameId); return spec.fieldCount; };
+}
 if (spec.omitDep) delete deps[spec.omitDep];
 
 const record = { jobId: "j1", proposalId: "p1", applicationId: "a1", base: "Base", company: "Acme",
@@ -1911,6 +1938,7 @@ const ops = ns.queueRun.pageOps({
     if (message.type === "page_errors") {
       return [{ frameId: 3, result: { count: 1, items: [{ label: "City", target: "f-1", kind: "field" }] } }];
     }
+    if (message.type === "page_field_count") return spec.countFrames ?? [{ frameId: 0, result: 3 }];
     return spec.advanceFrames ?? [{ frameId: 0, result: { clicked: true } }];
   },
   frame0: async (tabId, message) => {
@@ -1946,6 +1974,7 @@ main(async () => {
     result = await ops.waitForChange(4, before, spec.ms ?? 3000, spec.stop ? () => true : undefined, spec.baseline);
   }
   if (spec.op === "errors") result = await ops.pageErrors(4, spec.frameId);
+  if (spec.op === "fieldCount") result = await ops.fieldCount(4, spec.frameId ?? 0);
   emit({ result, sent, logged, polls: pollN, slept: t });
 });
 """
@@ -2091,17 +2120,19 @@ def test_wait_for_change_survives_a_transport_that_throws_mid_navigation(tmp_pat
     assert out["result"]["changed"] is True
 
 
-def test_the_fingerprint_is_the_address_without_the_hash_the_step_key_the_sorted_buttons_and_the_count(tmp_path):
+def test_the_fingerprint_is_the_address_without_the_hash_the_step_key_the_sorted_buttons_the_count_and_the_required_boxes_empty(tmp_path):
     driver = r"""
     const ns = loadModules();
     const f = ns.queueRun.fingerprint;
     const s = { stepKey: "k1", fillable: 3, buttons: [{ text: "Next", visible: true }, { text: "Back", visible: true }, { text: "Hidden", visible: false }] };
     emit({ a: f("https://x.test/p?q=1#top", s), b: f("https://x.test/p?q=1#other", s), c: f("https://x.test/p?q=2", s),
-           d: f("https://x.test/p?q=1", { ...s, stepKey: "k2" }), e: f("not a url", s), g: f("https://x.test/p?q=1", { ...s, fillable: 4 }) });
+           d: f("https://x.test/p?q=1", { ...s, stepKey: "k2" }), e: f("not a url", s), g: f("https://x.test/p?q=1", { ...s, fillable: 4 }),
+           h: f("https://x.test/p?q=1", { ...s, requiredEmpty: 2 }) });
     """
     out = run_node(driver, {}, tmp_path, source=SOURCE)
-    assert out["a"] == out["b"] == "https://x.test/p?q=1\nk1\nBack,Next\n3"
-    assert len({out["a"], out["c"], out["d"], out["g"]}) == 4 and out["e"].startswith("\nk1")
+    assert out["a"] == out["b"] == "https://x.test/p?q=1\nk1\nBack,Next\n3\n0"
+    assert out["h"].endswith("\n3\n2")
+    assert len({out["a"], out["c"], out["d"], out["g"], out["h"]}) == 5 and out["e"].startswith("\nk1")
 
 
 def test_the_run_limits_cannot_be_changed_by_a_caller(tmp_path):
@@ -2467,8 +2498,130 @@ def test_a_press_that_moved_the_page_past_a_standing_error_line_is_a_step(tmp_pa
 
 def test_a_new_error_on_the_same_step_is_a_rejection_even_when_the_page_changed(tmp_path):
     waits = [{"moves": False, "result": {"changed": True, "url": "x", "errors": 1, "sameStep": True, "fresh": True}}] * 2
-    out = _drive(tmp_path, [step(1, errorItems=[CITY])], waits=waits, banner={0: True})
+    out = _drive(tmp_path, [step(1, url="/same", errorItems=[CITY])], waits=waits, banner={0: True})
     assert (out["record"]["step"], out["record"]["why"]) == (0, "page_errors")
+
+
+# ---------- a press the page seems to refuse, and the repair that finds the site on its next page ----------
+
+def test_a_repair_that_leaves_the_site_on_another_page_counts_as_a_step_and_fills_it_instead_of_parking(tmp_path):
+    """Live 2026-10-15: the 'refusal' was the next step's own upload line. The repair could not fix it and the run parked."""
+    box = {"label": "Drop files here", "target": "t-up", "kind": "upload"}
+    first = step(1, url="/apply", key="k", rejects=1, errorItems=[box])
+    second = step(2, url="/apply", key="k", fillable=7)
+    out = _drive(tmp_path, [first, second, REVIEW], fixMoves=True, fix={"fixed": False, "remaining": [box]})
+    r = out["record"]
+    assert (r["status"], r["step"]) == ("ready", 2)
+    order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance", "fix")]
+    assert order == ["fill", "advance", "fix", "fill", "advance", "fill"], order
+
+
+# A tenant's dropdown is a button whose text is its VALUE: a repair that writes it changes the button, never the page.
+STATE = {"label": "State", "target": "f-8", "kind": "field"}
+
+
+def _pop(**extra):
+    return step(1, popup=True, **extra)
+
+
+def test_a_repair_that_writes_a_dropdown_is_not_a_new_page(tmp_path):
+    """A full repair: the dropdown now reads 'Yes'. The run presses again on the same page, as it does with no dropdown."""
+    plain = _drive(tmp_path, [step(1, rejects=1, errorItems=[CITY]), REVIEW])
+    out = _drive(tmp_path, [_pop(rejects=1, errorItems=[CITY]), REVIEW], fixWrites=True, record={"attach": {"outcome": "attached"}})
+    order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance", "fix")]
+    assert order == [c[0] for c in plain["calls"] if c[0] in ("fill", "advance", "fix")] == ["fill", "advance", "fix", "advance", "fill"]
+    assert (out["record"]["status"], out["record"]["step"]) == ("ready", 1)
+
+
+def test_a_partial_repair_that_writes_a_dropdown_parks_page_errors_naming_what_is_left(tmp_path):
+    fix = {"fixed": False, "remaining": [STATE]}
+    out = _drive(tmp_path, [_pop(rejects=9, errorItems=[CITY, STATE])], fixWrites=True, fix=fix)
+    r = out["record"]
+    assert (r["status"], r["why"], r["step"], len(r["seen"])) == ("parked", "page_errors", 0, 0)
+    assert [c[0] for c in out["calls"] if c[0] in ("fill", "advance", "fix")] == ["fill", "advance", "fix"]
+
+
+def test_two_repair_rounds_that_each_write_a_dropdown_park_page_errors_not_loop(tmp_path):
+    out = _drive(tmp_path, [_pop(rejects=2, errorItems=[CITY]), REVIEW], fixWrites=True)
+    r = out["record"]
+    assert (r["status"], r["why"], r["step"]) == ("parked", "page_errors", 0)
+
+
+def test_a_partial_repair_whose_dropdown_text_differs_every_round_is_repaired_once(tmp_path):
+    fix = {"fixed": False, "remaining": [STATE]}
+    out = _drive(tmp_path, [_pop(rejects=99, errorItems=[CITY, STATE])], fixWrites=True, fix=fix)
+    names_ = [c[0] for c in out["calls"]]
+    assert (out["record"]["why"], out["record"]["step"]) == ("page_errors", 0)
+    assert (names_.count("fill"), names_.count("advance"), names_.count("fix")) == (1, 1, 1)
+
+
+def test_a_page_that_changes_only_in_shape_counts_as_a_move_at_most_once_per_address_and_heading(tmp_path):
+    """Control counts that drift with every repair (a conditional field per answer): the first change is taken for the
+    site's next step, the second is not, so the run parks instead of climbing to the step limit."""
+    fix = {"fixed": False, "remaining": [STATE]}
+    out = _drive(tmp_path, [step(1, url="/apply", key="k", rejects=99, drift=True, errorItems=[CITY, STATE])],
+                 fixWrites=True, fix=fix)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "page_errors") and r["step"] <= 1
+    assert [c[0] for c in out["calls"]].count("fix") <= 2
+
+
+def test_three_steps_under_one_address_and_key_are_each_filled_before_they_are_pressed(tmp_path):
+    """Each press reads as refused while the site moves on under the repair, and the steps differ only in shape: the
+    first change is a step, a further one refills the page (no step added) and never presses it unfilled."""
+    pages = [step(1, url="/apply", key="k", rejects=1, errorItems=[CITY]),
+             step(2, url="/apply", key="k", fillable=7, rejects=1, errorItems=[STATE]),
+             step(3, url="/apply", key="k", fillable=5), REVIEW]
+    out = _drive(tmp_path, pages, fixMoves=True)
+    seq = []
+    for call in out["calls"]:
+        if call[0] == "fill" or call[0] == "advance":
+            seq.append(call[0])
+    # Never two presses without a fill between them.
+    assert all(not (a == b == "advance") for a, b in zip(seq, seq[1:])), seq
+    assert seq[0] == "fill" and out["pressed"].index("next-3") > 0
+    last = [i for i, name in enumerate(seq) if name == "advance"]
+    assert all(seq[i - 1] == "fill" for i in last), seq
+    assert out["record"]["status"] == "ready"
+
+
+def test_a_page_whose_shape_keeps_changing_under_one_address_and_key_adds_one_step_and_is_still_bounded(tmp_path):
+    fix = {"fixed": False, "remaining": [STATE]}
+    out = _drive(tmp_path, [step(1, url="/apply", key="k", rejects=99, drift=True, errorItems=[CITY, STATE])], fixWrites=True, fix=fix)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "page_errors") and r["step"] <= 1
+    assert [c[0] for c in out["calls"]].count("fix") <= 3
+
+
+FP_PAGE = {"host": "jobs.acme.test", "stepKey": "k", "fillable": 4, "requiredEmpty": 0,
+           "buttons": [{"id": "n", "text": "Save and Continue", "visible": True}, {"id": "p", "text": "Select One", "visible": True, "fieldControl": True}]}
+FP = r"""const ns = loadModules(); const url = "https://acme.wd1.myworkdayjobs.com/apply";
+const swapped = { ...spec.page, requiredEmpty: 3, buttons: [spec.page.buttons[0], { ...spec.page.buttons[1], text: "Yes" }] };
+emit({ a: ns.queueRun.fingerprint(url, spec.page), b: ns.queueRun.fingerprint(url, swapped),
+       c: ns.queueRun.fingerprint(url, { ...swapped, requiredEmpty: 0 }) });"""
+
+
+def test_a_fresh_step_that_shows_required_boxes_empty_is_a_different_page_in_the_fingerprint_though_only_a_dropdown_text_differs(tmp_path):
+    out = run_node(FP, {"page": FP_PAGE}, tmp_path, source=SOURCE)
+    assert out["a"] != out["b"], "required boxes now empty: the page changed"
+    assert out["a"] == out["c"], "the dropdown's value alone is no change"
+
+
+def test_a_repair_that_leaves_a_page_already_pressed_parks_page_errors_not_loop(tmp_path):
+    """The re-read before a park finds the address and heading of a page the run already pressed: not a step, the errors' park."""
+    first = step(1, url="/two", key="k2", rejects=9, errorItems=[CITY])
+    back = step(2, url="/three", key="k3", fillable=7)
+    out = _drive(tmp_path, [first, back], fixMoves=True, fix={"fixed": False, "remaining": [CITY]},
+                 record={"seen": ["https://jobs.acme.test/three\nk3\nBack,Next\n2"]})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "page_errors")
+
+
+def test_a_repair_that_leaves_the_same_page_still_parks_naming_what_is_left(tmp_path):
+    box = {"label": "Drop files here", "target": "t-up", "kind": "upload"}
+    out = _drive(tmp_path, [step(1, url="/apply", key="k", rejects=9, errorItems=[box])], fix={"fixed": False, "remaining": [box]})
+    r = out["record"]
+    assert (r["status"], r["why"], r["step"]) == ("parked", "page_errors", 0)
+    assert [o["question"] for o in r["open"]] == ["Drop files here"]
 
 
 # ---------- a Resume after the user fixed what a park named: nothing is filled again ----------
@@ -2483,14 +2636,18 @@ def _resumed(tmp_path, why, pages, parked=PARKED_HERE, **spec):
     return _drive(tmp_path, pages, record=record, **spec)
 
 
-def test_a_page_errors_park_remembers_which_page_it_was(tmp_path):
+# What the fake step page looks like to the fingerprint: its buttons (sorted) and how many controls a fill could answer.
+STEP_SHAPE = "Back,Next\n2"
+
+
+def test_a_page_errors_park_remembers_which_page_it_was_and_what_it_looked_like(tmp_path):
     out = _drive(tmp_path, [step(1, rejects=9, errorItems=[CITY])])
-    assert out["record"]["parkedPage"] == PARKED_HERE
+    assert out["record"]["parkedPage"] == {**PARKED_HERE, "shape": STEP_SHAPE, "asked": ["city"]}
 
 
-def test_an_upload_park_remembers_which_page_it_was(tmp_path):
+def test_an_upload_park_remembers_which_page_it_was_and_what_it_looked_like(tmp_path):
     out = _drive(tmp_path, [step(1), REVIEW], attaches=[{"outcome": None, "required": True, "boxes": [COVER]}])
-    assert out["record"]["parkedPage"] == PARKED_HERE
+    assert out["record"]["parkedPage"] == {**PARKED_HERE, "shape": STEP_SHAPE}
 
 
 def test_a_resume_after_page_errors_does_not_refill_and_presses_when_the_page_names_nothing(tmp_path):
@@ -2505,6 +2662,48 @@ def test_a_resume_after_page_errors_repairs_only_what_the_page_still_names(tmp_p
     out = _resumed(tmp_path, "page_errors", [step(1, errorItems=[CITY]), REVIEW], banner={0: True})
     assert [c[1] for c in names(out, "fix")] == [["City"]]
     assert out["fillCalls"] == 1 and out["record"]["status"] == "ready"
+
+
+def test_a_resume_on_a_page_with_the_parked_address_and_key_but_another_shape_fills_it_before_any_press(tmp_path):
+    """A tenant that keeps one address and one heading for every step: the buttons and the count of controls tell them apart."""
+    out = _resumed(tmp_path, "page_errors", [step(1, fillable=7), REVIEW], parked={**PARKED_HERE, "shape": STEP_SHAPE})
+    order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance", "pageErrors")]
+    assert order[:2] == ["fill", "advance"], order
+    assert names(out, "pageErrors") == [] and out["fillCalls"] == 2 and out["record"]["status"] == "ready"
+
+
+def test_a_resume_on_the_parked_shape_is_still_the_parked_page(tmp_path):
+    out = _resumed(tmp_path, "page_errors", [step(1), REVIEW], parked={**PARKED_HERE, "shape": STEP_SHAPE})
+    assert out["fillCalls"] == 1 and out["pressed"] == ["next-1"]
+
+
+def test_a_resume_whose_page_looks_different_but_still_names_the_parked_error_is_still_the_parked_page(tmp_path):
+    """The user added a field the answer needed (the count changed); the same error is still on the page."""
+    out = _resumed(tmp_path, "page_errors", [step(1, fillable=3, errorItems=[CITY]), REVIEW], banner={0: True},
+                   parked={**PARKED_HERE, "shape": STEP_SHAPE, "asked": ["city"]})
+    assert [c[1] for c in names(out, "fix")] == [["City"]] and out["fillCalls"] == 1
+
+
+def test_a_resume_on_another_shape_whose_errors_are_not_the_parked_ones_fills_the_page(tmp_path):
+    out = _resumed(tmp_path, "page_errors", [step(1, fillable=3, errorItems=[CITY]), REVIEW], banner={0: True},
+                   parked={**PARKED_HERE, "shape": STEP_SHAPE, "asked": ["phone number"]})
+    order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance")]
+    assert order[0] == "fill", "a different error is not the parked page's: the page is filled first"
+
+
+def test_a_resume_after_an_upload_park_on_another_shape_fills_the_page(tmp_path):
+    out = _resumed(tmp_path, "upload", [step(1, fillable=7), REVIEW], parked={**PARKED_HERE, "shape": STEP_SHAPE})
+    assert out["fillCalls"] == 2 and names(out, "uploads") == []
+
+
+def test_a_page_the_site_swapped_in_under_the_same_address_and_key_is_filled_before_it_is_pressed(tmp_path):
+    """A rejected press, a repair, and the site is on its next step with the same path and heading key."""
+    first = step(1, url="/apply", key="k", rejects=1, errorItems=[CITY])
+    second = step(2, url="/apply", key="k", fillable=7)
+    out = _drive(tmp_path, [first, second, REVIEW], fixMoves=True)
+    assert out["record"]["status"] == "ready"
+    order = [c[0] for c in out["calls"] if c[0] in ("fill", "advance")]
+    assert order == ["fill", "advance", "fill", "advance", "fill"], order
 
 
 def test_a_resume_after_an_upload_park_presses_when_no_required_box_is_empty_and_never_attaches(tmp_path):
@@ -2608,3 +2807,345 @@ def test_a_resume_after_open_questions_still_fills_the_page(tmp_path):
 def test_the_attach_note_belongs_to_a_page_and_goes_with_it(tmp_path):
     out = _drive(tmp_path, [step(1), REVIEW], record={"attach": {"outcome": "attached"}})
     assert out["record"]["attach"] is None
+
+
+# ---------- the reasoning step: asked once before an eligible park (design 2026-10-14) ----------
+
+UNMAPPED = {"label": "Source", "target": None, "kind": "unknown"}
+THOUGHT = {"moved": False, "note": "The error names Source, which no field is called.", "tried": ["filled 1 field"]}
+
+
+@pytest.mark.parametrize("why, pages, spec", [
+    ("page_errors", [step(1, rejects=1, errorItems=[UNMAPPED]), REVIEW], {"fix": {"fixed": False, "remaining": [UNMAPPED]}}),
+    ("open_questions", [step(1), REVIEW], {"fills": [[needs("f1", "Degree")]]}),
+    ("unknown_page", [{"t": "unknown"}], {}),
+    ("no_change", [step(1, stuck=9), REVIEW], {}),
+    ("loop", [step(1, url="/same"), step(1, url="/same"), REVIEW], {}),
+])
+def test_every_eligible_park_asks_the_reasoning_step_once_and_parks_with_its_note(tmp_path, why, pages, spec):
+    out = _drive(tmp_path, pages, reasons=[dict(THOUGHT)], **spec)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", why)
+    assert [c[1] for c in names(out, "reason")] == [why]
+    assert r["thought"] == {"note": THOUGHT["note"], "tried": THOUGHT["tried"]}
+
+
+def test_a_park_after_the_model_asked_the_user_keeps_what_it_asked(tmp_path):
+    asked = {"moved": False, "note": "Degree has no saved answer.", "ask": "Pick your degree.", "tried": []}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]], reasons=[asked])
+    assert out["record"]["thought"] == {"note": "Degree has no saved answer.", "ask": "Pick your degree.", "tried": []}
+
+
+def test_a_thought_with_nothing_to_say_leaves_the_park_as_it_was(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]], reasons=[{"moved": False}])
+    assert out["record"]["why"] == "open_questions" and "thought" not in out["record"]
+
+
+@pytest.mark.parametrize("pages, spec, why", [
+    ([{"t": "captcha"}], {}, "captcha"),
+    ([{"t": "verify"}], {}, "verify"),
+    ([{"t": "board_native"}], {}, "board_native"),
+    ([{"t": "create_account", "host": "careers.initech.test"}], {"record": {"openUrl": "https://careers.initech.test/apply"}}, "create_account"),
+    ([{"t": "sign_in"}], {}, "sign_in_yourself"),
+    ([{"t": "posting", "applyId": None}], {}, "posting"),
+    ([{"t": "confirmation"}], {}, "already_applied"),
+    ([step(1), {"t": "review_next"}], {}, "unsure_page"),
+    ([step(1), {"t": "review", "errs": [UNMAPPED], "patch": {"submitContext": True}}], {"fix": {"fixed": False, "remaining": [UNMAPPED]}}, "page_errors"),
+    ([step(1), step(2, fillable=0, nextText="Continue"), REVIEW], {"fills": [[needs("a", status="verified")], []]}, "confirm_page"),
+    ([step(1), REVIEW], {"attaches": [{"outcome": None, "reason": None, "required": True, "boxes": [
+        {"label": "Upload a file", "target": "t-up", "kind": "unknown", "written": False}]}], "attachTo": {"attached": False}}, "upload"),
+])
+def test_walls_and_review_pages_never_ask(tmp_path, pages, spec, why):
+    out = _drive(tmp_path, pages, reasons=[dict(THOUGHT)], **spec)
+    assert out["record"]["why"] == why and names(out, "reason") == []
+
+
+def test_a_wall_after_a_page_the_thought_worked_never_asks_either(tmp_path):
+    # Page one asked and moved on; the captcha behind it is a wall by design, so the one ask is the only ask.
+    out = _drive(tmp_path, [step(1), {"t": "captcha"}], fills=[[needs("f1", "Degree")]], reasons=[{"moved": True}, dict(THOUGHT)])
+    assert out["record"]["why"] == "captcha" and len(names(out, "reason")) == 1
+
+
+def test_without_the_reason_dep_a_park_is_what_it_was(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]])
+    assert out["record"]["why"] == "open_questions" and "thought" not in out["record"]
+
+
+def test_a_thought_that_pressed_next_and_moved_counts_a_step_and_the_run_goes_on(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UNMAPPED]), REVIEW],
+                 fix={"fixed": False, "remaining": [UNMAPPED]}, reasons=[{"press": "next-1"}])
+    r = out["record"]
+    assert (r["status"], r["step"]) == ("ready", 1) and r["seen"] == ["fp-before"]
+    assert out["pressed"] == ["next-1", "next-1"]                      # the page's Next, never its Submit
+
+
+def test_a_thought_that_fixed_the_page_in_place_presses_next_again(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]], reasons=[{"moved": True}])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+    assert out["fillCalls"] == 2                                        # no refill of the page the thought fixed
+
+
+def test_a_thought_on_open_questions_may_not_press_over_the_unfilled_page(tmp_path):
+    """inv-rejected-next: only a page the run filled is pressed. At the open-questions park the fill gate (the known-empty
+    upload check) has not run, so the step's own press is refused there; the driver presses after its gates."""
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]], reasons=[{"press": "next-1", "note": "x"}])
+    assert out["pressed"] == [] and out["record"]["why"] == "open_questions"
+
+
+def test_a_thought_may_not_press_a_page_the_run_did_not_fill(tmp_path):
+    """The loop park of a page swapped under the run: the page in hand is not the one that was filled."""
+    out = _drive(tmp_path, [step(1, drift="toggle")], reasons=[{"press": "next-1"}])
+    assert out["record"]["why"] == "loop" and out["pressed"] == []
+
+
+def test_the_reasoning_step_runs_once_a_page(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=9, errorItems=[UNMAPPED]), REVIEW],
+                 fix={"fixed": False, "remaining": [UNMAPPED]}, reasons=[{"moved": True}, dict(THOUGHT)])
+    assert out["record"]["why"] == "page_errors" and len(names(out, "reason")) == 1
+
+
+def test_a_new_page_may_think_again(tmp_path):
+    two = [step(1, rejects=1, errorItems=[UNMAPPED]), step(2, rejects=9, errorItems=[UNMAPPED]), REVIEW]
+    out = _drive(tmp_path, two, fix={"fixed": False, "remaining": [UNMAPPED]}, reasons=[{"press": "next-1"}, dict(THOUGHT)])
+    assert out["record"]["why"] == "page_errors" and len(names(out, "reason")) == 2
+
+
+def test_the_think_is_told_what_the_run_just_did(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UNMAPPED]), REVIEW],
+                 fix={"fixed": False, "remaining": [UNMAPPED]}, reasons=[dict(THOUGHT)])
+    # One press that the page rejected, one repair that left the error.
+    assert [c[2] for c in names(out, "reason")] == [2]
+
+
+def test_a_stop_during_the_thought_ends_the_run_as_stopped(tmp_path):
+    # openTab, classify, tabUrl, fill, then the reason call is the fifth.
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[needs("f1", "Degree")]], reasons=[dict(THOUGHT)], cancelAfter=5)
+    assert (out["record"]["status"], out["record"]["why"]) == ("stopped", "user")
+    assert out["callsWhenCancelled"] == 5 and len(out["calls"]) == 5
+
+
+def test_a_follow_never_drives_the_run_parks_moved_away(tmp_path):
+    out = _drive(tmp_path, [step(1, urlHost="elsewhere.test")], reasons=[{"moved": False, "followed": True}],
+                 record={"tabId": 7, "hosts": ["jobs.acme.test"], "status": "parked", "why": "captcha"})
+    assert out["record"]["why"] == "moved_away" and out["pressed"] == [] and out["fillCalls"] == 0
+    assert [c[1] for c in names(out, "reason")] == ["moved_away"]
+
+
+def test_a_thought_on_a_moved_away_tab_never_drives_even_when_it_says_it_moved(tmp_path):
+    out = _drive(tmp_path, [step(1, urlHost="elsewhere.test")], reasons=[{"moved": True, "advanced": "x"}],
+                 record={"tabId": 7, "hosts": ["jobs.acme.test"], "status": "parked", "why": "captcha"})
+    assert out["record"]["why"] == "moved_away" and out["pressed"] == [] and out["fillCalls"] == 0
+    assert out["record"]["step"] == 0 and out["record"]["seen"] == []
+
+
+def test_open_questions_that_are_all_protected_never_ask(tmp_path):
+    """Design 1: never on protected questions. The driver knows the fact NAME /map gave; a saved-fact-less
+    work-authorization question parks as it did, with no model call."""
+    protected = {**needs("f1", "Are you legally authorized to work in the US?"), "slot": "work_auth.authorized_now"}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[protected]], reasons=[dict(THOUGHT)])
+    assert out["record"]["why"] == "open_questions" and names(out, "reason") == []
+    mixed = _drive(tmp_path, [step(1), REVIEW], fills=[[protected, needs("f2", "Degree")]], reasons=[dict(THOUGHT)])
+    assert len(names(mixed, "reason")) == 1
+
+
+def test_the_open_questions_the_step_is_told_carry_no_fact_name_into_the_record_card(tmp_path):
+    # The card draws `question` and `required` only; the slot is a fact NAME (never a value) kept for the gate.
+    protected = {**needs("f1", "Degree"), "slot": "education.degree"}
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[protected]])
+    assert out["record"]["open"] == [{"fid": "f1", "question": "Degree", "required": True, "slot": "education.degree"}]
+
+
+# ---------- the reasoning step cannot be walked round in circles (review of Batch 3) ----------
+
+def test_a_reasoner_that_always_presses_cannot_ping_pong_the_run_past_the_step_limit(tmp_path):
+    pages = [step(1, url="/a") if i % 2 == 0 else step(2, url="/b") for i in range(40)] + [REVIEW]
+    out = _drive(tmp_path, pages, reasons=[{"press": "next-x"} for _ in range(60)])
+    r = out["record"]
+    assert r["status"] == "parked" and r["step"] <= 15
+    # At most one thought for each page the run was on, however often it came back to it.
+    assert len(names(out, "reason")) <= 2
+
+
+def test_a_page_is_thought_about_once_per_drive_even_after_the_run_left_it_and_came_back(tmp_path):
+    again = {"url": "/same", "key": "same"}
+    out = _drive(tmp_path, [step(1, **again), step(2), step(1, **again), REVIEW], reasons=[{"moved": False}, {"moved": False}])
+    assert out["record"]["why"] == "loop" and len(names(out, "reason")) == 1
+
+
+def test_the_step_never_presses_on_a_loop_park(tmp_path):
+    again = {"url": "/same", "key": "same"}
+    out = _drive(tmp_path, [step(1, **again), step(2), step(1, **again), REVIEW], reasons=[{"press": "next-x"}])
+    assert out["record"]["why"] == "loop" and out["pressed"] == ["next-1", "next-2"]
+
+
+@pytest.mark.parametrize("pages, spec, why", [
+    ([step(1), REVIEW], {"fills": [[needs("f1", "Degree")]]}, "open_questions"),
+    ([step(1, rejects=1, errorItems=[UNMAPPED]), REVIEW], {"fix": {"fixed": False, "remaining": [UNMAPPED]}}, "page_errors"),
+])
+def test_near_the_step_limit_the_step_is_skipped_and_the_park_keeps_its_own_reason(tmp_path, pages, spec, why):
+    """One more step would pass the limit, so no thought is asked: the park is the one it was (step_limit is not
+    resumable, and the user must keep their Resume)."""
+    out = _drive(tmp_path, pages, reasons=[{"press": "next-1"}], record={"step": 14, "seen": [f"p{i}" for i in range(14)]}, **spec)
+    assert out["record"]["status"] == "parked" and out["record"]["why"] == why and names(out, "reason") == []
+
+
+# ---------- an update under an open tab (live check 7) ----------
+
+
+def test_frames_that_answered_with_an_error_park_with_their_own_reason_not_page_not_recognised(tmp_path):
+    """The page script threw (the extension was updated while the tab was open and its old and new files disagree):
+    reading again cannot help, and "the page is not recognised" would send the user looking at a fine page."""
+    out = _drive(tmp_path, [{"t": "broken", "always": {"t": "broken"}}])
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "page_stale")
+    assert names(out, "fill") == [] and names(out, "advance") == []
+    # A few reads in case the page was mid-navigation, not the whole settle clock.
+    assert len(names(out, "classify")) <= 4
+
+
+@pytest.mark.parametrize("error", [
+    "Could not establish connection. Receiving end does not exist.",
+    "no reply from the page",
+    "The message port closed before a response was received.",
+])
+def test_frames_nothing_is_listening_in_are_not_an_update_they_stay_the_old_unknown_page(tmp_path, error):
+    out = _drive(tmp_path, [{"t": "broken", "error": error, "always": {"t": "broken", "error": error}}])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+
+
+def test_an_ad_frame_that_threw_beside_a_frame_that_answered_changes_nothing(tmp_path):
+    page = {"t": "step", "n": 1, "frames": [{"frameId": 0, "top": True, "page": {"t": "step", "n": 1}},
+                                           {"frameId": 4, "error": "the page reported an error"}]}
+    out = _drive(tmp_path, [page, REVIEW])
+    assert out["record"]["status"] == "ready"
+
+
+# ---------- a one-page form: the reasoning step works its fields and presses nothing (owner decision 2026-10-15) ----------
+
+DONE_FIELD = needs("f2", "Name", status="verified")          # the fill wrote something, so the page is the application
+SUBMIT_BTN = {"id": "submit-1", "text": "Submit application", "type": "button", "marker": "", "inForm": True, "visible": True, "enabled": True}
+A_DIALOG = {"id": "ok-1", "text": "Close", "type": "button", "marker": "", "inForm": False, "visible": True, "enabled": True, "overlay": True}
+ONE_PAGE_ASKS = {"fills": [[needs("f1", "Degree"), DONE_FIELD]]}
+
+
+def test_a_one_page_form_with_open_questions_asks_the_reasoning_step_told_it_is_one_page(tmp_path):
+    out = _drive(tmp_path, [REVIEW], reasons=[dict(THOUGHT)], **ONE_PAGE_ASKS)
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "open_questions") and r["thought"]["note"] == THOUGHT["note"]
+    assert names(out, "reason") == [["reason", "open_questions", 0, 1, "onePage"]]
+    assert out["pressed"] == []
+
+
+def test_a_one_page_form_the_thought_fixed_ends_ready_with_nothing_pressed(tmp_path):
+    out = _drive(tmp_path, [REVIEW], reasons=[{"moved": True}], **ONE_PAGE_ASKS)
+    assert out["record"]["status"] == "ready" and out["pressed"] == []
+    assert len(names(out, "reason")) == 1
+
+
+def test_a_one_page_form_with_a_complaint_the_repair_cannot_map_asks_too(tmp_path):
+    out = _drive(tmp_path, [{"t": "review", "errs": [UNMAPPED]}], reasons=[dict(THOUGHT)], fix={"fixed": False, "remaining": [UNMAPPED]},
+                 fills=[[DONE_FIELD]])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "page_errors")
+    assert [c[1] for c in names(out, "reason")] == ["page_errors"] and out["pressed"] == []
+
+
+@pytest.mark.parametrize("press", ["submit-1", "next-r", "back-r", "ok-1"])
+def test_any_press_the_step_makes_on_a_one_page_form_is_refused_before_the_page(tmp_path, press):
+    out = _drive(tmp_path, [REVIEW], reasons=[{"press": press}], **ONE_PAGE_ASKS)
+    assert out["pressed"] == [] and names(out, "advance") == []
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "open_questions")
+
+
+@pytest.mark.parametrize("patch", [
+    {"submitContext": True},
+    {"buttons": [SUBMIT_BTN, A_DIALOG]},
+])
+def test_a_one_page_form_that_asks_about_submitting_or_shows_a_dialog_never_asks(tmp_path, patch):
+    out = _drive(tmp_path, [{"t": "review", "patch": patch}], reasons=[dict(THOUGHT)], **ONE_PAGE_ASKS)
+    assert out["record"]["why"] == "open_questions" and names(out, "reason") == []
+
+
+def test_a_cookie_notice_beside_a_one_page_form_does_not_stop_the_step(tmp_path):
+    notice = {**A_DIALOG, "text": "Accept", "cookie": True}
+    out = _drive(tmp_path, [{"t": "review", "patch": {"buttons": [SUBMIT_BTN, notice]}}], reasons=[dict(THOUGHT)], **ONE_PAGE_ASKS)
+    assert len(names(out, "reason")) == 1
+
+
+def test_a_required_box_still_empty_on_a_one_page_form_asks_before_it_parks(tmp_path):
+    out = _drive(tmp_path, [{"t": "review", "needs": [{"label": "Degree", "target": "f1", "kind": "field"}]}], reasons=[dict(THOUGHT)],
+                 fix={"fixed": False}, fills=[[DONE_FIELD]])
+    assert out["record"]["why"] == "open_questions" and [c[1] for c in names(out, "reason")] == ["open_questions"]
+    assert out["pressed"] == []
+
+
+def test_a_review_page_with_no_fields_is_not_a_one_page_form_and_never_asks(tmp_path):
+    out = _drive(tmp_path, [step(1), {"t": "review", "errs": [UNMAPPED], "patch": {"fillable": 0}}], reasons=[dict(THOUGHT)],
+                 fix={"fixed": False, "remaining": [UNMAPPED]})
+    assert out["record"]["why"] == "page_errors" and names(out, "reason") == []
+
+
+def test_a_press_the_step_makes_on_a_filled_one_page_form_with_page_errors_is_refused_before_the_page(tmp_path):
+    """The page IS the one this run filled, so only the one-page rule keeps the press back (the step names the Submit's id)."""
+    out = _drive(tmp_path, [{"t": "review", "errs": [UNMAPPED]}], reasons=[{"press": "submit-1"}], fix={"fixed": False, "remaining": [UNMAPPED]},
+                 fills=[[DONE_FIELD]])
+    assert out["record"]["why"] == "page_errors" and out["pressed"] == [] and len(names(out, "reason")) == 1
+
+
+def test_a_wizards_final_review_page_is_not_a_one_page_form_and_never_asks(tmp_path):
+    """Only the first page of an application can be a whole one-page form; a review page behind a step is a wizard's last page."""
+    out = _drive(tmp_path, [step(1), REVIEW], reasons=[dict(THOUGHT)], fills=[[DONE_FIELD], [needs("f1", "Degree"), DONE_FIELD]])
+    assert out["record"]["why"] == "open_questions" and out["record"]["step"] == 1 and names(out, "reason") == []
+
+
+# ---------- an unknown page that has fields (owner's rule, live check 8) ----------
+#
+# "When I am there the autofill should work": a page the reader classes unknown, at the first step, that the run has not filled,
+# asks the fill inventory for a field count before it parks. With fields it is filled and judged as a page with fields and no
+# Next; with none it is the old unknown_page. The two counts (the reader's `fillable` and the inventory's list) are pinned equal
+# in tests/browser/test_shadow_dom.py.
+
+UNKNOWN = {"t": "unknown"}
+
+
+def test_an_unknown_page_the_inventory_lists_fields_on_is_filled_and_never_parked_unknown(tmp_path):
+    out = _drive(tmp_path, [UNKNOWN], fieldCount=3)
+    r = out["record"]
+    assert (r["status"], r["why"], r["lastBy"]) == ("parked", "unsure_page", "fields_no_next")
+    assert out["fillCalls"] == 1 and r["wrote"] is True
+    assert [c[:2] for c in names(out, "fieldCount")] == [["fieldCount", 0]]
+    assert out["pressed"] == []
+
+
+def test_an_unknown_page_with_no_listed_fields_is_the_old_unknown_page_and_nothing_is_filled(tmp_path):
+    out = _drive(tmp_path, [UNKNOWN], fieldCount=0)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert out["fillCalls"] == 0 and len(names(out, "fieldCount")) == 1
+
+
+@pytest.mark.parametrize("record", [{"filled": True}, {"step": 1}])
+def test_the_inventory_is_not_asked_about_a_page_the_run_already_filled_or_a_later_step(tmp_path, record):
+    out = _drive(tmp_path, [UNKNOWN], fieldCount=3, record={"tabId": 7, "hosts": ["jobs.acme.test"], **record})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert names(out, "fieldCount") == [] and out["fillCalls"] == 0
+
+
+def test_a_host_without_the_field_count_keeps_the_old_unknown_page(tmp_path):
+    out = _drive(tmp_path, [UNKNOWN])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page") and out["fillCalls"] == 0
+
+
+def test_a_page_the_reader_calls_unknown_is_asked_only_once_the_wait_for_it_to_draw_is_over(tmp_path):
+    """A skeleton that draws within the wait is a page like any other: the inventory is not asked while it is blank."""
+    out = _drive(tmp_path, [{**step(1), "early": [UNKNOWN] * 2}, REVIEW], fieldCount=3)
+    assert out["record"]["status"] == "ready" and names(out, "fieldCount") == []
+
+
+def test_the_field_count_asks_the_one_frame_the_page_reader_for_how_many_fields_are_an_applications(tmp_path):
+    out = _ops(tmp_path, "fieldCount", frameId=0)
+    assert out["result"] == 3 and out["sent"] == [["broadcast", 4, {"type": "page_field_count"}, 0]]
+
+
+@pytest.mark.parametrize("frames", [[], [{"frameId": 5, "result": 4}], [{"frameId": 0, "result": None}], [{"frameId": 0, "result": "3"}],
+                                    [{"frameId": 0, "result": -2}]])
+def test_a_frame_that_does_not_answer_with_a_count_has_no_fields(tmp_path, frames):
+    assert _ops(tmp_path, "fieldCount", countFrames=frames)["result"] == 0

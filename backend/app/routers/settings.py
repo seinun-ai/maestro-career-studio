@@ -101,6 +101,7 @@ class OpenAIInfo(BaseModel):
     fast_model: str
     smart_model: str
     chat_model: str
+    reasoning_model: str
     api_key_configured: bool
     gemini_api_key_configured: bool
     anthropic_api_key_configured: bool
@@ -138,6 +139,8 @@ class ModelSettingsPayload(BaseModel):
     fast_model: str | None = None
     smart_model: str | None = None
     chat_model: str | None = None
+    # Same tri-state as the keys below: absent leaves it, null or "" goes back to the default (the strong model).
+    reasoning_model: str | None = None
     # Same absent/null/value tri-state as the key fields below.
     base_url: str | None = None
     json_mode: str | None = None
@@ -485,6 +488,7 @@ def get_openai_info(db: Annotated[Session, Depends(get_db)]):
         fast_model=model_settings.get_fast_model(db),
         smart_model=model_settings.get_smart_model(db),
         chat_model=model_settings.get_chat_model(db),
+        reasoning_model=model_settings.get_reasoning_model(db),
         api_key_configured=openai_ok,
         gemini_api_key_configured=gemini_ok,
         anthropic_api_key_configured=anthropic_ok,
@@ -502,12 +506,13 @@ def get_openai_info(db: Annotated[Session, Depends(get_db)]):
 
 
 def _capability_map(db: Session) -> dict[str, dict]:
-    """Probes for the three configured models only — not every model ever tried."""
+    """Probes for the four configured models only (fast, smart, chat, Reasoning) — not every model ever tried."""
     out: dict[str, dict] = {}
     for model in {
         model_settings.get_fast_model(db),
         model_settings.get_smart_model(db),
         model_settings.get_chat_model(db),
+        model_settings.get_reasoning_model(db),
     }:
         report = llm_capabilities.load(db, model)
         if report is not None:
@@ -545,6 +550,8 @@ def put_openai_info(payload: ModelSettingsPayload, db: Annotated[Session, Depend
     # Keys land before `set_models`; a model change and a key in one PUT both land.
     try:
         model_settings.validate_models(fast_model, smart_model, db, chat_model=chat_model)
+        if "reasoning_model" in sent:
+            model_settings.validate_reasoning_model(db, payload.reasoning_model)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     sent_keys = {
@@ -556,6 +563,8 @@ def put_openai_info(payload: ModelSettingsPayload, db: Annotated[Session, Depend
         model_settings.set_api_keys(db, sent_keys)
     try:
         model_settings.set_models(fast_model, smart_model, db, chat_model=chat_model)
+        if "reasoning_model" in sent:
+            model_settings.set_reasoning_model(db, payload.reasoning_model)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return get_openai_info(db)

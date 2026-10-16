@@ -2,8 +2,8 @@
 
 How the Chrome extension is built and the rules its code depends on, for
 contributors and agents changing `extension/`. If you only want to install and
-use it, read [README.md](README.md) instead. SYSTEM.md §7 owns the panel's
-shape; this file owns the mechanics, and each rule here was learned from a live
+use it, read [README.md](README.md) instead. SYSTEM.md §7 and its reference file
+`docs/agent-surfaces.md` own the panel's shape; this file owns the mechanics, and each rule here was learned from a live
 failure.
 
 ## Surfaces and files
@@ -209,14 +209,21 @@ asking permission of itself.
   a section or article is the section's own), an ancestor holding a form
   control, an ARIA text widget or site chrome, or one holding the same heading twice,
   which is a list of cards; the first heading in document order that gives a section
-  answers, and a label or legend is never a heading);
+  answers, and a label or legend is never a heading; the heading's length is measured on
+  its normalised text, so an icon and indented markup around it do not disqualify it;
+  the list is narrow on purpose, with "Description & Requirements" / "and" and "Job
+  Description & Qualifications" in it and never a bare "Description", "Responsibilities"
+  or "Requirements", which a product page or a blog post also carries; an `article`
+  beside another `article` is one card of a posting drawn as cards and does not stop
+  the climb, unless a sibling repeats the heading, which makes them a list);
   then `main`/`article`, then the body. A described page also gets the JSON-LD path's
   `Title:` / `Company:` / `Location:` lines (`postingHeaderLines`, `content/job-posting.js`):
   from the recorded Darwinbox adapter (host `darwinbox.in`/`.com`, path
   `/ms/candidatev2/<x>/careers/jobDetails/<id>`; DOM only: the header's `span.title`,
   the visible Job Snapshot "Location", the company only from the meta description
   "Job Title | <Company>" and not when that holds a translation key), else the first
-  visible `h1` outside `nav`/`header`/`footer` for the title, only when the document title
+  visible `h1` outside `nav`/`header`/`footer` for the title (the first such `h2`, a banner, when the page
+  has no shown `h1` outside site chrome, as when its only `h1` is the logo's), only when the document title
   or `og:title` contains its text and it is not `og:site_name`, not the last segment of a `Title | Site` title, and not a
   generic banner word (a hero or a "Careers" banner is no title). Darwinbox is not in
   `shared/ats-hosts.js`: its Apply leads to a CAPTCHA'd sign-in, so the run stays out of
@@ -442,17 +449,49 @@ asking permission of itself.
   the same tick, so `files` alone reported "No upload box took the file" over a
   page where it worked. The row must be NEW (more on-screen elements naming the
   file than before the write, so an earlier upload of the same name proves
-  nothing), inside that input's own widget (at most three levels up, never an
-  ancestor holding another file input or any other field, never the whole
-  document), with no new error words (a live region's text included) and no new
-  on-screen alert or invalid-marked element with text in the widget, no error
-  words in the row itself, and still there a beat later; the page gets up to 3 s
-  to show it. A row shown mid-upload that fails later still counts, which is why
-  the panel says "Check the upload before you submit." A detached input counts
-  only by that row. A zero on the same boxes is hedged — "Couldn't confirm the
-  upload. Check the upload box, and attach your resume only if it isn't
-  listed." — because a page can take the file without either proof, and a
-  second press there is a second copy. There is no second press.
+  nothing), inside that input's own widget (never an ancestor holding another
+  file input or any other field, never the whole document), with no new error
+  words (a live region's text included) and no new on-screen alert or
+  invalid-marked element with text in the widget, no error words in the row
+  itself, and still there a beat later; the page gets up to 3 s to show it.
+  **The upload proof** (`ns.uploadProof`, `content/detect.js`, a re-run file
+  because `agent.js` has a size cap; `agent.js` reads it where it is used, never
+  at load, so a re-injection of `agent.js` alone still loads): `chain(input)` is
+  the input's upload ancestors, nearest first, up to six levels, stopping below
+  an ancestor that holds another file input or another field, `<body>`, `<html>`
+  or a `<form>`; the widget is the highest of the first three, as before, and
+  `levels` watches it and every level above it (with the rows, errors and
+  progress each showed BEFORE the write). `seen` reads the DEEPEST watched level
+  still in the page: an uploader that replaces its whole button container, input
+  included, with the file's chip (Greenhouse) leaves the group around it, and the
+  chip is the row. All levels gone: no row. The name counts shown whole, as its
+  stem (no extension, six characters or more), or shortened by an ellipsis
+  ("Jane_Doe_Re…esume.pdf"): the head starts the name, the tail ends it, the tail
+  must reach past the extension into the name (at least two characters of it before ".pdf"; a stem's tail,
+  three), head and tail together at least eight characters and shorter than the
+  name, so another file's chip or a bare "….pdf" proves nothing; every such
+  mention is cut out before error words are read, so a file called
+  `error-log.pdf` is not its own failure. A widget that shows PROGRESS (a new
+  `aria-busy` mark, progress bar, or the words uploading, parsing, processing,
+  scanning, analyzing, counted against what it showed before the write, so
+  standing help is not news) gets longer than 3 s, up to 12 s
+  (`ATTACH_PROGRESS_WAIT_MS`): a parser that prints the name when it is done
+  (a parser-style uploader). A latched Stop ends that extra wait. A row shown mid-upload
+  that fails later still counts, which is why the panel says "Check the upload
+  before you submit." A detached input counts only by that row. A zero on the
+  same boxes is hedged — "Couldn't confirm the upload. Check the upload box, and
+  attach your resume only if it isn't listed." — because a page can take the
+  file without either proof, and a second press there is a second copy. There is
+  no second press. **Hedged, or "boxes changed"**: the panel (`panel/actions/
+  fill.js`) says "Couldn't attach your resume. The page's upload boxes changed…"
+  only when the count of boxes now differs from the one believed (the offer's
+  `expect`, or the last detect's when the write named a box, which states none)
+  AND the fall is not explained by the boxes the write reached: every frame
+  reports `written` (`reportWritten`, always set by `sw.js`), and a fall of up
+  to that many boxes (an uploader that swapped its own box for the chip) is the
+  upload taking the file, so it reads "Couldn't confirm". With no count to change
+  from, the page cannot be said to have changed; a page that GREW a box is still
+  a change.
 - **Autofill attaches the resume too** (owner, 2026-09-30), in both fill
   modes (the file is the user's own, not an AI answer), once per run, AFTER
   the fields and inside the run's `busy` span. "Saved answers + AI" attaches
@@ -540,7 +579,7 @@ asking permission of itself.
 
 ## Rules the code depends on
 
-Extracted from SYSTEM.md §7 (which still owns the panel's shape); these are the
+Extracted from SYSTEM.md §7 (now `docs/agent-surfaces.md`, which still owns the panel's shape); these are the
 mechanics a reader of `sw.js`, `content/agent.js` and the fill engine has to
 know, and each one was learned from a live failure.
 
@@ -587,6 +626,11 @@ know, and each one was learned from a live failure.
   box that names a plain resume. A **combined** box ("Resume (we'll use it to
   fill your profile)", `COMBINED_WORDS`) is the resume box when it is the page's
   only one, and a parser only beside a separate resume box (`readBoxes`).
+  **The vendor's own markers beat the words** (`BOX_MARKS`, found through shadow roots): a box inside an easy-apply container (`oc-easy-apply`,
+  `[data-test="easy-apply-container"]`, the vendor's "fill this from your resume" import) is a `parser` and never written; one inside `oc-resume-upload` /
+  `[data-test="resume-upload-container"]` is the `resume` box. Upload reading (`attachableFileInputs`, the widget climb, section heading, label ids, `occupied`)
+  uses `ns.deep` too, with the section heading found in composed document order and a file row drawn inside a shadow root proving a file through composed text
+  (`rowsNaming`, `hasFile`: a row is in no `textContent`).
   **The outside name:** a react-dropzone's hidden input reads nothing but the
   uploader's "Click to upload", while its name ("Resume *") is a sibling of the
   WIDGET; `outsideName` reads the text before the widget (a stray file name is
@@ -876,7 +920,8 @@ know, and each one was learned from a live failure.
      ONE fast second opinion at the same floor. Its call is capped at
      2 s and ends by 2 s into the request, so Jev's pick (2 s), the
      pick's second opinion and the reasoning call (a second each) still
-     start before 6 s. On the fast engine, or when the Jev call fails,
+     start before 6 s. A slow fast model gets a floor over that cap
+     (below). On the fast engine, or when the Jev call fails,
      the fast model decides. Still unsure: the field is yours. Which
      engine decided is logged. A confident answer is remembered in the
      backend for 10 minutes (at most 500, by question, description and
@@ -918,7 +963,20 @@ know, and each one was learned from a live failure.
   job (its /pick prompt carries the low-stakes paragraph only when
   the batch holds a low-stakes field, which a second opinion never does).
   It is one call, with no retries, on what is left of the request's one
-  `Budget`, and never longer than 4 s (`SECOND_OPINION_MAX_S`). The fast
+  `Budget`, and never longer than 4 s (`SECOND_OPINION_MAX_S`).
+  **A floor for a slow fast model** (live check 9, where a Claude fast model timed out three times in a day
+  and the safe answers were lost): the second opinions of /map, /pick and /step and the fast polarity call
+  (both of its attempts) get at least `FAST_PROVIDER_FLOORS` seconds, by the provider the fast model resolves
+  to (`second_opinion_floor`): 3 s for `anthropic`, 1 s (`MIN_CALL_S`, the old limits) for every other
+  provider, a custom server and an OpenRouter id included. `Budget.left(floor=, keep=, late_ok=)` lifts a call
+  over its cap and its reserve but never past what is left of the 9 s less `keep`, the time a main call that
+  follows still needs: Jev's pick and its fast fallback (`jev.TIMEOUT_S` + `MIN_CALL_S`) for polarity, 1 s for
+  /map's second opinion, and for /pick's only when its reasoning call follows. `late_ok` lets the passes after
+  a floor-lifted call start although it ran past the 6 s window (until under `MIN_CALL_S` of the request is
+  left). The low-stakes Jev judge takes up to its whole 2 s and is skipped when less of the request is left;
+  the queued years check keeps the keen pick and its fallback their time (`reason_years(keep=)`), and with no
+  room left its fields are the user's. Each fast call on a budget logs the timeout it was given, and a failed
+  second opinion says so with it. The fast
   engine's own map, pick and step (and Jev's failure fallback) are one call
   of what is left of the 9 s too, asked once more after a malformed reply
   or a transient failure only while at least 2 s are left (never for a
@@ -1436,7 +1494,7 @@ footer alone).
   a finished application.
 - **Page operations** are content-script messages through the existing fan-out and frame gate (`inv-frame-earns-data`):
   `page_classify` and `page_advance` (`content/page-reader.js`; broadcastable and gated like the `fill_*` ops; a broadcast may name the
-  one frame to ask), `page_errors`, `page_uploads` and `page_required` (broadcastable like the others; below), `page_sign_in` and `page_create_account` (top frame only, in
+  one frame to ask), `page_errors`, `page_uploads`, `page_required` and `page_field_count` (broadcastable like the others, so listed in `sw.js` `BROADCASTABLE`; below), `page_sign_in` and `page_create_account` (top frame only, in
   `panel_frame0`'s allow list and NOT broadcastable), `fill_watch` and `fill_watch_report` (below). `summary()` is counts, button texts and booleans, never a value or a password;
   its `errors` is a COUNT of what the page complains about, `errorKeys` are hashes of those errors (which ones, never what they say), and a
   button that is only a line of the error summary carries `inErrors` (and `errorLine` when its own text reads as "Error - <field>"). It also names
@@ -1456,6 +1514,28 @@ footer alone).
   bare "Continue" or "Proceed". **Closed** is the notice wordings only (this job, position, posting or requisition has been or is now closed, has
   been filled, no longer accepting applications, available or open; "has been filled" after until, once, when, after, before, if or unless is
   prose) and counts only on a page with nothing fillable and no Apply control, so a job description's own prose never ends a run.
+- **Open shadow roots: a page of web components reads like any other** (`ns.deep`, `content/detect.js`). A hosted one-click application draws its inputs, file
+  inputs and buttons inside OPEN shadow roots, which `querySelectorAll`, `closest` and `contains` do not cross, so the page read as "nothing to fill" while
+  `content/inventory.js` (its own walk) listed nine fields. `ns.deep` is the composed-tree version of those: `all(sel, root)` (document order, a host's shadow content right
+  after the host), `any` (the light DOM first, then only the shadow roots under `root`), `closest`, `contains`, `up` (parent, else the host), `text` (textContent or innerText plus the
+  shadow roots' text), `kids`, `roots`, `scope`, and the shared `searchBox` / `picker` rule. It lives in `detect.js` because every injection re-runs that file: a re-run file may
+  call it without a fallback, where a newer export of a load-once file is what `tests/test_extension_manifest.py` forbids. Cost: each call answers from the elements holding a shadow
+  root, found by ONE pass over the page (one per call outside a scope); `scope(fn)` keeps that list until it ends (the page reader wraps `summary`, `pageErrors` and `pageRequired` in one), and a page with no
+  host answers the plain light query. **Only OPEN roots are read**; a closed root is invisible to every read here (Known limits). The page reader's three uses: a shadow
+  button's label is its own text plus its slots' assigned text (a component's slotted "Submit"), and `ownHosts` adds the host's `aria-label`/`title` (and a Submit mark, a
+  required mark) **only when the host speaks for that control**: its shadow root holds exactly that one button and no field (or exactly one field), as a design system's
+  button or input does. A container component (a card holding a field, Back and Next) is not that: its title or id is never the label or mark of the buttons inside it, or every
+  one would sort as Submit and a middle step end as Ready. `aria-labelledby` and `aria-describedby` resolve inside the control's own shadow root first. A dismiss press on a
+  shadow submit inside a light form is refused. `detectPage` asks the light DOM first and, on a miss, each open shadow root (`roots()`, found once by that first miss, one `*`
+  pass), so the panel's manual Autofill is not withheld on such a page; its page text stays the light DOM's.
+- **The owner's rule: an unknown first page that has fields is filled** (`shared/queue-run.js`, owner, live check 8: "when I am there the autofill should work"). A page the reader
+  calls `unknown`, at step 0, that the run has not filled (`record.filled`, `pageFilled`), is asked `fieldCount` once before the run parks `unknown_page`: `page_field_count`
+  returns the fill inventory's fields minus search boxes and rich text (`ns.deep.searchBox`, the same rule `fillableControls` leaves them out by), so a careers landing page with
+  a keyword box and a Location in a search landmark is not an application. With a count above zero the summary is read as having that many `fillable` and classified again: it is
+  filled, then judged as any page with fields (a Next, a Submit, or `fields_no_next`, which parks `unsure_page` after the hold, never Ready); a real Submit beside the fields makes it a
+  one-page form as anywhere. With none it is the old `unknown_page`. A later step, a page already filled, a host without the dep and a page still blank during the wait to draw are not
+  asked. `fillableControls` counts a read-only combobox that opens a list (`picker`: `readOnly`, `role=combobox`, `aria-haspopup=listbox`, as Ant Design draws its select) and
+  excludes `type=search` and search-named boxes, so the common case needs no second opinion; the pair is pinned equal on the shadow fixture in `tests/browser/test_shadow_dom.py`.
 - **A field's own control is never an action** (`fieldControl` on the summary's button, `content/page-reader.js`). A Workday question popup carries its
   question in its aria-label ("... willing to submit to a background check? Select One Required"), which sorted by words is a Submit. So a popup button
   (`aria-haspopup` listbox or true), a member of a pill group (the shape reader's `pills`, or a real group of `aria-pressed` toggles; a lone toggle, one worded
@@ -1494,8 +1574,8 @@ footer alone).
   run parks `moved_away` before any fill, and that host never joins `record.hosts` (the fill, the sign-in and the frame vouch all follow `hosts`).
   A site that bounces the application through a single-sign-on host the list does not hold therefore parks there; the user signs in in the tab and
   presses Resume.
-- **Walls park, they do not retry.** CAPTCHA, email code, account creation on a host that is not a known ATS or that the page refuses, a sign-up page seen again after the press (`create_account_failed`), board-native apply, a failed sign-in, a start chooser it may not follow (`chooser`), a page it does not
-  recognise, a "thank you" page before the run reached
+- **Walls park, they do not retry.** CAPTCHA (a visible challenge frame of reCAPTCHA, hCaptcha, Cloudflare or DataDome's `captcha-delivery.com` reads as one, so the run parks without asking a model), email code, account creation on a host that is not a known ATS or that the page refuses, a sign-up page seen again after the press (`create_account_failed`), board-native apply, a failed sign-in, a start chooser it may not follow (`chooser`), a page it does not
+  recognise and that lists no field to fill (`unknown_page`) or whose every frame threw (`page_stale`: the extension was updated under the open tab, see Install internals), a "thank you" page before the run reached
   review, the tab on a host the run never navigated to (`moved_away`, and the same park for a posting Apply that landed on a host nothing named; not after a park that told the user to go somewhere, `sign_in_yourself`,
   `verify`, `posting`, `chooser` or `unknown_page`: where they land on Resume is theirs, and that host joins the run's), the same page again, more than 15 steps, a Next that changes nothing
   (after one refill), a Next the page refuses and names (`page_errors`), a required upload it could not fill (`upload`), a review page that is not
@@ -1576,6 +1656,15 @@ footer alone).
   `fillLoop.landedNote`, `KNOWN_NOTES`). A field the engine gave up on (nothing landed) still parks, and a landed field beside one that needs an answer parks naming only the second.
   **Never one the protected list covers** (`PROTECTED_SLOT`: `work_auth.*`, `eligibility.*`, `eeo.*`, `derived.sponsorship`, `derived.previously_employed_here`, `derived.us_citizen`,
   `derived.agrees_to_terms`, `preferences.desired_salary`): a value a click happened to land on is not the applicant's answer to those, so they park and are never listed as checked.
+- **An optional field left unanswered is listed, not parked on** (`leftForYou`, `shared/queue-run.js`; `keepAssumed`, `panel/actions/run.js`). An optional field the profile had a
+  saved answer for (the map filed a fact under it; its last outcome is not `no_value`) that the fill still left `needs_answer`, and that no search or click landed a value on
+  (that is the "Check" row's), gets a row in `record.assumedRows` with `left: true`, shown under **Check before you submit** as "Left for you" (`runs.js` `checkRows`; never the
+  value). It never parks the run and never blocks the Next. A later fill of the same page that answers the field (any status in `ANSWERED`) removes the row at that step; a row
+  is one per question and step, like the others.
+- **An optional field left blank is listed too** (`keepAssumed`, `panel/actions/run.js`; `checkRows`, `panel/runs.js`). A not-required field the fill left `left_blank` (no fact, no skill to add)
+  gets a row with `blank: true`, shown under **Check before you submit** as "Left blank — optional" (never a value), so nothing the run did not answer is silent. Like "Left for you" it never
+  parks and never blocks Next, is one per question and step, and goes when a later fill of the same page answers the field, or when the reasoning step then writes it (that row's flags
+  `left` and `blank` are removed and it reads as the answer the step wrote).
 - **A skills box that is not required is left empty in a run** (`skipOptionalSkills`, passed by `fillPage` for a full fill, not for a scoped repair; `shared/fill-loop.js`
   `optionalSkills`). A box the map put the resume's skills in (slot `skills`), or a multi-select or search box whose question names skills, that is neither required nor flagged
   invalid, finishes `left_blank` with `lastOutcome: optional_skills` and no explore, pick or step call: a list of tags is a set of searches, one step each, and nothing
@@ -1584,7 +1673,12 @@ footer alone).
   fingerprint, so the press read as a move and the card said "Page 3" over the same page. Now the buttons the error summary owns (`inErrors`,
   `errorLine`) are out of the fingerprint, the Submit sort and the page classifier, and `press` returns `rejected` instead of `moved` when the
   address and the step heading are those of the press and the page names an error that was not there before it (or nothing else changed). A
-  page with no heading is an unknown step, never "the same", and an error summary's own heading is not the step's; a standing "Fields marked * are
+  page with no heading is an unknown step, never "the same". **The step's heading is its own** (`stepHeading`): the first visible h1/h2 inside the
+  form or main region that is not the job's title, else the progress list's `aria-current="step"` entry, else any visible h1/h2 inside the region (even one the tab's title
+  echoes: a title that follows the step names the step), else the first one that is not the job's, else the first anywhere; a heading that is the JOB's title (the tab's
+  title contains it, or it or a holder around it is named for a job posting / title / header; the holder walk stops at the first region or field-holding ancestor, so a
+  page-wide `jobPostingPage` holder names no job) reads the same on every step and is skipped, and so is an error summary's
+  ("Errors Found", "Please correct": the field reader shares the pattern, so it is no field's section either). A standing "Fields marked * are
   required" line on a page that moved is a move. `waitForChange` ends the wait at once on a fresh error; one that is not new must stay for `REJECT_HOLD_MS` (3 s), or
   `REJECT_HOLD_STANDING_MS` (8 s) when the page already showed errors before the press (`baseline`, the press's `errorKeys`), since a slow save
   leaves the old banner up. `step` and `seen` do not change, and `moved()` clears the page's `fixRounds`, `attempted` set, resume-written flag, attach note and `record.memory`.
@@ -1597,12 +1691,21 @@ footer alone).
   rule below. An error is repaired once (`attempted`, by label), at most `MAX_FIX_ROUNDS` (3) rounds a page; the same error back, or a blocker, parks `page_errors` with `open` set to the
   errors' labels. The card says "The page asks for more" and lists them; a field the page named only by its words (an upload box) has nothing to
   jump to.
-- **A page the run did not fill is never pressed** (`filledPage`: `{where, key, here}` of the page the run last filled, set at every fill, cleared by `moved()`).
+- **A page the run did not fill is never pressed** (`filledPage`: `{where, key, shape, here}` of the page the run last filled, set at every fill, cleared by `moved()`).
   A refused press or a repair can end with the site on its NEXT page, whose Next the run would otherwise press unfilled. Before any press the current read is compared
-  with `filledPage` by PATH and step key (the query is left out: a session or tracking parameter that appears after a fill is the same page, and `filledPage.where`
-  follows it). A different page counts as one step (`step + 1`, the old page's `here` goes into `seen`), `moved()` runs and the page is filled first. The count is
-  bounded like any step: `step_limit` at the step cap and `loop` for a page already in `seen`, so a site that rewrites its address on every fill cannot walk the run
-  through forty fills. A page whose path and heading are those of the page filled is pressed again without a second fill.
+  with `filledPage` by `samePage`: the same PATH and step key (the query is left out: a session or tracking parameter that appears after a fill is the same page, and
+  `filledPage.where` follows it) and, once the page's post-fill read is known, the same SHAPE (`shapeOf`: its step buttons and its count of controls; the error summary's buttons and a field's own control are out of it and out of `fingerprint`, since a
+  tenant's dropdown is a button whose text is its VALUE and a value never tells pages apart). A tenant that keeps one
+  address and one heading for every step is told apart by the shape. A change of shape alone, under the same path and key, counts as a step once per path and key in a
+  drive (`leftFilled`; a conditional field an answer revealed); a further shape change only refills the page (`pageFilled` off, no step added, the repair counts kept), so a page is
+  never pressed unfilled and a page that keeps changing is still bounded. `fingerprint` also carries the count of required boxes still empty, so a Next that only swaps
+  dropdowns (its fresh step shows them empty) still reads as a change. A different page counts as one step (`step + 1`, the old page's `here` goes into `seen`),
+  `moved()` runs and the page is filled first. The count is bounded like any step: `step_limit` at the step cap and `loop` for a page already in `seen`, so a site that
+  rewrites its address on every fill cannot walk the run through forty fills. A page that is `samePage` as the one filled is pressed again without a second fill. The reasoning
+  step's `press_next` uses the same comparison. **A refused press is re-read before the run parks** (`movedOn`, ahead of a `page_errors` park): a press that read as refused only
+  because the new step drew its own error line or upload box leaves the site on a page that is not the one filled; that counts as a step and the loop fills it (a page already in
+  `seen` is not a step: the errors' park, not `loop`). `fixPage` treats an upload error whose box the page no longer has as stale, like a box the user filled by hand
+  (nothing is attached; the driver reads the page again), unless the page shows a required box still empty: that is the box redrawn under another tag, and the run parks.
 - **`page_errors` reads what the page itself complains about**, in its own words and never a value: `{count, items: [{label, target, kind}]}`, `kind`
   `field` | `upload` | `unknown`. Sources: a visible alert or `aria-live` region that reads like an error (not `aria-live="off"`; a region that holds a
   field is the step around it), a block headed "Errors Found" / "Please correct" and the like, and each control marked invalid (the field reader's
@@ -1639,9 +1742,10 @@ footer alone).
   saved as a standing one; after an `open_questions`, `page_errors` or `upload` park, `LEARNS`: a field the page named as wrong, or one typed in the page over an upload park,
   is an answer like any other, while a wall or a navigation park asked for none), posts a "you" receipt row, and continues; a record ended under the read is not driven. Resume also makes the
   record belong to the panel that pressed it (its lease), so the mark after the user's Submit has exactly one owner even when another window's
-  panel left the record. A `page_errors`, `upload` or `unsure_page` park remembers its page (`record.parkedPage`: address and step key, cleared on the first
-  read after the Resume; an `unsure_page` page is matched by address alone when it has no heading). A Resume after `page_errors` or `upload` skips the fill only when that first read is that page (an empty step key proves nothing, so that page is filled
-  as usual); then after a `page_errors` park the errors are read and any that remain get a repair round, and after an `upload` park the upload
+  panel left the record. A `page_errors`, `upload` or `unsure_page` park remembers its page (`record.parkedPage`: address, step key and shape, plus the labels of the errors a `page_errors` park named; cleared on the first
+  read after the Resume; an `unsure_page` page is matched by address alone when it has no heading). A Resume after `page_errors` or `upload` skips the fill only when that first read is that page: the same address and key and the same
+  shape (`samePage`), or, after `page_errors`, the named error still on it (an empty step key proves nothing, so that page is filled
+  as usual; a page that merely shares the address and heading with the parked one, a Workday step after the one parked, is filled); then after a `page_errors` park the errors are read and any that remain get a repair round, and after an `upload` park the upload
   boxes are only LOOKED at (`deps.uploads`, never an attach): a required box still empty parks `upload` again, naming only it, except the box
   an `unconfirmed` write went into (excused by its tag, or, if the page redrew it, when it is the only one left), and Next is pressed only when
   none is. After an `unsure_page` park the Resume FILLS the page (a fill never overwrites an answered field) and the user's word (`vouched`) feeds only the Ready
@@ -1758,8 +1862,67 @@ footer alone).
 - **Per-run fill limits.** `runFill` copies its limits per run; a driven tab passes `RUN_LIMITS` (60 s a field, 12 adaptive steps,
   10 minutes a page), the user's Autofill keeps 25 s, 8 and 3 minutes, and the module defaults are never written.
 
+- **The reasoning step** (`shared/reason-loop.js`; host ops `panel/actions/reason.js`, wired by `think` in `panel/actions/run.js`; backend
+  `POST /api/autofill/reason`, `app/services/autofill_reason.py`). Where the run would otherwise park, a model looks at the page once, acts a little
+  through code the run already has, looks again, and either carries on or parks with a plain note. The model decides; every wall stays in code.
+  - **When.** The driver's `parkOr` calls `deps.reason` before the parks in `THINKS` (`page_errors`, `open_questions`, `unknown_page`, `no_change`, `loop`,
+    `moved_away`), at most once per page per drive (`thought`, `thoughtOn`), and AGAIN when it moved the run on. Never on a wall (CAPTCHA, email code, an account on
+    an unknown host, a Submit page or any page that asks about submitting, a review page with no fields), never on open questions that are all protected, never within one step of
+    `stepMax` (the park keeps its own reason). **A one-page form** (owner decision 2026-10-15) is the exception to "a review page": a page the driver judged `review`
+    at step 0 that HAS fields (`summary.fillable > 0`), with no `submitContext` and no dialog (`pageKind.dialogUp`; a cookie notice is none), is thought about for
+    `open_questions` and `page_errors` only, as `onePage`: the model works its fields (fill, answer from, write, choose, retry, redo) and nothing on the page is pressed.
+    The request carries `one_page: true` and no button or tab (`buttonRows` returns none), the backend allows no press for it (`PRESSES`: `press_next`, `close_dialog`,
+    `follow_tab`) and offers none in the prompt, `perform` rejects one here whatever the reply names, and the driver's own `press` refuses whatever the step asks. A wizard's
+    final review page (step above 0) is never thought about. The review branch's park for required boxes still empty (`requiredEmpty`) goes through `parkOr` too
+    (`open_questions`), so the same rule decides whether the step is asked; the other reasons on a one-page form (`no_change`, `loop`, `unknown_page`) are the user's.
+    The host passes `reason` only with full automation On, **Think when stuck** On (Settings › Form filling,
+    `companion_apply.think_when_stuck`, default On, read like **Stop after each step**) and **Stop after each step** Off; the route reads all three itself
+    (full automation, Think when stuck, Stop after each step: `switched_off`, ask the user, no model is paid, so a stale panel is not obeyed).
+  - **Snapshot** (`snapshotOf`, exactly a `ReasonRequest`, never a value): the stuck reason, each field's `fid`, question, shape, required / filled / invalid /
+    multi / multiline / by_run / touched, the fact NAME `/map` filed it under and up to 20 options; the page's Next and dialog buttons (`b<i>`, role `next` /
+    `dialog`: only the Next the classifier names, a dialog button only while nothing asks about submitting), error lines (with the field's id when they name one),
+    tabs (`t<i>`, host only), the last 8 moves and the signatures excluded. The job selectors (`application_id` or `base`, `page_url`, `today`) ride along; a
+    `moved_away` snapshot carries no field, button or error of the foreign site. Page text is cut to 300 characters and stripped of invisible Unicode (Cf, Co, Cn).
+    The page can say a typed value back, so every question, option text and error line passes the run trace's own screens first (`fillLoop.valueScreens`, over the
+    inventory's `committed` values, same rule and thresholds as "Run trace"): a question loses its own keys and the siblings', an option against the typed
+    siblings' keys (4+ characters), an error line against the siblings' keys. A question or error line keeps its words and reads `[your answer]` for the value (the words are how a protected question is told; the floors are the sibling ones,
+    so a step number is not a value), an option text that holds one is `""`; with no fill loop there is no snapshot.
+  - **Limits and guards** (`LIMITS`, mirrored by `schemas/autofill_reason.py`): 3 rounds, 3 actions a round, a minute a page, and no call is started with under 25 s of
+    that minute left (the backend gives the model 25 s). An action's signature (`type:target`) that failed twice goes back as `excluded`; a field an action left
+    unchanged twice leaves the snapshot; a round after which the page key (fingerprint, error count, filled fields) is unchanged ends the loop, as do `ask_user`, a
+    missing or late reply, Stop and the page clock. The reply is checked again here: ids in THIS snapshot, a button's role, the actions the stuck reason allows
+    (`unknown_page` only `close_dialog`, `follow_tab`, `ask_user`; `moved_away` only `follow_tab`, `ask_user`; `open_questions` no `press_next`, which the driver never
+    presses there; a one-page form no press of any kind, and only `open_questions` or `page_errors`).
+  - **Actions**, each through code that already exists: `fill` is `runFill({only})`; `answer_from` a `slotHints` entry for `/map`; `write` the `free_text` route with
+    `reasoner` `short` (`essay` on a required multiline box) for `/choose`; `choose` the `reasoned` (basis history) or `low_stakes` (basis default) route for `/pick`;
+    `retry` a move-order variant (`open_with_keys`, `search_with_enter`, `search_and_wait`), for `clear_and_set` a redo, or for `step_by_step` the field sent straight to the adaptive
+    step agent (`options.stepByStep`; the backend judges it like the other techniques); `redo` refills over a field the run
+    filled (never the user's `touched` one, never a multi-value field; no clear op exists, a text write replaces and a single choice re-picks); `close_dialog` is `page_advance` with `dismiss`, which the page refuses for any button that asks about
+    submitting; `press_next` is the DRIVER's `press` (it re-sorts the label at click time, and only a page this run filled is pressed), the last action only;
+    `follow_tab` is `rebind`, the Phase 2e move. The model names targets and never supplies a value: what is written comes from the profile, history and resume under
+    the answer rules, so work authorization, sponsorship, salary, EEO, background history, signatures, licences and any fact the profile lacks are `ask_user`.
+  - **The route** is the Companion's exact origin only (`companion_origin.is_companion`; 403 otherwise), because it spends the strong model. The panel asks through its
+    ONE api door (`store.api`; the service worker stays the only fetch site) on its own clock, `REASON_MS` 30 s, polled every 250 ms for Stop. The server wraps and datamarks
+    page text, lists the answer types the profile holds by name, calls the Reasoning model (a JSON Schema for Claude, JSON mode for the rest) and checks every action
+    (`check`): allowed list, ids in the snapshot, the protected list, failed signatures, the Careful level (`write` and `choose` off). One failure turns the whole
+    reply into `ask_user`, with the codes in `rejected`. The note is cleaned (invisible characters, links, emails, phone numbers, 200 characters). Any failure,
+    late reply or fault in the loop is the normal park.
+  - **The card.** While it works the card shows a live line (`run.thinking`; also the footer note for the run in view); when it moved the run on, one sentence
+    (`run.sorted`, "Sorted it out: answered 2 questions and moved on."); when it parks, the code's own words (`run.thought`): what it asks of the user, else one line per attempt, "It tried How Did You Hear About Us? a
+    second way; it didn't take." (`triedOf`: the doing as a phrase, then "it took" for progress or a move, "it didn't take" for no effect, "it was refused"; a rejected action is
+    not listed; a question is cut to 55 characters so the outcome survives the card's own 100-character cut, and a field with no question is "a field"). The model's note is never on the card: it is on the live Thinking line and in the fill log, and the checker's refusal asks with the code's line, not the
+    model's plan. The prompt has the note written to the applicant, in the present tense, about what is wrong on the page ("The state is still empty."), never a plan.
+    What it wrote, chose or redid is listed under **Check before you submit** as answered for you ("Written for you: read it", "Chosen for you: check it", "Filled
+    again: check it"), by field and step, never the value.
+  - **The fill log.** A step posts a run of its own (`traceOf`; `fields: []`, up to 3 `reasoning` rounds): the model, time, the model's note, each action with its outcome
+    (a written answer as its LENGTH) and the capped value-free snapshot the model saw (30 fields, 8 options each). `scripts/eval_reason.py` replays those snapshots
+    against other models. See "Run trace".
+
 ### Known limits (Queued run)
 
+- **The board a job came from is one guess.** `board_visits` keeps only the last board page the Companion looked up, for 20 minutes, in memory, and is not tied to the tab: a job saved from
+  any non-board address inside the window carries that board, and a restart forgets it. The answer is `assumed` and listed for the user to check.
+- **A step with the same heading, buttons and count of controls as the page before it reads as that page** (`samePage`). A tenant whose steps share all three is filled once and pressed, as before.
 - **A Next drawn as a div is not seen.** The button list is `button`, `input[type=submit|button]` and `a[role=button]`; a page whose only Next is a div (even
   with `role=button`) reads as fields and no Next (`fields_no_next`), and the run parks after the unsure hold. The user presses that Next and Resume.
 - **The chooser needs a page with nothing fillable.** Any fillable control on the start chooser's page (a cookie notice's checkbox, a search box) means no
@@ -1775,6 +1938,10 @@ footer alone).
   held in a different frame of the page is not seen.
 - **Step mode, Save job:** on a wizard page whose restored job has no posting text, **Save job** dead-ends ("Nothing to save yet"); and a save from
   a page that escapes the backend's dedupe can create a second job (an older gap).
+- **Closed shadow roots are invisible.** `ns.deep` and every read built on it enter OPEN roots only; a form whose components attach `mode: "closed"` roots reads as no fields, no buttons
+  and no boxes, as before, and the run parks `unknown_page`.
+- **An icon-only Submit whose name is elsewhere reads as unclear and is never pressed.** A shadow button with no text, slotted text, own `aria-label`/`title` or speaking host has no
+  label to sort, so it is `unclear`: never pressed, and an unclear button stops the run like any other (no model picks one). The user presses it.
 - **Several required upload boxes** park `upload`, naming them: the run never guesses which one is the resume's.
 - **Modal wizards are handled.** A step drawn inside a dialog or `aria-modal` container that holds a visible field keeps its Next (`overlayOf`
   judges a dialog by what it holds); only a notice with no field, and a cookie or OneTrust box, is an overlay.
@@ -1791,9 +1958,29 @@ footer alone).
 - **A single-sign-on redirect after a career site's Apply parks.** The landing check allows the link's host, the queued link's host and a known ATS host only; an
   identity provider in between is none of them, so the run parks `moved_away` and the user signs in in the tab, then presses Resume.
 - **Query-only wizards read as one page.** The filled-page guard compares path and step heading with the query left out. A wizard whose steps differ only in a query
-  parameter AND share a heading (or have none) reads as the page already filled, so after a refused press or a repair that ended on its next step, that step
+  parameter AND share a heading (or have none) AND the same buttons and count of controls reads as the page already filled, so after a refused press or a repair that ended on its next step, that step
   is pressed without being filled first. A press that moved still resets the guard (`moved()`), so the ordinary path is not affected.
 - **Account creation has no password-rule retry**: a site whose rule the saved password fails parks `create_account_failed` and waits for the user.
+- **The reasoning step cannot see a dialog in another frame.** It reads the frame that holds the form; a popup drawn in an iframe of its own is out of reach, so
+  `close_dialog` is never offered for it and the run parks as it always did.
+- **A status toast's Continue is the classifier's Next.** A page whose only button reading Next-like is a toast's "Continue" is what the page classifier names, so
+  `press_next` presses it (through the driver's `press`, which still refuses a button that turned into a Submit).
+- **A draft with a Socket.io-style word is dropped.** The link, email and phone check (`services/contact_scan.py`, on every drafted answer and every reasoning note)
+  reads a bare dotted word on a country-code or common TLD (`socket.io`) as a link the owner did not give, and drops the draft; the question is then the user's.
+- **The snapshot's value screen covers what the page can read back, not everything the user ever typed.** It uses the inventory's `committed` values on THIS page:
+  a value typed on an earlier page (and held in neither the profile nor a base resume), or one the page cleared, is not known to it; a partial quote of a drafted answer
+  inside an error line is not caught; and the card's "answered for you" rows show the field's unscreened question (panel only, never sent or stored). The stored
+  copy's backstop (`redact_trace`) adds the profile's and every active base resume's values, no more. A screened question or error line keeps its words and reads
+  `[your answer]` for the value, so a protected question stays recognisable; a field the backend receives with no question text is treated as protected.
+- **A follow never drives.** `follow_tab` rebinds the run to the application's tab and parks with **Continue here**; the model cannot press anything there.
+- **A one-page form is only worked on its fields.** The reasoning step on a one-page form presses nothing: a Next-looking button, a dialog's button and a tab are never offered, so
+  a page whose only way on is a press (a validation dialog, a button that reveals more fields) parks as before. A form that shows a dialog or asks about submitting is not
+  thought about at all, and a one-page form is only what the driver judges a review page at step 0 with fields.
+- **The update guard covers re-run files, not a stale load-once file.** A load-once file that an update changed keeps its OLD code in an open tab until the page is reloaded; the
+  scan only keeps the re-run files from reading what the old copy lacks. A run that finds the page unreadable parks `page_stale` ("Reload the page") after three reads.
+- **A list that no word and no whole-list read shows still goes to the step agent.** The word fallback is skipped for a list that never settled (`unsettled`), which is the
+  adaptive step's as before. "City, State" is typed only when the profile's state fact was filed under a field on the page this fill; a city box on a page with no state field is
+  searched by the city alone.
 
 ### The fill agent's rules (all Autofill, run or not)
 
@@ -1827,6 +2014,11 @@ footer alone).
   clears the slot's floor. After a settled term search that shows the whole list (50 options or fewer, nothing to scroll), one
   flag-policy field may take the closest option, reported `closest_filled`. `/step` carries `kind` and `worked_here` (up to 4 moves
   that worked on this site, from the recipe book's axes).
+- **A tree or slow list goes to the step agent, not to a second try.** A single-value choose that runs out of time (a slow search list, a long tree) hands the
+  field to the adaptive step with `choose -> timeout` in its history, as the multi-value path already did; running the same choose again only burns the field's clock.
+  A "how did you hear" field (`preferences.how_heard`) on a popup or search goes to the step agent first, since a source list can be a category and then a long list under
+  it, and the reasoning step's `step_by_step` retry asks for the same on any popup or search. A search-shape choose has its settle on top of its budget
+  (`budgets.searchSettle`, 4 s, added to `apply`): it types its term again and waits for the list as the explore before it did.
 - **Technique cards.** `services/autofill_techniques.py` holds one card (at most 700 characters) per widget kind (search, multi, popup,
   group, select, date), appended to the adaptive step's instructions with the kind: what to try after which failure. Cards are widget
   craft, never per-site procedures. KNOWN LIMIT: the adaptive step runs for popup and search widgets only, so the group, select and date
@@ -1865,6 +2057,18 @@ footer alone).
   a strict widget that rejects the click and keeps the query looks the same. To make a real commit visible, a **weak box** (`weakBox`: select-style, with no
   selection node, no chip and no backing input to read a pick from) is typed a PREFIX of the option's text, its last character dropped, when the term would be the
   whole text and has at least 3 characters: after the click a real commit shows a change (`Canad` to `Canada`), while a widget that rejected the click keeps the prefix.
+- **A pick the box shows differently from its option is proven by its list** (`fill-core.js` `listHolds`; live check 9). A phone-country select lists "Acmeland +1" and shows a flag and
+  "+1", so no text on the box equals the option and the text check calls a taken pick unread. After the box CHANGED and the text check failed, in a list pick (`choose`), a searched pick's commit and its
+  whole-list re-read, the list is reopened and its marked option read (`option--is-selected`, or `aria-selected="true"`): if that is one of the wanted texts (the option chosen, the value)
+  the pick is `verified` with the option's text. Read only when the box displays something, changed since before, and is not a multi-answer field, a set's item, a kept list, a Workday box
+  (there `aria-selected` is a keyboard highlight) or an undo; and only if reopening and closing the list left the box showing what it showed (a page may take a highlighted row as a pick when
+  the box is left), exactly one option is marked, and the reopen committed nothing. A dialing code is ignored only when the wanted text carries none, so "+1809" and "+1829" stay two
+  countries. Text equality with the saved value stays the first check.
+- **A follow-up's question is the one it follows** (`field-reader.js` `withFollowed`). A label that opens like a follow-up ("If applicable, …", "Please specify …") on a non-choice field is
+  joined to the question before it ("Were you referred by an employee? — If applicable, name the referring employee"): the nearest earlier visible control's question, UNLESS that control
+  is no choice (select, radio, checkbox, combobox or popup) and names none of the follow-up's nouns, when the nearest of the last 8 earlier choice controls of the SAME section that does
+  name one wins. Nouns are words of five letters or more cut to six ("referring", "referred"), less the follow-up's own words and the stems every application shares (employ, company,
+  position, experience, current, application, information), which join nothing.
 - **A read-only select drawn with an invisible input is a field** (the antd opacity rule, `inventory.js` `invisibleButDrawn`). An Ant Design
   read-only select puts its combobox `input` at `opacity: 0` over the words it shows. Only opacity is forgiven: the input must be read-only, popup-shaped,
   still have client rects, not be `visibility: hidden`, and sit in a visible widget box; `display: none`, `visibility: hidden` and an empty box stay hidden.
@@ -1881,6 +2085,14 @@ footer alone).
   default port (80, 443), a trailing slash and a fragment, keeping path and query. A box shorter than the URL is refused (`too_long`), never truncated; a
   URL is never offered as search words or searched by a word. A box already holding a DIFFERENT site is flagged as holding something else and is never
   counted answered or overwritten; the same site in another spelling is already there.
+- **A search that finds nothing is tried by words, then the whole list is read** (`content/fill-core.js` `fallbackWords`, `shared/fill-loop.js`; live check 7). When a typed
+  term shows no options (and the list settled), explore types, in order, the term's first word of 3+ characters that is not the term, then that word with its apostrophes
+  and a trailing plural s removed (`Masters` finds `Master's Degree`, `Bachelors` finds `Bachelor's`); a word loses the punctuation it carried from the term (`Springfield,` is
+  `Springfield`); never for a URL; it stops at the first word that shows options, and `viaWord` tells the choose to type that word too. If the term and its words all leave the
+  box empty (a fixed list the page filters by substring, the saved wording matching no text), the loop reads the list once more with NO term; a list that shows goes to `/pick`
+  whole (`complete` says whether it is the full list), and only a box still empty after that goes to `/step` (`noOptions`). **A city box is searched as "City, State"**
+  when some field on the page was mapped to `personal.state` (`placeOf`); nothing found that way, the city alone is searched next. A Places-style list is then decided by
+  code (`autofill_place.city_option`, `/pick` `city_picks`, `/step`): see `docs/entities/others.md`.
 - **Dates take the 1st when the box wants more than the fact has** (owner decision: low stakes are decisive). A native date, month, pattern or section
   date widget given a month-only value gets day 01, and a year-only value gets January 1st, written and reported `assumed` with a fixed note ("Day set to
   the 1st", "Month set to January", "Set to the 1st of January"). A box that already shows every part the fact has is left as it is (2021-05-17 for the
@@ -1914,14 +2126,16 @@ At the top level a years question is Yes only when the history is silent or show
 middle level it is Yes when the history shows the skill and does not contradict the years. Clearance and agency questions are never
 a keen guess. An answer the level gives is an `inferred` receipt row, so the `guessed_screening` flag lists it under "Check before you submit".
 
-**The safe default** (owner decision, 2026-10-14; `autofill_map._LOW_STAKES_TEMPLATE`, `_KEEN_NO`, `_KEEN_YES`, read by `/map` and `keen()` for `/pick` and
+**The safe default** (owner decision, 2026-10-14; a "no fact" answer at any probability reaches the judge unless a second opinion named a fact or the runner-up was protected or EEO at 0.2 or more:
+`others.md`, "Slow fast models, the low-stakes reach…"; `autofill_map._LOW_STAKES_TEMPLATE`, `_KEEN_NO`, `_KEEN_YES`, read by `/map` and `keen()` for `/pick` and
 `/step`; from `history` up, never at `facts`). When the profile has no fact: a yes/no about a status, affiliation or circumstance that would only add
 something, from a CLOSED list (tribal, union or association membership, an employee referral, a relative or household member at the company), is No (Not
 applicable when offered); a yes/no about willingness, readiness or consent to a standard pre-employment step (background check, drug test, reference check,
 I-9/E-Verify, providing documents) or about basic means (reliable transportation, internet) is Yes, both directions stated outright to the model. Never
 defaulted (the never-list): work authorization, sponsorship, age or eligibility facts, EEO and voluntary self-identification (the safe answer there is
 "decline", never No), background or criminal HISTORY (a record, a conviction, a pending charge; the protected sentinel names only that, so willingness to a
-check is no longer protected), termination or discipline, non-competes and other agreements, debarment, clearance, salary, signatures and attestations, a box
+check is no longer protected; Jev still files some under it, and code lets a QUESTION of willingness (willing, agree, consent, able to undergo or submit to) to a background check, drug test, reference check,
+I-9 or E-Verify reach the judge, never a first-person consent box, a pass, clear, eligibility or proof, or a history word), termination or discipline, non-competes and other agreements, debarment, clearance, salary, signatures and attestations, a box
 that itself authorizes a check or a consumer report, licences and certifications, factual education or experience. A skills section that is not required stays
 empty. Such a box is the user's alone: `CONSENT_FORMS` refuses it without the Agreements permission, and with that standing consent (owner model, 2026-09-26) the consent-forms rule ticks it, never a model.
 
@@ -1952,10 +2166,23 @@ empty. Such a box is the user's alone: `CONSENT_FORMS` refuses it without the Ag
   under Social Media, on another under Job Board); else the MODEL decides, with a goal that says to search the board's name first, then open the category most
   likely to hold it (names like Job Board, Online, Internet, Website, Social Media or Other) and try the next if it is not there. The goal never names one
   category. A website or careers-page answer picks the careers-site leaf and names no board; any other saved word ("Referral", "Internet search") is walked to
-  its own leaf by the ordinary goal. A leaf that is not the saved word itself is reported `assumed`.
+  its own leaf by the ordinary goal. A leaf that is not the saved word itself is reported `assumed`. **A generic board answer** ("Job board", "job site", "employment portal": a
+  kind, not a name) with no board known for this job takes LinkedIn (`GENERIC_BOARD`) when the list offers it, as a leaf or by search, else the first other specific job
+  board the list offers: always `assumed`, listed under "Check before you submit" (owner decision 2026-10-15). A referral is never a board answer, even one that names the board
+  the person works through, and "Board member" is none (the word must follow job or career, or be a known board name). **The board a job came from**: the job hint's `source`
+  also reads `jobs.referrer_board`, the board page the user opened just before saving the job from the employer's own page (`services/board_visits`: the last known board page
+  the Companion's `/api/jobs/match` was asked about, kept 20 minutes in memory, name only, never an address; `POST /api/jobs` stamps it when the saved address is not a board's).
 - **Degree levels (J7).** `answer_flags.differs_from_profile` compares a degree by level when the page's value names only a level ("Master's/Advanced Degree"
   matches a Master of Science), reads M.B.A. as a master's in business administration only, treats a bare MS, MA, BS or BA as a degree in its own field, and
   compares a named field by its words.
+- **Education level (threshold lists).** `derived.education_level` is the highest level a FINISHED degree in the profile names (`autofill_education.highest_completed`:
+  high school, associate, bachelor, master, doctorate; a degree still in progress, a candidate, a denial, an end date ahead or "present" does not count; policy `exact`). A list of thresholds ("Bachelor's
+  degree or higher", "Combination of relevant education, experience, and training", "None of the above") is answered in code by `/pick` and `/step`, never by a model: the highest threshold the level
+  meets, an option naming two levels taken at the lowest, never "None of the above". It abstains (the user answers) when none is met, when the winning level has several options or one tied to a field or
+  a degree type, and a list that names no level is left to the ordinary path.
+- **Type of sponsorship.** A question that asks what TYPE of sponsorship is needed (the question has a need / require verb and no "any type of") under a saved sponsorship slot, with every saved sponsorship answer No
+  (a question about now only needs the now fact), is answered by the option that means none or not applicable (`autofill_sponsorship`, in `/pick` and `/step`; a closed list is opened first); with no such
+  option it abstains. A Yes/No list and a saved Yes never take this rule. The saved No is used even when the question counts OPT or STEM OPT as sponsorship (owner decision 2026-10-15).
 - **Middle name.** `/map` files a middle-name or middle-initial question as none unless the fact is `personal.middle_name` (the profile has none), and
   `content/autofill.js` has a middle-name guard rule ahead of the first-name rule. The name is used as stored, never split.
 - **Drafted written answers.** Only a REQUIRED text or textarea field `/map` filed under `free_text` or `years_unanswered` (`Mapped.draft`) and `/choose` could not
@@ -2059,7 +2286,8 @@ and its effect, and the final status. Failed model calls are noted as `{op, ms}`
 model chose when it filed the field under one of the six fixed words (`free_text`, `none`, `protected_unanswered`, `history_unanswered`,
 `years_unanswered`, `blocked_eeo`; `Sentinel` in `schemas/autofill_fill.py`, `TRACE_SENTINELS` declared in `shared/fill-loop.js` and again in
 `sw.js`, each side filtering to the list): a fixed word, never a value, kept by the reasoned and low-stakes routes too, and printed by
-`scripts/fill_trace.py`. A field notes its
+`scripts/fill_trace.py`. A /map field routed `none` because the model's top fact fell under that fact's floor also carries that fact's NAME (`top_fact`: a slot name such as
+`personal.email`, never a value; the schema's `SLOT_NAME` pattern, up to 120 characters, checked again by `shared/fill-loop.js` `DECISION_CHECKS` and `sw.js` `TRACE_STEP`, an invalid one left out). A field notes its
 polarity once (the first answer: later /pick and /step calls on a Yes/No field answer with the same way, recalled
 from memory; a recalled way carries `remembered` and the counters skip it). A field keeps at
 most 40 steps (the first 20 and the last 20), and any text is cut to 200 characters without
@@ -2074,7 +2302,9 @@ field is typed (text, date, search, popup) and at 4+ otherwise; a word every for
 Office, Personal, Business; `COMMON_OPTION_WORDS`) never blanks ANOTHER row's label or option list, so an answer "Mobile" leaves a question that names a company
 called Acme-Mobile readable, while the row that holds it still blanks its own label. The page's own option texts and the
 chosen option's index are kept on every field, EEO included (owner decision), so a wrong pick can be
-read back. The index counts the field's own `options` list (the inventory's passive list, `o{i+1}`, as stored
+read back. A search box has no passive list, so the options its explore showed are kept as `offered` (`fill-loop.js`): a **typed** explore (a city, an employer, a
+word of the term: its rows echo what was typed) keeps only their COUNT (`option_count`, no texts); an explore with no term (a popup's click-open, the whole-list re-read) keeps
+the texts, screened by the same rule as any option text. The index of a pick is never kept for an explored row. The index counts the field's own `options` list (the inventory's passive list, `o{i+1}`, as stored
 in `options`), not the options /pick was offered (those drop placeholder and never-fill rows); it is left out
 when the field has no passive list, when the pick was an explored row (explore oids restart at o1, so a row
 counts only when its oid and text are the passive option's), or at 250 and over (the schema's bound). An
@@ -2088,6 +2318,20 @@ the schema would reject dropped), and posts it to `POST /api/autofill/runs` only
 and folds each into counters with no host and no label; **Clear data** deletes the runs and keeps
 the counters. Read them with `backend/scripts/fill_trace.py last|report`, which opens a copy of the
 database and refuses the live file.
+
+**The reasoning step's rounds.** A thought posts a second kind of run: `fields` is `[]` and `reasoning` holds up to 3 rounds
+(`TraceReasonRound`; `reasonLoop.traceOf` builds it, `sw.js` `TRACE_REASON_ROUND` and the backend schema bound it alike). A round has the model id, `ms`, the
+model's note (the same cleaned sentence the card shows, 200 characters), each action as `{type, target, outcome}` (the target a field id or an opaque
+`b<i>` / `t<i>` ref; `slot` for `answer_from`, the fact NAME; `technique` for a `retry`, `basis` for a `choose`, each from a closed list; `written` for a write, the answer's LENGTH), the checker's rejection codes, how the
+round ended (`stopped`: a reply the checker or the clock ended, or `no_read` / `wall` for an exit before any model call, which still posts a row with no model) and `snapshot`: what the model was shown, without the job's selectors, capped to 30 fields and 8 options each (a snapshot over 120 000
+characters is dropped and the round kept). The snapshot is screened in the panel before it is sent or stored (above); the table's backstop (`autofill_reason.redact_trace`, on
+`POST /runs`) takes every saved answer and every active base resume's employer, title, school and skill out of its questions, option texts, error lines and the round's note,
+each cut to the schema's cap (an option keeps the facts a page lists as its own choices: country, state, EEO, work authorization and preferences). A stored
+snapshot can therefore read `[saved answer]` where a page named one of your own values. A reasoning step is a run row of its own, so its rounds count against the
+newest-50 `RUNS_KEPT` with the fill runs. The model, the note and the page's own words are the only free text.
+`fill_trace.py last` prints the rounds after the fields. `backend/scripts/eval_reason.py` replays the snapshots against other models
+(`--models claude-sonnet-5-5,claude-haiku-5-5,gpt-6-luna`, from a database copy or a JSON file), runs the server's own checker and prints the valid
+and ask_user rates, the actions chosen, latency, tokens and a cost estimate; it spends your keys' money and is maintainer-run, never in CI.
 
 ## Install internals
 
@@ -2118,6 +2362,14 @@ database and refuses the live file.
   injecting into a page nobody asked about is exactly the always-on cost the
   detection gate exists to avoid — so anywhere else the panel says it cannot see
   the page and to reload the tab, rather than claiming it had nothing on it.
+- **An update under an open tab: a re-run file never depends on a newer export of a load-once file.** Re-injecting runs the guarded files' OLD copy and every unguarded file's
+  new one in the tab's same world, so a re-run file that reads at load an `ns.X` only a load-once file publishes (page-reader's `ns.ERROR_HEADING`, live 2026-10-15) gets
+  `undefined` after an update and every page read throws ("Page not recognised" over a plain form). The rule: such a read keeps its own copy (`page-reader.js` has its own
+  `ERROR_HEADING`; `tests/test_extension_manifest.py` pins both equal) or a fallback (`ns.X ?? …`) or a `typeof ns.X` guard anywhere in the file. A static scan over the
+  manifest's content scripts fails on a plain or destructured read of a name past `SHIPPED_ONCE_EXPORTS` (the names the last release already published; a new name is
+  never added there to quiet the test). The runtime backstop: when no frame gave a summary and a frame answered with an error that is not "no script listening"
+  (`scriptThrew`, `NOT_LISTENING`), the read repeats up to 3 times (`BROKEN_READS`), then the run parks `page_stale`, not `unknown_page`; the card reads "Reload the page: The
+  Companion couldn't read this page (usually after an update). Reload the page, then press Resume." (`panel/runs.js`).
 
 ### The pinned id and the CORS allowlist
 

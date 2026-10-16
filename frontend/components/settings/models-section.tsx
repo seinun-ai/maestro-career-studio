@@ -41,6 +41,7 @@ export type ModelSettingsPatch = {
   fast_model?: string;
   smart_model?: string;
   chat_model?: string;
+  reasoning_model?: string;
   openai_api_key?: string | null;
   anthropic_api_key?: string | null;
   gemini_api_key?: string | null;
@@ -86,7 +87,7 @@ export function useSaveModelSettings(
   });
 }
 
-/** The three model roles, each with what it does. */
+/** The four model roles, each with what it does. */
 const ROLES = [
   {
     key: "fast_model",
@@ -105,6 +106,12 @@ const ROLES = [
     label: "Assistant model",
     hint: "Runs the Assistant. Use Test to check it works.",
     patch: (v: string) => ({ chat_model: v }),
+  },
+  {
+    key: "reasoning_model",
+    label: "Reasoning model",
+    hint: "Used only when the Companion is stuck. Strong models reason better, and cheaper ones cost less.",
+    patch: (v: string) => ({ reasoning_model: v }),
   },
 ] as const;
 
@@ -180,7 +187,7 @@ export function ModelsSection() {
       {(data) => (
         <div className="grid gap-6">
           <ModelProfileNote />
-          <div className="grid gap-4 @2xl/setting:grid-cols-3">
+          <div className="grid gap-4 @2xl/setting:grid-cols-2 @4xl/setting:grid-cols-4">
             {ROLES.map((role) => (
               <RoleModel
                 key={role.key}

@@ -22,7 +22,7 @@ at to your local Maestro CS app.
   tab. It fills each page, clicks **Next** itself, and stops on the review page so
   that **Submit** is yours. It asks you only when it must: a CAPTCHA, an email
   code, an account on a site it does not know or one the site refused, a job
-  board's own apply button, a page it does not recognise, or a required question
+  board's own apply button, a page it does not recognise and that has no fields, or a required question
   it could not answer. Answer in the page, then
   press **Resume** in the panel. Your answers are saved to your profile (with
   an Undo). After you press Submit and the confirmation page shows, the panel
@@ -59,6 +59,25 @@ at to your local Maestro CS app.
   with your saved job-site login, once, and waits up to 20 seconds for the site
   to finish before it says "Account not created" (see below). While a run is working the
   panel says "Ask opens when the run pauses"; the Ask box returns when it stops.
+- **Think when stuck.** Where a run would stop on a page it could not work (an error
+  it could not match to a field, a question it has no answer for, a page it does not
+  recognise, a Next that changed nothing, or a tab on another site), it first asks the
+  **Reasoning model** to look at the page. The model sees the questions, the options and
+  the errors, never what is in a field, and picks up to three actions: fill again, answer
+  from a saved answer, write a short answer, choose an option, try a field another way, close a
+  popup, press Next, move to the application's tab, or ask you. It tries at most three rounds
+  and about a minute a page. The card shows a live line ("Thinking: …") while it works, then
+  one sentence if it sorted the page out, or the usual **Needs you** card saying what it asks of
+  you, or what it tried and whether it took ("It tried How Did You Hear About Us? a second way; it didn't take."). Anything it wrote or chose is listed under **Check before you submit**
+  as answered for you. On a one-page form (Submit on the same page, no Next) it works the fields only and
+  presses nothing there. It never presses Submit, never presses Next on a page it did not fill,
+  and never answers work authorization, sponsorship, salary, demographic, background-history, signature
+  or licence questions, or a fact your profile does not have. Settings › AI & models ›
+  Form filling has the **Think when stuck** switch (on by default; it needs full automation
+  on and **Stop after each step** off), and **Reasoning model** sits with the other models. By
+  default it is the strong model of your provider, which costs a few cents a round. Claude Haiku 5.5
+  and GPT-6 Luna are listed as cheaper choices. With the fill log on, each round and the page it saw are
+  recorded, so `backend/scripts/eval_reason.py` can compare models on the same pages.
 - **Written questions are drafted for you to read.** A required question such as
   "Why do you want to work here?" that your saved answers cannot answer is drafted
   from your career history and the job, in your own voice, about 120 words (or the
@@ -77,11 +96,45 @@ at to your local Maestro CS app.
   defaulted, and every default is listed under **Check before you submit**, as is a
   required field that a search or a click filled for you (Field of Study, say), which no
   longer stops the run. An optional Skills box stays empty in a run.
+- **Some questions are answered from what you saved, and listed to check.** "How did you hear
+  about us?" with just "Job board" saved picks LinkedIn, or another job board the list offers, when
+  the job names no board (a job saved right after a job board page remembers that board; a referral is
+  never a board). An education list ("Bachelor's degree or higher", "None of the above") gets the highest
+  level your degrees meet, never "None of the above", and is yours when none is met. "What type of
+  sponsorship will you need?" gets Not applicable (or the option that says none) when every sponsorship
+  answer you saved is No, even when the question counts OPT as sponsorship, and is yours otherwise. A Degree
+  list of types gets the plain option for your degree's level (the MBA option only for an MBA or Business
+  Administration), "located in … and/or willing to relocate" is answered Yes when you saved that you would
+  relocate (a condition such as "on your own" makes it an assumed answer), and a Location (City) box is searched
+  as "City, State" when the form has a state field. An optional field you have an answer for that stayed empty
+  is listed under **Check before you submit** as **Left for you**, and an optional
+  field the run left blank as **Left blank — optional**. A saved "No" for veteran
+  status picks the one "I am not a protected veteran" option without a model call,
+  and a saved "Immediately" start date is a date in a date box and the word
+  "Immediately" in a list. A question of willingness to a background check, drug
+  test or reference check is answered by the safe-default rule; a Claude fast model
+  gets 3 s for its second look instead of being left to time out.
 - **Postings without built-in job data are read too.** The Job step reads the
   description from the section under a "Job Description" or "About the role"
   heading, and the title, company and location from a recorded page layout (a
   Darwinbox careers page) or the page's own heading. Darwinbox's apply page needs
   a CAPTCHA, so the run stops there and leaves the application to you.
+  A role-detail page drawn as cards is read from its "Description & Requirements"
+  card, with its banner as the title when its only top heading is the logo.
+- **Uploads that change the page.** An upload box that is replaced by the file's
+  chip, or that prints the file's name only after it reads the file
+  (up to 12 s; Stop ends the wait), counts as attached, also when the
+  name is shown without its extension or shortened with "…". A phone-country list
+  that shows a flag and "+1" is checked by reopening it for the option it marks.
+  A follow-up ("If applicable, …") is read with the question it belongs to.
+- **Forms of web components and unfamiliar pages.** Fields inside the open shadow
+  parts of a page built from web components are read and filled like any others,
+  so Autofill is offered there. On the first page of an Apply run, a page the
+  Companion does not recognise but that has fields is filled like any other
+  instead of stopping at "Page not recognised"; search boxes are never filled and
+  the vendor's own "fill this from your resume" box is never written. A DataDome
+  slider counts as a CAPTCHA. Parts a page keeps closed cannot be read, so such a
+  form is left to you.
 - **Ask one question.** The **Ask** box at the foot of the Fill step takes any
   question from a form, answers it in one paragraph from your history and the job,
   and lets you copy it. It never writes into the page.
@@ -105,7 +158,8 @@ id, so there is no id to copy and no backend restart.
 **After an update**, press **Reload** on the extension's card at
 `chrome://extensions`, then reload any job tabs that were already open. A tab
 opened before the reload shows "No job description found on this page" even
-when the description is plainly visible, until you reload that tab.
+when the description is plainly visible, until you reload that tab. A run that
+cannot read such a tab stops with **Reload the page**; reload the tab, then press Resume.
 
 **Installed before the fixed id existed?** Reloading is not enough. On
 `chrome://extensions` press **Remove**, then **Load unpacked** on the

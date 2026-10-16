@@ -344,10 +344,26 @@ def test_a_popup_that_will_not_close_is_not_clicked_at_forever(page, load):
     assert page.evaluate("window.outside") == 2
 
 
-def test_a_timeout_is_reported_as_timeout_not_cancelled(page, load):
+def test_a_search_choose_has_the_searchs_own_settle_on_top_of_the_apply_budget(page, load):
+    """Live 2026-10-15: the choose re-types the term the explore already waited ~3.5 s on, and 6 s was not enough for both."""
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["School or University"]
     page.evaluate("window.careerStudioCompanion.fillOps.budgets.apply = 150")
+    assert apply(page, f, op="choose", text="Texas A&M University", term="Texas")["outcome"] == "verified"
+    assert oracle(page, "school") == "Texas A&M University"
+
+
+def test_a_choose_with_no_search_term_keeps_the_plain_apply_budget(page, load):
+    load(page, fixture_html("workday_listbox.html"))
+    f = inv(page)["Degree"]
+    page.evaluate("window.careerStudioCompanion.fillOps.budgets.apply = 1")
+    assert apply(page, f, op="choose", text="Masters")["outcome"] == "timeout"
+
+
+def test_a_timeout_is_reported_as_timeout_not_cancelled(page, load):
+    load(page, fixture_html("workday_search.html"))
+    f = inv(page)["School or University"]
+    page.evaluate("window.careerStudioCompanion.fillOps.budgets.apply = 150; window.careerStudioCompanion.fillOps.budgets.searchSettle = 0")
     row = apply(page, f, op="choose", text="Texas A&M University", term="Texas")
     assert row["outcome"] == "timeout"
     page.wait_for_timeout(600)
@@ -359,7 +375,7 @@ def test_a_timeout_is_reported_as_timeout_not_cancelled(page, load):
 def test_a_choose_after_a_timeout_starts_clean_and_verifies(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["School or University"]
-    page.evaluate("window.careerStudioCompanion.fillOps.budgets.apply = 150")
+    page.evaluate("window.careerStudioCompanion.fillOps.budgets.apply = 150; window.careerStudioCompanion.fillOps.budgets.searchSettle = 0")
     assert apply(page, f, op="choose", text="Texas A&M University", term="Texas")["outcome"] == "timeout"
     page.wait_for_timeout(600)
     page.evaluate("window.careerStudioCompanion.fillOps.budgets.apply = 6000")

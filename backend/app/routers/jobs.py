@@ -7,11 +7,12 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.companion_origin import is_companion
 from app.db import begin_write, get_db
 from app.models.application import Application
 from app.models.job import Job
@@ -36,8 +37,10 @@ from app.services import (
     application_writes,
     artifacts,
     ats_score,
+    autofill_job,
     base_eligibility,
     base_resume_data,
+    board_visits,
     filled_answers,
     jd_extraction,
     job_search_brief,
@@ -172,12 +175,14 @@ def _job_from_extraction(
     source: str = "user",
     session: Session | None = None,
     apply_url: str | None = None,
+    referrer_board: str | None = None,
 ) -> Job:
     job = Job(
         raw_text=raw_text,
         raw_text_hash=raw_text_hash,
         source_url=(source_url or "").strip() or None,
         apply_url=apply_url,
+        referrer_board=referrer_board,
         source=source,
     )
     _apply_extraction(job, extraction, session)
@@ -273,6 +278,7 @@ def _persist_job(
     source: str = "user",
     session: Session | None = None,
     apply_url: str | None = None,
+    referrer_board: str | None = None,
 ) -> Job:
     """Save a job, or return the tracked row on a dedup hit. Only a NEW job is scored,
     after its own commit."""
@@ -308,7 +314,7 @@ def _persist_job(
             return _with_ownership(db, twin)
     job = _job_from_extraction(
         raw_text, source_url, raw_text_hash, extraction, source=source, session=db,
-        apply_url=apply_url,
+        apply_url=apply_url, referrer_board=referrer_board,
     )
     db.add(job)
     db.flush()
@@ -359,8 +365,12 @@ def create_job(payload: JobCreate, db: Annotated[Session, Depends(get_db)]):
         existing.already_existed = True
         return _with_ownership(db, existing)
     extraction = jd_extraction.extract_jd(payload.raw_text, db)
+    # The extension saves from the page the user is on. On the employer's own page (not a board's) the board page
+    # opened just before it is where the job was found (services/board_visits).
+    referrer = None if autofill_job.board_of_url(payload.source_url) else board_visits.recent()
     return _persist_job(
-        db, payload.raw_text, payload.source_url, raw_text_hash, extraction, apply_url=payload.apply_url
+        db, payload.raw_text, payload.source_url, raw_text_hash, extraction, apply_url=payload.apply_url,
+        referrer_board=referrer,
     )
 
 
@@ -522,7 +532,7 @@ def export_jobs(
 
 
 @router.get("/match", response_model=JobMatchResult)
-def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
+def match_job_by_url(url: str, request: Request, db: Annotated[Session, Depends(get_db)]):
     """The tracked job the browser extension is currently looking at, if any.
 
     Registered before /{job_id} so the literal path wins over UUID parsing —
@@ -538,6 +548,8 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
     postings (see _find_existing), so the same source_url can legitimately
     belong to several rows.
     """
+    if is_companion(request):   # the user's own browsing, not an agent's lookup
+        board_visits.seen(url)
     # Projected scan: the loop reads source_url only, and this fires on every
     # SPA route change. Selecting whole Job rows would hydrate raw_text (the
     # full JD) and extracted_json (JSONB) for every candidate, making the

@@ -433,3 +433,109 @@ def test_a_targeted_write_to_workdays_emptying_uploader_is_proven_by_its_row(pag
     target = next(iter(_tags(page).values()))
     assert _attach_to(page, target) == {"written": 1, "proven": 1}
     assert oracle(page, "files") == [NAME]
+
+
+# ---------- an uploader that swaps its own container for the file's chip (live check 9) ----------
+#
+# The input sits five levels under the group and the page replaces the button container (input included) with the file's
+# name. The widget the old three-level climb picked is gone by the time the proof is read; the group around it is the page's.
+
+@pytest.fixture
+def swap_page(page):
+    page.set_default_timeout(20000)
+    _load(page, fixture_html("acme_upload_swap.html"))
+    return page
+
+
+def test_a_chip_that_replaces_the_whole_container_counts_as_the_row(swap_page):
+    page = swap_page
+    assert _attach(page) == {"ok": True, "data": 1}
+    assert NAME in page.inner_text(".file-upload__filename")
+
+
+def test_a_container_that_vanishes_with_no_chip_counts_zero(swap_page):
+    page = swap_page
+    page.evaluate("window.__swap = 'gone'")
+    assert _attach(page) == {"ok": True, "data": 0}
+
+
+def test_a_chip_that_names_a_failure_is_not_a_row_after_the_swap(swap_page):
+    page = swap_page
+    page.evaluate("window.__shown = (name) => name + ' failed to upload '")
+    assert _attach(page) == {"ok": True, "data": 0}
+
+
+# Rippling-style: the name shows only once the upload and the parse are done (seconds), shortened, behind a progress mark.
+SLOW = "(name) => name + ' '"
+
+
+def _slow(page, after, shown=SLOW, busy=True):
+    page.evaluate("""([after, shown, busy]) => {
+      window.__after = after; window.__shown = eval(shown); window.__clear = true;
+      if (busy) {
+        const bar = document.createElement("div");
+        bar.setAttribute("role", "progressbar"); bar.textContent = "Uploading";
+        document.querySelector(".button-container").append(bar);
+        document.getElementById("resume").addEventListener("change", () => bar.setAttribute("aria-busy", "true"));
+      }
+    }""", [after, shown, busy])
+
+
+def test_a_row_that_shows_after_the_usual_wait_counts_while_the_widget_shows_progress(swap_page):
+    page = swap_page
+    _slow(page, 5500)
+    assert _attach(page) == {"ok": True, "data": 1}
+
+
+def test_a_row_that_shows_after_the_usual_wait_does_not_count_with_no_progress_shown(swap_page):
+    page = swap_page
+    _slow(page, 5500, busy=False)
+    assert _attach(page) == {"ok": True, "data": 0}
+
+
+def test_the_wait_for_progress_is_bounded(swap_page):
+    page = swap_page
+    _slow(page, 40000)
+    assert _attach(page) == {"ok": True, "data": 0}
+
+
+@pytest.mark.parametrize("shown", [
+    "(name) => name.replace(/\\.pdf$/, '') + ' '",
+    "(name) => name.slice(0, 8) + '…' + name.slice(-8) + ' '",
+    "(name) => name.slice(0, 8) + '...' + name.slice(-6) + ' '",
+], ids=["stem", "ellipsis", "dots"])
+def test_a_filename_shown_as_its_stem_or_shortened_still_counts(swap_page, shown):
+    page = swap_page
+    page.evaluate("([s]) => { window.__shown = eval(s); window.__clear = true; }", [shown])
+    assert _attach(page) == {"ok": True, "data": 1}
+
+
+def test_a_shortened_name_of_another_file_is_not_this_files_row(swap_page):
+    page = swap_page
+    page.evaluate("() => { window.__shown = () => 'Other_Fi…ument.pdf '; window.__clear = true; }")
+    assert _attach(page) == {"ok": True, "data": 0}
+
+
+def test_a_page_asked_to_report_how_many_boxes_were_written_answers_written_and_proven(swap_page):
+    page = swap_page
+    reply = page.evaluate("""([b64, filename]) => new Promise((resolve) => {
+      window.__pageListener({ type: "attach_resume_pdf", b64, filename, expect: 1, reportWritten: true }, { id: "t" }, resolve);
+    })""", [PDF, NAME])
+    assert reply == {"ok": True, "data": {"written": 1, "proven": 1}}
+
+
+def test_a_shortened_name_whose_tail_is_only_the_extension_is_not_this_files_row(swap_page):
+    """Any file ends in .pdf: the part after the ellipsis has to reach past it."""
+    page = swap_page
+    page.evaluate("() => { window.__shown = (name) => name.slice(0, 8) + '…' + '.pdf '; window.__clear = true; }")
+    assert _attach(page) == {"ok": True, "data": 0}
+
+
+def test_a_latched_stop_ends_the_extra_wait_for_a_widget_that_shows_progress(swap_page):
+    import time
+    page = swap_page
+    _slow(page, 40000)
+    page.evaluate("() => window.careerStudioCompanion.fillOps.cancel()")
+    began = time.monotonic()
+    assert _attach(page) == {"ok": True, "data": 0}
+    assert time.monotonic() - began < 8

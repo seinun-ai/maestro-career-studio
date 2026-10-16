@@ -85,7 +85,15 @@ function detectPage() {
   // document into a string is behind a gate below — no observer, no timer, no
   // allocation that outlives the call. And nothing is amortized across calls,
   // because the service worker re-runs this on every SPA route change.
-  const present = (selector) => document.querySelector(selector) !== null;
+  //
+  // OPEN SHADOW ROOTS (a page of web components, live check 8): `document.querySelector` does not enter them, so a form built of
+  // them scored nothing and the panel withheld its manual Autofill. A probe that misses in the light DOM is asked again of
+  // each open shadow root. The roots are found ONCE, by the first miss (one pass over the page's elements, `ns.deep.roots`):
+  // a probe that hits in the light DOM never looks, and the page text below stays the light DOM's `body.textContent`.
+  let inner = null;
+  const roots = () => (inner ??= window.careerStudioCompanion.deep.roots());
+  const present = (selector) => document.querySelector(selector) !== null
+    || roots().some((root) => root.querySelector(selector) !== null);
   const evidence = [];
 
   // The strongest single signal, and every clause is scoped to a FILE input on
@@ -213,15 +221,10 @@ function detectPage() {
   // Continue is recognised another way — its vendor's marker plus its identity
   // fields, or, on Workday, where neither of those is enough, the apply route.
   const APPLY_TEXT = /^\s*(apply|submit application)\b/i;
-  let affordance = false;
-  for (const el of document.querySelectorAll(
-    'button, input[type="submit"], input[type="button"], a[role="button"]'
-  )) {
-    // `value` first: a submit INPUT carries its visible text there and has no
-    // text between its tags at all.
-    if (APPLY_TEXT.test(el.value || el.textContent || "")) { affordance = true; break; }
-  }
-  if (affordance) evidence.push(["apply-affordance", 1]);
+  const APPLY_CONTROLS = 'button, input[type="submit"], input[type="button"], a[role="button"]';
+  // `value` first: a submit INPUT carries its visible text there and has no text between its tags at all.
+  const affords = (root) => [...root.querySelectorAll(APPLY_CONTROLS)].some((el) => APPLY_TEXT.test(el.value || el.textContent || ""));
+  if (affords(document) || roots().some(affords)) evidence.push(["apply-affordance", 1]);
 
   for (const [name] of evidence) signals.push(name);
   const score = evidence.reduce((total, [, weight]) => total + weight, 0);
@@ -245,6 +248,119 @@ function detectPage() {
 }
 // ---- end detectPage ----
 
+// ---- open shadow roots ----
+//
+// A page built from web components (a hosted one-click application, live check 8) keeps its native inputs, file inputs and
+// buttons inside OPEN shadow roots, which `querySelectorAll`, `closest` and `contains` do not cross: such a page read as
+// "nothing to fill" while the fill inventory (content/inventory.js, its own walk) listed nine fields. These are the
+// composed-tree versions the page reader, the fillable count and the upload reader share (`ns.deep`). They live in THIS file,
+// which every injection runs again, so a re-run file may call them without a fallback (a load-once file's newer export is
+// what tests/test_extension_manifest.py forbids).
+//
+// COST. Every call answers from the elements that HOLD a shadow root (`hosts`), found by one pass over the page's elements.
+// Inside `scope(fn)` that pass is made once and kept until the scope ends (the page reader wraps a whole summary in one, where
+// the DOM does not change under it); outside a scope each call makes its own. With no host the answer is the plain light query,
+// and `any` asks the light DOM first, so an existence check that hits there pays what `querySelector` always did.
+(() => {
+  const ns = (window.careerStudioCompanion ??= {});
+  const hostOf = (n) => n.getRootNode?.().host ?? null;
+  /** The parent in the composed tree: the element's parent, else the host of the shadow root it sits at the top of. */
+  const up = (n) => n.parentElement ?? hostOf(n);
+  /** `el.closest(sel)` through shadow boundaries: the DOM's own closest, then again from the host of the shadow root it stopped at. */
+  const closest = (el, sel) => {
+    for (let n = el; n; n = hostOf(n)) {
+      const hit = n.closest?.(sel);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  /** `box.contains(el)` through shadow boundaries. */
+  const contains = (box, el) => {
+    for (let n = el; n; n = hostOf(n)) if (box.contains(n)) return true;
+    return false;
+  };
+
+  // Every element holding an open shadow root, nested ones included, parents before the hosts inside them.
+  let depth = 0;
+  let kept = null;
+  const scan = () => {
+    const out = [];
+    const walk = (at) => {
+      for (const el of at.querySelectorAll("*")) {
+        if (el.shadowRoot) {
+          out.push(el);
+          walk(el.shadowRoot);
+        }
+      }
+    };
+    walk(document);
+    return out;
+  };
+  const hosts = () => (depth ? (kept ??= scan()) : scan());
+  /** Run `fn` with the host list found once. Nests; the list is dropped when the outermost scope ends. */
+  const scope = (fn) => {
+    depth += 1;
+    try {
+      return fn();
+    } finally {
+      depth -= 1;
+      if (!depth) kept = null;
+    }
+  };
+  /** The hosts at or under `root` (composed), none when the page has none. */
+  const hostsIn = (root) => {
+    const found = hosts();
+    return !found.length || root === document ? found : found.filter((host) => host === root || contains(root, host));
+  };
+
+  /** The matches of `sel` inside one shadow tree, nested trees in place, in order. */
+  const within = (tree, sel, out = []) => {
+    for (const el of tree.querySelectorAll("*")) {
+      if (el.matches(sel)) out.push(el);
+      if (el.shadowRoot) within(el.shadowRoot, sel, out);
+    }
+    return out;
+  };
+  /** Every match of `sel` under `root` (the document, a shadow root or an element), in document order, the open shadow
+   * roots below it (and the element's own) included in place: a host's shadow content follows the host. */
+  const all = (sel, root = document) => {
+    const light = [...root.querySelectorAll(sel)];
+    const tree = root.getRootNode?.() ?? document;
+    const pending = hostsIn(root).filter((host) => host.getRootNode() === tree && host !== root);
+    const own = root.shadowRoot ? within(root.shadowRoot, sel) : [];
+    if (!pending.length && !own.length) return light;
+    const out = [...own];
+    let at = 0;
+    for (const el of light) {
+      // Document position 4 is FOLLOWING: this element comes after the host (or sits inside it).
+      while (at < pending.length && pending[at].compareDocumentPosition(el) & 4) out.push(...within(pending[at++].shadowRoot, sel));
+      out.push(el);
+    }
+    while (at < pending.length) out.push(...within(pending[at++].shadowRoot, sel));
+    return out;
+  };
+  /** Whether anything under `root` matches `sel` (composed): the light DOM first, then only the shadow roots under it. */
+  const any = (sel, root = document) => root.querySelector(sel) !== null
+    || hostsIn(root).some((host) => host.shadowRoot.querySelector(sel) !== null);
+  /** `el[prop]` (textContent, or the rendered innerText) with the text of the open shadow roots under it: neither reads into them. */
+  const text = (el, prop = "textContent") => [el[prop] ?? "", ...hostsIn(el).map((host) => host.shadowRoot.textContent)].join(" ");
+  /** The children of `el` in the composed tree (its own, then those of its shadow root). */
+  const kids = (el) => [...el.children, ...(el.shadowRoot?.children ?? [])];
+
+  /** Every open shadow root under the document (nested ones included), in document order. */
+  const roots = () => scan().map((host) => host.shadowRoot);
+
+  // A SEARCH BOX is no field of an application: a keyword box on a careers page, a site's search landmark. What the fillable count
+  // and the run's field count both leave out. A read-only combobox that opens a list is a PICKER, not a box to type a search in
+  // (Ant Design draws its select as `<input type=search readonly role=combobox aria-haspopup=listbox>`).
+  const SEARCH_NAME = /^(q|query)$|search|keyword/i;
+  const picker = (el) => el.readOnly === true && el.getAttribute("role") === "combobox" && el.getAttribute("aria-haspopup") === "listbox";
+  const searchBox = (el) => (!picker(el) && (el.getAttribute("type") || "").toLowerCase() === "search")
+    || ["name", "id", "aria-label", "placeholder"].some((key) => SEARCH_NAME.test(el.getAttribute(key) || ""))
+    || el.getAttribute("role") === "searchbox" || closest(el, '[role="search"]') !== null;
+  ns.deep = { all, any, closest, contains, up, roots, scope, text, kids, searchBox, picker, SEARCH_NAME };
+})();
+
 /** How many on-screen fields this frame has that a fill could answer.
  *
  * NOT PART OF `detectPage`, and never on its miss path: the panel asks for it
@@ -257,9 +373,9 @@ function detectPage() {
  * "Select One"), a site menu or a Search button does not. Capped: the answer only has to be "more than
  * none". */
 function fillableControls() {
+  const { all, closest, searchBox, picker, SEARCH_NAME } = window.careerStudioCompanion.deep;
   const CAP = 20;
-  const SEARCH_NAME = /^(q|query)$|search|keyword/i;
-  const SKIPPED_TYPES = ["hidden", "submit", "button", "reset", "image", "search", "password"];
+  const SKIPPED_TYPES = ["hidden", "submit", "button", "reset", "image", "password"];
   let count = 0;
   // A POPUP BUTTON is a field too: Workday's question steps are made of them ("Select One"), and a step of
   // nothing else read as having nothing to fill. A `listbox` popup is a value picker. A bare `true` is a menu
@@ -273,20 +389,17 @@ function fillableControls() {
   const FIELD_HOLDER = 'fieldset, [role="group"], [data-automation-id^="formField"]';
   const asksForAnAnswer = (el) => {
     if (el.getAttribute("aria-haspopup") === "listbox") return true;
-    if (el.closest(FIELD_HOLDER)) return true;
+    if (closest(el, FIELD_HOLDER)) return true;
     return window.careerStudioCompanion?.isPlaceholderText?.((el.textContent || "").trim()) === true;
   };
-  for (const el of document.querySelectorAll(
+  for (const el of all(
     `input, select, textarea, [role="combobox"], [role="radio"], [role="checkbox"], ${POPUP}`)) {
-    if (el.matches?.(POPUP) && (el.closest?.(SITE_CHROME) || SEARCH_NAME.test(el.textContent || "") || !asksForAnAnswer(el))) continue;
+    if (el.matches?.(POPUP) && (closest(el, SITE_CHROME) || SEARCH_NAME.test(el.textContent || "") || !asksForAnAnswer(el))) continue;
     const type = (el.getAttribute("type") || "text").toLowerCase();
     if (el.tagName === "INPUT" && SKIPPED_TYPES.includes(type)) continue;
-    const words = ["name", "id", "aria-label", "placeholder"].map((key) => el.getAttribute(key) || "");
-    if (words.some((word) => SEARCH_NAME.test(word))
-        || el.getAttribute("role") === "searchbox"
-        || el.closest?.('[role="search"]')) continue;
+    if (searchBox(el)) continue;
     const onScreen = el.offsetWidth || el.offsetHeight || el.getClientRects?.().length;
-    if (el.disabled || el.readOnly || el.getAttribute("aria-disabled") === "true"
+    if (el.disabled || (el.readOnly && !picker(el)) || el.getAttribute("aria-disabled") === "true"
         || !onScreen) continue;
     count += 1;
     if (count >= CAP) break;
@@ -297,9 +410,9 @@ function fillableControls() {
   const shapes = window.careerStudioCompanion?.shapes;
   const PILLS = 'button[aria-pressed], [role="button"][aria-pressed], ul[role="list"][aria-label] > li > button:only-child';
   if (shapes) {
-    for (const el of document.querySelectorAll(PILLS)) {
+    for (const el of all(PILLS)) {
       if (count >= CAP) break;
-      if (el.closest?.(SITE_CHROME) || shapes.of(el)?.name !== "pills") continue;
+      if (closest(el, SITE_CHROME) || shapes.of(el)?.name !== "pills") continue;
       const key = shapes.of(el).groupKey(el);
       if (groups.has(key)) continue;
       groups.add(key);
@@ -342,4 +455,150 @@ function fillableControls() {
   const ns = (window.careerStudioCompanion ??= {});
   ns.detectPage = detectPage;
   ns.fillableControls = fillableControls;
+})();
+
+// ---- the upload proof ----
+//
+// What an upload box's page shows once it has taken a file, read for `attachResumePdf` (content/agent.js): the widget around
+// the input, the rows in it that name the file, the errors it prints, and whether it is still working. Here, not in agent.js,
+// because this file is re-run on every injection and agent.js has a size cap.
+(() => {
+  const ns = (window.careerStudioCompanion ??= {});
+  const { all, any, up, text, kids, scope } = ns.deep;
+  const onScreen = (el) => !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects?.().length));
+
+  // What an upload widget says when the file did NOT go. Counted before and after the write, so standing help text ("Files that
+  // exceed 5 MB are not supported") is not news; only an error that APPEARS voids a row proof. A WIDE list on purpose: a
+  // phrasing it misses is the panel saying "Attached" over a refused upload, while a false hit only sends the user to look —
+  // which is why some SUCCESS copy ("No errors", "0 failed") appearing after the write errs to zero, by design. Apostrophes
+  // both straight and curly ("can’t").
+  const UPLOAD_ERROR = new RegExp(String.raw`\b(?:${[
+    String.raw`errors?`, String.raw`fail(?:s|ed|ure|ing)?`, "invalid", "unable",
+    "rejected", "denied", "disallowed", "unsupported", String.raw`unsuccessful(?:ly)?`,
+    String.raw`exceed(?:s|ed|ing)?`, String.raw`went\s+wrong`, String.raw`corrupt(?:ed)?`,
+    String.raw`virus(?:es)?`, "malware", String.raw`could\s*n(?:o|['’])t`,
+    String.raw`can(?:\s*not|['’]t)`, String.raw`too\s+(?:large|big)`,
+    String.raw`not\s+(?:allowed|supported|accepted|permitted)`, String.raw`try\s+again`,
+  ].join("|")})\b`, "gi");
+
+  // An element that ALARMS: a new ON-SCREEN alert, or an element marked invalid, with text in the widget is the page objecting
+  // to the write, so it voids the row proof even when its words ("Please choose another file.") are on no list. NOT
+  // `[aria-live]`: a polite live region that GAINS text is the standard upload-status pattern ("Successfully Uploaded!" into an
+  // empty region), and reading that as an error told the user to attach it again — a second copy on Workday's `multiple`
+  // uploader. A live region's words are still read, as part of the widget's text, against `UPLOAD_ERROR`.
+  const UPLOAD_ALERT = '[role="alert"], [aria-invalid="true"]';
+
+  // What an uploader never holds: a field of its own. An ancestor holding one is the application step around the uploader, not
+  // the uploader. Hidden inputs are left out — an uploader may keep the uploaded file's id in one.
+  const NOT_AN_UPLOADER = 'input:not([type="file"]):not([type="hidden"]), select, textarea, [role="combobox"]';
+
+  // Six levels: the uploader that swaps its whole button container for the file's chip (live check 9) keeps the group five
+  // levels above its input, and that group is where the chip is printed.
+  const CHAIN_LEVELS = 6;
+
+  /** The input's upload ancestors, nearest first: from its parent up to six levels, stopping BELOW an ancestor that holds any
+   * OTHER file input (the cover-letter box's row can never vouch for the résumé box's write), below one that holds any other
+   * field (`NOT_AN_UPLOADER`, so a whole step never becomes the widget) and below `<body>`, `<html>` and a `<form>`, which are
+   * the page or the application rather than the uploader: the proof is never a search of the whole document. */
+  function chain(input) {
+    const out = [];
+    let el = up(input);
+    for (let level = 0; el && level < CHAIN_LEVELS; level += 1, el = up(el)) {
+      if (el === document.body || el === document.documentElement || el.tagName === "FORM") break;
+      if (all('input[type="file"]', el).some((other) => other !== input)) break;
+      if (any(NOT_AN_UPLOADER, el)) break;
+      out.push(el);
+    }
+    return out;
+  }
+
+  // A page that SHORTENS the name it shows ("Jane_Doe_Re…esume.pdf"): the part before the ellipsis starts the file's name and
+  // the part after it ends it. The two parts together must be a real stretch of the name, so another file's chip does not pass.
+  const SHORTENED = /([^\s…]+?)(?:…|\.{3})([^\s…]+)/gu;
+  const EDGE = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+  const MIN_STEM = 6;
+
+  /** `{found, rest}`: whether `shown` names the file `filename` — whole, as its stem (no extension, six characters or more),
+   * or shortened by an ellipsis — and `shown` with every such mention cut out, which is what error words are read from. */
+  function nameScan(shown, filename) {
+    let rest = String(shown ?? "");
+    let found = false;
+    const dot = filename.lastIndexOf(".");
+    const stem = dot >= MIN_STEM ? filename.slice(0, dot) : "";
+    for (const name of [filename, stem].filter(Boolean)) {
+      if (rest.includes(name)) {
+        found = true;
+        rest = rest.split(name).join(" ");
+      }
+    }
+    // The tail must reach past the extension ("…e.pdf", not "….pdf"), or any file would end it.
+    const known = [[filename, filename.length - Math.max(dot, 0) + 2], [stem, 3]].filter(([name]) => name)
+      .map(([name, tailMin]) => [name.toLowerCase(), tailMin]);
+    rest = rest.replace(SHORTENED, (span, left, right) => {
+      const [head, tail] = [left, right].map((part) => part.replace(EDGE, "").toLowerCase());
+      const fits = known.some(([name, tailMin]) => head.length >= 3 && tail.length >= tailMin && head.length + tail.length >= 8
+        && head.length + tail.length < name.length && name.startsWith(head) && name.endsWith(tail));
+      found ||= fits;
+      return fits ? " " : span;
+    });
+    return { found, rest };
+  }
+
+  const errorWords = (shown, filename) => nameScan(shown, filename).rest.match(UPLOAD_ERROR)?.length ?? 0;
+
+  /** How many on-screen elements in `widget` name `filename`: the DEEPEST ones whose text holds it, so a row and the wrappers
+   * around it count once. A row whose OWN text carries error words ("resume.pdf failed") is never a success row, even where
+   * the widget's error total did not rise because the page cleared an old error as it printed the new one. */
+  function rows(widget, filename) {
+    const names = (el) => nameScan(text(el), filename);
+    // composed: a row drawn inside a shadow root is in no textContent
+    return scope(() => (!names(widget).found ? 0 : [widget, ...all("*", widget)].filter((el) => {
+      const own = names(el);
+      return own.found && !kids(el).some((child) => names(child).found) && onScreen(el)
+        && (own.rest.match(UPLOAD_ERROR)?.length ?? 0) === 0;
+    }).length));
+  }
+
+  /** The widget's error total: error words in its RENDERED text (a hidden error template is not news until it shows), plus
+   * every ON-SCREEN alarming element (`UPLOAD_ALERT`) that holds text — on screen because `innerText` of a hidden element
+   * still returns its text, and an alert nobody can see tells the user nothing. */
+  function errors(widget, filename) {
+    const alarming = [widget, ...all(UPLOAD_ALERT, widget)].filter((el) =>
+      el.matches(UPLOAD_ALERT) && onScreen(el) && String(el.innerText ?? "").trim() !== "").length;
+    return errorWords(text(widget, "innerText"), filename) + alarming;
+  }
+
+  // A widget that is still WORKING: something marked busy, a progress bar, or the words of a transfer or a parse
+  // ("Uploading…", "Parsing your CV"). Present participles only, so standing help ("your CV will be parsed") is not one.
+  const WORKING = /\b(?:uploading|parsing|processing|scanning|analy[sz]ing)\b/gi;
+  // Three counts, not one, so a progress bar that was standing there before the write still lets a NEW busy mark or a NEW
+  // word of work show as news.
+  const busy = (widget) => [
+    all('[aria-busy="true"]', widget).filter(onScreen).length,
+    all('[role="progressbar"], progress', widget).filter(onScreen).length,
+    text(widget, "innerText").match(WORKING)?.length ?? 0,
+  ];
+
+  /** The levels of `chain(input)` the proof watches: the highest of the first three (the widget) and everything above it, each
+   * with what it showed before the write. Empty when the input has no widget. */
+  function levels(input, filename) {
+    const near = chain(input);
+    return near.slice(Math.max(0, Math.min(near.length, 3) - 1)).map((el) => ({
+      el, rows: rows(el, filename), errors: errors(el, filename), busy: busy(el),
+    }));
+  }
+
+  /** What the page shows now, read at the DEEPEST watched level still in the page: the widget itself while it is there, else
+   * the nearest ancestor that survived its being swapped for the file's chip. `row`: more rows naming the file than before
+   * and no new error; `working`: more progress than before. Both false when every level has left the page. */
+  function seen(watched, filename) {
+    const now = watched.find((level) => level.el.isConnected);
+    if (!now) return { row: false, working: false };
+    return {
+      row: rows(now.el, filename) > now.rows && errors(now.el, filename) <= now.errors,
+      working: busy(now.el).some((count, i) => count > now.busy[i]),
+    };
+  }
+
+  ns.uploadProof = { NOT_AN_UPLOADER, chain, levels, seen };
 })();

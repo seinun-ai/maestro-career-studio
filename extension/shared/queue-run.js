@@ -42,6 +42,8 @@
  *                          (Next is never pressed over a known-empty required upload)
  *         loop | step_limit   the same page again, or more than LIMITS.stepMax steps
  *         posting          an Apply it may not press (see below); unknown_page  nothing it knows
+ *         page_stale       every frame that answered, answered with an error (the extension was updated under an open tab
+ *                          and its old and new scripts disagree): the user reloads the page, then Resume
  *         chooser          Workday's "Start Your Application" page where the run may not press Apply Manually (below):
  *                          the user presses it in the tab, then Resume
  *         already_applied  a "thank you" page BEFORE the run reached review: not this run's Submit
@@ -55,7 +57,9 @@
  *   word counts as the Ready judgement only for a park whose `lastBy` was a Submit the reader could not be sure of
  *   (`submit_seen`, `submit_context`) or fields with no Next (`fields_no_next`); a page that now reads as a step
  *   is pressed on to its Next, not vouched for. After a
- *   `page_errors` or `upload` park, on the page it parked on (`record.parkedPage`: address and step key), the
+ *   `page_errors` or `upload` park, on the page it parked on (`record.parkedPage`: address, step key and shape, the
+ *   buttons and the count of controls; a page that keeps one address and heading for every step is told apart by the
+ *   shape unless the parked error is still on it), the
  *   page is NOT filled again (the user fixed what was named): after a page_errors park its errors are read and
  *   any that remain get a repair round; after an upload park a required box still empty parks again (a
  *   Resume never attaches); then Next is pressed. On any other page the Resume fills as usual.
@@ -68,6 +72,18 @@
  * sure" page) must also hold still for LONE_STABLE reads in a row before it is judged final.
  * The rule lives here, not in pageOps().waitForChange, so it also covers the first read of a
  * freshly opened tab whatever the host's openTab resolves on.
+ *
+ * THE REASONING STEP (design 2026-10-14). Before a park on page_errors, open_questions, unknown_page, no_change, loop or
+ *   moved_away (`THINKS`), the driver asks `deps.reason` ONCE a page (`moved()` clears it) and takes its word: `advanced` (it
+ *   pressed the page's Next: a step and a seen page), `moved` (the reason for the park is gone: the page is judged and
+ *   pressed as any), else the park, carrying `thought` {note, ask?, tried} for the card. Never on a wall, a review page with
+ *   no fields, a park that sends the user somewhere, or open questions that are ALL protected (`PROTECTED_SLOT`). A review
+ *   page at step 0 that HAS fields is a one-page form (a wizard's last page is not): thought about for open_questions and page_errors only, as `onePage`, on its
+ *   fields alone: its press is refused here whatever the step asks, and it is skipped while the page asks about submitting or
+ *   shows a dialog (owner decision 2026-10-15). A `moved_away`
+ *   answer never drives (a follow only rebinds the tab). The step's press goes through the driver's own `press` and only
+ *   on the page this run filled (inv-rejected-next). `reason` is optional: the host leaves it out with "Think when stuck"
+ *   off, "Stop after each step" on, or full automation off.
  *
  * THE RULES IT KEEPS
  * - SUBMIT IS NEVER CLICKED. Only a button `ns.pageKind.classify` named the page's Next is ever
@@ -100,24 +116,29 @@
  * - A required field the fill reports `unconfirmed` does not park (the owner's "park less"): the
  *   advance and the page's own validation decide, and a page that does not move is refilled once.
  *
- * THE DEPS (all required, each a function; a missing one is a TypeError before anything runs)
+ * THE DEPS (all required but `reason`, each a function; a missing one is a TypeError before anything runs)
  *   openTab(url, stop) → tabId  resolves once the tab exists (the driver waits for the page to be
  *                               readable itself, see SETTLING); `stop()` is the Stop check, so a
  *                               long load can be abandoned
  *   classify(tabId) → [{frameId, result: {summary, top}}]      tabUrl(tabId) → the tab's address
- *   advance(tabId, frameId, id, opts) → {clicked, why}         opts is {apply: true}, {chooser: true} or absent
+ *   advance(tabId, frameId, id, opts) → {clicked, why}         opts is {apply: true}, {chooser: true}, {dismiss: true} or absent
  *   fill(record, {limits}) → the fill-loop report              signIn(record, {allowedHost, stop}) → {signedIn}
  *   waitForChange(tabId, before, ms, stop, baseline) → {changed, url, errors, sameStep, fresh}
  *                                `baseline`: the error keys the page showed before the press
  *   pageErrors(tabId, frameId) → {count, items: [{label, target, kind}]}   what the page complains about
  *   uploads(record) → [{label, target, kind, required, occupied}]   the page's upload boxes, for a Resume's look
+ *   fieldCount(tabId, frameId) → n   OPTIONAL: how many of the fields the fill inventory lists on the page are an application's (not a
+ *                                search box; read-only). Asked of an unknown first page the run has not filled: with fields it is
+ *                                filled like any page with fields
  *   attachTo(record, box) → {attached}   the run's PDF into the one box `{label, target}` names: a box the
  *                                page itself named, or the ONE required empty box the fill's report found
  *                                (never one labelled for another document; at most one write per page)
  *   fix(record, errors, {limits}) → {fixed}  repairs ONLY the fields the errors name; the driver then presses once more
+ *   reason(record, {why, open, recent, press}) → {moved, advanced, followed, note, ask, tried}   OPTIONAL, see the reasoning
+ *                                step above; `press(frameId, id, fingerprint, baseline)` → "moved" | "rejected" | "same" | "refused"
  *   sleep(ms) · save(record) · onUpdate(record) · now() · cancelled(record)
  *                                (save is the host's: it owns the list)
- *   pageOps() builds classify, pageErrors, advance, signIn and waitForChange from a message transport.
+ *   pageOps() builds classify, pageErrors, advance, signIn, waitForChange and fieldCount from a message transport.
  *
  * A REJECTED NEXT IS NOT A MOVE. A press that leaves the address and the step heading where they
  * were while the page shows errors is "rejected": `step` and `seen` do not change (the banner's own
@@ -132,7 +153,7 @@
  * button ids are minted per read; judging the pre-fill read would stop every such wizard on its
  * first page as "review".
  *
- * WHAT THIS FILE PUBLISHES: ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, USER_NAVIGATES, landedToCheck,
+ * WHAT THIS FILE PUBLISHES: ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, USER_NAVIGATES, THINKS, landedToCheck, leftForYou,
  * RUN_LIMITS, HIDDEN_TABS_OK }. The scheduler (`next`, the record list, pacing) is not here.
  */
 (() => {
@@ -175,6 +196,14 @@
   // for the page to move before it calls the account not created.
   const ACCOUNT_SETTLE_MS = 20000;
   const HALT = Symbol("halt");
+  // The parks the reasoning step may look at first (design 2026-10-14 section 1): errors it could not map, questions it could
+  // not answer, a page it does not know, no change, a loop, a tab on another site. Never a wall, a review page (a Submit page),
+  // a park that tells the user to go somewhere, or a page with no frame to read.
+  const THINKS = new Set(["page_errors", "open_questions", "unknown_page", "no_change", "loop", "moved_away"]);
+  // The ones a one-page form (a review page with fields) is thought about for.
+  const ONE_PAGE_THINKS = new Set(["page_errors", "open_questions"]);
+  const AGAIN = Symbol("again");
+  const MAX_RECENT = 8;
 
   /** The hostname of an http(s) address, lower-cased, else null (any other scheme, or not an address). */
   function hostOf(url) {
@@ -206,7 +235,7 @@
   };
 
   /** One string for "which page is this": the address (no hash), the step heading's key, the
-   * visible button texts sorted, and how many controls a fill could answer. Value-free by
+   * visible button texts sorted, how many controls a fill could answer and how many required boxes are empty. Value-free by
    * construction. The host's waitForChange compares these, so there is exactly one definition. */
   function fingerprint(url, summary) {
     let where = "";
@@ -216,15 +245,43 @@
     } catch {
       // No address known: the page alone tells.
     }
-    // The error summary's own buttons are the banner's, not the step's: a rejected Next adds them.
-    const buttons = (summary?.buttons ?? []).filter((b) => b.visible !== false && b.inErrors !== true).map((b) => b.text).sort().join(",");
-    return [where, summary?.stepKey ?? "", buttons, summary?.fillable ?? 0].join("\n");
+    // `requiredEmpty` (a count): a step that only swaps its dropdowns shows its required boxes empty, which the buttons do not.
+    return [where, summary?.stepKey ?? "", stepButtons(summary), summary?.fillable ?? 0, summary?.requiredEmpty ?? 0].join("\n");
   }
+
+  /** The visible button texts a step offers, sorted. Not the error summary's own buttons (a rejected Next adds them), and
+   * not a field's own control: a tenant's dropdown is a button whose text is its VALUE ("Select One", then the pick), and a
+   * value never tells one page from another. */
+  const stepButtons = (summary) => (summary?.buttons ?? [])
+    .filter((b) => b.visible !== false && b.inErrors !== true && b.errorLine !== true && b.fieldControl !== true)
+    .map((b) => b.text).sort().join(",");
+
+  /** Page `now` is the page `was` describes: the same path and heading key, and the same buttons and control count when
+   * `was` knows them (a page described before its post-fill read does not). One comparison for the Resume, the filled page and the
+   * reasoning step's press, so a tenant that keeps one address and heading for every step cannot pass for the page it left. */
+  const samePage = (was, now) => pathOf(was.where) === pathOf(now.where) && was.key === now.key
+    && (was.shape == null || was.shape === now.shape);
+
+  /** The part of the fingerprint that is not the address: the heading's key, the buttons and the count of controls. */
+  const shapeOf = (summary) => [stepButtons(summary), summary?.fillable ?? 0].join("\n");
 
   // A wall shows in whichever frame holds it (a challenge in the embedded form's own iframe).
   // These only mean something in the top document: the page around everything else.
   const WALL_ANYWHERE = new Set(["captcha", "create_account", "verify"]);
   const TOP_ONLY = new Set(["sign_in", "closed", "confirmation", "board_native"]);
+
+  // What a frame says when no content script is listening in it (an ad or analytics frame, a page not injected yet): not an
+  // error of ours.
+  const NOT_LISTENING = /receiving end does not exist|could not establish connection|no reply from the page|message port closed|frame with id|cannot access|no tab with id/i;
+  const BROKEN_READS = 3;
+  /** No frame gave a summary and one frame ANSWERED with an error: its page script threw. The usual cause is an extension
+   * update under an open tab: the load-once files keep their old code and the re-injected ones expect the new, so every read
+   * throws until the page is reloaded. */
+  const scriptThrew = (frames) => {
+    const all = Array.isArray(frames) ? frames : [];
+    return !all.some((f) => f?.result?.summary)
+      && all.some((f) => typeof f?.error === "string" && f.error !== "" && !NOT_LISTENING.test(f.error));
+  };
 
   /** The frame to judge the tab by. Only frames that answered with a summary count (a frame with
    * no form evidence says null). In order: the top document's own sign-in, closed, confirmation or
@@ -273,10 +330,16 @@
   const PROTECTED_SLOT = /^(?:work_auth|eligibility|eeo)\.|^derived\.(?:sponsorship|previously_employed_here|us_citizen|agrees_to_terms)|^preferences\.desired_salary/;
   const landedToCheck = (f) => f.status === "needs_answer" && LANDED.test(f.lastOutcome ?? "")
     && !PROTECTED_SLOT.test(f.slot ?? "");
+  /** An optional field the profile had an answer for (a fact was filed under it) that ended unanswered: listed for the user as
+   * "Left for you" on the card, never a park. A fact with no value (`no_value`) is no saved answer. */
+  const leftForYou = (f) => f.status === "needs_answer" && !f.required && typeof f.slot === "string" && f.slot !== ""
+    && f.lastOutcome !== "no_value" && !landedToCheck(f);   // a value a search or click landed on is the "Check" row's
   const openQuestions = (report) => report.fields
     .filter((f) => OPEN_STATUSES.has(f.status) && !landedToCheck(f)
       && (f.required || (f.status === "needs_answer" && f.invalid === true)))
-    .map((f) => ({ fid: f.fid, question: String(f.question ?? "").slice(0, MAX_QUESTION), required: Boolean(f.required) }));
+    .map((f) => ({ fid: f.fid, question: String(f.question ?? "").slice(0, MAX_QUESTION), required: Boolean(f.required),
+      // The fact NAME the question was filed under (never a value): `parkOr` does not ask a model about protected ones.
+      ...(typeof f.slot === "string" ? { slot: f.slot } : {}) }));
 
   /** Run one record to a stop. Returns the record; its `status` and `why` say where it got to. */
   async function drive(record, deps, options = {}) {
@@ -306,7 +369,9 @@
       return record;
     };
     const park = (why, extra = {}) => finish("parked", why, { open: [], ...extra,
-      ...(why === "page_errors" || why === "upload" || why === "unsure_page" ? { parkedPage: thisPage } : {}) });
+      ...(why === "page_errors" || why === "upload" || why === "unsure_page"
+        ? { parkedPage: { ...thisPage, ...(why === "page_errors" && extra.open?.length ? { asked: extra.open.map((o) => String(o.question ?? "").toLowerCase()) } : {}) } }
+        : {}) });
 
     const gate = () => {
       if (deps.cancelled(record)) throw HALT;
@@ -325,6 +390,7 @@
     let inPlaceFirst = false;  // a run in place has not read its first page yet
     let navigated = false;   // the last thing the run did moved the tab: its address is the run's own
     let pageFilled = false;  // this page has had its fill (judged afresh after it)
+    let inventoried = null;  // fields the fill inventory lists on an unknown first page (null: not asked); the page is read as having them
     let tried = 0;           // Next presses on this page that did nothing
     let movedChecked = false;  // a Resume's first read has been checked against the hosts the run reached
     let fixRounds = 0;       // repairs after a rejected Next on this page
@@ -338,9 +404,15 @@
     let wroteResume = false; // the resume has been written on this page (by the fill's attach or the gate): never twice
     let resumeWhy = null;    // a Resume after page_errors or upload: decided on the first read, by whether it is the parked page
     let recheck = null;      // ... and then: don't refill, look at the page's errors or upload boxes
-    let thisPage = null;     // {where, key} of the page being read: remembered when a park names a page
-    let filledPage = null;   // {where, key, here} of the page this run last filled: the only page it presses
+    let thisPage = null;     // {where, key, shape} of the page being read: remembered when a park names a page
+    const shapeMoves = new Set();   // address path and key of the pages whose shape-only change was taken for a step: once each
+    let filledPage = null;   // {where, key, shape, here} of the page this run last filled: the only page it presses
     let landing = null;      // the hosts a posting Apply may land on: the first read after the press must be on one
+    let thought = false;     // the reasoning step has been asked on this page (`moved()` clears it)
+    const thoughtOn = new Set();  // ... and the pages (address path and step key) it was asked on in this drive: never twice
+    let recent = [];         // the last presses and repairs, as "press_next -> rejected", for the step to read
+    let pageKind = null;     // what the page in hand is, once judged (a review page is thought about only as a one-page form)
+    let pageSummary = null;  // the reader's summary of that page
 
     const noteHost = async (url) => {
       const host = hostOf(url);
@@ -352,6 +424,11 @@
     // (the page stayed where it was and shows errors: whatever else changed, this is NOT a move),
     // "same" (pressed, the page did not change) or "moved". The wait is skipped for a refusal.
     const press = async (frame, id, before, opts, baseline = []) => {
+      const outcome = await pressOnce(frame, id, before, opts, baseline);
+      recent = [...recent, `${opts?.apply ? "apply" : opts?.chooser ? "chooser" : "press_next"} -> ${outcome}`].slice(-MAX_RECENT);
+      return outcome;
+    };
+    const pressOnce = async (frame, id, before, opts, baseline) => {
       const pressed = await act(deps.advance, record.tabId, frame.frameId, id, opts);
       if (pressed?.clicked !== true) return "refused";
       const waited = await waitFor(before, baseline);
@@ -362,6 +439,7 @@
     };
     const moved = () => {
       navigated = true;
+      inventoried = null;
       pageFilled = false;
       filledPage = null;
       tried = 0;
@@ -374,6 +452,8 @@
       refilled = false;
       attempted = new Set();
       wroteResume = false;
+      thought = false;
+      recent = [];
       record.attach = null;
       // What the fill learnt on the page it just left is about that page (host sets it again when needed).
       record.memory = null;
@@ -384,21 +464,104 @@
       question: String(it.label ?? "").slice(0, MAX_QUESTION), required: true,
     }));
 
+    // Before an eligible park, the reasoning step (`deps.reason`, optional: the host passes it only with "Think when stuck" on and
+    // "Stop after each step" off). AGAIN when it moved the run on, else the park, with what it thought. Once a page (`moved()`
+    // clears `thought`), never on a wall or a review page, and not on open questions that are all protected (design 1: those
+    // are the user's). A follow (`followed`) never drives: the run parks where it was, on the tab it was moved to.
+    //
+    // A ONE-PAGE FORM (a review page that has fields: its one Submit is on the same page) is thought about too, for open_questions
+    // and page_errors only, on its fields alone (owner decision 2026-10-15): the step is told `onePage`, is offered no press, and
+    // the press it gets back refuses everything. Never while the page asks about submitting or shows a dialog.
+    const parkOr = async (why, extra = {}) => {
+      const protectedOnly = why === "open_questions" && (extra.open ?? []).length > 0
+        && extra.open.every((one) => PROTECTED_SLOT.test(one.slot ?? ""));
+      const here = `${pathOf(thisPage?.where ?? "")}\n${thisPage?.key ?? ""}`;
+      const onePage = pageKind === "review" && record.step === 0 && ONE_PAGE_THINKS.has(why) && (pageSummary?.fillable ?? 0) > 0 && pageSummary?.submitContext !== true && !ns.pageKind.dialogUp(pageSummary);
+      if (typeof deps.reason !== "function" || thought || thoughtOn.has(here) || !THINKS.has(why) || (pageKind === "review" && !onePage) || protectedOnly) {
+        return await park(why, extra);
+      }
+      // A step the press could add must still fit the run's own limit: the step is never a way past it. Near it the step
+      // is skipped and the park keeps its own reason (step_limit has no Resume).
+      if (why !== "moved_away" && record.step + 1 >= LIMITS.stepMax) return await park(why, extra);
+      thought = true;
+      thoughtOn.add(here);
+      await update({ status: "filling" });
+      const out = await act(deps.reason, record, { why, open: extra.open ?? [], recent, ...(onePage ? { onePage: true } : {}),
+        // Only the page this run filled is pressed (inv-rejected-next): anything else is refused before the page. A loop
+        // is a page already pressed once: the step never presses it again. A one-page form is never pressed.
+        press: (frameId, id, before, baseline) => (why !== "loop" && !onePage && pageFilled && filledPage && samePage(filledPage, thisPage)
+          ? press({ frameId }, id, before, undefined, baseline) : Promise.resolve("refused")) });
+      if (why !== "moved_away" && out?.advanced) {
+        if (record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
+        await update({ step: record.step + 1, seen: [...record.seen, out.advanced] });
+        moved();
+        return AGAIN;
+      }
+      if (why !== "moved_away" && out?.moved === true) return AGAIN;
+      const said = out?.note || out?.ask || out?.tried?.length
+        ? { thought: { note: out.note ?? null, ...(out.ask ? { ask: out.ask } : {}), tried: out.tried ?? [] } } : {};
+      return await park(why, { ...extra, ...said });
+    };
+
+    // The site may be on its NEXT page already (a press that read as refused only because the new step drew its own error
+    // line or upload box): before a repair parks, the page is read again, and one that is not the page this run filled counts
+    // as a step. The loop then fills it.
+    //
+    // `leftFilled`: how `now` differs from the page this run filled: "step" (another page), "refill" or false (the same page).
+    // Under the same address and heading only the shape differs (a conditional field an answer revealed): the first such change
+    // in a drive is taken for the site's next step; a further one only refills the page, with no step added and the repair
+    // counts kept, so a page that keeps changing is neither pressed unfilled nor walked up to the step limit.
+    const leftFilled = (now) => {
+      if (samePage(filledPage, now)) return false;
+      if (pathOf(filledPage.where) !== pathOf(now.where) || filledPage.key !== now.key) return "step";
+      const id = `${pathOf(now.where)}\n${now.key}`;
+      if (shapeMoves.has(id)) return "refill";
+      shapeMoves.add(id);
+      return "step";
+    };
+    const refill = () => {
+      pageFilled = false;
+      filledPage = null;
+    };
+    const movedOn = async () => {
+      if (!pageFilled || !filledPage || record.step + 1 >= LIMITS.stepMax) return false;
+      const { frame, url } = await readPage(false);
+      if (!frame) return false;
+      const [where, key] = fingerprint(url, frame.result.summary).split("\n");
+      // A page already pressed is not a new step: the errors' park, not a loop.
+      const here = `${where}\n${key}`;
+      if (record.seen.some((one) => one === here || one.startsWith(`${here}\n`))) return false;
+      const left = leftFilled({ where, key, shape: shapeOf(frame.result.summary) });
+      if (!left) return false;
+      if (left === "refill") {
+        refill();
+        return true;
+      }
+      await update({ step: record.step + 1, seen: [...record.seen, filledPage.here ?? `${filledPage.where}\n${filledPage.key}`] });
+      moved();
+      return true;
+    };
     // One repair round for the errors a page names: null to press again, else the park that ends the run. The
     // same error back after a repair, one that cannot be repaired, or too many rounds, parks naming them.
     const repair = async (items) => {
       const open = errorsOpen(items);
       const key = (it) => String(it.label ?? "").toLowerCase();
+      const parkErrors = async (named) => {
+        if (await movedOn()) return null;
+        const stop = await parkOr("page_errors", { open: named });
+        return stop === AGAIN ? null : stop;
+      };
       if (!items.length || items.some((it) => attempted.has(key(it))) || fixRounds >= MAX_FIX_ROUNDS) {
-        return await park("page_errors", { open });
+        return await parkErrors(open);
       }
       for (const it of items) attempted.add(key(it));
       fixRounds += 1;
       await update({ status: "filling" });
       const repaired = await act(deps.fix, record, items, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
+      recent = [...recent, `repair -> ${repaired?.fixed === true ? "fixed" : "left"}`].slice(-MAX_RECENT);
       if (repaired?.fixed === true) return null;
       // The repair worked what it could map: the park names only what is left.
-      return await park("page_errors", { open: Array.isArray(repaired?.remaining) ? errorsOpen(repaired.remaining) : open });
+      return await parkErrors(Array.isArray(repaired?.remaining) ? errorsOpen(repaired.remaining) : open);
     };
 
     // Read what the page names as wrong in this frame and repair exactly that: null to go on, else the park.
@@ -465,15 +628,21 @@
       if (kind === "unknown") return "blank";
       return record.step > 0 && kind === "form_step" && (summary.fillable ?? 0) === 0 ? "lone" : null;
     };
+    //   "broken" frames answered, but with an error: the page's own script threw (see `scriptThrew`). Reading again does not
+    //            heal that, so it is returned after BROKEN_READS in a row (a page mid-navigation may throw once) with `broken`.
     const readPage = async (settle) => {
       const startedAt = deps.now();
       let previous = null;
       let agreeing = 0;
+      let throwing = 0;
       for (;;) {
-        const frame = pickFrame(await act(deps.classify, record.tabId));
+        const frames = await act(deps.classify, record.tabId);
+        const frame = pickFrame(frames);
         const url = await act(deps.tabUrl, record.tabId);
+        const broken = !frame && scriptThrew(frames);
+        throwing = broken ? throwing + 1 : 0;
         const why = settle ? unfinished(frame) : null;
-        if (!why) return { frame, url };
+        if (!why || (broken && throwing >= BROKEN_READS)) return { frame, url, broken };
         const print = frame ? fingerprint(url, frame.result.summary) : null;
         agreeing = print !== null && print === previous ? agreeing + 1 : 1;
         previous = print;
@@ -508,10 +677,11 @@
 
       for (;;) {
         const arrived = navigated;
-        const { frame, url } = await readPage(arrived);
+        const { frame, url, broken } = await readPage(arrived);
+        pageKind = null;
         // A finished run is only watching for the confirmation: a page not readable yet changes nothing.
-        if (!frame) return record.readyAt != null ? record : await park("unknown_page");
-        const summary = frame.result.summary;
+        if (!frame) return record.readyAt != null ? record : await park(broken ? "page_stale" : "unknown_page");
+        let summary = frame.result.summary;
         // Spent on this first read, whatever it finds: a later page (after a sign-in, a Resume, a
         // step) may be a saved draft's review page, and its "Apply" is a Submit.
         const mayApply = applyOk;
@@ -520,14 +690,21 @@
         chooserNext = false;
         {
           const [where, key] = fingerprint(url, summary).split("\n");
-          thisPage = { where, key };
+          thisPage = { where, key, shape: shapeOf(summary) };
           if (resumeWhy) {
             const parked = record.parkedPage;
             // An empty step key proves nothing (the page named no heading): that page is filled as usual.
             // An empty step key proves nothing for a fix or an upload, but a review page may simply have no
             // heading: the address alone then says it is the page the user was asked to look at.
             const vouching = resumeWhy === "unsure_page";
-            if (parked && (vouching || parked.key !== "") && parked.where === where && parked.key === key) {
+            // Its shape (buttons, control count) must also be the parked one, unless the error the park named is still on it.
+            const stillThere = async () => {
+              if (resumeWhy !== "page_errors" || !Array.isArray(parked.asked) || !parked.asked.length) return false;
+              const found = await act(deps.pageErrors, record.tabId, frame.frameId);
+              return (Array.isArray(found?.items) ? found.items : []).some((it) => parked.asked.includes(String(it.label ?? "").toLowerCase()));
+            };
+            if (parked && (vouching || parked.key !== "") && parked.where === where && parked.key === key
+              && (vouching || samePage(parked, thisPage) || await stillThere())) {
               recheck = resumeWhy;
               if (vouching) {
                 // The page is filled as any Resume's is (the fill answers nothing that already holds an answer); the
@@ -557,7 +734,7 @@
         // elsewhere (the pick, the press and the run are not one instant): that page is not this job's.
         const checkPlace = inPlaceFirst;
         inPlaceFirst = false;
-        if (checkPlace && url && !ns.decisions.samePosting(record.openUrl, url)) return await park("moved_away");
+        if (checkPlace && url && !ns.decisions.samePosting(record.openUrl, url)) return await parkOr("moved_away");
         // WHERE A POSTING'S APPLY LANDED decides whether the page is trusted at all: a redirect to a host nothing
         // named is not filled, and its host never joins the run's (the fill, the sign-in and the vouch all follow `hosts`).
         if (landing) {
@@ -565,7 +742,7 @@
           landing = null;
           const landed = hostOf(url);
           if (!landed || !(allowed.some((host) => sameSite(host, landed)) || ns.atsHosts.isKnown(landed))) {
-            return await park("moved_away");
+            return await parkOr("moved_away");
           }
         }
         if (arrived) {
@@ -579,9 +756,9 @@
         if (resumed && !arrived && record.readyAt == null && !movedChecked) {
           movedChecked = true;
           if (userNavigates) await noteHost(url);
-          else if (url && record.hosts.length && !record.hosts.includes(hostOf(url))) return await park("moved_away");
+          else if (url && record.hosts.length && !record.hosts.includes(hostOf(url))) return await parkOr("moved_away");
         }
-        const verdict = ns.pageKind.classify(summary);
+        let verdict = ns.pageKind.classify(summary);
         // A Resume's word that this was the last page is void once the page reads as a step with a real Next.
         if (vouched && verdict.kind === "form_step") vouched = false;
         let kind = verdict.kind;
@@ -609,6 +786,21 @@
           await update({ noAutoMark: true });
           return record;
         }
+        // THE OWNER'S RULE (live check 8: "when I am there the autofill should work"). A page the reader calls unknown, at the first
+        // step, that this run has not filled, is asked what the fill inventory lists on it (`fieldCount`, a read-only count). With
+        // fields it is read as having that many and judged as any page with fields (a Next, a Submit, or fields and no Next); with
+        // none it is the unknown page it was. The count is kept for the page, which is read again after its fill.
+        if (kind === "unknown" && record.step === 0) {
+          if (inventoried === null && record.filled !== true && !pageFilled && typeof deps.fieldCount === "function") {
+            inventoried = Math.max(0, Number(await act(deps.fieldCount, record.tabId, frame.frameId)) || 0);
+          }
+          if (inventoried > 0) {
+            summary = { ...summary, fillable: inventoried };
+            verdict = ns.pageKind.classify(summary);
+            kind = verdict.kind;
+            by = verdict.by ?? null;
+          }
+        }
         // A "thank you" page before the run reached review is an application someone else sent
         // (a draft this browser's session already submitted): not ready, not this run's to mark.
         if (kind === "confirmation") return await park("already_applied");
@@ -617,6 +809,8 @@
           kind = "review";
           by = "submit_button";   // its Apply is a Submit-worded button
         }
+        pageKind = kind;
+        pageSummary = summary;
         // A sign-up page on a known ATS host: the run creates the account with the saved login, once (owner
         // decision 2026-10-14). Everywhere else, and for anything the page refuses, it is still a wall.
         if (kind === "create_account") {
@@ -639,7 +833,11 @@
         }
         if (WALLS.has(kind)) return await park(kind);
         if (kind === "closed") return await finish("stopped", "closed");
-        if (kind === "unknown") return await park("unknown_page");
+        if (kind === "unknown") {
+          const stop = await parkOr("unknown_page");
+          if (stop !== AGAIN) return stop;
+          continue;
+        }
 
         if (kind === "sign_in") {
           // Marked BEFORE the attempt: whatever happens, the login is tried once.
@@ -690,12 +888,19 @@
         // A PAGE IS PRESSED ONLY IF IT IS THE PAGE THIS RUN FILLED. A press the page refused, or a repair, can end
         // with the site on its next page; the page in hand is not the one that was filled, so the press that
         // brought it here counts as a step and the page is filled before anything else is done on it.
-        if (pageFilled && filledPage && (pathOf(filledPage.where) !== pathOf(thisPage.where) || filledPage.key !== thisPage.key)) {
+        const left = pageFilled && filledPage ? leftFilled(thisPage) : false;
+        if (left === "refill") {
+          refill();
+        } else if (left) {
           // Bounded like any step: a site that keeps rewriting its address cannot walk the run through forty fills.
           if (record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
           // `seen` holds a pressed page as its whole fingerprint and a page left unpressed as `where\nkey`.
           const here = `${thisPage.where}\n${thisPage.key}`;
-          if (record.seen.some((one) => one === here || one.startsWith(`${here}\n`))) return await park("loop");
+          if (record.seen.some((one) => one === here || one.startsWith(`${here}\n`))) {
+            const stop = await parkOr("loop");
+            if (stop !== AGAIN) return stop;
+            continue;
+          }
           await update({ step: record.step + 1, seen: [...record.seen, filledPage.here ?? `${filledPage.where}\n${filledPage.key}`] });
           moved();
         } else if (pageFilled && filledPage && filledPage.where !== thisPage.where) {
@@ -718,7 +923,11 @@
           listed = report.fields.length;
           if (report.fields.some((f) => WROTE_STATUSES.has(f.status))) await update({ wrote: true });
           const open = openQuestions(report);
-          if (open.length) return await park("open_questions", { open });
+          // A page the step answered falls through to the upload gate below, so it is never pressed over a known-empty box.
+          if (open.length) {
+            const stop = await parkOr("open_questions", { open });
+            if (stop !== AGAIN) return stop;
+          }
           // Never press Next over a required upload known to be empty, and never write the resume twice on
           // a page. The one box the fill's attach wrote is exempt; of the rest, a lone box that is not
           // labelled for another document gets the targeted attach, and anything else parks naming them.
@@ -795,12 +1004,21 @@
             }
             if (pending.length) {
               const open = errorsOpen(pending);
-              if (requiredTried) return await park("open_questions", { open });
+              const stuck = async (named) => {
+                const stop = await parkOr("open_questions", { open: named });
+                return stop === AGAIN ? null : stop;
+              };
+              if (requiredTried) {
+                const stop = await stuck(open);
+                if (stop) return stop;
+                continue;
+              }
               requiredTried = true;
               await update({ status: "filling" });
               const repaired = await act(deps.fix, record, pending, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
               if (repaired?.fixed !== true) {
-                return await park("open_questions", { open: Array.isArray(repaired?.remaining) ? errorsOpen(repaired.remaining) : open });
+                const stop = await stuck(Array.isArray(repaired?.remaining) ? errorsOpen(repaired.remaining) : open);
+                if (stop) return stop;
               }
               continue;
             }
@@ -823,9 +1041,13 @@
         }
 
         const here = fingerprint(url, summary);
-        if (filledPage) filledPage.here = here;
+        if (filledPage) Object.assign(filledPage, { here, shape: thisPage.shape });
         if (tried === 0 && fixRounds === 0) {
-          if (record.seen.includes(here)) return await park("loop");
+          if (record.seen.includes(here)) {
+            const stop = await parkOr("loop");
+            if (stop !== AGAIN) return stop;
+            continue;
+          }
           if (record.step >= LIMITS.stepMax) return await park("step_limit");
           await update({ fingerprint: here });
         }
@@ -872,7 +1094,11 @@
           continue;
         }
         // The page may now show errors a fill can fix: refill once, press once more.
-        if (tried > 0) return await park("no_change");
+        if (tried > 0) {
+          const stop = await parkOr("no_change");
+          if (stop !== AGAIN) return stop;
+          continue;
+        }
         tried = 1;
         pageFilled = false;
       }
@@ -916,10 +1142,11 @@
     async function advance(tabId, frameId, id, opts) {
       const apply = opts?.apply === true;
       const chooser = opts?.chooser === true;
+      const dismiss = opts?.dismiss === true;
       // The Apply press names the address it was judged on: the page refuses a link rewritten since the read.
       const href = apply && typeof opts.href === "string" ? opts.href : null;
       const frames = await broadcast(tabId, { type: "page_advance", id, ...(apply ? { apply: true } : {}), ...(href ? { href } : {}),
-                                              ...(chooser ? { chooser: true } : {}) }, frameId);
+                                              ...(chooser ? { chooser: true } : {}), ...(dismiss ? { dismiss: true } : {}) }, frameId);
       const answer = (Array.isArray(frames) ? frames : []).find((f) => f.frameId === frameId)?.result;
       return answer?.clicked === true ? { clicked: true } : { clicked: false, why: typeof answer?.why === "string" ? answer.why : "gate" };
     }
@@ -992,8 +1219,17 @@
       }
     }
 
-    return { classify, pageErrors, pageRequired, advance, signIn, createAccount, waitForChange };
+    /** How many of the fields the fill inventory lists on the frame's page are an application's (`page_field_count`: a read that
+     * changes nothing and starts no run; search boxes and rich text left out). 0 when the frame did not answer with a count. The
+     * reader's own count can miss a control the inventory walks. */
+    async function fieldCount(tabId, frameId) {
+      const frames = await broadcast(tabId, { type: "page_field_count" }, frameId);
+      const answer = (Array.isArray(frames) ? frames : []).find((f) => f.frameId === frameId)?.result;
+      return Number.isInteger(answer) && answer > 0 ? answer : 0;
+    }
+
+    return { classify, pageErrors, pageRequired, advance, signIn, createAccount, waitForChange, fieldCount };
   }
 
-  ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK, USER_NAVIGATES, landedToCheck };
+  ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK, USER_NAVIGATES, THINKS, landedToCheck, leftForYou };
 })();

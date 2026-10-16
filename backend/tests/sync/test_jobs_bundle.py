@@ -298,6 +298,17 @@ def test_a_jobs_apply_link_arrives_and_a_change_replaces_it(home, recv, roots):
     assert recv.get(models.Job, ids.job).apply_url == "https://acme.example/careers/apply/1"
 
 
+def test_a_jobs_referrer_board_travels_with_it(home, recv, roots):
+    """referrer_board is a jobs column too (the board the user came from), so it ships like apply_url."""
+    ids = build_job(home, roots.home)
+    copy_profile(home, recv, ids)
+    home.get(models.Job, ids.job).referrer_board = "Built In"
+    home.commit()
+    ship(home, recv, roots, ids.job)
+    recv.expire_all()
+    assert recv.get(models.Job, ids.job).referrer_board == "Built In"
+
+
 def test_rows_removed_at_the_sender_are_removed_at_the_receiver(home, recv, roots):
     ids = build_job(home, roots.home)
     copy_profile(home, recv, ids)

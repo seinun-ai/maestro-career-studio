@@ -321,10 +321,19 @@ def test_an_invisible_recaptcha_badge_alone_is_not_a_captcha(page, load):
     "about:blank#recaptcha/api2/bframe",
     "about:blank#newassets.hcaptcha.com/captcha/challenge",
     "about:blank#challenges.cloudflare.com/turnstile",
+    "about:blank#geo.captcha-delivery.com/captcha/?initialCid=abc&cid=def",
 ])
 def test_a_visible_challenge_frame_is_a_captcha(page, load, src):
     load(page, f"<p>Check</p><iframe src='{src}' style='width:300px;height:300px'></iframe>", SOURCES)
     assert summary(page)["captchaVisible"] is True
+
+
+def test_a_bot_walls_challenge_frame_over_an_application_page_reads_as_a_captcha_wall_for_the_run(page, load):
+    """Live check 8: a one-click application page behind a DataDome challenge (a visible frame from captcha-delivery.com)
+    read as an unknown page and the run paid for three model calls. A captcha is a wall: the run parks without asking one."""
+    load(page, "<main><h1>Easy apply</h1><label>First name <input name='first_name'></label></main>"
+               "<iframe src='about:blank#geo.captcha-delivery.com/captcha/?cid=abc' style='width:400px;height:500px'></iframe>", SOURCES)
+    assert classify(page)["kind"] == "captcha"
 
 
 def test_a_visible_recaptcha_checkbox_is_a_captcha_but_a_tiny_hcaptcha_frame_is_not(page, load):
@@ -673,6 +682,18 @@ def test_a_cover_letter_dropzone_is_reported_as_an_other_box_and_a_resume_one_as
 def test_a_text_field_item_carries_no_box_kind(page, load):
     load(page, "<label for='a'>Name</label><input id='a' required>", SOURCES)
     assert "box" not in required(page)["items"][0]
+
+
+def test_a_read_only_combobox_that_opens_a_list_is_a_field_even_when_it_is_typed_search(page, load):
+    """An Ant Design select draws its box as `<input type=search readonly role=combobox aria-haspopup=listbox>`: a picker, not a
+    search box (live 2026-10-14). A typeahead that can be typed in, a search-named box and one in a search landmark still are not."""
+    load(page, fixture_html("antd_readonly_select.html"), SOURCES)
+    assert page.evaluate(FILLABLE) == 1
+    for html in ("<input type='search' role='combobox' aria-haspopup='listbox' aria-expanded='false'>",
+                 "<input type='search' role='combobox' aria-haspopup='listbox' readonly name='q'>",
+                 "<div role='search'><input type='search' role='combobox' aria-haspopup='listbox' readonly></div>"):
+        load(page, html, SOURCES)
+        assert page.evaluate(FILLABLE) == 0, html
 
 
 def test_a_popup_button_is_counted_like_a_combobox(page, load):
@@ -2959,6 +2980,73 @@ def test_an_error_summarys_heading_is_not_the_steps_heading(page, load):
         assert summary(page)["stepKey"] == before and before != ""
 
 
+def _step_keys(page, load, template, steps, title="Senior Analyst - Acme"):
+    keys = []
+    for heading in steps:
+        load(page, template.format(h=heading), SOURCES)
+        page.evaluate("(t) => { document.title = t; }", title.format(h=heading))
+        keys.append(summary(page)["stepKey"])
+    return keys
+
+
+JOB_TITLE_HEADERS = [
+    # The tenant's constant job-title heading sits outside the application's own region.
+    ("<h2>Senior Analyst</h2><main><h2>{h}</h2>{body}</main>", "Senior Analyst - Acme"),
+    # Inside the same region, but it is the job's title (the tab's title says so).
+    ("<main><h2>Senior Analyst</h2><h2>{h}</h2>{body}</main>", "Senior Analyst - Acme"),
+    # Inside the same region, named as the job header by its holder.
+    ("<main><div data-automation-id='jobPostingHeader'><h2>Senior Analyst</h2></div><h2>{h}</h2>{body}</main>", "Careers"),
+    ("<form><div class='job-title-bar'><h2>Senior Analyst</h2></div><h2>{h}</h2>{body}</form>", "Careers"),
+    # The tab's title FOLLOWS the step heading (the recorded chooser's does): the step's own heading is not the job's.
+    ("<h2>Senior Analyst</h2><main><h2>{h}</h2>{body}</main>", "{h} | Acme"),
+    # The whole application sits under a holder whose automation id names the job posting: that holder is not the heading's.
+    ("<div data-automation-id='jobPostingPage'><h2>Senior Analyst</h2><main><h2>{h}</h2>{body}</main></div>", "Careers"),
+    ("<div class='jobPostingPage'><h2>Senior Analyst</h2><form><h2>{h}</h2>{body}</form></div>", "{h} | Acme"),
+]
+BODY = "<label for='a'>Q</label><input id='a'><button type='button'>Next</button>"
+
+
+@pytest.mark.parametrize("template, title", JOB_TITLE_HEADERS)
+def test_a_constant_job_title_heading_above_each_step_does_not_make_every_step_one_key(page, load, template, title):
+    keys = _step_keys(page, load, template.replace("{body}", BODY), ["My Experience", "Application Questions 1"], title)
+    assert keys[0] != "" and keys[0] != keys[1]
+
+
+def test_a_field_dropdowns_shown_value_never_changes_the_pages_fingerprint(page, load):
+    """Workday's dropdown is a button whose text is its value: picking 'Yes' over 'Select One' is not another page."""
+    load(page, """<main><h2>Application Questions</h2>
+      <div data-automation-id="formField-q1"><label id="l1">Are you 18?</label>
+      <button id="pop" type="button" aria-haspopup="listbox" aria-label="Are you 18? Select One Required">Select One</button></div>
+      <div data-automation-id="pageFooter"><button type="button">Back</button><button type="button">Save and Continue</button></div></main>""", SOURCES)
+    fingerprint = "() => window.careerStudioCompanion.queueRun.fingerprint('https://acme.wd1.test/apply', window.careerStudioCompanion.pageReader.summary())"
+    before = page.evaluate(fingerprint)
+    page.evaluate("() => { const b = document.getElementById('pop'); b.textContent = 'Yes'; b.setAttribute('aria-label', 'Are you 18? Yes Required'); }")
+    after = page.evaluate(fingerprint)
+    # Address, heading key, buttons and control count are the same; only the count of required boxes still empty went 1 -> 0.
+    assert before.split("\n")[:4] == after.split("\n")[:4] and (before.split("\n")[4], after.split("\n")[4]) == ("1", "0")
+    assert "Yes" not in after and "Select One" not in before
+
+
+def test_a_progress_lists_current_step_names_the_step_when_the_page_has_no_other_heading(page, load):
+    template = ("<ol class='progress'><li aria-current='step'>{h}</li><li>Review</li></ol>"
+                "<h2>Senior Analyst</h2>" + BODY)
+    keys = _step_keys(page, load, template, ["My Experience", "Application Questions 1"], "Senior Analyst - Acme")
+    assert keys[0] != "" and keys[0] != keys[1]
+
+
+def test_the_steps_own_heading_wins_over_an_earlier_heading_outside_the_form(page, load):
+    load(page, "<h1>Acme Careers</h1><main><h2>Contact details</h2>" + BODY + "</main>", SOURCES)
+    one = summary(page)["stepKey"]
+    load(page, "<h1>Acme Careers</h1><main><h2>Work history</h2>" + BODY + "</main>", SOURCES)
+    assert one != "" and one != summary(page)["stepKey"]
+
+
+def test_a_page_whose_only_headings_are_the_job_title_still_reads_a_key(page, load):
+    load(page, "<main><h2>Senior Analyst</h2>" + BODY + "</main>", SOURCES)
+    page.evaluate("document.title = 'Senior Analyst - Acme'")
+    assert summary(page)["stepKey"] != ""
+
+
 # ---------- the cheap read stays cheap ----------
 
 def test_a_page_with_no_complaint_reads_no_field_questions(page, load):
@@ -2977,3 +3065,163 @@ def test_two_steps_inside_a_live_main_have_different_step_keys(page, load):
     load(page, step.format(h="Your experience"), SOURCES)
     second = summary(page)["stepKey"]
     assert first != "" and second != "" and first != second
+
+
+# ---------- the reasoning step's dismiss press ----------
+
+POPUP = """<div role="dialog" aria-modal="true" class="cookie-banner"><p>We use cookies.</p>
+  <button>Reject all</button><button>Accept all</button></div>
+  <form><label>Name <input name="n"></label><button type="button">Next</button>
+  <button type="submit">Submit application</button></form><button>Close</button>"""
+
+
+def dismiss(page, button_id):
+    return page.evaluate(f"(id) => {READER}.advance(id, {{dismiss: true}})", button_id)
+
+
+def test_a_dismiss_press_closes_only_an_overlays_dismiss_button_and_never_a_submit(page, load):
+    load(page, POPUP, sources=SOURCES)
+    s = summary(page)
+    assert dismiss(page, button(s, "Reject all")["id"]) == {"clicked": True}
+    s = summary(page)
+    assert dismiss(page, button(s, "Accept all")["id"]) == {"clicked": False, "why": "not_dismiss"}
+    assert dismiss(page, button(s, "Submit application")["id"])["clicked"] is False
+    assert dismiss(page, button(s, "Close")["id"]) == {"clicked": False, "why": "not_dismiss"}   # not in an overlay
+
+
+def test_a_dismiss_press_refuses_a_submit_worded_button_in_a_dialog(page, load):
+    load(page, '<div role="dialog" aria-modal="true"><button>Close and submit</button></div>', sources=SOURCES)
+    assert dismiss(page, button(summary(page), "Close and submit")["id"]) == {"clicked": False, "why": "submit"}
+
+
+def test_a_dismiss_press_clicks_the_button_and_refuses_a_forged_id_a_submit_mark_and_two_modes(page, load):
+    load(page, """<div role="dialog" aria-modal="true"><button onclick="window.hits = (window.hits || 0) + 1">Close</button>
+      <button id="submit-x" onclick="window.hits = (window.hits || 0) + 1">Close</button>
+      <button disabled>Dismiss</button></div>""", sources=SOURCES)
+    s = summary(page)
+    first, marked, disabled = s["buttons"][0], s["buttons"][1], s["buttons"][2]
+    assert dismiss(page, first["id"]) == {"clicked": True} and page.evaluate("() => window.hits") == 1
+    assert dismiss(page, marked["id"]) == {"clicked": False, "why": "submit"}
+    assert dismiss(page, disabled["id"]) == {"clicked": False, "why": "not_dismiss"}
+    assert [dismiss(page, bad) for bad in ("nope", "", None, 3)] == [{"clicked": False, "why": "not_dismiss"}] * 4
+    both = page.evaluate(f"(id) => {READER}.advance(id, {{dismiss: true, chooser: true}})", first["id"])
+    assert both == {"clicked": False, "why": "not_next"} and page.evaluate("() => window.hits") == 1
+    assert page.evaluate("() => window.hits") == 1
+
+
+CONFIRMS = {
+    "a submit button in a dialog that asks": """<form id="app"><label>Name <input name="n" value="Ada"></label></form>
+      <div role="dialog" aria-modal="true"><h2>Submit your application?</h2><p>Are you sure you want to submit?</p>
+      <form onsubmit="event.preventDefault(); window.sent = 1"><button type="submit">OK</button><button type="button">Cancel</button></form></div>""",
+    "a plain OK in a dialog that asks": """<div role="dialog" aria-modal="true"><h2>Ready to send your application?</h2>
+      <button onclick="window.sent = 1">OK</button><button>Cancel</button></div>""",
+    "a submit button in a dialog that never says submit": """<form onsubmit="event.preventDefault(); window.sent = 1">
+      <label>Name <input name="n"></label></form>
+      <div role="dialog" aria-modal="true"><p>Done here</p><form onsubmit="event.preventDefault(); window.sent = 1">
+      <button type="submit">OK</button></form></div>""",
+}
+
+
+@pytest.mark.parametrize("name", list(CONFIRMS))
+def test_a_dismiss_press_never_presses_the_ok_of_a_dialog_that_submits(page, load, name):
+    load(page, CONFIRMS[name], sources=SOURCES)
+    s = summary(page)
+    ok = button(s, "OK")
+    assert dismiss(page, ok["id"])["clicked"] is False
+    assert page.evaluate("() => window.sent === 1") is False
+
+
+def test_a_confirmation_dialogs_why_is_submit_not_just_not_dismiss(page, load):
+    load(page, CONFIRMS["a submit button in a dialog that asks"], sources=SOURCES)
+    assert dismiss(page, button(summary(page), "OK")["id"]) == {"clicked": False, "why": "submit"}
+
+
+def test_a_submit_button_may_close_a_dialog_form_that_only_closes(page, load):
+    load(page, """<dialog open><p>Welcome</p><form method="dialog"><button type="submit">Close</button></form></dialog>
+      <form><label>Name <input name="n"></label><button type="button">Next</button></form>""", sources=SOURCES)
+    assert dismiss(page, button(summary(page), "Close")["id"]) == {"clicked": True}
+
+
+def test_a_refusal_closes_a_cookie_notice_but_never_a_consent_box_and_ok_never_a_question(page, load):
+    load(page, """<div class="consent-box"><p>I agree to the background check terms.</p>
+      <button onclick="window.sent = 1">Decline</button><button>I agree</button></div>
+      <div id="cookie-notice"><p>We use cookies.</p><button>Decline</button></div>
+      <div role="dialog" aria-modal="true"><p>Is your address correct?</p><button onclick="window.sent = 1">OK</button></div>
+      <form><label>Name <input name="n"></label><button type="button">Next</button></form>""", sources=SOURCES)
+    s = summary(page)
+    declines = [b for b in s["buttons"] if b["text"] == "Decline"]
+    assert [b.get("cookie") for b in declines] == [None, True]
+    assert dismiss(page, declines[0]["id"]) == {"clicked": False, "why": "not_dismiss"}
+    assert dismiss(page, declines[1]["id"]) == {"clicked": True}
+    ok = button(s, "OK")
+    assert ok.get("overlayAsks") is True
+    assert dismiss(page, ok["id"]) == {"clicked": False, "why": "not_dismiss"}
+    assert page.evaluate("() => window.sent === 1") is False
+
+
+FORM = ('<form><label>Name <input name="n"></label>'
+        '<button type="button" onclick="window.sent = \'next\'">Next</button></form>')
+HIT = 'onclick="window.sent = 1"'
+LONG = "Please read this carefully. " * 15   # 420 characters, past the first 300
+
+
+@pytest.mark.parametrize("name, html", [
+    ("a statement an OK would agree to, beside a Cancel", f'{FORM}<div role="dialog" aria-modal="true"><p>Your answers will be locked after this.</p><button {HIT}>OK</button><button>Cancel</button></div>'),
+    ("a statement that says it will be sent", f'{FORM}<div role="dialog"><p>We will send it to the hiring team.</p><button {HIT}>OK</button></div>'),
+    ("a long preamble that ends by saying the application will be submitted", f'{FORM}<div role="dialog"><p>{LONG} Your application will be submitted.</p><button {HIT}>OK</button></div>'),
+    ("a long preamble that asks to send", f'{FORM}<div role="dialog"><p>{LONG} Ready to send it now?</p><button {HIT}>Close</button></div>'),
+    ("a link whose address says submit", f'{FORM}<div role="dialog"><p>All set.</p><a role="button" href="#/application/submit" {HIT}>OK</a></div>'),
+    ("a consent bar OK beside a dialog that asks about submitting", f'{FORM}<div role="dialog"><h2>Submit your application?</h2></div><div class="consent-bar"><button {HIT}>OK</button></div>'),
+])
+def test_a_dismiss_press_refuses_what_could_submit_whatever_the_page_calls_it(page, load, name, html):
+    load(page, html, sources=SOURCES)
+    for b in summary(page)["buttons"]:
+        if b["text"] not in ("Next", "Cancel"):
+            assert dismiss(page, b["id"])["clicked"] is False, f"{name}: {b['text']}"
+    assert page.evaluate("() => window.sent ?? null") is None
+
+
+def test_a_long_preamble_that_ends_by_saying_the_application_will_be_submitted_walls_the_page(page, load):
+    load(page, f'{FORM}<div role="dialog"><p>{LONG} Your application will be submitted.</p><button>OK</button></div>', sources=SOURCES)
+    s = summary(page)
+    assert s["submitContext"] is True and classify(page)["kind"] == "review"
+
+
+def test_an_acknowledgement_that_asks_nothing_still_closes_and_a_close_word_always_does(page, load):
+    load(page, f'{FORM}<div role="dialog"><p>Your progress was saved.</p><button {HIT}>OK</button></div>', sources=SOURCES)
+    assert dismiss(page, button(summary(page), "OK")["id"]) == {"clicked": True}
+    load(page, f'{FORM}<div role="dialog"><p>Your answers will be locked after this.</p><button>OK</button><button {HIT}>Close</button></div>', sources=SOURCES)
+    assert dismiss(page, button(summary(page), "Close")["id"]) == {"clicked": True}
+
+
+def test_a_dialog_described_by_text_elsewhere_asks_what_that_text_asks(page, load):
+    load(page, f'{FORM}<div role="dialog" aria-describedby="d"><button {HIT}>OK</button></div>'
+               '<p id="d">Your application will be submitted.</p>', sources=SOURCES)
+    s = summary(page)
+    assert s["submitContext"] is True and classify(page)["kind"] == "review"
+    assert dismiss(page, button(summary(page), "OK")["id"]) == {"clicked": False, "why": "submit"}   # classify re-tagged the ids
+    assert page.evaluate("() => window.sent ?? null") is None
+
+
+def test_an_overlay_described_by_a_question_is_not_a_plain_acknowledgement(page, load):
+    load(page, f'{FORM}<div role="dialog" aria-describedby="d"><button {HIT}>OK</button></div><p id="d">Is your address correct?</p>',
+         sources=SOURCES)
+    s = summary(page)
+    assert button(s, "OK").get("overlayAsks") is True
+    assert dismiss(page, button(s, "OK")["id"]) == {"clicked": False, "why": "not_dismiss"}
+
+
+# ---------- an update under an open tab (live check 7) ----------
+
+
+def test_the_page_reader_survives_a_load_once_module_older_than_itself(page, load):
+    """panel_prepare re-injects every content script into the tab's same world; the load-once ones keep the OLD code. A
+    page reader that read a newer export of one of them at load (ERROR_HEADING) threw on every summary and the run could
+    not read any page. The older module here has not published it."""
+    load(page, fixture_html("wizard_step1.html"), SOURCES)
+    kind = classify(page)["kind"]
+    page.evaluate("() => { delete window.careerStudioCompanion.ERROR_HEADING; }")
+    for src in SOURCES:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))   # the re-injection
+    assert classify(page)["kind"] == kind
+    assert summary(page)["fillable"] > 0

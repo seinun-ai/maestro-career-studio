@@ -154,76 +154,31 @@
    * input itself can legitimately have no box — an ancestor on screen is
    * accepted, and only what is invisible outright is refused. */
   function attachableFileInputs() {
-    return [...document.querySelectorAll('input[type="file"]')].filter((input) => {
+    return ns.deep.all('input[type="file"]').filter((input) => {
       const accept = (input.getAttribute("accept") ?? "").toLowerCase();
       if (accept && !accept.includes("pdf") && !accept.includes("*")) return false;
-      return isOnScreen(input) || isOnScreen(input.parentElement);
+      return isOnScreen(input) || isOnScreen(ns.deep.up(input));
     });
   }
 
   // The row proof's bounds (`attachResumePdf`): how long the page gets to show
   // its file row, how often we look, and how long a proof must keep holding.
   const ATTACH_PROOF_WAIT_MS = 3000;
+  const ATTACH_PROGRESS_WAIT_MS = 12000;
   const ATTACH_POLL_MS = 100;
   const ATTACH_HOLD_MS = 300;
 
-  // What an upload widget says when the file did NOT go. Counted before and
-  // after the write, so standing help text ("Files that exceed 5 MB are not
-  // supported") is not news; only an error that APPEARS voids a row proof. A
-  // WIDE list on purpose: a phrasing it misses is the panel saying "Attached"
-  // over a refused upload, while a false hit only sends the user to look —
-  // which is why some SUCCESS copy ("No errors", "0 failed") appearing after
-  // the write errs to zero, by design. Apostrophes both straight and curly
-  // ("can’t").
-  const UPLOAD_ERROR = new RegExp(String.raw`\b(?:${[
-    String.raw`errors?`, String.raw`fail(?:s|ed|ure|ing)?`, "invalid", "unable",
-    "rejected", "denied", "disallowed", "unsupported", String.raw`unsuccessful(?:ly)?`,
-    String.raw`exceed(?:s|ed|ing)?`, String.raw`went\s+wrong`, String.raw`corrupt(?:ed)?`,
-    String.raw`virus(?:es)?`, "malware", String.raw`could\s*n(?:o|['’])t`,
-    String.raw`can(?:\s*not|['’]t)`, String.raw`too\s+(?:large|big)`,
-    String.raw`not\s+(?:allowed|supported|accepted|permitted)`, String.raw`try\s+again`,
-  ].join("|")})\b`, "gi");
+  // The upload proof's reading of a widget (rows naming the file, errors, progress) lives in content/detect.js
+  // (`ns.uploadProof`), a re-run file like this one, so this one's size stays a front door's.
+  // Read where it is used, never at load: a page that loads this file alone (a re-injection) has no detect.js yet.
 
-  // An element that ALARMS: a new ON-SCREEN alert, or an element marked
-  // invalid, with text in the widget is the page objecting to the write, so it
-  // voids the row proof even when its words ("Please choose another file.")
-  // are on no list. NOT `[aria-live]`: a polite live region that GAINS text is
-  // the standard upload-status pattern ("Successfully Uploaded!" into an empty
-  // region), and reading that as an error told the user to attach it again —
-  // a second copy on Workday's `multiple` uploader. A live region's words are
-  // still read, as part of the widget's text, against `UPLOAD_ERROR`.
-  const UPLOAD_ALERT = '[role="alert"], [aria-invalid="true"]';
-
-  // What an uploader never holds: a field of its own. An ancestor holding one
-  // is the application step around the uploader, not the uploader. Hidden
-  // inputs are left out — an uploader may keep the uploaded file's id in one.
-  const NOT_AN_UPLOADER = 'input:not([type="file"]):not([type="hidden"]), select, textarea, [role="combobox"]';
-
-  /** The part of the page that belongs to ONE file input: where its uploader
-   * would print the row for a file it took.
-   *
-   * THE CLIMB is from the input's parent up to three levels, and the widget is
-   * the highest level reached. It stops BELOW an ancestor that holds any OTHER
-   * file input — so the cover-letter box's row can never vouch for the résumé
-   * box's write — below one that holds any other field (`NOT_AN_UPLOADER`), so
-   * a whole step container never becomes the widget, and below `<body>`,
-   * `<html>` and a `<form>`, because those are the page or the application
-   * rather than the uploader: the proof is never a search of the whole
-   * document. A parent that already holds another
-   * file input leaves NO widget, and that box can then prove itself only by
-   * `files`. Three levels covers Workday (the input sits directly in
-   * `attachments-FileUpload`, the row a level below it) with room for a
-   * wrapper or two. */
+  /** The part of the page that belongs to ONE file input: where its uploader would print the row for a file it took.
+   * `proof.chain`'s climb, three levels, and the widget is the highest level reached (null when there is none, and that
+   * box can then prove itself only by `files`). Three levels covers Workday (the input sits directly in
+   * `attachments-FileUpload`, the row a level below it) with room for a wrapper or two. */
   function uploadWidgetOf(input) {
-    let widget = null;
-    let el = input.parentElement;
-    for (let level = 0; el && level < 3; level += 1, el = el.parentElement) {
-      if (el === document.body || el === document.documentElement || el.tagName === "FORM") break;
-      if ([...el.querySelectorAll('input[type="file"]')].some((other) => other !== input)) break;
-      if (el.querySelector(NOT_AN_UPLOADER)) break;
-      widget = el;
-    }
-    return widget;
+    const chain = ns.uploadProof.chain(input);
+    return chain[Math.min(chain.length, 3) - 1] ?? null;
   }
 
   /** What an upload box is FOR, and whether it holds a file: `{kind,
@@ -260,6 +215,11 @@
   const words = (value) => String(value ?? "")
     .replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_\-.]+/g, " ");
 
+  // The vendor's own containers (recorded live, check 8): its "fill this from your resume" import and its resume box. They name
+  // the box whatever the words around it say; a parser mark wins (never written).
+  const BOX_MARKS = { parser: 'oc-easy-apply, [data-test="easy-apply-container"]', resume: 'oc-resume-upload, [data-test="resume-upload-container"]' };
+  const markOf = (input) => Object.keys(BOX_MARKS).find((kind) => ns.deep.closest(input, BOX_MARKS[kind])) ?? null;
+
   function kindOf(texts) {
     const text = texts.filter(Boolean).join(" ");
     if (OTHER_DOC_WORDS.test(text)) return "other";
@@ -268,14 +228,14 @@
 
   /** The uploader's own section heading: see `uploadBoxOf`. */
   function sectionOf(input) {
-    let el = input.parentElement;
-    for (let level = 0; el && level < SECTION_CLIMB; level += 1, el = el.parentElement) {
+    const { all, up } = ns.deep;
+    let el = up(input);
+    for (let level = 0; el && level < SECTION_CLIMB; level += 1, el = up(el)) {
       if (el === document.body || el === document.documentElement) break;
-      if (level >= NEAR_CLIMB && [...el.querySelectorAll(`${NOT_AN_UPLOADER}, input[type="file"]`)]
-        .some((other) => other !== input)) break;
-      const precedes = (h) => h.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING;
-      const before = [...el.querySelectorAll(SECTION_HEADING)]
-        .filter((h) => !h.contains(input) && precedes(h));
+      if (level >= NEAR_CLIMB && all(`${ns.uploadProof.NOT_AN_UPLOADER}, input[type="file"]`, el).some((other) => other !== input)) break;
+      // Composed document order (a heading in the light DOM, the input in a shadow root): the headings listed before the input.
+      const seq = all(`${SECTION_HEADING}, input[type="file"]`, el);
+      const before = seq.slice(0, seq.indexOf(input)).filter((h) => h.matches(SECTION_HEADING) && !h.contains(input));
       if (before.length) return before.at(-1).textContent;
       if (el.tagName === "FORM") break;
     }
@@ -285,9 +245,9 @@
   function hasFile(input, box) {
     if ((input.files?.length ?? 0) > 0) return true;
     if (!box) return false;
-    if (FILE_ROW.test(String(box.innerText ?? ""))) return true;
-    if (box.querySelector('[data-automation-id="file-upload-item"]')) return true;
-    return [...box.querySelectorAll('button, [role="button"]')].some((control) =>
+    if (FILE_ROW.test(ns.deep.text(box, "innerText"))) return true;
+    if (ns.deep.all('[data-automation-id="file-upload-item"]', box).length) return true;
+    return ns.deep.all('button, [role="button"]', box).some((control) =>
       REMOVE_CONTROL.test(`${control.textContent} ${control.getAttribute("aria-label") ?? ""}`));
   }
 
@@ -330,14 +290,14 @@
 
   function uploadBoxOf(input) {
     const widget = uploadWidgetOf(input);
-    const box = widget ?? input.parentElement;
+    const box = widget ?? ns.deep.up(input);
     const read = typeof ns.readField === "function" ? ns.readField(input) : { question: "" };
     const outside = outsideName(input, read);
     const labels = [read.question, outside.text];
-    for (let el = input; el; el = el === box ? null : el.parentElement) {
+    for (let el = input; el; el = el === box ? null : ns.deep.up(el)) {
       labels.push(el.getAttribute("aria-label"), words(el.getAttribute("data-automation-id")));
       for (const id of (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean)) {
-        labels.push(document.getElementById(id)?.textContent);
+        labels.push((el.getRootNode().getElementById?.(id) ?? document.getElementById(id))?.textContent);
       }
     }
     const own = [...labels, words(input.id), words(input.name)];
@@ -349,11 +309,12 @@
     const inside = (t) => Boolean(widget && t && hit(PARSER_WORDS, [t]) && widget.innerText.includes(t));
     const outer = labels.filter((t) => !inside(t));
     const plain = (texts) => kindOf(texts) === "resume" && !hit(PARSER_WORDS, texts);
-    const parser = hit(PARSER_WORDS, outer) || (hit(PARSER_WORDS, uploader) && !plain([section]))
+    const mark = markOf(input);
+    const parser = mark === "parser" || hit(PARSER_WORDS, outer) || (hit(PARSER_WORDS, uploader) && !plain([section]))
       || (hit(PARSER_WORDS, [section]) && !plain(outer) && !plain(uploader));
     const occupied = hasFile(input, box);
     if (parser) return { kind: "parser", occupied };
-    let kind = kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([section]) ?? "unknown";
+    let kind = mark === "resume" ? "resume" : kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([section]) ?? "unknown";
     // A REQUIRED box that is the page's only upload, and whose words name no document, is the resume's
     // (live Workday: "Upload a file (5MB max)", seven levels under the heading that says resume).
     if (kind === "unknown" && (read.required || outside.required) && attachableFileInputs().length === 1) kind = "resume";
@@ -432,37 +393,6 @@
     return readBoxes(attachableFileInputs());
   }
 
-  /** Error words in `text`, with the filename cut out first so a file called
-   * `error-log.pdf` is not its own failure. */
-  function errorWords(text, filename) {
-    return String(text ?? "").split(filename).join(" ").match(UPLOAD_ERROR)?.length ?? 0;
-  }
-
-  /** How many on-screen elements in `widget` name `filename`: the DEEPEST ones
-   * whose text holds it, so a row and the wrappers around it count once. A
-   * row whose OWN text carries error words ("resume.pdf failed") is never a
-   * success row, even where the widget's error total did not rise because the
-   * page cleared an old error as it printed the new one. */
-  function rowsNaming(widget, filename) {
-    if (!widget.textContent.includes(filename)) return 0;
-    return [widget, ...widget.querySelectorAll("*")].filter((el) =>
-      el.textContent.includes(filename)
-      && ![...el.children].some((child) => child.textContent.includes(filename))
-      && isOnScreen(el)
-      && errorWords(el.textContent, filename) === 0).length;
-  }
-
-  /** The widget's error total: error words in its RENDERED text (a hidden
-   * error template is not news until it shows), plus every ON-SCREEN alarming
-   * element (`UPLOAD_ALERT`) that holds text — on screen because `innerText`
-   * of a hidden element still returns its text, and an alert nobody can see
-   * tells the user nothing. */
-  function uploadErrors(widget, filename) {
-    const alarming = [widget, ...widget.querySelectorAll(UPLOAD_ALERT)].filter((el) =>
-      el.matches(UPLOAD_ALERT) && isOnScreen(el) && String(el.innerText ?? "").trim() !== "").length;
-    return errorWords(widget.innerText ?? widget.textContent, filename) + alarming;
-  }
-
   /** Attach a PDF to every attachable file input in this frame, and report how
    * many of them actually took it.
    *
@@ -498,6 +428,12 @@
    *   it says (a live region only through its words — see `UPLOAD_ALERT`). Counting ELEMENTS
    *   rather than remembering nodes survives a widget that re-renders its old
    *   rows.
+   *
+   * THE WIDGET MAY BE SWAPPED, and the proof follows it: `proof.levels` watches the widget and the ancestors above it (up to six
+   * levels above the input), read at the deepest one still in the page. An uploader that replaces its own button container,
+   * input included, for the file's chip (Greenhouse) leaves the group around it, and the chip is the row. The name may be the
+   * stem or shortened by an ellipsis, and a widget that shows progress gets longer than `ATTACH_PROOF_WAIT_MS` (bounded by
+   * `ATTACH_PROGRESS_WAIT_MS`): a parser that prints the name when it is done (Rippling).
    *
    * A ROW STILL IN PROGRESS COUNTS. An uploader that prints the name while the
    * upload runs and fails more than about half a second later (past the hold
@@ -540,10 +476,10 @@
    * proven}`, so "nothing written" differs from "not proven", and a HIDDEN
    * input in an upload widget counts only by its row (a held `files` proves a
    * bare or visible input, whose own control shows it). The button keeps both. */
-  async function attachResumePdf(b64, filename, expect, resumeOnly = false, target = null) {
+  async function attachResumePdf(b64, filename, expect, resumeOnly = false, target = null, reportWritten = false) {
     // `target`: write the box the page's own error named, and only it (`targetBox`).
     const targeted = typeof target === "string" && target !== "";
-    const reply = (written, proven) => (resumeOnly || targeted ? { written, proven } : proven);
+    const reply = (written, proven) => (resumeOnly || targeted || reportWritten ? { written, proven } : proven);
     const all = attachableFileInputs();
     if (!targeted && Number.isInteger(expect) && all.length !== expect) return reply(0, 0);
     // The button writes every box but a parser (the site's own fill-from-resume), one for another
@@ -559,12 +495,8 @@
     // box's row. An EMPTY filename is in every text, so it proves nothing and
     // leaves such a box to `files` alone.
     const targets = inputs.map((input) => {
-      const widget = filename ? uploadWidgetOf(input) : null;
-      return {
-        input, widget,
-        rows: widget ? rowsNaming(widget, filename) : 0,
-        errors: widget ? uploadErrors(widget, filename) : 0,
-      };
+      const watched = filename ? ns.uploadProof.levels(input, filename) : [];
+      return { input, watched, widget: watched[0]?.el ?? null };
     });
     for (const { input } of targets) {
       // A FRESH DataTransfer PER BOX. The input adopts the very FileList it is
@@ -576,9 +508,7 @@
       input.files = dt.files;
       input.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    const rowProof = (t) => t.widget !== null && t.widget.isConnected
-      && rowsNaming(t.widget, filename) > t.rows
-      && uploadErrors(t.widget, filename) <= t.errors;
+    const rowProof = (t) => ns.uploadProof.seen(t.watched, filename).row;
     // Autofill's write takes a held `files` only from an input on screen (the
     // browser's own control shows it); a hidden one's uploader must show a row.
     const proven = (t) => ((t.input.isConnected && t.input.files?.length === 1)
@@ -598,7 +528,13 @@
     // THEN WAIT FOR THE ROW, bounded: Workday renders it ~200ms after
     // `change`, a slow upload later. Only a box that HAS a widget can still
     // prove itself this way, so a page of plain inputs does not wait at all.
-    while (Date.now() < deadline && targets.some((t) => t.widget !== null && !proven(t))) {
+    // A widget that shows PROGRESS (busy, a bar, "Uploading…") is still working, and gets longer: an uploader that parses the
+    // file first (live check 9) prints the name when that is done. Bounded, and only the news counts.
+    const patience = Date.now() + ATTACH_PROGRESS_WAIT_MS;
+    // A latched Stop ends the extra wait (`fillBase.check` throws only then).
+    const stopped = () => { try { ns.fillBase?.check(); return false; } catch (_) { return true; } };
+    const working = (t) => Date.now() < patience && !stopped() && ns.uploadProof.seen(t.watched, filename).working;
+    while (targets.some((t) => t.widget !== null && !proven(t) && (Date.now() < deadline || working(t)))) {
       await sleep(ATTACH_POLL_MS);
     }
     // THE HOLD: a proof counts only if it held when the wait ended AND is
@@ -718,7 +654,7 @@
       ? scrollToField(msg.qid)
       : false),
     attach_resume_pdf: (msg) => (frameMayReceiveUserData(msg)
-      ? attachResumePdf(msg.b64, msg.filename, msg.expect, msg.resumeOnly === true, msg.target)
+      ? attachResumePdf(msg.b64, msg.filename, msg.expect, msg.resumeOnly === true, msg.target, msg.reportWritten === true)
       : 0),
     /* The fill engine's page operations (content/fill-ops.js). Gated like
      * `guided_write`, each returning its empty shape in a refused frame: an
@@ -791,8 +727,9 @@
       ? ns.pageReader.pageRequired()
       : { count: 0, items: [] }),
     page_uploads: (msg) => (frameMayReceiveUserData(msg) ? pageUploads() : []),
+    page_field_count: (msg) => (frameMayReceiveUserData(msg) ? ns.pageReader.fieldCount() : 0),   // the run's count for an unknown page
     page_advance: (msg) => (frameMayReceiveUserData(msg)
-      ? ns.pageReader.advance(msg.id, { apply: msg.apply === true, chooser: msg.chooser === true,
+      ? ns.pageReader.advance(msg.id, { apply: msg.apply === true, chooser: msg.chooser === true, dismiss: msg.dismiss === true,
           ...(msg.apply === true && typeof msg.href === "string" ? { href: msg.href } : {}) })
       : { clicked: false, why: "gate" }),
     // The saved login: TOP frame only (a subframe is refused, not asked), via panel_frame0 alone.

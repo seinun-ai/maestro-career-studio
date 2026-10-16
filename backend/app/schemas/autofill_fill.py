@@ -40,6 +40,9 @@ Second = Literal["asked", "decided"]  # asked: it ran and did not change the ans
 PolarityWay = Literal["same", "opposite", "neither", "unsure"]
 
 
+SLOT_NAME = r"^[a-z_]+(\.[a-z0-9_]+)*$"  # a fact NAME (autofill_catalog), never its value
+
+
 class DecisionFields(BaseModel):
     """The eight value-free fields of how a model decided, shared by the live `DecisionTrace` and the
     stored `TraceStep`."""
@@ -66,6 +69,10 @@ class DecisionFields(BaseModel):
     # step's `slot`). So a field routed `none` reads as years_unanswered or history_unanswered or
     # protected_unanswered, or a `free_text` as the model's free_text; None for a fact, an omitted answer.
     sentinel: Sentinel | None = None
+    # /map only: the fact NAME (autofill_catalog; the step's `slot` vocabulary, never its value) that was the
+    # model's top choice when it fell under its floor. So a field routed `none` for 0.55 against 0.6 reads as
+    # that fact, not as an empty answer; None when the top choice stood, was no fact, or was never given.
+    top_fact: str | None = Field(default=None, max_length=120, pattern=SLOT_NAME)
 
 
 class DecisionTrace(DecisionFields):
@@ -129,6 +136,8 @@ class MapField(BaseModel):
     multi: bool = False
     required: bool = False
     options: list[str] = Field(default_factory=list, max_length=MAX_MAP_OPTIONS)
+    # The reasoning step's answer_from: a fact NAME the model would otherwise pick; ignored when protected or absent.
+    slot_hint: str | None = Field(default=None, max_length=120, pattern=r"^[a-z_]+(\.[a-z0-9_]+)*$")
 
 
 class MapRequest(Selector):

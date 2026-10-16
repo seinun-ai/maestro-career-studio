@@ -1,0 +1,73 @@
+<!-- A react-select-like country picker whose options read "Acmeland +1" but whose box shows only the dial code ("+1") once one is
+     picked (live check 9, a phone-country select). The reopened list marks the held option with the library's own class
+     (`acme__option--is-selected`) or, with `window.__mark = "aria"`, aria-selected. Made-up countries; Acme is a made-up vendor. -->
+<label id="lbl" for="cc">Country</label>
+<div class="acme__control"><div class="acme__value-container">
+  <div class="acme__placeholder">Select...</div>
+  <input id="cc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-labelledby="lbl">
+</div></div>
+<div id="menu-root"></div>
+<script>
+(() => {
+  // __oracle.country is what the fake app HOLDS; the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.country = "";
+  const OPTIONS = ["Acmeland +1", "Betaland +2", "Acmeland North +3", "Dominicania +1809", "Dominicania +1829"];
+  const input = document.getElementById("cc");
+  const menuRoot = document.getElementById("menu-root");
+  const valueBox = input.parentElement;
+  window.__mark = "class";
+  window.__forget = false;   // the list never marks the held option
+  window.__autoPick = false;
+  window.__commitOnBlur = false; // closing the list (Escape, or leaving the box) commits the first row of a list still open (a highlight taken as a pick)
+  window.__wrongPick = null; // the page commits this option whatever was clicked
+  const closeMenu = () => { menuRoot.innerHTML = ""; input.removeAttribute("aria-controls"); input.setAttribute("aria-expanded", "false"); };
+  const pick = (text) => {
+    const held = window.__wrongPick ?? text;
+    valueBox.querySelector(".acme__placeholder, .acme__single-value").outerHTML =
+      `<div class="acme__single-value"><span aria-hidden="true">⚑</span> ${held.split(" ").at(-1)}</div>`;
+    input.value = "";
+    oracle.country = held;
+    closeMenu();
+  };
+  const renderMenu = () => {
+    const q = input.value.toLowerCase();
+    menuRoot.innerHTML = `<div id="cc-menu" role="listbox">${OPTIONS.filter((o) => o.toLowerCase().includes(q)).map((o) => {
+      const held = !window.__forget && o === oracle.country;
+      const cls = `acme__option${held && window.__mark === "class" ? " acme__option--is-selected" : ""}`;
+      const aria = held && window.__mark === "aria" ? ' aria-selected="true"' : "";
+      return `<div role="option" class="${cls}"${aria}>${o}</div>`;
+    }).join("")}</div>`;
+    input.setAttribute("aria-controls", "cc-menu");
+    input.setAttribute("aria-expanded", "true");
+    for (const opt of menuRoot.querySelectorAll("[role=option]")) opt.addEventListener("click", () => pick(opt.textContent));
+  };
+  menuRoot.addEventListener("mousedown", (e) => e.preventDefault());
+  window.__presses = 0;   // how many times the box was pressed open
+  input.addEventListener("mousedown", () => { window.__presses += 1; renderMenu(); });
+  input.addEventListener("input", () => {
+    renderMenu();
+    // `window.__autoPick`: a filter that leaves one row picks it, with no click (the page's own pick).
+    const rows = menuRoot.querySelectorAll("[role=option]");
+    if (window.__autoPick && input.value && rows.length === 1) pick(rows[0].textContent);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const first = menuRoot.querySelector("[role=option]");
+      if (window.__commitOnBlur && first) pick(first.textContent);
+      closeMenu();
+    }
+    // Enter takes the first row the filter leaves, as react-select's focused option.
+    if (e.key === "Enter") {
+      const first = menuRoot.querySelector("[role=option]");
+      if (first) { e.preventDefault(); pick(first.textContent); }
+    }
+  });
+  input.addEventListener("blur", () => {
+    const first = menuRoot.querySelector("[role=option]");
+    if (window.__commitOnBlur && first) pick(first.textContent);
+    input.value = "";
+    setTimeout(closeMenu, 0);
+  });
+})();
+</script>

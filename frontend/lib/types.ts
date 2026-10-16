@@ -437,6 +437,8 @@ export interface OpenAIInfo {
   fast_model: string;
   smart_model: string;
   chat_model: string;
+  /** The Companion's reasoning step; defaults to the chosen provider's strong model. */
+  reasoning_model: string;
   api_key_configured: boolean;
   // The API never returns key material — only whether a key is configured.
   gemini_api_key_configured: boolean;
@@ -455,7 +457,7 @@ export interface OpenAIInfo {
    *  arbitrary Ollama or vLLM host serves, so model ids become free text. */
   custom_endpoint: boolean;
   json_mode: "auto" | "on" | "off";
-  /** Keyed by model id; only the three configured models appear. */
+  /** Keyed by model id; only the configured models appear. */
   capabilities: Record<string, CapabilityReport>;
 }
 

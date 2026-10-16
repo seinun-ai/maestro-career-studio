@@ -221,7 +221,7 @@ def test_a_closed_dropdown_is_explored_before_it_is_picked(page, load):
 
 def test_an_unexpected_commit_hands_over_to_the_adaptive_step(page, load):
     out = run(page, load, frames=[[f("h", "popup", "How did you hear?")]],
-              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              map={"h": {"route": "slot", "slot": "education.0.discipline", "value": "LinkedIn"}},
               explore={"h": {"options": [opt("o1", "Job Board")], "complete": True}},
               pick={"h": {"oids": ["o1"], "reason": "matched"}},
               apply={"Job Board": {"outcome": "unexpected", "reason": "new_options"}, "click:o1": {"outcome": "verified"}},
@@ -230,7 +230,7 @@ def test_an_unexpected_commit_hands_over_to_the_adaptive_step(page, load):
     assert statuses(out) == {"h": "verified"}
     [step] = bodies(out, "/api/autofill/step")
     assert step["history"] == ["choose -> unexpected (new_options)"]
-    assert "item" not in step and step["route"] == "slot" and step["slot"] == "preferences.how_heard"
+    assert "item" not in step and step["route"] == "slot" and step["slot"] == "education.0.discipline"
     [move] = actions(out, "move")
     # Only fid, fp, op, mid, version — and no `as` on an answer click.
     assert move == {"fid": "h", "fp": "fp-h", "op": "move", "mid": "click:o1", "version": 1}
@@ -246,9 +246,70 @@ def test_no_options_goes_straight_to_the_adaptive_step_and_give_up_is_honest(pag
     assert "/api/autofill/step" not in out["calls"]
 
 
+def test_a_single_value_search_choose_that_times_out_hands_over_to_the_adaptive_step_and_never_repeats(page, load):
+    """Live 2026-10-15: a search choose ran past its clock three times in a row, each the same choose again, and the
+    step agent was never asked. A multi-value field already handed over on a timeout; a single value does too."""
+    out = run(page, load, frames=[[f("s", "search", "School")]],
+              map={"s": {"route": "slot", "slot": "education.0.school", "value": "Dallas College"}},
+              explore={"Dallas College": {"options": [opt("o1", "Dallas College")], "complete": True}},
+              pick={"s": {"oids": ["o1"], "reason": "matched"}},
+              apply={"Dallas College": {"outcome": "timeout"}, "click:o1": {"outcome": "verified"}},
+              step={"states": [{"candidates": [{"mid": "click:o1", "describe": 'Click the option "Dallas College"'}, GIVE_UP]}],
+                    "moves": [{"mid": "click:o1", "reason": "matched"}]})
+    assert statuses(out) == {"s": "verified"}
+    [step] = bodies(out, "/api/autofill/step")
+    assert step["history"] == ["choose -> timeout"]
+    assert len(actions(out, "choose")) == 1, "the same choose is not run a second time"
+
+
+@pytest.mark.parametrize("shape", ["popup", "search"])
+def test_a_how_heard_field_goes_straight_to_the_adaptive_step_with_no_generic_choose(page, load, shape):
+    """Live 2026-10-15: the saved word was typed and chosen three times before the step agent, which knows the tree,
+    was asked. A source list is a tree on some sites: the step opens a category and reads what is under it."""
+    out = run(page, load, frames=[[f("h", shape, "How did you hear about us?")]],
+              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "Job board"}},
+              explore={"h": {"options": [opt("o1", "Job Board")], "complete": True}, "Job board": {"options": [opt("o1", "Job Board")]}},
+              pick={"h": {"oids": ["o1"], "reason": "matched"}},
+              apply={"click:o2": {"outcome": "verified"}},
+              step={"states": [{"candidates": [{"mid": "click:o2", "describe": 'Click the option "LinkedIn"'}, GIVE_UP]}],
+                    "moves": [{"mid": "click:o2", "reason": "assumed"}]})
+    assert statuses(out) == {"h": "assumed"}
+    assert not actions(out, "choose") and "fill_explore" not in out["calls"] and "/api/autofill/pick" not in out["calls"]
+    [step] = bodies(out, "/api/autofill/step")
+    assert step["history"] == [] and step["slot"] == "preferences.how_heard"
+
+
+@pytest.mark.parametrize("shape", ["popup", "search"])
+def test_a_field_the_reasoning_step_retries_step_by_step_goes_straight_to_the_adaptive_step(page, load, shape):
+    out = run(page, load, frames=[[f("s", shape, "School")]], options={"sourceHint": None, "stepByStep": ["s"]},
+              map={"s": {"route": "slot", "slot": "education.0.school", "value": "Dallas College"}},
+              explore={"s": {"options": [opt("o1", "Dallas College")], "complete": True}, "Dallas College": {"options": [opt("o1", "Dallas College")]}},
+              pick={"s": {"oids": ["o1"], "reason": "matched"}},
+              apply={"click:o1": {"outcome": "verified"}},
+              step={"states": [{"candidates": [{"mid": "click:o1", "describe": 'Click the option "Dallas College"'}, GIVE_UP]}],
+                    "moves": [{"mid": "click:o1", "reason": "matched"}]})
+    assert statuses(out) == {"s": "verified"}
+    assert not actions(out, "choose") and "/api/autofill/pick" not in out["calls"]
+    assert bodies(out, "/api/autofill/step")[0]["history"] == []
+
+
+def test_the_step_by_step_lever_ignores_a_fid_it_is_not_given_and_junk(page, load):
+    out = run(page, load, frames=[[f("s", "popup", "School")]], options={"sourceHint": None, "stepByStep": ["other", 7, None, "../x"]},
+              map={"s": {"route": "slot", "slot": "education.0.school", "value": "Dallas College"}},
+              explore={"s": {"options": [opt("o1", "Dallas College")], "complete": True}},
+              pick={"s": {"oids": ["o1"], "reason": "matched"}})
+    assert statuses(out) == {"s": "verified"} and "/api/autofill/step" not in out["calls"]
+
+
+def test_a_how_heard_text_box_is_not_a_tree_and_is_written(page, load):
+    out = run(page, load, frames=[[f("h", "text", "How did you hear about us?")]],
+              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "Job board"}})
+    assert statuses(out) == {"h": "verified"} and "/api/autofill/step" not in out["calls"]
+
+
 def test_an_honest_abstain_on_a_popup_hands_over_to_the_adaptive_step(page, load):
     out = run(page, load, frames=[[f("h", "popup", "How did you hear?")]],
-              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              map={"h": {"route": "slot", "slot": "education.0.discipline", "value": "LinkedIn"}},
               explore={"h": {"options": [opt("o1", "Job Board"), opt("o2", "Social Media")], "complete": True}},
               pick={"h": {"oids": [], "reason": "abstained"}},
               apply={"click:o1": {"outcome": "progressed"}, "click:o2": {"outcome": "verified"}},
@@ -526,7 +587,7 @@ def test_a_field_a_commit_adds_is_mapped_and_filled_in_the_same_round(page, load
     p = f("p", "popup", "Degree")
     out = run(page, load, frames=[[q, p], [q, other, p]],
               peek=[["q", "o", "p"]],
-              map={"q": {"route": "slot", "slot": "preferences.how_heard", "value": "Other"},
+              map={"q": {"route": "slot", "slot": "education.0.discipline", "value": "Other"},
                    "p": {"route": "slot", "slot": "education.0.degree", "value": "MBA"},
                    "o": {"route": "slot", "slot": "preferences.how_heard_other", "value": "A friend"}},
               explore={"q": {"options": [opt("o1", "Other")], "complete": True},
@@ -550,7 +611,7 @@ def test_a_prose_field_a_commit_re_renders_is_picked_up_next_round(page, load):
     w2 = f("w2", question="Why us?", fp="fp-w")
     out = run(page, load, frames=[[q, w1], [q, w2]], peek=[["q", "w2"]],
               apiDelay={"/api/autofill/choose": 300},
-              map={"q": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"},
+              map={"q": {"route": "slot", "slot": "education.0.discipline", "value": "LinkedIn"},
                    "w1": {"route": "free_text"}, "w2": {"route": "free_text"}},
               explore={"q": {"options": [opt("o1", "LinkedIn")], "complete": True}},
               pick={"q": {"oids": ["o1"], "reason": "matched"}},
@@ -923,7 +984,7 @@ def test_a_stale_move_re_takes_the_state(page, load):
 
 def test_a_step_state_the_page_refuses_as_stale_goes_back_to_the_inventory(page, load):
     out = run(page, load, frames=[[f("h", "popup")]] * 4,
-              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              map={"h": {"route": "slot", "slot": "education.0.discipline", "value": "LinkedIn"}},
               explore={"h": [{"options": [], "complete": False, "error": "empty_popup"},
                              {"options": [opt("o1", "LinkedIn")], "complete": True}]},
               pick={"h": {"oids": ["o1"], "reason": "matched"}},
@@ -950,7 +1011,7 @@ def test_history_is_built_from_move_ids_and_outcomes_and_keeps_the_last_eight(pa
                                             {"mid": "scroll", "describe": "Scroll"}, GIVE_UP]} for i in range(n)]
     out = run(page, load, frames=[[f("h", "popup", "Where did you hear about this very long question? " * 8)]],
               limits={"MAX_STEPS": n},
-              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              map={"h": {"route": "slot", "slot": "education.0.discipline", "value": "LinkedIn"}},
               explore={"h": {"options": [], "complete": False, "error": "empty_popup"}},
               apply={"scroll": [{"outcome": "progressed"}] * 3 + [{"outcome": "unexpected", "reason": "list_end"}]},
               step={"states": states, "moves": [{"mid": "scroll", "reason": "progress"}] * n})
@@ -1591,7 +1652,7 @@ def test_every_proposal_source_shares_the_field_budget(page, load):
     # 8 steps of ~100 ms (verified); the shared one leaves ~500 ms (about 4).
     out = run(page, load, frames=[[f("h", "popup", "How did you hear?")]] * 4, limits={"FIELD_MS": 1500},
               pageDelay={"Job Board": [1000, 0]}, apiDelay={"/api/autofill/step": 100},
-              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              map={"h": {"route": "slot", "slot": "education.0.discipline", "value": "LinkedIn"}},
               explore={"h": {"options": [opt("o1", "Job Board")], "complete": True}},
               pick={"h": {"oids": ["o1"], "reason": "matched"}},
               apply={"Job Board": [{"outcome": "reverted"}, {"outcome": "unexpected", "reason": "new_options"}],
@@ -2954,6 +3015,20 @@ def test_a_trace_lists_each_decision_and_page_action_in_order(page, load):
     assert (s_pick["second"], s_pick["chose_none"], "first_p" in s_pick) == ("asked", False, False)  # only what was sent
 
 
+def test_a_maps_top_fact_reaches_the_trace_only_as_a_fact_name(page, load):
+    """`top_fact` names the fact a /map answer left under its floor. A name rides the trace; anything else a model's trace
+    carried under that key (a typed value, a sentence) is left out."""
+    keep = dict(SELECT_AND_TEXT)
+    keep["map"] = {
+        "s": {**SELECT_AND_TEXT["map"]["s"], "trace": {"engine": "fast", "p": 0.97, "floor": 0.9, "top_fact": "personal.city"}},
+        "t": {**SELECT_AND_TEXT["map"]["t"], "trace": {"engine": "fast", "p": 0.4, "floor": 0.9, "top_fact": "Springfield, IL"}}}
+    out = run(page, load, **keep)
+    s_map, = [step for step in traced(out, "s")["steps"] if step["op"] == "map"]
+    t_map, = [step for step in traced(out, "t")["steps"] if step["op"] == "map"]
+    assert s_map["top_fact"] == "personal.city"
+    assert "top_fact" not in t_map and t_map["p"] == 0.4
+
+
 def test_every_trace_step_is_timed_in_whole_milliseconds(page, load):
     out = run(page, load, **SELECT_AND_TEXT)
     steps = [step for fid in ("s", "t") for step in traced(out, fid)["steps"]]
@@ -3116,7 +3191,7 @@ def sentinel_run(page, load):
                    "d": {"route": "slot", "slot": "eeo.disability", "value": "No, I do not have a disability"}},
               apply={"SENTINEL-TYPED-77": [{"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]},
                                            {"outcome": "verified"}]},
-              explore={"Acme Corp": {"options": [opt("o9", "SENTINEL-EXPLORE-55 Inc")], "complete": True, "multi": False}},
+              explore={"Acme Corp": {"options": [opt("o9", "Acme Corp SENTINEL-EXPLORE-55 Inc")], "complete": True, "multi": False}},
               pick={"e": {"oids": ["o9"], "reason": "matched"},
                     "d": {"oids": ["o1"], "reason": "matched"}})
     assert set(statuses(out).values()) == {"verified"}
@@ -3135,7 +3210,8 @@ def test_what_the_trace_keeps_of_the_page_is_its_labels_and_options(page, load):
     # The page's own option texts are kept, the chosen one included (owner decision, 2026-10-03).
     assert (traced(out, "d")["options"], traced(out, "d")["option_count"]) == (
         ["No, I do not have a disability", "Yes, I have a disability"], 2)
-    assert (traced(out, "e")["options"], "explore" in ops(out, "e")) == (None, True)  # a search lists rows only on explore
+    # A search lists rows only on explore, and they echo what it typed: only their COUNT is kept.
+    assert (traced(out, "e")["options"], traced(out, "e")["option_count"], "explore" in ops(out, "e")) == ([], 1, True)
 
 
 def test_an_option_echoing_a_siblings_typed_value_is_blanked(page, load):
@@ -3553,21 +3629,21 @@ def test_a_picks_option_index_is_the_pages_own_not_the_offered_one(page, load):
 
 
 def test_no_option_index_is_recorded_for_a_field_with_no_passive_list(page, load):
-    """An explored popup's rows are oids o1.. of their own: they are not the page's list, and a
-    popup the inventory could not read has none (`options` stays null)."""
+    """An explored popup's rows are oids o1.. of their own: they are not the page's list, so a pick has no option index
+    (the rows an explore showed are kept as the field's `options` since live check 7, a popup the inventory could not read)."""
     out = run(page, load, frames=[[f("d", "popup", "Where?")]] * 2,
-              map={"d": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              map={"d": {"route": "slot", "slot": "education.0.discipline", "value": "LinkedIn"}},
               explore={"d": {"options": [opt("o1", "Referral"), opt("o2", "LinkedIn")], "complete": True}},
               pick={"d": {"oids": ["o2"], "reason": "matched"}})
     t = traced(out, "d")
-    assert t["options"] is None
+    assert t["options"] == ["Referral", "LinkedIn"] and t["option_count"] == 2
     assert [s["option"] for s in t["steps"] if s["op"] == "pick"] == [None]
 
 
 def test_an_explored_pick_that_is_not_the_passive_option_has_no_index(page, load):
     """The passive list says o2 is "Maybe"; the explore's o2 is "LinkedIn": same oid, another option."""
     out = run(page, load, frames=[[f("d", "popup", "Where?", options=[opt("o1", "Yes"), opt("o2", "Maybe")])]] * 2,
-              map={"d": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              map={"d": {"route": "slot", "slot": "education.0.discipline", "value": "LinkedIn"}},
               explore={"d": {"options": [opt("o1", "Referral"), opt("o2", "LinkedIn")], "complete": True}},
               pick={"d": {"oids": ["o2"], "reason": "matched"}})
     assert [s["option"] for s in traced(out, "d")["steps"] if s["op"] == "pick"] == [None]
@@ -3768,3 +3844,116 @@ def test_a_scoped_runs_trace_still_hides_a_value_an_excluded_field_holds(page, l
               options={"sourceHint": None, "only": ["d"]})
     assert [t["fid"] for t in trace_of(out)["fields"]] == ["d"]
     assert held not in json.dumps(out["report"]["trace"])
+
+
+# ---------- the reasoning step's options (shared/reason-loop.js drives them)
+
+
+def test_a_seeded_route_skips_the_map_and_asks_pick_with_that_route(page, load):
+    out = run(page, load, frames=[[f("s", "select", "How did you hear about us?", required=True,
+                                     options=[opt("o1", "Website"), opt("o2", "Referral")], optionsComplete=True)]],
+              options={"routes": {"s": "low_stakes"}}, pick={"s": {"oids": ["o1"], "reason": "assumed"}})
+    assert "/api/autofill/map" not in out["calls"]
+    assert [fl["route"] for b in bodies(out, "/api/autofill/pick") for fl in b["fields"]] == ["low_stakes"]
+
+
+def test_a_route_that_is_not_one_of_the_three_is_ignored(page, load):
+    out = run(page, load, frames=[[f("s", "select", "Source", options=[opt("o1", "Website")], optionsComplete=True)]],
+              options={"routes": {"s": "slot"}}, map={"s": {"route": "none"}})
+    assert "/api/autofill/map" in out["calls"]
+
+
+def test_a_slot_hint_rides_the_map_request(page, load):
+    out = run(page, load, frames=[[f("s", "select", "Source", options=[opt("o1", "Referral")], optionsComplete=True),
+                                   f("x", "select", "Other", options=[opt("o1", "A")], optionsComplete=True)]],
+              options={"slotHints": {"s": "preferences.how_heard", "x": "Not A Slot"}})
+    [body] = bodies(out, "/api/autofill/map")
+    by_fid = {fl["fid"]: fl for fl in body["fields"]}
+    assert by_fid["s"]["slot_hint"] == "preferences.how_heard" and "slot_hint" not in by_fid["x"]
+
+
+def test_a_reasoner_write_asks_choose_for_a_short_draft(page, load):
+    out = run(page, load, frames=[[f("t", question="Field of study")]],
+              options={"routes": {"t": "free_text"}, "reasoner": {"t": "short"}},
+              choose={"t": {"answer": "Mathematics", "reason": "assumed", "note": "Drafted from your history: read it"}})
+    [body] = bodies(out, "/api/autofill/choose")
+    assert body["fields"][0]["reasoner"] == "short" and body["fields"][0]["draft"] is True
+    assert "/api/autofill/map" not in out["calls"] and statuses(out) == {"t": "assumed"}
+
+
+def test_a_field_without_a_reasoner_sends_none(page, load):
+    out = run(page, load, frames=[[f("t", question="Why us?", multiline=True)]], map={"t": {"route": "free_text"}},
+              choose={"t": {"answer": "Because.", "reason": "matched"}})
+    assert all("reasoner" not in fl for b in bodies(out, "/api/autofill/choose") for fl in b["fields"])
+
+
+def test_redo_fills_again_a_field_that_holds_the_runs_old_answer_but_never_a_touched_one(page, load):
+    spec = dict(frames=[[f("a", question="City", committed="Old", answered=True),
+                         f("b", question="Town", committed="Mine", answered=True, touched=True)]],
+                map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
+    assert statuses(run(page, load, options={"redo": ["a", "b"]}, **spec)) == {"a": "verified", "b": "yours"}
+    assert statuses(run(page, load, **spec)) == {"a": "already", "b": "yours"}
+
+
+def test_a_variant_rides_the_explore_and_teaches_the_book_nothing(page, load):
+    out = run(page, load, frames=[[f("p", "popup", "Degree", required=True)]],
+              options={"variants": {"p": {"open": "keys"}, "q": {"bogus": "x"}}},
+              map={"p": {"route": "slot", "slot": "education.0.degree", "value": "BSc"}},
+              explore={"p": {"options": [opt("o1", "BSc")], "complete": True}},
+              pick={"p": {"oids": ["o1"], "reason": "matched"}}, apply={"BSc": {"outcome": "verified", "variant": {"open": "keys"}}},
+              recipes={})
+    explored = [r for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"]]
+    assert explored and explored[0].get("variant") == {"open": "keys"}
+    assert out["lessons"] in (None, [])
+
+
+def test_only_the_engines_own_move_axes_are_a_variant(page, load):
+    out = run(page, load, frames=[[f("p", "popup", "Degree", required=True)]],
+              options={"variants": {"p": {"open": "teleport", "wiggle": "x"}}},
+              map={"p": {"route": "slot", "slot": "education.0.degree", "value": "BSc"}},
+              explore={"p": {"options": [opt("o1", "BSc")], "complete": True}},
+              pick={"p": {"oids": ["o1"], "reason": "matched"}})
+    explored = [r for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"]]
+    assert explored and "variant" not in explored[0]
+
+
+def test_the_reasoned_notes_are_known_notes(page, load):
+    load(page, "<div></div>", sources=LOOP_SOURCES)
+    got = page.evaluate("""() => { const fl = window.careerStudioCompanion.fillLoop;
+      return [fl.REASONED_NOTES, Object.values(fl.REASONED_NOTES).map((n) => fl.knownNote(n))]; }""")
+    assert set(got[0]) == {"write", "choose", "answer_from", "redo"} and got[1] == list(got[0].values())
+
+
+def test_answer_from_on_a_text_box_the_run_filled_maps_it_again_with_the_hint_and_never_a_touched_one(page, load):
+    out = run(page, load, frames=[[f("a", question="Home town", committed="Old", answered=True),
+                                   f("b", question="Birthplace", committed="Mine", answered=True, touched=True)]],
+              options={"slotHints": {"a": "personal.city", "b": "personal.city"}, "redo": ["a", "b"]},
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
+    [body] = bodies(out, "/api/autofill/map")
+    assert [fl["fid"] for fl in body["fields"]] == ["a"] and body["fields"][0]["slot_hint"] == "personal.city"
+    assert statuses(out) == {"a": "verified", "b": "yours"}
+
+
+def test_redo_never_remaps_a_multi_value_field(page, load):
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True, committed=["SQL"], answered=True)]],
+              options={"redo": ["k"]})
+    assert "/api/autofill/map" not in out["calls"] and statuses(out) == {"k": "already"}
+
+
+def test_a_city_and_an_employer_search_leave_no_typed_echo_in_the_trace(page, load):
+    """The options a typed search lists echo the typed city or employer: the trace keeps their count, never their words."""
+    out = run(page, load,
+              frames=[[f("c", "search", "Location (City)"), f("s", "select", "State", options=[opt("o1", "Illinois"), opt("o2", "Ohio")],
+                                                              optionsComplete=True), f("e", "search", "Employer")]] * 3,
+              map={"c": {"route": "slot", "slot": "personal.city", "value": "Springfield"},
+                   "s": {"route": "slot", "slot": "personal.state", "value": "Illinois"},
+                   "e": {"route": "slot", "slot": "experience.0.company", "value": "Acme Corp"}},
+              explore={"Springfield, Illinois": {"options": [opt("o1", "Springfield, Illinois, United States"),
+                                                            opt("o2", "Springfield, IL 62701")], "complete": True},
+                       "Acme Corp": {"options": [opt("o1", "Acme Corp"), opt("o2", "Acme Corporation Ltd")], "complete": True}},
+              pick={"c": {"oids": ["o1"], "reason": "matched"}, "s": {"oids": ["o1"], "reason": "matched"},
+                    "e": {"oids": ["o1"], "reason": "matched"}})
+    wire = json.dumps(trace_of(out))
+    assert "Springfield" not in wire and "Acme" not in wire
+    assert (traced(out, "c")["options"], traced(out, "c")["option_count"]) == ([], 2)
+    assert (traced(out, "e")["options"], traced(out, "e")["option_count"]) == ([], 2)

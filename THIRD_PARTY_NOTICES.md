@@ -291,6 +291,30 @@ rather than left buried in a table.
 
 ---
 
+## Design references (no code vendored)
+
+The Companion's reasoning step (`extension/shared/reason-loop.js`,
+`backend/app/services/autofill_reason.py`) took four ideas from other work. We read
+these; we copied none of their code, so no licence text ships with us. They are named
+because the ideas are theirs.
+
+- **Nanobrowser**, `src/agent/guards.ts` — Apache-2.0,
+  <https://github.com/nanobrowser/nanobrowser>. The idea: an action is signed by what it
+  does and to what, and an action that failed twice, or a target that changed nothing
+  twice, is not offered again.
+- **browser-use**, `ActionLoopDetector` and `PageFingerprint` — MIT,
+  <https://github.com/browser-use/browser-use>. The idea: tell "the same page again" by a
+  fingerprint of the page, not by the address.
+- **Spotlighting**, Hines et al. (Microsoft), "Defending Against Indirect Prompt Injection
+  Attacks With Spotlighting", arXiv:2403.14720,
+  <https://arxiv.org/abs/2403.14720>. The idea: mark the untrusted text (here, page text is
+  wrapped in a data block and its whitespace replaced by a marker) so the model can tell it
+  from the instructions.
+- **LLM Guard**, `invisible_text.py` — MIT, <https://github.com/protectai/llm-guard>. The
+  idea: strip invisible Unicode (categories Cf, Co and Cn) from text before a model reads it.
+
+---
+
 ## Method note
 
 The ATS engine is our own scoring model — deterministic lexical layers plus an

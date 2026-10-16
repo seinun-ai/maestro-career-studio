@@ -16,11 +16,12 @@ from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import delete, exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.companion_origin import is_companion
 from app.db import get_db
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
@@ -40,6 +41,7 @@ from app.schemas.autofill_fill import (
     StepResponse,
 )
 from app.schemas.autofill_gaps import GapBatch
+from app.schemas.autofill_reason import ReasonRequest, ReasonResponse
 from app.schemas.autofill_telemetry import TelemetryBatch, TelemetryObservation
 from app.schemas.autofill_trace import RunTrace
 from app.services import (
@@ -50,11 +52,14 @@ from app.services import (
     autofill_map,
     autofill_pick,
     autofill_profile,
+    autofill_reason,
     autofill_sections,
     autofill_step,
     autofill_telemetry,
     autofill_trace,
+    auto_apply_settings,
     base_resume_data,
+    companion_apply,
     eeo_consent,
     job_url_match,
     model_settings,
@@ -156,6 +161,9 @@ def post_telemetry(
 @router.post("/runs", status_code=204)
 def post_run(payload: RunTrace, db: Annotated[Session, Depends(get_db)]):
     """Store one Companion run's value-free trace and fold it into the mechanism counters."""
+    if payload.reasoning:
+        # A page may echo a typed answer in an error line, and the stored snapshot keeps those lines for the replay script.
+        payload = autofill_reason.redact_trace(payload, _redaction_facts(db))
     autofill_trace.store_run(db, payload)
     return Response(status_code=204)
 
@@ -406,6 +414,19 @@ def _facts(
     return autofill_catalog.with_agreement(facts, agrees), consented
 
 
+MAX_REDACTION_BASES = 8
+
+
+def _redaction_facts(db: Session) -> dict[str, autofill_catalog.Fact]:
+    """Every value a stored page text must not repeat: the profile's, and each active base resume's employers, titles, schools
+    and skills (a trace names no application, so it cannot say which resume the run used). Later bases' facts keep
+    their value under a numbered key."""
+    out = dict(_facts(db, None, None)[0])
+    for n, slug in enumerate(base_resume_data.active_base_resume_slugs(db)[:MAX_REDACTION_BASES], 1):
+        out.update({f"{key}#{n}": fact for key, fact in _facts(db, None, slug)[0].items()})
+    return out
+
+
 def _job_hint(
     db: Session, application_id: UUID | None, source_hint: str | None
 ) -> autofill_pick.JobHint | None:
@@ -422,6 +443,9 @@ def _job_hint(
     # No ?source=: the tracked URL's host may name the board it was found on (linkedin.com is "LinkedIn").
     if not source and job:
         source = autofill_job.board_of_url(job.source_url)
+    # The job was saved on the employer's own page after a board's: that board is where it was found.
+    if not source and job:
+        source = (job.referrer_board or "").lower()[:60] or None
     if job is None and not source:
         return None
     return autofill_pick.JobHint(
@@ -492,3 +516,18 @@ def post_sections(payload: SectionsRequest, db: Annotated[Session, Depends(get_d
     the model or the response."""
     facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
     return SectionsResponse(sections=autofill_sections.plan(payload.sections, facts, db))
+
+
+@router.post("/reason", response_model=ReasonResponse)
+def post_reason(payload: ReasonRequest, request: Request, db: Annotated[Session, Depends(get_db)]) -> ReasonResponse:
+    """The reasoning step: a value-free snapshot of a page the queued run would park on, and at most three checked
+    actions back (design 2026-10-14). The Companion's own origin only: it spends the Reasoning model's money, and
+    nothing else drives a run. The answer level and the facts are read here, never taken from the request, and so are the
+    two switches it runs under (full automation, Think when stuck): a panel with stale facts is not obeyed."""
+    if not is_companion(request):
+        raise HTTPException(status_code=403, detail="Only the Companion can ask the reasoning step.")
+    steps = companion_apply.get_settings(db)
+    if not (auto_apply_settings.get_settings(db).full_automation and steps.think_when_stuck and not steps.stop_each_step):
+        return autofill_reason.switched_off(db)
+    facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
+    return autofill_reason.reason(payload, facts, model_settings.get_answer_level(db), db)

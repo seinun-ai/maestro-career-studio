@@ -11,8 +11,10 @@ from app.models.job import Job
 from app.models.qa_entry import QAEntry
 from app.models.referral import Referral
 from app.services import (
+    autofill_profile,
     base_resume_data,
     career_kb,
+    contact_scan,
     llm,
     model_settings,
     persona,
@@ -231,6 +233,10 @@ def answer_questions(
 #: question names no length (about, with a sentence's slack).
 DRAFT_NOTE = "Drafted from your history: read it"
 DRAFT_WORDS = 150
+#: A reasoning-step `write` into a short box (design point 12): the label the model sees gains the hint, and the
+#: draft is cut to this many words. The page's own label still decides a stated limit.
+SHORT_WORDS = 60
+SHORT_HINT = " (answer in a few words, facts only)"
 _STATED_WORDS = re.compile(r"(\d{2,4})\s*(?:-|\s)?\s*words?\b", re.IGNORECASE)
 # "(max 200 characters)", "Maximum of 300 characters", "200 character limit", "up to 500 chars".
 _STATED_CHARS = re.compile(
@@ -263,6 +269,16 @@ def _within_chars(text: str, chars: int) -> str:
     return " ".join(kept) if kept else text[:chars].rsplit(" ", 1)[0].rstrip(",;:") + "."
 
 
+def _owner_contacts(session: Session, resume_json: dict[str, Any]) -> list[str]:
+    """What the owner has said is theirs to publish: the profile's personal section (email, phone, links) and the
+    resume's contact block, lowercased."""
+    personal = autofill_profile.get_profile(session).get("personal", {})
+    return [t.lower() for t in contact_scan.strings(personal) + contact_scan.strings(resume_json.get("contact", {}))]
+
+
+_foreign_contact = contact_scan.foreign   # a draft with a link, email or phone the owner did not give is dropped
+
+
 def _in_owners_voice(text: str, resume_json: dict[str, Any]) -> str | None:
     """`text` with every third-person or "I" shape repaired in code (the prompt asks for it, code
     makes sure); None when what is left would not be the owner's own words."""
@@ -272,14 +288,16 @@ def _in_owners_voice(text: str, resume_json: dict[str, Any]) -> str | None:
 
 def draft_answers(
     application_id: UUID, questions: dict[str, str], session: Session, *,
-    time_left: Callable[[], float | None] | None = None,
+    time_left: Callable[[], float | None] | None = None, short: set[str] | frozenset[str] = frozenset(),
 ) -> dict[str, str]:
     """id -> a drafted answer, for written questions the profile could not answer: one smart-model
     call over the career history and the job, in the owner's voice. NOTHING IS SAVED: a draft is
     not a standing answer (the user edits it and resumes to teach it). An id the model skipped, or
     whose draft could not be put in the owner's voice, is absent, as is one the model answered with "" (the
     history cannot answer it). `time_left`: a caller on a clock; asked AFTER the context is read, it returns the
-    seconds the call may take (one request, no retries) or None when there are too few: nothing is asked then. Raises what `_application_context`
+    seconds the call may take (one request, no retries) or None when there are too few: nothing is asked then.
+    `short`: ids the reasoning step asked for as a few words (the model is told so, and the draft is cut to
+    `SHORT_WORDS`). A draft with a link, email or phone number that is not the owner's is dropped. Raises what `_application_context`
     and the provider raise; the caller decides what a failure means."""
     if not questions:
         return {}
@@ -288,7 +306,7 @@ def draft_answers(
         resume_json=resume_json,
         jd_json=job.extracted_json or {},
         memory=career_kb.compose_context(session),
-        questions=questions,
+        questions={qid: label + SHORT_HINT if qid in short else label for qid, label in questions.items()},
         persona=persona.get_persona(session),
     )
     timeout = time_left() if time_left is not None else None
@@ -303,15 +321,17 @@ def draft_answers(
     )
     raw = response.get("answers") if isinstance(response, dict) else None
     out: dict[str, str] = {}
+    owner = _owner_contacts(session, resume_json)
+    known = " ".join(contact_scan.strings(resume_json)).lower()
     for qid, label in questions.items():
         text = raw.get(qid) if isinstance(raw, dict) else None
         if not isinstance(text, str) or not (text := _plain_text(text)):
             continue
         stated = _STATED_WORDS.search(label)
-        text = _within(text, int(stated[1]) if stated else DRAFT_WORDS)
+        text = _within(text, int(stated[1]) if stated else (SHORT_WORDS if qid in short else DRAFT_WORDS))
         if chars := _STATED_CHARS.search(label):
             text = _within_chars(text, int(chars[1] or chars[2]))
-        if text := _in_owners_voice(text, resume_json):
+        if (text := _in_owners_voice(text, resume_json)) and not _foreign_contact(text, owner, known):
             out[qid] = text
     return out
 

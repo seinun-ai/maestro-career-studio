@@ -1,0 +1,179 @@
+[
+  {
+    "name": "sonnet_answers_an_unmapped_source_error",
+    "request": {
+      "why": "page_errors",
+      "round": 1,
+      "fields": [
+        {
+          "fid": "f1",
+          "question": "Source",
+          "shape": "select",
+          "required": true,
+          "filled": false,
+          "invalid": true,
+          "options": [
+            {
+              "ref": "o1",
+              "text": "Website"
+            },
+            {
+              "ref": "o2",
+              "text": "Referral"
+            }
+          ],
+          "option_count": 2
+        },
+        {
+          "fid": "f2",
+          "question": "Are you legally authorized to work in the US?",
+          "shape": "select",
+          "required": true,
+          "filled": true,
+          "slot": "work_auth.authorized"
+        }
+      ],
+      "buttons": [
+        {
+          "ref": "b1",
+          "text": "Save and Continue",
+          "role": "next"
+        }
+      ],
+      "errors": [
+        {
+          "text": "Source is required"
+        }
+      ],
+      "history": [
+        "fill:f1 -> no_effect"
+      ]
+    },
+    "reply": "{\"note\": \"The error names Source, which the run did not fill.\", \"actions\": [{\"type\": \"fill\", \"fids\": [\"f1\"]}, {\"type\": \"press_next\", \"button\": \"b1\"}]}",
+    "expect": {
+      "types": [
+        "fill",
+        "press_next"
+      ],
+      "rejected": []
+    }
+  },
+  {
+    "name": "a_reply_that_targets_work_authorization_becomes_ask_user",
+    "request": {
+      "why": "page_errors",
+      "round": 1,
+      "fields": [
+        {
+          "fid": "f1",
+          "question": "Source",
+          "shape": "select",
+          "required": true,
+          "filled": false,
+          "invalid": true,
+          "options": [
+            {
+              "ref": "o1",
+              "text": "Website"
+            },
+            {
+              "ref": "o2",
+              "text": "Referral"
+            }
+          ],
+          "option_count": 2
+        },
+        {
+          "fid": "f2",
+          "question": "Are you legally authorized to work in the US?",
+          "shape": "select",
+          "required": true,
+          "filled": true,
+          "slot": "work_auth.authorized"
+        }
+      ],
+      "buttons": [
+        {
+          "ref": "b1",
+          "text": "Save and Continue",
+          "role": "next"
+        }
+      ],
+      "errors": [
+        {
+          "text": "Source is required"
+        }
+      ],
+      "history": [
+        "fill:f1 -> no_effect"
+      ]
+    },
+    "reply": "{\"note\": \"Write the answer for work authorization.\", \"actions\": [{\"type\": \"write\", \"fid\": \"f2\"}]}",
+    "expect": {
+      "types": [
+        "ask_user"
+      ],
+      "rejected": [
+        "protected"
+      ]
+    }
+  },
+  {
+    "name": "a_reply_in_a_code_fence_still_parses",
+    "request": {
+      "why": "page_errors",
+      "round": 1,
+      "fields": [
+        {
+          "fid": "f1",
+          "question": "Source",
+          "shape": "select",
+          "required": true,
+          "filled": false,
+          "invalid": true,
+          "options": [
+            {
+              "ref": "o1",
+              "text": "Website"
+            },
+            {
+              "ref": "o2",
+              "text": "Referral"
+            }
+          ],
+          "option_count": 2
+        },
+        {
+          "fid": "f2",
+          "question": "Are you legally authorized to work in the US?",
+          "shape": "select",
+          "required": true,
+          "filled": true,
+          "slot": "work_auth.authorized"
+        }
+      ],
+      "buttons": [
+        {
+          "ref": "b1",
+          "text": "Save and Continue",
+          "role": "next"
+        }
+      ],
+      "errors": [
+        {
+          "text": "Source is required"
+        }
+      ],
+      "history": [
+        "fill:f1 -> no_effect"
+      ]
+    },
+    "reply": "```json\n{\"note\": \"Source has no saved answer.\", \"actions\": [{\"type\": \"ask_user\", \"fids\": [\"f1\"], \"note\": \"Pick how you heard about Acme.\"}]}\n```",
+    "expect": {
+      "types": [
+        "ask_user"
+      ],
+      "rejected": []
+    }
+  }
+]

@@ -1,0 +1,100 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Easy apply - Analyst - Acme</title></head>
+<body>
+<!-- Owner's live check 8, 2026-10-15 (made-up employer Acme; structure modelled from the run's trace and the page's
+     component census, nothing captured): a hosted one-click application built from Lit-style web components. Every
+     native control (input, textarea, file input, button) lives in an OPEN shadow root; a button's label is slotted
+     light-DOM text, so the inner <button>'s own textContent is empty; the page has no <form>. A "fill this from your
+     resume" parser box (data-test="easy-apply-container" inside oc-easy-apply) sits above the personal fields, the
+     real resume box (oc-resume-upload) below them, and the footer's Submit is slotted text. The native controls carry
+     name attributes (first_name, last_name, phone, the dropzone's own id): the run's trace does not say what the live
+     components set, so this takes the plainest markup, which is what page detection reads. Pressing the footer button
+     emits submitRequest (counted in window.__oracle.shadow_submits); a dropzone records the files it took. -->
+<script>
+window.__oracle = window.__oracle || {};
+window.__oracle.shadow_submits = 0;
+window.__oracle.shadow_files = [];
+window.__oracle.shadow_nexts = 0;
+class AcmeInput extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const r = this.attachShadow({ mode: "open" });
+    const id = this.getAttribute("fid");
+    const req = this.hasAttribute("required");
+    const name = this.getAttribute("name") || id;
+    r.innerHTML = `<label for="${id}">${this.getAttribute("label")}${req ? " *" : ""}</label>`
+      + (this.hasAttribute("multiline") ? `<textarea id="${id}" name="${name}"></textarea>`
+        : `<input id="${id}" name="${name}" type="${this.getAttribute("type") || "text"}" ${req ? "required aria-required=\"true\"" : ""}>`);
+  }
+}
+class AcmeButton extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const r = this.attachShadow({ mode: "open" });
+    r.innerHTML = `<button type="button"><slot></slot></button>`;
+    r.querySelector("button").addEventListener("click", () => {
+      if (this.hasAttribute("submit")) window.__oracle.shadow_submits += 1;
+      else window.__oracle.shadow_nexts += 1;
+    });
+  }
+}
+class AcmeDropzone extends HTMLElement {
+  // `hidden-input`: the file input is display:none (the visible face is the zone). `clears`: the component takes the file and
+  // empties its input in the same tick, showing the name in a row inside its shadow root (Workday's uploader does the same in
+  // the light DOM). `required`: the input is required.
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const r = this.attachShadow({ mode: "open" });
+    const hide = this.hasAttribute("hidden-input") ? "display:none" : "opacity:0;position:absolute;width:1px;height:1px";
+    const req = this.hasAttribute("required") ? " required aria-required=\"true\"" : "";
+    r.innerHTML = `<div class="dz"><span>Choose a file or drop it here</span><input type="file" id="${this.getAttribute("fid")}" name="${this.getAttribute("fid")}"${req} style="${hide}"></div>`;
+    r.querySelector("input").addEventListener("change", (e) => {
+      for (const f of e.target.files) {
+        window.__oracle.shadow_files.push([this.getAttribute("fid"), f.name]);
+        const row = document.createElement("span");
+        row.textContent = f.name;
+        r.querySelector(".dz").append(row);
+      }
+      if (this.hasAttribute("clears")) e.target.value = "";
+    });
+  }
+}
+customElements.define("acme-input", AcmeInput);
+customElements.define("acme-button", AcmeButton);
+customElements.define("acme-dropzone", AcmeDropzone);
+</script>
+<button id="cookie">Cookie Settings</button>
+<main>
+  <acme-form-root>
+    <oc-easy-apply>
+      <section class="form-section" data-test="easy-apply-container">
+        <h2>Easy Apply</h2>
+        <p>Upload your resume to fill in the form automatically</p>
+        <acme-dropzone fid="parser"></acme-dropzone>
+      </section>
+    </oc-easy-apply>
+    <section class="form-section">
+      <h2>Personal information</h2>
+      <acme-input fid="first" name="first_name" label="First name" required></acme-input>
+      <acme-input fid="last" name="last_name" label="Last name" required></acme-input>
+      <acme-input fid="email" label="Email" type="email" required></acme-input>
+      <acme-input fid="email2" label="Confirm your email" type="email" required></acme-input>
+      <acme-input fid="city" label="City" required></acme-input>
+      <acme-input fid="phone" name="phone" label="Phone number" type="tel" required></acme-input>
+    </section>
+    <oc-resume-upload>
+      <section class="form-section" data-test="resume-upload-container">
+        <h2>Resume</h2>
+        <acme-dropzone fid="resume"></acme-dropzone>
+      </section>
+    </oc-resume-upload>
+    <section class="form-section">
+      <h2>Message to the hiring team</h2>
+      <acme-input fid="msg" label="Let the company know about your interest working there" multiline></acme-input>
+    </section>
+    <footer data-test="footer" class="form-section">
+      <acme-button submit>Submit</acme-button>
+    </footer>
+  </acme-form-root>
+</main>
+</body></html>

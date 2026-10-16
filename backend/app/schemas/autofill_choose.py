@@ -39,6 +39,9 @@ class ChooseField(BaseModel):
     # /map filed the field under the free_text or years sentinel (`Mapped.draft`): the only fields a draft may
     # answer. A history, protected or no-fact text box is the user's.
     draft: bool = False
+    # Asked by the reasoning step (`write`): "short" (a single-line box, answered in a few words) or "essay"
+    # (a multiline box, drafted only when required: an optional essay is skipped, not padded). Not /map's `draft`.
+    reasoner: Literal["short", "essay"] | None = None
 
 
 class ChooseRequest(BaseModel):

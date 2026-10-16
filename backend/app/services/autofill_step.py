@@ -33,7 +33,7 @@ from dataclasses import asdict, dataclass
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import TERM, DecisionTrace, Engine, StepRequest, StepResponse
-from app.services import jev, llm, model_settings
+from app.services import autofill_education, autofill_place, autofill_sponsorship, jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
     WORKED_HERE_SLOT,
@@ -45,6 +45,7 @@ from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from app.services.autofill_job import BOARD_NAMES
 from app.services.autofill_map import (
     SECOND_OPINION_MAX_S,
+    second_opinion_floor,
     Budget,
     Top,
     asks_years,
@@ -56,6 +57,8 @@ from app.services.autofill_map import (
     second_decided,
 )
 from app.services.autofill_pick import (
+    CITY_SLOT,
+    DEGREE_SLOT,
     NEVER_YES_NO,
     VETERAN_SLOT,
     WORKED_ELSEWHERE_SLOT,
@@ -64,10 +67,12 @@ from app.services.autofill_pick import (
     polarity_answers,
     polarity_trace,
     polarity_ways,
+    relocate_qualified,
     values_for,
     verdict,
     veteran_inferred,
     veteran_overreach,
+    veteran_option,
     veteran_said,
     worked_elsewhere,
 )
@@ -143,14 +148,18 @@ HOW_HEARD_SLOT = "preferences.how_heard"
 # A saved source the BOARD-first goal fits: a job board, or a board by name. A website / careers-page answer takes
 # the careers-site leaf first and names no board. Any other ("Referral", "Internet search", "Online") is walked to
 # its own leaf by the ordinary goal.
-_BOARD_ANSWER = re.compile(r"\bboards?\b", re.IGNORECASE)
+# "Board member" is no board answer: the word must follow job / career, or be a known board named as whole tokens.
+_BOARD_ANSWER = re.compile(r"\b(?:jobs?|employment)\s+(?:boards?|sites?|portals?)\b|\bcareers?\s+boards?\b", re.IGNORECASE)
+# A referral is a person, not a board, even when it names the board the person works through.
+_REFERRAL_ANSWER = re.compile(r"\brefer(?:ral|red|rer)?s?\b", re.IGNORECASE)
 _SITE_ANSWER = re.compile(r"\bweb\s*sites?\b|\bcareers?\s+(?:site|page)s?\b|\bcompany\s+site\b", re.IGNORECASE)
 
 
 def how_heard_kind(value: str) -> str | None:
     """"board", "site" or None: which tree goal a saved "how did you hear" answer takes."""
-    folded = value.casefold()
-    if _BOARD_ANSWER.search(value) or any(name.casefold() in folded for name in BOARD_NAMES):
+    if _REFERRAL_ANSWER.search(value):
+        return None
+    if _BOARD_ANSWER.search(value) or any(_names_board(value, name) for name in BOARD_NAMES):
         return "board"
     return "site" if _SITE_ANSWER.search(value) else None
 
@@ -199,23 +208,38 @@ def _tried_and_missed(history: list[str], mid: str) -> bool:
     return any(e.startswith(f"{mid} -> ") and not e.startswith(f"{mid} -> progressed") for e in history)
 
 
+GENERIC_BOARD = "LinkedIn"   # the assumed board when the answer is a kind ("Job board") and the job names none
+
+
+def _leaves(req: StepRequest) -> list[tuple[str, str]]:
+    """(move id, option text) of every leaf click the list offers: not a group, and not one that already failed."""
+    return [(c.mid, text) for c in req.candidates
+            if c.mid.startswith("click:") and not c.describe.startswith(GROUP_CLICK)
+            and (text := _quoted_text(c.describe)) is not None and not _tried_and_missed(req.history, c.mid)]
+
+
 def _board_move(req: StepRequest, value: str, hint: JobHint | None) -> StepResponse | None:
     """Code's own move for a board answer, before any model: the board's leaf if the list shows it, else a
     search for the board's name if one is offered and not yet tried. The search covers a tree whole (Workday's
     prompt lists the leaf of any category), where a model walking categories cannot back out of a wrong one.
-    None: neither applies, the model decides. The trace is code's call (no engine, nothing a model said)."""
-    if not (board := board_of(value, hint)):
-        return None
-    for c in req.candidates:
-        text = _quoted_text(c.describe)
-        if (c.mid.startswith("click:") and not c.describe.startswith(GROUP_CLICK) and text is not None
-                and text.casefold() == board.casefold() and not _tried_and_missed(req.history, c.mid)):
+    A saved kind ("Job board") with no board known for this job (owner decision 2026-10-15) is the same walk for
+    LinkedIn, then the first other specific job board the list offers: always `assumed`.
+    None: nothing applies, the model decides. The trace is code's call (no engine, nothing a model said)."""
+    known = board_of(value, hint)
+    board = known or GENERIC_BOARD
+    leaves = _leaves(req)
+    for mid, text in leaves:
+        if text.casefold() == board.casefold():
             # The saved word itself is the profile's answer; any other leaf is the Companion's pick.
-            return StepResponse(mid=c.mid, reason="matched" if text.casefold() == value.casefold() else "assumed",
+            return StepResponse(mid=mid, reason="matched" if text.casefold() == value.casefold() else "assumed",
                                 trace=DecisionTrace())
     tried = {t.strip().casefold() for t in req.tried_terms}
     if board.casefold() not in tried and any(c.mid == SEARCH_TERM for c in req.candidates):
         return StepResponse(mid=SEARCH_TERM, reason="progress", term=board, trace=DecisionTrace())
+    if known is None:
+        names = {n.casefold() for n in BOARD_NAMES}
+        if other := next((mid for mid, text in leaves if text.casefold() in names), None):
+            return StepResponse(mid=other, reason="assumed", trace=DecisionTrace())
     return None
 
 
@@ -238,7 +262,8 @@ def _how_heard_goal(field: str, value: str, kind: str, hint: JobHint | None) -> 
         "if the options are grouped, open the category most likely to hold it (job boards and social sites sit "
         "under names like Job Board, Online, Internet, Website, Social Media or Other); if it is not there, try "
         "the next, then select ")
-    leaf = f"the leaf for {json.dumps(board)}, otherwise " if board else ""
+    leaf = (f"the leaf for {json.dumps(board)}, otherwise " if board else
+            f"the leaf for {json.dumps(GENERIC_BOARD)}, otherwise any other specific job board's leaf, otherwise ")
     return (f"{head}{found} The goal is to select where the applicant heard about the job: {grouped}{leaf}"
             f"a job-board leaf, otherwise the company careers-site leaf. {NEVER_YES_NO}")
 
@@ -307,12 +332,12 @@ def _second_opinion(req: StepRequest, ask: _Ask, session: Session, budget: Budge
     the request's budget, capped (a give-up step costs at most Jev's 2 s plus
     this against the field's clock), at the same floors. None: it never ran
     (out of time, or it failed), and Jev's give-up stands."""
-    if (timeout := budget.left(SECOND_OPINION_MAX_S)) is None:
+    if (timeout := budget.left(SECOND_OPINION_MAX_S, floor=second_opinion_floor(session))) is None:
         return None
     try:
         second = _with_llm(req, ask, session, "autofill-step-second", timeout=timeout)
     except llm.LLMProviderError:
-        logger.warning("fast model second opinion failed; Jev's give-up stands")
+        logger.warning("fast model second opinion failed (timeout given %.1f s); Jev's give-up stands", timeout)
         return None
     if not abstained(second):
         logger.info("step: the fast model decided a move Jev gave up on")
@@ -440,6 +465,20 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     if req.route == "slot" and not values:
         return ABSTAIN
     policy = fact.policy if fact else "any"
+    # A "what type of sponsorship" question under a saved No: the none / not applicable option, else the user's.
+    # A closed list is opened first (code's move; the options are what the rule reads).
+    shown_options = [(c.mid, t) for c in req.candidates if c.mid.startswith("click:") and (t := _option_text(c.describe))]
+    if (req.route == "slot" and getattr(fact, "value", None) == "No"
+            and autofill_sponsorship.is_type_question(req.slot, req.question, shown_options, facts)):
+        if not shown_options and any(c.mid == "open" for c in req.candidates):
+            return StepResponse(mid="open", reason="progress", trace=DecisionTrace())
+        oid = autofill_sponsorship.none_option(shown_options)
+        return (StepResponse(mid=oid, reason="matched", trace=DecisionTrace()) if oid
+                else StepResponse(mid=None, reason="abstained"))
+    # A saved No over a veteran list that has exactly one "I am not a (protected) veteran" option: code's click,
+    # before polarity and any model (autofill_pick.veteran_option).
+    if req.slot == VETERAN_SLOT and req.route == "slot" and (coded := veteran_option(fact, req.question, shown_options)):
+        return StepResponse(mid=coded[0], reason=coded[1], trace=DecisionTrace())
     # A Yes/No fact: this request decides its question's polarity itself; unsure, the step gives up.
     answer = polarity = None
     if req.route == "slot" and fact.yes_no:
@@ -454,6 +493,26 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     shown = {c.mid: _option_text(c.describe) for c in req.candidates}
     if said and veteran_overreach(said, req.question, [t for t in shown.values() if t]):
         return StepResponse(mid=None, reason="abstained", polarity=polarity)
+    # The education level: a threshold the page lists is code's pick (autofill_education); a list that names no level
+    # is not ours to read, and the ordinary step opens or searches it.
+    if req.slot == autofill_education.SLOT and isinstance(getattr(fact, "value", None), str):
+        got = autofill_education.decide(fact.value, [(c.mid, t) for c in req.candidates
+                                                     if c.mid.startswith("click:") and (t := _option_text(c.describe))],
+                                  complete=req.complete)
+        if got.oid:
+            return StepResponse(mid=got.oid, reason=got.reason, trace=DecisionTrace(), polarity=polarity)
+        if got.saw_levels:
+            return StepResponse(mid=None, reason="abstained", polarity=polarity)
+    # A degree-TYPE list over a saved degree: the generic option for its level, the MBA one only when it says so.
+    if (DEGREE_SLOT.fullmatch(req.slot or "") and isinstance(getattr(fact, "value", None), str)
+            and (typed := autofill_education.degree_type(fact.value, shown_options, complete=req.complete)) is not None):
+        return (StepResponse(mid=typed.oid, reason=typed.reason, trace=DecisionTrace(), polarity=polarity) if typed.oid
+                else StepResponse(mid=None, reason="abstained", polarity=polarity))
+    # A Places-style city list over a saved city and state: the option that is that city in that state.
+    if (req.slot == CITY_SLOT and isinstance(getattr(fact, "value", None), str) and "personal.state" in facts
+            and isinstance(facts["personal.state"].value, str)
+            and (oid := autofill_place.city_option(fact.value, facts["personal.state"].value, shown_options))):
+        return StepResponse(mid=oid, reason="matched", trace=DecisionTrace(), polarity=polarity)
     # A saved board answer: the board's leaf or its name in the search box is code's call, before a model.
     if req.slot == HOW_HEARD_SLOT and how_heard_kind(values[0]) == "board" and (coded := _board_move(req, values[0], hint)):
         return coded.model_copy(update={"polarity": polarity})
@@ -467,6 +526,8 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     # An option that says the saved word itself ("Job board" for "Job board") is the profile's answer.
     if (req.slot == HOW_HEARD_SLOT and how_heard_kind(values[0]) and moved.mid and moved.reason in ("matched", "closest")
             and (text := shown.get(moved.mid)) is not None and text.casefold() != values[0].casefold()):
+        moved = moved.model_copy(update={"reason": "assumed"})
+    if moved.mid and moved.reason == "matched" and relocate_qualified(req, fact):
         moved = moved.model_copy(update={"reason": "assumed"})
     if said and veteran_overreach(said, req.question, [], shown.get(moved.mid or "")):
         return StepResponse(mid=None, reason="abstained", polarity=polarity)

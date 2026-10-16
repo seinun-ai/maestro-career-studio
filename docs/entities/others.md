@@ -269,7 +269,11 @@
   that is an employer is Yes, a listed company that is a parent or subsidiary of one, or an employer standing in the question or its options as
   capitalised words (a leading or trailing stop-word such as Current or United is ignored), is asked, never No; entries that are no company
   (Freelance, Contractor) never count. The `HISTORY_UNANSWERED` description reaches a "worked at named companies" question, and the reasoned pass's
-  never-list drops its worked-here clause only while the fact is absent. **Veteran** is one question, "Are you a veteran?"
+  never-list drops its worked-here clause only while the fact is absent. An employer under another name — a parent, subsidiary or alias (`_ALIASES`), a name whose initials spell an acronym employer, a list
+  beside one, or an employer standing in the question as capitalised words — is asked, never No. `asks_worked_here_of_other` takes employment
+  verbs only, up to 4 proper names (no group, generic noun, public body, pronoun phrase or "its affiliates"), none in the history and no
+  history entry that is no company; a dealer or contractor of a company (the job's own included) is rerouted the same way; an unsure map on
+  "worked with X" (no employment verb) is the user's. **Veteran** is one question, "Are you a veteran?"
   (`eeo.veteran_status`: `no` "No, I am not a veteran", `yes` "Yes, I am a veteran", `decline` "I don't wish to answer"). A No settles every
   "not a (protected) veteran" option at the exact floor; a Yes alone never says which protected class, so a classification question (the VEVRAA
   classes by name, "protected", "classification", covered, service-connected, Vietnam-era, active duty during a war or campaign) is asked, an
@@ -278,8 +282,57 @@
   mapped when the profile is READ, not migrated: `veteran` reads as `yes`; `not_veteran` ("not a protected veteran", true of a veteran who is not
   protected) reads as unanswered, and the profile lists `stale_answers: ["eeo.veteran_status"]` until the question is answered (a save that does
   not carry the answer keeps the marker; an older Settings page or peer keeps reading what is stored, so an old peer can read a synced `yes` as a
-  protected veteran). Profile › Autofill asks the question again ("Answer again: this question changed."). Known limits: a lowercase mention of an
+  protected veteran). Profile › Autofill asks the question again ("Answer again: this question changed."). A No also settles "currently or ever served" with
+  the never-served option, reported `assumed` (`veteran_inferred`); a Yes never claims CURRENT service — a question about it alone, or an option
+  that says so, is asked (`veteran_overreach`); the readers are /pick, /step, /map and `content/eeo.js`. Known limits: a lowercase mention of an
   employer outside a parsed list still reads No, and the veteran-class guard errs toward asking.
+- **Answers decided in code, and the polarity retry** (live check 7; `services/autofill_pick.py`, `autofill_step.py`, `autofill_education.py`, `autofill_place.py`, `autofill_polarity.py`).
+  **Relocate**: "Are you located in X and/or willing to relocate?" over a saved `preferences.willing_to_relocate` Yes is the same way as the fact, decided by code with no model
+  (`_located_or_relocate`, in `/pick` and `/step`). It must be ONE question: both halves in one sentence that is a question (or an unpunctuated last line addressed to "you"),
+  no negation before the relocate verb ("not local or willing to relocate" elsewhere in the text is a statement, not the question), and no authorization or sponsorship wording.
+  "Located" alone or "relocate" alone is the model's. A condition on relocating in the question ("on your own", "at your own expense", "without relocation assistance"; `_QUALIFIER`)
+  turns the matched answer `assumed` (`relocate_qualified`), because the saved Yes is the applicant's word for relocating, not for relocating on those terms.
+  **Degree type** (`autofill_education.degree_type`): a list of degree TYPES ("Degree": Associate's, Bachelor's, Master of Business Administration (M.B.A.), Master's, …) over a saved
+  `education.N.degree` takes the generic option for the saved degree's level (Masters, MS, M.S. and M.Sc take "Master's Degree"; the same for Bachelor's, Associate's, Doctorate and
+  High School), reported `matched`; the MBA option only when the saved degree says MBA or Business Administration without "Science" (a Master of Science in Business
+  Administration is a generic Master's); on a partial list an MBA with no MBA option seen abstains. Several generic options for the level, or a degree naming several levels, abstain; a saved
+  degree that names no level ("BBA", "MD", "Diploma") or is in progress is left to the ordinary path (zero levels named is not this rule's), and so is a list with no option that
+  names exactly one level. It runs in `/pick` (`education_picks`) and `/step` before the model, without the education-level fact. **City** (`autofill_place.city_option`; `/pick`
+  `city_picks`, `/step`): a Places-style city list ("Springfield, IL, USA") over a saved `personal.city` and `personal.state` takes the one option whose first comma part is the
+  city (a whole name: "Springfield Gardens" is another place; `knockout.city_key`, so NYC is New York) and whose later parts name the state by code or full name (a ZIP dropped,
+  `knockout.state_code`), reported `matched`; two options naming the one place abstain, none leaves it to the ordinary path, and with no state saved nothing is claimed.
+  **The polarity retry** (`autofill_polarity._fast`): the fast-model call that judges which way a Yes/No question reads against a saved fact is retried ONCE when it fails with a
+  provider error (a timeout is one), and only while `Budget.left` still gives it time (it may run `MIN_CALL_S` past the planned 2 s, so a late reasoning call may be skipped; polarity
+  is the knockout answer, that call the optional one). The retry goes to the fast model of ANOTHER provider (`_FALLBACK_MODELS`) only when a model role (fast, smart, chat or
+  reasoning) is assigned to that provider AND its key was SAVED in the app (a key only in the environment is not a choice); never when a custom server is set
+  (`llm.get_base_url()`) or the current model is not a registered named provider's (OpenRouter and the like), where it is the same model again. The same-model retry runs only
+  for a transient error (`autofill_map._transient`): a missing or refused key is not retried. Failed twice, the field is left to the user.
+- **Slow fast models, the low-stakes reach, one start date and the veteran pick in code** (live check 9; `services/autofill_map.py`, `autofill_pick.py`, `autofill_step.py`, `autofill_polarity.py`, `autofill_reasoned.py`, `autofill_catalog.py`).
+  **Floors by provider.** The limits on the second opinions (`/map`, `/pick`, `/step`) and the fast polarity call were tuned on a fast model that answers in 1-1.5 s; a Claude one timed out three times in a
+  day and the safe answers were lost. `second_opinion_floor` gives such a call at least `FAST_PROVIDER_FLOORS` seconds by the provider the fast model resolves to (`registry.resolve`): 3 s for Claude
+  (`anthropic`), `MIN_CALL_S` (1 s, the old limits) for every other provider, a custom server (`llm.get_base_url()`) and an OpenRouter id included. `Budget.left(floor=, keep=, late_ok=)` applies it: the
+  floor lifts a call over its cap and its reserve but never past what is left of the 9 s request (`REQUEST_BUDGET_S`) less `keep`, the time a main call that follows still needs (polarity keeps Jev's pick and its
+  fast fallback, `jev.TIMEOUT_S` + `MIN_CALL_S`; `/map`'s second opinion keeps `MIN_CALL_S`; `/pick`'s keeps it only when the reasoning call follows). `late_ok` lets the optional passes after a floor-lifted call
+  still start (the 6 s window, `OPTIONAL_PASS_BUDGET_S`, moves to `REQUEST_BUDGET_S - MIN_CALL_S`), so a late second opinion no longer costs the low-stakes pass. The low-stakes Jev judge takes up to its whole
+  `jev.TIMEOUT_S` (2 s) and is skipped when less of the request is left; the queued years check (`reason_years(keep=)`) is bounded so the keen pick and its fallback keep their time, and with no room left the
+  years fields are the user's. Every fast call on a budget logs the timeout it was given, and a failed second opinion logs it too. **The trace** (`DecisionFields.top_fact`, `autofill_map._under_floor_fact`): a `/map`
+  field routed `none` because the model's top fact fell under its slot's floor names that fact (a fact NAME, `SLOT_NAME` pattern, never a value; a Websites fact keyed by its URL is never named), so "none for 0.55
+  against 0.6" reads as the fact, not as an empty answer; None when the top choice stood, was no fact, or was never given.
+  **The low-stakes reach** (`_said_no_fact(at_any_p=)`, `_doubtful_none`, `_willing_to_step`; `leftovers(low=True)`). A field whose best answer is "no fact" goes to the low-stakes judge at ANY probability, not
+  only at the slot floor, unless a second opinion named a fact (silence and a "no fact" second opinion keep it a candidate). A "no fact" under the floor is a shrug, so it is no candidate when the runner-up in
+  Jev's distribution is a protected or EEO kind at 0.2 (`RUNNER_UP_DOUBT`) or more, or when the question's wording is protected (work authorization, eligibility, sponsorship, visa, citizenship, veteran, disability,
+  gender, race, ethnicity, age, clearance, non-compete) or asks about background history. Jev files a willingness to a pre-employment step under the protected sentinel; code lets one wording through to the
+  judge: a QUESTION (not a first-person box such as "I consent to a background check") with willing / agree / consent / able to undergo, submit to, complete, take or participate in, beside a background check,
+  drug test, reference check, I-9 or E-Verify in one sentence, and none of pass, clear, satisfy, eligibility, authorization, proof, citizenship, sponsorship or visa, and none of the history words (ever, convicted,
+  charged, record, felony, arrest, pending, ...). Background HISTORY in any question is never judged. The never-list and the answer level still decide from there (§7 Screening answers dial).
+  **One start date.** When the stored start text means "now" (`_IMMEDIATE`: immediately, asap, now, right away, typos included) the catalog derives a calendar date from it (`derived.earliest_start_date`) and the
+  text fact itself is re-made as the normalised words "Immediately", whatever was typed. `/map` is offered ONE of the two (`_one_start_date`: the derived date), because two facts for the same box competed. A date
+  or text box (`_WRITTEN_SHAPES`) keeps the date; a choice field (a list, group, popup or search) gets the words (`_start_text_for_choices`, `preferences.earliest_start_date`), which an option can state and a
+  calendar date would match none of.
+  **The veteran pick in code** (`autofill_pick.veteran_option`, `veteran_picks` in `/pick`, the same call in `/step`). A saved No over a veteran list with EXACTLY ONE option that opens with a negation, names a
+  veteran and is neither a decline ("I do not wish to disclose my veteran status": wish, prefer, disclose, ...) nor a claim takes that option by code, before polarity and any model (polarity timed out twice in the
+  live run and the clear option was left). `matched`, or `assumed` when it is the Companion's inference (`veteran_inferred`); never over `veteran_overreach`, a saved Yes, another slot or a list with two such
+  options. `_claims_veteran` now counts a negation that takes itself back ("No, I am a veteran but not a protected veteran") as a claim.
 - **Derived facts, drafted answers and degree levels** (`services/autofill_catalog.py`, `autofill_choose.py`, `qa.py`, `autofill_step.py`, `answer_flags.py`).
   `derived.phone_type` is "Mobile" whenever the profile holds a number: the profile never says what kind of phone it is, so `autofill_pick`
   judges it at the assumed floor and reports `assumed` (`ASSUMED_SLOTS`), `differs_from_profile` ignores it, and a phone-type box never receives
@@ -289,8 +342,20 @@
   (`preferences.how_heard`): a saved source that reads as a board ("Job board", a board named) or a website ("Company website", a careers page)
   gets a `/step` goal that opens the website, online or job-board category (else Other) and then picks a leaf: a board answer picks the board
   that listed THIS job first (the posting URL's host names it, `autofill_job.board_of_url`; a careers site or an ATS host names none), a website
-  answer picks the careers-site leaf and never a board; any other saved word is walked to its own leaf by the ordinary goal. The leaf is the
-  Companion's pick, so the step reports it `assumed` unless an option says the saved word itself. **A middle name is never made from another
+  answer picks the careers-site leaf and never a board; any other saved word is walked to its own leaf by the ordinary goal. A referral is never a board answer
+  (even one that names a board), and "Board member" is none: the word must follow job, employment or career, or be a known board name as whole tokens. A kind with no board
+  known for the job ("Job board") takes `GENERIC_BOARD` (LinkedIn) when the list offers it, else the first other specific job board it offers. The leaf is the
+  Companion's pick, so the step reports it `assumed` unless an option says the saved word itself. The board a job came from is the page's `?source=`, else the host of
+  its `source_url`, else `jobs.referrer_board` (`services/board_visits`: the last known board page the Companion's `/api/jobs/match` was asked about, kept 20 minutes in
+  memory, name only; `POST /api/jobs` stamps it when the saved address is not a board's; `docs/entities/job.md`). **Education level**: `derived.education_level`
+  (`services/autofill_education.py`, policy `exact`) is the highest level a finished degree in the profile names, read with `answer_flags`' level words (a degree in progress,
+  a denial, an end date ahead or "present" does not count; an engineering BE or ME counts as a bachelor's or master's). A list of thresholds ("Bachelor's degree or higher",
+  "Combination of relevant education, experience, and training", "None of the above") is decided in code in `/pick` (`education_picks`) and `/step`: the highest threshold the level
+  meets, an option that names two levels met at the lower, never "None of the above", and nothing (the user answers) when no threshold is met, when the winning level has
+  several options or one tied to a field or a degree type; a list that names no level is not this rule's (a list of degree TYPES is: see the live check 7 bullet above). **Type of sponsorship** (`services/autofill_sponsorship.py`,
+  `/pick` `sponsorship_type_picks` and `/step`): a question asking which TYPE is needed or required (not "any type of"), with a sponsorship slot and every saved sponsorship
+  answer No (a question about now needs only the now fact), takes the option that means none or not applicable (a closed list is opened first), else nothing; a Yes/No list
+  or a saved Yes is never this rule, and a question that counts OPT or STEM OPT as sponsorship still takes the saved No (owner decision 2026-10-15). **A middle name is never made from another
   name**: `/map` files any middle-name or middle-initial question as none unless the fact is `personal.middle_name`, and the stored name is used
   as entered. **Degrees** are compared by level when the page's value names only a level ("Master's/Advanced Degree" matches a Master of
   Science), "M.B.A." is a master's in business administration and no other business degree, a bare MS, MA, BS or BA is a degree in its own field
@@ -706,6 +771,7 @@
   case-folded and by inode (`services/sync/folders.py`: APFS ignores case), also before a tombstone removes a folder. Settings' **Second
   copy** shows a 16-character code, once, for 10 minutes, with no attempt limit. `GET /api/settings/second-copy/setup-prompt` serves
   `backend/app/automations/bot-setup.md` (no sync lock; 409 on the always-on copy).
+  `POST /api/sync/round` is the always-on copy's own loopback call (404 on the laptop, 403 for an `Origin`, as is `/api/sync-setup/*`).
 - **ApplicationProposal + ConsentEvent** (auto-apply ledger; migrations
   `56ade310b259` + `11b61fe1ace9`, lifecycle fields `0c677ba4cbcb`, filer
   `9a5744f9b9d9`, the one revision after the SQLite baseline): the
@@ -833,10 +899,23 @@
   the model is extra=forbid) and a **Full automation** card whose On switch
   asks for confirmation. Turning it Off refuses auto consent and login hand-offs.
   **The Companion's Apply switches**: the `Setting("companion_apply")` row (`services/companion_apply.py`, `JsonSetting`; local JSON at
-  `settings/companion_apply.json`, mirrored and carried in the synced profile bundle) is `{auto_pick: true, stop_each_step: false}`, both `StrictBool`.
+  `settings/companion_apply.json`, mirrored and carried in the synced profile bundle) is `{auto_pick: true, stop_each_step: false, think_when_stuck: true}`, all `StrictBool`.
   `GET`/`PUT /api/settings/companion-apply` (a SettingEnvelope); a blob that will not parse reads as the defaults. Settings › AI & models › Form
-  filling shows them as **Choose the base resume for me** and **Stop after each step**; the panel reads them on bind and obeys them only with full
-  automation On (`extension/INTERNALS.md`, "The switches"). The pick limits are Auto-apply's `auto_pick_floor` and `auto_pick_margin`.
+  filling shows them as **Choose the base resume for me**, **Stop after each step** and **Think when stuck**; the panel reads them on bind and obeys them only
+  with full automation On (`extension/INTERNALS.md`, "The switches"; the route checks full automation and Think when stuck itself). The pick limits are Auto-apply's `auto_pick_floor` and `auto_pick_margin`.
+  **The reasoning step** (`routers/autofill.py` `POST /api/autofill/reason`, `services/autofill_reason.py`, `services/contact_scan.py`, schemas `autofill_reason.py`;
+  `extension/INTERNALS.md`, "The reasoning step"): the Companion's exact origin only (403 otherwise). A value-free page snapshot in; the Reasoning model
+  (`llm.reasoning_model`, Settings › AI & models, any catalog model; unset it is the provider's strong model: `claude-sonnet-5-5`, `gpt-6.1-sol`, else the smart model)
+  answers 1 to 3 actions from a closed list, which `check` validates in code (allowed list per stuck reason, every id in the snapshot, the protected list, failed
+  signatures, the Careful level) before the extension sees them; any failure becomes `ask_user` with its codes in `rejected`. With full automation or Think when
+  stuck off the route asks the user and calls no model (`switched_off`). Page text is wrapped, datamarked and stripped of invisible Unicode; the model's note is
+  cleaned of links, emails and phone numbers (`contact_scan`, the finder every drafted answer is checked with too). The prompt has the note written to the applicant in the present
+  tense, about what is wrong on the page, never a plan, and a refused reply asks with the code's own line (`FALLBACK_NOTE`), never the model's note. `retry` takes `step_by_step`
+  (the field goes to the adaptive step agent) beside the move-order techniques and `clear_and_set`; a stored round keeps a retry's `technique` and a choose's `basis`, and its
+  `stopped` may be `no_read` (the page could not be read: a row with no model). `ReasonRequest.one_page` (default false) says the page is one form with Submit on it: the
+  validator drops its buttons and tabs, `autofill_reason._allowed` removes every press (`PRESSES`: `press_next`, `close_dialog`, `follow_tab`) and allows only `open_questions` and
+  `page_errors` there (any other reason is `ask_user`), the prompt offers no press and says to work the fields only, and `check` refuses a press as `not_allowed`. A stored trace's `reasoning` rounds keep the snapshot
+  (questions, options, error lines and the note redacted of saved answers and base-resume values); `scripts/eval_reason.py` replays them against other models.
   **The Companion's run** (SYSTEM.md §7; `routers/companion.py`, `app/companion_origin.py`): consent channel `companion` is legal only on the
   Companion extension's exact origin (403 otherwise). A PATCH with it queues (`accepted`, from `pending_review`) and refuses `approved` and
   `submitted`; those come only from `POST /api/proposals/{id}/companion-submitted` (`{confirmation: {host, path, text}}`, `extra=forbid`),
@@ -1065,3 +1144,80 @@
     every connection in a `finally`; the context manager is not a closer.
   - **SQLite's `CURRENT_TIMESTAMP` has no microseconds**: same-second rows tied against the ORM's `.ffffff` binds and "oldest wins" fell to a
     uuid4 tie-break. The APP writes every timestamp; never test `updated_at == created_at` for "never edited".
+- **Cross-cutting invariant mechanics** (SYSTEM.md §6 holds each rule, its "because" and its pins; this is the worked detail moved out of
+  the orientation tier, one entry per invariant, named as §6 cites it).
+  - **Environment boundary details** (inv-empty-env-unset): the symptom that bought the rule is the OpenAI SDK adopting an empty
+    `OPENAI_BASE_URL`, after which every request loses its scheme and surfaces as a misleading `APIConnectionError`. Related: `llm._get_client`
+    raises a named error when there is no key AND no custom endpoint; Langfuse tracing requires an explicit `LANGFUSE_HOST` alongside both keys
+    (opt-in by DESTINATION — keys without a host fall back to Langfuse Cloud and would ship resume text to a third party); compose does not
+    forward the Langfuse vars.
+  - **Placement target details** (inv-placement-validation-twins): extra targets require `section="extra"`, a stable `section_key`, and either
+    an enabled entry's original index or, for a flat bullets section, the same stable key as `index_or_category`.
+  - **Em-dash backstop** (inv-em-dash): the MCP client's slim `get_rendered_pdf` scan returns metadata + page paths and no `page_images_b64`
+    — use `get_rendered_pdf_page_image` for one page.
+  - **Autofill telemetry details** (inv-autofill-telemetry-no-values): a reasoning step's `reasoning` rounds hold the model, note, actions as
+    ids and a written answer's LENGTH, and a value-free snapshot. The blanking of `rowKeys`/`siblingKeys` is fed by a scoped `only` fill too,
+    from the fields it left alone (the exact rule, with its option-word exceptions: `extension/INTERNALS.md`, "Run trace"). The page's option
+    texts and the chosen option's index are kept on every field, EEO too, except a text holding another TYPED field's value, and a typed
+    search's offered options keep only their count (the rows echo what was typed); the rest is enums and numbers (a /map step names its
+    sentinel from a fixed list, `TRACE_SENTINELS`, in `fill-loop.js` and `sw.js`), never a typed or profile string in a free-text slot. Runs
+    fold into host/label-free `autofill_mechanism_stats`. Rows carry `host` + `first_seen_at`, runs `host` + `started_at`, which is why
+    `DELETE /telemetry` clears rows, runs and gaps and keeps counters (`scripts/fill_trace.py last|report` reads a DB copy). The known-gaps
+    table (`autofill_widget_gap`, `POST /api/autofill/gaps`, `extra="forbid"`, closed enums) holds only a widget family hash, host, field
+    shape, outcome and counts, posted only while `telemetryEnabled === true`; the gesture report behind the recipe book (`content/recipes.js`)
+    holds event types and a few allowlisted key names, never `value`, and stays local with the fill log off too. With the log off the worker
+    answers a run's trace with `why: "off"` and `lastAt`, the time of the last trace this device posted (an ISO time and nothing else), and
+    the run card says so.
+  - **Frame gate details** (inv-frame-earns-data): the gated fan-out writes are `profile_fill`, the `fill_*` ops and attach; the vouched
+    `flowOrigin` is the origin whose frame held a confirmed form in this tab, same employer, within the hour (panel.js `withFlowOrigin`;
+    iCIMS EEO steps score 0).
+  - **Policy deny-list details** (inv-policy-deny-list-single-source): the four consumers are `fillFormFromProfile` ahead of rule matching
+    and `collectOpenQuestions` ahead of EXCLUDE and the per-type ladder — so a consent question rendered as a select/radio is never offered
+    to the model or tagged `data-rt-qid` — plus the panel's PAIR: the pause row renders no input for a blocked label AND `submitAnswer`
+    refuses one again (the first decides what to draw, the second touches the page). Salary history/current/CTC and unqualified
+    salary/wage/compensation mentions are also blocked without consent; explicit salary expectations are allowed only AFTER both lists.
+  - **Label-pattern table details** (inv-one-label-pattern-table): `profile-fields.js` throws at load if `shared/policy.js` has not run (it
+    borrows `salaryExpectationRe`), and `autofill.js`'s `pf()` throws on an unknown id — an undefined pattern does not error, it just never
+    matches.
+  - **EEO consent details** (inv-eeo-standing-consent): the server's stamp is `acknowledged_at` + `policy_version`, and `consent_forms` turns
+    on only on its own yes carrying the current policy (`agreed_policy`). The outward readers' model providers — OpenAI, Gemini, Claude,
+    OpenRouter, Jev — are recipients too. Never solicit pasted demographic answers in chat when consented values are in Profile. The callers
+    `consent_forms` lifts label refusals for are the fill loop, a model included, never the old collector/pause rows; `derived.agrees_to_terms`
+    is added only as served (lapsed or unreadable: absent).
+  - **PDF word-spacing details** (inv-pdf-word-spacing): pdfTeX 1.40.27 misplaces the inter-word space for many Type 1 fonts (e.g. Helvetica,
+    Charter, Garamond, Fira); `engines` warns on that build, where boot re-validates ready LaTeX templates once
+    (`template_registry.recheck_ready_latex_for_engine_warning`). A uv install uses the HOST's TeX, not Docker's TL 2026 — a PDF's
+    `PTEX.Fullbanner` names the pdfTeX that made it.
+  - **Render fallback details** (inv-render-fallback-explained): seed-render failures persist `render_error`, warn with tracebacks and leave
+    the base usable; its first save retries.
+  - **KB provenance details** (inv-provenance-no-decay): a retired `user_cannot_confirm` point lands on the entity its placement names, else
+    the archived "Unconfirmed claims" holder; later sessions pre-resolve the claim by normalized-text match, and evidence autos win.
+  - **Job-site login file details** (inv-job-site-password-local): writes serialize and replace from unique temp files; damaged JSON and
+    non-object files read empty.
+  - **Proposal relink from the Companion** (inv-auto-consent-gated): `POST /api/proposals` moves an `accepted` proposal to a newer draft of
+    its job only for the Companion's exact origin, when the yes came on channel `companion`, no final review exists and the old draft is gone
+    or still a draft; every other mismatch stays a 409, and an application of another job is refused on every linking route. The
+    Companion's submit record goes approved then attested submitted with host/path/text as the receipt and, past the daily cap or skip
+    list, files an applied-yourself record. The full-automation setting itself is `{value: bool}`.
+  - **Flush guard details** (inv-flush-guard): `hooks.standing_aside(db)` sets `session.info["sync_apply"]` and restores the earlier value;
+    a missing previous parent allows repair.
+  - **Voice check details** (inv-resume-voice): an ambiguous shape is the health advisory `voice.third_person`; the tailor response lists
+    repaired paths as `voice_repairs`.
+  - **Queued-run invariant mechanics** (inv-rejected-next, inv-one-resume-write, inv-ready-real-review; the code: `extension/INTERNALS.md`,
+    "Queued run"). *Rejected Next*: the repair is `fix`, `runFill({only})`, each error once; a repeat, or an error it cannot work, parks
+    `page_errors` naming only what is left; `filledPage` is path and step key, query ignored; a refused press or repair that ends on another
+    page counts as a step (`step_limit`, `loop`); a posting's Apply is pressed as a same-tab link even if it asks for a new tab, the address
+    re-checked, and the first read after it must be on the link's host, the queued host or a known ATS. *One resume write*: the box a page
+    error named is an opaque tag; the nearest name decides a parser box (`uploadBoxOf`); no press writes a parser or other-document box, the
+    Attach button included; a Resume never attaches; a file's proof follows an uploader that swaps its own box for the file's chip
+    (`ns.uploadProof`). *Ready*: `requiredEmpty` gets one scoped fix, then `open_questions`; the other reasons a page reads as a review are
+    a Submit the reader could not see, a dialog about submitting, several Nexts, and fields with no Next, and a page with errors or empties
+    gets its fix before the 4-read hold; a Resume on an `unsure_page` FILLS the page; the user's word counts only for `submit_seen`,
+    `submit_context` and `fields_no_next`; the one resume the run already wrote on the page excuses ONE required resume box, never a second;
+    closed is a strict notice, nothing fillable and no Apply, and resumable.
+  - **Artifact removal details** (inv-staged-artifact-removal): unlink failures warn with tracebacks; missing files and failed folder
+    pruning stay quiet.
+  - **Home folder paths** (inv-one-home): `MAESTRO_HOME` defaults to `~/Library/Application Support/Maestro Career Studio` (macOS),
+    `%APPDATA%\Maestro Career Studio` (Windows) or `$XDG_DATA_HOME/maestro-career-studio` (Linux).
+  - **Drafted answers** (inv-drafted-answers): a draft is returned `assumed` and `/choose` saves nothing of it; `""` when the history cannot
+    answer; the never-list, the 120-word default and the label's stated limit: "Derived facts, drafted answers and degree levels" above.

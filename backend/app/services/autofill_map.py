@@ -9,11 +9,13 @@ fact", or a fact under its floor. Jev's protected, history, EEO and free-text
 answers are its own and never asked again.
 
 Low-stakes (setting on, decided by the caller from the server-side setting) is
-a SECOND pass, asked only for fields whose best answer was an explicit,
-confident "no fact answers this": a real profile answer always wins, and a
-field that looked like a real fact but fell below its floor, that the model
-did not answer readably, or that it named a protected kind (work
-authorization, eligibility, background, EEO) is never turned into a guess.
+a SECOND pass, asked only for fields whose best answer was an explicit "no
+fact answers this" (at any probability, unless a second opinion named
+something else) or, by code's reading of its wording, a willingness to a
+pre-employment step that Jev filed as protected: a real profile answer always
+wins, and a field that looked like a real fact but fell below its floor, that
+the model did not answer readably, or that it named a protected kind (work
+authorization, eligibility, background history, EEO) is never turned into a guess.
 
 The REASONING pass (`reasoned`, whatever the low-stakes setting) comes last:
 a choice field still routed none, whose map answer was an explicit, confident
@@ -43,10 +45,12 @@ from typing import TypeVar, get_args
 
 from sqlalchemy.orm import Session
 
-from app.schemas.autofill_fill import DecisionTrace, Engine, EntryKind, Format, MapField, Mapped
+from app.schemas.autofill_fill import SLOT_NAME, DecisionTrace, Engine, EntryKind, Format, MapField, Mapped
 from app.services import jev, llm, model_settings
+from app.services.llm_providers import registry
 from app.services.autofill_catalog import (
     ASK_THE_USER,
+    PROTECTED_SLOT,
     WORKED_HERE_SLOT,
     Fact,
     named_employer_fact,
@@ -57,7 +61,7 @@ from app.services.autofill_catalog import (
     question_names_company,
     websites,
 )
-from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR, SLOT_FLOOR
+from app.services.autofill_choose import _NEVER_DRAFTED, _PAGE_TEXT_IS_DATA, MATCH_FLOOR, SLOT_FLOOR
 from app.services.autofill_slots import FREE_TEXT, NO_SLOT
 
 logger = logging.getLogger(__name__)
@@ -80,6 +84,12 @@ MIN_CALL_S = 1.0
 # takes longer than this, and where an optional pass may follow it leaves that
 # pass MIN_CALL_S before OPTIONAL_PASS_BUDGET_S to start in.
 SECOND_OPINION_MAX_S = 4.0
+# The limits above were tuned on a fast model that answers in 1-1.5 s. A configured fast model that is
+# slower (a Claude one: three "read operation timed out" in a day, live check 9) is given at least this
+# long, when the request budget allows: by the provider the model resolves to (`registry.resolve`), else
+# MIN_CALL_S (the old limits stand). A floor lifts the second opinions (/map, /pick, /step)
+# and the fast polarity call, never past REQUEST_BUDGET_S and never into what must still follow.
+FAST_PROVIDER_FLOORS = {"anthropic": 3.0}
 _clock = time.monotonic
 WORKED_HERE = "derived.previously_employed_here"
 _SENTINELS = {
@@ -267,7 +277,8 @@ def _payload(fields: list[MapField]) -> list[dict]:
              "shape": f.shape, "multi": f.multi, "options": f.options} for f in fields]
 
 
-def _with_jev(fields, criteria, session) -> dict[str, tuple[str, float]]:
+def _with_jev(fields, criteria, session) -> tuple[dict[str, tuple[str, float]], dict[str, tuple[str, float]]]:
+    """Per field Jev's top choice and its probability, and the RUNNER-UP (the next most probable key)."""
     questions = {
         f.fid: jev.choice_question(
             f"Which applicant fact does form field {f.fid} ({json.dumps(f.question)}"
@@ -276,20 +287,37 @@ def _with_jev(fields, criteria, session) -> dict[str, tuple[str, float]]:
         for f in fields
     }
     answers = jev.decide(questions, {"form_fields": _payload(fields)}, session)
-    out = {}
+    out, runners = {}, {}
     for f in fields:
         if picked := jev.choice_of(answers.get(f.fid), criteria):
             out[f.fid] = (picked.choice, picked.probability)
-    return out
+            rest = {k: p for k, p in answers[f.fid]["probabilities"].items() if k != picked.choice}
+            if rest:
+                top = max(rest, key=rest.__getitem__)
+                runners[f.fid] = (top, rest[top])
+    return out, runners
 
 
-def fast_json(session: Session, prompt: str, trace_name: str, *, timeout: float | None = None) -> object:
+def second_opinion_floor(session: Session | None) -> float:
+    """The least a fast-model second opinion (and the fast polarity call) should be given, by the provider the
+    configured fast model resolves to (`FAST_PROVIDER_FLOORS`): MIN_CALL_S for every other, an OpenRouter id
+    ("anthropic/claude-...") and a custom server (the user's own endpoint) included."""
+    if llm.get_base_url():
+        return MIN_CALL_S
+    return FAST_PROVIDER_FLOORS.get(registry.resolve(model_settings.get_fast_model(session)).provider, MIN_CALL_S)
+
+
+def fast_json(session: Session, prompt: str, trace_name: str, *, timeout: float | None = None,
+              model: str | None = None) -> object:
     """One fast-model JSON call. JSON that stays malformed after the client's
     retries is a provider failure (a 502 with a detail), not a crash.
-    `timeout`: an optional call on a budget — one request, that long, no retries."""
+    `timeout`: an optional call on a budget — one request, that long, no retries.
+    `model`: ask this one instead of the fast model setting."""
     budget = {"timeout": timeout, "max_retries": 0} if timeout is not None else {}
+    if timeout is not None:
+        logger.info("fast model call %s: timeout given %.1f s", trace_name, timeout)
     try:
-        return llm.call_openai(prompt=prompt, model=model_settings.get_fast_model(session),
+        return llm.call_openai(prompt=prompt, model=model or model_settings.get_fast_model(session),
                                response_format="json", trace_name=trace_name, **budget)
     except ValueError as exc:
         raise llm.LLMProviderError("The AI model sent an answer we couldn't read.", str(exc)) from exc
@@ -320,23 +348,36 @@ class Budget:
     def __init__(self, clock: Callable[[], float] | None = None) -> None:
         self._clock = clock
         self._started = self._now()
+        # Seconds in after which no optional call starts: OPTIONAL_PASS_BUDGET_S, until a floor-lifted call
+        # (`left(late_ok=True)`) runs past it and the passes that follow get what is left of the request.
+        self._window = OPTIONAL_PASS_BUDGET_S
 
     def _now(self) -> float:
         return (self._clock or _clock)()
 
-    def left(self, cap: float | None = None, *, reserve: float = 0.0) -> float | None:
+    def left(self, cap: float | None = None, *, reserve: float = 0.0, floor: float = 0.0,
+             keep: float = 0.0, late_ok: bool = False) -> float | None:
         """The timeout an optional call may take, or None once none should start.
         `cap`: at most that long. `reserve`: end that long before
-        OPTIONAL_PASS_BUDGET_S, so a later optional call can still start."""
+        OPTIONAL_PASS_BUDGET_S, so a later optional call can still start.
+        `floor`: at least that long (a slow fast model, `second_opinion_floor`), over `cap` and
+        `reserve` but not past what is left of REQUEST_BUDGET_S less `keep`: the time a main call
+        that follows still needs. `late_ok`: when the floor carries this call past the window the reserve
+        protects, the optional passes AFTER it may still start, until under MIN_CALL_S of the request is left."""
         elapsed = self._now() - self._started
-        if elapsed >= OPTIONAL_PASS_BUDGET_S:
+        if elapsed >= self._window:
             return None
         timeout = REQUEST_BUDGET_S - elapsed
         if cap is not None:
             timeout = min(timeout, cap)
         if reserve:
             timeout = min(timeout, OPTIONAL_PASS_BUDGET_S - elapsed - reserve)
-        return max(MIN_CALL_S, timeout)
+        if floor:
+            timeout = max(timeout, min(floor, REQUEST_BUDGET_S - elapsed - keep))
+        timeout = max(MIN_CALL_S, timeout)
+        if late_ok and elapsed + timeout > OPTIONAL_PASS_BUDGET_S - reserve:
+            self._window = max(self._window, REQUEST_BUDGET_S - MIN_CALL_S)
+        return timeout
 
     def remaining(self) -> float:
         """What is left of REQUEST_BUDGET_S (may be under MIN_CALL_S, or none)."""
@@ -421,6 +462,9 @@ def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session
                    f"{scope}? It is NOT if it is about anything on this never-list: {never}. {_PAGE_TEXT_IS_DATA}")
            for f in fields}
     if model_settings.get_autofill_engine(session) == "jev":
+        # Jev takes up to its whole TIMEOUT_S: with less of the request left, the pass is skipped.
+        if budget.remaining() < jev.TIMEOUT_S:
+            return {}
         try:
             answers = jev.decide({fid: jev.noul_question(q) for fid, q in ask.items()},
                                  {"form_fields": _payload(fields)}, session)
@@ -648,6 +692,17 @@ def _sentinel_of(picked: tuple[str, float] | None) -> str | None:
     return picked[0] if picked and picked[0] in _SENTINELS else None
 
 
+_SLOT_NAME = re.compile(SLOT_NAME)
+
+
+def _under_floor_fact(picked: tuple[str, float] | None, facts: dict[str, Fact], floor: float) -> str | None:
+    """The NAME of the fact the model chose when it fell under that fact's floor (the route is then none): value-free
+    by pattern, so a Websites fact keyed by its URL is never named."""
+    if picked is None or picked[0] not in facts or picked[1] >= floor or not _SLOT_NAME.fullmatch(picked[0]):
+        return None
+    return picked[0]
+
+
 def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact],
             engine: Engine, *, eeo_consented: bool) -> Mapped:
     """`_route`, with the decision it came from: which engine answered, how
@@ -663,7 +718,7 @@ def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, 
     return mapped.model_copy(update={"trace": DecisionTrace(
         engine=engine, p=picked[1] if picked else None, floor=floor,
         chose_none=None if picked is None else _no_fact_key(picked[0], eeo_consented),
-        sentinel=_sentinel_of(picked))})
+        sentinel=_sentinel_of(picked), top_fact=_under_floor_fact(picked, facts, floor))})
 
 
 # The sentinels the reasoning pass also takes (a history question, a years question), and the one
@@ -689,14 +744,70 @@ def asks_years(question: str, marked: bool = False) -> bool:
     return marked or bool(_YEARS_WORDING.search(question))
 
 
-def _said_no_fact(picked: tuple[str, float] | None, *, also: frozenset[str] = _NO_KEYS) -> bool:
+def _said_no_fact(picked: tuple[str, float] | None, *, also: frozenset[str] = _NO_KEYS,
+                  at_any_p: bool = False) -> bool:
     """An EXPLICIT, confident "no fact answers this". An omitted, refused or
     unsure answer, a fact below its floor, a protected or EEO kind all say
     something else, and none of them is a candidate for either pass.
     `also`: sentinels that count too (`_REASONED_KEYS` for the reasoning
-    route; a low-stakes guess takes only `_KEEN_YEARS_KEYS`, on a Queued job at the queued level)."""
+    route; a low-stakes guess takes only `_KEEN_YEARS_KEYS`, on a Queued job at the queued level).
+    `at_any_p`: the none key counts at ANY probability (the low-stakes pass, owner, live check 9: Jev's 0.54
+    on a referral question is still "no fact"; the judge and the never-list decide from there)."""
     key, p = picked or (None, 0.0)
-    return (key == NO_SLOT or key in also) and p >= SLOT_FLOOR
+    return (key == NO_SLOT and (at_any_p or p >= SLOT_FLOOR)) or (key in also and p >= SLOT_FLOOR)
+
+
+# A willingness to a standard pre-employment step, worded as one sentence ("Are you willing to undergo a
+# background check?", "Do you agree to submit to a reference check?"). Jev files these under the protected
+# sentinel; its text says willingness is not protected, but a sentinel counts as a classification, so
+# code lets this one wording through to the low-stakes judge (owner, live check 9). Background HISTORY in
+# the same question (ever, a conviction, a charge, a record, an arrest...) keeps it the user's.
+_PRE_EMPLOYMENT_STEP = (r"background\s+(?:check|screening|investigation)s?|drug\s+(?:test|screen)\w*|"
+                        r"reference\s+checks?|I-?9|e-?verify")
+# Only a QUESTION about willingness (willing / agree / consent, or able to undergo, submit to, complete, take,
+# participate in) beside the step, in one sentence.
+_WILLING_TO_STEP = re.compile(
+    rf"\b(?:willing|agree|consent|able\s+to\s+(?:undergo|submit\s+to|complete|take|participate\s+in))\b"
+    rf"[^?.!\n]{{0,60}}?\b(?:{_PRE_EMPLOYMENT_STEP})\b", re.IGNORECASE)
+# Passing, clearing, satisfying or proving something is an eligibility claim; an authorization or a sponsorship
+# question is a protected one.
+_NOT_JUST_WILLING = re.compile(
+    r"\b(?:pass\w*|clear\w*|satisf\w*|eligib\w*|authori[sz]\w*|proof|prove|citizen\w*|sponsor\w*|visa)\b",
+    re.IGNORECASE)
+# A statement in the first person is a box that gives the consent itself ("I consent to a background check.").
+_FIRST_PERSON = re.compile(r"^\W*I\b|\bI\s+hereby\b", re.IGNORECASE)
+_ASKS = re.compile(r"\?|^\W*(?:are|will|would|do|does|can|could)\b", re.IGNORECASE)
+# Background HISTORY in the same question (ever, a conviction, a charge, a record, an arrest...) keeps it the user's.
+_BACKGROUND_HISTORY = re.compile(
+    r"\b(?:ever|convict\w*|charged?|charges|records?|felon\w*|misdemeanou?rs?|arrest\w*|pending|offen[cs]es?|"
+    r"crimes?|criminal\s+history|incarcerat\w*|sentenc\w*|plead\w*)\b", re.IGNORECASE)
+# What a below-floor "no fact" may not be, whatever else it was: a protected, eligibility or EEO wording.
+_PROTECTED_WORDING = re.compile(
+    r"\b(?:work\s+authori[sz]\w*|authori[sz]ed\s+to\s+work|eligib\w*|sponsor\w*|visa|citizen\w*|veterans?|"
+    r"disab\w*|gender|race|racial|ethnic\w*|hispanic|latino|age|lawful\w*|clearance|non-?compete)\b",
+    re.IGNORECASE)
+# A below-floor none whose runner-up in Jev's distribution is a protected or EEO kind at this probability or more is doubt.
+RUNNER_UP_DOUBT = 0.2
+
+
+def _willing_to_step(field: MapField, picked: tuple[str, float] | None) -> bool:
+    """A field Jev filed as protected (at SLOT_FLOOR or more) that code reads as a QUESTION of willingness to a
+    pre-employment step and nothing else: not a first-person box, not passing or proving, no authorization or
+    background history."""
+    q = field.question
+    return (picked is not None and picked[0] == PROTECTED_UNANSWERED and picked[1] >= SLOT_FLOOR
+            and bool(_ASKS.search(q)) and not _FIRST_PERSON.search(q) and bool(_WILLING_TO_STEP.search(q))
+            and not _NOT_JUST_WILLING.search(q) and not _BACKGROUND_HISTORY.search(q))
+
+
+def _doubtful_none(field: MapField, picked: tuple[str, float] | None, runner: tuple[str, float] | None) -> bool:
+    """A "no fact" under SLOT_FLOOR is a shrug, not a classification: it is no low-stakes candidate when Jev's
+    runner-up was a protected or EEO kind (RUNNER_UP_DOUBT) or the wording is a protected one."""
+    if picked is None or picked[0] != NO_SLOT or picked[1] >= SLOT_FLOOR:
+        return False
+    if runner is not None and runner[0] in (PROTECTED_UNANSWERED, BLOCKED_EEO) and runner[1] >= RUNNER_UP_DOUBT:
+        return True
+    return bool(_PROTECTED_WORDING.search(field.question) or _BACKGROUND_HISTORY.search(field.question))
 
 
 def _unsure(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact]) -> bool:
@@ -718,13 +829,14 @@ def _second_opinion(fields: list[MapField], criteria: dict[str, str], session: S
     Out of time or failed, Jev's none stands. None: it never ran (no fields, no
     budget, or a failure), as against {}: it ran and answered nothing readable,
     which the trace tells apart (`second` "asked")."""
-    timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S)
+    timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S, floor=second_opinion_floor(session),
+                          keep=MIN_CALL_S, late_ok=True)
     if not fields or timeout is None:
         return None
     try:
         return _with_llm(fields, criteria, session, "autofill-map-second", timeout=timeout)
     except llm.LLMProviderError:
-        logger.warning("fast model second opinion failed; Jev's none stands")
+        logger.warning("fast model second opinion failed (timeout given %.1f s); Jev's none stands", timeout)
         return None
 
 
@@ -739,29 +851,71 @@ def _has_history(facts: dict[str, Fact]) -> bool:
     return any((m := _ENTRY.fullmatch(slot)) and m[1] in _HISTORY_KINDS for slot in facts)
 
 
+START_TEXT_SLOT = "preferences.earliest_start_date"
+START_DATE_SLOT = "derived.earliest_start_date"
+
+
+def _start_text_for_choices(out: dict[str, Mapped], fields: list[MapField], facts: dict[str, Fact]) -> None:
+    """A start-date fact routed to a CHOICE field (a select, a group, a popup, a search) is the stored words
+    ("Immediately"), which an option can state; a calendar date would match none. A date or a text box keeps the
+    derived date. `facts` is the full set, with both start facts."""
+    text = facts.get(START_TEXT_SLOT)
+    if text is None:
+        return
+    for f in fields:
+        mapped = out[f.fid]
+        if mapped.route == "slot" and mapped.slot == START_DATE_SLOT and f.shape not in _WRITTEN_SHAPES:
+            out[f.fid] = mapped.model_copy(update={"slot": START_TEXT_SLOT, "value": text.value, "format": None})
+
+
+def _one_start_date(facts: dict[str, Fact]) -> dict[str, Fact]:
+    """The facts /map offers, with ONE start-date fact: when the stored start text means "now" the catalog
+    derives a calendar date from it (`derived.earliest_start_date`), and that date is what a form takes.
+    Offered beside the text itself, two facts compete for the same box (live check 9: Jev's 0.55 on the
+    text kept a start date from being filled; the stored text, typo included, was sent verbatim)."""
+    if START_DATE_SLOT in facts and START_TEXT_SLOT in facts:
+        return {slot: fact for slot, fact in facts.items() if slot != START_TEXT_SLOT}
+    return facts
+
+
 def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session, *,
                eeo_consented: bool, low_stakes: bool, level: str = "history",
                queued: bool = False) -> dict[str, Mapped]:
     budget = Budget()
+    all_facts = facts
+    facts = _one_start_date(facts)
     criteria = _criteria(facts)
-    picked, second, unsure = None, None, []
+    # The reasoning step's answer_from: a fact NAME it chose for a field, taken as a certain pick when it is a
+    # fact this profile holds, is not protected, and the question is not on the never-list. No model is asked
+    # about such a field; code still applies every guard below (`_traced`).
+    hinted = {f.fid: (f.slot_hint, 1.0) for f in fields
+              if f.slot_hint and f.slot_hint in facts and not PROTECTED_SLOT.match(f.slot_hint)
+              and not _NEVER_DRAFTED.search(f.question)}
+    asked = [f for f in fields if f.fid not in hinted]
+    picked, second, unsure, runners = None, None, [], {}
     engine: Engine = "jev"
-    if model_settings.get_autofill_engine(session) == "jev":
-        try:
-            picked = _with_jev(fields, criteria, session)
-        except llm.LLMProviderError:
-            logger.warning("jev map failed; the fast model maps this batch")
-    if picked is None:
-        engine = "fast"
-        picked = main_call(
-            budget, lambda timeout: _with_llm(fields, criteria, session, timeout=timeout), "fast map")
+    if not asked:
+        picked, engine = {}, "fast"
     else:
-        unsure = [f for f in fields if _unsure(f, picked.get(f.fid), facts)]
-        second = _second_opinion(unsure, criteria, session, budget)
+        if model_settings.get_autofill_engine(session) == "jev":
+            try:
+                picked, runners = _with_jev(asked, criteria, session)
+            except llm.LLMProviderError:
+                logger.warning("jev map failed; the fast model maps this batch")
+        if picked is None:
+            engine = "fast"
+            picked = main_call(
+                budget, lambda timeout: _with_llm(asked, criteria, session, timeout=timeout), "fast map")
+        else:
+            unsure = [f for f in asked if _unsure(f, picked.get(f.fid), facts)]
+            second = _second_opinion(unsure, criteria, session, budget)
     ran = second is not None
     second = second or {}
+    picked = {**picked, **hinted}
     out = {f.fid: _traced(f, picked.get(f.fid), facts, engine, eeo_consented=eeo_consented)
            for f in fields}
+    for fid in hinted:   # no model decided it: no decision to trace
+        out[fid] = out[fid].model_copy(update={"trace": None})
     # Only a fact or an EEO block is the second opinion's to decide: a field
     # Jev said no fact answers never becomes a model-drafted free-text answer.
     decided: dict[str, Mapped] = {}
@@ -783,9 +937,12 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
     def key(answer: tuple[str, float] | None) -> str | None:
         return answer[0] if answer else None
 
-    def leftovers(also: frozenset[str]) -> list[MapField]:
+    def leftovers(also: frozenset[str], *, low: bool = False) -> list[MapField]:
         return [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
-                and not _foreign(f) and _said_no_fact(picked.get(f.fid), also=also)
+                and not _foreign(f)
+                and (_said_no_fact(picked.get(f.fid), also=also, at_any_p=low)
+                     and not (low and _doubtful_none(f, picked.get(f.fid), runners.get(f.fid)))
+                     or (low and _willing_to_step(f, picked.get(f.fid))))
                 and _agrees_no_fact(second.get(f.fid), also=also)]
 
     # Out of time (`budget.left()`), a pass asks nothing: the open questions stay the user's.
@@ -795,11 +952,12 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
         # A years question is the reasoning pass's; at "queued" on a Queued job it is this pass's too
         # (/pick asks the history first, autofill_pick._years_first).
         keen_years = _KEEN_YEARS_KEYS if level == "queued" and queued else _NO_KEYS
-        for fid, judge in _low_stakes(leftovers(keen_years), facts, session, budget,
+        for fid, judge in _low_stakes(leftovers(keen_years, low=True), facts, session, budget,
                                       level=level, queued=queued).items():
             years = YEARS_UNANSWERED in (key(picked.get(fid)), key(second.get(fid)))
             out[fid] = Mapped(route="low_stakes", years=years,
                               trace=DecisionTrace(engine=judge, sentinel=_sentinel_of(picked.get(fid))))
+    _start_text_for_choices(out, fields, all_facts)
     if _has_history(facts):
         for fid in _answerable(leftovers(_REASONED_KEYS), facts, session, budget):
             out[fid] = Mapped(route="reasoned",

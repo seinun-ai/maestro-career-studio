@@ -13,7 +13,10 @@ appended and never pruned; the values live here and nowhere else (SYSTEM.md §6 
 
 - **Writers.** The Companion posts one row after every fill run, loop and rule pass alike, one per
   pause-row answer that sticks, and one per edit capture (a debounced re-read after you change a field, at
-  Mark applied, and as the panel leaves a page; `extension/INTERNALS.md`, "The answer receipt"). An agent
+  Mark applied, and as the panel leaves a page; `extension/INTERNALS.md`, "The answer receipt"). The Companion's writer (`shared/receipt.js`, `panel/actions/fill.js` `recordReceipt`)
+  posts through the generic `api` door, never `telemetry`/`fill_trace`, so it works with telemetry off; it reads only frames that earn the
+  data (SYSTEM.md §6 inv-frame-earns-data), records no never-fill field even under standing consent (`ns.isNeverFilled`), and its values
+  never reach the run-trace builders. An agent
   posts one per form page with MCP `record_filled_answers`, before Next and before "Submit now?". A
   writer may name the application (it must be this job's: 404 unknown, 400 another job's). An agent
   passes the page's URL path (`location.pathname`) as `step`, the Companion's own key, so its row and the
@@ -59,7 +62,7 @@ appended and never pruned; the values live here and nowhere else (SYSTEM.md §6 
   every row and keeps `eeo_answered`; granting consent again brings nothing back. The read asks consent
   again, so a stored value is served as null once it is withdrawn. The web tab shows EEO answers only on
   demand, per visit, under "Diversity questions (voluntary)". An agent read carries `eeo_answered`, never
-  the value, consent or not (`agent_flags`; the MCP client strips it again), and no MCP path reads the GET.
+  the value, consent or not (`agent_flags`; `get_final_review`'s `flags` carry it; the MCP client strips it again), and no MCP path reads the GET.
 - **Flags are computed at read time** (`services/answer_flags.py`) over the latest answer per question
   and the consent-gated profile catalog (`autofill_catalog.build` with no resume blocks), so a profile
   change re-flags old rows; nothing stores a flag. Four ids, warn only, each with one fixed reason line:

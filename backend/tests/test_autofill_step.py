@@ -1153,11 +1153,14 @@ def test_a_yes_never_clicks_a_current_service_option_or_answers_a_current_only_q
 def test_a_no_never_clicks_an_option_that_claims_to_be_a_veteran_in_step(db_session, monkeypatch):
     facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
     fake_jev(monkeypatch, ("click:o1", 0.99))
-    options = ("I am a Veteran, but not a Protected Veteran", "I am not a Veteran.")
+    options = ("I am a Veteran, but not a Protected Veteran", "Choose not to disclose")
     got = sans_trace(autofill_step.step(_veteran_req("Veteran Status", *options), facts, db_session, None))
     assert got == {"mid": None, "reason": "abstained"}
     fake_jev(monkeypatch, ("click:o2", 0.99))
     got = sans_trace(autofill_step.step(_veteran_req("Veteran Status", *options), facts, db_session, None))
+    assert got == {"mid": "click:o2", "reason": "matched"}
+    # With "I am not a Veteran." beside the claim, code clicks it before any model (AE4).
+    got = sans_trace(autofill_step.step(_veteran_req("Veteran Status", options[0], "I am not a Veteran."), facts, db_session, None))
     assert got == {"mid": "click:o2", "reason": "matched"}
 
 
@@ -1219,10 +1222,11 @@ def test_the_how_heard_goal_without_a_known_board_still_walks_the_same_tree(db_s
 @pytest.mark.usefixtures("jev_on")
 @pytest.mark.parametrize(("choice", "reason"), [("click:o2", "assumed"), ("open", "progress")])
 def test_a_how_heard_leaf_is_assumed_and_opening_the_category_is_progress(db_session, monkeypatch, choice, reason):
-    """The tree's categories: opening one is progress. The leaf (the board) is not the profile's word: assumed."""
+    """The tree's categories: opening one is progress. The leaf (the board) is not the profile's word: assumed.
+    (A listed LinkedIn leaf is code's own assumed pick for a generic "Job board"; see the generic-board tests.)"""
     fake_jev(monkeypatch, (choice, 0.9))
     r = heard(candidates=[{"mid": "click:o1", "describe": 'Click the option "Referral"'},
-                          {"mid": "click:o2", "describe": 'Click the option "LinkedIn"'},
+                          {"mid": "click:o2", "describe": 'Click the option "Career Fair"'},
                           {"mid": "open", "describe": "Open the list"}, {"mid": GIVE_UP, "describe": "Stop"}])
     assert sans_trace(heard_step(db_session, r)) == {"mid": choice, "reason": reason}
 
@@ -1406,13 +1410,58 @@ def test_with_no_source_hint_a_board_named_in_the_saved_value_is_searched(db_ses
     assert (got.mid, got.term) == ("search:term", "Indeed")
 
 
-@pytest.mark.usefixtures("jev_on")
 @pytest.mark.parametrize("hint", [None, JobHint(title="Analyst", company="Acme", source="a-friend"),
                                   JobHint(title="Analyst", company="Acme", source=None)])
-def test_a_saved_job_board_with_no_known_board_asks_the_model(db_session, monkeypatch, hint):
-    calls = fake_jev(monkeypatch, ("click:o5", 0.9))
+def test_a_generic_job_board_with_no_known_board_searches_linkedin_without_a_model(db_session, monkeypatch, hint):
+    """Owner decision 2026-10-15: no known board, so the assumed answer is LinkedIn, or another specific job board."""
+    no_model(monkeypatch)
     got = heard_step(db_session, heard(candidates=searchable()), hint)
+    assert (got.mid, got.reason, got.term) == ("search:term", "progress", "LinkedIn") and got.trace == DecisionTrace()
+
+
+def test_a_generic_job_board_clicks_the_linkedin_leaf_assumed_before_any_search(db_session, monkeypatch):
+    no_model(monkeypatch)
+    leaves = [{"mid": "click:o7", "describe": 'Click the option "Indeed"'},
+              {"mid": "click:o9", "describe": 'Click the option "LinkedIn"'},
+              {"mid": "search:term", "describe": "Type a search term"}, {"mid": GIVE_UP, "describe": "Stop"}]
+    got = heard_step(db_session, heard(candidates=leaves), None)
+    assert (got.mid, got.reason, got.term) == ("click:o9", "assumed", None)
+
+
+def test_a_generic_job_board_takes_the_first_other_specific_board_when_linkedin_is_not_offered(db_session, monkeypatch):
+    no_model(monkeypatch)
+    leaves = [{"mid": "click:o3", "describe": 'Click the option "Career Fair"'},
+              {"mid": "click:o7", "describe": 'Click the option "Indeed"'},
+              {"mid": "click:o8", "describe": 'Click the option "Glassdoor"'},
+              {"mid": "search:term", "describe": "Type a search term"}, {"mid": GIVE_UP, "describe": "Stop"}]
+    got = heard_step(db_session, heard(candidates=leaves, tried_terms=["LinkedIn"], history=["search:term -> progressed"]),
+                     None)
+    assert (got.mid, got.reason) == ("click:o7", "assumed")
+
+
+def test_a_generic_job_board_skips_a_leaf_whose_click_already_failed(db_session, monkeypatch):
+    no_model(monkeypatch)
+    leaves = [{"mid": "click:o7", "describe": 'Click the option "Indeed"'},
+              {"mid": "click:o9", "describe": 'Click the option "LinkedIn"'}, {"mid": GIVE_UP, "describe": "Stop"}]
+    got = heard_step(db_session, heard(candidates=leaves, history=["click:o9 -> no_change"]), None)
+    assert (got.mid, got.reason) == ("click:o7", "assumed")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_generic_job_board_with_no_specific_board_and_no_search_box_asks_the_model(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, ("click:o5", 0.9))
+    leaves = [*SIX_GROUPS, {"mid": "click:o9", "describe": 'Click the option "Job Board"'}, {"mid": GIVE_UP, "describe": "Stop"}]
+    got = heard_step(db_session, heard(candidates=leaves), None)
     assert len(calls) == 1 and got.mid == "click:o5"
+    assert '"LinkedIn"' in calls[0]["questions"]["f"]["instructions"]   # the goal names the assumed board
+
+
+@pytest.mark.parametrize("saved", ["Job site", "Online job boards", "job board"])
+def test_a_generic_board_wording_takes_the_linkedin_default(db_session, monkeypatch, saved):
+    no_model(monkeypatch)
+    facts = autofill_catalog.build({"preferences": {"how_heard": saved}}, [], [])
+    got = autofill_step.step(heard(candidates=searchable()), facts, db_session, None)
+    assert (got.mid, got.term) == ("search:term", "LinkedIn")
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1535,3 +1584,94 @@ def test_a_dealer_contractor_or_directly_employed_step_reports_the_no_assumed(db
     got = autofill_step.step(r, _acme_job_facts(), db_session, None)
     assert (got.mid, got.reason) == ("click:o1", "assumed")
 
+
+
+# ---------- review: a saved answer is a board only as whole words, and a board is never assumed for any other answer
+
+@pytest.mark.parametrize("saved", ["Prejudice", "Board member", "Boardroom", "Dicey friend", "Referral", "Career fair",
+                                   "Company website", "Recruiter"])
+def test_a_saved_answer_that_only_contains_a_board_word_is_no_board_answer(saved):
+    assert autofill_step.how_heard_kind(saved) != "board"
+
+
+@pytest.mark.parametrize("saved", ["Job board", "Job boards", "Online job boards", "Career board", "Job site", "Indeed",
+                                   "linkedin", "Built In", "Monster.com"])
+def test_a_job_board_or_a_named_board_is_a_board_answer(saved):
+    assert autofill_step.how_heard_kind(saved) == "board"
+
+
+@pytest.mark.parametrize("saved", ["Referral", "Career fair", "Company website", "Board member", "Prejudice"])
+def test_code_never_assumes_linkedin_for_another_saved_answer(db_session, monkeypatch, saved):
+    facts = autofill_catalog.build({"preferences": {"how_heard": saved}}, [], [])
+    monkeypatch.setattr(autofill_step, "_move", lambda *a, **kw: autofill_step.ABSTAIN)
+    monkeypatch.setattr(autofill_step, "_with_term", lambda r, a, s, b, moved: moved)
+    leaves = [{"mid": "click:o9", "describe": 'Click the option "LinkedIn"'},
+              {"mid": "click:o8", "describe": 'Click the option "Indeed"'},
+              {"mid": "search:term", "describe": "Type a search term"}, {"mid": GIVE_UP, "describe": "Stop"}]
+    got = autofill_step.step(heard(candidates=leaves), facts, db_session, None)
+    assert got.mid is None
+
+
+@pytest.mark.parametrize("saved", ["Referral via LinkedIn", "Referred by a friend on LinkedIn", "I was indeed referred",
+                                   "Employee referrer on Indeed"])
+def test_a_referral_is_never_a_board_answer_even_when_it_names_a_board(db_session, monkeypatch, saved):
+    assert autofill_step.how_heard_kind(saved) != "board"
+    facts = autofill_catalog.build({"preferences": {"how_heard": saved}}, [], [])
+    monkeypatch.setattr(autofill_step, "_move", lambda *a, **kw: autofill_step.ABSTAIN)
+    monkeypatch.setattr(autofill_step, "_with_term", lambda r, a, s, b, moved: moved)
+    leaves = [{"mid": "click:o9", "describe": 'Click the option "LinkedIn"'},
+              {"mid": "click:o8", "describe": 'Click the option "Indeed"'},
+              {"mid": "search:term", "describe": "Type a search term"}, {"mid": GIVE_UP, "describe": "Stop"}]
+    assert autofill_step.step(heard(candidates=leaves), facts, db_session, JobHint(title=None, company=None, source="linkedin")).mid is None
+
+
+@pytest.mark.parametrize("saved", ["LinkedIn", "Job board"])
+def test_a_plain_board_answer_is_still_a_board_answer(saved):
+    assert autofill_step.how_heard_kind(saved) == "board"
+
+
+# ---------- live check 9 (AE4): the step settles a saved No's one "I am not a (protected) veteran" option in code
+
+def no_model_may_be_asked(monkeypatch):
+    def boom(*a, **kw):
+        raise AssertionError("a model was asked")
+
+    monkeypatch.setattr(autofill_step.jev, "decide", boom)
+    monkeypatch.setattr(autofill_step.llm, "call_openai", boom)
+    monkeypatch.setattr(autofill_step.polarity_ways.__globals__["autofill_polarity"], "decide", boom)
+
+
+@pytest.mark.parametrize("question, options, wanted, reason", [
+    ("Veteran Status", ("I am not a protected veteran", "I identify as one or more of the classifications of "
+                                                         "protected veteran", "Choose not to disclose"), 1, "matched"),
+    ("Are you a veteran?", ("Yes, I am a veteran", "No, I am not a veteran"), 2, "matched"),
+    ("Did you serve in the armed forces?", ("I am not a veteran", "I am a veteran"), 1, "assumed"),
+])
+def test_a_saved_no_clicks_the_one_option_that_denies_being_a_veteran_in_code_in_step(
+        db_session, monkeypatch, question, options, wanted, reason):
+    no_model_may_be_asked(monkeypatch)
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
+    got = autofill_step.step(_veteran_req(question, *options), facts, db_session, None)
+    assert sans_trace(got) == {"mid": f"click:o{wanted}", "reason": reason}
+    assert got.trace == DecisionTrace() and got.polarity is None
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("options", [
+    ("I am a veteran, but not a protected veteran", "I identify as one or more of the classifications of protected veteran"),
+    ("No, I am a veteran but not a protected veteran", "I identify as one or more of the classifications of protected veteran"),
+])
+def test_step_never_clicks_a_claim_by_the_code_pick(db_session, monkeypatch, options):
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
+    fake_jev(monkeypatch, ("click:o1", 0.99))
+    got = sans_trace(autofill_step.step(_veteran_req("Veteran Status", *options), facts, db_session, None))
+    assert got == {"mid": None, "reason": "abstained"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_step_leaves_a_saved_yes_to_the_ordinary_path(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, ("click:o1", 0.99))
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
+    got = sans_trace(autofill_step.step(_veteran_req("Are you a veteran?", "Yes, I am a veteran", "No, I am not a veteran"),
+                                        facts, db_session, None))
+    assert calls and got == {"mid": "click:o1", "reason": "matched"}

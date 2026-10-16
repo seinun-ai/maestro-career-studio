@@ -259,16 +259,20 @@ def _work_mode(raw: Any) -> str | None:
     return _WORK_MODES.get(re.sub(r"[\s_-]", "", str(raw or "").casefold()))
 
 
-def _city(value: Any) -> str:
+def city_key(value: Any) -> str:
+    """A city as one comparable key: casefolded words, "NYC" is "new york"."""
     return _CITY_ALIASES.get(_words(value), _words(value))
 
 
-def _state(value: Any) -> str:
+def state_code(value: Any) -> str:
     """A US state as its code; "D.C." and "N.Y." come out as dc and ny."""
     words = _words(value)
     if re.fullmatch(r"\w( \w)+", words):
         words = words.replace(" ", "")
     return _US_STATES.get(words, words)
+
+
+_city, _state = city_key, state_code   # this module's own short names
 
 
 def _country(country: Any, state: Any) -> str:

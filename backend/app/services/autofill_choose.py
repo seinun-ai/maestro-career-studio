@@ -137,7 +137,11 @@ _NEVER_DRAFTED = re.compile(
     r"(?:previously|formerly|ever|currently)\s+(?:been\s+)?(?:employed|work(?:ed|ing)?\s+(?:for|at|by))|"
     r"\b(?:have|has|were|are|did)\s+you\b[^?.]*?\b(?:work(?:ed|ing|s)?\s+(?:for|at)|employed|employee|"
     r"intern(?:ed)?\s+(?:for|at|with))|former\s+employee|current\s+employee|employee\s+of|"
-    r"related\s+to\s+(?:anyone|someone|any|an?\s)|\brelatives?\b(?!\s+to)",
+    r"related\s+to\s+(?:anyone|someone|any|an?\s)|\brelatives?\b(?!\s+to)|"
+    # Attestations and statuses worded without a protected noun, and pay worded without "salary".
+    r"initials|\be-?sign|true\s+and\s+(?:correct|accurate|complete)|\bi\s+(?:confirm|declare|certify)|petition|"
+    r"without\s+(?:any\s+)?restriction|unrestricted|\bopt\b|\bcpt\b|\btn\b|\be-?3\b|"
+    r"total\s+(?:comp|rewards)|\bote\b|annual\s+base",
     re.IGNORECASE)
 # A label that asks for something written, not a field's name: a question, or an instruction to
 # describe, explain or tell, or a sentence of six words or more.
@@ -149,7 +153,15 @@ MAX_DRAFTS = 6
 
 def _draftable(field: ChooseField, answer: Choice | None) -> bool:
     """A REQUIRED written question the chooser had no answer for (text or textarea, no options,
-    no known value) that /map filed as free text or years (`draft`) and that is not on the never-list."""
+    no known value) that /map filed as free text or years (`draft`) and that is not on the never-list. The
+    reasoning step's `write` (`reasoner`) asks for its own: an empty text box, required or not, except an optional
+    essay (skipped, not padded), still never on the never-list."""
+    if field.reasoner is not None:
+        if field.reasoner == "essay" and not field.required:
+            return False
+        return (answer is not None and answer.answer is None and not field.known_value
+                and field.kind in ("text", "textarea") and not field.options
+                and not _NEVER_DRAFTED.search(field.label))
     if answer is None or answer.answer is not None or not (field.required and field.draft) or field.known_value:
         return False
     if field.kind not in ("text", "textarea") or field.options:
@@ -174,7 +186,8 @@ def _with_drafts(
     if not asked:
         return out
     try:
-        drafts = qa.draft_answers(application_id, asked, session, time_left=time_left)
+        short = {f.qid for f in fields if f.qid in asked and f.reasoner == "short"}
+        drafts = qa.draft_answers(application_id, asked, session, time_left=time_left, short=short)
     except (ValueError, llm.LLMProviderError) as exc:
         logger.warning("drafting %d written answers failed (%s); they stay open", len(asked), exc)
         return out

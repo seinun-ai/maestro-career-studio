@@ -75,6 +75,13 @@
  *   field's adaptive step learnt (failed moves, how often each ran, terms
  *   tried), by the field's fingerprint, so a second call on the page keeps the
  *   twice cap and `tried_terms`. The record clears it when the step changes.
+ * - THE REASONING STEP's levers (`shared/reason-loop.js`; each keyed by fid, all optional, none a value):
+ *   `options.routes` (`low_stakes` | `reasoned` | `free_text`) seeds a field's route so /map is not asked (`free_text`
+ *   is a draft); `options.slotHints` (a fact NAME) rides /map as `slot_hint`; `options.reasoner` (`short` | `essay`)
+ *   rides /choose; `options.redo` fills a field the run already filled again (a touched field is still the user's);
+ *   `options.variants` (`{open?, search?}`, only the engine's own move axes) orders a popup or search's moves with
+ *   no recipe lookup, and teaches the book nothing; `options.stepByStep` (fids) sends a popup or search straight to the
+ *   adaptive step, as a how-heard field always goes (a source list can be a tree).
  * - Exploring can commit (a search that finds one hit picks it): the page
  *   takes that back; one it could not take back leaves the field to the user,
  *   named (committed_while_exploring).
@@ -241,6 +248,11 @@
   const STEP_REASONS = new Set([...Object.keys(STATUS), "progress"]);
   const REFUSED = { yours: "yours", blocked: "blocked", unsupported: "cannot_operate" };
   const CAN_ADAPT = new Set(["popup", "search"]);
+  const TREE_SLOT = "preferences.how_heard";
+  // The reasoning step's seeded routes, a fact name's shape, and the move axes a variant may order (shared/recipe-book.js AXES).
+  const SEEDED_ROUTES = new Set(["low_stakes", "reasoned", "free_text"]);
+  const SLOT_NAME = /^[a-z_]+(\.[a-z0-9_]+)*$/;
+  const VARIANT_AXES = { open: ["press", "keys"], search: ["enter", "debounce"] };
   // The widget kinds the step agent has a technique card for (backend autofill_techniques); a set of items is `multi`.
   const STEP_KINDS = new Set(["popup", "search", "group", "select", "date"]);
   // A recipe holds the moves of an axis; the page's own move of that axis is what worked here. Only
@@ -394,6 +406,7 @@
     engine: (x) => TRACE_ENGINES.has(x), p: unit, floor: unit, second: (x) => TRACE_SECONDS.has(x), first_p: unit,
     first_same: (x) => typeof x === "boolean", chose_none: (x) => typeof x === "boolean",
     sentinel: (x) => TRACE_SENTINELS.has(x),
+    top_fact: (x) => typeof x === "string" && x.length <= 120 && TRACE_SLOT.test(x),
   };
   // A page word is sent only when the schema's pattern holds (a lowercase
   // word cannot carry a typed value); anything else is null, never "".
@@ -440,7 +453,7 @@
     return error === "stale" ? "error" : "no_effect";
   };
   // A model's trace, copied by name and checked: engine, p, floor, second,
-  // first_p, first_same, chose_none, sentinel; a value that is absent or invalid is left out.
+  // first_p, first_same, chose_none, sentinel, top_fact; a value that is absent or invalid is left out.
   const decisionOf = (t) => Object.fromEntries(Object.entries(DECISION_CHECKS)
     .filter(([k, ok]) => t?.[k] != null && ok(t[k])).map(([k]) => [k, t[k]]));
 
@@ -458,6 +471,17 @@
     const only = Array.isArray(options.only) ? new Set(options.only.map(String)) : null;
     const inScope = (fid) => !only || only.has(fid);
     const memory = options.memory && typeof options.memory === "object" ? options.memory : null;
+    // The reasoning step's levers (see the header): fid -> a checked value, anything else dropped.
+    const leversOf = (raw, ok) => new Map(Object.entries(raw && typeof raw === "object" ? raw : {})
+      .filter(([fid, v]) => FID.test(fid) && ok(v)));
+    const seededRoutes = leversOf(options.routes, (v) => SEEDED_ROUTES.has(v));
+    const slotHints = leversOf(options.slotHints, (v) => typeof v === "string" && v.length <= 120 && SLOT_NAME.test(v));
+    const reasoners = leversOf(options.reasoner, (v) => v === "short" || v === "essay");
+    const variants = new Map([...leversOf(options.variants, (v) => v && typeof v === "object")]
+      .map(([fid, v]) => [fid, Object.fromEntries(Object.entries(v).filter(([axis, move]) => VARIANT_AXES[axis]?.includes(move)))])
+      .filter(([, v]) => Object.keys(v).length));
+    const redo = new Set(Array.isArray(options.redo) ? options.redo.map(String) : []);
+    const stepByStep = new Set(Array.isArray(options.stepByStep) ? options.stepByStep.map(String).filter((fid) => FID.test(fid)) : []);
     const startedAt = new Date();
     const runDeadline = Date.now() + L.RUN_MS;
     const runId = newRunId();
@@ -773,6 +797,11 @@
     const lookUp = async (f) => {
       const row = rows.get(f.fid);
       if (row.recipeKeys !== undefined) return;
+      // The reasoning step's variant: the order it asked for, no book lookup and no keys, so nothing is taught.
+      if (variants.has(f.fid) && CAN_ADAPT.has(f.shape)) {
+        set(f.fid, { recipeKeys: null, recipe: { key: null, variant: variants.get(f.fid) } });
+        return;
+      }
       const keys = recipes && CAN_ADAPT.has(f.shape) && f.recipe?.family && f.recipe?.site
         ? { family: String(f.recipe.family), site: String(f.recipe.site) } : null;
       let found = null;
@@ -1166,6 +1195,9 @@
       if (out.outcome === "unexpected" && adapts(f, row)) {
         return settle(f, await adapt(f, row, historyEntry("choose", "unexpected", out.reason), item));
       }
+      // A choose that ran out of time (a slow search list, a long tree) is the step agent's: running the same choose again
+      // only burns the field's clock, as the multi-value path already knows.
+      if (out.outcome === "timeout" && adapts(f, row)) return settle(f, await adapt(f, row, historyEntry("choose", "timeout"), item));
       return fail(f, out.reason ?? out.outcome);
     };
 
@@ -1409,6 +1441,15 @@
       const v = [...rows.values()].find((r) => r.slot === slot && r.route === "slot")?.value;
       return typeof v === "string" ? v : null;
     };
+    // "City, State" for a city fact, when some field on the page was mapped to the profile's state.
+    const placeOf = (city) => {
+      const state = factOf("personal.state");
+      return state && state.trim() ? `${city.trim()}, ${state.trim()}` : null;
+    };
+    // The options an explore showed, kept on the row for the fill log. A TYPED explore's rows echo what was typed (a city, an
+    // employer), so only their count is kept; the texts are kept for an explore with no term (a popup's click-open, the whole-list re-read).
+    const offered = (f, options, typed) => set(f.fid, { offered: { count: options.length,
+      texts: typed ? [] : options.slice(0, TRACE_FIELD_OPTIONS).map((o) => String(o?.text ?? "")) } });
     const fillAddress = async (f, row, line) => {
       const parsed = parseAddress(line);
       const hints = { city: factOf("personal.city"), zip: factOf("personal.postal_code") };
@@ -1451,6 +1492,12 @@
       if (f.shape === "search" && row.route === "slot" && row.slot === "personal.address" && typeof value === "string"
         && value.trim()) return fillAddress(f, row, value.trim());
       await lookUp(f);
+      // A source list ("How did you hear about us?") can be a tree: a category, then a long list under it. The step agent
+      // opens, searches and reads what is under it, so the saved word is not chosen first, only to time out or open a category.
+      // The reasoning step's `step_by_step` retry (`options.stepByStep`) asks for the same on any popup or search.
+      if (adapts(f, row) && (stepByStep.has(f.fid) || (row.route === "slot" && row.slot === TREE_SLOT && typeof value === "string"))) {
+        return settle(f, await adapt(f, row, undefined, itemOf(f, row)));
+      }
       // A search widget says one answer or several only in the rows of an open
       // list (radios or checkboxes): a fact of several items on one whose
       // multiplicity is not known yet (`multi` null) explores its first item
@@ -1494,15 +1541,42 @@
       let noOptions = null;
       if (!(isSet && f.shape === "search") && !(opts.length && complete)) {
         term = f.shape === "search" ? item ?? (typeof value === "string" ? value : undefined) : undefined;
-        const got = await explore(f, term);
+        // A city box (a Places-style search) is searched as "City, State" when the page also maps the profile's state: a city
+        // alone names many places. Nothing found that way, the city alone is searched next.
+        const place = term && row.slot === "personal.city" ? placeOf(term) : null;
+        let got = await explore(f, place ?? term);
         if (!got) return lateOrHalted(f);
-        if (exploreRefused(f, got, term)) return undefined;
+        if (exploreRefused(f, got, place ?? term)) return undefined;
+        if (place && !got.options?.length) {
+          got = await explore(f, term);
+          if (!got) return lateOrHalted(f);
+          if (exploreRefused(f, got, term)) return undefined;
+        } else if (place) {
+          term = place;
+        }
         if (holdsOne(f, row, got)) return keepHeld(f, row);
         if (got.options?.length) {
           opts = got.options;
           complete = Boolean(got.complete);
+          offered(f, opts, Boolean(place ?? term));
+          // The rows a word of the term found are the ones the choose must search for, not the whole saved wording.
+          if (typeof got.viaWord === "string") term = got.viaWord;
         } else if (!opts.length) {
-          noOptions = historyEntry(term ? "search:value" : "open", "unexpected", got.error ?? "empty_popup");
+          // A typed search that emptied the box (a fixed list the page filters by substring: "Masters" in "Master's Degree"):
+          // the list is read once more with no term before the step agent is asked, and a list it shows goes to /pick whole.
+          if (term) {
+            const whole = await explore(f, undefined);
+            if (!whole) return lateOrHalted(f);
+            if (exploreRefused(f, whole, undefined)) return undefined;
+            if (holdsOne(f, row, whole)) return keepHeld(f, row);
+            if (whole.options?.length) {
+              opts = whole.options;
+              complete = Boolean(whole.complete);
+              offered(f, opts, false);
+              term = undefined;
+            }
+          }
+          if (!opts.length) noOptions = historyEntry(term ? "search:value" : "open", "unexpected", got.error ?? "empty_popup");
         }
       }
       if (allBlocked(opts)) {
@@ -1556,7 +1630,7 @@
     const answerProse = async (fields) => {
       const got = await ns.requestChoose(
         fields.map((f) => ({ qid: f.fid, label: question(f), kind: "textarea", options: [], required: Boolean(f.required),
-          draft: rows.get(f.fid)?.draft === true })),
+          draft: rows.get(f.fid)?.draft === true, ...(reasoners.has(f.fid) ? { reasoner: reasoners.get(f.fid) } : {}) })),
         {
           postChoose: (body) => bounded(() => api("/api/autofill/choose", { method: "POST", body: JSON.stringify(body) })),
           applicationId: selector.application_id,
@@ -1608,13 +1682,15 @@
               : old.status === "open" ? "retry" : old.status;
           rows.set(f.fid, { ...(old ?? { attempts: 0, steps: [] }), fid: f.fid, status: carried });
         }
-        const row = set(f.fid, { field: f, frameId });
+        // A route the reasoning step seeded (a field /map has not filed): `free_text` is a draft.
+        const seeded = rows.get(f.fid)?.route ? null : seededRoutes.get(f.fid);
+        const row = set(f.fid, { field: f, frameId, ...(seeded ? { route: seeded, ...(seeded === "free_text" ? { draft: true } : {}) } : {}) });
         listed.push(f.fid);
         if (f.policyBlocked) finish(f, "blocked", { lastOutcome: "blocked" });
         else if (f.touched) finish(f, "yours", { lastOutcome: "yours" });
         else if (f.kind === "unknown" || f.shape === "unknown" || !FID.test(f.fid)) {
           finish(f, "cannot_operate", { lastOutcome: "unsupported" });
-        } else if (row.status === "new" && f.answered && !f.invalid && !row.leftover) {
+        } else if (row.status === "new" && f.answered && !f.invalid && !row.leftover && !(redo.has(f.fid) && !f.multi)) {   // a redo never refills a set of values
           // A URL the box holds is compared with the profile's before it counts as the answer
           // (a parsed resume left "example.dev" where the website belongs): mapped first.
           if (heldUrl(f)) {
@@ -1653,7 +1729,7 @@
           ...selector,
           fields: part.map((f) => ({
             fid: f.fid, question: question(f), section: f.section ? String(f.section).slice(0, 200) : null,
-            repeat_index: entryIndex(f.repeatIndex), ...placement(f), shape: f.shape,
+            repeat_index: entryIndex(f.repeatIndex), ...placement(f), ...(slotHints.has(f.fid) ? { slot_hint: slotHints.get(f.fid) } : {}), shape: f.shape,
             multi: Boolean(f.multi), required: Boolean(f.required),
             options: usable(f.options).slice(0, MAP_OPTIONS).map((o) => o.text.slice(0, 300)),
           })),
@@ -2379,6 +2455,31 @@
       return own.length ? denyRegex([...new Set([...typedKeys].filter(([r]) => r !== row).flatMap(([, k]) => k))]) : all;
     };
   };
+  /** The trace's value screens over an inventory's fields (`committed` is what each holds), for another reader of the page that
+   * must not repeat a value either: the reasoning step's snapshot (shared/reason-loop.js). Same rule as the run trace:
+   * a question holds none of its OWN row's keys or a sibling's (2+ characters when the sibling is typed, else 4+), an option
+   * text none of the TYPED siblings' keys (4+), never one a row's own list holds, an error line none of the siblings' keys (the
+   * same floors, so a step number is not a value). A question or an error line keeps its words and loses only the value
+   * ("[your answer]"): the words are how the backend knows a question is protected. An option holding one is blanked ("").
+   * Answers, per kind, the text to keep. */
+  const HIDDEN = "[your answer]";
+  const valueScreens = (fields) => {
+    const rows = new Map(fields.map((f) => [f.fid, { fid: f.fid, field: f }]));
+    const sibling = denyRegex([...new Set([...rows.values()].flatMap(siblingKeys))]);
+    const optionKeys = optionScreen(rows);
+    const own = new Map([...rows].map(([fid, row]) => [fid, denyRegex(rowKeys(row))]));
+    // A value, whole word, any case, replaced; twice so two matches that share a boundary character both go.
+    const hide = (text, pattern) => {
+      if (!pattern) return text;
+      const every = new RegExp(pattern.source, "giu");
+      return text.replace(every, `$1${HIDDEN}$2`).replace(every, `$1${HIDDEN}$2`);
+    };
+    return {
+      question: (fid, text) => hide(hide(text, own.get(fid)), sibling),
+      option: (fid, text) => (optionKeys(rows.get(fid))?.test(text) ? "" : text),
+      line: (text) => hide(text, sibling),
+    };
+  };
   const traceField = (status, row, others, optionKeys) => {
     const f = row.field ?? {};
     const own = denyRegex(rowKeys(row));
@@ -2394,10 +2495,11 @@
       section: f.section ? shown(f.section) : null,
       required: Boolean(f.required),
       changes: Math.min(Math.max(Number(row.changes) || 0, 0), TRACE_CHANGES_MAX),
-      // The inventory's passive list only (a static list, read before anything
-      // was typed): an explore's rows echo what a search typed.
-      options: options && options.slice(0, TRACE_FIELD_OPTIONS).map((o) => optionText(String(o?.text ?? ""))),
-      option_count: Math.min(options?.length ?? 0, TRACE_COUNT_MAX),
+      // The inventory's passive list (a static list, read before anything was typed); a search box has none, so it keeps the
+      // options its explore showed (`offered`), screened by the same rule: they are the page's words, a typed sibling's value blanked.
+      options: options?.length ? options.slice(0, TRACE_FIELD_OPTIONS).map((o) => optionText(String(o?.text ?? "")))
+        : row.offered ? row.offered.texts.map(optionText) : options && [],
+      option_count: Math.min(options?.length ? options.length : row.offered?.count ?? 0, TRACE_COUNT_MAX),
       ...(TRACE_FAMILY.test(f.recipe?.family) ? { family: f.recipe.family } : {}),
       steps: row.steps ?? [],
       outcome: status,
@@ -2472,11 +2574,16 @@
   // value-free lines for a value the engine landed without choosing it (`queueRun.LANDED`). Anything else /choose
   // sends is dropped, so server text never reaches the panel.
   const DRAFT_NOTE = "Drafted from your history: read it";
-  const KNOWN_NOTES = new Set([...Object.values(ASSUMED_DATE), DRAFT_NOTE, landedNote(null, "search_committed"), landedNote(null)]);
+  // The reasoning step's rows under "Check before you submit" (shared/reason-loop.js): what it answered for you, by
+  // a fixed sentence, never the value.
+  const REASONED_NOTES = Object.freeze({ write: "Written for you: read it", choose: "Chosen for you: check it",
+    answer_from: "Chosen for you: check it", redo: "Filled again: check it" });
+  const KNOWN_NOTES = new Set([...Object.values(ASSUMED_DATE), DRAFT_NOTE, landedNote(null, "search_committed"), landedNote(null),
+    ...Object.values(REASONED_NOTES)]);
   const knownNote = (note) => (KNOWN_NOTES.has(note) ? note : null);
 
   // The run record's memory for `runFill(..., { memory })`: made once per record and cleared when the
   // step changes. It holds search terms, which can carry a value, so it saves as nothing.
   const newMemory = () => Object.defineProperty({}, "toJSON", { value: () => undefined });
-  ns.fillLoop = { runFill, newMemory, knownNote, landedNote, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
+  ns.fillLoop = { runFill, newMemory, valueScreens, knownNote, landedNote, REASONED_NOTES, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
 })();

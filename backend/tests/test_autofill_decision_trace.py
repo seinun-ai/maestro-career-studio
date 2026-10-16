@@ -10,7 +10,7 @@ def test_a_decision_trace_holds_only_enums_and_numbers():
     t = DecisionTrace(engine="fast", p=0.93, floor=0.9, second="decided", first_p=0.82, first_same=False,
                       chose_none=False)
     assert t.model_dump() == {"engine": "fast", "p": 0.93, "floor": 0.9, "second": "decided", "first_p": 0.82,
-                              "first_same": False, "chose_none": False, "sentinel": None}
+                              "first_same": False, "chose_none": False, "sentinel": None, "top_fact": None}
     assert DecisionTrace(sentinel="years_unanswered").sentinel == "years_unanswered"
     for bad in ({"engine": "gpt"}, {"second": "maybe"}, {"p": 1.5}, {"first_p": -0.1}, {"floor": 1.1}, {"chose_none": "maybe"}, {"note": "x"},
                 {"sentinel": "personal.city"}, {"sentinel": "Jane Doe"}):
@@ -33,3 +33,12 @@ def test_a_polarity_trace_holds_only_enums_and_numbers():
     for bad in ({"way": "maybe"}, {"way": "same", "p": 1.5}, {"way": "same", "note": "x"}, {"engine": "jev"}):
         with pytest.raises(ValidationError):
             PolarityTrace(**bad)
+
+
+def test_a_trace_may_name_the_top_fact_that_fell_under_its_floor_by_name_only():
+    assert DecisionTrace().top_fact is None
+    assert DecisionTrace(top_fact="preferences.earliest_start_date").top_fact == "preferences.earliest_start_date"
+    assert DecisionTrace(top_fact="experience.2.title").top_fact == "experience.2.title"
+    for bad in ("Jane Doe", "https://acme.test/me", "personal.city = Springfield", "A" * 200):
+        with pytest.raises(ValidationError):
+            DecisionTrace(top_fact=bad)

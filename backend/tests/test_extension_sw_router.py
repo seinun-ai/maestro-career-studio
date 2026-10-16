@@ -561,6 +561,13 @@ def test_autofills_resume_only_attach_reaches_the_frames(tmp_path, extra, forwar
     assert message["type"] == "attach_resume_pdf"
     assert message["resumeOnly"] is forwarded
 
+def test_every_attach_asks_the_frames_to_report_what_they_wrote(tmp_path):
+    """The panel tells a box the page swapped for the file's chip (written, then gone) from a page that changed its boxes."""
+    out = run_node(_ATTACH_FORWARD_DRIVER_JS, {"extra": {}}, tmp_path, source=SW_JS)
+    [message] = out["delivered"]
+    assert message["reportWritten"] is True
+
+
 @pytest.mark.parametrize("extra, forwarded", [
     ({"flowOrigin": "https://careers-acme.icims.com"}, "https://careers-acme.icims.com"),
     ({}, None),
@@ -853,8 +860,9 @@ def test_a_trace_keeps_exactly_the_schemas_keys_at_each_level(tmp_path):
     full_step = {"op": "step", "ms": 5, "effect": "progress", "word": "ok", "route": "slot",
                  "slot": "a.b", "why": "unclear_job", "engine": "jev", "p": 0.9, "floor": 0.5,
                  "second": "decided", "first_p": 0.4, "first_same": True, "chose_none": False,
-                 "sentinel": "years_unanswered", "way": "same", "remembered": True, "option": 3, "reason": "matched", "move": "click:o3"}
-    body = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=[full_step])]))
+                 "sentinel": "years_unanswered", "top_fact": "preferences.earliest_start_date", "way": "same", "remembered": True, "option": 3,
+                 "reason": "matched", "move": "click:o3"}
+    body = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=[full_step])], reasoning=[_reason_round()]))
     [field] = body["fields"]
     assert set(body) == set(RunTrace.model_fields)
     assert set(field) == set(TraceField.model_fields)
@@ -963,6 +971,15 @@ def test_step_numbers_are_rounded_and_odd_ones_dropped(tmp_path):
         {"op": "set"},
         {"op": "set"},
     ]
+
+
+def test_the_top_fact_is_a_fact_name_or_it_is_dropped(tmp_path):
+    """`top_fact` is the NAME of the fact a /map answer left under its floor, never a value: a name the schema's pattern refuses
+    (capitals, a space, a typed value, over 120 characters) does not leave the browser."""
+    names = ["work_auth.authorized_now", "Jane Doe", "ab.CD", "x" * 121, 7, None, "personal.city; drop table"]
+    steps = [{"op": "map", "top_fact": name} for name in names]
+    got = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=steps)]))["fields"][0]["steps"]
+    assert [s.get("top_fact") for s in got] == ["work_auth.authorized_now", None, None, None, None, None, None]
 
 
 def test_a_remembered_flag_is_kept_only_as_a_boolean(tmp_path):
@@ -1335,6 +1352,8 @@ def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
         # The queued run's page reader and its Next click, gated on the receiving side like the
         # fill operations; `page_advance` presses a Next only and never a Submit.
         "page_classify", "page_advance", "page_errors", "page_required", "page_uploads",
+        # How many of the page's listed fields are an application's (not a search box): asked of an unknown first page.
+        "page_field_count",
         # Learn from the user's fix: a parked field's gestures (event types and a fixed few key
         # names, never what was typed), watched and then reported. Gated on the receiving side.
         "fill_watch", "fill_watch_report",
@@ -1437,3 +1456,153 @@ def test_another_command_is_not_the_panel_command(tmp_path):
     out = _hotkey(tmp_path, command="some-other-command", tab={"id": 7})
     assert out["opened"] == []
     assert out["warnings"] == []
+
+
+def _reason_round(**over):
+    return {"round": 1, "why": "page_errors", "model": "claude-sonnet-5-5", "ms": 4200,
+            "note": "The error names Source.", "stopped": "moved",
+            "actions": [{"type": "write", "target": "f4", "outcome": "progress", "written": 42, "slot": "a.b"},
+                        {"type": "retry", "target": "f5", "outcome": "no_effect", "technique": "step_by_step"},
+                        {"type": "choose", "target": "f6", "outcome": "progress", "basis": "history"}],
+            "rejected": ["unknown_id"],
+            "snapshot": {"fields": [{"fid": "f1", "question": "Field of study", "shape": "text", "required": True,
+                                     "filled": False, "invalid": True, "multi": False, "multiline": False,
+                                     "by_run": False, "touched": False, "slot": "education.0.discipline",
+                                     "options": [{"ref": "o1", "text": "Maths"}], "option_count": 1}],
+                         "buttons": [{"ref": "b1", "text": "Save and Continue", "role": "next"}],
+                         "errors": [{"text": "Source", "fid": "f1"}], "tabs": [{"ref": "t1", "host": "jobs.acme.test"}],
+                         "history": ["fill:f1 -> progress"], "excluded": ["write:f4"]},
+            **over}
+
+
+def test_a_reasoning_step_posts_its_rounds_with_exactly_the_schemas_keys(tmp_path):
+    from app.schemas.autofill_trace import (RunTrace, TraceReasonAction, TraceReasonRound, TraceSnapshot)
+    from app.schemas.autofill_reason import SnapButton, SnapError, SnapField, SnapOption, SnapTab
+
+    body = _posted_trace(tmp_path, _run_trace(fields=[], reasoning=[_reason_round()]))
+    [got] = body["reasoning"]
+    assert body["fields"] == [] and got == _reason_round()
+    assert set(got) == set(TraceReasonRound.model_fields)
+    assert set().union(*(set(one) for one in got["actions"])) == set(TraceReasonAction.model_fields)
+    assert set(got["snapshot"]) == set(TraceSnapshot.model_fields)
+    assert set(got["snapshot"]["fields"][0]) == set(SnapField.model_fields)
+    assert set(got["snapshot"]["fields"][0]["options"][0]) == set(SnapOption.model_fields)
+    assert set(got["snapshot"]["buttons"][0]) == set(SnapButton.model_fields)
+    assert set(got["snapshot"]["errors"][0]) == set(SnapError.model_fields)
+    assert set(got["snapshot"]["tabs"][0]) == set(SnapTab.model_fields)
+    RunTrace.model_validate(body)
+
+
+def test_a_reasoning_round_carries_none_of_the_keys_injected_at_any_level(tmp_path):
+    bad = {"value": "SENTINEL-VALUE", "answer": "SENTINEL-ANSWER", "typed": "SENTINEL-TYPED"}
+    one = _reason_round()
+    one.update(bad)
+    one["actions"] = [{**a, **bad} for a in one["actions"]]
+    one["snapshot"] = {**one["snapshot"], **bad, "fields": [{**one["snapshot"]["fields"][0], **bad,
+                                                             "options": [{"ref": "o1", "text": "Maths", **bad}]}],
+                       "buttons": [{**one["snapshot"]["buttons"][0], **bad}], "errors": [{"text": "Source", **bad}],
+                       "tabs": [{**one["snapshot"]["tabs"][0], **bad}]}
+    assert "SENTINEL" not in json.dumps(_posted_trace(tmp_path, _run_trace(fields=[], reasoning=[one])))
+
+
+def test_a_messy_reasoning_round_is_scrubbed_into_one_the_backend_accepts_or_dropped(tmp_path):
+    from app.schemas.autofill_trace import RunTrace
+
+    rounds = [
+        _reason_round(round=0), _reason_round(round=4), _reason_round(why="Because"), "junk",
+        _reason_round(model="Claude Sonnet!", note="x" * 999, ms=1e9, stopped="Mathematics", rejected=["Mathematics", "protected"],
+                      actions=[{"type": "submit", "target": "b1", "outcome": "moved"},
+                               {"type": "fill", "target": "Mathematics degree", "outcome": "progress"},
+                               {"type": "write", "target": "f4", "outcome": "progress", "written": "42"},
+                               {"type": "fill", "target": "f2", "outcome": "progress", "written": 99999},
+                               {"type": "fill", "target": "f3", "outcome": "progress"}] * 3,
+                      snapshot={"fields": [{"fid": "bad fid", "question": "q", "shape": "text"},
+                                           {"fid": "f1", "question": "q" * 999, "shape": "weird", "slot": "Upper.Case",
+                                            "options": [{"ref": "x1", "text": "t"}, {"ref": "o2", "text": "t"}] * 40}] * 70,
+                                "history": ["typed Mathematics", "fill:f1 -> progress"],
+                                "errors": [{"text": "Source", "fid": "bad fid"}], "tabs": [{"ref": "t1", "host": "Not A Host"}]}),
+    ]
+    body = _posted_trace(tmp_path, _run_trace(fields=[], reasoning=rounds))
+    RunTrace.model_validate(body)
+    [got] = body["reasoning"]
+    assert (got["round"], got["model"] if "model" in got else None, got["why"]) == (1, None, "page_errors")
+    assert len(got["note"]) == 200 and got["ms"] == 60000 and "stopped" not in got and got["rejected"] == ["protected"]
+    # An action keeps its type and outcome; a target or a count that does not fit is dropped alone.
+    assert got["actions"] == [{"type": "fill", "outcome": "progress"}, {"type": "write", "target": "f4", "outcome": "progress"},
+                              {"type": "fill", "target": "f2", "outcome": "progress"}]
+    snap = got["snapshot"]
+    assert len(snap["fields"]) == 60 and snap["fields"][0]["shape"] == "unknown" and "slot" not in snap["fields"][0]
+    assert all(o["ref"].startswith("o") for o in snap["fields"][0]["options"]) and len(snap["fields"][0]["options"]) <= 20
+    assert snap["history"] == ["fill:f1 -> progress"] and snap["errors"] == [{"text": "Source"}] and snap["tabs"] == []
+
+
+def test_a_snapshot_over_the_schemas_size_is_dropped_and_its_round_kept(tmp_path):
+    from app.schemas.autofill_trace import RunTrace
+
+    wide = {"fields": [{"fid": f"f{i}", "question": "q" * 300, "shape": "select",
+                        "options": [{"ref": f"o{j}", "text": "t" * 300} for j in range(1, 21)]} for i in range(60)]}
+    body = _posted_trace(tmp_path, _run_trace(fields=[], reasoning=[_reason_round(snapshot=wide)]))
+    RunTrace.model_validate(body)
+    assert "snapshot" not in body["reasoning"][0] and body["reasoning"][0]["note"] == "The error names Source."
+
+
+def test_a_run_posts_at_most_three_reasoning_rounds(tmp_path):
+    body = _posted_trace(tmp_path, _run_trace(fields=[], reasoning=[_reason_round(round=1 + i % 3) for i in range(5)]))
+    assert len(body["reasoning"]) == 3
+
+
+def test_a_reasoning_round_that_never_asked_posts_without_a_model(tmp_path):
+    from app.schemas.autofill_trace import RunTrace
+
+    quiet = {"round": 1, "why": "page_errors", "model": None, "ms": 0, "note": "", "actions": [], "rejected": [],
+             "stopped": "wall"}
+    body = _posted_trace(tmp_path, _run_trace(fields=[], reasoning=[quiet]))
+    assert body["reasoning"] == [{"round": 1, "why": "page_errors", "ms": 0, "note": "", "actions": [], "rejected": [],
+                                  "stopped": "wall"}]
+    RunTrace.model_validate(body)
+
+
+def test_a_retrys_technique_and_a_chooses_basis_are_posted_and_a_word_the_schema_lacks_is_not(tmp_path):
+    from app.schemas.autofill_trace import RunTrace
+
+    actions = [{"type": "retry", "target": "f4", "outcome": "no_effect", "technique": "step_by_step"},
+               {"type": "choose", "target": "f5", "outcome": "progress", "basis": "history"},
+               {"type": "retry", "target": "f6", "outcome": "no_effect", "technique": "rm -rf", "basis": "a value"}]
+    body = _posted_trace(tmp_path, _run_trace(fields=[], reasoning=[_reason_round(actions=actions)]))
+    assert [(a.get("technique"), a.get("basis")) for a in body["reasoning"][0]["actions"]] == [
+        ("step_by_step", None), (None, "history"), (None, None)]
+    RunTrace.model_validate(body)
+
+
+def test_the_reasoning_whitelist_mirrors_the_backends_schema():
+    from typing import get_args
+
+    from app.schemas import autofill_reason as R
+    from app.schemas import autofill_trace as T
+
+    assert _sw_keys("TRACE_REASON_ROUND") == set(T.TraceReasonRound.model_fields)
+    assert _sw_keys("TRACE_REASON_ACTION") == set(T.TraceReasonAction.model_fields)
+    assert _sw_keys("TRACE_SNAPSHOT") == set(T.TraceSnapshot.model_fields)
+    assert _sw_keys("TRACE_SNAP_FIELD") == set(R.SnapField.model_fields)
+    assert _sw_keys("TRACE_SNAP_OPTION") == set(R.SnapOption.model_fields)
+    assert _sw_keys("TRACE_SNAP_BUTTON") == set(R.SnapButton.model_fields)
+    assert _sw_keys("TRACE_SNAP_ERROR") == set(R.SnapError.model_fields)
+    assert _sw_keys("TRACE_SNAP_TAB") == set(R.SnapTab.model_fields)
+    for name, literal in [("TRACE_REASON_WHYS", R.Stuck), ("TRACE_REASON_TYPES", T.ReasonType),
+                          ("TRACE_REASON_OUTCOMES", T.ReasonOutcome), ("TRACE_REASON_REJECTS", R.RejectCode),
+                          ("TRACE_REASON_TECHNIQUES", R.Technique), ("TRACE_REASON_BASES", R.Basis),
+                          ("TRACE_REASON_STOPS", T.ReasonStop)]:
+        assert _sw_vocab(name) == set(get_args(literal)), name
+    assert _sw_vocab("TRACE_SNAP_ROLES") == _literal_args(R.SnapButton, "role") == {"next", "dialog"}
+    assert _sw_regex("TRACE_MODEL") == T.MODEL
+    assert [_sw_regex(n) for n in ("TRACE_REF_OPTION", "TRACE_REF_BUTTON", "TRACE_REF_TAB", "TRACE_TARGET", "TRACE_HISTORY",
+                                   "TRACE_SIGNATURE")] == [
+        R.OPTION_REF, R.BUTTON_REF, R.TAB_REF, R.TARGET, R.HISTORY, R.SIGNATURE]
+    assert [int(_sw_const(n)) for n in ("TRACE_NOTE", "TRACE_REASON_ROUNDS", "TRACE_REASON_ACTIONS", "TRACE_REASON_REJECTS_MAX",
+                                        "TRACE_SNAP_FIELDS", "TRACE_SNAP_OPTIONS", "TRACE_SNAP_TEXT", "TRACE_SNAP_BUTTONS",
+                                        "TRACE_SNAP_ERRORS", "TRACE_SNAP_TABS", "TRACE_SNAP_HISTORY", "TRACE_SNAP_EXCLUDED",
+                                        "TRACE_SNAPSHOT_CHARS", "TRACE_TARGET_MAX")] == [
+        T.NOTE_MAX, T.MAX_REASON_ROUNDS, T.MAX_REASON_ACTIONS, T.MAX_REASON_REJECTS, R.MAX_FIELDS, R.MAX_OPTIONS,
+        R.TEXT_MAX, R.MAX_BUTTONS, R.MAX_ERRORS, R.MAX_TABS, R.MAX_HISTORY, R.MAX_EXCLUDED, T.SNAPSHOT_CHARS, 64]
+    assert (_meta(T.TraceReasonRound, "round", "ge"), _meta(T.TraceReasonRound, "round", "le")) == (1, 3)
+    assert _meta(T.TraceReasonRound, "ms", "le") == 60_000 and _meta(T.TraceReasonAction, "written", "le") == 5000

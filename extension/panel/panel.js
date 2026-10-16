@@ -577,10 +577,11 @@
     fullAutomation: null,
     /** The Companion's Apply switches and the pick limits they use, read once per bind beside
      * `fullAutomation`: `autoPick` ("Choose the base resume for me"), `stopEachStep` ("Stop after each
-     * step"), and Auto-apply's `floor` and `margin`. These are the defaults until the backend answers
+     * step"), `thinkWhenStuck` ("Think when stuck": the reasoning step, on unless the backend says off),
+     * and Auto-apply's `floor` and `margin`. These are the defaults until the backend answers
      * (an unreadable setting is the setting off its switches, which is what Apply did before they
      * existed). Not a fact about the page, so `resetPageFacts` leaves it. */
-    companionApply: { autoPick: true, stopEachStep: false, floor: 60, margin: 5 },
+    companionApply: { autoPick: true, stopEachStep: false, thinkWhenStuck: true, floor: 60, margin: 5 },
     /** The Apply checklist: `{lines, live, stopped}` or null. `lines` are the steps of the press in
      * order, each `{key, text, state, why?, name?, hue?}` with `state` one of run, done, fail, wait;
      * `live` is true from the press until it ends (it shows Stop and locks the base list); `stopped`
@@ -3522,10 +3523,10 @@
    * Beside it, asked in the same breath: the pick limits Auto-apply holds (`auto_pick_floor`,
    * `auto_pick_margin`) and the Companion's two Apply switches (`/api/settings/companion-apply`), which
    * the panel obeys, with full automation on, now that the Companion picks a resume. A switch it cannot
-   * read is the default (on, off). */
+   * read is the default (on, off), except Think when stuck, which stays off. */
   async function loadAutomation(token) {
     let on = null;
-    const mine = { autoPick: true, stopEachStep: false, floor: 60, margin: 5 };
+    const mine = { autoPick: true, stopEachStep: false, thinkWhenStuck: true, floor: 60, margin: 5 };
     // Both asked at once; the switches are read below only if automation turned out to be on.
     const [auto, companion] = await Promise.allSettled([
       api("/api/settings/auto-apply"), api("/api/settings/companion-apply")]);
@@ -3538,10 +3539,14 @@
     }
     // The switches only mean something with full automation on. Anything but a plain yes/no is the
     // default: a switch the panel could not read has not been turned.
+    // The one exception to "the default stands": Think when stuck spends the Reasoning model's money, so a switch that
+    // could not be read leaves it off (the backend obeys its own switches too).
+    if (on && companion.status !== "fulfilled") mine.thinkWhenStuck = false;
     if (on && companion.status === "fulfilled") {
       const value = companion.value?.value;
       if (value?.auto_pick === false) mine.autoPick = false;
       if (value?.stop_each_step === true) mine.stopEachStep = true;
+      if (value?.think_when_stuck === false) mine.thinkWhenStuck = false;
     }
     if (current(token)) {
       card.fullAutomation = on;
@@ -4929,6 +4934,8 @@
         attachPdf: (tabId, path, filename, expect, resumeOnly, target) =>
           ask("attach_pdf", { tabId, path, filename, expect, resumeOnly, ...(target ? { target } : {}) }),
         tabUrl: async (tabId) => (await chrome.tabs.get(tabId))?.url ?? "",
+        // The tabs of this panel's window with their addresses: the reasoning step's follow reads them.
+        windowTabs: async () => (await chrome.tabs.query({ currentWindow: true })).map(({ id, url }) => ({ id, url: url ?? "" })),
         // Not "loading": a fake or an older tab that reports no status counts as loaded.
         loaded: async (tabId) => (await chrome.tabs.get(tabId))?.status !== "loading",
         navigate: (tabId, url) => chrome.tabs.update(tabId, { url }),

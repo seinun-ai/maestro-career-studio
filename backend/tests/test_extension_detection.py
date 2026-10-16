@@ -613,6 +613,12 @@ def test_a_miss_reads_the_page_exactly_this_many_times(tmp_path):
     * only two of the four identity probes run. Once two have missed, three
       matches are unreachable and the remaining probes cannot change the
       answer.
+    * ONE pass over the page's elements (`*`), made by the first probe that
+      misses and never again: a form built of web components keeps its fields
+      in open shadow roots, which a document query does not enter, so a miss is
+      asked again of each root (live check 8). It is paid only when a probe
+      misses in the light DOM (a hit pays nothing), once a page, and it is the
+      cost of an honest "no form here" on a page that has shadow roots.
     """
     result = run_detect_fixture(tmp_path, "detect_unrelated_page")
 
@@ -620,6 +626,7 @@ def test_a_miss_reads_the_page_exactly_this_many_times(tmp_path):
         'script[type="application/ld+json"]',
         'input[type="file"][accept*="pdf" i], input[type="file"][name*="resume" i], '
         'input[type="file"][name*="cv" i]',
+        "*",
         'input[name*="first_name" i], input[name*="firstname" i], [autocomplete="given-name"]',
         'input[name*="last_name" i], input[name*="lastname" i], [autocomplete="family-name"]',
         "form, select",
@@ -634,6 +641,13 @@ def test_a_miss_reads_the_page_exactly_this_many_times(tmp_path):
     detect = (EXTENSION / "content" / "detect.js").read_text(encoding="utf-8")
     assert "document.body.textContent" in detect
     assert "document.body.innerText" not in detect
+
+
+def test_a_page_that_scores_in_the_light_dom_never_walks_for_shadow_roots(tmp_path):
+    """The shadow-root pass is for a probe that missed: a Greenhouse form hits every probe it makes in the light DOM."""
+    result = run_detect_fixture(tmp_path, "detect_greenhouse_application_form")
+
+    assert "*" not in result["queries"]
 
 
 # ---------- known imprecision ----------

@@ -422,18 +422,58 @@ read** ("Drafted from your history: read it"), never saved as a standing answer;
 drafting off. The **Ask** box at the foot of the Fill step answers any question from a form in one
 paragraph you can copy; it opens when a run pauses.
 
+When Apply would stop on a page it could not work, it first thinks. With **Think when stuck** on (Settings ›
+AI & models › Form filling, on by default, and only with full automation on and **Stop after each step** off),
+the **Reasoning model** looks at the page: the questions, the options and the errors, never what is in a field.
+It picks up to three actions, such as filling a field again, writing a short answer, choosing an option, closing
+a popup or pressing Next, then looks again, for up to three rounds. While it works the card shows a live line
+("Thinking: …"). If it sorted the page out you get one sentence ("Sorted it out: answered 2 questions and moved
+on."). If not, the usual **Needs you** card says what it asks of you, or what it tried and whether it took ("It tried How
+Did You Hear About Us? a second way; it didn't take."). Anything it wrote or chose is
+listed under **Check before you submit** as answered for you. It never presses Submit, never answers
+work authorization, sponsorship, salary, demographic, background or signature questions, and asks you about a fact
+your profile does not have. By default the Reasoning model is your provider's strong model and costs a few cents a
+round. **Settings › AI & models › Reasoning model** lets you pick another from the list, including cheaper ones
+such as Claude Haiku 5.5 and GPT-6 Luna; a cheaper model costs less and may be less reliable. With the fill log
+on, each round and the page it saw are recorded, so you can compare models on the same pages with
+`backend/scripts/eval_reason.py`.
+
+On a one-page form (Submit on the same page, no Next) it works the fields only, for open questions and page errors: it fills, answers, writes,
+chooses and retries, and presses nothing there, not Next, not Submit and not a popup's button. It stays out of a page that asks about
+submitting or shows a popup. After you update Maestro, **reload job tabs that were already open**: a tab opened before the update can
+leave the Companion unable to read the page, and the card says **Reload the page**; reload it and press Resume.
+
 A question your profile cannot answer gets a safe default from **Balanced** up: No (or Not
 applicable when offered) for membership of a tribe, union or association, a referral, or relatives at the
 company, and No (or "I don't wish to answer") for a spouse's or household member's military service; Yes for willingness to a standard step such as a background check, drug test, references,
-I-9 or providing documents, and for basic means such as transport and internet. Criminal or background
+I-9 or providing documents (a question of being willing to take such a step, even when the model took it for a protected one; a box that gives the consent itself, or asks whether you
+would pass, is yours), and for basic means such as transport and internet. A slow Claude fast model is given more time (3 s) for its second look, and a question the model could not match to
+anything of yours at any confidence reaches this check. A saved "Immediately" start date is offered as today's date in a date box and as "Immediately" in a list. Criminal or background
 history, salary, work authorization, demographic questions and your own military service are never defaulted. Every default is
 listed under **Check before you submit**, and so is a required field that a search or a click filled for you (Field of Study, say),
 which no longer stops the run; the page's own check decides. An optional Skills box stays empty in a run. What you type in the page
-while a run waits on "The page asks for more" or on an upload is remembered like any other answer. The Companion also reads a job posting that has no built-in job data, taking the
-description from the section under a "Job Description" or "About the role" heading.
+while a run waits on "The page asks for more" or on an upload is remembered like any other answer. A resume that an uploader shows as a chip, or by its name some seconds later, is recognised as attached (the card says "Couldn't confirm the upload" rather than "boxes changed" when the page only swapped its box). The Companion also reads a job posting that has no built-in job data, taking the
+description from the section under a "Job Description" or "About the role" heading, or from a "Description & Requirements" card on a career site that draws its sections as cards.
+On the first page of an application, a page the Companion does not recognise but that has fields is filled like any other (and then waits for you if it has no Next button), instead of stopping at "Page not recognised"; search boxes are never filled. Forms built from web components are read like any other, and a vendor's "fill this from your resume" import box is never written. A DataDome slider is a verification wall, so Apply stops there for you.
+
+Three kinds of question are answered from what you saved, and said to be assumed or checkable under **Check before you submit**. "How did you
+hear about us?": if your answer is just "Job board" and the job names no board, Apply picks LinkedIn, or another job board the list offers; a job
+you saved on the employer's page right after a job board page remembers that board for about 20 minutes; a referral is never a board. An education
+level list ("Bachelor's degree or higher", "None of the above"): Apply picks the highest level your degrees meet, such as Bachelor's or higher
+for a Master's, never "None of the above", and leaves it to you when none is met or your degree is still in progress. "What type of sponsorship
+will you need?": when every sponsorship answer you saved is No, Apply picks Not applicable (or the option that says none), even when the
+question counts OPT as sponsorship; with no such option, or a Yes saved, it is yours.
+
+Three more are decided from what you saved. A **Degree** list of types ("Bachelor's Degree", "Master's Degree", "Master of Business Administration"):
+Apply picks the plain option for your degree's level, and the MBA option only when your degree is an MBA or says Business Administration; a degree
+still in progress, or one that names no level, is left to you. "Are you located in … and/or willing to relocate?" is answered Yes when you saved
+that you would relocate; if the question adds a condition ("on your own"), the answer is listed as assumed. A **Location (City)** box is searched
+as "City, State" when the form also asks for a state, and Apply picks the option for your city in your state; two matches, or no saved state,
+leave it to you. An optional field you have a saved answer for that stayed empty is listed under **Check before you submit** as **Left for
+you**; it never stops the run. An optional field the run left blank is listed there too, as **Left blank — optional**, and goes when a later fill answers it.
 
 Veteran status is one question in **Profile › Autofill**: "Are you a veteran?" (Yes, No, or "I don't
-wish to answer"). A No answers every "I am not a protected veteran" option on a form. A Yes never picks
+wish to answer"). A No answers every "I am not a protected veteran" option on a form, and picks the one such option on a list without asking a model. A Yes never picks
 a protected class for you, so the Companion leaves that list to you, and a Yes never answers "are you currently serving?" either. A No
 also answers "have you ever served?" with the never-served option, and says it was assumed. If your Profile still held the old
 "Not a protected veteran" answer, the question is empty and asks again.

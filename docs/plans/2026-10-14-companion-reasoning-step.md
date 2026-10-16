@@ -37,7 +37,7 @@
 4. **`redo` refills over the run's own value.** No clear op exists. A text write replaces, a single choice re-picks, and a multi-value field (`multi`) is refused.
 5. **`follow_tab` never drives.** It rebinds like the Phase 2e follow and parks with the "Continue here" card, keeping "a follow never drives" true.
 6. **`unknown_page` allows only `close_dialog`, `follow_tab` and `ask_user`.** Pressing or filling an unfilled, unknown page would break inv-rejected-next ("only a page the run filled is pressed"). `moved_away` allows `follow_tab` and `ask_user` only, and its snapshot carries no fields from the foreign page.
-7. **`think_when_stuck` lives in `companion_apply`,** beside **Stop after each step**: same card, same synced bundle, same `loadAutomation` read. **`reasoning_model` lives with the model roles** (`llm.reasoning_model`). Its default is the provider's STRONG model: `anthropic` → `claude-sonnet-5-5`, `openai` → `gpt-6.1-sol` (added to `MODEL_OPTIONS` as a listed OpenAI option that is never assigned to the other roles; coordinator decision 2026-10-14 after the freshness check: gpt-6.1-sol $2/$10 per MTok), unless the smart model is itself one of the strong set (`claude-sonnet-5-5`, `claude-opus-5-5`, `gpt-6.1-sol`), which is kept. Gemini, OpenRouter, a user-added model and a custom endpoint use the smart model. NOT "smart-tier": `MODEL_OPTIONS` tags `gpt-5.6-luna` as tier `smart` although it is the small cheap OpenAI model, so a tier rule would keep luna. The strong set is a named constant, `STRONG_MODELS`.
+7. **`think_when_stuck` lives in `companion_apply`,** beside **Stop after each step**: same card, same synced bundle, same `loadAutomation` read. **`reasoning_model` lives with the model roles** (`llm.reasoning_model`). Its default is the provider's STRONG model: `anthropic` → `claude-sonnet-5-5`, `openai` → `gpt-6.1-sol` (added to `MODEL_OPTIONS` as a listed OpenAI option that is never assigned to the other roles; coordinator decision 2026-10-14 after the freshness check: gpt-6.1-sol $2/$10 per MTok), unless the smart model is itself one of the strong set (`claude-sonnet-5-5`, `claude-opus-5-5`, `gpt-6.1-sol`), which is kept. Gemini, OpenRouter, a user-added or unregistered model and a custom endpoint use the smart model: the provider is read from the SEEDED catalog (`MODEL_OPTIONS`) only, so an id the user added is never swapped for a seeded one. NOT "smart-tier": `MODEL_OPTIONS` tags `gpt-5.6-luna` as tier `smart` although it is the small cheap OpenAI model, so a tier rule would keep luna. The strong set is a named constant, `STRONG_MODELS`.
 8. **`/reason` is gated to the Companion's exact origin** (`app/companion_origin.is_companion`), because it spends the strong model's money. The panel asks it through its ONE api door (`store.api` → `sw.js`, the only fetch site; the request carries the extension's origin either way) on the panel's own clock. The design's "the panel calls it directly, not through the service worker" is read as "not through the fill loop's 10 s clock and sw-side scrub": a direct `fetch` from the panel would break the one-fetch-site rule (SYSTEM.md §7). Owner: confirm this reading.
 9. **The fill log gets one extra `RunTrace` per reasoning step** (`fields: []`, `reasoning: [rounds]`), built by `reasonLoop.traceOf`, not `buildRunTrace`. The page's own trace was already posted when the step runs.
 10. **The model's note is shown in the panel**, cleaned server-side: invisible characters, links, emails and phone numbers removed, 200 characters at most, plain text. This deliberately departs from "failure copy is never server text" for this one designed line.
@@ -183,15 +183,17 @@ STRONG_BY_PROVIDER = {"anthropic": "claude-sonnet-5-5", "openai": "gpt-6.1-sol"}
 
 
 def default_reasoning_model(session: Session | None = None) -> str:
-    """The smart model when it is itself a strong model, else its provider's strong one (Anthropic, OpenAI), else
-    the smart model (Gemini, OpenRouter, a user-added model; a custom endpoint always: its catalog is not ours)."""
+    """The smart model when it is itself a strong model, else the strong one of its SEEDED provider (Anthropic,
+    OpenAI), else the smart model (Gemini, OpenRouter, a user-added or unregistered id, a custom endpoint: those
+    are the user's own choice and their catalog is not ours)."""
     if session is None:
         with SessionLocal() as owned:
             return default_reasoning_model(owned)
     smart = get_smart_model(session)
     if smart in STRONG_MODELS or using_custom_endpoint(session):
         return smart
-    return STRONG_BY_PROVIDER.get(catalog_provider(smart, session) or _provider_for(smart), smart)
+    seeded = next((opt.provider for opt in MODEL_OPTIONS if opt.id == smart), None)
+    return STRONG_BY_PROVIDER.get(seeded, smart)
 
 
 def get_reasoning_model(session: Session | None = None) -> str:

@@ -37,8 +37,9 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import Engine
 from app.services import jev, llm, model_settings
+from app.services.llm_providers import registry
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR
-from app.services.autofill_map import MIN_CALL_S, Budget, fast_json
+from app.services.autofill_map import MIN_CALL_S, Budget, _transient, fast_json, second_opinion_floor
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,11 @@ POLARITY_FLOOR = 0.8
 # by 6 - (2 + 1 + 1) = 2 s into the request: asked at 0.5 s it gets 1.5 s; the
 # pick runs to 4 s, its second opinion to 5 s, and the reasoning call starts at
 # 5 s with what is left of REQUEST_BUDGET_S. (Budget.left never gives under
-# MIN_CALL_S, so a polarity asked later than 1 s still takes 1 s.)
+# MIN_CALL_S, so a polarity asked later than 1 s still takes 1 s.) A FAILED call
+# gets one more (`_fast`), asked of Budget.left again: it may run MIN_CALL_S past
+# that plan, up to 3 s in, so in that worst case the reasoning call can start
+# after the 6 s mark and be skipped. Polarity is the knockout answer; that call
+# is the optional one.
 POLARITY_MAX_S = 2.0
 POLARITY_RESERVE_S = jev.TIMEOUT_S + 2 * MIN_CALL_S
 # The memory: this long, this many entries (the least recently kept goes first).
@@ -170,10 +175,11 @@ def _with_jev(asks: list[Ask], session: Session) -> dict[str, tuple[str, float]]
     return out
 
 
-def _with_llm(asks: list[Ask], session: Session, trace_name: str, *, timeout: float) -> dict[str, tuple[str, float]]:
+def _with_llm(asks: list[Ask], session: Session, trace_name: str, *, timeout: float,
+              model: str | None = None) -> dict[str, tuple[str, float]]:
     raw = fast_json(session, _LLM_PROMPT.format(
         rule=_PAGE_TEXT_IS_DATA, keys=json.dumps(CRITERIA), fields=json.dumps(_payload(asks))),
-        trace_name, timeout=timeout)
+        trace_name, timeout=timeout, model=model)
     got = raw.get("polarity") if isinstance(raw, dict) else None
     asked = {a.fid for a in asks}
     out = {}
@@ -186,17 +192,58 @@ def _with_llm(asks: list[Ask], session: Session, trace_name: str, *, timeout: fl
     return out
 
 
+# The fast model of each provider, in the order a fallback tries them: a one-label judgment any of them makes.
+_FALLBACK_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-haiku-5-5", "gemini": "gemini-3.7-flash"}
+
+
+def _provider_of(model: str) -> str:
+    return registry.resolve(model).provider
+
+
+def _other_provider_model(session: Session) -> str | None:
+    """The fast model of ANOTHER provider the user chose: one that some model role (fast, smart, chat, reasoning) uses and
+    whose key was SAVED in the app (a key only in the environment is not a choice). None when there is none, and always
+    on a custom server, OpenRouter or a model nobody registered: those are the user's own endpoint, never swapped for a
+    named provider's. Read when the first call failed, not before."""
+    if llm.get_base_url():
+        return None
+    current = _provider_of(model_settings.get_fast_model(session))
+    if current not in _FALLBACK_MODELS:
+        return None
+    assigned = {_provider_of(m) for m in (model_settings.get_fast_model(session), model_settings.get_smart_model(session),
+                                          model_settings.get_chat_model(session), model_settings.get_reasoning_model(session))}
+    return next((model for provider, model in _FALLBACK_MODELS.items()
+                 if provider != current and provider in assigned and model_settings.get_api_key(provider, session)), None)
+
+
 def _fast(asks: list[Ask], session: Session, budget: Budget, trace_name: str) -> dict[str, tuple[str, float]]:
     """One fast-model call, capped (POLARITY_MAX_S) and ending in time for what
-    follows it (POLARITY_RESERVE_S). Out of time or failed: nothing."""
-    timeout = budget.left(POLARITY_MAX_S, reserve=POLARITY_RESERVE_S)
-    if not asks or timeout is None:
+    follows it (POLARITY_RESERVE_S). A provider error (a timeout is one) gets ONE
+    more call, only while the request has time (`Budget.left`): on another provider
+    the user chose (`_other_provider_model`) when there is one, else on the same
+    model, and then only for a transient error (never a missing or refused key).
+    Out of time or failed twice: nothing."""
+    if not asks:
         return {}
-    try:
-        return _with_llm(asks, session, trace_name, timeout=timeout)
-    except llm.LLMProviderError:
-        logger.warning("fast model polarity (%s) failed; its fields are left to the user", trace_name)
-        return {}
+    model = None   # the fast model setting
+    floor = second_opinion_floor(session)
+    for attempt in (1, 2):
+        # A slow fast model's floor lifts the call over the cap and the reserve, but leaves Jev's pick (jev.TIMEOUT_S) and its fast fallback (MIN_CALL_S) their time.
+        timeout = budget.left(POLARITY_MAX_S, reserve=POLARITY_RESERVE_S, floor=floor,
+                              keep=jev.TIMEOUT_S + MIN_CALL_S)
+        if timeout is None:
+            return {}
+        try:
+            return _with_llm(asks, session, trace_name, timeout=timeout, model=model)
+        except llm.LLMProviderError as exc:
+            logger.warning("fast model polarity (%s) failed (attempt %d, timeout given %.1f s)", trace_name, attempt, timeout)
+            if attempt == 2:
+                break
+            model = _other_provider_model(session)
+            if model is None and not _transient(exc):
+                break
+    logger.warning("fast model polarity (%s) failed; its fields are left to the user", trace_name)
+    return {}
 
 
 def _second_opinion(asks: list[Ask], session: Session, budget: Budget) -> dict[str, tuple[str, float]]:

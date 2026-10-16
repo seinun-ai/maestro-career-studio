@@ -116,23 +116,28 @@
     }
   ],
   "system_md_baselines": {
-    "total": 1000,
-    "sections": {
-      "(preamble)": 59,
-      "1. What this is": 9,
-      "2. Repo layout": 36,
-      "3. Architecture at a glance": 19,
-      "4. Core entities and their lifecycles": 15,
-      "5. The application workflow, end to end (web)": 81,
-      "6. Cross-cutting invariants (do not break these)": 208,
-      "7. Agent surfaces": 207,
-      "8. Frontend conventions": 8,
-      "9. Dev & test environment": 107,
-      "10. Design-decision record": 22,
-      "11. Known deferred items (priority order)": 87,
-      "12. Gotchas that have bitten before": 69,
-      "13. Active migrations & deprecation ledger": 73
+    "cap_bytes": 125800,
+    "total_bytes": 101177,
+    "lines": 923,
+    "sections_bytes": {
+      "(preamble)": 5479,
+      "1. What this is": 760,
+      "2. Repo layout": 3314,
+      "3. Architecture at a glance": 2385,
+      "4. Core entities and their lifecycles": 2064,
+      "5. The application workflow, end to end (web)": 8024,
+      "6. Cross-cutting invariants (do not break these)": 31327,
+      "7. Agent surfaces": 4435,
+      "8. Frontend conventions": 590,
+      "9. Dev & test environment": 10841,
+      "10. Design-decision record": 8250,
+      "11. Known deferred items (priority order)": 4277,
+      "12. Gotchas that have bitten before": 10168,
+      "13. Active migrations & deprecation ledger": 9263
     },
-    "reason": "\u00a712 grew by three dated gotchas from the 2026-09-01 fix batch (LinkedIn posting identity, starter template gate, upload accept lists); older entries reflowed, nothing dropped; \u00a77's sender-model paragraph extracted to extension/README.md"
+    "extraction_candidates": [
+      "7. Agent surfaces"
+    ],
+    "reason": "grooming pass 2026-10-16: the v5 gate's one FAIL (\u00a76 over its 25% budget) and its grooming backlog closed without a cap move (cap stays 125,800 B); \u00a76 reflowed and its worked detail moved to docs/entities/others.md, filled-answers.md and job.md; \u00a77 extracted to docs/agent-surfaces.md with a summary and index left; every \u00a711 item given a do-when trigger, seven kept and 30 overflowed to docs/deferred.md with their numbers; \u00a710 rewritten as one line per owner decision with the superseded alternative; 100 long prose lines reflowed; inv-honesty, inv-tailor-vs-edit and inv-pdf-word-spacing pinned. Bytes before\u2192after per section: header 5,306\u21925,479; 1 760\u2192760; 2 3,314\u21923,314; 3 2,385\u21922,385; 4 2,064\u21922,064; 5 8,018\u21928,024; 6 35,484\u219231,327; 7 23,545\u21924,435; 8 590\u2192590; 9 10,831\u219210,841; 10 1,632\u21928,250; 11 11,954\u21924,277; 12 10,150\u219210,168; 13 9,263\u21929,263; total 125,296\u2192101,177. Extraction-candidate history is not extended because the warning no longer fires."
   }
 }

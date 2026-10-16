@@ -710,3 +710,72 @@ def test_the_explicit_route_injects_before_giving_up(manifest):
     # still the assertion — it just names the caller it allows.
     assert len(re.findall(r"injectContentScripts\(", sw)) == 2, (
         "the injector grew a caller outside panel_prepare")
+
+
+# ---------- an update under an open tab (live check 7) ----------
+#
+# panel_prepare re-injects every content script into the tab's SAME isolated world. A file that guards itself with
+# `ns.loadedOnce` keeps the OLD code there; a file without the guard runs again at once. So a re-run file that reads,
+# at load, an export a NEWER version of a load-once file added (page-reader's `ns.ERROR_HEADING`, live 2026-10-15)
+# gets undefined: every page read threw and the run could not see any page. The rule: a re-run file never depends on a
+# newer export of a load-once one.
+
+# What the load-once files already published in the last release: an older module has them, so a re-run file may read
+# them as they are. A NEW name is never added here to quiet this test; the re-run file keeps its own copy or reads the
+# name with a fallback (`ns.X ?? …`) or a `typeof ns.X` guard anywhere in the file.
+SHIPPED_ONCE_EXPORTS = {"fillBase", "fillInventory", "fillOps", "shapes", "recipes", "readField"}
+
+
+def _publishes(text: str) -> set[str]:
+    return set(re.findall(r"\bns\.([A-Za-z_]\w*)\s*(?:\?\?)?=(?!=)", text))
+
+
+def unsafe_reads(path: str, text: str, only_once: set[str]) -> list[str]:
+    """Reads in a re-run file of an export only a load-once file publishes, past the shipped ones, with no fallback and no
+    `typeof ns.X` guard in the file; a destructured read (`const { a } = ns;`) has no fallback."""
+    out = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        for m in re.finditer(r"\bns\.([A-Za-z_]\w*)\b(?!\s*(?:\?\?)?=(?!=))(\s*(?:\?\?|\|\|))?", line):
+            name, fallback = m.group(1), m.group(2)
+            guarded = re.search(rf"typeof\s+ns\.{name}\b", text) is not None
+            if name in only_once and name not in SHIPPED_ONCE_EXPORTS and name != "loadedOnce" and not fallback and not guarded:
+                out.append(f"{path}:{lineno} reads ns.{name} with no fallback")
+        for m in re.finditer(r"\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*ns\s*;", line):
+            for part in m.group(1).split(","):
+                name = re.split(r"[:=]", part)[0].strip()
+                if name in only_once and name not in SHIPPED_ONCE_EXPORTS:
+                    out.append(f"{path}:{lineno} destructures ns.{name} with no fallback")
+    return out
+
+
+def test_a_re_run_content_file_never_reads_a_newer_export_of_a_load_once_file(content_script):
+    once, rerun = {}, {}
+    for path in content_script["js"]:
+        text = (EXTENSION / path).read_text(encoding="utf-8")
+        (once if "loadedOnce" in text else rerun)[path] = text
+    assert once, "the load-once files are the ones that carry the guard"
+    only_once = set().union(*(_publishes(t) for t in once.values())) - set().union(*(_publishes(t) for t in rerun.values()))
+    unsafe = [line for path, text in rerun.items() for line in unsafe_reads(path, text, only_once)]
+    assert unsafe == [], ("a re-injected file must not depend on a newer export of a load-once file (an older copy stays "
+                          "in the tab): keep its own copy or read it with a fallback\n" + "\n".join(unsafe))
+
+
+@pytest.mark.parametrize("source, flagged", [
+    ("const h = ns.newThing;", True),
+    ("const h = ns.newThing ?? fallback;", False),
+    ("if (typeof ns.newThing !== 'function') return;\nns.newThing(1);", False),
+    ("const { newThing } = ns;", True),
+    ("const { fillBase, newThing: n } = ns;", True),
+    ("const { fillBase } = ns;", False),
+    ("const x = ns.fillBase.visible;", False),
+])
+def test_the_scan_catches_a_plain_or_destructured_read_and_accepts_a_fallback_or_a_typeof_guard(source, flagged):
+    assert bool(unsafe_reads("x.js", source, {"newThing", "fillBase"})) is flagged
+
+
+def test_the_page_readers_own_error_heading_is_the_field_readers():
+    """Two copies of one pattern, so the pin: a heading that says the page has errors reads the same in both."""
+    pattern = re.compile(r"^\s*const ERROR_HEADING = (/.+/[a-z]*);", re.M)
+    found = [pattern.search((EXTENSION / "content" / name).read_text(encoding="utf-8")) for name in ("field-reader.js", "page-reader.js")]
+    assert all(found), "both files keep their own ERROR_HEADING"
+    assert found[0].group(1) == found[1].group(1)

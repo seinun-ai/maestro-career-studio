@@ -410,9 +410,9 @@ def test_a_workday_dropdown_whose_label_never_updates_keeps_its_question(e2e_pag
 
 
 def test_the_category_path_runs_end_to_end(e2e_page):
-    """A generic popup tree: no option names "LinkedIn", so /pick abstains and
-    the adaptive step opens the list, steps into "Job Board" and clicks the
-    leaf, through the real /step driver with both halves running."""
+    """A generic popup tree: no option names "LinkedIn". A how-heard field goes straight to the
+    adaptive step (no explore, no /pick, no choose first), which opens the list, steps into "Job Board"
+    and clicks the leaf, through the real /step driver with both halves running."""
     page = e2e_page
     out = _run(page, html=CATEGORY_POPUP,
                map={"How did you hear about us?": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"},
@@ -423,7 +423,8 @@ def test_the_category_path_runs_end_to_end(e2e_page):
     assert (heard["status"], heard["answer"]) == ("verified", "LinkedIn")
     assert out["by_question"]["Are you legally authorized to work in the United States?"]["status"] == "verified"
     steps = [p["body"] for p in out["posts"] if p["path"] == "/api/autofill/step"]
-    assert [b["history"][-1] for b in steps] == ["choose -> abstained", "open -> progressed", "click:o1 -> progressed"]
+    assert [b["history"] for b in steps] == [[], ["open -> progressed"], ["open -> progressed", "click:o1 -> progressed"]]
+    assert "/api/autofill/pick" not in [p["path"] for p in out["posts"] if "hear" in json.dumps(p["body"])]
     assert not page.evaluate("window.staleHit === true")
     assert _open_popups(page) == []
 
@@ -1078,6 +1079,83 @@ def test_the_board_is_searched_by_name_and_its_leaf_clicked_without_asking_a_mod
     assert oracle(page, "heard") == "LinkedIn" and heard["status"] == "assumed", heard
     moves = _study_moves(out)
     assert [m[0] for m in moves] == ["search:term", moves[1][0]] and moves[0][1] == "LinkedIn" and moves[1][0].startswith("click:")
+
+
+ACME_SOURCES = """const HEARD = {
+    "Acme Website": ["Acme Careers Site"],
+    "Career Fair": ["Campus Career Fair", "Virtual Career Fair"],
+    "Job Board": ["Dice", "Glassdoor", "Handshake", "Indeed", "Monster", "SimplyHired", "Snagajob", "WayUp", "ZipRecruiter",
+                  "Idealist", "Built Locally", "Remote Boards", "Startup Jobs", "LinkedIn"],
+    "Other": ["Other", "LinkedIn Learning"],
+  };"""
+
+
+def test_a_generic_job_board_answer_with_no_board_known_ends_on_the_linkedin_leaf_flagged_assumed(e2e_page, monkeypatch):
+    """Live 2026-10-15 (made-up tenant): four sources, the boards in a long list under Job Board, LinkedIn below the fold. The
+    saved word is "Job board", the job records no board. The field goes straight to the step agent (no choose on the saved
+    word), whose code move searches LinkedIn and clicks the leaf: assumed, no model asked."""
+    from app.services import autofill_catalog, autofill_step
+
+    page = e2e_page
+    facts = autofill_catalog.build({"preferences": {"how_heard": "Job board"}}, [], [])
+    real_step(page, monkeypatch, facts, [])
+    monkeypatch.setattr(autofill_step, "_move", lambda *a, **kw: pytest.fail("the model was asked"))
+    html = fixture_html("workday_source_search.html")
+    start, end = html.index("const HEARD = {"), html.index("};", html.index("const HEARD = {")) + 2
+    out = _run(page, html=html[:start] + ACME_SOURCES + html[end:], url="https://acme.wd1.myworkdayjobs.com/apply",
+               map={"How Did You Hear About Us?": {"route": "slot", "slot": "preferences.how_heard", "value": "Job board"}},
+               limits={"MAX_ROUNDS": 1}, stepBackend=True)
+    heard = out["by_question"]["How Did You Hear About Us?"]
+    assert oracle(page, "heard") == "LinkedIn" and heard["status"] == "assumed", heard
+    assert not [a for m in out["sent"] if m["type"] == "fill_apply" for a in m["actions"] if a["op"] == "choose"]
+
+
+FOLLOW_UP = "How Did You Hear About Us? — If other, please specify"   # a follow-up borrows the question above it
+
+
+def _heard_listbox(options):
+    """workday_listbox.html with its Degree dropdown turned into a flat 'How Did You Hear About Us?' list."""
+    html = fixture_html("workday_listbox.html")
+    old = html[html.index('degree: ["Select One"'):html.index('auth: ["Select One"')]
+    html = html.replace(old, "degree: " + json.dumps(["Select One", *options]) + ",\n    ", 1)
+    assert "<p>Degree</p>" in html
+    return html.replace("<p>Degree</p>", "<p>How Did You Hear About Us?</p>", 1)
+
+
+def test_a_plain_dropdown_with_a_saved_non_board_source_ends_on_that_option_through_the_step_agent(e2e_page, monkeypatch):
+    """A flat source list and a saved 'Referral' (no board, no site): the goal is the saved word itself, the field goes
+    straight to the step agent, and its click on 'Referral' is the profile's answer, not an assumed one."""
+    from app.services import autofill_catalog
+
+    page = e2e_page
+    facts = autofill_catalog.build({"preferences": {"how_heard": "Referral"}}, [], [])
+    real_step(page, monkeypatch, facts, [("open", 0.9), ('Click the option "Referral"', 0.95)])
+    out = _run(page, html=_heard_listbox(["Acme Careers Site", "Referral", "LinkedIn", "Other"]),
+               url="https://acme.wd1.myworkdayjobs.com/apply",
+               map={"How Did You Hear About Us?": {"route": "slot", "slot": "preferences.how_heard", "value": "Referral"}},
+               limits={"MAX_ROUNDS": 1}, stepBackend=True)
+    heard = out["by_question"]["How Did You Hear About Us?"]
+    assert oracle(page, "degree") == "Referral" and heard["status"] == "verified", heard
+    assert not [a for m in out["sent"] if m["type"] == "fill_apply" for a in m["actions"] if a["op"] == "choose"]
+    assert [m[0] for m in _study_moves(out)] == ["open", _study_moves(out)[1][0]] and _study_moves(out)[1][0].startswith("click:")
+
+
+def test_an_other_source_and_its_please_specify_box_are_both_answered_with_the_dropdown_through_the_step_agent(e2e_page, monkeypatch):
+    from app.services import autofill_catalog
+
+    page = e2e_page
+    facts = autofill_catalog.build({"preferences": {"how_heard": "Other", "how_heard_other": "A friend"}}, [], [])
+    real_step(page, monkeypatch, facts, [("open", 0.9), ('Click the option "Other"', 0.95)])
+    # The follow-up box sits right under the source list (a follow-up borrows the question above it).
+    box = "<div><label for='other'>If other, please specify</label><input id='other' type='text'></div>"
+    html = _heard_listbox(["Acme Careers Site", "Referral", "LinkedIn", "Other"])
+    html = html.replace("</fieldset></div>", "</fieldset></div>" + box, 1)
+    out = _run(page, html=html, url="https://acme.wd1.myworkdayjobs.com/apply",
+               map={"How Did You Hear About Us?": {"route": "slot", "slot": "preferences.how_heard", "value": "Other"},
+                    FOLLOW_UP: {"route": "slot", "slot": "preferences.how_heard_other", "value": "A friend"}},
+               limits={"MAX_ROUNDS": 1}, stepBackend=True)
+    assert oracle(page, "degree") == "Other" and out["by_question"]["How Did You Hear About Us?"]["status"] == "verified"
+    assert page.input_value("#other") == "A friend" and out["by_question"][FOLLOW_UP]["status"] == "verified"
 
 
 # ---------- a redrawn section is typed once (Task 32), on workday_misses.html

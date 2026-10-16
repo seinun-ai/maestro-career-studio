@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, replace
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, PolarityTrace, Reason
-from app.services import autofill_polarity, jev, llm, model_settings
+from app.services import autofill_education, autofill_place, autofill_polarity, autofill_sponsorship, jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
     NAMES_PROTECTED_CLASS,
@@ -39,6 +39,7 @@ from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATC
 from app.services.autofill_map import (
     MIN_CALL_S,
     SECOND_OPINION_MAX_S,
+    second_opinion_floor,
     Budget,
     Top,
     asks_years,
@@ -213,15 +214,60 @@ def _yes_no(fields, facts: dict[str, Fact]) -> dict[str, Fact]:
     return {f.fid: facts[f.slot] for f in fields if f.route == "slot" and f.slot in facts and facts[f.slot].yes_no}
 
 
+# "Are you located in X and/or willing to relocate?" over a saved Yes to relocating: the second half is the applicant's
+# own answer, so the question reads the same as the fact, with no model. ONE question: both halves in one sentence (a
+# statement elsewhere in the text, "candidates who are not local or willing to relocate will not be considered", is not
+# what is asked), no negation before the relocate verb, and not a work-authorization or sponsorship question (those
+# never ride on this slot). "Located" alone or "relocate" alone is the model's.
+_SENTENCE_END = re.compile(r"(?<=[?!])\s+|\n+|(?<=[a-z]{2}\.)\s+(?=[A-Z])")
+_LOCATED_OR_RELOCATE = re.compile(
+    r"\b(?:located|live|living|reside|residing|based)\b[^?!\n]*?\b(?:and/or|or)\b[^?!\n]*?"
+    r"\b(?:willing|open|able|prepared)\s+to\s+(?:re-?locat|move)", re.IGNORECASE)
+_NEGATION = re.compile(r"\bnot\b|n['\u2019]t\b|\bnever\b", re.IGNORECASE)
+_AUTHORIZATION = re.compile(r"authori[sz]|sponsor|visa|eligible to work|legally|citizen|work permit", re.IGNORECASE)
+# A condition on the relocating ("on your own", "without relocation assistance"): the saved Yes is the applicant's word
+# for relocating, not for relocating on these terms, so the answer is reported assumed.
+_QUALIFIER = re.compile(
+    r"\bon\s+your\s+own\b|\bat\s+your\s+own\b|\bown\s+(?:expense|cost|dime)\b|\bself[- ]fund\w*|"
+    r"\bwithout\b[^?!\n]*\b(?:assistance|support|package|reimburse\w*|stipend|help)\b|"
+    r"\b(?:no|not)\b[^?!\n]*\brelocation\s+(?:assistance|support|package|help|reimburse\w*|stipend)\b", re.IGNORECASE)
+
+
+def _relocate_sentence(question: str) -> str | None:
+    """The sentence of `question` that asks "located … and/or willing to relocate" (a question, or an unpunctuated last
+    line addressed to "you"), else None."""
+    parts = [p.strip() for p in _SENTENCE_END.split(question) if p.strip()]
+    for i, part in enumerate(parts):
+        found = _LOCATED_OR_RELOCATE.search(part)
+        asked = part.endswith("?") or (i == len(parts) - 1 and re.search(r"\byou(?:r)?\b", part, re.IGNORECASE))
+        if found and asked and not _NEGATION.search(part[:found.end()]):
+            return part
+    return None
+
+
+def _located_or_relocate(field, fact: Fact) -> bool:
+    return (field.slot == "preferences.willing_to_relocate" and str(fact.value) == "Yes"
+            and _relocate_sentence(field.question) is not None and not _AUTHORIZATION.search(field.question))
+
+
+def relocate_qualified(field, fact: Fact | None) -> bool:
+    """A coded relocate Yes whose question puts a condition on relocating: reported assumed."""
+    return fact is not None and _located_or_relocate(field, fact) and bool(_QUALIFIER.search(field.question))
+
+
 def polarity_ways(fields, facts: dict[str, Fact], session: Session,
                   budget: Budget) -> dict[str, autofill_polarity.Polarity]:
     """Per slot field holding a Yes/No fact, which way its question reads against the
     fact (autofill_polarity: same, opposite, neither or unsure) and how that was decided.
-    The model calls; `polarity_answers` turns the ways into answers."""
+    The model calls; `polarity_answers` turns the ways into answers. "Located in … and/or
+    willing to relocate" over a saved Yes is decided here, by code (same, no engine)."""
     yes_no = _yes_no(fields, facts)
-    return autofill_polarity.decide([autofill_polarity.Ask(f.fid, polarity_question(f), facts[f.slot].describe,
-                                                           facts[f.slot].policy)
-                                     for f in fields if f.fid in yes_no], session, budget)
+    coded = {f.fid: autofill_polarity.Polarity(autofill_polarity.SAME, None, 1.0)
+             for f in fields if f.fid in yes_no and _located_or_relocate(f, yes_no[f.fid])}
+    asked = autofill_polarity.decide([autofill_polarity.Ask(f.fid, polarity_question(f), facts[f.slot].describe,
+                                                            facts[f.slot].policy)
+                                      for f in fields if f.fid in yes_no and f.fid not in coded], session, budget)
+    return coded | asked
 
 
 def polarity_trace(w: autofill_polarity.Polarity) -> PolarityTrace:
@@ -339,13 +385,15 @@ def _second_opinion(fields: list[PickField], facts: dict[str, Fact], hint: JobHi
     follows time to start), through the same `verdict`. Out of time or
     failed, Jev's abstention stands. None: it did not run (the trace's
     `second` stays None for those fields)."""
-    timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S if reasoning_next else 0.0)
+    timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S if reasoning_next else 0.0,
+                          floor=second_opinion_floor(session), keep=MIN_CALL_S if reasoning_next else 0.0,
+                          late_ok=reasoning_next)
     if not fields or timeout is None:
         return None
     try:
         return _with_llm(fields, facts, hint, session, answers, "autofill-pick-second", timeout=timeout)
     except llm.LLMProviderError:
-        logger.warning("fast model second opinion failed; Jev's abstentions stand")
+        logger.warning("fast model second opinion failed (timeout given %.1f s); Jev's abstentions stand", timeout)
         return None
 
 
@@ -388,12 +436,17 @@ def _years_first(fields: list[PickField], facts: dict[str, Fact], hint: JobHint 
     years shown is its Yes; fewer, or anything it could not read, is left to the user; and only a
     history SILENT about the skill gets the keen Yes, asked as any low_stakes field is (never-list
     stated). An optional pass: a failure leaves its fields to the user."""
-    picks, silent = reason_years(fields, facts, session, budget, hint.company if hint else None)
+    # The keen pick that may follow (Jev's pick, then the fast fallback) needs its time of the request.
+    follow_up = jev.TIMEOUT_S + MIN_CALL_S
+    picks, silent = reason_years(fields, facts, session, budget, hint.company if hint else None, keep=follow_up)
     # Everything the history did not answer Yes and was not silent about is the user's, and final.
     out = {fid: p if p.oids else _ASKED for fid, p in picks.items()}
     rest = [f for f in fields if f.fid in silent]
     if not rest:
         return out
+    if budget.remaining() < follow_up:
+        logger.warning("no time left for the keen answer to a years question; its fields are left to the user")
+        return out | {f.fid: _ASKED for f in rest}
     try:
         picked = None
         if model_settings.get_autofill_engine(session) == "jev":
@@ -454,10 +507,17 @@ def veteran_inferred(said: str, question: str, chosen: list[str]) -> bool:
     return said == "No" and (bool(_ASKS_SERVICE.search(question)) or any(_SAYS_NEVER_SERVED.search(t) for t in chosen))
 
 
+# "No, I am a veteran but not a protected veteran" opens with a negation and still claims to be a veteran.
+_NEGATION_THEN_BUT = re.compile(r"\b(?:but|however|except|although|though)\b", re.IGNORECASE)
+
+
 def _claims_veteran(text: str) -> bool:
     """An option that does not open with a negation and that mentions a veteran, names a protected class, or
-    opens "I identify as" / "I belong to". A bare "Yes" claims nothing."""
-    return not _OPENS_WITH_NEGATION.search(text) and bool(
+    opens "I identify as" / "I belong to"; or one that opens with a negation and then takes it back ("No, I am a
+    veteran but not a protected veteran"). A bare "Yes" claims nothing."""
+    if _OPENS_WITH_NEGATION.search(text):
+        return bool(_NEGATION_THEN_BUT.search(text) and _MENTIONS_VETERAN.search(text))
+    return bool(
         _MENTIONS_VETERAN.search(text) or _NAMES_PROTECTED_CLASS.search(text) or _BARE_CLASS.search(text)
         or _OPENS_BY_IDENTIFYING.search(text))
 
@@ -468,6 +528,29 @@ def veteran_said(fact: Fact | None) -> str | None:
         return None
     said = yes_no_word(fact.value).split(",", 1)[0]
     return said if said in ("No", "Yes") else None
+
+
+# "I do not wish to disclose my veteran status" opens with a negation and mentions a veteran, and denies nothing.
+_DECLINES = re.compile(r"\b(?:wish|want|prefer|choose|disclose|answer|share|self-?identify|say)\b", re.IGNORECASE)
+
+
+def veteran_option(fact: Fact | None, question: str, options: list[tuple[str, str]]) -> tuple[str, Reason] | None:
+    """A saved No answers a veteran list in code when EXACTLY ONE option opens with a negation and names a
+    veteran ("I am not a protected veteran", "No, I am not a veteran"): (its id, the reason), never a model's
+    choice (live check 9: polarity timed out twice and the clear option was left). `assumed` when it is the
+    Companion's inference (`veteran_inferred`). Never an option that claims to be a veteran, a saved Yes, or
+    a list with two such options (the ordinary path decides those)."""
+    if veteran_said(fact) != "No":
+        return None
+    denying = [(oid, text) for oid, text in options
+               if _OPENS_WITH_NEGATION.search(text) and _MENTIONS_VETERAN.search(text)
+               and not _DECLINES.search(text) and not _claims_veteran(text)]
+    if len(denying) != 1:
+        return None
+    oid, text = denying[0]
+    if veteran_overreach("No", question, [t for _, t in options], text):
+        return None
+    return oid, "assumed" if veteran_inferred("No", question, [text]) else "matched"
 
 
 def veteran_overreach(said: str, question: str, options: list[str], chosen: str | list[str] | None = None) -> bool:
@@ -529,9 +612,79 @@ def named_employers(fields: list[PickField], facts: dict[str, Fact]
     return (out, facts | moved, dropped) if (moved or dropped) else (fields, facts, dropped)
 
 
+CITY_SLOT = "personal.city"
+DEGREE_SLOT = re.compile(r"education\.\d+\.degree")
+
+
+def city_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
+    """A city field whose options are Places-style ("Springfield, IL, USA"): the one that is the saved city in the saved
+    state is code's pick (autofill_place); any other list goes the ordinary way. Returns the other fields, and the decided."""
+    state = facts.get("personal.state")
+    if state is None or not isinstance(state.value, str):
+        return fields, {}
+    decided = {}
+    for f in fields:
+        fact = facts.get(f.slot or "")
+        if f.route == "slot" and f.slot == CITY_SLOT and isinstance(getattr(fact, "value", None), str) and (
+                oid := autofill_place.city_option(fact.value, state.value, [(o.oid, o.text) for o in f.options])):
+            decided[f.fid] = Picked(oids=[oid], reason="matched", trace=DecisionTrace())
+    return [f for f in fields if f.fid not in decided], decided
+
+
+def education_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
+    """The fields asking for the education level (`derived.education_level`) are decided in code, never by a
+    model: the highest threshold the applicant's completed level meets, else nobody (autofill_education). So are the
+    degree-TYPE lists ("Degree": Master's Degree, M.B.A., …) over a saved degree (`autofill_education.degree_type`). Returns the other fields, and the decided ones' answers."""
+    level = facts.get(autofill_education.SLOT)
+    decided = {}
+    for f in fields:
+        if f.route == "slot" and f.slot == autofill_education.SLOT:
+            if level is not None and isinstance(level.value, str):
+                got = autofill_education.decide(level.value, [(o.oid, o.text) for o in f.options], complete=f.complete)
+                decided[f.fid] = Picked(oids=[got.oid] if got.oid else [], reason=got.reason, trace=DecisionTrace())
+        elif (f.route == "slot" and DEGREE_SLOT.fullmatch(f.slot or "") and isinstance(getattr(facts.get(f.slot), "value", None), str)
+              and (typed := autofill_education.degree_type(facts[f.slot].value, [(o.oid, o.text) for o in f.options],
+                                                           complete=f.complete)) is not None):
+            decided[f.fid] = Picked(oids=[typed.oid] if typed.oid else [], reason=typed.reason, trace=DecisionTrace())
+    return [f for f in fields if f.fid not in decided], decided
+
+
+def sponsorship_type_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
+    """A "what type of sponsorship" question under a saved No (autofill_sponsorship): the option that means none /
+    not applicable, else nobody. A saved Yes (or no fact) leaves the field to the ordinary path."""
+    decided = {}
+    for f in fields:
+        options = [(o.oid, o.text) for o in f.options]
+        fact = facts.get(f.slot or "")
+        if (f.route == "slot" and fact is not None and fact.value == "No"
+                and autofill_sponsorship.is_type_question(f.slot, f.question, options, facts)):
+            oid = autofill_sponsorship.none_option(options)
+            decided[f.fid] = Picked(oids=[oid] if oid else [], reason="matched" if oid else "abstained",
+                                    trace=DecisionTrace())
+    return [f for f in fields if f.fid not in decided], decided
+
+
+def veteran_picks(fields: list[PickField], facts: dict[str, Fact]) -> tuple[list[PickField], dict[str, Picked]]:
+    """The veteran list a saved No settles in code (`veteran_option`), before polarity and any model.
+    Returns the other fields, and the decided ones' answers."""
+    decided = {}
+    for f in fields:
+        if f.route == "slot" and f.slot == VETERAN_SLOT and (got := veteran_option(
+                facts.get(VETERAN_SLOT), f.question, [(o.oid, o.text) for o in f.options])):
+            decided[f.fid] = Picked(oids=[got[0]], reason=got[1], trace=DecisionTrace())
+    return [f for f in fields if f.fid not in decided], decided
+
+
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> dict[str, Picked]:
     fields, facts, dropped = named_employers(fields, facts)
+    fields, by_code = education_picks(fields, facts)
+    fields, cities = city_picks(fields, facts)
+    by_code |= cities
+    fields, sponsored = sponsorship_type_picks(fields, facts)
+    by_code |= sponsored
+    fields, veterans = veteran_picks(fields, facts)
+    by_code |= veterans
     # Another voluntary-disclosure answer never answers a question that names a veteran: final, the user's.
     cross = {f.fid for f in fields if names_veteran_off_slot(f.slot, f.question, facts.get(f.slot or ""))}
     dropped |= cross
@@ -585,5 +738,8 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
     if reasoned:
         out |= reason(reasoned, facts, session, budget, hint.company if hint else None, level)
     _veteran_claims(fields, facts, out)
+    for f in fields:
+        if f.fid in out and out[f.fid].reason == "matched" and relocate_qualified(f, facts.get(f.slot or "")):
+            out[f.fid] = out[f.fid].model_copy(update={"reason": "assumed"})
     _with_polarity(out, ways)
-    return out | {fid: _ASKED for fid in dropped}
+    return out | by_code | {fid: _ASKED for fid in dropped}

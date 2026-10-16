@@ -946,6 +946,32 @@
     else if (restore) b().leave(el, widgetOf(el)); // the undo focused the box: focus is not left in it
   };
 
+  // THE LIST'S OWN WORD FOR A PICK. A box can show a pick differently from its option — a phone-country select lists "Acmeland +1" and
+  // shows a flag and "+1" — so no text on the box equals the option, and the text check calls a taken pick unread. The widget
+  // still says what it holds: its list, reopened, marks the held option (react-select's `--is-selected`, or aria-selected). That
+  // is read only after the box CHANGED (something was committed); never for a field that takes several answers, a set's item or a
+  // kept list, nor on a Workday box, where aria-selected is a keyboard highlight (notes §2); and only if reopening and closing the
+  // list left the box as it found it (a page may take a highlighted row as a pick when the box is left). The marked option must be
+  // one of `wants` (the option chosen, the value); a dialing code is ignored only when the wanted text carries none, so "+1809"
+  // and "+1829" stay two countries. Returns the marked option's text, or null; the list is closed again.
+  const HELD_ROW = '[class*="option--is-selected"]';
+  const DIAL_CODE = /\(?\+\d{1,4}\)?/g;
+  const sameOption = (shown, want) => b().equivalent(shown, want)
+    || (!/\+\d/.test(want) && b().equivalent(shown.replace(DIAL_CODE, " "), want));
+  async function listHolds(el, shape, before, wants, t, { skip = false } = {}) {
+    const display = [shape.read(el)].flat().join("").trim();
+    if (skip || !el.isConnected || !display || same(shape.read(el), before.display) || shape.multi?.(el) === true
+        || ns.shapes.workday(el)) return null;
+    const shown = shape.read(el);
+    const { pop, committed } = await open(el, shape, undefined, t, undefined);
+    if (!pop || committed) return null;
+    const held = b().optionsOf(pop).filter((o) => o.selected || o.el.matches(HELD_ROW));
+    await tidy(el, t);
+    if (!same(shape.read(el), shown)) return null;
+    const text = held.length === 1 ? held[0].text : null;
+    return text && wants.some((want) => typeof want === "string" && want.trim() && sameOption(text, want)) ? text : null;
+  }
+
   // What an explore must leave as it found it (fill-ops takes it before the
   // explore): the committed evidence, and a search box's pill texts.
   const snapshot = (el, shape) => ({
@@ -1030,6 +1056,17 @@
     };
   };
 
+  // What to type when the whole term finds nothing in a search box, in order: the term's first long word, then that word
+  // without its apostrophes and a plural s ("Masters" finds "Master's Degree", "Bachelors Degree" finds "Bachelor's Degree";
+  // a box that filters by substring shows nothing for the saved wording). Never for a URL; never the term itself.
+  const fallbackWords = (term) => {
+    if (isUrl(term)) return [];
+    const words = term.split(/\s+/).map((x) => x.replace(/^[,;:.\s]+|[,;:.\s]+$/g, ""));   // "Springfield," is "Springfield"
+    const first = words.find((x) => x.length > 2 && x !== term);
+    const stem = (first ?? words[0]).replace(/['’]/g, "").replace(/([^s])s$/i, "$1");
+    return [first, stem].filter((x, i, all) => x && x.length > 2 && x !== term && all.indexOf(x) === i);
+  };
+
   // `variant`: a recipe's order for the opens and searches (see `open`).
   // `keep` (a set's item): the list it settled stays up, with the query in the
   // box, for the item's own commit to click in — `kept` says it did (fill-ops
@@ -1049,15 +1086,19 @@
       let { pop, searchable, unsettled } = await open(el, shape, term, t, w, { reclaim: false, variant, used, address });
       let options = pop ? b().optionsOf(pop) : [];
       let byWord = false;
-      if (!options.length && term) {
-        const word = isUrl(term) ? undefined : term.split(/\s+/).find((x) => x.length > 2 && x !== term);
-        // A term that already committed something is not searched again by a
-        // word (fill-ops takes the commit back).
-        if (word && !address && !moved(el, shape, snap)) {
+      let viaWord;
+      // (A list that never settled is not an empty one: a word is not typed over it.)
+      if (!options.length && term && !address && !unsettled) {
+        for (const word of fallbackWords(term)) {
+          // A term that already committed something is not searched again by a
+          // word (fill-ops takes the commit back).
+          if (moved(el, shape, snap)) break;
           await tidy(el, t);
           ({ pop, searchable, unsettled } = await open(el, shape, word, t, w, { reclaim: false, variant, used }));
           options = pop ? b().optionsOf(pop) : [];
           byWord = true;
+          viaWord = word;
+          if (options.length) break;
         }
       }
       let got = pop && options.length ? await readAll(pop, t) : { options: [], complete: false };
@@ -1078,6 +1119,8 @@
       const rowsRead = byWord ? got.options.map(({ where, ...o }) => o) : got.options;
       const out = { options: flag(rowsRead, consentForms), complete: got.complete && !term, searchable };
       if (rows) out.multi = rows === "multi";
+      // The word typed when the whole term found nothing: a choose must type it too to see the rows explore read.
+      if (byWord && out.options.length) out.viaWord = viaWord;
       if (kept) out.kept = true;
       if (!out.options.length) {
         if (pop) out.error = "empty_popup";
@@ -1346,6 +1389,8 @@
         // retried, with the next gesture — and a tick has no next one.
         if (!unchanged(shape.read(el), before.display) || attempt + 1 >= gestures.length + spare) break;
       }
+      const listed = undo ? null : await listHolds(el, shape, before, [text], t, { skip: asSet || keep || multi });
+      if (listed) return { outcome: "verified", text: listed };
       return { outcome: "unexpected", ...w.reason("not_committed") };
     } finally {
       w.stop();
@@ -1669,6 +1714,8 @@
         if (text && b().equivalent(text, last.value) && verify(el, shape, text, { before: snap.evidence }) === "verified") {
           return { outcome: "verified", text };
         }
+        const listed = await listHolds(el, shape, snap.evidence, [last.value], t);
+        if (listed) return { outcome: "verified", text: listed };
         return { outcome: "unexpected", reason: "search_committed" };
       }
       if (!pop) { // nothing opened, or nothing settled: the query the engine typed is taken back
@@ -1722,6 +1769,8 @@
         await tidy(el, t);
         const got = verify(el, shape, hit.text, { before });
         if (got === "verified" || got === "unconfirmed") return { outcome: got, text: hit.text };
+        const listed = await listHolds(el, shape, before, [hit.text, last.value], t);
+        if (listed) return { outcome: "verified", text: listed };
         return { outcome: "unexpected", ...w.reason("not_committed") };
       } finally {
         w.stop();
@@ -1732,6 +1781,6 @@
 
   ns.fillCore = {
     write, explore, choose, set, recommit, verify, tidy, open, own, leftOpen, stepState, move,
-    snapshot, moved, takeBack,
+    snapshot, moved, takeBack, listHolds,
   };
 })();

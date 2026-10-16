@@ -64,6 +64,29 @@ Less hunting, more applying.
 
 ### Added
 
+- **Think when stuck: a stronger model looks before a run gives up.** A run used to stop the moment a page did something it had no rule for.
+  A Next refused over a name no field carries, a question nobody saved an answer for, a page it did not recognise. Every live check found one
+  more, and every fix was one more rule. Now the Companion asks a model to look at the page once first. Submit is still your click.
+  - **When it runs.** Before a run parks on page errors it could not map, open questions, an unknown page, no change after Next, a loop or a
+    tab on another site, with full automation On, **Think when stuck** On (Settings › AI & models › Form filling, default On) and **Stop after each
+    step** Off. Once per page, up to three rounds, about a minute. Never on a CAPTCHA, an email code, an account on a site it does not know, a
+    review page or a page that asks about submitting.
+  - **What it sees and does.** A snapshot of the page with no answer in it: the questions, whether each is filled, the options, the buttons, the
+    errors. It picks one to three actions from a fixed list (fill, answer from a saved answer, write a short answer, choose an option, retry a field
+    another way, redo a field the run filled, close a popup, press Next, follow the application's tab, ask you). The Companion carries them out with the code
+    it already has and looks again. The model never types a value: what is written comes from your profile, history and resume under the same rules
+    as any answer. Work authorization, sponsorship, salary, EEO, background history, signatures, licences and any fact you never gave are left to you.
+    It never presses Submit and presses Next only on the button the page reader names.
+  - **What you see.** A live line while it works ("Thinking: …"), one sentence if it sorted the page out ("Sorted it out: answered 2 questions and moved
+    on."), or the park card, which says what it asks of you or what it tried and how each attempt went ("It tried How Did You Hear About Us? a second way; it didn't
+    take."). What it wrote or chose is listed under **Check before you submit** as answered for you.
+  - **Reasoning model** (Settings › AI & models). Any model in the list; unset, it is the strong model of your provider (Claude Sonnet 5.5, GPT-6.1 Sol), or
+    your smart model for other providers. Claude Haiku 5.5 and GPT-6 Luna are listed as cheaper choices.
+  - **Fill log.** With the fill log on, each step is recorded as a run of its own: the model, time, its note, each action and outcome (a written answer as
+    its length) and the page snapshot it saw. `scripts/eval_reason.py` replays those snapshots against other models and prints the valid and ask-you rates,
+    latency, tokens and a cost estimate. `scripts/fill_trace.py last` prints the rounds.
+  - **Backend.** `POST /api/autofill/reason` (the Companion's origin only; every reply is checked in code against the snapshot's ids, the protected list
+    and failed actions before the extension sees it). Settings `think_when_stuck` (`GET/PUT /api/settings/companion-apply`) and `reasoning_model`.
 - **Apply on the Companion's Job step** (needs full automation On). It saves the job, settles the
   resume (it never replaces a tailored draft or an open tailoring session), queues the job as your
   yes, then drives the tab from the job's apply link to the review page. It never clicks Submit and
@@ -253,6 +276,74 @@ Less hunting, more applying.
 
 ### Fixed
 
+- **Eighth live check of Apply, on two hosted application forms, with Claude as the fast model.**
+  - **Safe answers are no longer lost to a slow model.** The second look at an answer and the Yes/No direction check gave a Claude fast model about a second, which it often needed more of, so
+    a question that should have taken the safe default was left to you. They now get 3 s for Claude (a second for other models, a custom server and OpenRouter) inside the same time limit
+    for a field, and a question the model answered "nothing of yours" at any confidence reaches the safe-default check, unless a second look named one of your answers. With the fill log
+    on, a field left to you because an answer fell under its confidence limit names which of your answers it was (a name, never a value).
+  - **Willingness to a background check, drug test or reference check** is answered by your rules (Yes under Balanced and up) even when the model took the question for a protected one, as long
+    as it is a question about being willing. A box that gives the consent itself, a question about passing a check, your authorization or a record, stays yours. A referral question
+    you have no answer for is No under the same rules.
+  - **Start date.** When you saved "Immediately" (or ASAP, or a typo of it) the form is offered one start date: a date box gets today's date, and a list or choice gets the plain word "Immediately".
+  - **Veteran status.** With **No** saved, the one option that says "I am not a protected veteran" is picked without a model call, so a slow model can no longer leave it. An option that says "I do not
+    wish to disclose" or claims to be a veteran, even one that begins with "No, …", is never picked this way.
+  - **Correct picks are no longer flagged.** A phone-country list that shows a flag and "+1" for the option you chose is checked by reopening the list, which marks the option it holds, instead of
+    being listed as unconfirmed.
+  - **A resume that did attach is recognised.** One site swaps the whole upload box for the file's chip, and another prints the file name only after it reads the file (up to 12 s, and
+    Stop ends the wait); both now count, including a name shown without its extension or shortened with "…". "The page's upload boxes changed" is said only when the number of boxes
+    changed in a way the upload does not explain; otherwise the card says "Couldn't confirm the upload".
+  - **Optional fields left blank are listed.** Under **Check before you submit**, as **Left blank — optional**, so nothing the run did not answer is silent. They never stop the run, and go when
+    a later fill answers them.
+  - A follow-up such as "If applicable, name the referring employee" is read with the question it belongs to, even when another box sits between them.
+- **Seventh live check of Apply, on a hosted careers platform and a one-click application page built from web components.**
+  - **Job descriptions on card-layout career sites.** A role-detail page drawn as sibling cards (a "General Information" card, then "Description &
+    Requirements") now reads the description card instead of "No job description found". The page's title comes from its banner when its only `h1` is the logo.
+  - **Forms built from web components are read like any other.** Fields, a Submit that takes its label from the page, required boxes and the page's errors
+    inside such a form are seen together, so Autofill is no longer withheld on it and a page is no longer called Ready, or empty, by mistake. The vendor's
+    "fill this from your resume" import box is never written; its resume box gets your PDF.
+  - **Apply never says "Page not recognised" over a page that has fields.** On the first page, a page the Companion cannot classify but that lists fields is filled and judged
+    like any page with fields; if it has no Next button the run then stops for you to look, and does not call it Ready. A careers landing page that has only a keyword search and a location filter is still left to you,
+    and search boxes are never filled.
+  - A DataDome slider is a verification wall: the run stops there for you to solve it, and does not ask a model.
+- **Sixth live check of Apply, on a one-page application form.**
+  - **Update the extension, then reload your job tabs.** An extension update under a tab that was already open could leave the page reader broken, so a plain form read as
+    "Page not recognised". A page reader no longer depends on code only the newer version has, and when the page still cannot be read the card says **Reload the page**
+    (usually after an update) instead. Press Resume after you reload.
+  - **Think when stuck now works on a one-page form** (a form with Submit on the same page, no Next). It fills, answers, writes, chooses and retries fields there, and presses
+    nothing: no Next, no Submit, no popup button. It still stays out of a page that asks about submitting or shows a popup.
+  - A search box that finds nothing for your saved wording is tried by one word of it, then without apostrophes and plurals ("Masters" finds "Master's Degree"), and when it
+    stays empty the whole list is read and picked from, instead of the field being left to you. This fixed Degree and Veteran status lists.
+  - **Degree** lists that offer types ("Bachelor's Degree", "Master's Degree", "Master of Business Administration") take the plain option for your degree's level; the MBA
+    option only when your degree is an MBA or says Business Administration. A degree that is still in progress, or names no level, is left to you.
+  - **Are you located in … and/or willing to relocate?** is answered Yes when you saved that you would relocate, even when the model call times out. A condition such as
+    "on your own" makes it an assumed answer, and a question that says "not" before relocating is left to the model. The model call is retried once, on another provider only
+    when you assigned one to a model and saved its key in the app.
+  - **Location (City)** boxes are searched as "City, State" when the form also has a state field, and the Places-style option for your city in your state is picked. Two options
+    for one place, or no state saved, leave the box to you.
+  - An optional field that you have a saved answer for and that stayed empty is listed under **Check before you submit** as **Left for you**. It never stops the run, and goes
+    when a later fill of the page answers it.
+  - With the fill log on, a typed search keeps only how many options it showed, not their text, since they repeat what was typed.
+- **Fifth live check of Apply, on a Workday tenant with Think when stuck on.**
+  - A Workday step is told from the next one by its own heading (a job title shown above every step is skipped) and by its buttons and
+    number of fields. **Resume** after a stop on page errors now fills a page that only looks like the one it stopped on, instead of pressing
+    Next over empty fields. An "Errors Found" banner is no longer taken for a section name.
+  - A **Next** the site refused is checked again before Apply stops: if the site had already moved on, Apply fills the new step. A leftover
+    "upload a file" line for a box the new step no longer has no longer ends the run.
+  - A fill log row is kept when the thinking step could not read the page or met a wall, so a stuck page without a model call shows why. A retry
+    records its way and a choice its basis.
+  - **How did you hear about us?** now goes straight to the step that opens, searches and reads the list, so a category with a long list under
+    it no longer times out on a first guess. A choice that runs out of time is handed on instead of repeated, and a search gets time to settle on
+    top of its budget. The thinking step can ask for a field to be done step by step.
+  - If your answer is just **Job board** and the job names no board, Apply picks LinkedIn, or another job board the list offers, and lists it under
+    **Check before you submit** as assumed. A job you save on the employer's page right after a job board page remembers that board (about
+    20 minutes, name only), and a saved referral never counts as a board.
+  - An education question that lists levels ("Bachelor's degree or higher", "None of the above") is answered from your degree: the highest
+    level you have completed, never "None of the above". A degree still in progress does not count, and nothing is picked when none of the
+    levels is met.
+  - "What type of sponsorship will you need?" is answered "Not applicable" (or the option that says none) when every sponsorship answer you
+    saved is No, even when the question counts OPT as sponsorship. Without such an option, or with a Yes saved, it is left to you.
+  - When Apply stops after thinking, the card now says what it asks of you or what it tried and whether it took, in plain words. It no longer shows
+    the model's own note, which read like a plan.
 - **Fourth live check of Apply, from an employer's own career site to a Workday tenant.**
   - Apply on a job's own posting now opens the application link saved with the job, instead of staying on the
     posting. If you start Apply part-way through the form, it stays where you are.
