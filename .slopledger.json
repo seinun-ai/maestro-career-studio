@@ -117,27 +117,27 @@
   ],
   "system_md_baselines": {
     "cap_bytes": 125800,
-    "total_bytes": 125296,
-    "lines": 1025,
+    "total_bytes": 101177,
+    "lines": 923,
     "sections_bytes": {
-      "(preamble)": 5306,
+      "(preamble)": 5479,
       "1. What this is": 760,
       "2. Repo layout": 3314,
       "3. Architecture at a glance": 2385,
       "4. Core entities and their lifecycles": 2064,
-      "5. The application workflow, end to end (web)": 8018,
-      "6. Cross-cutting invariants (do not break these)": 35484,
-      "7. Agent surfaces": 23545,
+      "5. The application workflow, end to end (web)": 8024,
+      "6. Cross-cutting invariants (do not break these)": 31327,
+      "7. Agent surfaces": 4435,
       "8. Frontend conventions": 590,
-      "9. Dev & test environment": 10831,
-      "10. Design-decision record": 1632,
-      "11. Known deferred items (priority order)": 11954,
-      "12. Gotchas that have bitten before": 10150,
+      "9. Dev & test environment": 10841,
+      "10. Design-decision record": 8250,
+      "11. Known deferred items (priority order)": 4277,
+      "12. Gotchas that have bitten before": 10168,
       "13. Active migrations & deprecation ledger": 9263
     },
     "extraction_candidates": [
       "7. Agent surfaces"
     ],
-    "reason": "contract v5 upgrade 2026-10-15: cap converted from 1000 lines to bytes at the file's 124.15 B/line ratio (124,200 B) plus the 1,521 B of contract scaffolding the upgrade added (header, routing table, ledger rules), rounded up to 125,800 B so the upgrade is size-neutral against the old cap; section budget stays 25% of the cap; first byte-based baseline, extraction-candidate history starts here"
+    "reason": "grooming pass 2026-10-16: the v5 gate's one FAIL (\u00a76 over its 25% budget) and its grooming backlog closed without a cap move (cap stays 125,800 B); \u00a76 reflowed and its worked detail moved to docs/entities/others.md, filled-answers.md and job.md; \u00a77 extracted to docs/agent-surfaces.md with a summary and index left; every \u00a711 item given a do-when trigger, seven kept and 30 overflowed to docs/deferred.md with their numbers; \u00a710 rewritten as one line per owner decision with the superseded alternative; 100 long prose lines reflowed; inv-honesty, inv-tailor-vs-edit and inv-pdf-word-spacing pinned. Bytes before\u2192after per section: header 5,306\u21925,479; 1 760\u2192760; 2 3,314\u21923,314; 3 2,385\u21922,385; 4 2,064\u21922,064; 5 8,018\u21928,024; 6 35,484\u219231,327; 7 23,545\u21924,435; 8 590\u2192590; 9 10,831\u219210,841; 10 1,632\u21928,250; 11 11,954\u21924,277; 12 10,150\u219210,168; 13 9,263\u21929,263; total 125,296\u2192101,177. Extraction-candidate history is not extended because the warning no longer fires."
   }
 }

@@ -49,7 +49,7 @@
 > `.slopledger.json`; the whole file via `scripts/check_system_md.py`.
 >
 > contract: v5
-> Last revision: 2026-10-15 d7bf1ba0 (gate-written)
+> Last revision: 2026-10-16 133dec89 (gate-written)
 
 **Contents**
 - [§1 What this is](#1-what-this-is) — the product in one paragraph
@@ -631,7 +631,7 @@ with the failure mode that bought it. Code citing "§8" lands here.
   all three `LANGFUSE_*` settings. Tracing points at the user's host; `langfuse_host` defaults to empty.
 - Alembic revision ids are hand-written fake-hex and COLLIDE easily — generate with `uuid.uuid4().hex[:12]`.
 - **SYSTEM.md gate**: `python3 scripts/check_system_md.py` (CI `docs-gate` job) enforces this file's header contract and FAILS (not warns)
-  on: the size ceiling; a `(YYYY-MM-DD` date in §1–§10 or any reference-tier file; a shipped item left in §11; a section over its line
+  on: the size ceiling; a `(YYYY-MM-DD` date in §1–§10 or any reference-tier file; a shipped item left in §11; a section over its byte
   budget; and any §6 invariant whose enforcement pin in `.system_md_enforcement.json` has lost its file or symbol — the "docs promise what
   the code no longer does" class. Re-baselining requires `--update-baselines --reason "<text>"`, recorded in `.slopledger.json`. It anchors
   the repo root on the script's own parent directory, deliberately: a walk-up search finds the MAIN checkout's copy from a worktree and
