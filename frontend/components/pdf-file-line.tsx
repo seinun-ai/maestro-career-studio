@@ -10,8 +10,8 @@ import type { Application } from "@/lib/types";
 
 /**
  * The application's PDF as one line on `surface-container-low`: the file name, its pages, then Download PDF, Open
- * PDF in new tab and Show in Finder as icon buttons. Step 3 adds the resumes folder line and Update PDF; step 4
- * shows the line alone. Only for an application with a PDF.
+ * PDF in new tab and Show in Finder as icon buttons; step 3 adds the resumes folder line and Update PDF. Only for
+ * an application with a PDF (step 4 shows no PDF line: step 3 holds it).
  */
 export function PdfFileLine({
   app,

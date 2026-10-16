@@ -804,7 +804,7 @@ def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions()
     assert "Creating the PDF failed. Try again." in step
 
 
-def test_step_four_applies_with_the_pdf_at_hand_and_the_details_under_it():
+def test_step_four_applies_with_the_cover_letter_beside_it_and_the_details_under_it():
     src = _read("components/apply-step.tsx")
     flat = " ".join(src.split())
     # The job post opens in a new tab: its apply link, else its source link; without either, Mark applied is filled.
@@ -886,7 +886,7 @@ def test_step_three_change_rows_read_and_revert_one_by_one():
     assert "if (diff.data?.updated_at !== app.updated_at) {" in step
     assert 'toast.error("The changes were out of date and have been refreshed. Try again.");' in step
     assert "expected_updated_at: write.expectedUpdatedAt" in src
-    # A new draft's list loads behind the previous one, and nothing in that stand-in can be reverted or applied.
+    # A new draft's list loads behind the previous one, and nothing in that stand-in can be reverted.
     assert "placeholderData: keepPreviousData" in step
     assert "const diffSettled = !diff.isPlaceholderData && !diff.isFetching;" in step
     assert "disabled={busy || readOnly || !diffSettled}" in step

@@ -452,11 +452,9 @@ export function hygieneFlagKey(flag: HygieneFlag, position: number): string {
 function CoherenceFlags({
   coherence,
   onApply,
-  disabled = false,
 }: {
   coherence: CoherenceState;
   onApply: (flag: CoherenceFlag, key: string) => void;
-  disabled?: boolean;
 }) {
   return (
     <ul className="divide-y">
@@ -479,7 +477,7 @@ function CoherenceFlags({
             <Button
               size="sm"
               variant={applied ? "ghost" : "outline"}
-              disabled={applied || disabled}
+              disabled={applied}
               onClick={() => onApply(flag, key)}
             >
               {applied ? "Applied" : "Apply"}
@@ -550,12 +548,10 @@ function HygieneGroup({
   hygiene,
   appliedKeys,
   onApply,
-  disabled = false,
 }: {
   hygiene: HygieneFlag[];
   appliedKeys: Set<string>;
   onApply?: (flag: HygieneFlag, key: string) => void;
-  disabled?: boolean;
 }) {
   if (hygiene.length === 0) return null;
   return (
@@ -577,7 +573,7 @@ function HygieneGroup({
                 <Button
                   size="sm"
                   variant={applied ? "ghost" : "outline"}
-                  disabled={applied || disabled}
+                  disabled={applied}
                   onClick={() => onApply(flag, key)}
                 >
                   {applied ? "Applied" : "Apply"}
@@ -597,17 +593,14 @@ function HygieneGroup({
  * flags. Each group renders only when non-empty; if all three are empty a
  * single line replaces three empty headers.
  */
-export function CoherenceResults({
+function CoherenceResults({
   coherence,
   onApply,
   onApplyHygiene,
-  disabled = false,
 }: {
   coherence: CoherenceState;
   onApply?: (flag: CoherenceFlag, key: string) => void;
   onApplyHygiene?: (flag: HygieneFlag, key: string) => void;
-  /** Apply waits (a write is running, or the list is being refreshed). */
-  disabled?: boolean;
 }) {
   const gates = coherence.gates ?? [];
   const hygiene = coherence.hygiene ?? [];
@@ -626,14 +619,13 @@ export function CoherenceResults({
         hygiene={hygiene}
         appliedKeys={coherence.appliedKeys}
         onApply={onApplyHygiene}
-        disabled={disabled}
       />
       {coherence.flags.length > 0 && onApply && (
         <div className="space-y-1.5">
           <p className="text-muted-foreground text-title-small">
             Flow and consistency
           </p>
-          <CoherenceFlags coherence={coherence} onApply={onApply} disabled={disabled} />
+          <CoherenceFlags coherence={coherence} onApply={onApply} />
         </div>
       )}
     </div>

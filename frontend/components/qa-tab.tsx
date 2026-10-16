@@ -63,7 +63,7 @@ export type QAParts = { questions: ReactNode; coverLetter: ReactNode; history: R
 
 /**
  * The application's questions, its cover letter and their History, with all their state, handed to `arrange` to
- * place. It renders the whole of step 4 (Mark applied, the details, the PDF line sit inside `arrange`), so it must
+ * place. It renders the whole of step 4 (Mark applied, the details and the receipt sit inside `arrange`), so it must
  * never return early: a loading or error branch here would take the rest of the step with it.
  */
 export function QASections({

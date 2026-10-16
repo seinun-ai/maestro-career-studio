@@ -343,7 +343,6 @@ export default function JobDetailPage({
     proposalStatus && PROPOSAL_WAITS_ON_YOU.has(proposalStatus) ? "job" : currentStep(stage);
   if (chosenStep == null) setChosenStep(initialStep);
   const step: StepKey = chosenStep ?? initialStep;
-  const showDetails = detailsOpen;
   // Not behind an application: a form can be filled before one exists.
   const receipt = showSubmitted ? (
     <section
@@ -629,14 +628,14 @@ export default function JobDetailPage({
                 <Button
                   size="sm"
                   variant="link"
-                  aria-expanded={showDetails}
+                  aria-expanded={detailsOpen}
                   aria-controls={detailsId}
-                  onClick={() => setDetailsOpen(!showDetails)}
+                  onClick={() => setDetailsOpen(!detailsOpen)}
                 >
-                  {showDetails ? "Hide details" : "View details"}
+                  {detailsOpen ? "Hide details" : "View details"}
                 </Button>
               </div>
-              <div id={detailsId} hidden={!showDetails} className="space-y-4">
+              <div id={detailsId} hidden={!detailsOpen} className="space-y-4">
                 <JobKnockoutCard scan={data?.knockout} job={job} />
                 <JobExtractedFields
                   job={job}
@@ -699,7 +698,7 @@ export default function JobDetailPage({
           {visited.has("qa") ? (
             <div hidden={step !== "qa"} className="space-y-4">
               {application ? (
-                // Step 4: the questions, Mark applied and the application's details; the PDF line and the cover letter.
+                // Step 4: the questions, Mark applied and the application's details; the cover letter and the receipt.
                 <ApplyStep
                   app={application}
                   job={job}

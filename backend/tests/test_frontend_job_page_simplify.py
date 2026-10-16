@@ -55,8 +55,8 @@ def test_the_page_says_where_the_job_stands_on_step_four():
     # The line under the header is gone: its words are step 4's summary (lib/job-steps.ts, applySummary).
     assert 'data-testid="job-standing"' not in _JOB
     assert "standing: standingText," in _STEPS and 'if (state === "current") return i.standing;' in _read("lib/job-steps.ts")
-    # The old View PDF / What was submitted link row went: step 4's What was submitted card
-    # (components/apply-step.tsx) says the same, and the card's link opens and jumps to the receipt.
+    # The old View PDF / What was submitted link row went: step 3 holds the PDF, and step 4's What was submitted
+    # card (components/apply-step.tsx) carries the receipt, with a link that opens and jumps to it.
     assert "View PDF" not in _JOB and "standing.pdf" not in _JOB
     apply = _read("components/apply-step.tsx")
     assert "<SubmittedLatest" in apply

@@ -208,7 +208,6 @@ export function TailoredResumeStep({
   const ids = hunkIds(hunks);
   const writes = useDraftWrites({ app, jobId, diffData: diff.isPlaceholderData ? undefined : diff.data });
 
-
   /** The draft as the editor reads it; null when it does not parse (the toast names that, not a moved text). */
   const parsedDraft = (): ResumeData | null => {
     const parsed = resumeDataSchema.safeParse(app.customized_json);
