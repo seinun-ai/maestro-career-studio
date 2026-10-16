@@ -19,3 +19,14 @@ export function knockoutLine(status: string, notChecked: boolean): { kind: Knock
   if (status === "clear") return { kind: "clear", label: "No knock-outs" };
   return { kind: "unstated", label: "No requirements listed" };
 }
+
+/**
+ * The scan in a few words, for a summary line (the job page's step 1). The quiet statuses reuse the card's
+ * line; the blocking ones name what the banner shows. `status` null: no scan at all.
+ */
+export function knockoutWords(status: string | null, notChecked: boolean): string {
+  if (status == null) return "Requirements not checked";
+  const line = knockoutLine(status, notChecked);
+  if (line) return line.label;
+  return status === "conflict" ? "A knock-out" : "An answer missing from your profile";
+}
