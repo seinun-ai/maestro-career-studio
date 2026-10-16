@@ -1260,7 +1260,8 @@
   `test_frontend_jobs_honest_words.py` and `test_frontend_first_read_words.py`.
 - **Apply** (step 4, `components/apply-step.tsx`), inside one card, two columns (`flex-wrap`; the right one
   300 to 360px); its section titles are `<h2>`, as step 3's. Left: **Open the job post and apply** (the view's one
-  filled button, a new tab on the job's apply link, else its source link; without either, Mark applied is the
+  filled button, a new tab on the job's apply link, else its source link; the label drops "and apply" once the
+  application is applied or closed; without either, Mark applied is the
   filled one; Answer questions and Write cover letter are outline), then `QASections`' questions and History,
   placed by its required `arrange` prop (the state stays in `QASections`, which never returns early since it
   renders the whole step), then What was submitted in full once opened, then "Done applying?" with **Mark

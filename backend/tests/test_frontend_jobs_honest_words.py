@@ -796,7 +796,10 @@ def test_step_four_applies_with_the_pdf_at_hand_and_the_details_under_it():
     flat = " ".join(src.split())
     # The job post opens in a new tab: its apply link, else its source link; without either, Mark applied is filled.
     assert "const postHref = job.apply_url || job.source_url || null;" in src
-    assert "Open the job post and apply" in src and 'target="_blank" rel="noopener noreferrer"' in src
+    assert 'target="_blank" rel="noopener noreferrer"' in src
+    # "and apply" is a promise the page makes only while the application is a draft: once applied or closed the
+    # link still opens the job post, but the label stops asking the reader to apply again.
+    assert '{isDraft ? "Open the job post and apply" : "Open the job post"}' in src
     assert 'variant={postHref ? "tonal" : "default"}' in src
     # One filled button across the step: the step's own file and the questions and cover letter it lays out. The
     # cover letter editor's Save is the one other, and it exists only while a letter is open for editing.

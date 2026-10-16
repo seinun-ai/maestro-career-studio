@@ -16,8 +16,8 @@ import type { Application, Job } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * Step 4, Apply, inside one card. Left: Open the job post and apply, the application's questions and their
- * history, What was submitted in full once opened, Mark applied while the job is a draft, and the Application
+ * Step 4, Apply, inside one card. Left: Open the job post and apply (just Open the job post once applied or
+ * closed), the application's questions and their history, What was submitted in full once opened, Mark applied while the job is a draft, and the Application
  * details disclosure. Right: the PDF line, the Cover letter card and, once something was filled, What was
  * submitted's latest answers. No button hands the form to the Companion: the web app cannot tell whether
  * the Companion is paired.
@@ -110,7 +110,7 @@ export function ApplyStep({
                     render={<a href={postHref} target="_blank" rel="noopener noreferrer" />}
                   >
                     <ExternalLink className="size-4" />
-                    Open the job post and apply
+                    {isDraft ? "Open the job post and apply" : "Open the job post"}
                   </Button>
                 </div>
               ) : null}

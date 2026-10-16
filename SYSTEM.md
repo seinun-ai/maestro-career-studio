@@ -201,7 +201,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    A draft write removes the PDF (Create PDF again): the PDF card shows only the draft's own, with Download / Open / **Show in
    Finder** (§6 inv-resumes-folder-one-way), **Update PDF** and the rasterized page preview.
 8. **Apply** — step 4 (**Apply**, `components/apply-step.tsx`), one card: **Open the job post and apply** (apply link, else source
-   link), the questions and history (`QASections`), **Mark applied** while a draft (the StatusChip's PATCH) and an **Application
+   link; just **Open the job post** once applied or closed), the questions and history (`QASections`), **Mark applied** while a draft (the StatusChip's PATCH) and an **Application
    details** disclosure (applied date, tracking link, referral, notes, Delete application); beside them the PDF line, **Cover
    letter** (tone) and, once filled answers exist, **What was submitted**'s latest answers, linking the whole receipt
    (docs/entities/filled-answers.md). Step 4's line, while current, is **Where this stands** (`lib/job-standing.ts`). Cold
