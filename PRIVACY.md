@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective 2026-10-10 · Maestro Career Studio 0.9.0 and later**
+**Effective 2026-10-16 · Maestro Career Studio 0.11.0 and later**
 
 Maestro Career Studio ("Maestro CS") is free, open-source software that you run
 on your own computer. It is published by an individual, Ajey Dhayashanker
@@ -10,7 +10,10 @@ Loganathan, at
 **The short version:** there is no Maestro CS server, account, or sign-up, and
 the author never receives your data. Your career record lives in files on your
 machine. It leaves when you use an AI service, connect an AI assistant, or
-submit an application to an employer, going to the recipient you choose.
+fill in and send an application on an employer's site, going to the recipient
+you choose. With the Companion's **Apply**, the pages it moves past with Next,
+and the job-site login it signs in with, reach that site before you press
+Submit.
 A model running on your own computer processes it locally.
 
 ## What it stores, and where
@@ -107,7 +110,12 @@ use an AI feature, the app sends a request to the service you configured:
 What a request contains depends on the feature: resume text, your career
 history, job descriptions, your saved answers, what you type to the Assistant,
 and page images of scanned documents you upload. For form filling it includes
-the form's field labels and answer options. Your voluntary EEO answers are
+the form's field labels and answer options. A written question your saved
+answers cannot answer is drafted from your career history and the job. When an
+Apply run is stuck on a page and **Think when stuck** is on, a snapshot of that
+page goes to your Reasoning model: its questions, whether each is filled, the
+options, the buttons, the error lines and the site name of a tab the
+application opened, with no answer in it. Your voluntary EEO answers are
 included only while you have turned on the standing EEO consent. Each request
 carries your API key.
 
@@ -173,6 +181,27 @@ no sites, labels or answers. Withdrawing your EEO consent does not remove
 traces already kept; Clear data does. Extension preferences (not career data)
 use Chrome's own settings sync.
 
+With the fill log on, two more things are kept in your local database: each
+round of **Think when stuck**, with the page snapshot the model saw, inside
+the run traces, and a list of fields the fill could not work (site names and
+field shapes, never answers). **Clear data** deletes both.
+
+Some things are kept whether or not the fill log is on:
+
+- **In this browser only:** which clicks and keys worked on each kind of form
+  control (at most 200 entries, each dropped after 60 days unused), noted from
+  the Companion's own fills and from the gestures you used to fix a field while
+  a run waited, never what you typed. **Forget learned widget moves**, in the
+  panel's Fill step, clears it. The panel also remembers which job each tab is
+  on, in session storage, until you close the tab or the browser.
+- **In your backend's memory:** the name of the last job board page you opened
+  (never its address), for about 20 minutes. A job you save from an employer's
+  page in that time keeps that board's name, for "How did you hear about us?".
+- **In your Maestro data:** the answers you type into a page while an Apply
+  run waits for you, saved to your profile when you press Resume (with an
+  Undo), and a `companion` consent event when the panel marks a job applied
+  after it sees the confirmation page of your Submit.
+
 ### Connecting an AI assistant (MCP)
 
 The MCP server runs inside your local Maestro backend, reached by default at
@@ -200,6 +229,10 @@ and its note confirming submission are labelled `auto` in the consent ledger.
 The agent checks review eligibility; Maestro records the result and enforces
 the approval gates. Jobs with anything to check go to Needs you and the agent
 asks you. Order, batching and timing stay between you and your agent.
+
+The same switch turns on the Companion's **Apply**. Apply fills each page,
+presses Next, and on known application sites signs in or makes an account
+with your saved job-site login. It never presses Submit.
 
 While full automation is On, MCP `get_job_site_login(proposal_id)` can return
 your saved `{email, password}` for a Queued or approved job whose company is
