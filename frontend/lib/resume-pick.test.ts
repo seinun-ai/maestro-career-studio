@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { asIsOverDraftConfirm, defaultResumePick, jobResumeState, switchConfirm } from "./resume-pick.ts";
+import { asIsOverDraftConfirm, defaultResumePick, finishedAnalysis, jobResumeState, switchConfirm } from "./resume-pick.ts";
 
 const open = (base: string, at: string) => ({ base_resume: base, status: "open", created_at: at });
 const app = (over: Partial<{ id: string; base_resume: string; status: string | null; customized_json: unknown }> = {}) => ({
@@ -103,4 +103,30 @@ test("once applied, the gap page's Tailor on the same resume asks; starting or o
   });
   assert.equal(asIsOverDraftConfirm(true).title, "Replace the existing tailored resume?");
   assert.equal(asIsOverDraftConfirm(true).confirmLabel, "Replace resume");
+});
+
+const done = (id: string, base: string, at: string, over: Record<string, unknown> = {}) => ({
+  id, base_resume: base, status: "tailored", created_at: at, application_id: "app-1", ...over,
+});
+
+test("the job's tailored resume shows the analysis that made it, not a fresh Analyze gaps", () => {
+  const sessions = [
+    done("old", "ds", "2026-10-01"),
+    done("new", "ds", "2026-10-05"),
+    // Closed or replaced analyses made no draft; a newer one never hides the one that did.
+    { ...done("closed", "ds", "2026-10-09"), status: "abandoned", application_id: null },
+    { ...done("replaced", "ds", "2026-10-08"), status: "superseded", application_id: null },
+  ];
+  assert.equal(finishedAnalysis({ sessions, application: app(), picked: "ds" })?.id, "new");
+});
+
+test("no finished analysis for another resume, no draft, or an analysis of another application", () => {
+  const sessions = [done("s", "ds", "2026-10-05")];
+  assert.equal(finishedAnalysis({ sessions, application: app(), picked: "ml" }), null);
+  assert.equal(finishedAnalysis({ sessions, application: null, picked: "ds" }), null);
+  assert.equal(finishedAnalysis({ sessions, application: app({ customized_json: null }), picked: "ds" }), null);
+  assert.equal(finishedAnalysis({ sessions, application: app({ id: "app-2" }), picked: "ds" }), null);
+  // The application took another resume since: the analysis tailored "ds", the job's resume is "ml".
+  assert.equal(finishedAnalysis({ sessions, application: app({ base_resume: "ml" }), picked: "ml" }), null);
+  assert.equal(finishedAnalysis({ sessions: [], application: app(), picked: "ds" }), null);
 });

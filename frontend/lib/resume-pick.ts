@@ -44,6 +44,27 @@ export function defaultResumePick({
   return best != null && shown.has(best) ? best : (available[0] ?? null);
 }
 
+/**
+ * The finished gap analysis behind the job's tailored resume, when `picked` is that resume: the newest `tailored`
+ * analysis of the application (its `application_id`) for `picked`. Null with no application or draft, another resume
+ * picked, or none that tailored. Step 2 shows its counts and the way to the result there, where it offered a fresh
+ * Analyze gaps; an open analysis still comes first (Continue gap analysis).
+ */
+export function finishedAnalysis<S extends PickSession>({
+  sessions,
+  application,
+  picked,
+}: {
+  sessions: readonly S[];
+  application: Pick<PickApplication, "id" | "base_resume" | "customized_json"> | null;
+  picked: string;
+}): S | null {
+  if (!application?.customized_json || application.base_resume !== picked) return null;
+  return sessions
+    .filter((s) => s.status === "tailored" && s.application_id === application.id && s.base_resume === picked)
+    .reduce<S | null>((newest, s) => (!newest || s.created_at > newest.created_at ? s : newest), null);
+}
+
 /** What the job's resume is: applied with, a tailored draft, the base used as is, or nothing to replace. */
 export type JobResumeState = "applied" | "tailored" | "as_is" | null;
 

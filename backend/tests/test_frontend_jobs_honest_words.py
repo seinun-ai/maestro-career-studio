@@ -332,12 +332,15 @@ def test_step_two_has_one_filled_button():
     cont_at = body.rfind("<Button", 0, body.index("Continue gap analysis"))
     cont = open_tag(body[cont_at:], "Button")
     assert "Continue gap analysis" in cont and "variant=" not in cont
-    # The two are the branches of one ternary on the picked resume's open gap analysis: never both.
-    assert body.index("{openSession && !creating ? (") < cont_at < body.index(") : (") < analyze_at
+    # The branches of one ternary on the picked resume's gap analysis (open, finished, none): one filled button each.
+    view_at = body.rfind("<Button", 0, body.index("View tailored resume"))
+    assert body.index("{openSession && !creating ? (") < cont_at < body.index(") : finished ? (") < view_at
+    assert view_at < body.index(") : (") < analyze_at
+    assert "variant=" not in open_tag(body[view_at:], "Button")
     assert "onClick={() => void switcher.analyze(pickedSlug)}" in analyze
     buttons = _button_tags(body)
     unnamed = [b for b in buttons if "variant=" not in b]
-    assert len(unnamed) == 2, unnamed  # Continue gap analysis, Analyze gaps
+    assert len(unnamed) == 3, unnamed  # Continue gap analysis, View tailored resume, Analyze gaps
     assert '"Analyze gaps"' in body and "Find gaps" not in step
     as_is = body[: body.index("Use resume as is")]
     assert 'variant="outline"' in as_is
@@ -362,6 +365,31 @@ def test_step_two_has_one_filled_button():
     assert '{run.isPending ? "Updating scores…" : "Update scores"}' in menu
     assert "{jobCountry && skipped.length > 0 && (" in menu
     assert "returnFocus: () => moreRef.current," in step  # the confirm returns to ⋯, not the gone item
+
+
+def test_step_two_shows_the_gap_analysis_that_made_the_job_s_tailored_resume():
+    """A job tailored from a finished gap analysis ("7 gaps answered, 1 skipped" on the step's line) offered a fresh
+    Analyze gaps / Use resume as is card, as if no analysis had run. With no open one, the picked resume's finished
+    analysis (lib/resume-pick.ts `finishedAnalysis`) shows its counts, View tailored resume (step 3, the filled button)
+    and Analyze gaps again."""
+    step = _read("components/resume-step.tsx")
+    assert 'import { defaultResumePick, finishedAnalysis } from "@/lib/resume-pick";' in step
+    assert ("const finished = openSession ? null : finishedAnalysis({ sessions: sessions.data ?? [], application, "
+            "picked: pickedSlug });") in squash(step)
+    done = _slice(step, ") : finished ? (", ") : (")
+    # The counts are the gap page's own (lib/gap-counts), worded as the step's line words them.
+    assert "gapCounts(" in step[step.index("const finishedCounts"):step.index(") : finished ? (")]
+    assert '{`${finishedCounts.answered} ${finishedCounts.answered === 1 ? "gap" : "gaps"} answered, ' in done
+    assert "${finishedCounts.skipped} skipped. Step 3 has the tailored resume.`}" in done
+    assert '<p className="text-title-small">Gap analysis done</p>' in done
+    view = open_tag(done[done.rfind("<Button", 0, done.index("View tailored resume")):], "Button")
+    assert "onClick={onOpenTailored}" in view and "variant=" not in view
+    again = open_tag(done[done.rfind("<Button", 0, done.index("Analyze gaps again")):], "Button")
+    assert 'variant="outline"' in again and "onClick={() => void switcher.analyze(pickedSlug)}" in again
+    assert "pending={creating}" in again and "focusableWhenDisabled" in again and "disabled={busy || readOnly}" in again
+    # The job page opens step 3 from it, as from Use resume as is.
+    page = squash(_read(_JOB_PAGE))
+    assert "onOpenTailored={() => { focusOpenedStep.current = true; setStep(\"output\"); }}" in page
 
 
 def test_a_resume_pick_is_a_preview_and_the_writes_confirm():

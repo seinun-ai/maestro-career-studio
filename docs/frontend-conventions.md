@@ -1212,9 +1212,11 @@
   line on `surface-container-low`: the score out of 100 (counting from the last pick), Skills covered m of n,
   the Weakest subscore (none when all are equal) and a **Score breakdown** popover (the subscores, the skills
   meter, the Target pills, the dates note, that resume's own warnings; warnings every resume shares, and the
-  low-coverage banner, sit once above the card). Then the picked resume's state: no open gap analysis, a dashed
-  panel with **Analyze gaps** (filled) and **Use resume as is**; an open one, its answered count, **Continue gap
-  analysis** (filled) and, at 0 answered, Use resume as is. One filled button in the view; one `busy` flag
+  low-coverage banner, sit once above the card). Then the picked resume's state: an open gap analysis, its answered
+  count, **Continue gap analysis** (filled) and, at 0 answered, Use resume as is; else the finished analysis that
+  tailored the job's resume from it (`finishedAnalysis`), "Gap analysis done" with its answered and skipped counts,
+  **View tailored resume** (filled, opens step 3) and **Analyze gaps again**; else a dashed panel with **Analyze
+  gaps** (filled) and **Use resume as is**. One filled button in the view; one `busy` flag
   covers every write in flight, and a chip stays focusable while it is set. A job has one application: every
   action that writes with another resume than the application's (Analyze gaps, Continue, Restart, Use resume as
   is) asks first through `hooks/use-resume-switch.ts`, which the gap page shares, in words for what the job

@@ -205,8 +205,9 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    unknown), scored at save; its auto-run on first visit is the fallback for a job saved before any base resume existed or whose
    save-time scoring failed. The bases are toggle chips (top 3 by score, then "N more"); a pick is a preview, never a write. The
    default (`lib/resume-pick.ts`: the newest open session's base, else the application's, else the best match) gets a one-line
-   summary with a Score breakdown popover, then **Analyze gaps** (creates a session) or **Continue gap analysis**, the view's one
-   filled button, and **Use resume as is**; Update scores, Restart gap analysis, Score them anyway, Mark applied without tailoring
+   summary with a Score breakdown popover, then **Analyze gaps** (creates a session), **Continue gap analysis** or, for
+   the resume a finished analysis tailored, its counts and **View tailored resume**, the view's one filled button, and
+   **Use resume as is**; Update scores, Restart gap analysis, Score them anyway, Mark applied without tailoring
    and Import resumes and documents sit in ⋯. One application per job: an action on another base asks first, worded for what the
    job holds (`hooks/use-resume-switch.ts`). Shared warnings show once above the chips; with no base resume the step offers the import.
 5. **Gap analysis** — still step 2, on its own page `/jobs/[id]/tailor/[sessionId]` under the same stepper and resume chips (a chip

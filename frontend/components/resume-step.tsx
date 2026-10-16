@@ -35,7 +35,7 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { countryName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
-import { defaultResumePick } from "@/lib/resume-pick";
+import { defaultResumePick, finishedAnalysis } from "@/lib/resume-pick";
 import {
   ApiError,
   apiFetch,
@@ -74,6 +74,7 @@ export function ResumeStep({
   application,
   readOnly = false,
   onUsedAsIs,
+  onOpenTailored,
 }: {
   jobId: string;
   /** The job's application, or null with none: its status hides Mark applied, its draft guards a switch. */
@@ -81,6 +82,8 @@ export function ResumeStep({
   readOnly?: boolean;
   /** Use resume as is made the job's resume: the page opens step 3. */
   onUsedAsIs?: () => void;
+  /** View tailored resume, on the finished gap analysis behind the job's resume: the page opens step 3. */
+  onOpenTailored?: () => void;
 }) {
   const applicationStatus = application?.status ?? null;
   const applied = applicationStatus != null && applicationStatus !== "draft";
@@ -430,6 +433,11 @@ export function ResumeStep({
           openSession.resolutions_json,
         )
       : { answered: 0, total: 0 };
+    // The analysis that tailored the job's resume from this one, once none is open: its counts, not a fresh Analyze gaps.
+    const finished = openSession ? null : finishedAnalysis({ sessions: sessions.data ?? [], application, picked: pickedSlug });
+    const finishedCounts = finished
+      ? gapCounts(finished.gaps_json.categories.flatMap((c) => c.gaps.map((g) => g.gap_id)), finished.resolutions_json)
+      : { answered: 0, skipped: 0 };
     // The job's resume came from this one (tailored, or used as is): "no gap analysis yet" would be untrue.
     const pickedIsTheJobs = Boolean(application?.customized_json) && application?.base_resume === pickedSlug;
 
@@ -580,6 +588,29 @@ export function ResumeStep({
                       </Link>
                     }
                   />
+                </div>
+              </div>
+            ) : finished ? (
+              <div className="flex flex-wrap items-center gap-3 rounded-corner-md border p-4">
+                <div className="space-y-0.5">
+                  <p className="text-title-small">Gap analysis done</p>
+                  <p className="text-muted-foreground text-body-medium">
+                    {`${finishedCounts.answered} ${finishedCounts.answered === 1 ? "gap" : "gaps"} answered, ` +
+                      `${finishedCounts.skipped} skipped. Step 3 has the tailored resume.`}
+                  </p>
+                </div>
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {/* A new gap analysis of the same resume: the draft stays until it is tailored again. */}
+                  <Button
+                    variant="outline"
+                    onClick={() => void switcher.analyze(pickedSlug)}
+                    focusableWhenDisabled
+                    pending={creating}
+                    disabled={busy || readOnly}
+                  >
+                    Analyze gaps again
+                  </Button>
+                  <Button onClick={onOpenTailored}>View tailored resume</Button>
                 </div>
               </div>
             ) : (

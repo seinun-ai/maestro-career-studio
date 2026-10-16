@@ -658,6 +658,10 @@ export default function JobDetailPage({
                   focusOpenedStep.current = true;
                   setStep("output");
                 }}
+                onOpenTailored={() => {
+                  focusOpenedStep.current = true;
+                  setStep("output");
+                }}
               />
               {/* The before/after compare lives on step 3, next to the artifact it describes: link to it. */}
               {application?.customized_json ? (
