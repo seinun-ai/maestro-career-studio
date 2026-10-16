@@ -760,6 +760,8 @@ each keeping its number and carrying its trigger; code citing "§11 item N" for 
 invariant has done its job: promote it (into Cross-cutting invariants or `.system_md_enforcement.json`) and delete
 the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 
+- **An Unreleased changelog bullet outlived its feature** (2026-10-16): ef3cfe15 removed the Job step's "Show N more" toggle, the bullet
+  stayed, and the release audit and store plan repeated it → a commit that reverses an Unreleased feature edits its CHANGELOG bullet too.
 - **A hidden tab stalled saves** (2026-10-13): TanStack v5 scoped mutations queue as paused and continue only while the tab
   is focused → serialize saves with a per-key promise chain (`lib/in-order.ts`), never a mutation scope.
 - **An update served the old version's pages** (2026-10-12, 0.10.0): Next writes `.next/server/route-cache` inside the
