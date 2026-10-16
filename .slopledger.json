@@ -116,23 +116,28 @@
     }
   ],
   "system_md_baselines": {
-    "total": 1000,
-    "sections": {
-      "(preamble)": 59,
-      "1. What this is": 9,
-      "2. Repo layout": 36,
-      "3. Architecture at a glance": 19,
-      "4. Core entities and their lifecycles": 15,
-      "5. The application workflow, end to end (web)": 81,
-      "6. Cross-cutting invariants (do not break these)": 208,
-      "7. Agent surfaces": 207,
-      "8. Frontend conventions": 8,
-      "9. Dev & test environment": 107,
-      "10. Design-decision record": 22,
-      "11. Known deferred items (priority order)": 87,
-      "12. Gotchas that have bitten before": 69,
-      "13. Active migrations & deprecation ledger": 73
+    "cap_bytes": 125800,
+    "total_bytes": 125296,
+    "lines": 1025,
+    "sections_bytes": {
+      "(preamble)": 5306,
+      "1. What this is": 760,
+      "2. Repo layout": 3314,
+      "3. Architecture at a glance": 2385,
+      "4. Core entities and their lifecycles": 2064,
+      "5. The application workflow, end to end (web)": 8018,
+      "6. Cross-cutting invariants (do not break these)": 35484,
+      "7. Agent surfaces": 23545,
+      "8. Frontend conventions": 590,
+      "9. Dev & test environment": 10831,
+      "10. Design-decision record": 1632,
+      "11. Known deferred items (priority order)": 11954,
+      "12. Gotchas that have bitten before": 10150,
+      "13. Active migrations & deprecation ledger": 9263
     },
-    "reason": "\u00a712 grew by three dated gotchas from the 2026-09-01 fix batch (LinkedIn posting identity, starter template gate, upload accept lists); older entries reflowed, nothing dropped; \u00a77's sender-model paragraph extracted to extension/README.md"
+    "extraction_candidates": [
+      "7. Agent surfaces"
+    ],
+    "reason": "contract v5 upgrade 2026-10-15: cap converted from 1000 lines to bytes at the file's 124.15 B/line ratio (124,200 B) plus the 1,521 B of contract scaffolding the upgrade added (header, routing table, ledger rules), rounded up to 125,800 B so the upgrade is size-neutral against the old cap; section budget stays 25% of the cap; first byte-based baseline, extraction-candidate history starts here"
   }
 }

@@ -48,7 +48,7 @@
 > `.slopledger.json`; the whole file via `scripts/check_system_md.py`.
 >
 > contract: v5
-> Last revision: (gate-written; run `python3 scripts/check_system_md.py --stamp`)
+> Last revision: 2026-10-15 d7bf1ba0 (gate-written)
 
 **Contents**
 - [§1 What this is](#1-what-this-is) — the product in one paragraph
