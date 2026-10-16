@@ -608,6 +608,13 @@ def test_audit_one_sentence_docstring_fixes():
         assert "SUPERSEDE" in doc.upper()
         assert "list_tailoring_sessions" in doc
 
+    # A job has one application: tailoring from another base replaces its draft and PDF, and says so.
+    for name, fn in (("tailor_session", srv.tailor_session), ("quick_tailor", srv.quick_tailor)):
+        doc = " ".join((fn.__doc__ or "").split())
+        assert "the job's ONE application" in doc, name
+        assert "REPLACE" in doc and ("removes its PDF" in doc or "PDF removed" in doc), name
+        assert "version history keeps them" in doc, name
+
     base = srv.create_base_resume_from_kb.__doc__ or ""
     assert '"other"' in base or "role_category \"other\"" in base
     assert "display_name" in base

@@ -1231,9 +1231,9 @@
   anything, and a save with no edit since the last one sends nothing (it would 409 against the tailor). Tailor,
   Quick tailor and Use resume as is need the job's detail, as the chips do (their confirms read its application:
   without it a tailored draft would be replaced unasked), and Use resume as is the gap analyses too (the job's
-  resume state); a failed detail shows a Try again block above the footer saying what waits for it. A
-  superseded or closed analysis's page offers **Go to Resume and gaps**. Pinned by `test_frontend_jobs_honest_words.py`
-  and `test_frontend_gap_autosave.py`.
+  resume state); a failed detail or gap analyses list shows one Try again block above the footer saying
+  what waits for it. A superseded or closed analysis's page offers **Go to Resume and gaps**. Pinned by
+  `test_frontend_jobs_honest_words.py` and `test_frontend_gap_autosave.py`.
 - **Tailored resume** (step 3, `components/tailored-resume-step.tsx`), inside one card: a score strip on
   `surface-container-low` (`AtsComparePanel compact`: before → after, the `DeltaChip` and the subscores that moved,
   shown as "Keywords +21.3" and read as "Keywords up 21.3 points", `lib/ats-words` `subscoreMoves`), a **Score
@@ -1263,8 +1263,8 @@
 - **Apply** (step 4, `components/apply-step.tsx`), inside one card, two columns (`flex-wrap`; the right one
   300 to 360px); its section titles are `<h2>`, as step 3's. Left: **Open the job post and apply** (the view's one
   filled button, a new tab on the job's apply link, else its source link; the label drops "and apply" once the
-  application is applied or closed; without either, Mark applied is the
-  filled one; Answer questions and Write cover letter are outline), then `QASections`' questions and History,
+  application is applied or closed; without either link, Mark applied is the filled one; Answer questions and
+  Write cover letter are outline), then `QASections`' questions and History,
   placed by its required `arrange` prop (the state stays in `QASections`, which never returns early since it
   renders the whole step), then What was submitted in full once opened, then "Done applying?" with **Mark
   applied** (tonal, Check, "Applying…", shown only while the status is Draft; its line says it sets today as the

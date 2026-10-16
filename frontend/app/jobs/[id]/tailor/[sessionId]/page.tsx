@@ -803,6 +803,9 @@ export default function TailorSessionPage({
   const sessionBase = session.data.base_resume;
   const sessionBaseArchived = allResumes?.find((r) => r.slug === sessionBase)?.archived_at != null;
   // A switch needs the job's application (its confirm) and the gap analyses (which one to open) first.
+  // A failed job detail or gap analyses list locks what reads it; the block above the footer says which.
+  const detailFailed = isLoadFailure(jobDetail);
+  const sessionsFailed = isLoadFailure(sessions);
   // The steps do nothing while a write runs (`actionRunning`): they say so, as the chips do.
   const stepsBusy = tailorBusy || useAsIs.isPending || startOver.isPending || switcher.creating != null;
   const switchBusy =
@@ -960,15 +963,23 @@ export default function TailorSessionPage({
       </div>
 
       {/* The confirms read the job's application: without it Use resume as is would replace a tailored draft, and
-          Tailor an applied resume, unasked. So the actions and the chips wait for the detail; a failed one says so
-          here, with Try again as the way out. */}
-      {isLoadFailure(jobDetail) ? (
+          Tailor an applied resume, unasked. So the actions and the chips wait for the detail, and the chips and Use
+          resume as is for the gap analyses too (the job's resume state); a failed load says what waits, with one
+          Try again for both. */}
+      {detailFailed || sessionsFailed ? (
         <LoadErrorState
           className="py-4"
-          title="Couldn't load this job, so Tailor, Use resume as is and the resume chips wait for it."
-          detail={loadErrorDetail(jobDetail.error, "job")}
-          retrying={jobDetail.isFetching}
-          onRetry={() => void jobDetail.refetch()}
+          title={
+            detailFailed
+              ? "Couldn't load this job, so Tailor, Use resume as is and the resume chips wait for it."
+              : "Couldn't load this job's gap analyses, so Use resume as is and the resume chips wait for them."
+          }
+          detail={loadErrorDetail(detailFailed ? jobDetail.error : sessions.error, "job")}
+          retrying={jobDetail.isFetching || sessions.isFetching}
+          onRetry={() => {
+            void jobDetail.refetch();
+            void sessions.refetch();
+          }}
         />
       ) : null}
 

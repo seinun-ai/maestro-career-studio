@@ -269,15 +269,16 @@ asking permission of itself.
   false anyway on a late SPA render, so requiring a form would refuse exactly
   the flow the picker exists for.
 - **The base resumes are RANKED by this job's own match scores**, best first, each
-  row showing its number — the same per-base scores the Score and tailor tab is
-  built on, so the choice (and the number Quick tailor reports afterwards) is not
+  row showing its number — the same per-base scores the job page's Resume and
+  gaps step is built on, so the choice (and the number Quick tailor reports afterwards) is not
   blind. **Saving the job scores the bases in the same press** (`addJob` then
   `scoreAllBases`, one `busy` span), and a saved job that no base has a score for
   is scored when its Job step opens, quietly (no red note, and never over a
   note already there) and once per panel and job (`autoScored`), so a failure
   never loops and a tab round trip never re-asks; Refresh asks again. The cost is the deterministic ATS engine, one local pass
-  per base resume and no model call; the web app's Score and tailor tab spends
-  it the same way on a first visit. Scores are otherwise READ (cheap, computes
+  per base resume and no model call; the web app spends it the same way when a
+  job is saved (every base is scored at save; its Resume and gaps step runs it on
+  a first visit only for a job no base has a score for). Scores are otherwise READ (cheap, computes
   nothing). The base list is also where the panel says, once, what a match score
   is: the web app's `ATS_SCORE_LEAD` sentence, a fixed-rules comparison with the
   job description. A resume with no score says "not scored" rather than zero

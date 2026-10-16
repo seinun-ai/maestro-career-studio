@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
 # PATCH with an expected_updated_at the row has moved past: a plain sentence, shown as is.
-STALE_APPLICATION_EDIT = "The resume changed since you loaded it. Reload and try again."
+STALE_APPLICATION_EDIT = "The resume changed since you loaded it. Try again."
 
 
 def _detail(

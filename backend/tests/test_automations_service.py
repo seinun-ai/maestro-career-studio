@@ -155,6 +155,15 @@ def test_apply_execution_technique_names_the_base_country_in_the_question():
     assert _BASE_COUNTRY_LINE in (skills / "agent-apply-execution" / "SKILL.md").read_text()
 
 
+def test_apply_execution_never_tailors_over_a_draft_on_another_base():
+    """A job has one application: tailoring with another base replaces its draft, so the apply technique
+    checks first, as tailor-run's step 3 does, and leaves that job for the user."""
+    skills = Path(__file__).resolve().parent.parent / "app" / "automations" / "skills"
+    text = " ".join((skills / "agent-apply-execution" / "SKILL.md").read_text().split())
+    assert "Before any tailor, check `get_job(job_id)`" in text
+    assert "`customized_json` on another base" in text and "leave the job for the user" in text
+
+
 def _card_text(name, **meta):
     fields = {"title": "T", "summary": "S", "kind": "scheduled", "needs": "[maestro]", **meta}
     lines = "".join(f"  {k}: {v}\n" for k, v in fields.items() if v is not None)

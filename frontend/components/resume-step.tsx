@@ -209,8 +209,8 @@ export function ResumeStep({
 
   // "Mark applied without tailoring": the user override for skipping tailoring
   // entirely (applied off-platform with the untouched base). One action:
-  // from-base application (reuse policy updates the job's newest app for that
-  // base — replaces any tailored draft, version history keeps it) + status
+  // from-base application (a job has one: its newest is updated and takes this
+  // base, replacing any tailored draft; version history keeps it) + status
   // applied, which also auto-closes any open proposal on the job server-side.
   const appliedAsIs = useMutation({
     mutationFn: async (baseResume: string) => {

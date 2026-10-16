@@ -321,7 +321,8 @@ def _persist_job(
 
 def _scorable_now(db: Session, job: Job) -> bool:
     """The two expected no-score cases, checked before the engine runs: no base resume yet
-    (Score and tailor scores on first visit once there is one) and no extracted skills."""
+    (the job page's Resume and gaps step scores on its first visit once there is one) and no
+    extracted skills."""
     if not base_eligibility.candidates(db, job).slugs:
         return False
     if not (job.extracted_json or {}).get("skills"):
@@ -398,14 +399,6 @@ def _with_newest_proposal(db: Session, job: Job) -> Job:
     return job
 
 
-def _stamp_stage(job: Job, st: stage.Stage) -> None:
-    """Transient attrs read by JobSummary (same pattern as best_ats_score)."""
-    job.stage = st.rung
-    job.open_session_id = st.open_session_id
-    job.gaps_done = st.gaps_done
-    job.gaps_total = st.gaps_total
-
-
 @router.get("", response_model=list[JobSummary])
 def list_jobs(
     db: Annotated[Session, Depends(get_db)],
@@ -453,7 +446,7 @@ def list_jobs(
         for job in rows:
             _stamp_newest_proposal(job, newest.get(job.id))
             job.best_ats_score = best.get(job.id)
-            _stamp_stage(job, stages[job.id])
+            stage.stamp(job, stages[job.id])
     sync_ownership.stamp(db, rows)
     return rows
 
@@ -581,7 +574,7 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
     application = application_writes.newest_for_job(db, job.id)
     # The job's rung is its newest application's, so both summaries carry the same one.
     st = stage.for_job_rows(db, [job])[job.id]
-    _stamp_stage(job, st)
+    stage.stamp(job, st)
     summary = None
     if application is not None:
         # Same flat job-field join as list_applications: ApplicationSummary

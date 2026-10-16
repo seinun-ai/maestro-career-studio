@@ -4,6 +4,7 @@ Read-only; computed per request from rows that already exist (SYSTEM.md §5 step
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session, load_only
 
 from app.models.application import NEWEST_FIRST, Application
 from app.models.job import Job
+from app.models.resume_version import ResumeVersion
 from app.models.tailoring_session import TailoringSession
 from app.schemas.stage import RUNGS, Rung  # noqa: F401  (RUNGS re-exported for callers)
 from app.services import ats_score
@@ -66,21 +68,34 @@ def _before_draft(
     return Stage("scored" if job_id in scored else "saved")
 
 
-def for_jobs(db: Session, jobs: list[Job]) -> dict[UUID, Stage]:
-    """Jobs with no application: the saved-jobs list; never returns tailored/pdf_ready/applied/closed.
-    Two queries for the page (open sessions, best base scores); none for an empty list."""
-    ids = [j.id for j in jobs]
-    if not ids:
-        return {}
-    open_by_job = _open_sessions(db, ids)
-    scored = set(ats_score.best_base_scores(db, ids))
-    return {j.id: _before_draft(j.id, open_by_job, scored) for j in jobs}
+def _draft_times(db: Session, apps: list[Application]) -> dict[UUID, datetime]:
+    """When each application's draft last changed: its newest ResumeVersion (every draft write records
+    one), else its own `created_at`. Not `updated_at`, which moves on any column write (notes, referral,
+    template, a render). One grouped query for the page."""
+    by_key = {str(a.id): a for a in apps}
+    newest = dict(
+        db.execute(
+            select(ResumeVersion.resume_key, func.max(ResumeVersion.created_at))
+            .where(
+                ResumeVersion.resume_kind == "application",
+                ResumeVersion.resume_key.in_(list(by_key)),
+            )
+            .group_by(ResumeVersion.resume_key)
+        ).all()
+    )
+    return {a.id: newest.get(key) or a.created_at for key, a in by_key.items()}
 
 
-def _rate(app: Application, open_by_job: dict[UUID, TailoringSession], scored: set[UUID]) -> Stage:
-    """One application's rung; falls back to the job's session or score when there is no draft."""
+def _rate(
+    app: Application,
+    open_by_job: dict[UUID, TailoringSession],
+    scored: set[UUID],
+    draft_at: datetime,
+) -> Stage:
+    """One application's rung; falls back to the job's session or score when there is no draft.
+    `draft_at` is when its draft last changed (`_draft_times`)."""
     newer = open_by_job.get(app.job_id)
-    if newer is not None and newer.created_at <= app.updated_at:
+    if newer is not None and newer.created_at <= draft_at:
         newer = None  # the session is older than the draft: the draft is the later work
     if (app.status or "") in _CLOSED_STATUSES:
         return Stage("closed")
@@ -98,14 +113,15 @@ def _rate(app: Application, open_by_job: dict[UUID, TailoringSession], scored: s
 
 
 def for_applications(db: Session, apps: list[Application]) -> dict[UUID, Stage]:
-    """Application rows, keyed by application id. Two queries for the page (open sessions, best
-    base scores); none for an empty list."""
+    """Application rows, keyed by application id. Three queries for the page (open sessions, best
+    base scores, draft times); none for an empty list."""
     if not apps:
         return {}
     job_ids = list({a.job_id for a in apps})
     open_by_job = _open_sessions(db, job_ids)
     scored = set(ats_score.best_base_scores(db, job_ids))
-    return {a.id: _rate(a, open_by_job, scored) for a in apps}
+    draft_at = _draft_times(db, apps)
+    return {a.id: _rate(a, open_by_job, scored, draft_at[a.id]) for a in apps}
 
 
 # What _rate reads, plus the ordering column. Everything else on the row stays unloaded.
@@ -115,7 +131,6 @@ _RATING_COLUMNS = (
     Application.status,
     Application.applied_at,
     Application.created_at,
-    Application.updated_at,
     Application.pdf_path,
     Application.customized_json,  # read for truthiness only, same rule as for_applications
 )
@@ -154,10 +169,10 @@ def for_job_rows(
     db: Session, jobs: list[Job], *, scored: set[UUID] | None = None
 ) -> dict[UUID, Stage]:
     """One rung per job, keyed by job id: its newest application's (rated as `for_applications`
-    would), else the job's own (as `for_jobs`). `scored` is the set of job ids with a best base
-    score when the caller already has it (`ats_score.best_base_scores`). Three queries for the
-    page (newest applications, open sessions, best base scores), two when `scored` is passed;
-    none for an empty list."""
+    would), else the job's own (saved, scored or gaps). `scored` is the set of job ids with a best
+    base score when the caller already has it (`ats_score.best_base_scores`). Four queries for the
+    page (newest applications, open sessions, best base scores, draft times), three when `scored`
+    is passed; none for an empty list."""
     ids = [j.id for j in jobs]
     if not ids:
         return {}
@@ -165,9 +180,25 @@ def for_job_rows(
     open_by_job = _open_sessions(db, ids)
     if scored is None:
         scored = set(ats_score.best_base_scores(db, ids))
+    draft_at = _draft_times(db, list(newest.values())) if newest else {}
     return {
-        jid: _rate(newest[jid], open_by_job, scored)
+        jid: _rate(newest[jid], open_by_job, scored, draft_at[newest[jid].id])
         if jid in newest
         else _before_draft(jid, open_by_job, scored)
         for jid in ids
     }
+
+
+def stamp(job: Job, st: Stage) -> None:
+    """The rung as transient attrs on the job, read by JobSummary (same pattern as best_ats_score)."""
+    job.stage = st.rung
+    job.open_session_id = st.open_session_id
+    job.gaps_done = st.gaps_done
+    job.gaps_total = st.gaps_total
+
+
+def stamp_job_rows(db: Session, jobs: list[Job]) -> None:
+    """`for_job_rows` for every job, stamped on it: one call for a page, never one per row."""
+    stages = for_job_rows(db, jobs)
+    for job in jobs:
+        stamp(job, stages[job.id])

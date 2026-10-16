@@ -940,3 +940,23 @@ def test_a_job_still_marked_applied_does_not_queue_and_says_why(db_session):
     detail = r.json()["detail"]
     assert "skipped" not in detail
     assert "marked this job applied" in detail
+
+
+def test_a_proposals_job_carries_its_stage_in_the_list_and_the_detail(db_session):
+    """The job summary on a proposal is stamped like the Jobs list's: a tailored job reads tailored,
+    not the schema's "saved" default."""
+    from tests.ats.fixtures import SAMPLE_RESUME
+
+    tailored = _mk_job(db_session, company="Tailored Co", source="agent")
+    db_session.add(Application(job_id=tailored.id, base_resume="hybrid", status="draft",
+                               customized_json=SAMPLE_RESUME))
+    saved = _mk_job(db_session, company="Saved Co", source="agent")
+    db_session.commit()
+    ids = {
+        job.id: client.post("/api/proposals", json={"job_id": str(job.id)}).json()["id"]
+        for job in (tailored, saved)
+    }
+    listed = {item["job_id"]: item["job"]["stage"] for item in client.get("/api/proposals").json()["items"]}
+    assert listed[str(tailored.id)] == "tailored" and listed[str(saved.id)] == "saved"
+    detail = client.get(f"/api/proposals/{ids[tailored.id]}").json()
+    assert detail["job"]["stage"] == "tailored"

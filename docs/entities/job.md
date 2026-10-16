@@ -11,10 +11,11 @@ when none; `ats_score.best_base_scores`, one grouped query per page, read-only:
 the list never scores or backfills). It also carries the step the job is on: `stage`,
 `open_session_id`, `gaps_done` and `gaps_total`, read at request time by
 `services/stage.for_job_rows`: the job's newest application (`created_at`, then the higher id)
-rated by the application rule, else the job alone. That costs two more queries per page however
-many jobs it holds (the newest application per job, the open sessions), reusing the best base
-scores the list already reads. `GET /api/jobs/{id}/detail` and the `job` of `GET
-/api/jobs/match` carry the same four fields from the same rule (three queries for the one job).
+rated by the application rule, else the job alone. That costs three more queries per page however
+many jobs it holds (the newest application per job, the open sessions, the drafts' newest
+versions), reusing the best base scores the list already reads. `GET /api/jobs/{id}/detail`, the
+`job` of `GET /api/jobs/match` and every proposal's `job` (`/api/proposals`, one call for the
+page) carry the same four fields from the same rule (four queries for the one job).
 
 - **Salary is optional and often absent** (~40%+ of US postings state no
   pay; some laws let a posting hyperlink a pay page — capture that as
@@ -88,7 +89,7 @@ scores the list already reads. `GET /api/jobs/{id}/detail` and the `job` of `GET
   `get_final_review` and `GET /api/jobs/match` as `knockout`): the JD's stated requirements (work
   auth, OPT, salary, on-site vs where you live and relocation) against the profile, recomputed on
   every read. Verdicts are `conflict` / `clear` / `incomplete_profile` / `unstated`: unstated is
-  NEVER a pass, and salary only warns (pay is negotiable). On the job page (Overview) only a conflict
+  NEVER a pass, and salary only warns (pay is negotiable). On the job page (step 1, Job) only a conflict
   or a missing profile answer is a banner, with a per-check chip strip (OK / Conflict / Warning /
   Add answer / Not listed / Not run); anything else is one small line in the Job details card. It is
   informational, like G11 tier 2: it flags, and the consent/submit decision stays human unless the

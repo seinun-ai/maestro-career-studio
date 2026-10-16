@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from app.models.base_resume import BaseResume
+from app.models.resume_version import ResumeVersion
 from app.services import stage
 from tests.ats.fixtures import SAMPLE_RESUME
 from tests.stage_rows import make_application, make_base_score, make_job, make_session
@@ -15,7 +16,6 @@ def test_rungs_are_ordered():
 
 
 def test_nothing_in_nothing_out(db_session):
-    assert stage.for_jobs(db_session, []) == {}
     assert stage.for_applications(db_session, []) == {}
     assert stage.for_job_rows(db_session, []) == {}
     assert stage.newest_applications(db_session, []) == {}
@@ -23,14 +23,14 @@ def test_nothing_in_nothing_out(db_session):
 
 def test_a_saved_job_with_no_score_is_saved(db_session):
     job = make_job(db_session)
-    out = stage.for_jobs(db_session, [job])
+    out = stage.for_job_rows(db_session, [job])
     assert out[job.id] == stage.Stage("saved")
 
 
 def test_a_scored_job_is_scored(db_session):
     job = make_job(db_session)
     make_base_score(db_session, job)
-    assert stage.for_jobs(db_session, [job])[job.id].rung == "scored"
+    assert stage.for_job_rows(db_session, [job])[job.id].rung == "scored"
 
 
 def test_a_score_for_an_archived_base_does_not_make_a_job_scored(db_session):
@@ -38,7 +38,7 @@ def test_a_score_for_an_archived_base_does_not_make_a_job_scored(db_session):
     db_session.add(BaseResume(slug="old", data_json=SAMPLE_RESUME, archived_at=datetime.now(UTC)))
     db_session.commit()
     make_base_score(db_session, job, slug="old")
-    assert stage.for_jobs(db_session, [job])[job.id].rung == "saved"
+    assert stage.for_job_rows(db_session, [job])[job.id].rung == "saved"
 
 
 def test_an_open_session_makes_gaps_with_counts(db_session):
@@ -53,7 +53,7 @@ def test_an_open_session_makes_gaps_with_counts(db_session):
             {"gap_id": "gone", "action": "answer"},  # no longer listed: counts for nothing
         ],
     )
-    s = stage.for_jobs(db_session, [job])[job.id]
+    s = stage.for_job_rows(db_session, [job])[job.id]
     assert s.rung == "gaps" and s.open_session_id == session.id
     assert (s.gaps_done, s.gaps_total) == (2, 5)
 
@@ -68,7 +68,7 @@ def test_two_resolutions_for_one_gap_count_once(db_session):
             {"gap_id": "g0", "action": "skip"},
         ],
     )
-    s = stage.for_jobs(db_session, [job])[job.id]
+    s = stage.for_job_rows(db_session, [job])[job.id]
     assert (s.gaps_done, s.gaps_total) == (1, 5)
 
 
@@ -78,7 +78,7 @@ def test_a_gap_without_an_id_does_not_break_the_count(db_session):
     row.gaps_json = {"categories": [{"id": "c", "gaps": [{"gap_id": "g0"}, {"title": "no id"}]}]}
     row.resolutions_json = [{"action": "skip"}, {"gap_id": "g0", "action": "answer"}]
     db_session.commit()
-    s = stage.for_jobs(db_session, [job])[job.id]
+    s = stage.for_job_rows(db_session, [job])[job.id]
     assert (s.gaps_done, s.gaps_total) == (1, 1)
 
 
@@ -86,7 +86,7 @@ def test_a_closed_session_is_not_gaps(db_session):
     job = make_job(db_session)
     make_session(db_session, job, status="superseded")
     make_session(db_session, job, status="abandoned")
-    assert stage.for_jobs(db_session, [job])[job.id].rung == "saved"
+    assert stage.for_job_rows(db_session, [job])[job.id].rung == "saved"
 
 
 def test_the_newest_open_session_wins(db_session):
@@ -94,14 +94,14 @@ def test_the_newest_open_session_wins(db_session):
     now = datetime.now(UTC)
     make_session(db_session, job, created_at=now - timedelta(hours=1), n=3)
     newer = make_session(db_session, job, created_at=now, n=5)
-    s = stage.for_jobs(db_session, [job])[job.id]
+    s = stage.for_job_rows(db_session, [job])[job.id]
     assert s.open_session_id == newer.id and s.gaps_total == 5
 
 
 def test_each_job_gets_its_own_stage(db_session):
     a, b = make_job(db_session, 1), make_job(db_session, 2)
     make_session(db_session, a)
-    out = stage.for_jobs(db_session, [a, b])
+    out = stage.for_job_rows(db_session, [a, b])
     assert (out[a.id].rung, out[b.id].rung) == ("gaps", "saved")
 
 
@@ -139,6 +139,52 @@ def test_an_open_session_newer_than_the_pdf_reads_gaps(db_session):
     session = make_session(db_session, job, created_at=app.updated_at + timedelta(hours=1))
     s = stage.for_applications(db_session, [app])[app.id]
     assert s.rung == "gaps" and s.open_session_id == session.id
+
+
+def _draft_written(db_session, app, at):
+    """The draft's version row, as every draft write records one, stamped `at`."""
+    db_session.add(
+        ResumeVersion(
+            resume_kind="application",
+            resume_key=str(app.id),
+            version_number=1,
+            snapshot=SAMPLE_RESUME,
+            source="tailor",
+            created_at=at,
+        )
+    )
+    db_session.commit()
+
+
+def test_a_notes_edit_after_a_restart_keeps_gaps(db_session):
+    """`updated_at` moves on any column write: a Notes edit after Restart gap analysis must not read
+    as a newer draft and flip the rung back to pdf_ready."""
+    job = make_job(db_session)
+    now = datetime.now(UTC)
+    app = make_application(
+        db_session, job, status="draft", customized_json=SAMPLE_RESUME, pdf_path="/x/r.pdf"
+    )
+    _draft_written(db_session, app, now - timedelta(hours=3))
+    session = make_session(db_session, job, created_at=now - timedelta(hours=2))
+    app.notes = "Follow up on Monday"
+    db_session.commit()
+    db_session.refresh(app)
+    assert app.updated_at > session.created_at  # the write that used to flip it
+    assert _rung_of_app(db_session, app) == "gaps"
+    s = stage.for_job_rows(db_session, [job])[job.id]
+    assert s.rung == "gaps" and s.open_session_id == session.id
+
+
+def test_a_draft_edit_after_the_restart_is_the_later_work(db_session):
+    job = make_job(db_session)
+    now = datetime.now(UTC)
+    app = make_application(
+        db_session, job, status="draft", customized_json=SAMPLE_RESUME, pdf_path="/x/r.pdf"
+    )
+    make_session(db_session, job, created_at=now - timedelta(hours=2))
+    _draft_written(db_session, app, now - timedelta(hours=1))
+    assert _rung_of_app(db_session, app) == "pdf_ready"
+    assert stage.for_job_rows(db_session, [job])[job.id].rung == "pdf_ready"
 
 
 def test_applied_wins_over_a_newer_open_session(db_session):

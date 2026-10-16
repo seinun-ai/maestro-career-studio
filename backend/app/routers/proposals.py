@@ -32,7 +32,14 @@ from app.schemas.proposal import (
 )
 from app.services.sync import hooks, requests as sync_requests
 from app.services.sync import ownership as sync_ownership
-from app.services import application_status, artifacts, auto_apply_settings, inbox_readiness, proposal_evidence
+from app.services import (
+    application_status,
+    artifacts,
+    auto_apply_settings,
+    inbox_readiness,
+    proposal_evidence,
+    stage,
+)
 from app.services import proposals as svc
 from app.write_origin import WriteOrigin, get_write_origin
 
@@ -43,10 +50,17 @@ def _job_summary(job: Job) -> JobSummary:
     return JobSummary.model_validate(job)
 
 
+def _stamp_jobs(db: Session, jobs: list[Job]) -> None:
+    """What every proposal's job summary carries beyond its columns: whose job it is and its
+    rung (services/stage.py), once for all the rows, never per row."""
+    sync_ownership.stamp(db, jobs)
+    stage.stamp_job_rows(db, jobs)
+
+
 def _read_fields(prop: ApplicationProposal, job: Job) -> dict:
     """Every ProposalRead field, shared by the list and the detail so a new
     column cannot reach one read and miss the other. The caller has stamped
-    `job.ownership` (the list once for all its rows)."""
+    the job (`_stamp_jobs`; the list once for all its rows)."""
     return {
         "id": prop.id,
         "job_id": prop.job_id,
@@ -71,7 +85,7 @@ def _detail(db: Session, prop: ApplicationProposal) -> ProposalDetail:
     job = db.get(Job, prop.job_id)
     if job is None:
         raise HTTPException(404, detail="Job not found")
-    sync_ownership.stamp(db, [job])
+    _stamp_jobs(db, [job])
 
     app_summary = None
     qa_entries_data = []
@@ -282,7 +296,7 @@ def list_proposals(
     stmt = stmt.order_by(ApplicationProposal.created_at.desc()).offset(offset).limit(limit)
 
     results = db.execute(stmt).all()
-    sync_ownership.stamp(db, {job.id: job for _, job in results}.values())
+    _stamp_jobs(db, list({job.id: job for _, job in results}.values()))
     readiness = inbox_readiness.for_proposals(db, [(prop, job) for prop, job in results])
     items = [ProposalRead(**_read_fields(prop, job), readiness=readiness.get(prop.id))
              for prop, job in results]

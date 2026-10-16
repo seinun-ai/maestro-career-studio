@@ -607,7 +607,7 @@ def test_patch_with_a_stale_expected_updated_at_is_refused_and_writes_nothing(db
     )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "The resume changed since you loaded it. Reload and try again."
+    assert response.json()["detail"] == "The resume changed since you loaded it. Try again."
     after = client.get(f"/api/applications/{application.id}").json()
     assert after["customized_json"] == {"summary": "x"} and after["updated_at"] == moved.json()["updated_at"]
     assert after["pdf_path"] == str(pdf_path) and pdf_path.exists()

@@ -2,9 +2,9 @@
  * The ATS engine's keys in words (docs/frontend-conventions.md, Microcopy
  * rules: raw keys never reach the screen). The keys are the engine's
  * (`backend/app/services/ats/layers.py`, `SkillEvidence.placement` and
- * `.fix_hint`, and the subscore keys); the Score and tailor tab, the Resume
- * tab's before-and-after card and the gap page's evidence line all read these,
- * so one thing says one word on each.
+ * `.fix_hint`, and the subscore keys); the job page's Resume and gaps step, the
+ * Tailored resume step's before-and-after card and the gap page's evidence line
+ * all read these, so one thing says one word on each.
  */
 
 /**

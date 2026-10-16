@@ -27,8 +27,9 @@ its links or attachments.
 3. **Match.** Page through `list_applications` (`limit`, `offset`) and match on
    company and role; confirm with `get_application`. If the email does not name the
    role, match only when that company has exactly one application, and mark it
-   "matched on company only" in the digest. Several applications for one job (one
-   per base): use the one already past `draft`, otherwise list it.
+   "matched on company only" in the digest. A job has one application; one saved
+   before that rule may still have several: use the one already past `draft`,
+   otherwise list it.
    Change nothing unless exactly one application matches.
 4. **Move the status** with `update_application`, only forward:
    - confirmation → `applied`, only from `draft`; pass `applied_at` as the email's

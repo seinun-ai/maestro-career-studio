@@ -18,10 +18,12 @@ one query per kind for the page; the list never scores or backfills). It also ca
 step the application sits on: `stage` (saved, scored, gaps, tailored, pdf_ready, applied or
 closed), `open_session_id` with `gaps_done`/`gaps_total` on the gaps rung, and the booleans
 `has_draft` and `has_pdf`, so the wire needs no `customized_json` to tell. All are read at
-request time by `services/stage.py` (`for_applications`, two queries per page however many
-rows it holds: the open sessions and the best base scores); the list never writes them. The
-`GET /api/jobs/match` summary carries the same six fields for the job's newest application
-(`for_job_rows`, three queries), so the Companion and `find_job_by_url` see the rung the Jobs
+request time by `services/stage.py` (`for_applications`, three queries per page however many
+rows it holds: the open sessions, the best base scores and each draft's newest ResumeVersion);
+the list never writes them. An open session counts as later work than the draft only when it
+is newer than that version (else the application's `created_at`), never `updated_at`, which
+any column write moves (notes, referral, a render). The `GET /api/jobs/match` summary carries
+the same six fields for the job's newest application (`for_job_rows`, four queries), so the Companion and `find_job_by_url` see the rung the Jobs
 list shows.
 
 - **Status vocabulary is backend-owned**: `ALLOWED_STATUSES` in

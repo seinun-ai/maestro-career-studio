@@ -1616,12 +1616,11 @@ def quick_tailor(job_id: str, base_resume: str) -> Any:
     resolutions become unreachable); list_tailoring_sessions shows existing
     sessions.
 
-    Composes create_tailoring_session(enrich=False) with POST .../apply-profile
-    (deterministic, same honesty-gated save path as resolve_gaps) and returns
-    the filled session.
+    Composes create_tailoring_session(enrich=False) with the profile fill
+    (deterministic; resolve_gaps' honesty-gated save path).
 
-    This tool makes NO in-house LLM call of its own. Sessions rely on the
-    CALLING agent's own model, not the backend's. The saved profile only plans
+    This tool makes NO in-house LLM call: sessions rely on the calling agent's
+    own model. The saved profile only plans
     mechanical, evidence-respecting moves — it does NOT write resume prose.
     The returned resolutions_json may already resolve every gap, including
     system-planned entries (payload.provenance). Resume text comes from
@@ -1633,6 +1632,10 @@ def quick_tailor(job_id: str, base_resume: str) -> Any:
     skills, experience, metrics, or dates. An unverified or absent skill can only
     enter a skills category (add_skill_item), never as an experience or project
     bullet asserting the candidate did the work.
+
+    The tailor_session that follows writes the job's ONE application: from
+    another base it REPLACES the draft and removes its PDF (version history
+    keeps them).
 
     A session whose resolutions_json contains no planned action beyond
     "skip" means the profile was not ALLOWED to add anything to THIS
@@ -1765,15 +1768,15 @@ def tailor_session(
 
     Resume text must be implied first person: no I/he/she/they or the owner's name; a hit returns 400 naming the lines.
 
-    Optional user_prompt adds free-form tailoring guidance. Creates the application
-    from the base resume plus the ops, scores the result, and returns
-    {session, compare, compare_error, next}. compare holds the before/after match score
-    deltas; it may be null with compare_error set if the scores weren't comparable
-    — the tailor still succeeded in that case and the application exists, so no
-    retry is needed. `kb_writeback_skips` derives from each user_input
+    Optional user_prompt adds free-form tailoring guidance. Writes the job's ONE
+    application from the base plus the ops (another base's draft is REPLACED and its
+    PDF removed; version history keeps them), scores it, and returns
+    {session, compare, compare_error, next}. compare (before/after match score
+    deltas) may be null with compare_error set: the tailor still succeeded, so do
+    not retry. `kb_writeback_skips` derives from each user_input
     resolution's STORED placement_target from resolve_gaps, not from the ops, so
     ops that disagree with the stored target produce a spurious wrong_section
-    skip. `next` is a next-step hint naming render_pdf for the new application
+    skip. `next` is a next-step hint naming render_pdf for that application
     (null when suppressed or unavailable)."""
     result = _client.tailor_session(tailoring_session_id, user_prompt=user_prompt, ops=ops)
     application_id = (result.get("session") or {}).get("application_id")
