@@ -1,16 +1,18 @@
 """Saving a job scores it against every selectable base resume in the same request.
 
 Both save paths (web Add job, `POST /api/jobs`, and the pre-extracted ingest used by the
-Companion and MCP) go through `_persist_job`, which scores a NEW job after its commit. A
-scoring failure (no extracted skills, a corrupt base file) is logged and never fails the save;
-a dedup hit returns the tracked row without scoring again. No LLM: extract_jd is patched."""
+Companion and MCP) go through `_persist_job`, which scores a NEW job after its commit. No base
+resume or no extracted skills skips the engine quietly; a real fault (a corrupt base file) is
+logged and never fails the save; a dedup hit returns the tracked row without scoring again.
+No LLM: extract_jd is patched."""
+
+import fastapi
 
 import copy
 import json
 import logging
 from datetime import UTC, datetime
 from uuid import UUID
-
 from app.config import settings
 from app.models.ats_score import AtsScore
 from app.models.base_resume import BaseResume
@@ -71,7 +73,7 @@ def test_an_unscorable_job_still_saves(db_session, tmp_path, monkeypatch, client
     _seed_bases(db_session, tmp_path, monkeypatch)
     _extract_as(monkeypatch, {**SAMPLE_JD, "skills": []})
 
-    with caplog.at_level(logging.WARNING, logger="app.routers.jobs"):
+    with caplog.at_level(logging.INFO, logger="app.routers.jobs"):
         r = client.post("/api/jobs", json={"raw_text": "nothing here"})
 
     assert r.status_code == 200 and r.json()["id"]
@@ -79,7 +81,9 @@ def test_an_unscorable_job_still_saves(db_session, tmp_path, monkeypatch, client
     assert db_session.get(Job, UUID(job_id)) is not None
     assert _base_rows(client, job_id) == []
     assert _saved_row(client, job_id)["stage"] == "saved"
-    assert any(job_id in rec.getMessage() for rec in caplog.records)
+    # An expected case: one INFO line naming the job, no warning.
+    assert any(job_id in rec.getMessage() for rec in caplog.records if rec.levelno == logging.INFO)
+    assert not [rec for rec in caplog.records if rec.levelno >= logging.WARNING]
 
 
 def test_a_corrupt_base_file_never_fails_the_save(db_session, tmp_path, monkeypatch, client):
@@ -96,13 +100,32 @@ def test_a_corrupt_base_file_never_fails_the_save(db_session, tmp_path, monkeypa
     assert db_session.query(AtsScore).filter(AtsScore.job_id == UUID(job_id)).count() == 0
 
 
-def test_a_job_saved_with_no_base_resume_saves_unscored(db_session, monkeypatch, client):
+def test_a_job_saved_with_no_base_resume_saves_unscored(db_session, monkeypatch, client, caplog):
     _extract_as(monkeypatch, SAMPLE_JD)
 
-    r = client.post("/api/jobs", json={"raw_text": "Senior Data Scientist at Acme"})
+    with caplog.at_level(logging.INFO, logger="app.routers.jobs"):
+        r = client.post("/api/jobs", json={"raw_text": "Senior Data Scientist at Acme"})
 
     assert r.status_code == 200
     assert _saved_row(client, r.json()["id"])["stage"] == "saved"
+    assert not [rec for rec in caplog.records if rec.levelno >= logging.WARNING]
+
+
+def test_web_add_job_scores_inline(db_session, tmp_path, monkeypatch, client):
+    # The user is waiting and lands on the job next: the scores exist when the response
+    # does, never from a task queued after it.
+    _seed_bases(db_session, tmp_path, monkeypatch)
+    _extract_as(monkeypatch, SAMPLE_JD)
+
+    def refuse(self, *a, **kw):
+        raise AssertionError("create_job must not queue a background task")
+
+    monkeypatch.setattr(fastapi.BackgroundTasks, "add_task", refuse)
+
+    job = client.post("/api/jobs", json={"raw_text": "Senior Data Scientist at Acme"}).json()
+
+    stored = db_session.query(AtsScore).filter(AtsScore.job_id == UUID(job["id"])).all()
+    assert {row.target_id for row in stored} == {"a", "b"}
 
 
 def test_ingest_scores_too(db_session, tmp_path, monkeypatch, client):
@@ -140,6 +163,30 @@ def test_a_dedup_hit_does_not_rescore(db_session, tmp_path, monkeypatch, client)
     assert db_session.query(AtsScore).filter(AtsScore.job_id == UUID(first["id"])).count() == 2
 
 
+def test_a_requisition_twin_does_not_rescore(db_session, tmp_path, monkeypatch, client):
+    # Same company and requisition id on another board: a new hash and a new URL, so only
+    # the twin check finds the tracked row.
+    _seed_bases(db_session, tmp_path, monkeypatch)
+    _extract_as(monkeypatch, {**SAMPLE_JD, "requisition_id": "R-777"})
+    calls = []
+    real = jobs.ats_score.score_all_bases
+    monkeypatch.setattr(
+        jobs.ats_score,
+        "score_all_bases",
+        lambda job_id, **kw: calls.append(job_id) or real(job_id, **kw),
+    )
+
+    first = client.post(
+        "/api/jobs", json={"raw_text": "Req R-777 on board one", "source_url": "https://one.test/1"}
+    ).json()
+    second = client.post(
+        "/api/jobs", json={"raw_text": "Req R-777 on board two", "source_url": "https://two.test/2"}
+    ).json()
+
+    assert first["id"] == second["id"]
+    assert len(calls) == 1
+
+
 def test_the_match_column_reads_the_best_score_right_after_save(
     db_session, tmp_path, monkeypatch, client
 ):
@@ -152,3 +199,4 @@ def test_the_match_column_reads_the_best_score_right_after_save(
     assert row["best_ats_score"] is not None
     assert row["best_ats_score"] == max(r["composite"] for r in _base_rows(client, job["id"]))
     assert row["stage"] == "scored"
+

@@ -9,8 +9,9 @@ different engine/config versions (422 → UI offers re-score). The engine
 (`services/ats/`) is deterministic and LLM-free — re-scoring is cheap; the
 studio auto-rescores after every save→render chain. **Transaction ownership:**
 `score_target` / `score_all_bases` commit only when they OWN the session
-(callers passing one commit themselves — the ATS router does; `tailor()` and
-`create_session` ride their own single commit). `compare` commits its backfill;
+(callers passing one commit themselves — the ATS router does, and so does the
+jobs router's save path, `_score_new_job`; `tailor()` and `create_session`
+ride their own single commit). `compare` commits its backfill;
 never call it with staged caller state.
 
 **"LLM-free" describes the ENGINE, not the pipeline.** `score_resume` is a

@@ -148,10 +148,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 1. **Capture** — `/new` (**Add job**): paste a job description → **Save job** → `POST /api/jobs` (LLM
    extract, dedup) → summary card ("This job is already saved." on dedup). Or Companion/MCP
    `store_extracted_jd` → `POST /api/jobs/ingest` (pre-extracted; the client
-   agent is the extractor by design). Both save paths score a NEW job against every selectable base
-   resume right after its commit (`_persist_job` → `score_all_bases`); a scoring error (no extracted
-   skills, a corrupt base file) is logged and rolls back only the scores, never the save, and a dedup
-   hit is not re-scored.
+   agent is the extractor by design). Both save paths score a new job against every selectable base after its commit
+   (`_persist_job` → `score_all_bases`, inline); a failure rolls back only the scores, and a dedup hit is not re-scored.
 2. **Track** — **Jobs** (`/applications`; the URL, `?status=`/`?source=` and `cs-tracker-*` keep their
    names): the tracker. Two queries (summary list with server-joined job fields + saved jobs of the
    toggle's source), a grouped status `Select` with counts, inline `StatusChip` per row (PATCHes

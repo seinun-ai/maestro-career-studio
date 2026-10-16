@@ -35,6 +35,7 @@ from app.schemas.job_search_brief import JobSearchBriefResponse
 from app.services import (
     artifacts,
     ats_score,
+    base_eligibility,
     base_resume_data,
     filled_answers,
     jd_extraction,
@@ -272,6 +273,8 @@ def _persist_job(
     session: Session | None = None,
     apply_url: str | None = None,
 ) -> Job:
+    """Save a job, or return the tracked row on a dedup hit. Only a NEW job is scored,
+    after its own commit."""
     existing = _find_existing(
         db, source_url, raw_text_hash, url_fallback=not raw_text.strip()
     )
@@ -315,17 +318,30 @@ def _persist_job(
     return _with_ownership(db, job)
 
 
+def _scorable_now(db: Session, job: Job) -> bool:
+    """The two expected no-score cases, checked before the engine runs: no base resume yet
+    (Score and tailor scores on first visit once there is one) and no extracted skills."""
+    if not base_eligibility.candidates(db, job).slugs:
+        return False
+    if not (job.extracted_json or {}).get("skills"):
+        logger.info("Job %s saved with no extracted skills; not scored", job.id)
+        return False
+    return True
+
+
 def _score_new_job(db: Session, job: Job) -> None:
-    """Score a just-saved job against every selectable base so the Jobs list's Match column
-    is filled from the save on. Runs after the job's own commit: a job with no extracted
-    skills, no base resume or a corrupt base file logs here and rolls back only the scores,
-    never the save. A dedup hit never reaches this, so a saved job is scored once."""
+    """Score a just-saved job against every selectable base, inline, so the Jobs list's
+    Match column is filled from the save on. All bases or none: a real fault (a corrupt base
+    file) rolls back only the scores, never the already-committed job, and logs a warning."""
+    if not _scorable_now(db, job):
+        return
     try:
         ats_score.score_all_bases(job.id, session=db)
         db.commit()
     except Exception:
         db.rollback()
         logger.warning("Scoring job %s at save failed; it saves unscored", job.id, exc_info=True)
+    # Both commit and rollback expire the job the response serializes.
     db.refresh(job)
 
 
