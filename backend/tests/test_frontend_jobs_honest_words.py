@@ -100,7 +100,7 @@ def test_the_gap_page_and_score_tab_count_with_it():
     # The footer is a SegmentedBar (its legend keeps the words); a category says how many are handled.
     assert 'name="Gap progress"' in page and "{done} of" not in page
     assert "{counts.answered + counts.skipped}/{counts.total}" in page and "Nothing open" not in page
-    panel = _read("components/ats-score-panel.tsx")
+    panel = _read("components/resume-step.tsx")
     assert "gapCounts(" in panel and "resolutions_json.length" not in panel
     # The count rides on ProgressCount above the button, so the button says only what it does.
     assert '<ProgressCount done={answered} total={totalGaps} noun="answered"' in panel
@@ -197,7 +197,7 @@ def test_the_ats_score_is_our_estimate_everywhere_it_is_explained():
         '"A match score (0 to 100) uses fixed rules to compare each resume with this job\'s description."'
         in words
     )
-    assert "{ATS_SCORE_LEAD}" in _read("components/ats-score-panel.tsx")
+    assert "{ATS_SCORE_LEAD}" in _read("components/resume-step.tsx")
     fit = _read("app/analytics/page.tsx")
     assert "{ATS_SCORE_LEAD_ALL_JOBS}" in fit
     assert fit.index("{ATS_SCORE_LEAD_ALL_JOBS}") < fit.index("<BaseSummaryCards />")
@@ -211,7 +211,7 @@ def test_the_ats_score_is_our_estimate_everywhere_it_is_explained():
 @pytest.mark.parametrize(
     ("rel", "marker"),
     [
-        ("components/ats-score-panel.tsx", "onClick={() => runOnce()}"),
+        ("components/resume-step.tsx", "onClick={() => runOnce()}"),
         ("components/application-panel.tsx", "onClick={() => renderOnce()}"),
         (_GAP_PAGE, "applyAsIsOnce();"),
         ("app/referrals/page.tsx", 'type="submit"'),
@@ -227,29 +227,102 @@ def test_a_running_button_keeps_focus(rel: str, marker: str):
 
 
 def test_find_gaps_keeps_focus_while_it_starts():
-    panel = _read("components/ats-score-panel.tsx")
-    card = panel[panel.index("function AtsScoreCard(") : panel.index("export function AtsScorePanel(")]
-    # Analyze gaps only: Restart gap analysis and Mark applied are ⋯ items, and a picked item closes
-    # the menu onto ⋯ (the DropdownMenu primitive), so neither holds focus while it runs.
-    assert card.count("focusableWhenDisabled") == 1
-    assert "onAnalyze={() => createOnce(score.target_id)}" in panel
+    step = _read("components/resume-step.tsx")
+    # Analyze gaps, the step's own button: pending keeps focus on it while the gap analysis starts.
+    button = step[step.rfind("<Button", 0, step.index("onClick={() => createOnce(pickedSlug)}")) :]
+    button = button[: button.index("</Button>")]
+    assert "focusableWhenDisabled" in button and "pending={creating}" in button
+    assert '{creating ? "Analyzing gaps…" : "Analyze gaps"}' in button
+    # Use resume as is keeps it too (one button, drawn in either state of the picked resume).
+    as_is = step[step.index("const asIsButton = ") : step.index("Use resume as is\n")]
+    assert "focusableWhenDisabled" in as_is and "pending={asIs.isPending}" in as_is
 
 
-def test_each_score_card_carries_one_button():
+def test_step_two_has_one_filled_button():
     """Four blue "Find gaps and tailor" buttons, each with Start over and Mark applied under it, read as
-    clutter and hid "Best match". The best match's button is the tab's one filled button; the rarer
-    actions sit behind each card's ⋯, which hands focus to the card's button if it unmounts."""
-    panel = _read("components/ats-score-panel.tsx")
-    card = panel[panel.index("function AtsScoreCard(") : panel.index("export function AtsScorePanel(")]
-    assert 'const variant = top ? "default" : "outline";' in card
-    assert card.count("variant={variant}") == 2  # Analyze gaps, Continue gap analysis
-    assert '"Analyze gaps"' in card and "Find gaps and tailor" not in card
-    menu = panel[panel.index("function ScoreCardMenu(") : panel.index("function AtsScoreCard(")]
-    for item in ("Restart gap analysis", "Mark applied without tailoring"):
-        assert item in menu and item not in card.replace(menu, ""), item
-    assert "queueMicrotask(() => focusIfDropped(fallback()));" in menu
-    assert "onClick={() => onAppliedAsIs(() => triggerRef.current)}" in menu
-    assert "      returnFocus,\n    });" in panel  # the confirm returns to ⋯, not the gone item
+    clutter. Step 2 now picks one resume from a chip row, so the view carries ONE filled button: Analyze
+    gaps, or Continue gap analysis while the picked resume has an open gap analysis. Use resume as is is
+    outline, and the rarer actions sit behind ⋯, whose items close onto ⋯ (it stays), so the confirms
+    return there."""
+    step = _read("components/resume-step.tsx")
+    body = step[step.index("export function ResumeStep(") :]
+    body = body[body.index("const asIsButton = ") : body.index("<UploadDialog")]
+    # Filled = the default variant: no `variant=` on the two actions; everything else names its own.
+    analyze = body[body.rfind("<Button", 0, body.index("onClick={() => createOnce(pickedSlug)}")) :]
+    analyze = analyze[: analyze.index(">")]
+    assert "variant=" not in analyze
+    cont = body[body.rfind("<Button", 0, body.index("Continue gap analysis")) : body.index("Continue gap analysis")]
+    assert "variant=" not in cont
+    # The two are the branches of one ternary on the picked resume's open gap analysis: never both.
+    assert body.index("{openSession && !creating ? (") < body.index("Continue gap analysis") < body.index(") : (") < body.index("onClick={() => createOnce(pickedSlug)}")
+    buttons = re.findall(r"<Button\b[^>]*?>", body, re.S)
+    unnamed = [b for b in buttons if "variant=" not in b]
+    assert len(unnamed) == 2, unnamed  # Continue gap analysis, Analyze gaps
+    assert '"Analyze gaps"' in body and "Find gaps" not in step
+    as_is = body[: body.index("Use resume as is")]
+    assert 'variant="outline"' in as_is
+    # The ⋯: Update scores, Score them anyway (only with skipped countries), Mark applied, Import.
+    menu = body[body.index('aria-label="More actions for resumes"') : body.index("</DropdownMenuContent>")]
+    for item in ("Update scores", "Score them anyway", "Mark applied without tailoring", "Import resumes and documents"):
+        assert item in menu, item
+    assert '{run.isPending ? "Updating scores…" : "Update scores"}' in menu
+    assert "{jobCountry && skipped.length > 0 && (" in menu
+    assert "returnFocus: () => moreRef.current," in step  # the confirm returns to ⋯, not the gone item
+
+
+def test_switching_the_resume_after_tailoring_confirms():
+    """A job has one application: tailoring another resume replaces the draft, so the switch says so first.
+    Without a draft a switch only moves the pick; an open gap analysis for the new resume keeps its answers."""
+    step = _read("components/resume-step.tsx")
+    pick = step[step.index("const pick = async (slug: string) => {") : step.index("const autoRan = useRef(false);")]
+    assert "const draftBase = application?.customized_json ? application.base_resume : null;" in pick
+    assert "if (readOnly || draftBase == null || draftBase === slug) {" in pick
+    assert "title: `Switch to ${baseName(slug)}?`," in pick
+    assert "`This job already has a tailored ${baseName(draftBase)} resume. ` +" in pick
+    assert (
+        '"Tailoring with another resume replaces that draft and removes its PDF. Version history keeps the old one. " +'
+        in pick
+    )
+    assert "`Answers you gave in the gaps for ${baseName(draftBase)} stay with it.`," in pick
+    assert 'confirmLabel: "Switch and analyze gaps",' in pick and "destructive: true," in pick
+    # Cancel leaves the pick where it was: it changes only after a yes.
+    assert pick.index("if (!ok) return;") < pick.index("setChosen(slug);\n    // An open")
+    assert "if (open) router.push(`/jobs/${jobId}/tailor/${open.id}`);" in pick and "else createOnce(slug);" in pick
+
+
+def test_the_picked_resume_defaults_to_the_work_in_progress():
+    step = _read("components/resume-step.tsx")
+    assert (
+        "const picked = has(chosen)\n    ? chosen\n    : has(newestOpen?.base_resume)\n      ? newestOpen.base_resume\n"
+        "      : has(application?.base_resume)\n        ? application.base_resume\n        : (baseRows[0]?.target_id ?? null);"
+    ) in step
+
+
+def test_the_resume_chips_are_a_radio_group():
+    step = _read("components/resume-step.tsx")
+    chips = step[step.index("export function ResumeChips(") : step.index("function ScoreSummary(")]
+    assert 'role="radiogroup" aria-label="Base resume"' in chips
+    assert 'type="radio"' in chips and "checked={on}" in chips and 'className="sr-only"' in chips
+    # Selected in a set (design system): secondary-container and a leading Check; 32px, fully round.
+    assert "bg-secondary-container text-on-secondary-container" in chips
+    assert '{on && <Check className="size-3.5 shrink-0" aria-hidden="true" />}' in chips
+    assert "h-8" in chips and "rounded-full" in chips and "tabular-nums" in chips
+    assert "{isBest && <Badge" in chips and ">Best</Badge>" in chips
+    # The top 3, then a reveal that says it is expanded.
+    assert "const CHIPS_SHOWN = 3;" in step
+    assert "aria-expanded={expanded}" in chips and '{expanded ? "Show fewer" : `${hidden} more`}' in chips
+
+
+def test_the_score_summary_opens_its_breakdown_in_a_popover():
+    step = _read("components/resume-step.tsx")
+    summary = step[step.index("function ScoreSummary(") : step.index("export function ResumeStep(")]
+    assert "bg-surface-container-low" in summary
+    assert '<span className="text-muted-foreground">Skills covered</span>' in summary
+    assert '<span className="text-muted-foreground">Weakest</span> {SUBSCORE_LABELS[weakestAt].label}' in summary
+    assert "{weakestAt >= 0 && (" in summary  # all equal: no Weakest
+    trigger = summary[summary.index("<PopoverTrigger") : summary.index("</PopoverTrigger>") if "</PopoverTrigger>" in summary else summary.index("/>", summary.index("Score breakdown"))]
+    assert "aria-expanded={open}" in trigger and "Score breakdown" in trigger
+    assert "shadow-level2" in summary[summary.index("<PopoverContent") :]
 
 
 def test_low_coverage_on_every_resume_is_said_once():
@@ -258,7 +331,7 @@ def test_low_coverage_on_every_resume_is_said_once():
 
     assert LOW_COVERAGE_THRESHOLD == 0.25
     assert "shows fewer than a quarter of this job's skills" in _read("lib/ats-words.ts")
-    panel = _read("components/ats-score-panel.tsx")
+    panel = _read("components/resume-step.tsx")
     assert "baseRows.length > 1 && baseRows.every((row) => coverageWarning(row) != null);" in panel
     assert "showCoverage={!lowCoverageEverywhere}" in panel
 
@@ -362,10 +435,15 @@ def test_delete_job_names_the_proposals_it_deletes():
 
 
 def test_mark_applied_hides_once_the_job_is_applied():
-    panel = _read("components/ats-score-panel.tsx")
-    assert "const applied = applicationStatus != null && applicationStatus !== \"draft\";" in panel
-    assert "{applied ? null : (" in panel
-    assert "<AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} />" in _read(_JOB_PAGE)
+    step = _read("components/resume-step.tsx")
+    assert "const applied = applicationStatus != null && applicationStatus !== \"draft\";" in step
+    menu = step[step.index('aria-label="More actions for resumes"') : step.index("</DropdownMenuContent>")]
+    assert "{applied ? null : (" in menu and "Mark applied without tailoring" in menu
+    page = " ".join(_read(_JOB_PAGE).split())
+    assert "<ResumeStep jobId={id} application={application} readOnly={!ownership.canWrite} onUsedAsIs={() => {" in page
+    # Use resume as is opens step 3 and hides the button that held focus: the opened step takes it.
+    assert 'focusOpenedStep.current = true; setStep("output"); }}' in page
+    assert "stepsRef.current?.querySelector<HTMLElement>('[aria-current=\"step\"]')?.focus({ preventScroll: true });" in page
 
 
 def test_the_resume_tab_names_what_it_holds():
@@ -412,14 +490,14 @@ def test_the_inbox_explains_mcp_and_the_skill_once():
     [
         ("components/job-knockout-card.tsx", "That doesn't mean you qualify."),
         (_GAP_PAGE, "Version history keeps the old one."),
-        ("components/ats-score-panel.tsx", '"It replaces any tailored draft (Version history keeps it) " +'),
+        ("components/resume-step.tsx", '"It replaces any tailored draft (Version history keeps it) " +'),
         (_GAP_PAGE, "Your changes here won&apos;t be saved."),
         (_GAP_PAGE, "You can review and undo each change afterward."),
         ("components/analytics/autofill-coverage-card.tsx", ", including which sites they were on and when.`"),
         ("components/analytics/autofill-coverage-card.tsx", '" You can\'t undo this." +'),
         ("components/application-panel.tsx", "This deletes its tailored resume, answers and PDF. The job stays saved."),
         ("components/qa-tab.tsx", "A new letter replaces the saved one, including any edits you made to it."),
-        ("components/ats-score-panel.tsx", "and closes any open proposal in your Agent inbox for this job."),
+        ("components/resume-step.tsx", "and closes any open proposal in your Agent inbox for this job."),
     ],
 )
 def test_a_safety_sentence_survives(rel: str, sentence: str):
@@ -450,7 +528,7 @@ def _title_cased(name: str) -> list[str]:
     [
         _JOB_PAGE,
         _GAP_PAGE,
-        "components/ats-score-panel.tsx",
+        "components/resume-step.tsx",
         "components/application-panel.tsx",
         "components/qa-tab.tsx",
         "app/analytics/page.tsx",
@@ -487,7 +565,7 @@ def test_the_score_tab_says_why_undated_jobs_score_low():
     assert ts_map("./lib/ats-words.ts", "datesUnreadable", [
         ["Some job dates can't be read. Write them like Jul 2022."], ["Section missing or empty: summary"],
     ]) == [True, False]
-    panel = _read("components/ats-score-panel.tsx")
+    panel = _read("components/resume-step.tsx")
     assert "{datesUnreadable(score.subscores_json.format_flags) && (" in panel
     assert "<p className=\"text-muted-foreground text-body-small\">{UNREADABLE_DATES_NOTE}</p>" in panel
     # Each subscore is a meter out of 100 (aria-valuemax); the visible " of 100" went, the headline keeps "/ 100".

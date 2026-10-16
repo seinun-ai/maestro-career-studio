@@ -16,7 +16,7 @@ _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 # `use-resume-key-label.ts` are left out on purpose: their keys can be application ids.
 # The Jobs list is not one: its Resume column went, and only its Match score names a resume, on hover.
 _SITES = [
-    "components/ats-score-panel.tsx",
+    "components/resume-step.tsx",
     "app/jobs/[id]/tailor/[sessionId]/page.tsx",
     "components/resume-editor/editable-title.tsx",
     "components/proposals/proposals-section.tsx",
@@ -39,8 +39,9 @@ def _src(path: str) -> str:
 
 
 # Files that draw the square in more than one place, with how many: a picker draws it in its trigger and in each
-# item, the studio title in its reading and its editing state.
+# item, the studio title in its reading and its editing state, step 2 in its chips and its breakdown.
 _TWO_SITES = {
+    "components/resume-step.tsx",  # each chip, and the Score breakdown popover's title
     "components/chat/chat-page.tsx",
     "components/resume-editor/editable-title.tsx",
     "components/base-resumes/new-base-resume-dialog.tsx",
@@ -73,20 +74,18 @@ def test_a_key_that_can_be_an_application_id_gets_no_square(path):
     assert "ResumeSwatch" not in _src(path) and "ResumeTag" not in _src(path)
 
 
-def test_a_score_card_carries_its_resumes_color_as_a_top_band_and_a_square_beside_the_title():
-    panel = _src("components/ats-score-panel.tsx")
-    card = panel[panel.index("function AtsScoreCard(") :]
-    root = open_tag(card, "Card")
-    # The band is the card's first child, so the card's own top padding goes.
-    assert re.search(r'className=\{cn\(\s*"[^"]*\bpt-0\b', root)
-    assert "...resumeColorStyle(resume?.color_hue)" in squash(card)
-    band = open_tag(card, "div", after="<Card")
-    assert {"h-1.5", "bg-resume"} <= tokens(band) and 'aria-hidden="true"' in band
-    # The card stands for one resume, so only the band: the body is not tinted.
-    assert "bg-resume-container" not in card
-    title = squash(card[card.index("<CardTitle") : card.index("</CardTitle>")])
-    assert "<ResumeTag hue={resume?.color_hue}" in title and "baseName(score.target_id)" in title
-    assert "<AnchorPills resume={resume} />" in squash(card)
+def test_each_resume_chip_and_the_breakdown_carry_the_resumes_square():
+    step = _src("components/resume-step.tsx")
+    chips = step[step.index("export function ResumeChips(") : step.index("function ScoreSummary(")]
+    # The chip names one resume: its square, then its name, which truncates with its whole value on the chip.
+    assert "<ResumeSwatch hue={r.hue} />" in chips
+    label = open_tag(chips[chips.index("<label") :], "label")
+    assert "title={r.name}" in label
+    assert "hue: allResumes?.find((r) => r.slug === row.target_id)?.color_hue," in step
+    summary = step[step.index("function ScoreSummary(") : step.index("export function ResumeStep(")]
+    title = squash(summary[summary.index("<PopoverTitle") : summary.index("</PopoverTitle>")])
+    assert "<ResumeTag hue={resume?.color_hue}" in title and 'title={name}' in title
+    assert "{resume && <AnchorPills resume={resume} />}" in summary
 
 
 def test_the_best_pill_hides_the_square_with_the_name():

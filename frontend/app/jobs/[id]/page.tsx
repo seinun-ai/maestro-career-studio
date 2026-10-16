@@ -25,7 +25,7 @@ import {
 } from "@/components/application-panel";
 import { LoadErrorState } from "@/components/load-error-state";
 import { QATab } from "@/components/qa-tab";
-import { AtsScorePanel } from "@/components/ats-score-panel";
+import { ResumeStep } from "@/components/resume-step";
 import { CompanyMonogram } from "@/components/company-monogram";
 import { IconButton } from "@/components/icon-button";
 import {
@@ -243,6 +243,17 @@ export default function JobDetailPage({
     triaged.current = false;
     focusIfDropped(actionsRef.current && focusTarget(actionsRef.current));
   }, [triagedStatus]);
+
+  // Use resume as is on step 2 opens step 3 and hides the button that held focus: the step it opened takes it.
+  const stepsRef = useRef<HTMLDivElement>(null);
+  const focusOpenedStep = useRef(false);
+  useLayoutEffect(() => {
+    if (!focusOpenedStep.current) return;
+    focusOpenedStep.current = false;
+    const active = document.activeElement;
+    if (active && active !== document.body && !active.closest("[hidden]")) return;
+    stepsRef.current?.querySelector<HTMLElement>('[aria-current="step"]')?.focus({ preventScroll: true });
+  });
 
   // Prev/next: proposals list writes cs-proposals-seq; Jobs (/applications) writes
   // cs-tracker-seq. ?from=proposals selects which queue and back target.
@@ -669,7 +680,7 @@ export default function JobDetailPage({
         <JobOwnershipNotice ownership={job.ownership} />
 
         {/* The four steps, where the tabs were. A later step is shown, never locked: its line says what opens it. */}
-        <div className="space-y-4">
+        <div ref={stepsRef} className="space-y-4">
           <JobSteps steps={steps} current={step} onSelect={setStep} />
 
           {visited.has("job") ? (
@@ -706,11 +717,16 @@ export default function JobDetailPage({
 
           {visited.has("fit") ? (
             <div hidden={step !== "fit"} className="space-y-4">
-              {ownership.canWrite ? (
-                <AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} />
-              ) : (
-                <AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} readOnly />
-              )}
+              {/* Use resume as is makes the job's resume: step 3 shows it. */}
+              <ResumeStep
+                jobId={id}
+                application={application}
+                readOnly={!ownership.canWrite}
+                onUsedAsIs={() => {
+                  focusOpenedStep.current = true;
+                  setStep("output");
+                }}
+              />
               {/* The before/after compare lives on step 3, next to the artifact it describes: link to it. */}
               {application?.customized_json ? (
                 <button

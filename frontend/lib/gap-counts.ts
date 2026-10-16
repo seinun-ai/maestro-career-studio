@@ -1,6 +1,6 @@
 /**
  * How many of a gap analysis's gaps are answered, skipped and still open: the gap page's footer, each
- * category's badge and the Score and tailor tab's "Continue gap analysis" read these, so the three agree.
+ * category's badge and step 2's "Continue gap analysis" (Resume and gaps) read these, so the three agree.
  *
  * Only the gaps listed count, so a stored resolution for a gap the analysis no longer lists inflates
  * nothing. `cannot_confirm` is a skip for the resume (its career-history record is kept elsewhere), so

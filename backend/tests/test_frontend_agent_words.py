@@ -52,7 +52,7 @@ _WORDS = [
     # an agent can still save the job.
     ("components/settings/auto-apply-section.tsx", "never saves", 'aria-describedby="aa-blocklist-hint"'),
     ("components/settings/auto-apply-section.tsx", "Skipping a single", "Skipping one job does not block"),
-    ("components/ats-score-panel.tsx", "any open agent proposal", "any open proposal in your Agent inbox"),
+    ("components/resume-step.tsx", "any open agent proposal", "any open proposal in your Agent inbox"),
     ("components/chat/proposal-card.tsx", "Proposed project", "Suggested project"),
     ("components/chat/edit-proposal-card.tsx", "/> Suggested edit\n",
      '{`Suggested ${proposal.ops_count === 1 ? "edit" : "edits"}`}'),

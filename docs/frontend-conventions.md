@@ -1195,6 +1195,22 @@
   proposal's triage, the score pill, the StatusChip and the job link; the rare actions sit behind one ⋯
   (**More actions**): Queue in Agent inbox, Refresh details and Delete job, each with its confirm.
   Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_visual_surfaces.py`.
+- **Resume and gaps** (step 2, `components/resume-step.tsx`), inside one card: the Match score lead, then
+  `ResumeChips`, a radio group named "Base resume" of 32px round chips (a label over a visually hidden radio:
+  square, name, score in `tabular-nums`, Best on the top one; picked is `secondary-container` with a leading
+  Check), sorted by score, the top 3 then "N more" (`aria-expanded`), and ⋯ (**More actions for resumes**:
+  Update scores, Score them anyway, Mark applied without tailoring until the job is applied, Import resumes
+  and documents). The pick defaults to the newest open gap analysis's resume, else the application's, else the
+  best match. Under them one line on `surface-container-low`: the score out of 100, Skills covered m of n, the
+  Weakest subscore (none when all are equal) and a **Score breakdown** popover (the subscores, the skills meter,
+  the Target pills, the dates note, that resume's own warnings; warnings every resume shares, and the
+  low-coverage banner, sit once above the card). Then the picked resume's state: no open gap analysis, a dashed
+  panel with **Analyze gaps** (filled) and **Use resume as is**; an open one, its answered count, **Continue
+  gap analysis** (filled) and, at 0 answered, Use resume as is. One filled button in the view. Use resume as
+  is confirms with the gap page's words when a tailored draft exists and opens step 3. A job has one
+  application: picking another resume while a tailored draft exists asks first ("Switch to {name}?", **Switch
+  and analyze gaps**, destructive) and then opens that resume's open gap analysis or starts one; without a
+  draft a pick only moves the chip. Pinned by `test_frontend_jobs_honest_words.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Jobs** (see *Canonical terms*). A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means
@@ -1326,14 +1342,14 @@
     score points stay "points". **Add to career history**, **Add from career
     history**, **Add to a resume**, **Copy to another resume**, never Sync to
     KB, Send to resume or Port. **Import resumes and documents** is the upload
-    dialog's title and the button that opens it on Career history and on the
-    Score and tailor tab; the setup step that opens the same dialog (Getting
+    dialog's title and the button that opens it on Career history and in the
+    ⋯ of Resume and gaps; the setup step that opens the same dialog (Getting
     started, Profile's setup strip) is labelled **Import resumes**, and so is
     the first-run card, which opens the resume-only dialog "Import your
     resumes". **Match score**, explained once per surface where it first
     appears as the app's own fixed-rules match: `lib/ats-words.ts` `ATS_SCORE_LEAD`
     ("A match score (0 to 100) uses fixed rules to compare each resume
-    with this job's description.") on Score and tailor, and
+    with this job's description.") on Resume and gaps, and
     `ATS_SCORE_LEAD_ALL_JOBS` on Analytics; never composite or fit score, and
     never a prediction of an employer's score; lift is **Score
     gain**. **job description** (never JD or posting), **job**, **job
@@ -1357,12 +1373,12 @@
     tailor; its settings are Quick tailor settings. **Create PDF** and
     **Update PDF** (Update once a PDF exists), never render or compile (the
     template editor's button is **Update preview**). **Update score**, never
-    re-score; the noun follows the count (**Update scores** on Score and
-    tailor, which scores every base resume). **Hide**, **Show**, **Hidden**
+    re-score; the noun follows the count (**Update scores** in Resume and
+    gaps' ⋯, which scores every base resume). **Hide**, **Show**, **Hidden**
     for a resume entry; **Archive** and **Restore** for a base resume or a
     template (Version history's **Restore** brings back a version).
     **Target** (the base resume's dialog for countries, role, company and focus; anchors is the agent
-    and code word, never on screen); a set one shows as pills on the gallery and score cards.
+    and code word, never on screen); a set one shows as pills on the gallery and in step 2's Score breakdown.
     **Other sections**, never extra or custom sections. On a health report
     the group is **Checks**; a fatal check's badge is **Must fix** and the
     other tier **Serious**; **Mark as OK** and **Undo**, never gate, blocker
@@ -1565,7 +1581,7 @@
   invalidate it. `/new` names a missing key BEFORE the paste: an amber notice
   with Add API key, and a disabled Save job whose `aria-describedby` points at
   it, since a disabled button says nothing about why. A failed status fetch
-  blocks nothing. With no base resume the Score tab offers Import resumes and documents
+  blocks nothing. With no base resume step 2 (Resume and gaps) offers Import resumes and documents
   (Score my resumes could only return an empty list) and scores once the import
   dialog CLOSES, on a settled none-to-some change. Scoring sooner unmounted the
   dialog before the user confirmed each resume's role, and a cached `[]` must
@@ -1573,22 +1589,22 @@
   unique key. The rescore starts inside the close handler, so the render that
   drops the prompt already sees the run pending, and the run's `onSuccess`
   returns the refetch, so it stays pending until the list lands: the skeleton
-  hands straight to the cards with no "No match scores yet." frame. The dialog
+  hands straight to the chips with no "No match scores yet." frame. The dialog
   renders once, beside the body and never inside the prompt; on close, focus
-  returns to that button while the prompt still shows it (Cancel, Escape,
-  nothing imported), else to the panel's `tabIndex={-1}` wrapper (`finalFocus`
+  returns to that button (or to ⋯, when its Import item opened the dialog) while it
+  still shows (Cancel, Escape, nothing imported), else to the step's `tabIndex={-1}` wrapper (`finalFocus`
   as a function). The skeleton that covers the first-visit auto-run requires
   `scores.isSuccess`: a failed refetch keeps its old `[]`, and without the
   check the skeleton hid the error and its Retry for good. Pinned by
   `test_frontend_first_run.py`.
-- **The Score tab says what the job's country left out.** `GET /api/ats-scores/candidates` names
-  the base resumes set only for other countries. One muted line says how many weren't scored for
-  the job's country (`skippedCountriesLine` in `lib/ats-words.ts`), with a **Score them anyway**
-  button that scores and reads again with `include_other_countries` for that view and hands focus
-  to Update scores. With no resume set for the job's country every resume is scored, and the line
-  says so (`noResumeForCountry`). Gallery and score cards show a resume's Target as pills
-  (`AnchorPills`; the gallery passes `showRole={false}`, since the role is the group heading, and
-  `onTint`, for the card fill on its tinted footer). Pinned by `test_frontend_base_resume_anchors.py`.
+- **Step 2 says what the job's country left out.** `GET /api/ats-scores/candidates` names
+  the base resumes set only for other countries. One muted line under the resume chips says how many
+  weren't scored for the job's country (`skippedCountriesLine` in `lib/ats-words.ts`), and the step's ⋯
+  holds **Score them anyway**, which scores and reads again with `include_other_countries` for that view
+  (the menu closes onto ⋯, which stays). With no resume set for the job's country every resume is scored,
+  and the line says so (`noResumeForCountry`). The gallery and the Score breakdown's header show a
+  resume's Target as pills (`AnchorPills`; the gallery passes `showRole={false}`, since the role is the
+  group heading, and `onTint`, for the card fill on its tinted footer). Pinned by `test_frontend_base_resume_anchors.py`.
 - Career history pages follow the Base resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.
@@ -1732,7 +1748,7 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   | A status's own colour where no chip fits (filters, analytics, a lane) | `StatusDot` (application) or `LaneDot` (proposal), from `status-chip.tsx` |
   | Which base resume a thing names | `ResumeSwatch` beside the name (`ResumeTag` is the pair) |
 - **A base resume's name that truncates carries its whole value in `title`.** Every `truncate` span inside a
-  `ResumeTag` (the score card title, the select triggers, the import list) has
+  `ResumeTag` (the Score breakdown's title, the select triggers, the import list) has
   `title={name}`: a trigger shows only its value and a cell has no other way to widen. Pinned by
   `test_frontend_resume_square.py`.
 - **A dialog footer can be sticky** (`<DialogFooter sticky>`: `sticky -bottom-4 z-10 shadow-level2`, keeping the
@@ -1788,7 +1804,7 @@ Every action answers. The answer depends on where the effect lands:
   work is shown, never a global spinner.
 - **Which busy buttons change their label.** `pending` always adds the spinner. These also swap the label
   while they run: Save job ("Saving…"), Queue in Agent inbox in the job header's ⋯ ("Queueing…"), Update scores
-  ("Updating scores…"), Approve ("Approving…"), Adapt and preview ("Adapting…"), Answer questions
+  ("Updating scores…", a ⋯ item, with the same words as a status line beside ⋯), Approve ("Approving…"), Adapt and preview ("Adapting…"), Answer questions
   ("Answering…"), Write cover letter, the question pass's write-all and Write new wording ("Writing…") and
   Apply suggestion ("Applying…"). These keep their label and show the spinner only: the studios' Save
   (`StudioSaveButton`), the Agent inbox bulk bar's Queue and the Skip confirm in its dialog. A Save button

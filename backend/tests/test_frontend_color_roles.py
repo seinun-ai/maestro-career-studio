@@ -906,8 +906,10 @@ def test_a_strong_match_is_quiet_with_a_check():
     assert "bg-success-container" not in page
 
 
-def test_the_best_match_card_carries_the_primary_ring():
-    """Card's edge is a ring, not a border: `border-primary` draws nothing there."""
-    panel = _read("components/ats-score-panel.tsx")
-    assert 'top && "ring-primary"' in panel
-    assert "border-primary" not in panel
+def test_the_picked_resume_chip_is_selected_in_a_set():
+    """The design system's selected-in-a-set: `secondary-container` and a leading Check, never a primary ring or
+    border (the old best-match card's); the best match wears a Best badge instead."""
+    step = _read("components/resume-step.tsx")
+    chips = step[step.index("export function ResumeChips(") : step.index("function ScoreSummary(")]
+    assert "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover" in chips
+    assert "ring-primary" not in step and "border-primary" not in step

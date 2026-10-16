@@ -68,9 +68,10 @@ _SITES = [
     # The job workspace (IA wave 3 first read): a double click on Update scores sent a second POST
     # that failed after the first succeeded, Create PDF rendered twice, Analyze gaps started
     # two gap analyses, and Use resume as is made two applications for one job.
-    ("components/ats-score-panel.tsx", "run"),
-    ("components/ats-score-panel.tsx", "createSession"),
-    ("components/ats-score-panel.tsx", "appliedAsIs"),
+    ("components/resume-step.tsx", "run"),
+    ("components/resume-step.tsx", "createSession"),
+    ("components/resume-step.tsx", "appliedAsIs"),
+    ("components/resume-step.tsx", "asIs"),
     ("components/application-panel.tsx", "renderPdf"),
     ("app/jobs/[id]/tailor/[sessionId]/page.tsx", "useAsIs"),
     # Lane 8 first-read: a double click sent each of these twice (the pill's Add

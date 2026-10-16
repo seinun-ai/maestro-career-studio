@@ -205,7 +205,7 @@ def test_a_rendering_pdf_preview_dims():
 
 
 def test_manual_update_scores_confirms_but_automatic_rescore_does_not():
-    src = _read("components/ats-score-panel.tsx")
+    src = _read("components/resume-step.tsx")
     assert 'toast.success("Match scores updated")' in src
     assert 'runOnce("manual")' in src
     assert 'if (manual === "manual")' in src

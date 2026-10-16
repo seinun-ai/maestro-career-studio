@@ -147,7 +147,7 @@ def test_one_selectable_list_query():
     assert "export function useBaseResumes(" in hook
     assert "apiFetch<BaseResumeSummary[]>" in hook
     callers = (
-        "components/ats-score-panel.tsx",
+        "components/resume-step.tsx",
         "components/chat/chat-page.tsx",
         "components/career/send-to-resume-dialog.tsx",
         "components/resume-editor/project-port-dialog.tsx",
@@ -254,11 +254,11 @@ def test_ats_keys_have_one_set_of_words():
     assert "placementLabel(row.placement) : fixHintLabel(row.fix_hint)" in compare
     for raw in ("{row.placement}", "{row.fix_hint}", "const SUBSCORE_LABELS"):
         assert raw not in compare, raw
-    assert "const SUBSCORE_LABELS" not in _read("components/ats-score-panel.tsx")
+    assert "const SUBSCORE_LABELS" not in _read("components/resume-step.tsx")
 
 
 def test_the_score_tab_spells_out_the_ats_score():
-    panel = _read("components/ats-score-panel.tsx")
+    panel = _read("components/resume-step.tsx")
     assert "{ATS_SCORE_LEAD}" in panel
     # Above the cards, and in the empty state: wherever the tab first shows a score.
     assert panel.count("<AtsScoreLead />") == 2

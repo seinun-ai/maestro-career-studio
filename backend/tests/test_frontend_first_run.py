@@ -37,7 +37,7 @@ def test_required_setup_steps_are_marked():
 
 
 def test_score_tab_offers_import_when_there_is_nothing_to_score():
-    panel = _read("components/ats-score-panel.tsx")
+    panel = _read("components/resume-step.tsx")
     assert "No base resumes to score against." in panel
     assert "<UploadDialog" in panel
     # A failed list fetch must never read as "you have none" (conventions).
@@ -53,7 +53,7 @@ def test_score_tab_offers_import_when_there_is_nothing_to_score():
 
 
 def _panel() -> str:
-    return _read("components/ats-score-panel.tsx")
+    return _read("components/resume-step.tsx")
 
 
 def _render_body(panel: str) -> str:
@@ -123,7 +123,7 @@ def test_score_tab_rescores_once_after_an_import_never_twice():
     """A cached `[]` must not arm the post-import rescore before the refetch
     confirms it, and the rescore must not fire while a run is in flight: two
     concurrent runs race on the base-score unique key and toast an error."""
-    panel = _read("components/ats-score-panel.tsx")
+    panel = _read("components/resume-step.tsx")
     assert "if (noBases && !bases.isFetching)" in panel
     assert "!importOpen && !run.isPending" in panel
 

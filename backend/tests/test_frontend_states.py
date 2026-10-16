@@ -42,7 +42,8 @@ _PENDING_SITES = {
     "app/jobs/[id]/page.tsx": ["Queue in Agent inbox"],
     "components/proposals/triage-actions.tsx": ["Skip (dialog)", "Queue (bulk)"],
     "components/career/inbox-panel.tsx": ["Approve"],
-    "components/ats-score-panel.tsx": ["Update scores"],
+    # Update scores is a ⋯ item (a menu item has no `pending`): its label and a status line say it runs.
+    "components/resume-step.tsx": ["Analyze gaps", "Use resume as is"],
 }
 
 

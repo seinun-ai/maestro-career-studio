@@ -89,11 +89,11 @@ def test_job_header_shows_the_best_score_and_the_steps_below_it():
     assert 'queryKey: ["ats-scores", id]' in src and "scorePill(scoreRows.data" in src
 
 
-# --- Task 18: score and tailor cards ---------------------------------------------------
+# --- Task 18: score and tailor cards (step 2 since the job steps) ---------------------------------------------------
 
 
 def test_score_cards_hoist_shared_warnings_and_mark_the_weakest():
-    src = _read("components/ats-score-panel.tsx")
+    src = _read("components/resume-step.tsx")
     assert "sharedWarnings" in src and "Weakest" in src
     assert "ProgressCount" in src and "useCountUp" in src
     assert "> of 100<" not in src
@@ -106,13 +106,15 @@ def test_score_cards_hoist_shared_warnings_and_mark_the_weakest():
 
 
 def test_score_card_subscores_and_coverage_are_meters():
-    src = _read("components/ats-score-panel.tsx")
-    assert 'label="Skills covered"' in src and "valueText={`${matched} of ${extracted}`}" in src
+    src = _read("components/resume-step.tsx")
+    # The picked resume's breakdown, in the Score breakdown popover: each subscore and the skills covered a meter.
+    popover = src[src.index("<PopoverContent") : src.index("</PopoverContent>")]
+    assert 'label="Skills covered"' in popover and "valueText={`${matched} of ${extracted}`}" in popover
+    assert "<SubscoreBar key={key} label={label} value={subscoreValues[i]} weakest={i === weakestAt} />" in popover
     assert "useCountUp(score.composite)" in src
-    # The best match leads: two columns wide, its subscores in two.
-    assert "@3xl:col-span-2" in src and "@3xl:grid-cols-2" in src
-    # Update scores' spinner is the Button's own; timings live in lib/motion.ts.
-    assert "pending={run.isPending}" in src
+    # Update scores is a ⋯ item: while it runs, its label and a status line beside ⋯ say so; timings live in lib/motion.ts.
+    assert '{run.isPending ? "Updating scores…" : "Update scores"}' in src
+    assert '<span role="status"' in src and 'data-pending={run.isPending ? "true" : undefined}' in src
     assert 'className={run.isPending ? "animate-spin"' not in src
     assert not any(n in src for n in ("1200", "400", "200"))
 
@@ -268,7 +270,7 @@ def test_wave5_review_one_glyph_per_meaning_and_honest_marks():
     assert '(row.matched ? "Matched" : "Missing")' in _read("components/ats-compare-panel.tsx")
     qa = _read("components/qa-tab.tsx")
     assert "CONCEPT_ICONS.done" in qa and 'variant="tonal"' not in qa
-    for path in ("components/ats-score-panel.tsx", "components/resume-health/question-pass.tsx"):
+    for path in ("components/resume-step.tsx", "components/resume-health/question-pass.tsx"):
         src = _read(path)
         assert not any(w in src for w in ("TriangleAlert", "CircleX", "Minus")), path
 
@@ -277,8 +279,8 @@ def test_wave5_review_one_glyph_per_meaning_and_honest_marks():
 
 
 def test_no_subscore_is_weakest_when_all_are_equal():
-    src = _read("components/ats-score-panel.tsx")
-    body = src[src.index("function lowestIndex("): src.index("The card's rarer actions")]
+    src = _read("components/resume-step.tsx")
+    body = src[src.index("function lowestIndex("): src.index("export type ResumeChipOption")]
     assert "Math.max(...values) === Math.min(...values)) return -1" in body
     assert "weakestAt = lowestIndex(subscoreValues)" in src
 

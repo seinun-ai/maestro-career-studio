@@ -42,7 +42,7 @@ _PICKER = _read("components/country-picker.tsx")
 _PILLS = _read("components/base-resumes/anchor-pills.tsx")
 _GALLERY = _read("components/base-resumes/base-resume-gallery.tsx")
 _STUDIO = _read("components/resume-editor/editor-body.tsx")
-_PANEL = _read("components/ats-score-panel.tsx")
+_PANEL = _read("components/resume-step.tsx")
 _WORDS = _read("lib/ats-words.ts")
 _API = _read("lib/api.ts")
 _TYPES = _read("lib/types.ts")
@@ -175,14 +175,15 @@ def test_pills_show_what_is_set_and_nothing_when_nothing_is():
     assert "truncate" in pills and "max-w-48" in pills
 
 
-def test_the_gallery_and_the_score_cards_show_the_pills():
+def test_the_gallery_and_the_score_breakdown_show_the_pills():
     # The gallery groups by role, so the role is the heading, not a pill; the tinted footer wants card-filled pills.
     assert "<AnchorPills resume={resume} showRole={false} onTint />" in _GALLERY
     # The unset role is the "Role not set" group's heading and its one hint; a set role is a pill.
     assert "Role not set" in _GALLERY and "Role not set" not in _PILLS
-    card = _between(_PANEL, "function AtsScoreCard(", "export function AtsScorePanel(")
-    assert "{resume && <AnchorPills resume={resume} />}" in card
-    assert card.index("<CardTitle") < card.index("<AnchorPills")
+    # Step 2: the picked resume's pills sit under its name in the Score breakdown popover's header.
+    summary = _between(_PANEL, "function ScoreSummary(", "export function ResumeStep(")
+    assert "{resume && <AnchorPills resume={resume} />}" in summary
+    assert summary.index("<PopoverTitle") < summary.index("<AnchorPills") < summary.index("<SubscoreBar")
 
 
 # ── The Score tab ──────────────────────────────────────────────────────────
@@ -221,17 +222,17 @@ def test_the_api_forwards_the_country_flag():
         assert field in summary, field
 
 
-def test_skipped_resumes_are_one_line_with_a_button_that_scores_them_anyway():
+def test_skipped_resumes_are_one_line_and_a_menu_item_scores_them_anyway():
     panel = _squash(_PANEL)
-    assert '<p className="text-body-small text-muted-foreground"> {skippedCountriesLine(skipped.length, countryName(jobCountry))}{" "} <Button' in panel
-    button = _squash(_between(_PANEL, "{skippedCountriesLine(", "</Button>"))
-    assert "onClick={scoreOtherCountries}" in button
+    # The sentence under the chips; the action is a ⋯ item, which closes onto ⋯ (it stays).
+    assert '<p className="text-body-small text-muted-foreground"> {skippedCountriesLine(skipped.length, countryName(jobCountry))} </p>' in panel
+    item = _squash(_between(_PANEL, "onClick={scoreOtherCountries}", "</DropdownMenuItem>"))
+    assert item.endswith("Score them anyway")
+    opener = _squash(_PANEL[_PANEL.rfind("<DropdownMenuItem", 0, _PANEL.index("onClick={scoreOtherCountries}")) : _PANEL.index("onClick={scoreOtherCountries}")])
     # Disabled while a run is in flight, and on a job this copy only reads (a replica).
-    assert "focusableWhenDisabled" in button and "disabled={run.isPending || readOnly}" in button
-    assert button.endswith("Score them anyway")
+    assert "disabled={run.isPending || readOnly}" in opener
     handler = _squash(_between(_PANEL, "const scoreOtherCountries = () => {", "\n  };"))
     assert "setIncludeOtherCountries(true);" in handler
-    assert "focusNext(updateRef);" in handler
     assert 'runOnce("all");' in handler
     # The run posts the flag; Update scores in that view keeps it.
     assert 'runAtsScores(jobId, { includeOtherCountries: gesture === "all" || includeOtherCountries })' in panel

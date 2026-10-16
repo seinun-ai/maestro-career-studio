@@ -50,7 +50,7 @@ collapses `wording_auto` into the `kb_auto` label.
 - **Script guard** (`services/script_guard.py`): text predominantly written in non-Latin scripts (CJK, Cyrillic, Arabic, Hebrew, Devanagari, Thai, Lao) is refused loudly with `UnsupportedScriptError` (HTTP 422) when `non_latin >= 8` characters AND `ratio >= 10%`. Accented Latin (`Zürich`, `Nestlé`) and mathematical Greek symbols are explicitly permitted; the README carries the scope statement.
 - **Coverage signal** (`LOW_COVERAGE_THRESHOLD = 0.25`): `AtsResult` computes `jd_skills_extracted_count`, `jd_skills_matched_count`, `coverage_ratio`, and `coverage_warning` ("I could not read this posting — treat this score as unreliable").
 - **Persistence**: carried through `subscores_json` without database migration, exposed via `AtsScoreRead` schema property getters on `AtsScore`, and returned in `gaps_json` from `gap_analysis.build_gaps`.
-- **Warning banner**: the frontend score panel (`ats-score-panel.tsx`) and gap page render a prominent warning banner when `coverage_warning` is present, preventing vocabulary misses from reading as "no gaps found" or "Strong match".
+- **Warning banner**: the job page's step 2 (`resume-step.tsx`, in the Score breakdown, or once above the chips when every resume draws it) and the gap page render a warning when `coverage_warning` is present, preventing vocabulary misses from reading as "no gaps found" or "Strong match".
 
 **Quick tailor from the review checkpoint.** The gap page's "Quick tailor"
 (shown only when open gaps remain) POSTs the normal tailor endpoint with

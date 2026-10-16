@@ -21,7 +21,7 @@ def _read(rel: str) -> str:
 def test_the_coverage_warning_is_said_once():
     # The server's coverage_warning already says "Your resume shows only 1 of
     # this job's 8 skills (13%)."; a second line restating it went.
-    for rel in ("components/ats-score-panel.tsx", _GAP_PAGE):
+    for rel in ("components/resume-step.tsx", _GAP_PAGE):
         src = _read(rel)
         assert "recognized only" not in src, rel
         assert "coverage_ratio" not in src, rel
@@ -86,7 +86,7 @@ def test_import_hints_name_what_their_picker_takes():
 def test_a_button_that_opens_the_import_dialog_says_its_title():
     title = re.search(r"<DialogTitle>([^<]+)</DialogTitle>", _read("components/setup/upload-dialog.tsx"))
     assert title and title.group(1) == "Import resumes and documents"
-    for rel in ("app/career/page.tsx", "components/ats-score-panel.tsx"):
+    for rel in ("app/career/page.tsx", "components/resume-step.tsx"):
         src = _read(rel)
         assert "<UploadDialog" in src, rel
         assert re.search(rf">\s*(?:<Upload aria-hidden=\"true\" /> )?{title.group(1)}\s*<", src), rel
