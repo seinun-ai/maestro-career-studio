@@ -1215,5 +1215,9 @@
     gets its fix before the 4-read hold; a Resume on an `unsure_page` FILLS the page; the user's word counts only for `submit_seen`,
     `submit_context` and `fields_no_next`; the one resume the run already wrote on the page excuses ONE required resume box, never a second;
     closed is a strict notice, nothing fillable and no Apply, and resumable.
+  - **Artifact removal details** (inv-staged-artifact-removal): unlink failures warn with tracebacks; missing files and failed folder
+    pruning stay quiet.
+  - **Home folder paths** (inv-one-home): `MAESTRO_HOME` defaults to `~/Library/Application Support/Maestro Career Studio` (macOS),
+    `%APPDATA%\Maestro Career Studio` (Windows) or `$XDG_DATA_HOME/maestro-career-studio` (Linux).
   - **Drafted answers** (inv-drafted-answers): a draft is returned `assumed` and `/choose` saves nothing of it; `""` when the history cannot
     answer; the never-list, the 120-word default and the label's stated limit: "Derived facts, drafted answers and degree levels" above.

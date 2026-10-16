@@ -35,8 +35,6 @@
 22. Guided Apply follow-ups (design doc has R2 stepper + R3 vault): checkbox collection needs its own safe design (group-level collection,
     legend-level policy screening, mirroring radios; `skipped_checkbox` holds until then); per-ATS selector blueprints; the essay path onto
     qid-keyed `/choose`; `guidedIsListboxButton` stays looser than the two pinned strict discriminators (it rechecks vetted elements only). Do when a checkbox group must be collected, a per-ATS blueprint is needed, or an essay reaches `/choose`.
-23. **Some §6 invariants have no enforcement pin** (`unpinned` in `.system_md_enforcement.json`): when next working in
-    one of those areas, add the pin or demote the rule to a convention note. Do when next working in one of those areas.
 24. Surface `schemas/job_extraction._coerce_enum` warnings through the jobs-ingest response, so `store_extracted_jd`
     callers see that input X was stored as `unstated` (audit 2026-08-22, finding A1). Do when a `store_extracted_jd` caller needs to see what was stored as `unstated`.
 26. Tailored-studio adoption gaps (`TailoredResumeStudio`): (a) two Saves in one refetch window, the second returning

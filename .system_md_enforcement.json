@@ -1,6 +1,24 @@
 {
   "_readme": "Enforcement points for the invariants in SYSTEM.md §6. Key = the {#inv-...} id carried by the invariant's bullet. Each pin names a file that must exist and a symbol that must still appear in it, so `scripts/check_system_md.py` fails when a documented invariant loses the test or module that enforces it — the 'docs promise what code no longer does' class. A rule with no pin is a wish; see the unpinned list at the bottom, and add pins rather than removing this file.",
   "invariants": {
+    "inv-honesty": [
+      {"path": "backend/tests/test_tailoring_sessions_router.py", "symbol": "test_patch_unverified_add_keyword_must_target_skills"},
+      {"path": "backend/tests/test_tailoring_sessions_router.py", "symbol": "test_patch_absent_add_keyword_extra_target_rejected_by_honesty"},
+      {"path": "backend/app/services/tailoring_session.py", "symbol": "_is_missing_skill"}
+    ],
+    "inv-tailor-vs-edit": [
+      {"path": "backend/mcp_server/tests/test_server.py", "symbol": "test_tailor_application_and_edit_application_docstrings_are_distinguishable"},
+      {"path": "backend/mcp_server/tests/test_server.py", "symbol": "test_edit_application_docstring_describes_current_draft_behavior"},
+      {"path": "backend/tests/test_resume_edit_service.py", "symbol": "test_replace_bullet_full_array_index_skips_disabled_and_echoes_applied"},
+      {"path": "backend/mcp_server/server.py", "symbol": "0-based into the FULL array"}
+    ],
+    "inv-pdf-word-spacing": [
+      {"path": "backend/tests/test_pdf_render.py", "symbol": "test_compile_pdf_preserves_word_spacing_for_strict_extractor"},
+      {"path": "backend/tests/test_pdf_render.py", "symbol": "test_pdflatex_argv_enables_interword_spaces"},
+      {"path": "backend/tests/test_template_overprint.py", "symbol": "test_validation_refuses_an_overprinting_latex_template"},
+      {"path": "backend/app/services/pdf_render.py", "symbol": "_INTERWORD_SPACE"},
+      {"path": "backend/app/services/template_validation.py", "symbol": "def text_overprints"}
+    ],
     "inv-browser-boundary": [
       {"path": "backend/tests/test_security_boundaries.py", "symbol": "test_template_source_cannot_reach_python_internals"},
       {"path": "backend/tests/test_frontend_host_guard.py", "symbol": "allowed-hosts"},
@@ -304,11 +322,7 @@
     ]
   },
   "unpinned": {
-    "_note": "Invariants stated in §6 with no machine-checkable enforcement point yet. Each is a rule the gate cannot defend; add a pin above when you next touch the area, or demote the rule to a convention note. Tracked as a §11 deferred item.",
-    "ids": [
-      "inv-honesty",
-      "inv-tailor-vs-edit",
-      "inv-pdf-word-spacing"
-    ]
+    "_note": "Invariants stated in §6 with no machine-checkable enforcement point yet. Empty since the 2026-10-15 grooming pass pinned the last three; a new rule without a pin is listed here until it gets one or is demoted to a convention note.",
+    "ids": []
   }
 }

@@ -283,9 +283,9 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   tests with `/app` paths). The symptom, the related key rule and the Langfuse rule: `docs/entities/others.md`, "Environment boundary details".
 - **Staged artifact removal** `{#inv-staged-artifact-removal}`: NEVER delete rendered files in a transaction that can roll back. Every
   `customized_json` write uses `services/application_writes.stage_resume_update` (sets draft, clears refs, records version, returns stale
-  paths); callers commit, THEN call `artifacts.remove_files(stale)` to remove files/PDF previews and prune empty folders. Unlink failures warn
-  with tracebacks; missing files and failed folder pruning stay quiet. Chat edits and version restores follow this pattern; never reintroduce
-  an immediate unlink helper.
+  paths); callers commit, THEN call `artifacts.remove_files(stale)` to remove files/PDF previews and prune empty folders (what warns and what
+  stays quiet: `docs/entities/others.md`, "Artifact removal details"). Chat edits and version restores follow this pattern; never
+  reintroduce an immediate unlink helper.
 - **Stable per-application `artifact_dir`** `{#inv-stable-artifact-dir}`: one folder per application,
   `applications/Company_Role_YYYYMMDD_<idprefix>/`, allocated once via `services/application_artifacts.get_dir`, persisted on
   `Application.artifact_dir`; resume/source/PDF, previews, cover letters and proposal `evidence/` colocate there. Upload constraints:
@@ -295,7 +295,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   without `RESUMES_FOLDER_DEFAULT` and on the always-on copy. Pinned by `tests/test_resumes_folder.py`.
 - **Honesty invariant** `{#inv-honesty}`: an `add_keyword` on a skill the engine found NO evidence of (`fix_hint == "absent"`) may only land in
   the skills section, never as a fabricated experience/project bullet. Enforced server-side in `save_resolutions` (guards MCP/API callers, not
-  just the UI).
+  just the UI; `_is_missing_skill`). Pinned by `tests/test_tailoring_sessions_router.py`.
 - **Placement validation twins** `{#inv-placement-validation-twins}`: `_validate_placement_target` (tailoring_session, raises) and
   `placement_targets.coerce` (scrubs LLM output) both call the pure `placement_targets.canonicalize` — `services/placement_targets.py` owns the
   placement-target contract, and the frontend's `buildPlacementTargets` hand-mirrors its targets shape. What an extra target requires:
@@ -309,7 +309,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   own limiter; module functions stay sync (`tests/test_mcp_http_loopback.py`, `mcp_server/tests/test_http.py`).
 - **`tailor_application` vs `edit_application`** `{#inv-tailor-vs-edit}` (MCP): the former REPLACES `customized_json` wholesale from the BASE
   resume; the latter applies ops to the CURRENT draft — docstrings lead with this; keep them unmistakable. Edit indices are **0-based into the
-  full JSON array**, including `enabled: false` rows omitted from PDF; PATCH `/edits` echoes `applied[]`.
+  full JSON array**, including `enabled: false` rows omitted from PDF; PATCH `/edits` echoes `applied[]`. Pinned by
+  `mcp_server/tests/test_server.py` and `tests/test_resume_edit_service.py`.
 - **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry` stores label,
   kind, rule id, option texts, outcome, host — never what was typed, was there before, or any AI answer: no value column, `extra="forbid"`, sw
   re-filters to six keys. `POST /runs` stores one strict, value-free `RunTrace` (newest 50 kept): a label or section holding a value the run
@@ -377,7 +378,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   parse_certified gate protect this — see the shared header partial `_header.tex.j2`, which BOTH resume and cover-letter templates include
   (format/scanner changes must handle both). pdfTeX 1.40.27 misplaces that space for many Type 1 fonts → overprinted words that still
   extract cleanly; `template_validation.text_overprints` refuses such a LaTeX sample and `engines` warns on that build. The fonts, the boot
-  re-check and the host-TeX rule: `docs/entities/others.md`, "PDF word-spacing details".
+  re-check and the host-TeX rule: `docs/entities/others.md`, "PDF word-spacing details". Pinned by `tests/test_pdf_render.py` and
+  `tests/test_template_overprint.py`.
 - **A render never changes engine silently** `{#inv-render-fallback-explained}`: `services/engines` is the ONE probe; `MAESTRO_CS_PDFLATEX`
   overrides and fails CLOSED. Without `pdflatex`, `pdf_render.resolve_render_template` uses the first ready Typst template for LaTeX
   resumes, bases and cover letters; `render_note` names both. VALIDATION never substitutes. `base_resume_render.record_render_error`:
@@ -449,9 +451,9 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   timeout), replay refusal, path rules, the proxy rule for `SYNC_REMOTE_URL`, artifact-folder containment and the pairing code's life:
   `docs/entities/others.md`, "Sync channel details". Pinned by `tests/sync/test_seal.py`, `test_sealed_home.py`, `test_public_host.py`,
   `test_pairing.py` and `test_two_machines.py`.
-- **One data folder per user; nothing writes into the install.** `{#inv-one-home}` A uv install's `MAESTRO_HOME` defaults to
-  `~/Library/Application Support/Maestro Career Studio` (macOS), `%APPDATA%\Maestro Career Studio` (Windows) or
-  `$XDG_DATA_HOME/maestro-career-studio` (Linux), the folder the future desktop app uses, so its data needs no import. `home.backend_env`
+- **One data folder per user; nothing writes into the install.** `{#inv-one-home}` A uv install's `MAESTRO_HOME` defaults to the
+  platform's per-user application-data folder (the three paths: `docs/entities/others.md`, "Home folder paths"), the folder the future
+  desktop app uses, so its data needs no import. `home.backend_env`
   points every writable path (data, applications, settings, logs, uploads, model cache) into it, so nothing lands under site-packages; its
   `maestro.env` is the only settings file. Pinned by `tests/maestro_cs/test_home.py`.
 - **The install's environment is applied before `app` is imported.** `{#inv-env-before-app}` `app.config.settings` reads the environment at
@@ -768,7 +770,7 @@ overflow moves to `docs/deferred.md` under this same contract, each item keeping
     the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits". Do when Phase 3 (run list, Queue view, parallel tabs) is
     built or a listed limit is reproduced.
 
-The other 31 items (3–6, 8, 10, 12, 14–17, 19, 21–24, 26–30, 32–34, 37–43) live in [`docs/deferred.md`](docs/deferred.md),
+The other 30 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32–34, 37–43) live in [`docs/deferred.md`](docs/deferred.md),
 each keeping its number and carrying its trigger; code citing "§11 item N" for one of them lands there.
 
 ## 12. Gotchas that have bitten before
