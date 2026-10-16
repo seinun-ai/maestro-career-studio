@@ -34,7 +34,8 @@ Maestro tailors it from your whole career history in under a minute, and every b
      pages, the 82.4 -> 87.3 Match score and the Apache Spark gap card are real
      captures from the app (v0.10.1) on a throwaway stack; tailoring took 4.6 s.
      Source, captures and the encode script live in the private marketing repo
-     (hero-gif/). 1000px / 12fps / 32 colors, no dither, 1.82 MB; keep any
+     (hero-gif/; the Figtree captions are hero-site-figtree/, re-rendered 2026-10-16
+     to match the site). 1000px / 12fps / 32 colors, no dither, 1.86 MB; keep any
      replacement under 2 MB. -->
 
 ![Many resume versions become one career history, then a specialist resume per role, company and country, matched to a job and ready to apply. You press Submit.](docs/assets/hero.gif)
