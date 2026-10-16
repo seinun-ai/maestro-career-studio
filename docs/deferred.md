@@ -88,3 +88,8 @@
 48. The Companion's from-base calls (`panel/actions/track.js` `trackThis`, `actions/job.js` `newResume`) ask nothing: they trust the
     panel's "no application bound" state, so a stale binding over a tailored draft replaces the draft silently (one application per
     job). Do when a Companion from-base call replaces a draft the user did not expect, or the binding logic is next changed.
+49. A skills item with a parenthesised list ("AWS (SageMaker, EKS, S3)") reads to the ATS engine as one term, so AWS and SageMaker
+    match by alias and gap as **Different wording**, and the resolver auto-fills them; tailoring then adds nothing (the line names them,
+    issue #50), but the gap page still lists the fill. `resume_diff.attribute` also labels a whole skills-group hunk by the first
+    resolution whose wording appears anywhere in the group, so that line's user-added "MLOps" reads "From your career history". Do when
+    the resume indexer's skill splitting is next changed (calibrate first, §9) or a hunk's provenance is reported wrong.

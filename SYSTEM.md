@@ -752,7 +752,7 @@ overflow moves to `docs/deferred.md` under this same contract, each item keeping
     the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits". Do when Phase 3 (run list, Queue view, parallel tabs) is
     built or a listed limit is reproduced.
 
-The other 30 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32–34, 37–43) live in [`docs/deferred.md`](docs/deferred.md),
+The other 34 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32, 33, 37–43, 45–49) live in [`docs/deferred.md`](docs/deferred.md),
 each keeping its number and carrying its trigger; code citing "§11 item N" for one of them lands there.
 
 ## 12. Gotchas that have bitten before
@@ -761,6 +761,9 @@ each keeping its number and carrying its trigger; code citing "§11 item N" for 
 invariant has done its job: promote it (into Cross-cutting invariants or `.system_md_enforcement.json`) and delete
 the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 
+- **A copied stack rendered into its source** (2026-10-16): rows keep absolute paths (applications `pdf_path`/`tex_path`/`artifact_dir`,
+  base_resumes, kb_documents), so a draft write and render on a copied state dir replaced the source stack's PDF → rewrite those
+  paths to the copy before any render or draft write.
 - **An Unreleased changelog bullet outlived its feature** (2026-10-16): ef3cfe15 removed the Job step's "Show N more" toggle, the bullet
   stayed, and the release audit and store plan repeated it → a commit that reverses an Unreleased feature edits its CHANGELOG bullet too.
 - **A hidden tab stalled saves** (2026-10-13): TanStack v5 scoped mutations queue as paused and continue only while the tab
