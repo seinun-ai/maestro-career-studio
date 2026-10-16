@@ -24,8 +24,14 @@
   const closeMenu = () => { menuRoot.innerHTML = ""; input.removeAttribute("aria-controls"); input.setAttribute("aria-expanded", "false"); };
   const pick = (text) => {
     const held = window.__wrongPick ?? text;
-    valueBox.querySelector(".acme__placeholder, .acme__single-value").outerHTML =
-      `<div class="acme__single-value"><span aria-hidden="true">⚑</span> ${held.split(" ").at(-1)}</div>`;
+    // Built from nodes, not an HTML string, so option text is never parsed as markup.
+    const value = document.createElement("div");
+    value.className = "acme__single-value";
+    const flag = document.createElement("span");
+    flag.setAttribute("aria-hidden", "true");
+    flag.textContent = "⚑";
+    value.append(flag, ` ${held.split(" ").at(-1)}`);
+    valueBox.querySelector(".acme__placeholder, .acme__single-value").replaceWith(value);
     input.value = "";
     oracle.country = held;
     closeMenu();

@@ -219,7 +219,23 @@ def _yes_no(fields, facts: dict[str, Fact]) -> dict[str, Fact]:
 # statement elsewhere in the text, "candidates who are not local or willing to relocate will not be considered", is not
 # what is asked), no negation before the relocate verb, and not a work-authorization or sponsorship question (those
 # never ride on this slot). "Located" alone or "relocate" alone is the model's.
-_SENTENCE_END = re.compile(r"(?<=[?!])\s+|\n+|(?<=[a-z]{2}\.)\s+(?=[A-Z])")
+_WHITESPACE_RUN = re.compile(r"\s+")
+_ABBREV_END = re.compile(r"[a-z]{2}\.")
+
+
+def _sentences(text: str) -> list[str]:
+    r"""`text` split into sentences at a whitespace run that follows "?" or "!", holds a newline, or follows a lowercase
+    word's full stop with a capital after it. A linear scan of the runs: the one-regex form
+    `(?<=[?!])\s+|\n+|(?<=[a-z]{2}\.)\s+(?=[A-Z])` rescanned long space runs (CodeQL py/polynomial-redos)."""
+    parts, start = [], 0
+    for run in _WHITESPACE_RUN.finditer(text):
+        before, after = text[:run.start()], text[run.end():run.end() + 1]
+        if (before[-1:] in ("?", "!") and before) or "\n" in run.group() or (
+                _ABBREV_END.fullmatch(before[-3:]) and "A" <= after <= "Z"):
+            parts.append(text[start:run.start()])
+            start = run.end()
+    parts.append(text[start:])
+    return parts
 _LOCATED_OR_RELOCATE = re.compile(
     r"\b(?:located|live|living|reside|residing|based)\b[^?!\n]*?\b(?:and/or|or)\b[^?!\n]*?"
     r"\b(?:willing|open|able|prepared)\s+to\s+(?:re-?locat|move)", re.IGNORECASE)
@@ -236,7 +252,7 @@ _QUALIFIER = re.compile(
 def _relocate_sentence(question: str) -> str | None:
     """The sentence of `question` that asks "located … and/or willing to relocate" (a question, or an unpunctuated last
     line addressed to "you"), else None."""
-    parts = [p.strip() for p in _SENTENCE_END.split(question) if p.strip()]
+    parts = [p.strip() for p in _sentences(question) if p.strip()]
     for i, part in enumerate(parts):
         found = _LOCATED_OR_RELOCATE.search(part)
         asked = part.endswith("?") or (i == len(parts) - 1 and re.search(r"\byou(?:r)?\b", part, re.IGNORECASE))

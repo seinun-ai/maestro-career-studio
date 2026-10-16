@@ -470,7 +470,9 @@ def _now_or_future(work_auth: dict[str, Any]) -> str | None:
 # Where one string names several companies ("Acme, Globex, or Initech"): the commas, semicolons,
 # slashes, colons and brackets, "&"-less, and "or" / "and" between them. A name that holds one of these
 # itself ("Globex and Sons") still matches whole: the whole string is tried as one name before the parts.
-_COMPANY_SEPARATORS = re.compile(r"\s*(?:[,;/:()]|\bor\b|\band\b)\s*", re.IGNORECASE)
+# No `\s*` around the separator: a run of spaces would be rescanned from every position in it (CodeQL
+# py/polynomial-redos), and `_name_parts` strips each part anyway.
+_COMPANY_SEPARATORS = re.compile(r"[,;/:()]|\bor\b|\band\b", re.IGNORECASE)
 # A part is a name once the preposition in front of it is gone ("or at Initech" is "at Initech").
 _LEADING_WORD = re.compile(r"^(?:(?:at|for|with|by|of|the|any\s+of|including|include)\s+)+", re.IGNORECASE)
 # A suffix's full stop ("Acme, Inc. or …") is not the end of a sentence.
@@ -977,8 +979,12 @@ def _are_names(names: list[str], keys: set[str], parents: set[str]) -> bool:
     """Every listed part is a proper company name. "Metro by Acme" is one only when its parent after "by" is
     itself named in the question or is the job's company: "Initech by Contract" names no brand."""
     for name in names:
-        if m := re.fullmatch(r"(.+?)\s+by\s+(.+)", name, re.IGNORECASE):
-            left, right = m[1], m[2]
+        # The first "by" word with words on both sides, found by a word split rather than `(.+?)\s+by\s+(.+)`,
+        # whose two open groups backtrack on long input (CodeQL py/polynomial-redos).
+        words = name.split()
+        at = next((i for i, w in enumerate(words) if w.lower() == "by" and 0 < i < len(words) - 1), None)
+        if at is not None:
+            left, right = " ".join(words[:at]), " ".join(words[at + 1:])
             if not (_is_a_name(left) and _is_a_name(right) and name_key(right) in (keys - {name_key(name)}) | parents):
                 return False
         elif not _is_a_name(name):
