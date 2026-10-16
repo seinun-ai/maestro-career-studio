@@ -150,6 +150,27 @@ export function jobSteps(input: JobStepsInput): Step[] {
   });
 }
 
+/**
+ * The detail's job with the stage on it. `GET /api/jobs/{id}/detail` sends the rung and the open gap analysis
+ * beside `job`, not in it (the nested job is the plain JobRead), so a page that handed `detail.job` to
+ * `jobStepsInput` saw every job as saved. Both job pages build the steps from this.
+ */
+export function jobWithStage<J extends object>(detail: {
+  job: J;
+  stage?: Rung;
+  open_session_id?: string | null;
+  gaps_done?: number;
+  gaps_total?: number;
+}): J & Pick<Job, "stage" | "open_session_id" | "gaps_done" | "gaps_total"> {
+  return {
+    ...detail.job,
+    stage: detail.stage,
+    open_session_id: detail.open_session_id,
+    gaps_done: detail.gaps_done,
+    gaps_total: detail.gaps_total,
+  };
+}
+
 type ScoreRow = { phase: string; target_id: string; composite: number };
 type SessionRow = Pick<
   TailoringSession,

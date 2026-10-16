@@ -79,9 +79,10 @@ const CONFIRM_LABELS: Record<SwitchAction, string> = {
 
 /**
  * The confirm before acting on `to` while the job's resume came from `from` (names, not slugs). Null when
- * nothing would be replaced: no application, a draft with no resume yet, or the same resume, except once
- * applied: tailoring the resume you applied with again replaces it, so the actions that re-tailor still ask
- * (Use resume as is keeps its own confirm, `asIsOverDraftConfirm`).
+ * nothing would be replaced: no application, a draft with no resume yet, or the same resume, except at the
+ * gap page's Tailor once applied: tailoring the resume you applied with again replaces it there. Analyze gaps
+ * and Continue only start or open a gap analysis, so they never ask about the same resume; Use resume as is
+ * keeps its own confirm (`asIsOverDraftConfirm`).
  */
 export function switchConfirm({
   state,
@@ -100,7 +101,7 @@ export function switchConfirm({
 }): { title: string; description: string; confirmLabel: string } | null {
   if (state == null) return null;
   if (fromSlug === toSlug) {
-    if (state !== "applied" || action === "as_is") return null;
+    if (state !== "applied" || action !== "tailor") return null;
     return {
       title: `Tailor ${from} again?`,
       description: `You applied with ${from}. Tailoring again replaces that resume and its PDF. Version history keeps them.`,

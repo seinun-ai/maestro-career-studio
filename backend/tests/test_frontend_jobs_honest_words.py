@@ -155,7 +155,8 @@ def test_the_gap_page_draws_step_two_with_the_resume_chips():
     # The job page's keys, so the cache is shared; the steps are fed as the job page feeds them.
     for key in ('queryKey: ["ats-scores", jobId],', 'queryKey: ["tailoring-sessions", jobId],', 'queryKey: ["proposal", proposalId],'):
         assert key in page, key
-    assert "jobStepsInput({\n        job,\n        application,\n" in page and "const standing = standingLine({" in page
+    assert "jobStepsInput({\n        job: jobWithStage(detail),\n        application,\n" in page
+    assert "const standing = standingLine({" in page
     # Steps 1, 3 and 4 open the job page at the tab it already honours; step 2 is this page.
     assert 'const STEP_TABS: Partial<Record<StepKey, string>> = { job: "jd", output: "output", qa: "qa" };' in page
     assert "if (tab && (await saveNow())) router.push(`/jobs/${jobId}?tab=${tab}`);" in page
@@ -368,7 +369,8 @@ def test_the_switch_confirm_says_what_the_job_holds():
                   'tailor: "Switch and tailor",'):
         assert label in words, label
     # Once applied, re-tailoring the same resume still asks; Use resume as is keeps its own words, "resume" once applied.
-    assert 'if (state !== "applied" || action === "as_is") return null;' in words
+    # Only the gap page's Tailor replaces the draft: Analyze gaps and Continue never ask about the same resume.
+    assert 'if (state !== "applied" || action !== "tailor") return null;' in words
     assert "description: `You applied with ${from}. Tailoring again replaces that resume and its PDF. Version history keeps them.`," in words
     assert 'confirmLabel: "Tailor again",' in words
     assert 'const noun = applied ? "resume" : "draft";' in words and "title: `Replace the existing tailored ${noun}?`," in words
@@ -466,7 +468,27 @@ def test_a_step_with_something_to_show_is_a_button():
     steps = _read("components/job-steps.tsx")
     assert "const button = step.reachable || step.state !== \"next\";" in steps and "{button ? (" in steps
     # The page hands the builder the application itself, so `hasApplication` and the draft come from it.
-    assert "jobStepsInput({\n      job,\n      application,\n" in page
+    assert "jobStepsInput({\n      job: stagedJob,\n      application,\n" in page
+
+
+def test_the_steps_read_the_details_own_stage():
+    """The detail sends the rung beside `job` (schemas/job_detail.py), and the nested JobRead carries none: a page
+    that read `data.job.stage` saw every job as saved, so step 2 was always current and step 4 never was."""
+    detail = (Path(knockout.__file__).parents[1] / "schemas/job_detail.py").read_text(encoding="utf-8")
+    assert "    job: JobRead\n" in detail and "    stage: Rung\n" in detail
+    lib = _read("lib/job-steps.ts")
+    assert "export function jobWithStage<J extends object>(detail: {" in lib
+    assert "    ...detail.job,\n    stage: detail.stage,\n    open_session_id: detail.open_session_id," in lib
+    page = _read(_JOB_PAGE)
+    assert "const stagedJob = jobWithStage(data);\n  const stage = stagedJob.stage ?? \"saved\";" in page
+    assert "job.stage" not in page
+    gap = _read(_GAP_PAGE)
+    assert "job: jobWithStage(detail)," in gap and "job.stage" not in gap
+    types = _read("lib/types.ts")
+    detail_type = types[types.index("export interface JobDetail {") :]
+    detail_type = detail_type[: detail_type.index("\n}")]
+    for field in ("stage?: Rung;", "open_session_id?: UUID | null;", "gaps_done?: number;", "gaps_total?: number;"):
+        assert field in detail_type, field
 
 
 def test_step_one_reads_the_knockout_card_words():

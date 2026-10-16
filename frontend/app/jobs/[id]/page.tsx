@@ -76,7 +76,7 @@ import { jobMetaLine } from "@/lib/job-meta";
 import { formatShortDate } from "@/lib/format-date";
 import { gapCounts } from "@/lib/gap-counts";
 import { scorePill, standingLine } from "@/lib/job-standing";
-import { TAB_TO_STEP, currentStep, jobSteps, jobStepsInput, stepForTab, type StepKey } from "@/lib/job-steps";
+import { TAB_TO_STEP, currentStep, jobSteps, jobStepsInput, jobWithStage, stepForTab, type StepKey } from "@/lib/job-steps";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { knockoutWords } from "@/lib/knockout-line";
 import { cn } from "@/lib/utils";
@@ -385,14 +385,16 @@ export default function JobDetailPage({
   const triagePending = proposalActions.pending;
 
   // The four steps (lib/job-steps.ts), from what the detail and the two lists already carry: no new request.
-  const stage = job.stage ?? "saved";
+  // The rung sits beside `job` on the detail, not in it: `jobWithStage` puts them together.
+  const stagedJob = jobWithStage(data);
+  const stage = stagedJob.stage ?? "saved";
   const skills = extractSkills(job.extracted_json);
   // A skip's reason decides whether it reads Applied yourself: hold the words until it loads.
   const standingText =
     !hasApp && proposalStatus === "rejected" && proposalQuery.isLoading ? "" : standing.text;
   const steps = jobSteps(
     jobStepsInput({
-      job,
+      job: stagedJob,
       application,
       applicationResumeName: data.base_resume_name ?? null,
       scoreRows: scoreRows.data ?? [],

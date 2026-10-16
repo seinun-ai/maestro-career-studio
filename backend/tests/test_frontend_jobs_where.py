@@ -84,6 +84,13 @@ def test_the_next_step_cell_links_the_one_control_from_the_servers_stage():
     assert head.index('header("applied_at"') < head.index(">Next step</TableHead>") < head.index('header("created_at"')
     assert 'import { nextStep, nextStepHref, type Rung } from "@/lib/next-step";' in _PAGE
     assert 'const step = nextStep(stage, r.kind === "saved" ? r.job : r.app);' in squash(_PAGE)
+    # List rows carry the rung at their top level (JobSummary, ApplicationSummary), unlike the detail's nested job.
+    assert 'return r.kind === "saved" ? r.job.stage : r.app.stage;' in _PAGE
+    from app.schemas.application import ApplicationSummary
+    from app.schemas.job import JobRead, JobSummary
+
+    assert "stage" in JobSummary.model_fields and "stage" in ApplicationSummary.model_fields
+    assert "stage" not in JobRead.model_fields  # the detail's nested job: its rung sits beside it
     cell = _TABLE[_TABLE.index("{step ? (") :]
     cell = cell[: cell.index("</TableCell>")]
     # The button keeps its click from opening the row; the rest of the cell opens the job like the row.

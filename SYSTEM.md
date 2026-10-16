@@ -180,7 +180,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    and Import resumes and documents sit in ⋯. One application per job: an action on another base asks first, worded for what the
    job holds (`hooks/use-resume-switch.ts`). Shared warnings show once above the chips; with no base resume the step offers the import.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`, under step 2's stepper and resume chips (a chip opens that resume's gap
-   analysis, `useResumeSwitch`; re-tailoring the resume you applied with asks first): per-gap resolutions (add_keyword /
+   analysis, `useResumeSwitch`; its Tailor asks first on the resume you applied with): per-gap resolutions (add_keyword /
    user_input / attach_project / skip + enable_entry / port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip
    for the document + a durable `user_cannot_confirm` KB record written at SAVE time, so the claim is never re-asked — see §6
    inv-provenance-no-decay) autosaved debounced with replace=true semantics (omitted gap_ids are deleted server-side);

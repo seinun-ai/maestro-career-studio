@@ -44,7 +44,7 @@ import { gapCounts } from "@/lib/gap-counts";
 import { historyStatusOf } from "@/lib/inbox-readiness";
 import { isOwnershipRefusal, jobOwnershipView } from "@/lib/job-ownership";
 import { scorePill, standingLine } from "@/lib/job-standing";
-import { jobSteps, jobStepsInput, type Step, type StepKey } from "@/lib/job-steps";
+import { jobSteps, jobStepsInput, jobWithStage, type Step, type StepKey } from "@/lib/job-steps";
 import { knockoutWords } from "@/lib/knockout-line";
 import { asIsOverDraftConfirm } from "@/lib/resume-pick";
 import { cn } from "@/lib/utils";
@@ -830,7 +830,7 @@ export default function TailorSessionPage({
     const skills = extractSkills(job.extracted_json);
     steps = jobSteps(
       jobStepsInput({
-        job,
+        job: jobWithStage(detail),
         application,
         applicationResumeName: detail.base_resume_name ?? null,
         scoreRows: scoreRows.data ?? [],

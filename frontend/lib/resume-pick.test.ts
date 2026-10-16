@@ -76,17 +76,18 @@ test("each state has its own words, and the same resume asks nothing", () => {
   assert.equal(switchConfirm({ ...base, toSlug: "ds", state: "tailored", action: "analyze" }), null);
 });
 
-test("once applied, re-tailoring the same resume still asks; Use resume as is keeps its own words", () => {
+test("once applied, the gap page's Tailor on the same resume asks; starting or opening an analysis does not", () => {
   const same = { from: "Data Scientist", to: "Data Scientist", fromSlug: "ds", toSlug: "ds" } as const;
   const again = {
     title: "Tailor Data Scientist again?",
     description: "You applied with Data Scientist. Tailoring again replaces that resume and its PDF. Version history keeps them.",
     confirmLabel: "Tailor again",
   };
-  for (const action of ["analyze", "continue", "tailor"] as const) {
-    assert.deepEqual(switchConfirm({ ...same, state: "applied", action }), again, action);
+  assert.deepEqual(switchConfirm({ ...same, state: "applied", action: "tailor" }), again);
+  // Analyze gaps and Continue replace nothing; Use resume as is asks with asIsOverDraftConfirm.
+  for (const action of ["analyze", "continue", "as_is"] as const) {
+    assert.equal(switchConfirm({ ...same, state: "applied", action }), null, action);
   }
-  assert.equal(switchConfirm({ ...same, state: "applied", action: "as_is" }), null);
   // Before applying, the same resume asks nothing: the draft is still a draft.
   assert.equal(switchConfirm({ ...same, state: "tailored", action: "tailor" }), null);
   assert.equal(switchConfirm({ ...same, state: "as_is", action: "analyze" }), null);

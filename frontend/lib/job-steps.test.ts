@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { Rung } from "./next-step.ts";
 import { gapCounts } from "./gap-counts.ts";
-import { currentStep, jobSteps, jobStepsInput, stepForTab, type JobStepsInput } from "./job-steps.ts";
+import { currentStep, jobSteps, jobStepsInput, jobWithStage, stepForTab, type JobStepsInput } from "./job-steps.ts";
 
 const input = (over: Partial<JobStepsInput> = {}): JobStepsInput => ({
   stage: "scored",
@@ -272,4 +272,16 @@ test("the draft, the PDF and the application are what the application holds", ()
   assert.equal(built().hasApplication, true);
   assert.equal(built({ application: null }).hasApplication, false);
   assert.equal(built({ job: { stage: undefined, open_session_id: null } }).stage, "saved");
+});
+
+test("the detail's stage reaches the steps: it sits beside the job, not in it", () => {
+  const detail = { job: { id: "j1", title: "Analyst" }, stage: "applied" as const, open_session_id: null, gaps_done: 0, gaps_total: 0 };
+  const job = jobWithStage(detail);
+  assert.equal(job.stage, "applied");
+  assert.equal(job.title, "Analyst");
+  assert.equal(built({ job }).stage, "applied");
+  // The nested job alone carries no stage: read that way, every job looked saved.
+  assert.equal(built({ job: detail.job as never }).stage, "saved");
+  const gaps = jobWithStage({ job: {}, stage: "gaps", open_session_id: "s1", gaps_done: 2, gaps_total: 5 });
+  assert.deepEqual(built({ job: gaps }).openGaps, { closed: 2, total: 5 });
 });

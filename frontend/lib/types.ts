@@ -84,8 +84,9 @@ export interface Job {
   proposal_proposed_by?: string | null;
   /** The best base-resume score, list endpoint only; null when never scored. */
   best_ats_score?: number | null;
-  /** Lists and the detail (services/stage.py): the rung the job sits on, and the open gap analysis
-   *  behind a `gaps` rung with its closed/listed counts. Optional: an older backend omits them. */
+  /** The job lists only (services/stage.py): the rung the job sits on, and the open gap analysis
+   *  behind a `gaps` rung with its closed/listed counts. The detail sends them beside `job` (JobDetail;
+   *  lib/job-steps `jobWithStage`). Optional: an older backend omits them. */
   stage?: Rung;
   open_session_id?: UUID | null;
   gaps_done?: number;
@@ -198,6 +199,12 @@ export interface JobDetail {
   has_filled_answers: boolean;
   /** The application's base resume's own name; null with no application or no name. Optional: an older backend omits it. */
   base_resume_name?: string | null;
+  /** The rung the job page is on (services/stage.py), and the open gap analysis behind a `gaps` rung with its
+   *  closed/listed counts. Here, not on `job`: lib/job-steps `jobWithStage` puts them together. */
+  stage?: Rung;
+  open_session_id?: UUID | null;
+  gaps_done?: number;
+  gaps_total?: number;
 }
 
 export interface ContactInfo {

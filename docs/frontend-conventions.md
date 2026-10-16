@@ -1193,8 +1193,9 @@
   refetch never switches the panel; a `?tab=submitted` link puts the receipt above the questions. A panel mounts when first shown and
   then stays, hidden (an answer being edited survives a look at another step). The header keeps the
   proposal's triage, the score pill, the StatusChip and the job link; the rare actions sit behind one ⋯
-  (**More actions**): Queue in Agent inbox, Refresh details and Delete job, each with its confirm.
-  Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_visual_surfaces.py`.
+  (**More actions**): Queue in Agent inbox, Refresh details and Delete job, each with its confirm. The stage
+  is the detail's own `stage`, sent beside `job` (`jobWithStage`); the nested job carries none, and read alone
+  every job looked saved. Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_visual_surfaces.py`.
 - **Resume and gaps** (step 2, `components/resume-step.tsx`), inside one card: the Match score lead, then
   `ResumeChips` (`components/resume-chips.tsx`), a group named "Base resume" of toggle chips with FilterChips'
   semantics (`aria-pressed`, 28px, `label-medium`, a 12px leading Check and `secondary-container` when picked;
@@ -1217,9 +1218,10 @@
   is) asks first through `hooks/use-resume-switch.ts`, which the gap page shares, in words for what the job
   holds (`switchConfirm`): a tailored draft (a `tailored` gap analysis made it), the base used as is, or the
   resume you applied with; the label names the action ("Switch and analyze gaps", "Switch and continue",
-  "Switch and use as is"). Once applied, re-tailoring the same resume (Analyze gaps, Continue, the gap page's
-  Tailor and Quick tailor) asks "Tailor X again?" too. Use resume as is on the job's own resume over a draft
-  asks "Replace the existing tailored draft?" (`asIsOverDraftConfirm`; "resume" once applied), and opens step 3.
+  "Switch and use as is"). Once applied, the gap page's Tailor and Quick tailor on that same resume ask "Tailor X
+  again?" (Analyze gaps and Continue only start or open an analysis, so they do not). Use resume as is on the
+  job's own resume over a draft asks "Replace the existing tailored draft?" (`asIsOverDraftConfirm`; "resume"
+  once applied), and opens step 3.
   The gap page draws the same `JobSteps` (step 2 shown; 1, 3 and 4 open the job page's `?tab=`) and
   `ResumeChips` under its header, its resume picked; a chip opens that resume's open gap analysis or starts one
   (`openOrCreate`, `router.replace`), saving first. Pinned by `test_frontend_jobs_honest_words.py`.
