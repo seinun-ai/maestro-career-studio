@@ -909,7 +909,7 @@ def test_a_strong_match_is_quiet_with_a_check():
 def test_the_picked_resume_chip_is_selected_in_a_set():
     """The design system's selected-in-a-set: `secondary-container` and a leading Check, never a primary ring or
     border (the old best-match card's); the best match wears a Best badge instead."""
-    step = _read("components/resume-step.tsx")
-    chips = step[step.index("export function ResumeChips(") : step.index("function ScoreSummary(")]
+    chips = _read("components/resume-chips.tsx")
     assert "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover" in chips
-    assert "ring-primary" not in step and "border-primary" not in step
+    for rel in ("components/resume-chips.tsx", "components/resume-step.tsx"):
+        assert "ring-primary" not in _read(rel) and "border-primary" not in _read(rel), rel

@@ -174,12 +174,12 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    `proposal_status`/`proposal_id` from the newest proposal.
 4. **Score** — Step 2 (**Resume and gaps**, `components/resume-step.tsx`) shows the bases set for the job's country (all when
    unknown), scored at save; its auto-run on first visit is the fallback for a job saved before any base resume existed or whose
-   save-time scoring failed. The bases are radio chips (top 3 by score, then "N more"); the picked one (the newest open session's
-   base, else the application's, else the best match) gets a one-line summary with a Score breakdown popover, then **Analyze gaps**
-   (creates a session) or **Continue gap analysis**, the view's one filled button, and **Use resume as is**; Update scores,
-   Restart gap analysis, Score them anyway, Mark applied without tailoring and Import resumes and documents sit in ⋯. Picking another base while the job has
-   a tailored draft confirms first (one application per job: tailoring it replaces the draft). Shared warnings show once above
-   the chips; with no base resume the step offers the import and scores once that dialog closes.
+   save-time scoring failed. The bases are toggle chips (top 3 by score, then "N more"); a pick is a preview, never a write. The
+   default (`lib/resume-pick.ts`: the newest open session's base, else the application's, else the best match) gets a one-line
+   summary with a Score breakdown popover, then **Analyze gaps** (creates a session) or **Continue gap analysis**, the view's one
+   filled button, and **Use resume as is**; Update scores, Restart gap analysis, Score them anyway, Mark applied without tailoring
+   and Import resumes and documents sit in ⋯. One application per job: an action on another base asks first, worded for what the
+   job holds (`hooks/use-resume-switch.ts`). Shared warnings show once above the chips; with no base resume the step offers the import.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions (add_keyword / user_input / attach_project / skip +
    enable_entry / port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip for the document + a durable
    `user_cannot_confirm` KB record written at SAVE time, so the claim is never re-asked — see §6 inv-provenance-no-decay)

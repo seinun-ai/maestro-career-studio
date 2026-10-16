@@ -69,7 +69,7 @@ _SITES = [
     # that failed after the first succeeded, Create PDF rendered twice, Analyze gaps started
     # two gap analyses, and Use resume as is made two applications for one job.
     ("components/resume-step.tsx", "run"),
-    ("components/resume-step.tsx", "createSession"),
+    ("hooks/use-resume-switch.ts", "createSession"),
     ("components/resume-step.tsx", "appliedAsIs"),
     ("components/resume-step.tsx", "asIs"),
     ("components/application-panel.tsx", "renderPdf"),

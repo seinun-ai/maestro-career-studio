@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
-import { useRouter } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { AnchorPills } from "@/components/base-resumes/anchor-pills";
 import { useConfirm } from "@/components/confirm-dialog";
+import { ResumeChips } from "@/components/resume-chips";
+import { ScoreSummary, coverageWarning } from "@/components/score-summary";
 import { useBaseResumeLabel, useBaseResumes } from "@/hooks/use-base-resume-label";
+import { useResumeSwitch } from "@/hooks/use-resume-switch";
 import { LoadErrorState } from "@/components/load-error-state";
 import { UploadDialog } from "@/components/setup/upload-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -22,17 +22,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ProgressCount, ResumeSwatch, ResumeTag, ScoreBar } from "@/components/visual";
-import { useCountUp } from "@/hooks/use-count-up";
+import { ProgressCount } from "@/components/visual";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import {
   ATS_SCORE_LEAD,
   LOW_COVERAGE_ON_EVERY_RESUME,
-  SUBSCORE_LABELS,
-  UNREADABLE_DATES_NOTE,
-  datesUnreadable,
   noResumeForCountry,
   skippedCountriesLine,
 } from "@/lib/ats-words";
@@ -40,27 +35,23 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { countryName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
-import { cn } from "@/lib/utils";
+import { defaultResumePick } from "@/lib/resume-pick";
 import {
   ApiError,
   apiFetch,
   closeTailoringSession,
   createApplicationFromBase,
-  createTailoringSession,
   getAtsCandidates,
   listAtsScores,
   listTailoringSessions,
   runAtsScores,
 } from "@/lib/api";
-import type { Application, AtsScore, BaseResumeSummary, TailoringSession } from "@/lib/types";
+import type { Application, TailoringSession } from "@/lib/types";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
 const MoreIcon = CONCEPT_ICONS.more;
 const WarningIcon = CONCEPT_ICONS.warning;
 const AnalyzeGapsIcon = CONCEPT_ICONS.analyzeGaps;
-
-/** How many chips show before "N more": the design's top 3 by score. */
-const CHIPS_SHOWN = 3;
 
 /** "Match score" spelled out once, where step 2 first shows one (conventions: Canonical terms). */
 function AtsScoreLead() {
@@ -71,239 +62,12 @@ function AtsScoreLead() {
   );
 }
 
-/** The server's low-coverage sentence, on the row or (older rows) inside its subscores. */
-function coverageWarning(score: AtsScore): string | null {
-  return score.coverage_warning || score.subscores_json?.coverage_warning || null;
-}
-
-/** One subscore as a meter out of 100: the number sits beside the bar, so no " of 100" is needed. */
-function SubscoreBar({ label, value, weakest }: { label: string; value: number; weakest: boolean }) {
-  return (
-    <div className="space-y-0.5">
-      <div className="flex items-center gap-2">
-        <span aria-hidden="true" className="text-muted-foreground text-body-small">{label}</span>
-        {/* A word only (D4): no colour, no threshold; the arrow icon means Lost elsewhere. */}
-        {weakest && (
-          <span className="inline-flex h-4 items-center rounded-full bg-surface-container px-1.5 text-label-small">Weakest</span>
-        )}
-      </div>
-      <ScoreBar value={Math.round(value * 100)} max={100} label={label} width="flex-1" className="w-full" />
-    </div>
-  );
-}
-
-/** The index of the lowest value (ties go to the first); -1 when all are equal, since none is weakest. */
-function lowestIndex(values: number[]): number {
-  if (Math.max(...values) === Math.min(...values)) return -1;
-  return values.reduce((low, v, i) => (v < values[low] ? i : low), 0);
-}
-
-/** One chip: a base resume, its colour, its Match score. */
-export type ResumeChipOption = {
-  slug: string;
-  name: string;
-  score: number;
-  hue: number | null | undefined;
-};
-
-/**
- * The base resumes as a row of chips, one picked (step 2 of the job page; the gap page mounts it too). A radio
- * group: each chip is a label over a visually hidden radio, so arrow keys move the pick and the radio says it is
- * checked. Picked reads `secondary-container` with a leading Check (design system: selected in a set). Sorted by
- * score; the top 3 show, then "N more" reveals the rest. The picked chip always shows, even past the top 3.
- * `actions` sits at the row's right end (step 2's ⋯).
- */
-export function ResumeChips({
-  resumes,
-  picked,
-  onPick,
-  best,
-  disabled = false,
-  actions,
-}: {
-  resumes: readonly ResumeChipOption[];
-  picked: string | null;
-  onPick: (slug: string) => void;
-  /** The best match's slug: its chip wears Best. */
-  best: string | null;
-  disabled?: boolean;
-  actions?: ReactNode;
-}) {
-  const name = useId();
-  const [expanded, setExpanded] = useState(false);
-  const sorted = [...resumes].sort((a, b) => b.score - a.score);
-  const shown = expanded
-    ? sorted
-    : sorted.filter((r, i) => i < CHIPS_SHOWN || r.slug === picked);
-  const hidden = sorted.length - shown.length;
-  return (
-    <div className="flex items-start gap-2">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Base resume" className="flex min-w-0 flex-wrap items-center gap-2">
-          {shown.map((r) => {
-            const on = r.slug === picked;
-            const isBest = r.slug === best;
-            const score = r.score.toFixed(1);
-            return (
-              <label
-                key={r.slug}
-                title={r.name}
-                className={cn(
-                  "inline-flex h-8 min-w-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-label-large whitespace-nowrap transition-colors duration-(--duration-short3) has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
-                  on
-                    ? "border-transparent bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
-                    : "border-border hover:bg-surface-container",
-                  disabled && "pointer-events-none opacity-50",
-                )}
-              >
-                <input
-                  type="radio"
-                  name={name}
-                  value={r.slug}
-                  checked={on}
-                  disabled={disabled}
-                  onChange={() => onPick(r.slug)}
-                  aria-label={`${r.name}, Match score ${score}${isBest ? ", best" : ""}`}
-                  className="sr-only"
-                />
-                {on && <Check className="size-3.5 shrink-0" aria-hidden="true" />}
-                <ResumeSwatch hue={r.hue} />
-                <span aria-hidden="true" className="max-w-48 min-w-0 truncate">{r.name}</span>
-                <span aria-hidden="true" className="tabular-nums">{score}</span>
-                {isBest && <Badge aria-hidden="true">Best</Badge>}
-              </label>
-            );
-          })}
-        </div>
-        {hidden > 0 || expanded ? (
-          <Button
-            type="button"
-            variant="link"
-            size="sm"
-            className="h-8 px-1"
-            aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
-          >
-            {expanded ? "Show fewer" : `${hidden} more`}
-          </Button>
-        ) : null}
-      </div>
-      {actions}
-    </div>
-  );
-}
-
-/**
- * The picked resume's score in one line, with the breakdown behind a popover: the subscores, the skills
- * covered, its Target pills, the dates note and its own warnings (shared ones sit above the chips).
- */
-function ScoreSummary({
-  score,
-  resume,
-  name,
-  showCoverage,
-  sharedWarnings,
-}: {
-  score: AtsScore;
-  resume: BaseResumeSummary | undefined;
-  name: string;
-  /** False when the banner already says every resume shows too few of the job's skills. */
-  showCoverage: boolean;
-  /** Gate warnings every resume carries: the banner says them once, so the popover leaves them out. */
-  sharedWarnings: Set<string>;
-}) {
-  const [open, setOpen] = useState(false);
-  const shownScore = useCountUp(score.composite);
-  const subscoreValues = SUBSCORE_LABELS.map(({ key }) => score.subscores_json[key] ?? 0);
-  const weakestAt = lowestIndex(subscoreValues);
-  const extracted = score.jd_skills_extracted_count ?? 0;
-  const matched = score.jd_skills_matched_count ?? 0;
-  const gateWarnings = (score.subscores_json.gate_warnings ?? []).filter((w) => !sharedWarnings.has(w));
-  const coverage = showCoverage ? coverageWarning(score) : null;
-  return (
-    <div className="bg-surface-container-low flex flex-wrap items-center gap-x-6 gap-y-1 rounded-corner-md px-4 py-2">
-      <div className="text-headline-small tabular-nums">
-        {shownScore.toFixed(1)}
-        <span className="text-muted-foreground text-body-medium"> / 100</span>
-      </div>
-      {extracted > 0 && (
-        <p className="text-body-medium">
-          <span className="text-muted-foreground">Skills covered</span>{" "}
-          <span className="tabular-nums">{matched} of {extracted}</span>
-        </p>
-      )}
-      {weakestAt >= 0 && (
-        <p className="text-body-medium">
-          <span className="text-muted-foreground">Weakest</span> {SUBSCORE_LABELS[weakestAt].label}
-        </p>
-      )}
-      {/* The details of one resume's score, anchored to its button: a panel, not a dialog. */}
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={
-            <Button type="button" variant="link" size="sm" className="ml-auto h-auto px-0" aria-expanded={open}>
-              Score breakdown
-            </Button>
-          }
-        />
-        <PopoverContent align="end" className="w-80 space-y-3 shadow-level2">
-          <div className="grid gap-1">
-            <PopoverTitle>
-              <ResumeTag hue={resume?.color_hue} className="max-w-full">
-                <span className="min-w-0 truncate" title={name}>{name}</span>
-              </ResumeTag>
-            </PopoverTitle>
-            {resume && <AnchorPills resume={resume} />}
-          </div>
-          <div className="grid gap-y-1.5">
-            {SUBSCORE_LABELS.map(({ key, label }, i) => (
-              <SubscoreBar key={key} label={label} value={subscoreValues[i]} weakest={i === weakestAt} />
-            ))}
-          </div>
-          {extracted > 0 && (
-            <div className="space-y-0.5">
-              <span className="text-muted-foreground text-body-small">Skills covered</span>
-              <ScoreBar
-                value={matched}
-                max={extracted}
-                label="Skills covered"
-                valueText={`${matched} of ${extracted}`}
-                width="flex-1"
-                className="w-full"
-              />
-            </div>
-          )}
-          {datesUnreadable(score.subscores_json.format_flags) && (
-            <p className="text-muted-foreground text-body-small">{UNREADABLE_DATES_NOTE}</p>
-          )}
-          {(gateWarnings.length > 0 || coverage) && (
-            <ul className="space-y-1 text-body-small">
-              {gateWarnings.map((warning) => (
-                <li key={warning} className="text-warning flex gap-1.5">
-                  <WarningIcon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                  {warning}
-                </li>
-              ))}
-              {coverage && (
-                <li className="text-warning flex gap-1.5">
-                  <WarningIcon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                  {/* The server's sentence already gives the counts ("Your resume shows only 1 of this job's 8 skills (13%)."). */}
-                  {coverage}
-                </li>
-              )}
-            </ul>
-          )}
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
-
 /**
  * Step 2 of the job page, Resume and gaps: pick a base resume, see its Match score in one line, and analyze its
  * gaps (or continue the open gap analysis). Scores on the first visit when no base score shows (fast, no LLM);
- * Analyze gaps creates a gap analysis (an LLM pass) and opens it. The rare actions sit behind ⋯. A job has one
- * application, so switching the resume after tailoring confirms first: tailoring another replaces the draft.
+ * Analyze gaps creates a gap analysis (an LLM pass) and opens it. The rare actions sit behind ⋯. A pick is a
+ * preview; a job has one application, so the actions that write with another resume than the job's confirm
+ * first (`useResumeSwitch`), in words that match what the job holds.
  */
 export function ResumeStep({
   jobId,
@@ -322,7 +86,6 @@ export function ResumeStep({
   const applied = applicationStatus != null && applicationStatus !== "draft";
   const baseName = useBaseResumeLabel();
   const qc = useQueryClient();
-  const router = useRouter();
   const confirm = useConfirm();
 
   // "Score them anyway" switches this view to every resume, those set for other countries too. The
@@ -373,14 +136,12 @@ export function ResumeStep({
 
   // Newest OPEN session per base resume (created_at desc; ISO strings sort lexically).
   const openSessionByBase = new Map<string, TailoringSession>();
-  let newestOpen: TailoringSession | null = null;
   for (const s of sessions.data ?? []) {
     if (s.status !== "open") continue;
     const existing = openSessionByBase.get(s.base_resume);
     if (!existing || s.created_at > existing.created_at) {
       openSessionByBase.set(s.base_resume, s);
     }
-    if (!newestOpen || s.created_at > newestOpen.created_at) newestOpen = s;
   }
 
   // The variable marks the gesture: "manual" is Update scores, which confirms with a toast (an automatic run
@@ -406,19 +167,7 @@ export function ResumeStep({
     runOnce("all");
   };
 
-  const createSession = useMutation({
-    mutationFn: (baseResume: string) => createTailoringSession(jobId, baseResume),
-    onSuccess: (session) => {
-      qc.invalidateQueries({ queryKey: ["tailoring-sessions", jobId] });
-      if (session.health_warning) {
-        toast.warning(session.health_warning, { duration: 8000 });
-      }
-      router.push(`/jobs/${jobId}/tailor/${session.id}`);
-    },
-    onError: (err: Error) => toast.error(couldnt("start the gap analysis", err)),
-  });
-  // A double click on Analyze gaps started two gap analyses.
-  const createOnce = useSingleFlight(createSession.mutate);
+  const switcher = useResumeSwitch({ jobId, application, sessions: sessions.data ?? [] });
 
   // "Use resume as is": the job's resume is the base, unchanged (a perfect fit, or nothing worth tailoring).
   // The gap page's own path: from-base, then close the open gap analysis, best-effort (the application exists).
@@ -450,8 +199,11 @@ export function ResumeStep({
   const asIsOnce = useSingleFlight(asIs.mutate);
 
   const asIsClick = async (baseResume: string, sessionId: string | null) => {
-    // From-base replaces the job's draft, whatever its base: never clobber a tailored draft silently.
-    if (application?.customized_json) {
+    // Another resume than the job's: the switch confirm says what is replaced. The same one over a draft:
+    // from-base still replaces it, so never clobber a tailored draft silently.
+    if (switcher.switchWords(baseResume, "as_is")) {
+      if (!(await switcher.confirmSwitch(baseResume, "as_is"))) return;
+    } else if (application?.customized_json) {
       const ok = await confirm({
         title: "Replace the existing tailored draft?",
         description:
@@ -507,44 +259,19 @@ export function ResumeStep({
     .filter((s) => s.phase === "base")
     .sort((a, b) => b.composite - a.composite);
 
-  // The picked resume: the reader's own pick, else the newest open gap analysis's, else the application's,
-  // else the best match. A pick the list no longer holds (scored away by a country switch) falls back too.
+  // The picked resume, a preview: the reader's own pick, else the default, set once when the scores and the gap
+  // analyses have both settled (a refetch never moves it under you). A pick the list no longer holds (scored away
+  // by a country switch) falls back to the default for the rows on screen.
   const [chosen, setChosen] = useState<string | null>(null);
-  const has = (slug: string | null | undefined): slug is string =>
-    slug != null && baseRows.some((row) => row.target_id === slug);
-  const picked = has(chosen)
-    ? chosen
-    : has(newestOpen?.base_resume)
-      ? newestOpen.base_resume
-      : has(application?.base_resume)
-        ? application.base_resume
-        : (baseRows[0]?.target_id ?? null);
-
-  // Switching after tailoring: a job has one application, so tailoring another resume replaces its draft.
-  // The pick is controlled: until the confirm says yes, the chip stays where it was.
-  const pick = async (slug: string) => {
-    if (slug === picked) return;
-    const draftBase = application?.customized_json ? application.base_resume : null;
-    if (readOnly || draftBase == null || draftBase === slug) {
-      setChosen(slug);
-      return;
-    }
-    const ok = await confirm({
-      title: `Switch to ${baseName(slug)}?`,
-      description:
-        `This job already has a tailored ${baseName(draftBase)} resume. ` +
-        "Tailoring with another resume replaces that draft and removes its PDF. Version history keeps the old one. " +
-        `Answers you gave in the gaps for ${baseName(draftBase)} stay with it.`,
-      confirmLabel: "Switch and analyze gaps",
-      destructive: true,
-    });
-    if (!ok) return;
-    setChosen(slug);
-    // An open gap analysis for that resume keeps its answers: open it rather than start one that replaces it.
-    const open = openSessionByBase.get(slug);
-    if (open) router.push(`/jobs/${jobId}/tailor/${open.id}`);
-    else createOnce(slug);
-  };
+  const [frozenPick, setFrozenPick] = useState<string | null>(null);
+  const available = baseRows.map((row) => row.target_id);
+  const sessionsSettled = !sessions.isPending;
+  const pickDefault = () =>
+    defaultResumePick({ sessions: sessions.data ?? [], application, best: available[0] ?? null, available });
+  if (frozenPick == null && scores.isSuccess && sessionsSettled && available.length > 0) {
+    setFrozenPick(pickDefault());
+  }
+  const picked = [chosen, frozenPick].find((slug) => slug != null && available.includes(slug)) ?? pickDefault();
 
   // First visit: no base score to show yet — run the (fast, deterministic) engine once. Counted on the
   // BASE rows the read returns, not every row: an application's tailored score is no chip, and a base
@@ -626,6 +353,8 @@ export function ResumeStep({
     // so without `isSuccess` the skeleton would hide the error for good.
     if (
       scores.isLoading ||
+      // The default pick waits for the gap analyses: chips and summary stay skeletons until both have settled.
+      (baseRows.length > 0 && !sessionsSettled) ||
       (baseRows.length === 0 &&
         (run.isPending || (!readOnly && run.isIdle && noBaseRows)))
     ) {
@@ -633,8 +362,8 @@ export function ResumeStep({
         <Card>
           <CardContent className="space-y-4">
             <div className="flex gap-2">
-              {Array.from({ length: CHIPS_SHOWN }).map((_, i) => (
-                <Skeleton key={i} className="h-8 w-40 rounded-full" />
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-7 w-40 rounded-full" />
               ))}
             </div>
             <Skeleton className="h-12 w-full" />
@@ -704,8 +433,9 @@ export function ResumeStep({
     const pickedSlug = pickedRow.target_id;
     const pickedName = baseName(pickedSlug);
     const openSession = openSessionByBase.get(pickedSlug) ?? null;
-    const creating = createSession.isPending && createSession.variables === pickedSlug;
-    const busy = createSession.isPending || asIs.isPending;
+    const creating = switcher.creating === pickedSlug;
+    // Every write in flight at once: a second gesture waits for the first.
+    const busy = switcher.creating != null || asIs.isPending || appliedAsIs.isPending || run.isPending;
     // The gap page's own counts: stored resolutions include skips and gaps it no longer lists.
     const { answered, total: totalGaps } = openSession
       ? gapCounts(
@@ -715,6 +445,21 @@ export function ResumeStep({
       : { answered: 0, total: 0 };
     // The job's resume came from this one (tailored, or used as is): "no gap analysis yet" would be untrue.
     const pickedIsTheJobs = Boolean(application?.customized_json) && application?.base_resume === pickedSlug;
+
+    // Restart gap analysis drops the open one's answers: with any given, it asks first. Then the switch guard.
+    const restartClick = async () => {
+      if (answered > 0) {
+        const ok = await confirm({
+          title: "Start over?",
+          description: `Your ${answered} ${answered === 1 ? "answer" : "answers"} for ${pickedName} are dropped.`,
+          confirmLabel: "Start over",
+          destructive: true,
+          returnFocus: () => moreRef.current,
+        });
+        if (!ok) return;
+      }
+      await switcher.analyze(pickedSlug, () => moreRef.current);
+    };
     const chips = baseRows.map((row) => ({
       slug: row.target_id,
       name: baseName(row.target_id),
@@ -760,9 +505,9 @@ export function ResumeStep({
               <ResumeChips
                 resumes={chips}
                 picked={pickedSlug}
-                onPick={(slug) => void pick(slug)}
+                onPick={setChosen}
                 best={baseRows[0].target_id}
-                disabled={busy}
+                busy={busy}
                 actions={
                   <div className="flex h-8 shrink-0 items-center gap-2">
                     {run.isPending && (
@@ -780,26 +525,26 @@ export function ResumeStep({
                         }
                       />
                       <DropdownMenuContent align="end" className="w-auto min-w-56">
-                        <DropdownMenuItem disabled={run.isPending || readOnly} onClick={() => runOnce("manual")}>
+                        <DropdownMenuItem disabled={busy || readOnly} onClick={() => runOnce("manual")}>
                           <RefreshCw />
                           {run.isPending ? "Updating scores…" : "Update scores"}
                         </DropdownMenuItem>
                         {/* A new gap analysis for the picked resume; it replaces the open one (the old card's ⋯). */}
                         {openSession && (
-                          <DropdownMenuItem disabled={createSession.isPending || readOnly} onClick={() => createOnce(pickedSlug)}>
+                          <DropdownMenuItem disabled={busy || readOnly} onClick={() => void restartClick()}>
                             <RefreshCw /> Restart gap analysis
                           </DropdownMenuItem>
                         )}
                         {jobCountry && skipped.length > 0 && (
                           // A run in flight would drop this one (one at a time), and the view would switch unscored.
-                          <DropdownMenuItem disabled={run.isPending || readOnly} onClick={scoreOtherCountries}>
+                          <DropdownMenuItem disabled={busy || readOnly} onClick={scoreOtherCountries}>
                             <RefreshCw />
                             Score them anyway
                           </DropdownMenuItem>
                         )}
                         {applied ? null : (
                           <DropdownMenuItem
-                            disabled={readOnly || appliedAsIs.isPending}
+                            disabled={busy || readOnly}
                             onClick={() => void appliedAsIsClick(pickedSlug)}
                           >
                             <Check /> Mark applied without tailoring
@@ -826,7 +571,6 @@ export function ResumeStep({
               )}
             </div>
             <ScoreSummary
-              key={pickedSlug}
               score={pickedRow}
               resume={allResumes?.find((r) => r.slug === pickedSlug)}
               name={pickedName}
@@ -839,11 +583,19 @@ export function ResumeStep({
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   {answered === 0 && asIsButton(openSession.id)}
                   <Button
-                    disabled={readOnly}
-                    aria-disabled={readOnly || undefined}
+                    disabled={busy || readOnly}
+                    aria-disabled={busy || readOnly || undefined}
                     nativeButton={false}
                     render={
-                      <Link href={`/jobs/${jobId}/tailor/${openSession.id}`}>
+                      <Link
+                        href={`/jobs/${jobId}/tailor/${openSession.id}`}
+                        // A link while nothing would be replaced; else the switch confirm goes first.
+                        onClick={(event) => {
+                          if (!switcher.switchWords(pickedSlug, "continue")) return;
+                          event.preventDefault();
+                          void switcher.continueOn(pickedSlug, openSession.id);
+                        }}
+                      >
                         Continue gap analysis
                       </Link>
                     }
@@ -862,7 +614,7 @@ export function ResumeStep({
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Focusable while it starts: a natively disabled button dropped focus to <body>. */}
                   <Button
-                    onClick={() => createOnce(pickedSlug)}
+                    onClick={() => void switcher.analyze(pickedSlug)}
                     focusableWhenDisabled
                     pending={creating}
                     disabled={busy || readOnly}

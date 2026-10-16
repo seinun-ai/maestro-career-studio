@@ -21,7 +21,7 @@ def _read(rel: str) -> str:
 def test_the_coverage_warning_is_said_once():
     # The server's coverage_warning already says "Your resume shows only 1 of
     # this job's 8 skills (13%)."; a second line restating it went.
-    for rel in ("components/resume-step.tsx", _GAP_PAGE):
+    for rel in ("components/resume-step.tsx", "components/score-summary.tsx", _GAP_PAGE):
         src = _read(rel)
         assert "recognized only" not in src, rel
         assert "coverage_ratio" not in src, rel

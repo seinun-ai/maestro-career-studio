@@ -181,7 +181,7 @@ def test_the_gallery_and_the_score_breakdown_show_the_pills():
     # The unset role is the "Role not set" group's heading and its one hint; a set role is a pill.
     assert "Role not set" in _GALLERY and "Role not set" not in _PILLS
     # Step 2: the picked resume's pills sit under its name in the Score breakdown popover's header.
-    summary = _between(_PANEL, "function ScoreSummary(", "export function ResumeStep(")
+    summary = _read("components/score-summary.tsx")
     assert "{resume && <AnchorPills resume={resume} />}" in summary
     assert summary.index("<PopoverTitle") < summary.index("<AnchorPills") < summary.index("<SubscoreBar")
 
@@ -229,8 +229,8 @@ def test_skipped_resumes_are_one_line_and_a_menu_item_scores_them_anyway():
     item = _squash(_between(_PANEL, "onClick={scoreOtherCountries}", "</DropdownMenuItem>"))
     assert item.endswith("Score them anyway")
     opener = _squash(_PANEL[_PANEL.rfind("<DropdownMenuItem", 0, _PANEL.index("onClick={scoreOtherCountries}")) : _PANEL.index("onClick={scoreOtherCountries}")])
-    # Disabled while a run is in flight, and on a job this copy only reads (a replica).
-    assert "disabled={run.isPending || readOnly}" in opener
+    # Disabled while a run (or any other write) is in flight, and on a job this copy only reads (a replica).
+    assert "disabled={busy || readOnly}" in opener
     handler = _squash(_between(_PANEL, "const scoreOtherCountries = () => {", "\n  };"))
     assert "setIncludeOtherCountries(true);" in handler
     assert 'runOnce("all");' in handler

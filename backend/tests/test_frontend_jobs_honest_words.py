@@ -259,7 +259,8 @@ def test_step_two_has_one_filled_button():
     assert "Continue gap analysis" in cont and "variant=" not in cont
     # The two are the branches of one ternary on the picked resume's open gap analysis: never both.
     assert body.index("{openSession && !creating ? (") < cont_at < body.index(") : (") < analyze_at
-    buttons = [open_tag(body[m.start() :], "Button") for m in re.finditer(r"<Button(?=[\s/>])", body)]
+    assert "onClick={() => void switcher.analyze(pickedSlug)}" in analyze
+    buttons = _button_tags(body)
     unnamed = [b for b in buttons if "variant=" not in b]
     assert len(unnamed) == 2, unnamed  # Continue gap analysis, Analyze gaps
     assert '"Analyze gaps"' in body and "Find gaps" not in step
@@ -272,65 +273,103 @@ def test_step_two_has_one_filled_button():
         assert item in menu, item
     # Restart gap analysis: only while the picked resume has an open gap analysis; a new one replaces it.
     restart = menu[menu.index("{openSession && (") : menu.index("Restart gap analysis")]
-    assert "disabled={createSession.isPending || readOnly} onClick={() => createOnce(pickedSlug)}" in restart
+    assert "disabled={busy || readOnly} onClick={() => void restartClick()}" in restart
+    # With answers given it asks first (they are dropped), then the switch guard, then a new gap analysis.
+    click = step[step.index("const restartClick = async () => {") : step.index("const chips = ")]
+    assert "if (answered > 0) {" in click and 'title: "Start over?",' in click
+    assert 'description: `Your ${answered} ${answered === 1 ? "answer" : "answers"} for ${pickedName} are dropped.`,' in click
+    assert click.index("if (!ok) return;") < click.index("await switcher.analyze(pickedSlug, () => moreRef.current);")
+    # One busy flag: every write in flight disables the others.
+    assert "const busy = switcher.creating != null || asIs.isPending || appliedAsIs.isPending || run.isPending;" in step
+    for item in ("restartClick()", 'runOnce("manual")', "onClick={scoreOtherCountries}", "appliedAsIsClick(pickedSlug)"):
+        opener = menu[menu.rfind("<DropdownMenuItem", 0, menu.index(item)) : menu.index(item)]
+        assert "disabled={busy || readOnly}" in " ".join(opener.split()), item
     assert '{run.isPending ? "Updating scores…" : "Update scores"}' in menu
     assert "{jobCountry && skipped.length > 0 && (" in menu
     assert "returnFocus: () => moreRef.current," in step  # the confirm returns to ⋯, not the gone item
 
 
-def test_switching_the_resume_after_tailoring_confirms():
-    """A job has one application: tailoring another resume replaces the draft, so the switch says so first.
-    Without a draft a switch only moves the pick; an open gap analysis for the new resume keeps its answers."""
+def test_a_resume_pick_is_a_preview_and_the_writes_confirm():
+    """A pick changes only the chip, the summary and the body. The actions that write with another resume than
+    the job's (Analyze gaps, Continue gap analysis, Restart gap analysis, Use resume as is) ask first, through
+    the one hook the gap page shares (Task 11), in words that match the job's state (lib/resume-pick.ts)."""
     step = _read("components/resume-step.tsx")
-    pick = step[step.index("const pick = async (slug: string) => {") : step.index("const autoRan = useRef(false);")]
-    assert "const draftBase = application?.customized_json ? application.base_resume : null;" in pick
-    assert "if (readOnly || draftBase == null || draftBase === slug) {" in pick
-    assert "title: `Switch to ${baseName(slug)}?`," in pick
-    assert "`This job already has a tailored ${baseName(draftBase)} resume. ` +" in pick
-    assert (
-        '"Tailoring with another resume replaces that draft and removes its PDF. Version history keeps the old one. " +'
-        in pick
-    )
-    assert "`Answers you gave in the gaps for ${baseName(draftBase)} stay with it.`," in pick
-    assert 'confirmLabel: "Switch and analyze gaps",' in pick and "destructive: true," in pick
-    # Cancel leaves the pick where it was: it changes only after a yes.
-    assert pick.index("if (!ok) return;") < pick.index("setChosen(slug);\n    // An open")
-    assert "if (open) router.push(`/jobs/${jobId}/tailor/${open.id}`);" in pick and "else createOnce(slug);" in pick
+    assert "onPick={setChosen}" in step and "confirmSwitch" not in step[step.index("onPick=") - 200 : step.index("onPick=")]
+    assert "const switcher = useResumeSwitch({ jobId, application, sessions: sessions.data ?? [] });" in step
+    # Continue stays a link while nothing would be replaced; else the confirm goes first.
+    cont = step[step.index("// A link while nothing would be replaced") : step.index("Continue gap analysis\n")]
+    assert 'if (!switcher.switchWords(pickedSlug, "continue")) return;' in cont and "event.preventDefault();" in cont
+    assert "void switcher.continueOn(pickedSlug, openSession.id);" in cont
+    # Use resume as is: the switch words for another resume; the old Replace draft words for the same one.
+    as_is = step[step.index("const asIsClick = async") : step.index("asIsOnce({ baseResume, sessionId });")]
+    assert 'if (switcher.switchWords(baseResume, "as_is")) {' in as_is
+    assert 'if (!(await switcher.confirmSwitch(baseResume, "as_is"))) return;' in as_is
+    assert "} else if (application?.customized_json) {" in as_is and 'title: "Replace the existing tailored draft?",' in as_is
+    hook = _read("hooks/use-resume-switch.ts")
+    assert "const state = jobResumeState(application, sessions);" in hook
+    assert "return words == null || confirm({ ...words, destructive: true, returnFocus });" in hook
+    assert 'if (await confirmSwitch(slug, "analyze", returnFocus)) createOnce(slug);' in hook
+    assert 'if (await confirmSwitch(slug, "continue", returnFocus)) go(`/jobs/${jobId}/tailor/${sessionId}`);' in hook
+    assert "return open ? continueOn(slug, open.id, returnFocus) : analyze(slug, returnFocus);" in hook
 
 
-def test_the_picked_resume_defaults_to_the_work_in_progress():
+def test_the_switch_confirm_says_what_the_job_holds():
+    """Tailored comes from a tailored gap analysis, never from `customized_json` (a resume used as is has one
+    too); applied from the status. Each state has its words; the node tests run every branch."""
+    from tests.node_ts import run_node_test
+
+    words = _read("lib/resume-pick.ts")
+    assert 'if (application.status != null && application.status !== "draft") return "applied";' in words
+    assert '(s.application_id === application.id || s.base_resume === application.base_resume),' in words
+    assert "? `You applied with ${from}. ${doing} replaces that resume and its PDF. Version history keeps them.`" in words
+    assert "? `This job already has a tailored ${from} resume. ${doing} replaces that draft and removes its PDF. ` +" in words
+    assert "`Version history keeps the old one. Answers you gave in the gaps for ${from} stay with it.`" in words
+    assert ": `This job's resume is ${from}, used as is. ${doing} replaces it and removes its PDF. ` +" in words
+    for label in ('analyze: "Switch and analyze gaps",', 'continue: "Switch and continue",', 'as_is: "Switch and use as is",'):
+        assert label in words, label
+    result = run_node_test("lib/resume-pick.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_default_pick_is_set_once_both_lists_have_settled():
     step = _read("components/resume-step.tsx")
-    assert (
-        "const picked = has(chosen)\n    ? chosen\n    : has(newestOpen?.base_resume)\n      ? newestOpen.base_resume\n"
-        "      : has(application?.base_resume)\n        ? application.base_resume\n        : (baseRows[0]?.target_id ?? null);"
-    ) in step
+    assert "if (frozenPick == null && scores.isSuccess && sessionsSettled && available.length > 0) {" in step
+    assert "setFrozenPick(pickDefault());" in step
+    assert "(baseRows.length > 0 && !sessionsSettled) ||" in step  # the skeleton holds until then
+    assert "defaultResumePick({ sessions: sessions.data ?? [], application, best: available[0] ?? null, available })" in step
 
 
-def test_the_resume_chips_are_a_radio_group():
-    step = _read("components/resume-step.tsx")
-    chips = step[step.index("export function ResumeChips(") : step.index("function ScoreSummary(")]
-    assert 'role="radiogroup" aria-label="Base resume"' in chips
-    assert 'type="radio"' in chips and "checked={on}" in chips and 'className="sr-only"' in chips
-    # Selected in a set (design system): secondary-container and a leading Check; 32px, fully round.
-    assert "bg-secondary-container text-on-secondary-container" in chips
-    assert '{on && <Check className="size-3.5 shrink-0" aria-hidden="true" />}' in chips
-    assert "h-8" in chips and "rounded-full" in chips and "tabular-nums" in chips
-    assert "{isBest && <Badge" in chips and ">Best</Badge>" in chips
+def test_the_resume_chips_are_toggle_buttons():
+    chips = _read("components/resume-chips.tsx")
+    assert 'role="group" aria-label="Base resume"' in chips
+    assert "aria-pressed={on}" in chips and "aria-disabled={busy || undefined}" in chips
+    assert "if (!busy && !on) onPick(r.slug);" in chips  # focusable while busy, a press does nothing
+    # FilterChips' look: 28px, label-medium, a 12px leading Check, secondary-container when on.
+    cls = chips[chips.index('"inline-flex h-7') : chips.index('"border-border hover:bg-surface-container"')]
+    for token in ("h-7", "rounded-full", "text-label-medium", "transition-colors", "duration-(--duration-short3)",
+                  "ease-(--ease-standard)", "focus-visible:outline-ring",
+                  "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"):
+        assert token in cls, token
+    assert '{on && <Check className="size-3 shrink-0" aria-hidden="true" />}' in chips
+    assert '<span className="tabular-nums">{score}</span>' in chips
+    assert '{isBest && <Badge variant="secondary">Best</Badge>}' in chips
     # The top 3, then a reveal that says it is expanded.
-    assert "const CHIPS_SHOWN = 3;" in step
+    assert "const CHIPS_SHOWN = 3;" in chips
     assert "aria-expanded={expanded}" in chips and '{expanded ? "Show fewer" : `${hidden} more`}' in chips
 
 
 def test_the_score_summary_opens_its_breakdown_in_a_popover():
-    step = _read("components/resume-step.tsx")
-    summary = step[step.index("function ScoreSummary(") : step.index("export function ResumeStep(")]
+    summary = _read("components/score-summary.tsx")
+    summary = summary[summary.index("export function ScoreSummary(") :]
     assert "bg-surface-container-low" in summary
     assert '<span className="text-muted-foreground">Skills covered</span>' in summary
     assert '<span className="text-muted-foreground">Weakest</span> {SUBSCORE_LABELS[weakestAt].label}' in summary
     assert "{weakestAt >= 0 && (" in summary  # all equal: no Weakest
-    trigger = summary[summary.index("<PopoverTrigger") : summary.index("</PopoverTrigger>") if "</PopoverTrigger>" in summary else summary.index("/>", summary.index("Score breakdown"))]
+    trigger = summary[summary.index("<PopoverTrigger") : summary.index("/>", summary.index("Score breakdown"))]
     assert "aria-expanded={open}" in trigger and "Score breakdown" in trigger
-    assert "shadow-level2" in summary[summary.index("<PopoverContent") :]
+    # A new pick closes the popover, and the summary is not remounted: the score counts from the last resume.
+    assert "const open = openFor === score.target_id;" in summary
+    assert "key={pickedSlug}" not in _read("components/resume-step.tsx")
 
 
 def test_low_coverage_on_every_resume_is_said_once():
@@ -579,7 +618,7 @@ def test_the_score_tab_says_why_undated_jobs_score_low():
     assert ts_map("./lib/ats-words.ts", "datesUnreadable", [
         ["Some job dates can't be read. Write them like Jul 2022."], ["Section missing or empty: summary"],
     ]) == [True, False]
-    panel = _read("components/resume-step.tsx")
+    panel = _read("components/score-summary.tsx")  # step 2's Score breakdown
     assert "{datesUnreadable(score.subscores_json.format_flags) && (" in panel
     assert "<p className=\"text-muted-foreground text-body-small\">{UNREADABLE_DATES_NOTE}</p>" in panel
     # Each subscore is a meter out of 100 (aria-valuemax); the visible " of 100" went, the headline keeps "/ 100".
@@ -603,21 +642,16 @@ def test_the_tracker_names_its_match_score_column():
     assert 'header("ats", "Match score",' in page
 
 
-def _opening_tags(src: str, tag: str = "<Button") -> list[str]:
-    """Each `tag`'s opening tag: up to its own `>` line or its `/>`."""
-    out = []
-    for m in re.finditer(re.escape(tag) + r"\b", src):
-        rest = src[m.start() :]
-        ends = [e for e in (re.search(r"\n\s*>\n", rest), re.search(r"/>", rest)) if e]
-        out.append(rest[: min(e.end() for e in ends)])
-    return out
+def _button_tags(src: str) -> list[str]:
+    """Each Button's whole opening tag (`open_tag` skips braces and the `>` of `=>`)."""
+    return [open_tag(src[m.start() :], "Button") for m in re.finditer(r"<Button(?=[\s/>])", src)]
 
 
 def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions():
     panel = _read("components/application-panel.tsx")
     step = panel[panel.index("export function TailoredResumeStep(") : panel.index("function TailoredResumeMenu(")]
     # One filled button: Create PDF before a PDF, Continue to Apply once one exists (the two arms of one ternary).
-    filled = [t for t in _opening_tags(step) if "variant=" not in t]
+    filled = [t for t in _button_tags(step) if "variant=" not in t]
     assert len(filled) == 2, filled
     assert 'onClick={() => onOpenStep("qa")}' in filled[0] and "onClick={() => renderOnce()}" in filled[1]
     assert step.index("{hasPdf ? (") < step.index('onOpenStep("qa")') < step.index(") : (") < step.index(
@@ -630,7 +664,7 @@ def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions()
     for name in ('label="Download PDF"', 'label="Open PDF in new tab"'):
         assert name in card
     assert '<ShowCopyButton applicationId={app.id} variant="ghost" iconOnly />' in card
-    update = [t for t in _opening_tags(card) if "renderOnce()" in t]
+    update = [t for t in _button_tags(card) if "renderOnce()" in t]
     assert len(update) == 1 and 'variant="outline"' in update[0] and 'size="sm"' in update[0]
     # Each change reverts on its own, and the rare actions sit behind the strip's ⋯.
     assert 'label="Revert this change"' in step and 'data-revert=""' in step

@@ -1196,21 +1196,29 @@
   (**More actions**): Queue in Agent inbox, Refresh details and Delete job, each with its confirm.
   Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_visual_surfaces.py`.
 - **Resume and gaps** (step 2, `components/resume-step.tsx`), inside one card: the Match score lead, then
-  `ResumeChips`, a radio group named "Base resume" of 32px round chips (a label over a visually hidden radio:
-  square, name, score in `tabular-nums`, Best on the top one; picked is `secondary-container` with a leading
-  Check), sorted by score, the top 3 then "N more" (`aria-expanded`), and ⋯ (**More actions for resumes**:
-  Update scores, Restart gap analysis while the picked resume has an open one, Score them anyway, Mark applied
-  without tailoring until the job is applied, Import resumes and documents). The pick defaults to the newest open gap analysis's resume, else the application's, else the
-  best match. Under them one line on `surface-container-low`: the score out of 100, Skills covered m of n, the
-  Weakest subscore (none when all are equal) and a **Score breakdown** popover (the subscores, the skills meter,
-  the Target pills, the dates note, that resume's own warnings; warnings every resume shares, and the
+  `ResumeChips` (`components/resume-chips.tsx`), a group named "Base resume" of toggle chips with FilterChips'
+  semantics (`aria-pressed`, 28px, `label-medium`, a 12px leading Check and `secondary-container` when picked;
+  square, name, score in `tabular-nums`, a `secondary` Best badge on the top one), sorted by score, the top 3
+  then "N more" (`aria-expanded`), and ⋯ (**More actions for resumes**: Update scores, Restart gap analysis
+  while the picked resume has an open one (it asks "Start over?" once answers exist), Score them anyway, Mark
+  applied without tailoring until the job is applied, Import resumes and documents). **A pick is a preview**:
+  it changes the chip, the summary and the body, never writes, asks or navigates. The default pick
+  (`lib/resume-pick.ts` `defaultResumePick`: the newest open gap analysis's resume, else the application's, else
+  the best match, among the resumes with a chip) is set once both the scores and the gap analyses have settled;
+  chips and summary stay skeletons until then. Under them `ScoreSummary` (`components/score-summary.tsx`), one
+  line on `surface-container-low`: the score out of 100 (counting from the last pick), Skills covered m of n,
+  the Weakest subscore (none when all are equal) and a **Score breakdown** popover (the subscores, the skills
+  meter, the Target pills, the dates note, that resume's own warnings; warnings every resume shares, and the
   low-coverage banner, sit once above the card). Then the picked resume's state: no open gap analysis, a dashed
-  panel with **Analyze gaps** (filled) and **Use resume as is**; an open one, its answered count, **Continue
-  gap analysis** (filled) and, at 0 answered, Use resume as is. One filled button in the view. Use resume as
-  is confirms with the gap page's words when a tailored draft exists and opens step 3. A job has one
-  application: picking another resume while a tailored draft exists asks first ("Switch to {name}?", **Switch
-  and analyze gaps**, destructive) and then opens that resume's open gap analysis or starts one; without a
-  draft a pick only moves the chip. Pinned by `test_frontend_jobs_honest_words.py`.
+  panel with **Analyze gaps** (filled) and **Use resume as is**; an open one, its answered count, **Continue gap
+  analysis** (filled) and, at 0 answered, Use resume as is. One filled button in the view; one `busy` flag
+  covers every write in flight, and a chip stays focusable while it is set. A job has one application: every
+  action that writes with another resume than the application's (Analyze gaps, Continue, Restart, Use resume as
+  is) asks first through `hooks/use-resume-switch.ts`, which the gap page shares, in words for what the job
+  holds (`switchConfirm`): a tailored draft (a `tailored` gap analysis made it), the base used as is, or the
+  resume you applied with; the label names the action ("Switch and analyze gaps", "Switch and continue",
+  "Switch and use as is"). Use resume as is on the job's own resume over a draft keeps the gap page's
+  "Replace the existing tailored draft?" words, and opens step 3. Pinned by `test_frontend_jobs_honest_words.py`.
 - **Tailored resume** (step 3, `TailoredResumeStep` in `components/application-panel.tsx`), inside one card: a score
   strip on `surface-container-low` (`AtsComparePanel compact`: before → after, the `DeltaChip` and the subscores
   that moved as text), then ⋯ (**More actions for the tailored resume**: Tailor again opens step 2, Delete

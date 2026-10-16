@@ -93,10 +93,11 @@ def test_job_header_shows_the_best_score_and_the_steps_below_it():
 
 
 def test_score_cards_hoist_shared_warnings_and_mark_the_weakest():
-    src = _read("components/resume-step.tsx")
-    assert "sharedWarnings" in src and "Weakest" in src
-    assert "ProgressCount" in src and "useCountUp" in src
-    assert "> of 100<" not in src
+    step = _read("components/resume-step.tsx")
+    assert "sharedWarnings" in step and "ProgressCount" in step and "const WarningIcon = CONCEPT_ICONS.warning;" in step
+    src = _read("components/score-summary.tsx")
+    assert "sharedWarnings" in src and "Weakest" in src and "useCountUp" in src
+    assert "> of 100<" not in src and "> of 100<" not in step
     # A gate warning is a warning, on the card as in the hoisted banner: one role, one icon.
     gate = src.split("gateWarnings.map((warning) =>", 1)[1].split("</li>", 1)[0]
     assert "text-warning" in gate and "WarningIcon" in gate and "text-destructive" not in gate
@@ -106,12 +107,13 @@ def test_score_cards_hoist_shared_warnings_and_mark_the_weakest():
 
 
 def test_score_card_subscores_and_coverage_are_meters():
+    summary = _read("components/score-summary.tsx")
     src = _read("components/resume-step.tsx")
     # The picked resume's breakdown, in the Score breakdown popover: each subscore and the skills covered a meter.
-    popover = src[src.index("<PopoverContent") : src.index("</PopoverContent>")]
+    popover = summary[summary.index("<PopoverContent") : summary.index("</PopoverContent>")]
     assert 'label="Skills covered"' in popover and "valueText={`${matched} of ${extracted}`}" in popover
     assert "<SubscoreBar key={key} label={label} value={subscoreValues[i]} weakest={i === weakestAt} />" in popover
-    assert "useCountUp(score.composite)" in src
+    assert "useCountUp(score.composite)" in summary
     # Update scores is a ⋯ item: while it runs, its label and a status line beside ⋯ say so; timings live in lib/motion.ts.
     assert '{run.isPending ? "Updating scores…" : "Update scores"}' in src
     assert '<span role="status"' in src and 'data-pending={run.isPending ? "true" : undefined}' in src
@@ -270,7 +272,7 @@ def test_wave5_review_one_glyph_per_meaning_and_honest_marks():
     assert '(row.matched ? "Matched" : "Missing")' in _read("components/ats-compare-panel.tsx")
     qa = _read("components/qa-tab.tsx")
     assert "CONCEPT_ICONS.done" in qa and 'variant="tonal"' not in qa
-    for path in ("components/resume-step.tsx", "components/resume-health/question-pass.tsx"):
+    for path in ("components/resume-step.tsx", "components/score-summary.tsx", "components/resume-health/question-pass.tsx"):
         src = _read(path)
         assert not any(w in src for w in ("TriangleAlert", "CircleX", "Minus")), path
 
@@ -279,8 +281,8 @@ def test_wave5_review_one_glyph_per_meaning_and_honest_marks():
 
 
 def test_no_subscore_is_weakest_when_all_are_equal():
-    src = _read("components/resume-step.tsx")
-    body = src[src.index("function lowestIndex("): src.index("export type ResumeChipOption")]
+    src = _read("components/score-summary.tsx")
+    body = src[src.index("function lowestIndex("): src.index("export function ScoreSummary(")]
     assert "Math.max(...values) === Math.min(...values)) return -1" in body
     assert "weakestAt = lowestIndex(subscoreValues)" in src
 
