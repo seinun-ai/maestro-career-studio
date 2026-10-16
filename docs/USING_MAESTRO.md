@@ -187,16 +187,19 @@ anywhere — it's your name on it.
 
 ### 5. Choose your models deliberately
 
-**Settings › AI & models** has three model roles: **Fast** (reading postings, bulk work),
-**Smart** (tailoring, finding gaps) and **Assistant** (the in-app Assistant). We
-tested the combinations on real job postings, and the **Fast** model turned out
+**Settings › AI & models** has four model roles: **Fast** (reading postings, bulk work),
+**Smart** (tailoring, finding gaps), **Assistant** (the in-app Assistant) and
+**Reasoning** (used only when the Companion's Apply is stuck on a page). Left
+unset, the Reasoning model is your provider's strong model (Claude Sonnet 5.5 or
+GPT-6.1 Sol), or your Smart model for other providers. We
+tested the combinations of the first three on real job postings, and the **Fast** model turned out
 to decide almost everything — how completely a posting's requirements are read,
 how honest your score is, and most of the waiting time. So it comes down to two
 tested setups, one per AI service:
 
 | | **OpenAI** · most thorough | **Gemini** · fastest |
 |---|---|---|
-| Every role set to | `gpt-5.6-luna` | `gemini-3.7-flash` |
+| Fast, Smart and Assistant set to | `gpt-5.6-luna` | `gemini-3.7-flash` |
 | The one key you need | OpenAI | Gemini |
 | Job requirements captured | the most complete we measured | about ¾ of that, strongest on named tools |
 | Save + tailor takes | ~40 seconds | ~10 seconds |
@@ -207,7 +210,7 @@ tested setups, one per AI service:
 |---|---|
 | The one key you need | Claude (Anthropic) |
 | Models you can pick | `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` |
-| Roles | you choose per role (Fast, Smart, Assistant) in **Settings › AI & models** |
+| Roles | you choose per role (Fast, Smart, Assistant, Reasoning) in **Settings › AI & models** |
 
 We have not measured Claude against the other two, so there are no figures for
 it here. Press **Test** next to each model to check it works. An OpenRouter key
@@ -218,8 +221,9 @@ may keep.
 Neither OpenAI nor Gemini is better overall, and any OpenAI-compatible model can be used instead.
 A fresh install starts with the OpenAI setup, because a model that misses
 requirements quietly *inflates* your score — by about nine points in our tests.
-With only a Gemini or Claude key, switch all three roles in **Settings › AI & models** (or set
-`FAST_MODEL`/`SMART_MODEL`/`CHAT_MODEL` in `.env`). Press **Test** next to each model
+With only a Gemini or Claude key, switch the Fast, Smart and Assistant roles in **Settings › AI & models** (or set
+`FAST_MODEL`/`SMART_MODEL`/`CHAT_MODEL` in `.env`). The Reasoning model follows your Smart model's provider
+until you pick one. Press **Test** next to each model
 to check it works; **Find Gemini models** (or **Find OpenAI models**, **Find Claude models**) lists
 what your key can use.
 

@@ -214,7 +214,7 @@
   `latex-render-path` / `texlive-layer`.
 - **QAEntry**: per-application Q&A / cover letter rows (+ PDFs).
 - **Model settings** (`services/model_settings.py`, `services/llm_capabilities.py`; on screen Settings ›
-  AI & models, roles Fast, Smart and Assistant): the catalog is seeds ∪ extras (`MODEL_OPTIONS` ∪
+  AI & models, roles Fast, Smart, Assistant and Reasoning): the catalog is seeds ∪ extras (`MODEL_OPTIONS` ∪
   `llm.extra_models`); `GET /api/settings/openai` returns the merge, and deleting an id a role still uses is
   400. Four provider keys (`API_KEY_SETTINGS`: openai, gemini, anthropic, openrouter) are patched per provider
   by PUT (`set_api_keys`, only the ones sent; role ids are validated first, so a 400 saves no key); an env

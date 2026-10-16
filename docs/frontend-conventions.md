@@ -1471,8 +1471,8 @@
     **Profile**, **Resume**, **Custom**, **Written**, **Inferred**, **You** and
     **Upload**, and the Companion's group of flagged answers is **Check before
     you submit**. **Persona** keeps its
-    name. The model roles are **Fast model**, **Smart model** and
-    **Assistant model**, never Chat model. **One word per kind of agent**:
+    name. The model roles are **Fast model**, **Smart model**,
+    **Assistant model** and **Reasoning model**, never Chat model. **One word per kind of agent**:
     **Assistant** (the in-app chat and its sidebar item; one conversation is
     a chat), **connected agents** (MCP clients; **Connected agents** is the
     Settings tab, whose first card says what one is and what it cannot do),
