@@ -115,11 +115,15 @@ function CheckChip({ label, summary, href, hint }: { label: string; summary: Sum
   );
 }
 
+/** A job that lists pay or years the profile can't answer is not "no requirements listed" (the job page's step 1 reads it too). */
+export function knockoutNotChecked(scan: KnockoutScan, job: Job): boolean {
+  return scan.status === "unstated" && uncheckedItems(job, scan).length > 0;
+}
+
 /** What both renderings read from a scan: the chips, the detail rows and what could not be compared. */
 function knockoutParts(scan: KnockoutScan, job: Job) {
   const unchecked = uncheckedItems(job, scan);
-  // A job that lists pay or years the profile can't answer is not "no requirements listed".
-  const notChecked = scan.status === "unstated" && unchecked.length > 0;
+  const notChecked = knockoutNotChecked(scan, job);
   const rows = scan.checks.filter((c) => ROW_RESULTS.has(c.result) && c.message);
 
   const strip = (

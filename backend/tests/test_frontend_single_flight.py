@@ -199,9 +199,12 @@ def test_a_tracker_row_queue_keeps_focus_on_the_row():
 
 def test_the_job_header_queue_keeps_focus_in_the_header():
     job = (_FRONTEND / "app/jobs/[id]/page.tsx").read_text()
-    header = _button_at(job, "promoteOnce();")
-    assert "pending={promote.isPending}" in header  # the primitive keeps focus while pending
-    assert "queued.current = true;" in header
+    # Queue in Agent inbox is an item of the header's ⋯: the closing menu returns focus to ⋯, which stays.
+    item = job[job.rfind("<DropdownMenuItem", 0, job.index("promoteOnce();")) : job.index("</DropdownMenuItem>", job.index("promoteOnce();"))]
+    assert "disabled={promote.isPending || !ownership.canWrite}" in item
+    assert '{promote.isPending ? "Queueing…" : "Queue in Agent inbox"}' in item
+    assert "queued.current = true;" in item
+    assert job.index('label="More actions"') < job.index("promoteOnce();")
     handoff = job[job.index("useLayoutEffect(() => {\n    if (!queued.current || !hasProposal) return;") :]
     assert "focusIfDropped(focusTarget(actionsRef.current));" in handoff[: handoff.index("}, [hasProposal]);")]
     assert "<div ref={actionsRef}" in job

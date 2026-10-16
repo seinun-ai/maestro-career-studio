@@ -608,7 +608,7 @@ def test_every_tab_list_is_the_line_style():
             assert not re.search(r"(?<![\w-])(?:flex-wrap|h-auto|rounded[\w-]*|bg-[\w/-]+|p-\d[\w.]*)(?![\w-])", tag), (
                 f"{rel}:{number}: the line row takes no fill, padding, corner or wrap"
             )
-    assert seen >= 12, seen  # the scan found the call sites
+    assert seen >= 11, seen  # the scan found the call sites (the job page's tab row became its steps)
 
 
 def test_every_tab_panel_stays_mounted():

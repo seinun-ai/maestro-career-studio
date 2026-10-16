@@ -64,10 +64,18 @@ def test_knockout_requirements_not_stated_is_a_minus_not_a_question():
 # --- Task 17: the job header's best score and locked tabs ---------------------------
 
 
-def test_job_header_shows_the_best_score_and_locks_tabs_with_an_icon():
+def test_job_header_shows_the_best_score_and_the_steps_below_it():
     src = _read("app/jobs/[id]/page.tsx")
-    assert "ScoreBar" in src and "CONCEPT_ICONS.locked" in src
-    assert 'id={lockedReasonId} className="sr-only"' in src  # still the triggers' aria-describedby target
+    assert "ScoreBar" in src and "CONCEPT_ICONS.locked" not in src
+    assert "<JobSteps steps={steps} current={step} onSelect={setStep} />" in src
+    assert src.index("</header>") < src.index("<JobSteps")
+    # The stepper: a done disc ticks, the stage's step is ringed, a later one is quiet; the shown one is underlined.
+    steps = _read("components/job-steps.tsx")
+    assert 'done: "bg-success text-primary-foreground",' in steps
+    assert 'current: "border-2 border-ring text-primary",' in steps
+    assert 'next: "bg-surface-container text-muted-foreground",' in steps
+    assert 'const edge = shown ? "border-primary" : "border-transparent";' in steps
+    assert 'aria-current={shown ? "step" : undefined}' in steps and '<nav aria-label="Steps"' in steps
     # The pill's visible words repeat the meter's aria-label ("Best base resume, <resume>").
     assert 'aria-hidden="true" className="text-muted-foreground">{scoreShown.label}</span>' in src
     # The resume name is visible only at 2xl (a long title wrapped at 1280); hover and the meter name it always.

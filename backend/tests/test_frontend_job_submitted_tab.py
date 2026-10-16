@@ -25,17 +25,18 @@ _LIB = _read("lib/filled-answers.ts")
 _TYPES = _read("lib/types.ts")
 
 
-def test_the_tab_is_deep_linkable_and_shown_once_something_was_filled():
-    assert 'const JOB_TABS = ["jd", "fit", "output", "qa", "submitted"] as const;' in _PAGE
-    assert '<TabsTrigger value="submitted">What was submitted</TabsTrigger>' in _PAGE
+def test_the_receipt_is_deep_linkable_and_shown_once_something_was_filled():
+    # ?tab=submitted still lands: step 4 (lib/job-steps.ts), with the receipt scrolled to.
+    assert 'submitted: "qa"' in _read("lib/job-steps.ts")
+    assert 'const scrollToReceipt = useRef(requestedTab === "submitted");' in _PAGE
+    assert 'aria-label="What was submitted"' in _PAGE
     assert 'Boolean(data.has_filled_answers) || submittedSeen' in _PAGE
     assert "has_filled_answers: boolean;" in _TYPES
 
 
-def test_the_trigger_stays_once_the_tab_was_opened():
-    """The job's own flag may predate a fill, so a visit keeps the trigger in the row."""
-    assert 'const [submittedSeen, setSubmittedSeen] = useState(tab === "submitted");' in _PAGE
-    assert 'if (tab === "submitted" && !submittedSeen) setSubmittedSeen(true);' in _PAGE
+def test_the_receipt_stays_once_a_link_opened_it():
+    """The job's own flag may predate a fill, so a link that opened it keeps the receipt on step 4."""
+    assert 'const [submittedSeen] = useState(requestedTab === "submitted");' in _PAGE
 
 
 def test_the_job_refetches_on_focus_so_the_trigger_appears_after_a_fill_elsewhere():
@@ -43,14 +44,12 @@ def test_the_job_refetches_on_focus_so_the_trigger_appears_after_a_fill_elsewher
     assert "refetchOnWindowFocus: true," in detail.split("});")[0]
 
 
-def test_the_tab_is_not_locked_behind_an_application():
-    trigger = _PAGE[_PAGE.index('<TabsTrigger value="submitted">'):]
-    assert "lockedProps" not in trigger.split("</TabsTrigger>")[0]
-    content = _PAGE.index('<TabsContent value="submitted"')
-    assert content < _PAGE.index("{application ? (")
-    before = _PAGE[:content]
-    between = before[before.rindex("</TabsContent>"):]
-    assert "application" not in between and "hasApp" not in between
+def test_the_receipt_is_not_behind_an_application():
+    # On step 4 the receipt follows the questions (or the quiet panel), under its own condition only.
+    step4 = _PAGE[_PAGE.index('{visited.has("qa") ? (') :]
+    receipt = step4[step4.index("{showSubmitted ? (") : step4.index("<JobSubmittedTab")]
+    assert "application" not in receipt and "hasApp" not in receipt
+    assert step4.index("<NothingTailoredYet") < step4.index("{showSubmitted ? (")
 
 
 def test_the_receipt_is_fetched_only_while_its_tab_is_open_and_never_from_a_stale_cache():
@@ -59,7 +58,7 @@ def test_the_receipt_is_fetched_only_while_its_tab_is_open_and_never_from_a_stal
     assert "enabled: active," in _TAB
     assert "staleTime: 0," in _TAB
     assert "refetchOnWindowFocus: true," in _TAB
-    assert 'active={tab === "submitted"}' in _PAGE
+    assert 'active={step === "qa"}' in _PAGE
 
 
 @pytest.mark.parametrize(("source", "word"), [
@@ -150,10 +149,10 @@ def test_a_flag_is_a_warning_mark_with_its_reason_never_color_alone():
     assert "{flag.reason}" in _TAB
 
 
-def test_uploads_link_to_the_resume_and_q_and_a_tabs_only_when_those_tabs_are_open():
+def test_uploads_link_to_the_resume_and_q_and_a_steps_only_once_the_job_has_its_resume():
     assert "if (!onOpenTab) return <p" in _TAB
     assert 'onOpenTab(resume ? "output" : "qa")' in _TAB
-    assert "onOpenTab={application ? setTab : undefined}" in _PAGE
+    assert "onOpenTab={application ? setStep : undefined}" in _PAGE
 
 
 def test_the_knockout_card_points_an_on_site_gap_at_the_preferences():

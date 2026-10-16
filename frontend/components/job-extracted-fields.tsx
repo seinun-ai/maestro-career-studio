@@ -23,7 +23,7 @@ export interface ExtractedSkill {
   requirement_level?: string;
 }
 
-function extractSkills(json: Job["extracted_json"]): ExtractedSkill[] {
+export function extractSkills(json: Job["extracted_json"]): ExtractedSkill[] {
   if (!json || typeof json !== "object") return [];
   const raw = (json as Record<string, unknown>).skills;
   if (!Array.isArray(raw)) return [];

@@ -277,18 +277,53 @@ def test_a_gap_row_hands_focus_to_what_replaces_it():
 # --- The job workspace ---------------------------------------------------------
 
 
-def test_locked_tabs_say_why_and_show_a_panel():
+def test_no_step_is_locked_and_a_future_step_says_what_opens_it():
     page = _read(_JOB_PAGE)
-    assert '"Your resume and answers appear here once you start a draft."' in page
-    reason = "Resume and Q&A open once this job has its own resume: tailor one, use yours as is, or mark the job applied."
-    assert f'const LOCKED_REASON =\n  "{reason}";' in page
-    assert "{LOCKED_REASON}" in page and '"aria-describedby": reasonId,' in page
-    assert "Unlocks after you tailor" not in page
-    # With no application, both tabs still render a panel that says so.
-    no_app = page[page.index("          ) : (\n            // A link to ?tab=output") :]
-    no_app = no_app[: no_app.index("          )}")]
-    assert no_app.count("<NoDraftYet onOpenFit={() => setTab(\"fit\")} />") == 2
-    assert '<TabsContent value="output"' in no_app and '<TabsContent value="qa"' in no_app
+    steps = _read("components/job-steps.tsx")
+    # A later step is plain text: not a button, never disabled, no lock and no tooltip with a reason.
+    cell = steps[steps.index('{step.state === "next" ? (') : steps.index(") : (\n                <button")]
+    assert "<div className={cn(CELL, edge)}" in cell and "<button" not in cell and "tabIndex" not in cell
+    assert "disabled=" not in steps and "title=" not in steps and "Lock" not in steps and "Tooltip" not in steps
+    for gone in ("LOCKED_REASON", "lockedReasonId", "CONCEPT_ICONS.locked", "aria-describedby", "Unlocks after you tailor"):
+        assert gone not in page, gone
+    # Its line says what opens it (lib/job-steps.ts, node-tested).
+    lib = _read("lib/job-steps.ts")
+    assert '"Review the changes, edit, Create PDF"' in lib and '"After Create PDF"' in lib
+    # A link to step 3 or 4 before the job has its own resume shows a panel that says so, and points at step 2.
+    assert '<p>Nothing tailored yet.</p>' in page and "Go to Resume and gaps" in page
+    assert page.count('<NothingTailoredYet onOpenFit={() => setStep("fit")} />') == 2
+
+
+def test_every_old_tab_link_still_lands_on_a_step():
+    page = _read(_JOB_PAGE)
+    lib = _read("lib/job-steps.ts")
+    assert 'jd: "job", fit: "fit", output: "output", qa: "qa", submitted: "qa",' in lib
+    # The writers keep their values: /new and the Companion open fit, the gap page and the studio's Back output.
+    root = _FRONTEND.parent
+    for rel, value in (
+        ("frontend/app/new/page.tsx", "?tab=fit"),
+        ("frontend/app/jobs/[id]/tailor/[sessionId]/page.tsx", "?tab=output"),
+        ("frontend/app/applications/[id]/resume/page.tsx", "?tab=output"),
+        ("extension/panel/stages/resume.js", "?tab=fit"),
+    ):
+        assert value in (root / rel).read_text(encoding="utf-8"), rel
+    # Given, the link's step; else the stage's (step 1 while a proposal waits on you).
+    assert "Object.hasOwn(TAB_TO_STEP, requestedTab) ? stepForTab(requestedTab) : null" in page
+    assert '(proposalStatus && PROPOSAL_WAITS_ON_YOU.has(proposalStatus) ? "job" : currentStep(stage))' in page
+
+
+def test_the_rare_actions_sit_behind_one_more_actions_menu():
+    page = _read(_JOB_PAGE)
+    header = page[page.index("<header") : page.index("</header>")]
+    menu = header[header.index("<DropdownMenu>") : header.index("</DropdownMenu>")]
+    items = [m.strip() for m in re.findall(r"\n\s*(?:\{promote\.isPending \? \"Queueing…\" : \"(Queue in Agent inbox)\"\}|\{reExtract\.isPending \? \"Refreshing…\" : \"(Refresh details)\"\}|(Delete job))", menu) for m in m if m]
+    assert items == ["Queue in Agent inbox", "Refresh details", "Delete job"], items
+    assert menu.count("<DropdownMenuItem") == 3 and 'label="More actions"' in menu
+    assert menu.count("returnFocus: moreTrigger,") == 2  # each confirm returns to ⋯
+    # Out of the header: the Details menu lives on step 4; nothing else is an icon-only delete.
+    assert "<ApplicationDetailsMenu" not in header and 'label="Delete job"' not in page
+    assert page.index('{visited.has("qa") ? (') < page.index("<ApplicationDetailsMenu")
+    assert "actionsSlot=" not in page
 
 
 def test_the_job_header_keeps_its_title_and_drops_empty_facts():
@@ -410,8 +445,9 @@ def test_names_are_sentence_case(rel: str):
     assert offenders == {}, offenders
 
 
-def test_the_score_tab_name_is_sentence_case():
-    assert '<TabsTrigger value="fit">Score and tailor</TabsTrigger>' in _read(_JOB_PAGE)
+def test_the_step_names_are_sentence_case():
+    titles = 'const TITLES: Record<StepKey, string> = { job: "Job", fit: "Resume and gaps", output: "Tailored resume", qa: "Apply" };'
+    assert titles in _read("lib/job-steps.ts")
 
 
 # ── Unreadable job dates (Task 25): said plainly, with a format that works ──────

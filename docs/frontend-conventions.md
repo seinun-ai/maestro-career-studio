@@ -794,11 +794,11 @@
     its `pending` prop is the loading state: a spinner in place of the icon, `aria-busy`, kept
     focus and ignored presses (`pending` sets `focusableWhenDisabled` for you). A locked button
     that must keep its hover title adds `data-disabled:pointer-events-auto` (`LOCKED_BTN`).
-    Queue in Agent inbox (a tracker row's and the job header's) and the tailored studio's
-    Create draft keep focus while they run too: the job header's Queue through `pending`, the others
-    through `focusableWhenDisabled`; each leaves once its
-    request lands, so focus is handed on: the row's ⋯, the header's first
-    control, the studio's `<main>` (`BuildDraft`'s `useFocusHandoff`). A text
+    A tracker row's Queue in Agent inbox and the tailored studio's
+    Create draft keep focus while they run too, through `focusableWhenDisabled`; each leaves once its
+    request lands, so focus is handed on: the row's ⋯, the studio's `<main>` (`BuildDraft`'s
+    `useFocusHandoff`). The job header's Queue in Agent inbox is an item of its ⋯, so the closing
+    menu returns focus to ⋯, which stays. A text
     field a submit would disable goes `readOnly` instead (Add item's,
     the API key and Custom AI server fields while they save, and the Target
     dialog's fields while each one saves: `RolePicker`'s and `CountryPicker`'s
@@ -980,7 +980,7 @@
   items, Suggest edits, Apply, Write new wording, Adapt, Add as is) submits
   through `useSingleFlight` too, and so do the Templates Create and Duplicate,
   `/new`'s Save job, both studios' Save, the tailored studio's Create draft and
-  Start over (one guard), Queue in Agent inbox (tracker row and job header), every
+  Start over (one guard), Queue in Agent inbox (tracker row and the job header's ⋯), every
   explicit settings Save (API keys, Prompts' Save and Reset, Auto-apply,
   Persona and its Draft, Custom AI server) and Available models' + and Remove
   (the chat composer's `sendingRef` is the same guard, inline). A write whose
@@ -1178,6 +1178,20 @@
   11.5rem at that width with Where.
   The job header, gap page and proposals keep `JobOwnershipMark`/`Notice`.
   Pinned by `test_frontend_jobs_where.py`.
+- **Job steps** (`components/job-steps.tsx`, data from `lib/job-steps.ts`): the job page has four numbered
+  steps where its tab row was, **Job**, **Resume and gaps**, **Tailored resume** and **Apply**, each a disc
+  (done: a Check on `bg-success`; the stage's step: a 2px `ring` circle, its number in `primary`; later: a
+  `surface-container` disc), a `title-small` name and one `body-small` muted line, the receipt under a done
+  step or the hint under a later one. The step whose panel shows is underlined (2px `primary`) and
+  `aria-current="step"`. Done and current steps are buttons; a later step is plain text, not focusable and
+  **never disabled**: no lock, no tooltip with a reason, its line says what opens it. `?tab=` keeps the values
+  the app has always written (`TAB_TO_STEP`: jd → Job, fit, output, qa, submitted → Apply's receipt), so
+  `/new`'s and the Companion's `?tab=fit` and the gap page's and the studio's `?tab=output` still land; with no
+  `?tab=` the stage's step opens, or Job while a proposal waits on you. A panel mounts when first shown and
+  then stays, hidden (an answer being edited survives a look at another step). The header keeps the
+  proposal's triage, the score pill, the StatusChip and the job link; the rare actions sit behind one ⋯
+  (**More actions**): Queue in Agent inbox, Refresh details and Delete job, each with its confirm.
+  Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_visual_surfaces.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Jobs** (see *Canonical terms*). A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means
@@ -1355,7 +1369,7 @@
     wordings**, **Accept 2 new wordings**), never a new version.
     **skill group**, **School**, **On-site**, **Role**, **Employment type**,
     **Offer**, **Diversity questions (voluntary)**. **What was submitted** is
-    the job page's tab holding the answer receipt; its source pills are
+    the answer receipt on the job page's step 4; its source pills are
     **Profile**, **Resume**, **Custom**, **Written**, **Inferred**, **You** and
     **Upload**, and the Companion's group of flagged answers is **Check before
     you submit**. **Persona** keeps its
@@ -1379,7 +1393,7 @@
     inbox** (`/proposals`), never Agent proposals; its lanes are **Needs
     you**, **To review**, **Queued**, **Applying** and **History** (one table,
     `lib/inbox-lanes.ts`; a lane with nothing in it is not drawn); its verbs **Queue** and **Skip** in the inbox and
-    **Queue in Agent inbox** on a tracker row and the job header; its chips
+    **Queue in Agent inbox** on a tracker row and in the job header's ⋯; its chips
     (`PROPOSAL_STATUS_CHIP`) **Proposed**, **Queued**, **Approved**,
     **Applied** and **Skipped** (plus **Needs you**, **Expired**, **Check if
     sent**), never Triage, In flight or Submitted, and a proposal is never
@@ -1770,7 +1784,7 @@ Every action answers. The answer depends on where the effect lands:
   ("Template deleted") and the surface that shows the result updates; a running job shows its own state where the
   work is shown, never a global spinner.
 - **Which busy buttons change their label.** `pending` always adds the spinner. These also swap the label
-  while they run: Save job ("Saving…"), the job header's Queue in Agent inbox ("Queueing…"), Update scores
+  while they run: Save job ("Saving…"), Queue in Agent inbox in the job header's ⋯ ("Queueing…"), Update scores
   ("Updating scores…"), Approve ("Approving…"), Adapt and preview ("Adapting…"), Answer questions
   ("Answering…"), Write cover letter, the question pass's write-all and Write new wording ("Writing…") and
   Apply suggestion ("Applying…"). These keep their label and show the spinner only: the studios' Save

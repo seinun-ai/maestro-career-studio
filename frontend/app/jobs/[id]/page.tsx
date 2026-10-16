@@ -30,10 +30,12 @@ import { CompanyMonogram } from "@/components/company-monogram";
 import { IconButton } from "@/components/icon-button";
 import {
   JobExtractedFields,
+  extractSkills,
   formatSalary,
   humanizeEnum,
 } from "@/components/job-extracted-fields";
-import { JobKnockoutCard, KnockoutLine } from "@/components/job-knockout-card";
+import { JobKnockoutCard, KnockoutLine, knockoutNotChecked } from "@/components/job-knockout-card";
+import { JobSteps } from "@/components/job-steps";
 import { JobSubmittedTab } from "@/components/job-submitted-tab";
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
 import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
@@ -50,21 +52,35 @@ import { SavedJobChip, StatusChip } from "@/components/status-chip";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ResumeTag } from "@/components/visual/resume-swatch";
 import { ScoreBar } from "@/components/visual/score-bar";
 import { useBaseResumeColor, useBaseResumeLabel } from "@/hooks/use-base-resume-label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
-import { apiFetch, apiUrlForBrowserPdf, listAtsScores, promoteJobToAgentQueue } from "@/lib/api";
+import {
+  apiFetch,
+  apiUrlForBrowserPdf,
+  listAtsScores,
+  listTailoringSessions,
+  promoteJobToAgentQueue,
+} from "@/lib/api";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { headerProposalPill, historyStatusOf, proposalHasContent } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
 import { formatShortDate } from "@/lib/format-date";
+import { gapCounts, type GapCounts } from "@/lib/gap-counts";
 import { scorePill, standingLine } from "@/lib/job-standing";
+import { TAB_TO_STEP, currentStep, jobSteps, stepForTab, type StepKey } from "@/lib/job-steps";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalDetail, ProposalStatus } from "@/lib/types";
@@ -72,68 +88,18 @@ import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
 const QueueIcon = CONCEPT_ICONS.queue;
 const ApproveIcon = CONCEPT_ICONS.approve;
-const LockedIcon = CONCEPT_ICONS.locked;
+const MoreIcon = CONCEPT_ICONS.more;
 
-// Tab values stay jd/fit/output/qa for deep-link compat (?tab=fit, ?tab=output); `submitted` is
-// What was submitted, shown once the job has filled answers (or when a link opens it).
-const JOB_TABS = ["jd", "fit", "output", "qa", "submitted"] as const;
+/** The proposal statuses that wait on you: the job opens on step 1, where the agent's card is. */
+const PROPOSAL_WAITS_ON_YOU = new Set(["pending_review", "needs_decision", "needs_human"]);
 
-/**
- * Why Resume and Q&A are locked: they show a job's application, which tailoring, Use resume as is
- * (the gap page) and Mark applied without tailoring (Score and tailor) each create.
- */
-const LOCKED_REASON =
-  "Resume and Q&A open once this job has its own resume: tailor one, use yours as is, or mark the job applied.";
-
-function JobTabsList({
-  hasApp,
-  showSubmitted,
-  reasonId,
-  className,
-}: {
-  hasApp: boolean;
-  showSubmitted: boolean;
-  reasonId: string;
-  className?: string;
-}) {
-  // A greyed tab with no stated reason is a dead end for a first-time user: each
-  // locked tab carries the reason as its title and points at it with aria-describedby.
-  // The base trigger styles set pointer-events-none while disabled, which
-  // suppresses the native title tooltip too; re-enable it on the locked pair
-  // only. The disabled attribute still swallows the click.
-  const lockedProps = hasApp
-    ? {}
-    : {
-        disabled: true,
-        title: LOCKED_REASON,
-        "aria-describedby": reasonId,
-        className:
-          "disabled:pointer-events-auto aria-disabled:pointer-events-auto",
-      };
+/** Step 3 or 4 before the job has its own resume (a link to ?tab=output or ?tab=qa): say so, and point at step 2. */
+function NothingTailoredYet({ onOpenFit }: { onOpenFit: () => void }) {
   return (
-    <TabsList className={className}>
-      <TabsTrigger value="jd">Overview</TabsTrigger>
-      <TabsTrigger value="fit">Score and tailor</TabsTrigger>
-      <TabsTrigger value="output" {...lockedProps}>
-        {hasApp ? null : <LockedIcon className="size-3.5" />}
-        Resume
-      </TabsTrigger>
-      <TabsTrigger value="qa" {...lockedProps}>
-        {hasApp ? null : <LockedIcon className="size-3.5" />}
-        Q&amp;A
-      </TabsTrigger>
-      {/* Not locked behind an application: a form can be filled before one exists. */}
-      {showSubmitted ? <TabsTrigger value="submitted">What was submitted</TabsTrigger> : null}
-    </TabsList>
-  );
-}
-
-function NoDraftYet({ onOpenFit }: { onOpenFit: () => void }) {
-  return (
-    <div className="text-muted-foreground flex flex-col items-center gap-3 rounded-corner-md border border-dashed p-8 text-center text-body-medium">
-      <p>{"Your resume and answers appear here once you start a draft."}</p>
-      <Button size="sm" variant="outline" onClick={onOpenFit}>
-        Go to Score and tailor
+    <div className="text-muted-foreground flex flex-col items-center gap-2 rounded-corner-md border border-dashed p-8 text-center text-body-medium">
+      <p>Nothing tailored yet.</p>
+      <Button size="sm" variant="link" onClick={onOpenFit}>
+        Go to Resume and gaps
       </Button>
     </div>
   );
@@ -165,21 +131,28 @@ export default function JobDetailPage({
   const fromRaw = resolvedSearch.from;
   const fromParam = Array.isArray(fromRaw) ? fromRaw[0] : fromRaw;
   const fromProposals = fromParam === "proposals";
-  // `?tab=fit` deep-links (e.g. from the gap-analysis page after tailoring).
+  // `?tab=` keeps the values the app has always written (jd/fit/output/qa/submitted): /new and the
+  // Companion open fit, the gap page and the studio's Back open output. No `?tab=`: the stage's step.
   const requestedTab = Array.isArray(tabParam) ? tabParam[0] : tabParam;
-  const [tab, setTab] = useState<string>(
-    requestedTab && (JOB_TABS as readonly string[]).includes(requestedTab)
-      ? requestedTab
-      : "jd",
+  const [chosenStep, setChosenStep] = useState<StepKey | null>(
+    requestedTab != null && Object.hasOwn(TAB_TO_STEP, requestedTab) ? stepForTab(requestedTab) : null,
   );
-  // Once opened, What was submitted stays in the row: the job's own flag may predate the fill.
-  const [submittedSeen, setSubmittedSeen] = useState(tab === "submitted");
-  if (tab === "submitted" && !submittedSeen) setSubmittedSeen(true);
+  const setStep = (key: StepKey) => setChosenStep(key);
+  // Once opened by link, What was submitted stays on step 4: the job's own flag may predate the fill.
+  const [submittedSeen] = useState(requestedTab === "submitted");
+  // ?tab=submitted lands on the receipt, below step 4's questions: it is scrolled to once it renders.
+  const scrollToReceipt = useRef(requestedTab === "submitted");
+  const receiptRef = useRef<HTMLElement | null>(null);
+  // Step 1's job details: null follows the stage (open only while the job is just saved).
+  const [detailsOpen, setDetailsOpen] = useState<boolean | null>(null);
+  const detailsId = useId();
+  // A step's panel mounts when first shown and then stays, hidden: an answer being edited on step 4
+  // survives a look at step 2 (the tabs' keepMounted rule).
+  const [visited, setVisited] = useState<ReadonlySet<StepKey>>(() => new Set());
   const [declineOpen, setDeclineOpen] = useState(false);
   const qc = useQueryClient();
   const router = useRouter();
   const confirm = useConfirm();
-  const lockedReasonId = useId();
   const actionsRef = useRef<HTMLDivElement>(null);
   // Queue, Skip and Delete proposal leave the header with the status they change, taking focus with
   // them: the header's first control takes it, in the commit that changes the status. A Skip's dialog
@@ -214,6 +187,12 @@ export default function JobDetailPage({
   const scoreRows = useQuery({
     queryKey: ["ats-scores", id],
     queryFn: () => listAtsScores(id),
+  });
+  // The Score tab's own query too (the same key): step 2's line names the open gap analysis's resume and,
+  // once the job is tailored, counts the gaps of the analysis that made the draft.
+  const sessions = useQuery({
+    queryKey: ["tailoring-sessions", id],
+    queryFn: () => listTailoringSessions(id),
   });
   const baseName = useBaseResumeLabel();
   const colorOf = useBaseResumeColor();
@@ -303,31 +282,8 @@ export default function JobDetailPage({
     onError: (err: Error) => toast.error(couldnt("delete the job", err)),
   });
 
-  const reExtractButton = useMemo(
-    () => (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={async () => {
-          const ok = await confirm({
-            title: "Refresh the job details?",
-            description:
-              "This reads the job description again and replaces the job details and skills.",
-            confirmLabel: "Refresh details",
-          });
-          if (!ok) return;
-          reExtract.mutate();
-        }}
-        disabled={reExtract.isPending || !ownership.canWrite}
-      >
-        <RefreshCw
-          className={reExtract.isPending ? "animate-spin" : undefined}
-        />
-        {reExtract.isPending ? "Refreshing…" : "Refresh details"}
-      </Button>
-    ),
-    [confirm, reExtract, ownership.canWrite],
-  );
+  // The header's ⋯: confirms opened from its items return focus to it (the item is gone by then).
+  const moreTrigger = () => actionsRef.current?.querySelector<HTMLElement>('[aria-label="More actions"]') ?? null;
 
   // Before the loading gate: `data` stays undefined after a failure, so the
   // gate below would hold the skeleton on screen for good.
@@ -423,6 +379,69 @@ export default function JobDetailPage({
       proposalStatus === "rejected" ||
       proposalStatus === "expired");
   const triagePending = proposalActions.pending;
+
+  // The four steps (lib/job-steps.ts), from what the detail and the two lists already carry: no new request.
+  const stage = job.stage ?? "saved";
+  const skills = extractSkills(job.extracted_json);
+  const topBase = scorePill(scoreRows.data ?? [], null);
+  const baseScoreOf = (slug: string) =>
+    (scoreRows.data ?? []).find((s) => s.phase === "base" && s.target_id === slug)?.composite ?? null;
+  const openSession = (sessions.data ?? []).find((s) => s.id === job.open_session_id);
+  // The analysis that made the draft: the application's newest tailored session.
+  const madeDraft = application
+    ? (sessions.data ?? [])
+        .filter((s) => s.status === "tailored" && s.application_id === application.id)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
+    : undefined;
+  const stepBase = (() => {
+    if (stage === "gaps") {
+      const slug = openSession?.base_resume ?? topBase?.targetId ?? null;
+      return { name: slug ? baseName(slug) : null, score: slug ? baseScoreOf(slug) : null };
+    }
+    if (application && stage !== "saved" && stage !== "scored") {
+      return {
+        name: data.base_resume_name ?? baseName(application.base_resume),
+        score: baseScoreOf(application.base_resume),
+      };
+    }
+    return { name: topBase ? baseName(topBase.targetId) : null, score: topBase?.value ?? null };
+  })();
+  // A current step 2 prints only the closed count, which the detail carries (the server's own count, done =
+  // answered or skipped): no full session needed. A done step 2 splits answered from skipped.
+  const stepGaps: GapCounts | null =
+    stage === "gaps"
+      ? {
+          answered: job.gaps_done ?? 0,
+          skipped: 0,
+          open: Math.max(0, (job.gaps_total ?? 0) - (job.gaps_done ?? 0)),
+          total: job.gaps_total ?? 0,
+        }
+      : madeDraft
+        ? gapCounts(
+            madeDraft.gaps_json.categories.flatMap((c) => c.gaps.map((g) => g.gap_id)),
+            madeDraft.resolutions_json,
+          )
+        : null;
+  // A skip's reason decides whether it reads Applied yourself: hold the words until it loads.
+  const standingText =
+    !hasApp && proposalStatus === "rejected" && proposalQuery.isLoading ? "" : standing.text;
+  const steps = jobSteps({
+    stage,
+    skills: { total: skills.length, required: skills.filter((s) => s.requirement_level === "required").length },
+    knockout: data.knockout
+      ? { status: data.knockout.status, notChecked: knockoutNotChecked(data.knockout, job) }
+      : null,
+    base: stepBase,
+    gaps: stepGaps,
+    draft: { score: scoreShown?.tailored ? scoreShown.value : null, changes: null },
+    // The application carries no render time, so the line says "PDF created" without a date.
+    pdf: application?.pdf_path ? { pages: application.pdf_pages, createdOn: null } : null,
+    standing: standingText,
+  });
+  const step: StepKey =
+    chosenStep ?? (proposalStatus && PROPOSAL_WAITS_ON_YOU.has(proposalStatus) ? "job" : currentStep(stage));
+  const showDetails = detailsOpen ?? stage === "saved";
+  if (!visited.has(step)) setVisited(new Set(visited).add(step));
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 gap-1 p-6 sm:gap-2">
@@ -569,21 +588,6 @@ export default function JobDetailPage({
                 Delete proposal
               </Button>
             ) : null}
-            {!hasApp && !job.proposal_status ? (
-              <Button
-                variant="outline"
-                size="sm"
-                pending={promote.isPending}
-                disabled={!ownership.canWrite}
-                onClick={() => {
-                  queued.current = true;
-                  promoteOnce();
-                }}
-              >
-                <SendHorizontal />
-                {promote.isPending ? "Queueing…" : "Queue in Agent inbox"}
-              </Button>
-            ) : null}
             {scoreShown ? (
               // The resume's name shows only at 2xl: at 1280 it squeezed a long job title onto two lines.
               // The hover title and the meter's accessible name carry it at every width.
@@ -605,21 +609,12 @@ export default function JobDetailPage({
               </span>
             ) : null}
             {hasApp && application ? (
-              <>
-                <StatusChip
-                  status={application.status}
-                  pending={patch.isPending}
-                  disabled={!ownership.canRequest}
-                  onSelect={(status) => patch.mutate({ status })}
-                />
-                <ApplicationDetailsMenu
-                  app={application}
-                  jobId={id}
-                  jobSourceUrl={job.source_url}
-                  readOnly={!ownership.canWrite}
-                  canRequest={ownership.canRequest}
-                />
-              </>
+              <StatusChip
+                status={application.status}
+                pending={patch.isPending}
+                disabled={!ownership.canRequest}
+                onSelect={(status) => patch.mutate({ status })}
+              />
             ) : null}
             {job.source_url ? (
               <IconButton
@@ -637,164 +632,227 @@ export default function JobDetailPage({
                 }
               />
             ) : null}
-            <IconButton
-              label="Delete job"
-              icon={<Trash2 className="size-4" />}
-              size="icon-sm"
-              className="text-muted-foreground hover:text-destructive shrink-0"
-              disabled={deleteJob.isPending || !ownership.canWrite}
-              onClick={async () => {
-                const ok = await confirm({
-                  title: "Delete this job?",
-                  description:
-                    "This also deletes its application, match scores, gap analyses, answers and any Agent inbox proposals for it.",
-                  confirmLabel: "Delete",
-                  destructive: true,
-                });
-                if (!ok) return;
-                deleteJob.mutate();
-              }}
-            />
+            {/* The rare actions, behind one ⋯: queue it for an agent, read the job description again, delete. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <IconButton
+                    label="More actions"
+                    icon={<MoreIcon className="size-4" />}
+                    size="icon-sm"
+                    className="text-muted-foreground shrink-0"
+                  />
+                }
+              />
+              <DropdownMenuContent align="end" className="w-max">
+                {!hasApp && !job.proposal_status ? (
+                  <DropdownMenuItem
+                    disabled={promote.isPending || !ownership.canWrite}
+                    onClick={() => {
+                      queued.current = true;
+                      promoteOnce();
+                    }}
+                  >
+                    <SendHorizontal />
+                    {promote.isPending ? "Queueing…" : "Queue in Agent inbox"}
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem
+                  disabled={reExtract.isPending || !ownership.canWrite}
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: "Refresh the job details?",
+                      description:
+                        "This reads the job description again and replaces the job details and skills.",
+                      confirmLabel: "Refresh details",
+                      returnFocus: moreTrigger,
+                    });
+                    if (!ok) return;
+                    reExtract.mutate();
+                  }}
+                >
+                  <RefreshCw className={reExtract.isPending ? "animate-spin" : undefined} />
+                  {reExtract.isPending ? "Refreshing…" : "Refresh details"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={deleteJob.isPending || !ownership.canWrite}
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: "Delete this job?",
+                      description:
+                        "This also deletes its application, match scores, gap analyses, answers and any Agent inbox proposals for it.",
+                      confirmLabel: "Delete",
+                      destructive: true,
+                      returnFocus: moreTrigger,
+                    });
+                    if (!ok) return;
+                    deleteJob.mutate();
+                  }}
+                >
+                  <Trash2 />
+                  Delete job
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
-        {/* Where this stands, in one line: what the header's pills cannot say. */}
-        <p
-          data-testid="job-standing"
-          className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-body-medium"
-        >
-          {/* A skip's reason decides whether it reads Applied yourself: hold the words until it loads. */}
-          {!hasApp && proposalStatus === "rejected" && proposalQuery.isLoading ? null : <span>{standing.text}</span>}
-          {standing.pdf && application ? (
-            <a
-              href={apiUrlForBrowserPdf(`/api/applications/${application.id}/pdf`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-            >
-              View PDF
-            </a>
-          ) : null}
-          {standing.submitted ? (
-            <button type="button" onClick={() => setTab("submitted")} className="text-primary hover:underline">
-              What was submitted
-            </button>
-          ) : null}
-          {standing.pointer ? (
-            <span>
-              Tailor and Apply in the Companion, or open{" "}
-              <button type="button" onClick={() => setTab("fit")} className="text-primary hover:underline">
-                Score and tailor
-              </button>
-              .
-            </span>
-          ) : null}
-        </p>
         <JobOwnershipNotice ownership={job.ownership} />
 
-        <Tabs
-          value={tab}
-          onValueChange={(value) => setTab(String(value))}
-          className="gap-4"
-        >
-          {/* "Edit resume" is promoted OUT of the Resume tab (design §4.5): once a
-              tailored draft exists the studio is reachable from every tab, not
-              just the one you have to remember to open first. It is filled,
-              not outlined: promoting a control to every tab and then styling
-              it like the row's furniture buries it again — this is what you
-              came to the job for once a draft exists. */}
-          <div className="space-y-2">
-            {/* The hairline is the row's, so it runs under the button too. */}
-            <div className="flex items-center gap-2 border-b">
-              <JobTabsList hasApp={hasApp} showSubmitted={showSubmitted} reasonId={lockedReasonId} className="flex-1 group-data-horizontal/tabs:border-b-0" />
-              {application?.customized_json ? (
+        {/* The four steps, where the tabs were. A later step is shown, never locked: its line says what opens it. */}
+        <div className="space-y-4">
+          <JobSteps steps={steps} current={step} onSelect={setStep} />
+
+          {visited.has("job") ? (
+            <div hidden={step !== "job"} className="space-y-4">
+              {/* Only a proposal that carries something: a question, a reason, a note, a plan someone wrote,
+                  drafted answers or screenshots. A load failure shows its error card. Never folded away. */}
+              {proposalId && (proposalQuery.isError || (proposalQuery.data && proposalHasContent(proposalQuery.data))) ? (
+                <ProposalAgentPanel proposalId={proposalId} />
+              ) : null}
+              {/* The receipt: step 1's line, and the details behind it (open while the job is just saved). */}
+              <div className="bg-surface-container-low flex items-center justify-between gap-3 rounded-corner-md px-4 py-2">
+                <p className="text-body-medium">{steps[0].summary}</p>
                 <Button
                   size="sm"
-                  disabled={!ownership.canWrite}
-                  aria-disabled={!ownership.canWrite || undefined}
-                  // A link rendered as a button: `disabled:` never matches it, `data-disabled` does.
-                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                  nativeButton={false}
-                  render={
-                    <Link href={`/applications/${application.id}/resume`}>
-                      <Pencil className="size-4" />
-                      Edit resume
-                    </Link>
-                  }
+                  variant="link"
+                  aria-expanded={showDetails}
+                  aria-controls={detailsId}
+                  onClick={() => setDetailsOpen(!showDetails)}
+                >
+                  {showDetails ? "Hide details" : "View details"}
+                </Button>
+              </div>
+              <div id={detailsId} hidden={!showDetails} className="space-y-4">
+                <JobKnockoutCard scan={data?.knockout} job={job} />
+                <JobExtractedFields
+                  job={job}
+                  hideTitle
+                  statusSlot={<KnockoutLine scan={data?.knockout} job={job} />}
+                />
+                <JobTrackingUrlField jobId={id} sourceUrl={job.source_url} readOnly={!ownership.canWrite} />
+              </div>
+            </div>
+          ) : null}
+
+          {visited.has("fit") ? (
+            <div hidden={step !== "fit"} className="space-y-4">
+              {ownership.canWrite ? (
+                <AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} />
+              ) : (
+                <AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} readOnly />
+              )}
+              {/* The before/after compare lives on step 3, next to the artifact it describes: link to it. */}
+              {application?.customized_json ? (
+                <button
+                  type="button"
+                  onClick={() => setStep("output")}
+                  className="text-primary inline-flex items-center gap-1 text-body-medium hover:underline"
+                >
+                  Compare with your base resume in Tailored resume
+                  <ArrowRight className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {visited.has("output") ? (
+            application ? (
+              <div hidden={step !== "output"} className="space-y-4">
+                {/* Here until step 3's own layout places it (outline: Create PDF is this view's filled button). */}
+                {application.customized_json ? (
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!ownership.canWrite}
+                      aria-disabled={!ownership.canWrite || undefined}
+                      // A link rendered as a button: `disabled:` never matches it, `data-disabled` does.
+                      className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                      nativeButton={false}
+                      render={
+                        <Link href={`/applications/${application.id}/resume`}>
+                          <Pencil className="size-4" />
+                          Edit resume
+                        </Link>
+                      }
+                    />
+                  </div>
+                ) : null}
+                <OutputTab app={application} jobId={id} readOnly={!ownership.canWrite} />
+              </div>
+            ) : (
+              // A link to ?tab=output on a job with no resume of its own yet.
+              <div hidden={step !== "output"}>
+                <NothingTailoredYet onOpenFit={() => setStep("fit")} />
+              </div>
+            )
+          ) : null}
+
+          {visited.has("qa") ? (
+            <div hidden={step !== "qa"} className="space-y-4">
+              {(standing.pdf && application) || standing.submitted ? (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-medium">
+                  {standing.pdf && application ? (
+                    <a
+                      href={apiUrlForBrowserPdf(`/api/applications/${application.id}/pdf`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      View PDF
+                    </a>
+                  ) : null}
+                  {standing.submitted ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        receiptRef.current?.scrollIntoView({ block: "start" });
+                        receiptRef.current?.focus({ preventScroll: true });
+                      }}
+                      className="text-primary hover:underline"
+                    >
+                      What was submitted
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+              {application ? (
+                <QATab applicationId={application.id} readOnly={!ownership.canWrite} />
+              ) : (
+                <NothingTailoredYet onOpenFit={() => setStep("fit")} />
+              )}
+              {/* Not behind an application: a form can be filled before one exists. */}
+              {showSubmitted ? (
+                <section
+                  aria-label="What was submitted"
+                  tabIndex={-1}
+                  ref={(el) => {
+                    receiptRef.current = el;
+                    if (el && scrollToReceipt.current) {
+                      scrollToReceipt.current = false;
+                      el.scrollIntoView({ block: "start" });
+                    }
+                  }}
+                  className="scroll-mt-6 rounded-corner-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                  <JobSubmittedTab jobId={id} active={step === "qa"} onOpenTab={application ? setStep : undefined} />
+                </section>
+              ) : null}
+              {/* The application's details (applied date, tracking link, referral, notes, delete), out of the header. */}
+              {application ? (
+                <ApplicationDetailsMenu
+                  app={application}
+                  jobId={id}
+                  jobSourceUrl={job.source_url}
+                  readOnly={!ownership.canWrite}
+                  canRequest={ownership.canRequest}
                 />
               ) : null}
             </div>
-            {hasApp ? null : (
-              <p id={lockedReasonId} className="sr-only">
-                {LOCKED_REASON}
-              </p>
-            )}
-          </div>
-
-          <TabsContent value="jd" className="mt-0 space-y-4">
-            {/* Only a proposal that carries something: a question, a reason, a note, a plan someone wrote,
-                drafted answers or screenshots. A load failure shows its error card. */}
-            {proposalId && (proposalQuery.isError || (proposalQuery.data && proposalHasContent(proposalQuery.data))) ? (
-              <ProposalAgentPanel proposalId={proposalId} />
-            ) : null}
-            <JobKnockoutCard scan={data?.knockout} job={job} />
-            <JobExtractedFields
-              job={job}
-              hideTitle
-              actionsSlot={reExtractButton}
-              statusSlot={<KnockoutLine scan={data?.knockout} job={job} />}
-            />
-            <JobTrackingUrlField jobId={id} sourceUrl={job.source_url} readOnly={!ownership.canWrite} />
-          </TabsContent>
-
-          <TabsContent value="fit" className="mt-0 space-y-4">
-            {ownership.canWrite ? (
-              <AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} />
-            ) : (
-              <AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} readOnly />
-            )}
-            {/* The before/after compare lives on the Resume tab, next to the
-                artifact it describes — link instead of double-mounting it. */}
-            {application?.customized_json ? (
-              <button
-                type="button"
-                onClick={() => setTab("output")}
-                className="text-primary inline-flex items-center gap-1 text-body-medium hover:underline"
-              >
-                Compare with your base resume on the Resume tab
-                <ArrowRight className="size-3.5" />
-              </button>
-            ) : null}
-          </TabsContent>
-
-          <TabsContent value="submitted" className="mt-0 space-y-4">
-            <JobSubmittedTab
-              jobId={id}
-              active={tab === "submitted"}
-              onOpenTab={application ? setTab : undefined}
-            />
-          </TabsContent>
-
-          {application ? (
-            <>
-              <TabsContent value="output" className="mt-0 space-y-4">
-                <OutputTab app={application} jobId={id} readOnly={!ownership.canWrite} />
-              </TabsContent>
-              <TabsContent value="qa" className="mt-0 space-y-4">
-                <QATab applicationId={application.id} readOnly={!ownership.canWrite} />
-              </TabsContent>
-            </>
-          ) : (
-            // A link to ?tab=output or ?tab=qa on a job with no draft opened a blank panel.
-            <>
-              <TabsContent value="output" className="mt-0">
-                <NoDraftYet onOpenFit={() => setTab("fit")} />
-              </TabsContent>
-              <TabsContent value="qa" className="mt-0">
-                <NoDraftYet onOpenFit={() => setTab("fit")} />
-              </TabsContent>
-            </>
-          )}
-        </Tabs>
+          ) : null}
+        </div>
 
         {proposalId ? (
           <DeclineDialog

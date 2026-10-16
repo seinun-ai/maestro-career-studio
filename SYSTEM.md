@@ -156,18 +156,21 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    default reads Tracked, not All. Filter groups: All/Saved, **Your applications** and **Agent inbox**
    (`proposed`/`queued`/`needs_you`/`skipped`). Rows, options and the Agent inbox page (`/proposals`): frontend-conventions,
    "Jobs row" and "Tracker filter".
-3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, ONE status: the application's inline StatusChip + Details
-   menu, else the proposal's pill worded like History (`headerProposalPill`), naming its filer, + Queue/Skip; a score pill,
-   **Resume match** (tailored) or **Best base resume**; a Needs-you question adds **Keep it**, PATCH `pending_review`, linking the
-   job's application when the proposal has none), tabs Overview / Score and tailor / Resume / Q&A, plus **What was submitted**
-   once the job has filled answers (tab URL values stay jd/fit/output/qa for deep-link compatibility; that one is `submitted`):
-   the answer receipt, latest per question, a source pill each and warn-only flags, read before you submit too
-   (docs/entities/filled-answers.md). `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`; otherwise they use
-   `cs-tracker-seq`. A **Where this stands** line under the header (`lib/job-standing.ts`) says whether and how you applied.
-   Overview mounts the proposal's card, titled with its filer (`proposed_by`, worded by `lib/agent-name.ts`), only when it carries
-   something (`proposalHasContent`); every job read derives `proposal_status`/`proposal_id` from the newest proposal. Overview
-   also renders the **knock-out pre-scan** (`services/knockout.scan_for`): stated JD requirements vs the profile, flagged and
-   never decided for you (verdicts and chips: docs/entities/job.md, "Knock-out pre-scan").
+3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, ONE status: the application's inline StatusChip, else the
+   proposal's pill worded like History (`headerProposalPill`), naming its filer, + Queue/Skip; a score pill, **Resume match**
+   (tailored) or **Best base resume**; a Needs-you question adds **Keep it**, PATCH `pending_review`, linking the job's application
+   when the proposal has none; the job link; a ⋯ **More actions**: Queue in Agent inbox, Refresh details, Delete job). Under it
+   four numbered steps replace tabs (`components/job-steps.tsx`, `lib/job-steps.ts`): **Job**, **Resume and gaps**, **Tailored
+   resume**, **Apply**, each with one line (a done step's receipt, a later step's hint). The stage's step opens (step 1 while a
+   proposal waits on you); a later step is plain text, never locked. `?tab=` keeps jd/fit/output/qa/submitted so deep links land.
+   Step 1: the proposal's card, titled with its filer (`proposed_by`, worded by `lib/agent-name.ts`), only when it carries
+   something (`proposalHasContent`), then a receipt row whose **View details** shows the **knock-out pre-scan**
+   (`services/knockout.scan_for`: stated JD requirements vs the profile, flagged; the decision stays yours (or your agent's);
+   verdicts and chips: docs/entities/job.md, "Knock-out pre-scan"), the job details and tracking link. Step 4's line is **Where
+   this stands** (`lib/job-standing.ts`); it shows View PDF, the Details menu and, once the job has filled answers, **What was
+   submitted**: the answer receipt, latest per question, source pills and warn-only flags (docs/entities/filled-answers.md).
+   `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`, else `cs-tracker-seq`. Every job read derives
+   `proposal_status`/`proposal_id` from the newest proposal.
 4. **Score** — Score and tailor shows the bases set for the job's country (all when unknown), scored at save; its first-visit
    auto-run is the fallback for a job saved before any base resume existed or whose save-time scoring failed; per-base cards →
    **Analyze gaps** creates a session (one filled button, on the best match; Restart gap analysis and Mark applied without

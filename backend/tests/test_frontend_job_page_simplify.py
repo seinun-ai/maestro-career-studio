@@ -47,16 +47,18 @@ def test_the_score_pill_says_what_it_scores():
 # ── A3: where this stands ───────────────────────────────────────────────────
 
 
-def test_the_page_says_where_the_job_stands_under_the_header():
+def test_the_page_says_where_the_job_stands_on_step_four():
     assert "const standing = standingLine({" in _JOB
-    header_end = _JOB.index("</header>")
-    line = _JOB[header_end : _JOB.index("<JobOwnershipNotice")]
-    assert 'data-testid="job-standing"' in line and "{standing.text}" in line
-    # View PDF only with a PDF; What was submitted only with filled answers; the pointer only on a draft.
-    assert "standing.pdf && application" in line and "View PDF" in line
-    assert "standing.submitted" in line and 'setTab("submitted")' in line
-    assert "standing.pointer" in line and "Tailor and Apply in the Companion" in line
-    assert 'setTab("fit")' in line
+    # The line under the header is gone: its words are step 4's summary (lib/job-steps.ts, applySummary).
+    assert 'data-testid="job-standing"' not in _JOB
+    assert "standing: standingText," in _JOB and 'if (state === "current") return i.standing;' in _read("lib/job-steps.ts")
+    # View PDF only with a PDF and What was submitted only with filled answers, at the top of step 4.
+    step4 = _JOB[_JOB.index('{visited.has("qa") ? (') :]
+    links = step4[: step4.index("<QATab")]
+    assert "standing.pdf && application" in links and "View PDF" in links
+    assert "standing.submitted" in links and "receiptRef.current?.scrollIntoView" in links
+    # The draft's pointer to the Companion and step 2 went with the line: the steps say what is next.
+    assert "standing.pointer" not in _JOB and "Tailor and Apply in the Companion" not in _JOB
     # Built from data the detail response already carries: no new request.
     assert "hasFilledAnswers: Boolean(data.has_filled_answers)" in _JOB
     # The detail names the application's resume (backend test_jobs_router.py); an older backend's gap
@@ -93,7 +95,7 @@ _PANEL = _read("components/proposals/proposal-agent-panel.tsx")
 
 
 def test_the_proposal_card_mounts_only_when_it_carries_something():
-    tab = _JOB[_JOB.index('<TabsContent value="jd"') :]
+    tab = _JOB[_JOB.index('{visited.has("job") ? (') :]
     tab = tab[: tab.index("<JobKnockoutCard")]
     assert "proposalHasContent(proposalQuery.data)" in tab and "<ProposalAgentPanel proposalId={proposalId} />" in tab
     # A proposal that failed to load still shows its error card; one still loading shows nothing.
@@ -302,4 +304,4 @@ def test_a_draft_application_never_reads_applied_from_its_old_proposal():
 
 
 def test_the_standing_line_holds_its_words_while_a_skips_reason_loads():
-    assert '!hasApp && proposalStatus === "rejected" && proposalQuery.isLoading ? null : <span>{standing.text}</span>' in _JOB
+    assert '!hasApp && proposalStatus === "rejected" && proposalQuery.isLoading ? "" : standing.text;' in _JOB
