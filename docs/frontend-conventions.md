@@ -527,7 +527,7 @@
   replaces every saved letter (`POST /api/qa` deletes them only after the new
   one is committed, so a failed generation keeps them). No "was edited"
   signal is stored, so any saved text counts. Which letters are open for
-  editing lives in `QATab`: while one is open, Write and every letter's
+  editing lives in `QASections`: while one is open, Write and every letter's
   Write a new version wait, and while Write runs no letter opens for editing. One
   entry regenerates at a time. Answer questions sends the text it read and
   clears the box only if it still holds that text. Answer questions,
@@ -1246,21 +1246,26 @@
   Update PDF small and outline), then the page preview, the only `canvas`. Pinned by
   `test_frontend_jobs_honest_words.py` and `test_frontend_first_read_words.py`.
 - **Apply** (step 4, `components/apply-step.tsx`), inside one card, two columns (`flex-wrap`; the right one
-  300 to 360px). Left: **Open the job post and apply** (the view's one filled button, a new tab on the job's
-  apply link, else its source link; without either, Mark applied is the filled one), then `QATab`'s questions and
-  History, laid out by its `arrange` prop (the state stays in `QATab`; the cover letter card goes right), then
-  What was submitted in full once opened, then "Done applying?" with **Mark applied** (tonal, Check: the
-  StatusChip's `applied` transition through the page's one PATCH, single-flight, "Applying…", shown only while
-  the status is Draft; its line says it sets today as the applied date and that the later statuses are on the
-  chip), then an **Application details** disclosure (`aria-expanded`, closed, `title-small`) mounting
-  `ApplicationDetails`: Applied on and Notes save on blur, the tracking link, Referral, Delete application with
-  its confirm. Right: step 3's `PdfFileLine` (no preview: steps 2 and 3 showed the resume), or "No PDF yet"
-  with Create it on Tailored resume; the **Cover letter** card (`COVER_LETTER_ID`, the receipt's jump target)
-  with a "Not written" chip until one exists; and, once something was filled, **What was submitted**: three
-  answers, newest page first and never a voluntary one (`lib/filled-answers` `latestAnswers`), each with its
-  source pill, and **All N answers**, which opens the receipt and moves focus to it (a `?tab=submitted` link
-  opens it first). No Companion button: the web app cannot tell whether the Companion is paired. Edit resume
-  stays on step 3. Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_job_submitted_tab.py`.
+  300 to 360px); its section titles are `<h2>`, as step 3's. Left: **Open the job post and apply** (the view's one
+  filled button, a new tab on the job's apply link, else its source link; without either, Mark applied is the
+  filled one; Answer questions and Write cover letter are outline), then `QASections`' questions and History,
+  placed by its required `arrange` prop (the state stays in `QASections`, which never returns early since it
+  renders the whole step), then What was submitted in full once opened, then "Done applying?" with **Mark
+  applied** (tonal, Check, "Applying…", shown only while the status is Draft; its line says it sets today as the
+  applied date and that the later statuses are on the chip). The page holds one guarded status starter
+  (`useSingleFlight(patch.mutate)`) that the header's StatusChip and Mark applied share. Then an **Application
+  details** disclosure (a small link button with its chevron, as Score breakdown; `aria-expanded`, closed)
+  mounting `ApplicationDetails` only while open, on purpose unlike Settings' disclosures: each open reseeds from
+  the server, so a stale local note cannot overwrite an agent's. Applied on and Notes save on blur, only when
+  changed; the tracking link, Referral, Delete application with its confirm. Right: `PdfFileLine`
+  (`components/pdf-file-line.tsx`, shared with step 3; no preview: steps 2 and 3 showed the resume), or "No PDF
+  yet" with Create the PDF on Tailored resume; the **Cover letter** card with a "Not written" chip until one
+  exists; and, once something was filled, **What was submitted**: three answers, newest page first and never a
+  voluntary one (`lib/filled-answers` `latestAnswers`), each with its source pill, and **All N answers**, which
+  opens the receipt and moves focus to it (a `?tab=submitted` link opens it first). The receipt's "Cover letter
+  attached" jumps to the letter's History entry (`COVER_LETTER_ID`). No Companion button: the web app cannot tell
+  whether the Companion is paired. Edit resume stays on step 3. Pinned by `test_frontend_jobs_honest_words.py`,
+  `test_frontend_job_submitted_tab.py` and `test_frontend_single_flight.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Jobs** (see *Canonical terms*). A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means

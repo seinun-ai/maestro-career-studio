@@ -34,11 +34,6 @@ type OpenTab = (tab: "output" | "qa") => void;
 const JUMP_TARGET =
   "scroll-mt-6 rounded-corner-xs focus:outline-2 focus:outline-offset-2 focus:outline-ring";
 
-/**
- * What was submitted: every answer the Companion or a connected agent filled into this job's form,
- * the latest per question, with where it came from and what to check. Read-only.
- * `active`: tab panels stay mounted, so the receipt is fetched only once its tab is opened.
- */
 /** The receipt's one query: the full receipt and step 4's card share it. */
 function useFilledAnswers(jobId: string, active: boolean) {
   return useQuery({
@@ -53,6 +48,11 @@ function useFilledAnswers(jobId: string, active: boolean) {
   });
 }
 
+/**
+ * What was submitted: every answer the Companion or a connected agent filled into this job's form,
+ * the latest per question, with where it came from and what to check. Read-only.
+ * `active`: step panels stay mounted once shown, so the receipt is fetched only while step 4 shows.
+ */
 export function JobSubmittedTab({
   jobId,
   active,
@@ -334,7 +334,7 @@ function UploadLine({ field, onOpenTab }: { field: FilledField; onOpenTab?: Open
     ? `Resume attached: ${name}${field.version ? ` (version ${field.version})` : ""}`
     : `Cover letter attached: ${name}`;
   if (!onOpenTab) return <p className="text-body-medium wrap-anywhere">{label}</p>;
-  // The receipt sits on step 4 with the questions: a cover letter is the card above, so jump to it there.
+  // The receipt sits on step 4 with the questions: a cover letter jumps to its entry in History there.
   const open = () => {
     const card = resume ? null : document.getElementById(COVER_LETTER_ID);
     if (!card) return onOpenTab(resume ? "output" : "qa");

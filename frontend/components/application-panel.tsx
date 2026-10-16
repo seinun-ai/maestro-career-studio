@@ -143,7 +143,10 @@ export function useConfirmDeleteApplication({
 /**
  * The application's details, inline under step 4's Application details disclosure: applied date, tracking URL,
  * referral, notes and Delete application. Status is NOT here: it lives in the header's StatusChip and step 4's
- * Mark applied. Mounted only while the disclosure is open, so the referrals are read only then.
+ * Mark applied. Mounted only while the disclosure is open, unlike Settings' disclosures, which hide and keep
+ * their drafts: each open reseeds the fields from the server, so a stale local note can never overwrite one an
+ * agent wrote meanwhile (a blur saves before the toggle's click closes it), and the referrals are read only then.
+ * A blur saves only a field that changed.
  */
 export function ApplicationDetails({
   app,
@@ -198,7 +201,9 @@ export function ApplicationDetails({
           value={appliedAt}
           disabled={readOnly}
           onChange={(e) => setAppliedAt(e.target.value)}
-          onBlur={() => onPatch({ applied_at: toIsoDate(appliedAt) })}
+          onBlur={() => {
+            if (appliedAt !== formatDateInput(app.applied_at)) onPatch({ applied_at: toIsoDate(appliedAt) });
+          }}
         />
       </div>
 
@@ -252,7 +257,9 @@ export function ApplicationDetails({
           value={notes}
           disabled={!canRequest}
           onChange={(e) => setNotes(e.target.value)}
-          onBlur={() => onPatch({ notes })}
+          onBlur={() => {
+            if (notes !== (app.notes ?? "")) onPatch({ notes });
+          }}
           rows={3}
         />
       </div>

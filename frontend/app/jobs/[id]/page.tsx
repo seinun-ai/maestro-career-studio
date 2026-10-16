@@ -212,6 +212,8 @@ export default function JobDetailPage({
     applicationId: application?.id ?? "",
     jobId: id,
   });
+  // The one status starter: the header's StatusChip and step 4's Mark applied (a double click sent two PATCHes).
+  const setStatus = useSingleFlight(patch.mutate);
 
   const reExtract = useMutation({
     mutationFn: () =>
@@ -598,7 +600,7 @@ export default function JobDetailPage({
                 status={application.status}
                 pending={patch.isPending}
                 disabled={!ownership.canRequest}
-                onSelect={(status) => patch.mutate({ status })}
+                onSelect={(status) => setStatus({ status })}
               />
             ) : null}
             {job.source_url ? (
@@ -777,7 +779,9 @@ export default function JobDetailPage({
                   jobId={id}
                   readOnly={!ownership.canWrite}
                   canRequest={ownership.canRequest}
-                  patch={patch}
+                  setStatus={setStatus}
+                  statusPending={patch.isPending}
+                  pendingStatus={patch.variables?.status ?? null}
                   active={step === "qa"}
                   receipt={receipt}
                   receiptRef={receiptRef}

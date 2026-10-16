@@ -25,7 +25,7 @@ def _between(source: str, start: str, end: str) -> str:
     return source[i : source.index(end, i + len(start))]
 
 
-_TAB = _between(_SRC, "export function QATab(", "\nfunction QAEntryCard(")
+_TAB = _between(_SRC, "export function QASections(", "\nfunction QAEntryCard(")
 _CARD = _SRC[_SRC.index("\nfunction QAEntryCard(") :]
 
 

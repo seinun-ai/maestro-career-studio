@@ -58,3 +58,29 @@ test("the link names the count, and one answer is not called all", () => {
   assert.equal(allAnswersToggle(12, true), "Hide all answers");
   assert.equal(allAnswersToggle(1, false), "Show it in full");
 });
+
+test("an open single answer reads Hide it", () => {
+  assert.equal(allAnswersToggle(1, true), "Hide it");
+});
+
+test("an upload with no file name still says what was attached", () => {
+  assert.equal(answerPreview(field("Resume", { source: "upload", slot: "resume", answer: null })), "Resume attached: a file");
+});
+
+test("a page with several sections keeps their order and counts every answer", () => {
+  const r = receipt([
+    {
+      step: null,
+      host: null,
+      channel: "companion",
+      captured_at: "2026-10-01T10:00:00Z",
+      sections: [
+        { section: "Contact", fields: [field("Name"), field("Email")] },
+        { section: "Questions", fields: [field("Why us?"), field("Gender", { eeo: true })] },
+      ],
+    },
+  ]);
+  const { fields, total } = latestAnswers(r, 3);
+  assert.deepEqual(fields.map((f) => f.question), ["Name", "Email", "Why us?"]);
+  assert.equal(total, 4);
+});

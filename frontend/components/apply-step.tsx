@@ -3,21 +3,17 @@
 import { type ReactNode, type RefObject, useId, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ExternalLink, FileText } from "lucide-react";
 
-import { ApplicationDetails, type useApplicationMutations } from "@/components/application-panel";
+import { ApplicationDetails } from "@/components/application-panel";
 import { SubmittedLatest } from "@/components/job-submitted-tab";
-import { QATab } from "@/components/qa-tab";
-import { PdfFileLine } from "@/components/tailored-resume-step";
+import { QASections } from "@/components/qa-tab";
+import { PdfFileLine } from "@/components/pdf-file-line";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useSingleFlight } from "@/hooks/use-single-flight";
 import { focusIfDropped } from "@/lib/focus";
 import { ownershipControlProps } from "@/lib/job-ownership";
 import type { StepKey } from "@/lib/job-steps";
 import type { Application, Job } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-/** The page's one application PATCH: the header's StatusChip and Mark applied share its pending state. */
-type ApplicationPatch = ReturnType<typeof useApplicationMutations>["patch"];
 
 /**
  * Step 4, Apply, inside one card. Left: Open the job post and apply, the application's questions and their
@@ -32,7 +28,9 @@ export function ApplyStep({
   jobId,
   readOnly,
   canRequest,
-  patch,
+  setStatus,
+  statusPending,
+  pendingStatus,
   active,
   receipt,
   receiptRef,
@@ -44,7 +42,11 @@ export function ApplyStep({
   jobId: string;
   readOnly: boolean;
   canRequest: boolean;
-  patch: ApplicationPatch;
+  /** The page's one guarded status starter, shared with the header's StatusChip. */
+  setStatus: (body: Partial<Application>) => void;
+  /** A status change is in flight (from here or the chip), and the status it goes to. */
+  statusPending: boolean;
+  pendingStatus: string | null;
   /** Step 4 is the one showing: the receipt's query runs only then. */
   active: boolean;
   /** The page's What was submitted section, or null while nothing was filled. */
@@ -77,9 +79,8 @@ export function ApplyStep({
     </div>
   ) : null;
 
-  // Mark applied: the StatusChip's `applied` transition through the same PATCH. The optimistic status hides the
-  // button that held focus, so the Application details toggle below takes it.
-  const markOnce = useSingleFlight(patch.mutate);
+  // Mark applied: the StatusChip's `applied` transition through the page's one guarded starter. The optimistic
+  // status hides the button that held focus, so the Application details toggle below takes it.
   const marked = useRef(false);
   const detailsToggle = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
@@ -88,13 +89,13 @@ export function ApplyStep({
     focusIfDropped(detailsToggle.current);
   }, [isDraft]);
   const markHintId = useId();
-  const applying = patch.isPending && patch.variables?.status === "applied";
+  const applying = statusPending && pendingStatus === "applied";
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const detailsId = useId();
 
   return (
-    <QATab
+    <QASections
       applicationId={app.id}
       readOnly={readOnly}
       arrange={({ questions, coverLetter, history }) => (
@@ -118,16 +119,16 @@ export function ApplyStep({
               {receiptFirst ? null : receiptBlock}
               {isDraft ? (
                 <div className="space-y-2 border-t pt-4">
-                  <p className="text-title-small">Done applying?</p>
+                  <h2 className="text-title-small">Done applying?</h2>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <Button
                       variant={postHref ? "tonal" : "default"}
-                      pending={patch.isPending}
+                      pending={statusPending}
                       {...ownershipControlProps(!canRequest)}
                       aria-describedby={markHintId}
                       onClick={() => {
                         marked.current = true;
-                        markOnce({ status: "applied" });
+                        setStatus({ status: "applied" });
                       }}
                     >
                       <Check className="size-4" />
@@ -141,20 +142,22 @@ export function ApplyStep({
                 </div>
               ) : null}
               <div className="border-t pt-4">
-                <button
+                {/* The page's disclosure toggle (step 3's Score breakdown): a small link button with its chevron. */}
+                <Button
                   ref={detailsToggle}
-                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto px-1"
                   aria-expanded={detailsOpen}
                   aria-controls={detailsId}
                   onClick={() => setDetailsOpen(!detailsOpen)}
-                  className="inline-flex items-center gap-1 rounded-corner-xs text-title-small focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   Application details
                   <ChevronDown
                     aria-hidden="true"
-                    className={cn("size-4 transition-[rotate] duration-short3 ease-standard", detailsOpen && "rotate-180")}
+                    className={cn("size-3.5 transition-[rotate] duration-short3 ease-standard", detailsOpen && "rotate-180")}
                   />
-                </button>
+                </Button>
                 <div id={detailsId} hidden={!detailsOpen} className="pt-3">
                   {detailsOpen ? (
                     <ApplicationDetails
@@ -179,7 +182,7 @@ export function ApplyStep({
                   {/* A job with no resume of its own (marked applied as is) has nothing step 3 can make a PDF of. */}
                   {app.customized_json ? (
                     <Button variant="link" size="sm" className="ml-auto h-auto px-0" onClick={() => onOpenStep("output")}>
-                      Create it on Tailored resume
+                      Create the PDF on Tailored resume
                     </Button>
                   ) : null}
                 </div>
@@ -188,7 +191,9 @@ export function ApplyStep({
               {receipt ? (
                 <Card>
                   <CardHeader>
-                    <CardTitle>What was submitted</CardTitle>
+                    <CardTitle>
+                      <h2>What was submitted</h2>
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <SubmittedLatest

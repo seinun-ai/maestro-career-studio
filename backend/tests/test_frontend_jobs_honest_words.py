@@ -669,9 +669,11 @@ def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions()
     assert "Edit resume" not in _read(_JOB_PAGE)
     # The PDF card: the file's own actions as named icon buttons, then Update PDF (small, outline).
     card = _slice(src, "function PdfCard(", "function TailoredResumeMenu(")
+    assert "<PdfFileLine app={app} note={<ResumesFolderNote copyMissed={copyMissed} />} actions={update} />" in card
+    line = _read("components/pdf-file-line.tsx")  # step 4 shows the same line
     for name in ('label="Download PDF"', 'label="Open PDF in new tab"'):
-        assert name in card
-    assert "<ShowCopyButton applicationId={app.id} variant=\"ghost\" iconOnly />" in card and "{update}" in card
+        assert name in line
+    assert "<ShowCopyButton applicationId={app.id} variant=\"ghost\" iconOnly />" in line and "{actions}" in line
     update = [t for t in _button_tags(step) if "renderOnce()" in t and "variant=" in t]
     assert len(update) == 1 and 'variant="outline"' in update[0] and 'size="sm"' in update[0]
     # canvas is only the ground the preview paints: the card's own line sits on surface-container-low.
@@ -696,27 +698,48 @@ def test_step_four_applies_with_the_pdf_at_hand_and_the_details_under_it():
     assert "const postHref = job.apply_url || job.source_url || null;" in src
     assert "Open the job post and apply" in src and 'target="_blank" rel="noopener noreferrer"' in src
     assert 'variant={postHref ? "tonal" : "default"}' in src
-    filled = [t for t in _button_tags(src) if "variant=" not in t]
-    assert len(filled) == 1 and "render={<a href={postHref}" in filled[0], filled
-    # Mark applied is the header chip's transition through the page's one PATCH, one request per click, and only
-    # while the job is a draft; its line says what it sets and where the later statuses are.
-    assert "const markOnce = useSingleFlight(patch.mutate);" in src and 'markOnce({ status: "applied" });' in src
+    # One filled button across the step: the step's own file and the questions and cover letter it lays out. The
+    # cover letter editor's Save is the one other, and it exists only while a letter is open for editing.
+    qa = _read("components/qa-tab.tsx")
+    filled = [t for t in _button_tags(src) + _button_tags(qa) if "variant=" not in t]
+    assert len(filled) == 2 and "render={<a href={postHref}" in filled[0], filled
+    assert "await onSave(draft)" in filled[1] and "{isDocument && editing ? (" in qa
+    for click in ("onClick={() => askOnce(questions)}", "onClick={() => void generateCoverLetter()}"):
+        assert 'variant="outline"' in next(t for t in _button_tags(qa) if click in t), click
+    # Mark applied is the header chip's transition through the page's one guarded starter, and shows only while
+    # the job is a draft; its line says what it sets and where the later statuses are.
+    page = _read(_JOB_PAGE)
+    assert "const setStatus = useSingleFlight(patch.mutate);" in page
+    assert "onSelect={(status) => setStatus({ status })}" in page and "setStatus={setStatus}" in page
+    assert 'setStatus({ status: "applied" });' in src and "patch" not in src
     assert "{isDraft ? (" in src and '{applying ? "Applying…" : "Mark applied"}' in src
     assert "Sets today as the applied date." in src
     assert "Interviewing, Offer and Rejected come after, on the status chip." in src
-    assert "patch={patch}" in _read(_JOB_PAGE)
-    # The application's details: a disclosure, closed by default, mounting the fields only while open.
+    # Step 4's sections are headings, as step 3's are.
+    for title in ("Application questions", "Cover letter", "History"):
+        assert f">{title}</h2>" in qa, title
+    assert "<h2>What was submitted</h2>" in src and '<h2 className="text-title-small">Done applying?</h2>' in src
+    # The application's details: the page's disclosure toggle, closed by default, mounting the fields only while
+    # open (each open reseeds them from the server), and a blur saves only a field that changed.
     assert "const [detailsOpen, setDetailsOpen] = useState(false);" in src
-    toggle = open_tag(src[src.rindex("<button", 0, src.index("ref={detailsToggle}")) :], "button")
-    assert "aria-expanded={detailsOpen}" in toggle and "aria-controls={detailsId}" in toggle
+    toggle = open_tag(src[src.rindex("<Button", 0, src.index("ref={detailsToggle}")) :], "Button")
+    assert 'variant="link"' in toggle and "aria-expanded={detailsOpen}" in toggle and "aria-controls={detailsId}" in toggle
     assert "{detailsOpen ? ( <ApplicationDetails" in flat
+    panel = " ".join(_read("components/application-panel.tsx").split())
+    assert "if (appliedAt !== formatDateInput(app.applied_at)) onPatch({ applied_at: toIsoDate(appliedAt) });" in panel
+    assert 'if (notes !== (app.notes ?? "")) onPatch({ notes });' in panel
+    assert "each open reseeds the fields from the server, so a stale local note can never overwrite" in panel
     # The right column: the PDF line without a preview (step 3 has it), else where to create one.
     assert "<PdfFileLine app={app} />" in src and "PdfPagesPreview" not in src
-    assert "No PDF yet" in src and 'onClick={() => onOpenStep("output")}' in src and "Create it on Tailored resume" in src
-    # The cover letter card moves to the right column; QATab keeps its state and lays out nothing new.
+    assert 'import { PdfFileLine } from "@/components/pdf-file-line";' in src
+    assert "No PDF yet" in src and 'onClick={() => onOpenStep("output")}' in src and "Create the PDF on Tailored resume" in src
+    # The cover letter card moves to the right column; QASections keeps the state, and `arrange` is required.
     assert "arrange={({ questions, coverLetter, history }) => (" in src
-    qa = _read("components/qa-tab.tsx")
+    assert "arrange: (parts: QAParts) => ReactNode;" in qa and "arrange = " not in qa
     assert "return arrange({ questions: questionsCard, coverLetter: coverLetterCard, history });" in qa
+    # The receipt's "Cover letter attached" jumps to the letter's History entry, not the card that writes one.
+    assert "jumpId={isLetterTarget ? COVER_LETTER_ID : undefined}" in qa and "id={jumpId}" in qa
+    assert "Edit it or create its PDF in History." in qa
     assert "entries !== undefined && !hasCoverLetter ? (" in qa and "Not written" in qa
     # Edit resume lives on step 3; the Companion button waits for a way to tell it is paired.
     assert "Edit resume" not in src and "Let the Companion fill it" not in src

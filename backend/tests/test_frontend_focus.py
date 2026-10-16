@@ -167,7 +167,7 @@ def test_the_qa_history_is_a_named_focus_target():
     qa = _read("components/qa-tab.tsx")
     assert re.search(
         r"<section tabIndex=\{-1\} aria-labelledby=\{historyHeadingId\}[^>]*>\s*"
-        r"<h3 id=\{historyHeadingId\}",
+        r"<h2 id=\{historyHeadingId\}",
         qa,
     )
 

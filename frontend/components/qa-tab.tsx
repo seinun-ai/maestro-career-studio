@@ -38,6 +38,7 @@ import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { QAEntry, QAResponse } from "@/lib/types";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
+import { cn } from "@/lib/utils";
 
 const CreatePdfIcon = CONCEPT_ICONS.createPdf;
 
@@ -54,27 +55,26 @@ const KIND_LABELS: Record<string, string> = {
   cover_letter: "Cover letter",
 };
 
-/** The cover-letter card's id: What was submitted's "Cover letter attached" line jumps to it on step 4. */
+/** The saved cover letter's History entry: What was submitted's "Cover letter attached" line jumps to it on step 4. */
 export const COVER_LETTER_ID = "cover-letter";
 
-/** QATab's three parts, for a caller that lays them out itself (step 4: the cover letter goes in its right column). */
+/** The three parts step 4 lays out: the questions and History on the left, the cover letter card on the right. */
 export type QAParts = { questions: ReactNode; coverLetter: ReactNode; history: ReactNode };
 
-export function QATab({
+/**
+ * The application's questions, its cover letter and their History, with all their state, handed to `arrange` to
+ * place. It renders the whole of step 4 (Mark applied, the details, the PDF line sit inside `arrange`), so it must
+ * never return early: a loading or error branch here would take the rest of the step with it.
+ */
+export function QASections({
   applicationId,
   readOnly = false,
-  arrange = ({ questions, coverLetter, history }) => (
-    <>
-      {questions}
-      {coverLetter}
-      {history}
-    </>
-  ),
+  arrange,
 }: {
   applicationId: string;
   readOnly?: boolean;
-  /** Places the parts; by default one after another. The state stays here, whatever the layout. */
-  arrange?: (parts: QAParts) => ReactNode;
+  /** Places the parts. The state stays here, whatever the layout. */
+  arrange: (parts: QAParts) => ReactNode;
 }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -185,6 +185,9 @@ export function QATab({
   // user's own edits: replacing it asks. Generate replaces every saved letter
   // once the new one is written, so it asks too.
   const hasCoverLetter = entries?.some((e) => e.kind === "cover_letter" && e.answer) ?? false;
+  // The receipt's "Cover letter attached" jumps to the first saved letter in History (Write cover letter replaces
+  // them all, so there is normally one).
+  const letterTargetId = entries?.find((e) => e.kind === "cover_letter")?.id ?? null;
   const confirmReplaceLetter = () =>
     confirm({
       title: "Replace your cover letter?",
@@ -218,7 +221,9 @@ export function QATab({
   const questionsCard = (
     <Card>
       <CardHeader>
-        <CardTitle>Application questions</CardTitle>
+        <CardTitle>
+          <h2>Application questions</h2>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         <p id={questionsHintId} className="text-muted-foreground text-body-small">
@@ -253,13 +258,11 @@ export function QATab({
   );
 
   const coverLetterCard = (
-    <Card
-      id={COVER_LETTER_ID}
-      tabIndex={-1}
-      className="scroll-mt-6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-    >
+    <Card>
       <CardHeader className="flex flex-row flex-wrap items-center gap-2">
-        <CardTitle>Cover letter</CardTitle>
+        <CardTitle>
+          <h2>Cover letter</h2>
+        </CardTitle>
         {/* Said only once the answers loaded: while they load nobody knows. */}
         {entries !== undefined && !hasCoverLetter ? (
           <span className="bg-surface-container text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-label-medium">
@@ -295,7 +298,7 @@ export function QATab({
           {coverLetter.isPending ? "Writing…" : "Write cover letter"}
         </Button>
         {hasCoverLetter ? (
-          <p className="text-muted-foreground w-full text-body-small">Edit it or create its PDF under History.</p>
+          <p className="text-muted-foreground w-full text-body-small">Edit it or create its PDF in History.</p>
         ) : null}
       </CardContent>
     </Card>
@@ -305,7 +308,7 @@ export function QATab({
   // by its heading, since it can hold focus.
   const history = (
     <section tabIndex={-1} aria-labelledby={historyHeadingId} className="space-y-3 outline-none">
-      <h3 id={historyHeadingId} className="text-title-small">History</h3>
+      <h2 id={historyHeadingId} className="text-title-small">History</h2>
       {isLoadFailure({ data: entries, isError, fetchStatus, errorUpdateCount }) ? (
         <LoadErrorState
           className="py-8"
@@ -324,6 +327,7 @@ export function QATab({
         <p className="text-muted-foreground text-body-medium">No answers yet.</p>
       ) : (
         entries.map((entry, i) => {
+          const isLetterTarget = entry.id === letterTargetId;
           const isRegenerating =
             regenerateEntry.isPending && regenerateEntry.variables?.id === entry.id;
           const isSaving =
@@ -334,6 +338,7 @@ export function QATab({
             <QAEntryCard
               readOnly={readOnly}
               key={entry.id}
+              jumpId={isLetterTarget ? COVER_LETTER_ID : undefined}
               entry={entry}
               index={i}
               isDeleting={deleteEntry.isPending}
@@ -376,6 +381,7 @@ export function QATab({
 
 function QAEntryCard({
   readOnly = false,
+  jumpId,
   entry,
   index,
   isDeleting,
@@ -393,13 +399,15 @@ function QAEntryCard({
   onSave,
 }: {
   readOnly?: boolean;
+  /** The receipt's jump target (`COVER_LETTER_ID`): focusable by script, ringed when focused. */
+  jumpId?: string;
   entry: QAEntry;
   index: number;
   isDeleting: boolean;
   isRegenerating: boolean;
   /** Any entry is regenerating: one generation at a time. */
   regenerateBusy: boolean;
-  /** This letter is open for editing (the state lives in QATab). */
+  /** This letter is open for editing (the state lives in QASections). */
   editing: boolean;
   onEditingChange: (editing: boolean) => void;
   /** Some cover letter is open for editing: no letter regenerates. */
@@ -430,7 +438,12 @@ function QAEntryCard({
 
   return (
     <Card
-      className="animate-fade-rise"
+      id={jumpId}
+      tabIndex={jumpId ? -1 : undefined}
+      className={cn(
+        "animate-fade-rise",
+        jumpId && "scroll-mt-6 focus:outline-2 focus:outline-offset-2 focus:outline-ring",
+      )}
       style={{ animationDelay: `${Math.min(index, 6) * 40}ms` }}
       data-pending={isRegenerating || isRendering || isSaving || undefined}
     >

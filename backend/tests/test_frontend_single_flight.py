@@ -60,6 +60,8 @@ _SITES = [
     ("components/resume-editor/tailored-resume-studio.tsx", "materialize"),
     ("app/applications/page.tsx", "promoteJob"),
     ("app/jobs/[id]/page.tsx", "promote"),
+    # One status starter: the header's StatusChip and step 4's Mark applied (a double click sent two PATCHes).
+    ("app/jobs/[id]/page.tsx", "patch"),
     # The Agent inbox's triage: a row's Queue, Skip or Delete, the bulk bar's Queue and Skip, and the job
     # header's (a double click on Queue sent two PATCHes, the second "cannot go accepted -> accepted").
     ("components/proposals/triage-actions.tsx", "transition"),
