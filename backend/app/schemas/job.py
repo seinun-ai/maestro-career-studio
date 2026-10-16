@@ -138,9 +138,9 @@ class JobSummary(BaseModel):
     # Derived, list-endpoint-only: the best base-resume score, read-only
     # (null when the job has never been scored).
     best_ats_score: float | None = None
-    # Derived, list-endpoint-only (services/stage.py): the rung the job sits on (its newest
-    # application's, else the job's own), plus the open session behind a `gaps` rung with
-    # its resolved/listed counts.
+    # Derived (services/stage.py), stamped by the job list, GET /api/jobs/match and both
+    # proposal reads: the rung the job sits on (its newest application's, else the job's
+    # own), plus the open session behind a `gaps` rung with its resolved/listed counts.
     stage: Rung = "saved"
     open_session_id: UUID | None = None
     gaps_done: int = 0

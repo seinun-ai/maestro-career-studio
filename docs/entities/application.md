@@ -22,9 +22,11 @@ request time by `services/stage.py` (`for_applications`, three queries per page 
 rows it holds: the open sessions, the best base scores and each draft's newest ResumeVersion);
 the list never writes them. An open session counts as later work than the draft only when it
 is newer than that version (else the application's `created_at`), never `updated_at`, which
-any column write moves (notes, referral, a render). The `GET /api/jobs/match` summary carries
-the same six fields for the job's newest application (`for_job_rows`, four queries), so the Companion and `find_job_by_url` see the rung the Jobs
-list shows.
+any column write moves (notes, referral, a render). So after Restart gap analysis, Update PDF on
+step 3 keeps the rung at `gaps`: the draft did not change, and only a draft write (a Revert, an
+edit, a tailor) outranks the open session. The `GET /api/jobs/match` summary carries the same six
+fields for the job's newest application (`for_job_rows`, four queries), so the Companion and
+`find_job_by_url` see the rung the Jobs list shows.
 
 - **Status vocabulary is backend-owned**: `ALLOWED_STATUSES` in
   `schemas/application.py` = draft, applied, interviewing, offered, accepted,

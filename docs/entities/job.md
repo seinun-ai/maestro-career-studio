@@ -15,7 +15,8 @@ rated by the application rule, else the job alone. That costs three more queries
 many jobs it holds (the newest application per job, the open sessions, the drafts' newest
 versions), reusing the best base scores the list already reads. `GET /api/jobs/{id}/detail`, the
 `job` of `GET /api/jobs/match` and every proposal's `job` (`/api/proposals`, one call for the
-page) carry the same four fields from the same rule (four queries for the one job).
+page) carry the same four fields from the same rule (four queries for the one job, three when it
+has no application: no draft time to read).
 
 - **Salary is optional and often absent** (~40%+ of US postings state no
   pay; some laws let a posting hyperlink a pay page — capture that as

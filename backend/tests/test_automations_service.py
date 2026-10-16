@@ -162,6 +162,23 @@ def test_apply_execution_never_tailors_over_a_draft_on_another_base():
     text = " ".join((skills / "agent-apply-execution" / "SKILL.md").read_text().split())
     assert "Before any tailor, check `get_job(job_id)`" in text
     assert "`customized_json` on another base" in text and "leave the job for the user" in text
+    # By status: needs_decision is reachable only from pending_review (services/proposals.ALLOWED); a batch run
+    # holds accepted proposals, where only needs_human (report_failure) is.
+    from app.services.proposals import ALLOWED
+
+    assert "needs_decision" in ALLOWED["pending_review"]
+    assert "needs_decision" not in ALLOWED["accepted"] and "needs_decision" not in ALLOWED["approved"]
+    assert {"needs_human"} <= ALLOWED["accepted"] & ALLOWED["approved"] & ALLOWED["pending_review"]
+    check = text[text.index("Before any tailor") :]
+    check = check[: check.index("2. Fill ordinary pages")]
+    assert "from `accepted` or `approved`, `report_failure(proposal_id, reason=...)`" in check
+    assert "from `pending_review`, `request_decision`" in check
+    assert "`fit.chosen_base` the user chose in `needs_decision`" in check
+    playbook = " ".join(
+        (Path(__file__).resolve().parents[2] / "docs" / "playbooks" / "agent-apply.md").read_text().split()
+    )
+    assert "from `pending_review` call `request_decision`, from `accepted` or `approved` call `report_failure(" in playbook
+    assert "`request_decision` is refused (409) from `accepted`" in playbook
 
 
 def _card_text(name, **meta):

@@ -156,35 +156,74 @@ def _draft_written(db_session, app, at):
     db_session.commit()
 
 
-def test_a_notes_edit_after_a_restart_keeps_gaps(db_session):
-    """`updated_at` moves on any column write: a Notes edit after Restart gap analysis must not read
-    as a newer draft and flip the rung back to pdf_ready."""
+_EDITED_DRAFT = {
+    "contact": {"name": "Riley Quill", "email": "x@y.com"},
+    "summary": "Reverted one change",
+    "skills": [],
+    "experience": [],
+    "projects": [],
+    "education": [],
+    "certifications": [],
+}
+
+
+def _restarted(db_session, tmp_path):
+    """A pdf_ready job whose draft was written 3 hours ago, then Restart gap analysis an hour later."""
     job = make_job(db_session)
     now = datetime.now(UTC)
+    pdf = tmp_path / "r.pdf"
+    pdf.write_bytes(b"%PDF")
     app = make_application(
-        db_session, job, status="draft", customized_json=SAMPLE_RESUME, pdf_path="/x/r.pdf"
+        db_session, job, status="draft", customized_json=SAMPLE_RESUME, pdf_path=str(pdf)
     )
     _draft_written(db_session, app, now - timedelta(hours=3))
     session = make_session(db_session, job, created_at=now - timedelta(hours=2))
-    app.notes = "Follow up on Monday"
-    db_session.commit()
+    return job, app, session
+
+
+def _rung(client, job):
+    return client.get(f"/api/jobs/{job.id}/detail").json()["stage"]
+
+
+def test_a_notes_edit_after_a_restart_keeps_gaps(db_session, tmp_path, client):
+    """`updated_at` moves on any column write: a Notes edit after Restart gap analysis must not read
+    as a newer draft and flip the rung back to pdf_ready."""
+    job, app, session = _restarted(db_session, tmp_path)
+    assert _rung(client, job) == "gaps"
+    response = client.patch(f"/api/applications/{app.id}", json={"notes": "Follow up on Monday"})
+    assert response.status_code == 200
     db_session.refresh(app)
     assert app.updated_at > session.created_at  # the write that used to flip it
-    assert _rung_of_app(db_session, app) == "gaps"
-    s = stage.for_job_rows(db_session, [job])[job.id]
-    assert s.rung == "gaps" and s.open_session_id == session.id
+    assert _rung(client, job) == "gaps"
+    assert stage.for_job_rows(db_session, [job])[job.id].open_session_id == session.id
 
 
-def test_a_draft_edit_after_the_restart_is_the_later_work(db_session):
-    job = make_job(db_session)
-    now = datetime.now(UTC)
-    app = make_application(
-        db_session, job, status="draft", customized_json=SAMPLE_RESUME, pdf_path="/x/r.pdf"
+def test_a_draft_write_after_the_restart_is_the_later_work(db_session, tmp_path, client):
+    """A Revert (PATCH of the draft with `expected_updated_at`) records a version newer than the open
+    session, and removes the PDF, as every draft write does: the draft is the later work again."""
+    job, app, _ = _restarted(db_session, tmp_path)
+    loaded = client.get(f"/api/applications/{app.id}").json()["updated_at"]
+    response = client.patch(
+        f"/api/applications/{app.id}",
+        json={"customized_json": _EDITED_DRAFT, "expected_updated_at": loaded},
     )
-    make_session(db_session, job, created_at=now - timedelta(hours=2))
-    _draft_written(db_session, app, now - timedelta(hours=1))
-    assert _rung_of_app(db_session, app) == "pdf_ready"
-    assert stage.for_job_rows(db_session, [job])[job.id].rung == "pdf_ready"
+    assert response.status_code == 200, response.text
+    assert response.json()["pdf_path"] is None
+    assert _rung(client, job) == "tailored"
+
+
+def test_clearing_the_draft_is_not_a_draft_write(db_session, tmp_path, client):
+    """PATCH `customized_json: null` records no version (stage._draft_times says so): with no draft and
+    no PDF left, the rung is the job's own, the open session's `gaps`, and no time is compared."""
+    job, app, session = _restarted(db_session, tmp_path)
+    response = client.patch(f"/api/applications/{app.id}", json={"customized_json": None})
+    assert response.status_code == 200 and response.json()["pdf_path"] is None
+    versions = db_session.query(ResumeVersion).filter_by(resume_key=str(app.id)).count()
+    assert versions == 1  # only the draft's own, written before the restart
+    assert _rung(client, job) == "gaps"
+    assert "Clearing a draft (PATCH `customized_json: null`) is not a draft write" in " ".join(
+        stage._draft_times.__doc__.split()
+    )
 
 
 def test_applied_wins_over_a_newer_open_session(db_session):

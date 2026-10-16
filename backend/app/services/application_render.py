@@ -22,6 +22,7 @@ from app.models.job import Job
 from app.schemas.formatting import overlay
 from app.services import (
     application_artifacts,
+    application_writes,
     artifact_naming,
     base_resume_data,
     pdf_preview,
@@ -68,9 +69,15 @@ def render_resume(
             customized = deepcopy(application.customized_json)
         else:
             # No tailored draft stored: render straight from the base resume
-            # (and persist the snapshot so later edits start from it).
+            # (and persist the snapshot so later edits start from it). A draft
+            # write like any other, so it records a version (services/stage.py
+            # dates the draft by it). The stale paths it returns are not
+            # removed: this render sets new ones below, and a cleared draft
+            # already dropped its PDF.
             customized = base_resume_data.load_base_resume(application.base_resume, db)
-            application.customized_json = customized
+            application_writes.stage_resume_update(
+                db, application, customized, source="import", summary="Filled from the base resume"
+            )
 
         rendered_at = datetime.now(UTC)
         role_label = role_titles.generic_role_title(

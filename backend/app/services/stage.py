@@ -70,8 +70,10 @@ def _before_draft(
 
 def _draft_times(db: Session, apps: list[Application]) -> dict[UUID, datetime]:
     """When each application's draft last changed: its newest ResumeVersion (every draft write records
-    one), else its own `created_at`. Not `updated_at`, which moves on any column write (notes, referral,
-    template, a render). One grouped query for the page."""
+    one, the render's fill of an empty draft from the base included), else its own `created_at`. Not
+    `updated_at`, which moves on any column write (notes, referral, template, a render). Clearing a
+    draft (PATCH `customized_json: null`) is not a draft write and records no version: with no draft
+    and no PDF left, `_rate` never compares the time. One grouped query for the page."""
     by_key = {str(a.id): a for a in apps}
     newest = dict(
         db.execute(

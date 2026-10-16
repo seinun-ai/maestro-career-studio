@@ -41,7 +41,7 @@ The user's Maestro CS profile is the source of truth; distrust values an applica
 ## Prepare
 
 1. Ask about base only if none clears thresholds. Tailor/render only when the linked application or PDF is absent or stale; never recreate, overwrite, or upload a base resume.
-   Before any tailor, check `get_job(job_id)`: when the job's latest `application` already has a `customized_json` on another base than the one you would tailor with, that draft is the user's (a job has one application, and tailoring replaces it). Never overwrite it: `request_decision` and leave the job for the user.
+   Before any tailor, check `get_job(job_id)`: when the job's latest `application` already has a `customized_json` on another base than the one you would tailor with, that draft is the user's (a job has one application, and tailoring replaces it). Never overwrite it; leave the job for the user, by the proposal's status: from `accepted` or `approved`, `report_failure(proposal_id, reason=...)` (to `needs_human`); from `pending_review`, `request_decision`. The exception is a draft on the `fit.chosen_base` the user chose in `needs_decision`: that is the base to tailor with.
 2. Fill ordinary pages without prompting. Ask only for missing/ambiguous facts, below-threshold base, login, email verification/account-access challenge, CAPTCHA, human-only or policy-blocked controls, or unrecoverable controls.
 3. Diff every filled field against canonical profile; fix mismatches.
 4. `edit_application` / `edit_base_resume`: `index` is 0-based into the full JSON array including `enabled: false` (PDF omits those). Check response `applied[].name` before assuming the right entry was touched.

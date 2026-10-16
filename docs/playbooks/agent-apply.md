@@ -149,7 +149,13 @@ declines are posting-scoped and permanent; there is no company cooldown.)
 4. **Prepare:** `pending_review` means preparation may proceed; it is not an
    instruction to prompt the user immediately. Confirm the linked application
    and tailored PDF are current, then stage and navigate the ordinary ATS
-   wizard before the single final review.
+   wizard before the single final review. Before any tailor, check
+   `get_job(job_id)`: a `customized_json` on another base than the one you
+   would tailor with is the user's draft (a job has one application, and
+   tailoring replaces it). Never overwrite it; from `pending_review` call
+   `request_decision`, from `accepted` or `approved` call
+   `report_failure(proposal_id, reason=...)` (to `needs_human`). A draft on the
+   `fit.chosen_base` the user chose in `needs_decision` is the base to tailor with.
 
 ## Triage and the accepted queue (2026-08-01)
 
@@ -189,6 +195,10 @@ identity.
 - `accepted`: the user queued it — prepare, stage, and take it to the final
   review without further triage prompting. Decline (with reason) if the
   posting is dead or the linked application turns out to be already applied.
+  If the job's draft is on another base than the one you would tailor with
+  (and not the user's `fit.chosen_base`), `report_failure(proposal_id,
+  reason=...)` and leave it for the user: `request_decision` is refused (409)
+  from `accepted`.
 - `needs_decision`: if no durable `fit.chosen_base` exists, ask the user again.
   Once the choice is durable, tailor with that base (a job has one application;
   tailoring with another base resume replaces its draft, version history keeps

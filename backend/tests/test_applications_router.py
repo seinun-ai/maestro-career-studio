@@ -277,6 +277,17 @@ def test_render_application_generates_files_and_updates_paths(
     artifact = Path(application.artifact_dir)
     assert artifact.name.endswith(f"_{application.id.hex[:8]}")
     assert Path(application.pdf_path).parent == artifact
+    # The fill is a draft write: it records a version (services/stage.py dates the draft by it), and the
+    # render's own PDF survives (the stale paths the fill staged are not removed).
+    from app.models.resume_version import ResumeVersion
+
+    versions = (
+        db_session.query(ResumeVersion)
+        .filter_by(resume_kind="application", resume_key=str(application.id))
+        .all()
+    )
+    assert [(v.source, v.snapshot["summary"]) for v in versions] == [("import", "Data scientist")]
+    assert Path(application.pdf_path).exists()
 
 
 def test_render_application_typst_writes_typ_and_pdf(db_session, tmp_path, monkeypatch, client):

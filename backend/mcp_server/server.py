@@ -1633,9 +1633,9 @@ def quick_tailor(job_id: str, base_resume: str) -> Any:
     enter a skills category (add_skill_item), never as an experience or project
     bullet asserting the candidate did the work.
 
-    The tailor_session that follows writes the job's ONE application: from
-    another base it REPLACES the draft and removes its PDF (version history
-    keeps them).
+    The tailor_session that follows writes the job's ONE application: it
+    rebuilds the draft and removes its PDF (version history keeps the old
+    draft).
 
     A session whose resolutions_json contains no planned action beyond
     "skip" means the profile was not ALLOWED to add anything to THIS
@@ -1769,8 +1769,8 @@ def tailor_session(
     Resume text must be implied first person: no I/he/she/they or the owner's name; a hit returns 400 naming the lines.
 
     Optional user_prompt adds free-form tailoring guidance. Writes the job's ONE
-    application from the base plus the ops (another base's draft is REPLACED and its
-    PDF removed; version history keeps them), scores it, and returns
+    application from the base plus the ops: it rebuilds the draft and removes its
+    PDF (version history keeps the old draft), scores it, and returns
     {session, compare, compare_error, next}. compare (before/after match score
     deltas) may be null with compare_error set: the tailor still succeeded, so do
     not retry. `kb_writeback_skips` derives from each user_input
