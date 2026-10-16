@@ -18,8 +18,9 @@ const CELL =
 /**
  * The job page's four steps, where its tab row was (lib/job-steps.ts says each step's state and line).
  * `current` is the step whose panel shows: its cell is underlined and `aria-current="step"`. A done or
- * current step is a button; a later one is plain text, never a disabled button or a tooltip: its line
- * says what opens it, and nothing is locked.
+ * current step is a button (done may follow current: a draft from before a re-analysis stays reachable);
+ * a step with nothing to show yet is plain text, never a disabled button or a tooltip: its line says what
+ * opens it, and nothing is locked.
  */
 export function JobSteps({
   steps,

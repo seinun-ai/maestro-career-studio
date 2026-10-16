@@ -2,17 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { Rung } from "./next-step.ts";
-import type { KnockoutStatus } from "./types.ts";
-import { knockoutWords } from "./knockout-line.ts";
 import { currentStep, jobSteps, stepForTab, type JobStepsInput } from "./job-steps.ts";
 
 const input = (over: Partial<JobStepsInput> = {}): JobStepsInput => ({
   stage: "scored",
   skills: { total: 14, required: 6 },
-  knockout: { status: "clear", notChecked: false },
+  knockout: "No knock-outs",
   base: { name: "Data scientist", score: 72.25 },
   gaps: null,
-  draft: { score: null, changes: null },
+  draft: null,
   pdf: null,
   standing: "Draft · not sent",
   ...over,
@@ -62,30 +60,12 @@ test("steps before the current one are done, the rest next", () => {
   assert.deepEqual(states("closed"), ["done", "done", "done", "current"]);
 });
 
-test("step 1 names the skills and the knock-out card's words", () => {
-  const cases: [JobStepsInput["knockout"], string][] = [
-    [{ status: "clear", notChecked: false }, "No knock-outs"],
-    [{ status: "conflict", notChecked: false }, "A knock-out"],
-    [{ status: "incomplete_profile", notChecked: true }, "An answer missing from your profile"],
-    [{ status: "unstated", notChecked: false }, "No requirements listed"],
-    [{ status: "unstated", notChecked: true }, "Checks not run yet"],
-    [null, "Requirements not checked"],
-  ];
-  for (const [knockout, words] of cases) {
-    assert.equal(summary({ knockout }, 1), `14 skills, 6 required · ${words}`);
-  }
+test("step 1 names the skills and the knock-out words as given", () => {
+  assert.equal(summary({ knockout: "A knock-out" }, 1), "14 skills, 6 required · A knock-out");
+  assert.equal(summary({ knockout: "Requirements not checked" }, 1), "14 skills, 6 required · Requirements not checked");
+  assert.equal(summary({ knockout: null }, 1), "14 skills, 6 required");
   assert.equal(summary({ skills: { total: 0, required: 0 } }, 1), "No skills found · No knock-outs");
   assert.equal(summary({ skills: { total: 1, required: 1 } }, 1), "1 skill, 1 required · No knock-outs");
-});
-
-test("step 1's words are the knock-out card's, for every status", () => {
-  const statuses: KnockoutStatus[] = ["clear", "conflict", "incomplete_profile", "unstated"];
-  for (const status of statuses) {
-    for (const notChecked of [false, true]) {
-      assert.equal(summary({ knockout: { status, notChecked } }, 1), `14 skills, 6 required · ${knockoutWords(status, notChecked)}`);
-    }
-  }
-  assert.equal(summary({ knockout: null }, 1), `14 skills, 6 required · ${knockoutWords(null, false)}`);
 });
 
 test("step 2 current: no analysis, a session, a session with no gaps", () => {
@@ -110,12 +90,23 @@ test("step 2 done: name, score, answered and skipped, null parts left out", () =
   assert.equal(summary({ ...done, base: { name: null, score: null } }, 2), "No gaps analyzed");
 });
 
-test("step 3 next: the hint, or a draft from before a re-analysis", () => {
+test("step 3 next: the hint while there is no draft", () => {
   assert.equal(summary({ stage: "gaps" }, 3), "Review the changes, edit, Create PDF");
-  assert.equal(
-    summary({ stage: "gaps", draft: { score: 84, changes: 7 } }, 3),
-    "Draft from before · 84.0 / 100 · tailoring again replaces it",
-  );
+  assert.equal(summary({ stage: "scored" }, 3), "Review the changes, edit, Create PDF");
+});
+
+test("a draft from before a re-analysis keeps step 3 done, so it stays reachable", () => {
+  const draft = { score: 84, changes: 7 };
+  const steps = jobSteps(input({ stage: "gaps", gaps: gaps(1, 0, 4), draft }));
+  assert.deepEqual(steps.map((s) => s.state), ["done", "current", "done", "next"]);
+  assert.equal(steps[2].summary, "Draft from before, 84.0 / 100 · Tailor again to replace it");
+  assert.equal(summary({ stage: "gaps", draft: { score: null, changes: null } }, 3), "Draft from before · Tailor again to replace it");
+  // A PDF made from it counts too, and step 4 lists what is left.
+  const pdf = { pages: 2, createdOn: null };
+  assert.equal(jobSteps(input({ stage: "gaps", draft, pdf }))[2].state, "done");
+  assert.equal(summary({ stage: "gaps", draft, pdf }, 4), "Questions, cover letter, Mark applied");
+  // Step 4 is never done ahead of the stage: its result is the stage itself.
+  assert.equal(jobSteps(input({ stage: "tailored", draft, pdf }))[3].state, "next");
 });
 
 test("step 3 current without a PDF counts the changes to review", () => {
@@ -137,6 +128,7 @@ test("step 3 with a PDF: pages when known, the date when known", () => {
   );
   assert.equal(summary({ stage: "pdf_ready", draft, pdf: { pages: null, createdOn: "Oct 14" } }, 3), "84.0 / 100 · PDF created Oct 14");
   assert.equal(summary({ stage: "pdf_ready", draft: { score: null, changes: null }, pdf: { pages: null, createdOn: null } }, 3), "PDF created");
+  assert.equal(summary({ stage: "pdf_ready", draft: null, pdf: { pages: null, createdOn: null } }, 3), "PDF created");
   assert.equal(summary({ stage: "applied", draft }, 3), "84.0 / 100 · no PDF");
   assert.equal(summary({ stage: "applied" }, 3), "No PDF");
 });
@@ -158,6 +150,7 @@ test("every summary is set, starts with a capital or a digit, and never prints n
     { gaps: gaps(0, 0, 0) },
     { gaps: gaps(1, 0, 4) },
     { gaps: gaps(0, 0, 0), base: { name: null, score: null } },
+    { draft: null },
     { draft: { score: null, changes: null } },
     { draft: { score: 80, changes: 0 } },
     { draft: { score: null, changes: 0 } },
@@ -166,7 +159,7 @@ test("every summary is set, starts with a capital or a digit, and never prints n
     { skills: { total: 0, required: 0 } },
     {
       knockout: null, base: { name: null, score: null }, gaps: null,
-      draft: { score: null, changes: null }, pdf: { pages: null, createdOn: null },
+      draft: null, pdf: { pages: null, createdOn: null },
     },
   ];
   for (const stage of stages) {

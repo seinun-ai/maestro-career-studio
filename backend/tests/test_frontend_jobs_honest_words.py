@@ -294,6 +294,21 @@ def test_no_step_is_locked_and_a_future_step_says_what_opens_it():
     assert page.count('<NothingTailoredYet onOpenFit={() => setStep("fit")} />') == 2
 
 
+def test_a_draft_from_before_a_re_analysis_keeps_step_three_a_button():
+    page = _read(_JOB_PAGE)
+    lib = _read("lib/job-steps.ts")
+    steps = _read("components/job-steps.tsx")
+    # The page says whether a draft exists; on a `gaps` stage that makes step 3 done, not next (node-tested).
+    assert "draft: application?.customized_json\n      ? {" in page and "      : null," in page
+    assert 'key === "output" && hasOutput(input) ? "done" : "next"' in lib
+    assert "const hasOutput = (i: JobStepsInput) => i.draft != null || i.pdf != null;" in lib
+    assert '"Tailor again to replace it"' in lib
+    # Only a `next` step is plain text: a done one, wherever it sits, renders as the button.
+    assert steps.count('step.state === "next" ? (') == 1 and "onClick={() => onSelect(step.key)}" in steps
+    # Step 1's knock-out words are the card's own, computed by the page (no copy in the lib).
+    assert "knockout: knockoutWords(" in page and "KNOCKOUT_WORDS" not in lib
+
+
 def test_every_old_tab_link_still_lands_on_a_step():
     page = _read(_JOB_PAGE)
     lib = _read("lib/job-steps.ts")

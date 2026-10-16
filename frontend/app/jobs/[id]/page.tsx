@@ -82,6 +82,7 @@ import { gapCounts, type GapCounts } from "@/lib/gap-counts";
 import { scorePill, standingLine } from "@/lib/job-standing";
 import { TAB_TO_STEP, currentStep, jobSteps, stepForTab, type StepKey } from "@/lib/job-steps";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
+import { knockoutWords } from "@/lib/knockout-line";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalDetail, ProposalStatus } from "@/lib/types";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
@@ -428,12 +429,16 @@ export default function JobDetailPage({
   const steps = jobSteps({
     stage,
     skills: { total: skills.length, required: skills.filter((s) => s.requirement_level === "required").length },
-    knockout: data.knockout
-      ? { status: data.knockout.status, notChecked: knockoutNotChecked(data.knockout, job) }
-      : null,
+    knockout: knockoutWords(
+      data.knockout?.status ?? null,
+      data.knockout ? knockoutNotChecked(data.knockout, job) : false,
+    ),
     base: stepBase,
     gaps: stepGaps,
-    draft: { score: scoreShown?.tailored ? scoreShown.value : null, changes: null },
+    // Null without a draft: a draft from before a re-analysis keeps step 3 reachable (lib/job-steps.ts).
+    draft: application?.customized_json
+      ? { score: scoreShown?.tailored ? scoreShown.value : null, changes: null }
+      : null,
     // The application carries no render time, so the line says "PDF created" without a date.
     pdf: application?.pdf_path ? { pages: application.pdf_pages, createdOn: null } : null,
     standing: standingText,
