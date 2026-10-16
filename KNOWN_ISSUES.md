@@ -39,7 +39,7 @@ These have real coverage and are unlikely to move under you.
 - **No single "ready to apply" check on the final PDF.** A knock-out pre-scan
   compares the posting's stated requirements (work authorization, OPT policy,
   salary, an on-site or hybrid office away from where you live) against your
-  profile on the job Overview and in the agent final review — but health,
+  profile on the job page's **Job** step and in the agent final review — but health,
   page-count, em-dash and contact checks still don't run against the *exact
   rendered PDF* in one pass, so it is still possible to send something a check
   would have caught.
@@ -62,8 +62,17 @@ These have real coverage and are unlikely to move under you.
   iCIMS get the most attention because those are what I meet in my own search;
   expect gaps elsewhere. Even on covered platforms a first run rarely fills
   everything: unusual widgets (multi-step button dropdowns, custom comboboxes)
-  and less-common questions fall through to you, by design — the extension
-  leaves a field alone rather than guess.
+  and less-common questions fall through to you, by design. Where it does
+  answer for you (a safe default, an assumed answer, a drafted written reply,
+  or a field Think when stuck filled), it lists that field under **Check
+  before you submit**.
+- **Apply is new and narrow.** It takes one job at a time, in the tab you
+  are on; a Queue view for several jobs is not built yet. Workday has the
+  deepest coverage, but a full run there is still to be checked live. iCIMS
+  has one recorded page and a full run is untested. Greenhouse, Lever and
+  Ashby are untested. The table in the
+  [Companion's README](extension/README.md#which-application-sites-it-handles)
+  is the current state.
 - **Unusual resume shapes import unevenly.** Import is most confident on
   conventionally structured resumes. Nonstandard sections, merged entries and
   heavily designed layouts can land in the wrong place or need rearranging by
@@ -133,8 +142,9 @@ does not.
   overwrites its text; there is no revision list and no restore, unlike résumés,
   which snapshot every write. Bases also do not tell you "the KB changed since
   this was assembled".
-- **The tracker records state but does not manage follow-through.** No next
-  action, due date, reminder, status history, or snapshot of the exact artifact
+- **The tracker records state but does not manage follow-through.** The Next
+  step column stops at Apply. After that there is no due date, reminder, status
+  history, or snapshot of the exact artifact
   you actually submitted. Moving statuses from your mail is an external agent
   run (the `mail-status` prompt on the Automations page), not something the app
   does or schedules itself.
