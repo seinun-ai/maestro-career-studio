@@ -84,4 +84,15 @@ scores the list already reads. `GET /api/jobs/{id}/detail` and the `job` of `GET
   extraction.
 - **Re-extract guard**: 400s when `raw_text` is blank (capture-path job)
   instead of sending an empty prompt to the LLM.
+- **Knock-out pre-scan** (`services/knockout.scan_for`, embedded in `GET /api/jobs/{id}/detail`,
+  `get_final_review` and `GET /api/jobs/match` as `knockout`): the JD's stated requirements (work
+  auth, OPT, salary, on-site vs where you live and relocation) against the profile, recomputed on
+  every read. Verdicts are `conflict` / `clear` / `incomplete_profile` / `unstated`: unstated is
+  NEVER a pass, and salary only warns (pay is negotiable). On the job page (Overview) only a conflict
+  or a missing profile answer is a banner, with a per-check chip strip (OK / Conflict / Warning /
+  Add answer / Not listed / Not run); anything else is one small line in the Job details card. It is
+  informational, like G11 tier 2: it flags, and the consent/submit decision stays human unless the
+  user's agent follows the full-automation prompt (SYSTEM.md §7). Inbox readiness reads only a
+  `conflict` ([agent-runs](agent-runs.md)); the on-site check rides with the answer receipt
+  ([filled-answers](filled-answers.md)).
 

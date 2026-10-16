@@ -1122,9 +1122,14 @@
   (`test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state`). Add new routes to the right group in
   `components/app-sidebar.tsx` (`NAV_GROUPS`), not a flat list. Pinned by
   `test_frontend_sidebar_nav.py` and `test_frontend_first_run.py`.
-- **Tracker filter** (`app/applications/page.tsx`): three groups, All/Saved,
-  Your applications (`APPLICATION_STATUSES`) and Agent inbox (from the newest
-  `proposal_status` via `rowFilterKey`). `FILTERS` derives from those groups,
+- **Tracker filter** (`app/applications/page.tsx`): the page runs two queries, the summary list
+  (job fields joined on the server) and the saved jobs of the source toggle's source. "Saved" is a
+  job with no application; agent-captured jobs stay out unless the toggle is **Agents**, which is
+  why the default reads **Tracked**, not All (the toggle's words: *Canonical terms*). The status
+  counts follow the toggle, and `?source=` is deep-linkable. Three groups, All/Saved,
+  Your applications (`APPLICATION_STATUSES`) and Agent inbox (`proposed`/`queued`/`needs_you`/
+  `skipped`, from the newest `proposal_status` via `rowFilterKey`; `skipped` absorbs proposal
+  `rejected` AND `expired`, while the row chip still says Expired). `FILTERS` derives from those groups,
   so a key can never filter rows yet never appear as an option. **Empty
   buckets are hidden**: an option renders iff `count > 0 || f === "all" || f
   === filter`, the trailing clause so the active filter can never vanish under
@@ -1136,8 +1141,17 @@
   `aria-pressed` buttons reading "label · count": **Ready to apply**, **Tailored, review** and **Gaps
   open** filter by the server's stage (`pdf_ready`, `tailored`, `gaps`), a filter of their own that
   ANDs with the Status select (`?stage=`, `cs-tracker-stage`), and **Needs you** is the Status value.
-  A chip counts the rows pressing it shows and is hidden at zero unless it is on.
-- **Jobs row** (`app/applications/page.tsx`): every row is two lines (company, then role and
+  A chip counts the rows pressing it shows and is hidden at zero unless it is on. The Agent inbox
+  itself (`/proposals`) is one table of lanes (`lib/inbox-lanes.ts`; an empty lane is not drawn)
+  under one summary line (`/api/proposals/summary`; the last-visit window holds until the tab
+  reloads); its search and filters show only past ten proposals, the daily limit line only near the
+  limit, and a proposed-jobs line comes from the newest run (Recent runs, `agent_runs`, live on
+  Automations: docs/entities/agent-runs.md). Open rows carry read-time readiness
+  (`services/inbox_readiness.py`). The rules: docs/entities/others.md, "Inbox readiness" and
+  "Arrivals summary".
+- **Jobs row** (`app/applications/page.tsx`): the columns are Role, Match score (read-only:
+  an application's `ats_score`, a saved job's `best_ats_score`), Status (an inline `StatusChip`
+  that PATCHes directly), Where, Applied, Next step and Added. Every row is two lines (company, then role and
   location), so every row is one height; nothing a row can gain (an ownership mark, a notice) goes
   inside the Role cell. Ownership is the **Where** column after Status: a muted icon (whoever holds
   the job now) and one word (`ownershipWhere` in `lib/job-ownership.ts`: Laptop, Bot, Moving), the

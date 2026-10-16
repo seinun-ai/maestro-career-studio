@@ -145,92 +145,56 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 
 ## 5. The application workflow, end to end (web)
 
-1. **Capture** — `/new` (**Add job**): paste a job description → **Save job** → `POST /api/jobs` (LLM
-   extract, dedup) → summary card ("This job is already saved." on dedup). Or Companion/MCP
-   `store_extracted_jd` → `POST /api/jobs/ingest` (pre-extracted; the client
-   agent is the extractor by design). Both save paths score a new job against every selectable base after its commit
+1. **Capture** — `/new` (**Add job**): paste a job description → **Save job** → `POST /api/jobs` (LLM extract, dedup) → summary
+   card ("This job is already saved." on dedup). Or Companion/MCP `store_extracted_jd` → `POST /api/jobs/ingest` (pre-extracted;
+   the client agent is the extractor by design). Both save paths score a new job against every selectable base after its commit
    (`_persist_job` → `score_all_bases`, inline); a failure rolls back only the scores, and a dedup hit is not re-scored.
-2. **Track** — **Jobs** (`/applications`; the URL, `?status=`/`?source=` and `cs-tracker-*` keep their
-   names): the tracker. Two queries (summary list with server-joined job fields + saved jobs of the
-   toggle's source), a grouped status `Select` with counts, inline `StatusChip` per row (PATCHes
-   directly; locked while the job is moving between copies), a Where column (Laptop/Bot/Moving) once sync is on, a read-only Match score column (`ats_score` / `best_ats_score`), search, sort, and a Tracked/Yours/Agents provenance `SourceToggle` (counts follow the
-   toggle; `?source=` deep-linkable; Analytics' copy reads All, as it counts every application).
-   "Saved" = job with no application — agent-captured jobs stay out unless the toggle is `Agents`,
-   which is why the default reads Tracked, not All (agent inventory lives in the Agent inbox,
-   `/proposals`, whose lanes are one table: `lib/inbox-lanes.ts`, an empty lane not drawn; above them one summary
-   line (`/api/proposals/summary`; visit window kept until this tab reloads), filters only past ten proposals, the daily
-   limit only near it, and a proposed-jobs line from the newest run; Recent runs (`agent_runs`, docs/entities/agent-runs.md)
-   live on Automations; open rows carry read-time readiness (`services/inbox_readiness.py`)). Filter groups: All/Saved,
-   **Your applications** and **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`, from
-   the newest `proposal_status`); `skipped` absorbs proposal `rejected` AND `expired`, while
-   the ROW chip still says Expired. Option rules: frontend-conventions, "Tracker filter".
-3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, ONE status: the application's inline
-   StatusChip + Details menu, else the proposal's pill worded like History (`headerProposalPill`), naming its filer,
-   + Queue/Skip; a score pill, **Resume match** (tailored) or **Best base resume**; a Needs-you
-   question adds **Keep it**, PATCH `pending_review`, linking the job's application when the proposal has none),
-   tabs Overview / Score and tailor / Resume / Q&A, plus **What was submitted** once the job has filled answers
-   (tab URL values stay jd/fit/output/qa for deep-link compatibility; that one is `submitted`): the answer
-   receipt, latest per question, a source pill each and warn-only flags, read before you submit too
-   (docs/entities/filled-answers.md).
-   `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`;
-   otherwise they use `cs-tracker-seq`. A **Where this stands** line under the header (`lib/job-standing.ts`) says whether
-   and how you applied. Overview mounts the proposal's card, titled with its filer (`proposed_by`, worded by
-   `lib/agent-name.ts`), only when it carries something (`proposalHasContent`); every
-   job read derives `proposal_status`/`proposal_id` from the newest proposal. Overview also
-   renders the **knock-out pre-scan** (`services/knockout.scan_for`, embedded in
-   `GET /jobs/{id}/detail`, `get_final_review` and `/jobs/match` as `knockout`): stated JD
-   requirements (work auth, OPT, salary, on-site vs where you live and relocation) vs the profile, recomputed on every read. Verdicts are `conflict` / `clear` /
-   `incomplete_profile` / `unstated` — unstated is NEVER a pass, and salary only
-   warns (pay is negotiable). On screen only a conflict or a missing profile answer is a banner, with a per-check chip strip (OK / Conflict /
-   Warning / Add answer / Not listed / Not run); anything else is one small line in the Job details card. Informational like G11 tier 2: it flags; the
-   consent/submit decision stays human unless the user's agent follows the full-automation prompt (§7).
-4. **Score** — Score and tailor shows the bases set for the job's country (all when unknown), scored at
-   save; its first-visit auto-run is the fallback for a job saved before any base resume existed or whose
-   save-time scoring failed; per-base cards → **Analyze gaps** creates a session (one filled button, on the best match;
-   Restart gap analysis and Mark applied without tailoring sit in each card's ⋯).
-   When every card draws the low-coverage warning, or the same gate warning, one banner says it instead; the lowest subscore of a card wears a Weakest word.
-   With no base resume the tab
-   offers Import resumes and documents instead, and scores once that dialog closes.
-5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions
-   (add_keyword / user_input / attach_project / skip + enable_entry /
-   port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip for the
-   document + a durable `user_cannot_confirm` KB record written at SAVE time, so
-   the claim is never re-asked — see §6 inv-provenance-no-decay) autosaved
-   debounced with replace=true semantics
-   (omitted gap_ids are deleted server-side); KB-auto-resolved gaps arrive
-   pre-selected with provenance + Undo and a counting banner; optional
-   per-session note (`user_prompt`, falls back into tailor()). **Use resume as is**
-   (visible at 0 addressed) → from-base + closes the session;
-   confirms first if it would replace an existing tailored draft.
-6. **Tailor** — `POST /tailoring-sessions/{id}/tailor`: deterministic
-   pre-ops first (enable_entry → toggle_entry, port_kb_point → add_bullet +
-   KBPortLog row; deduped per point/entry), then remaining non-skip
-   resolutions → smart-model LLM → typed edit ops → apply → keyword-survival
-   check (one retry, then add_skill_item fallback — LLM path only) → voice check (one retry, then repair in code; §6 inv-resume-voice) →
-   reuse-or-insert application → version row → draft-KBPoint write-back of substantive user_input answers (origin=gap_elicitation; every
-   skipped write-back returns on the response as `kb_writeback_skips` with a reason — too_short / wrong_section / no_entity_match / duplicate,
-   or profile_owned_elsewhere (always-on copy: tailoring skips draft career-history points) — and the gap page toasts a quiet note, so
-   flywheel drops are never silent) → session
-   `tailored` → tailored score — one transaction (tailor() commits once at
-   its end; score_target stages on the same session). A pre-op-only session tailors with zero LLM calls; MCP can
-   pass caller ops to skip the backend LLM. Post-tailor the UI lands in
-   review mode (`?review=1`): provenance-labeled structural diff
-   (`GET /applications/{id}/resume-diff`, hunks attributed kb_auto/user/llm),
-   revert-per-hunk through the normal edit path, and an on-demand read-only coherence
-   lint (`POST .../coherence-check`).
-7. **Output** — Resume tab: the ONE before/after compare panel + PDF card;
-   **Create PDF** renders the tailored draft and shows the shared rasterized
-   page preview inline (**Update PDF** refreshes it); download/open actions become
-   available immediately, and a copy lands in the visible resumes folder (**Show in Finder**; §6 inv-resumes-folder-one-way). "Edit resume" → the studio (`/applications/[id]/resume`),
-   where Save chains render → re-score automatically.
-8. **Apply package** — Q&A tab: questions, cover letter (tone). Outreach/cold messages
-   are asked as free-form questions (no dedicated cold-message generator); the QA
-   prompt injects the application's linked referral contact.
-9. **Track to terminal** — StatusChip anywhere (tracker row or job header): draft →
-   applied → interviewing → offered → accepted / rejected / withdrawn. A base
-   resume grown past your career history shows an "Add N things to career history" toolbar pill (N excludes
-   already-recorded drift); its **Add now** drafts new and drifted items with no LLM, near-matching entities
-   instead of forking duplicates.
+2. **Track** — **Jobs** (`/applications`; the URL, `?status=`/`?source=` and `cs-tracker-*` keep their names): the tracker.
+   Columns Role, Match score, Status, Where, Applied, Next step and Added, with search, sort, a grouped status `Select` and a
+   Tracked/Yours/Agents `SourceToggle`; Next step and the quick filters read the server's stage (`services/stage.py`,
+   docs/entities/job.md). "Saved" = job with no application; agent-captured jobs stay out unless the toggle is `Agents`, so the
+   default reads Tracked, not All. Filter groups: All/Saved, **Your applications** and **Agent inbox**
+   (`proposed`/`queued`/`needs_you`/`skipped`). Rows, options and the Agent inbox page (`/proposals`): frontend-conventions,
+   "Jobs row" and "Tracker filter".
+3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, ONE status: the application's inline StatusChip + Details
+   menu, else the proposal's pill worded like History (`headerProposalPill`), naming its filer, + Queue/Skip; a score pill,
+   **Resume match** (tailored) or **Best base resume**; a Needs-you question adds **Keep it**, PATCH `pending_review`, linking the
+   job's application when the proposal has none), tabs Overview / Score and tailor / Resume / Q&A, plus **What was submitted**
+   once the job has filled answers (tab URL values stay jd/fit/output/qa for deep-link compatibility; that one is `submitted`):
+   the answer receipt, latest per question, a source pill each and warn-only flags, read before you submit too
+   (docs/entities/filled-answers.md). `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`; otherwise they use
+   `cs-tracker-seq`. A **Where this stands** line under the header (`lib/job-standing.ts`) says whether and how you applied.
+   Overview mounts the proposal's card, titled with its filer (`proposed_by`, worded by `lib/agent-name.ts`), only when it carries
+   something (`proposalHasContent`); every job read derives `proposal_status`/`proposal_id` from the newest proposal. Overview
+   also renders the **knock-out pre-scan** (`services/knockout.scan_for`): stated JD requirements vs the profile, flagged and
+   never decided for you (verdicts and chips: docs/entities/job.md, "Knock-out pre-scan").
+4. **Score** — Score and tailor shows the bases set for the job's country (all when unknown), scored at save; its first-visit
+   auto-run is the fallback for a job saved before any base resume existed or whose save-time scoring failed; per-base cards →
+   **Analyze gaps** creates a session (one filled button, on the best match; Restart gap analysis and Mark applied without
+   tailoring sit in each card's ⋯). When every card draws the low-coverage warning, or the same gate warning, one banner says it
+   instead; the lowest subscore of a card wears a Weakest word. With no base resume the tab offers Import resumes and documents
+   instead, and scores once that dialog closes.
+5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions (add_keyword / user_input / attach_project / skip +
+   enable_entry / port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip for the document + a durable
+   `user_cannot_confirm` KB record written at SAVE time, so the claim is never re-asked — see §6 inv-provenance-no-decay)
+   autosaved debounced with replace=true semantics (omitted gap_ids are deleted server-side); KB-auto-resolved gaps arrive
+   pre-selected with provenance + Undo and a counting banner; optional per-session note (`user_prompt`, falls back into tailor()).
+   **Use resume as is** (visible at 0 addressed) → from-base + closes the session; confirms first if it would replace an existing
+   tailored draft.
+6. **Tailor** — `POST /tailoring-sessions/{id}/tailor`: deterministic pre-ops → smart-model edit ops → keyword-survival and voice
+   checks (§6 inv-resume-voice) → application + version row → draft-KBPoint write-back → session `tailored` → tailored score, one
+   transaction (tailor() commits once at its end). The UI then lands in review mode (`?review=1`). Internals:
+   docs/entities/tailoring-session.md, "The tailor pipeline".
+7. **Output** — Resume tab: the ONE before/after compare panel + PDF card; **Create PDF** renders the tailored draft and shows the
+   shared rasterized page preview inline (**Update PDF** refreshes it); download/open actions become available immediately, and a
+   copy lands in the visible resumes folder (**Show in Finder**; §6 inv-resumes-folder-one-way). "Edit resume" → the studio
+   (`/applications/[id]/resume`), where Save chains render → re-score automatically.
+8. **Apply package** — Q&A tab: questions, cover letter (tone). Outreach/cold messages are asked as free-form questions (no
+   dedicated cold-message generator); the QA prompt injects the application's linked referral contact.
+9. **Track to terminal** — StatusChip anywhere (tracker row or job header): draft → applied → interviewing → offered → accepted /
+   rejected / withdrawn. A base resume grown past your career history shows an "Add N things to career history" toolbar pill (N
+   excludes already-recorded drift); its **Add now** drafts new and drifted items with no LLM, near-matching entities instead of
+   forking duplicates.
 
 ## 6. Cross-cutting invariants (do not break these)
 
@@ -757,14 +721,12 @@ each bullet its own question, a number only where one is natural.
 so new items APPEND here and shipped items are deleted in place — renumbering silently invalidates every
 citation. Priority lives in the item text, not in the ordinal.
 
-1. Extra-section op **payloads** stay loosely typed (op *kinds* are one source, `schemas/resume_edit.py`):
-   `add_extra_section` / `replace_extra_section` `value` is `dict[str, Any]`, validated in the service
-   (`resume_edit._validate_extra_section`, like `AddEntry`), so a bad extras payload is a 400, not a 422.
-2. One post-render readiness pipeline ("Ready to apply" gate: health, em-dash, pages, contact checks on the exact
-   rendered artifact), consuming the shared rasterized preview + slim MCP `get_rendered_pdf` metadata. The JD-level
-   half (stated requirements vs profile) is the knock-out pre-scan, §5 step 3.
+1. Extra-section op **payloads** stay loosely typed: `add_extra_section` / `replace_extra_section` `value` is `dict[str, Any]`, validated in
+   the service (`resume_edit._validate_extra_section`, like `AddEntry`), so a bad one is a 400, not a 422.
+2. One post-render readiness pipeline (a "Ready to apply" gate: health, em-dash, page and contact checks on the exact rendered PDF), on the
+   shared rasterized preview + slim MCP `get_rendered_pdf` metadata. Its JD-level half is the knock-out pre-scan (docs/entities/job.md).
 3. Base-score staleness on from-base: re-score only when the base's updated_at is newer than the score row — never unconditionally.
-4. JD promoted-field correction before gap freezing (today only source_url is editable) + score provenance
+4. JD promoted-field correction before gap freezing (today only source_url and apply_url are editable) + score provenance
    (engine/config version) surfaced in the UI.
 5. Server-side pagination for the tracker (client caps at 500 rows and says so).
 6. Chat KB document provenance: `ChatAttachment` stores extracted text only, so a chat-added document never becomes a
@@ -805,10 +767,9 @@ citation. Priority lives in the item text, not in the ordinal.
     entity, one commit — `seeding.seed_career_kb` relies on that via `commit=False`) and `tailoring_session.create_session` with enrichment
     (score flush + supersede UPDATE, then the call). A concurrent writer waits `busy_timeout` (30 s), then fails "database is locked". Fix:
     compute every LLM result first, then write in one short transaction, keeping the seeder's `commit=False` contract.
-26. Tailored-studio adoption gaps (`TailoredResumeStudio`): (a) two Saves in one refetch window, the second returning
-    to adopted content, read as foreign (`onSaved` queues no key equal to `adoptedKey`): a false "changed outside the
-    editor" banner; (b) the parent-held `templateId` never re-syncs from the server, so it survives Rebuild and Load
-    latest, and a foreign template-only change reads as an unsaved local edit.
+26. `TailoredResumeStudio` adoption gaps: (a) two Saves in one refetch window, the second returning to adopted content, read as foreign
+    (`onSaved` queues no key equal to `adoptedKey`): a false "changed outside the editor" banner; (b) the parent-held `templateId` never
+    re-syncs from the server, so it survives Rebuild and Load latest, and a foreign template-only change reads as an unsaved local edit.
 27. `FullscreenEditorPage` is `h-dvh` (both studios, the template editor), and `VersionBanner` renders above it in
     `SidebarGutter`, so the page overflows by the banner's height whenever the banner shows.
 28. Dark `--ring` on `--primary-container` (the FAB) is 2.88:1, so that surface is not in `_RING_SURFACES` (1.4.11).
@@ -820,16 +781,12 @@ citation. Priority lives in the item text, not in the ordinal.
     (the Review changes chip is hidden for it; an `"unknown"` value would change the endpoint's response).
 32. Small UI gaps: `/base-resumes/<unknown>/health` shows a skeleton ~7 s before its error (the 404 takes react-query's three default
     retries; `app/providers.tsx` sets no `retry`); `/templates`' stale-chip tooltip sits under `GalleryCard`'s `z-10` stretched link; three
-    hint/control pairs keep hardcoded ids (`new_id_hint`/`new_id_error`, `kb-profile-notes-hint`, `job-preferences-locations-hint`); Escape
-    out of the job Details date field blur-saves `applied_at: null`; an Assistant edit card's Discard stays clickable while Apply runs; a
-    failing settings autosave toasts once per keystroke; a failed send in a NEW chat leaves an "Untitled chat" (the session is created
-    before the message); the proposal's Overview card shows "expires" on a Queued proposal, which never expires.
+    hint/control pairs hardcode ids (`new_id_hint`/`new_id_error`, `kb-profile-notes-hint`, `job-preferences-locations-hint`); Escape from
+    the job Details date field blur-saves `applied_at: null`; an Assistant edit card's Discard works while Apply runs; a failing settings
+    autosave toasts once per keystroke; a failed send in a NEW chat leaves an "Untitled chat" (the session is made before the message).
 33. inv-render-fallback-explained gaps: `PUT /base-resumes/{slug}` commits, then a pdflatex failure is a 500 over the
     saved change; `POST /{slug}/render` answers 500, not 400, on a generic failure; the preview-page route's unlocked
     `exists()` can race a re-render; `STARTER_SOURCE` fails on a blank email with a link present.
-34. A model tested with no key is stored as unable to do anything: `NO_KEY_MESSAGE` is not among
-    `llm_capabilities._UNREACHABLE_SIGNS`, so the probe counts it as reached and saves text/json/tools all No, and
-    `require` then blocks the Assistant until the model is tested again after a key is added.
 35. Settings seed race: `text_settings.get_text` lazily INSERTs a missing `Setting` row and commits, so two first
     reads at once both insert and one fails on the key; the commit also ends an open transaction (hence `POST
     /api/proposals` reads `get_settings` before `begin_write`). Seed at startup or insert-or-ignore.
@@ -857,6 +814,12 @@ citation. Priority lives in the item text, not in the ordinal.
     heading never reads as a rejected Next, `heldValues` misses a select's shown text and a custom combobox, and the hand-attached-file
     check reads the run's own frame only; the run list, Queue view and parallel tabs wait for Phase 3 (`docs/plans/2026-10-10-companion-queued-run.md`);
     the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits".
+45. Scoring at save is inline on both paths; a background task for the ingest path raced the Companion's own `POST /api/ats-scores`
+    on the base-score unique key (two concurrent `score_all_bases` runs always collide). Revisit with a savepoint-tolerant upsert in
+    `score_target` if ingest latency on native installs needs it.
+46. The Companion's `addJob` still scores after its ingest (`extension/panel/actions/job.js`), a harmless second upsert whose comment
+    at lines 116-117 is stale; and the capture pipeline (`_find_existing`, `_persist_job`, `_insert_skills`, `_score_new_job`) lives
+    in `routers/jobs.py` and could move to a `services/job_capture.py`.
 
 ## 12. Gotchas that have bitten before
 

@@ -71,6 +71,24 @@ saw — the page refetches and drops its local copy on any `apply_profile`
 error. Custom remains the default entry point; the checkpoint is the only
 place the mode is decided.
 
+**The tailor pipeline** (`POST /tailoring-sessions/{id}/tailor`, `tailor()`). Deterministic
+pre-ops run first (`enable_entry` → `toggle_entry`, `port_kb_point` → `add_bullet` plus a
+`KBPortLog` row; deduped per point and entry); the remaining non-skip resolutions then go to the
+smart model, whose typed edit ops are applied. A keyword-survival check follows (one retry, then an
+`add_skill_item` fallback; LLM path only), then the voice check (one retry, then repair in code;
+**Voice** below). The application is reused or inserted, a version row is written, and substantive
+`user_input` answers are written back as draft KBPoints (`origin=gap_elicitation`). Every skipped
+write-back returns on the response as `kb_writeback_skips` with a reason (`too_short`,
+`wrong_section`, `no_entity_match`, `duplicate`, or `profile_owned_elsewhere`: on the always-on
+copy tailoring skips draft career-history points), and the gap page toasts a quiet note, so
+flywheel drops are never silent. The session goes `tailored` and the tailored score is staged, all
+in ONE transaction: `tailor()` commits once at its end and `score_target` stages on the same
+session. A pre-op-only session tailors with zero LLM calls; MCP can pass caller ops to skip the
+backend LLM. After a tailor the web UI lands in review mode (`?review=1`): a provenance-labeled
+structural diff (`GET /applications/{id}/resume-diff`, hunks attributed `kb_auto`/`user`/`llm`),
+revert per hunk through the normal edit path, and an on-demand, read-only coherence lint
+(`POST .../coherence-check`).
+
 **Voice.** A resume is the owner's own, in implied first person (SYSTEM.md §6 `inv-resume-voice`). Every rewrite prompt carries the VOICE
 rule, built in code beside the avoid-words line (`prompt_assembly._skill_preamble`; `guarded_rewrite` and the chat prompt carry it too, the chat's
 scoped to resume and Career KB text), so a customised prompt row keeps it. `services/resume_voice.py` (pure; word boundaries) finds BLOCKING shapes:
