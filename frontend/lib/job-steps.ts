@@ -19,8 +19,12 @@ export function stepForTab(tab: string | null | undefined): StepKey {
 export type StepState = "done" | "current" | "next";
 export type Step = { key: StepKey; number: 1 | 2 | 3 | 4; title: string; state: StepState; summary: string };
 
-/** The current step from the stage: saved/scored/gaps → fit; tailored/pdf_ready → output; applied/closed → qa. */
-export function currentStep(stage: Rung): StepKey {
+/**
+ * The current step from the stage: saved/scored/gaps → fit; tailored/pdf_ready → output; applied/closed → qa.
+ * Never "job": the job exists once saved, so step 1 is always done and step 2 is never next. A rung that
+ * would make the job step current is a deliberate change here, and needs a "next" wording for step 2.
+ */
+export function currentStep(stage: Rung): Exclude<StepKey, "job"> {
   switch (stage) {
     case "tailored":
     case "pdf_ready":
@@ -73,8 +77,8 @@ function jobSummary(i: JobStepsInput): string {
   return join(skills, KNOCKOUT[i.knockout ?? "none"]);
 }
 
-function fitSummary(i: JobStepsInput, state: StepState): string {
-  if (state === "next") return "Scored on save · pick a resume and analyze its gaps";
+/** Step 2 is current or done, never next (see currentStep). */
+function fitSummary(i: JobStepsInput, state: Exclude<StepState, "next">): string {
   if (state === "current") {
     return i.gapsTotal > 0
       ? join(i.resumeName, `${i.gapsDone} of ${i.gapsTotal} gaps closed`)
@@ -111,7 +115,7 @@ export function jobSteps(input: JobStepsInput): Step[] {
     const state: StepState = index < at ? "done" : index === at ? "current" : "next";
     const summary =
       key === "job" ? jobSummary(input)
-      : key === "fit" ? fitSummary(input, state)
+      : key === "fit" ? fitSummary(input, state === "done" ? "done" : "current")
       : key === "output" ? outputSummary(input, state)
       : applySummary(input, state);
     return { key, number: (index + 1) as Step["number"], title: TITLES[key], state, summary };

@@ -29,6 +29,12 @@ test("each tab value the app has written maps to its step; anything else is the 
   assert.equal(stepForTab(undefined), "job");
 });
 
+test("object prototype keys and an empty tab are not steps", () => {
+  assert.equal(stepForTab("__proto__"), "job");
+  assert.equal(stepForTab("constructor"), "job");
+  assert.equal(stepForTab(""), "job");
+});
+
 test("the current step follows the stage", () => {
   const want: Record<Rung, string> = {
     saved: "fit", scored: "fit", gaps: "fit",
