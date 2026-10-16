@@ -303,6 +303,8 @@ Less hunting, more applying.
 - **A tailored skills line names a skill once.** A line that read "AWS (SageMaker, EKS, S3)" ended "…, AWS,
   SageMaker, MLOps" after tailoring: the gap step's **Different wording** fill added a keyword the line already had.
   A keyword the line already names, inside parentheses too and in any case, is no longer added again (#50).
+- **Base resume cards in a row line up.** When one card's Target pill wrapped, the card beside it showed a white strip
+  under its coloured footer. Every footer now runs to the bottom of its card.
 - **Eighth live check of Apply, on two hosted application forms, with Claude as the fast model.**
   - **Safe answers are no longer lost to a slow model.** The second look at an answer and the Yes/No direction check gave a Claude fast model about a second, which it often needed more of, so
     a question that should have taken the safe default was left to you. They now get 3 s for Claude (a second for other models, a custom server and OpenRouter) inside the same time limit

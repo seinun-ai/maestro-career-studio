@@ -1063,7 +1063,8 @@
   seen first, "Role not set" last, `lib/role-groups.ts`), and each card carries
   the resume's color: a 6px `bg-resume` band above the full-size thumbnail and a
   `bg-resume-container` footer with `text-on-resume-container` text, the name led
-  by the square. Pills on that footer take the card fill (`AnchorPills onTint`),
+  by the square; the footer is `flex-1`, so in a row stretched by a wrapped Target pill every tint still runs to
+  the card's bottom (no white strip). Pills on that footer take the card fill (`AnchorPills onTint`),
   because the secondary fill is the tint's own tone; the role is the group's
   heading, so cards pass `showRole={false}`. A card carries no "Role not set" pill
   either: that group's heading says it, with one muted hint beside it ("Set a role

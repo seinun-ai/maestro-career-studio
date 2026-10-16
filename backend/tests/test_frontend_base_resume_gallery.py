@@ -39,6 +39,14 @@ def test_the_card_root_carries_the_hue_and_the_footer_runs_to_the_bottom_edge():
     assert "style?: CSSProperties;" in _CARD and "style={style}" in _CARD
 
 
+def test_the_footer_fills_a_card_stretched_to_its_row():
+    """A grid row is as tall as its tallest card. When a Target pill wraps ("ML Engineer for Woodgrove Bank"), the
+    neighbour's footer stopped short and left a white strip under its tint: the footer grows to the card's bottom."""
+    assert "flex-1" in tokens(open_tag(_body(), "CardHeader"))
+    assert "grid gap-4" in _CARD  # the gallery is a grid, whose cells stretch the cards in a row
+    assert "flex flex-col" in (_FRONTEND / "components/ui/card.tsx").read_text(encoding="utf-8")
+
+
 def test_the_title_leads_with_the_square_and_nothing_in_the_footer_is_muted():
     body = squash(_body())
     assert body.index("<ResumeSwatch hue={resume.color_hue} />") < body.index('<span className="truncate">{name}</span>')

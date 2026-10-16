@@ -49,7 +49,8 @@ function BaseResumeCardBody({
       <div aria-hidden="true" className={cn("h-1.5 shrink-0 bg-resume", isArchived && "opacity-60")} />
       {/* Square-topped: the band above is the card's top edge, and a rounded thumbnail would show the card behind it. */}
       <BaseResumeThumbnail resume={resume} dimmed={isArchived} className="rounded-none" />
-      <CardHeader className="rounded-none bg-resume-container py-4 text-on-resume-container">
+      {/* flex-1: a row is as tall as its tallest card (a wrapped Target pill), and the tint runs to every card's bottom. */}
+      <CardHeader className="flex-1 rounded-none bg-resume-container py-4 text-on-resume-container">
         <div className="flex min-w-0 flex-col gap-2">
           {/* The slug is never shown, not even on hover: the resume is named
               by its display name (or the slug's words), and the card links to
