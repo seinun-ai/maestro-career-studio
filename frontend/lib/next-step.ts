@@ -8,14 +8,16 @@ export type Rung = "saved" | "scored" | "gaps" | "tailored" | "pdf_ready" | "app
 
 export type NextStep = {
   label: string;
-  variant: "ghost" | "tonal" | "default";
+  variant: "ghost" | "outline" | "tonal";
   tab: "fit" | "output" | "qa";
   session?: string | null;
 } | null;
 
 /**
- * The one control a row shows. Null once applied or closed: the status chip carries the job from there.
- * Null too when the stage is missing (a backend that predates it), so such a row shows nothing.
+ * The one control a row shows, rising in emphasis as the job nears Apply: ghost, outline, then tonal. None is
+ * filled: the design system keeps one filled button per view, and a list holds many rows. Null once applied
+ * or closed: the status chip carries the job from there. Null too when the stage is missing (a backend that
+ * predates it), so such a row shows nothing.
  */
 export function nextStep(
   stage: Rung | null | undefined,
@@ -29,14 +31,14 @@ export function nextStep(
     case "gaps":
       return {
         label: `Continue gaps · ${s.gaps_done ?? 0} of ${s.gaps_total ?? 0}`,
-        variant: "tonal",
+        variant: "outline",
         tab: "fit",
         session: s.open_session_id,
       };
     case "tailored":
-      return { label: "Review resume", variant: "tonal", tab: "output" };
+      return { label: "Review resume", variant: "outline", tab: "output" };
     case "pdf_ready":
-      return { label: "Apply", variant: "default", tab: "qa" };
+      return { label: "Apply", variant: "tonal", tab: "qa" };
     default:
       return null;
   }

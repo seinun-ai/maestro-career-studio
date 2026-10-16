@@ -60,19 +60,22 @@ def test_role_is_the_only_percentage_column_and_the_resume_column_is_gone():
     """The fixed columns take 45.5rem with Where and 41rem without, so at the 57rem min width Role keeps
     11.5rem and 16rem (it had 11.7rem and 14.6rem at 52rem beside Resume). The Match score names the resume on hover."""
     head = squash(_TABLE[: _TABLE.index("</TableHeader>")])
-    assert 'header("role", "Role", "w-[100%]")' in head
-    assert head.count("%") == 1
+    assert 'header("role", "Role", "w-full")' in head
+    assert "%" not in head  # Role's w-full is the only width that is not in rem
     assert ">Resume</TableHead>" not in head
     assert 'minWidth="57rem"' in _PAGE
 
 
-def test_the_match_score_names_the_resume_on_hover_and_the_page_draws_no_resume_square():
+def test_the_match_score_names_the_resume_to_readers_and_on_hover_and_the_page_draws_no_resume_square():
     cell = _TABLE[_TABLE.index("const score = rowScore(r);") :]
     cell = cell[: cell.index("</TableCell>")]
     assert "title={resumeName || undefined}" in open_tag(cell, "span", after=": (")
-    assert "<ScoreBar" in cell
+    meter = squash(open_tag(cell, "ScoreBar"))
+    assert ('label={ r.kind === "saved" ? "Best match score" : resumeName ? `Match score, ${resumeName}` : "Match score" }'
+            in meter)
     # A saved job's best base is not named by the API, so its resumeName is "" and the title is left off.
-    assert 'const resumeName = r.kind === "application" ? r.app.base_resume_name || baseName(r.app.base_resume) : "";' in _PAGE
+    assert ('const resumeName = r.kind === "application" ? r.app.base_resume_name || baseName(r.app.base_resume) : "";'
+            in squash(_PAGE))
     assert "ResumeTag" not in _PAGE and "useBaseResumeColor" not in _PAGE
 
 
@@ -83,35 +86,45 @@ def test_the_next_step_cell_links_the_one_control_from_the_servers_stage():
     assert 'const step = nextStep(stage, r.kind === "saved" ? r.job : r.app);' in squash(_PAGE)
     cell = _TABLE[_TABLE.index("{step ? (") :]
     cell = cell[: cell.index("</TableCell>")]
-    # The cell keeps a click from opening the row, like the actions cell.
+    # The button keeps its click from opening the row; the rest of the cell opens the job like the row.
     opener = _TABLE[_TABLE.rindex("<TableCell", 0, _TABLE.index("{step ? (")) :]
-    assert "onClick={(e) => e.stopPropagation()}" in open_tag(opener, "TableCell")
+    assert "onClick" not in open_tag(opener, "TableCell")
     button = squash(open_tag(cell, "Button"))
+    assert "onClick={(e) => e.stopPropagation()}" in button
     assert 'size="sm"' in button and "variant={step.variant}" in button and "nativeButton={false}" in button
-    assert "disabled={!ownership.canWrite}" in button and "data-disabled:opacity-50" in button
-    assert "tabular-nums" in tokens(open_tag(cell, "Button"))
+    # It only navigates, so it is never disabled: the page it opens says whose the job is.
+    assert "disabled" not in button and "canWrite" not in button
+    assert tokens(open_tag(cell, "Button")) >= {"tabular-nums"} and "data-disabled" not in button
     assert "render={<Link href={nextStepHref(jobId, step)}>{step.label}</Link>}" in button
     # Applied rows say they wait only while the status is applied; later statuses and closed say nothing.
     assert ('const waiting = stage === "applied" && r.kind === "application" && r.app.status === "applied";'
             in squash(_PAGE))
     waiting = open_tag(cell, "span", after="waiting ? (")
     assert {"text-muted-foreground", "text-body-small"} <= tokens(waiting)
-    assert ">Waiting to hear back</span>" in cell and ") : null}" in squash(cell)
+    # Nothing else: any other row leaves the cell empty.
+    assert squash(cell).endswith(">Waiting to hear back</span> ) : null}")
 
 
 def test_the_stage_chips_are_their_own_filter_in_the_url_and_the_session():
+    """The resolver, the URL and the chip counts are node-tested: lib/tracker-filters.test.ts and
+    lib/tracker-counts.test.ts. These pins hold the page to them."""
     src = squash(_PAGE)
-    assert 'const STAGE_FILTERS = ["pdf_ready", "tailored", "gaps"] as const;' in src
-    assert 'asStageFilter(searchParams.get("stage") ?? storedValue(STAGE_STORE_KEY))' in src
-    assert 'const STAGE_STORE_KEY = "cs-tracker-stage";' in src
-    assert 'if (nextStage) params.set("stage", nextStage);' in src
-    assert 'storeValue(STAGE_STORE_KEY, next ?? "");' in src
+    assert 'import { chipCount } from "@/lib/tracker-counts";' in src
+    assert 'import { STAGE_FILTERS, type StageFilter } from "@/lib/tracker-filters";' in src
+    assert "const { filter, stage: stageFilter, source, update } = useTrackerFilters(FILTERS);" in src
+    assert "storedValue(" not in src.replace("storeValue(", "")  # session memory is read in the hook only
+    hook = squash(_src("app/applications/use-tracker-filters.ts"))
+    assert "resolveTrackerFilters((key) => searchParams.get(key), storedValue, filters)" in hook
+    assert "storeValue(TRACKER_STORE_KEYS[axis], next[axis] ?? \"\");" in hook
+    lib = _src("lib/tracker-filters.ts")
+    assert 'stage: "cs-tracker-stage"' in lib and 'stage: "stage"' in lib
     # It ANDs with the Status select, which keeps its options.
     filtered = src[src.index("const filtered = useMemo(") : src.index("const needle")]
     assert "list.filter((r) => rowFilterKey(r) === filter)" in filtered
     assert "list.filter((r) => rowStage(r) === stageFilter)" in filtered
     # A chip counts what pressing it shows, and stays while it is on.
-    assert "(filter === \"all\" || rowFilterKey(r) === filter) && rowStage(r) === stage" in src
+    assert "count: chipCount(countRows, axes, { stage })," in src
+    assert 'count: chipCount(countRows, axes, { filter: "needs_you" }),' in src
     assert ".filter((s) => s.count > 0 || s.on)" in src
 
 

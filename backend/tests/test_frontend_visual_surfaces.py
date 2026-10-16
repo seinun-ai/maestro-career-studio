@@ -204,10 +204,10 @@ def test_tracker_shows_scores_dots_and_a_needs_strip():
     assert "ScoreBar" in src and "StatusDot" in src
     # The dots are Task 14's own (reused, not copied). Three chips filter by the server's stage, and
     # Needs you through the Status filter.
-    assert "LaneDot" in src and 'setFilterAndUrl(filter === "needs_you" ? "all" : "needs_you")' in src
-    assert "setStageAndUrl(stageFilter === stage ? null : stage)" in src
-    assert '{ stage: "pdf_ready", label: "Ready to apply" }' in src
-    assert '{ stage: "tailored", label: "Tailored, review" }' in src and '{ stage: "gaps", label: "Gaps open" }' in src
+    assert "LaneDot" in src and 'update({ filter: filter === "needs_you" ? "all" : "needs_you" })' in src
+    assert "update({ stage: stageFilter === stage ? null : stage })" in src
+    assert 'pdf_ready: "Ready to apply",' in src
+    assert 'tailored: "Tailored, review",' in src and 'gaps: "Gaps open",' in src
     assert 'label: "Needs you"' in src and "Drafts not applied" not in src
     assert "aria-pressed={on}" in src and "<Check " in src and 'variant="tonal"' in src
     # An unscored row is a dash with words, never 0; it sorts last whichever way.

@@ -13,21 +13,21 @@ test("a scored job's next step is Analyze gaps, a ghost on the fit tab", () => {
   assert.deepEqual(nextStep("scored", none), { label: "Analyze gaps", variant: "ghost", tab: "fit" });
 });
 
-test("open gaps continue the gap analysis with its counts, tonal, through its session", () => {
+test("open gaps continue the gap analysis with its counts, outlined, through its session", () => {
   const step = nextStep("gaps", { open_session_id: "s-1", gaps_done: 2, gaps_total: 5 });
-  assert.deepEqual(step, { label: "Continue gaps · 2 of 5", variant: "tonal", tab: "fit", session: "s-1" });
+  assert.deepEqual(step, { label: "Continue gaps · 2 of 5", variant: "outline", tab: "fit", session: "s-1" });
 });
 
 test("gaps without counts read zero of zero, never undefined", () => {
   assert.equal(nextStep("gaps", none)?.label, "Continue gaps · 0 of 0");
 });
 
-test("a tailored draft is reviewed on the output tab, tonal", () => {
-  assert.deepEqual(nextStep("tailored", none), { label: "Review resume", variant: "tonal", tab: "output" });
+test("a tailored draft is reviewed on the output tab, outlined", () => {
+  assert.deepEqual(nextStep("tailored", none), { label: "Review resume", variant: "outline", tab: "output" });
 });
 
-test("a ready PDF is the one filled Apply, on the qa tab", () => {
-  assert.deepEqual(nextStep("pdf_ready", none), { label: "Apply", variant: "default", tab: "qa" });
+test("a ready PDF is Apply, tonal and never filled, on the qa tab", () => {
+  assert.deepEqual(nextStep("pdf_ready", none), { label: "Apply", variant: "tonal", tab: "qa" });
 });
 
 test("an applied or closed job shows no control: the status chip carries it", () => {
@@ -41,8 +41,8 @@ test("a row from a backend that predates the stage shows no control", () => {
 
 test("each tab links the job page with that tab", () => {
   assert.equal(nextStepHref("j-1", { label: "Score", variant: "ghost", tab: "fit" }), "/jobs/j-1?tab=fit");
-  assert.equal(nextStepHref("j-1", { label: "Review resume", variant: "tonal", tab: "output" }), "/jobs/j-1?tab=output");
-  assert.equal(nextStepHref("j-1", { label: "Apply", variant: "default", tab: "qa" }), "/jobs/j-1?tab=qa");
+  assert.equal(nextStepHref("j-1", { label: "Review resume", variant: "outline", tab: "output" }), "/jobs/j-1?tab=output");
+  assert.equal(nextStepHref("j-1", { label: "Apply", variant: "tonal", tab: "qa" }), "/jobs/j-1?tab=qa");
 });
 
 test("open gaps link the gap analysis itself", () => {

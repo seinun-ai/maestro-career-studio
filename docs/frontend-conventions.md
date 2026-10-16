@@ -1141,7 +1141,10 @@
   `aria-pressed` buttons reading "label · count": **Ready to apply**, **Tailored, review** and **Gaps
   open** filter by the server's stage (`pdf_ready`, `tailored`, `gaps`), a filter of their own that
   ANDs with the Status select (`?stage=`, `cs-tracker-stage`), and **Needs you** is the Status value.
-  A chip counts the rows pressing it shows and is hidden at zero unless it is on. The Agent inbox
+  A chip counts the rows pressing it shows (`lib/tracker-counts.ts`) and is hidden at zero unless it is
+  on. The three filters are one state (`useTrackerFilters`, `lib/tracker-filters.ts`): a URL carrying
+  any of `status`, `stage`, `source` is the whole state, and session memory is read only when it
+  carries none. The Agent inbox
   itself (`/proposals`) is one table of lanes (`lib/inbox-lanes.ts`; an empty lane is not drawn)
   under one summary line (`/api/proposals/summary`; the last-visit window holds until the tab
   reloads); its search and filters show only past ten proposals, the daily limit line only near the
@@ -1164,11 +1167,13 @@
   focusable). **Work on it here** / **Keep it here** are in the row's ⋯ menu (`OwnershipMenuItem`,
   disabled only while its own request is in flight); the header mark and the menu share one request
   state per job (`ownershipKey`). **Next step** sits between Applied and Added: the one control
-  `lib/next-step.ts` gives the row's stage (Score, Analyze gaps, Continue gaps · 2 of 5, Review resume,
-  Apply; only Apply is filled), a link that stops the row's click and is disabled when the job is not
-  this copy's to change; an applied row reads "Waiting to hear back" only while its status is Applied,
-  and a later or closed row shows nothing. The Match score's hover names the row's resume (an
-  application's; a saved job's best base is not named). Columns with fixed content are in rem (the
+  `lib/next-step.ts` gives the row's stage: ghost Score and Analyze gaps, outline Continue gaps · 2 of
+  5 and Review resume, tonal Apply (none filled: one filled button per view, and a list has many
+  rows). It is a link whose own click stops at the button, so the rest of the cell opens the job; it is
+  never disabled, since it only navigates and the page it opens says whose the job is. An applied row
+  reads "Waiting to hear back" only while its status is Applied, and a later or closed row shows
+  nothing. The Match score's meter name and hover name the row's resume (an application's; a saved
+  job's best base is not named). Columns with fixed content are in rem (the
   table scrolls at 57rem, where a percentage of it left "Offer accepted" no room); Role takes the rest,
   11.5rem at that width with Where.
   The job header, gap page and proposals keep `JobOwnershipMark`/`Notice`.

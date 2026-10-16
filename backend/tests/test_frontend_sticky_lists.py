@@ -298,9 +298,11 @@ def test_a_filter_change_keeps_the_scroll_position():
     """All/You/Agents and the status filter write the URL. `router.replace`
     scrolls to the top by default, so a switch made while scrolled threw the
     user off the rows they were reading. Mutant: `{ scroll: false }` dropped."""
-    write = _TRACKER[_TRACKER.index("const writeUrl = ") : _TRACKER.index("const setFilterAndUrl")]
-    assert 'router.replace(qs ? `/applications?${qs}` : "/applications", { scroll: false });' in write
+    hook = _read("app/applications/use-tracker-filters.ts")
+    write = hook[hook.index("const update = ") :]
+    assert "router.replace(trackerHref(next), { scroll: false });" in write
     assert write.count("router.") == 1, write
+    assert "router.replace" not in _TRACKER  # every filter change goes through the hook
 
 
 def test_referrals_header_sticks():

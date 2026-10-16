@@ -91,9 +91,12 @@ def test_tracked_is_exactly_the_old_all_set():
 
 
 def test_links_and_session_memory_keep_their_names():
-    for key in ('"cs-tracker-filter"', '"cs-tracker-source"', '"cs-tracker-seq"'):
-        assert key in _TRACKER, key
-    assert 'router.replace(qs ? `/applications?${qs}` : "/applications", { scroll: false });' in _TRACKER
-    assert 'return v === "user" || v === "agent" ? v : "all";' in _TRACKER
+    filters = _read("lib/tracker-filters.ts")
+    for key in ('"cs-tracker-filter"', '"cs-tracker-source"'):
+        assert key in filters, key
+    assert '{ filter: "status", stage: "stage", source: "source" }' in filters
+    assert '"cs-tracker-seq"' in _TRACKER
+    assert "router.replace(trackerHref(next), { scroll: false });" in _read("app/applications/use-tracker-filters.ts")
+    assert 'source: source === "user" || source === "agent" ? source : "all",' in filters
     assert 'readSequence(fromProposals ? "cs-proposals-seq" : "cs-tracker-seq")' in _read("app/jobs/[id]/page.tsx")
     assert 'return from === "proposals" ? "/proposals" : "/applications";' in _read("lib/nav.ts")

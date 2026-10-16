@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Bot, Check, FilePlus2, KeyRound, Inbox, SendHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,10 +18,7 @@ import { ListToolbar } from "@/components/list-toolbar";
 import { LoadErrorState } from "@/components/load-error-state";
 import { GettingStartedCard } from "@/components/setup/getting-started-card";
 import { useSidebarHidden } from "@/components/sidebar-reveal-trigger";
-import {
-  SourceToggle,
-  type SourceFilter,
-} from "@/components/source-toggle";
+import { SourceToggle } from "@/components/source-toggle";
 import { LaneDot, SavedJobChip, StatusChip, StatusDot, statusLabel } from "@/components/status-chip";
 import { ScoreBar } from "@/components/visual";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -58,6 +55,8 @@ import { focusIfDropped, focusReturnPoint, focusSuccessor } from "@/lib/focus";
 import { formatShortDate } from "@/lib/format-date";
 import { isListCapped } from "@/lib/list-cap";
 import { nextStep, nextStepHref, type Rung } from "@/lib/next-step";
+import { chipCount } from "@/lib/tracker-counts";
+import { STAGE_FILTERS, type StageFilter } from "@/lib/tracker-filters";
 import { isLoadFailure } from "@/lib/query-state";
 import { anchorHref } from "@/lib/settings-tabs";
 import { cn } from "@/lib/utils";
@@ -71,6 +70,7 @@ import {
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
+import { storeValue, useTrackerFilters } from "./use-tracker-filters";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
 const MoreIcon = CONCEPT_ICONS.more;
@@ -117,11 +117,9 @@ function filterLabel(value: Filter): string {
 }
 
 // Session-scoped memory: coming back via the sidebar link (no URL params)
-// restores the last filter, stage chip and source instead of resetting to All, and the job
-// page's prev/next arrows walk the tracker's last visible row order.
-const FILTER_STORE_KEY = "cs-tracker-filter";
-const STAGE_STORE_KEY = "cs-tracker-stage";
-const SOURCE_STORE_KEY = "cs-tracker-source";
+// restores the last filter, stage chip and source instead of resetting to All
+// (useTrackerFilters), and the job page's prev/next arrows walk the tracker's
+// last visible row order.
 const SEQUENCE_STORE_KEY = "cs-tracker-seq";
 
 // The API's max page (routers/applications.py, routers/jobs.py: le=500).
@@ -143,23 +141,6 @@ function savedJobsQuery(savedSource: "user" | "agent") {
 /** The row's ⋯ trigger: where focus goes once the row's Queue for agent leaves it. */
 function moreActions(el: HTMLElement): HTMLElement | null {
   return el.closest("tr")?.querySelector<HTMLElement>('[aria-label="More actions"]') ?? null;
-}
-
-function storedValue(key: string): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return sessionStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function storeValue(key: string, value: string) {
-  try {
-    sessionStorage.setItem(key, value);
-  } catch {
-    // Session memory is a convenience — never let storage failures break the page.
-  }
 }
 
 type SortKey = "created_at" | "role" | "status" | "applied_at" | "ats";
@@ -213,17 +194,11 @@ function rowStage(r: Row): Rung | undefined {
 
 // The quick-filter strip's stage chips: a filter of their own that ANDs with the Status select,
 // whose options stay the statuses. Needs you, the strip's last chip, is a Status value.
-const STAGE_FILTERS = ["pdf_ready", "tailored", "gaps"] as const;
-type StageFilter = (typeof STAGE_FILTERS)[number];
-const STAGE_STRIP: { stage: StageFilter; label: string }[] = [
-  { stage: "pdf_ready", label: "Ready to apply" },
-  { stage: "tailored", label: "Tailored, review" },
-  { stage: "gaps", label: "Gaps open" },
-];
-
-function asStageFilter(v: string | null): StageFilter | null {
-  return v && (STAGE_FILTERS as readonly string[]).includes(v) ? (v as StageFilter) : null;
-}
+const STAGE_LABELS: Record<StageFilter, string> = {
+  pdf_ready: "Ready to apply",
+  tailored: "Tailored, review",
+  gaps: "Gaps open",
+};
 
 function formatDate(value: string | null): string {
   return (value && formatShortDate(value)) || "—";
@@ -244,24 +219,11 @@ function rowKey(r: Row): string {
 
 function ApplicationsContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const qc = useQueryClient();
   const confirm = useConfirm();
   const sidebarHidden = useSidebarHidden();
   const baseName = useBaseResumeLabel();
-  const [filter, setFilter] = useState<Filter>(() => {
-    const v = searchParams.get("status") ?? storedValue(FILTER_STORE_KEY);
-    return v && (FILTERS as readonly string[]).includes(v)
-      ? (v as Filter)
-      : "all";
-  });
-  const [stageFilter, setStageFilter] = useState<StageFilter | null>(() =>
-    asStageFilter(searchParams.get("stage") ?? storedValue(STAGE_STORE_KEY)),
-  );
-  const [source, setSource] = useState<SourceFilter>(() => {
-    const v = searchParams.get("source") ?? storedValue(SOURCE_STORE_KEY);
-    return v === "user" || v === "agent" ? v : "all";
-  });
+  const { filter, stage: stageFilter, source, update } = useTrackerFilters(FILTERS);
   const [q, setQ] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -474,27 +436,24 @@ function ApplicationsContent() {
   // matches" about rows that are still on their way.
   // Each chip counts the rows pressing it shows (source-scoped, before the search; nothing while the
   // other source loads). An empty chip is hidden unless it is on, so it can never vanish under the user.
-  const stageCount = (stage: StageFilter) =>
-    sourceScopedRows.filter((r) => (filter === "all" || rowFilterKey(r) === filter) && rowStage(r) === stage).length;
-  const needsYouCount = sourceScopedRows.filter(
-    (r) => rowFilterKey(r) === "needs_you" && (!stageFilter || rowStage(r) === stageFilter),
-  ).length;
+  const countRows = sourceScopedRows.map((r) => ({ filterKey: rowFilterKey(r), stage: rowStage(r) }));
+  const axes = { filter, stage: stageFilter };
   const needsStrip = stale
     ? []
     : [
-        ...STAGE_STRIP.map(({ stage, label }) => ({
+        ...STAGE_FILTERS.map((stage) => ({
           key: stage,
-          label,
-          count: stageCount(stage),
+          label: STAGE_LABELS[stage],
+          count: chipCount(countRows, axes, { stage }),
           on: stageFilter === stage,
-          toggle: () => setStageAndUrl(stageFilter === stage ? null : stage),
+          toggle: () => update({ stage: stageFilter === stage ? null : stage }),
         })),
         {
           key: "needs_you",
           label: "Needs you",
-          count: needsYouCount,
+          count: chipCount(countRows, axes, { filter: "needs_you" }),
           on: filter === "needs_you",
-          toggle: () => setFilterAndUrl(filter === "needs_you" ? "all" : "needs_you"),
+          toggle: () => update({ filter: filter === "needs_you" ? "all" : "needs_you" }),
         },
       ].filter((s) => s.count > 0 || s.on);
   const loading = apps.isLoading || savedJobs.isLoading || (stale && filtered.length === 0);
@@ -512,34 +471,6 @@ function ApplicationsContent() {
       noun: savedSource === "agent" ? "jobs from connected agents" : "saved jobs",
     },
   ].filter(isListCapped);
-
-  const writeUrl = (nextFilter: Filter, nextSource: SourceFilter, nextStage: StageFilter | null) => {
-    const params = new URLSearchParams();
-    if (nextFilter !== "all") params.set("status", nextFilter);
-    if (nextStage) params.set("stage", nextStage);
-    if (nextSource !== "all") params.set("source", nextSource);
-    const qs = params.toString();
-    // A filter switch keeps the reader where they are, not at the top.
-    router.replace(qs ? `/applications?${qs}` : "/applications", { scroll: false });
-  };
-
-  const setFilterAndUrl = (next: Filter) => {
-    setFilter(next);
-    storeValue(FILTER_STORE_KEY, next);
-    writeUrl(next, source, stageFilter);
-  };
-
-  const setStageAndUrl = (next: StageFilter | null) => {
-    setStageFilter(next);
-    storeValue(STAGE_STORE_KEY, next ?? "");
-    writeUrl(filter, source, next);
-  };
-
-  const setSourceAndUrl = (next: SourceFilter) => {
-    setSource(next);
-    storeValue(SOURCE_STORE_KEY, next);
-    writeUrl(filter, next, stageFilter);
-  };
 
   // Record the visible row order (job ids) so the job page's prev/next arrows
   // can walk exactly what the user was looking at, filters and sort included.
@@ -636,7 +567,7 @@ function ApplicationsContent() {
             value={filter}
             onValueChange={(v) => {
               if (v && (FILTERS as readonly string[]).includes(v)) {
-                setFilterAndUrl(v as Filter);
+                update({ filter: v as Filter });
               }
             }}
           >
@@ -680,7 +611,7 @@ function ApplicationsContent() {
             allLabel="Tracked"
             label="Filter jobs by source"
             value={source}
-            onChange={setSourceAndUrl}
+            onChange={(next) => update({ source: next })}
             // Hover or focus on Agents starts its fetch, so the first switch
             // shows rows instead of a skeleton. A fresh cache entry is kept.
             onPreview={(next) => {
@@ -733,7 +664,7 @@ function ApplicationsContent() {
                 ? needsKey
                   ? "Add an API key first, then add a job."
                   : "Add a job to get started."
-                : "Try a different status or clear the search."
+                : "Try a different status, turn off the quick filter, or clear the search."
             }
             action={
               allRows.length === 0 ? (
@@ -775,7 +706,7 @@ function ApplicationsContent() {
           <Table minWidth="57rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
             <TableHeader>
               <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
-                {header("role", "Role", "w-[100%]")}
+                {header("role", "Role", "w-full")}
                 {header("ats", "Match score", "w-[6.75rem] px-3")}
                 {header("status", "Status", "w-[9.25rem] px-3")}
                 {showWhere ? <TableHead className="w-[4.5rem] px-3">Where</TableHead> : null}
@@ -869,11 +800,18 @@ function ApplicationsContent() {
                             <span className="sr-only">No score yet</span>
                           </span>
                         ) : (
-                          // The hover names the resume behind the score; a saved job's best base is not named by the API.
+                          // The meter's name and the hover name the resume behind the score; a saved job's best
+                          // base is not named by the API.
                           <span className="inline-flex" title={resumeName || undefined}>
                             <ScoreBar
                               value={score}
-                              label={r.kind === "saved" ? "Best match score" : "Match score"}
+                              label={
+                                r.kind === "saved"
+                                  ? "Best match score"
+                                  : resumeName
+                                    ? `Match score, ${resumeName}`
+                                    : "Match score"
+                              }
                               valueText={score.toFixed(1)}
                               width="w-10"
                             />
@@ -928,15 +866,15 @@ function ApplicationsContent() {
                     <TableCell className="px-3 text-muted-foreground text-body-small tabular-nums">
                       {r.kind === "saved" ? "—" : formatDate(r.app.applied_at)}
                     </TableCell>
-                    <TableCell className="px-3" onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="px-3">
                       {step ? (
+                        // It only navigates, so it is never disabled: the page it opens says whose the job is.
+                        // Its click stays its own; the rest of the cell opens the job like the row.
                         <Button
                           size="sm"
                           variant={step.variant}
-                          disabled={!ownership.canWrite}
-                          aria-disabled={!ownership.canWrite || undefined}
-                          // A link rendered as a button: `disabled:` never matches it, `data-disabled` does.
-                          className="tabular-nums data-disabled:pointer-events-none data-disabled:opacity-50"
+                          className="tabular-nums"
+                          onClick={(e) => e.stopPropagation()}
                           nativeButton={false}
                           render={<Link href={nextStepHref(jobId, step)}>{step.label}</Link>}
                         />
