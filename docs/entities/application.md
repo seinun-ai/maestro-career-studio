@@ -12,7 +12,12 @@ and soft-deleted rows included; null when the slug has no row). The list summary
 alone also carries `ats_score`, the tracker's score column: the newest
 `tailored` AtsScore row for the application, else the `base` row for
 `(job, base_resume)`, else null. It is read-only (`ats_score.tracker_scores`,
-one query per kind for the page; the list never scores or backfills).
+one query per kind for the page; the list never scores or backfills). It also carries the
+step the application sits on: `stage` (saved, scored, gaps, tailored, pdf_ready, applied or
+closed), `open_session_id` with `gaps_done`/`gaps_total` on the gaps rung, and the booleans
+`has_draft` and `has_pdf`, so the wire needs no `customized_json` to tell. All are read at
+request time by `services/stage.py` (`for_applications`, two bulk queries per page); the
+list never writes them.
 
 - **Status vocabulary is backend-owned**: `ALLOWED_STATUSES` in
   `schemas/application.py` = draft, applied, interviewing, offered, accepted,

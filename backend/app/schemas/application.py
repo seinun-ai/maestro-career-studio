@@ -6,6 +6,7 @@ from pydantic import AliasChoices, AwareDatetime, BaseModel, Field, field_valida
 
 from app.schemas.job import JobOwnership, JobRead
 from app.schemas.resume_edit import ResumeEdit
+from app.services.stage import Rung
 
 # The one status vocabulary. The frontend renders exactly these; PATCH rejects
 # anything else so no writer (web, MCP, raw REST) can invent a status the
@@ -75,6 +76,15 @@ class ApplicationSummary(BaseModel):
     # List-endpoint-only, read-only: the newest tailored score, else the base
     # row for this resume; null when neither exists (never scored on read).
     ats_score: float | None = None
+    # List-endpoint-only, read-only (services/stage.py): the rung this application sits on,
+    # the open session behind a `gaps` rung with its resolved/listed counts, and whether a
+    # draft or a PDF exists, so the wire needs no customized_json to tell.
+    has_draft: bool = False
+    has_pdf: bool = False
+    stage: Rung = "saved"
+    open_session_id: UUID | None = None
+    gaps_done: int = 0
+    gaps_total: int = 0
 
     model_config = {"from_attributes": True}
 

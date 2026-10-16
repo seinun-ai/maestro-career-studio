@@ -8,7 +8,10 @@ JobSkill rows. **A Job has no status** — "Saved" (UI term) is derived as
 job-without-application (`GET /api/jobs?without_application=true`). The list summary alone carries
 `best_ats_score`, the max `composite` over the job's `base` AtsScore rows (null
 when none; `ats_score.best_base_scores`, one grouped query per page, read-only:
-the list never scores or backfills).
+the list never scores or backfills). It also carries the step the job is on: `stage`,
+`open_session_id`, `gaps_done` and `gaps_total`, read at request time by `services/stage.py`
+from the job's newest application (`for_applications`), else the job alone (`for_jobs`), in
+bounded queries per page. `GET /api/jobs/{id}/detail` carries the same four fields.
 
 - **Salary is optional and often absent** (~40%+ of US postings state no
   pay; some laws let a posting hyperlink a pay page — capture that as

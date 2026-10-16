@@ -1,8 +1,11 @@
+from uuid import UUID
+
 from pydantic import BaseModel
 
 from app.schemas.application import ApplicationRead
 from app.schemas.job import JobRead
 from app.schemas.knockout import KnockoutScan
+from app.services.stage import Rung
 
 
 class JobDetail(BaseModel):
@@ -18,3 +21,9 @@ class JobDetail(BaseModel):
     # The application's base resume's own name (archived and soft-deleted rows included, since the
     # application outlives both); null with no application or when the resume has no name.
     base_resume_name: str | None = None
+    # The rung the job page is on (services/stage.py): the newest application's, else the job's
+    # own; the open session and its resolved/listed counts are set only on the `gaps` rung.
+    stage: Rung
+    open_session_id: UUID | None = None
+    gaps_done: int = 0
+    gaps_total: int = 0

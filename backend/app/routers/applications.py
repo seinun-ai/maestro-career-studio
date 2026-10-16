@@ -42,6 +42,7 @@ from app.services import (
     resume_diff,
     resume_ops,
     resumes_folder,
+    stage,
 )
 from app.services import proposals as proposal_svc
 from app.services.application_writes import NO_TAILORED_RESUME, stage_resume_update
@@ -208,8 +209,16 @@ def list_applications(
     rows = db.execute(stmt).all()
     sync_ownership.stamp(db, {job.id: job for _, job, _ in rows}.values())
     scores = ats_score.tracker_scores(db, [row[0] for row in rows])
+    stages = stage.for_applications(db, [row[0] for row in rows])
     for application, job, base_name in rows:
         summary = ApplicationSummary.model_validate(application)
+        st = stages[application.id]
+        summary.has_draft = bool(application.customized_json)
+        summary.has_pdf = bool(application.pdf_path)
+        summary.stage = st.rung
+        summary.open_session_id = st.open_session_id
+        summary.gaps_done = st.gaps_done
+        summary.gaps_total = st.gaps_total
         summary.ownership = job.ownership
         summary.ats_score = scores.get(application.id)
         summary.job_title = job.title

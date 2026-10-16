@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import AfterValidator, BaseModel, Field
 
 from app.schemas.job_extraction import JobExtraction
+from app.services.stage import Rung
 
 APPLY_URL_MAX = 2048
 
@@ -137,6 +138,13 @@ class JobSummary(BaseModel):
     # Derived, list-endpoint-only: the best base-resume score, read-only
     # (null when the job has never been scored).
     best_ats_score: float | None = None
+    # Derived, list-endpoint-only (services/stage.py): the rung the job sits on (its newest
+    # application's, else the job's own), plus the open session behind a `gaps` rung with
+    # its resolved/listed counts.
+    stage: Rung = "saved"
+    open_session_id: UUID | None = None
+    gaps_done: int = 0
+    gaps_total: int = 0
     role_category: str | None = None
     level: str | None = None
     employment_type: str | None = None
