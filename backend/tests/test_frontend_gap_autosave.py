@@ -233,3 +233,26 @@ def test_card_buttons_that_change_a_resolution_are_locked():
     confirm = _CARD.rindex("<Button", 0, _CARD.index('setAction("cannot_confirm")'))
     tag = _flat(_CARD[confirm : _CARD.index('setAction("cannot_confirm")')])
     assert "focusableWhenDisabled disabled={locked}" in tag
+
+
+# --- A step click or a chip during a tailor ------------------------------------------
+
+
+def test_a_save_with_nothing_new_sends_nothing():
+    # Tailor's own save already sent the list: a later saveNow (a step click, a chip) must not PATCH it again
+    # while the tailor runs, or the PATCH lands after the tailor commits and 409s.
+    assert "const savedGen = useRef(0);" in _PAGE
+    nothing = _SAVE.index("if (editGen.current === savedGen.current) return true;")
+    assert nothing < _SAVE.index("saveResolutions(")
+    # Set from the generation the save began at, never a later one: an edit made while it ran still saves.
+    done = _flat(_SAVE[_SAVE.index("await run;") :])
+    assert done.startswith("await run; savedGen.current = Math.max(savedGen.current, gen);")
+
+
+def test_no_step_or_chip_leaves_while_a_write_runs():
+    assert "const actionRunning = () => tailorLock.current || useAsIs.isPending || startOver.isPending;" in _PAGE
+    pick = _arrow(_PAGE, "const pickResume = async (")
+    assert "if (picking.current || actionRunning()) return;" in pick
+    assert pick.index("actionRunning()") < pick.index("await saveNow()")
+    step = _arrow(_PAGE, "const openStep = async (")
+    assert step.index("if (actionRunning()) return;") < step.index("await saveNow()")

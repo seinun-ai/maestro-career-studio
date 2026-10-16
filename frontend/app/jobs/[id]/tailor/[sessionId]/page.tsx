@@ -40,8 +40,8 @@ import { useResumeSwitch } from "@/hooks/use-resume-switch";
 import { couldnt, errorDetail, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { isOwnershipRefusal, jobOwnershipView } from "@/lib/job-ownership";
+import { isLoadFailure } from "@/lib/query-state";
 import type { StepKey } from "@/lib/job-steps";
-import { asIsOverDraftConfirm } from "@/lib/resume-pick";
 import { cn } from "@/lib/utils";
 import {
   ApiError,
@@ -298,6 +298,9 @@ export default function TailorSessionPage({
   // Bumped by every edit. A save reports "Saved" or "Not saved" only if no edit
   // came after it began; otherwise a newer save is queued and will report.
   const editGen = useRef(0);
+  // The generation the last successful save began at: with no edit since, a save
+  // has nothing to send (a step click after Tailor's own save sends no PATCH).
+  const savedGen = useRef(0);
 
   const saveNow = async (): Promise<boolean> => {
     if (timerRef.current) {
@@ -308,6 +311,7 @@ export default function TailorSessionPage({
     // misleading toast. The user must Start Over — nothing to save here.
     if (staleReason) return true;
     if (latestRef.current === null && promptRef.current === null) return true; // nothing edited yet
+    if (editGen.current === savedGen.current) return true; // nothing edited since the last save
     const gen = editGen.current;
     setSaveState("saving");
     // Serialize behind any in-flight save so responses can't land out of order;
@@ -329,6 +333,7 @@ export default function TailorSessionPage({
     );
     try {
       await run;
+      savedGen.current = Math.max(savedGen.current, gen);
       if (editGen.current === gen) setSaveState("saved");
       return true;
     } catch (error) {
@@ -567,10 +572,14 @@ export default function TailorSessionPage({
   });
 
   // --- The steps and the resume chips ------------------------------------------
-  // Leaving through either saves first, as Back to job does: a failed save stays here with its toast.
+  // Leaving through either saves first (`saveNow`): a pending save is flushed and waited for, and a failed one keeps
+  // you here with its toast; a stale session sends nothing and lets you go. Back to job is a plain link: only the
+  // unmount flush saves behind it. Nothing leaves while a tailor, Use resume as is or a new gap analysis runs: the
+  // save would race the tailor (409), and each of them navigates when it lands.
+  const actionRunning = () => tailorLock.current || useAsIs.isPending || startOver.isPending;
   const picking = useRef(false);
   const pickResume = async (pick: string) => {
-    if (picking.current) return;
+    if (picking.current || actionRunning()) return;
     picking.current = true;
     try {
       if (await saveNow()) await switcher.openOrCreate(pick);
@@ -579,6 +588,7 @@ export default function TailorSessionPage({
     }
   };
   const openStep = async (key: StepKey) => {
+    if (actionRunning()) return;
     const tab = STEP_TABS[key];
     if (tab && (await saveNow())) router.push(`/jobs/${jobId}?tab=${tab}`);
   };
@@ -747,6 +757,8 @@ export default function TailorSessionPage({
     // "Use resume as is").
     let heading = "This gap analysis is done";
     let description = "Your tailored resume is on the job's Tailored resume step.";
+    // Superseded and abandoned analyses made no draft: their way on is step 2.
+    const tailored = session.data.status === "tailored";
     if (session.data.status === "superseded") {
       heading = "A newer gap analysis replaced this one";
       description = "Continue from the job's Resume and gaps step.";
@@ -763,7 +775,11 @@ export default function TailorSessionPage({
           <Button
             nativeButton={false}
             render={
-              <Link href={`/jobs/${jobId}?tab=output`}>View tailored resume</Link>
+              tailored ? (
+                <Link href={`/jobs/${jobId}?tab=output`}>View tailored resume</Link>
+              ) : (
+                <Link href={`/jobs/${jobId}?tab=fit`}>Go to Resume and gaps</Link>
+              )
             }
           />
           <Button
@@ -939,6 +955,18 @@ export default function TailorSessionPage({
         </section>
       </div>
 
+      {/* The confirms read the job's application, so the actions wait for the detail, and a switch needs it too. A
+          failed detail says why the chips are off; Tailor and Use resume as is still run. */}
+      {isLoadFailure(jobDetail) ? (
+        <LoadErrorState
+          className="py-4"
+          title="Couldn't load this job, so the resume chips are off."
+          detail={loadErrorDetail(jobDetail.error, "job")}
+          retrying={jobDetail.isFetching}
+          onRetry={() => void jobDetail.refetch()}
+        />
+      ) : null}
+
       <div className="bg-background/95 sticky bottom-0 z-10 -mx-6 mt-auto border-t px-6 py-3 backdrop-blur">
         {/* Wraps at narrow widths: the counts keep one line, and the actions
             drop below them instead of squeezing the counts into a column. */}
@@ -959,18 +987,14 @@ export default function TailorSessionPage({
                 variant="outline"
                 onClick={async () => {
                   // Reuse policy makes from-base overwrite the job's newest
-                  // application, whatever its base — never clobber a tailored
-                  // draft silently (review finding).
-                  if (application?.customized_json) {
-                    const applied = application.status != null && application.status !== "draft";
-                    if (!(await confirm({ ...asIsOverDraftConfirm(applied), destructive: true }))) return;
-                  }
-                  applyAsIsOnce();
+                  // application, whatever its base: step 2's confirm asks first
+                  // (another resume's switch words, or Replace the draft).
+                  if (await switcher.confirmAsIs(session.data.base_resume)) applyAsIsOnce();
                 }}
                 // Focusable while it runs: a natively disabled button dropped focus to <body>.
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 focusableWhenDisabled
-                disabled={useAsIs.isPending || tailorBusy || !!staleReason || !ownership.canWrite}
+                disabled={useAsIs.isPending || tailorBusy || !!staleReason || !ownership.canWrite || jobDetail.isPending}
               >
                 {useAsIs.isPending && <Loader2 className="animate-spin" />}
                 Use resume as is
@@ -982,7 +1006,7 @@ export default function TailorSessionPage({
                 className="data-disabled:opacity-50"
                 onClick={onQuickTailorClick}
                 focusableWhenDisabled
-                disabled={tailorBusy || useAsIs.isPending || !!staleReason || !ownership.canWrite}
+                disabled={tailorBusy || useAsIs.isPending || !!staleReason || !ownership.canWrite || jobDetail.isPending}
                 title="Fill open gaps from your Quick tailor settings, then tailor"
               >
                 <Zap />
@@ -994,7 +1018,7 @@ export default function TailorSessionPage({
               className="data-disabled:opacity-50"
               onClick={onTailorClick}
               focusableWhenDisabled
-              disabled={tailorBusy || useAsIs.isPending || !!staleReason || !ownership.canWrite}
+              disabled={tailorBusy || useAsIs.isPending || !!staleReason || !ownership.canWrite || jobDetail.isPending}
             >
               {tailor.isPending ? <Loader2 className="animate-spin" /> : <Wand2 />}
               {tailor.isPending ? "Tailoring… about 30 seconds" : "Tailor resume"}

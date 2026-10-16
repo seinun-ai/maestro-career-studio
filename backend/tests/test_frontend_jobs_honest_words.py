@@ -86,12 +86,17 @@ def test_quick_tailor_fills_only_what_its_settings_allow():
 
 
 def test_replacing_a_draft_says_the_pdf_goes_and_history_keeps_it():
-    # One set of words (lib/resume-pick.ts), used by the gap page and step 2.
+    # One set of words (lib/resume-pick.ts), asked through one hook by the gap page and step 2.
     words = _read("lib/resume-pick.ts")
     assert "\"Using your base resume as is replaces this job's tailored resume and removes its PDF. \" +" in words
     assert '"Version history keeps the old one.",' in words
+    assert "confirm({ ...asIsOverDraftConfirm(applied), destructive: true, returnFocus })" in _read("hooks/use-resume-switch.ts")
+    assert "if (await switcher.confirmAsIs(session.data.base_resume)) applyAsIsOnce();" in _read(_GAP_PAGE)
+    assert "if (await switcher.confirmAsIs(baseResume)) asIsOnce({ baseResume, sessionId });" in _read(
+        "components/resume-step.tsx"
+    )
     for rel in (_GAP_PAGE, "components/resume-step.tsx"):
-        assert "asIsOverDraftConfirm(applied)" in _read(rel), rel
+        assert "asIsOverDraftConfirm" not in _read(rel), rel
 
 
 def test_gap_counts_come_from_one_helper():
@@ -171,7 +176,22 @@ def test_the_gap_page_draws_step_two_with_the_resume_chips():
     assert "!jobDetail.data || !sessions.data || switcher.creating != null || tailorBusy" in page
     assert '? switcher.confirmSwitch(session.data.base_resume, "tailor")' in page
     assert page.count("(await confirmTailorAgain()) &&") == 2  # Tailor and Quick tailor
-    assert "if (!(await confirm({ ...asIsOverDraftConfirm(applied), destructive: true }))) return;" in page
+    # The actions that confirm on the job's application wait for the detail; a failed detail says why the chips
+    # are off instead of locking the page (`isPending`, not `!data`).
+    for label in ("onClick={onQuickTailorClick}", "onClick={onTailorClick}", "Use resume as is\n"):
+        disabled = page.index("disabled={", page.rindex("<Button", 0, page.index(label)))
+        assert page[disabled : page.index("\n", disabled)].endswith("|| jobDetail.isPending}"), label
+    assert "!jobDetail.data}" not in page
+    failed = page[page.index("{isLoadFailure(jobDetail) ? (") :]
+    failed = open_tag(failed, "LoadErrorState")
+    assert 'title="Couldn\'t load this job, so the resume chips are off."' in failed
+    assert 'detail={loadErrorDetail(jobDetail.error, "job")}' in failed and "onRetry={() => void jobDetail.refetch()}" in failed
+    assert page.index("{isLoadFailure(jobDetail) ? (") < page.index('<div className="bg-background/95 sticky bottom-0')
+    # A superseded or closed analysis made no draft: its way on is step 2, not step 3.
+    done = page[page.index('if (session.data.status !== "open") {') :]
+    done = done[: done.index("</main>")]
+    assert 'const tailored = session.data.status === "tailored";' in done
+    assert "tailored ? (" in done and "<Link href={`/jobs/${jobId}?tab=fit`}>Go to Resume and gaps</Link>" in done
     # An analysis whose resume has no chip says why.
     assert "is archived, so it has no chip here." in page and "has no Match score for this job, so it has no chip here." in page
     # Step 2's no-session panel says where Analyze gaps goes.
@@ -347,12 +367,11 @@ def test_a_resume_pick_is_a_preview_and_the_writes_confirm():
     assert 'if (!switcher.switchWords(pickedSlug, "continue")) return;' in cont and "event.preventDefault();" in cont
     assert "void switcher.continueOn(pickedSlug, openSession.id);" in cont
     # Use resume as is: the switch words for another resume; the old Replace draft words for the same one.
-    as_is = step[step.index("const asIsClick = async") : step.index("asIsOnce({ baseResume, sessionId });")]
-    assert 'if (switcher.switchWords(baseResume, "as_is")) {' in as_is
-    assert 'if (!(await switcher.confirmSwitch(baseResume, "as_is"))) return;' in as_is
-    assert "} else if (application?.customized_json) {" in as_is
-    assert "if (!(await confirm({ ...asIsOverDraftConfirm(applied), destructive: true }))) return;" in as_is
     hook = _read("hooks/use-resume-switch.ts")
+    as_is = hook[hook.index("const confirmAsIs = async") : hook.index("/** Analyze gaps")]
+    assert 'if (switchWords(slug, "as_is")) return confirmSwitch(slug, "as_is", returnFocus);' in as_is
+    assert "if (!application?.customized_json) return true;" in as_is
+    assert as_is.index('confirmSwitch(slug, "as_is"') < as_is.index("asIsOverDraftConfirm(applied)")
     assert "const state = jobResumeState(application, sessions);" in hook
     assert "return words == null || confirm({ ...words, destructive: true, returnFocus });" in hook
     assert 'if (await confirmSwitch(slug, "analyze", returnFocus)) createOnce(slug);' in hook
@@ -372,9 +391,10 @@ def test_the_switch_confirm_says_what_the_job_holds():
     assert "? `This job already has a tailored ${from} resume. ${doing} replaces that draft and removes its PDF. ` +" in words
     assert "`Version history keeps the old one. Answers you gave in the gaps for ${from} stay with it.`" in words
     assert ": `This job's resume is ${from}, used as is. ${doing} replaces it and removes its PDF. ` +" in words
-    for label in ('analyze: "Switch and analyze gaps",', 'continue: "Switch and continue",', 'as_is: "Switch and use as is",',
-                  'tailor: "Switch and tailor",'):
+    for label in ('analyze: "Switch and analyze gaps",', 'continue: "Switch and continue",', 'as_is: "Switch and use as is",'):
         assert label in words, label
+    # Tailor on another resume never asks: Analyze gaps or Continue asked on the way to the gap page.
+    assert "Switch and tailor" not in words and 'if (action === "tailor") return null;' in words
     # Once applied, re-tailoring the same resume still asks; Use resume as is keeps its own words, "resume" once applied.
     # Only the gap page's Tailor replaces the draft: Analyze gaps and Continue never ask about the same resume.
     assert 'if (state !== "applied" || action !== "tailor") return null;' in words

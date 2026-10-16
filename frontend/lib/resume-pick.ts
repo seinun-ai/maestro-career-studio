@@ -70,19 +70,18 @@ export function jobResumeState(
 /** The action a switch confirm guards: its label names it. `tailor` is the gap page's Tailor and Quick tailor. */
 export type SwitchAction = "analyze" | "continue" | "as_is" | "tailor";
 
-const CONFIRM_LABELS: Record<SwitchAction, string> = {
+const CONFIRM_LABELS: Record<Exclude<SwitchAction, "tailor">, string> = {
   analyze: "Switch and analyze gaps",
   continue: "Switch and continue",
   as_is: "Switch and use as is",
-  tailor: "Switch and tailor",
 };
 
 /**
  * The confirm before acting on `to` while the job's resume came from `from` (names, not slugs). Null when
  * nothing would be replaced: no application, a draft with no resume yet, or the same resume, except at the
  * gap page's Tailor once applied: tailoring the resume you applied with again replaces it there. Analyze gaps
- * and Continue only start or open a gap analysis, so they never ask about the same resume; Use resume as is
- * keeps its own confirm (`asIsOverDraftConfirm`).
+ * and Continue only start or open a gap analysis, so they never ask about the same resume; Tailor on another
+ * resume never asks (the way to the gap page did); Use resume as is keeps its own confirm (`asIsOverDraftConfirm`).
  */
 export function switchConfirm({
   state,
@@ -108,6 +107,8 @@ export function switchConfirm({
       confirmLabel: "Tailor again",
     };
   }
+  // Tailor on another resume never asks: Analyze gaps or Continue gap analysis asked on the way to the gap page.
+  if (action === "tailor") return null;
   // Use resume as is does not tailor: the sentence names what it does.
   const doing = action === "as_is" ? "Using another resume as is" : "Tailoring with another resume";
   const description =

@@ -35,7 +35,7 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { countryName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
-import { asIsOverDraftConfirm, defaultResumePick } from "@/lib/resume-pick";
+import { defaultResumePick } from "@/lib/resume-pick";
 import {
   ApiError,
   apiFetch,
@@ -201,15 +201,10 @@ export function ResumeStep({
   // A double click made two applications for one job: both POSTs found none to reuse.
   const asIsOnce = useSingleFlight(asIs.mutate);
 
+  // Another resume than the job's: the switch confirm says what is replaced. The same one over a draft: from-base
+  // still replaces it, so never clobber a tailored draft silently (the gap page asks the same way).
   const asIsClick = async (baseResume: string, sessionId: string | null) => {
-    // Another resume than the job's: the switch confirm says what is replaced. The same one over a draft:
-    // from-base still replaces it, so never clobber a tailored draft silently.
-    if (switcher.switchWords(baseResume, "as_is")) {
-      if (!(await switcher.confirmSwitch(baseResume, "as_is"))) return;
-    } else if (application?.customized_json) {
-      if (!(await confirm({ ...asIsOverDraftConfirm(applied), destructive: true }))) return;
-    }
-    asIsOnce({ baseResume, sessionId });
+    if (await switcher.confirmAsIs(baseResume)) asIsOnce({ baseResume, sessionId });
   };
 
   // "Mark applied without tailoring": the user override for skipping tailoring

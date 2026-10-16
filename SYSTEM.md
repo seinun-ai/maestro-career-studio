@@ -187,7 +187,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    see §6 inv-provenance-no-decay) autosaved debounced with replace=true semantics (omitted gap_ids are deleted server-side);
    KB-auto-resolved gaps arrive pre-selected with provenance + Undo and a counting banner; optional per-session note
    (`user_prompt`, falls back into tailor()). **Use resume as is** (visible at 0 addressed) → from-base + closes the session;
-   confirms first if it would replace an existing tailored draft.
+   asks first as step 2 does (`confirmAsIs`). It, Tailor and Quick tailor wait for the job's detail; no step or chip leaves mid-tailor.
 6. **Tailor** — the gap page's **Tailor resume** → `POST /tailoring-sessions/{id}/tailor`: deterministic pre-ops → smart-model
    edit ops → keyword-survival and voice checks (§6 inv-resume-voice) → the job's one application (new, or the newest one taking
    the new base: "Switched to {resume}" in version history) + version row → draft-KBPoint write-back → session `tailored` →

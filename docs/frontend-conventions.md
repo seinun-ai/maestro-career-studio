@@ -1222,10 +1222,16 @@
   "Switch and use as is"). Once applied, the gap page's Tailor and Quick tailor on that same resume ask "Tailor X
   again?" (Analyze gaps and Continue only start or open an analysis, so they do not). Use resume as is on the
   job's own resume over a draft asks "Replace the existing tailored draft?" (`asIsOverDraftConfirm`; "resume"
-  once applied), and opens step 3.
+  once applied), and opens step 3; both questions come from the hook's `confirmAsIs`, which the gap page's Use
+  resume as is asks too. Tailor on another resume never asks: Analyze gaps or Continue asked on the way in.
   The gap page draws the same `JobSteps` (step 2 shown; 1, 3 and 4 open the job page's `?tab=`) and
   `ResumeChips` under its header, its resume picked; a chip opens that resume's open gap analysis or starts one
-  (`openOrCreate`, `router.replace`), saving first. Pinned by `test_frontend_jobs_honest_words.py`.
+  (`openOrCreate`, `router.replace`), saving first. While a tailor, Use resume as is or a new gap analysis runs,
+  a step or chip does nothing, and a save with no edit since the last one sends nothing (it would 409 against the
+  tailor). Tailor, Quick tailor and Use resume as is wait for the job's detail (their confirms read its
+  application); a failed detail shows a Try again block above the footer naming why the chips are off. A
+  superseded or closed analysis's page offers **Go to Resume and gaps**. Pinned by `test_frontend_jobs_honest_words.py`
+  and `test_frontend_gap_autosave.py`.
 - **Tailored resume** (step 3, `components/tailored-resume-step.tsx`), inside one card: a score strip on
   `surface-container-low` (`AtsComparePanel compact`: before → after, the `DeltaChip` and the subscores that moved,
   shown as "Keywords +21.3" and read as "Keywords up 21.3 points", `lib/ats-words` `subscoreMoves`), a **Score

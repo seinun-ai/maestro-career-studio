@@ -9,15 +9,16 @@ import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { createTailoringSession } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
-import { jobResumeState, switchConfirm, type SwitchAction } from "@/lib/resume-pick";
+import { asIsOverDraftConfirm, jobResumeState, switchConfirm, type SwitchAction } from "@/lib/resume-pick";
 import type { Application, TailoringSession } from "@/lib/types";
 
 /**
  * The guard on every action that writes with a base resume other than the job's (step 2's actions, the gap page's
- * resume chips), and on the gap page's Tailor over the resume you applied with. A pick on step 2 is only a preview;
- * the action asks first when the job's resume would be replaced (`lib/resume-pick.ts` words it for the job's
- * state), then starts or opens the gap analysis. `replace` navigates without a history entry (the gap page
- * swapping one analysis for another).
+ * resume chips, Use resume as is on both), and on the gap page's Tailor over the resume you applied with. A pick on
+ * step 2 is only a preview; the action asks first when the job's resume would be replaced (`lib/resume-pick.ts`
+ * words it for the job's state), then starts or opens the gap analysis. Tailor never asks the switch question:
+ * the gap page was reached through Analyze gaps or Continue gap analysis, which already did. `replace` navigates
+ * without a history entry (the gap page swapping one analysis for another).
  */
 export function useResumeSwitch({
   jobId,
@@ -71,6 +72,17 @@ export function useResumeSwitch({
     return words == null || confirm({ ...words, destructive: true, returnFocus });
   };
 
+  /**
+   * Use resume as is on `slug`, true to go ahead: another resume than the job's asks with the switch words; the
+   * job's own over a draft asks to replace it (from-base replaces the draft); else nothing to ask.
+   */
+  const confirmAsIs = async (slug: string, returnFocus?: () => HTMLElement | null) => {
+    if (switchWords(slug, "as_is")) return confirmSwitch(slug, "as_is", returnFocus);
+    if (!application?.customized_json) return true;
+    const applied = application.status != null && application.status !== "draft";
+    return confirm({ ...asIsOverDraftConfirm(applied), destructive: true, returnFocus });
+  };
+
   /** Analyze gaps (and Restart gap analysis): a new gap analysis for `slug`, which replaces its open one. */
   const analyze = async (slug: string, returnFocus?: () => HTMLElement | null) => {
     if (await confirmSwitch(slug, "analyze", returnFocus)) createOnce(slug);
@@ -92,6 +104,7 @@ export function useResumeSwitch({
   return {
     switchWords,
     confirmSwitch,
+    confirmAsIs,
     analyze,
     continueOn,
     openOrCreate,

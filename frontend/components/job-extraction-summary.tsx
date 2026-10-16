@@ -15,10 +15,11 @@ const SKILL_CAP = 24;
 
 export function JobExtractionSummary({
   job,
-  onScoreAts,
+  onOpenResumeAndGaps,
 }: {
   job: Job;
-  onScoreAts?: () => void;
+  /** Go to Resume and gaps: the job page's step 2. */
+  onOpenResumeAndGaps?: () => void;
 }) {
   const skills =
     (job.extracted_json?.skills as ExtractedSkill[] | undefined) ?? [];
@@ -84,8 +85,8 @@ export function JobExtractionSummary({
             nativeButton={false}
             render={<Link href={`/jobs/${job.id}`}>View job</Link>}
           />
-          {onScoreAts && (
-            <Button size="sm" onClick={onScoreAts}>
+          {onOpenResumeAndGaps && (
+            <Button size="sm" onClick={onOpenResumeAndGaps}>
               Go to Resume and gaps
             </Button>
           )}

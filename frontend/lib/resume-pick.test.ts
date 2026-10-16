@@ -91,11 +91,10 @@ test("once applied, the gap page's Tailor on the same resume asks; starting or o
   // Before applying, the same resume asks nothing: the draft is still a draft.
   assert.equal(switchConfirm({ ...same, state: "tailored", action: "tailor" }), null);
   assert.equal(switchConfirm({ ...same, state: "as_is", action: "analyze" }), null);
-  // Another resume at Tailor: the switch words, labelled for the action.
-  assert.equal(
-    switchConfirm({ ...same, to: "ML Engineer", toSlug: "ml", state: "applied", action: "tailor" })?.confirmLabel,
-    "Switch and tailor",
-  );
+  // Another resume at Tailor asks nothing: Analyze gaps or Continue asked on the way to the gap page.
+  for (const state of ["applied", "tailored", "as_is"] as const) {
+    assert.equal(switchConfirm({ ...same, to: "ML Engineer", toSlug: "ml", state, action: "tailor" }), null, state);
+  }
   assert.deepEqual(asIsOverDraftConfirm(false), {
     title: "Replace the existing tailored draft?",
     description:

@@ -78,7 +78,7 @@ export default function NewApplicationPage() {
   const extract = useSingleFlight(extractJob.mutate);
   useLeaveGuard(rawText.trim().length > 0 && savedJob === null);
 
-  const goToAtsScores = () => {
+  const openResumeAndGaps = () => {
     if (savedJob) router.push(`/jobs/${savedJob.id}?tab=fit`);
   };
 
@@ -152,7 +152,7 @@ export default function NewApplicationPage() {
       </div>
 
       {savedJob && (
-        <JobExtractionSummary job={savedJob} onScoreAts={goToAtsScores} />
+        <JobExtractionSummary job={savedJob} onOpenResumeAndGaps={openResumeAndGaps} />
       )}
     </PageShell>
   );
