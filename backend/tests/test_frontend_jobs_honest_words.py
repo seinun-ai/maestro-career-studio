@@ -640,4 +640,23 @@ def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions()
     # Five changes, then the rest behind one toggle; once a PDF exists the list folds to its header.
     assert "const SHOWN_CHANGES = 5;" in panel and "`Show ${hunks.length - SHOWN_CHANGES} more changes`" in step
     assert "const listOpen = listShown ?? !hasPdf;" in step and "aria-expanded={listOpen}" in step
+    # Only the rows fold: the 409 line, a load error and Check wording sit outside the folded block.
+    fold = step[step.index("<div id={listId} hidden={!listOpen}") : step.index("{hunks.length > 0 ? (")]
+    assert "No changes yet." not in fold and "Try again" not in fold and "Check wording" not in fold
+    assert 'label="Revert this change"' in fold
+    # The full compare (each skill Gained, Lost or Same, Update score) stays one click away.
+    breakdown = step[step.index("<Popover open={breakdownOpen}") : step.index("</Popover>")]
+    assert "aria-expanded={breakdownOpen}" in breakdown and "Score breakdown" in breakdown
+    assert "shadow-level2" in breakdown and "<AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} />" in breakdown
+    # A failed Create PDF says so without naming an action it may not have been.
+    assert "Creating the PDF failed. Try again." in step
+
+
+def test_step_three_says_provenance_in_the_studios_words():
+    panel = _read("components/application-panel.tsx")
+    assert "PROVENANCE_CHIPS[value]" in panel and "const PROVENANCE:" not in panel
+    assert '"Yours"' not in panel and '"From career history"' not in panel
+    review = _read("components/resume-editor/diff-review.tsx")
+    assert "export const PROVENANCE_CHIPS:" in review
+    assert 'name: "From your career history"' in review and 'user: { kind: "you",' in review
 

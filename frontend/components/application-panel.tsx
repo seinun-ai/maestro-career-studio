@@ -32,6 +32,7 @@ import {
   type CoherenceState,
   hunkKey,
   KIND_LABELS,
+  PROVENANCE_CHIPS,
   revertHunk,
   SECTION_LABELS,
   sideText,
@@ -48,6 +49,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -364,30 +366,22 @@ export function resumeDiffQuery(applicationId: string, enabled = true) {
   });
 }
 
-/** Each provenance's word and its container pair. `llm` has none: it is the server's word for a change it could not
- *  attribute (an edit in the studio reads as one too), so calling it an AI rewrite would claim what nobody knows. */
-const PROVENANCE: Record<
-  Exclude<ResumeDiffHunk["provenance"], "llm">,
-  { kind: "careerHistory" | "you"; name: string; title: string; tone: string }
-> = {
-  kb_auto: {
-    kind: "careerHistory",
-    name: "From career history",
-    title: "Taken from your career history",
-    tone: "bg-success-container text-on-success-container",
-  },
-  user: {
-    kind: "you",
-    name: "Yours",
-    title: "From an answer you gave",
-    tone: "bg-primary-container text-on-primary-container",
-  },
+/** Each provenance's container pair; the words are the studio's (`PROVENANCE_CHIPS`). `llm` has none: it is the
+ *  server's word for a change it could not attribute (an edit in the studio reads as one too), so calling it an AI
+ *  rewrite would claim what nobody knows. */
+const PROVENANCE_TONE: Record<Exclude<ResumeDiffHunk["provenance"], "llm">, string> = {
+  kb_auto: "bg-success-container text-on-success-container",
+  user: "bg-primary-container text-on-primary-container",
 };
 
 function ProvenanceTag({ value, count }: { value: ResumeDiffHunk["provenance"]; count?: number }) {
   if (value === "llm") return null;
-  const { kind, name, title, tone } = PROVENANCE[value];
-  return <ActorChip kind={kind} name={count == null ? name : `${name} · ${count}`} title={title} className={tone} />;
+  const { kind, name, title } = PROVENANCE_CHIPS[value];
+  return (
+    <ActorChip kind={kind} name={name} title={title} className={PROVENANCE_TONE[value]}>
+      {count == null ? null : <span className="tabular-nums">· {count}</span>}
+    </ActorChip>
+  );
 }
 
 /** Where a change sits: its section, the item it belongs to (a bullet's job or project) and what happened. */
@@ -554,9 +548,10 @@ export function TailoredResumeStep({
     writeOnce({ data: next, key, kind: "apply", hadPdf: hasPdf });
   };
 
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [listShown, setListShown] = useState<boolean | null>(null);
   const [allShown, setAllShown] = useState(false);
-  // Before a PDF the changes are the body; once one exists the list folds to its header.
+  // Before a PDF the changes are the body; once one exists the rows fold under the header.
   const listOpen = listShown ?? !hasPdf;
   const listId = useId();
   const shown = allShown ? hunks : hunks.slice(0, SHOWN_CHANGES);
@@ -591,6 +586,19 @@ export function TailoredResumeStep({
           <div className="min-w-0 flex-1">
             <AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} compact />
           </div>
+          {/* The full compare (subscore bars, each skill Gained, Lost or Same, Update score), anchored to its button. */}
+          <Popover open={breakdownOpen} onOpenChange={setBreakdownOpen}>
+            <PopoverTrigger
+              render={
+                <Button type="button" variant="link" size="sm" className="h-auto px-1" aria-expanded={breakdownOpen}>
+                  Score breakdown
+                </Button>
+              }
+            />
+            <PopoverContent align="end" className="max-h-[70vh] w-[36rem] max-w-[90vw] overflow-y-auto p-0 shadow-level2">
+              <AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} />
+            </PopoverContent>
+          </Popover>
           <TailoredResumeMenu app={app} jobId={jobId} readOnly={readOnly} onOpenStep={onOpenStep} />
           <Button
             variant="outline"
@@ -630,7 +638,7 @@ export function TailoredResumeStep({
         {!hasPdf && app.render_error && !renderPdf.isPending ? (
           <p className="bg-error-container text-on-error-container flex items-start gap-2 rounded-corner-md px-3 py-2 text-body-small">
             <TriangleAlert aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
-            The last Create PDF failed. Check your last change, then create the PDF again.
+            Creating the PDF failed. Try again.
           </p>
         ) : null}
 
@@ -655,87 +663,86 @@ export function TailoredResumeStep({
               </Button>
             ) : null}
           </div>
-          <div id={listId} hidden={!listOpen} className="space-y-2">
-            {diff.isLoading ? (
-              <Skeleton className="animate-shimmer h-16 w-full" />
-            ) : nothingTailored ? (
-              <p className="text-muted-foreground text-body-medium">No changes yet.</p>
-            ) : diff.isError ? (
-              <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-body-medium">
-                {couldnt("load the changes", diff.error)}
-                <Button variant="link" size="sm" onClick={() => void diff.refetch()}>
-                  Try again
-                </Button>
-              </div>
-            ) : hunks.length === 0 ? (
-              <p className="text-muted-foreground text-body-medium">No changes from your base resume.</p>
-            ) : (
-              <>
-                <ul className="divide-y">
-                  {shown.map((hunk, position) => {
-                    const key = hunkKey(hunk, position);
-                    const before = sideText(hunk.before);
-                    const after = sideText(hunk.after);
-                    return (
-                      <li key={key} className="flex items-start gap-3 py-2">
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <ProvenanceTag value={hunk.provenance} />
-                            <span className="text-muted-foreground text-body-small">{hunkPlace(hunk, draft)}</span>
-                          </div>
-                          {before ? (
-                            <p className="text-muted-foreground text-body-small line-through">{before}</p>
-                          ) : null}
-                          {after ? <p className="text-body-medium">{after}</p> : null}
+          {/* Outside the fold: what the list could not show, and Check wording. Only the rows fold. */}
+          {diff.isLoading ? (
+            <Skeleton className="animate-shimmer h-16 w-full" />
+          ) : nothingTailored ? (
+            <p className="text-muted-foreground text-body-medium">No changes yet.</p>
+          ) : diff.isError ? (
+            <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-body-medium">
+              {couldnt("load the changes", diff.error)}
+              <Button variant="link" size="sm" onClick={() => void diff.refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : hunks.length === 0 ? (
+            <p className="text-muted-foreground text-body-medium">No changes from your base resume.</p>
+          ) : (
+            <div id={listId} hidden={!listOpen} className="space-y-2">
+              <ul className="divide-y">
+                {shown.map((hunk, position) => {
+                  const key = hunkKey(hunk, position);
+                  const before = sideText(hunk.before);
+                  const after = sideText(hunk.after);
+                  return (
+                    <li key={key} className="flex items-start gap-3 py-2">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <ProvenanceTag value={hunk.provenance} />
+                          <span className="text-muted-foreground text-body-small">{hunkPlace(hunk, draft)}</span>
                         </div>
-                        <IconButton
-                          data-revert=""
-                          label="Revert this change"
-                          icon={<Undo2 className="size-4" />}
-                          pending={writing?.kind === "revert" && writing.key === key}
-                          disabled={busy || readOnly}
-                          focusableWhenDisabled
-                          className="shrink-0 data-disabled:pointer-events-none data-disabled:opacity-50"
-                          onClick={(e) => onRevert(hunk, key, e.currentTarget)}
-                        />
-                      </li>
-                    );
-                  })}
-                </ul>
-                {hunks.length > SHOWN_CHANGES ? (
-                  <Button variant="link" size="sm" aria-expanded={allShown} onClick={() => setAllShown(!allShown)}>
-                    {allShown ? "Show fewer changes" : `Show ${hunks.length - SHOWN_CHANGES} more changes`}
-                  </Button>
-                ) : null}
-              </>
-            )}
-            {hunks.length > 0 ? (
-              <div className="space-y-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  pending={checkWording.isPending}
-                  onClick={() => checkOnce()}
-                >
-                  <SpellCheck className="size-3.5" />
-                  {checkWording.isPending ? "Checking…" : coherence.checked ? "Check again" : "Check wording"}
+                        {before ? (
+                          <p className="text-muted-foreground text-body-small line-through">{before}</p>
+                        ) : null}
+                        {after ? <p className="text-body-medium">{after}</p> : null}
+                      </div>
+                      <IconButton
+                        data-revert=""
+                        label="Revert this change"
+                        icon={<Undo2 className="size-4" />}
+                        pending={writing?.kind === "revert" && writing.key === key}
+                        disabled={busy || readOnly}
+                        focusableWhenDisabled
+                        className="shrink-0 data-disabled:pointer-events-none data-disabled:opacity-50"
+                        onClick={(e) => onRevert(hunk, key, e.currentTarget)}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+              {hunks.length > SHOWN_CHANGES ? (
+                <Button variant="link" size="sm" aria-expanded={allShown} onClick={() => setAllShown(!allShown)}>
+                  {allShown ? "Show fewer changes" : `Show ${hunks.length - SHOWN_CHANGES} more changes`}
                 </Button>
-                {coherence.checked && !checkWording.isPending ? (
-                  <CoherenceResults
-                    coherence={coherence}
-                    onApply={readOnly ? undefined : (flag, key) => onApplyFix(flag, key)}
-                    onApplyHygiene={
-                      readOnly
-                        ? undefined
-                        : (flag, key) => {
-                            if (flag.proposal !== null) onApplyFix({ ...flag, proposal: flag.proposal }, key);
-                          }
-                    }
-                  />
-                ) : null}
-              </div>
-            ) : null}
-          </div>
+              ) : null}
+            </div>
+          )}
+          {hunks.length > 0 ? (
+            <div className="space-y-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                pending={checkWording.isPending}
+                onClick={() => checkOnce()}
+              >
+                <SpellCheck className="size-3.5" />
+                {checkWording.isPending ? "Checking…" : coherence.checked ? "Check again" : "Check wording"}
+              </Button>
+              {coherence.checked && !checkWording.isPending ? (
+                <CoherenceResults
+                  coherence={coherence}
+                  onApply={readOnly ? undefined : (flag, key) => onApplyFix(flag, key)}
+                  onApplyHygiene={
+                    readOnly
+                      ? undefined
+                      : (flag, key) => {
+                          if (flag.proposal !== null) onApplyFix({ ...flag, proposal: flag.proposal }, key);
+                        }
+                  }
+                />
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         {hasPdf ? (

@@ -87,9 +87,9 @@ function SkillNowCell({ row }: { row: AtsSkillRow | null }) {
   return <span className="text-muted-foreground text-body-small">{note ?? (row.matched ? "Matched" : "Missing")}</span>;
 }
 
-/** The subscores that moved, as text: "Keywords +21 · Job title +40". Empty when none moved. */
+/** The subscores that moved, as text with the full panel's one decimal: "Keywords +21.3 · Job title +0.4". Empty when none moved. */
 function subscoreDeltaLine(subscores: Record<string, number | undefined>): string {
-  return SUBSCORE_LABELS.map(({ key, label }) => ({ label, delta: formatDelta((subscores[key] ?? 0) * 100, 0) }))
+  return SUBSCORE_LABELS.map(({ key, label }) => ({ label, delta: formatDelta((subscores[key] ?? 0) * 100) }))
     .filter(({ delta }) => delta.sign !== "flat")
     .map(({ label, delta }) => `${label} ${delta.text}`)
     .join(" · ");

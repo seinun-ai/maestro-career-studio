@@ -1214,14 +1214,16 @@
 - **Tailored resume** (step 3, `TailoredResumeStep` in `components/application-panel.tsx`), inside one card: a score
   strip on `surface-container-low` (`AtsComparePanel compact`: before → after, the `DeltaChip` and the subscores
   that moved as text), then ⋯ (**More actions for the tailored resume**: Tailor again opens step 2, Delete
-  application with the Details menu's confirm), **Edit resume** (outline, to the studio) and the view's one filled
+  application with the Details menu's confirm), **Edit resume** (outline, to the studio), a **Score breakdown**
+  popover holding the full compare (each skill Gained, Lost or Same, Update score) and the view's one filled
   button: **Create PDF** before a PDF, **Continue to Apply** once one exists. Then **Changes (N)**, the studio's
-  resume diff (one query key): a provenance chip (**From career history**, **Yours**; an unattributed change has
-  none, as in the studio, since the server cannot tell an AI rewrite from a hand edit), where it sits, the text,
+  resume diff (one query key): a provenance chip in the studio's words (`PROVENANCE_CHIPS`: **From your career
+  history**, **You**; an unattributed change has none, since the server cannot tell an AI rewrite from a hand edit), where it sits, the text,
   and a **Revert this change** icon button that writes the draft through the PATCH the studio's Save uses (one
   write at a time), scores it again and, when a PDF existed, creates it again. Five rows, then "Show N more
-  changes"; once a PDF exists the list folds to its header with Show. **Check wording** stays under the list with
-  the studio's results. A draft change removes the PDF on the server, so a PDF that exists is never out of date.
+  changes"; once a PDF exists only the rows fold (Show); the header, "No changes yet", a load error and **Check
+  wording** (the studio's results) stay outside the fold. A draft change removes the PDF on the server, so a
+  PDF that exists is the draft's own.
   The PDF card (`canvas`) exists only with a PDF: the file name, pages and the resumes folder line ("In Documents
   › … · Change folder"), Download PDF, Open PDF in new tab and Show in Finder as icon buttons, Update PDF (small,
   outline), then the page preview. Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_first_read_words.py`.

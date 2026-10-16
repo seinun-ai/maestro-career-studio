@@ -25,9 +25,10 @@ import { cn } from "@/lib/utils";
  * undo machinery, no second write path.
  */
 
-// Each provenance as its register chip. The "llm" entry is never drawn: ProvenanceChip returns null for an
-// llm hunk (an unattributed change), and the entry only completes the Record over every provenance.
-const PROVENANCE_CHIPS: Record<
+// Each provenance as its register chip, for the studio's review mode and the job page's step 3 (one set of words).
+// The "llm" entry is never drawn: ProvenanceChip returns null for an llm hunk (an unattributed change), and the
+// entry only completes the Record over every provenance.
+export const PROVENANCE_CHIPS: Record<
   ResumeDiffHunk["provenance"],
   { kind: "careerHistory" | "you" | "ai"; name?: string; title: string }
 > = {
