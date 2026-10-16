@@ -55,8 +55,10 @@ at to your local Maestro CS app.
   hand, it follows you into the tab you open for the application and says "The run moved to this tab"; press **Continue
   here** and it carries on from there. If you are on the job's tab and the run waits in another one, the Job step offers
   **Move the run to this tab**; a run that is filling never moves.
+  On a known application site that asks you to sign in, the run signs in with
+  your saved job-site login (Settings › Connected agents › Job-site login), once.
   On a known application site that asks you to make an account, the run makes it
-  with your saved job-site login, once, and waits up to 20 seconds for the site
+  with the same login, once, and waits up to 20 seconds for the site
   to finish before it says "Account not created" (see below). While a run is working the
   panel says "Ask opens when the run pauses"; the Ask box returns when it stops.
 - **Think when stuck.** Where a run would stop on a page it could not work (an error
@@ -176,8 +178,9 @@ Otherwise the backend refuses the old id and the panel cannot reach it.
   *expectation* from your profile either way.
 - **With the agreement permission** turned on in **Profile** in the web app, it
   may fill every field, signatures and typed-name attestations included. It
-  never unticks a box you already ticked. A password box is still skipped by
-  its type.
+  never unticks a box you already ticked. Autofill still skips every password
+  box by its type. Only Apply's sign-in or account step types a password: your
+  saved job-site password, on known application sites (below).
 - **Voluntary EEO questions** are skipped unless you have turned on the EEO
   consent in **Profile**. Veteran status is one Yes/No question there; a Yes never
   picks a protected class for you.
@@ -219,9 +222,15 @@ pages, never from memory of how a vendor looks.
 
 ## Privacy and telemetry
 
-Everything stays on your machine: the extension talks only to your local
-backend. The only data that leaves your machine is the AI calls your backend
-itself makes.
+The extension's own network calls go only to your local backend. Your backend
+makes the AI calls, to the AI service you chose. What the Companion types into
+an application site goes to that site. With **Apply**, each page it moves past
+with **Next**, and the job-site login it signs in or makes an account with,
+reach the site before you press **Submit**, because many application sites save
+each page as you leave it.
+
+The panel remembers which job each tab is on, in the browser's session storage,
+until you close the tab or the browser.
 
 **The fill log is off unless you turn it on.** Open the Companion's options
 (right-click its toolbar icon, then **Options**) and tick **Keep a fill log**.
