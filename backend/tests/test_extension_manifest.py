@@ -168,6 +168,28 @@ def test_the_pinned_key_still_hashes_to_the_id_the_backend_admits(manifest):
     )
 
 
+# Assigned by Google at the first Chrome Web Store upload; the store strips the
+# pinned `key`, so this id cannot be derived from manifest.json until the store's
+# public key replaces it.
+CHROME_WEB_STORE_ID = "bppkeipififkepldkogmfpkkhoakgndl"
+
+
+def test_the_backend_admits_the_chrome_web_store_build():
+    """A store install must reach a backend that sets nothing.
+
+    Without this id in the default, the store build loads, the panel opens, and
+    every backend call is refused by CORS: the card says Maestro is not
+    reachable while Maestro is running. Read the field DEFAULT for the same
+    reason as above: conftest sets MAESTRO_CS_EXTENSION_IDS.
+    """
+    from app.config import Settings
+
+    default_ids = Settings.model_fields["maestro_cs_extension_ids"].default
+    assert CHROME_WEB_STORE_ID in default_ids
+    # Exact ids only: the allowlist must never grow a pattern.
+    assert all(len(i) == 32 and set(i) <= set("abcdefghijklmnop") for i in default_ids)
+
+
 def test_every_file_the_manifest_names_exists(manifest, content_script):
     """A missing file is not a degraded feature; it breaks the load.
 

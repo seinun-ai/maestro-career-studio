@@ -2397,10 +2397,15 @@ The allowlist is **exact ids only** — never a `chrome-extension://.*` pattern,
 which would let *any* installed extension read the whole career record out of
 an API that has no authentication. Pinning the id keeps the one admitted id
 known rather than whatever Chrome happened to generate. Set
-`MAESTRO_CS_EXTENSION_IDS` only to admit a *different* build: a fork you
-re-keyed, or a Web Store install (Google assigns that id and it will not match
-this one). The variable **replaces** the default, so list every id you want,
+`MAESTRO_CS_EXTENSION_IDS` only to admit a *different* build, such as a fork
+you re-keyed. The variable **replaces** the default, so list every id you want,
 comma-separated.
+
+The default also holds the Chrome Web Store build's id,
+**`bppkeipififkepldkogmfpkkhoakgndl`**, which Google assigned at the first
+upload (from 0.11.1). The store strips the pinned `key` at that upload, so the
+two builds have different ids until the store's public key replaces the pinned
+one (docs/RELEASING.md, Chrome Web Store step 2).
 
 - The pinned key is a **public** key and identifies the extension; it is not a
   secret and is meant to be committed. The matching private key is not in this

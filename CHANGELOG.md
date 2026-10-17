@@ -28,6 +28,31 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-10-16
+
+The Companion is going into the Chrome Web Store, and the store gives it an
+extension ID of its own. Maestro only talks to the Companion IDs it knows, so
+a store install would have opened to "Maestro is not reachable" with Maestro
+running. This release teaches Maestro the store ID. The Companion you loaded
+unpacked keeps working as it is.
+
+### Breaking changes
+
+None.
+
+### Changed
+
+- **Maestro now also accepts the Chrome Web Store build of the Companion,**
+  `bppkeipififkepldkogmfpkkhoakgndl`, next to the unpacked one,
+  `pjmfonfapjdabkoicnelpflpjojdjgan`. Each is one exact ID; any other
+  extension is still refused. If you set `MAESTRO_CS_EXTENSION_IDS` yourself,
+  that list replaces the default, so add the store ID to it to use the store
+  build.
+- **The README leads with what your AI assistant can do with Maestro**
+  (extract, maintain, hunt, apply), shows costs in dollars (about $0.01 an
+  application on the OpenAI default), and its hero animation uses the site's
+  Figtree captions.
+
 ## [0.11.0] — 2026-10-16
 
 The Companion used to fill one page and wait for you to click through the rest. Turn on full

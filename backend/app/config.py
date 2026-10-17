@@ -165,8 +165,13 @@ class Settings(BaseSettings):
     # List several comma-separated to admit more than one build — e.g. the
     # unpacked id here alongside a Web Store id, which is assigned by Google and
     # will not match this one.
+    #
+    # The second id is the Chrome Web Store build's, assigned by Google at the
+    # first upload. Both are this repo's extension: the first is the pinned
+    # `key` loaded unpacked, the second the store install. Each is one exact id.
     maestro_cs_extension_ids: Annotated[list[str], NoDecode] = [
-        "pjmfonfapjdabkoicnelpflpjojdjgan"
+        "pjmfonfapjdabkoicnelpflpjojdjgan",
+        "bppkeipififkepldkogmfpkkhoakgndl",
     ]
 
     # Web origins allowed to call the API from a browser. Two readers, one list

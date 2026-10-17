@@ -155,7 +155,8 @@ icon works from Chrome 114).
 
 With the default ports there is nothing to configure. The extension has a fixed
 id, **`pjmfonfapjdabkoicnelpflpjojdjgan`**, and the backend already allows that
-id, so there is no id to copy and no backend restart.
+id, so there is no id to copy and no backend restart. From 0.11.1 the backend
+also allows the Chrome Web Store build's id, **`bppkeipififkepldkogmfpkkhoakgndl`**.
 
 **After an update**, press **Reload** on the extension's card at
 `chrome://extensions`, then reload any job tabs that were already open. A tab

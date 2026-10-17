@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "maestro-career-studio"
-version = "0.11.0"
+version = "0.11.1"
 description = "A local job-application copilot: match scoring, resume tailoring, an MCP server and a Chrome Companion, run with one command."
 readme = "PYPI.md"
 license = "Apache-2.0"
