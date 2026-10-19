@@ -1,0 +1,25 @@
+"""Source pins for the claims-with-wordings surfaces: the wordings popover and
+the Tidy bullets dialog call their pure modules and say the designed words.
+Behaviour lives in frontend/lib/*.test.ts (node --test)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+_FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
+
+
+def _read(rel: str) -> str:
+    return (_FRONTEND / rel).read_text()
+
+
+def test_points_list_hides_combined_bullets_and_opens_the_wordings_popover():
+    src = _read("components/career/points-list.tsx")
+    assert "visibleClaims(" in src
+    row = src[src.index("function PointRow(") :]
+    for needle in ("wordingsChip(", "wordingActions(", "splitRequest(",
+                   "Wordings of this bullet", "Use as the main wording", "Make its own bullet",
+                   "Combined from another bullet", "PopoverTrigger", '"Bullet updated"', "Now its own bullet",
+                   "splitKbWording(", "unmerge: true"):
+        assert needle in row, needle
+    assert "Wording differs" not in src, "the Drifted badge is now the wordings chip"

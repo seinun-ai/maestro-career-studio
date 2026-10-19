@@ -33,7 +33,7 @@ import { useSingleFlight } from "@/hooks/use-single-flight";
 import { focusTarget } from "@/lib/focus";
 import { deleteKbPoint, patchKbPoint, bulkKbPointState, KB_DRAFTS_LIMIT } from "@/lib/api";
 import { couldnt, errorDetail, isPlainSentence } from "@/lib/error-text";
-import { SECTION_ORDER_LABELS, type SectionKey } from "@/lib/formatting";
+import { sectionWord } from "@/lib/section-word";
 import type { KBEntitySummary, KBInboxPoint, KBPointPatch, UUID } from "@/lib/types";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { PointActorChip } from "@/components/career/points-list";
@@ -90,12 +90,6 @@ function draftSuccessor(row: HTMLElement | null, control: string): () => HTMLEle
     if (!next) return panel;
     return next.querySelector<HTMLElement>(`[data-draft-action="${control}"]`) ?? focusTarget(next);
   };
-}
-
-/** A resume section's name ("extra" is the importer's key for Other sections). */
-function sectionWord(section: string): string {
-  const key = (section === "extra" ? "extra_sections" : section) as SectionKey;
-  return SECTION_ORDER_LABELS[key] ?? "Other sections";
 }
 
 export function InboxPanel({

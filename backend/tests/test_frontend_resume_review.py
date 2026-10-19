@@ -290,7 +290,8 @@ def test_bullet_origins_are_true_and_said_once():
 
 def test_resume_usage_names_tailored_resumes_by_their_job():
     points = _read("components/career/points-list.tsx")
-    assert "useResumeKeyLabel(usageKeys)" in points and "useBaseResumeLabel()" not in points
+    # The usage keys plus every wording's resumes (the wordings popover names them too).
+    assert "useResumeKeyLabel([...usageKeys" in points and "useBaseResumeLabel()" not in points
     hook = _read("components/career/use-resume-key-label.ts")
     assert 'queryKey: ["applications"]' in hook
     assert 'return job ? `Tailored resume for ${job}` : "A tailored resume";' in hook
@@ -590,8 +591,6 @@ def test_career_bullets_merge_origin_and_trust():
     assert 'role="img"' in usage
     assert 'className="h-6"' in points
     assert "origin_detail && !agent" in points
-    # Drift stays a neutral chip with only the icon warning-coloured.
-    assert 'className="size-3 text-warning"' in points
     # The pre-existing transition bugs: translate/scale are named, never `transform`.
     for rel in ("entity-card", "entity-detail", "points-list"):
         assert "transition-[transform" not in _read(f"components/career/{rel}.tsx")

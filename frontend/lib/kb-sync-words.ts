@@ -47,7 +47,7 @@ export function syncBreakdownLines(status: SyncStatus): string[] {
   if (drift > 0) lines.push(`${plural(drift, "reworded bullet", "reworded bullets")} (kept as ${drift === 1 ? "a wording" : "wordings"})`);
   // The tier vocabulary is the server's; a shape this list does not name still says how much there is.
   if (lines.length === 0) lines.push(`${syncActionableCount(status)} to add`);
-  if (!status.compared_wording) lines.push("Couldn't compare wording, so everything here reads as new.");
+  if (status.compared_wording === false) lines.push("Couldn't compare wording, so everything here reads as new.");
   return lines;
 }
 
@@ -70,7 +70,7 @@ export function syncResultSentence(result: SyncResult): string {
   const sentences = [
     added.length > 0 ? `Added ${joinWords(added)} to your career history.` : null,
     result.drifted > 0 ? `Kept ${plural(result.drifted, "rewording", "rewordings")}.` : null,
-    result.compared_wording ? null : "Couldn't compare wording.",
+    result.compared_wording === false ? "Couldn't compare wording." : null,
   ].filter((part): part is string => part !== null);
   return sentences.length > 0 ? sentences.join(" ") : "Nothing new to add. Your career history already has all of this.";
 }

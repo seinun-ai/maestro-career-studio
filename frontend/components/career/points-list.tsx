@@ -9,7 +9,6 @@ import {
   Pencil,
   RotateCcw,
   Trash2,
-  TriangleAlert,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,6 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useResumeKeyLabel } from "@/components/career/use-resume-key-label";
@@ -32,9 +32,17 @@ import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
 import { focusIfDropped } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { agentDisplayName } from "@/lib/agent-name";
-import { deleteKbPoint, patchKbPoint } from "@/lib/api";
+import { combineKbPoints, deleteKbPoint, patchKbPoint, splitKbWording } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
-import type { KBPointOut, KBPointPatch, KBPointProvenance, KBPointState } from "@/lib/types";
+import { splitRequest, visibleClaims, wordingActions, wordingsChip, type SplitRequest } from "@/lib/kb-wordings";
+import { sectionWord } from "@/lib/section-word";
+import type {
+  KBPointOut,
+  KBPointPatch,
+  KBPointProvenance,
+  KBPointState,
+  KBWordingOut,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
@@ -184,7 +192,9 @@ export function PointsList({
   entityId: string;
   points: KBPointOut[];
 }) {
-  const ordered = [...points].sort(
+  // A bullet combined into another is that bullet's wording, not a row of its own.
+  const visible = visibleClaims(points);
+  const ordered = [...visible].sort(
     (left, right) =>
       STATE_ORDER[left.state] - STATE_ORDER[right.state] ||
       Date.parse(right.updated_at) - Date.parse(left.updated_at),
@@ -196,7 +206,7 @@ export function PointsList({
         <CardTitle className="flex items-center gap-2">
           Bullets
           <Badge variant="secondary">
-            {points.length}
+            {visible.length}
           </Badge>
         </CardTitle>
         <p className="text-muted-foreground text-body-medium">
@@ -233,6 +243,10 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
   // then approved, then not used), and moving a row can drop its focus: once
   // the list has refetched, a dropped focus comes back here.
   const actionRef = useRef<HTMLButtonElement>(null);
+  // The wordings chip. Adopting or splitting a wording can remove the chip
+  // (no wordings left), so focus falls back to the state button.
+  const wordingsRef = useRef<HTMLButtonElement>(null);
+  const [wordingsOpen, setWordingsOpen] = useState(false);
 
   const invalidate = () =>
     Promise.all([
@@ -242,27 +256,35 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
     ]);
 
   const update = useMutation({
-    mutationFn: ({ payload }: { payload: KBPointPatch; message: string; undoable?: boolean }) =>
-      patchKbPoint(point.id, payload),
+    mutationFn: ({
+      payload,
+    }: {
+      payload: KBPointPatch;
+      message: string;
+      undoable?: boolean;
+      // Adopting a wording: Undo puts this text back as the line.
+      undoText?: string;
+    }) => patchKbPoint(point.id, payload),
     onSuccess: async (updated, variables) => {
       setText(updated.text);
       setEditing(false);
-      toast.success(
-        variables.message,
-        variables.undoable
-          ? {
-              action: {
-                label: "Undo",
-                onClick: () =>
-                  patchKbPoint(updated.id, { state: "draft" })
-                    .then(() => invalidate())
-                    .catch((error: Error) => toast.error(couldnt("undo the approval", error))),
-              },
-            }
-          : undefined,
-      );
+      const { undoText } = variables;
+      const undo =
+        undoText !== undefined
+          ? () =>
+              patchKbPoint(updated.id, { text: undoText })
+                .then(() => invalidate())
+                .catch((error: Error) => toast.error(couldnt("undo the change", error)))
+          : variables.undoable
+            ? () =>
+                patchKbPoint(updated.id, { state: "draft" })
+                  .then(() => invalidate())
+                  .catch((error: Error) => toast.error(couldnt("undo the approval", error)))
+            : null;
+      toast.success(variables.message, undo ? { action: { label: "Undo", onClick: undo } } : undefined);
       await invalidate();
       if (variables.payload.state) focusIfDropped(actionRef.current);
+      if (undoText !== undefined) focusIfDropped(wordingsRef.current ?? actionRef.current);
     },
     onError: (error: Error) => toast.error(couldnt("update the bullet", error)),
   });
@@ -278,10 +300,55 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
     onError: (error: Error) => toast.error(couldnt("delete the bullet", error)),
   });
 
-  const pending = update.isPending || remove.isPending;
+  // Make its own bullet. Either path leaves a separate bullet whose id the Undo
+  // combines back into this one (a split wording returns as a combined wording,
+  // which can be split again).
+  const split = useMutation({
+    mutationFn: async (req: SplitRequest) =>
+      req.kind === "split-wording"
+        ? (await splitKbWording(req.pointId, req.text, req.resumeKey)).id
+        : (await patchKbPoint(req.pointId, { state: "approved", unmerge: true })).id,
+    onSuccess: async (newId) => {
+      toast.success("Now its own bullet", {
+        action: {
+          label: "Undo",
+          onClick: () =>
+            combineKbPoints(point.id, [newId])
+              .then(() => invalidate())
+              .catch((error: Error) => toast.error(couldnt("undo the split", error))),
+        },
+      });
+      await invalidate();
+      focusIfDropped(wordingsRef.current ?? actionRef.current);
+    },
+    onError: (error: Error) => toast.error(couldnt("make it its own bullet", error)),
+  });
+  const splitOnce = useSingleFlight(split.mutate);
+
+  const pending = update.isPending || remove.isPending || split.isPending;
   const usageKeys = [...new Set(point.usage.map((usage) => usage.resume_key))];
-  const resumeName = useResumeKeyLabel(usageKeys);
-  const hasDrift = point.usage.some((usage) => usage.drifted);
+  const resumeName = useResumeKeyLabel([...usageKeys, ...point.wordings.flatMap((w) => w.resume_keys)]);
+  const chip = wordingsChip(point.wordings);
+
+  const adoptWording = (wording: KBWordingOut) => {
+    setWordingsOpen(false);
+    updateOnce({ payload: { text: wording.text }, message: "Bullet updated", undoText: point.text });
+  };
+  const splitWording = (wording: KBWordingOut) => {
+    const req = splitRequest(point.id, wording);
+    if (!req) return;
+    setWordingsOpen(false);
+    splitOnce(req);
+  };
+  const wordingSource = (wording: KBWordingOut) =>
+    wording.kind === "merged"
+      ? "Combined from another bullet"
+      : [
+          wording.resume_keys.map(resumeName).join(", "),
+          wording.section ? sectionWord(wording.section) : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
 
   const cancelEdit = () => {
     setText(point.text);
@@ -432,13 +499,65 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             {usageKeys.length}
           </span>
         ) : null}
-        {hasDrift ? (
-          <span
-            className="inline-flex h-6 items-center gap-1 rounded-full bg-surface-container px-2 text-body-small text-foreground"
-            title="A resume still uses older wording."
-          >
-            <TriangleAlert className="size-3 text-warning" aria-hidden="true" /> Wording differs
-          </span>
+        {chip !== null ? (
+          <Popover open={wordingsOpen} onOpenChange={setWordingsOpen}>
+            <PopoverTrigger
+              render={
+                <button
+                  ref={wordingsRef}
+                  type="button"
+                  className="inline-flex h-6 items-center gap-1 rounded-full bg-surface-container px-2 text-body-small text-foreground transition-[scale,box-shadow] duration-150 ease-out hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  {chip}
+                  <ChevronDown className="size-3 opacity-50" aria-hidden="true" />
+                </button>
+              }
+            />
+            <PopoverContent align="start" className="w-96">
+              <PopoverTitle className="text-muted-foreground text-label-medium">
+                Wordings of this bullet
+              </PopoverTitle>
+              <ul className="mt-1 divide-y divide-foreground/10">
+                {point.wordings.map((wording) => {
+                  const actions = wordingActions(wording);
+                  const source = wordingSource(wording);
+                  return (
+                    <li key={`${wording.kind}:${wording.text}`} className="flex flex-col gap-1 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <p className="text-muted-foreground text-label-small">{source}</p>
+                        <div className="flex items-center gap-1">
+                          {actions.adopt ? (
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => adoptWording(wording)}
+                              disabled={pending}
+                            >
+                              Use as the main wording
+                            </Button>
+                          ) : null}
+                          {actions.split ? (
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => splitWording(wording)}
+                              disabled={pending}
+                            >
+                              Make its own bullet
+                            </Button>
+                          ) : null}
+                          {actions.hint ? (
+                            <span className="text-muted-foreground text-label-small">{actions.hint}</span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <p className="text-body-small">&ldquo;{wording.text}&rdquo;</p>
+                    </li>
+                  );
+                })}
+              </ul>
+            </PopoverContent>
+          </Popover>
         ) : null}
         {point.tags.map((tag) => (
           <Badge key={tag} variant="secondary" className="text-body-small">
