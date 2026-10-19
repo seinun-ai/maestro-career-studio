@@ -92,6 +92,9 @@ def test_career_profile_registers_onboarding_tools_and_hunt_does_not():
         "kb_approve_points",
         "kb_sync_base",
         "create_base_resume_from_kb",
+        "kb_groom_entity",
+        "kb_combine_points",
+        "kb_retire_points",
     }
     assert new_tools <= CAREER_TOOLS
     assert {"list_base_resumes", "get_base_resume"} <= CAREER_TOOLS

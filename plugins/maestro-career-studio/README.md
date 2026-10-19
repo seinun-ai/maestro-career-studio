@@ -76,7 +76,8 @@ Maestro's backend. It starts no subprocess. Never publish port 8001 or proxy
 The Codex plugin asks for approval before these tools:
 `mark_submitted`, `record_consent`, `record_decision`, `get_job_site_login`,
 `prepare_application_pdf_upload`, `report_failure`, `waive_health_gate`,
-`restore_resume_version`, `record_triage`, `kb_approve_points`, and `sync_now`.
+`restore_resume_version`, `record_triage`, `kb_approve_points`,
+`kb_combine_points`, `kb_retire_points`, and `sync_now`.
 These can record a durable decision, waive a health gate, share a login,
 stage an upload, replace resume content, or sync data to your paired copy.
 The client prompts are

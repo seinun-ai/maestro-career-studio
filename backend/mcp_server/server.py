@@ -533,6 +533,23 @@ def kb_list_points(
     return _client.list_kb_points(state=state, limit=limit, offset=offset)
 
 
+@mcp.tool(**_read("Find Similar Career Points"))
+@_guard
+def kb_groom_entity(entity_id: str) -> Any:
+    """Similar bullets on one Career KB entity, clustered, with a proposed keeper.
+    Deterministic and zero LLM calls: the pinned local embedder scores every pair of
+    the entity's active points (drafts included, retired and user_cannot_confirm
+    excluded) and joins pairs at 0.80 cosine and above, minus pairs the user marked
+    "Not the same" at /career. Proposes only; nothing is written. Each cluster
+    carries score, keeper_id, members [{id, text, state, origin, provenance,
+    usage_count, best_score}] and pairs. The keeper rule is approved over draft,
+    then most recently updated, then longest text. compared_wording is false when
+    the embedder could not run; clusters is then empty. Acting on a cluster is
+    kb_combine_points (one claim in other words: the others become the keeper's
+    wordings) or kb_retire_points (a similar but stale one)."""
+    return _client.get_kb_groom(entity_id)
+
+
 # ---------- Career KB: write ----------
 # Every tool here mints DRAFT content, kb_ingest_resume included — an agent
 # transcribing a resume is not the user approving it. The single way to
@@ -735,9 +752,9 @@ def kb_approve_points(
 ) -> Any:
     """Batch-set Career KB point state to approved or retired. Approved points are
     the only ones that appear on composed resumes and the career export; this is
-    the single approval path available over MCP. The state written is the user's
-    decision about the listed points; the server does not check that the user
-    reviewed them (a convention, not enforcement, as with record_consent).
+    the single approval path available over MCP. The state written is the
+    user's decision about the listed points; the server does not check that the
+    user reviewed them (a convention, not enforcement, as with record_consent).
 
     state is approved|retired only; bulk-to-draft is impossible. 1-500 ids;
     repeats collapse to one result row. Per-id results are honest: unknown ids
@@ -762,14 +779,64 @@ def kb_approve_points(
     }
 
 
+@mcp.tool(**_write("Combine Career Points", destructive=False, idempotent=True))
+@_guard
+def kb_combine_points(keeper_id: str, point_ids: list[str]) -> Any:
+    """Fold Career KB points into one: the keeper stays the bullet, every other
+    listed point is retired and recorded as one of the keeper's wordings. Resumes
+    that use any of them keep their text; combining never edits a resume.
+    Reversible from /career (Make its own bullet). The grouping written is the
+    user's decision about the listed points; the server does not check that the
+    user reviewed them (a convention, not enforcement, the same gate as
+    kb_approve_points). Same entity required (400); a retired or
+    user_cannot_confirm keeper or loser is refused (400), and so is a keeper that
+    is itself folded into another. Returns {keeper, repointed}: the keeper with its
+    wordings, and any combined claims the fold moved from a loser onto it. 1-50 ids."""
+    return _client.kb_combine_points(keeper_id, point_ids)
+
+
+@mcp.tool(**_write("Retire Career Points", destructive=False, idempotent=True))
+@_guard
+def kb_retire_points(point_ids: list[str]) -> Any:
+    """Batch-retire Career KB points: they stop being offered to resumes and the
+    career export; resumes that already use them keep their text. Reversible
+    from /career (Use again). The state written is the user's decision about
+    the listed points; the server does not check that the user reviewed them
+    (a convention, not enforcement, the same gate as kb_approve_points).
+
+    1-500 ids; repeats collapse to one result row. Per-id results are honest:
+    unknown ids return ok=false detail="not found" and the rest still proceed.
+    Response is {results: [{id, ok, state, detail}], next}; next is a hint
+    (null when suppressed or unavailable).
+    """
+    body = _client.kb_approve_points(point_ids, state="retired")
+    results = body.get("results") or [] if isinstance(body, dict) else []
+    return {
+        "results": results,
+        "next": _best_effort_hint(
+            lambda: workflow.next_after_bulk_state(
+                results,
+                requested_state="retired",
+                allowed_tools=_active_allowed_tools(),
+                hints_enabled=_hints_enabled(),
+            )
+        ),
+    }
+
+
 @mcp.tool(**_write("Sync Resume to Career KB", destructive=False, idempotent=True))
 @_guard
 def kb_sync_base(slug: str) -> Any:
     """Sync one base resume into the Career KB.
 
     Deterministic: zero LLM calls. New material lands as DRAFT points
-    (origin=base_sync) for the user to approve at /career. Never edits
-    resumes. Safe to rerun — a second call is a no-op when already in sync.
+    (origin=base_sync) for the user to approve at /career. A bullet that
+    rephrases an existing point on the same item (0.80 cosine and above) is
+    kept as that point's wording, not added as a second point; only a new
+    claim lands as a draft. Never edits resumes. Safe to rerun — a second
+    call is a no-op when already in sync. Returns compared_wording: false
+    means the embedder could not run, so every bullet was added as new and
+    nothing was matched.
     """
     return _client.kb_sync_base(slug)
 

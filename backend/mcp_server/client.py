@@ -581,6 +581,14 @@ class BackendClient:
     def kb_sync_base(self, slug: str) -> Any:
         return self._request("POST", f"/api/base-resumes/{slug}/kb-sync")
 
+    def get_kb_groom(self, entity_id: str) -> Any:
+        return self._request("GET", f"/api/kb/entities/{entity_id}/groom")
+
+    def kb_combine_points(self, keeper_id: str, point_ids: list[str]) -> Any:
+        return self._request(
+            "POST", "/api/kb/points/combine", json={"keeper_id": keeper_id, "point_ids": point_ids}
+        )
+
     def create_base_resume_from_kb(
         self,
         entity_ids: list[str],

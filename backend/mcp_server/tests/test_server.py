@@ -15,6 +15,9 @@ KB_TOOL_NAMES = {
     "kb_ingest_resume",
     "kb_approve_points",
     "kb_sync_base",
+    "kb_groom_entity",
+    "kb_combine_points",
+    "kb_retire_points",
 }
 
 
@@ -221,6 +224,51 @@ def test_kb_sync_base_docstring_is_draft_only_and_deterministic():
     assert "draft" in lower
     assert "never edits" in lower
     assert "rerun" in lower or "rerun-safe" in lower or "safe to rerun" in lower
+
+
+def test_kb_sync_base_docstring_names_the_compared_flag_and_the_wording_rule():
+    doc = (srv.kb_sync_base.__doc__ or "").lower()
+    assert "compared_wording" in doc
+    assert "wording" in doc and "0.80" in doc
+
+
+def test_kb_groom_entity_is_read_only_and_wires_to_the_report(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(srv._client, "get_kb_groom", lambda entity_id: seen.update(id=entity_id) or {"clusters": []})
+    assert srv.kb_groom_entity("e1") == {"clusters": []}
+    assert seen == {"id": "e1"}
+    doc = (srv.kb_groom_entity.__doc__ or "").lower()
+    assert "deterministic" in doc and "zero llm" in doc.replace("-", " ")
+    assert "kb_combine_points" in doc and "kb_retire_points" in doc
+
+
+def test_kb_combine_points_states_the_gate_and_forwards_ids(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(srv._client, "kb_combine_points",
+                        lambda keeper_id, point_ids: seen.update(k=keeper_id, ids=point_ids) or {"keeper": {"id": keeper_id, "wordings": []}, "repointed": []})
+    out = srv.kb_combine_points("k", ["a", "b"])
+    assert seen == {"k": "k", "ids": ["a", "b"]}
+    assert out["keeper"]["id"] == "k"
+    doc = srv.kb_combine_points.__doc__ or ""
+    assert "user's decision" in doc and "reversible" in doc.lower()
+    assert "never" in doc.lower() and "resume" in doc.lower()  # retiring/combining never edits a resume
+
+
+def test_kb_retire_points_is_the_consent_gated_retire_twin(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "kb_approve_points",
+        lambda ids, state="approved": seen.update(ids=ids, state=state) or {"results": [{"id": i, "ok": True, "state": "retired"} for i in ids]},
+    )
+    _SettingsDown.install(monkeypatch)  # the hint is best-effort, as for kb_approve_points
+    out = srv.kb_retire_points(["p1", "p2"])
+    assert seen == {"ids": ["p1", "p2"], "state": "retired"}
+    assert [r["state"] for r in out["results"]] == ["retired", "retired"]
+    assert out["next"] is None
+    approve_doc = srv.kb_approve_points.__doc__ or ""
+    retire_doc = srv.kb_retire_points.__doc__ or ""
+    assert "user's decision" in approve_doc and "user's decision" in retire_doc
+    assert "reversible" in retire_doc.lower()
 
 
 def test_kb_list_points_forwards_pagination(monkeypatch):
@@ -1258,6 +1306,11 @@ _PINNED_HINTS = {
     "restore_resume_version": (False, True, False, False),
     "kb_edit_profile": (False, True, True, False),
     "kb_approve_points": (False, True, True, False),
+    # Read-only report; proposes, writes nothing.
+    "kb_groom_entity": (True, False, True, False),
+    # Reversible from /career (unmerge / Use again), so not destructive; the same ids twice is a no-op.
+    "kb_combine_points": (False, False, True, False),
+    "kb_retire_points": (False, False, True, False),
     "record_consent": (False, True, False, False),
     "mark_submitted": (False, True, False, False),
     # Purely additive.

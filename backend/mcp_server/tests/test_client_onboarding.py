@@ -89,3 +89,33 @@ def test_create_base_resume_from_kb_posts_entity_ids():
     assert body["display_name"] == "Data Scientist"
     assert body["include_summary"] is True
     assert body["summary"] == "Reviewed summary"
+
+
+@respx.mock
+def test_get_kb_groom_reads_the_entity_report():
+    route = respx.get(f"{BASE}/api/kb/entities/e1/groom").mock(
+        return_value=httpx.Response(200, json={"entity_id": "e1", "entity_title": "Orbit",
+                                               "compared_wording": True, "active_points": 2, "clusters": []})
+    )
+    out = BackendClient(BASE).get_kb_groom("e1")
+    assert out["clusters"] == []
+    assert route.called
+
+
+@respx.mock
+def test_kb_combine_points_posts_the_keeper_and_the_others():
+    route = respx.post(f"{BASE}/api/kb/points/combine").mock(
+        return_value=httpx.Response(200, json={"keeper": {"id": "k", "wordings": []}, "repointed": []})
+    )
+    BackendClient(BASE).kb_combine_points("k", ["a", "b"])
+    assert json.loads(route.calls.last.request.read()) == {"keeper_id": "k", "point_ids": ["a", "b"]}
+
+
+@respx.mock
+def test_kb_sync_base_passes_compared_wording_through():
+    respx.post(f"{BASE}/api/base-resumes/hybrid/kb-sync").mock(
+        return_value=httpx.Response(200, json={"created": 0, "items_added": 0, "drifted": 0, "renamed": [],
+                                               "skipped": [], "skills": [], "skills_added": [],
+                                               "last_kb_synced_at": None, "compared_wording": False})
+    )
+    assert BackendClient(BASE).kb_sync_base("hybrid")["compared_wording"] is False
