@@ -274,7 +274,9 @@ Deterministic: same texts, same pinned model, same machine, same report.
   what makes Use again a split and keeps a cycle impossible. Losers are meant to be active
   claims (that is all Tidy bullets offers); a loser that was already folded elsewhere is
   re-pointed, and Undo then leaves it an ordinary retired bullet rather than a wording of its
-  earlier keeper, a limit accepted because only the API can reach it. **Combine flattens:** a loser's own combined children are
+  earlier keeper, a limit accepted because only the API can reach it. A loser that is retired but
+  NOT folded is refused (400): a stale Tidy report must not silently absorb a bullet the user just
+  stopped using, and Undo must never resurrect one. **Combine flattens:** a loser's own combined children are
   re-pointed to the new keeper too, so every merged claim is one step from an active keeper and
   the wordings popover (which reads one level) can always reach it. Idempotent.
 - `PATCH /api/kb/points/{id} {state, unmerge: true}` is the split and the Undo of a combine.
@@ -407,3 +409,9 @@ split, kept pairs, adoption), `docs/agent-surfaces.md` (three tools), `docs/fron
   `merge_entities` by hand meanwhile.
 - A KB-wide "items with similar bullets" count would need embedding every item on list load; not
   until the per-item action has earned it.
+- "Not the same" Undo forgets every pair among the cluster's ids, including a pair the user kept
+  apart earlier (possible when single link joined them through a third bullet). A faithful Undo
+  needs the POST to return only the pairs it newly stored and a per-pair DELETE. Low impact; noted.
+- A cluster's "% similar" is its strongest pair; in a single-link chain the two ends can be
+  further apart than the label suggests. Fine for the first release; a per-member score is in the
+  report already (`best_score`) if the dialog ever wants to show it.
