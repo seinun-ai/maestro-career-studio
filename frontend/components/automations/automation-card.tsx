@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button";
 import { RunOutcome } from "@/components/proposals/run-outcome";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCopy } from "@/hooks/use-copy";
-import { APPLY_CARD_ID, NEED_LABELS, promptFor } from "@/lib/automations";
+import { APPLY_CARD_ID, NEED_LABELS } from "@/lib/automations";
 import { formatTimeAgo } from "@/lib/format-date";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { lastRanLine, type RunOutcome as Outcome } from "@/lib/agent-runs";
-import type { AgentApp, AutomationCard as AutomationCardData } from "@/lib/types";
+import type { AutomationCard as AutomationCardData } from "@/lib/types";
 
 const KIND_LABEL = {
   scheduled: "Scheduled",
@@ -33,19 +33,14 @@ const NEED_ICON: Partial<Record<keyof typeof NEED_LABELS, LucideIcon>> = {
 };
 
 /** One automation: what it does, what it needs, what it never does, and the
- * prompt to copy for the chosen app. Copy is off for an app Maestro can't
- * reach; a failed clipboard write opens the prompt so it can be selected. */
+ * prompt to copy. A failed clipboard write opens the prompt so it can be
+ * selected. */
 export function AutomationCard({
   card,
-  app,
-  disabledReasonId,
   lastRun,
   outcome,
 }: {
   card: AutomationCardData;
-  app: AgentApp;
-  /** The app note that says why Copy is off; Copy points at it. */
-  disabledReasonId?: string;
   /** Undefined while no run data is available, null when this card never ran. */
   lastRun?: string | null;
   /** How that newest run ended; none while unknown or never run. */
@@ -55,7 +50,7 @@ export function AutomationCard({
   const promptId = useId();
   const promptRef = useRef<HTMLPreElement>(null);
   const focusPromptWhenShown = useRef(false);
-  const text = promptFor(card, app);
+  const text = card.prompt;
   const ranLine = lastRanLine(lastRun, formatTimeAgo);
   const KindIcon = KIND_ICON[card.kind];
 
@@ -76,7 +71,7 @@ export function AutomationCard({
   async function copyPrompt() {
     const ok = await copy(text);
     if (ok) {
-      toast.success(`Prompt copied. Paste it into ${app.label}.`);
+      toast.success("Prompt copied. Paste it into your agent app.");
     } else if (promptRef.current) {
       // Already open: focus it now. Otherwise open it, and the effect
       // focuses it on arrival (a flag left set would steal a later Show).
@@ -131,15 +126,7 @@ export function AutomationCard({
           </p>
         ) : null}
         <div className="flex items-center gap-2">
-          <Button
-            onClick={() => void copyPrompt()}
-            disabled={!app.reachable}
-            // A disabled <button> drops keyboard focus and says nothing about
-            // why; this one stays focusable and points at the app note.
-            focusableWhenDisabled
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
-            aria-describedby={!app.reachable ? disabledReasonId : undefined}
-          >
+          <Button onClick={() => void copyPrompt()}>
             {copied ? <CircleCheck aria-hidden="true" /> : <Copy aria-hidden="true" />}
             {copied ? "Copied" : "Copy prompt"}
           </Button>

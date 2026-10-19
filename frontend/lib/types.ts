@@ -2255,16 +2255,9 @@ export type AutomationCard = {
   needs: AutomationNeed[];
   never: string | null;
   body: string;
+  prompt: string;
 };
-export type AgentApp = {
-  id: string;
-  label: string;
-  reachable: boolean;
-  preamble: string;
-  attended_preamble: string;
-  note: string | null;
-};
-export type AutomationCatalog = { cards: AutomationCard[]; apps: AgentApp[] };
+export type AutomationCatalog = { cards: AutomationCard[] };
 
 /** Where a filled answer came from: the What was submitted tab's pill (backend
  * `schemas/filled_answers.py` `Source`; hand-synced like the status vocabulary). */
