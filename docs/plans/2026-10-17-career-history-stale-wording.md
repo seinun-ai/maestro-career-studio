@@ -903,7 +903,7 @@ class KBWordingOut(BaseModel):
 
     resume:  a resume's rewording (a from_source port-log row); adopt or split.
     placed:  an older copy a resume still carries (a to_resume or legacy row whose
-             snapshot differs); neither, with the hint "Send to resume to update it",
+             snapshot differs); neither, with the hint "Add to a resume to update it",
              because adopting it would revert a KB edit.
     merged:  a claim combined into this one (its retired point); adopt or split.
     import:  an imported resume's text (merge_sources_json); adopt only.
@@ -2151,7 +2151,7 @@ test("each kind gets its actions: adopt and split, adopt only, or the hint", () 
   assert.deepEqual(wordingActions(w({ kind: "merged", point_id: "p2" })), { adopt: true, split: true, hint: null });
   assert.deepEqual(wordingActions(w({ kind: "import", adoptable: true, splittable: false })), { adopt: true, split: false, hint: null });
   assert.deepEqual(wordingActions(w({ kind: "placed", adoptable: false, splittable: false })), {
-    adopt: false, split: false, hint: "Send to resume to update it",
+    adopt: false, split: false, hint: "Add to a resume to update it",
   });
 });
 
@@ -2194,7 +2194,7 @@ export function wordingsChip(wordings: readonly KBWordingOut[]): string | null {
 }
 
 /** An older copy a resume still carries cannot be adopted: it would revert a KB edit. */
-export const PLACED_HINT = "Send to resume to update it";
+export const PLACED_HINT = "Add to a resume to update it";
 
 export function wordingActions(w: KBWordingOut): { adopt: boolean; split: boolean; hint: string | null } {
   return { adopt: w.adoptable, split: w.splittable, hint: w.kind === "placed" ? PLACED_HINT : null };
@@ -2812,7 +2812,7 @@ profiles. `kb_sync_base` keeps a rephrasing as a wording (0.80+) and returns `co
 In the Career history section, add: the points list hides a combined bullet and shows it under
 its keeper (`lib/kb-wordings.ts` `visibleClaims`); the **N wordings** chip (the old "Wording
 differs" badge, now on every bullet with wordings) opens "Wordings of this bullet" with **Use as
-the main wording**, **Make its own bullet** and the hint "Send to resume to update it" by kind;
+the main wording**, **Make its own bullet** and the hint "Add to a resume to update it" by kind;
 the entity page's **Tidy bullets** dialog (`career/groom-dialog.tsx`, shown with two or more
 active bullets; one decision per cluster: "Keep this one" radio with the proposed keeper,
 **Combine into one** primary, **Stop using** per other row, **Not the same**; no combine-all;

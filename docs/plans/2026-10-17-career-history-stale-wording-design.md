@@ -145,7 +145,7 @@ Schemas:
   point's port-log rows, its `merge_sources_json` and the retired points merged into it; one row
   per distinct normalized text, and a text equal to the claim's own line is never a wording.
   `resume` (a `from_source` row): adoptable and splittable. `placed` (a `to_resume` or legacy row
-  whose snapshot differs from the claim): neither, with the hint "Send to resume to update it",
+  whose snapshot differs from the claim): neither, with the hint "Add to a resume to update it",
   because adopting there would revert a KB edit. `merged`: adoptable and splittable (split is Use
   again plus clearing the pointer). `import` (`merge_sources_json`): adoptable, not splittable.
 - `KBPointOut` gains `wordings: list[KBWordingOut]` and `merged_into_point_id: UUID | None`.
@@ -204,7 +204,7 @@ Data Scientist resume · experience                 Use as the main wording · M
 "<the resume's rewording>"
 Combined from another bullet                       Use as the main wording · Make its own bullet
 "<the combined claim's text>"
-Compact resume · experience                        Send to resume to update it
+Compact resume · experience                        Add to a resume to update it
 "<the older copy a resume still carries>"
 ```
 
