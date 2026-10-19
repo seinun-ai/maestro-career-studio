@@ -34,7 +34,7 @@ _ERROR_BODY_MAX_CHARS = 1000
 _ERROR_ITEMS_MAX = 8
 
 # Heavy per-row fields left out of list views; the detail tool carries them.
-_KB_POINT_LIST_OMIT = frozenset({"usage", "merge_sources"})
+_KB_POINT_LIST_OMIT = frozenset({"usage", "merge_sources", "wordings"})
 _JOB_EXPORT_OMIT = frozenset({"raw_text", "raw_text_hash", "extracted_json"})
 
 logger = logging.getLogger(__name__)

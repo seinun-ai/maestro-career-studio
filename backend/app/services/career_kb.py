@@ -394,23 +394,30 @@ def wordings_of(
     point: KBPoint, port_logs: Sequence[KBPortLog], merged: Sequence[KBPoint]
 ) -> list[KBWordingOut]:
     """The claim's other phrasings, one row per distinct normalized text, in the
-    order: resume rewordings, older placed copies, combined claims, imported text."""
+    order: resume rewordings, older placed copies, combined claims, imported text.
+
+    When a combined claim's text collides with an earlier row, the row becomes
+    that claim's (kind "merged", with its point_id) so it can still be split out;
+    the resumes already on the row stay on it."""
     own = point_text_key(point.text)
-    rows: dict[str, KBWordingOut] = {}
+    rows: dict[str, dict] = {}
 
     def add(kind: str, text: str, *, resume_key: str | None = None, section: str | None = None,
-            point_id=None, adoptable: bool, splittable: bool) -> None:
+            point_id: uuid.UUID | None = None, adoptable: bool, splittable: bool) -> None:
         key = point_text_key(text)
         if not key or key == own:
             return
         row = rows.get(key)
         if row is None:
-            rows[key] = KBWordingOut(kind=kind, text=text.strip(), resume_keys=[], section=section,
-                                     point_id=point_id, adoptable=adoptable, splittable=splittable)
-            row = rows[key]
-        if resume_key and resume_key not in row.resume_keys:
-            row.resume_keys.append(resume_key)
-            row.resume_keys.sort()
+            row = rows[key] = {"kind": kind, "text": text.strip(), "keys": set(), "section": section,
+                               "point_id": point_id, "adoptable": adoptable, "splittable": splittable}
+        elif point_id is not None and row["point_id"] is None:
+            row.update(kind="merged", point_id=point_id, adoptable=True, splittable=True)
+        if resume_key:
+            row["keys"].add(resume_key)
+
+    def _str_or_none(value: object) -> str | None:
+        return value if isinstance(value, str) else None
 
     for log in port_logs:
         if log.direction == "from_source":
@@ -424,9 +431,13 @@ def wordings_of(
         add("merged", other.text, point_id=other.id, adoptable=True, splittable=True)
     for src in point.merge_sources_json or []:
         if isinstance(src, dict) and isinstance(src.get("text"), str):
-            add("import", src["text"], resume_key=src.get("resume_key"), section=src.get("section"),
-                adoptable=True, splittable=False)
-    return list(rows.values())
+            add("import", src["text"], resume_key=_str_or_none(src.get("resume_key")),
+                section=_str_or_none(src.get("section")), adoptable=True, splittable=False)
+    return [
+        KBWordingOut(kind=r["kind"], text=r["text"], resume_keys=sorted(r["keys"]), section=r["section"],
+                     point_id=r["point_id"], adoptable=r["adoptable"], splittable=r["splittable"])
+        for r in rows.values()
+    ]
 
 
 def _point_logs(session: Session, point: KBPoint) -> Sequence[KBPortLog]:
@@ -448,7 +459,11 @@ def _to_point_out(
 ) -> KBPointOut:
     logs = port_logs if port_logs is not None else _point_logs(session, point)
     if merged is None:
-        merged = session.scalars(select(KBPoint).where(KBPoint.merged_into_point_id == point.id)).all()
+        merged = session.scalars(
+            select(KBPoint)
+            .where(KBPoint.merged_into_point_id == point.id)
+            .order_by(KBPoint.created_at, KBPoint.id)
+        ).all()
     usage = _usage_from_logs(logs, point)
     return KBPointOut(
         id=point.id,
@@ -625,6 +640,11 @@ def entity_detail(session: Session, entity: KBEntity) -> KBEntityDetail:
         ).all()
         for log in port_logs:
             logs_by_point[log.point_id].append(log)
+    merged_by_keeper: dict = defaultdict(list)
+    # The same order list_points and the lazy query in _to_point_out use.
+    for p in sorted(points, key=lambda q: (q.created_at, q.id)):
+        if p.merged_into_point_id is not None:
+            merged_by_keeper[p.merged_into_point_id].append(p)
     summary = entity_summary(session, entity)
     return KBEntityDetail(
         **summary.model_dump(),
@@ -633,7 +653,7 @@ def entity_detail(session: Session, entity: KBEntity) -> KBEntityDetail:
         points=[
             _to_point_out(
                 session, p, port_logs=logs_by_point.get(p.id, []),
-                merged=[q for q in points if q.merged_into_point_id == p.id],
+                merged=merged_by_keeper.get(p.id, []),
             )
             for p in points
         ],

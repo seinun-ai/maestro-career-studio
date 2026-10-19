@@ -371,7 +371,11 @@ def list_points(
             logs_by_point[log.point_id].append(log)
     merged_by_keeper = defaultdict(list)
     if ids:
-        for child in db.scalars(select(KBPoint).where(KBPoint.merged_into_point_id.in_(ids))).all():
+        for child in db.scalars(
+            select(KBPoint)
+            .where(KBPoint.merged_into_point_id.in_(ids))
+            .order_by(KBPoint.created_at, KBPoint.id)
+        ).all():
             merged_by_keeper[child.merged_into_point_id].append(child)
 
     inbox: list[KBInboxPoint] = []

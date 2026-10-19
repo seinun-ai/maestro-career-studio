@@ -40,12 +40,17 @@ def test_list_kb_points_drops_per_use_history_and_keeps_the_pick_list_fields():
         "tags": ["perf"],
         "usage": [{"resume_key": "master", "ported_text": "x" * 500}],
         "merge_sources": [{"resume_key": "a", "section": "experience", "text": "y" * 300}],
+        "wordings": [{"kind": "resume", "text": "z" * 300, "resume_keys": ["a"], "section": "experience",
+                      "point_id": None, "adoptable": True, "splittable": True}],
+        "merged_into_point_id": None,
     }
     respx.get(f"{BASE}/api/kb/points").mock(return_value=httpx.Response(200, json=[row]))
     out = BackendClient(BASE).list_kb_points()
     assert "usage" not in out[0]
     assert "merge_sources" not in out[0]
-    for kept in ("id", "entity_id", "entity_title", "entity_kind", "text", "state", "origin", "tags"):
+    assert "wordings" not in out[0]
+    for kept in ("id", "entity_id", "entity_title", "entity_kind", "text", "state", "origin", "tags",
+                 "merged_into_point_id"):
         assert out[0][kept] == row[kept]
 
 
