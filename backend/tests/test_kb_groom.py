@@ -24,17 +24,29 @@ VEC = {
 }
 
 
-def _item(db_session, *texts, states=None, provenances=None, updated=None):
+CREATED = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def _ids():
+    """Two point ids, lower first."""
+    return sorted([uuid.uuid4(), uuid.uuid4()])
+
+
+def _item(db_session, *texts, states=None, provenances=None, updated=None, ids=None):
+    """Points created in argument order (created_at one second apart)."""
     ent = KBEntity(kind="project", title="Orbit")
     db_session.add(ent)
     db_session.flush()
     points = []
-    for text in texts:
+    for n, text in enumerate(texts):
         p = KBPoint(
             entity_id=ent.id, text=text, origin="manual",
             state=(states or {}).get(text, "approved"),
             provenance=(provenances or {}).get(text, "user_authored"),
+            created_at=CREATED + timedelta(seconds=n),
         )
+        if ids and text in ids:
+            p.id = ids[text]
         db_session.add(p)
         db_session.flush()
         if updated and text in updated:
@@ -61,25 +73,36 @@ def test_fixed_vectors_give_deterministic_clusters_and_single_link_joins_a_chain
 
 
 def test_keeper_rule_in_each_tiebreak_order(db_session, monkeypatch):
+    """Each case's winner loses on every later criterion, so each rule is load-bearing."""
     _vectors(monkeypatch, VEC)
     now = datetime.now(UTC)
-    # approved beats draft
-    ent, by = _item(db_session, A, B, states={A: "draft", B: "approved"})
+    older, newer = now - timedelta(days=2), now - timedelta(days=1)
+    assert len(A) < len(B)
+
+    # approved beats draft: A is approved but older, shorter and the larger id
+    lo, hi = _ids()
+    ent, by = _item(db_session, A, B, states={A: "approved", B: "draft"},
+                    updated={A: older, B: newer}, ids={A: hi, B: lo})
+    assert kb_groom.groom_entity(db_session, ent.id).clusters[0].keeper_id == by[A].id
+
+    # then most recently updated: A is newer but shorter and the larger id
+    lo, hi = _ids()
+    ent, by = _item(db_session, A, B, updated={A: newer, B: older}, ids={A: hi, B: lo})
+    assert kb_groom.groom_entity(db_session, ent.id).clusters[0].keeper_id == by[A].id
+
+    # then the longer text: same updated_at, and B (longer) has the larger id
+    lo, hi = _ids()
+    ent, by = _item(db_session, A, B, updated={A: older, B: older}, ids={A: lo, B: hi})
     assert kb_groom.groom_entity(db_session, ent.id).clusters[0].keeper_id == by[B].id
-    # then most recently updated
-    ent, by = _item(db_session, A, B, updated={A: now - timedelta(days=2), B: now - timedelta(days=1)})
-    assert kb_groom.groom_entity(db_session, ent.id).clusters[0].keeper_id == by[B].id
-    # then the longer text (same updated_at)
-    same = now - timedelta(days=3)
-    ent, by = _item(db_session, A, B, updated={A: same, B: same})
-    assert kb_groom.groom_entity(db_session, ent.id).clusters[0].keeper_id == by[B].id  # B is longer
-    # then the id (same state, same updated_at, same length: 38 characters each)
+
+    # then the id: same state, updated_at and length; the larger id is created first,
+    # so "first in the list" and "lowest id" disagree
     twin = "Cleansed and validated 2M rows weekly."
     assert len(twin) == len(A)
     _vectors(monkeypatch, {**VEC, twin: (1.0, 0.0, 0.0)})
-    ent, by = _item(db_session, A, twin, updated={A: same, twin: same})
-    report = kb_groom.groom_entity(db_session, ent.id)
-    assert report.clusters[0].keeper_id == min(p.id for p in by.values())
+    lo, hi = _ids()
+    ent, by = _item(db_session, twin, A, updated={A: older, twin: older}, ids={twin: hi, A: lo})
+    assert kb_groom.groom_entity(db_session, ent.id).clusters[0].keeper_id == lo
 
 
 def test_kept_pairs_break_an_edge(db_session, monkeypatch):
@@ -134,6 +157,24 @@ def test_member_rows_carry_usage_and_sort_keeper_first_then_by_score(db_session,
     assert scores == sorted(scores, reverse=True)
 
 
+def test_usage_counts_distinct_resumes_over_every_usage_row(db_session, monkeypatch):
+    """As the points list's "On N resumes" chip counts: one per resume, any direction."""
+    _vectors(monkeypatch, VEC)
+    ent, by = _item(db_session, A, B)
+
+    def log(point, key, direction):
+        db_session.add(KBPortLog(entity_id=ent.id, point_id=point.id, resume_kind="base",
+                                 resume_key=key, section="projects", ported_text=point.text,
+                                 direction=direction))
+
+    log(by[A], "hybrid", "to_resume")
+    log(by[A], "hybrid", "to_resume")
+    log(by[B], "analyst", "from_source")
+    db_session.commit()
+    rows = {m.id: m for m in kb_groom.groom_entity(db_session, ent.id).clusters[0].members}
+    assert (rows[by[A].id].usage_count, rows[by[B].id].usage_count) == (1, 1)
+
+
 def test_groom_never_calls_the_llm_and_writes_nothing(db_session, monkeypatch):
     monkeypatch.setattr(
         "app.services.llm.call_openai",
@@ -149,8 +190,8 @@ def test_groom_never_calls_the_llm_and_writes_nothing(db_session, monkeypatch):
     assert db_session.query(KBPointKeptPair).count() == 0
 
 
-def test_unknown_entity_raises_value_error(db_session):
-    with pytest.raises(ValueError):
+def test_unknown_entity_raises_lookup_error(db_session):
+    with pytest.raises(LookupError):
         kb_groom.groom_entity(db_session, uuid.uuid4())
 
 
@@ -190,12 +231,26 @@ def test_keep_apart_records_every_pair_canonically_and_is_idempotent(client, db_
     assert db_session.query(KBPointKeptPair).count() == 3
 
 
+def test_keep_apart_adds_only_the_missing_pairs(client, db_session):
+    _ent, by = _item(db_session, A, B, C)
+    lo, hi = kept_pair_key(by[A].id, by[C].id)
+    db_session.add(KBPointKeptPair(point_a_id=lo, point_b_id=hi))
+    db_session.commit()
+    ids = [str(by[A].id), str(by[B].id), str(by[C].id)]
+    r = client.post("/api/kb/points/keep-apart", json={"point_ids": ids})
+    assert r.status_code == 200, r.text
+    assert len(r.json()["pairs"]) == 3
+    assert db_session.query(KBPointKeptPair).count() == 3
+
+
 def test_keep_apart_requires_one_item_and_known_points(client, db_session):
     _ent, by = _item(db_session, A)
     _other, by2 = _item(db_session, B)
     assert client.post("/api/kb/points/keep-apart", json={"point_ids": [str(by[A].id), str(by2[B].id)]}).status_code == 400
     assert client.post("/api/kb/points/keep-apart", json={"point_ids": [str(by[A].id), str(uuid.uuid4())]}).status_code == 404
     assert client.post("/api/kb/points/keep-apart", json={"point_ids": [str(by[A].id)]}).status_code == 422
+    # two copies of one id are one bullet
+    assert client.post("/api/kb/points/keep-apart", json={"point_ids": [str(by[A].id)] * 2}).status_code == 422
 
 
 def test_keep_apart_delete_forgets_and_point_delete_cascades(client, db_session):

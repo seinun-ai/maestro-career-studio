@@ -9,6 +9,7 @@ so "the same claim" comes to mean one thing everywhere.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -18,6 +19,8 @@ from sqlalchemy.orm import Session
 
 from app.models.career_kb import KBPoint, KBPortLog
 from app.services.kb_consolidation import point_text_key
+
+logger = logging.getLogger(__name__)
 
 # A bullet whose best same-item match scores here or above is a WORDING of that
 # claim, never a second bullet. Read by place (sync) and services/kb_groom, so
@@ -55,7 +58,8 @@ def place(text: str, points: list[KBPoint]) -> Placement:
         from app.services.ats.embeddings import cosine, embed_texts
 
         vectors = embed_texts([text] + [p.text for p in points])
-    except Exception:
+    except Exception as exc:
+        logger.warning("place could not compare wording: %s", exc)
         return Placement("new", None, None, compared=False)
     best_point: KBPoint | None = None
     best_score = -1.0

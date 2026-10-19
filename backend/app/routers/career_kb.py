@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
 
@@ -312,7 +313,7 @@ def groom_entity(entity_id: UUID, db: Annotated[Session, Depends(get_db)]):
     """Similar bullets on one item, read-only; a sync def because it embeds on CPU."""
     try:
         return kb_groom.groom_entity(db, entity_id)
-    except ValueError as e:
+    except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
@@ -480,7 +481,10 @@ def combine_points(payload: KBCombineRequest, db: Annotated[Session, Depends(get
 
 
 def _keep_apart_pairs(db: Session, payload: KBKeepApartRequest) -> list[tuple[UUID, UUID]]:
-    points = [db.get(KBPoint, pid) for pid in dict.fromkeys(payload.point_ids)]
+    unique = list(dict.fromkeys(payload.point_ids))
+    if len(unique) < 2:
+        raise HTTPException(status_code=422, detail="Pick at least two different bullets.")
+    points = [db.get(KBPoint, pid) for pid in unique]
     if any(p is None for p in points):
         raise HTTPException(status_code=404, detail="Point not found")
     if len({p.entity_id for p in points}) != 1:
@@ -494,16 +498,15 @@ def keep_apart(payload: KBKeepApartRequest, db: Annotated[Session, Depends(get_d
     """'Not the same': remember every pair among these ids so groom stops
     proposing them. Idempotent; same item required."""
     pairs = _keep_apart_pairs(db, payload)
-    have = {
-        (r.point_a_id, r.point_b_id)
-        for r in db.scalars(select(KBPointKeptPair).where(
-            KBPointKeptPair.point_a_id.in_([a for a, _ in pairs])
-        )).all()
-    }
+    have = kb_groom._kept(db, list(dict.fromkeys(payload.point_ids)))
     for a, b in pairs:
         if (a, b) not in have:
             db.add(KBPointKeptPair(point_a_id=a, point_b_id=b))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # A concurrent identical request (a double-click) stored them first.
+        db.rollback()
     return KBKeepApartResponse(pairs=pairs)
 
 
