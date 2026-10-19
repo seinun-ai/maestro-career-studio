@@ -67,7 +67,8 @@ MIRRORS: dict[str, str] = {
 @dataclass(frozen=True)
 class Table:
     """One profile table. ``paths`` maps a path column to the root it must stay inside;
-    ``base_only`` limits a ``by_kind`` table to its ``resume_kind == 'base'`` rows."""
+    ``base_only`` limits a ``by_kind`` table to its ``resume_kind == 'base'`` rows; ``deferred``
+    names self-referencing columns written only after every row of the table exists."""
 
     name: str
     model: type[Base]
@@ -75,6 +76,7 @@ class Table:
     paths: dict[str, str] = field(default_factory=dict)
     order: str | None = None
     hidden: tuple[str, ...] = ()
+    deferred: tuple[str, ...] = ()
 
 
 # Parents before children: the order rows are written in; deletes run in reverse.
@@ -85,7 +87,7 @@ TABLES: tuple[Table, ...] = (
     Table("referrals", models.Referral),
     Table("kb_entities", models.KBEntity),
     Table("kb_documents", models.KBDocument, paths={"file_path": "kb_documents"}),
-    Table("kb_points", models.KBPoint),
+    Table("kb_points", models.KBPoint, deferred=("merged_into_point_id",)),
     Table("kb_point_kept_pairs", models.KBPointKeptPair),
     Table("kb_port_log", models.KBPortLog, base_only=True),
     Table("kb_profile", models.KBProfile),
@@ -307,11 +309,26 @@ def _apply_rows(db: Session, parsed: Parsed) -> Removed:
     # delete cascades the same rows off its replica, and a round pulls the profile before it pushes.
     bundle_rows.delete_rows(db, TABLES, doomed)
     for spec in TABLES:
-        jobs_bundle._upsert(db, spec, existing[spec.name], parsed.rows[spec.name])
+        _upsert(db, spec, existing[spec.name], parsed.rows[spec.name])
         # These models have no relationship() between them, so the unit of work does not order
         # their inserts by foreign key: flush each table before its children.
         db.flush()
     return removed
+
+
+def _upsert(db: Session, spec: Table, existing: dict, rows: list[dict]) -> None:
+    """A self-reference can point at a row that sorts later (a claim combined into one with a
+    higher id, or a chain of them), and SQLite checks it per statement: write the rows with those
+    columns empty, flush, then fill them in once every row of the table exists."""
+    if not spec.deferred:
+        jobs_bundle._upsert(db, spec, existing, rows)
+        return
+    empty = dict.fromkeys(spec.deferred)
+    objects = jobs_bundle._upsert(db, spec, existing, [{**row, **empty} for row in rows])
+    db.flush()
+    by_pk = {obj_pk(spec, obj): obj for obj in objects}
+    for row in rows:
+        jobs_bundle._fill_existing(spec, by_pk[row_pk(spec, row)], row, db)
 
 
 def _apply_login(login: dict | None) -> None:

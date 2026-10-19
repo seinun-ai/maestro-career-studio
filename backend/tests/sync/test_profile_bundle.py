@@ -596,6 +596,53 @@ def test_reapplying_the_same_bundle_changes_nothing(home, recv, roots, remote, w
     assert snapshot(recv) == first and disk_state(roots) == state
 
 
+def _combined_points(db, entity_id, ids, links):
+    """Points with the given ids; ``links`` maps a point's index to the index it was combined into."""
+    for index, point_id in enumerate(ids):
+        into = links.get(index)
+        db.add(models.KBPoint(id=point_id, entity_id=entity_id, text=f"wording {index}",
+                              state="retired" if into is not None else "approved", origin="manual",
+                              merged_into_point_id=ids[into] if into is not None else None,
+                              created_at=WHEN, updated_at=WHEN))
+
+
+def test_combined_claims_arrive_whatever_order_their_ids_sort_in(
+        home, recv, roots, remote, world):
+    # Every child sorts BELOW the claim it was combined into, so primary-key order (the export's
+    # and the apply's) meets each child before its keeper: a loser, and a two-deep chain.
+    loser, keeper, low, high, k1, k2 = sorted(uuid.uuid4() for _ in range(6))
+    _combined_points(home, world.ids.entity, [loser, keeper, low, high, k1, k2],
+                     {0: 1, 2: 4, 3: 4, 4: 5})
+    home.commit()
+    expected = snapshot(home)
+    ship(home, recv, roots, remote)
+    roots.use("recv")
+    assert snapshot(recv) == expected
+    pointers = {point_id: recv.get(models.KBPoint, point_id).merged_into_point_id
+                for point_id in (loser, low, high, k1, k2)}
+    assert pointers == {loser: keeper, low: k1, high: k1, k1: k2, k2: None}
+
+
+def test_a_claim_already_here_can_be_combined_into_one_that_arrives_with_it(
+        home, recv, roots, remote, world):
+    # The receiver already has K1; the bundle points it at K2, which it does not have yet.
+    k1, k2 = sorted(uuid.uuid4() for _ in range(2))
+    _combined_points(home, world.ids.entity, [k1], {})
+    home.commit()
+    ship(home, recv, roots, remote)
+    home.add(models.KBPoint(id=k2, entity_id=world.ids.entity, text="the keeper", state="approved",
+                            origin="manual", created_at=WHEN, updated_at=WHEN))
+    home.flush()  # the unit of work runs UPDATEs before INSERTs: K2 must exist first
+    point = home.get(models.KBPoint, k1)
+    point.state, point.merged_into_point_id = "retired", k2
+    home.commit()
+    expected = snapshot(home)
+    ship(home, recv, roots, remote)
+    roots.use("recv")
+    assert snapshot(recv) == expected
+    assert recv.get(models.KBPoint, k1).merged_into_point_id == k2
+
+
 # ---------------------------------------------------------------------------- the login
 
 
