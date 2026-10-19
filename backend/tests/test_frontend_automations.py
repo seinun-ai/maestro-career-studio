@@ -46,7 +46,8 @@ def test_one_prompt_for_every_agent_app():
     for src in (_PAGE, _CARD, _LIB):
         for word in ("AppPicker", "reachable", "AgentApp", "APP_STORE_KEY", "promptFor"):
             assert word not in src, word
-    assert "focusableWhenDisabled" not in _CARD
+    # Copy is always on; a disabled Copy would also lose keyboard focus.
+    assert "disabled" not in _CARD
 
 
 def test_a_failed_clipboard_write_opens_the_prompt_to_select():
