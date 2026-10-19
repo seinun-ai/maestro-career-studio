@@ -101,17 +101,41 @@ def test_the_user_yes_path_records_consent_before_submitting():
     assert positions == sorted(positions)
 
 
-def test_scheduled_wrappers_leave_timing_to_the_user():
-    for app in automations.catalog().apps:
-        assert "how often" in app.preamble and "when" in app.preamble, app.id
-        assert "how often" not in app.attended_preamble, app.id
+def test_every_prompt_is_its_kinds_wrapper_then_its_body():
+    for full_automation in (False, True):
+        for card in automations.catalog(full_automation=full_automation).cards:
+            wrapper = (automations.SCHEDULED_WRAPPER if card.kind == "scheduled"
+                       else automations.ATTENDED_WRAPPER)
+            assert card.prompt == f"{wrapper}\n\n{card.body}", card.id
 
 
-def test_remote_only_apps_are_shown_but_unreachable():
-    apps = {a.id: a for a in automations.catalog().apps}
-    assert list(apps) == ["claude-desktop", "codex", "generic", "claude-web", "chatgpt"]
-    assert {i for i, a in apps.items() if not a.reachable} == {"claude-web", "chatgpt"}
-    assert all(apps[i].note for i in ("claude-web", "chatgpt", "codex"))
+def test_the_scheduled_wrapper_asks_when_then_adapts():
+    wrapper = automations.SCHEDULED_WRAPPER
+    for phrase in ("how often and when", "built into this app", "available on this computer",
+                   "where I could run it on a schedule instead", "offer to run it once now",
+                   "Schedule only the job below"):
+        assert phrase in wrapper, phrase
+    assert "how often" not in automations.ATTENDED_WRAPPER
+
+
+@pytest.mark.parametrize("name", ["SCHEDULED_WRAPPER", "ATTENDED_WRAPPER"])
+def test_each_wrapper_checks_it_can_reach_maestro(name):
+    assert "tell me to connect you first and stop" in getattr(automations, name)
+
+
+# Agent apps change weekly; a wrapper that names one, or a scheduler, goes stale.
+_APP_SPECIFIC = ("claude", "codex", "chatgpt", "openai", "anthropic", "cursor", "gemini",
+                 "cron", "launchd", "task scheduler", "systemd", "playwright")
+
+
+@pytest.mark.parametrize("name", ["SCHEDULED_WRAPPER", "ATTENDED_WRAPPER"])
+def test_wrappers_name_no_agent_app_or_scheduler(name):
+    text = getattr(automations, name).lower()
+    assert [word for word in _APP_SPECIFIC if word in text] == []
+
+
+def test_the_catalog_carries_no_agent_apps():
+    assert set(automations.AutomationCatalog.model_fields) == {"cards"}
 
 
 _BASE_COUNTRY_LINE = (
@@ -308,4 +332,4 @@ def test_catalog_models_are_frozen():
     with pytest.raises(ValidationError):
         card.title = "changed"
     with pytest.raises(ValidationError):
-        automations.catalog().apps[0].label = "changed"
+        card.prompt = "changed"

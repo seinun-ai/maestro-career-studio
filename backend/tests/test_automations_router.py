@@ -14,11 +14,9 @@ def test_catalog_endpoint_shape():
     r = client.get("/api/automations")
     assert r.status_code == 200
     data = r.json()
-    assert set(data) == {"cards", "apps"}
+    assert set(data) == {"cards"}
     card = data["cards"][0]
-    assert set(card) == {"id", "title", "summary", "kind", "needs", "never", "body"}
-    app_ = data["apps"][0]
-    assert set(app_) == {"id", "label", "reachable", "preamble", "attended_preamble", "note"}
+    assert set(card) == {"id", "title", "summary", "kind", "needs", "never", "body", "prompt"}
 
 
 def test_catalog_endpoint_serializes_needs_as_a_list():
@@ -42,6 +40,9 @@ def test_catalog_apply_kind_tracks_full_automation(
     assert response.status_code == 200
     apply = next(card for card in response.json()["cards"] if card["id"] == "apply-session")
     assert apply["kind"] == expected_kind
+    wrapper = (automations.SCHEDULED_WRAPPER if expected_kind == "scheduled"
+               else automations.ATTENDED_WRAPPER)
+    assert apply["prompt"].startswith(wrapper)
 
 
 def test_a_broken_skill_file_fails_startup(tmp_path, monkeypatch):

@@ -4,7 +4,9 @@ The skill files under app/automations/skills are the single source of the text
 (docs/plans/2026-10-04-automations-page-design.md). A skill with a `metadata`
 block is a card; one without (agent-apply-execution) rides on a card through
 `include`. Nothing about the user is inserted: the agent reads the brief, caps
-and preferences live over MCP, and asks the user when to run.
+and preferences live over MCP, and asks the user when to run. Every card's
+`prompt` is one app-neutral wrapper plus its body
+(docs/plans/2026-10-19-neutral-automation-prompt-design.md).
 """
 
 from __future__ import annotations
@@ -22,8 +24,8 @@ CARD_ORDER = ("mail-status", "job-hunt", "referral-pages", "tailor-run", "apply-
               "customize-job-skills")
 ALTERNATES = {"apply-auto": "apply-session"}
 
-# `scheduled` cards get the app's ask-when preamble; `attended` and `custom`
-# cards get its attended preamble (the agent does the job with the user now).
+# `scheduled` cards open with SCHEDULED_WRAPPER (ask when, then use whatever scheduler the
+# agent can reach); `attended` and `custom` cards open with ATTENDED_WRAPPER (do it now).
 Kind = Literal["scheduled", "attended", "custom"]
 Need = Literal["maestro", "email", "browser", "web"]
 
@@ -47,75 +49,33 @@ class AutomationCard(BaseModel):
     needs: tuple[Need, ...]
     never: str | None
     body: str
-
-
-class AgentApp(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    id: str
-    label: str
-    reachable: bool
-    preamble: str
-    attended_preamble: str
-    note: str | None
+    prompt: str
 
 
 class AutomationCatalog(BaseModel):
     cards: list[AutomationCard]
-    apps: list[AgentApp]
 
 
-_ASK = "First ask me how often and when to run it, then set up the schedule."
-_REMOTE = "Needs remote access to Maestro, which isn't available yet."
-
-APPS: tuple[AgentApp, ...] = (
-    AgentApp(
-        id="claude-desktop", label="Claude Desktop", reachable=True,
-        preamble=("Using your Maestro Career Studio connector, set the job below up as a "
-                  f"scheduled task. {_ASK}"),
-        attended_preamble=(
-            "Using your Maestro Career Studio connector, "
-            "do the job below with me now."),
-        note=None,
-    ),
-    AgentApp(
-        id="codex", label="Codex", reachable=True,
-        preamble=("Using the Maestro Career Studio MCP server, first ask me how often and when "
-                  "to run the job below. Then write a launchd or cron entry that runs "
-                  "`codex exec` with the job below only, not this paragraph."),
-        attended_preamble=(
-            "Using the Maestro Career Studio MCP server, "
-            "do the job below with me now."),
-        note=("Codex has no scheduler of its own. It can write a launchd or cron entry that "
-              "runs codex exec on a timer."),
-    ),
-    AgentApp(
-        id="generic", label="Any MCP agent", reachable=True,
-        preamble=("Using the Maestro Career Studio MCP server, set the job below up with your "
-                  f"own scheduler. {_ASK}"),
-        attended_preamble=(
-            "Using the Maestro Career Studio MCP server, "
-            "do the job below with me now."),
-        note=None,
-    ),
-    AgentApp(
-        id="claude-web", label="Claude web", reachable=False,
-        preamble=("Using your Maestro Career Studio connector, set the job below up as a "
-                  f"scheduled task. {_ASK}"),
-        attended_preamble=(
-            "Using your Maestro Career Studio connector, "
-            "do the job below with me now."),
-        note=f"{_REMOTE} Use Claude Desktop for now.",
-    ),
-    AgentApp(
-        id="chatgpt", label="ChatGPT web", reachable=False,
-        preamble=("Using the Maestro Career Studio connector, set the job below up as a "
-                  f"scheduled task. {_ASK}"),
-        attended_preamble=(
-            "Using the Maestro Career Studio connector, "
-            "do the job below with me now."),
-        note=f"{_REMOTE} In the ChatGPT desktop app, pick Any MCP agent.",
-    ),
+# Neither wrapper names an agent app or a scheduling mechanism: apps change weekly, so the
+# agent works out what it can do and says plainly when it can't.
+SCHEDULED_WRAPPER = (
+    "Using your Maestro Career Studio connection, set the job below up to run on a schedule. "
+    "First ask me how often and when. Then use whatever scheduling you can reach: one built "
+    "into this app if it has one, otherwise one available on this computer. If you can't "
+    "schedule it from here, tell me plainly, say where I could run it on a schedule instead, "
+    "and offer to run it once now. Schedule only the job below, not this paragraph. If you "
+    "can't reach Maestro's tools at all, tell me to connect you first and stop."
 )
+ATTENDED_WRAPPER = (
+    "Using your Maestro Career Studio connection, do the job below with me now. If you can't "
+    "reach Maestro's tools, tell me to connect you first and stop."
+)
+
+
+def _prompt(kind: Kind, body: str) -> str:
+    """The text Copy puts on the clipboard: the kind's wrapper, then the skill."""
+    wrapper = SCHEDULED_WRAPPER if kind == "scheduled" else ATTENDED_WRAPPER
+    return f"{wrapper}\n\n{body}"
 
 
 def _split(path: Path) -> tuple[dict, str]:
@@ -184,12 +144,15 @@ def load_cards() -> tuple[AutomationCard, ...]:
     """Parse every skill once. Raises ValueError on any malformed or unknown card."""
     bodies, metas = _read_skills()
     _check_card_set(metas)
-    cards = tuple(
-        AutomationCard(id=skill_id, title=metas[skill_id].title, summary=metas[skill_id].summary,
-                       kind=metas[skill_id].kind, needs=tuple(metas[skill_id].needs),
-                       never=metas[skill_id].never,
-                       body=_card_body(skill_id, bodies, metas))
-        for skill_id in CARD_ORDER)
+    cards = []
+    for skill_id in CARD_ORDER:
+        meta = metas[skill_id]
+        body = _card_body(skill_id, bodies, metas)
+        cards.append(AutomationCard(
+            id=skill_id, title=meta.title, summary=meta.summary, kind=meta.kind,
+            needs=tuple(meta.needs), never=meta.never, body=body,
+            prompt=_prompt(meta.kind, body)))
+    cards = tuple(cards)
     for skill_id in ALTERNATES:
         _card_body(skill_id, bodies, metas)
     _check_no_orphans(bodies, metas)
@@ -201,10 +164,11 @@ def _alternate(skill_id: str) -> AutomationCard:
     """Build an alternate card and keep the catalog identity it replaces."""
     bodies, metas = _read_skills()
     meta = metas[skill_id]
+    body = _card_body(skill_id, bodies, metas)
     return AutomationCard(
         id=ALTERNATES[skill_id], title=meta.title, summary=meta.summary,
         kind=meta.kind, needs=tuple(meta.needs), never=meta.never,
-        body=_card_body(skill_id, bodies, metas),
+        body=body, prompt=_prompt(meta.kind, body),
     )
 
 
@@ -214,7 +178,7 @@ def apply_kind() -> Kind:
 
 
 def catalog(full_automation: bool = False) -> AutomationCatalog:
-    """The cards in designed order plus the per-agent-app wrappers."""
+    """The cards in designed order, each with its finished prompt."""
     cards = []
     for card in load_cards():
         if card.id != "apply-session":
@@ -222,5 +186,6 @@ def catalog(full_automation: bool = False) -> AutomationCatalog:
         elif full_automation:
             cards.append(_alternate("apply-auto"))
         else:
-            cards.append(card.model_copy(update={"kind": apply_kind()}))
-    return AutomationCatalog(cards=cards, apps=list(APPS))
+            kind = apply_kind()
+            cards.append(card.model_copy(update={"kind": kind, "prompt": _prompt(kind, card.body)}))
+    return AutomationCatalog(cards=cards)
