@@ -38,7 +38,7 @@ def test_the_page_reads_the_catalog_and_points_at_the_connect_guide():
     assert "It asks when to run" in _PAGE
     assert "CONNECT_AGENT_GUIDE_URL" in _PAGE
     assert "Your agent needs to be connected to Maestro first." in _PAGE
-    assert "Apps that run only in a browser can't reach it yet." in _PAGE
+    assert "Agent apps that run only in a browser can't reach it yet." in _PAGE
 
 
 def test_one_prompt_for_every_agent_app():

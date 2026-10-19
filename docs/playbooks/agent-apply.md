@@ -209,7 +209,9 @@ identity.
   `application_id`; resume from `pending_review`.
 - `needs_human`: call the target MCP operation
   `resume_proposal(proposal_id)` to return it to `pending_review`, then resume
-  preparation. This is the only state accepted by `resume_proposal`.
+  preparation. This is the only state accepted by `resume_proposal`. The
+  user's yes for a parked job also leaves it: `record_consent` moves
+  `needs_human` straight to `approved` (fresh final consent, same rules).
 - `approved`: valid only for immediate submission in the same attended turn.
   If interrupted before the browser click, report `needs_human`, then use
   `resume_proposal`; this releases the proposal's cap reservation and fresh
