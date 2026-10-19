@@ -50,9 +50,9 @@ Only work jobs whose `ownership.owned_here` is true.
    now, don't submit: `report_failure` with the reason `waiting for your yes` and move on to the
    next one; it waits in Needs you.
    Only after their yes for *this* application:
-   `record_consent`, click submit once, attach the confirmation as
-   `submission_receipt`, and `mark_submitted`. If you can't tell whether it went
-   through, say so and never click again.
+   `record_consent` with the channel the yes came through, click submit once,
+   attach the confirmation as `submission_receipt`, and `mark_submitted`. If you
+   can't tell whether it went through, say so and never click again.
 6. **Digest.** End with submitted / needs the user / declined / still queued.
 7. **Record the run.** Call `record_run` with automation `apply-session`, the outcome
     (`ok`; `partial` if some work failed; `failed` if none could be done), and

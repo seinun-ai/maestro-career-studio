@@ -47,7 +47,7 @@ Only work jobs whose `ownership.owned_here` is true.
    If nobody can be reached now, leave it: it waits in Needs you.
    If the user says yes:
    Attach the filled-form screenshot as `final_review` evidence.
-   Then call `record_consent` with channel `chat`, action `approved`, and the user's words.
+   Then call `record_consent` with the channel the yes came through (`chat` for this chat, `slack` for Slack), action `approved`, and the user's words.
    Submit once.
    Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.
 8. **Record the run.** Call `record_run` with automation `apply-session`.

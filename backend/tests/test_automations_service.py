@@ -75,7 +75,7 @@ def test_tailor_run_works_only_jobs_owned_here():
     "Jobs in Needs you go back through the user's queue before a later automatic run.",
     "every screening answer you recorded names its saved fact (`slot`).",
     "Attach the filled-form screenshot as `final_review` evidence.",
-    "Then call `record_consent` with channel `chat`, action `approved`, and the user's words.",
+    "Then call `record_consent` with the channel the yes came through (`chat` for this chat, `slack` for Slack), action `approved`, and the user's words.",
     "Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.",
     "If the user says yes:",
     "Stop when the daily cap in the brief is used up.",
@@ -95,7 +95,7 @@ def test_the_user_yes_path_records_consent_before_submitting():
     ordered = [
         "If the user says yes:",
         "Attach the filled-form screenshot as `final_review` evidence.",
-        "Then call `record_consent` with channel `chat`, action `approved`, and the user's words.",
+        "Then call `record_consent` with the channel the yes came through (`chat` for this chat, `slack` for Slack), action `approved`, and the user's words.",
         "Submit once.",
         "Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.",
     ]
