@@ -16,7 +16,7 @@ The app shows these on the Automations page, with a Copy button for each.
 | [`mail-status`](../../backend/app/automations/skills/mail-status/SKILL.md) | Reads your job email and moves each application to applied, interviewing, rejected or offered. Never sends mail. |
 | [`referral-pages`](../../backend/app/automations/skills/referral-pages/SKILL.md) | Checks your referrals' careers pages for new roles that fit you and proposes them. |
 | [`tailor-run`](../../backend/app/automations/skills/tailor-run/SKILL.md) | Prepares a tailored resume for each queued job using only facts you've already given. |
-| [`customize-job-skills`](../../backend/app/automations/skills/customize-job-skills/SKILL.md) | Suggests skills that fit you — from what your agent knows about you and your data in the app — then asks a few questions and builds your own version, or something new (batch tailoring, referral-first hunting, a weekly digest…), with your client's skill creator and scheduler. |
+| [`customize-job-skills`](../../backend/app/automations/skills/customize-job-skills/SKILL.md) | Adapts any ready-made automation to your agent app and routine, or builds something new (batch tailoring, referral-first hunting, a weekly digest…) from what your agent knows about you and your data in the app, with whatever skill-making and scheduling your app and computer offer. |
 | [`agent-apply-execution`](../../backend/app/automations/skills/agent-apply-execution/SKILL.md) | Optional: detailed browser technique for apply runs (PDF upload, dropdowns, evidence, what to hand to you). |
 
 **Use one as-is:** copy its folder into your client's skills directory (Claude

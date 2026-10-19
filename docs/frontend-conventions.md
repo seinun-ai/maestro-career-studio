@@ -1489,8 +1489,8 @@
     "Proposal" means only a job a connected agent filed, and a filer is named
     through `lib/agent-name.ts`, never printed raw. Bare "Agent" appears only
     in Agent inbox, the source toggle's "Agents" and Agent pipeline. The
-    **Automations** page calls the app a user runs a prompt in an **agent app**
-    (Claude Desktop, Codex, Any MCP agent) and each card **Scheduled** or
+    **Automations** page calls the app a user runs a prompt in an **agent app**,
+    never naming one, and each card **Scheduled** or
     **Attended** (or Custom); it copies a prompt and never promises to run one.
     **Agent
     inbox** (`/proposals`), never Agent proposals; its lanes are **Needs

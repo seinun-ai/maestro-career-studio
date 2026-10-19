@@ -58,7 +58,8 @@ The model is `backend/app/models/agent_run.py`; the SQLite revision is `7d3c1a9e
   produced data, no line appears. A failed background refetch keeps the cached Last ran
   line; it does not erase the last known time.
 - **Automation prompts**: each of the five run prompts ends with `record_run`;
-  `customize-job-skills` tells custom automations to record under their own name. `job-hunt`
+  `customize-job-skills` tells a new automation to record under its own name and an adapted card
+  to keep the card's id. `job-hunt`
   saves jobs with `source='agent'` and the posting's `source_url`. Newly hunted jobs therefore
   pass through the existing open-proposal gate for execute helpers, like `referral-pages`
   jobs; `find_job_by_url` can recognize jobs saved by earlier hunts.

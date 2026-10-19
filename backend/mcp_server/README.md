@@ -194,8 +194,8 @@ Ready-made skills for a daily job hunt (`job-hunt`), an apply run
 (`referral-pages`), tailoring (`tailor-run`), and building your own versions
 (`customize-job-skills`) are in [`docs/skills/`](../../docs/skills/README.md). Copy one into your client's
 skills folder and ask for it, or open the app's **Automations** page and copy a
-prompt into Claude Desktop, Codex or any MCP agent; your agent asks when to run
-it.
+prompt into any agent app connected to Maestro; for a scheduled job, your agent
+asks when to run it.
 
 ## The tools
 

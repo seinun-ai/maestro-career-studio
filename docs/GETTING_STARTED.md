@@ -440,8 +440,9 @@ its backend port. Every tool, profile and troubleshooting step is in the
 
 Once your assistant is connected, it can run the whole loop.
 [`docs/skills/`](skills/) has ready-made skills for it, and the app's
-**Automations** page copies each one as a prompt you paste into Claude
-Desktop, Codex or any MCP agent. Your agent asks you when to run it:
+**Automations** page copies each one as a prompt you paste into any agent app
+connected to Maestro. For a scheduled job, your agent asks you when to run it
+and uses whatever scheduler its app or your computer has:
 
 - **`job-hunt`** — finds recent postings that fit you, saves and scores them,
   and proposes the best ones. You decide in the **Agent inbox**. It can run on
@@ -460,9 +461,8 @@ Desktop, Codex or any MCP agent. Your agent asks you when to run it:
   fit you and proposes them.
 - **`tailor-run`** — prepares a tailored resume for each queued job, using only
   facts you've already given.
-- **`customize-job-skills`** — suggests skills from what your agent knows about
-  you, then builds your own version with your client's skill creator and
-  scheduler.
+- **`customize-job-skills`** — adapts any of these to your agent app and
+  routine, or builds something new from what your agent knows about you.
 
 Nothing is submitted without your yes unless you turn on Full automation, and
 everything is written down: proposals, your yes/no decisions, and evidence.

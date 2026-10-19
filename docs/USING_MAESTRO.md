@@ -302,10 +302,10 @@ setting. Scoped URLs end in `/mcp/hunt`, `/mcp/apply`, `/mcp/explore`,
 **Skills.** [`docs/skills/`](skills/) has ready-made skills for a daily job
 hunt, an apply run that asks you only for what the app doesn't know (plus one
 yes before each submit), mail-status, referral pages and a tailor run.
-`customize-job-skills` suggests skills from what your agent knows about you,
-asks a few questions, and builds them with your assistant's own skill creator
-and scheduler. The **Automations** page in the app puts each one on the
-clipboard: copy a prompt into Claude Desktop, Codex or any MCP agent, and your
+`customize-job-skills` adapts any of them to your agent app and routine, or
+asks a few questions and builds new ones from what your agent knows about you.
+The **Automations** page in the app puts each one on the clipboard: copy a
+prompt into any agent app connected to Maestro, and for a scheduled job your
 agent asks when to run it.
 
 `/mcp` has no authentication by design: a local process can already reach REST.
@@ -527,10 +527,11 @@ job-board integration to be locked into.
 
 Ready-made skills (`job-hunt`, `apply-session`, `apply-auto`, `mail-status`, `referral-pages`,
 `tailor-run`) are in [`docs/skills/`](skills/) — copy a prompt from the
-app's **Automations** page into Claude Desktop, Codex or any MCP agent (your
-agent asks when to run it), copy the skills into your assistant's skills folder
-as-is, or run **`customize-job-skills`** to make them yours or build new ones
-(batch tailoring, referral-first hunting, a weekly digest) from your own data.
+app's **Automations** page into any agent app connected to Maestro (for a
+scheduled job, your agent asks when to run it), copy the skills into your
+assistant's skills folder as-is, or run **`customize-job-skills`** to adapt them
+to your agent app and routine or build new ones (batch tailoring,
+referral-first hunting, a weekly digest) from your own data.
 
 ### Going all the way: agent applications
 

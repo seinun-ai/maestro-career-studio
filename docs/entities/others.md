@@ -1014,7 +1014,12 @@
   **Attended executor:** Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can
   autofill/attach; direct MCP + browser fill/upload is the supported fallback. The agent calls
   `record_filled_answers` per page, which replaces per-page screenshots; `final_review` and `submission_receipt`
-  evidence stay, and every flag goes into the "Submit now?" question. Never headless / stealth / CAPTCHA
+  evidence stay, and every flag goes into the "Submit now?" question. **Where a run asks**: an `apply-session` run
+  asks in its chat and waits; only when nobody is at the chat does it ask through a channel the user set up
+  for these runs. With nobody to answer it never submits: `report_failure` parks the job in **Needs you**. A
+  yes that arrives later in the same run takes it `needs_human → approved` through `record_consent`, whose
+  channel is the one the yes came through (`chat`, `slack`, or `mcp` for any other, named in the note); a yes
+  after the run ends is not acted on. Never headless / stealth / CAPTCHA
   bypass.
 
   **Unattended executor**: the `apply-auto` prompt replaces the per-application
@@ -1027,9 +1032,10 @@
   screening answer naming its saved fact `slot`), attaches `final_review`
   evidence, records approval with channel `auto`, submits once, then calls
   `mark_submitted(channel="auto", note=confirmation)`. Blocked jobs go to
-  **Needs you** through `report_failure`; the agent asks and moves on. A user's
-  yes follows: attach `final_review` evidence → `record_consent(channel="chat",
-  action="approved", note=user's words)` → submit once → `mark_submitted`
+  **Needs you** through `report_failure`; the agent asks wherever the run can
+  reach the user and moves on. A yes during the run, with the filled form intact,
+  follows: attach `final_review` evidence → `record_consent` (`approved`, the yes's
+  channel, the user's words) → submit once → `mark_submitted`
   with channel `auto` and a confirmation note. A later automatic run requires
   the user to queue a Needs-you job again. Unknown submit success means
   `report_failure(reason="submission_uncertain")`, never a retry. Runs record
@@ -1114,10 +1120,15 @@
 
 - **Automations page** (`/automations`, sidebar after Agent inbox): copy-only. `GET /api/automations` reads only the full-automation switch
   (`services/automations.py` parses `app/automations/skills/<name>/SKILL.md`; card-only fields sit under frontmatter
-  `metadata:`) returns the cards and the **agent apps**: Claude Desktop, Codex, Any MCP agent, plus Claude web and
-  ChatGPT web, shown unreachable because MCP here is local-only (the ChatGPT desktop app works via Any MCP agent).
-  **Copy prompt** puts the app's wrapper plus the skill body on the clipboard. Maestro runs NO scheduler: a scheduled
-  card's wrapper has the agent ask the user when to run. The setting read is
+  `metadata:`) returns `{cards}`, each with its finished `prompt`: an app-neutral wrapper, then the skill body. A
+  scheduled card opens with `SCHEDULED_WRAPPER`: ask how often and when, then use a scheduler built into the agent's
+  app, else one on the computer, else say plainly where it could run on a schedule and offer to run once now. Attended
+  and custom cards open with `ATTENDED_WRAPPER`: do the job now. Both stop and ask the user to connect when Maestro's
+  tools are unreachable, and neither names an agent app or scheduling mechanism
+  (`test_wrappers_name_no_agent_app_or_scheduler`). **Copy prompt** is always on and puts that `prompt` on the
+  clipboard; the page notes that the agent must be connected first and browser-only apps can't reach Maestro yet.
+  Maestro runs NO scheduler. **Make your own** (`customize-job-skills`) also adapts any card to the user's agent app
+  and routine, keeping its steps, guard rails and `record_run` id so runs still show on that card. The setting read is
   `auto_apply_settings.peek_settings`, never seeds or writes. Off serves the
   attended **Apply session**; On serves scheduled **Apply automatically** from
   `apply-auto`, keeping card/run id `apply-session`. `load_cards()` is strict
