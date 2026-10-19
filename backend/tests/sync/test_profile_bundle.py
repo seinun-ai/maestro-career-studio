@@ -12,12 +12,13 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import inspect, select, text
+from sqlalchemy import event, inspect, select, text
 from sqlalchemy.orm import sessionmaker
 
 from app import models
 from app.config import settings
 from app.db import Base, make_engine
+from app.models.career_kb import kept_pair_key
 from app.services import base_resume_data, job_site_login
 from app.services.json_settings import JsonSetting
 from app.services.sync import bundle_rows, files, profile_bundle, registry
@@ -106,7 +107,8 @@ def build_profile(db, roots):
     """One of everything the profile owns, plus rows and files that must NOT travel."""
     base, kbd = roots.at("home", "base_resumes"), roots.at("home", "kb_documents")
     ids = SimpleNamespace(entity=uuid.uuid4(), doc=uuid.uuid4(), point=uuid.uuid4(),
-                          referral=uuid.uuid4(), v1=uuid.uuid4(), v2=uuid.uuid4())
+                          other_point=uuid.uuid4(), referral=uuid.uuid4(), v1=uuid.uuid4(),
+                          v2=uuid.uuid4())
     _write(base / "data_scientist.json", json.dumps({"name": "HOME CONTENT"}))
     _write(base / "pdfs" / "data_scientist.pdf", b"%PDF home")
     _write(base / "tex" / "data_scientist.tex", b"tex home")
@@ -134,6 +136,11 @@ def build_profile(db, roots):
     db.flush()
     db.add(models.KBPoint(id=ids.point, entity_id=ids.entity, text="point", origin="manual",
                           source_document_id=ids.doc, created_at=WHEN, updated_at=WHEN))
+    db.add(models.KBPoint(id=ids.other_point, entity_id=ids.entity, text="other point",
+                          origin="manual", created_at=WHEN, updated_at=WHEN))
+    db.flush()
+    low, high = kept_pair_key(ids.point, ids.other_point)
+    db.add(models.KBPointKeptPair(point_a_id=low, point_b_id=high, created_at=WHEN))
     db.flush()
     _add_by_kind(db, ids)
     _add_settings(db)
@@ -447,6 +454,7 @@ def test_round_trip_is_row_for_row_and_files_arrive(home, recv, roots, remote, w
     roots.use("recv")
     assert snapshot(recv) == expected
     assert expected["settings"] and expected["resume_versions"] and expected["kb_port_log"]
+    assert expected["kb_point_kept_pairs"]
     base = roots.at("recv", "base_resumes")
     assert (base / "pdfs" / "data_scientist.pdf").read_bytes() == b"%PDF home"
     assert (roots.at("recv", "kb_documents") / str(world.ids.doc) / "cv.pdf").read_bytes() == b"%PDF kb"
@@ -527,7 +535,8 @@ def test_seeds_that_exist_only_here_are_replaced_or_removed(home, recv, roots, r
     assert recv.get(models.Setting, "market") is None
     assert not (roots.at("recv", "settings") / "market.json").exists()
     assert recv.get(models.KBProfile, 1).contact_json == {"name": "Home"}
-    assert recv.query(models.KBPoint).count() == 1 and recv.query(models.KBDocument).count() == 1
+    assert recv.query(models.KBPoint).count() == 2 and recv.query(models.KBDocument).count() == 1
+    assert recv.query(models.KBPointKeptPair).count() == 1
 
 
 def test_files_of_removed_rows_are_removed_and_nothing_outside_the_roots_is(
@@ -585,6 +594,7 @@ def test_a_removed_row_at_home_is_removed_on_the_next_apply(home, recv, roots, r
     roots.use("recv")
     assert snapshot(recv) == expected
     assert recv.get(models.Setting, "prompts.tailor") is None
+    assert recv.query(models.KBPointKeptPair).count() == 0
 
 
 def test_reapplying_the_same_bundle_changes_nothing(home, recv, roots, remote, world):
@@ -621,6 +631,26 @@ def test_combined_claims_arrive_whatever_order_their_ids_sort_in(
     pointers = {point_id: recv.get(models.KBPoint, point_id).merged_into_point_id
                 for point_id in (loser, low, high, k1, k2)}
     assert pointers == {loser: keeper, low: k1, high: k1, k1: k2, k2: None}
+
+
+def test_reapplying_a_combined_claim_writes_no_point(home, recv, roots, remote, world):
+    loser, keeper = sorted(uuid.uuid4() for _ in range(2))
+    _combined_points(home, world.ids.entity, [loser, keeper], {0: 1})
+    home.commit()
+    bundle = ship(home, recv, roots, remote)
+    writes = []
+
+    def _count(_conn, _cursor, statement, *_args):
+        if statement.lstrip().upper().startswith(("UPDATE KB_POINTS", "INSERT INTO KB_POINTS")):
+            writes.append(statement)
+
+    event.listen(recv.get_bind(), "before_cursor_execute", _count)
+    try:
+        apply_bundle(recv, roots, remote, copy.deepcopy(bundle))
+    finally:
+        event.remove(recv.get_bind(), "before_cursor_execute", _count)
+    assert writes == []
+    assert recv.get(models.KBPoint, loser).merged_into_point_id == keeper
 
 
 def test_a_claim_already_here_can_be_combined_into_one_that_arrives_with_it(

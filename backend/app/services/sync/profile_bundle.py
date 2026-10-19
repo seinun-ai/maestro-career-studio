@@ -318,13 +318,21 @@ def _apply_rows(db: Session, parsed: Parsed) -> Removed:
 
 def _upsert(db: Session, spec: Table, existing: dict, rows: list[dict]) -> None:
     """A self-reference can point at a row that sorts later (a claim combined into one with a
-    higher id, or a chain of them), and SQLite checks it per statement: write the rows with those
-    columns empty, flush, then fill them in once every row of the table exists."""
+    higher id, or a chain of them), and SQLite checks it per statement: write new rows with those
+    columns empty, flush, then fill them in once every row of the table exists. A row already here
+    keeps its value through the first pass (it satisfies the key: a pointer at a row this apply
+    deleted went NULL in the database), so an unchanged pointer is never written."""
     if not spec.deferred:
         jobs_bundle._upsert(db, spec, existing, rows)
         return
-    empty = dict.fromkeys(spec.deferred)
-    objects = jobs_bundle._upsert(db, spec, existing, [{**row, **empty} for row in rows])
+    for obj in existing.values():
+        if any(getattr(obj, key) is not None for key in spec.deferred):
+            # The database may have nulled it (SET NULL); the second pass compares against that.
+            db.expire(obj, list(spec.deferred))
+    first = [{key: value for key, value in row.items() if key not in spec.deferred}
+             if row_pk(spec, row) in existing else {**row, **dict.fromkeys(spec.deferred)}
+             for row in rows]
+    objects = jobs_bundle._upsert(db, spec, existing, first)
     db.flush()
     by_pk = {obj_pk(spec, obj): obj for obj in objects}
     for row in rows:
