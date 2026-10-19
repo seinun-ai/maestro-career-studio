@@ -219,10 +219,14 @@ function ClusterCard({
     );
     const back = new Set(plan.restore.filter((_, i) => settled[i].status === "fulfilled").map((r) => r.id));
     const failed = settled.find((r): r is PromiseRejectedResult => r.status === "rejected");
-    await Promise.all(
-      plan.recombine.filter((r) => back.has(r.keeperId)).map((r) => combineKbPoints(r.keeperId, r.pointIds)),
-    );
-    await invalidate();
+    try {
+      await Promise.all(
+        plan.recombine.filter((r) => back.has(r.keeperId)).map((r) => combineKbPoints(r.keeperId, r.pointIds)),
+      );
+    } finally {
+      // The restores landed either way: the list behind the dialog shows them.
+      await invalidate();
+    }
     if (!failed) return;
     if (back.size === 0) throw failed.reason;
     toast.error(
