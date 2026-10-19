@@ -58,20 +58,20 @@ export default function AutomationsPage() {
       {!noteReady ? null : anyRan ? (
         <p className="max-w-[65ch]">
           Your agent needs to be connected to Maestro first.{" "}
+          {"Apps that run only in a browser can't reach it yet."}{" "}
           <NewTabLink href={CONNECT_AGENT_GUIDE_URL} className="text-primary">
             How to connect an agent
-          </NewTabLink>{" "}
-          {"Apps that run only in a browser can't reach it yet."}
+          </NewTabLink>
         </p>
       ) : (
         <div className="bg-secondary-container text-on-secondary-container rounded-corner-md flex max-w-[65ch] items-start gap-3 p-3">
           <Bot className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <p>
             Your agent needs to be connected to Maestro first.{" "}
+            {"Apps that run only in a browser can't reach it yet."}{" "}
             <NewTabLink href={CONNECT_AGENT_GUIDE_URL} className="font-medium underline underline-offset-4">
               How to connect an agent
-            </NewTabLink>{" "}
-            {"Apps that run only in a browser can't reach it yet."}
+            </NewTabLink>
           </p>
         </div>
       )}

@@ -2,8 +2,9 @@
 
 Copy-only: the page puts a prompt on the clipboard for any connected agent app
 and schedules nothing. Nothing about the user goes into the copied text, Copy is
-always on, and a failed clipboard write opens the prompt so it can be selected. There is no frontend test runner, so the
-branches that matter are pinned here from the source.
+always on, and a failed clipboard write opens the prompt so it can be selected.
+There is no frontend test runner, so the branches that matter are pinned here
+from the source.
 """
 
 from __future__ import annotations
