@@ -205,3 +205,23 @@ def test_point_out_schema_declares_provenance():
     source = (_BACKEND / "app/schemas/career_kb.py").read_text()
     block = source.split("class KBPointOut")[1].split("class ")[0]
     assert "provenance" in block
+
+
+def test_types_carry_wordings_and_the_compared_flag():
+    source = (_FRONTEND / "lib/types.ts").read_text()
+    point_block = source.split("export interface KBPointOut")[1].split("export interface")[0]
+    assert "wordings: KBWordingOut[]" in point_block
+    assert "merged_into_point_id: UUID | null" in point_block
+    patch_block = source.split("export interface KBPointPatch")[1].split("export interface")[0]
+    assert "unmerge?: boolean" in patch_block
+    for name in ("SyncStatus", "SyncResult"):
+        block = source.split(f"export interface {name}")[1].split("export interface")[0]
+        assert "compared_wording: boolean" in block, name
+    assert "export interface GroomReport" in source
+
+
+def test_api_exposes_the_combine_split_groom_and_keep_apart_fetchers():
+    source = (_FRONTEND / "lib/api.ts").read_text()
+    for needle in ("/api/kb/points/combine", "split-wording", "/groom", "keep-apart",
+                   "combineKbPoints", "splitKbWording", "getKbGroom", "keepApartKbPoints", "forgetKeepApartKbPoints"):
+        assert needle in source, needle

@@ -9,6 +9,7 @@ import type {
   CareerExportMetadata,
   ConnectInfo,
   ConnectProfile,
+  GroomReport,
   KBCaptureRequest,
   KBCaptureResponse,
   KBDocumentOut,
@@ -22,6 +23,7 @@ import type {
   KBAdaptApplyRequest,
   KBAdaptProposal,
   KBAdaptRequest,
+  KBCombineResponse,
   KBPointOut,
   KBPointPatch,
   KBPortRequest,
@@ -512,6 +514,38 @@ export function bulkKbPointState(
 
 export function deleteKbPoint(pointId: UUID) {
   return apiFetch<void>(`/api/kb/points/${pointId}`, { method: "DELETE" });
+}
+
+export function combineKbPoints(keeperId: UUID, pointIds: UUID[]) {
+  return apiFetch<KBCombineResponse>("/api/kb/points/combine", {
+    method: "POST",
+    body: JSON.stringify({ keeper_id: keeperId, point_ids: pointIds }),
+  });
+}
+
+export function splitKbWording(pointId: UUID, text: string, resumeKey: string | null) {
+  return apiFetch<KBPointOut>(`/api/kb/points/${pointId}/split-wording`, {
+    method: "POST",
+    body: JSON.stringify({ text, resume_key: resumeKey }),
+  });
+}
+
+export function getKbGroom(entityId: UUID) {
+  return apiFetch<GroomReport>(`/api/kb/entities/${entityId}/groom`);
+}
+
+export function keepApartKbPoints(pointIds: UUID[]) {
+  return apiFetch<{ pairs: [UUID, UUID][] }>("/api/kb/points/keep-apart", {
+    method: "POST",
+    body: JSON.stringify({ point_ids: pointIds }),
+  });
+}
+
+export function forgetKeepApartKbPoints(pointIds: UUID[]) {
+  return apiFetch<{ pairs: [UUID, UUID][] }>("/api/kb/points/keep-apart", {
+    method: "DELETE",
+    body: JSON.stringify({ point_ids: pointIds }),
+  });
 }
 
 /** The draft inbox asks for this many; the API returns the OLDEST first. */

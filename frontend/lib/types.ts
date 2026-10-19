@@ -738,6 +738,19 @@ export interface KBPointPatch {
   state?: KBPointState | null;
   tags?: string[] | null;
   entity_id?: UUID | null;
+  /** Clears the "combined into" pointer. With `state` it is the split of a combined bullet. */
+  unmerge?: boolean;
+}
+
+/** One other phrasing of a bullet and what can be done with it (see the backend's KBWordingOut). */
+export interface KBWordingOut {
+  kind: "resume" | "placed" | "merged" | "import";
+  text: string;
+  resume_keys: string[];
+  section: string | null;
+  point_id: UUID | null;
+  adoptable: boolean;
+  splittable: boolean;
 }
 
 export interface KBCaptureRequest {
@@ -769,12 +782,46 @@ export interface KBPointOut {
   created_at: string;
   updated_at: string;
   usage: KBUsageOut[];
+  wordings: KBWordingOut[];
+  merged_into_point_id: UUID | null;
 }
 
 interface KBMergeSource {
   resume_key: string;
   section: string;
   text: string;
+}
+
+/** What Combine returns: the keeper, and the combined claims that were re-pointed from a loser onto it. */
+export interface KBCombineResponse {
+  keeper: KBPointOut;
+  repointed: { point_id: UUID; from_id: UUID }[];
+}
+
+export interface GroomMember {
+  id: UUID;
+  text: string;
+  state: KBPointState;
+  origin: KBPointOrigin;
+  provenance: KBPointProvenance | null;
+  usage_count: number;
+  best_score: number;
+}
+
+export interface GroomCluster {
+  score: number;
+  keeper_id: UUID;
+  members: GroomMember[];
+  pairs: [UUID, UUID, number][];
+}
+
+/** Similar bullets on one item, read-only. `compared_wording` false means the embedder could not run. */
+export interface GroomReport {
+  entity_id: UUID;
+  entity_title: string;
+  compared_wording: boolean;
+  active_points: number;
+  clusters: GroomCluster[];
 }
 
 export interface KBDocumentOut {
@@ -1067,6 +1114,8 @@ export interface SyncStatus {
   } & Record<string, number>;
   /** Null until the first sync. */
   last_kb_synced_at: string | null;
+  /** False when the embedder could not run: every bullet then reads as new, nothing was matched. */
+  compared_wording: boolean;
 }
 
 export interface SyncResult {
@@ -1083,6 +1132,8 @@ export interface SyncResult {
   /** The individual skills that landed in the profile. */
   skills_added: string[];
   last_kb_synced_at: string | null;
+  /** False when the embedder could not run: every bullet then reads as new, nothing was matched. */
+  compared_wording: boolean;
 }
 
 export interface KBProfilePatch {

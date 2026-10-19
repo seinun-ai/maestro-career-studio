@@ -42,11 +42,12 @@ export function syncBreakdownLines(status: SyncStatus): string[] {
   }
   const skills = status.counts.skills_new;
   if (skills > 0) lines.push(plural(skills, "skill", "skills"));
-  // Says what adding will DO, because "drifted" alone reads like a problem.
+  // Says what adding will DO: the rewording is kept under the bullet it rewrites.
   const drift = status.counts.drift;
-  if (drift > 0) lines.push(`${plural(drift, "reworded bullet", "reworded bullets")} (we'll note the change)`);
+  if (drift > 0) lines.push(`${plural(drift, "reworded bullet", "reworded bullets")} (kept as ${drift === 1 ? "a wording" : "wordings"})`);
   // The tier vocabulary is the server's; a shape this list does not name still says how much there is.
   if (lines.length === 0) lines.push(`${syncActionableCount(status)} to add`);
+  if (!status.compared_wording) lines.push("Couldn't compare wording, so everything here reads as new.");
   return lines;
 }
 
@@ -58,7 +59,7 @@ function joinWords(parts: string[]): string {
 /**
  * What an add did, from every count the server returns: draft bullets (`created`), new items
  * (`items_added`: an education or certification add writes an item and no bullet), skills
- * (`skills_added`, never the category list) and noted rewordings. Never "Added 0 new bullets".
+ * (`skills_added`, never the category list) and kept rewordings. Never "Added 0 new bullets".
  */
 export function syncResultSentence(result: SyncResult): string {
   const added = [
@@ -68,7 +69,8 @@ export function syncResultSentence(result: SyncResult): string {
   ].filter((part): part is string => part !== null);
   const sentences = [
     added.length > 0 ? `Added ${joinWords(added)} to your career history.` : null,
-    result.drifted > 0 ? `Noted ${plural(result.drifted, "wording change", "wording changes")}.` : null,
+    result.drifted > 0 ? `Kept ${plural(result.drifted, "rewording", "rewordings")}.` : null,
+    result.compared_wording ? null : "Couldn't compare wording.",
   ].filter((part): part is string => part !== null);
   return sentences.length > 0 ? sentences.join(" ") : "Nothing new to add. Your career history already has all of this.";
 }
