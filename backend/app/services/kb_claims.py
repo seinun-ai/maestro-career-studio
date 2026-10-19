@@ -71,8 +71,8 @@ class CombineError(ValueError):
 
 
 def combine(db: Session, keeper: KBPoint, others: list[KBPoint]) -> None:
-    """Retire `others` and point them at `keeper`. Only state, approved_at and
-    merged_into_point_id move; text, provenance and the losers' own placement
+    """Retire `others` and point them at `keeper`, along with any claims already
+    combined into them. Only state, approved_at and merged_into_point_id move; text, provenance and the losers' own placement
     history stay where they are. Reversible with PATCH unmerge."""
     if keeper.state == "retired" or keeper.provenance == "user_cannot_confirm":
         raise CombineError("That bullet can't be the one to keep.")
@@ -81,10 +81,17 @@ def combine(db: Session, keeper: KBPoint, others: list[KBPoint]) -> None:
             raise CombineError("A bullet can't be combined into itself.")
         if other.entity_id != keeper.entity_id:
             raise CombineError("These bullets are on different items.")
+    loser_ids = [other.id for other in others]
     for other in others:
         other.state = "retired"
         other.approved_at = None
         other.merged_into_point_id = keeper.id
+    # Flatten: claims already combined into a loser follow it to the keeper, so
+    # every merged claim is one step from an active keeper (the wordings list
+    # reads one level). They stay retired; only the pointer moves.
+    for child in db.scalars(select(KBPoint).where(KBPoint.merged_into_point_id.in_(loser_ids))).all():
+        if child.id != keeper.id:
+            child.merged_into_point_id = keeper.id
 
 
 def split_wording(db: Session, claim: KBPoint, text: str, resume_key: str | None) -> KBPoint:

@@ -258,3 +258,26 @@ def test_moving_a_keeper_moves_its_combined_claims(client, db_session):
     by_id = {p["id"]: p for p in detail["points"]}
     assert [(w["kind"], w["point_id"]) for w in by_id[str(keeper.id)]["wordings"]] == [("merged", str(folded.id))]
     assert client.get(f"/api/kb/entities/{eid}").json()["points"] == []
+
+
+def test_combine_flattens_a_losers_own_combined_claims_onto_the_keeper(client, db_session):
+    eid = _entity(client)
+    k1 = _point(db_session, eid, "First keeper")
+    a = _point(db_session, eid, "Folded A")
+    b = _point(db_session, eid, "Folded B")
+    k2 = _point(db_session, eid, "Second keeper")
+    assert client.post("/api/kb/points/combine",
+                       json={"keeper_id": str(k1.id), "point_ids": [str(a.id), str(b.id)]}).status_code == 200
+    r = client.post("/api/kb/points/combine", json={"keeper_id": str(k2.id), "point_ids": [str(k1.id)]})
+    assert r.status_code == 200, r.text
+    for p in (a, b, k1):
+        db_session.refresh(p)
+        assert (p.state, p.merged_into_point_id) == ("retired", k2.id)
+    assert {w["point_id"] for w in r.json()["wordings"]} == {str(a.id), str(b.id), str(k1.id)}
+    # unmerging the old keeper does not drag its former children with it
+    r = client.patch(f"/api/kb/points/{k1.id}", json={"state": "approved", "unmerge": True})
+    assert r.status_code == 200, r.text
+    for p in (a, b):
+        db_session.refresh(p)
+        assert p.merged_into_point_id == k2.id
+    assert {w["point_id"] for w in _wordings(client, k2.id)} == {str(a.id), str(b.id)}
