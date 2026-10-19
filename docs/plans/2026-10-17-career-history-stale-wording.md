@@ -22,9 +22,9 @@ the plan; each is named so a reviewer can object before code lands.
 2. **Embedder failure is a flag on `Placement`, folded by `classify`.** `kb_claims.place` returns
    `compared`, the `SyncItem` carries it, and `classify` reports `compared_wording = all(...)`.
    Nothing module-global: the route runs in threads.
-3. **`usage_count` on a groom member counts distinct resumes from `kb_port_log` rows whose
-   `direction` is not `from_source`** (placements, as the points list's "On N resumes" chip counts
-   them). The design names the number and not the query.
+3. **`usage_count` on a groom member counts distinct `resume_key` over every `kb_port_log` row
+   of the point**, reworded or placed, which is exactly what the points list's "On N resumes" chip
+   counts, so the dialog and the list agree. The design names the number and not the query.
 
 Process notes: the design commit was cherry-picked onto this branch (`12057bc7`); the first-form
 plan (f47e9d73) is replaced by this file in full.
@@ -1704,14 +1704,13 @@ from app.services.kb_claims import SYNC_WORDING_COSINE, candidates
 
 
 def _usage_counts(db: Session, ids: list[UUID]) -> dict[UUID, int]:
+    """Distinct resumes per point over every port-log row: the same number the
+    points list's "On N resumes" chip shows."""
     if not ids:
         return {}
     rows = db.execute(
         select(KBPortLog.point_id, func.count(distinct(KBPortLog.resume_key)))
-        .where(
-            KBPortLog.point_id.in_(ids),
-            or_(KBPortLog.direction.is_(None), KBPortLog.direction != "from_source"),
-        )
+        .where(KBPortLog.point_id.in_(ids))
         .group_by(KBPortLog.point_id)
     ).all()
     return {pid: int(n) for pid, n in rows}

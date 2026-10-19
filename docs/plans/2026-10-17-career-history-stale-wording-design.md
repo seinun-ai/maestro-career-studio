@@ -253,7 +253,8 @@ GroomReport
   active_points: int
   clusters: [ { score: float,       # highest pair in the cluster
                 keeper_id: UUID,
-                members: [ { id, text, state, origin, provenance, usage_count,
+                members: [ { id, text, state, origin, provenance,
+                             usage_count,        # distinct resumes, as the "On N resumes" chip counts
                              best_score: float } ],
                 pairs: [ [id, id, score] ] } ]
 ```
