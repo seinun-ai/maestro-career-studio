@@ -551,10 +551,11 @@ def kb_groom_entity(entity_id: str) -> Any:
 
 
 # ---------- Career KB: write ----------
-# Every tool here mints DRAFT content, kb_ingest_resume included — an agent
-# transcribing a resume is not the user approving it. The single way to
-# approve from MCP is kb_approve_points, and it is consent-gated: call it only
-# after the user has actually seen these points and said yes. Never state a
+# Most tools here mint DRAFT content, kb_ingest_resume included — an agent
+# transcribing a resume is not the user approving it. The user-gated state
+# writes are kb_approve_points, kb_retire_points and kb_combine_points: each
+# records the user's decision about points they have seen and said yes to, and
+# kb_approve_points is the single way to approve from MCP. Never state a
 # date, employer, credential or metric the user did not give you — a fabricated
 # fact written here becomes part of their permanent career record.
 @mcp.tool(**_write("Capture Career Notes", destructive=False, idempotent=False, open_world=True))
@@ -782,15 +783,18 @@ def kb_approve_points(
 @mcp.tool(**_write("Combine Career Points", destructive=False, idempotent=True))
 @_guard
 def kb_combine_points(keeper_id: str, point_ids: list[str]) -> Any:
-    """Fold Career KB points into one: the keeper stays the bullet, every other
-    listed point is retired and recorded as one of the keeper's wordings. Resumes
-    that use any of them keep their text; combining never edits a resume.
+    """Fold Career KB points into one: the keeper stays the bullet, and every
+    point in point_ids (the others, not the keeper) is retired and recorded as
+    one of the keeper's wordings. Resumes that use any of them keep their
+    text; combining never edits a resume.
     Reversible from /career (Make its own bullet). The grouping written is the
     user's decision about the listed points; the server does not check that the
     user reviewed them (a convention, not enforcement, the same gate as
     kb_approve_points). Same entity required (400); a retired or
-    user_cannot_confirm keeper or loser is refused (400), and so is a keeper that
-    is itself folded into another. Returns {keeper, repointed}: the keeper with its
+    user_cannot_confirm keeper, a user_cannot_confirm loser, and a loser the
+    user stopped (retired but not folded) are refused (400), and so is a keeper
+    that is itself folded into another; a loser already folded elsewhere moves
+    to this keeper. Returns {keeper, repointed}: the keeper with its
     wordings, and any combined claims the fold moved from a loser onto it. 1-50 ids."""
     return _client.kb_combine_points(keeper_id, point_ids)
 
@@ -834,9 +838,9 @@ def kb_sync_base(slug: str) -> Any:
     rephrases an existing point on the same item (0.80 cosine and above) is
     kept as that point's wording, not added as a second point; only a new
     claim lands as a draft. Never edits resumes. Safe to rerun — a second
-    call is a no-op when already in sync. Returns compared_wording: false
-    means the embedder could not run, so every bullet was added as new and
-    nothing was matched.
+    call is a no-op when already in sync. compared_wording is false when the
+    embedder could not run: a rephrased bullet was then added as new rather
+    than kept as a wording (exact text still matches).
     """
     return _client.kb_sync_base(slug)
 
