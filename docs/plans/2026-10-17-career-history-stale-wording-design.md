@@ -270,7 +270,10 @@ Deterministic: same texts, same pinned model, same machine, same report.
   Each other point: `state=retired`, `approved_at=None`, `merged_into_point_id=keeper`. Points
   already merged elsewhere are re-pointed. **An active claim never carries a pointer:** leaving
   `retired` (approve or draft, single PATCH or bulk-state) clears `merged_into_point_id`, which is
-  what makes Use again a split and keeps a cycle impossible. **Combine flattens:** a loser's own combined children are
+  what makes Use again a split and keeps a cycle impossible. Losers are meant to be active
+  claims (that is all Tidy bullets offers); a loser that was already folded elsewhere is
+  re-pointed, and Undo then leaves it an ordinary retired bullet rather than a wording of its
+  earlier keeper, a limit accepted because only the API can reach it. **Combine flattens:** a loser's own combined children are
   re-pointed to the new keeper too, so every merged claim is one step from an active keeper and
   the wordings popover (which reads one level) can always reach it. Idempotent.
 - `PATCH /api/kb/points/{id} {state, unmerge: true}` is the split and the Undo of a combine.
