@@ -263,7 +263,9 @@ Deterministic: same texts, same pinned model, same machine, same report.
 - `POST /api/kb/points/combine {keeper_id, point_ids}` → the keeper's `KBPointOut`. Same item
   required (400), keeper not retired and not `user_cannot_confirm` (400), unknown id 404. Each
   other point: `state=retired`, `approved_at=None`, `merged_into_point_id=keeper`. Points already
-  merged elsewhere are re-pointed. Idempotent.
+  merged elsewhere are re-pointed. **Combine flattens:** a loser's own combined children are
+  re-pointed to the new keeper too, so every merged claim is one step from an active keeper and
+  the wordings popover (which reads one level) can always reach it. Idempotent.
 - `PATCH /api/kb/points/{id} {state, unmerge: true}` is the split and the Undo of a combine.
 - `POST /api/kb/points/keep-apart {point_ids}` records every unordered pair among the ids (a
   cluster of three records three pairs); same item required (400); idempotent.
