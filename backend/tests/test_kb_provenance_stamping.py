@@ -206,7 +206,6 @@ def _drive_gap_writeback(db_session, monkeypatch, tmp_path):
 def _drive_split_wording(db_session, monkeypatch, tmp_path):
     from app.db import get_db
     from app.main import app
-    from app.models.career_kb import KBPortLog
 
     ent = KBEntity(kind="project", title="Orbit")
     db_session.add(ent)
@@ -394,8 +393,8 @@ def test_no_writer_flips_user_cannot_confirm(db_session, monkeypatch):
     db_session.flush()
     assert db_session.get(KBPoint, point_id).provenance == "user_cannot_confirm"
 
-    # The writers this design adds: combine (as a loser and as a refused keeper),
-    # bulk retire, split-wording and adoption. None reads or writes provenance.
+    # The writers this design adds: combine (refused as a loser), unmerge,
+    # bulk retire, split-wording and adoption. None writes provenance.
     from app.db import get_db
     from app.main import app
 
@@ -408,7 +407,7 @@ def test_no_writer_flips_user_cannot_confirm(db_session, monkeypatch):
     app.dependency_overrides[get_db] = lambda: db_session
     try:
         client = TestClient(app)
-        assert client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(point_id)]}).status_code == 200
+        assert client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(point_id)]}).status_code == 400
         assert client.patch(f"/api/kb/points/{point_id}", json={"state": "approved", "unmerge": True}).status_code == 200
         assert client.post("/api/kb/points/bulk-state", json={"ids": [str(point_id)], "state": "retired"}).status_code == 200
         assert client.post(f"/api/kb/points/{point_id}/split-wording", json={"text": "A resume phrasing", "resume_key": None}).status_code == 200

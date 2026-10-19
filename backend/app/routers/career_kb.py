@@ -33,6 +33,7 @@ from app.schemas.career_kb import (
     KBCaptureRequest,
     KBCaptureResponse,
     KBCombineRequest,
+    KBCombineResponse,
     KBContextResponse,
     KBDocumentIngestResponse,
     KBDocumentOut,
@@ -54,6 +55,7 @@ from app.schemas.career_kb import (
     KBPortResponse,
     KBProfileOut,
     KBProfilePatch,
+    KBRepointed,
     KBSplitWordingRequest,
 )
 from app.schemas.resume import ResumeData
@@ -407,6 +409,10 @@ def _apply_point_state(point: KBPoint, new_state: str) -> None:
         # "when the CURRENT text was approved", and an MCP edit demotes.
         point.approved_at = None
     point.state = new_state
+    if new_state != "retired":
+        # An active claim never carries a pointer: Use again clears it, from
+        # every path (PATCH, bulk-state, MCP kb_approve_points).
+        point.merged_into_point_id = None
 
 
 @router.post("/points/bulk-state", response_model=KBPointBulkResponse)
@@ -431,31 +437,39 @@ def bulk_point_state(
     return KBPointBulkResponse(results=results)
 
 
-@router.post("/points/combine", response_model=KBPointOut)
+@router.post("/points/combine", response_model=KBCombineResponse)
 def combine_points(payload: KBCombineRequest, db: Annotated[Session, Depends(get_db)]):
-    """Tidy bullets → Combine. The keeper is returned with its new wordings."""
+    """Tidy bullets → Combine. The keeper is returned with its new wordings, and
+    every claim the flatten moved with the loser it came from (for Undo)."""
     keeper = db.get(KBPoint, payload.keeper_id)
     others = [db.get(KBPoint, pid) for pid in dict.fromkeys(payload.point_ids)]
     if keeper is None or any(p is None for p in others):
         raise HTTPException(status_code=404, detail="Point not found")
     try:
-        kb_claims.combine(db, keeper, others)
+        repointed = kb_claims.combine(db, keeper, others)
     except kb_claims.CombineError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     db.commit()
     db.refresh(keeper)
     career_exports.best_effort_refresh(db)
-    return svc._to_point_out(db, keeper)
+    return KBCombineResponse(
+        keeper=svc._to_point_out(db, keeper),
+        repointed=[KBRepointed(point_id=pid, from_id=fid) for pid, fid in repointed],
+    )
 
 
 @router.post("/points/{point_id}/split-wording", response_model=KBPointOut)
-def split_wording(point_id: UUID, payload: KBSplitWordingRequest, db: Annotated[Session, Depends(get_db)]):
+def split_wording(
+    point_id: UUID, payload: KBSplitWordingRequest, db: Annotated[Session, Depends(get_db)]
+):
     """Make a resume wording its own bullet."""
     claim = db.get(KBPoint, point_id)
     if claim is None:
         raise HTTPException(status_code=404, detail="Point not found")
     try:
         new = kb_claims.split_wording(db, claim, payload.text, payload.resume_key)
+    except kb_claims.SplitError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     db.commit()
@@ -485,6 +499,9 @@ def patch_point(
                 select(KBPoint).where(KBPoint.merged_into_point_id == point.id)
             ).all():
                 child.entity_id = data["entity_id"]
+            # A combined claim moved on its own leaves its keeper's item: it
+            # becomes an ordinary retired bullet there, not an invisible one.
+            point.merged_into_point_id = None
         point.entity_id = data["entity_id"]
     if data.get("state") is not None:
         _apply_point_state(point, data["state"])

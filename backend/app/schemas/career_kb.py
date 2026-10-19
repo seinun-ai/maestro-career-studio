@@ -337,6 +337,19 @@ class KBPointOut(BaseModel):
     merged_into_point_id: UUID | None = None
 
 
+
+class KBRepointed(BaseModel):
+    """A claim the flatten moved off a loser onto the keeper; from_id is the
+    loser it came from, so an Undo can combine it back there."""
+
+    point_id: UUID
+    from_id: UUID
+
+
+class KBCombineResponse(BaseModel):
+    keeper: KBPointOut
+    repointed: list[KBRepointed]
+
 class KBDocumentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

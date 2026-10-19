@@ -140,21 +140,29 @@ def test_combine_retires_and_points_the_losers_and_leaves_the_keeper_alone(clien
     _log(db_session, b, resume_key="hybrid", text=b.text, direction="to_resume")
     r = client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(a.id), str(b.id)]})
     assert r.status_code == 200, r.text
-    body = r.json()
+    assert r.json()["repointed"] == []
+    body = r.json()["keeper"]
     assert body["id"] == str(keeper.id)
     assert body["text"] == "Cleansed 2M rows nightly"
     assert {w["point_id"] for w in body["wordings"]} == {str(a.id), str(b.id)}
-    for p in (a, b):
-        db_session.refresh(p)
-        assert (p.state, p.merged_into_point_id, p.approved_at) == ("retired", keeper.id, None)
-        assert p.provenance == "user_authored"
-    db_session.refresh(keeper)
-    assert (keeper.state, keeper.provenance) == ("approved", "user_authored")
+
+    def assert_combined():
+        for p in (a, b):
+            db_session.refresh(p)
+            assert (p.state, p.merged_into_point_id, p.approved_at) == ("retired", keeper.id, None)
+            assert p.provenance == "user_authored"
+        db_session.refresh(keeper)
+        assert (keeper.state, keeper.provenance) == ("approved", "user_authored")
+
+    assert_combined()
     # the loser's own placement history stays its own: nothing moved
     assert db_session.query(KBPortLog).filter_by(point_id=b.id).count() == 1
     # idempotent
     r = client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(a.id)]})
     assert r.status_code == 200
+    assert r.json()["repointed"] == []
+    assert {w["point_id"] for w in r.json()["keeper"]["wordings"]} == {str(a.id), str(b.id)}
+    assert_combined()
 
 
 def test_combine_refuses_mixed_items_a_retired_or_unconfirmable_keeper_and_unknown_ids(client, db_session):
@@ -170,6 +178,15 @@ def test_combine_refuses_mixed_items_a_retired_or_unconfirmable_keeper_and_unkno
     assert client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(mine.id)]}).status_code == 400
     ucc = _point(db_session, eid, "Cannot confirm", provenance="user_cannot_confirm")
     assert client.post("/api/kb/points/combine", json={"keeper_id": str(ucc.id), "point_ids": [str(mine.id)]}).status_code == 400
+    # an unconfirmed sentence is refused as a loser too: it never becomes a wording
+    active = _point(db_session, eid, "Active keeper")
+    r = client.post("/api/kb/points/combine", json={"keeper_id": str(active.id), "point_ids": [str(ucc.id)]})
+    assert r.status_code == 400
+    db_session.refresh(ucc)
+    assert (ucc.state, ucc.merged_into_point_id) == ("approved", None)
+    # a keeper that still carries a pointer is refused
+    folded = _point(db_session, eid, "Folded but active", merged_into=active.id)
+    assert client.post("/api/kb/points/combine", json={"keeper_id": str(folded.id), "point_ids": [str(mine.id)]}).status_code == 400
 
 
 def test_unmerge_patch_clears_the_pointer_and_sets_the_state_given(client, db_session):
@@ -273,7 +290,10 @@ def test_combine_flattens_a_losers_own_combined_claims_onto_the_keeper(client, d
     for p in (a, b, k1):
         db_session.refresh(p)
         assert (p.state, p.merged_into_point_id) == ("retired", k2.id)
-    assert {w["point_id"] for w in r.json()["wordings"]} == {str(a.id), str(b.id), str(k1.id)}
+    assert {w["point_id"] for w in r.json()["keeper"]["wordings"]} == {str(a.id), str(b.id), str(k1.id)}
+    assert {(m["point_id"], m["from_id"]) for m in r.json()["repointed"]} == {
+        (str(a.id), str(k1.id)), (str(b.id), str(k1.id)),
+    }
     # unmerging the old keeper does not drag its former children with it
     r = client.patch(f"/api/kb/points/{k1.id}", json={"state": "approved", "unmerge": True})
     assert r.status_code == 200, r.text
@@ -281,3 +301,64 @@ def test_combine_flattens_a_losers_own_combined_claims_onto_the_keeper(client, d
         db_session.refresh(p)
         assert p.merged_into_point_id == k2.id
     assert {w["point_id"] for w in _wordings(client, k2.id)} == {str(a.id), str(b.id)}
+
+
+def test_undo_of_a_flattening_combine_restores_the_original_shape(client, db_session):
+    eid = _entity(client)
+    k1 = _point(db_session, eid, "First keeper")
+    a = _point(db_session, eid, "Folded A")
+    b = _point(db_session, eid, "Folded B")
+    k2 = _point(db_session, eid, "Second keeper")
+    client.post("/api/kb/points/combine", json={"keeper_id": str(k1.id), "point_ids": [str(a.id), str(b.id)]})
+    r = client.post("/api/kb/points/combine", json={"keeper_id": str(k2.id), "point_ids": [str(k1.id)]})
+    repointed = r.json()["repointed"]
+    # the web's Undo: restore each loser, then combine its children back onto it
+    assert client.patch(f"/api/kb/points/{k1.id}", json={"state": "approved", "unmerge": True}).status_code == 200
+    from_ids = {m["from_id"] for m in repointed}
+    for from_id in from_ids:
+        back = [m["point_id"] for m in repointed if m["from_id"] == from_id]
+        r = client.post("/api/kb/points/combine", json={"keeper_id": from_id, "point_ids": back})
+        assert r.status_code == 200, r.text
+    for p in (a, b):
+        db_session.refresh(p)
+        assert (p.state, p.merged_into_point_id) == ("retired", k1.id)
+    db_session.refresh(k1)
+    assert (k1.state, k1.merged_into_point_id) == ("approved", None)
+    assert {w["point_id"] for w in _wordings(client, k1.id)} == {str(a.id), str(b.id)}
+    assert _wordings(client, k2.id) == []
+
+
+def test_use_again_clears_the_pointer_so_a_reverse_combine_makes_no_cycle(client, db_session):
+    eid = _entity(client)
+    left = _point(db_session, eid, "Left line")
+    k = _point(db_session, eid, "K line")
+    assert client.post("/api/kb/points/combine", json={"keeper_id": str(left.id), "point_ids": [str(k.id)]}).status_code == 200
+    assert client.post("/api/kb/points/bulk-state", json={"ids": [str(k.id)], "state": "approved"}).status_code == 200
+    db_session.refresh(k)
+    assert (k.state, k.merged_into_point_id) == ("approved", None)
+    r = client.post("/api/kb/points/combine", json={"keeper_id": str(k.id), "point_ids": [str(left.id)]})
+    assert r.status_code == 200, r.text
+    db_session.refresh(left)
+    db_session.refresh(k)
+    assert (left.merged_into_point_id, k.merged_into_point_id) == (k.id, None)
+
+
+def test_split_wording_refuses_the_claims_own_line(client, db_session):
+    eid = _entity(client)
+    claim = _point(db_session, eid, "Cut latency 30%")
+    _log(db_session, claim, resume_key="hybrid", text="cut  latency 30%", direction="from_source")
+    r = client.post(f"/api/kb/points/{claim.id}/split-wording", json={"text": "Cut latency 30%", "resume_key": None})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "That is already this bullet's wording."
+    assert db_session.query(KBPoint).filter_by(entity_id=claim.entity_id).count() == 1
+
+
+def test_moving_a_combined_claim_alone_makes_it_an_ordinary_retired_bullet(client, db_session):
+    eid, other = _entity(client), _entity(client, "Elsewhere")
+    keeper = _point(db_session, eid, "Keeper line")
+    folded = _point(db_session, eid, "Folded line")
+    client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(folded.id)]})
+    r = client.patch(f"/api/kb/points/{folded.id}", json={"entity_id": other})
+    assert r.status_code == 200, r.text
+    assert (r.json()["state"], r.json()["merged_into_point_id"], r.json()["entity_id"]) == ("retired", None, other)
+    assert _wordings(client, keeper.id) == []
