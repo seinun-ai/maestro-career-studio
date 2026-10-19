@@ -3,6 +3,8 @@ and the writes that move text between claim and wording (combine, unmerge, split
 
 import uuid
 
+from sqlalchemy import select
+
 from app.models.career_kb import KBPoint, KBPortLog
 
 
@@ -111,6 +113,7 @@ def test_a_combined_claim_that_matches_a_resume_wording_can_still_be_split_out(c
     assert len(rows) == 1
     row = rows[0]
     assert (row["kind"], row["point_id"], row["resume_keys"]) == ("merged", str(folded.id), ["hybrid"])
+    assert row["text"] == "same words"
     assert (row["adoptable"], row["splittable"]) == (True, True)
 
 
@@ -127,3 +130,131 @@ def test_malformed_import_sources_are_skipped_or_read_as_blank_never_a_500(clien
         "point_id": None, "adoptable": True, "splittable": False,
     }]
     assert client.get(f"/api/kb/entities/{eid}").status_code == 200
+
+
+def test_combine_retires_and_points_the_losers_and_leaves_the_keeper_alone(client, db_session):
+    eid = _entity(client)
+    keeper = _point(db_session, eid, "Cleansed 2M rows nightly")
+    a = _point(db_session, eid, "Cleansed and validated 2M rows", state="draft")
+    b = _point(db_session, eid, "Validated 2M rows every night")
+    _log(db_session, b, resume_key="hybrid", text=b.text, direction="to_resume")
+    r = client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(a.id), str(b.id)]})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == str(keeper.id)
+    assert body["text"] == "Cleansed 2M rows nightly"
+    assert {w["point_id"] for w in body["wordings"]} == {str(a.id), str(b.id)}
+    for p in (a, b):
+        db_session.refresh(p)
+        assert (p.state, p.merged_into_point_id, p.approved_at) == ("retired", keeper.id, None)
+        assert p.provenance == "user_authored"
+    db_session.refresh(keeper)
+    assert (keeper.state, keeper.provenance) == ("approved", "user_authored")
+    # the loser's own placement history stays its own: nothing moved
+    assert db_session.query(KBPortLog).filter_by(point_id=b.id).count() == 1
+    # idempotent
+    r = client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(a.id)]})
+    assert r.status_code == 200
+
+
+def test_combine_refuses_mixed_items_a_retired_or_unconfirmable_keeper_and_unknown_ids(client, db_session):
+    eid, other = _entity(client), _entity(client, "Elsewhere")
+    keeper = _point(db_session, eid, "Keeper")
+    mine = _point(db_session, eid, "Mine")
+    theirs = _point(db_session, other, "Theirs")
+    assert client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(theirs.id)]}).status_code == 400
+    assert client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(uuid.uuid4())]}).status_code == 404
+    assert client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(keeper.id)]}).status_code == 400
+    keeper.state = "retired"
+    db_session.commit()
+    assert client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(mine.id)]}).status_code == 400
+    ucc = _point(db_session, eid, "Cannot confirm", provenance="user_cannot_confirm")
+    assert client.post("/api/kb/points/combine", json={"keeper_id": str(ucc.id), "point_ids": [str(mine.id)]}).status_code == 400
+
+
+def test_unmerge_patch_clears_the_pointer_and_sets_the_state_given(client, db_session):
+    eid = _entity(client)
+    keeper = _point(db_session, eid, "Keeper")
+    folded = _point(db_session, eid, "Folded", state="retired", merged_into=keeper.id)
+    r = client.patch(f"/api/kb/points/{folded.id}", json={"state": "draft", "unmerge": True})
+    assert r.status_code == 200, r.text
+    assert (r.json()["state"], r.json()["merged_into_point_id"]) == ("draft", None)
+    assert _wordings(client, keeper.id) == []
+    # unmerge alone, no state: the pointer clears, the state stays
+    folded2 = _point(db_session, eid, "Folded again", state="retired", merged_into=keeper.id)
+    r = client.patch(f"/api/kb/points/{folded2.id}", json={"unmerge": True})
+    assert (r.json()["state"], r.json()["merged_into_point_id"]) == ("retired", None)
+
+
+def test_split_wording_makes_an_approved_claim_and_moves_the_rows(client, db_session):
+    from tests.kb_vectors import OLD, REWRITE
+
+    eid = _entity(client)
+    claim = _point(db_session, eid, OLD, origin="base_sync")
+    _log(db_session, claim, resume_key="hybrid", text=REWRITE, direction="from_source", source_text=REWRITE, section="experience")
+    _log(db_session, claim, resume_key="compact", text=REWRITE, direction="from_source", source_text=REWRITE, section="experience")
+    r = client.post(f"/api/kb/points/{claim.id}/split-wording", json={"text": REWRITE, "resume_key": None})
+    assert r.status_code == 200, r.text
+    new = r.json()
+    assert (new["text"], new["state"], new["origin"], new["provenance"]) == (REWRITE, "approved", "base_sync", "user_authored")
+    assert new["entity_id"] == eid
+    moved = db_session.scalars(select(KBPortLog).where(KBPortLog.point_id == uuid.UUID(new["id"]))).all()
+    assert sorted(row.resume_key for row in moved) == ["compact", "hybrid"]
+    assert _wordings(client, claim.id) == []
+    assert db_session.get(KBPoint, uuid.UUID(new["id"])).merged_into_point_id is None
+
+
+def test_after_a_split_the_resume_bullet_reads_in_sync(client, db_session, tmp_path, monkeypatch):
+    """Before the split the band places the bullet as a wording; after it, the
+    exact-match rung finds the new claim first, so no embedding is needed."""
+    from app.services import kb_base_sync
+    from tests.kb_vectors import BAND, OLD, REWRITE, _vectors
+    from tests.test_kb_base_sync_classify import _exp_entity, _one_bullet, _seed_base
+
+    _vectors(monkeypatch, BAND)
+    ent = _exp_entity(db_session, text=OLD)
+    claim = ent.points[0]
+    _log(db_session, claim, resume_key="hybrid", text=REWRITE, direction="from_source",
+         source_text=REWRITE, section="experience")
+    _seed_base(db_session, tmp_path, monkeypatch, _one_bullet(REWRITE))
+    assert kb_base_sync.classify(db_session, "hybrid")["counts"]["recorded_drift"] == 1
+    assert client.post(f"/api/kb/points/{claim.id}/split-wording",
+                       json={"text": REWRITE, "resume_key": None}).status_code == 200
+    counts = kb_base_sync.classify(db_session, "hybrid")["counts"]
+    assert (counts["in_sync"], counts["recorded_drift"], counts["new"]) == (1, 0, 0)
+
+
+def test_split_wording_with_a_resume_key_moves_only_that_resumes_rows(client, db_session):
+    eid = _entity(client)
+    claim = _point(db_session, eid, "Line")
+    _log(db_session, claim, resume_key="hybrid", text="Other words", direction="from_source")
+    _log(db_session, claim, resume_key="compact", text="Other words", direction="from_source")
+    r = client.post(f"/api/kb/points/{claim.id}/split-wording", json={"text": "Other words", "resume_key": "hybrid"})
+    assert r.status_code == 200
+    (left,) = _wordings(client, claim.id)
+    assert left["resume_keys"] == ["compact"]
+    assert client.post(f"/api/kb/points/{claim.id}/split-wording", json={"text": "Never noted", "resume_key": None}).status_code == 404
+
+
+def test_adoption_keeps_the_state_and_clears_the_row(client, db_session):
+    eid = _entity(client)
+    claim = _point(db_session, eid, "Line")
+    _log(db_session, claim, resume_key="hybrid", text="Better line", direction="from_source")
+    r = client.patch(f"/api/kb/points/{claim.id}", json={"text": "Better line"})
+    assert (r.json()["state"], r.json()["text"], r.json()["wordings"]) == ("approved", "Better line", [])
+
+
+def test_moving_a_keeper_moves_its_combined_claims(client, db_session):
+    eid, other = _entity(client), _entity(client, "Elsewhere")
+    keeper = _point(db_session, eid, "Keeper line")
+    folded = _point(db_session, eid, "Folded line")
+    assert client.post("/api/kb/points/combine",
+                       json={"keeper_id": str(keeper.id), "point_ids": [str(folded.id)]}).status_code == 200
+    r = client.patch(f"/api/kb/points/{keeper.id}", json={"entity_id": other})
+    assert r.status_code == 200, r.text
+    db_session.refresh(folded)
+    assert (folded.entity_id, folded.merged_into_point_id) == (uuid.UUID(other), keeper.id)
+    detail = client.get(f"/api/kb/entities/{other}").json()
+    by_id = {p["id"]: p for p in detail["points"]}
+    assert [(w["kind"], w["point_id"]) for w in by_id[str(keeper.id)]["wordings"]] == [("merged", str(folded.id))]
+    assert client.get(f"/api/kb/entities/{eid}").json()["points"] == []

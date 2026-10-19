@@ -10,8 +10,12 @@ so "the same claim" comes to mean one thing everywhere.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
-from app.models.career_kb import KBPoint
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models.career_kb import KBPoint, KBPortLog
 from app.services.kb_consolidation import point_text_key
 
 # A bullet whose best same-item match scores here or above is a WORDING of that
@@ -60,3 +64,50 @@ def place(text: str, points: list[KBPoint]) -> Placement:
     if best_point is not None and best_score >= SYNC_WORDING_COSINE:
         return Placement("wording", best_point, round(best_score, 4))
     return Placement("new", None, None)
+
+
+class CombineError(ValueError):
+    """A combine the server refuses; the message is the user's sentence."""
+
+
+def combine(db: Session, keeper: KBPoint, others: list[KBPoint]) -> None:
+    """Retire `others` and point them at `keeper`. Only state, approved_at and
+    merged_into_point_id move; text, provenance and the losers' own placement
+    history stay where they are. Reversible with PATCH unmerge."""
+    if keeper.state == "retired" or keeper.provenance == "user_cannot_confirm":
+        raise CombineError("That bullet can't be the one to keep.")
+    for other in others:
+        if other.id == keeper.id:
+            raise CombineError("A bullet can't be combined into itself.")
+        if other.entity_id != keeper.entity_id:
+            raise CombineError("These bullets are on different items.")
+    for other in others:
+        other.state = "retired"
+        other.approved_at = None
+        other.merged_into_point_id = keeper.id
+
+
+def split_wording(db: Session, claim: KBPoint, text: str, resume_key: str | None) -> KBPoint:
+    """A resume wording becomes its own approved claim on the same item, and the
+    from_source rows that carried it follow the words. Raises LookupError when no
+    row matches (the wording is not one the KB noted)."""
+    key = point_text_key(text)
+    stmt = select(KBPortLog).where(KBPortLog.point_id == claim.id, KBPortLog.direction == "from_source")
+    if resume_key is not None:
+        stmt = stmt.where(KBPortLog.resume_key == resume_key)
+    rows = [r for r in db.scalars(stmt).all() if point_text_key(r.ported_text) == key]
+    if not rows:
+        raise LookupError("That wording isn't one your resumes noted.")
+    new = KBPoint(
+        entity_id=claim.entity_id,
+        text=text,
+        state="approved",
+        approved_at=datetime.now(UTC),
+        origin="base_sync",
+        provenance="user_authored",  # the user's own resume sentence
+    )
+    db.add(new)
+    db.flush()
+    for row in rows:
+        row.point_id = new.id
+    return new

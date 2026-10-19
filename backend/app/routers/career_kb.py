@@ -32,6 +32,7 @@ from app.schemas.career_kb import (
     KBAdaptRequest,
     KBCaptureRequest,
     KBCaptureResponse,
+    KBCombineRequest,
     KBContextResponse,
     KBDocumentIngestResponse,
     KBDocumentOut,
@@ -53,10 +54,12 @@ from app.schemas.career_kb import (
     KBPortResponse,
     KBProfileOut,
     KBProfilePatch,
+    KBSplitWordingRequest,
 )
 from app.schemas.resume import ResumeData
 from app.services import base_resume_data, kb_import, career_kb as svc
 from app.services import kb_adapt
+from app.services import kb_claims
 from app.services import kb_consolidation
 from app.services import kb_ingest
 from app.services import exports as career_exports
@@ -428,6 +431,39 @@ def bulk_point_state(
     return KBPointBulkResponse(results=results)
 
 
+@router.post("/points/combine", response_model=KBPointOut)
+def combine_points(payload: KBCombineRequest, db: Annotated[Session, Depends(get_db)]):
+    """Tidy bullets → Combine. The keeper is returned with its new wordings."""
+    keeper = db.get(KBPoint, payload.keeper_id)
+    others = [db.get(KBPoint, pid) for pid in dict.fromkeys(payload.point_ids)]
+    if keeper is None or any(p is None for p in others):
+        raise HTTPException(status_code=404, detail="Point not found")
+    try:
+        kb_claims.combine(db, keeper, others)
+    except kb_claims.CombineError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    db.commit()
+    db.refresh(keeper)
+    career_exports.best_effort_refresh(db)
+    return svc._to_point_out(db, keeper)
+
+
+@router.post("/points/{point_id}/split-wording", response_model=KBPointOut)
+def split_wording(point_id: UUID, payload: KBSplitWordingRequest, db: Annotated[Session, Depends(get_db)]):
+    """Make a resume wording its own bullet."""
+    claim = db.get(KBPoint, point_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail="Point not found")
+    try:
+        new = kb_claims.split_wording(db, claim, payload.text, payload.resume_key)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    db.commit()
+    db.refresh(new)
+    career_exports.best_effort_refresh(db)
+    return svc._to_point_out(db, new)
+
+
 @router.patch("/points/{point_id}", response_model=KBPointOut)
 def patch_point(
     point_id: UUID,
@@ -442,9 +478,18 @@ def patch_point(
         target = db.get(KBEntity, data["entity_id"])
         if target is None:
             raise HTTPException(status_code=404, detail="That item no longer exists.")
+        if data["entity_id"] != point.entity_id:
+            # The claims combined into this one are its wordings; they move with
+            # it, since entity_detail finds merged children only on one item.
+            for child in db.scalars(
+                select(KBPoint).where(KBPoint.merged_into_point_id == point.id)
+            ).all():
+                child.entity_id = data["entity_id"]
         point.entity_id = data["entity_id"]
     if data.get("state") is not None:
         _apply_point_state(point, data["state"])
+    if payload.unmerge:
+        point.merged_into_point_id = None
     if data.get("text") is not None:
         point.text = data["text"]
     if data.get("tags") is not None:

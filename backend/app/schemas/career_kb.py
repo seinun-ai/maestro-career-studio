@@ -216,6 +216,9 @@ class KBPointPatch(BaseModel):
     state: str | None = None
     tags: list[str] | None = None
     entity_id: UUID | None = None
+    # Clears merged_into_point_id. With state in the same PATCH it is the split
+    # of a combined claim and the Undo of a combine; alone it only clears.
+    unmerge: bool = False
 
     @field_validator("state")
     @classmethod
@@ -229,6 +232,31 @@ class KBPointPatch(BaseModel):
     def _text_nonempty(cls, v: str | None) -> str | None:
         if v is None:
             return v
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("text must be non-empty")
+        return stripped
+
+
+class KBCombineRequest(BaseModel):
+    """Tidy bullets → Combine: the keeper stays the claim; every other point is
+    retired and pointed at it, so it reads as one of the keeper's wordings."""
+
+    keeper_id: UUID
+    point_ids: list[UUID] = Field(min_length=1, max_length=50)
+
+
+class KBSplitWordingRequest(BaseModel):
+    """Make a resume wording its own bullet: a new approved claim on the same
+    item with this text, and the matching from_source rows re-pointed to it.
+    resume_key narrows to one resume's rows; None moves every row with this text."""
+
+    text: str
+    resume_key: str | None = None
+
+    @field_validator("text")
+    @classmethod
+    def _text_nonempty(cls, v: str) -> str:
         stripped = v.strip()
         if not stripped:
             raise ValueError("text must be non-empty")

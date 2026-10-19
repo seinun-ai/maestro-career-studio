@@ -1,13 +1,13 @@
 """Provenance is stamped at every KBPoint creation site (orthogonal to origin)."""
 
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.models.career_kb import KBDocument, KBEntity, KBPoint
+from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPortLog
 from app.services import kb_ingest
 from app.services.kb_consolidation import consolidate, consolidate_deterministic
 from app.services.tailoring_session import _write_back_elicited_points
@@ -203,6 +203,31 @@ def _drive_gap_writeback(db_session, monkeypatch, tmp_path):
     return db_session.scalars(select(KBPoint)).one()
 
 
+def _drive_split_wording(db_session, monkeypatch, tmp_path):
+    from app.db import get_db
+    from app.main import app
+    from app.models.career_kb import KBPortLog
+
+    ent = KBEntity(kind="project", title="Orbit")
+    db_session.add(ent)
+    db_session.flush()
+    claim = KBPoint(entity_id=ent.id, text="Shipped the pipeline", state="approved", origin="manual", provenance="user_stated")
+    db_session.add(claim)
+    db_session.flush()
+    db_session.add(KBPortLog(entity_id=ent.id, point_id=claim.id, resume_kind="base", resume_key="hybrid",
+                             section="projects", ported_text="Shipped the data pipeline to prod", direction="from_source"))
+    db_session.flush()
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        body = TestClient(app).post(
+            f"/api/kb/points/{claim.id}/split-wording",
+            json={"text": "Shipped the data pipeline to prod", "resume_key": None},
+        ).json()
+    finally:
+        app.dependency_overrides.clear()
+    return db_session.get(KBPoint, UUID(body["id"]))
+
+
 SITE_DRIVERS = {
     "manual_point": (_drive_manual_point, "user_stated"),
     "mint_document": (_drive_mint_document, "user_authored"),
@@ -212,6 +237,7 @@ SITE_DRIVERS = {
     "consolidate_merged": (_drive_consolidate_merged, "derived_unverified"),
     "write_verbatim_points": (_drive_verbatim_points, "user_authored"),
     "gap_writeback": (_drive_gap_writeback, "user_stated"),
+    "split_wording": (_drive_split_wording, "user_authored"),
 }
 
 
@@ -366,4 +392,28 @@ def test_no_writer_flips_user_cannot_confirm(db_session, monkeypatch):
     )
     kb_ingest.capture(db_session, "another dump")
     db_session.flush()
+    assert db_session.get(KBPoint, point_id).provenance == "user_cannot_confirm"
+
+    # The writers this design adds: combine (as a loser and as a refused keeper),
+    # bulk retire, split-wording and adoption. None reads or writes provenance.
+    from app.db import get_db
+    from app.main import app
+
+    keeper = KBPoint(entity_id=ent.id, text="A keeper claim", state="approved", origin="manual", provenance="user_stated")
+    db_session.add(keeper)
+    db_session.flush()
+    db_session.add(KBPortLog(entity_id=ent.id, point_id=point_id, resume_kind="base", resume_key="hybrid",
+                             section="projects", ported_text="A resume phrasing", direction="from_source"))
+    db_session.flush()
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        client = TestClient(app)
+        assert client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(point_id)]}).status_code == 200
+        assert client.patch(f"/api/kb/points/{point_id}", json={"state": "approved", "unmerge": True}).status_code == 200
+        assert client.post("/api/kb/points/bulk-state", json={"ids": [str(point_id)], "state": "retired"}).status_code == 200
+        assert client.post(f"/api/kb/points/{point_id}/split-wording", json={"text": "A resume phrasing", "resume_key": None}).status_code == 200
+        assert client.patch(f"/api/kb/points/{point_id}", json={"text": "Adopted wording from a resume"}).status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+    db_session.expire_all()
     assert db_session.get(KBPoint, point_id).provenance == "user_cannot_confirm"
