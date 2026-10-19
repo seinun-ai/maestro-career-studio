@@ -18,10 +18,12 @@ the user's, in the app.
 1. **Brief.** Call `get_job_search_brief` first. It is the search criteria: role
    categories, location, work authorization (use it verbatim), blocklist, and the
    per-run proposal ceiling.
-2. **Source.** Pull recent postings (roughly the last week) from whatever job
-   sources you can reach — job-board tools, scrapers, the brief's referral
-   careers pages, or plain browsing. Spread across the brief's role categories.
-   Prefer the employer's own posting URL over a board listing.
+2. **Source.** Pull postings from at least the time since this automation last
+   ran (its schedule's interval), or roughly the last week on a first run or when
+   you can't tell, from whatever job sources you can reach — job-board tools,
+   scrapers, the brief's referral careers pages, or plain browsing. Spread across
+   the brief's role categories. Prefer the employer's own posting URL over a board
+   listing.
 3. **Filter.** Drop blocklisted companies, postings without the full job
    description, ones `find_job_by_url` already knows, and employers that look
    like data harvesting rather than hiring (a quick web check is enough; keep
