@@ -85,6 +85,7 @@ def test_tailor_run_works_only_jobs_owned_here():
     "If nobody can be reached now, leave it: it waits in Needs you.",
     "Don't wait: move on to the next job",
     "A yes that comes after the run has ended is not acted on",
+    "Count each job once, by where it ended.",
 ])
 def test_the_automatic_apply_guardrails(sentence):
     body = {c.id: c for c in automations.catalog(full_automation=True).cards}["apply-session"].body
@@ -180,6 +181,10 @@ _BASE_COUNTRY_LINE = (
                  id="apply-session-yes-per-application"),
     pytest.param("apply-session", "`record_consent` with the channel the yes came through",
                  id="apply-session-consent-channel"),
+    pytest.param("apply-session", "A yes that comes after the run has ended is not acted on",
+                 id="apply-session-late-yes-ignored"),
+    pytest.param("apply-session", "Count each job once, by where it ended.",
+                 id="apply-session-counts-once"),
     pytest.param("customize-job-skills",
                  "End every new automation with one step: call `record_run` with its own name",
                  id="custom-records"),

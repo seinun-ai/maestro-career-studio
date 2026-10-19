@@ -51,8 +51,10 @@ Only work jobs whose `ownership.owned_here` is true.
    channel the user set up for these runs instead. If nobody can answer now,
    don't submit: `report_failure` with the reason `waiting for your yes` and move
    on to the next one; it waits in Needs you. A yes for a job you parked can
-   still come while the run goes on: `record_consent` then moves it straight from
-   Needs you to approved, with no `resume_proposal` first.
+   still come while the run goes on and its filled form is still intact:
+   `record_consent` then moves it straight from Needs you to approved, with no
+   `resume_proposal` first. A yes that comes after the run has ended is not acted
+   on; the job waits in Needs you.
    Only after their yes for *this* application:
    `record_consent` with the channel the yes came through (`chat` for this chat,
    `slack` for Slack, `mcp` for any other channel, named in the note), click
@@ -64,7 +66,8 @@ Only work jobs whose `ownership.owned_here` is true.
     (`ok`; `partial` if some work failed; `failed` if none could be done), and
     `report` with `counts` (`updated`: applications submitted; `needs_you`: jobs stopped
     for the user via `report_failure` or left `needs_human`; `skipped`: declined),
-    `digest`, and `job_ids` for the jobs worked.
+    `digest`, and `job_ids` for the jobs worked. Count each job once, by where it
+    ended.
 
 The Maestro CS tools' own descriptions carry the rest (states, evidence,
 duplicates) — follow them rather than working around a refusal. If the

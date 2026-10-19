@@ -9,7 +9,7 @@ In full automation mode the Apply automatically prompt (`apply-auto`) replaces f
 
 ## Operating contract
 
-Use a visible (headed) Chrome through Playwright MCP or Claude in Chrome — never headless or stealth browsing, and never solve or bypass a CAPTCHA. The user is present for the submit.
+Use a visible (headed) Chrome through Playwright MCP or Claude in Chrome — never headless or stealth browsing, and never solve or bypass a CAPTCHA. The user is present for the submit, or says yes for this application through a channel they set up for these runs.
 
 The user's Maestro CS profile is the source of truth; distrust values an application site parsed from the resume. Prepare without interrupting; ask once, at submission. The Maestro CS tools' descriptions set the rules; this skill is the hands-on technique.
 
@@ -36,7 +36,7 @@ The user's Maestro CS profile is the source of truth; distrust values an applica
 - Never duplicate a proposal, application, tailoring run, or current PDF. Relinking an already-linked proposal to a different application is refused (409).
 - `pending_review`: run the recovery check above, then prepare without prompting. `needs_human`: only `resume_proposal(proposal_id)` may return it to `pending_review`.
 - `submission_uncertain` is terminal and never accepted by `resume_proposal`. `submitted`/`rejected`/`expired` are also terminal.
-- Approval is same-turn and single-use. A pre-click interruption goes through `needs_human` and `resume_proposal`, then requires fresh final consent.
+- Approval is same-turn and single-use. A pre-click interruption goes through `needs_human` and `resume_proposal`, then requires fresh final consent. A job parked before approval, waiting for the user's yes, goes straight to approved with `record_consent`.
 
 ## Prepare
 

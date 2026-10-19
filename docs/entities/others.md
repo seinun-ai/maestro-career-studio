@@ -1017,7 +1017,7 @@
   evidence stay, and every flag goes into the "Submit now?" question. **Where a run asks**: an `apply-session` run
   asks in its chat and waits; only when nobody is at the chat does it ask through a channel the user set up
   for these runs. With nobody to answer it never submits: `report_failure` parks the job in **Needs you**. A
-  yes that arrives later in the same run takes it `needs_human → approved` through `record_consent`, whose
+  yes that arrives later in the same run, with the filled form intact, takes it `needs_human → approved` through `record_consent`, whose
   channel is the one the yes came through (`chat`, `slack`, or `mcp` for any other, named in the note); a yes
   after the run ends is not acted on. Never headless / stealth / CAPTCHA
   bypass.

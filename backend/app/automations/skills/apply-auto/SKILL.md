@@ -57,3 +57,4 @@ Only work jobs whose `ownership.owned_here` is true.
 8. **Record the run.** Call `record_run` with automation `apply-session`.
    Report outcome `ok`, `partial` if a job failed, or `failed` if no job could be worked.
    Include `counts` (`updated`: submitted; `needs_you`: parked for the user; `skipped`: declined), `digest`, and `job_ids` for the jobs worked.
+   Count each job once, by where it ended.

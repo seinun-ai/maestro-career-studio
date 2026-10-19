@@ -12,7 +12,7 @@ metadata:
 
 Help the user end up with skills that fit how *they* job-hunt — either their own
 version of any ready-made skill (`job-hunt`, `mail-status`, `referral-pages`,
-`tailor-run`, `apply-session`; this repo: `backend/app/automations/skills/`,
+`tailor-run`, `apply-session`; Maestro's source: `backend/app/automations/skills/`,
 indexed at `docs/skills/README.md`), or something new built on the Maestro CS tools.
 
 ## 1. Look before you ask

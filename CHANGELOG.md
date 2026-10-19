@@ -70,8 +70,8 @@ a click.
 - Sync says when it could not compare wording: the sync status and result carry `compared_wording`,
   and the pill adds "Couldn't compare wording" when it is false.
 - **The Automations page has one prompt per card, for any agent app.** The agent-app picker is
-  gone. The copied prompt asks when to run, then uses whatever scheduler your agent app or
-  computer has, and tells you plainly where else it could run when it has none.
+  gone. A scheduled card's prompt asks when to run, then uses whatever scheduler your agent app
+  or computer has, and tells you plainly where else it could run when it has none.
 - **Make your own can now adapt any automation** to your agent app and routine.
 - **Apply runs ask wherever you can answer,** and leave a job in Needs you when nobody can.
 - **Mail status and Job hunt look back to their last run** instead of a fixed week.
