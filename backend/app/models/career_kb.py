@@ -71,6 +71,13 @@ class KBPoint(Base):
     source_document_id: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType(as_uuid=True), ForeignKey("kb_documents.id", ondelete="SET NULL")
     )
+    # The claim this one was combined into (Tidy bullets → Combine). A merged
+    # point is retired and shown as a WORDING of its keeper, not in the retired
+    # group. SET NULL when the keeper is deleted; cleared by PATCH unmerge (the
+    # split, and Combine's Undo). One direction only.
+    merged_into_point_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType(as_uuid=True), ForeignKey("kb_points.id", ondelete="SET NULL"), index=True
+    )
     tags_json: Mapped[list[Any]] = mapped_column(
         JSONDoc, nullable=False, default=list, server_default=sa_text("'[]'")
     )
@@ -84,6 +91,9 @@ class KBPoint(Base):
     )
 
     entity: Mapped[KBEntity] = relationship(back_populates="points")
+    merged_into: Mapped["KBPoint | None"] = relationship(
+        "KBPoint", remote_side=[id], foreign_keys=[merged_into_point_id]
+    )
 
 
 class KBDocument(Base):
@@ -139,6 +149,32 @@ class KBPortLog(Base):
     ported_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
+
+
+class KBPointKeptPair(Base):
+    """'Not the same': two bullets groom stops pairing. Stored once per pair,
+    with point_a_id < point_b_id (see kept_pair_key); both columns cascade
+    with their point, so a deleted bullet takes its kept pairs with it."""
+
+    __tablename__ = "kb_point_kept_pairs"
+
+    point_a_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType(as_uuid=True), ForeignKey("kb_points.id", ondelete="CASCADE"), primary_key=True
+    )
+    point_b_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType(as_uuid=True), ForeignKey("kb_points.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
+    )
+
+
+def kept_pair_key(a: uuid.UUID, b: uuid.UUID) -> tuple[uuid.UUID, uuid.UUID]:
+    """The one stored order of a pair: lower id first. A point is never kept
+    apart from itself."""
+    if a == b:
+        raise ValueError("a kept pair needs two different points")
+    return (a, b) if a < b else (b, a)
 
 
 class KBProfile(Base):

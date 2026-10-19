@@ -30,6 +30,7 @@ PROFILE_MODELS = (
     models.Referral,
     models.KBEntity,
     models.KBPoint,
+    models.KBPointKeptPair,
     models.KBDocument,
     models.KBProfile,
 )

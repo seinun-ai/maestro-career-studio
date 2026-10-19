@@ -10,7 +10,7 @@ from app.models.base_resume import BaseResume
 from app.models.bullet_classification import BulletClassification
 from app.models.bullet_dispute import BulletDispute
 from app.models.bullet_rewrite import BulletRewrite
-from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPortLog, KBProfile
+from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPointKeptPair, KBPortLog, KBProfile
 from app.models.chat import ChatAttachment, ChatMessage, ChatSession
 from app.models.consent_event import ConsentEvent
 from app.models.filled_answer import FilledAnswer
@@ -52,6 +52,7 @@ __all__ = [
     "KBDocument",
     "KBEntity",
     "KBPoint",
+    "KBPointKeptPair",
     "KBPortLog",
     "KBProfile",
     "QAEntry",

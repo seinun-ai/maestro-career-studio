@@ -86,6 +86,7 @@ TABLES: tuple[Table, ...] = (
     Table("kb_entities", models.KBEntity),
     Table("kb_documents", models.KBDocument, paths={"file_path": "kb_documents"}),
     Table("kb_points", models.KBPoint),
+    Table("kb_point_kept_pairs", models.KBPointKeptPair),
     Table("kb_port_log", models.KBPortLog, base_only=True),
     Table("kb_profile", models.KBProfile),
     Table("settings", models.Setting),

@@ -33,6 +33,7 @@ TABLES = {
     "referrals": PROFILE,
     "kb_entities": PROFILE,
     "kb_points": PROFILE,
+    "kb_point_kept_pairs": PROFILE,
     "kb_documents": PROFILE,
     "kb_profile": PROFILE,
     "settings": PROFILE,

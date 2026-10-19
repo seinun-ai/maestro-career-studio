@@ -27,6 +27,7 @@ def test_all_planned_tables_are_registered():
         "job_skills",
         "kb_documents",
         "kb_entities",
+        "kb_point_kept_pairs",
         "kb_points",
         "kb_port_log",
         "kb_profile",
