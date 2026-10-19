@@ -1,29 +1,61 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 776,
-    "total_loc": 231626,
-    "src_loc": 66892,
-    "test_loc": 164734,
+    "modules": 871,
+    "total_loc": 273985,
+    "src_loc": 73617,
+    "test_loc": 200368,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
     "complexity_hotspots": [
       {
-        "file": "mcp_server/tests/test_server.py",
-        "line": 596,
-        "name": "test_audit_one_sentence_docstring_fixes",
-        "complexity": 42,
+        "file": "app/services/autofill_step.py",
+        "line": 433,
+        "name": "step",
+        "complexity": 79,
+        "params": 5,
+        "lines": 105
+      },
+      {
+        "file": "tests/test_frontend_jobs_honest_words.py",
+        "line": 865,
+        "name": "test_step_four_applies_with_the_cover_letter_beside_it_and_the_details_under_it",
+        "complexity": 48,
         "params": 0,
-        "lines": 51
+        "lines": 53
+      },
+      {
+        "file": "mcp_server/tests/test_server.py",
+        "line": 644,
+        "name": "test_audit_one_sentence_docstring_fixes",
+        "complexity": 47,
+        "params": 0,
+        "lines": 59
       },
       {
         "file": "tests/browser/test_fill_end_to_end.py",
-        "line": 262,
+        "line": 270,
         "name": "test_the_engine_fills_every_fixture_on_one_page",
         "complexity": 42,
         "params": 1,
         "lines": 54
+      },
+      {
+        "file": "tests/test_frontend_jobs_honest_words.py",
+        "line": 145,
+        "name": "test_the_gap_page_draws_step_two_with_the_resume_chips",
+        "complexity": 40,
+        "params": 0,
+        "lines": 63
+      },
+      {
+        "file": "app/services/proposals.py",
+        "line": 216,
+        "name": "transition",
+        "complexity": 40,
+        "params": 8,
+        "lines": 80
       },
       {
         "file": "app/services/explore_build_areas.py",
@@ -42,8 +74,16 @@
         "lines": 59
       },
       {
+        "file": "app/services/autofill_pick.py",
+        "line": 694,
+        "name": "pick",
+        "complexity": 39,
+        "params": 5,
+        "lines": 68
+      },
+      {
         "file": "app/services/career_kb.py",
-        "line": 783,
+        "line": 887,
         "name": "_compose_extra_item_ops",
         "complexity": 39,
         "params": 5,
@@ -51,11 +91,11 @@
       },
       {
         "file": "app/services/resume_lint.py",
-        "line": 959,
+        "line": 987,
         "name": "_advisories",
         "complexity": 39,
         "params": 2,
-        "lines": 107
+        "lines": 108
       },
       {
         "file": "app/services/role_categories.py",
@@ -66,12 +106,28 @@
         "lines": 145
       },
       {
+        "file": "app/services/resume_voice.py",
+        "line": 283,
+        "name": "third_person_hits",
+        "complexity": 37,
+        "params": 4,
+        "lines": 87
+      },
+      {
         "file": "app/services/career_kb.py",
-        "line": 205,
+        "line": 207,
         "name": "compose_resume_data",
         "complexity": 37,
         "params": 2,
         "lines": 160
+      },
+      {
+        "file": "tests/test_frontend_jobs_honest_words.py",
+        "line": 920,
+        "name": "test_step_three_change_rows_read_and_revert_one_by_one",
+        "complexity": 35,
+        "params": 0,
+        "lines": 40
       },
       {
         "file": "app/services/kb_consolidation.py",
@@ -80,6 +136,14 @@
         "complexity": 35,
         "params": 6,
         "lines": 114
+      },
+      {
+        "file": "app/services/autofill_map.py",
+        "line": 881,
+        "name": "map_fields",
+        "complexity": 35,
+        "params": 7,
+        "lines": 85
       },
       {
         "file": "app/services/llm_providers/gemini.py",
@@ -98,28 +162,36 @@
         "lines": 111
       },
       {
-        "file": "app/services/proposals.py",
-        "line": 200,
-        "name": "transition",
-        "complexity": 34,
-        "params": 7,
-        "lines": 68
-      },
-      {
         "file": "app/services/kb_adapt.py",
-        "line": 269,
+        "line": 270,
         "name": "apply_adapted",
         "complexity": 33,
         "params": 2,
         "lines": 152
       },
       {
+        "file": "app/services/tailoring_session.py",
+        "line": 1372,
+        "name": "tailor",
+        "complexity": 31,
+        "params": 4,
+        "lines": 216
+      },
+      {
         "file": "app/services/chat_agent.py",
-        "line": 107,
+        "line": 115,
         "name": "run_turn",
         "complexity": 31,
         "params": 6,
         "lines": 137
+      },
+      {
+        "file": "tests/test_frontend_jobs_honest_words.py",
+        "line": 828,
+        "name": "test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions",
+        "complexity": 29,
+        "params": 0,
+        "lines": 35
       },
       {
         "file": "tests/test_explore_router.py",
@@ -147,7 +219,7 @@
       },
       {
         "file": "app/services/proposals.py",
-        "line": 428,
+        "line": 541,
         "name": "get_final_review",
         "complexity": 29,
         "params": 2,
@@ -162,6 +234,14 @@
         "lines": 42
       },
       {
+        "file": "tests/test_frontend_jobs_honest_words.py",
+        "line": 317,
+        "name": "test_step_two_has_one_filled_button",
+        "complexity": 28,
+        "params": 0,
+        "lines": 51
+      },
+      {
         "file": "scripts/live_provider_check.py",
         "line": 321,
         "name": "main",
@@ -171,7 +251,7 @@
       },
       {
         "file": "app/services/kb_adapt.py",
-        "line": 171,
+        "line": 172,
         "name": "_coerce_proposal",
         "complexity": 28,
         "params": 4,
@@ -179,7 +259,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1141,
+        "line": 1143,
         "name": "_live_text_fragments",
         "complexity": 28,
         "params": 1,
@@ -210,8 +290,24 @@
         "lines": 86
       },
       {
+        "file": "tests/test_extension_panel_run.py",
+        "line": 494,
+        "name": "test_a_run_started_on_the_current_tab_fills_each_page_presses_only_next_and_stops_at_review",
+        "complexity": 26,
+        "params": 1,
+        "lines": 23
+      },
+      {
+        "file": "tests/test_eval_fill_cases.py",
+        "line": 573,
+        "name": "test_the_map_cases_hold_the_live_wrong_writes",
+        "complexity": 26,
+        "params": 0,
+        "lines": 36
+      },
+      {
         "file": "app/services/career_kb.py",
-        "line": 135,
+        "line": 137,
         "name": "compose_context",
         "complexity": 26,
         "params": 1,
@@ -235,15 +331,15 @@
       },
       {
         "file": "tests/test_extension_panel.py",
-        "line": 1674,
+        "line": 1689,
         "name": "test_a_loaded_page_renders_as_itself_from_end_to_end",
         "complexity": 25,
         "params": 1,
-        "lines": 57
+        "lines": 60
       },
       {
         "file": "tests/test_frontend_visual_surfaces.py",
-        "line": 110,
+        "line": 131,
         "name": "test_gap_actions_carry_icons_and_explain_once",
         "complexity": 25,
         "params": 0,
@@ -267,11 +363,19 @@
       },
       {
         "file": "app/services/resume_lint.py",
-        "line": 636,
+        "line": 637,
         "name": "assemble",
         "complexity": 25,
         "params": 12,
         "lines": 101
+      },
+      {
+        "file": "app/services/autofill_map.py",
+        "line": 629,
+        "name": "_route",
+        "complexity": 25,
+        "params": 4,
+        "lines": 45
       },
       {
         "file": "maestro_cs/update.py",
@@ -282,16 +386,8 @@
         "lines": 55
       },
       {
-        "file": "tests/test_eval_fill_cases.py",
-        "line": 567,
-        "name": "test_the_map_cases_hold_the_live_wrong_writes",
-        "complexity": 24,
-        "params": 0,
-        "lines": 32
-      },
-      {
         "file": "tests/test_extension_panel.py",
-        "line": 685,
+        "line": 690,
         "name": "test_the_panel_document_is_self_contained_and_joins_the_namespace",
         "complexity": 24,
         "params": 0,
@@ -307,110 +403,14 @@
       },
       {
         "file": "tests/test_frontend_visual_surfaces.py",
-        "line": 229,
+        "line": 254,
         "name": "test_wave5_review_one_glyph_per_meaning_and_honest_marks",
         "complexity": 24,
         "params": 0,
         "lines": 26
-      },
-      {
-        "file": "scripts/eval_fill_decisions.py",
-        "line": 171,
-        "name": "check_pick_case",
-        "complexity": 24,
-        "params": 1,
-        "lines": 30
-      },
-      {
-        "file": "scripts/eval_fill_decisions.py",
-        "line": 549,
-        "name": "run_map",
-        "complexity": 24,
-        "params": 3,
-        "lines": 57
-      },
-      {
-        "file": "scripts/spike_background_fill.py",
-        "line": 262,
-        "name": "accept_result",
-        "complexity": 24,
-        "params": 2,
-        "lines": 37
-      },
-      {
-        "file": "app/services/explore_build_areas.py",
-        "line": 66,
-        "name": "build_areas",
-        "complexity": 24,
-        "params": 5,
-        "lines": 96
-      },
-      {
-        "file": "app/services/autofill_pick.py",
-        "line": 350,
-        "name": "pick",
-        "complexity": 24,
-        "params": 4,
-        "lines": 42
-      },
-      {
-        "file": "app/services/career_kb.py",
-        "line": 929,
-        "name": "_compose_item_ops",
-        "complexity": 24,
-        "params": 5,
-        "lines": 117
-      },
-      {
-        "file": "app/services/tailoring_session.py",
-        "line": 989,
-        "name": "_write_back_elicited_points",
-        "complexity": 24,
-        "params": 3,
-        "lines": 116
-      },
-      {
-        "file": "app/services/tailoring_session.py",
-        "line": 1360,
-        "name": "tailor",
-        "complexity": 24,
-        "params": 4,
-        "lines": 192
-      },
-      {
-        "file": "app/services/health_verify.py",
-        "line": 22,
-        "name": "verify_detections",
-        "complexity": 24,
-        "params": 5,
-        "lines": 72
-      },
-      {
-        "file": "app/services/autofill_telemetry.py",
-        "line": 110,
-        "name": "summarize_rows",
-        "complexity": 24,
-        "params": 1,
-        "lines": 92
-      },
-      {
-        "file": "app/services/ats/layers.py",
-        "line": 409,
-        "name": "_semantic_stage",
-        "complexity": 24,
-        "params": 15,
-        "lines": 148
-      },
-      {
-        "file": "tests/test_eval_fill_cases.py",
-        "line": 48,
-        "name": "test_the_plans_labelled_cases_are_there",
-        "complexity": 23,
-        "params": 0,
-        "lines": 22
       }
     ],
-    "hotspot_count": 789,
+    "hotspot_count": 960,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -463,13 +463,18 @@
         "kind": "swallowed_exception"
       },
       {
+        "file": "app/services/resume_voice.py",
+        "line": 657,
+        "kind": "swallowed_exception"
+      },
+      {
         "file": "app/services/attachment_extract.py",
         "line": 180,
         "kind": "swallowed_exception"
       },
       {
         "file": "app/services/proposal_evidence.py",
-        "line": 89,
+        "line": 90,
         "kind": "swallowed_exception"
       },
       {
@@ -493,9 +498,9 @@
         "kind": "swallowed_exception"
       }
     ],
-    "error_masking_count": 16,
-    "internal_import_edges": 3444,
-    "imports_per_module": 4.44,
+    "error_masking_count": 17,
+    "internal_import_edges": 3894,
+    "imports_per_module": 4.47,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -508,6 +513,7 @@
       "scripts.ats_snapshot",
       "scripts.backfill_work_auth",
       "scripts.eval_fill_decisions",
+      "scripts.eval_reason",
       "scripts.fill_trace",
       "scripts.health_golden",
       "scripts.live_provider_check",
@@ -524,9 +530,9 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.47,
-    "duplicated_lines": 381,
-    "clones": 43,
+    "percentage": 0.45,
+    "duplicated_lines": 403,
+    "clones": 46,
     "allowlisted_clones": 0,
     "worst_files": [
       [
@@ -611,6 +617,7 @@
       "scripts.ats_snapshot",
       "scripts.backfill_work_auth",
       "scripts.eval_fill_decisions",
+      "scripts.eval_reason",
       "scripts.fill_trace",
       "scripts.health_golden",
       "scripts.live_provider_check",
@@ -642,29 +649,29 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "789 function(s) over threshold. worst: mcp_server/tests/test_server.py:596 cc=42",
+      "detail": "960 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
     {
       "rank": "P2",
       "signal": "error_masking",
-      "detail": "16 bare/swallowed exception handlers",
+      "detail": "17 bare/swallowed exception handlers",
       "why": "Converts loud failures into silent wrong answers; hides the next defect.",
       "action": "Narrow the exception type or re-raise. Never leave a bare pass."
     }
   ],
   "metrics": {
-    "total_loc": 231626,
-    "src_loc": 66892,
-    "test_loc": 164734,
-    "modules": 776,
+    "total_loc": 273985,
+    "src_loc": 73617,
+    "test_loc": 200368,
+    "modules": 871,
     "orphan_loc": 0,
-    "duplication_pct": 0.47,
-    "duplicated_lines": 381,
-    "clone_count": 43,
-    "complexity_hotspots": 789,
-    "error_masking": 16,
-    "imports_per_module": 4.44
+    "duplication_pct": 0.45,
+    "duplicated_lines": 403,
+    "clone_count": 46,
+    "complexity_hotspots": 960,
+    "error_masking": 17,
+    "imports_per_module": 4.47
   }
 }
