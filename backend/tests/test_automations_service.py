@@ -81,6 +81,8 @@ def test_tailor_run_works_only_jobs_owned_here():
     "Stop when the daily cap in the brief is used up.",
     "Call `record_run` with automation `apply-session`",
     "and the user being present at the submit",
+    "Ask the user through whatever this run can reach",
+    "If nobody can be reached now, leave it: it waits in Needs you.",
 ])
 def test_the_automatic_apply_guardrails(sentence):
     body = {c.id: c for c in automations.catalog(full_automation=True).cards}["apply-session"].body
@@ -166,6 +168,8 @@ _BASE_COUNTRY_LINE = (
                  id="mail-user-digest-unchanged"),
     pytest.param("job-hunt", '`store_extracted_jd` with `source="agent"`', id="hunt-marks-agent"),
     pytest.param("apply-session", _BASE_COUNTRY_LINE, id="apply-session-base-country"),
+    pytest.param("apply-session", "If nobody can answer now, don't submit",
+                 id="apply-session-no-answer-no-submit"),
     pytest.param("customize-job-skills",
                  "End every new automation with one step: call `record_run` with its own name",
                  id="custom-records"),

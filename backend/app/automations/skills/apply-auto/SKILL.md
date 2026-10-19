@@ -42,7 +42,9 @@ Only work jobs whose `ownership.owned_here` is true.
    Then call `mark_submitted` with channel `auto` and a `note` naming what confirmed it.
    A confirmation screenshot is optional.
    If you cannot tell whether submission succeeded, call `report_failure` with reason `submission_uncertain` and never retry.
-7. **Everything else.** Call `report_failure` with the reason, ask the user, and move on.
+7. **Everything else.** Call `report_failure` with the reason and move on.
+   Ask the user through whatever this run can reach: this chat, or a channel the user set up for these runs.
+   If nobody can be reached now, leave it: it waits in Needs you.
    If the user says yes:
    Attach the filled-form screenshot as `final_review` evidence.
    Then call `record_consent` with channel `chat`, action `approved`, and the user's words.

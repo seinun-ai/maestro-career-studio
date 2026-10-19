@@ -46,6 +46,9 @@ Only work jobs whose `ownership.owned_here` is true.
    role, PDF, key answers, every flag in `flags` with its reason, and any
    duplicate warning).
    When `get_final_review`'s `base_country.eligible` is false, name the resume and the job's country in the Submit-now question.
+   Ask in this chat, or through a channel the user set up for these runs. If nobody can answer
+   now, don't submit: `report_failure` with the reason `waiting for your yes` and move on to the
+   next one; it waits in Needs you.
    Only after their yes for *this* application:
    `record_consent`, click submit once, attach the confirmation as
    `submission_receipt`, and `mark_submitted`. If you can't tell whether it went
