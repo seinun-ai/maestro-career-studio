@@ -17,7 +17,15 @@ from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
 from app.config import settings
 from app.db import get_db
 from app.models.base_resume import BaseResume
-from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPortLog, KBProfile
+from app.models.career_kb import (
+    KBDocument,
+    KBEntity,
+    KBPoint,
+    KBPointKeptPair,
+    KBPortLog,
+    KBProfile,
+    kept_pair_key,
+)
 from app.models.setting import Setting
 from app.schemas.career_kb import (
     ImportReport,
@@ -27,6 +35,7 @@ from app.schemas.career_kb import (
     IngestParsedRequest,
     SkippedFileRead,
     ConsolidationReport,
+    GroomReport,
     KBAdaptApplyRequest,
     KBAdaptProposal,
     KBAdaptRequest,
@@ -45,6 +54,8 @@ from app.schemas.career_kb import (
     KBEntityPatch,
     KBEntitySummary,
     KBInboxPoint,
+    KBKeepApartRequest,
+    KBKeepApartResponse,
     KBPointBulkResponse,
     KBPointBulkState,
     KBPointCreate,
@@ -63,6 +74,7 @@ from app.services import base_resume_data, kb_import, career_kb as svc
 from app.services import kb_adapt
 from app.services import kb_claims
 from app.services import kb_consolidation
+from app.services import kb_groom
 from app.services import kb_ingest
 from app.services import exports as career_exports
 from app.services.attachment_extract import UPLOAD_UNREADABLE, extract_text, plain_read_error
@@ -295,6 +307,15 @@ def delete_entity(entity_id: UUID, db: Annotated[Session, Depends(get_db)]):
     return Response(status_code=204)
 
 
+@router.get("/entities/{entity_id}/groom", response_model=GroomReport)
+def groom_entity(entity_id: UUID, db: Annotated[Session, Depends(get_db)]):
+    """Similar bullets on one item, read-only; a sync def because it embeds on CPU."""
+    try:
+        return kb_groom.groom_entity(db, entity_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
 # --- Points ----------------------------------------------------------------
 
 
@@ -456,6 +477,46 @@ def combine_points(payload: KBCombineRequest, db: Annotated[Session, Depends(get
         keeper=svc._to_point_out(db, keeper),
         repointed=[KBRepointed(point_id=pid, from_id=fid) for pid, fid in repointed],
     )
+
+
+def _keep_apart_pairs(db: Session, payload: KBKeepApartRequest) -> list[tuple[UUID, UUID]]:
+    points = [db.get(KBPoint, pid) for pid in dict.fromkeys(payload.point_ids)]
+    if any(p is None for p in points):
+        raise HTTPException(status_code=404, detail="Point not found")
+    if len({p.entity_id for p in points}) != 1:
+        raise HTTPException(status_code=400, detail="These bullets are on different items.")
+    ids = [p.id for p in points]
+    return sorted({kept_pair_key(a, b) for i, a in enumerate(ids) for b in ids[i + 1 :]})
+
+
+@router.post("/points/keep-apart", response_model=KBKeepApartResponse)
+def keep_apart(payload: KBKeepApartRequest, db: Annotated[Session, Depends(get_db)]):
+    """'Not the same': remember every pair among these ids so groom stops
+    proposing them. Idempotent; same item required."""
+    pairs = _keep_apart_pairs(db, payload)
+    have = {
+        (r.point_a_id, r.point_b_id)
+        for r in db.scalars(select(KBPointKeptPair).where(
+            KBPointKeptPair.point_a_id.in_([a for a, _ in pairs])
+        )).all()
+    }
+    for a, b in pairs:
+        if (a, b) not in have:
+            db.add(KBPointKeptPair(point_a_id=a, point_b_id=b))
+    db.commit()
+    return KBKeepApartResponse(pairs=pairs)
+
+
+@router.delete("/points/keep-apart", response_model=KBKeepApartResponse)
+def forget_keep_apart(payload: KBKeepApartRequest, db: Annotated[Session, Depends(get_db)]):
+    """The Undo of "Not the same": forget these pairs."""
+    pairs = _keep_apart_pairs(db, payload)
+    for a, b in pairs:
+        row = db.get(KBPointKeptPair, (a, b))
+        if row is not None:
+            db.delete(row)
+    db.commit()
+    return KBKeepApartResponse(pairs=pairs)
 
 
 @router.post("/points/{point_id}/split-wording", response_model=KBPointOut)

@@ -20,9 +20,9 @@ from app.models.career_kb import KBPoint, KBPortLog
 from app.services.kb_consolidation import point_text_key
 
 # A bullet whose best same-item match scores here or above is a WORDING of that
-# claim, never a second bullet. Shared with services/kb_groom so "similar" means
-# one thing. Owner decision 2026-10-17/19: not 0.75 (half the extra hits are
-# distinct claims), not 0.85 (misses half the real rewrites).
+# claim, never a second bullet. Read by place (sync) and services/kb_groom, so
+# "similar" means one thing. Owner decision 2026-10-17/19: not 0.75 (half the
+# extra hits are distinct claims), not 0.85 (misses half the real rewrites).
 SYNC_WORDING_COSINE = 0.80
 
 
@@ -51,6 +51,7 @@ def place(text: str, points: list[KBPoint]) -> Placement:
     if not points:
         return Placement("new", None, None)
     try:
+        # call-time import: tests patch embeddings.embed_texts; an import failure reads as compared=False
         from app.services.ats.embeddings import cosine, embed_texts
 
         vectors = embed_texts([text] + [p.text for p in points])

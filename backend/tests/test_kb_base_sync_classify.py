@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.models.base_resume import BaseResume
 from app.models.career_kb import KBEntity, KBPoint, KBPortLog, KBProfile
 from app.services import kb_base_sync
-from tests.kb_vectors import BAND, CLOSE, OLD, REWRITE, UNDER, _embedder_down, _vectors
+from tests.kb_vectors import BAND, CLOSE, FAR, OLD, REWRITE, UNDER, _embedder_down, _vectors
 
 
 def _resume(**sections):
@@ -407,6 +407,24 @@ def test_embedder_failure_reports_itself(db_session, tmp_path, monkeypatch):
     assert report["compared_wording"] is False
     assert item.tier == "new"
     assert item.compared_wording is False
+
+
+def test_compared_wording_is_false_when_any_bullet_could_not_compare(db_session, tmp_path, monkeypatch):
+    _embedder_down(monkeypatch)
+    _exp_entity(db_session, org="Globex", title="Analyst")  # no points: place never embeds
+    _exp_entity(db_session, text=OLD)
+    data = _resume(
+        experience=[
+            {"company": "Globex", "role": "Analyst", "start_date": "2021", "bullets": [FAR]},
+            {"company": "Acme", "role": "Engineer", "start_date": "2021", "bullets": [REWRITE]},
+        ]
+    )
+    _seed_base(db_session, tmp_path, monkeypatch, data)
+    report = kb_base_sync.classify(db_session, "hybrid")
+    by_text = {i.text: i for i in report["items"] if i.section == "experience"}
+    assert by_text[FAR].compared_wording is True
+    assert by_text[REWRITE].compared_wording is False
+    assert report["compared_wording"] is False  # all(...), not any(...)
 
 
 def test_sync_never_calls_the_llm(db_session, tmp_path, monkeypatch):

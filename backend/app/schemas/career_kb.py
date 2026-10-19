@@ -350,6 +350,52 @@ class KBCombineResponse(BaseModel):
     keeper: KBPointOut
     repointed: list[KBRepointed]
 
+
+class GroomMember(BaseModel):
+    id: UUID
+    text: str
+    state: str
+    origin: str
+    provenance: str | None = None
+    usage_count: int
+    # Cosine to the proposed keeper (1.0 for the keeper itself).
+    best_score: float
+
+
+class GroomCluster(BaseModel):
+    # The highest pair score in the cluster.
+    score: float
+    keeper_id: UUID
+    # Keeper first, then by best_score descending.
+    members: list[GroomMember]
+    # Every edge at or above the band, as [id, id, score].
+    pairs: list[tuple[UUID, UUID, float]]
+
+
+class GroomReport(BaseModel):
+    """Read-only: similar bullets on one item, clustered, with a proposed keeper.
+    Nothing is written; acting is POST /api/kb/points/combine (one claim in other
+    words) or POST /api/kb/points/bulk-state retired (a stale one)."""
+
+    entity_id: UUID
+    entity_title: str
+    # False when the embedder raised; clusters is then [].
+    compared_wording: bool
+    active_points: int
+    clusters: list[GroomCluster] = Field(default_factory=list)
+
+
+class KBKeepApartRequest(BaseModel):
+    """'Not the same': every unordered pair among these ids is remembered, so
+    groom stops proposing them. Same item required."""
+
+    point_ids: list[UUID] = Field(min_length=2, max_length=50)
+
+
+class KBKeepApartResponse(BaseModel):
+    # The canonical pairs this call recorded or forgot, lower id first.
+    pairs: list[tuple[UUID, UUID]]
+
 class KBDocumentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

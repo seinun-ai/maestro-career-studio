@@ -341,6 +341,11 @@ def test_use_again_clears_the_pointer_so_a_reverse_combine_makes_no_cycle(client
     db_session.refresh(left)
     db_session.refresh(k)
     assert (left.merged_into_point_id, k.merged_into_point_id) == (k.id, None)
+    # The single PATCH path clears it too, without unmerge.
+    r = client.patch(f"/api/kb/points/{left.id}", json={"state": "approved"})
+    assert r.status_code == 200, r.text
+    db_session.refresh(left)
+    assert (left.state, left.merged_into_point_id) == ("approved", None)
 
 
 def test_split_wording_refuses_the_claims_own_line(client, db_session):
