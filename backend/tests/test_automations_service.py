@@ -168,10 +168,22 @@ _BASE_COUNTRY_LINE = (
     pytest.param("apply-session", _BASE_COUNTRY_LINE, id="apply-session-base-country"),
     pytest.param("customize-job-skills", "call `record_run` with the automation's own name",
                  id="custom-records"),
+    pytest.param("customize-job-skills", "Adapting any ready-made automation",
+                 id="custom-adapts-cards"),
+    pytest.param("customize-job-skills", "keeps its steps, its guard rails and its own automation",
+                 id="custom-adapted-keeps-name"),
 ])
 def test_guardrails_survive_rewording(card_id, sentence):
     cards = {c.id: c.body for c in automations.catalog().cards}
     assert sentence in cards[card_id]
+
+
+def test_make_your_own_names_no_client():
+    custom = {c.id: c for c in automations.catalog().cards}["customize-job-skills"]
+    assert custom.summary == (
+        "Builds automations around you, or tunes any card above to your agent app and routine.")
+    for word in ("Claude Code", "~/.claude", "/schedule"):
+        assert word not in custom.body, word
 
 
 def test_apply_execution_technique_names_the_base_country_in_the_question():

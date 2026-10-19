@@ -1,9 +1,9 @@
 ---
 name: customize-job-skills
-description: Use when the user wants to personalize the Maestro CS job-hunt or apply-session skill, or create a new skill of their own around the app — batch tailoring, referral-first hunting, a weekly digest, anything the tools can do. Suggests ideas from what you know about the user and their data, asks a few questions, then builds it with the client's skill creator and scheduler.
+description: Use when the user wants to adapt any ready-made Maestro CS automation to their agent app and routine, or create a new skill of their own around the app — batch tailoring, referral-first hunting, a weekly digest, anything the tools can do. Suggests ideas from what you know about the user and their data, asks a few questions, then builds it with whatever skill-making and scheduling this app and computer offer.
 metadata:
   title: Make your own
-  summary: Builds automations around you from what your agent knows and your data in Maestro.
+  summary: Builds automations around you, or tunes any card above to your agent app and routine.
   kind: custom
   needs: [maestro]
 ---
@@ -11,9 +11,9 @@ metadata:
 # Customize the job skills
 
 Help the user end up with skills that fit how *they* job-hunt — either their own
-version of the ready-made `job-hunt` and `apply-session` skills (this repo:
-`backend/app/automations/skills/`, indexed at `docs/skills/README.md`), or
-something new built on the Maestro CS tools.
+version of any ready-made skill (`job-hunt`, `mail-status`, `referral-pages`,
+`tailor-run`, `apply-session`; this repo: `backend/app/automations/skills/`,
+indexed at `docs/skills/README.md`), or something new built on the Maestro CS tools.
 
 ## 1. Look before you ask
 
@@ -26,8 +26,9 @@ ceilings already live in the brief — never ask for those.
 ## 2. Offer ideas
 
 Suggest two to four skills that fit this user, grounded in what you found, and
-let them pick, tweak, or describe their own. The ready-made pair is always an
-option. Ideas can be anything the tools support, for example:
+let them pick, tweak, or describe their own. Adapting any ready-made automation
+to this app and the user's routine is always an option. Ideas can be anything the
+tools support, for example:
 
 - Batch-tailor every saved job above a score, then render the PDFs.
 - Hunt only at referral companies, from their careers pages.
@@ -49,13 +50,14 @@ each one, and which browser tool.
   tools' own descriptions. Never loosen the guard rails — apply runs work
   accepted proposals only, and every submit waits for the user's yes for that
   one application.
-- Write it with the client's own skill-creation tool if it has one; otherwise
-  save it where the client loads skills (Claude Code:
-  `~/.claude/skills/<name>/SKILL.md`). A client without skills gets a
-  paste-ready prompt instead.
-- For a schedule, use the client's scheduler (Claude Code: `/schedule`;
-  otherwise the client's scheduled tasks). No scheduler — say so and hand over
-  the prompt to run.
+- Write it with this app's own way of making skills if it has one; otherwise save it where
+  this app loads skills from. An app without skills gets a paste-ready prompt instead.
+- For a schedule, use a scheduler built into this app if it has one, otherwise one available
+  on this computer. If neither works from here, say so plainly, tell the user where they
+  could run it on a schedule instead, and hand over the prompt to run.
+- An adapted ready-made automation keeps its steps, its guard rails and its own automation
+  name in `record_run`, so its runs still show on its card; change only what fits this app
+  and routine (sources, timing, where alerts go).
 - End every automation with one step: call `record_run` with the automation's own name
   (40 characters at most), outcome (`ok`, `partial` or `failed`), and `report` with
   `counts`, `digest` and `job_ids` for the jobs touched, so its runs show in Maestro's
