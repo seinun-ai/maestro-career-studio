@@ -166,16 +166,20 @@ _BASE_COUNTRY_LINE = (
                  id="mail-user-digest-unchanged"),
     pytest.param("job-hunt", '`store_extracted_jd` with `source="agent"`', id="hunt-marks-agent"),
     pytest.param("apply-session", _BASE_COUNTRY_LINE, id="apply-session-base-country"),
-    pytest.param("customize-job-skills", "call `record_run` with the automation's own name",
+    pytest.param("customize-job-skills",
+                 "End every new automation with one step: call `record_run` with its own name",
                  id="custom-records"),
     pytest.param("customize-job-skills", "Adapting any ready-made automation",
                  id="custom-adapts-cards"),
-    pytest.param("customize-job-skills", "keeps its steps, its guard rails and its own automation",
+    pytest.param("customize-job-skills",
+                 "keeps its steps, its guard rails and the `record_run` automation its steps already use",
                  id="custom-adapted-keeps-name"),
+    pytest.param("customize-job-skills", "keeps its own guard rails exactly as written",
+                 id="custom-adapted-keeps-guards"),
 ])
 def test_guardrails_survive_rewording(card_id, sentence):
     cards = {c.id: c.body for c in automations.catalog().cards}
-    assert sentence in cards[card_id]
+    assert " ".join(sentence.split()) in " ".join(cards[card_id].split())
 
 
 def test_make_your_own_names_no_client():
