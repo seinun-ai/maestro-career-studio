@@ -8,9 +8,11 @@ from sqlalchemy import select
 from app.models.base_resume import BaseResume
 from app.models.career_kb import KBEntity, KBPoint, KBPortLog, KBProfile
 from app.services import kb_base_sync
+from tests.kb_vectors import BAND, OLD, REWRITE, _vectors
 from tests.test_kb_base_sync_classify import (
     _drifting_resume,
     _exp_entity,
+    _one_bullet,
     _port_log,
     _resume,
     _seed_base,
@@ -217,3 +219,21 @@ def test_removed_base_bullet_changes_nothing_in_kb(db_session, tmp_path, monkeyp
     kb_base_sync.apply(db_session, "hybrid")
     assert db_session.get(KBPoint, point_id) is not None
     assert db_session.query(KBPoint).count() == 1
+
+
+def test_a_rewrite_writes_one_wording_note_and_no_point(db_session, tmp_path, monkeypatch):
+    _vectors(monkeypatch, BAND)
+    ent = _exp_entity(db_session, text=OLD)
+    old = ent.points[0]
+    _seed_base(db_session, tmp_path, monkeypatch, _one_bullet(REWRITE))
+    first = kb_base_sync.apply(db_session, "hybrid")
+    assert (first["created"], first["drifted"], first["compared_wording"]) == (0, 1, True)
+    assert db_session.query(KBPoint).count() == 1  # no second bullet
+    log = db_session.scalars(select(KBPortLog)).one()
+    assert (log.point_id, log.direction, log.ported_text) == (old.id, "from_source", REWRITE)
+    db_session.refresh(old)
+    assert (old.text, old.state) == (OLD, "approved")  # the claim itself is untouched
+
+    second = kb_base_sync.apply(db_session, "hybrid")
+    assert (second["created"], second["drifted"]) == (0, 0)
+    assert db_session.query(KBPortLog).count() == 1

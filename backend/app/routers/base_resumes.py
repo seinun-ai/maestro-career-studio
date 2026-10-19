@@ -956,6 +956,7 @@ def kb_sync_status(slug: str, db: Annotated[Session, Depends(get_db)]):
         ],
         skills_new=report["skills_new"],
         counts=report["counts"],
+        compared_wording=report["compared_wording"],
         last_kb_synced_at=report["last_kb_synced_at"],
     )
 

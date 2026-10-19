@@ -204,3 +204,21 @@ def test_kb_point_json_includes_provenance(db_session):
     assert res.status_code == 200, res.text
     points = res.json()["points"]
     assert points[0]["provenance"] == "user_stated"
+
+
+def test_kb_sync_status_and_apply_carry_the_compared_flag(db_session, tmp_path, monkeypatch):
+    from tests.kb_vectors import BAND, OLD, REWRITE, _vectors
+    from tests.test_kb_base_sync_classify import _one_bullet
+
+    _vectors(monkeypatch, BAND)
+    _exp_entity(db_session, text=OLD)
+    _seed_base(db_session, tmp_path, monkeypatch, _one_bullet(REWRITE))
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        status = TestClient(app).get("/api/base-resumes/hybrid/kb-sync-status").json()
+        assert status["compared_wording"] is True
+        assert status["counts"]["drift"] == 1
+        result = TestClient(app).post("/api/base-resumes/hybrid/kb-sync").json()
+        assert result["compared_wording"] is True
+    finally:
+        app.dependency_overrides.clear()

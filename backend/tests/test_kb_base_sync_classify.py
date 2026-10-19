@@ -3,11 +3,13 @@
 import json
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import select
 
 from app.models.base_resume import BaseResume
 from app.models.career_kb import KBEntity, KBPoint, KBPortLog, KBProfile
 from app.services import kb_base_sync
+from tests.kb_vectors import BAND, CLOSE, OLD, REWRITE, UNDER, _embedder_down, _vectors
 
 
 def _resume(**sections):
@@ -335,3 +337,85 @@ def test_summary_and_contact_are_ignored(db_session, tmp_path, monkeypatch):
     assert report["skills_new"] == []
     assert report["counts"]["new"] == 0
     assert report["counts"]["drift"] == 0
+
+
+def _point(db_session, entity, text, *, state="approved", provenance="user_authored"):
+    point = KBPoint(entity_id=entity.id, text=text, state=state, origin="manual", provenance=provenance)
+    db_session.add(point)
+    db_session.flush()
+    return point
+
+
+def _one_bullet(bullet):
+    return _resume(
+        experience=[{"company": "Acme", "role": "Engineer", "start_date": "2021", "bullets": [bullet]}]
+    )
+
+
+def _classified(db_session, tmp_path, monkeypatch, bullet):
+    _seed_base(db_session, tmp_path, monkeypatch, _one_bullet(bullet))
+    report = kb_base_sync.classify(db_session, "hybrid")
+    (item,) = [i for i in report["items"] if i.section == "experience"]
+    return report, item
+
+
+def test_a_rewrite_in_the_band_is_a_wording_not_a_new_bullet(db_session, tmp_path, monkeypatch):
+    _vectors(monkeypatch, BAND)
+    ent = _exp_entity(db_session, text=OLD)
+    report, item = _classified(db_session, tmp_path, monkeypatch, REWRITE)
+    assert item.tier == "drift"  # the wire tier for a wording
+    assert item.matched_point_id == ent.points[0].id
+    assert report["counts"] == {"in_sync": 0, "drift": 1, "recorded_drift": 0, "new": 0, "skills_new": 0}
+    assert report["compared_wording"] is True
+
+
+def test_under_the_band_is_new(db_session, tmp_path, monkeypatch):
+    _vectors(monkeypatch, BAND)
+    _exp_entity(db_session, text=OLD)
+    report, item = _classified(db_session, tmp_path, monkeypatch, UNDER)
+    assert item.tier == "new"
+    assert item.matched_point_id is None
+    assert report["counts"]["new"] == 1
+
+
+def test_a_close_rewrite_is_still_a_wording(db_session, tmp_path, monkeypatch):
+    _vectors(monkeypatch, BAND)
+    ent = _exp_entity(db_session, text=OLD)
+    _report, item = _classified(db_session, tmp_path, monkeypatch, CLOSE)
+    assert item.tier == "drift"
+    assert item.matched_point_id == ent.points[0].id
+
+
+@pytest.mark.parametrize("state,provenance", [("retired", "user_authored"), ("approved", "user_cannot_confirm")])
+def test_a_retired_or_unconfirmable_point_is_never_the_target(
+    db_session, tmp_path, monkeypatch, state, provenance
+):
+    from tests.kb_vectors import FAR
+
+    _vectors(monkeypatch, BAND)
+    ent = _exp_entity(db_session, text=FAR)  # the only live point is unrelated
+    _point(db_session, ent, OLD, state=state, provenance=provenance)
+    _report, item = _classified(db_session, tmp_path, monkeypatch, REWRITE)
+    assert item.tier == "new"
+    assert item.matched_point_id is None  # OLD would have matched at 0.85; it is not a candidate
+
+
+def test_embedder_failure_reports_itself(db_session, tmp_path, monkeypatch):
+    _embedder_down(monkeypatch)
+    _exp_entity(db_session, text=OLD)
+    report, item = _classified(db_session, tmp_path, monkeypatch, REWRITE)
+    assert report["compared_wording"] is False
+    assert item.tier == "new"
+    assert item.compared_wording is False
+
+
+def test_sync_never_calls_the_llm(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.llm.call_openai",
+        lambda **kw: (_ for _ in ()).throw(AssertionError("sync must not call the LLM")),
+    )
+    _vectors(monkeypatch, BAND)
+    _exp_entity(db_session, text=OLD)
+    _seed_base(db_session, tmp_path, monkeypatch, _one_bullet(REWRITE))
+    kb_base_sync.classify(db_session, "hybrid")
+    kb_base_sync.apply(db_session, "hybrid")

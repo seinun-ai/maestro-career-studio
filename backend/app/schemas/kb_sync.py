@@ -22,6 +22,9 @@ class SyncStatus(BaseModel):
     # Open map, so the service owns the tier vocabulary. "recorded_drift" —
     # drift the KB already documents — rides here and is pinned by a wire test.
     counts: dict[str, int] = Field(default_factory=dict)
+    # False when the embedder raised: every bullet then read as "new" with no
+    # match, and the UI says "Couldn't compare wording" instead of "all new".
+    compared_wording: bool = True
     last_kb_synced_at: datetime | None = None
 
 
@@ -41,4 +44,7 @@ class SyncResult(BaseModel):
     # The individual skills that landed in the profile — the one to count when
     # summarising a sync.
     skills_added: list[str] = Field(default_factory=list)
+    # False when the embedder raised: every bullet then read as "new" with no
+    # match, and the UI says "Couldn't compare wording" instead of "all new".
+    compared_wording: bool = True
     last_kb_synced_at: datetime | None = None

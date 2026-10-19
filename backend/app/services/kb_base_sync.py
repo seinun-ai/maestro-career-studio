@@ -1,6 +1,8 @@
 """Deterministic base-resume → Career KB classification and apply.
 
-Zero LLM calls. Classification is read-only; apply writes drafts, drift notes,
+Zero LLM calls. Per bullet: exact match → in sync; a match at or above
+`kb_claims.SYNC_WORDING_COSINE` → a wording note (tier `drift`); else a new draft.
+Classification is read-only; apply writes drafts, drift notes,
 and — on a near-identity hit whose base-side role title is strictly richer —
 entity title upgrades, the one entity write here that changes a pre-existing row.
 Reuses consolidation's identity keys, its near-identity matcher, and the pinned
@@ -22,6 +24,7 @@ from app.models.base_resume import BaseResume
 from app.models.career_kb import KBEntity, KBPoint, KBPortLog, KBProfile
 from app.schemas.career_kb import ConsolidationReport
 from app.services.base_resume_data import load_base_resume
+from app.services.kb_claims import candidates, place
 from app.services.kb_consolidation import (
     _existing_cert_index,
     _existing_edu_index,
@@ -37,8 +40,6 @@ from app.services.kb_consolidation import (
     richer_experience_title,
     upgrade_experience_title,
 )
-
-SYNC_DRIFT_COSINE = 0.90  # conservative; borderline rephrasing -> "new"
 
 # (point_id, resume_key, section, normalized text) — see _drift_key.
 DriftKey = tuple[UUID | None, str, str, str]
@@ -59,6 +60,9 @@ class SyncItem:
     # (a proposal costs no write); apply() is what performs the rename. None
     # everywhere else, including on every exact-key hit.
     title_upgrade: str | None = None
+    # False when this item could not be compared because the embedder raised;
+    # it then reads as new, and the report says so.
+    compared_wording: bool = True
 
 
 def _indexes(session: Session) -> dict[str, dict[tuple, KBEntity]]:
@@ -112,58 +116,22 @@ def _active_points(entity: KBEntity) -> list[KBPoint]:
     return [p for p in entity.points if p.state != "retired"]
 
 
-def _best_cosine(text: str, points: list[KBPoint]) -> tuple[float, KBPoint | None]:
-    """Best cosine vs existing points; (0, None) when embeddings are unavailable."""
-    if not points:
-        return 0.0, None
-    try:
-        from app.services.ats.embeddings import cosine, embed_texts
-
-        vectors = embed_texts([text] + [p.text for p in points])
-        best_point = None
-        best_score = -1.0
-        query = vectors[0]
-        for point, vector in zip(points, vectors[1:], strict=True):
-            score = cosine(query, vector)
-            if score > best_score:
-                best_score = score
-                best_point = point
-        return best_score, best_point
-    except Exception:
-        return 0.0, None
-
-
 def _ladder_bullet(text: str, entity: KBEntity) -> SyncItem:
-    points = _active_points(entity)
-    key = point_text_key(text)
-    for point in points:
-        if point_text_key(point.text) == key:
-            return SyncItem(
-                tier="in_sync",
-                section=entity.kind if entity.kind != "project" else "projects",
-                entity_id=entity.id,
-                entity_proposal=None,
-                matched_point_id=point.id,
-                text=text,
-            )
-    score, matched = _best_cosine(text, points)
-    if matched is not None and score >= SYNC_DRIFT_COSINE:
-        return SyncItem(
-            tier="drift",
-            section=entity.kind if entity.kind != "project" else "projects",
-            entity_id=entity.id,
-            entity_proposal=None,
-            matched_point_id=matched.id,
-            text=text,
-        )
+    section = entity.kind if entity.kind != "project" else "projects"
+    placed = place(text, candidates(_active_points(entity)))
+    # "wording" rides the wire as today's "drift" tier: one from_source note on
+    # the matched claim, no point (see _apply_drift). Counts, the recorded
+    # seen-set and every reader keep their meaning.
+    tier = {"in_sync": "in_sync", "wording": "drift", "new": "new"}[placed.kind]
     return SyncItem(
-        tier="new",
-        section=entity.kind if entity.kind != "project" else "projects",
+        tier=tier,
+        section=section,
         entity_id=entity.id,
         entity_proposal=None,
-        matched_point_id=None,
+        matched_point_id=placed.point.id if placed.point is not None else None,
         text=text,
-        )
+        compared_wording=placed.compared,
+    )
 
 
 def _bullets_of(section: str, entry: Any) -> list[str]:
@@ -342,6 +310,7 @@ def classify(db: Session, slug: str) -> dict:
         "items": items,
         "skills_new": skills_new,
         "counts": counts,
+        "compared_wording": all(i.compared_wording for i in items),
         "last_kb_synced_at": row.last_kb_synced_at if row is not None else None,
     }
 
@@ -519,5 +488,6 @@ def apply(db: Session, slug: str) -> dict:
         # summarising this sync reads `skills_added`.
         "skills": list(merge_report.skills_merged),
         "skills_added": list(merge_report.skills_items_added),
+        "compared_wording": report["compared_wording"],
         "last_kb_synced_at": row.last_kb_synced_at if row is not None else None,
     }
