@@ -30,3 +30,25 @@ def test_points_list_hides_combined_bullets_and_opens_the_wordings_popover():
         assert needle in row, needle
     assert "useFocusOnNextCommit()" in row
     assert "Wording differs" not in src, "the Drifted badge is now the wordings chip"
+
+
+def test_tidy_bullets_button_opens_the_groom_dialog_when_two_or_more_are_active():
+    src = _read("components/career/points-list.tsx")
+    assert "Tidy bullets" in src
+    assert 'state !== "retired"' in src and ">= 2" in src
+    assert "GroomDialog" in src
+
+
+def test_groom_dialog_uses_the_pure_module_and_says_the_designed_words():
+    src = _read("components/career/groom-dialog.tsx")
+    for needle in (
+        "otherIds(", "pairsOf(", "groomState(", "combinedToast(", "undoCombinePlan(", "KEEPER_RULE",
+        "Similar bullets on", "Keep one as the bullet and fold the others into it as wordings.",
+        "Nothing changes on your resumes.",
+        "Keep this one", "Combine into one", "Stop using", "Not the same",
+        "Won't suggest these again", "Won't be offered again",
+        "No similar bullets here.", "Couldn't compare wording right now.",
+        "combineKbPoints(", "forgetKeepApartKbPoints(", "bulkKbPointState(", "unmerge: true",
+    ):
+        assert needle in src, needle
+    assert "Combine all" not in src, "each cluster is one decision"

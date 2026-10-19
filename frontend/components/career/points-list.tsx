@@ -14,10 +14,11 @@ import {
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { GroomDialog } from "@/components/career/groom-dialog";
 import { ActorChip, type ActorKind } from "@/components/visual/actor-chip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +48,7 @@ import { cn } from "@/lib/utils";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
 const ApproveIcon = CONCEPT_ICONS.approve;
+const TidyIcon = CONCEPT_ICONS.merged;
 
 const STATES: { value: KBPointState; label: string; chip: string; dot: string }[] = [
   {
@@ -187,11 +189,14 @@ const STATE_ORDER: Record<KBPointState, number> = {
 
 export function PointsList({
   entityId,
+  entityTitle,
   points,
 }: {
   entityId: string;
+  entityTitle: string;
   points: KBPointOut[];
 }) {
+  const [tidyOpen, setTidyOpen] = useState(false);
   // A bullet combined into another is that bullet's wording, not a row of its own.
   const visible = visibleClaims(points);
   const ordered = [...visible].sort(
@@ -201,35 +206,45 @@ export function PointsList({
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Bullets
-          <Badge variant="secondary">
-            {visible.length}
-          </Badge>
-        </CardTitle>
-        <p className="text-muted-foreground text-body-medium">
-          Approved bullets are ready to add to a resume.
-        </p>
-      </CardHeader>
-      <CardContent className="px-0">
-        {ordered.length === 0 ? (
-          <div className="mx-4 rounded-corner-md bg-surface-container-low px-5 py-8 text-center">
-            <p className="text-title-small">No bullets yet</p>
-            <p className="text-muted-foreground mt-1 text-body-small">
-              Add an update or a document to start.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-foreground/10">
-            {ordered.map((point) => (
-              <PointRow key={point.id} entityId={entityId} point={point} />
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Bullets
+            <Badge variant="secondary">
+              {visible.length}
+            </Badge>
+          </CardTitle>
+          {points.filter((p) => p.state !== "retired").length >= 2 ? (
+            <CardAction>
+              <Button size="sm" variant="outline" onClick={() => setTidyOpen(true)}>
+                <TidyIcon aria-hidden="true" /> Tidy bullets
+              </Button>
+            </CardAction>
+          ) : null}
+          <p className="text-muted-foreground text-body-medium">
+            Approved bullets are ready to add to a resume.
+          </p>
+        </CardHeader>
+        <CardContent className="px-0">
+          {ordered.length === 0 ? (
+            <div className="mx-4 rounded-corner-md bg-surface-container-low px-5 py-8 text-center">
+              <p className="text-title-small">No bullets yet</p>
+              <p className="text-muted-foreground mt-1 text-body-small">
+                Add an update or a document to start.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-foreground/10">
+              {ordered.map((point) => (
+                <PointRow key={point.id} entityId={entityId} point={point} />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <GroomDialog entityId={entityId} entityTitle={entityTitle} open={tidyOpen} onOpenChange={setTidyOpen} />
+    </>
   );
 }
 

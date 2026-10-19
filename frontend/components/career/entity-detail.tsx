@@ -182,7 +182,7 @@ export function EntityDetail({ entityId }: { entityId: string }) {
 
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(19rem,1fr)]">
           <div className="space-y-6">
-            <PointsList entityId={entityId} points={entity.data.points} />
+            <PointsList entityId={entityId} entityTitle={entity.data.title} points={entity.data.points} />
             <NotesEditor entityId={entityId} notes={entity.data.notes ?? ""} />
           </div>
           <div className="space-y-6">
