@@ -28,6 +28,53 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+Edit a bullet on a base resume, click Add, and career history used to keep both: the old bullet and
+the new one, side by side, one more pair for every rewrite. Now a rewrite stays with the bullet it
+rewrites, as one of its wordings, and only a genuinely new bullet asks for your review. For the pairs
+already sitting there, **Tidy bullets** finds the near copies on an item and folds them into one on
+a click.
+
+### Breaking changes
+
+- None. One migration adds a column (`kb_points.merged_into_point_id`) and a table
+  (`kb_point_kept_pairs`) and runs by itself at startup. Existing API fields and MCP tools keep their
+  shapes; the sync responses gain a field.
+
+### Added
+
+- **Wordings on every bullet.** A bullet that a resume words differently, that an older resume copy
+  still carries, that was combined into it or that came from an imported resume shows an **N wordings**
+  chip. It opens **Wordings of this bullet**: **Use as the main wording** makes that phrasing the
+  bullet's line (the state stays), **Make its own bullet** splits it back out as an approved bullet,
+  and an older copy says "Add to a resume to update it". Only a bullet's main line is ever offered to
+  a resume.
+- **Tidy bullets** on an item's page groups bullets that say nearly the same thing and proposes one
+  to keep (approved, then the most recently edited, then the longest). Each group is its own
+  decision: **Combine into one**, **Stop using** one of them, or **Not the same**, which is
+  remembered. Every action has an Undo, and nothing changes on your resumes. No AI call is made.
+- **Three MCP tools** in the `career` and `full` profiles (91 tools now): `kb_groom_entity` reads the
+  similar-bullet report, `kb_combine_points` folds points into a keeper and `kb_retire_points`
+  retires points. The two writes act only on your yes, like `kb_approve_points`, and the Codex
+  plugin asks before both.
+- REST: `GET /api/kb/entities/{id}/groom`, `POST /api/kb/points/combine`,
+  `POST /api/kb/points/{id}/split-wording`, `POST`/`DELETE /api/kb/points/keep-apart`, and
+  `PATCH /api/kb/points/{id}` takes `unmerge`. A point carries `wordings` and
+  `merged_into_point_id`.
+
+### Changed
+
+- **A rephrased bullet is kept as a wording, not drafted.** Sync now treats a bullet that scores 0.80
+  or more against one already on the item as a rewording of it. Before, only 0.90 and up was noted
+  and everything below became a new draft. The pill reads "N reworded bullets (kept as wordings)" and
+  the result "Kept N rewordings." (was "Noted N wording changes"). MCP `kb_sync_base` does the same.
+- Sync says when it could not compare wording: the sync status and result carry `compared_wording`,
+  and the pill adds "Couldn't compare wording" when it is false.
+
+### Fixed
+
+- **A sync that could not load the embedding model no longer reads every bullet as new in silence.**
+  It still adds them, so sync works where the model cannot load, but it now says so.
+
 ## [0.11.1] — 2026-10-16
 
 The Companion is going into the Chrome Web Store, and the store gives it an

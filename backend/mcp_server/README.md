@@ -19,7 +19,7 @@ same URL, and its `maestro connect` command does the setup below from the termin
 ## Install
 
 Open Settings › Connected agents › **Connect an agent app** and choose a
-**Tool set**. Every route defaults to `full` (all 88 tools); see
+**Tool set**. Every route defaults to `full` (all 91 tools); see
 [Profiles](#profiles) to narrow it. Enable one connection per client.
 
 ### Claude Desktop
@@ -134,12 +134,12 @@ Each scoped URL lists exactly its allowlist and refuses tools outside it.
 
 | Profile | Use when | Tools |
 | --- | --- | --- |
-| `full` | Mixed use (default) | all 88 |
+| `full` | Mixed use (default) | all 91 |
 | `hunt` | Finding jobs and proposing them, no browser filling | 21 |
 | `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 50 |
 | `explore` | Charts and trends across your saved jobs (`explore_*`) | 11 |
 | `templates` | Creating and testing resume templates | 12 |
-| `career` | Reading and editing your Career KB | 18 |
+| `career` | Reading and editing your Career KB | 21 |
 
 **Enable one profile per chat.** The scoped profiles are subsets of `full`, so
 running `full` beside one lists every shared tool twice and the model has to
@@ -272,9 +272,11 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 **Career KB**
 - `get_career_context`, `get_career_export`: your full career record, as structured data or as `career.md`.
 - `kb_list_entities`, `kb_get_entity`, `kb_list_points`: browse entries and points, with their IDs.
-- `kb_capture`, `kb_ingest_resume`, `kb_sync_base`: add new material as draft points for you to approve.
+- `kb_capture`, `kb_ingest_resume`, `kb_sync_base`: add new material as draft points for you to approve. `kb_sync_base` keeps a rephrased bullet as a wording of the one it rewrites instead of a new draft.
 - `kb_edit_point`, `kb_create_entity`, `kb_edit_entity`, `kb_edit_profile`: correct or add entries.
 - `kb_approve_points`: approve or retire points, only after you have approved them.
+- `kb_groom_entity`: find similar bullets on one entry, grouped, with one proposed to keep. Reads only, no AI call.
+- `kb_combine_points`, `kb_retire_points`: fold similar points into the one you keep, or stop using a stale one, only after you said yes. Resumes keep their text, and `/career` undoes both.
 - `create_base_resume_from_kb`: build a new base resume from approved entries.
 
 **Templates**

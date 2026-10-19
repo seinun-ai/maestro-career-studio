@@ -1704,6 +1704,27 @@
   (`busy`) the textarea is `readOnly`, Escape and Cancel do nothing, and Save
   stays focusable. Quick capture submits through `useSingleFlight`. Pinned by
   `test_frontend_kb_editors.py`.
+- **A bullet's wordings and Tidy bullets** (the model: docs/entities/others.md, "Claims and wordings").
+  The points list shows claims only: a combined bullet is hidden and appears under its keeper
+  (`visibleClaims` in `lib/kb-wordings.ts`). Every bullet with wordings carries an **N wordings** chip
+  (`wordingsChip`; it replaced the "Wording differs" badge), hidden while that bullet's editor is open,
+  since adopting would drop the typed text. It opens **Wordings of this bullet**: each row names its
+  resumes and section (`lib/section-word.ts`) and offers, by kind (`wordingActions`), **Use as the main
+  wording** (PATCH `text`, state unchanged; toast "Bullet updated" with Undo), **Make its own bullet**
+  (`splitRequest`: split-wording for a resume wording, `unmerge` for a combined one; toast "Now its own
+  bullet" with Undo; not offered on a Not used bullet) or the hint "Add to a resume to update it" on an
+  older placed copy. The draft inbox is unchanged: a rewording never reaches it. **Tidy bullets**
+  (`career/groom-dialog.tsx`, beside the bullets header when two or more bullets are active) reads a
+  fresh report on every open (`staleTime: 0`) and dims while it refetches. One card per similar group,
+  each its own decision: a **Keep this one** radio with the proposed keeper preselected and the keeper
+  rule stated (`KEEPER_RULE`), **Combine into one** (primary), **Stop using** on each other row and
+  **Not the same**; footer **Done**, no combine-all. Each action has its Undo (`undoCombinePlan`
+  restores the losers, then re-combines what the flatten moved; "Won't be offered again"; "Won't
+  suggest these again"). Empty reads "No similar bullets here."; a failed compare reads "Couldn't
+  compare wording right now." with Retry. Decisions live in `lib/kb-groom.ts`. The sync pill's words
+  live in `lib/kb-sync-words.ts`: "N reworded bullets (kept as wordings)", "Kept N rewordings.", and
+  "Couldn't compare wording" only when `compared_wording` is false. Pinned by
+  `test_frontend_kb_stale_wording.py`, `test_kb_sync_frontend.py` and the three modules' `node --test` files.
 - **Analytics** (was "Explore"): route `/analytics` (there is no `/explore` route; the
   charts live in `components/charts/` and `components/analytics/`;
   the API prefix stays `/api/explore` and the seven MCP-wrapped chart endpoints

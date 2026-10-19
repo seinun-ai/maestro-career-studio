@@ -93,3 +93,17 @@
     issue #50), but the gap page still lists the fill. `resume_diff.attribute` also labels a whole skills-group hunk by the first
     resolution whose wording appears anywhere in the group, so that line's user-added "MLOps" reads "From your career history". Do when
     the resume indexer's skill splitting is next changed (calibrate first, §9) or a hunk's provenance is reported wrong.
+50. Career KB intakes other than base sync keep their own "same claim" test: import
+    (`consolidate_deterministic._write_verbatim_points`), the document mint, the gap write-back and the tailoring write-back
+    (`tailoring_session._write_back_elicited_points`, `_WRITE_BACK_DEDUP_COSINE` 0.90) each dedup on their own instead of
+    `services/kb_claims.place`, so a rewrite arriving there is still a second bullet. Route them through `place` one at a time,
+    each with its own tests. A per-claim "Write a neutral version" (one explicit LLM call, a `derived_unverified` draft, never
+    automatic) is the only way a claim's line becomes something other than the user's own sentence. Do when one of those
+    intakes is next changed, or a user reports a rewrite that arrived as a second bullet by a path other than sync.
+51. Tidy bullets limits: **Not the same**'s Undo forgets every pair among the group's ids, including a pair kept apart earlier
+    and joined through a third bullet (a faithful Undo needs the POST to return only newly stored pairs plus a per-pair
+    DELETE); a group's "% similar" is its strongest pair, so a single-link chain's ends can be further apart (`best_score` per
+    member is in the report); a KB-wide "items with similar bullets" count would embed every item on list load. Separately,
+    two project items differing only by an em dash versus a hyphen slip past `kb_consolidation.find_near_identity`
+    (`_near_project`); merge them by hand meanwhile. Do when Tidy bullets or `kb_groom` is next changed, a wrong Undo or
+    label is reported, or a dash-variant duplicate item is reported again.

@@ -131,7 +131,7 @@ scripts/               setup-mcp.sh (deprecated stdio, §13), update.sh (Docker 
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (88 REST wrappers)
+ extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (91 REST wrappers)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼ ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
                     ▼ TailoringSession (frozen gaps → resolutions → LLM tailor ops)
@@ -239,8 +239,10 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    messages are free-form questions; the QA prompt injects the application's linked referral contact.
 9. **Track** — StatusChip anywhere (Jobs row or job header): draft → applied → interviewing → offered → accepted / rejected /
    withdrawn; the Jobs row's Next step gives way to "Waiting to hear back" while Applied, then nothing. A base resume grown past
-   your career history shows an "Add N things to career history" toolbar pill (N excludes already-recorded drift); its **Add
-   now** drafts new and drifted items with no LLM, near-matching entities instead of forking duplicates.
+   your career history shows an "Add N things to career history" toolbar pill (N excludes already-recorded rewordings); its **Add
+   now**, with no LLM, drafts only new bullets and keeps a rewording (cosine 0.80+, `services/kb_claims.place`) as a wording of the
+   bullet it rewrites, near-matching entities instead of forking duplicates. An item's **Tidy bullets** combines near copies on a click
+   (claims and wordings: `docs/entities/others.md`, Career KB).
 
 ## 6. Cross-cutting invariants (do not break these)
 
@@ -500,7 +502,7 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 
 - **MCP server** (`backend/mcp_server/`; on screen **connected agents**): thin wrappers over REST via httpx (`@_guard` → `ToolError`),
   served at `/mcp` and `/mcp/{profile}` inside FastAPI (§6 inv-mcp-inside-the-app, inv-tools-off-loop); **the docstring is the API** —
-  behavior, records and requirements, never instructions. Six scoped profiles (88 tools; `/mcp` = `full`); enable ONE per chat.
+  behavior, records and requirements, never instructions. Six scoped profiles (91 tools; `/mcp` = `full`); enable ONE per chat.
   `workflow.py` (the guided tailoring and onboarding workflows) is PURE — a **deliberate exception to the thin-wrapper rule** — and its
   `next` envelopes walk §5's arc unnarrated: the server ranks, the agent narrates; `offer` ≠ `ask_user`; **a hint never names a tool the
   active profile did not register**.

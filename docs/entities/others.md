@@ -23,10 +23,14 @@
   docstring, `fmt.*` knobs on `get_template`), explore analytics, `get_autofill_profile` (`profile.eeo` consent-gated),
   and `get_career_context` (read-only; anti-fabrication framing in the docstring). The Career KB is writable via MCP:
   reads carry IDs the context prose does not; entity/profile writes land directly, but POINTS go through the user's
-  gate — ingest lands drafts, `kb_sync_base` drafts new/drifted base-resume items (no LLM, no auto-approve), and
-  `kb_approve_points` is the ONE approval path (`approved|retired`), its gate a convention the docstring states (the
-  value is the user's decision), not server enforcement (`record_consent` precedent). `kb_edit_point` has no `state`
-  param; a text change forces `state="draft"`. No delete tool; document upload stays web-only.
+  gate — ingest lands drafts, `kb_sync_base` drafts only new base-resume bullets and keeps a rephrasing as a wording
+  (no LLM, no auto-approve; it returns `compared_wording`), and `kb_approve_points` is the ONE approval path
+  (`approved|retired`). `kb_retire_points` (its retire twin) and `kb_combine_points` (fold points into a keeper) write
+  state under the same gate; `kb_groom_entity` reads the similar-bullet report. The gate is a convention the
+  docstrings state (the value is the user's decision), not server enforcement (`record_consent` precedent).
+  `kb_edit_point` has no `state` param; a text change forces `state="draft"`. `kb_list_points` omits `wordings`
+  (`kb_get_entity` carries them). No delete tool; "Not the same", split and adoption stay web-only; document upload
+  stays web-only.
 
 - **BaseResume**: DB row + `base_resumes/<slug>.json` on disk; soft-deleted
   rows still serve on GET-by-slug but are excluded from lists. Renders like
@@ -586,13 +590,66 @@
   Verbatim user text is `user_authored` or `user_stated`; machine-merged
   wording is `derived_unverified`. `KBPortLog.direction` is
   `to_resume|from_source` (NULL = legacy; `from_source` is excluded from
-  usage). **Base→KB sync** classifies without an LLM and drafts new bullets
+  usage). **Claims and wordings.** A point is a claim; its text is the one line
+  resumes are offered, and a wording never is. A claim's **wordings** are
+  derived on read (`career_kb.wordings_of`, `KBPointOut.wordings`; no wording
+  table), one row per distinct normalized text, never the claim's own line,
+  each of kind `resume` (a `from_source` port-log row: adopt or split),
+  `placed` (a `to_resume`/legacy row whose snapshot differs: neither, the hint
+  "Add to a resume to update it", since adopting would revert a KB edit),
+  `merged` (a retired point whose `merged_into_point_id` is this claim: adopt
+  or split) or `import` (`merge_sources_json`: adopt). A merged claim whose
+  text collides with a resume wording keeps the row as `merged` with its
+  `point_id`, so split can still reach it. **Intake**
+  (`services/kb_claims.place`) is the one band: exact normalized match → in
+  sync; best same-item cosine ≥ `SYNC_WORDING_COSINE` (0.80) → a wording of
+  that claim; else new. Candidates exclude retired and `user_cannot_confirm`.
+  **Base→KB sync** is the one intake routed through it today: it never calls
+  an LLM, maps a wording to the wire tier `drift` (one `from_source` note, no
+  point; a second apply writes nothing) and drafts only a new claim
   (`origin=base_sync`, `provenance=user_authored`). `classify` loads the same
-  recorded-drift seen-set `apply` does, so drift the KB already documents
+  recorded-drift seen-set `apply` does, so a rewording the KB already notes
   classifies as tier `recorded` (`counts.recorded_drift`) and is never
-  actionable; the toolbar pill's N is new + `skills_new` + UNRECORDED drift.
-  Apply reports `skills_added` (item-level, not categories), `renamed` and
-  `titles_upgraded`, and stamps `last_kb_synced_at`.
+  actionable; the toolbar pill's N is new + `skills_new` + UNRECORDED
+  rewordings. `classify`/`apply` return `compared_wording`, false when the
+  embedder raised: every bullet then reads as new and the pill says "Couldn't
+  compare wording". Apply reports `skills_added` (item-level, not
+  categories), `renamed` and `titles_upgraded`, and stamps
+  `last_kb_synced_at`. **Combine** (`POST /api/kb/points/combine {keeper_id,
+  point_ids}` → `{keeper, repointed}`) retires the others (`approved_at`
+  cleared) and points them at the keeper; it flattens, so a loser's own
+  combined claims follow to the keeper and every merged claim is one step
+  from an active one (`repointed` lists them for Undo). Refused with a plain
+  400 sentence: points on different items, a retired or
+  `user_cannot_confirm` keeper, a keeper already folded into another, a
+  `user_cannot_confirm` loser, and a retired loser that is not folded (a
+  stale report must not absorb a bullet the user stopped); 404 unknown;
+  idempotent. **An active claim never carries a pointer:** leaving `retired`
+  by any path (PATCH or bulk-state) clears `merged_into_point_id`, and
+  `PATCH {unmerge: true}` clears it explicitly (with `state`, the split and
+  the Undo of a combine). Moving a keeper (PATCH `entity_id`) moves its
+  combined claims along; moving a combined claim alone clears its pointer,
+  so it lands as an ordinary retired bullet. **Split a resume wording**
+  (`POST /api/kb/points/{id}/split-wording {text, resume_key}`) creates an
+  approved `user_authored` claim on the same item and re-points the matching
+  `from_source` rows; the claim's own text is refused (400), a text no row
+  carries is 404. **Adoption** ("Use as the main wording") is `PATCH {text}`,
+  state unchanged. **Groom** (`services/kb_groom.groom_entity`, `GET
+  /api/kb/entities/{id}/groom`, 404 unknown item) is read-only and LLM-free:
+  candidates as intake (drafts included), one `embed_texts` call, edges at
+  the band minus `kb_point_kept_pairs`, single-link components of two or
+  more (a chain of rewrites is one claim), keeper = approved > most recently
+  updated > longest > id; `usage_count` counts distinct resumes over every
+  port-log row, as the "On N resumes" chip does; `compared_wording` false
+  empties `clusters`. **Not the same** (`POST`/`DELETE
+  /api/kb/points/keep-apart {point_ids}`) records or forgets every pair among
+  same-item ids (canonical `point_a_id < point_b_id`, idempotent, 422 under
+  two distinct ids, 400 across items, cascade with either point).
+  `kb_point_kept_pairs` syncs as PROFILE; profile apply writes `kb_points`
+  in two passes (the pointer deferred) so a combined claim arrives whatever
+  its id order. No path here reads provenance to rank or writes it
+  (`inv-provenance-no-decay`; the new writers are pinned in
+  `test_no_writer_flips_user_cannot_confirm`).
   **Near-identity entity matching** (`kb_consolidation.find_near_identity`,
   shared by `consolidate`, `consolidate_deterministic` and sync) runs ONLY
   after an exact identity-key miss and is deliberately conservative — a false
