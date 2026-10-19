@@ -606,7 +606,8 @@ def entity_summary(
         origin_detail=entity.origin_detail,
         start_date=entity.start_date,
         end_date=entity.end_date,
-        point_count=len(points),
+        # A bullet combined into another is that bullet's wording, as the points list shows it.
+        point_count=sum(1 for p in points if p.merged_into_point_id is None),
         draft_count=sum(1 for p in points if p.state == "draft"),
         approved_count=sum(1 for p in points if p.state == "approved"),
         document_count=len(documents),

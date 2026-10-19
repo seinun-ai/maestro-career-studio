@@ -20,6 +20,13 @@ def test_points_list_hides_combined_bullets_and_opens_the_wordings_popover():
     for needle in ("wordingsChip(", "wordingActions(", "splitRequest(",
                    "Wordings of this bullet", "Use as the main wording", "Make its own bullet",
                    "Combined from another bullet", "PopoverTrigger", '"Bullet updated"', "Now its own bullet",
-                   "splitKbWording(", "unmerge: true"):
+                   "splitKbWording(", "unmerge: true",
+                   # Undo puts the old line back, or combines the split bullet back in.
+                   "undoText: point.text", "combineKbPoints(point.id, [newId])",
+                   # Adopting would drop the editor's typed text; a Not used bullet offers no split.
+                   "chip !== null && !editing", "wordingActions(w, { retired",
+                   # A chip the refetch removes hands focus on after that commit, not before.
+                   "focusNext(actionRef)"):
         assert needle in row, needle
+    assert "useFocusOnNextCommit()" in row
     assert "Wording differs" not in src, "the Drifted badge is now the wordings chip"

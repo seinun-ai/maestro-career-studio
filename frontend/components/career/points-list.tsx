@@ -29,7 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useResumeKeyLabel } from "@/components/career/use-resume-key-label";
 import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
-import { focusIfDropped } from "@/hooks/use-focus-return";
+import { focusIfDropped, useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { agentDisplayName } from "@/lib/agent-name";
 import { combineKbPoints, deleteKbPoint, patchKbPoint, splitKbWording } from "@/lib/api";
@@ -243,9 +243,11 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
   // then approved, then not used), and moving a row can drop its focus: once
   // the list has refetched, a dropped focus comes back here.
   const actionRef = useRef<HTMLButtonElement>(null);
-  // The wordings chip. Adopting or splitting a wording can remove the chip
-  // (no wordings left), so focus falls back to the state button.
-  const wordingsRef = useRef<HTMLButtonElement>(null);
+  // Adopting or splitting a wording closes the popover, which hands focus back
+  // to the wordings chip; when that was the last wording, the refetched row
+  // drops the chip. Armed once the refetch has resolved, the check runs after
+  // the commit that renders it, and a dropped focus lands on the state button.
+  const focusNext = useFocusOnNextCommit();
   const [wordingsOpen, setWordingsOpen] = useState(false);
 
   const invalidate = () =>
@@ -284,7 +286,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
       toast.success(variables.message, undo ? { action: { label: "Undo", onClick: undo } } : undefined);
       await invalidate();
       if (variables.payload.state) focusIfDropped(actionRef.current);
-      if (undoText !== undefined) focusIfDropped(wordingsRef.current ?? actionRef.current);
+      if (undoText !== undefined) focusNext(actionRef);
     },
     onError: (error: Error) => toast.error(couldnt("update the bullet", error)),
   });
@@ -319,7 +321,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
         },
       });
       await invalidate();
-      focusIfDropped(wordingsRef.current ?? actionRef.current);
+      focusNext(actionRef);
     },
     onError: (error: Error) => toast.error(couldnt("make it its own bullet", error)),
   });
@@ -348,7 +350,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
           wording.section ? sectionWord(wording.section) : "",
         ]
           .filter(Boolean)
-          .join(" · ");
+          .join(" · ") || "From an import";
 
   const cancelEdit = () => {
     setText(point.text);
@@ -499,12 +501,12 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             {usageKeys.length}
           </span>
         ) : null}
-        {chip !== null ? (
-          <Popover open={wordingsOpen} onOpenChange={setWordingsOpen}>
+        {/* Not while editing: adopting replaces the line and would drop the typed text. */}
+        {chip !== null && !editing ? (
+          <Popover open={wordingsOpen && chip !== null} onOpenChange={setWordingsOpen}>
             <PopoverTrigger
               render={
                 <button
-                  ref={wordingsRef}
                   type="button"
                   className="inline-flex h-6 items-center gap-1 rounded-full bg-surface-container px-2 text-body-small text-foreground transition-[scale,box-shadow] duration-150 ease-out hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring"
                 >
@@ -518,40 +520,29 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
                 Wordings of this bullet
               </PopoverTitle>
               <ul className="mt-1 divide-y divide-foreground/10">
-                {point.wordings.map((wording) => {
-                  const actions = wordingActions(wording);
-                  const source = wordingSource(wording);
+                {point.wordings.map((w) => {
+                  const actions = wordingActions(w, { retired: point.state === "retired" });
                   return (
-                    <li key={`${wording.kind}:${wording.text}`} className="flex flex-col gap-1 py-2">
-                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                        <p className="text-muted-foreground text-label-small">{source}</p>
-                        <div className="flex items-center gap-1">
-                          {actions.adopt ? (
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              onClick={() => adoptWording(wording)}
-                              disabled={pending}
-                            >
-                              Use as the main wording
-                            </Button>
-                          ) : null}
-                          {actions.split ? (
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              onClick={() => splitWording(wording)}
-                              disabled={pending}
-                            >
-                              Make its own bullet
-                            </Button>
-                          ) : null}
-                          {actions.hint ? (
-                            <span className="text-muted-foreground text-label-small">{actions.hint}</span>
-                          ) : null}
-                        </div>
+                    <li key={`${w.kind}:${w.text}`} className="flex flex-col gap-1 py-2">
+                      <p className="text-muted-foreground text-label-small">{wordingSource(w)}</p>
+                      <p className="text-body-small">&ldquo;{w.text}&rdquo;</p>
+                      {/* A plain `disabled`: each button closes the popover before
+                          `pending` flips, so none is focused when it disables. */}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {actions.adopt ? (
+                          <Button size="xs" variant="ghost" onClick={() => adoptWording(w)} disabled={pending}>
+                            Use as the main wording
+                          </Button>
+                        ) : null}
+                        {actions.split ? (
+                          <Button size="xs" variant="ghost" onClick={() => splitWording(w)} disabled={pending}>
+                            Make its own bullet
+                          </Button>
+                        ) : null}
+                        {actions.hint ? (
+                          <span className="text-muted-foreground text-label-small">{actions.hint}</span>
+                        ) : null}
                       </div>
-                      <p className="text-body-small">&ldquo;{wording.text}&rdquo;</p>
                     </li>
                   );
                 })}

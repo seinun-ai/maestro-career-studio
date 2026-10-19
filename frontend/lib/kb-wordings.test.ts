@@ -24,6 +24,11 @@ test("each kind gets its actions: adopt and split, adopt only, or the hint", () 
   });
 });
 
+test("a Not used bullet offers no split; adopting still works", () => {
+  assert.deepEqual(wordingActions(w({ kind: "resume" }), { retired: true }), { adopt: true, split: false, hint: null });
+  assert.deepEqual(wordingActions(w({ kind: "merged", point_id: "p2" }), { retired: false }), { adopt: true, split: true, hint: null });
+});
+
 test("split sends the right request per kind", () => {
   assert.deepEqual(splitRequest("p1", w({ kind: "resume", text: "T", resume_keys: ["hybrid"] })), {
     kind: "split-wording", pointId: "p1", text: "T", resumeKey: null,
@@ -32,6 +37,10 @@ test("split sends the right request per kind", () => {
     kind: "unmerge", pointId: "p2",
   });
   assert.equal(splitRequest("p1", w({ kind: "placed", splittable: false })), null);
+  // A merged row without a point to bring back splits its words off like a resume wording.
+  assert.deepEqual(splitRequest("p1", w({ kind: "merged", text: "M", point_id: null })), {
+    kind: "split-wording", pointId: "p1", text: "M", resumeKey: null,
+  });
 });
 
 test("a combined bullet is hidden from the list; it shows under its keeper", () => {

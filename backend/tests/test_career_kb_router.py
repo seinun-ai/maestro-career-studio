@@ -57,8 +57,15 @@ def test_the_list_counts_approved_bullets_apart_from_drafts_and_not_used(client,
     entity = KBEntity(kind="project", title="Counted")
     db_session.add(entity)
     db_session.flush()
-    for n, state in enumerate(["approved", "approved", "draft", "retired", "retired"]):
-        db_session.add(KBPoint(entity_id=entity.id, text=f"Point {n}", state=state, origin="ingested"))
+    points = [
+        KBPoint(entity_id=entity.id, text=f"Point {n}", state=state, origin="ingested")
+        for n, state in enumerate(["approved", "approved", "draft", "retired", "retired"])
+    ]
+    db_session.add_all(points)
+    db_session.flush()
+    # A bullet combined into another is its keeper's wording: the list hides it, so the count does too.
+    db_session.add(KBPoint(entity_id=entity.id, text="Combined", state="retired", origin="ingested",
+                           merged_into_point_id=points[0].id))
     db_session.commit()
     row = client.get("/api/kb/entities?kind=project").json()[0]
     assert (row["point_count"], row["draft_count"], row["approved_count"]) == (5, 1, 2)

@@ -12,8 +12,12 @@ export function wordingsChip(wordings: readonly KBWordingOut[]): string | null {
 /** An older copy a resume still carries cannot be adopted: it would revert a KB edit. */
 export const PLACED_HINT = "Add to a resume to update it";
 
-export function wordingActions(w: KBWordingOut): { adopt: boolean; split: boolean; hint: string | null } {
-  return { adopt: w.adoptable, split: w.splittable, hint: w.kind === "placed" ? PLACED_HINT : null };
+/** A Not used bullet offers no split: its Undo combines back into it, and combine refuses a retired keeper. */
+export function wordingActions(
+  w: KBWordingOut,
+  { retired = false }: { retired?: boolean } = {},
+): { adopt: boolean; split: boolean; hint: string | null } {
+  return { adopt: w.adoptable, split: w.splittable && !retired, hint: w.kind === "placed" ? PLACED_HINT : null };
 }
 
 export type SplitRequest =
