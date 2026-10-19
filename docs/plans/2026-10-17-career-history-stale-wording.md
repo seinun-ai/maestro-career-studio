@@ -1353,6 +1353,22 @@ def split_wording(point_id: UUID, payload: KBSplitWordingRequest, db: Annotated[
         point.merged_into_point_id = None
 ```
 
+and in the `entity_id` branch, when the item changes, move the claims combined into this one
+along with it (they are its wordings, and `entity_detail` finds merged children only among one
+item's points):
+
+```python
+        if data["entity_id"] != point.entity_id:
+            for child in db.scalars(
+                select(KBPoint).where(KBPoint.merged_into_point_id == point.id)
+            ).all():
+                child.entity_id = data["entity_id"]
+```
+
+with a test in `test_kb_wordings.py`: `test_moving_a_keeper_moves_its_combined_claims` (combine,
+PATCH the keeper's `entity_id`, assert the child's `entity_id` followed and the new item's detail
+lists the merged wording).
+
 The `/points/{point_id}/split-wording` path has a literal tail, so it cannot collide with the
 PATCH/DELETE on `/points/{point_id}`; `/points/combine` must still come before them.
 

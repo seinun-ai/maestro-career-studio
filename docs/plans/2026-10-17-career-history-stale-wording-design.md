@@ -216,9 +216,14 @@ Compact resume · experience                        Send to resume to update it
   "approved", unmerge: true}` on that point. Toast "Now its own bullet" with Undo (delete the new
   point and re-point the rows back; or re-combine).
 - Several resumes with one wording are one row naming both resumes; adopting leaves the others.
+  When a combined claim's text collides with a resume wording, the row keeps the combined claim's
+  `point_id` (kind `merged`), so the claim stays reachable for split.
 - A retired claim whose `merged_into_point_id` is set does not appear in the points list's
   retired group; it is a wording of its keeper. Use again on it (from the popover's split) brings
-  it back as a claim.
+  it back as a claim. A combined claim whose text equals the keeper's own line is a true duplicate
+  and shows no row at all: nothing is lost, and splitting it out would only recreate the duplicate.
+- Moving a keeper to another item (PATCH `entity_id`) moves the claims combined into it along, so
+  its wordings stay with it and `entity_detail` keeps finding them on one item.
 - The draft inbox is unchanged: a new claim is reviewed as today, and a rewrite never reaches it.
 
 ## 4. Groom
