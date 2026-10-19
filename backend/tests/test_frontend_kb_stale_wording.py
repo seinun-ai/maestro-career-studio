@@ -35,7 +35,7 @@ def test_points_list_hides_combined_bullets_and_opens_the_wordings_popover():
 def test_tidy_bullets_button_opens_the_groom_dialog_when_two_or_more_are_active():
     src = _read("components/career/points-list.tsx")
     assert "Tidy bullets" in src
-    assert 'state !== "retired"' in src and ">= 2" in src
+    assert '.filter((p) => p.state !== "retired").length >= 2' in src
     assert "GroomDialog" in src
 
 

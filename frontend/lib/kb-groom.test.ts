@@ -29,9 +29,19 @@ test("the dialog's state: clusters, empty, or could not compare", () => {
   assert.equal(groomState(report({ clusters: [], compared_wording: false })), "failed");
 });
 
-test("the toast counts the folded bullets and names the keeper", () => {
-  assert.equal(combinedToast(2, "Cleansed 2M rows"), "Combined 3 bullets into one. Cleansed 2M rows stays.");
-  assert.equal(combinedToast(1, "Cleansed 2M rows"), "Combined 2 bullets into one. Cleansed 2M rows stays.");
+test("the toast counts the folded bullets and quotes the keeper", () => {
+  assert.equal(combinedToast(2, "Cleansed 2M rows"), "Combined 3 bullets into one. \u201cCleansed 2M rows\u201d stays.");
+  assert.equal(combinedToast(1, "Cleansed 2M rows."), "Combined 2 bullets into one. \u201cCleansed 2M rows\u201d stays.");
+});
+
+test("a long keeper is cut at a word with an ellipsis", () => {
+  const long = "Cleansed, standardized, and validated 2M+ customer records across three regional warehouses every night.";
+  const toast = combinedToast(1, long);
+  assert.equal(
+    toast,
+    "Combined 2 bullets into one. \u201cCleansed, standardized, and validated 2M+ customer records across three\u2026\u201d stays.",
+  );
+  assert.ok(toast.length < long.length + 40);
 });
 
 test("Undo puts each loser back in its prior state, then its own combined claims back onto it", () => {

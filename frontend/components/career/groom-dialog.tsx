@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive } from "lucide-react";
 import { toast } from "sonner";
@@ -26,7 +26,7 @@ import {
   keepApartKbPoints,
   patchKbPoint,
 } from "@/lib/api";
-import { couldnt } from "@/lib/error-text";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { focusIfDropped, focusSuccessor } from "@/lib/focus";
 import {
   KEEPER_RULE,
@@ -44,13 +44,17 @@ const STATE_WORDS: Record<GroomMember["state"], string> = {
   retired: "Not used",
 };
 
-/** Where focus goes once an action's refetch has re-rendered the list, read when the user acted. */
-type HandOff = (getTarget: () => HTMLElement | null) => void;
+/**
+ * Arms a focus hand-off: once `source` (the card or row an action removes) leaves the document,
+ * focus that fell to <body> goes to `target()`.
+ */
+type HandOff = (source: HTMLElement | null, target: () => HTMLElement | null) => void;
 
 /**
  * Similar bullets on one item, one card per group, each its own decision: Combine into one, Stop
  * using one of them, or Not the same. Every action refetches the item, so the bullets list behind
- * the dialog follows while it stays open.
+ * the dialog follows while it stays open. When an action's refetch removes the card or row that
+ * held focus, focus moves on to the next card's Combine into one (see `handOffArm`).
  */
 export function GroomDialog({
   entityId,
@@ -67,23 +71,45 @@ export function GroomDialog({
     queryKey: ["kb", "groom", entityId],
     queryFn: () => getKbGroom(entityId),
     enabled: open,
+    // Not the app's 30 s: a bullet retired or edited on the page since the last open would come
+    // back as a group with live buttons. Every open reads afresh, the old list dimmed meanwhile.
+    staleTime: 0,
   });
+  // A refetch with a list on screen: shown dimmed, and no card acts on a report being replaced.
+  const refreshing = groom.isFetching && !groom.isPending;
   // The Tidy bullets button leaves once fewer than two bullets are active, so Done can find its
   // opener gone: the return falls back to the main area, never <body>.
   const returnToOpener = useOpenerReturn(open);
 
   // A card that leaves (combined, or kept apart) or a row that leaves (Stop using) takes the
-  // focused button with it. Armed once the refetch has resolved, so the check runs after the
-  // commit that renders the new list.
-  const pendingFocus = useRef<(() => HTMLElement | null) | null>(null);
-  useEffect(() => {
-    const getTarget = pendingFocus.current;
-    if (!getTarget) return;
-    pendingFocus.current = null;
-    focusIfDropped(getTarget());
+  // focused button with it. An action arms the hand-off as soon as its write lands, before any
+  // refetch starts, so whichever refetch removes the element finds it armed. The check is a
+  // LAYOUT effect: it runs in the commit that removes the element, before Base UI's own
+  // microtask would move a dropped focus to the dialog itself. The groom report's refetch
+  // rendering with the element still there means it never left: the arm is dropped.
+  const handOffArm = useRef<{
+    source: HTMLElement;
+    target: () => HTMLElement | null;
+    armedAt: number;
+  } | null>(null);
+  const reportAt = Math.max(groom.dataUpdatedAt, groom.errorUpdatedAt);
+  useLayoutEffect(() => {
+    const arm = handOffArm.current;
+    if (!arm) return;
+    // Done mid-action: the dialog's own return (to Tidy bullets) wins.
+    if (!open) {
+      handOffArm.current = null;
+      return;
+    }
+    if (arm.source.isConnected) {
+      if (reportAt > arm.armedAt) handOffArm.current = null;
+      return;
+    }
+    handOffArm.current = null;
+    focusIfDropped(arm.target());
   });
-  const handOff: HandOff = (getTarget) => {
-    pendingFocus.current = getTarget;
+  const handOff: HandOff = (source, target) => {
+    handOffArm.current = source ? { source, target, armedAt: Date.now() } : null;
   };
 
   const report = groom.data;
@@ -103,7 +129,7 @@ export function GroomDialog({
         </DialogHeader>
 
         {/* The landmark a handed-off focus falls back to once the last card has gone. */}
-        <div tabIndex={-1} className="outline-none">
+        <div tabIndex={-1} className="outline-none" data-pending={refreshing ? "true" : undefined}>
           {groom.isPending ? (
             <div className="grid gap-3" aria-hidden="true">
               <Skeleton className="h-32 rounded-corner-lg" />
@@ -132,7 +158,13 @@ export function GroomDialog({
           ) : (
             <ul className="grid gap-3">
               {report?.clusters.map((cluster) => (
-                <ClusterCard key={cluster.keeper_id} entityId={entityId} cluster={cluster} handOff={handOff} />
+                <ClusterCard
+                  key={cluster.keeper_id}
+                  entityId={entityId}
+                  cluster={cluster}
+                  locked={refreshing}
+                  handOff={handOff}
+                />
               ))}
             </ul>
           )}
@@ -151,10 +183,13 @@ export function GroomDialog({
 function ClusterCard({
   entityId,
   cluster,
+  locked,
   handOff,
 }: {
   entityId: UUID;
   cluster: GroomCluster;
+  /** The report is being refetched: nothing here may act on what it shows. */
+  locked: boolean;
   handOff: HandOff;
 }) {
   const queryClient = useQueryClient();
@@ -176,24 +211,42 @@ function ClusterCard({
   // attached: the next card's Combine into one, else the previous card's, else the list's landmark.
   const nextCard = () => focusSuccessor(cardRef.current, "[data-groom-combine]");
 
+  // Undo of a Combine: each folded bullet back in its prior state, then the wordings the combine
+  // moved off it back onto it, but only onto the ones that came back.
+  const undoCombine = async (plan: ReturnType<typeof undoCombinePlan>) => {
+    const settled = await Promise.allSettled(
+      plan.restore.map((r) => patchKbPoint(r.id, { state: r.state, unmerge: true })),
+    );
+    const back = new Set(plan.restore.filter((_, i) => settled[i].status === "fulfilled").map((r) => r.id));
+    const failed = settled.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    await Promise.all(
+      plan.recombine.filter((r) => back.has(r.keeperId)).map((r) => combineKbPoints(r.keeperId, r.pointIds)),
+    );
+    await invalidate();
+    if (!failed) return;
+    if (back.size === 0) throw failed.reason;
+    toast.error(
+      `Put back ${back.size} of ${plan.restore.length} bullets. ${errorDetail(failed.reason) ?? "Try again."}`,
+    );
+  };
+
   const combine = useMutation({
-    mutationFn: ({ keeperId }: { keeperId: UUID; losers: GroomMember[]; keeperText: string }) =>
-      combineKbPoints(keeperId, otherIds(cluster, keeperId)),
+    mutationFn: ({ keeperId, losers }: { keeperId: UUID; losers: GroomMember[]; keeperText: string }) =>
+      combineKbPoints(
+        keeperId,
+        losers.map((m) => m.id),
+      ),
     onSuccess: async (response, { losers, keeperText }) => {
       const plan = undoCombinePlan(losers, response.repointed);
       toast.success(combinedToast(losers.length, keeperText), {
         action: {
           label: "Undo",
           onClick: () =>
-            Promise.all(plan.restore.map((r) => patchKbPoint(r.id, { state: r.state, unmerge: true })))
-              .then(() => Promise.all(plan.recombine.map((r) => combineKbPoints(r.keeperId, r.pointIds))))
-              .then(() => invalidate())
-              .catch((error: Error) => toast.error(couldnt("undo the combine", error))),
+            undoCombine(plan).catch((error: Error) => toast.error(couldnt("undo the combine", error))),
         },
       });
-      const target = nextCard();
+      handOff(cardRef.current, nextCard());
       await invalidate();
-      handOff(target);
     },
     onError: (error: Error) => toast.error(couldnt("combine the bullets", error)),
   });
@@ -218,10 +271,10 @@ function ClusterCard({
       // The row leaves; the group re-forms from the rest, or leaves too when one is left.
       const card = cardRef.current;
       const otherwise = nextCard();
-      await invalidate();
-      handOff(() =>
+      handOff(card?.querySelector<HTMLElement>(`[data-groom-member="${member.id}"]`) ?? null, () =>
         card?.isConnected ? card.querySelector<HTMLElement>("[data-groom-combine]") : otherwise(),
       );
+      await invalidate();
     },
     onError: (error: Error) => toast.error(couldnt("stop using the bullet", error)),
   });
@@ -239,15 +292,16 @@ function ClusterCard({
               .catch((error: Error) => toast.error(couldnt("undo the change", error))),
         },
       });
-      const target = nextCard();
+      handOff(cardRef.current, nextCard());
       await invalidate();
-      handOff(target);
     },
     onError: (error: Error) => toast.error(couldnt("save that these are different", error)),
   });
   const apartOnce = useSingleFlight(apart.mutate);
 
   const pending = combine.isPending || retire.isPending || apart.isPending;
+  // Locked buttons keep a focus they hold (focusableWhenDisabled): a refetch must not drop it.
+  const busy = pending || locked;
 
   return (
     <li ref={cardRef} className="rounded-corner-lg bg-surface-container-low p-3">
@@ -260,13 +314,13 @@ function ClusterCard({
         value={selected}
         onValueChange={(value) => setPicked(value)}
         // readOnly, not disabled: a disabled radio that holds focus drops it to <body>.
-        readOnly={pending}
+        readOnly={busy}
       >
         {cluster.members.map((member) => {
           const keep = member.id === selected;
           const rowId = `${groupId}-${member.id}`;
           return (
-            <div key={member.id} className="flex items-start gap-2">
+            <div key={member.id} data-groom-member={member.id} className="flex items-start gap-2">
               <label className="flex min-w-0 flex-1 items-start gap-2">
                 <Radio value={member.id} aria-labelledby={`${rowId}-text`} aria-describedby={`${rowId}-meta`} />
                 <span className="grid min-w-0 gap-0.5">
@@ -292,7 +346,8 @@ function ClusterCard({
                   variant="ghost"
                   title="Stop offering this bullet. Resumes that have it keep it."
                   onClick={() => retireOnce(member)}
-                  disabled={pending}
+                  disabled={busy}
+                  focusableWhenDisabled
                   pending={retire.isPending && retire.variables?.id === member.id}
                 >
                   <Archive aria-hidden="true" /> Stop using
@@ -307,7 +362,8 @@ function ClusterCard({
           size="sm"
           variant="ghost"
           onClick={() => apartOnce(pairsOf(cluster))}
-          disabled={pending}
+          disabled={busy}
+          focusableWhenDisabled
           pending={apart.isPending}
         >
           Not the same
@@ -315,15 +371,17 @@ function ClusterCard({
         <Button
           data-groom-combine=""
           size="sm"
-          onClick={() =>
+          onClick={() => {
+            const others = new Set(otherIds(cluster, selected));
             combineOnce({
               keeperId: selected,
               // Each with its prior state, which Undo puts back.
-              losers: cluster.members.filter((m) => m.id !== selected),
+              losers: cluster.members.filter((m) => others.has(m.id)),
               keeperText: keeper?.text ?? "",
-            })
-          }
-          disabled={pending}
+            });
+          }}
+          disabled={busy}
+          focusableWhenDisabled
           pending={combine.isPending}
         >
           Combine into one

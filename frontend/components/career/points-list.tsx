@@ -268,6 +268,8 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
   const invalidate = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["kb", "entity", entityId] }),
+      // Tidy bullets' report: a bullet edited, retired or split here changes its groups.
+      queryClient.invalidateQueries({ queryKey: ["kb", "groom", entityId] }),
       queryClient.invalidateQueries({ queryKey: ["kb", "entities"] }),
       queryClient.invalidateQueries({ queryKey: ["kb", "drafts"] }),
     ]);
@@ -346,6 +348,10 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
   const usageKeys = [...new Set(point.usage.map((usage) => usage.resume_key))];
   const resumeName = useResumeKeyLabel([...usageKeys, ...point.wordings.flatMap((w) => w.resume_keys)]);
   const chip = wordingsChip(point.wordings);
+  // Not while editing: adopting replaces the line and would drop the typed text. A popover that
+  // lost its chip (the last wording went) closes here, so a wording that comes back stays shut.
+  const showWordings = chip !== null && !editing;
+  if (wordingsOpen && !showWordings) setWordingsOpen(false);
 
   const adoptWording = (wording: KBWordingOut) => {
     setWordingsOpen(false);
@@ -516,9 +522,8 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             {usageKeys.length}
           </span>
         ) : null}
-        {/* Not while editing: adopting replaces the line and would drop the typed text. */}
-        {chip !== null && !editing ? (
-          <Popover open={wordingsOpen && chip !== null} onOpenChange={setWordingsOpen}>
+        {showWordings ? (
+          <Popover open={wordingsOpen} onOpenChange={setWordingsOpen}>
             <PopoverTrigger
               render={
                 <button

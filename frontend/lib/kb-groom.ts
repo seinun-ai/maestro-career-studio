@@ -21,9 +21,21 @@ export function groomState(report: GroomReport): GroomState {
   return report.clusters.length === 0 ? "empty" : "clusters";
 }
 
-/** `folded` is how many were combined INTO the keeper; the sentence counts the keeper too. */
+/** How much of the keeper the toast quotes before it trails off. */
+const TOAST_QUOTE_MAX = 80;
+
+/**
+ * `folded` is how many were combined INTO the keeper; the sentence counts the keeper too. The
+ * keeper is quoted without its own full stop, and a long one is cut at a word with an ellipsis.
+ */
 export function combinedToast(folded: number, keeperText: string): string {
-  return `Combined ${folded + 1} bullets into one. ${keeperText} stays.`;
+  let quote = keeperText.trim().replace(/\.+$/, "");
+  if (quote.length > TOAST_QUOTE_MAX) {
+    const cut = quote.slice(0, TOAST_QUOTE_MAX);
+    const space = cut.lastIndexOf(" ");
+    quote = `${(space > TOAST_QUOTE_MAX / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.]+$/, "")}…`;
+  }
+  return `Combined ${folded + 1} bullets into one. \u201c${quote}\u201d stays.`;
 }
 
 /** The keeper rule, stated so the proposal is explainable. */
