@@ -98,6 +98,11 @@ def combine(db: Session, keeper: KBPoint, others: list[KBPoint]) -> list[tuple[U
         if other.provenance == "user_cannot_confirm":
             # An unconfirmed sentence must never become an adoptable wording.
             raise CombineError("That bullet can't be combined: you said you couldn't confirm it.")
+        if other.state == "retired" and other.merged_into_point_id is None:
+            # A bullet the user stopped is not absorbed by a stale report (Undo
+            # would bring it back). A folded one may move between keepers: the
+            # Undo of a combine re-combines its children onto the restored loser.
+            raise CombineError("That bullet was stopped; use it again before combining it.")
     loser_ids = {other.id for other in others}
     # Flatten: claims already combined into a loser follow it to the keeper, so
     # every merged claim is one step from an active keeper (the wordings list

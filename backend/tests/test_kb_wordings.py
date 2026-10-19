@@ -367,3 +367,23 @@ def test_moving_a_combined_claim_alone_makes_it_an_ordinary_retired_bullet(clien
     assert r.status_code == 200, r.text
     assert (r.json()["state"], r.json()["merged_into_point_id"], r.json()["entity_id"]) == ("retired", None, other)
     assert _wordings(client, keeper.id) == []
+
+
+def test_combine_refuses_a_stopped_bullet_but_moves_a_folded_one(client, db_session):
+    eid = _entity(client)
+    keeper = _point(db_session, eid, "Keeper line")
+    other_keeper = _point(db_session, eid, "Other keeper")
+    stopped = _point(db_session, eid, "Stopped line", state="retired")
+    r = client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(stopped.id)]})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "That bullet was stopped; use it again before combining it."
+    db_session.refresh(stopped)
+    assert (stopped.state, stopped.merged_into_point_id) == ("retired", None)
+    # a folded bullet is retired too, but it moves between keepers
+    folded = _point(db_session, eid, "Folded line", state="retired", merged_into=other_keeper.id)
+    r = client.post("/api/kb/points/combine", json={"keeper_id": str(keeper.id), "point_ids": [str(folded.id)]})
+    assert r.status_code == 200, r.text
+    db_session.refresh(folded)
+    assert (folded.state, folded.merged_into_point_id) == ("retired", keeper.id)
+    assert {w["point_id"] for w in r.json()["keeper"]["wordings"]} == {str(folded.id)}
+    assert _wordings(client, other_keeper.id) == []
