@@ -42,12 +42,16 @@ Only work jobs whose `ownership.owned_here` is true.
    Then call `mark_submitted` with channel `auto` and a `note` naming what confirmed it.
    A confirmation screenshot is optional.
    If you cannot tell whether submission succeeded, call `report_failure` with reason `submission_uncertain` and never retry.
-7. **Everything else.** Call `report_failure` with the reason and move on.
-   Ask the user through whatever this run can reach: this chat, or a channel the user set up for these runs.
+7. **Everything else.** Call `report_failure` with the reason.
+   Ask the user what the job needs through whatever this run can reach: this chat, or a channel the user set up for these runs.
+   For a submit, that is the final review summary with every flag, and "Submit now?".
+   Don't wait: move on to the next job, and check for answers before recording the run.
    If nobody can be reached now, leave it: it waits in Needs you.
-   If the user says yes:
+   A yes that comes after the run has ended is not acted on; the job waits in Needs you.
+   From Needs you, `record_consent` moves the job straight to approved, with no `resume_proposal` first.
+   If the user says yes while the run is still going and the job's filled form is still intact:
    Attach the filled-form screenshot as `final_review` evidence.
-   Then call `record_consent` with the channel the yes came through (`chat` for this chat, `slack` for Slack), action `approved`, and the user's words.
+   Then call `record_consent` with the channel the yes came through (`chat` for this chat, `slack` for Slack, `mcp` for any other channel, named in the note), action `approved`, and the user's words.
    Submit once.
    Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.
 8. **Record the run.** Call `record_run` with automation `apply-session`.

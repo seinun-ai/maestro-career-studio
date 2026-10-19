@@ -46,13 +46,19 @@ Only work jobs whose `ownership.owned_here` is true.
    role, PDF, key answers, every flag in `flags` with its reason, and any
    duplicate warning).
    When `get_final_review`'s `base_country.eligible` is false, name the resume and the job's country in the Submit-now question.
-   Ask in this chat, or through a channel the user set up for these runs. If nobody can answer
-   now, don't submit: `report_failure` with the reason `waiting for your yes` and move on to the
-   next one; it waits in Needs you.
+   Ask in this chat and wait for the answer. Only when nobody is at this chat
+   (the run started on its own, or the user said they'd be away), ask through a
+   channel the user set up for these runs instead. If nobody can answer now,
+   don't submit: `report_failure` with the reason `waiting for your yes` and move
+   on to the next one; it waits in Needs you. A yes for a job you parked can
+   still come while the run goes on: `record_consent` then moves it straight from
+   Needs you to approved, with no `resume_proposal` first.
    Only after their yes for *this* application:
-   `record_consent` with the channel the yes came through, click submit once,
-   attach the confirmation as `submission_receipt`, and `mark_submitted`. If you
-   can't tell whether it went through, say so and never click again.
+   `record_consent` with the channel the yes came through (`chat` for this chat,
+   `slack` for Slack, `mcp` for any other channel, named in the note), click
+   submit once, attach the confirmation as `submission_receipt`, and
+   `mark_submitted`. If you can't tell whether it went through, say so and never
+   click again.
 6. **Digest.** End with submitted / needs the user / declined / still queued.
 7. **Record the run.** Call `record_run` with automation `apply-session`, the outcome
     (`ok`; `partial` if some work failed; `failed` if none could be done), and

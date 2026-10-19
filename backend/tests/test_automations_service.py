@@ -75,27 +75,29 @@ def test_tailor_run_works_only_jobs_owned_here():
     "Jobs in Needs you go back through the user's queue before a later automatic run.",
     "every screening answer you recorded names its saved fact (`slot`).",
     "Attach the filled-form screenshot as `final_review` evidence.",
-    "Then call `record_consent` with the channel the yes came through (`chat` for this chat, `slack` for Slack), action `approved`, and the user's words.",
+    "Then call `record_consent` with the channel the yes came through (`chat` for this chat, `slack` for Slack, `mcp` for any other channel, named in the note), action `approved`, and the user's words.",
     "Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.",
-    "If the user says yes:",
+    "If the user says yes while the run is still going and the job's filled form is still intact:",
     "Stop when the daily cap in the brief is used up.",
     "Call `record_run` with automation `apply-session`",
     "and the user being present at the submit",
-    "Ask the user through whatever this run can reach",
+    "Ask the user what the job needs through whatever this run can reach",
     "If nobody can be reached now, leave it: it waits in Needs you.",
+    "Don't wait: move on to the next job",
+    "A yes that comes after the run has ended is not acted on",
 ])
 def test_the_automatic_apply_guardrails(sentence):
     body = {c.id: c for c in automations.catalog(full_automation=True).cards}["apply-session"].body
-    assert sentence in body
+    assert " ".join(sentence.split()) in " ".join(body.split())
 
 
 def test_the_user_yes_path_records_consent_before_submitting():
     body = {c.id: c for c in automations.catalog(full_automation=True).cards}["apply-session"].body
     step = body[body.index("7. **Everything else.**"):]
     ordered = [
-        "If the user says yes:",
+        "If the user says yes while the run is still going and the job's filled form is still intact:",
         "Attach the filled-form screenshot as `final_review` evidence.",
-        "Then call `record_consent` with the channel the yes came through (`chat` for this chat, `slack` for Slack), action `approved`, and the user's words.",
+        "Then call `record_consent` with the channel the yes came through (`chat` for this chat, `slack` for Slack, `mcp` for any other channel, named in the note), action `approved`, and the user's words.",
         "Submit once.",
         "Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.",
     ]
@@ -170,6 +172,10 @@ _BASE_COUNTRY_LINE = (
     pytest.param("apply-session", _BASE_COUNTRY_LINE, id="apply-session-base-country"),
     pytest.param("apply-session", "If nobody can answer now, don't submit",
                  id="apply-session-no-answer-no-submit"),
+    pytest.param("apply-session", "Only after their yes for *this* application",
+                 id="apply-session-yes-per-application"),
+    pytest.param("apply-session", "`record_consent` with the channel the yes came through",
+                 id="apply-session-consent-channel"),
     pytest.param("customize-job-skills",
                  "End every new automation with one step: call `record_run` with its own name",
                  id="custom-records"),
