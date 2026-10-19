@@ -139,20 +139,21 @@ def _card_body(skill_id: str, bodies: dict[str, str], metas: dict[str, _Meta]) -
     return body
 
 
+def _card(card_id: str, meta: _Meta, body: str) -> AutomationCard:
+    """A card from its metadata and body, with the prompt Copy hands the agent."""
+    return AutomationCard(
+        id=card_id, title=meta.title, summary=meta.summary, kind=meta.kind,
+        needs=tuple(meta.needs), never=meta.never, body=body,
+        prompt=_prompt(meta.kind, body),
+    )
+
+
 @lru_cache(maxsize=1)
 def load_cards() -> tuple[AutomationCard, ...]:
     """Parse every skill once. Raises ValueError on any malformed or unknown card."""
     bodies, metas = _read_skills()
     _check_card_set(metas)
-    cards = []
-    for skill_id in CARD_ORDER:
-        meta = metas[skill_id]
-        body = _card_body(skill_id, bodies, metas)
-        cards.append(AutomationCard(
-            id=skill_id, title=meta.title, summary=meta.summary, kind=meta.kind,
-            needs=tuple(meta.needs), never=meta.never, body=body,
-            prompt=_prompt(meta.kind, body)))
-    cards = tuple(cards)
+    cards = tuple(_card(s, metas[s], _card_body(s, bodies, metas)) for s in CARD_ORDER)
     for skill_id in ALTERNATES:
         _card_body(skill_id, bodies, metas)
     _check_no_orphans(bodies, metas)
@@ -164,12 +165,7 @@ def _alternate(skill_id: str) -> AutomationCard:
     """Build an alternate card and keep the catalog identity it replaces."""
     bodies, metas = _read_skills()
     meta = metas[skill_id]
-    body = _card_body(skill_id, bodies, metas)
-    return AutomationCard(
-        id=ALTERNATES[skill_id], title=meta.title, summary=meta.summary,
-        kind=meta.kind, needs=tuple(meta.needs), never=meta.never,
-        body=body, prompt=_prompt(meta.kind, body),
-    )
+    return _card(ALTERNATES[skill_id], meta, _card_body(skill_id, bodies, metas))
 
 
 def apply_kind() -> Kind:
