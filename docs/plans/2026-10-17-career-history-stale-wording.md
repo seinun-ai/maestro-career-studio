@@ -1230,6 +1230,17 @@ class KBCombineRequest(BaseModel):
     point_ids: list[UUID] = Field(min_length=1, max_length=50)
 
 
+class KBRepointed(BaseModel):
+    point_id: UUID
+    from_id: UUID
+
+
+class KBCombineResponse(BaseModel):
+    keeper: KBPointOut
+    # Grandchildren the flatten moved: each was folded into `from_id`, now into the keeper.
+    repointed: list[KBRepointed] = Field(default_factory=list)
+
+
 class KBSplitWordingRequest(BaseModel):
     """Make a resume wording its own bullet: a new approved claim on the same
     item with this text, and the matching from_source rows re-pointed to it.
@@ -1313,9 +1324,10 @@ In `backend/app/routers/career_kb.py`, declared right after `bulk_point_state` a
 `/points/{point_id}` routes:
 
 ```python
-@router.post("/points/combine", response_model=KBPointOut)
+@router.post("/points/combine", response_model=KBCombineResponse)
 def combine_points(payload: KBCombineRequest, db: Annotated[Session, Depends(get_db)]):
-    """Tidy bullets → Combine. The keeper is returned with its new wordings."""
+    """Tidy bullets → Combine. Returns the keeper with its new wordings and the
+    combined claims the flatten moved from a loser onto it (so Undo can put them back)."""
     keeper = db.get(KBPoint, payload.keeper_id)
     others = [db.get(KBPoint, pid) for pid in dict.fromkeys(payload.point_ids)]
     if keeper is None or any(p is None for p in others):
@@ -1990,7 +2002,18 @@ export interface KBWordingOut {
 ```
 
 `KBPointOut` gains `wordings: KBWordingOut[];` and `merged_into_point_id: UUID | null;` after
-`usage`. `SyncStatus` and `SyncResult` each gain:
+`usage`. Add the combine response (the server returns the keeper plus every grandchild the
+flatten moved, so Undo can put them back):
+
+```ts
+/** What Combine returns: the keeper, and the combined claims that were re-pointed from a loser onto it. */
+export interface KBCombineResponse {
+  keeper: KBPointOut;
+  repointed: { point_id: UUID; from_id: UUID }[];
+}
+```
+
+`SyncStatus` and `SyncResult` each gain:
 
 ```ts
   /** False when the embedder could not run: every bullet then reads as new, nothing was matched. */
@@ -2033,7 +2056,7 @@ In `frontend/lib/api.ts` (add `GroomReport` to the types import):
 
 ```ts
 export function combineKbPoints(keeperId: UUID, pointIds: UUID[]) {
-  return apiFetch<KBPointOut>("/api/kb/points/combine", {
+  return apiFetch<KBCombineResponse>("/api/kb/points/combine", {
     method: "POST",
     body: JSON.stringify({ keeper_id: keeperId, point_ids: pointIds }),
   });
@@ -2266,6 +2289,7 @@ In `frontend/components/career/points-list.tsx`:
   so the Undo for that path is `combineKbPoints(point.id, [newId])` (it becomes a `merged`
   wording of the claim, which the user can split again; the from_source rows stay on the new
   point, which is correct history); for `unmerge`, `combineKbPoints(point.id, [req.pointId])`.
+  Both return `KBCombineResponse`; only `keeper` matters here.
   Then `invalidate()`.
 - The retired group: `visibleClaims` already drops combined bullets, so nothing else changes.
 
@@ -2307,7 +2331,7 @@ git commit -m "feat(web): every bullet opens its wordings; adopt one as the line
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { combinedToast, groomState, otherIds, pairsOf } from "./kb-groom.ts";
+import { combinedToast, groomState, otherIds, pairsOf, undoCombinePlan } from "./kb-groom.ts";
 import type { GroomCluster, GroomReport } from "./types.ts";
 
 const member = (id: string, text = id) =>
@@ -2338,6 +2362,16 @@ test("the dialog's state: clusters, empty, or could not compare", () => {
 test("the toast counts the folded bullets and names the keeper", () => {
   assert.equal(combinedToast(2, "Cleansed 2M rows"), "Combined 3 bullets into one. Cleansed 2M rows stays.");
   assert.equal(combinedToast(1, "Cleansed 2M rows"), "Combined 2 bullets into one. Cleansed 2M rows stays.");
+});
+
+test("Undo puts each loser back in its prior state, then its own combined claims back onto it", () => {
+  const losers = [member("b"), { ...member("c"), state: "draft" as const }];
+  const plan = undoCombinePlan(losers, [
+    { point_id: "x", from_id: "b" }, { point_id: "y", from_id: "b" }, { point_id: "z", from_id: "c" },
+  ]);
+  assert.deepEqual(plan.restore, [{ id: "b", state: "approved" }, { id: "c", state: "draft" }]);
+  assert.deepEqual(plan.recombine, [{ keeperId: "b", pointIds: ["x", "y"] }, { keeperId: "c", pointIds: ["z"] }]);
+  assert.deepEqual(undoCombinePlan(losers, []).recombine, []);
 });
 ```
 
@@ -2379,7 +2413,26 @@ export function combinedToast(folded: number, keeperText: string): string {
 /** The keeper rule, stated so the proposal is explainable. */
 export const KEEPER_RULE =
   "We suggest keeping the approved one, then the most recently edited, then the longest.";
+
+/**
+ * Undo of a Combine: every loser goes back to its prior state (leaving `retired` clears its
+ * pointer server-side), then the combined claims the flatten moved off a loser are combined
+ * back onto it. `repointed` is the combine response's list.
+ */
+export function undoCombinePlan(
+  losers: readonly Pick<GroomMember, "id" | "state">[],
+  repointed: readonly KBCombineResponse["repointed"][number][],
+): { restore: { id: UUID; state: KBPointState }[]; recombine: { keeperId: UUID; pointIds: UUID[] }[] } {
+  const byLoser = new Map<UUID, UUID[]>();
+  for (const r of repointed) byLoser.set(r.from_id, [...(byLoser.get(r.from_id) ?? []), r.point_id]);
+  return {
+    restore: losers.map((m) => ({ id: m.id, state: m.state })),
+    recombine: [...byLoser.entries()].map(([keeperId, pointIds]) => ({ keeperId, pointIds })),
+  };
+}
 ```
+
+(import `GroomMember`, `KBCombineResponse`, `KBPointState` and `UUID` from `./types`.)
 
 Run: `cd frontend && node --test lib/kb-groom.test.ts` → PASS.
 
@@ -2398,7 +2451,7 @@ def test_tidy_bullets_button_opens_the_groom_dialog_when_two_or_more_are_active(
 def test_groom_dialog_uses_the_pure_module_and_says_the_designed_words():
     src = _read("components/career/groom-dialog.tsx")
     for needle in (
-        "otherIds(", "pairsOf(", "groomState(", "combinedToast(", "KEEPER_RULE",
+        "otherIds(", "pairsOf(", "groomState(", "combinedToast(", "undoCombinePlan(", "KEEPER_RULE",
         "Similar bullets on", "Keep one as the bullet and fold the others into it as wordings.",
         "Nothing changes on your resumes.",
         "Keep this one", "Combine into one", "Stop using", "Not the same",
@@ -2430,8 +2483,12 @@ Run: `cd backend && .venv/bin/python -m pytest tests/test_frontend_kb_stale_word
   `used on N resumes` when `usage_count > 0`, and on every non-selected member a small ghost
   **Stop using** button. Footer buttons: **Combine into one** (primary) and **Not the same** (ghost).
 - Combine: `combineKbPoints(selected, otherIds(cluster, selected))`; toast
-  `combinedToast(others.length, keeperText)` with Undo = `Promise.all(others.map((m) => patchKbPoint(m.id, { state: m.state, unmerge: true })))`
-  (members carry their prior `state`). Then invalidate `["kb","groom",entityId]`,
+  `combinedToast(others.length, keeperText)` with Undo = first
+  `Promise.all(others.map((m) => patchKbPoint(m.id, { state: m.state, unmerge: true })))` (members
+  carry their prior `state`; leaving `retired` clears the pointer server-side), then, for the
+  response's `repointed` rows grouped by `from_id`, `combineKbPoints(from_id, point_ids)` so a
+  loser that had its own combined claims gets them back (`undoCombinePlan` in `kb-groom.ts`
+  computes both lists). Then invalidate `["kb","groom",entityId]`,
   `["kb","entity",entityId]`, `["kb","entities"]`, `["kb","drafts"]` so the list behind the dialog
   refetches while it stays open. The cluster leaves the list on the refetch.
 - Stop using on a member: `bulkKbPointState([m.id], "retired")`; toast "Won't be offered again"
@@ -2504,7 +2561,7 @@ def test_get_kb_groom_reads_the_entity_report():
 @respx.mock
 def test_kb_combine_points_posts_the_keeper_and_the_others():
     route = respx.post(f"{BASE}/api/kb/points/combine").mock(
-        return_value=httpx.Response(200, json={"id": "k", "wordings": []})
+        return_value=httpx.Response(200, json={"keeper": {"id": "k", "wordings": []}, "repointed": []})
     )
     BackendClient(BASE).kb_combine_points("k", ["a", "b"])
     assert json.loads(route.calls.last.request.read()) == {"keeper_id": "k", "point_ids": ["a", "b"]}
@@ -2553,10 +2610,10 @@ def test_kb_groom_entity_is_read_only_and_wires_to_the_report(monkeypatch):
 def test_kb_combine_points_states_the_gate_and_forwards_ids(monkeypatch):
     seen = {}
     monkeypatch.setattr(srv._client, "kb_combine_points",
-                        lambda keeper_id, point_ids: seen.update(k=keeper_id, ids=point_ids) or {"id": keeper_id, "wordings": []})
+                        lambda keeper_id, point_ids: seen.update(k=keeper_id, ids=point_ids) or {"keeper": {"id": keeper_id, "wordings": []}, "repointed": []})
     out = srv.kb_combine_points("k", ["a", "b"])
     assert seen == {"k": "k", "ids": ["a", "b"]}
-    assert out["id"] == "k"
+    assert out["keeper"]["id"] == "k"
     doc = srv.kb_combine_points.__doc__ or ""
     assert "user's decision" in doc and "reversible" in doc.lower()
     assert "never" in doc.lower() and "resume" in doc.lower()  # retiring/combining never edits a resume
@@ -2634,8 +2691,9 @@ def kb_combine_points(keeper_id: str, point_ids: list[str]) -> Any:
     user's decision about the listed points; the server does not check that the
     user reviewed them (a convention, not enforcement, the same gate as
     kb_approve_points). Same entity required (400); a retired or
-    user_cannot_confirm keeper is refused (400). Returns the keeper with its
-    wordings. 1-50 ids."""
+    user_cannot_confirm keeper or loser is refused (400), and so is a keeper that
+    is itself folded into another. Returns {keeper, repointed}: the keeper with its
+    wordings, and any combined claims the fold moved from a loser onto it. 1-50 ids."""
     return _client.kb_combine_points(keeper_id, point_ids)
 
 

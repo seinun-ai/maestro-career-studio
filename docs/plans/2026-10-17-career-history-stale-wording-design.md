@@ -151,8 +151,11 @@ Schemas:
 - `KBPointOut` gains `wordings: list[KBWordingOut]` and `merged_into_point_id: UUID | None`.
 - `KBPointPatch` gains `unmerge: bool = False`: clears `merged_into_point_id`; combined with
   `state` in the same PATCH it is the split of a merged claim and the Undo of a combine.
-- `KBCombineRequest {keeper_id, point_ids}` → `KBPointOut` (the keeper, with its new wordings).
-- `KBSplitWordingRequest {text, resume_key: str|None}` → `KBPointOut` (the new claim).
+- `KBCombineRequest {keeper_id, point_ids}` → `KBCombineResponse {keeper, repointed}` (the keeper
+  with its new wordings, and the grandchildren the flatten moved, for Undo).
+- `KBSplitWordingRequest {text, resume_key: str|None}` → `KBPointOut` (the new claim). The
+  claim's own text is refused (400): it is not a wording. Moving a combined claim to another item
+  on its own clears its pointer, so it becomes an ordinary retired bullet there, never invisible.
 - `SyncStatus` and `SyncResult` gain `compared_wording: bool` (false when the embedder failed).
   `SyncItemOut` is unchanged.
 - `GroomReport` (section 4) and `KBKeepApartRequest/Response`.
@@ -260,10 +263,14 @@ Deterministic: same texts, same pinned model, same machine, same report.
 ### Endpoints
 
 - `GET /api/kb/entities/{id}/groom` → `GroomReport`. 404 unknown item. Sync def (CPU work).
-- `POST /api/kb/points/combine {keeper_id, point_ids}` → the keeper's `KBPointOut`. Same item
-  required (400), keeper not retired and not `user_cannot_confirm` (400), unknown id 404. Each
-  other point: `state=retired`, `approved_at=None`, `merged_into_point_id=keeper`. Points already
-  merged elsewhere are re-pointed. **Combine flattens:** a loser's own combined children are
+- `POST /api/kb/points/combine {keeper_id, point_ids}` → `{keeper: KBPointOut, repointed:
+  [{point_id, from_id}]}`. Same item required (400); keeper not retired, not
+  `user_cannot_confirm` and not itself folded into another (400); a `user_cannot_confirm` loser
+  refused (400), so an unconfirmed sentence never becomes an adoptable wording; unknown id 404.
+  Each other point: `state=retired`, `approved_at=None`, `merged_into_point_id=keeper`. Points
+  already merged elsewhere are re-pointed. **An active claim never carries a pointer:** leaving
+  `retired` (approve or draft, single PATCH or bulk-state) clears `merged_into_point_id`, which is
+  what makes Use again a split and keeps a cycle impossible. **Combine flattens:** a loser's own combined children are
   re-pointed to the new keeper too, so every merged claim is one step from an active keeper and
   the wordings popover (which reads one level) can always reach it. Idempotent.
 - `PATCH /api/kb/points/{id} {state, unmerge: true}` is the split and the Undo of a combine.
@@ -292,7 +299,8 @@ We suggest keeping the approved one, then the most recently edited, then the lon
 
 - "Keep this one" is a radio with the proposed keeper preselected. **Combine into one** sends
   the combine request; toast "Combined 2 bullets into one. {keeper} stays." with Undo (PATCH each
-  loser back to its prior state with `unmerge`). The cluster leaves the list.
+  loser back to its prior state with `unmerge`, then combine the `repointed` claims back onto the
+  loser they came from). The cluster leaves the list.
 - **Stop using** on a non-keeper row retires that one claim (bulk-state), for "similar but
   stale"; toast "Won't be offered again" with Undo (PATCH back). The cluster re-forms from the
   rest on the next read, which is right.
