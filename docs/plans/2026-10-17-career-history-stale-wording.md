@@ -327,6 +327,19 @@ def kept_pair_key(a: uuid.UUID, b: uuid.UUID) -> tuple[uuid.UUID, uuid.UUID]:
 In `backend/app/models/__init__.py` add `KBPointKeptPair` to the `career_kb` import and to
 `__all__` (alphabetical, beside `KBPoint`).
 
+**Two-machine sync** (found while executing; every table must be classified): add
+`"kb_point_kept_pairs": PROFILE` to `app/services/sync/registry.py` beside `kb_points` and
+`Table("kb_point_kept_pairs", models.KBPointKeptPair)` to `profile_bundle.TABLES` right after
+`kb_points` (a kept pair is the user's decision about profile rows, so the laptop owns it as it
+owns the points; the write guard then refuses combine and keep-apart on a copy that does not own
+the profile, as it refuses point edits). `tests/test_models_metadata.py` and
+`tests/sync/test_registry.py` list every table; add the new one. And because profile apply
+inserts `kb_points` in primary-key order with foreign keys on, a merged claim whose id sorts
+before its keeper's would fail to apply: `profile_bundle` must either apply `kb_points` in two
+passes (insert with `merged_into_point_id` NULL, then UPDATE the pointers) or defer FK checks for
+the one apply transaction, with a `tests/sync/` test that ships a keeper, a loser sorting below
+it, and a two-level chain (losers → K1 → K2). Task 10's docs name the table's sync class.
+
 **Step 4: The migration**
 
 Generate the id and check the head first:
