@@ -267,6 +267,27 @@ class KBUsageOut(BaseModel):
     direction: str | None = None
 
 
+class KBWordingOut(BaseModel):
+    """One other phrasing of a claim and what the user may do with it.
+
+    resume:  a resume's rewording (a from_source port-log row); adopt or split.
+    placed:  an older copy a resume still carries (a to_resume or legacy row whose
+             snapshot differs); neither, with the hint "Send to resume to update it",
+             because adopting it would revert a KB edit.
+    merged:  a claim combined into this one (its retired point); adopt or split.
+    import:  an imported resume's text (merge_sources_json); adopt only.
+    One row per distinct normalized text; a text equal to the claim's own line is
+    never a wording."""
+
+    kind: Literal["resume", "placed", "merged", "import"]
+    text: str
+    resume_keys: list[str] = Field(default_factory=list)
+    section: str | None = None
+    point_id: UUID | None = None
+    adoptable: bool
+    splittable: bool
+
+
 class KBPointOut(BaseModel):
     id: UUID
     entity_id: UUID
@@ -282,6 +303,10 @@ class KBPointOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     usage: list[KBUsageOut] = Field(default_factory=list)
+    wordings: list[KBWordingOut] = Field(default_factory=list)
+    # Set on a retired claim that was combined into another; the points list
+    # shows it under its keeper, not in the retired group.
+    merged_into_point_id: UUID | None = None
 
 
 class KBDocumentOut(BaseModel):

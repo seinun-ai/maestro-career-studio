@@ -24,11 +24,13 @@ from app.schemas.career_kb import (
     KBPortRequest,
     KBTimelineEvent,
     KBUsageOut,
+    KBWordingOut,
 )
 from app.schemas.resume_edit import ResumeEditRequest
 from app.services import agent_names, base_resume_render
 from app.services import base_resume_data
 from app.services.base_resume_data import write_base_resume_json
+from app.services.kb_consolidation import point_text_key
 from app.services.resume_edit import apply_edits
 from app.services.resume_versions import record_version
 from app.services.sync import hooks
@@ -388,18 +390,66 @@ def _usage_from_logs(logs: Sequence[KBPortLog], point: KBPoint) -> list[KBUsageO
     ]
 
 
-def point_usage(session: Session, point: KBPoint) -> list[KBUsageOut]:
-    """Port-log provenance for a point, flagging drift from the current text."""
-    logs = session.scalars(
+def wordings_of(
+    point: KBPoint, port_logs: Sequence[KBPortLog], merged: Sequence[KBPoint]
+) -> list[KBWordingOut]:
+    """The claim's other phrasings, one row per distinct normalized text, in the
+    order: resume rewordings, older placed copies, combined claims, imported text."""
+    own = point_text_key(point.text)
+    rows: dict[str, KBWordingOut] = {}
+
+    def add(kind: str, text: str, *, resume_key: str | None = None, section: str | None = None,
+            point_id=None, adoptable: bool, splittable: bool) -> None:
+        key = point_text_key(text)
+        if not key or key == own:
+            return
+        row = rows.get(key)
+        if row is None:
+            rows[key] = KBWordingOut(kind=kind, text=text.strip(), resume_keys=[], section=section,
+                                     point_id=point_id, adoptable=adoptable, splittable=splittable)
+            row = rows[key]
+        if resume_key and resume_key not in row.resume_keys:
+            row.resume_keys.append(resume_key)
+            row.resume_keys.sort()
+
+    for log in port_logs:
+        if log.direction == "from_source":
+            add("resume", log.ported_text, resume_key=log.resume_key, section=log.section,
+                adoptable=True, splittable=True)
+        else:
+            snapshot = log.source_text if log.source_text is not None else log.ported_text
+            add("placed", snapshot or "", resume_key=log.resume_key, section=log.section,
+                adoptable=False, splittable=False)
+    for other in merged:
+        add("merged", other.text, point_id=other.id, adoptable=True, splittable=True)
+    for src in point.merge_sources_json or []:
+        if isinstance(src, dict) and isinstance(src.get("text"), str):
+            add("import", src["text"], resume_key=src.get("resume_key"), section=src.get("section"),
+                adoptable=True, splittable=False)
+    return list(rows.values())
+
+
+def _point_logs(session: Session, point: KBPoint) -> Sequence[KBPortLog]:
+    return session.scalars(
         select(KBPortLog).where(KBPortLog.point_id == point.id).order_by(KBPortLog.ported_at)
     ).all()
-    return _usage_from_logs(logs, point)
+
+
+def point_usage(session: Session, point: KBPoint) -> list[KBUsageOut]:
+    """Port-log provenance for a point, flagging drift from the current text."""
+    return _usage_from_logs(_point_logs(session, point), point)
 
 
 def _to_point_out(
-    session: Session, point: KBPoint, port_logs: Sequence[KBPortLog] | None = None
+    session: Session,
+    point: KBPoint,
+    port_logs: Sequence[KBPortLog] | None = None,
+    merged: Sequence[KBPoint] | None = None,
 ) -> KBPointOut:
-    usage = _usage_from_logs(port_logs, point) if port_logs is not None else point_usage(session, point)
+    logs = port_logs if port_logs is not None else _point_logs(session, point)
+    if merged is None:
+        merged = session.scalars(select(KBPoint).where(KBPoint.merged_into_point_id == point.id)).all()
+    usage = _usage_from_logs(logs, point)
     return KBPointOut(
         id=point.id,
         entity_id=point.entity_id,
@@ -415,6 +465,8 @@ def _to_point_out(
         created_at=point.created_at,
         updated_at=point.updated_at,
         usage=usage,
+        wordings=wordings_of(point, logs, merged),
+        merged_into_point_id=point.merged_into_point_id,
     )
 
 
@@ -579,7 +631,11 @@ def entity_detail(session: Session, entity: KBEntity) -> KBEntityDetail:
         detail=entity.detail_json or {},
         notes=entity.notes,
         points=[
-            _to_point_out(session, p, port_logs=logs_by_point.get(p.id, [])) for p in points
+            _to_point_out(
+                session, p, port_logs=logs_by_point.get(p.id, []),
+                merged=[q for q in points if q.merged_into_point_id == p.id],
+            )
+            for p in points
         ],
         documents=[KBDocumentOut.model_validate(d) for d in documents],
         timeline=entity_timeline(entity, points, documents, port_logs,

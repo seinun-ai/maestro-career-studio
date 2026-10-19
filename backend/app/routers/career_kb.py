@@ -369,10 +369,17 @@ def list_points(
             select(KBPortLog).where(KBPortLog.point_id.in_(ids)).order_by(KBPortLog.ported_at)
         ).all():
             logs_by_point[log.point_id].append(log)
+    merged_by_keeper = defaultdict(list)
+    if ids:
+        for child in db.scalars(select(KBPoint).where(KBPoint.merged_into_point_id.in_(ids))).all():
+            merged_by_keeper[child.merged_into_point_id].append(child)
 
     inbox: list[KBInboxPoint] = []
     for point in points:
-        base = svc._to_point_out(db, point, port_logs=logs_by_point.get(point.id, []))
+        base = svc._to_point_out(
+            db, point, port_logs=logs_by_point.get(point.id, []),
+            merged=merged_by_keeper.get(point.id, []),
+        )
         inbox.append(
             KBInboxPoint(
                 **base.model_dump(),
