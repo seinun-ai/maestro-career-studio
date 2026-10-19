@@ -20,7 +20,7 @@ and the screen speaks plainly ("item", "bullet", "Career history"). Do not
 | **KB Point** | A single claim under an entity, in the user's own words | bullet (states Draft, Approved, Not used) | bullet, evidence, achievement |
 | **KB Profile** | The singleton holding contact details, skills, and the career summary | Career profile (on Career history) | profile, master |
 | **Port** | Copying approved points from the Career KB into a resume, verbatim or AI-adapted | Add to a resume, Add from career history, Copy to another resume | import, sync, push |
-| **Drift** | A ported point whose KB source text has since been edited | wording change ("Noted 2 wording changes") | stale, out of date |
+| **Drift** | A ported point whose KB source text has since been edited; on the sync pill, a resume bullet that rephrases a claim and is kept as its wording | wording ("Kept 2 rewordings.", "N wordings") | stale, out of date, drift |
 
 ## Resume artifacts
 

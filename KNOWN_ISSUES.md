@@ -26,7 +26,7 @@ These have real coverage and are unlikely to move under you.
 - **The Career KB → resume → application chain.** Approved evidence composes
   verbatim; rewriting is a separate, consented step. Resume versions are
   recorded, so nothing is one-way.
-- **The MCP server.** 88 tools across six profiles, cold-install tested in CI
+- **The MCP server.** 91 tools across six profiles, cold-install tested in CI
   against the exact command the README gives you.
 - **Data stays local.** No telemetry leaves your machine — see the Companion
   section of [Using Maestro CS](docs/USING_MAESTRO.md#the-companion-browser-extension)

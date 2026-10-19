@@ -318,7 +318,7 @@ clients connect to the backend on this computer; claude.ai and chatgpt.com web
 connectors are outside this setup.
 
 Open Settings › Connected agents › **Connect an agent app**. Its **Tool set**
-selector defaults to `full` (all 88 tools). Choose one set per chat.
+selector defaults to `full` (all 91 tools). Choose one set per chat.
 
 ### On a uv install: `maestro connect`
 

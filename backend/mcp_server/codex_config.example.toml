@@ -8,7 +8,7 @@
 # Never publish port 8001 or proxy /mcp beyond this computer.
 # The client announces its name in clientInfo for Career KB timeline labels.
 
-# Every tool (88), including Career KB writes.
+# Every tool (91), including Career KB writes.
 [mcp_servers.maestro-career-studio]
 url = "http://localhost:8001/mcp"
 enabled = true
