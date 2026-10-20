@@ -4,6 +4,7 @@ import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-quer
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
@@ -86,5 +87,43 @@ export function JobOwnershipNotice({ ownership }: { ownership?: JobOwnership }) 
       <CONCEPT_ICONS.locked className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
       <span>{reason}</span>
     </p>
+  );
+}
+
+/** A list row's ownership, kept off the row: one small icon opens why the job is locked, its request and
+ * that request's progress. Nothing to say (your laptop's job, nothing waiting): nothing drawn. */
+export function JobOwnershipPopover({ jobId, ownership }: { jobId: string; ownership?: JobOwnership }) {
+  const view = jobOwnershipView(ownership);
+  const mutation = useOwnershipAction(jobId);
+  const act = useSingleFlight(mutation.mutate);
+  const busy = useOwnershipBusy(jobId);
+  if (!view.mark || (!view.action && !view.reason && !view.pending)) return null;
+  const Icon = view.reason ? CONCEPT_ICONS.locked : ownership?.owner === "bot" ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop;
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="relative text-muted-foreground"
+            aria-label={view.pending ? `Where this job is, ${REQUEST_QUEUED.toLowerCase()}` : "Where this job is"}
+          />
+        }
+      >
+        <Icon className="size-3.5" aria-hidden="true" />
+        {view.pending ? <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" aria-hidden="true" /> : null}
+      </PopoverTrigger>
+      <PopoverContent align="end" className="flex max-w-72 flex-col items-start gap-2">
+        <p className="text-body-small">{view.reason ?? view.mark}</p>
+        {view.action ? (
+          <Button size="xs" variant="outline" pending={busy} onClick={() => act(view.action!)}>
+            {ACTION_LABEL[view.action]}
+          </Button>
+        ) : null}
+        {view.pending ? <span role="status" className="text-muted-foreground text-body-small">{REQUEST_QUEUED}</span> : null}
+      </PopoverContent>
+    </Popover>
   );
 }

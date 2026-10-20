@@ -16,8 +16,8 @@ import {
 } from "lucide-react";
 
 import { CompanyMonogram } from "@/components/company-monogram";
-import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
-import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
+import { JobOwnershipPopover } from "@/components/job-ownership";
+import { jobOwnershipView, ownershipControlProps, ownershipWhere } from "@/lib/job-ownership";
 import { EmptyState } from "@/components/empty-state";
 import { ListCapNotice } from "@/components/list-cap-notice";
 import { ListSearch } from "@/components/list-search";
@@ -26,6 +26,7 @@ import { ListToolbar } from "@/components/list-toolbar";
 import { useRoleLabel } from "@/components/role-category-picker";
 import {
   BulkBar,
+  type BulkActions,
   DeclineDialog,
   useProposalActions,
 } from "@/components/proposals/triage-actions";
@@ -35,7 +36,7 @@ import { IconButton } from "@/components/icon-button";
 import { humanizeEnum } from "@/components/job-extracted-fields";
 import { PROPOSAL_STATUS_CHIP } from "@/components/status-chip";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -119,6 +120,28 @@ export const STATUS_BADGE_CLASS = Object.fromEntries(
 /** A row's actions: the same one on the next row takes focus when a row leaves its lane. */
 type RowAction = "queue" | "keep" | "skip" | "delete";
 
+type LaneKind = "needs_you" | "triage" | "queued" | "in_flight" | "history";
+
+// Delete is on Needs you (bogus or dead postings parked there never earn a skip record; the backend
+// refuses deletes only for submitted and uncertain) and on a History row that was skipped or expired.
+function canDeleteIn(proposal: Proposal, lane: LaneKind): boolean {
+  return lane === "needs_you" ||
+    (lane === "history" && (proposal.status === "rejected" || proposal.status === "expired"));
+}
+
+/** What a picked row lets the bulk bar do: the actions its own buttons offer, under the same locks. */
+function bulkActionsOf(proposal: Proposal, lane: LaneKind): (keyof BulkActions)[] {
+  const view = jobOwnershipView(proposal.job.ownership);
+  const out: (keyof BulkActions)[] = [];
+  if (lane === "triage" && view.canRequest) out.push("queue");
+  if ((lane === "triage" || lane === "queued" || lane === "needs_you") && view.canRequest) out.push("skip");
+  if (canDeleteIn(proposal, lane) && view.canWrite) out.push("delete");
+  return out;
+}
+
+const selectableIds = (rows: Proposal[], lane: LaneKind) =>
+  rows.filter((p) => bulkActionsOf(p, lane).length > 0).map((p) => p.id);
+
 /**
  * Where focus goes when the control holding it leaves: one row leaving its lane, or the bulk bar leaving.
  * Read at the click, while the row is there (lib/focus.ts `focusSuccessor`).
@@ -194,6 +217,9 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
       apiFetch<ProposalListResponse>(`/api/proposals?limit=${PROPOSALS_LIMIT}`),
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Select mode (Photos' Select): checkboxes on the rows, the bulk bar at the bottom, a row's click picks it.
+  const [selecting, setSelecting] = useState(false);
+  const selectButton = useRef<HTMLButtonElement>(null);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("score");
   const [role, setRole] = useState("all");
@@ -239,6 +265,8 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
         for (const id of ids) copy.delete(id);
         return copy;
       });
+      // The bar's action is done: select mode ends with it, as Photos' does after a delete.
+      if (leaving.current?.kind === "bar") setSelecting(false);
       if (declineTarget) skipReturn.current = leaving.current?.next ?? null;
       setDeclineTarget(null);
     },
@@ -322,13 +350,22 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
     return sortProposals(scoped, sort);
   }, [historyAll, historyStatus, sort]);
 
+  // The rows a selection can hold, with their lane: Applying rows have no action to share.
+  const pickable = useMemo(() => [
+    ...needsYou.map((p) => ({ p, lane: "needs_you" as const })),
+    ...triage.map((p) => ({ p, lane: "triage" as const })),
+    ...queued.map((p) => ({ p, lane: "queued" as const })),
+    ...(historyOpen ? history : []).map((p) => ({ p, lane: "history" as const })),
+  ], [needsYou, triage, queued, history, historyOpen]);
   // Bulk actions and the bar's count see only the rows shown: never a row a filter or the search hides.
-  const selectedShown = useMemo(() => selectedAmong(triage, selected), [triage, selected]);
-  const bulkBlocked = selectedShown.some((id) => {
-    const proposal = triage.find((p) => p.id === id);
-    return !jobOwnershipView(proposal?.job.ownership).canRequest;
-  });
-  const barShown = selectedShown.length > 0;
+  const selectedShown = useMemo(() => selectedAmong(pickable.map((r) => r.p), selected), [pickable, selected]);
+  // An action is offered when every picked row allows it (a locked job's row allows none of its writes).
+  const bulkCan = useMemo<BulkActions>(() => {
+    const picked = pickable.filter((r) => selected.has(r.p.id)).map((r) => bulkActionsOf(r.p, r.lane));
+    const all = (action: keyof BulkActions) => picked.length > 0 && picked.every((a) => a.includes(action));
+    return { queue: all("queue"), skip: all("skip"), delete: all("delete") };
+  }, [pickable, selected]);
+  const barShown = selecting;
 
   // In the commit that takes the row out of its lane, or the bar away, before paint. A dialog still
   // closing keeps focus until its own finalFocus runs; focusIfDropped leaves that alone.
@@ -398,6 +435,11 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
       else copy.delete(id);
       return copy;
     });
+  };
+
+  const exitSelect = () => {
+    setSelecting(false);
+    setSelected(new Set());
   };
 
   const selectAllShown = (ids: string[], on: boolean) => {
@@ -485,13 +527,30 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
       else actions.remove({ id: p.id, next: l.next });
     },
     selected,
+    selecting,
     onToggleSelected: toggleSelected,
   };
-  // The bar leaves with its last shown selection: focus goes to the To review lane, or, when that lane
-  // emptied with it and is not drawn, to the page's content.
+  // The bar leaves when select mode ends (Done, or its action landed): focus goes back to Select, or,
+  // when the inbox emptied and Select is not drawn, to the To review lane or the page's content.
   const leaveBar = () => {
-    leaving.current = { kind: "bar", next: () => toReview.current ?? document.getElementById("main-content") };
+    leaving.current = { kind: "bar", next: () => selectButton.current ?? toReview.current ?? document.getElementById("main-content") };
   };
+  const laneSelect = (ids: string[]) =>
+    selecting && ids.length > 0
+      ? { checked: ids.every((id) => selected.has(id)), onChange: (on: boolean) => selectAllShown(ids, on) }
+      : undefined;
+  const selectToggle = nothingMatches ? null : (
+    <Button
+      ref={selectButton}
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="ml-auto shrink-0"
+      onClick={() => (selecting ? exitSelect() : setSelecting(true))}
+    >
+      {selecting ? "Done" : "Select"}
+    </Button>
+  );
 
   return (
     <div className="flex flex-col gap-6 pb-20">
@@ -564,8 +623,11 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
                 ))}
               </SelectContent>
             </Select>
+            {selectToggle}
           </div>
         </ListToolbar>
+      ) : selectToggle ? (
+        <div className="-mb-4 flex justify-end">{selectToggle}</div>
       ) : null}
 
       {nothingMatches ? (
@@ -579,6 +641,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
             <Lane
               title={`Needs you · ${needsYou.length}`}
               help={needsYouHelp(needsYou.map((p) => p.status))}
+              select={laneSelect(selectableIds(needsYou, "needs_you"))}
               anchor="inbox-needs-you"
             >
               {needsYou.map((p) => (
@@ -596,7 +659,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
             <Lane ref={toReview} title={`To review · ${triage.length}`} anchor="inbox-to-review">
               {dayBatches.map(({ day, items: dayItems }) => {
                 const open = effectiveExpandedDays.has(day);
-                const ids = dayItems.map((p) => p.id);
+                const ids = selectableIds(dayItems, "triage");
                 const allSelected = ids.every((id) => selected.has(id));
                 return (
                   <div key={day} className="flex flex-col gap-2">
@@ -625,7 +688,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
                         {formatDayLabel(day)} · {dayItems.length}{" "}
                         {dayItems.length === 1 ? "proposal" : "proposals"}
                       </button>
-                      {open ? (
+                      {open && selecting && ids.length > 0 ? (
                         <label className="text-muted-foreground ml-auto inline-flex items-center gap-1.5 text-body-small">
                           <Checkbox checked={allSelected && ids.length > 0} onCheckedChange={(next) =>
                               selectAllShown(ids, next)} />
@@ -653,7 +716,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
           ) : null}
 
           {queued.length > 0 ? (
-            <Lane title={`Queued · ${queued.length}`} anchor="inbox-queued">
+            <Lane title={`Queued · ${queued.length}`} select={laneSelect(selectableIds(queued, "queued"))} anchor="inbox-queued">
               {queued.map((p) => (
                 <ProposalRow key={p.id} proposal={p} lane="queued" {...rowProps} />
               ))}
@@ -704,6 +767,10 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
                       count: historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length,
                     }))}
                   />
+                  {(() => {
+                    const select = laneSelect(selectableIds(history, "history"));
+                    return select ? <SelectAll {...select} className="self-end" /> : null;
+                  })()}
                   {history.length === 0 ? (
                     <p className="text-muted-foreground text-body-medium">
                       No history with these statuses.
@@ -729,23 +796,31 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
 
       <ListCapNotice loaded={items.length} limit={PROPOSALS_LIMIT} total={data?.total} noun="proposals" />
 
-      <BulkBar
-        selectedCount={selectedShown.length}
-        pending={actions.pending || bulkBlocked}
-        queuePending={actions.queuePending}
-        onQueue={() => {
-          leaveBar();
-          actions.bulk({ ids: selectedShown, status: "accepted" });
-        }}
-        onDecline={() => {
-          leaveBar();
-          setDeclineTarget({ mode: "bulk" });
-        }}
-        onClear={() => {
-          leaveBar();
-          setSelected(new Set());
-        }}
-      />
+      {selecting ? (
+        <BulkBar
+          selectedCount={selectedShown.length}
+          can={bulkCan}
+          pending={actions.pending}
+          queuePending={actions.queuePending}
+          onQueue={() => {
+            leaveBar();
+            actions.bulk({ ids: selectedShown, status: "accepted" });
+          }}
+          onDecline={() => {
+            leaveBar();
+            setDeclineTarget({ mode: "bulk" });
+          }}
+          onDelete={() => {
+            leaveBar();
+            const next = leaving.current?.next;
+            actions.removeMany({ ids: selectedShown, next });
+          }}
+          onDone={() => {
+            leaveBar();
+            exitSelect();
+          }}
+        />
+      ) : null}
 
       <DeclineDialog
         open={declineTarget != null}
@@ -756,7 +831,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
           setDeclineTarget(null);
         }}
         pending={actions.pending}
-        blocked={declineTarget?.mode === "bulk" && bulkBlocked}
+        blocked={declineTarget?.mode === "bulk" && !bulkCan.skip}
         finalFocus={() => {
           const next = skipReturn.current;
           skipReturn.current = null;
@@ -781,8 +856,11 @@ function Lane({
   children,
   ref,
   anchor,
+  select,
 }: {
   title: string;
+  /** Select mode's "Select all" for this lane's pickable rows. */
+  select?: { checked: boolean; onChange: (on: boolean) => void };
   /** How this lane's rows are answered, under its heading (the Needs-you lane). */
   help?: string[];
   children: React.ReactNode;
@@ -794,9 +872,12 @@ function Lane({
     // tabIndex={-1}: named by its heading, it takes focus when the last row acted on, or the bulk
     // bar, leaves it. Its rows sit in their own list, so a row's neighbours are rows.
     <section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor} className="flex flex-col gap-2 overflow-x-auto outline-none tall:scroll-mt-28">
-      <h2 id={headingId} className="text-muted-foreground text-title-small">
-        {title}
-      </h2>
+      <div className="flex items-center gap-2">
+        <h2 id={headingId} className="text-muted-foreground text-title-small">
+          {title}
+        </h2>
+        {select ? <SelectAll {...select} className="ml-auto" /> : null}
+      </div>
       {help.map((line) => (
         <p key={line} className="text-muted-foreground max-w-[65ch] text-body-medium">
           {line}
@@ -807,7 +888,18 @@ function Lane({
   );
 }
 
-type LaneKind = "needs_you" | "triage" | "queued" | "in_flight" | "history";
+function SelectAll({ checked, onChange, className }: {
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <label className={cn("text-muted-foreground inline-flex items-center gap-1.5 text-body-small", className)}>
+      <Checkbox checked={checked} onCheckedChange={onChange} />
+      Select all
+    </label>
+  );
+}
 
 function ProposalRow({
   proposal,
@@ -815,6 +907,7 @@ function ProposalRow({
   since,
   duplicateKeys,
   selected,
+  selecting,
   onToggleSelected,
   onAct,
   pending,
@@ -826,6 +919,8 @@ function ProposalRow({
   since: string | null;
   duplicateKeys: Set<string>;
   selected: Set<string>;
+  /** Select mode: a checkbox on the row, and a click on the row picks it instead of opening the job. */
+  selecting: boolean;
   onToggleSelected: (id: string, next: boolean) => void;
   onAct: (proposal: Proposal, action: RowAction, from: HTMLElement) => void;
   pending?: boolean;
@@ -837,6 +932,9 @@ function ProposalRow({
   const job = proposal.job;
   const owner = job.ownership;
   const ownership = jobOwnershipView(owner);
+  const where = ownershipWhere(owner);
+  const WhereIcon = where?.bot ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop;
+  const pickable = bulkActionsOf(proposal, lane).length > 0;
   const acting = actingIds.has(proposal.id);
   const base = chosenBase(proposal);
   const baseName = useBaseResumeName(base ?? "", base !== null);
@@ -848,16 +946,11 @@ function ProposalRow({
   // What the agent needs, in its words: a question (Keep it or Skip here), or a stop it waits out in its chat.
   const needs = lane === "needs_you" ? needsYouLine(proposal.status, proposal.reason) : null;
   const showKeep = lane === "needs_you" && proposal.status === "needs_decision";
-  const showCheckbox = lane === "triage";
-  // Decline is available in every non-terminal lane; Delete additionally on
-  // needs_you (bogus/dead postings parked there never earn a decline record —
-  // the backend 409s deletes only for submitted/uncertain). First live run:
+  const showCheckbox = selecting;
+  // Skip is in every lane still waiting on you (To review has its own beside Queue). First live run:
   // needs_human rows had NO actions and could only be resolved via an agent.
   const showDecline = lane === "queued" || lane === "needs_you";
-  const canDelete =
-    lane === "needs_you" ||
-    (lane === "history" &&
-      (proposal.status === "rejected" || proposal.status === "expired"));
+  const canDelete = canDeleteIn(proposal, lane);
   // Focusable while any triage runs (a natively disabled button dropped focus to <body>), and one
   // handler for all: the link around the row must not see the click.
   const act = (action: RowAction) => (e: React.MouseEvent<HTMLElement>) => {
@@ -865,6 +958,16 @@ function ProposalRow({
     e.stopPropagation();
     onAct(proposal, action, e.currentTarget);
   };
+
+  // Where the job is, as the Jobs table's Where column says it: one word in the by-line, the sentence
+  // for its tooltip and for a screen reader.
+  const whereMark = where ? (
+    <span className="inline-flex shrink-0 items-center gap-1" title={where.sentence}>
+      <WhereIcon className="size-3.5 shrink-0" aria-hidden="true" />
+      <span aria-hidden="true">{where.word}</span>
+      <span className="sr-only">{where.sentence}</span>
+    </span>
+  ) : null;
 
   return (
     // One child, so the wrapper can close its height (.collapse-exit in globals.css).
@@ -875,7 +978,7 @@ function ProposalRow({
             {showCheckbox ? (
               <label className="flex items-center px-3">
                 <Checkbox
-                  disabled={!ownership.canRequest}
+                  disabled={!pickable}
                   checked={selected.has(proposal.id)}
                   onCheckedChange={(next) => onToggleSelected(proposal.id, next)}
                   aria-label={`Select ${job.title ?? "Untitled role"}${job.company ? ` at ${job.company}` : ""}`}
@@ -884,6 +987,11 @@ function ProposalRow({
             ) : null}
             <Link
               href={`/jobs/${proposal.job_id}?from=proposals`}
+              // In select mode the row is a big target for its checkbox (which keyboards use), as in Photos.
+              onClick={selecting ? (e) => {
+                e.preventDefault();
+                if (pickable) onToggleSelected(proposal.id, !selected.has(proposal.id));
+              } : undefined}
               // flex-wrap + a real basis on the text, not flex-1 (the job
               // header's fix): with basis-0 the shrink-0 chips kept their width
               // and squeezed the title to a few letters at 768 and to nothing at
@@ -927,13 +1035,16 @@ function ProposalRow({
                   <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-body-small" title={meta}>
                     <ActorChip kind={proposal.proposed_by === "you" ? "you" : "agent"} name={agentDisplayName(proposal.proposed_by)} className="min-w-0 shrink" />
                     <span className="truncate">{formatTimeAgo(proposal.created_at)}</span>
+                    {whereMark}
                   </div>
                 ) : (
-                  <div className="text-muted-foreground truncate text-body-small" title={meta}>
-                    {meta}
+                  <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-body-small" title={meta}>
+                    <span className="truncate">{meta}</span>
+                    {whereMark}
                   </div>
                 )}
-                {needs ? <p className="mt-1 text-body-small break-words">{needs}</p> : null}
+                {/* One line; the agent's whole question on hover and on the job page. */}
+                {needs ? <p className="mt-1 truncate text-body-small" title={needs}>{needs}</p> : null}
               </div>
               {base ? (
                 <span className="text-muted-foreground hidden shrink-0 items-center gap-2 text-body-small sm:inline-flex">
@@ -951,9 +1062,15 @@ function ProposalRow({
                 </Badge>
               ) : null}
             </Link>
+            {/* Always in view, outside the link: a locked job's reason and its request, in a pop-up. */}
+            <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+              <JobOwnershipPopover jobId={proposal.job_id} ownership={owner} />
+            </div>
             <div
               className={cn(
                 "relative flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100",
+                // Select mode acts from the bar: a row's own buttons step aside (its spinner still shows).
+                selecting && !acting && "hidden",
                 // The buttons stay (focus is kept) under the spinner that answers the press; the focus ring moves out here.
                 acting && "rounded-full opacity-100 [&_button]:opacity-0! has-[button:focus-visible]:ring-3 has-[button:focus-visible]:ring-ring",
               )}
@@ -1022,12 +1139,6 @@ function ProposalRow({
               ) : null}
             </div>
           </div>
-          {/* Under the text column: past the checkbox (2.75rem), the row's padding, the monogram and its gap. */}
-          {ownership.mark || ownership.reason ? <div className={cn("flex flex-col gap-1 pr-4 pb-3",
-            showCheckbox ? "pl-[6.5rem]" : "pl-[3.75rem]")}>
-            <JobOwnershipMark jobId={proposal.job_id} ownership={owner} />
-            <JobOwnershipNotice ownership={owner} />
-          </div> : null}
         </CardContent>
       </Card>
     </div>

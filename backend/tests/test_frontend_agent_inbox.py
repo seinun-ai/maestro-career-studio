@@ -391,7 +391,7 @@ def test_queue_is_the_word_for_what_becomes_queued():
     row = _SECTION[_SECTION.index("function ProposalRow(") :]
     assert 'label="Queue"' in row and 'label="Accept"' not in row
     bar = _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
-    assert "\n          Queue\n        </Button>" in bar and "Accept" not in bar
+    assert "\n            Queue\n          </Button>" in bar and "Accept" not in bar
     assert "\n                Queue\n              </Button>" in _JOB
     assert "\n                Accept\n              </Button>" not in _JOB
 
@@ -582,7 +582,10 @@ def test_the_lanes_are_read_from_the_one_table():
 def test_bulk_actions_use_only_the_rows_shown():
     """A5 found by reading: a filter or the search hid selected rows, and the
     bulk bar still queued or skipped them."""
-    assert "const selectedShown = useMemo(() => selectedAmong(triage, selected), [triage, selected]);" in _SECTION
+    assert "const selectedShown = useMemo(() => selectedAmong(pickable.map((r) => r.p), selected), [pickable, selected]);" in _SECTION
+    # History rows count only while History is open; Applying rows have no action to share.
+    assert "...(historyOpen ? history : []).map((p) => ({ p, lane: \"history\" as const }))," in _SECTION
+    assert "inFlight.map" not in _SECTION[_SECTION.index("const pickable = useMemo") : _SECTION.index("const selectedShown")]
     bar = _SECTION[_SECTION.index("<BulkBar") :]
     bar = bar[: bar.index("/>")]
     assert "selectedCount={selectedShown.length}" in bar
@@ -613,10 +616,11 @@ def test_the_inbox_starts_triage_only_through_the_guard():
     (test_frontend_single_flight.py pins the guard there)."""
     ret = _TRIAGE[_TRIAGE.index("  return {\n    transition: transitionOnce,") :]
     ret = ret[: ret.index("\n  };\n")]
-    assert "bulk: bulkOnce," in ret and "remove: removeOnce," in ret
-    assert "pending: transition.isPending || bulk.isPending || remove.isPending," in ret
+    assert "bulk: bulkOnce," in ret and "remove: removeOnce," in ret and "removeMany: removeManyOnce," in ret
+    assert "pending: transition.isPending || bulk.isPending || remove.isPending || removeMany.isPending," in ret
     for src in (_SECTION, _JOB):
         assert ".transition.mutate" not in src and ".bulk.mutate" not in src and ".remove.mutate" not in src
+        assert ".removeMany.mutate" not in src
 
 
 def test_row_actions_keep_focus_while_they_run():
@@ -645,16 +649,50 @@ def test_a_row_that_leaves_its_lane_hands_focus_on():
     assert "<h2 id={headingId}" in lane
 
 
-def test_the_bulk_bar_hands_focus_to_the_lane_when_it_leaves():
-    # The To review lane, or the page's content when that lane emptied with the selection and is not drawn.
+def test_the_bulk_bar_hands_focus_back_to_select_when_it_leaves():
+    # Select, or when the inbox emptied and Select is not drawn, the To review lane or the page's content.
     assert _SECTION.count(
-        'leaving.current = { kind: "bar", next: () => toReview.current ?? document.getElementById("main-content") };'
+        'leaving.current = { kind: "bar", next: () => selectButton.current ?? toReview.current ?? document.getElementById("main-content") };'
     ) == 1
-    assert _SECTION.count("leaveBar();") == 3  # Queue, Skip and Clear
+    assert _SECTION.count("leaveBar();") == 4  # Queue, Skip, Delete and Done
     assert '<Lane ref={toReview} title={`To review · ' in _SECTION
+    # The bar's action ends select mode, as Photos' does after a delete.
+    done = _SECTION[_SECTION.index("onDone: (ids, became) => {") :]
+    assert 'if (leaving.current?.kind === "bar") setSelecting(false);' in done[: done.index("\n    },\n")]
     bar = _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
-    assert bar.count("focusableWhenDisabled") == 3
-    assert bar.count("data-disabled:pointer-events-none data-disabled:opacity-50") == 2  # Queue spins via pending
+    assert bar.count("focusableWhenDisabled") == 4
+    assert bar.count("data-disabled:pointer-events-none data-disabled:opacity-50") == 3  # Queue spins via pending
+
+
+def test_select_mode_is_opt_in_and_offers_only_what_every_pick_allows():
+    """Photos' Select: no checkboxes until Select, a row's click picks it, and the bar offers an action
+    only when every picked row's own buttons offer it (under the same ownership locks)."""
+    assert "const showCheckbox = selecting;" in _SECTION
+    assert '{selecting ? "Done" : "Select"}' in _SECTION
+    assert "{selecting ? (\n        <BulkBar" in _SECTION
+    assert "picked.length > 0 && picked.every((a) => a.includes(action))" in _SECTION
+    actions = _SECTION[_SECTION.index("function bulkActionsOf(") :]
+    actions = actions[: actions.index("\n}\n")]
+    assert 'if (lane === "triage" && view.canRequest) out.push("queue");' in actions
+    assert 'if (canDeleteIn(proposal, lane) && view.canWrite) out.push("delete");' in actions
+    row = _row()
+    assert "if (pickable) onToggleSelected(proposal.id, !selected.has(proposal.id));" in row
+    assert 'selecting && !acting && "hidden",' in row
+    # One confirm for a bulk delete, then one DELETE at a time.
+    many = _TRIAGE[_TRIAGE.index("const removeMany = useMutation({") :]
+    many = many[: many.index("\n  });")]
+    assert "confirmed = await confirm(" in many and "for (const id of ids) {" in many
+    assert "Promise.all" not in many
+
+
+def test_a_row_says_where_its_job_is_in_its_by_line():
+    """The mark used to take a line of its own under every row, doubling its height; it is now the Jobs
+    table's one word, and a lock, a request or a waiting one opens from one small icon."""
+    row = _row()
+    assert "const where = ownershipWhere(owner);" in row and "{whereMark}" in row
+    # Nothing under the row: a locked job's reason, its request and its progress sit in a pop-up.
+    assert "<JobOwnershipPopover jobId={proposal.job_id} ownership={owner} />" in row
+    assert "JobOwnershipNotice" not in _SECTION and "<JobOwnershipMark" not in _SECTION
 
 
 def test_the_skip_dialog_keeps_focus_and_hands_it_on():

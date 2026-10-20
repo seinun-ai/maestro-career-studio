@@ -1152,7 +1152,17 @@
   limit, and a proposed-jobs line comes from the newest run (Recent runs, `agent_runs`, live on
   Automations: docs/entities/agent-runs.md). Open rows carry read-time readiness
   (`services/inbox_readiness.py`). The rules: docs/entities/others.md, "Inbox readiness" and
-  "Arrivals summary".
+  "Arrivals summary". A row says where its job is in its by-line, the Jobs table's Where word
+  (`ownershipWhere`, the sentence on hover), and nothing goes under a row: a lock reason, **Work on
+  it here** / **Keep it here** and a waiting request open from one small always-visible icon outside
+  the row's link (`JobOwnershipPopover`: a lock, or the owner's icon, with a dot while a request
+  waits). A Needs-you question is one truncated line, whole on hover. Selection is
+  a mode, as in Photos: a quiet **Select** (end of the toolbar, or alone above the lanes) puts a
+  checkbox on every row, "Select all" on each lane (per day in To review), and a click on a row picks
+  it instead of opening the job; a row's own buttons step aside. The fixed bulk bar stays until
+  **Done** and offers Queue, Skip or Delete only when every picked row's own buttons offer it under
+  the same ownership locks (`bulkActionsOf`; Applying and Applied rows pick nothing). Delete asks once
+  and deletes one at a time. The bar's action, or Done, ends the mode and hands focus back to Select.
 - **Jobs row** (`app/applications/page.tsx`): the columns are Role, Match score (read-only:
   an application's `ats_score`, a saved job's `best_ats_score`), Status (an inline `StatusChip`
   that PATCHes directly), Where, Applied, Next step and Added. Every row is two lines (company, then role and
@@ -1177,7 +1187,7 @@
   job's best base is not named). Columns with fixed content are in rem (the
   table scrolls at 57rem, where a percentage of it left "Offer accepted" no room); Role takes the rest,
   11.5rem at that width with Where.
-  The job header, gap page and proposals keep `JobOwnershipMark`/`Notice`.
+  The job header and gap page keep `JobOwnershipMark`/`Notice`; Agent inbox rows use `JobOwnershipPopover`.
   Pinned by `test_frontend_jobs_where.py`.
 - **Job steps** (`components/job-steps.tsx`, data from `lib/job-steps.ts`): the job page has four numbered
   steps where its tab row was, **Job**, **Resume and gaps**, **Tailored resume** and **Apply**, each a disc

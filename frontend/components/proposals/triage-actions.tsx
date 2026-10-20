@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -215,11 +216,62 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
     },
   });
 
+  // The bar's Delete: one confirm for the rows picked, then one DELETE at a time (the server writes one
+  // row at a time anyway). Rows that go leave the selection; a refused one stays, named in one toast.
+  const removeMany = useMutation({
+    mutationFn: async ({ ids, next }: { ids: string[]; next?: () => HTMLElement | null }) => {
+      let confirmed = false;
+      confirmed = await confirm({
+        title: ids.length === 1 ? "Delete this proposal?" : `Delete ${ids.length} proposals?`,
+        description: "This also deletes the screenshots your agents took.",
+        confirmLabel: "Delete",
+        destructive: true,
+        returnFocus: () => (confirmed && next ? next() : null),
+      });
+      if (!confirmed) return null;
+      const done: string[] = [];
+      const failed: unknown[] = [];
+      for (const id of ids) {
+        try {
+          await apiFetch<void>(`/api/proposals/${id}`, { method: "DELETE" });
+          done.push(id);
+        } catch (err) {
+          failed.push(err);
+        }
+      }
+      return { done, failed, total: ids.length };
+    },
+    onSuccess: (result) => {
+      if (!result) {
+        events.onUndone?.();
+        return;
+      }
+      invalidate();
+      const { done, failed, total } = result;
+      if (done.length > 0) {
+        toast.success(`Deleted ${done.length} ${done.length === 1 ? "proposal" : "proposals"}`);
+        events.onDone?.(done, "deleted");
+      } else {
+        events.onUndone?.();
+      }
+      if (failed.length > 0) {
+        const sample = failed[0] instanceof Error ? failed[0].message : "";
+        const why = isPlainSentence(sample) ? sample : "Try again.";
+        toast.error(`Couldn't delete ${failed.length} of ${total}. ${why}`);
+      }
+    },
+    onError: (err: Error) => {
+      toast.error(couldnt("delete the proposals", err));
+      events.onUndone?.();
+    },
+  });
+
   // One request per click: `isPending` disables the buttons a render too late, so a double click on a
   // row's Queue sent two PATCHes, the second "cannot go accepted -> accepted". The raw mutations stay here.
   const transitionOnce = useSingleFlight(transition.mutate);
   const bulkOnce = useSingleFlight(bulk.mutate);
   const removeOnce = useSingleFlight(remove.mutate);
+  const removeManyOnce = useSingleFlight(removeMany.mutate);
   // The rows in flight, for a spinner on each: the buttons stay locked everywhere, but only these rows ask.
   const actingIds = new Set<string>(
     transition.isPending && transition.variables ? [transition.variables.id]
@@ -230,8 +282,9 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
     transition: transitionOnce,
     bulk: bulkOnce,
     remove: removeOnce,
+    removeMany: removeManyOnce,
     // Any of them running: every triage control waits, focusable and dimmed.
-    pending: transition.isPending || bulk.isPending || remove.isPending,
+    pending: transition.isPending || bulk.isPending || remove.isPending || removeMany.isPending,
     // Only the bulk Queue spins: a bulk Skip runs from the dialog, whose own button spins.
     queuePending: bulk.isPending && bulk.variables?.status === "accepted",
     actingIds,
@@ -329,67 +382,100 @@ export function DeclineDialog({
   );
 }
 
+export type BulkActions = { queue: boolean; skip: boolean; delete: boolean };
+
+/**
+ * Select mode's bar, on screen until Done (Photos' model: pick rows, then act). It offers only what
+ * every picked row allows, the same actions each row's own buttons offer; a mixed pick says so.
+ */
 export function BulkBar({
   selectedCount,
+  can,
   onQueue,
   onDecline,
-  onClear,
+  onDelete,
+  onDone,
   pending,
   queuePending,
 }: {
   selectedCount: number;
+  can: BulkActions;
   onQueue: () => void;
   onDecline: () => void;
-  onClear: () => void;
+  onDelete: () => void;
+  onDone: () => void;
   /** Any triage action runs: every button waits, focusable and dimmed. */
   pending?: boolean;
   /** The bulk Queue itself runs: its button spins. */
   queuePending?: boolean;
 }) {
-  if (selectedCount <= 0) return null;
-
+  const nothingFits = selectedCount > 0 && !can.queue && !can.skip && !can.delete;
   return (
     // data-slot: globals.css keeps a focused row above this fixed bar. Its buttons stay focusable
-    // while they run, and the page hands focus on when a Queue, Skip or Clear takes the bar away.
+    // while they run, and the page hands focus on when an action or Done takes the bar away.
     <div
       data-slot="bulk-bar"
       className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm animate-in slide-in-from-bottom-2 fade-in-0 duration-(--duration-short4) ease-(--ease-emphasized-decelerate) fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3"
     >
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-2">
-        <span className="text-title-small tabular-nums">
-          {selectedCount} selected
+        <span role="status" className="text-title-small tabular-nums">
+          {selectedCount > 0 ? `${selectedCount} selected` : "Pick the jobs to act on"}
         </span>
-        <Button
-          type="button"
-          size="sm"
-          onClick={onQueue}
-          pending={queuePending}
-          disabled={pending}
-          focusableWhenDisabled
-        >
-          Queue
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="data-disabled:pointer-events-none data-disabled:opacity-50"
-          onClick={onDecline}
-          disabled={pending}
-          focusableWhenDisabled
-        >
-          Skip
-        </Button>
+        {can.queue ? (
+          <Button
+            type="button"
+            size="sm"
+            onClick={onQueue}
+            pending={queuePending}
+            disabled={pending}
+            focusableWhenDisabled
+          >
+            Queue
+          </Button>
+        ) : null}
+        {can.skip ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+            onClick={onDecline}
+            disabled={pending}
+            focusableWhenDisabled
+          >
+            Skip
+          </Button>
+        ) : null}
+        {can.delete ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+            onClick={onDelete}
+            disabled={pending}
+            focusableWhenDisabled
+          >
+            <Trash2 aria-hidden="true" />
+            Delete
+          </Button>
+        ) : null}
+        {nothingFits ? (
+          <span className="text-muted-foreground text-body-small">
+            No one action fits all of these. Pick jobs from one lane.
+          </span>
+        ) : null}
         <Button
           type="button"
           size="sm"
           variant="ghost"
+          // Beside the actions, not at the far end: toasts land in the bottom-right corner over it.
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
-          onClick={onClear}
+          onClick={onDone}
           disabled={pending}
           focusableWhenDisabled
         >
-          Clear
+          Done
         </Button>
       </div>
     </div>

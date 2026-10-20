@@ -63,6 +63,15 @@ a click.
 
 ### Changed
 
+- **Agent inbox rows are about half as tall.** Where a job is (Laptop, Bot) now sits in the row's
+  by-line as one word, as in the Jobs table, instead of a pill on a line of its own, with the full
+  sentence on hover. Nothing else sits under a row: why a job is locked, Work on it here and a
+  waiting request open from one small icon on the row, and an agent's question is one line, whole on
+  hover.
+- **Select in the Agent inbox.** Checkboxes no longer sit on every To review row. A quiet **Select**
+  button turns them on across Needs you, To review, Queued and History, with Select all per lane, and a
+  click on a row picks it. The bar at the bottom offers Queue, Skip or **Delete** (new for many rows at
+  once) when every picked job allows it, and **Done** ends it.
 - **A rephrased bullet is kept as a wording, not drafted.** Sync now treats a bullet that scores 0.80
   or more against one already on the item as a rewording of it. Before, only 0.90 and up was noted
   and everything below became a new draft. The pill reads "N reworded bullets (kept as wordings)" and
