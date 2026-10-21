@@ -1491,7 +1491,7 @@
     ASD-STE100 cap for a description; an instruction aims for 20). Split it
     or cut a clause. `backend/tests/test_frontend_sentence_length.py` reads
     the same strings as the vocabulary ratchet. A long series reads as a
-    list (the low-stakes hint in Settings › Autofill), not a run-on.
+    list (the low-stakes hint in Settings › Companion), not a run-on.
   - *Canonical terms* (one word per thing, on every surface: the web app, the
     Companion panel, the Companion manifest's name, description and titles,
     and the server messages the app shows;
@@ -1573,8 +1573,8 @@
     name. The model roles are **Fast model**, **Smart model**,
     **Assistant model** and **Reasoning model**, never Chat model. **One word per kind of agent**:
     **Assistant** (the in-app chat and its sidebar item; one conversation is
-    a chat), **connected agents** (MCP clients; **Connected agents** is the
-    Settings tab, whose first card says what one is and what it cannot do),
+    a chat), **connected agents** (MCP clients; their Settings tab is **Agent
+    apps**, whose folded What agents can and can't do says what one is and cannot do),
     **Companion** (the browser extension; a proper name in a label that is a
     name, "Open Companion", and "the Companion" in running sentences and in a
     label that reads as one, "Let the Companion fill agreements and signatures"). **Suggested edits** ("Suggested edit"
@@ -1610,7 +1610,7 @@
     again.". A server's `detail` reaches the screen only when it
     is a plain sentence written for the user (`isPlainSentence`), and a
     missing or refused API key reads as its fix ("Add an API key in Settings ›
-    AI & models.", "OpenAI refused your API key. Check it in …") whatever the
+    Basics.", "OpenAI refused your API key. Check it in …") whatever the
     server's words (`MISSING_KEY`/`REFUSED_KEY`, exported: the Companion
     mirrors them); raw server
     text, JSON, schema paths (`experience.2.bullets.0`), status codes and

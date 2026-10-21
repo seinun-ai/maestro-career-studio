@@ -107,8 +107,8 @@
   /** The two next steps a key failure has, in the panel's words: the
    * Settings path is the web app's, so it says where that is. */
   const KEY_STEPS = {
-    missing: "Add an API key in Maestro CS under Settings › AI & models.",
-    refused: "Check your API key in Maestro CS under Settings › AI & models.",
+    missing: "Add an API key in Maestro CS under Settings › Basics.",
+    refused: "Check your API key in Maestro CS under Settings › Basics.",
   };
 
   /** Is this failure about the API key, and which way: `"missing"` (none is

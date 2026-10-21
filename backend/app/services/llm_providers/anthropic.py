@@ -52,7 +52,7 @@ FALLBACK_MODELS = frozenset({"claude-opus-5-5", "claude-sonnet-5-5", "claude-opu
 GENERATE_MAX_TOKENS = 32_000
 STREAM_MAX_TOKENS = 64_000
 REFUSED = ("Claude declined to answer this request. Try rephrasing it, or pick another model "
-           "in Settings › AI & models.")
+           "in Settings › Advanced › Model per job.")
 
 
 def _user_blocks(msg: Message) -> list[dict[str, Any]]:

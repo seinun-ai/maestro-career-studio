@@ -1438,7 +1438,7 @@ def test_a_second_opinion_never_makes_a_field_free_text(db_session, monkeypatch)
 
 # ---------- the main fast call: bounded by the request, and one retry while there is time (re-review of 6b90eb96)
 
-REFUSED = llm.LLMProviderError("OpenAI refused your API key. Check it in Settings › AI & models.")
+REFUSED = llm.LLMProviderError("OpenAI refused your API key. Check it in Settings › Basics.")
 
 
 def flaky_map(monkeypatch, first):

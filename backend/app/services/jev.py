@@ -45,7 +45,7 @@ _SUM_TOLERANCE = 0.02
 _CLIENT: httpx.Client | None = None
 _CLIENT_LOCK = threading.Lock()
 
-NO_JEV_KEY_MESSAGE = "No Jev API key is set. Add one in Settings › AI & models › Form filling."
+NO_JEV_KEY_MESSAGE = "No Jev API key is set. Add one in Settings › Companion › Form-filling engine."
 
 
 def _client() -> httpx.Client:
@@ -161,7 +161,7 @@ def decide(
     detail = response.text[:300]
     if response.status_code == 401:
         raise LLMProviderError(
-            "Jev refused your API key. Check it in Settings › AI & models.", detail)
+            "Jev refused your API key. Check it in Settings › Companion › Form-filling engine.", detail)
     if response.status_code >= 400:
         raise LLMProviderError(f"Jev couldn't answer (error {response.status_code}).", detail)
     try:

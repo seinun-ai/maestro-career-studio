@@ -20,9 +20,9 @@ from app.services import resumes_folder as rf
 router = APIRouter(tags=["resumes-folder"])
 
 UNAVAILABLE = "This copy of Maestro keeps no resumes folder."
-OFF = "Saving copies is turned off in Settings › Tailoring."
+OFF = "Saving copies is turned off in Settings › Basics › Resume PDFs."
 NO_PDF = "Create the PDF first."
-NOT_SAVED = "Maestro couldn't save a copy to your resumes folder. Check Settings › Tailoring."
+NOT_SAVED = "Maestro couldn't save a copy to your resumes folder. Check Settings › Basics › Resume PDFs."
 NOT_FOUND = "This application doesn't exist."
 CANT_OPEN = "Maestro couldn't open the folder on this computer."  # no path: planning decision 9
 PICKER_BUSY = "A folder dialog is already open."

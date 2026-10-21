@@ -252,7 +252,7 @@ def test_the_empty_state_links_point_at_real_headings():
     assert "/docs/skills/README.md`" in links
     assert 'export const CONNECTED_AGENTS_SETTINGS = "/settings?tab=agents";' in links
     tabs = _read("lib/settings-tabs.ts")
-    assert 'value: "agents",' in tabs, "the Connected agents tab id moved"
+    assert 'value: "agents",' in tabs, "the Agent apps tab id moved"
 
 
 # ── A7: a cut list says so ──────────────────────────────────────────────────

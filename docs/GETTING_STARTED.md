@@ -22,7 +22,7 @@ Three steps: [install it](#1-what-you-need) → [add your resumes](#3-your-first
 - **Base resume** — your main resume for one kind of role, such as Data Scientist.
 - **Tailoring** — adjusting a base resume to one job, using only things you actually did.
 - **Match score** — Maestro's comparison of your resume with a saved job description. It is not an employer's score or a prediction of an interview.
-- **AI service** — OpenAI, Gemini or Claude (Anthropic), whichever you choose; you add its key in Settings › AI & models.
+- **AI service** — OpenAI, Gemini or Claude (Anthropic), whichever you choose; you add its key in Settings › Basics.
 - **Companion** — the Maestro CS browser extension, a side panel in Chrome.
 - **Assistant** — the chat inside the app. **Connected agents** are AI assistants outside it (Claude, Codex, ChatGPT desktop) that use the app over MCP.
 
@@ -106,7 +106,7 @@ downloads about 1 GB, so give it a few minutes.
 Then open **<http://localhost:3000>**. The first start sets up your database
 and adds a demo resume so you have something to look at.
 
-Don't put your AI key in `.env`. Add it in the app (Settings › AI & models), which
+Don't put your AI key in `.env`. Add it in the app (Settings › Basics), which
 is step 3 below. A key saved in the app always wins over one in `.env`. Use
 `.env` only for a setup with no browser: paste the key after `OPENAI_API_KEY=`
 (or `GEMINI_API_KEY=`, `ANTHROPIC_API_KEY=`, `OPENROUTER_API_KEY=`) and don't also save one in the app.
@@ -114,7 +114,7 @@ is step 3 below. A key saved in the app always wins over one in `.env`. Use
 **Already use a coding agent** (Claude Code, the Codex CLI)? Install Docker
 and Git yourself, run the `git clone` command, open the agent in that folder,
 and ask: *"Read docs/GETTING_STARTED.md and set Maestro CS up for me — start
-it and wait until it is ready."* Adding your AI key in Settings › AI & models and
+it and wait until it is ready."* Adding your AI key in Settings › Basics and
 loading the browser extension stay your jobs.
 
 Want to build the app from source instead? See [CONTRIBUTING.md](../CONTRIBUTING.md).
@@ -127,7 +127,7 @@ Want to build the app from source instead? See [CONTRIBUTING.md](../CONTRIBUTING
 | `port is already allocated` | Another program uses a port the app needs | Change the `*_HOST_PORT` values in `.env` ([details](SETUP_REFERENCE.md#troubleshooting--common-questions)) |
 | The page loads but everything shows errors | The app is still starting | Wait a minute. It is ready when <http://localhost:8001/health> shows `{"status":"ok"}` |
 | You added a key to `.env` after starting | Keys are read at start | Run `docker compose restart backend` |
-| AI features fail although Settings says "Configured" | An old key is being used | Enter the key again in Settings › AI & models and press **Test** |
+| AI features fail although Settings says "Configured" | An old key is being used | Enter the key again in Settings › Basics and press **Test** |
 
 ### Your data, backups and starting over
 
@@ -213,7 +213,7 @@ It holds the database, your resumes and settings, `backups/`, `logs/` and
 overrides; `maestro restart` after editing it). To uninstall, run
 `maestro autostart off` and `maestro stop` first (otherwise the login item keeps
 retrying a launcher that is gone), then `uv tool uninstall maestro-career-studio`.
-That leaves the folder; deleting the folder deletes your data. Add your AI key in the app (Settings › AI & models), as in the
+That leaves the folder; deleting the folder deletes your data. Add your AI key in the app (Settings › Basics), as in the
 Docker route.
 
 - **Don't run a Docker install and a uv install at the same time.** They are
@@ -243,8 +243,8 @@ Five steps from nothing to a PDF:
 2. **Review and approve bullets in your career history.** Imported bullets arrive as
    drafts under **Drafts to review**. Only *approved* bullets ever appear on a resume. Merge duplicates
    while you're there.
-3. **Add your AI key** — **Settings › AI & models**. Paste the key under **API
-   keys**, then press **Test** next to each model to check it works.
+3. **Add your AI key** — **Settings › Basics**. Paste the key into your provider's
+   **API key** field and press **Save**, then press **Test** to check the models work.
 4. **Save a job.** Click **Add job**, paste the job description or
    its link, and click **Save job** — or save it from the job page with the
    [Companion](#4-the-companion-browser-extension-optional). Maestro reads the
@@ -267,7 +267,7 @@ Five steps from nothing to a PDF:
   **From career history**, then open its **Health report** and fix what it finds.
 - **Pick a default template** on the Templates page. You can switch any time.
 - **Use Quick tailor** once you've done a few jobs by hand — set it up in
-  Settings › Tailoring.
+  Settings › Advanced › Quick tailor.
 - **Track your applications** — mark them applied and record outcomes. After
   about 10 saved jobs, **Analytics** shows what employers keep asking for.
 - **Choose your models** — see
@@ -278,7 +278,7 @@ Five steps from nothing to a PDF:
 The **Companion** is a Chrome side panel: save the job posting you're looking at, score your
 resumes against it, fill the application form from your saved answers (Profile › Autofill), and
 mark it applied — without leaving the tab. The app must be running. With **Full automation** on
-(Settings › Connected agents), its **Apply** button fills each page, presses Next and stops on the
+(Settings › Agent apps), its **Apply** button fills each page, presses Next and stops on the
 review page. Submit is always yours.
 
 1. Open `chrome://extensions` and switch on **Developer mode** (top right).
@@ -317,7 +317,7 @@ MCP lets an AI assistant use Maestro by chat. Keep the app running. HTTP MCP
 clients connect to the backend on this computer; claude.ai and chatgpt.com web
 connectors are outside this setup.
 
-Open Settings › Connected agents › **Connect an agent app**. Its **Tool set**
+Open Settings › Agent apps › **Connect an agent app**. Its **Tool set**
 selector defaults to `full` (all 91 tools). Choose one set per chat.
 
 ### On a uv install: `maestro connect`
@@ -451,7 +451,7 @@ and uses whatever scheduler its app or your computer has:
 - **`apply-session`** — works through the jobs you accepted. It prepares each
   application on its own and asks you only for information the app doesn't
   have, plus one yes per application before the final submit.
-- **`apply-auto`**: for **Full automation** only (Settings › Connected agents,
+- **`apply-auto`**: for **Full automation** only (Settings › Agent apps,
   off by default). It works the jobs you accepted and submits each one whose
   final review shows nothing to check, without asking. Anything else waits for
   you.

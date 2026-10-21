@@ -228,7 +228,7 @@ Show a pairing code only after this tunnel is up. Then pair, under
 
 Do this once, at the keyboard, with the route up.
 
-On the laptop, open **Settings › Connected agents › Second copy** and click
+On the laptop, open **Settings › Agent apps › Second copy** and click
 **Show a pairing code**. The card says "Pair an always-on copy of Maestro with
 this laptop." Clicking the button creates the sync key if this laptop does not
 have one yet.

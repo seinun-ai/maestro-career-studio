@@ -576,7 +576,7 @@ export function ChatPage() {
       // Checked before the stream (routers/chat.py): no API key, or a model
       // that can't use tools. A setup problem, so it stays beside the composer.
       if (err instanceof ApiError && err.status === 422) {
-        setSetupProblem(errorDetail(err) ?? "The Assistant can't use the chosen model. Choose another in Settings › AI & models.");
+        setSetupProblem(errorDetail(err) ?? "The Assistant can't use the chosen model. Choose another in Settings › Advanced › Model per job.");
       } else {
         toast.error(couldnt("get a reply from the Assistant", err));
       }

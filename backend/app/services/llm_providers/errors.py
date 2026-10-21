@@ -30,11 +30,11 @@ class LLMProviderError(RuntimeError):
 
 
 NO_KEY_MESSAGE = (
-    "No API key is set. Add one in Settings › AI & models › API keys. To use a model "
-    "on your computer instead, add its address in Settings › AI & models › Custom AI server."
+    "No API key is set. Add one in Settings › Basics. To use a model on your computer "
+    "instead, add its address in Settings › Advanced › Custom AI server."
 )
-NO_GEMINI_KEY_MESSAGE = "No Gemini API key is set. Add one in Settings › AI & models."
-NO_ANTHROPIC_KEY_MESSAGE = "No Claude API key is set. Add one in Settings › AI & models."
+NO_GEMINI_KEY_MESSAGE = "No Gemini API key is set. Add one in Settings › Basics."
+NO_ANTHROPIC_KEY_MESSAGE = "No Claude API key is set. Add one in Settings › Basics."
 
 
 _KEY_REFUSED = "your key was refused"
@@ -48,12 +48,12 @@ def _no_answer(reason: str, provider_detail: str, provider: str = "OpenAI") -> L
     logger.warning("model provider failed: %s", provider_detail)
     if reason == _KEY_REFUSED:
         return LLMProviderError(
-            f"{provider} refused your API key. Check it in Settings › AI & models.",
+            f"{provider} refused your API key. Check it in Settings › Basics.",
             provider_detail=provider_detail,
         )
     return LLMProviderError(
         f"The AI model didn't answer ({reason}). Try again, or check your key in "
-        "Settings › AI & models.",
+        "Settings › Basics.",
         provider_detail=provider_detail,
     )
 

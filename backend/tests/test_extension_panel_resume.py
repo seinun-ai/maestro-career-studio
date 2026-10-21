@@ -618,7 +618,7 @@ def test_a_tailor_the_model_failed_points_at_the_ai_key(tmp_path):
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
         "Couldn't tailor your resume. Check your API key in Maestro CS under "
-        "Settings › AI & models.")
+        "Settings › Basics.")
 
 
 def test_a_tailor_with_no_api_key_says_to_add_one(tmp_path):
@@ -627,11 +627,11 @@ def test_a_tailor_with_no_api_key_says_to_add_one(tmp_path):
     out = _resume(tmp_path, open=True, press="Quick tailor",
                   api={"quick-tailor": {"ok": False, "status": 502, "error":
                                         "No API key is set. Add one in Settings "
-                                        "› AI & models › API keys."}})
+                                        "› Basics."}})
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
         "Couldn't tailor your resume. Add an API key in Maestro CS under "
-        "Settings › AI & models.")
+        "Settings › Basics.")
 
 
 def test_a_tailor_that_renders_no_pdf_says_so_and_still_keeps_the_application(tmp_path):

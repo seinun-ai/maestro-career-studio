@@ -9,7 +9,7 @@ PayPeriod = Literal["year", "month", "hour"]
 
 
 class MoneySettings(BaseModel):
-    """How pay reads (`GET/PUT /api/settings/money`; Settings › Money, hours under Advanced).
+    """How pay reads (`GET/PUT /api/settings/money`; Settings › Basics › Money, hours under Advanced).
 
     `home_currency` is the ISO 4217 code every figure is shown in. None means "where I live":
     the home market's currency, else `HOME_CURRENCY` (`money_settings.home_currency` resolves

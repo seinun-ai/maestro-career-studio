@@ -235,6 +235,6 @@ def require(session: Session, model: str, capability: str) -> None:
                 report.errors.get(capability, "the capability probe found it unsupported"))
     raise CapabilityMissing(
         f"The model {model} can't {_CAPABILITY_WORDS.get(capability, capability)}. "
-        "Pick a different model in Settings › AI & models. The Fast, Smart and "
-        "Assistant models are set separately."
+        "Pick a different model in Settings › Advanced › Model per job. The Fast, "
+        "Smart and Assistant models are set separately."
     )

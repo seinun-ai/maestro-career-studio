@@ -288,7 +288,7 @@ class OpenAICompatProvider:
                 close()
 
     def list_models(self) -> list[dict[str, str]]:
-        """Chat-like models for Settings › Find models. OpenRouter lists only zero-retention
+        """Chat-like models for Settings › Advanced › Available models. OpenRouter lists only zero-retention
         models (`zdr=true`), the ones that can run under the forced privacy preferences."""
         if self.name == "openrouter":
             return self._list_openrouter()

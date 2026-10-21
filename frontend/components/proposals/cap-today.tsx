@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
  *
  * The window is the backend's rolling 24 hours (services/proposals.cap_status),
  * so the line says "the last 24 hours", never "today"; "Applications per day"
- * is the setting's name (Settings › Connected agents). While loading it shows nothing, which claims
+ * is the setting's name (Settings › Agent apps). While loading it shows nothing, which claims
  * nothing. A failed first load is its own state, a retry chip, never a silent
  * blank (docs/frontend-conventions.md, "A failed fetch is a THIRD state").
  * Analytics' Agent pipeline fold shows the same line, so both say it one way. The inbox passes

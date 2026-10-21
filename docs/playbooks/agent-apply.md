@@ -20,7 +20,7 @@ never in backend code — change a lane by editing this file.
 
 ## Unattended (full automation)
 
-Turn on **Full automation** in Settings › Connected agents and copy **Apply
+Turn on **Full automation** in Settings › Agent apps and copy **Apply
 automatically** from Automations. The
 [apply-auto prompt](../../backend/app/automations/skills/apply-auto/SKILL.md)
 is the unattended contract. It replaces four attended rules below: the

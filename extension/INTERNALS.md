@@ -663,7 +663,7 @@ know, and each one was learned from a live failure.
   `actions/during.js`' `failureNote` writes the call site's "Couldn't <what>." and then a next step
   chosen by `err.status` and the key: no status means no answer came back, so
   check that Maestro CS is running; a missing key ("Add an API key in Maestro CS
-  under Settings › AI & models.") and a refused one or any 502 ("Check your API
+  under Settings › Basics.") and a refused one or any 502 ("Check your API
   key …") are told apart by `MISSING_KEY`/`REFUSED_KEY`, the web app's own
   patterns (`frontend/lib/error-text.ts`, pinned equal); any other status gets
   the call site's own sentence, else "Try again."
@@ -1884,7 +1884,7 @@ footer alone).
     `follow_tab`) and offers none in the prompt, `perform` rejects one here whatever the reply names, and the driver's own `press` refuses whatever the step asks. A wizard's
     final review page (step above 0) is never thought about. The review branch's park for required boxes still empty (`requiredEmpty`) goes through `parkOr` too
     (`open_questions`), so the same rule decides whether the step is asked; the other reasons on a one-page form (`no_change`, `loop`, `unknown_page`) are the user's.
-    The host passes `reason` only with full automation On, **Think when stuck** On (Settings › Form filling,
+    The host passes `reason` only with full automation On, **Think when stuck** On (Settings › Companion › How the Companion applies,
     `companion_apply.think_when_stuck`, default On, read like **Stop after each step**) and **Stop after each step** Off; the route reads all three itself
     (full automation, Think when stuck, Stop after each step: `switched_off`, ask the user, no model is paid, so a stale panel is not obeyed).
   - **Snapshot** (`snapshotOf`, exactly a `ReasonRequest`, never a value): the stuck reason, each field's `fid`, question, shape, required / filled / invalid /
@@ -2124,7 +2124,7 @@ footer alone).
 
 ### Screening answers
 
-`autofill.answer_level` (Profile › Autofill › Screening answers, in the Companion permissions block; `facts` | `history` | `queued`, default `history`) is read by `/map`, `/pick` and
+`autofill.answer_level` (Settings › Companion › Screening answers, in What the Companion may fill; `facts` | `history` | `queued`, default `history`) is read by `/map`, `/pick` and
 `/step` (the same level in each prompt), by the Companion and by agents through the Job Search Brief's `applying.answer_level`. The
 protected list (work authorization and sponsorship, salary, EEO, criminal or background history, termination or discipline, agreements, debarment, security
 clearance and agency employment, signatures, attestations and authorization boxes, licences and certifications, unsupported education or experience claims)
@@ -2282,7 +2282,7 @@ book's, without its `f:` prefix), the host, the field's shape and an outcome (`c
 `missing_technique`) with a count and a last-seen time; the schema is `extra="forbid"` over closed enums. `sw.js` `fill_gaps` posts it
 to `POST /api/autofill/gaps` (at most 40 a post, keys whitelisted to the schema's four) only while `telemetryEnabled === true`, so with
 the fill log off nothing is posted. It holds hosts, so `DELETE /api/autofill/telemetry` clears it with the rows and runs. It is ranked
-in `scripts/fill_trace.py report` (without hosts) and summarised in one line in Settings › Form filling (`GET /api/autofill/gaps/summary`).
+in `scripts/fill_trace.py report` (without hosts) and summarised in one line in Settings › Companion › How the Companion applies (`GET /api/autofill/gaps/summary`).
 It is local to this copy (sync does not carry it).
 
 ### Run trace — how the fill loop decided

@@ -33,7 +33,7 @@ def get_rates(db: Annotated[Session, Depends(get_db)]):
 
 @router.post("/rates/refresh", response_model=FxRatesOut)
 def refresh_rates(db: Annotated[Session, Depends(get_db)]):
-    """Fetch now (Settings › Money, Update). 502 when the ECB cannot be reached; the cache stays."""
+    """Fetch now (Settings › Basics › Money, Update). 502 when the ECB cannot be reached; the cache stays."""
     try:
         return _out(fx_rates.fetch_now(db))
     except fx_rates.FetchFailed:

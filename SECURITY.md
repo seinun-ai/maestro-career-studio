@@ -198,7 +198,7 @@ to hunting and drafting if you do not want them submitting applications.
 
 Full automation is Off by default. Only PUT `/api/settings/full-automation`
 with a strict boolean `{value: bool}` changes it; PUT `/api/settings/auto-apply`
-preserves the stored switch. Settings › Connected agents asks for confirmation
+preserves the stored switch. Settings › Agent apps asks for confirmation
 before turning it On. Turning it Off refuses both channel `auto` and login
 hand-offs.
 
@@ -302,7 +302,7 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
     delete both key files and pair again. The laptop's file is
     `settings/secrets/sync-key`. The always-on copy's file is
     `$MAESTRO_HOME/sync-key`.
-  - **Pairing is a one-time code.** Settings › Connected agents › Second copy
+  - **Pairing is a one-time code.** Settings › Agent apps › Second copy
     shows a 16-character code, once, for 10 minutes, with no attempt limit. The
     stored digest is the enroll secret: anyone who can read the laptop's database
     (or a backup taken while the 10-minute window is open) could enroll during
@@ -338,7 +338,7 @@ The command keeps everything in one per-user folder (macOS
   mode 0600 inside a 0700 folder on macOS and Linux; Maestro refuses to use a
   folder or file that is a symlink. Values you export in your shell for the
   `maestro` command are read too, but the file is the supported place. Other
-  secrets are not in that file: keys you save in Settings › AI & models live in
+  secrets are not in that file: keys you save in Settings › Basics live in
   the database (§5), and the job-site login and the sync key are files in the
   Maestro folder (`settings/secrets/job-site-login.json`, `sync-key`).
 - **The web server process gets no API keys.** It is started with your

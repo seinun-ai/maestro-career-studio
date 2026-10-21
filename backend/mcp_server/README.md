@@ -18,7 +18,7 @@ same URL, and its `maestro connect` command does the setup below from the termin
 
 ## Install
 
-Open Settings › Connected agents › **Connect an agent app** and choose a
+Open Settings › Agent apps › **Connect an agent app** and choose a
 **Tool set**. Every route defaults to `full` (all 91 tools); see
 [Profiles](#profiles) to narrow it. Enable one connection per client.
 

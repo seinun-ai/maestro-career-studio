@@ -193,7 +193,7 @@ def test_custom_endpoint_skips_response_format(tmp_path, monkeypatch):
 def test_missing_key_names_both_ways_to_fix_it(monkeypatch, caplog):
     """No key anywhere used to become api_key="local" and an opaque 401 from
     api.openai.com. A first-run user cannot act on that; the error must name the
-    two places a key can go: the user's (Settings › AI & models, a key or a
+    two places a key can go: the user's (Settings › Basics for a key, Advanced for a
     model on this computer) in the sentence, the operator's (.env) in the log."""
     from app.services import model_settings
 
@@ -210,9 +210,8 @@ def test_missing_key_names_both_ways_to_fix_it(monkeypatch, caplog):
 
     message = str(exc.value)
     assert message == (
-        "No API key is set. Add one in Settings › AI & models › API keys. To use a "
-        "model on your computer instead, add its address in Settings › AI & models "
-        "› Custom AI server.")
+        "No API key is set. Add one in Settings › Basics. To use a model on your "
+        "computer instead, add its address in Settings › Advanced › Custom AI server.")
     assert "OPENAI_API_KEY" in caplog.text
 
 
@@ -228,7 +227,7 @@ def test_a_failed_request_is_a_sentence_and_keeps_the_providers_words():
                          "OpenAI API request failed: Error code: 401 - Incorrect API key")
     assert str(err) == (
         "The AI model didn't answer (error 401). Try again, or check your key in "
-        "Settings › AI & models.")
+        "Settings › Basics.")
     assert llm_capabilities._never_reached_the_model(err)
     assert llm._openai_reason(openai_pkg.APIConnectionError(request=None)) == "no connection"
 
@@ -251,10 +250,10 @@ def test_a_refused_key_names_who_refused_it_and_the_fix(monkeypatch):
     for cls, status, code in (("AuthenticationError", 401, "invalid_api_key"),
                               ("AuthenticationError", 401, None)):
         err = llm._no_answer(llm._openai_reason(_provider_error(cls, status, code)), "detail")
-        assert str(err) == "OpenAI refused your API key. Check it in Settings › AI & models."
+        assert str(err) == "OpenAI refused your API key. Check it in Settings › Basics."
     gemini = llm._no_answer(llm._gemini_reason(400, '{"error": {"details": [{"reason": "API_KEY_INVALID"}]}}'),
                             "detail", provider="Gemini")
-    assert str(gemini) == "Gemini refused your API key. Check it in Settings › AI & models."
+    assert str(gemini) == "Gemini refused your API key. Check it in Settings › Basics."
     assert llm._gemini_reason(400, '{"error": {"message": "bad request"}}') == "error 400"
     # A custom AI server is not OpenAI, whatever SDK talks to it.
     monkeypatch.setattr(llm, "get_base_url", lambda: "http://127.0.0.1:11434/v1")
@@ -276,7 +275,7 @@ def test_a_provider_code_is_said_in_words(cls, status, code, words):
     `provider_detail` for the log and the capability probe."""
     err = llm._no_answer(llm._openai_reason(_provider_error(cls, status, code)), "detail")
     assert str(err) == (f"The AI model didn't answer ({words}). Try again, or check "
-                        "your key in Settings › AI & models.")
+                        "your key in Settings › Basics.")
 
 
 @pytest.mark.parametrize("cls, status, code", [

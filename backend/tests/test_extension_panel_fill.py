@@ -3651,7 +3651,7 @@ def test_an_attach_that_lands_on_a_tab_the_user_left_changes_nothing(tmp_path):
 # ---------- the run's report in plain words (Task 25) ----------
 
 NO_KEY_502 = {"ok": False, "status": 502, "error":
-              "No API key is set. Add one in Settings › AI & models › API keys."}
+              "No API key is set. Add one in Settings › Basics."}
 
 
 def _ai_line(region):
@@ -4237,10 +4237,10 @@ def test_a_loop_that_filled_everything_ticks_the_step_and_names_what_to_check(tm
 
 
 @pytest.mark.parametrize("failure, line", [
-    ({"status": 502, "message": "No API key is set. Add one in Settings › AI & models › API keys."},
-     "AI help is off until you add an API key in Maestro CS under Settings › AI & models."),
+    ({"status": 502, "message": "No API key is set. Add one in Settings › Basics."},
+     "AI help is off until you add an API key in Maestro CS under Settings › Basics."),
     ({"status": 502, "message": "The AI model didn't answer (your key was refused)."},
-     "AI help didn't answer. Check your API key in Maestro CS under Settings › AI & models."),
+     "AI help didn't answer. Check your API key in Maestro CS under Settings › Basics."),
     ({"status": 500, "message": "boom"},
      "AI help didn't answer this time. The fields it would have filled are listed below."),
 ])

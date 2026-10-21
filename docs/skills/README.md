@@ -12,7 +12,7 @@ The app shows these on the Automations page, with a Copy button for each.
 | --- | --- |
 | [`job-hunt`](../../backend/app/automations/skills/job-hunt/SKILL.md) | Finds recent postings that fit your brief, captures and scores them, and proposes the best for you to review. Never applies. |
 | [`apply-session`](../../backend/app/automations/skills/apply-session/SKILL.md) | Works your accepted queue with a browser. Asks you only for information the app doesn't have, plus one yes per application before it submits. |
-| [`apply-auto`](../../backend/app/automations/skills/apply-auto/SKILL.md) | Only with Full automation on (Settings › Connected agents, off by default). Works your accepted queue and submits each job whose final review shows nothing to check, without asking. Everything else waits for you. |
+| [`apply-auto`](../../backend/app/automations/skills/apply-auto/SKILL.md) | Only with Full automation on (Settings › Agent apps, off by default). Works your accepted queue and submits each job whose final review shows nothing to check, without asking. Everything else waits for you. |
 | [`mail-status`](../../backend/app/automations/skills/mail-status/SKILL.md) | Reads your job email and moves each application to applied, interviewing, rejected or offered. Never sends mail. |
 | [`referral-pages`](../../backend/app/automations/skills/referral-pages/SKILL.md) | Checks your referrals' careers pages for new roles that fit you and proposes them. |
 | [`tailor-run`](../../backend/app/automations/skills/tailor-run/SKILL.md) | Prepares a tailored resume for each queued job using only facts you've already given. |

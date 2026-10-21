@@ -46,13 +46,13 @@ function refusedKey(message: string): string | undefined {
         : OPENAI_WORDS.test(message)
           ? "OpenAI"
           : "The AI provider";
-  return `${who} refused your API key. Check it in Settings › AI & models.`;
+  return `${who} refused your API key. Check it in Settings › Basics.`;
 }
 
 /** The part of an error a user may read, or undefined. For a toast (`couldnt`). */
 export function errorDetail(err: unknown): string | undefined {
   const message = err instanceof Error ? err.message.trim() : "";
-  if (MISSING_KEY.test(message)) return "Add an API key in Settings › AI & models.";
+  if (MISSING_KEY.test(message)) return "Add an API key in Settings › Basics.";
   return refusedKey(message) ?? (isPlainSentence(message) ? message : undefined);
 }
 

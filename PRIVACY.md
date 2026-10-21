@@ -235,7 +235,7 @@ with your standing consent. If you use the agent-driven apply lane, the browser
 tool your assistant uses is separate software, and an employer receives what
 you submit.
 
-Full automation is Off by default in Settings › Connected agents. Turning it
+Full automation is Off by default in Settings › Agent apps. Turning it
 On lets your agent submit queued jobs whose final review is clean without
 asking each time, within the daily cap and Companies to skip. Its automatic yes
 and its note confirming submission are labelled `auto` in the consent ledger.
@@ -301,7 +301,7 @@ Your data stays until you remove it; there is no server-side copy.
   your Maestro folder; deleting that folder removes the data.
 - Data already sent to an AI provider or assistant is kept under that provider's
   policy. Ask them to delete it.
-- **Clear** under Job-site login in Settings › Connected agents removes the
+- **Clear** under Job-site login in Settings › Agent apps removes the
   saved email and password file (`DELETE /api/settings/job-site-login`). Turning
   full automation Off keeps the saved login until you clear it.
 

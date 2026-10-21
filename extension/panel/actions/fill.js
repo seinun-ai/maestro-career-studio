@@ -265,7 +265,7 @@
   }
 
   const AI_OFF = "AI help is off until you add an API key in Maestro CS under "
-    + "Settings › AI & models.";
+    + "Settings › Basics.";
 
   /** What the AI could not do on a loop run, in the Fill body's words, or
    * null. The loop leaves every field it could not map or pick open, and the

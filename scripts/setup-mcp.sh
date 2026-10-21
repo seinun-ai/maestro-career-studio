@@ -71,7 +71,7 @@ if [ -z "$BACKEND_URL" ]; then
   fi
   BACKEND_URL="http://localhost:$port"
 fi
-warn "setup-mcp.sh is deprecated and leaves in the next release. Connect by URL instead: open Settings › Connected agents › Connect an agent app, or run: claude mcp add --scope user --transport http maestro-career-studio $BACKEND_URL/mcp"
+warn "setup-mcp.sh is deprecated and leaves in the next release. Connect by URL instead: open Settings › Agent apps › Connect an agent app, or run: claude mcp add --scope user --transport http maestro-career-studio $BACKEND_URL/mcp"
 note "backend url: $BACKEND_URL"
 
 # ---------------------------------------------------------------------------

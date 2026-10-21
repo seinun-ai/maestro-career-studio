@@ -106,7 +106,7 @@ def _log_llm_config() -> None:
     if not llm.any_model_key_configured():
         logger.warning(
             "No model API key configured — every LLM feature will fail. Add one "
-            "in Settings › AI & models in the web app, or set OPENAI_API_KEY, "
+            "in Settings › Basics in the web app, or set OPENAI_API_KEY, "
             "GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENROUTER_API_KEY in .env and restart."
         )
     else:

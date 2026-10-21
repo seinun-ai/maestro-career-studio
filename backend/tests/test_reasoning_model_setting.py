@@ -1,4 +1,4 @@
-"""Settings › AI & models › Models: the Reasoning model the Companion's reasoning step calls (design 2026-10-14)."""
+"""Settings › Advanced › Model per job: the Reasoning model the Companion's reasoning step calls (design 2026-10-14)."""
 
 import pytest
 

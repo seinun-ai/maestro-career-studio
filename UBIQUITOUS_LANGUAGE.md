@@ -87,7 +87,7 @@ and the screen speaks plainly ("item", "bullet", "Career history"). Do not
 | --- | --- | --- | --- |
 | **Proposal** | A job a connected agent filed for the user to decide on (`ApplicationProposal`), stamped with its filer (`proposed_by`) | a job in the Agent inbox; lanes Needs you, To review, Queued, Applying, History; verbs Queue and Skip | triage item, lead |
 | **In-app chat** | The chat agent inside the web app (`chat_agent`, `chat_tools`) | Assistant (one conversation is a chat); its approval cards are Suggested edits and Suggested project | chat, bot, copilot |
-| **MCP client** | An outside AI assistant that uses the app over the MCP server | connected agent; Settings › Connected agents | integration, plugin |
+| **MCP client** | An outside AI assistant that uses the app over the MCP server | connected agent; Settings › Agent apps | integration, plugin |
 | **Extension** | The Chrome side panel (`extension/`) | Companion ("the Companion" in a sentence) | browser extension, widget |
 | **Automations** | The page of copy-only prompts, one per job an outside agent can do with Maestro (`app/automations/skills/`, `GET /api/automations`); Maestro runs no scheduler | Automations (sidebar, Job search) | scheduler, workflows, jobs, bots |
 | **Agent App** | The app a user pastes an Automations prompt into: any app connected to Maestro; the page names none, and apps that run only in a browser can't reach local MCP | agent app | client, platform, integration |

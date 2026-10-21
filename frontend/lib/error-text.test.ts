@@ -30,15 +30,15 @@ test("errorDetail hides what is not for the user", () => {
 });
 
 test("a missing or refused API key says what to do, whatever the server's words", () => {
-  const missing = "Add an API key in Settings › AI & models.";
-  const refused = "refused your API key. Check it in Settings › AI & models.";
+  const missing = "Add an API key in Settings › Basics.";
+  const refused = "refused your API key. Check it in Settings › Basics.";
   // backend/app/services/llm.py, as the server sends them (a 502 detail).
   for (const text of [
     "No OpenAI API key configured. Add one under Settings → Models in the web app, or set OPENAI_API_KEY in .env and restart the backend. To use a local model instead, set an OpenAI-compatible endpoint under Settings → Models.",
     "GEMINI_API_KEY is required for Gemini models",
     "No Gemini API key configured. Add one under Settings → Models.",
-    "No API key is set. Add one in Settings › AI & models › API keys. To use a model on your computer instead, add its address in Settings › AI & models › Custom AI server.",
-    "No Gemini API key is set. Add one in Settings › AI & models.",
+    "No API key is set. Add one in Settings › Basics. To use a model on your computer instead, add its address in Settings › Advanced › Custom AI server.",
+    "No Gemini API key is set. Add one in Settings › Basics.",
   ]) {
     assert.equal(errorDetail(new Error(text)), missing, text);
   }
@@ -52,8 +52,8 @@ test("a missing or refused API key says what to do, whatever the server's words"
   assert.equal(couldnt("find models", new Error("GEMINI_API_KEY is required for Gemini models")), `Couldn't find models. ${missing}`);
   // A sentence that only mentions a key is not a key error.
   assert.equal(
-    errorDetail(new Error("The Assistant needs an API key. Add one in Settings › AI & models.")),
-    "The Assistant needs an API key. Add one in Settings › AI & models.",
+    errorDetail(new Error("The Assistant needs an API key. Add one in Settings › Basics.")),
+    "The Assistant needs an API key. Add one in Settings › Basics.",
   );
 });
 
@@ -83,8 +83,8 @@ test("a load error says why it failed, and only a network failure says the app i
   assert.equal(loadErrorDetail(apiError(500, "Something went wrong. Try again."), "job"), "Something went wrong on our side. Try again.");
   // A server sentence written for the user still wins (a provider's words, a plain 409).
   assert.equal(
-    loadErrorDetail(apiError(502, "OpenAI refused your API key. Check it in Settings › AI & models."), "job"),
-    "OpenAI refused your API key. Check it in Settings › AI & models.",
+    loadErrorDetail(apiError(502, "OpenAI refused your API key. Check it in Settings › Basics."), "job"),
+    "OpenAI refused your API key. Check it in Settings › Basics.",
   );
   // A list has no "this thing": a 404 or 422 there is the server's fault, never a deleted item.
   assert.equal(loadErrorDetail(apiError(404, "Not Found")), "Something went wrong on our side. Try again.");
@@ -94,39 +94,39 @@ test("a load error says why it failed, and only a network failure says the app i
 test("a refused key names who refused it", () => {
   assert.equal(
     errorDetail(new Error("Error code: 401 - {'error': {'message': 'Incorrect API key provided: sk-abc', 'code': 'invalid_api_key'}}")),
-    "OpenAI refused your API key. Check it in Settings › AI & models.",
+    "OpenAI refused your API key. Check it in Settings › Basics.",
   );
   assert.equal(
     errorDetail(new Error('Gemini models.list failed: 400 {"error": {"message": "API key not valid.", "details": [{"reason": "API_KEY_INVALID"}]}}')),
-    "Gemini refused your API key. Check it in Settings › AI & models.",
+    "Gemini refused your API key. Check it in Settings › Basics.",
   );
 });
 
 test("the server's own refused-key sentences keep the fix, whichever wording it sent", () => {
   // backend/app/services/llm.py `_no_answer` for a refused key, and its wording before this change.
   for (const text of [
-    "OpenAI refused your API key. Check it in Settings › AI & models.",
-    "Gemini refused your API key. Check it in Settings › AI & models.",
-    "Your AI server refused your API key. Check it in Settings › AI & models.",
+    "OpenAI refused your API key. Check it in Settings › Basics.",
+    "Gemini refused your API key. Check it in Settings › Basics.",
+    "Your AI server refused your API key. Check it in Settings › Basics.",
   ]) {
     assert.equal(errorDetail(new Error(text)), text, text);
   }
   assert.equal(
-    errorDetail(new Error("The AI model didn't answer (your key was refused). Try again, or check your key in Settings › AI & models.")),
-    "The AI provider refused your API key. Check it in Settings › AI & models.",
+    errorDetail(new Error("The AI model didn't answer (your key was refused). Try again, or check your key in Settings › Basics.")),
+    "The AI provider refused your API key. Check it in Settings › Basics.",
   );
 });
 
 test("Claude and OpenRouter key failures are named", () => {
-  assert.equal(errorDetail(new Error("No Claude API key is set. Add one in Settings › AI & models.")), "Add an API key in Settings › AI & models.");
-  assert.equal(errorDetail(new Error("No OpenRouter API key is set. Add one in Settings › AI & models.")), "Add an API key in Settings › AI & models.");
+  assert.equal(errorDetail(new Error("No Claude API key is set. Add one in Settings › Basics.")), "Add an API key in Settings › Basics.");
+  assert.equal(errorDetail(new Error("No OpenRouter API key is set. Add one in Settings › Basics.")), "Add an API key in Settings › Basics.");
   assert.equal(
     errorDetail(new Error("Claude request failed: Error code: 401 - {'type': 'authentication_error'}")),
-    "Claude refused your API key. Check it in Settings › AI & models.",
+    "Claude refused your API key. Check it in Settings › Basics.",
   );
   // OpenRouter serves Claude models: it is named first.
   assert.equal(
     errorDetail(new Error("OpenRouter request failed for anthropic/claude-x: Error code: 401")),
-    "OpenRouter refused your API key. Check it in Settings › AI & models.",
+    "OpenRouter refused your API key. Check it in Settings › Basics.",
   );
 });

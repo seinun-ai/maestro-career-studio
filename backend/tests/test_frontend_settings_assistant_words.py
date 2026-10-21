@@ -509,8 +509,8 @@ def test_a_missing_or_refused_key_says_what_to_do():
     hold OPENAI_API_KEY or a provider's 401, which no plain-sentence check lets
     through, so they are named (lib/error-text.test.ts has the cases)."""
     text = _read("lib/error-text.ts")
-    assert '"Add an API key in Settings › AI & models."' in text
-    assert "refused your API key. Check it in Settings › AI & models." in text
+    assert '"Add an API key in Settings › Basics."' in text
+    assert "refused your API key. Check it in Settings › Basics." in text
     # The server's own no-key sentences (lane 10 rewrote them) still meet the
     # frontend's MISSING_KEY pattern, so both sides move together.
     missing = re.search(r"const MISSING_KEY = /(.+)/i;", text)
@@ -538,7 +538,7 @@ def test_a_model_problem_points_at_settings():
     use tools): said in words beside the composer, with the way to fix it."""
     send = _between(_CHAT, "const send = async () => {", "\n  };")
     assert "if (err instanceof ApiError && err.status === 422) {" in send
-    assert 'setSetupProblem(errorDetail(err) ?? "The Assistant can\'t use the chosen model. Choose another in Settings › AI & models.");' in _flat(send)
+    assert 'setSetupProblem(errorDetail(err) ?? "The Assistant can\'t use the chosen model. Choose another in Settings › Advanced › Model per job.");' in _flat(send)
     notice = _flat(_between(_CHAT, "{setupProblem ? (", ") : null}"))
     assert '<p role="alert"' in notice
     assert '<Link href={anchorHref("/settings", "api-keys")}' in notice
@@ -707,13 +707,13 @@ def test_the_web_app_recognises_every_key_sentence_the_server_writes():
     sentences = [str(llm._no_answer(llm._KEY_REFUSED, "detail", provider=who))
                  for who in ("OpenAI", "Gemini", "Claude", "OpenRouter", "Your AI server")]
     sentences.append("The AI model didn't answer (your key was refused). Try again, or check your key in "
-                     "Settings › AI & models.")
+                     "Settings › Basics.")
     sentences += ["Error code: 401 - {'error': {'code': 'invalid_api_key'}}",
                   'Gemini models.list failed: 400 {"error": {"details": [{"reason": "API_KEY_INVALID"}]}}']
     for text in sentences:
         assert refused.search(text), text
     # Not every sentence that names a key is a refusal.
-    assert not refused.search("The Assistant needs an API key. Add one in Settings › AI & models.")
+    assert not refused.search("The Assistant needs an API key. Add one in Settings › Basics.")
 
 
 def test_every_setup_chip_marks_done_or_not_done():

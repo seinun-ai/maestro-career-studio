@@ -195,6 +195,8 @@ a click.
   to an old tab opens the tab and card it moved to. While recommended models are on, Advanced's model
   pickers show them and can't be changed.
 - **Autofill coverage is under Settings › Advanced › Diagnostics**, unchanged, with its Clear data.
+- **Messages that send you to Settings name its new tabs**, such as "Add an API key in Settings ›
+  Basics." The Companion's Change in Settings link opens the Companion tab.
 
 ### Fixed
 

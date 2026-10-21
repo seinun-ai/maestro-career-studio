@@ -1,4 +1,4 @@
-"""The Reasoning model role on Settings > AI & models > Models (source pins; the browser review is separate)."""
+"""The Reasoning model role on Settings › Advanced › Model per job (source pins; the browser review is separate)."""
 
 import re
 from pathlib import Path

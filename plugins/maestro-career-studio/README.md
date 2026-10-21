@@ -46,7 +46,7 @@ codex plugin add maestro-career-studio@maestro-career-studio
 ```
 
 For a direct URL connection in Claude Code or Codex CLI, open Maestro's
-Settings › Connected agents › **Connect an agent app**, or run:
+Settings › Agent apps › **Connect an agent app**, or run:
 
 ```bash
 claude mcp add --scope user --transport http maestro-career-studio http://localhost:8001/mcp

@@ -21,7 +21,7 @@ one owner.
 
 ## The quick way
 
-In Maestro on your laptop, open Settings › Connected agents › Second copy.
+In Maestro on your laptop, open Settings › Agent apps › Second copy.
 Click **Copy setup prompt** and paste it into your bot. It installs, configures,
 and asks you for a pairing code from the same card.
 

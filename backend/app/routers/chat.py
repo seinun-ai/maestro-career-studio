@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 # What the Assistant says when no provider key is set (Settings shows the fix).
-NO_MODEL_KEY = "The Assistant needs an API key. Add one in Settings › AI & models."
+NO_MODEL_KEY = "The Assistant needs an API key. Add one in Settings › Basics."
 
 
 def _get_session_or_404(db: Session, session_id: UUID) -> ChatSession:

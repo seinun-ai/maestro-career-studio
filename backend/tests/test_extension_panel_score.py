@@ -987,8 +987,8 @@ def test_a_score_that_fails_hands_the_button_back_and_says_why(tmp_path):
     assert cta["class"] == "cta"
 
 
-ADD_KEY = "Add an API key in Maestro CS under Settings › AI & models."
-CHECK_KEY = "Check your API key in Maestro CS under Settings › AI & models."
+ADD_KEY = "Add an API key in Maestro CS under Settings › Basics."
+CHECK_KEY = "Check your API key in Maestro CS under Settings › Basics."
 
 
 @pytest.mark.parametrize("status, error, step", [
@@ -999,12 +999,12 @@ CHECK_KEY = "Check your API key in Maestro CS under Settings › AI & models."
     (502, "boom", CHECK_KEY),
     # The server's own words for a refused key (`_CODE_WORDS`): the same step.
     (502, "The AI model didn't answer (your key was refused). Try again, or "
-          "check your key in Settings › AI & models.", CHECK_KEY),
+          "check your key in Settings › Basics.", CHECK_KEY),
     # NO key at all is a different fix, whatever the status: add one. The
     # server's current sentence (`NO_KEY_MESSAGE`) and an older one.
-    (502, "No API key is set. Add one in Settings › AI & models › API keys. To "
-          "use a model on your computer instead, add its address in Settings › "
-          "AI & models › Custom AI server.", ADD_KEY),
+    (502, "No API key is set. Add one in Settings › Basics. To use a model on "
+          "your computer instead, add its address in Settings › Advanced › Custom "
+          "AI server.", ADD_KEY),
     (500, "GEMINI_API_KEY is required for Gemini models", ADD_KEY),
     # A provider's raw 401, if one ever reaches the panel, is a refused key.
     (500, "OpenAI API request failed: Error code: 401 - {'error': {'code': "

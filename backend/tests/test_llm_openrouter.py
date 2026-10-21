@@ -68,7 +68,7 @@ def test_ready_without_a_key_raises_the_openrouter_sentence(monkeypatch):
     registry._adapters.pop("openrouter", None)
     with pytest.raises(LLMProviderError) as ei:
         registry.get("openrouter").ready()
-    assert str(ei.value) == "No OpenRouter API key is set. Add one in Settings › AI & models."
+    assert str(ei.value) == "No OpenRouter API key is set. Add one in Settings › Basics."
 
 
 @pytest.mark.parametrize("message", [

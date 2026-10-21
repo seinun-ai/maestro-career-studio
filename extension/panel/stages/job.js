@@ -75,7 +75,8 @@
     low: "The top score is too low for Apply to choose.",
   };
 
-  /** The Companion's Apply switches in one line, with the way to change them (Settings, Form filling).
+  /** The Companion's Apply switches in one line, with the way to change them (Settings › Companion ›
+   * How the Companion applies).
    * Said once, where Apply is: the user should not have to open Settings to learn why Apply asked, or
    * why it stopped. Null with no web app address to send them to would still say the line; it only
    * drops the link. While Apply waits for a pick it would have made on a clear win, the line says why
@@ -93,7 +94,7 @@
     if (!facts.appUrl) return line;
     const link = attach(node("a", null, "Change in Settings"), build.icon("external-link", { size: 12 }));
     link.setAttribute("aria-label", "Change in Settings (opens in a new tab)");
-    link.href = `${facts.appUrl}/settings#companion-apply`;
+    link.href = `${facts.appUrl}/settings?tab=companion#companion-apply`;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     return attach(line, link);

@@ -244,7 +244,7 @@ export function ModelsSection() {
   );
 }
 
-/** The key problem a test's errors name, in words ("Add an API key in Settings › AI & models."), if any. */
+/** The key problem a test's errors name, in words ("Add an API key in Settings › Basics."), if any. */
 export function keyProblemIn(report: CapabilityReport): string | undefined {
   return Object.values(report.errors)
     .map((error) => errorDetail(new Error(error)))

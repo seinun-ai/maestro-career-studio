@@ -113,7 +113,7 @@ Python under emulation: `uv tool install --python cpython-3.12-windows-x86_64-no
 
 Then:
 
-1. Add your AI key in **Settings › AI & models**. One key from OpenAI, Gemini or Claude is enough. Without a key, scoring, PDFs and tracking still work ([what a key costs and does](docs/SETUP_REFERENCE.md#do-you-need-an-api-key)).
+1. Add your AI key in **Settings › Basics**. One key from OpenAI, Gemini or Claude is enough. Without a key, scoring, PDFs and tracking still work ([what a key costs and does](docs/SETUP_REFERENCE.md#do-you-need-an-api-key)).
 2. Import your resumes, save a job, and tailor ([step by step](docs/GETTING_STARTED.md#3-your-first-tailored-resume)).
 3. Optional: `maestro connect` adds Maestro to Claude Desktop, Claude Code, Codex, Cursor or VS Code, and the [Companion](docs/GETTING_STARTED.md#4-the-companion-browser-extension-optional) is a Chrome side panel for saving and filling job pages.
 
@@ -150,7 +150,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Then open **http://localhost:3000** and add your AI key in **Settings › AI & models**. The first start sets up your database and adds a demo resume so you have something to look at. The rest of the Docker route is in the [setup reference](docs/SETUP_REFERENCE.md#the-docker-route-in-full).
+Then open **http://localhost:3000** and add your AI key in **Settings › Basics**. The first start sets up your database and adds a demo resume so you have something to look at. The rest of the Docker route is in the [setup reference](docs/SETUP_REFERENCE.md#the-docker-route-in-full).
 
 **Docker and uv are separate copies.** They keep separate data, and both want ports 8001 and 3000, so run one at a time. **Moving from Docker to uv?** Stop Docker, install Maestro as above, then run `maestro import-docker CHECKOUT` once ([steps](docs/UPDATING.md#move-from-docker-to-the-uv-install)). It reads your Docker folder and changes nothing in it.
 
@@ -158,11 +158,11 @@ Then open **http://localhost:3000** and add your AI key in **Settings › AI & m
 
 ### Driving it from Claude, Codex, or ChatGPT (MCP)
 
-**MCP** is the connector that lets an AI assistant use the app for you: read a posting, score it, work the gaps, make the PDF, all in conversation, on your computer against your data. All 91 tools are on by default, and smaller tool sets (`hunt`, `apply`, `explore`, `templates`, `career`) keep a chat focused. On a uv install, run `maestro connect`; otherwise open Settings › Connected agents › **Connect an agent app**. Setup, example prompts, tool sets and the ready-made skills are in [Using Maestro CS](docs/USING_MAESTRO.md#driving-it-from-claude-codex-or-chatgpt-mcp) and the [MCP guide](backend/mcp_server/README.md). An [always-on bot](docs/always-on-bot.md) can work your search while your laptop is off.
+**MCP** is the connector that lets an AI assistant use the app for you: read a posting, score it, work the gaps, make the PDF, all in conversation, on your computer against your data. All 91 tools are on by default, and smaller tool sets (`hunt`, `apply`, `explore`, `templates`, `career`) keep a chat focused. On a uv install, run `maestro connect`; otherwise open Settings › Agent apps › **Connect an agent app**. Setup, example prompts, tool sets and the ready-made skills are in [Using Maestro CS](docs/USING_MAESTRO.md#driving-it-from-claude-codex-or-chatgpt-mcp) and the [MCP guide](backend/mcp_server/README.md). An [always-on bot](docs/always-on-bot.md) can work your search while your laptop is off.
 
 ### Going all the way: agent applications
 
-Maestro CS can take an application right up to the submit button. A job your agent finds becomes a **proposal**. You review proposals in the **Agent inbox** and queue or skip them, and an apply run works only the ones you queued. By default it **waits for your yes before each submit**. **Full automation** (off by default, in Settings › Connected agents) lets your agent submit a queued job without asking when its final review shows nothing to check, within your daily limit. Nothing is ever submitted from the web app itself, and the Companion never presses Submit. That yes is recorded by the agent, so it is an audit trail and a volume limit, not a lock that a manipulated agent can't pick: run it while you're watching. The risks, plainly: a job posting is untrusted text that can try to instruct the agent reading it, a posting the agent found is not a vetted employer, and we won't help you hide automation from bot detection. Read the [full section](docs/USING_MAESTRO.md#going-all-the-way-agent-applications) before you turn it on.
+Maestro CS can take an application right up to the submit button. A job your agent finds becomes a **proposal**. You review proposals in the **Agent inbox** and queue or skip them, and an apply run works only the ones you queued. By default it **waits for your yes before each submit**. **Full automation** (off by default, in Settings › Agent apps) lets your agent submit a queued job without asking when its final review shows nothing to check, within your daily limit. Nothing is ever submitted from the web app itself, and the Companion never presses Submit. That yes is recorded by the agent, so it is an audit trail and a volume limit, not a lock that a manipulated agent can't pick: run it while you're watching. The risks, plainly: a job posting is untrusted text that can try to instruct the agent reading it, a posting the agent found is not a vetted employer, and we won't help you hide automation from bot detection. Read the [full section](docs/USING_MAESTRO.md#going-all-the-way-agent-applications) before you turn it on.
 
 ---
 
@@ -184,7 +184,7 @@ A uv install keeps everything in one folder per user: the database, resumes, set
 | Windows | `%APPDATA%\Maestro Career Studio` |
 | Linux | `$XDG_DATA_HOME/maestro-career-studio` (default `~/.local/share/maestro-career-studio`) |
 
-Finished resume PDFs are also copied to `Documents/Maestro Career Studio/Applications`, one folder per job (Settings › Tailoring › Resumes folder).
+Finished resume PDFs are also copied to `Documents/Maestro Career Studio/Applications`, one folder per job (Settings › Basics › Resume PDFs).
 
 On the Docker route everything stays inside the folder you cloned (`data/`, `base_resumes/`, `applications/`, `settings/` and more; the [full list](docs/SETUP_REFERENCE.md#where-your-files-live-docker)). Your files are yours, never uploaded. Every application's PDF is saved in `applications/`, and `career.md` exports your whole career history as one Markdown file.
 

@@ -89,7 +89,7 @@ def test_require_names_the_missing_capability(db_session, caplog):
     message = str(exc.value)
     assert message == (
         "The model llama3.2:3b can't use tools. Pick a different model in Settings › "
-        "AI & models. The Fast, Smart and Assistant models are set separately.")
+        "Advanced › Model per job. The Fast, Smart and Assistant models are set separately.")
     # The probe's reason is for a developer: the log keeps it.
     assert "model streamed no tool call" in caplog.text
 

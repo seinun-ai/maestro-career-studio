@@ -83,7 +83,7 @@ def test_send_without_an_api_key_fails_before_the_stream(db_session, monkeypatch
     resp = client.post(f"/api/chat/sessions/{session_id}/messages", json={"content": "hello"})
 
     assert resp.status_code == 422
-    assert resp.json()["detail"] == "The Assistant needs an API key. Add one in Settings › AI & models."
+    assert resp.json()["detail"] == "The Assistant needs an API key. Add one in Settings › Basics."
     assert client.get(f"/api/chat/sessions/{session_id}").json()["messages"] == []
 
 

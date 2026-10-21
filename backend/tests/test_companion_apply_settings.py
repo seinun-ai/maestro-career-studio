@@ -1,4 +1,4 @@
-"""The Companion's Apply switches (Settings > AI & models > Form filling): whether the panel picks the
+"""The Companion's Apply switches (Settings › Companion › How the Companion applies): whether the panel picks the
 base resume for the user, and whether Apply stops after each step. Stored as `companion_apply`."""
 
 import json

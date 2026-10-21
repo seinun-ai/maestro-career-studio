@@ -17,7 +17,7 @@ at to your local Maestro CS app.
   also attaches your tailored resume PDF to an empty resume upload box, and
   Attach resume does it by hand.
 - **Apply to one job for you** (needs **full automation** on in Settings ›
-  Connected agents). The Job step shows **Apply**: it saves the job, settles the
+  Agent apps). The Job step shows **Apply**: it saves the job, settles the
   resume, queues the job as your yes, then works through the application in this
   tab. It fills each page, clicks **Next** itself, and stops on the review page so
   that **Submit** is yours. It asks you only when it must: a CAPTCHA, an email
@@ -32,8 +32,8 @@ at to your local Maestro CS app.
   If a page refuses **Next** and says why, it fixes only the fields the page names and
   stops, listing them, if that does not help. It attaches your resume before pressing
   **Next** and never presses **Next** over an empty required upload. While it gets ready
-  it shows a checklist with a **Stop** button. Two switches under **Settings › AI &
-  models › Form filling** steer it: **Choose the base resume for me** (picks only when
+  it shows a checklist with a **Stop** button. Two switches under **Settings ›
+  Companion › How the Companion applies** steer it: **Choose the base resume for me** (picks only when
   one resume clearly wins, else asks) and **Stop after each step** (three presses:
   **Save job**, **Tailor resume**, **Start filling**). On a job page you have not saved yet,
   **Add job** beside **Apply** saves it and scores your resumes, then stops on the ranked list.
@@ -85,11 +85,11 @@ at to your local Maestro CS app.
   from your career history and the job, in your own voice, about 120 words (or the
   length the question names). The row says "Drafted from your history: read it".
   It is never saved as a standing answer and never submitted for you; edit it in
-  the page and press **Resume** to keep your version. **Careful** (Profile ›
-  Autofill › Screening answers) turns drafting off, and pay, work authorization, demographic,
+  the page and press **Resume** to keep your version. **Careful** (Settings ›
+  Companion › Screening answers) turns drafting off, and pay, work authorization, demographic,
   background and "have you worked here" questions are never drafted.
 - **Safe defaults for questions your profile cannot answer.** From **Balanced**
-  up (the **Screening answers** setting in Profile › Autofill), a Yes/No about membership or relatives at the company is answered
+  up (the **Screening answers** setting in Settings › Companion), a Yes/No about membership or relatives at the company is answered
   No (Not applicable when offered), and willingness to a standard step (background
   check, drug test, references, I-9, documents) or basic means (transport,
   internet) is answered Yes, and a spouse's or household member's military service
@@ -177,7 +177,7 @@ Otherwise the backend refuses the old id and the panel cannot reach it.
   agreement and consent boxes ("I have read and agree to the terms",
   attestations, arbitration or waiver boxes). It can fill a salary
   *expectation* from your profile either way.
-- **With the agreement permission** turned on in **Profile** in the web app, it
+- **With the agreement permission** turned on in **Settings › Companion** in the web app, it
   may fill every field, signatures and typed-name attestations included. It
   never unticks a box you already ticked. Autofill still skips every password
   box by its type. Only Apply's sign-in or account step types a password: your

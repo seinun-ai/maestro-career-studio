@@ -7,7 +7,7 @@ second is only the first with `known_value` populated. Splitting them into two
 prompts would double the latency of a pass whose entire selling point is that it
 is fast.
 
-The ENGINE is a setting (Settings › AI & models › Form filling). With `jev`, two
+The ENGINE is a setting (Settings › Companion › Form-filling engine). With `jev`, two
 Jev calls do what they can — map each field's LABEL to a profile slot (no
 values sent), then pick the rendered option that states the slot's value — and
 a per-slot policy turns the pick's probability into `matched`, `closest` or an

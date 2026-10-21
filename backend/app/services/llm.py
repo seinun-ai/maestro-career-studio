@@ -105,7 +105,7 @@ def _get_anthropic_client():
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"  # code-owned; the key goes nowhere else
 # Forced on every OpenRouter request; not a setting (design §2, PRIVACY.md).
 OPENROUTER_PRIVACY = {"provider": {"data_collection": "deny", "zdr": True}}
-NO_OPENROUTER_KEY_MESSAGE = "No OpenRouter API key is set. Add one in Settings › AI & models."
+NO_OPENROUTER_KEY_MESSAGE = "No OpenRouter API key is set. Add one in Settings › Basics."
 
 
 def _get_openrouter_client() -> OpenAI:

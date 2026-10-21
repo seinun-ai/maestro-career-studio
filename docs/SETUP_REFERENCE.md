@@ -41,7 +41,7 @@ deleting the folder deletes your data.
   ports 8001 and 3000, so run one at a time. To bring your Docker data over once,
   stop Docker and run `maestro import-docker` ([steps](UPDATING.md#move-from-docker-to-the-uv-install)).
 - **Everything else works as in the Docker route**: add your AI key in
-  **Settings › AI & models**, load the [Companion](USING_MAESTRO.md#the-companion-browser-extension)
+  **Settings › Basics**, load the [Companion](USING_MAESTRO.md#the-companion-browser-extension)
   (it expects the same ports), and run `maestro connect` to
   [connect your agent](USING_MAESTRO.md#driving-it-from-claude-codex-or-chatgpt-mcp).
 - **PDFs** render with the Typst engine that ships inside. LaTeX templates need
@@ -96,7 +96,7 @@ time:
 | Piece | What it takes |
 |---|---|
 | **1. The app** | one `docker compose up -d` (below) — runs on your own computer only |
-| **2. An AI key** | **Settings › AI & models** in the app; OpenAI, Gemini *or* Claude, [any one alone is enough](USING_MAESTRO.md#5-choose-your-models-deliberately) |
+| **2. An AI key** | **Settings › Basics** in the app; OpenAI, Gemini *or* Claude, [any one alone is enough](USING_MAESTRO.md#5-choose-your-models-deliberately) |
 | **3. Your AI assistant** | **optional.** Claude: install the `.mcpb` extension from Settings → Extensions. Codex / ChatGPT desktop: add the plugin from Settings → Plugins. [Details](USING_MAESTRO.md#driving-it-from-claude-codex-or-chatgpt-mcp) |
 | **4. The Companion (browser extension)** | **optional.** `chrome://extensions` → Developer mode → **Load unpacked** → the repo's `extension/` folder. Nothing to configure — [full steps](../extension/README.md) |
 
@@ -111,7 +111,7 @@ docker compose up -d
 ```
 
 Then open **http://localhost:3000** and add your AI key in **Settings ›
-AI & models**. The first start sets up your database and adds a demo resume so you
+Basics**. The first start sets up your database and adds a demo resume so you
 have something to look at.
 
 ### Do you need an API key?
@@ -141,7 +141,7 @@ per application.)
 One cost is not in that table. With full automation on, the Companion's **Think
 when stuck** calls your Reasoning model only when an Apply run is stuck on a
 page. By default that is your provider's strong model, which costs a few cents
-a round; **Settings › AI & models › Reasoning model** takes a cheaper one.
+a round; the **Reasoning model** in **Settings › Advanced › Model per job** takes a cheaper one.
 
 **Your key stays with you.** It's stored on your computer and sent only to the
 AI service you configured. The app never shows a saved key back; its logs never
@@ -163,7 +163,7 @@ You can point the app at a local AI server (Ollama, LM Studio, vLLM) by setting
 computer from inside Docker). **We haven't validated any local model end to end
 yet**, and long prompts and strict JSON output are where small models struggle
 ([`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) tracks this). If you try it, press **Test**
-on each model in **Settings › AI & models** and tell us what worked in an issue.
+on each model in **Settings › Advanced › Model per job** and tell us what worked in an issue.
 
 ---
 
@@ -200,7 +200,7 @@ the Companion needs the new address too — see
 [`extension/README.md`](../extension/README.md).
 
 **AI features fail with "401 Unauthorized" or quota errors:**
-Check the key in **Settings › AI & models** and press **Test**. If you put the key in
+Check the key in **Settings › Basics** and press **Test**. If you put the key in
 `.env` after starting, run `docker compose restart backend`.
 
 **"database is locked":**

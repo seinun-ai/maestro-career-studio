@@ -94,7 +94,7 @@ _RULE_CASES = [
     "john_doe_resume.json isn't a resume in the Maestro CS JSON format.",
     "gpt-4o is your Fast, Smart or Assistant model. Pick another model for that first.",
     "The AI model didn't answer (error 429: insufficient_quota). Try again.",
-    "The model qwen2.5:7b can't use tools. Pick a different model in Settings › AI & models.",
+    "The model qwen2.5:7b can't use tools. Pick a different model in Settings › Advanced › Model per job.",
     "Unknown gate id: S9",
     "x" * 250 + ".",
     "",
@@ -234,8 +234,8 @@ def test_a_role_slug_is_named_by_its_role():
 
 
 def test_the_startup_log_names_the_settings_tab_as_the_app_does(monkeypatch, caplog):
-    """The no-key warning pointed at "Settings → Models", a card that moved into
-    the AI & models tab (the web app's words, docs/frontend-conventions.md)."""
+    """The no-key warning pointed at "Settings → Models", then at the AI & models tab;
+    the keys are on Basics now (design refresh Task 7.3, lib/settings-tabs.ts)."""
     import logging
 
     from app import main
@@ -246,5 +246,6 @@ def test_the_startup_log_names_the_settings_tab_as_the_app_does(monkeypatch, cap
     monkeypatch.setattr(llm, "get_base_url", lambda: None)
     with caplog.at_level(logging.WARNING, logger="app.main"):
         main._log_llm_config()
-    assert "Settings › AI & models" in caplog.text
+    assert "Add one in Settings › Basics in the web app" in caplog.text
     assert "Settings → Models" not in caplog.text
+    assert "AI & models" not in caplog.text

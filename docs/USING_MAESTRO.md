@@ -190,7 +190,7 @@ anywhere — it's your name on it.
 
 ### 5. Choose your models deliberately
 
-**Settings › AI & models** has four model roles: **Fast** (reading postings, bulk work),
+**Settings › Advanced › Model per job** has four model roles: **Fast** (reading postings, bulk work),
 **Smart** (tailoring, finding gaps), **Assistant** (the in-app Assistant) and
 **Reasoning** (used only when the Companion's Apply is stuck on a page). Left
 unset, the Reasoning model is your provider's strong model (Claude Sonnet 5.5 or
@@ -213,7 +213,7 @@ tested setups, one per AI service:
 |---|---|
 | The one key you need | Claude (Anthropic) |
 | Models you can pick | `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` |
-| Roles | you choose per role (Fast, Smart, Assistant, Reasoning) in **Settings › AI & models** |
+| Roles | you choose per role (Fast, Smart, Assistant, Reasoning) in **Settings › Advanced › Model per job** |
 
 We have not measured Claude against the other two, so there are no figures for
 it here. Press **Test** next to each model to check it works. An OpenRouter key
@@ -224,7 +224,7 @@ may keep.
 Neither OpenAI nor Gemini is better overall, and any OpenAI-compatible model can be used instead.
 A fresh install starts with the OpenAI setup, because a model that misses
 requirements quietly *inflates* your score — by about nine points in our tests.
-With only a Gemini or Claude key, switch the Fast, Smart and Assistant roles in **Settings › AI & models** (or set
+With only a Gemini or Claude key, switch the Fast, Smart and Assistant roles in **Settings › Advanced › Model per job** (or set
 `FAST_MODEL`/`SMART_MODEL`/`CHAT_MODEL` in `.env`). The Reasoning model follows your Smart model's provider
 until you pick one. Press **Test** next to each model
 to check it works; **Find Gemini models** (or **Find OpenAI models**, **Find Claude models**) lists
@@ -237,7 +237,7 @@ Claude (Desktop or Code), the ChatGPT desktop app or the Codex CLI can run the
 whole process in conversation — read a posting, score it, work the gaps, make
 the PDF. It runs on **your computer** against **your** data.
 
-![Settings › Connected agents: what a connected agent can and can't do, and the one-line command to connect Claude Code or Codex](assets/connected-agents.png)
+![Settings › Agent apps: what a connected agent can and can't do, and the one-line command to connect Claude Code or Codex](assets/connected-agents.png)
 
 <!-- TODO(P4) mcp-chat.png — a SECOND shot for this section is still open: a
      Claude conversation answering a real question over the explore tools
@@ -248,7 +248,7 @@ the PDF. It runs on **your computer** against **your** data.
      capture is one tool call ending on a question with no result. Re-capture
      against a scored instance, then save here and add below the dashboard. -->
 
-With the app running, open Settings › Connected agents › **Connect an agent app**
+With the app running, open Settings › Agent apps › **Connect an agent app**
 and choose a **Tool set**:
 
 - **Claude Desktop** — on a Docker install, download the `.mcpb` bundle from the card or the
@@ -321,7 +321,7 @@ Manual setup, every tool, and troubleshooting:
 An agent on a machine that stays on can work your job search while your laptop
 is off. Your laptop keeps your profile, and each job has one owner.
 [Run an always-on bot](always-on-bot.md) is the setup. On your laptop, open
-Settings › Connected agents › Second copy and click **Copy setup prompt**. Paste
+Settings › Agent apps › Second copy and click **Copy setup prompt**. Paste
 that into the agent on the other machine.
 
 ---
@@ -395,9 +395,9 @@ evidence for can only go in your skills list, never into an invented bullet.
 The **Companion** is a side panel in Chrome: save a job from the job board you're reading, score
 it, and fill application forms from your saved answers (**Profile › Autofill**). It leaves
 signatures, agreement boxes and government IDs to you unless you turn
-on the agreement permission in Profile. Autofill never types a password, and the Companion never submits. Autofill does not move to the next page either; only **Apply** does, with full automation on in Settings › Connected agents (see the Companion's README).
+on the agreement permission in Settings › Companion. Autofill never types a password, and the Companion never submits. Autofill does not move to the next page either; only **Apply** does, with full automation on in Settings › Agent apps (see the Companion's README).
 
-**Screening answers** (Profile › Autofill) sets how far the Companion answers a question your saved answers
+**Screening answers** (Settings › Companion) sets how far the Companion answers a question your saved answers
 do not cover. **Careful** uses only your saved answers and career history. **Balanced**, the default, also
 answers low-stakes questions (how you heard about the job, travel, relocation) in the job's favor, and
 years-with-a-skill questions when your history shows the skill. **Confident** also answers Yes to requirement
@@ -406,7 +406,7 @@ and years questions on jobs you queued, and asks you when your history shows few
 With full automation on, a job page you have not saved yet shows **Add job** beside **Apply**: it saves the job and
 scores your resumes, then stops on the ranked list without tailoring or starting anything. **Apply** shows a live checklist while it gets ready (save, score, the resume it
 uses, queue, tailor, make the PDF, open the application) and a **Stop** button that ends it between steps.
-Two switches under **Settings › AI & models › Form filling** steer it. **Choose the base resume for me**
+Two switches under **Settings › Companion › How the Companion applies** steer it. **Choose the base resume for me**
 (on) picks a resume only when its match score clearly wins, using the limits in Auto-apply, and asks you
 when it is close; off, you always pick. **Stop after each step** (off) makes Apply three presses, **Save
 job**, **Tailor resume** and **Start filling**, and your yes to queueing comes with the last one. When a
@@ -426,7 +426,7 @@ a step you do by hand, it follows you into the tab you open for the application 
 **Continue here** to carry on (nothing is filled until you do). If you are on the job's tab and its run waits in another one, the
 Job step offers **Move the run to this tab**; a run that is filling never moves. On a known application
 site (Workday, Greenhouse, Lever, Ashby, iCIMS and a few more) that asks you to sign in, Apply signs in with the
-job-site login you saved under Settings › Connected agents, in the page itself, and never retries a failed
+job-site login you saved under Settings › Agent apps, in the page itself, and never retries a failed
 sign-in; anywhere else it waits for you to sign in. On a known application
 site that asks you to make an account, Apply makes it with your saved job-site login, once, waits up to
 20 seconds for the site to finish, and only then stops with **Account not created** if the site refuses
@@ -441,7 +441,7 @@ after 8 seconds unless you press **Undo**. If the tab goes anywhere else first, 
 press. The Companion remembers which job each tab is on until you close the tab.
 
 When Apply would stop on a page it could not work, it first thinks. With **Think when stuck** on (Settings ›
-AI & models › Form filling, on by default, and only with full automation on and **Stop after each step** off),
+Companion › How the Companion applies, on by default, and only with full automation on and **Stop after each step** off),
 the **Reasoning model** looks at the page: the questions, the options and the errors, never what is in a field.
 It picks up to three actions, such as filling a field again, writing a short answer, choosing an option, closing
 a popup or pressing Next, then looks again, for up to three rounds. While it works the card shows a live line
@@ -451,7 +451,7 @@ Did You Hear About Us? a second way; it didn't take."). Anything it wrote or cho
 listed under **Check before you submit** as answered for you. It never presses Submit, never answers
 work authorization, sponsorship, salary, demographic, background or signature questions, and asks you about a fact
 your profile does not have. By default the Reasoning model is your provider's strong model and costs a few cents a
-round. **Settings › AI & models › Reasoning model** lets you pick another from the list, including cheaper ones
+round. The **Reasoning model** in **Settings › Advanced › Model per job** lets you pick another from the list, including cheaper ones
 such as Claude Haiku 5.5 and GPT-6 Luna; a cheaper model costs less and may be less reliable. With the fill log
 on, each round and the page it saw are recorded, so you can compare models on the same pages with
 `backend/scripts/eval_reason.py`.
@@ -558,7 +558,7 @@ for information the app doesn't have (and hands you logins, CAPTCHAs and
 signatures), and **waits for your yes before each submit**. Nothing is ever submitted from the web app itself, and a daily limit
 you set caps how many submissions are possible.
 
-**Full automation** is off by default, in Settings › Connected agents. Turned on, your agent may submit a
+**Full automation** is off by default, in Settings › Agent apps. Turned on, your agent may submit a
 queued job without asking when its final review shows nothing to check, within the daily limit and never
 for a company under **Companies to skip**. A job with anything to check goes to **Needs you**, and the
 agent asks you. Your agent can also get the job-site login you save there, so that login passes through
@@ -605,7 +605,7 @@ you click **Show in Finder**.
 
 **Show in Finder** (**Show in File Explorer** on Windows, **Show in folder** on
 Linux) on the PDF card and in the tailored-resume studio opens the copy. In Settings ›
-Tailoring › **Resumes folder** you can switch it off, **Open folder**, **Change
+Basics › **Resume PDFs** you can switch it off, **Open folder**, **Change
 folder** (type a path or press **Choose…**) or **Use the default**. If a copy
 fails, for example because a drive is unplugged, the last problem shows there.
 The Docker route keeps PDFs in `applications/` instead and has no resumes folder.

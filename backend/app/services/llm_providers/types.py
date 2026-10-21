@@ -168,7 +168,7 @@ class Provider(Protocol):
     def stream(self, req: Request) -> Iterator[StreamEvent]: ...
 
     def list_models(self) -> list[dict[str, str]]:
-        """Rows {"id", "label", "provider"} for Settings › Find models."""
+        """Rows {"id", "label", "provider"} for Settings › Advanced › Available models."""
 
 
 # --- persisted form -------------------------------------------------------------------------
