@@ -1,8 +1,10 @@
 """Pins for Profile as tiles: facts about you, saving as you go (design refresh plan, Task 7.2; D9, D10, D11).
 
-- **Nothing removed.** Every Profile item on the "Where everything lives" board (the Map board's Profile
-  group) still has a home in `components/profile/*` or the page (`PROFILE_ITEMS`, the plan's list; the
-  diversity consent's label is the real one, "Let the Companion fill these answers").
+- **Nothing removed.** Every Profile item still has a home in `components/profile/*` or the page
+  (`PROFILE_ITEMS`, the plan's list of the screen's words; the diversity consent's label is the real one,
+  "Let the Companion fill these answers"). All 62 items of the "Where everything lives" board's Profile
+  group, by their board labels and in the tile or fold that holds each, are
+  `test_frontend_every_item_has_a_home.py`'s.
 - **Work permits per country.** One set per apply-in country, worded by that market's `work_auth_vocab`
   (from data, `GET /api/settings/market`): the keys `authorized_now`, `sponsorship_now` and
   `sponsorship_future` everywhere, the visa status only where the vocabulary is `us_visa`.

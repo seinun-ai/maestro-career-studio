@@ -1740,7 +1740,10 @@
   of answers stays beside those answers in Profile (the diversity switch,
   D10). Nothing leaves a tab without a home:
   `test_frontend_settings_refresh.py` pins every Settings item to its tab and
-  `test_frontend_profile_tiles.py` every Profile item to the tiles. A new
+  `test_frontend_profile_tiles.py` every Profile item to the tiles;
+  `test_frontend_every_item_has_a_home.py` pins the board's 156 (Setup 12,
+  Profile 62, Settings 82), each Profile item to its tile or fold and each
+  Setup item to its step. A new
   Settings card goes on the tab whose subject it shares and adds its id to
   that tab's `anchors` (pinned); a new Profile card is a tile or fold in
   `lib/profile-tiles.ts`. Both write `/api/settings/*`; Settings draws from
