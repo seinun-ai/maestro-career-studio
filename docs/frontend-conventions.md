@@ -2156,7 +2156,7 @@ Every action answers. The answer depends on where the effect lands:
   applies only to a registered `@utility` in `globals.css` (`animate-confirm` and `animate-check-draw` are two); a
   transition list names `translate`, `scale` or `rotate`, never `transform`; an M3 duration or a custom curve lives in
   `:root`, so it is written `duration-(--duration-short3)` and `ease-(--ease-out-strong)` (the bare name compiles to
-  nothing). Reduced motion is the global rule in `globals.css` for CSS motion (the working dots hold still, the check
+  nothing; `test_frontend_motion.py` fails on a bare `:root` token used as a utility). Reduced motion is the global rule in `globals.css` for CSS motion (the working dots hold still, the check
   is drawn at once), and `useCountUp` and `NumberRoll` check `prefers-reduced-motion` themselves in JS. Motion goes
   where something happens (design refresh Task 4.5): a StatusChip's label cross-fades with a 2px blur
   (`animate-status-in`/`-out`, `FADE_MS`), then pulses once it settles; a region that waits on the AI shows

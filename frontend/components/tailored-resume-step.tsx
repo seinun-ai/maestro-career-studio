@@ -320,7 +320,7 @@ export function TailoredResumeStep({
             Score breakdown
             <ChevronDown
               aria-hidden="true"
-              className={cn("size-3.5 transition-[rotate] duration-short3 ease-standard", breakdownOpen && "rotate-180")}
+              className={cn("size-3.5 transition-[rotate] duration-(--duration-short3) ease-standard", breakdownOpen && "rotate-180")}
             />
           </Button>
         </div>

@@ -147,9 +147,6 @@
     `components/settings/autofill-section.tsx`, which the Profile rebuild split into `components/profile/*`, so the slop ratchet
     (maintainer-run, SYSTEM.md §9) reads a pair that no longer exists. Do when the frontend slop ratchet is next run: drop the pair
     and re-baseline with a reason.
-61. `components/tailored-resume-step.tsx` (the Score breakdown's chevron) still writes the bare `duration-short3`, which compiles to
-    nothing (SYSTEM.md §12), so the chevron turns with no transition; it should read `duration-(--duration-short3)`. No pin scans
-    for a bare `:root` token used as a utility. Do when that file is next changed, or when such a scan joins `test_frontend_motion.py`.
 62. Readers still on a job's country TEXT: `base_eligibility`, `inbox_readiness`, `proposals` (the proposal's `job_country`) and
     `explore_gaps` call `countries.normalize(job.country)` instead of reading `job.country_code`, so a job whose country is named
     only in its location line (`countries.for_job`'s fallback) reads as having none there; Analytics' places group the raw state,

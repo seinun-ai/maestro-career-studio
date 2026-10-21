@@ -280,6 +280,7 @@ work-permit answers for each country you apply in.
 - **A bare "$" takes the job's country.** A Toronto job's "$80,000" is Canadian dollars, not US
   dollars. With no country it is your home currency, and either way the job notes the currency was
   assumed.
+- **The Score breakdown's arrow turns** as it opens and closes, instead of jumping.
 
 ## [0.11.1] — 2026-10-16
 

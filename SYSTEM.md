@@ -798,11 +798,11 @@ overflow moves to `docs/deferred.md` under this same contract, each item keeping
     the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits". Do when Phase 3 (run list, Queue view, parallel tabs) is
     built or a listed limit is reproduced.
 
-The other 47 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32, 33, 37–43, 45–62) live in [`docs/deferred.md`](docs/deferred.md),
+The other 46 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32, 33, 37–43, 45–60, 62) live in [`docs/deferred.md`](docs/deferred.md),
 each keeping its number and carrying its trigger; code citing "§11 item N" for one of them lands there. The design refresh's
-not-fixed observations are 53–62 there: one diversity set for every country, no per-country work-permit breakdown, Today never
+not-fixed observations are 53–60 and 62 there: one diversity set for every country, no per-country work-permit breakdown, Today never
 expiring proposals, mail events dated when learned, no version check on profile saves, the chart palette, a picture from before
-the refresh, the slop ratchet's stale pair, a bare `duration-short3`, readers still on a job's country text.
+the refresh, the slop ratchet's stale pair, readers still on a job's country text.
 
 ## 12. Gotchas that have bitten before
 
@@ -810,9 +810,6 @@ the refresh, the slop ratchet's stale pair, a bare `duration-short3`, readers st
 invariant has done its job: promote it (into Cross-cutting invariants or `.system_md_enforcement.json`) and delete
 the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 
-- **A `:root` token used as a bare utility draws nothing** (2026-10-21): `duration-short3` and `ease-out-strong` compiled to no CSS, so a
-  chevron or a hover fill snapped → the M3 durations and the strong curves live in `:root`, not `@theme`: write
-  `duration-(--duration-short3)` and `ease-(--ease-out-strong)` (the last bare use: `docs/deferred.md` item 61).
 - **Tests leaked state through `/app/settings`** (2026-10-21): the settings file mirrors default to that container-absolute folder, so a
   test that saved a setting unisolated left `market.json`, `eeo_consent.json` or a `secrets/sync-key` behind (order-dependent
   `test_eeo_consent` / `test_market_settings` failures; a stray sync key failed 17 sync tests) → isolate every mirror, check the folder.

@@ -260,3 +260,54 @@ def test_no_animation_starts_from_a_key_handler():
     page = _src("app/jobs/[id]/page.tsx")
     assert "if (event.detail === 0) flushSync(() => setUnmorphed(true));" in page
     assert page.count("onClick={backClick}") == 2 and page.count("off={unmorphed}") == 4
+
+
+# --- a :root token is not a utility (docs/frontend-conventions.md, "Motion budget") ----------------------------
+
+def _motion_tokens() -> tuple[set[str], set[str]]:
+    """The motion tokens (`--duration-*`, `--ease-*`) declared in `@theme` and those declared only in `:root`.
+    Tailwind makes a utility from a theme token (`ease-standard`), never from a `:root` one."""
+    theme = _CSS.split("@theme inline {", 1)[1].split("\n}", 1)[0]
+    declared = set(re.findall(r"--((?:duration|ease)-[\w-]+):", _CSS))
+    in_theme = set(re.findall(r"--((?:duration|ease)-[\w-]+):", theme))
+    return in_theme, declared - in_theme
+
+
+def _bare_root_tokens(text: str, root_only: set[str]) -> list[str]:
+    """Each `:root` motion token used as a bare utility: `duration-short3` or `delay-short3` for
+    `--duration-short3`, `ease-out-strong` for `--ease-out-strong`. The arbitrary-value spelling
+    (`duration-(--duration-short3)`) and `var(--…)` are not bare: a `-` or `(` sits before them."""
+    found = []
+    for token in sorted(root_only):
+        kind, name = token.split("-", 1)
+        utilities = ("duration", "delay") if kind == "duration" else ("ease",)
+        for utility in utilities:
+            found += re.findall(rf"(?<![\w(-])(?:[\w-]+:)*{utility}-{re.escape(name)}(?![\w-])", text)
+    return found
+
+
+def test_the_motion_token_scan_reads_both_tiers():
+    in_theme, root_only = _motion_tokens()
+    assert "ease-standard" in in_theme and "ease-out-strong" in root_only and "duration-short3" in root_only
+    # Not vacuous: a bare use is found, with a variant prefix too; the arbitrary-value spelling and var() are not.
+    assert _bare_root_tokens('className="transition duration-short3 hover:ease-out-strong"', root_only) == [
+        "duration-short3", "hover:ease-out-strong"]
+    assert _bare_root_tokens('className="delay-short3"', root_only) == ["delay-short3"]
+    assert _bare_root_tokens(
+        'className="duration-(--duration-short3) ease-(--ease-out-strong)" style={{ x: "var(--ease-spring)" }}',
+        root_only) == []
+    assert _bare_root_tokens('className="ease-standard duration-200"', root_only) == []
+
+
+def test_no_root_motion_token_is_used_as_a_bare_utility():
+    """A `:root` token as a bare utility compiles to no CSS, so the motion it names never runs (the Score
+    breakdown's chevron turned with no transition). Write `duration-(--duration-short3)`, `ease-(--ease-out-strong)`."""
+    _, root_only = _motion_tokens()
+    wrong = []
+    for tree in ("app", "components", "lib", "hooks"):
+        for path in sorted((_FRONTEND / tree).rglob("*")):
+            if path.suffix not in (".ts", ".tsx", ".css", ".mjs") or path.name == "globals.css":
+                continue
+            for use in _bare_root_tokens(path.read_text(encoding="utf-8"), root_only):
+                wrong.append(f"{path.relative_to(_FRONTEND)}: {use}")
+    assert not wrong, "\n".join(wrong)
