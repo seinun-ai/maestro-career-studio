@@ -196,6 +196,7 @@ def test_the_day_strip_is_round_status_dots_with_a_sentence_and_a_legend():
     for role in ("bg-success", "bg-warning", "bg-destructive", "bg-surface-container-high"):
         assert role in src, role
     assert "outcomeWord(" in src and "No report" in src  # the legend says each colour in words
+    assert "<span>{`${days - 1} days ago`}</span>" in src  # the left end is the oldest dot's day
     assert 'export { DayStrip } from "./day-strip";' in _read("components/visual/index.ts")
 
 

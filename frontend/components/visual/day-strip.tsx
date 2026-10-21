@@ -27,7 +27,8 @@ export function DayStrip({ runs, today = new Date(), days = STRIP_DAYS, classNam
         ))}
       </div>
       <div aria-hidden="true" className="flex justify-between text-body-small text-muted-foreground">
-        <span>{days} days ago</span>
+        {/* The oldest dot is today minus days - 1: a 14-day strip starts 13 days ago. */}
+        <span>{`${days - 1} days ago`}</span>
         <span>today</span>
       </div>
       <ul aria-hidden="true" className="flex flex-wrap gap-x-4 gap-y-1 text-body-small text-muted-foreground">

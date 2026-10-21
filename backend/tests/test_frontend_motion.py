@@ -105,8 +105,19 @@ def test_number_roll_and_working_dots_stay_in_budget_and_respect_reduced_motion(
     assert "transition-[translate]" in roll and "transform" not in roll
     dots = (_FRONTEND / "components/visual/working-dots.tsx").read_text()
     assert 'role="status"' in dots and "working-dot" in dots
+    # Spoken however it is mounted: the region is in the page, empty, before its words are written.
+    assert '<span ref={region} role="status" className="sr-only" />' in dots
+    assert "node.textContent = label;" in dots and "SPEAK_AFTER_MS" in dots
+    assert '<span aria-hidden="true">{label}</span>' in dots
     reduced = _CSS.split("@media (prefers-reduced-motion", 1)[1]
     assert ".working-dot" in reduced and "animate-check-draw" in reduced
+
+
+def test_visual_primitives_node_suite():
+    """The day strip's ends name its oldest dot's day, and the working dots' region mounts empty
+    (components/visual/visual.test.mjs)."""
+    result = run_node_test("components/visual/visual.test.mjs")
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_roll_ms_is_the_number_token_and_the_check_draws_in_budget():
