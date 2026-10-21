@@ -8,6 +8,7 @@ import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { apiFetch } from "@/lib/api";
 import { forSaving, profileForEditing, type Profile } from "@/lib/autofill-options";
 import { couldnt } from "@/lib/error-text";
+import { NO_EDITS, edited, landed, surfaceStatus, type SurfaceSaves } from "@/lib/save-surfaces";
 import type { SettingEnvelope } from "@/lib/types";
 import { useAutosave } from "@/lib/use-autosave";
 
@@ -28,10 +29,12 @@ const AutofillContext = createContext<AutofillEditing | null>(null);
  * Start and pay, Education, Languages, Your own questions, the Diversity and Eligibility folds, Next up).
  * They save as you go: one write in flight and only the newest queued (`useAutosave`), each write the
  * whole profile without the one-set `work_auth` view, so the server keeps the per-country map
- * (`forSaving`). No toast on a save, a toast on a failure; the editor that made the last edit shows the
- * status, so two open editors never both announce one save. A refetch that brings another writer's change
- * (the Companion's pause row learns answers into this profile) is taken only while every edit is already
- * on the server (`adopt`).
+ * (`forSaving`). No toast on a save, a toast on a failure. Each editor shows the status of its own newest
+ * edit (`lib/save-surfaces.ts`): Saving until a write that carries it lands, Not saved if the last one
+ * failed, and nothing for an editor with no edit waiting, so two open editors never both announce one save
+ * and neither says Saved before its edit is on the server. A refetch that brings another writer's change
+ * (the Companion's pause row learns answers into this profile; `autofillQuery` reads again on focus) is
+ * taken only while every edit is already on the server (`adopt`).
  */
 export function AutofillProfileProvider({ served, children }: { served: Profile; children: ReactNode }) {
   const qc = useQueryClient();
@@ -48,8 +51,21 @@ export function AutofillProfileProvider({ served, children }: { served: Profile;
     onError: (err: Error) => toast.error(couldnt("save your answers", err)),
   });
   const [initial] = useState(() => profileForEditing(served));
-  const answers = useAutosave<Profile>(initial, (next) => save.mutateAsync(next));
-  const [last, setLast] = useState<string | null>(null);
+  // Which editors' edits are on the server: state to draw from, and its newest value for the write path.
+  const [saves, setSaves] = useState<SurfaceSaves>(NO_EDITS);
+  const savesNow = useRef<SurfaceSaves>(NO_EDITS);
+  const track = (change: (state: SurfaceSaves) => SurfaceSaves) => {
+    savesNow.current = change(savesNow.current);
+    setSaves(savesNow.current);
+  };
+  const answers = useAutosave<Profile>(initial, (next) => {
+    // The whole profile goes out, so this write carries every edit made so far.
+    const through = savesNow.current.seq;
+    return save.mutateAsync(next).then((result) => {
+      track((state) => landed(state, through));
+      return result;
+    });
+  });
   // A failed write leaves answers on screen the server lacks.
   useLeaveGuard(answers.failed);
 
@@ -64,14 +80,10 @@ export function AutofillProfileProvider({ served, children }: { served: Profile;
   const editing: AutofillEditing = {
     profile: answers.value,
     update: (surface, next) => {
-      setLast(surface);
+      track((state) => edited(state, surface));
       answers.update(next);
     },
-    saveState: (surface) => ({
-      pending: answers.pending && last === surface,
-      failed: answers.failed && last === surface,
-      onRetry: answers.retry,
-    }),
+    saveState: (surface) => ({ ...surfaceStatus(saves, surface, answers), onRetry: answers.retry }),
   };
   return <AutofillContext value={editing}>{children}</AutofillContext>;
 }

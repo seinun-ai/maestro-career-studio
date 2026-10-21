@@ -243,11 +243,11 @@ work-permit answers for each country you apply in.
   Diversity questions and Eligibility are folded under them. Work permits are asked for each country
   you apply in, in that country's words, and only the United States asks your visa status. Where you
   apply says **You live in** and **You apply in**, and a country shows the square of a base resume
-  made for it. Your answers save as you go: the Save answers button is gone. Coming back to Profile or
-  Setup reads your answers again, so one the Companion learned in the meantime is kept. The diversity
-  permission stays beside the diversity answers, and Decline the rest now declines the veteran question
-  too. The tabs and the setup strip are gone, and a link to an old tab or card opens the tile that holds
-  it.
+  made for it. Your answers save as you go: the Save answers button is gone, and each answer you change
+  says Saved only once it has saved. Coming back to Profile or Setup reads your answers again, so one
+  the Companion learned in the meantime is kept. The diversity permission stays beside the diversity
+  answers, and Decline the rest now declines the veteran question too. The tabs and the setup strip are
+  gone, and a link to an old tab or card opens the tile that holds it.
 - **Autofill coverage is under Settings › Advanced › Diagnostics**, unchanged, with its Clear data.
 - **Messages that send you to Settings name its new tabs**, such as "Add an API key in Settings ›
   Basics." The Companion's Change in Settings link opens the Companion tab. Messages that send you to

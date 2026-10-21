@@ -117,8 +117,22 @@ def test_the_answers_save_as_you_go():
     assert "Save answers" not in src and "saveOnce(" not in _src("components/profile/autofill-profile.tsx")
     provider = _src("components/profile/autofill-profile.tsx")
     assert "useAutosave<Profile>(" in provider
-    # One status per editor, following the last edit, so two open editors never both announce one save.
-    assert "pending: answers.pending && last === surface" in provider
+
+
+def test_each_editor_says_saved_only_once_its_own_edit_has_saved():
+    """Several editors change one profile saved whole. Each editor's status follows its OWN newest edit
+    (`lib/save-surfaces.ts`): Saving until a write that carries it lands, Not saved when the last write
+    carrying it failed, nothing for an editor with no edit. Following only the last editor said Saved on
+    Next up while the write carrying its phone was still in flight, and showed a failure on one editor."""
+    result = run_node_test("lib/save-surfaces.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr
+    provider = _flat(_src("components/profile/autofill-profile.tsx"))
+    assert "last === surface" not in provider
+    assert "...surfaceStatus(saves, surface, answers)" in provider
+    # Each write records the edits it carries when it goes out, and marks them saved only once it lands.
+    assert "const through = savesNow.current.seq;" in provider
+    assert "track((state) => landed(state, through));" in provider
+    assert "track((state) => edited(state, surface)); answers.update(next);" in provider
 
 
 def test_an_open_page_reads_the_answers_again_when_you_come_back():

@@ -49,9 +49,13 @@ def test_new_job_page_extracts_once_per_click():
 
 def test_autofill_counts_every_edit():
     # Every editor's change goes through the one autosave: each edit is queued, the newest goes out next.
+    # The edit is counted for its editor's status first (lib/save-surfaces.ts), and each write is the PUT.
     update = _flat(_AUTOFILL[_AUTOFILL.index("update: (surface, next) => {") :])
-    assert update.startswith("update: (surface, next) => { setLast(surface); answers.update(next); },")
-    assert "useAutosave<Profile>(initial, (next) => save.mutateAsync(next));" in _flat(_AUTOFILL)
+    assert update.startswith(
+        "update: (surface, next) => { track((state) => edited(state, surface)); answers.update(next); },")
+    src = _flat(_AUTOFILL)
+    assert "useAutosave<Profile>(initial, (next) => {" in src
+    assert "return save.mutateAsync(next).then((result) => {" in src
 
 
 def test_autofill_save_keeps_text_typed_while_it_ran():
