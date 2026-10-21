@@ -13,6 +13,7 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { ListCapNotice } from "@/components/list-cap-notice";
+import { HintTip } from "@/components/hint-tip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -227,6 +228,9 @@ export function InboxPanel({
             </span>
             Drafts to review
             {!isLoading && <Badge variant="secondary">{drafts.length}</Badge>}
+            {/* Drafts come from Quick capture, documents, resumes and agents, not only from AI: the
+                sentence says what the panel is for. */}
+            <HintTip label="About drafts">New bullets wait here as drafts until you approve them.</HintTip>
           </CardTitle>
           {drafts.length > 0 && !isLoading && !error && (
             <div className="flex flex-col items-end gap-1">
@@ -248,11 +252,6 @@ export function InboxPanel({
             </div>
           )}
         </div>
-        {/* Drafts come from Quick capture, documents, resumes and agents, not
-            only from AI: the sentence says what the panel is for. */}
-        <p className="text-muted-foreground text-body-medium">
-          New bullets wait here as drafts until you approve them.
-        </p>
       </CardHeader>
       <CardContent className="space-y-5">
         {error ? (

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BriefcaseBusiness, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 
+import { HintTip } from "@/components/hint-tip";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { listKbEntities } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
@@ -169,12 +171,13 @@ export function ScopePickerDialog({
           the dialog, never push it past the viewport. */}
       <DialogContent className="flex max-h-[80vh] w-[min(92vw,34rem)] max-w-[min(92vw,34rem)] flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Add context</DialogTitle>
+          <div className="flex items-center gap-1">
+            <DialogTitle>Add context</DialogTitle>
+            <HintTip label="About context">
+              Resume parts limit what the Assistant edits. Career history items give it background.
+            </HintTip>
+          </div>
         </DialogHeader>
-        <p className="text-muted-foreground -mt-2 text-body-small">
-          Resume parts limit what the Assistant edits. Career history items
-          give it background.
-        </p>
         <Tabs defaultValue="resume" className="flex min-h-0 flex-1 flex-col gap-3">
           <TabsList>
             <TabsTrigger value="resume">Resume</TabsTrigger>
@@ -193,7 +196,7 @@ export function ScopePickerDialog({
                 onRetry={() => void kbEntities.refetch()}
               />
             ) : kbEntities.isLoading ? (
-              <p className="text-muted-foreground text-body-medium">Loading your career history…</p>
+              <Skeleton className="h-24 w-full" role="status" aria-label="Loading your career history" />
             ) : (kbEntities.data ?? []).length === 0 ? (
               <p className="text-muted-foreground text-body-medium">
                 Nothing in your career history yet.

@@ -72,7 +72,7 @@ _QUERY_SURFACES: list[tuple[str, str]] = [
     # Verified violations this round — each used to reach the marker on error.
     ("components/qa-tab.tsx", "No answers yet."),
     ("components/proposals/proposals-section.tsx", "No proposals yet"),
-    ("app/base-resumes/page.tsx", "No base resumes yet. Create one to start."),
+    ("app/base-resumes/page.tsx", "No base resumes yet."),
     ("app/templates/page.tsx", "No templates yet."),
     ("components/chat/chat-page.tsx", "What are we working on?"),
     ("components/career/first-run-import-card.tsx", "Start with the resumes you already have"),
@@ -302,7 +302,7 @@ _LOADING_GATES = [
     ("app/applications/page.tsx", "animate-shimmer h-12", "loadFailed ? ("),
     ("components/proposals/proposals-section.tsx", "if (isLoading) {", "if (isLoadFailure("),
     ("components/resume-step.tsx", "scores.isLoading ||", "if (isLoadFailure(scores))"),
-    ("components/chat/scope-picker.tsx", "Loading your career history…", "{isLoadFailure(kbEntities) ? ("),
+    ("components/chat/scope-picker.tsx", 'aria-label="Loading your career history"', "{isLoadFailure(kbEntities) ? ("),
     ("components/analytics/analytics-overview.tsx", "activity.isLoading ?", "isLoadFailure(activity) ?"),
     ("components/analytics/analytics-overview.tsx", "gaps.isLoading ?", "isLoadFailure(gaps) ?"),
     ("components/analytics/analytics-overview.tsx", "buildAreas.isLoading ?", "isLoadFailure(buildAreas) ?"),

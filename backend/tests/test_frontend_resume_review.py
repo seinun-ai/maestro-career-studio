@@ -93,7 +93,7 @@ def test_the_tex_reason_is_the_servers():
 
 def test_a_template_missing_only_tex_says_needs_setup_only():
     gallery = _read("components/templates/template-gallery.tsx")
-    has_errors = _block(gallery, "Has errors. Open to fix.", "</p>")
+    has_errors = _block(gallery, '<Badge variant="destructive">Has errors</Badge>', "</CardContent>")
     guard = gallery[gallery.rindex("{", 0, gallery.index(has_errors)) : gallery.index(has_errors)]
     assert "templateHasErrors(template)" in guard and "template.last_error" not in guard
     fn = _block(_read("lib/template-status.ts"), "export function templateHasErrors(", "\n}")
@@ -156,8 +156,12 @@ def test_the_sync_result_type_carries_the_item_count():
 
 def test_the_profile_says_what_starts_from_it():
     panel = _read("components/career/profile-panel.tsx")
-    line = "Your contact details and skills. Resumes built from your career history start from these."
-    assert panel.count(line) == 1  # the card's header; the sections edit in place under it
+    # Design refresh Task 4.6: the card's header says it in its HintTip, one hover or focus away (and in
+    # the button's description); the sections edit in place under it.
+    line = "Resumes built from your career history start from these details"
+    assert panel.count(line) == 1
+    tip = panel.index('<HintTip label="About the career profile">')
+    assert tip < panel.index(line) < panel.index("</CardTitle>")
     assert "shared by all your resumes" not in panel
 
 
@@ -565,7 +569,8 @@ def test_a_sections_one_edit_is_always_shown():
         assert "opacity-0" not in _read(rel), rel
     for title in ('title="Contact"', 'title="Summary"', 'title="Skills"', 'title="Notes for the AI"'):
         assert f"<ProfileSection\n          {title}" in profile, title
-    assert "aria-label={`Edit ${title.toLowerCase()}`}" in profile
+    # An empty section says Add instead of a "No … added" line (design refresh Task 4.6).
+    assert "aria-label={empty ? `Add ${title.toLowerCase()}` : `Edit ${title.toLowerCase()}`}" in profile
     # A section's save sends its own field (the PATCH leaves the rest alone).
     assert "mutationFn: (value: T) => patchKbProfile(toPatch(value))," in profile
     # Skills: the name over its pills, groups flowed into columns, none split across two.

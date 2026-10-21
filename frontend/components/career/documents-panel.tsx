@@ -128,7 +128,6 @@ export function DocumentsPanel({
             {documents.length}
           </Badge>
         </CardTitle>
-        <p className="text-muted-foreground text-body-medium">We read these to suggest bullets for you to review.</p>
       </CardHeader>
       <CardContent className="space-y-3">
         <div

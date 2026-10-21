@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { HintTip } from "@/components/hint-tip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -90,8 +91,10 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
             <UserRound className="size-4" aria-hidden="true" />
           </span>
           Career profile
+          <HintTip label="About the career profile">
+            Resumes built from your career history start from these details, and any skill group can go on any resume.
+          </HintTip>
         </CardTitle>
-        <p className="text-muted-foreground mt-1 text-body-medium">Your contact details and skills. Resumes built from your career history start from these.</p>
       </CardHeader>
       {/* Each section edits on its own, as the resume editor's cards do: one Edit per section, always shown
           (a hover-only "Edit profile" read as a card you couldn't change). */}
@@ -99,6 +102,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
         <ProfileSection
           title="Contact"
           className="pb-5"
+          empty={contactItems.length === 0}
           initial={() => contactDraft(profile)}
           toPatch={(contact) => ({
             contact: {
@@ -111,21 +115,17 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
             },
           })}
           read={
-            contactItems.length > 0 ? (
-              <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-                {contactItems.map(({ label, value, icon: Icon }) => (
-                  <div key={label} className="flex min-w-0 items-start gap-2.5">
-                    <Icon className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                    <div className="min-w-0">
-                      <dt className="text-muted-foreground text-body-small">{label}</dt>
-                      <dd className="truncate text-body-medium" title={value ?? undefined}>{value}</dd>
-                    </div>
+            <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+              {contactItems.map(({ label, value, icon: Icon }) => (
+                <div key={label} className="flex min-w-0 items-start gap-2.5">
+                  <Icon className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <dt className="text-muted-foreground text-body-small">{label}</dt>
+                    <dd className="truncate text-body-medium" title={value ?? undefined}>{value}</dd>
                   </div>
-                ))}
-              </dl>
-            ) : (
-              <p className="text-muted-foreground text-body-medium">No contact details added.</p>
-            )
+                </div>
+              ))}
+            </dl>
           }
           edit={(contact, setContact) => {
             const update = (field: keyof ContactInfo, value: string) =>
@@ -149,15 +149,10 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
         <ProfileSection
           title="Summary"
           className="py-5"
+          empty={!profile.summary.trim()}
           initial={() => profile.summary}
           toPatch={(summary) => ({ summary })}
-          read={
-            profile.summary.trim() ? (
-              <p className="max-w-4xl text-body-medium leading-7 whitespace-pre-wrap">{profile.summary}</p>
-            ) : (
-              <p className="text-muted-foreground text-body-medium">No summary added.</p>
-            )
-          }
+          read={<p className="max-w-4xl text-body-medium leading-7 whitespace-pre-wrap">{profile.summary}</p>}
           edit={(summary, setSummary) => (
             <>
               <Label htmlFor="kb-profile-summary" className="sr-only">
@@ -177,35 +172,31 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
         <ProfileSection
           title="Skills"
           className="py-5"
+          empty={profile.skills.length === 0}
           initial={() => profile.skills}
           toPatch={(skills) => ({ skills: skills.filter((group) => group.category.trim()) })}
           read={
-            profile.skills.length > 0 ? (
-              // Each group's name over its pills, the groups flowed into balanced columns. A name beside its
-              // pills gave every row the height of its longest group, so a group that wrapped to a second line
-              // left a gap its neighbours didn't; stacked, a long group only makes its own block taller.
-              <dl className="gap-x-8 sm:columns-2 xl:columns-3">
-                {profile.skills.map((group, index) => (
-                  <div key={`${group.category}-${index}`} className="mb-4 break-inside-avoid">
-                    <dt className="mb-1.5 text-title-small">{group.category}</dt>
-                    <dd className="flex flex-wrap gap-1.5">
-                      {group.items.map((item) => (
-                        <Badge key={item} variant="secondary" className="text-body-small">
-                          {item}
-                        </Badge>
-                      ))}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <p className="text-muted-foreground text-body-medium">No skill groups added.</p>
-            )
+            // Each group's name over its pills, the groups flowed into balanced columns. A name beside its
+            // pills gave every row the height of its longest group, so a group that wrapped to a second line
+            // left a gap its neighbours didn't; stacked, a long group only makes its own block taller.
+            <dl className="gap-x-8 sm:columns-2 xl:columns-3">
+              {profile.skills.map((group, index) => (
+                <div key={`${group.category}-${index}`} className="mb-4 break-inside-avoid">
+                  <dt className="mb-1.5 text-title-small">{group.category}</dt>
+                  <dd className="flex flex-wrap gap-1.5">
+                    {group.items.map((item) => (
+                      <Badge key={item} variant="secondary" className="text-body-small">
+                        {item}
+                      </Badge>
+                    ))}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           }
           edit={(skills, setSkills) => (
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-muted-foreground text-body-small">Group your skills. You can add a group to any resume.</p>
+              <div className="flex items-center justify-end gap-2">
                 <Button
                   type="button"
                   size="sm"
@@ -266,7 +257,13 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
         <ProfileSection
           title="Notes for the AI"
           icon={<Lock className="size-3" aria-hidden="true" />}
+          hint={
+            <HintTip label="About notes for the AI" id="kb-profile-notes-hint">
+              Only you and the AI see these, such as visa timing or where you can work. Details about one job or project go in that item&apos;s own notes.
+            </HintTip>
+          }
           className="pt-5"
+          empty={!profile.notes.split("\n").some((line) => line.trim())}
           initial={() => profile.notes}
           toPatch={(notes) => ({ notes })}
           read={<FoldedNotes notes={profile.notes} />}
@@ -275,9 +272,6 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
               <Label htmlFor="kb-profile-notes" className="sr-only">
                 Notes for the AI
               </Label>
-              <p id="kb-profile-notes-hint" className="text-muted-foreground text-body-small">
-                Only you and the AI see these, such as visa timing or where you can work. Details about one job or project go in that item&apos;s own notes.
-              </p>
               <Textarea
                 aria-describedby="kb-profile-notes-hint"
                 id="kb-profile-notes"
@@ -302,6 +296,8 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
 function ProfileSection<T>({
   title,
   icon,
+  hint,
+  empty = false,
   className,
   initial,
   toPatch,
@@ -310,6 +306,10 @@ function ProfileSection<T>({
 }: {
   title: string;
   icon?: ReactNode;
+  /** A HintTip beside the title: the section's explanation, one hover away. */
+  hint?: ReactNode;
+  /** Nothing saved yet: the section shows its title and Add, no "No … added" line. */
+  empty?: boolean;
   className?: string;
   initial: () => T;
   toPatch: (draft: T) => KBProfilePatch;
@@ -342,20 +342,23 @@ function ProfileSection<T>({
   return (
     <section className={className}>
       <div className="mb-3 flex min-h-8 items-center justify-between gap-2">
-        <h3 className={`${SECTION_HEADING} flex items-center gap-1.5`}>
-          {title}
-          {icon}
-        </h3>
+        <div className="flex items-center gap-1">
+          <h3 className={`${SECTION_HEADING} flex items-center gap-1.5`}>
+            {title}
+            {icon}
+          </h3>
+          {hint}
+        </div>
         {!editing ? (
           <Button
             ref={editRef}
             size="sm"
             variant="ghost"
             className="text-muted-foreground"
-            aria-label={`Edit ${title.toLowerCase()}`}
+            aria-label={empty ? `Add ${title.toLowerCase()}` : `Edit ${title.toLowerCase()}`}
             onClick={() => setDraft(initial())}
           >
-            <Pencil aria-hidden="true" /> Edit
+            {empty ? <Plus aria-hidden="true" /> : <Pencil aria-hidden="true" />} {empty ? "Add" : "Edit"}
           </Button>
         ) : null}
       </div>
@@ -390,7 +393,7 @@ function ProfileSection<T>({
             </Button>
           </div>
         </form>
-      ) : (
+      ) : empty ? null : (
         read
       )}
     </section>
@@ -405,7 +408,7 @@ function FoldedNotes({ notes }: { notes: string }) {
   const [open, setOpen] = useState(false);
   // Blank lines between the notes' own lines are spacing, not content: they neither show nor count.
   const lines = notes.split("\n").filter((line) => line.trim());
-  if (lines.length === 0) return <p className="text-muted-foreground text-body-medium">No notes yet.</p>;
+  if (lines.length === 0) return null;
   const folds = lines.length > FOLDED_LINES;
   const shown = open || !folds ? lines : lines.slice(0, FOLDED_LINES);
   return (

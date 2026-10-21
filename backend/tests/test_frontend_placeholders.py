@@ -621,20 +621,22 @@ def test_profile_and_notes_statements_are_hints():
     assert 'placeholder="ML Ops"' not in profile
     assert "e.g." not in profile
     assert "Visa timeline, target roles" not in profile
+    # Design refresh Task 4.6: each statement sits in its section title's HintTip (an Info button whose
+    # tooltip and description hold it) and still describes the field; neither is a placeholder.
     _order(
         profile,
-        'htmlFor="kb-profile-notes"',
         'id="kb-profile-notes-hint"',
         "Only you and the AI see these, such as visa timing or where you can work.",
+        'htmlFor="kb-profile-notes"',
         'aria-describedby="kb-profile-notes-hint"',
         'id="kb-profile-notes"',
     )
     assert "Stack, scale, constraints, collaborators, and what you personally owned" not in notes
     _order(
         notes,
-        "htmlFor={`kb-notes-${entityId}`}",
         "id={`kb-notes-${entityId}-hint`}",
-        "Tools, team size, limits, who you worked with, and what you owned.",
+        "tools, team size, limits, who you worked with, and what you owned.",
+        "htmlFor={`kb-notes-${entityId}`}",
         "aria-describedby={`kb-notes-${entityId}-hint`}",
         "id={`kb-notes-${entityId}`}",
     )

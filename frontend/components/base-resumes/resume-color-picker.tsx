@@ -3,6 +3,7 @@
 import { useId, useRef, useState, type CSSProperties } from "react";
 import { Check } from "lucide-react";
 
+import { HintTip } from "@/components/hint-tip";
 import { ResumeSwatch } from "@/components/visual";
 import { Button } from "@/components/ui/button";
 import { CUSTOM_CHROMA, RESUME_PRESETS, presetName, resumeColorStyle } from "@/lib/resume-color";
@@ -84,7 +85,14 @@ export function ResumeColorPicker({ value, onChange, onCommit, used, label = "Co
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <span id={labelId} className="text-label-large">{label}</span>
+      <span className="flex items-center gap-1">
+        <span id={labelId} className="text-label-large">{label}</span>
+        {pickedAtRandom && (
+          <HintTip label="About this color" id={hintId}>
+            Picked at random from colors no other resume uses.
+          </HintTip>
+        )}
+      </span>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div role="radiogroup" aria-labelledby={labelId} aria-describedby={pickedAtRandom ? hintId : undefined}
           onKeyUp={(e) => { if (NAV_KEYS.includes(e.key)) settle(); }}
@@ -142,11 +150,6 @@ export function ResumeColorPicker({ value, onChange, onCommit, used, label = "Co
             style={{ "--hue-track": HUE_TRACK } as CSSProperties}
             className={HUE_RANGE} />
         </div>
-      )}
-      {pickedAtRandom && (
-        <p id={hintId} className="text-body-small text-muted-foreground">
-          Picked at random from colors no other resume uses.
-        </p>
       )}
     </div>
   );

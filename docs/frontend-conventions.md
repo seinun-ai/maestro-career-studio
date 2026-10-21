@@ -1935,7 +1935,11 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   a score has no threshold or warning colour; the lowest subscore alone wears the word Weakest; a conflict is
   loud and good news is quiet (a pass is one line on a neutral surface, never a success banner).
 - **Words get shorter by deleting repeats**, and a teaching sentence moves into a tooltip or an
-  `aria-describedby` hint; a label a task needs never goes.
+  `aria-describedby` hint; a label a task needs never goes. The tooltip is a `HintTip`
+  (`components/hint-tip.tsx`): an Info button beside the title or label, its sentence also the button's
+  description and, through `id`, the field's. A consequence that must be seen before acting stays one
+  visible line. Career history, Base resumes, Templates, Referrals and the Assistant have no page subtitle,
+  and `test_frontend_fewer_words.py` holds their muted paragraphs at half of what they were.
 
 ## States and feedback
 

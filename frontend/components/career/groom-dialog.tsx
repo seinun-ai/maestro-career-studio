@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive } from "lucide-react";
 import { toast } from "sonner";
 
+import { HintTip } from "@/components/hint-tip";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -120,12 +122,14 @@ export function GroomDialog({
       {/* scroll-pb-20: the sticky footer is about 65px tall, and a control focused by Tab scrolls clear of it. */}
       <DialogContent size="lg" finalFocus={returnToOpener} className="scroll-pb-20">
         <DialogHeader>
-          <DialogTitle>Similar bullets on {entityTitle}</DialogTitle>
+          <div className="flex items-center gap-1">
+            <DialogTitle>Similar bullets on {entityTitle}</DialogTitle>
+            <HintTip label="Which bullet is kept">{KEEPER_RULE}</HintTip>
+          </div>
           <DialogDescription>
             These say nearly the same thing. Keep one as the bullet and fold the others into it as wordings.
             Nothing changes on your resumes.
           </DialogDescription>
-          <p className="text-muted-foreground text-body-small">{KEEPER_RULE}</p>
         </DialogHeader>
 
         {/* The landmark a handed-off focus falls back to once the last card has gone. */}
@@ -309,9 +313,9 @@ function ClusterCard({
 
   return (
     <li ref={cardRef} className="rounded-corner-lg bg-surface-container-low p-3">
-      <p id={`${groupId}-score`} className="text-muted-foreground text-label-medium">
+      <Badge id={`${groupId}-score`} variant="secondary" className="tabular-nums">
         {Math.round(cluster.score * 100)}% similar
-      </p>
+      </Badge>
       <RadioGroup<UUID>
         aria-labelledby={`${groupId}-score`}
         className="mt-2 gap-2"

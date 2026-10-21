@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { HintTip } from "@/components/hint-tip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -132,10 +133,13 @@ export function NotesEditor({
     <Card>
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
         <div>
-          <CardTitle>Notes</CardTitle>
-          <p className="text-muted-foreground mt-1 text-body-medium">
-            Private details that help AI write about this. Never shown on a resume.
-          </p>
+          <CardTitle className="flex items-center gap-1">
+            Notes
+            <HintTip label="About notes" id={`kb-notes-${entityId}-hint`}>
+              Private details that help AI write about this: tools, team size, limits, who you worked with, and what you owned.
+            </HintTip>
+          </CardTitle>
+          <p className="text-muted-foreground mt-1 text-body-medium">Never shown on a resume.</p>
         </div>
         {!editing ? (
           <Button
@@ -156,9 +160,6 @@ export function NotesEditor({
             <Label htmlFor={`kb-notes-${entityId}`} className="sr-only">
               Notes
             </Label>
-            <p id={`kb-notes-${entityId}-hint`} className="text-muted-foreground text-body-small">
-              Tools, team size, limits, who you worked with, and what you owned.
-            </p>
             <Textarea
               aria-describedby={`kb-notes-${entityId}-hint`}
               id={`kb-notes-${entityId}`}
@@ -194,9 +195,6 @@ export function NotesEditor({
         ) : (
           <div className="rounded-corner-md bg-surface-container-low px-5 py-7 text-center">
             <p className="text-title-small">No notes yet</p>
-            <p className="text-muted-foreground mt-1 text-body-small">
-              Add details that don&apos;t belong on a resume.
-            </p>
           </div>
         )}
 

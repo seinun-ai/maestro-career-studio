@@ -35,9 +35,6 @@ export function CareerExportsCard() {
     <Card>
       <CardHeader>
         <CardTitle>Download</CardTitle>
-        <p className="text-muted-foreground text-body-medium">
-          A text file of your whole career history.
-        </p>
       </CardHeader>
       <CardContent>
         {query.isLoading ? (

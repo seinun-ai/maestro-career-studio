@@ -160,8 +160,8 @@ function TemplateCardBody({
           template on a computer without TeX has nothing to fix: the Needs
           setup badge says so, alone. */}
       {!isReady && templateHasErrors(template) && (
-        <CardContent className="pt-0 text-body-small">
-          <p className="text-muted-foreground truncate">Has errors. Open to fix.</p>
+        <CardContent className="pt-0">
+          <Badge variant="destructive">Has errors</Badge>
         </CardContent>
       )}
     </>

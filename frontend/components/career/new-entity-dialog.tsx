@@ -405,11 +405,7 @@ export function NewEntityDialog({
                 </Select>
               </div>
             </>
-          ) : (
-            <p className="text-body-small text-muted-foreground italic">
-              You can add bullets after you create it.
-            </p>
-          )}
+          ) : null}
         </form>
         <DialogFooter>
           <Button

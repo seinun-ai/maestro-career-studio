@@ -236,7 +236,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
             {report.bases.length > 0 && (
               <div className="space-y-2">
                 <p className="text-muted-foreground text-body-small">
-                  Check the role for each. These are our best guesses.
+                  Check the role picked for each.
                 </p>
                 <ul className="space-y-2">
                   {report.bases.map((b) => (

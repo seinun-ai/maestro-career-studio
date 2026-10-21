@@ -130,7 +130,6 @@ export default function ReferralsPage() {
     <PageShell>
       <PageHeader
         title="Referrals"
-        subtitle="Companies where someone can refer you."
         actions={
           populated ? (
             <Button ref={addButtonRef} onClick={() => setAddOpen(true)}>

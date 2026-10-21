@@ -141,7 +141,6 @@ export default function BaseResumesListPage() {
     <PageShell>
       <PageHeader
         title="Base resumes"
-        subtitle="One resume for each kind of job you apply for."
         actions={
           <>
             <label className="text-muted-foreground mr-2 flex items-center gap-2 text-body-medium">
@@ -203,7 +202,7 @@ export default function BaseResumesListPage() {
             />
           ) : (
             <p className="text-muted-foreground text-body-medium">
-              No base resumes yet. Create one to start.
+              No base resumes yet.
             </p>
           )}
         </section>

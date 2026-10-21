@@ -1027,13 +1027,8 @@ function SessionList({
   const sessions = query.data;
   return (
     <div className="flex-1 space-y-0.5 overflow-y-auto">
-      {(sessions?.length ?? 0) > 0 && (
-        <p className="text-muted-foreground px-3 pb-1 text-label-medium">
-          Recent
-        </p>
-      )}
       {/* The rows in a wrapper of their own, so a deleted row's neighbours are
-          rows (focusSuccessor), never the heading. */}
+          rows (focusSuccessor). */}
       <div className="space-y-0.5">
         {sessions?.map((s) => (
           <div

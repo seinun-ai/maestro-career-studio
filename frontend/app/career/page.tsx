@@ -12,6 +12,7 @@ import { InboxPanel } from "@/components/career/inbox-panel";
 import { NewEntityDialog } from "@/components/career/new-entity-dialog";
 import { ProfilePanel } from "@/components/career/profile-panel";
 import { CareerExportsCard } from "@/components/career/exports-card";
+import { HintTip } from "@/components/hint-tip";
 import { Badge } from "@/components/ui/badge";
 import { FirstRunImportCard } from "@/components/career/first-run-import-card";
 import { UploadDialog } from "@/components/setup/upload-dialog";
@@ -63,7 +64,6 @@ export default function CareerPage() {
       <PageHeader
         className="animate-fade-rise"
         title="Career history"
-        subtitle="Your jobs, projects, education and certifications, in one place."
         actions={
           <>
             {/* Same endpoint as the first-run card — one pipeline, two entry
@@ -200,10 +200,8 @@ function CustomSectionsTab({
 
   return (
     <section className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-muted-foreground text-body-medium">
-          Publications, awards, volunteering and more.
-        </p>
+      <div className="flex items-center justify-end gap-1">
+        <HintTip label="About other sections">Publications, awards, talks, volunteering and more.</HintTip>
         <Button size="sm" variant="tonal" onClick={onAdd}>
           <Plus aria-hidden="true" /> Add section
         </Button>
@@ -226,9 +224,6 @@ function CustomSectionsTab({
       ) : items.length === 0 ? (
         <div className="rounded-corner-md bg-surface-container-low p-10 text-center">
           <p className="text-title-small">No other sections yet</p>
-          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-body-small">
-            Add publications, awards, talks and more.
-          </p>
           <Button className="mt-4" size="sm" onClick={onAdd}>
             <Plus aria-hidden="true" /> Add section
           </Button>
@@ -303,9 +298,6 @@ function EntityTab({
       ) : items.length === 0 ? (
         <div className="rounded-corner-md bg-surface-container-low p-10 text-center">
           <p className="text-title-small">No {title.toLowerCase()} yet</p>
-          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-body-small">
-            Use Quick capture above, or add one yourself.
-          </p>
           <Button className="mt-4" size="sm" onClick={onAdd}>
             <Plus aria-hidden="true" /> Add {singular}
           </Button>

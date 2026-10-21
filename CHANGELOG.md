@@ -89,6 +89,13 @@ a click.
   **Last report** for its digest. The others are short rows under **No reports yet**. Recent runs and
   "What each one never does" fold away, the Scheduled and Attended badges and Show prompt are gone, and
   the connect note shows only until a first run reports. Counts read number first ("12 found, 4 proposed").
+- **Fewer words on Career history, Base resumes, Templates, Referrals and the Assistant.** The page
+  subtitles are gone, and hints that repeated their label went. The rest of a section's explanation
+  sits behind a small info button beside its title (Drafts to review, Bullets, Notes, the Career
+  profile, Focus, Copy from), while a line you need before acting stays, such as "Never shown on a
+  resume" or "You can't undo this". An empty profile section shows **Add** instead of "No … added", a
+  group of similar bullets shows its match as a chip, and a template with errors shows a **Has errors**
+  chip.
 - **Select in the Agent inbox.** Checkboxes no longer sit on every To review row. A quiet **Select**
   button turns them on across Needs you, To review, Queued and History, with Select all per lane, and a
   click on a row picks it. The bar at the bottom offers Queue, Skip or **Delete** (new for many rows at

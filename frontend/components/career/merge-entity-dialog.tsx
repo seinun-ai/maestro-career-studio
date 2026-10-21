@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { finalFocusOn } from "@/lib/focus";
 import { ApiError, listKbEntities, mergeKbEntity } from "@/lib/api";
@@ -197,9 +198,7 @@ export function MergeEntityDialog({
             </div>
 
             {entities.isLoading ? (
-              <p className="text-muted-foreground rounded-corner-md bg-surface-container-low p-3 text-body-small">
-                Loading…
-              </p>
+              <Skeleton className="h-11 w-full" />
             ) : entities.error ? (
               <p role="alert" className="text-destructive text-body-small">
                 {couldnt("load your items", entities.error)}

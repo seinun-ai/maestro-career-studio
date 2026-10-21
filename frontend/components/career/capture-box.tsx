@@ -199,7 +199,7 @@ export function CaptureBox() {
             )}
           >
             <p id="career-capture-help" className="text-muted-foreground text-body-small">
-              Type a recent win or add a document. Nothing goes on a resume until you approve it.
+              Nothing goes on a resume until you approve it.
             </p>
             {open ? (
               <Button

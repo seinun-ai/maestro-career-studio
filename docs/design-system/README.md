@@ -14,7 +14,7 @@ Maestro Career Studio is a desktop web app for a job search: it tracks jobs, tai
 - **Plain words.** No abbreviations and no internals. Say "job description", never "JD"; "Career history", never "KB". A term that must stay (ATS) is explained once where it first appears.
 - **One word per thing, on every surface.** Jobs (the page), Add job, Save job, Agent inbox, Career history, item, bullet, Base resumes, Quick tailor, Create PDF, Update score, Hide / Show, Archive / Restore. Do not introduce a synonym.
 - **Sentence case everywhere**, including buttons, titles and group headings: "Import resumes and documents". No all-caps headings.
-- **Labels** are as short as they can be, with no trailing colon. **Hints** are one short sentence and carry what the label cannot (a consequence, a default, a constraint); delete a hint that restates the label.
+- **Labels** are as short as they can be, with no trailing colon. **Hints** are one short sentence and carry what the label cannot (a consequence, a default, a constraint); delete a hint that restates the label. A section's explanation that need not be seen before acting sits in a `HintTip` (an Info button beside the title, the sentence in its tooltip); a consequence stays a visible line.
 - **No placeholder in a blank field.** No example value, no instruction. The only exception is a short prompt in a search box: "Search company or role…".
 - **No em dash as a clause joiner.** Use two sentences or a colon. The dash stays for an empty cell and inside composed labels.
 - **Address the person as "you"; the app is not "we".** Say what happened and what to do: "Enter a number, such as 2."

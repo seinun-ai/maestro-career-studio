@@ -13,6 +13,7 @@ import { useFocusOnNextCommit, useOpenerReturn } from "@/hooks/use-focus-return"
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 
+import { HintTip } from "@/components/hint-tip";
 import { ResumeColorPicker } from "@/components/base-resumes/resume-color-picker";
 import { useRoleCategories } from "@/components/role-category-picker";
 import {
@@ -39,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ResumeTag } from "@/components/visual";
 import { apiFetch } from "@/lib/api";
@@ -510,14 +512,16 @@ function NewBaseResumeForm({
           <div className="grid gap-4 pt-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor={ids.name} optional={mode === "file"}>
-                  Name
-                </Label>
-                {mode === "file" ? (
-                  <p id={ids.nameHint} className="text-muted-foreground text-body-small">
-                    Defaults to the file name.
-                  </p>
-                ) : null}
+                <span className="flex items-center gap-1">
+                  <Label htmlFor={ids.name} optional={mode === "file"}>
+                    Name
+                  </Label>
+                  {mode === "file" ? (
+                    <HintTip label="About the name" id={ids.nameHint}>
+                      Defaults to the file name.
+                    </HintTip>
+                  ) : null}
+                </span>
                 <Input
                   aria-describedby={mode === "file" ? ids.nameHint : undefined}
                   id={ids.name}
@@ -572,11 +576,13 @@ function NewBaseResumeForm({
 
             <TabsContent value="kb" className="grid gap-4">
               <div className="grid gap-1.5">
-                <Label htmlFor={ids.instruction} optional>
-                  Focus
-                </Label>
+                <span className="flex items-center gap-1">
+                  <Label htmlFor={ids.instruction} optional>
+                    Focus
+                  </Label>
+                  <HintTip label="About focus">Guides which items are picked and the tone of the summary.</HintTip>
+                </span>
                 <p id={ids.instructionHint} className="text-muted-foreground text-body-small">
-                  Guides which items are picked and the tone of the summary.
                   Your bullets are never rewritten.
                 </p>
                 <Textarea
@@ -615,7 +621,7 @@ function NewBaseResumeForm({
               </div>
 
               {entities.isLoading ? (
-                <p className="text-muted-foreground text-body-medium">Loading your career history…</p>
+                <Skeleton className="h-24 w-full" />
               ) : selectable.length === 0 ? (
                 <p className="text-muted-foreground text-body-medium">
                   Nothing to pick yet. Import a resume into your career history
@@ -658,9 +664,6 @@ function NewBaseResumeForm({
                       </li>
                     ))}
                   </ul>
-                  <p className="text-muted-foreground text-body-small">
-                    Select any above to include it.
-                  </p>
                 </div>
               )}
 
@@ -688,7 +691,12 @@ function NewBaseResumeForm({
 
             <TabsContent value="existing" className="grid gap-4">
               <div className="grid gap-1.5">
-                <Label htmlFor={ids.source}>Copy from</Label>
+                <span className="flex items-center gap-1">
+                  <Label htmlFor={ids.source}>Copy from</Label>
+                  <HintTip label="About copying">
+                    Copies the whole document, including its template and formatting.
+                  </HintTip>
+                </span>
                 <Select
                   value={source}
                   onValueChange={(v) => selectSource(v as string)}
@@ -715,15 +723,17 @@ function NewBaseResumeForm({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-muted-foreground text-body-small">
-                  Copies the whole document, including its template and formatting.
-                </p>
               </div>
 
               {source && (
                 <div className="grid gap-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <Label htmlFor={ids.copyRole}>Target role</Label>
+                    <span className="flex items-center gap-1">
+                      <Label htmlFor={ids.copyRole}>Target role</Label>
+                      <HintTip label="About the target role">
+                        Copied from the original. Typing a name may suggest a new role.
+                      </HintTip>
+                    </span>
                     {nameMatchApplied && (
                       <Button
                         type="button"
@@ -745,10 +755,6 @@ function NewBaseResumeForm({
                     }}
                     roleCategories={roleCategories}
                   />
-                  <p className="text-muted-foreground text-body-small">
-                    Copied from the original. Typing a name may suggest a new
-                    role.
-                  </p>
                 </div>
               )}
             </TabsContent>
@@ -781,17 +787,11 @@ function NewBaseResumeForm({
                 </ul>
               )}
               <p className="text-muted-foreground text-body-small">
-                We&apos;ll turn the file into a resume you can edit. It won&apos;t be
-                added to your career history. You can add it later from the
-                resume.
+                It won&apos;t be added to your career history. You can add it later from the resume.
               </p>
             </TabsContent>
 
-            <TabsContent value="blank">
-              <p className="text-muted-foreground text-body-medium">
-                An empty document you fill in yourself.
-              </p>
-            </TabsContent>
+            <TabsContent value="blank" />
           </div>
         </Tabs>
 

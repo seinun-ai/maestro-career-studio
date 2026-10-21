@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { useConfirm } from "@/components/confirm-dialog";
 import { GroomDialog } from "@/components/career/groom-dialog";
 import { ActorChip, type ActorKind } from "@/components/visual/actor-chip";
+import { HintTip } from "@/components/hint-tip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -214,6 +215,7 @@ export function PointsList({
             <Badge variant="secondary">
               {visible.length}
             </Badge>
+            <HintTip label="About bullets">Approved bullets are ready to add to a resume.</HintTip>
           </CardTitle>
           {points.filter((p) => p.state !== "retired").length >= 2 ? (
             <CardAction>
@@ -222,17 +224,11 @@ export function PointsList({
               </Button>
             </CardAction>
           ) : null}
-          <p className="text-muted-foreground text-body-medium">
-            Approved bullets are ready to add to a resume.
-          </p>
         </CardHeader>
         <CardContent className="px-0">
           {ordered.length === 0 ? (
             <div className="mx-4 rounded-corner-md bg-surface-container-low px-5 py-8 text-center">
               <p className="text-title-small">No bullets yet</p>
-              <p className="text-muted-foreground mt-1 text-body-small">
-                Add an update or a document to start.
-              </p>
             </div>
           ) : (
             <div className="divide-y divide-foreground/10">

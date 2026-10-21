@@ -19,6 +19,7 @@ import { EditorShell } from "@/components/resume-editor/editor-shell";
 import { FullscreenEditorPage } from "@/components/resume-editor/fullscreen-editor-page";
 import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/icon-button";
+import { HintTip } from "@/components/hint-tip";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -360,10 +361,11 @@ export default function TemplateEditorPage() {
               }}
               collapsible={false}
             />
-            <p className="text-muted-foreground px-3 py-2 text-body-small">
-              Starting settings for resumes that use this template. Each resume
-              can change them.
-            </p>
+            <div className="flex justify-end px-3 py-2">
+              <HintTip label="About these settings">
+                Starting settings for resumes that use this template. Each resume can change them.
+              </HintTip>
+            </div>
           </TabsContent>
 
           <TabsContent
