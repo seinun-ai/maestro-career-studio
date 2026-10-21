@@ -78,7 +78,7 @@ def test_the_source_segments_read_tracked_yours_agents_on_jobs_only():
     assert 'allLabel = "All",' in _TOGGLE
     assert 'allLabel="Tracked"' in _TRACKER
     # Analytics' All is every application (no source filter), so it keeps the word.
-    analytics = _read("components/analytics/analytics-overview.tsx")
+    analytics = _read("app/analytics/page.tsx")
     assert "<SourceToggle value={source} onChange={setSource} />" in analytics
 
 

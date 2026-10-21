@@ -236,10 +236,13 @@ def test_a_day_reads_as_words_and_never_shifts():
     # the applied date or when the status began, lib/job-standing.ts `statusDate`), through the same formatter.
     assert "formatShortDate(dated.at)" in tracker
     assert ".slice(0, 10)" not in tracker
-    assert "tickFormatter={(value: string) => formatShortDate(value)}" in _read(
-        "components/analytics/activity-chart.tsx"
+    # Analytics' weekly bars tick "Aug 3" and say "Week of Aug 3" (chart-kit's weekTick and weekLabel).
+    weeks = _read("components/analytics/each-week-chart.tsx")
+    assert "tickFormatter={weekTick}" in weeks and "labelFormatter={weekLabel}" in weeks
+    assert 'export const weekTick = (value: unknown) => formatShortDate(String(value));' in _read(
+        "components/charts/chart-kit.tsx"
     )
-    assert "`Since ${formatShortDate(o.meta.since)}`" in _read("components/explore/explore-overview.tsx")
+    assert "` since ${formatShortDate(o.meta.since)}`" in _read("components/analytics/jobs-you-saved.tsx")
 
 
 def test_ats_keys_have_one_set_of_words():
@@ -272,8 +275,11 @@ def test_a_skip_reason_reads_as_words():
 
 def test_job_market_bars_and_filters_print_words():
     market = _read("components/explore/explore-overview.tsx")
-    for field in ("o.work_mode", "o.level_breakdown", "o.work_auth.opt", "o.work_auth.sponsorship"):
+    for field in ("o.level_breakdown", "o.work_auth.sponsorship"):
         assert f"toEnumBars({field})" in market, field
+    # Work mode moved to Jobs you saved (design refresh Task 5.2), in the same words; OPT left the page.
+    assert "label: humanizeEnum(r.key) ?? r.key" in _read("components/analytics/jobs-you-saved.tsx")
+    assert "o.work_auth.opt" not in market
     page = _read("app/analytics/page.tsx")
     assert '{filterSelect(`${panel}-level`, "Level", level, setLevel, options.levels, enumLabel)}' in page
     assert '"Employment type",' in page and "options.employment,\n        enumLabel," in page
@@ -286,7 +292,7 @@ def test_the_pipeline_card_says_the_cap_as_the_inbox_does():
 
 
 def test_autofill_coverage_names_field_kinds_in_words():
-    card = _read("components/analytics/autofill-coverage-card.tsx")
+    card = _read("components/settings/autofill-coverage-card.tsx")
     # The chart's rows carry the word (the tooltip reads it back); the table maps its own.
     assert "kind: kindLabel(kind.kind)," in card
     assert "{kindLabel(row.kind)}" in card

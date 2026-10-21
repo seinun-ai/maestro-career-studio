@@ -167,13 +167,18 @@ def test_saved_draws_its_check_where_saved_holds():
 
 def test_whole_numbers_roll_and_a_decimal_score_counts():
     """NumberRoll for a whole number that changes in place; useCountUp keeps the one decimal it runs (the Match
-    score). No stat tile counts up: StatTile values are words (components/analytics, rebuilt in Phase 5)."""
+    score, and Analytics' decimal tiles: applied per week and the score gain, design refresh Task 5.2). Analytics'
+    whole numbers (the funnel's counts, the tiles' days and counts) roll."""
     users = sorted(
         str(path.relative_to(_FRONTEND)) for path in _FRONTEND.glob("**/*.tsx")
         if "node_modules" not in path.parts and "useCountUp(" in path.read_text(encoding="utf-8")
     )
-    assert users == ["components/score-summary.tsx"], users
+    assert users == ["components/analytics/search-tiles.tsx", "components/score-summary.tsx"], users
     assert "const shownScore = useCountUp(score.composite);" in _src("components/score-summary.tsx")
+    tiles = _src("components/analytics/search-tiles.tsx")
+    assert "const shown = useCountUp(value);" in tiles
+    assert "<CountedDecimal value={summary.applied_per_week} />" in tiles and "<NumberRoll value={quiet.count} />" in tiles
+    assert "<NumberRoll value={row.count}" in _src("components/analytics/applications-funnel.tsx")
     assert "<NumberRoll value={count.value}" in _src("components/proposals/inbox-counts.tsx")
 
 

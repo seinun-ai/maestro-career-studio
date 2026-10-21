@@ -22,21 +22,24 @@ def _read(rel: str) -> str:
     return (_FRONTEND / rel).read_text(encoding="utf-8")
 
 
-def test_interview_rate_says_it_is_a_current_count():
-    # explore_activity: "currently at interview+ per submitted".
-    overview = _read("components/analytics/analytics-overview.tsx")
-    assert 'label="At interview or later"' in overview
-    assert ('`of your ${totals.submitted} ${totals.submitted === 1 ? "application is" : "applications are"}'
-            ' there now`') in overview
-    assert "Reached interviews" not in overview
+def test_the_interview_share_says_what_it_counts():
+    # The current-count tile ("At interview or later ... there now") went with the Overview tab (design refresh
+    # Task 5.2). The funnel reads the dated events (search_summary INTERVIEW_STATUSES: reached interviewing or
+    # later), so its words say "reached", and of what the share is.
+    counted = _read("components/analytics/how-counted.tsx")
+    assert '["Interview", "Reached an interview or later. Its share is of the applications that heard back."],' in counted
+    assert '["Offer", "Reached an offer. Its share is of the applications that reached an interview."],' in counted
+    lib = _read("lib/search-summary.ts")
+    assert 'label: "Interview",' in lib and 'unit: ["reply", "replies"],' in lib
 
 
-def test_interview_rate_reads_as_counts_below_the_minimum():
-    # Owner decision D7: below rates.MIN_RATE_N the server sends no rate, and the tile says "1 of 3".
-    overview = _read("components/analytics/analytics-overview.tsx")
-    assert f"const MIN_RATE_N = {rates.MIN_RATE_N};" in overview
-    assert "`${totals.interview_plus} of ${totals.submitted}`" in overview
-    assert "`Applications there now. A rate shows from ${MIN_RATE_N}.`" in overview
+def test_a_share_reads_as_counts_below_the_minimum():
+    # Owner decision D7: below rates.MIN_RATE_N the server sends no rate, and the share says "1 of 3".
+    words = _read("lib/rates.ts")
+    assert f"export const MIN_RATE_N = {rates.MIN_RATE_N};" in words
+    assert "return { value: `${r.count} of ${r.of}${noun}`, range: null };" in words
+    assert "return r.rate !== null && r.of >= MIN_RATE_N;" in words
+    assert "A rate shows from {summary.min_rate_n}" in _read("components/analytics/applications-funnel.tsx")
 
 
 def test_the_cap_line_says_one_window():
@@ -57,19 +60,26 @@ def test_job_market_captions_are_accurate():
     market = _read("components/explore/explore-overview.tsx")
     assert "Sorted from each job description into one of these levels." in market
     assert "As written in each job." not in market
-    assert '`${r.n} ${r.n === 1 ? "job" : "jobs"} with pay listed`' in market
+    # Yearly pay by role moved to Jobs you saved: each role counts its jobs that list pay, and the card says how
+    # many of all saved jobs list pay.
+    saved = _read("components/analytics/jobs-you-saved.tsx")
+    assert '{count(r.n, "job", "jobs")}' in saved
+    assert "{overview.meta.jobs_with_salary} of {overview.meta.total_jobs} list pay" in saved
 
 
 def test_job_market_money_has_one_format():
     market = _read("components/explore/explore-overview.tsx")
-    assert "const fmtK" not in market
-    assert 'formatPay({ min, max, currency: currency ?? null, period: null })?.primary ?? "—"' in market
-    # Yearly pay by role arrives in your home currency (plan Task 3.9): "≈" when any of a role's pay
-    # was converted, and no server-worded money ("$150K") anywhere on the page.
-    assert "value={homePay(r.avg_min, r.avg_max, o.pay_by_role.currency, r.converted_count > 0)}" in market
-    assert "${converted ? APPROX : \"\"}${text}" in market
-    assert "salary_by_role" not in market
-    assert "payRange(o.meta.salary_year_avg_min, o.meta.salary_year_avg_max, o.meta.salary_year_currency)" in market
+    saved = _read("components/analytics/jobs-you-saved.tsx")
+    for src in (market, saved):
+        assert "const fmtK" not in src
+        assert "salary_by_role" not in src
+    # Yearly pay by role arrives in your home currency (plan Task 3.9), worded by the one formatter: "≈" when any
+    # of a role's pay was converted, and no server-worded money ("$150K") anywhere on the page.
+    assert "formatPay({ min, max, currency: home, period: null }, { home })?.primary" in saved
+    assert "{homePay(r.avg_min, r.avg_max, pay.currency, r.converted_count > 0)}" in saved
+    assert "${converted ? APPROX : \"\"}${text}" in saved
+    # The average-pay tile (one mean, or "Mixed currencies") went: pay by role in one currency says it (Task 5.2).
+    assert "salary_year_avg" not in market and "salary_year_avg" not in saved
 
 
 def test_job_market_places_and_skills_read_as_words():
@@ -77,8 +87,10 @@ def test_job_market_places_and_skills_read_as_words():
     assert "label: placeName(r.key)" in market
     # Country keys are ISO codes, and a job naming no one country reads "Not stated".
     assert 'label: r.key === "unknown" ? "Not stated" : countryName(r.key),' in market
-    assert 'o.work_mode.find((r) => r.key === "on_site")' in market
-    assert "label: skillName(s.skill_name)" in market
+    # Work mode and the skills jobs ask for moved to Jobs you saved (Task 5.2): words, never the stored key.
+    saved = _read("components/analytics/jobs-you-saved.tsx")
+    assert "label: humanizeEnum(r.key) ?? r.key" in saved
+    assert "name={skillName(row.skill_name)}" in saved
     places = _read("lib/place-name.ts")
     assert 'CA: "California",' in places and '(no city)' in places
     assert not re.search(r"^import (?!type )", places, re.M)
@@ -124,7 +136,8 @@ def test_resume_fit_words():
     cards = _read("components/analytics/base-summary-cards.tsx")
     assert "Health not checked yet" in cards and "No health check" not in cards
     fit = _read("app/analytics/page.tsx")
-    assert "Weekly average match score.\n" in fit
+    # Card subtitles left Analytics (Task 5.2): the title says it, and the ATS lead explains the score once.
+    assert "<CardTitle>Match score over time</CardTitle>" in fit
     assert "(how an applicant tracking system" not in fit
 
 
@@ -134,6 +147,9 @@ def test_skill_gaps_say_one_thing_per_tier():
     assert "“Use the job description&apos;s wording when your experience backs it up”" in panel
 
 
-def test_the_job_market_opt_tile_explains_opt():
+def test_the_job_market_has_no_opt_tile():
+    # For everyone (design refresh Task 5.2): one country's student work permit left Analytics. The job page
+    # still explains it where a US job states it (job-extracted-fields.tsx).
     market = _read("components/explore/explore-overview.tsx")
-    assert 'label="OPT (US student work permit)"' in market
+    assert "OPT" not in market and "work_auth.opt" not in market
+    assert 'label="OPT (US student work permit) accepted"' in _read("components/job-extracted-fields.tsx")

@@ -1,6 +1,6 @@
 A stat tile shows one number with what it counts and what it is out of.
 
-**You provide:** a `label` (what is counted), a `value`, and an optional `sub` line that gives the denominator or the period.
+**You provide:** a `label` (what is counted), a `value`, and an optional `sub` line that gives the denominator or the period. Both take nodes: a whole number that changes in place rolls (`NumberRoll`), a decimal counts to its new value (`useCountUp`), and a share in the sub line reads through Analytics' `RateLabel` ("5 of 12" below 20).
 
 - An optional `icon` sits beside the label: only a glyph that already means that tile's thing. It is decorative; the label names it.
 - Optional children sit under the sub line: a graphic such as a `Sparkline`, which carries its own accessible name and is drawn at a fixed size that fits the tile.

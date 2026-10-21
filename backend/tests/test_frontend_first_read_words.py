@@ -57,17 +57,19 @@ def test_dates_read_as_words():
 
 
 def test_analytics_says_each_thing_once_in_one_format():
-    overview = _read("components/analytics/analytics-overview.tsx")
-    # One label for the Skill gaps destination, and no tag repeating the card's title.
-    assert overview.count("See all skill gaps <ArrowRight") == 2
-    assert "              Skill gaps <ArrowRight" not in overview
-    quick = overview[overview.index("Quick wins from your career history") :]
-    assert "In your career history" not in quick
-    market = _read("components/explore/explore-overview.tsx")
-    assert "<p className=\"text-foreground text-title-small\">{signalTitle(s.title, o)}</p>" in market
-    assert "return title.replace(`: ${place} (`, `: ${placeName(place)} (`);" in market
-    assert "return title.replace(`: ${skill} (`, `: ${skillName(skill)} (`);" in market
-    assert "accept OPT or STEM OPT (24 more months for science and tech degrees)" in market
+    saved = _read("components/analytics/jobs-you-saved.tsx")
+    # One label for the Skill gaps destination (now a fold on the one page, design refresh Task 5.2).
+    assert saved.count("See all skill gaps") == 1
+    assert 'title="Skill gaps"' in _read("app/analytics/page.tsx")
+    # The quick wins card merged into Most common gaps as a tag on the row, never the card's title again.
+    assert 'tag={row.status === "in_kb" ? "In your career history" : undefined}' in saved
+    assert "Quick wins" not in saved
+    # The server-worded signals ("Most common location: CA (12 jobs)") are not drawn: every one of them is a
+    # card of its own here (Top locations, Skills jobs ask for, Yearly pay by role, Work mode), said in words.
+    for rel in ("components/explore/explore-overview.tsx", "components/analytics/jobs-you-saved.tsx"):
+        src = _read(rel)
+        assert "signals" not in src and "signalTitle" not in src, rel
+        assert "OPT" not in src, rel
 
 
 def test_the_inbox_names_its_own_numbers():

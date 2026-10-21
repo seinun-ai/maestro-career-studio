@@ -241,19 +241,23 @@ def test_tracker_shows_scores_dots_and_chips():
     assert "ats_score?: number | null" in types and "best_ats_score?: number | null" in types
 
 
-def test_analytics_draws_status_mix_and_trend():
-    src = _read("components/analytics/analytics-overview.tsx")
-    assert "SegmentedBar" in src and "Sparkline" in src
-    assert 'name="Applications by status"' in src and "ScoreBar" in src
-    assert 'label="Applied per day, last 28 days"' in src
+def test_analytics_draws_its_split_and_its_trend():
+    """One page since design refresh Task 5.2: the funnel replaced the status mix, so the split bar is the saved
+    jobs' work mode (in series colours, never a status's) and the trend is applied per week."""
+    tiles = _read("components/analytics/search-tiles.tsx")
+    assert "<Sparkline values={weekly}" in tiles and 'label={`Applied each week: ${weekly.join(", ")}`}' in tiles
+    saved = _read("components/analytics/jobs-you-saved.tsx")
+    assert '<SegmentedBar name="Work mode" parts={parts}' in saved
     assert "bg-primary/10" not in _read("components/analytics/agent-pipeline-card.tsx")
     assert "bg-primary h-full rounded-full" in _read("components/analytics/agent-pipeline-card.tsx")
 
 
-def test_analytics_status_mix_waits_for_data_and_shares_the_status_tones():
-    src = _read("components/analytics/analytics-overview.tsx")
-    assert "{hasStatusMix ? (" in src and "activity.data != null" in src
-    assert "STATUS_TONES" in src and "const STATUS_TONES" not in src
+def test_analytics_numbers_wait_for_data_and_status_tones_stay_shared():
+    """Zeros read as real only once the data is in: the funnel and the tiles render only with a summary (the
+    skeleton before, the failure state on a failed read)."""
+    page = _read("app/analytics/page.tsx")
+    assert "summary.isLoading || !summary.data ? (" in page
+    assert page.index("summary.isLoading || !summary.data ? (") < page.index("<ApplicationsFunnel summary={summary.data} />")
     chip = _read("components/status-chip.tsx")
     assert "export const STATUS_TONES" in chip and 'accepted: "success"' in chip
 

@@ -583,8 +583,9 @@ def _trigger(tabs: str) -> str:
     return tabs[tabs.index("function TabsTrigger") : tabs.index("function TabsContent")]
 
 
-# Pages whose panels stay mounted without `TabsContent`: the job page's steps (components/job-steps.tsx).
-_MOUNTED_PANEL_PAGES = ("app/jobs/[id]/page.tsx",)
+# Pages whose panels stay mounted without `TabsContent`: the job page's steps (components/job-steps.tsx) and
+# Analytics' folds (a closed Fold is `hidden`, still mounted).
+_MOUNTED_PANEL_PAGES = ("app/jobs/[id]/page.tsx", "app/analytics/page.tsx")
 
 
 def _tab_sources():
@@ -605,7 +606,8 @@ def test_every_tab_list_is_the_line_style():
             assert not re.search(r"(?<![\w-])(?:flex-wrap|h-auto|rounded[\w-]*|bg-[\w/-]+|p-\d[\w.]*)(?![\w-])", tag), (
                 f"{rel}:{number}: the line row takes no fill, padding, corner or wrap"
             )
-    assert seen >= 11, seen  # the scan found the call sites (the job page's tab row became its steps)
+    # The scan found the call sites (the job page's tab row became its steps, Analytics became one page).
+    assert seen >= 10, seen
 
 
 def test_every_tab_panel_stays_mounted():
@@ -626,7 +628,7 @@ def test_every_tab_panel_stays_mounted():
 def test_a_page_with_tab_panels_never_repeats_a_literal_control_id():
     """Every panel stays mounted, so a control id written as a literal in two places is two elements
     with one id, and a `<Label htmlFor>` resolves to the first (a hidden panel's) and leaves the
-    visible control unnamed. Analytics' filter row, shown in three panels, prefixes each id with its tab.
+    visible control unnamed. Analytics' filter row, shown in three folds, prefixes each id with its fold.
     Only literal ids are seen: an id passed as an argument, built in a template, or set by a shared
     component rendered in two panels is not, so the Analytics asserts below guard that case by name."""
     hits = []
@@ -640,9 +642,9 @@ def test_a_page_with_tab_panels_never_repeats_a_literal_control_id():
         hits += [f"{rel}: id=\"{name}\" x{n}" for name, n in seen.items() if n > 1]
     assert not hits, "a literal id repeats where several panels are mounted:\n" + "\n".join(hits)
     analytics = _read("app/analytics/page.tsx")
-    assert "const filterRow = (panel: TabValue) =>" in analytics
+    assert "const filterRow = (panel: FilterPanel) =>" in analytics
     assert 'filterSelect(`${panel}-level`' in analytics and '"role_category",' not in analytics
-    assert [m for m in re.findall(r"\{filterRow\(\"(\w+)\"\)\}", analytics)] == ["market", "fit", "gaps"]
+    assert [m for m in re.findall(r"\{filterRow\(\"(\w+)\"\)\}", analytics)] == ["fit", "gaps", "market"]
 
 
 def test_a_section_tab_count_is_a_plain_number_not_a_badge():

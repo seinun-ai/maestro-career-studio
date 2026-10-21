@@ -734,8 +734,8 @@ def test_the_inbox_explains_mcp_and_the_skill_once():
         ("components/resume-step.tsx", '"It replaces any tailored draft (Version history keeps it) " +'),
         (_GAP_PAGE, "Your changes here won&apos;t be saved."),
         (_GAP_PAGE, "You can review and undo each change afterward."),
-        ("components/analytics/autofill-coverage-card.tsx", ", including which sites they were on and when.`"),
-        ("components/analytics/autofill-coverage-card.tsx", '" You can\'t undo this." +'),
+        ("components/settings/autofill-coverage-card.tsx", ", including which sites they were on and when.`"),
+        ("components/settings/autofill-coverage-card.tsx", '" You can\'t undo this." +'),
         ("components/application-panel.tsx", "This deletes its tailored resume, answers and PDF. The job stays saved."),
         ("components/qa-tab.tsx", "A new letter replaces the saved one, including any edits you made to it."),
         ("components/resume-step.tsx", "and closes any open proposal in your Agent inbox for this job."),
@@ -746,7 +746,7 @@ def test_a_safety_sentence_survives(rel: str, sentence: str):
 
 
 def test_the_searchable_list_kind_keeps_its_own_word():
-    card = _read("components/analytics/autofill-coverage-card.tsx")
+    card = _read("components/settings/autofill-coverage-card.tsx")
     assert 'combobox: "Searchable list",' in card
     kinds = re.findall(r'^\s+[a-z]+: "([A-Z][a-z ]+)",', card, re.M)
     assert len(kinds) == len(set(kinds))  # two kinds under one word read as a repeat
@@ -774,7 +774,10 @@ def _title_cased(name: str) -> list[str]:
         "components/tailored-resume-step.tsx",
         "components/qa-tab.tsx",
         "app/analytics/page.tsx",
-        "components/analytics/analytics-overview.tsx",
+        "components/analytics/applications-funnel.tsx",
+        "components/analytics/search-tiles.tsx",
+        "components/analytics/jobs-you-saved.tsx",
+        "components/analytics/how-counted.tsx",
         "components/job-knockout-card.tsx",
     ],
 )

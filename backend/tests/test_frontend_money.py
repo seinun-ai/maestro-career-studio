@@ -34,7 +34,7 @@ def test_pay_displays_use_the_one_formatter_with_no_usd_default():
     assert "function formatMoney" not in fields and "function formatSalary" not in fields
     assert '"USD"' not in fields
     for rel in ("components/job-extracted-fields.tsx", "app/jobs/[id]/page.tsx",
-                "components/explore/explore-overview.tsx"):
+                "components/analytics/jobs-you-saved.tsx"):
         src = _read(rel)
         assert "formatSalary" not in src, rel
         assert re.search(r"\bformatPay\(", src), rel

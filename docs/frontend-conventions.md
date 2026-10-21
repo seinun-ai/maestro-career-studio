@@ -894,9 +894,10 @@
   (pinned). Every panel stays mounted: `TabsContent` defaults `keepMounted`, so a
   panel mounts at load and none unmounts on a switch (unsaved text and leave-guard
   registrations survive a hidden tab, a deep link has its target; pinned). The accepted cost is that
-  hidden panels load up front (Analytics' queries, the template editor's Monaco, the chat scope
-  picker's career history), and that anything repeated across panels exists once per panel: give a
-  shared control's id a per-panel prefix (Analytics' filter row), or its label names the wrong one.
+  hidden panels load up front (the template editor's Monaco, the chat scope picker's career history, and
+  Analytics' folds, which stay mounted the same way), and that anything repeated across panels exists once
+  per panel: give a shared control's id a per-panel prefix (Analytics' filter row, one per fold), or its
+  label names the wrong one.
   **Tabs are one style, the line tabs** (`docs/design-system/components/Tabs`): a 40px
   full-width row with a hairline under it, `title-small` labels, `foreground` when current and
   `muted-foreground` otherwise, and a 2px `primary` underline inside the current tab (inside it,
@@ -1814,10 +1815,32 @@
 - **Analytics** (was "Explore"): route `/analytics` (there is no `/explore` route; the
   charts live in `components/charts/` and `components/analytics/`;
   the API prefix stays `/api/explore` and the seven MCP-wrapped chart endpoints
-  keep their paths). Four `?tab=` deep-linkable tabs: Overview (KPI tiles,
-  activity, pipeline chips, teasers), Job market, Resume fit, Skill gaps
-  (ONE **Skill gaps** card — `components/analytics/gap-tiers-panel.tsx`;
-  gap-frequency chart and build-areas panel are merged into it). Salary
+  keep their paths). **One page, no tabs.** The header holds the period control (`PeriodToggle`: 4 weeks,
+  12 weeks or All, `lib/search-summary.ts` `PERIODS`, 12 by default) and the source toggle; both scope the
+  applications only, and every summary read sends `weeks` and `source`, All included (`summaryPath`).
+  **Lead**: "Where your applications went" (`applications-funnel.tsx`), a `LeadCard` of Applied, Heard back,
+  Interview and Offer, each bar on Applied's scale, each share of the row above, and the two rule chips.
+  **Also**: four tiles (`search-tiles.tsx`: applied per week with a sparkline, time to hear back with its
+  middle half, no reply after 30 days, score gain), **Each week** (applied `chart-1`, replies `chart-2`, an
+  `sr-only` table of the bars, a caption counting undated replies) and **By resume** (a `ResumeTag` per row).
+  **Jobs you saved** (`jobs-you-saved.tsx`, every saved job, no filter): yearly pay by role as range bars in
+  the home currency, with chips for what was converted, the hidden roles and the jobs left out; work mode
+  as a `SegmentedBar` in series tones fixed per mode; the skills jobs ask for (the top 5 seen in more than
+  one job, then a button naming the rest that opens Market in detail); most common gaps (one card from
+  `/build-areas`: wording rows left out, "In your career history" on an `in_kb` row, and See all skill gaps
+  opens that fold). **Folded**: Match scores in detail; Skill gaps (ONE panel,
+  `components/analytics/gap-tiers-panel.tsx`; the gap-frequency chart and build-areas panel are merged
+  into it); Market in detail (`explore-overview.tsx` `MarketDetail`: roles, level, places, countries and
+  work authorization, then every skill, skills by role and roles over time); Agent pipeline (only once an
+  agent found a job); How these are counted. The first three folds each carry the job filter row, its ids
+  prefixed with the fold. **Every share renders through `RateLabel`** (`components/analytics/rate-label.tsx`
+  over `lib/rates.ts` `rateWords`): a percent with its Wilson range in brackets from `MIN_RATE_N` (20) in
+  its denominator, "5 of 12" below it (even if a rate arrives), "—" with nothing to count; no other
+  Analytics file reads a share's `rate`, `low` or `high`. Whole numbers roll (`NumberRoll`), decimals count
+  (`useCountUp`). Not on Analytics: OPT (one country's student work permit), the Autofill coverage card
+  (Settings › Advanced › Diagnostics, D6), a quick wins card, page and card subtitles, the server-worded
+  `signals` and an average-pay tile. No payload breaks work authorization down per country you apply in,
+  so it reads for one country through the Country filter. Pinned by `test_frontend_analytics_page.py`. Salary
   aggregates on `/api/explore/overview` are currency-aware: filter by `country`
   / `salary_currency`; yearly means are suppressed when multiple currencies are
   in scope (`salary_mixed_currencies`), with `salary_by_currency` rows instead of a blended mean.
@@ -1829,8 +1852,8 @@
   `jobs_with_salary` / `jobs_without_salary` — omitting pay is ordinary, not a
   gap. Endpoints: `/api/explore/activity` (drafted=created_at vs
   submitted=applied_at, day|week buckets; `interview_rate` is null below 20 submitted,
-  `services/rates.py` `MIN_RATE_N`, and the tile reads "1 of 3" from `interview_plus` of `submitted`),
-  `/search-summary?weeks=12|N|all&source=all|user|agent` (`services/search_summary.py`, read from the dated
+  `services/rates.py` `MIN_RATE_N`; MCP reads it, the web app reads `/search-summary`),
+  `/search-summary?weeks=4|12|N|all&source=all|user|agent` (`services/search_summary.py`, read from the dated
   status events: a backfilled event counts for status, never for timing; the window is N Monday-based UTC weeks
   including this one, or since the first application sent; every share is `rates.rate`, `{count, of, rate, low,
   high}` with `rate`/`low`/`high` null below 20 in `of` and a Wilson 95% range from 20: `heard_back` of
@@ -1843,9 +1866,7 @@
   hold), `/base-summaries`, `/build-areas`
   (gap frequency re-keyed on the engine's canonical skill form, classified
   against career history evidence as missing | in_kb | ported — the ONE analytics
-  surface that reads career history, read-only; tailoring still never does). Overview also
-  carries the **Autofill coverage** card (`autofill-coverage-card.tsx`, key
-  `["autofill-telemetry-summary"]`) fed by `/api/autofill/telemetry/summary`.
+  surface that reads career history, read-only; tailoring still never does).
   Chart conventions: `--chart-1..6` are a categorical palette in OKLCH
   (separate light/dark steps near one lightness, no red or green series, each
   3:1 on `--card`; `test_frontend_color_roles.py` computes it);
@@ -1905,7 +1926,7 @@
   whole JD sentence, rankable as neither demand nor a KB key), and share
   `_is_hygiene_wording` and BOTH skip hygiene occurrences — one predicate, so
   the two surfaces cannot drift into a one-click-apart contradiction
-  (Overview's teaser reads `gap_frequency`, the Gaps tab reads `build_areas`).
+  (chat and MCP read `gap_frequency`, Analytics' gaps card and Skill gaps fold read `build_areas`).
   A skill whose every occurrence is hygiene emits NO `gap_frequency` row.
   Nonzero `potential_points` on a hygiene row is not a bug: `_potential_points`
   measures headroom to the DUAL-placement ceiling — exactly why the skip is a
@@ -1933,11 +1954,11 @@
   `mirror_wording` switch is on). Hygiene already matches at `match_credit >=
   1.0` — mirroring buys recruiter Boolean search, zero composite; the
   `adds_credit` sibling earns real credit and stays effective. Frontend:
-  `tierOf()` maps any UNRECOGNIZED `tier` to `surface`, and Overview's quick
-  wins filter `tier !== "wording"`, never `=== "surface"` — a Docker backend
+  `tierOf()` maps any UNRECOGNIZED `tier` to `surface`, and the Most common
+  gaps card filters `tier !== "wording"`, never `=== "surface"` — a Docker backend
   predating the field returns rows with no `tier`, and the strict reading would
   claim "No true skill gaps" over real ones. `/api/explore/gap-frequency`
-  SURVIVED the panel merge (chat, MCP and the Overview teaser still call it) —
+  SURVIVED the panel merge (chat and MCP still call it) —
   only its chart COMPONENT was deleted.
 
 ## Visual encodings

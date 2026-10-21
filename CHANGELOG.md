@@ -155,6 +155,15 @@ a click.
   exchange rate it says **Can't compare** instead of passing or warning. Job preferences' Minimum
   salary is a number a year with a currency, your home one unless you pick another; an earlier answer
   that was a number reads as one, and other text stays as you wrote it.
+- **Analytics is one page.** The tabs are gone. A period (4 weeks, 12 weeks or All) and All / Yours /
+  Agents sit at the top, and the page leads with where your applications went: applied, heard back,
+  interview and offer. A rate shows once there are 20 to count from, with its likely range in brackets;
+  below that it reads "5 of 12". Under it: applications per week, time to hear back, no reply after 30
+  days, the score gain from tailoring, each week's applications and replies, and each resume's results.
+  **Jobs you saved** shows yearly pay by role in your home currency, the work-mode split, the five skills
+  jobs ask for most and your most common gaps (the quick wins card is now a tag on a gap row). Match
+  scores, skill gaps, the market in detail, the agent pipeline and how everything is counted fold away
+  below. The OPT tile, the average pay tile and the Autofill coverage card left Analytics.
 - **Pay by role in your currency.** Analytics' Yearly pay by role shows every role's range in your home
   currency, "≈" where pay was converted, with a line naming the currencies converted and the rate's
   date. A role with fewer than 5 jobs that list pay is hidden and counted, and jobs whose currency has
@@ -177,6 +186,7 @@ a click.
   your own AI server, AI instructions, Quick tailor and Hours per year. Nothing was removed, and a link
   to an old tab opens the tab and card it moved to. While recommended models are on, Advanced's model
   pickers show them and can't be changed.
+- **Autofill coverage is under Settings › Advanced › Diagnostics**, unchanged, with its Clear data.
 
 ### Fixed
 

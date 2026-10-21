@@ -25,7 +25,8 @@ _HEATMAP = "components/charts/heatmap-chart.tsx"
 _LIFT = "components/charts/tailoring-lift-chart.tsx"
 _OVERVIEW = "components/explore/explore-overview.tsx"
 _GAPS = "components/analytics/gap-tiers-panel.tsx"
-_OVERVIEW_TAB = "components/analytics/analytics-overview.tsx"
+_SAVED = "components/analytics/jobs-you-saved.tsx"
+_TILES = "components/analytics/search-tiles.tsx"
 _PICKER = "components/role-category-picker.tsx"
 _CHIP = "components/status-chip.tsx"
 _CAREER = "app/career/page.tsx"
@@ -53,12 +54,15 @@ _PRESENT = {
     "fit-datakey": (_FIT, "dataKey={row.base_resume}"),
     # Role text comes from the catalog label, never the slug.
     "heatmap-label": (_HEATMAP, "{label(role)}"),
-    "overview-salary-label": (_OVERVIEW, "{label(r.role_category)}"),
+    # Yearly pay by role moved to Jobs you saved (design refresh Task 5.2); its role still reads as the label.
+    "saved-salary-label": (_SAVED, "const name = label(r.role_category);"),
     "overview-mix-label": (_OVERVIEW, "label: label(row.key),"),
     "lift-label": (_LIFT, "role: label(r.role_category),"),
-    # Overview's score gain follows the All / Yours / Agents toggle above it.
-    "overview-lift-source-key": (_OVERVIEW_TAB, "employment_type: null }, source],"),
-    "overview-lift-source-param": (_OVERVIEW_TAB, "apiFetch<TailoringLiftRow[]>(`/api/explore/tailoring-lift?${params}`)"),
+    # The score gain follows the All / Yours / Agents toggle: it is the search summary's, which the page asks for
+    # with the toggle's source (Task 5.2; it was its own tailoring-lift read on the Overview tab).
+    "summary-source-param": ("lib/search-summary.ts", "new URLSearchParams({ weeks: period, source })"),
+    "page-summary-source": ("app/analytics/page.tsx", "summaryPath(period, source)"),
+    "tiles-score-gain": (_TILES, "const gain = summary.score_gain;"),
     # The Skill-gaps panel renders the server's words.
     "gaps-server-label": (_GAPS, "row.category_label ?? null"),
     # Label fallback while the catalog loads or fails: the acronym-safe humanizer.
@@ -78,6 +82,7 @@ _ABSENT = {
     "heatmap-raw-role": (_HEATMAP, r"^\s*\{role\}$"),
     "heatmap-raw-title": (_HEATMAP, r"· \$\{role\}"),
     "overview-raw-role": (_OVERVIEW, r"^\s*\{r\.role_category\}$"),
+    "saved-raw-role": (_SAVED, r"^\s*\{r\.role_category\}$"),
     "gaps-local-map": (_GAPS, "CATEGORY_LABEL"),
     "resume-acronym-map": ("lib/types.ts", "SLUG_ACRONYMS"),
     "career-profile-tab": (_CAREER, ">Profile<"),
@@ -95,7 +100,7 @@ def test_source_pin_absent(rel, pattern):
     assert not re.search(pattern, _read(rel), re.M)
 
 
-_ROLE_LABEL_USERS = (_HEATMAP, _OVERVIEW, _LIFT, _ATS, _MIX, "app/analytics/page.tsx")
+_ROLE_LABEL_USERS = (_HEATMAP, _OVERVIEW, _SAVED, _LIFT, _ATS, _MIX, "app/analytics/page.tsx")
 
 
 @pytest.mark.parametrize("rel", _ROLE_LABEL_USERS)

@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { StatTile } from "@/components/analytics/stat-tile";
 
 import { humanizeEnum } from "@/components/job-extracted-fields";
 import { LoadErrorState } from "@/components/load-error-state";
@@ -9,16 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
-import { formatShortDate } from "@/lib/format-date";
-import { APPROX, formatPay } from "@/lib/money";
 import { countryName, placeName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
-import { skillName } from "@/lib/skill-name";
-import type { ExploreCountRow, ExploreOverview, ExplorePayByRole } from "@/lib/types";
+import type { ExploreCountRow, ExploreOverview } from "@/lib/types";
 import { LowSampleCaption } from "@/components/explore/low-sample-hint";
 import { useRoleLabel } from "@/components/role-category-picker";
 
-type Filters = {
+export type OverviewFilters = {
   role_category?: string | null;
   level?: string | null;
   employment_type?: string | null;
@@ -26,7 +22,7 @@ type Filters = {
   salary_currency?: string | null;
 };
 
-function buildPath(filters: Filters): string {
+function buildPath(filters: OverviewFilters): string {
   const p = new URLSearchParams();
   if (filters.role_category) p.set("role_category", filters.role_category);
   if (filters.level) p.set("level", filters.level);
@@ -39,62 +35,14 @@ function buildPath(filters: Filters): string {
   return `/api/explore/overview${qs ? `?${qs}` : ""}`;
 }
 
-const pct = (n: number, total: number) =>
-  total > 0 ? Math.round((n / total) * 100) : 0;
-
-/**
- * A signal in the words the charts below use. The server names the top location by its key ("CA") and
- * the top skill as stored ("python"), `explore_overview.candidate_signals`; this page has the tables
- * that say them (placeName, skillName), so "Most common location: California" beside "California".
- */
-function signalTitle(title: string, o: ExploreOverview): string {
-  const place = o.locations[0]?.key;
-  const skill = o.top_required_skills[0]?.skill_name;
-  if (place && title.startsWith("Most common location: ")) {
-    return title.replace(`: ${place} (`, `: ${placeName(place)} (`);
-  }
-  if (skill && title.startsWith("Most required skill: ")) {
-    return title.replace(`: ${skill} (`, `: ${skillName(skill)} (`);
-  }
-  return title;
+/** The saved jobs' overview. Jobs you saved reads it with no filter, Market in detail with the fold's filters: with
+ * none set the two share one cache entry. */
+export function useExploreOverview(filters: OverviewFilters) {
+  return useQuery({
+    queryKey: ["explore-overview", filters],
+    queryFn: () => apiFetch<ExploreOverview>(buildPath(filters)),
+  });
 }
-/** Pay the way the job header shows it ("$171K–$214K", "£70K–£90K"): one money format. */
-const payRange = (min: number | null, max: number | null, currency?: string | null) =>
-  formatPay({ min, max, currency: currency ?? null, period: null })?.primary ?? "—";
-
-/** Pay already in your home currency (`pay_by_role`): its narrow symbol, and "≈" when any of it was converted. */
-const homePay = (min: number | null, max: number | null, home: string, converted: boolean) => {
-  const text = formatPay({ min, max, currency: home, period: null }, { home })?.primary;
-  return text ? `${converted ? APPROX : ""}${text}` : "—";
-};
-
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-/** "9 GBP and 7 USD jobs converted, ECB rate of Oct 19." and what was left out, under the pay card's title. */
-function payNotes(pay: ExplorePayByRole): string[] {
-  const notes: string[] = [];
-  if (pay.converted_count > 0 && pay.rate_date) {
-    const parts = pay.posted_currencies.map((c) => `${c.count} ${c.key}`);
-    const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
-    notes.push(
-      `${list} ${pay.converted_count === 1 ? "job" : "jobs"} converted, ECB rate of ${formatShortDate(pay.rate_date)}.`,
-    );
-  }
-  if (pay.hidden_roles.length > 0) {
-    notes.push(`${count(pay.hidden_roles.length, "role", "roles")} hidden: under ${pay.min_jobs} jobs.`);
-  }
-  if (pay.unconverted > 0) {
-    notes.push(`${count(pay.unconverted, "job", "jobs")} left out: no exchange rate.`);
-  }
-  return notes;
-}
-
-/** A pay signal's figure, worded here: the server sends the number and the currency (lib/money.ts). */
-function signalPay(s: ExploreOverview["signals"][number]): string | null {
-  if (s.amount == null || !s.currency) return null;
-  return homePay(null, s.amount, s.currency, Boolean(s.converted));
-}
-
 
 function BarList({
   rows,
@@ -141,15 +89,17 @@ const toCountryBars = (rows: ExploreCountRow[]) =>
     label: r.key === "unknown" ? "Not stated" : countryName(r.key),
     count: r.count,
   }));
-/** Bars whose keys are stored enums (`onsite`, `stem_opt_ok`): words, never the key. */
+/** Bars whose keys are stored enums (`senior`, `no_sponsorship`): words, never the key. */
 const toEnumBars = (rows: ExploreCountRow[]) =>
   rows.map((r) => ({ label: humanizeEnum(r.key) ?? r.key, count: r.count }));
 
-export function ExploreOverview({ filters }: { filters: Filters }) {
-  const q = useQuery({
-    queryKey: ["explore-overview", filters],
-    queryFn: () => apiFetch<ExploreOverview>(buildPath(filters)),
-  });
+/**
+ * Market in detail: the saved jobs by role, level, place, country and work authorization, under the fold's own
+ * filter row. Work authorization is the jobs' stated sponsorship terms; there is no payload per country you apply
+ * in, so the Country filter is how it reads for one country.
+ */
+export function MarketDetail({ filters }: { filters: OverviewFilters }) {
+  const q = useExploreOverview(filters);
   const label = useRoleLabel();
 
   // Before the loading gate: a retry with no data is "pending" again, and the
@@ -181,70 +131,9 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
       </p>
     );
 
-  const onsite = o.work_mode.find((r) => r.key === "on_site")?.count ?? 0;
-  const optAccept =
-    (o.work_auth.opt.find((r) => r.key === "yes")?.count ?? 0) +
-    (o.work_auth.opt.find((r) => r.key === "stem_opt_ok")?.count ?? 0);
-  const salaryAvg =
-    !o.meta.salary_mixed_currencies &&
-    o.meta.salary_year_avg_min != null &&
-    o.meta.salary_year_avg_max != null
-      ? payRange(o.meta.salary_year_avg_min, o.meta.salary_year_avg_max, o.meta.salary_year_currency)
-      : o.meta.salary_mixed_currencies
-        ? "Mixed currencies"
-        : "—";
-  const salarySub = o.meta.salary_mixed_currencies
-    ? "Filter by currency"
-    : o.meta.jobs_with_salary
-      ? `${o.meta.jobs_with_salary} list pay · ${o.meta.jobs_without_salary} don't`
-      : "Yearly pay only";
-
   return (
     <div className="flex flex-col gap-4">
       <LowSampleCaption n={total} lowSample={total < 5} unit="jobs" />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatTile
-          label="Jobs"
-          value={String(total)}
-          sub={o.meta.since ? `Since ${formatShortDate(o.meta.since)}` : undefined}
-        />
-        <StatTile
-          label="Roles"
-          value={String(o.meta.role_category_count)}
-        />
-        <StatTile
-          label="On-site"
-          value={`${pct(onsite, total)}%`}
-          sub={`${onsite} of ${total}`}
-        />
-        <StatTile
-          label="Average yearly pay"
-          value={salaryAvg}
-          sub={salarySub}
-        />
-        <StatTile
-          // OPT spelled out where the tab first shows it.
-          label="OPT (US student work permit)"
-          value={`${pct(optAccept, total)}%`}
-          // The one place the tab says it (the server's OPT signal is gone), with STEM OPT explained.
-          sub={`${optAccept} of ${total} accept OPT or STEM OPT (24 more months for science and tech degrees)`}
-        />
-      </div>
-
-      {o.signals.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {o.signals.map((s, i) => (
-            <div key={i} className="bg-surface-container-low rounded-corner-md px-3 py-2">
-              <p className="text-foreground text-title-small">{signalTitle(s.title, o)}</p>
-              <p className="text-muted-foreground mt-0.5 text-body-small">
-                {signalPay(s) ? <span className="text-foreground">{`${signalPay(s)}. `}</span> : null}
-                {s.detail}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -258,30 +147,6 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
               }))}
               empty="No data"
             />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Top required skills</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <BarList
-              rows={o.top_required_skills.map((s) => ({
-                label: skillName(s.skill_name),
-                count: s.n,
-              }))}
-              empty="No required skills found"
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Work mode</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <BarList rows={toEnumBars(o.work_mode)} empty="No data" />
           </CardContent>
         </Card>
 
@@ -323,50 +188,10 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>OPT and sponsorship</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div>
-              <p className="text-muted-foreground mb-1 text-body-small">OPT accepted</p>
-              <BarList rows={toEnumBars(o.work_auth.opt)} empty="No data" />
-            </div>
-            <div>
-              <p className="text-muted-foreground mb-1 text-body-small">
-                Work authorization
-              </p>
-              <BarList rows={toEnumBars(o.work_auth.sponsorship)} empty="No data" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Yearly pay by role</CardTitle>
-            {payNotes(o.pay_by_role).map((note) => (
-              <p key={note} className="text-muted-foreground text-body-small">
-                {note}
-              </p>
-            ))}
+            <CardTitle>Work authorization</CardTitle>
           </CardHeader>
           <CardContent>
-            {o.pay_by_role.roles.length === 0 ? (
-              <p className="text-muted-foreground text-body-medium">
-                {o.pay_by_role.hidden_roles.length > 0
-                  ? `No role has ${o.pay_by_role.min_jobs} jobs that list pay yet.`
-                  : "No pay data yet. Most jobs don't list pay."}
-              </p>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">
-                {o.pay_by_role.roles.map((r) => (
-                  <StatTile
-                    key={r.role_category}
-                    label={label(r.role_category)}
-                    value={homePay(r.avg_min, r.avg_max, o.pay_by_role.currency, r.converted_count > 0)}
-                    sub={`${r.n} ${r.n === 1 ? "job" : "jobs"} with pay listed`}
-                  />
-                ))}
-              </div>
-            )}
+            <BarList rows={toEnumBars(o.work_auth.sponsorship)} empty="No data" />
           </CardContent>
         </Card>
       </div>

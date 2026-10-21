@@ -25,8 +25,9 @@ export function StatTile({
   className,
 }: {
   label: string;
-  value: string;
-  sub?: string;
+  /** Words or a number; a whole number that changes in place rolls (`NumberRoll`), a decimal counts (`useCountUp`). */
+  value: ReactNode;
+  sub?: ReactNode;
   /** A glyph that already means this tile's thing, beside the label. Decorative: the label names it. */
   icon?: ReactNode;
   /** A graphic under the sub line (a Sparkline); it carries its own accessible name. */

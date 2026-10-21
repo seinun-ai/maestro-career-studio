@@ -12,15 +12,15 @@ import { cn } from "@/lib/utils";
 /**
  * "Applications per day: 2 of 10 used in the last 24 hours" under the Agent inbox subtitle: the one number from the old
  * funnel strip that bears on triage, because each submit a connected agent
- * makes takes a slot. The whole funnel lives in Analytics › Overview (Agent
- * pipeline) on the same query.
+ * makes takes a slot. The whole funnel lives in Analytics' Agent pipeline fold
+ * on the same query.
  *
  * The window is the backend's rolling 24 hours (services/proposals.cap_status),
  * so the line says "the last 24 hours", never "today"; "Applications per day"
  * is the setting's name (Settings › Connected agents). While loading it shows nothing, which claims
  * nothing. A failed first load is its own state, a retry chip, never a silent
  * blank (docs/frontend-conventions.md, "A failed fetch is a THIRD state").
- * Analytics' Agent pipeline card shows the same line, so both say it one way. The inbox passes
+ * Analytics' Agent pipeline fold shows the same line, so both say it one way. The inbox passes
  * `onlyNearLimit`: there it shows from 80 percent of the limit, Analytics always.
  */
 export function CapToday({ className, onlyNearLimit = false }: { className?: string; onlyNearLimit?: boolean }) {
