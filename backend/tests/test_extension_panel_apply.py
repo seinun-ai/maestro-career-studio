@@ -1362,7 +1362,8 @@ def test_the_job_step_says_how_apply_is_set_with_a_link_to_the_switches(tmp_path
         shot = _apply(tmp_path, api=api)["shots"][0]
         [line] = [one for one in _by_class(shot["regions"]["rail"], "sub") if words in one["text"]]
         [link] = [one for one in line["children"] if one["tag"] == "A"]
-        assert link["href"] == "http://localhost:3000/settings#form-filling"
+        # Settings › Companion's How the Companion applies card holds the switches (design refresh Task 7.3).
+        assert link["href"] == "http://localhost:3000/settings#companion-apply"
         assert link["attrs"]["aria-label"] == "Change in Settings (opens in a new tab)"
         assert PROMISE in _text(shot["regions"]["rail"])
 
@@ -1388,7 +1389,7 @@ def test_when_apply_waits_for_the_pick_the_line_says_why_instead_of_promising_to
     [line] = [one for one in _by_class(shot["regions"]["rail"], "mode")]
     assert words in _text(line)
     [link] = [one for one in line["children"] if one["tag"] == "A"]
-    assert link["href"] == "http://localhost:3000/settings#form-filling"
+    assert link["href"] == "http://localhost:3000/settings#companion-apply"
 
 
 @pytest.mark.parametrize("ai,ds", [(73, 73), (73.4, 72.6)], ids=["tie", "tie-as-shown"])

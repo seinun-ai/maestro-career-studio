@@ -60,7 +60,7 @@ STATUS_CHIP_WORDS = {
     "rejected": "Skipped", "expired": "Expired",
 }
 
-COMPANY_BLOCKED = "This company is on your Companies to skip list in Settings › Connected agents"
+COMPANY_BLOCKED = "This company is on your Companies to skip list in Settings › Agent apps"
 
 
 def not_allowed_message(status: str) -> str:

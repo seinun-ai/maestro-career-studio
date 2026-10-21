@@ -218,7 +218,7 @@
   `latex-render-path` / `texlive-layer`.
 - **QAEntry**: per-application Q&A / cover letter rows (+ PDFs).
 - **Model settings** (`services/model_settings.py`, `services/llm_capabilities.py`; on screen Settings ›
-  AI & models, roles Fast, Smart, Assistant and Reasoning): the catalog is seeds ∪ extras (`MODEL_OPTIONS` ∪
+  Basics › AI model and Advanced › Model per job, roles Fast, Smart, Assistant and Reasoning): the catalog is seeds ∪ extras (`MODEL_OPTIONS` ∪
   `llm.extra_models`); `GET /api/settings/openai` returns the merge, and deleting an id a role still uses is
   400. Four provider keys (`API_KEY_SETTINGS`: openai, gemini, anthropic, openrouter) are patched per provider
   by PUT (`set_api_keys`, only the ones sent; role ids are validated first, so a 400 saves no key); an env
@@ -232,12 +232,14 @@
   An OpenAI key sent to your own server has no set, nor does OpenRouter (the catalog lists none of its
   models); `tests/test_model_settings.py` holds every id to the catalog and its provider. Your own picks
   (`own_models`) are never written by it: they answer again once it is off, a `PUT /api/settings/openai`
-  that sends no role writes them back (never the set), and they stay "in use" for the catalog.
+  that sends no role writes them back (never the set), and they stay "in use" for the catalog. On screen,
+  Basics › AI model's switch and Change provider write it, and while it is on Advanced › Model per job shows
+  the set read-only (a pick there would be stored as your own while the role still answered the set).
   Capabilities are probed on Test and stored per model; `require()` blocks only on a stored No, so an
   unprobed model passes (the Assistant is gated on tools this way). JSON mode is capability-gated:
   `response_format=json_object` goes out only when `llm._json_mode_supported()` (other servers may hard-400
   on the field), and `llm._extract_json_object` salvages fenced JSON.
-- **Form-filling engines (`/choose`)**: two engines, `fast` and `jev` (`llm.autofill_engine`, Settings › AI & models › **Form filling**,
+- **Form-filling engines (`/choose`)**: two engines, `fast` and `jev` (`llm.autofill_engine`, Settings › Companion › **Form-filling engine**,
   `GET/PUT /api/settings/jev` + `/jev/probe`; `jev` only while a Jev key exists; a new endpoint HOST
   forgets the key, which is never sent to another company). `fast` is the batched prompt SYSTEM.md §7 (Guided
   fill) describes. `jev`
@@ -407,7 +409,7 @@
   persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
   import-first message.
 - **Resumes folder** (`services/resumes_folder.py`, `folder_opener.py`, `folder_picker.py`, `routers/resumes_folder.py`; on screen
-  Settings › Tailoring › **Resumes folder**; invariant: SYSTEM.md §6 inv-resumes-folder-one-way): a visible copy of each finished PDF.
+  Settings › Basics › **Resume PDFs**; invariant: SYSTEM.md §6 inv-resumes-folder-one-way): a visible copy of each finished PDF.
   - **Where**: `<Documents>/Maestro Career Studio/Applications/<Company> – <Job title> (<YYYY-MM-DD>)/` holds the tailored resume PDF and any
     cover-letter PDF. Documents is `~/Documents` on macOS, the real (possibly OneDrive-redirected) Documents folder on Windows and
     `XDG_DOCUMENTS_DIR` on Linux (`home.documents_dir`). A folder name is OS-safe, capped in characters and in 200 UTF-8 bytes, chosen
@@ -457,7 +459,7 @@
   dismissible and recomputed from existing data (the `FirstRunImportCard`
   doctrine). Its service uses non-mutating `peek_*` reads, so a status request
   never lazy-seeds a Setting row or file mirror. The steps span three surfaces
-  — `model_key` → Settings' AI & models tab (`#api-keys`), `import_resumes` →
+  — `model_key` → Settings' Basics tab (`#api-keys`, the AI model card), `import_resumes` →
   `/career`, autofill/job-preferences/persona → Profile's Autofill and About you
   tabs, `template` → `/templates` (the template step's detail names the default
   as `default_template_name`); a link into Settings or Profile goes through
@@ -1008,18 +1010,18 @@
   switch. Only PUT `/api/settings/full-automation` with `{value: bool}` writes
   the switch; `StrictBool` rejects strings/numbers. Both writers take the SQLite
   write lock before reading the stored value. `get_job_search_brief` reports it
-  in `auto_apply.full_automation`. Settings › Connected agents has the
+  in `auto_apply.full_automation`. Settings › Agent apps has the
   **Auto-apply** card (deprecated `cooldown_days` hidden but preserved on save;
   the model is extra=forbid) and a **Full automation** card whose On switch
   asks for confirmation. Turning it Off refuses auto consent and login hand-offs.
   **The Companion's Apply switches**: the `Setting("companion_apply")` row (`services/companion_apply.py`, `JsonSetting`; local JSON at
   `settings/companion_apply.json`, mirrored and carried in the synced profile bundle) is `{auto_pick: true, stop_each_step: false, think_when_stuck: true}`, all `StrictBool`.
-  `GET`/`PUT /api/settings/companion-apply` (a SettingEnvelope); a blob that will not parse reads as the defaults. Settings › AI & models › Form
-  filling shows them as **Choose the base resume for me**, **Stop after each step** and **Think when stuck**; the panel reads them on bind and obeys them only
+  `GET`/`PUT /api/settings/companion-apply` (a SettingEnvelope); a blob that will not parse reads as the defaults. Settings › Companion › How the
+  Companion applies shows them as **Choose the base resume for me**, **Stop after each step** and **Think when stuck**; the panel reads them on bind and obeys them only
   with full automation On (`extension/INTERNALS.md`, "The switches"; the route checks full automation and Think when stuck itself). The pick limits are Auto-apply's `auto_pick_floor` and `auto_pick_margin`.
   **The reasoning step** (`routers/autofill.py` `POST /api/autofill/reason`, `services/autofill_reason.py`, `services/contact_scan.py`, schemas `autofill_reason.py`;
   `extension/INTERNALS.md`, "The reasoning step"): the Companion's exact origin only (403 otherwise). A value-free page snapshot in; the Reasoning model
-  (`llm.reasoning_model`, Settings › AI & models, any catalog model; unset it is the provider's strong model: `claude-sonnet-5-5`, `gpt-6.1-sol`, else the smart model)
+  (`llm.reasoning_model`, Settings › Advanced › Model per job, any catalog model; unset it is the provider's strong model: `claude-sonnet-5-5`, `gpt-6.1-sol`, else the smart model)
   answers 1 to 3 actions from a closed list, which `check` validates in code (allowed list per stuck reason, every id in the snapshot, the protected list, failed
   signatures, the Careful level) before the extension sees them; any failure becomes `ask_user` with its codes in `rejected`. With full automation or Think when
   stuck off the route asks the user and calls no model (`switched_off`). Page text is wrapped, datamarked and stripped of invisible Unicode; the model's note is
@@ -1098,7 +1100,7 @@
   `report_failure(reason="submission_uncertain")`, never a retry. Runs record
   `automation="apply-session"`; Maestro sets neither order nor schedule.
 
-  **Job-site login**: Settings › Connected agents shows the login editor while
+  **Job-site login**: Settings › Agent apps' Job-site login card shows the editor while
   full automation is On. `settings/secrets/job-site-login.json` is a local
   cleartext file, mode 0600 in a 0700 directory, never DB, exports, telemetry
   or logs. Writes serialize read/update/replace under a lock and use a unique

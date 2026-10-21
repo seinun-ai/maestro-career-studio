@@ -22,12 +22,14 @@ def source():
 
 
 def test_full_automation_is_mounted_after_the_connected_agents_card():
+    """Agent apps' limits follow the explainer; the job-site login is in accounts and copies, after them."""
     page = (_FRONTEND / "app/settings/page.tsx").read_text()
     assert "<FullAutomationSection />" in page
     assert page.index("<ConnectedAgentsCard />") < page.index("<FullAutomationSection />")
-    assert page.index("<FullAutomationSection />") < page.index("<McpWorkflowSection />")
-    tabs = (_FRONTEND / "lib/settings-tabs.ts").read_text()
-    assert 'anchors: ["connected-agents", "connect-assistant", "full-automation",' in tabs
+    assert page.index("<FullAutomationSection />") < page.index("<JobSiteLoginCard />")
+    assert page.index("<JobSiteLoginCard />") < page.index("<McpWorkflowSection />")
+    tabs = " ".join((_FRONTEND / "lib/settings-tabs.ts").read_text().split())
+    assert '"connect-assistant", "connected-agents", "full-automation", "auto-apply", "job-site-login",' in tabs
 
 
 def test_the_card_explains_what_the_switch_allows(source):
@@ -65,7 +67,11 @@ def test_the_switch_preserves_the_latest_whole_settings_value(source):
 
 
 def test_login_is_shown_only_while_on_and_uses_the_committed_routes(source):
+    # Its own card (Task 7.3), reading the switch's setting: the editor mounts only while it is on.
+    assert '<SettingCard\n      id="job-site-login"\n      title="Job-site login"' in source
     assert "initial.full_automation && <JobSiteLoginSection />" in source
+    assert "{(data) => <JobSiteLoginGate initial={data.value} />}" in source
+    assert "<JobSiteLoginSection />" not in source[source.index("function FullAutomationControls(") : source.index("export function JobSiteLoginCard(")]
     assert "hidden={!enabled}" not in source
     assert "Job-site login" in source
     assert '"/api/settings/job-site-login"' in source

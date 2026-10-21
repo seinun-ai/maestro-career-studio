@@ -43,8 +43,11 @@ _MODEL_LIB = _read("lib/model-catalog.ts")
 
 
 def test_models_catalog_and_endpoint_are_three_cards():
-    # Mutants: the catalog or the endpoint folded back into the Models card.
-    assert 'id="models"' in _MODELS and 'id="api-keys"' in _MODELS
+    # Mutants: the catalog or the endpoint folded back into the Models card. The API keys are the AI
+    # model card's (Settings › Basics, design refresh Task 7.3), its id unchanged for every "add a key" link.
+    assert 'id="models"' in _MODELS and 'id="api-keys"' not in _MODELS
+    assert re.search(r'<SettingCard\s+id="api-keys"', _read("components/settings/ai-model-section.tsx"))
+    assert "<ApiKeysEditor data={info} inUse={keysInUse(info)} />" in _read("components/settings/ai-model-section.tsx")
     # `<SettingCardAction` also starts with "<SettingCard", so the shell is matched with its id.
     assert re.search(r'<SettingCard\s+id="model-catalog"', _CATALOG)
     assert re.search(r'<SettingCard\s+id="custom-endpoint"', _ENDPOINT)
@@ -202,10 +205,14 @@ def test_a_role_picker_keeps_focus_while_its_pick_saves():
     # Wave-1 browser pass: every pick disabled all three pickers while it saved, and the trigger the
     # list closed onto dropped focus to <body> (RolePicker's rule: readOnly, not disabled).
     picker = _slice(_MODELS, "function ModelSelect(", "\n}\n")
-    assert "<Select value={value} onValueChange={onChange} readOnly={saving}>" in picker
+    assert "<Select value={value} onValueChange={onChange} readOnly={readOnly}>" in picker
     assert "disabled={" not in picker.replace("<SelectItem value={value} disabled>", "")
     free = _slice(_MODELS, "function FreeTextModel(", "\n}\n")
-    assert "readOnly={saving}" in free and "disabled=" not in free
+    assert "readOnly={readOnly}" in free and "disabled=" not in free
+    # Read-only while a pick saves, and while the recommended set answers the role (Task 7.3's pick:
+    # the set shows read-only, so a pick never jumps back to it).
+    assert "readOnly={saving || locked}" in _slice(_MODELS, "function RoleModel(", "\n}\n")
+    assert "locked={set !== null}" in _MODELS and "const set = followsSet(recommended.data);" in _MODELS
     keys = _slice(_MODELS, "function KeyField(", "\n}\n")
     assert "readOnly={saving}" in keys and "disabled=" not in keys
     endpoint = _slice(_ENDPOINT, "function EndpointControls(", "\n}\n")
@@ -391,8 +398,14 @@ def test_switch_rows_and_about_rows_share_their_geometry():
     assert '<div className="flex min-h-11 items-center justify-between">' in row
     # The label fills the row (height, width and the gap), so a tap anywhere on it toggles.
     assert '<Label htmlFor={htmlFor} className="flex-1 self-stretch py-1.5 pr-4">' in row
-    for rel in ("quick-tailor-section.tsx", "mcp-workflow-section.tsx", "appearance-section.tsx"):
+    for rel in ("quick-tailor-section.tsx", "mcp-workflow-section.tsx", "money-section.tsx", "ai-model-section.tsx"):
         assert "<SwitchRow" in _read(f"components/settings/{rel}"), rel
+    # Appearance is three choices now (Light, Dark, Like my computer): one segmented row, never a switch.
+    appearance = _read("components/settings/appearance-section.tsx")
+    assert "<SegmentedChoice" in appearance and "<Switch" not in appearance
+    segments = _slice(layout, "export function SegmentedChoice<", "\n}\n")
+    assert "aria-pressed={value === option.value}" in segments
+    assert '{value === option.value && <Check className="size-3" aria-hidden="true" />}' in segments
     about = _read("components/settings/about-section.tsx")
     assert '<dl className="divide-y">' in about and "wrap-anywhere" in about
 
@@ -505,6 +518,9 @@ def test_a_header_action_renders_nowhere_until_the_slot_exists():
 # --- The low-stakes switch (fill-engine plan Task 9) -----------------------------
 
 _AUTOFILL = _read("components/settings/autofill-section.tsx")
+# The screening-answer setting moved to Settings › Companion with the agreement switch (owner
+# decision D10, design refresh Task 7.3); the pins below follow it there.
+_FILL = _read("components/settings/companion-fill-section.tsx")
 
 
 def _flat(text: str) -> str:
@@ -512,9 +528,11 @@ def _flat(text: str) -> str:
 
 
 def test_the_screening_answers_dial_sits_below_the_agreement_switch():
-    boxes = _slice(_AUTOFILL, "function CompanionPermissions(", "\n}\n")
-    assert boxes.index('id="consent-forms"') < boxes.index("<ScreeningAnswers />")
-    dial = _slice(_AUTOFILL, "function ScreeningAnswers(", "\n}\n")
+    editor = _slice(_FILL, "function CompanionFillEditor(", "\n}\n")
+    assert editor.index("<CompanionPermissions") < editor.index("<ScreeningAnswers />")
+    assert 'id="consent-forms"' in _slice(_FILL, "function CompanionPermissions(", "\n}\n")
+    assert "ScreeningAnswers" not in _AUTOFILL and 'id="consent-forms"' not in _AUTOFILL
+    dial = _slice(_FILL, "function ScreeningAnswers(", "\n}\n")
     assert "<Label id={labelId}>Screening answers</Label>" in dial
     assert "aria-labelledby={labelId}" in dial and "aria-describedby={hintId}" in dial
     # Nothing is picked until the server says so, and never trusted from here: /map, /pick and /step read
@@ -523,7 +541,7 @@ def test_the_screening_answers_dial_sits_below_the_agreement_switch():
 
 
 def test_the_screening_answers_dial_reads_and_writes_its_own_setting():
-    dial = _slice(_AUTOFILL, "function ScreeningAnswers(", "\n}\n")
+    dial = _slice(_FILL, "function ScreeningAnswers(", "\n}\n")
     assert 'queryKey: ["settings", "autofill-options"]' in dial
     assert 'apiFetch<AutofillOptions>("/api/settings/autofill-options")' in dial
     assert 'method: "PUT"' in dial and "body: JSON.stringify(value)" in dial
@@ -538,9 +556,9 @@ def test_the_screening_answers_dial_reads_and_writes_its_own_setting():
 def test_the_screening_answers_dial_replaces_the_low_stakes_switch():
     """The API carries `answer_level` now (a `low_stakes` body is a 422), so the card is a radio group
     of three levels, each with its one line, and the protected list is said under it."""
-    src = _read("components/settings/autofill-section.tsx")
+    src = _FILL
     types = _read("lib/types.ts")
-    assert "low_stakes" not in src and "LowStakes" not in src
+    assert "low_stakes" not in src + _AUTOFILL and "LowStakes" not in src + _AUTOFILL
     assert 'answer_level: "facts" | "history" | "queued";' in types
     dial = _slice(src, "function ScreeningAnswers() {", "\n}\n")
     flat = " ".join(dial.split())
@@ -567,7 +585,7 @@ def test_the_screening_answers_dial_replaces_the_low_stakes_switch():
 
 def test_each_level_is_named_by_its_label_and_described_by_its_lines():
     """The radio's name was its label plus the whole description; the label span names it and the lines describe it."""
-    dial = _slice(_AUTOFILL, "function ScreeningAnswers(", "\n}\n")
+    dial = _slice(_FILL, "function ScreeningAnswers(", "\n}\n")
     assert "aria-labelledby={`${optionId}-${level.value}-label`}" in dial
     assert "aria-describedby={`${optionId}-${level.value}-lines`}" in dial
     assert "id={`${optionId}-${level.value}-label`}" in dial
@@ -577,8 +595,7 @@ def test_each_level_is_named_by_its_label_and_described_by_its_lines():
 def test_the_screening_answers_save_is_not_scoped():
     """A scoped TanStack mutation queues as paused in a hidden tab and never runs (SYSTEM.md section 12);
     saves are ordered by `inOrder` instead, and a second pick is not dropped while the first is in flight."""
-    src = _read("components/settings/autofill-section.tsx")
-    dial = _slice(src, "function ScreeningAnswers() {", "\n}\n")
+    dial = _slice(_FILL, "function ScreeningAnswers() {", "\n}\n")
     assert "scope" not in dial
     assert 'inOrder("autofill-options"' in dial
     assert "useSingleFlight" not in dial

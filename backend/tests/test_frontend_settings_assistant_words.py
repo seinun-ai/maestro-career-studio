@@ -33,6 +33,9 @@ def _between(src: str, start: str, end: str) -> str:
 
 
 _AUTOFILL = _read("components/settings/autofill-section.tsx")
+# The agreement switch and the screening-answer setting are Settings › Companion's (owner decision
+# D10, design refresh Task 7.3); the diversity switch stays in Profile beside its answers.
+_FILL = _read("components/settings/companion-fill-section.tsx")
 # The Companion clicks Next only during a queued run (Companion queued run, Phase 2); Submit never.
 PROMISE = "It never submits. Only during a run of your queued jobs does it move to the next page."
 _CHAT = _read("components/chat/chat-page.tsx")
@@ -57,7 +60,9 @@ def test_each_consent_switch_announces_itself():
     diversity = _between(_AUTOFILL, "const setEeoConsentEnabled = ", "\n  };")
     assert '"The Companion can now answer diversity questions"' in diversity
     assert '"The Companion won\'t answer diversity questions"' in diversity
-    boxes = _between(_AUTOFILL, "const setConsentFormsEnabled = ", "\n  };")
+    # The agreement switch has its own mutation now, in its own card, and it toasts per call too.
+    assert "toast.success(" not in _between(_FILL, "const saveConsent = useMutation({", "\n  });")
+    boxes = _between(_FILL, "const setConsentFormsEnabled = ", "\n  };")
     assert '"The Companion can now fill agreements and signatures"' in boxes
     assert '"The Companion won\'t fill agreements and signatures"' in boxes
 
@@ -68,15 +73,18 @@ def test_the_consent_words_keep_every_promise():
     2026-09-26 the agreement permission unlocks every field (signatures
     included), so no promise says a signature is never filled."""
     flat = _flat(_AUTOFILL.replace('"\n          + "', ""))
+    fill = _flat(_FILL.replace('"\n          + "', ""))
     for promise in (
         "It never guesses and never uses AI for these.",
         "Tax-credit questions stay with you, and this doesn't cover signatures or legal statements.",
-        PROMISE,
-        "Check every form before you submit it.",
         "Let the Companion answer the voluntary diversity questions?",
     ):
         assert promise in flat, promise
-    assert flat.count("You can turn this off anytime.") == 2
+    for promise in (PROMISE, "Check every form before you submit it."):
+        assert promise in fill, promise
+    # One per consent confirm: the diversity one in Profile, the agreement one in Settings › Companion.
+    assert flat.count("You can turn this off anytime.") == 1
+    assert fill.count("You can turn this off anytime.") == 1
     # "Decline the rest": it fills only the questions still unanswered (D10.17).
     assert "Decline the rest" in _AUTOFILL and "Decline all" not in _AUTOFILL
 
@@ -226,7 +234,7 @@ def test_the_agreement_box_consent_lists_what_it_unlocks():
     """C1: `consent_forms` unlocks every field the label policy refuses
     (extension/shared/policy.js): every CONSENT_FORMS family AND the
     signatures, initials and typed-name attestations of NEVER_FILLED."""
-    flat = _joined(_AUTOFILL)
+    flat = _joined(_FILL)
     assert (
         "With this on, the Companion can fill every field on an application form, "
         "including terms, acknowledgements, certifications, arbitration and waivers, "
@@ -248,7 +256,7 @@ def test_the_agreement_box_consent_lists_what_it_unlocks():
 def test_the_consent_switches_keep_their_promises():
     """M3, M4: each switch's hint keeps what it never does."""
     flat = _joined(_AUTOFILL)
-    assert PROMISE in flat
+    assert PROMISE in _joined(_FILL) and PROMISE not in flat
     assert "next page and never submits" not in flat and "next page or submits" not in flat
     assert "Tax-credit questions are always yours to fill." in flat
     assert "signatures are always yours" not in flat
@@ -281,30 +289,31 @@ def test_decline_the_rest_fills_only_blank_answers():
 def test_turning_a_switch_off_keeps_the_agreement_time():
     """M20: a yes is stamped by the server (null sent); a no keeps the stamp it had."""
     assert "acknowledged_at: enabled ? null : consent.acknowledged_at," in _AUTOFILL
-    assert "acknowledged_at: consentForms ? null : consent.acknowledged_at," in _AUTOFILL
+    assert "acknowledged_at: consentForms ? null : consent.acknowledged_at," in _FILL
 
 
 def test_a_consent_opens_on_cancel():
     """Enter must never grant a standing permission: both consent confirms open on Cancel."""
     dialog = _read("components/confirm-dialog.tsx")
     assert "initialFocus={opts?.destructive || opts?.consent ? cancelRef : confirmRef}" in dialog
-    for name in ("setEeoConsentEnabled", "setConsentFormsEnabled"):
-        body = _between(_AUTOFILL, f"const {name} = ", "\n  };")
+    for name, src in (("setEeoConsentEnabled", _AUTOFILL), ("setConsentFormsEnabled", _FILL)):
+        body = _between(src, f"const {name} = ", "\n  };")
         assert "consent: true," in body, name
         assert 'confirmLabel: "Allow",' in body, name
 
 
-def test_the_agreement_box_switch_has_its_own_box():
-    """It governs every application form, not the diversity answers it sat among."""
-    flat = _joined(_AUTOFILL)
-    assert "Companion permissions </p>" in flat
-    # Rendered first in the editor, above Personal details.
-    editor = _between(_AUTOFILL, "function AutofillEditor(", "\nfunction AgreedOn(")
-    assert editor.index("<CompanionPermissions") < editor.index("{GROUPS.map((group) => {")
-    boxes = _between(_AUTOFILL, "function CompanionPermissions(", "\n}\n")
-    assert 'id="consent-forms"' in boxes and 'id="eeo-standing-consent"' not in boxes
+def test_the_agreement_box_switch_has_its_own_card():
+    """It governs every application form, not the diversity answers it sat among: it is Settings ›
+    Companion's first card now (D10), and the diversity switch stays in Profile beside its answers."""
+    page = _read("app/settings/page.tsx")
+    companion = page[page.index("companion: (") : page.index("agents: (")]
+    assert companion.index("<CompanionFillSection />") < companion.index("<CompanionApplySection />")
+    assert 'title="What the Companion may fill"' in _FILL
+    boxes = _between(_FILL, "function CompanionPermissions(", "\n}\n")
+    assert 'id="consent-forms"' in boxes and 'id="eeo-standing-consent"' not in _FILL
+    assert 'id="consent-forms"' not in _AUTOFILL and "setConsentFormsEnabled" not in _AUTOFILL
     eeo = _between(_AUTOFILL, '{group.key === "eeo" && (\n            // A permission, not a field.', "</CardSection>")
-    assert 'id="consent-forms"' not in eeo
+    assert 'id="eeo-standing-consent"' in eeo
 
 
 def test_fill_from_career_history_says_why_it_waits():
@@ -323,7 +332,7 @@ def test_sentences_say_the_companion():
     """Planner decision 20: "the Companion" in a sentence, bare "Companion" only in a label."""
     for rel, sentence in (
         ("components/settings/autofill-section.tsx", 'description="The Companion uses these to fill job applications."'),
-        ("components/settings/autofill-section.tsx", 'title: "Let the Companion fill agreements and signatures?",'),
+        ("components/settings/companion-fill-section.tsx", 'title: "Let the Companion fill agreements and signatures?",'),
         ("components/settings/prompts-section.tsx", '"How the Companion picks answers for form choices."'),
         ("components/settings/connected-agents-card.tsx", "The Companion, the Maestro CS browser extension, saves jobs"),
     ):
@@ -400,8 +409,8 @@ def test_a_model_test_names_the_model_and_the_real_cause():
     # No custom server: the provider's key is the only thing to check.
     assert "`Couldn't reach ${provider}, so ${name} wasn't tested. Check your ${provider} API key, then try again.`" in unreachable
     assert "`Couldn't reach your AI server, so ${name} wasn't tested. Check the server address, then try again.`" in unreachable
-    # A custom local server needs no key.
-    assert 'description="Lets the app use OpenAI, Claude, Gemini or OpenRouter. You need one unless you use a custom AI server."' in models
+    # A custom local server needs no key (said while no key is in use, above the four fields).
+    assert "Lets the app use OpenAI, Claude, Gemini or OpenRouter. You need one unless you use a custom AI server." in models
     assert "You need at least one." not in models
 
 
@@ -783,7 +792,7 @@ def test_an_agreement_from_an_older_policy_asks_again():
     with `consent_forms_lapsed` (backend/app/services/eeo_consent.py). The box
     shows the switch as served and says why it is off, and the switch reads
     both its hint and that note."""
-    boxes = _between(_AUTOFILL, "function CompanionPermissions(", "\n}\n")
+    boxes = _between(_FILL, "function CompanionPermissions(", "\n}\n")
     assert "checked={consent.consent_forms}" in boxes
     note = _between(boxes, "{consent.consent_forms_lapsed ? (", ") : null}")
     assert "<p id={lapsedId}" in note
@@ -803,8 +812,8 @@ def test_an_agreement_yes_names_the_policy_it_agreed_to():
     yes says so instead of claiming the permission is on."""
     from app.schemas.eeo_consent import CURRENT_POLICY_VERSION
 
-    assert f'const AGREEMENT_POLICY = "{CURRENT_POLICY_VERSION}";' in _AUTOFILL
-    agree = _between(_AUTOFILL, "const setConsentFormsEnabled = ", "\n  };")
+    assert f'const AGREEMENT_POLICY = "{CURRENT_POLICY_VERSION}";' in _FILL
+    agree = _between(_FILL, "const setConsentFormsEnabled = ", "\n  };")
     assert "acknowledged_at: consentForms ? null : consent.acknowledged_at," in agree
     assert "agreed_policy: consentForms ? AGREEMENT_POLICY : undefined," in agree
     assert "} else if (result.value.consent_forms) {" in agree
@@ -812,4 +821,4 @@ def test_an_agreement_yes_names_the_policy_it_agreed_to():
     types = _read("lib/types.ts")
     update = _between(types, "export interface EeoConsentUpdate extends EeoConsent {", "\n}")
     assert "agreed_policy?: string;" in update
-    assert "mutationFn: (value: EeoConsentUpdate) =>" in _AUTOFILL
+    assert "mutationFn: (value: EeoConsentUpdate) =>" in _AUTOFILL and "mutationFn: (value: EeoConsentUpdate) =>" in _FILL

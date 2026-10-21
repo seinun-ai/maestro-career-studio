@@ -56,7 +56,7 @@ at to your local Maestro CS app.
   here** and it carries on from there. If you are on the job's tab and the run waits in another one, the Job step offers
   **Move the run to this tab**; a run that is filling never moves.
   On a known application site that asks you to sign in, the run signs in with
-  your saved job-site login (Settings › Connected agents › Job-site login), once.
+  your saved job-site login (Settings › Agent apps › Job-site login), once.
   On a known application site that asks you to make an account, the run makes it
   with the same login, once, and waits up to 20 seconds for the site
   to finish before it says "Account not created" (see below). While a run is working the
@@ -74,9 +74,9 @@ at to your local Maestro CS app.
   as answered for you. On a one-page form (Submit on the same page, no Next) it works the fields only and
   presses nothing there. It never presses Submit, never presses Next on a page it did not fill,
   and never answers work authorization, sponsorship, salary, demographic, background-history, signature
-  or licence questions, or a fact your profile does not have. Settings › AI & models ›
-  Form filling has the **Think when stuck** switch (on by default; it needs full automation
-  on and **Stop after each step** off), and **Reasoning model** sits with the other models. By
+  or licence questions, or a fact your profile does not have. Settings › Companion ›
+  How the Companion applies has the **Think when stuck** switch (on by default; it needs full automation
+  on and **Stop after each step** off), and **Reasoning model** sits with the other models (Settings › Advanced). By
   default it is the strong model of your provider, which costs a few cents a round. Claude Haiku 5.5
   and GPT-6 Luna are listed as cheaper choices. With the fill log on, each round and the page it saw are
   recorded, so `backend/scripts/eval_reason.py` can compare models on the same pages.

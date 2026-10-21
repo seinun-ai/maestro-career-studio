@@ -1,10 +1,11 @@
 "use client";
 
 import type { MouseEventHandler, ReactNode } from "react";
-import { Trash2 } from "lucide-react";
+import { Check, Trash2 } from "lucide-react";
 
 import { IconButton } from "@/components/icon-button";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 /**
  * The one vertical rhythm of a settings or profile card (docs/frontend-conventions.md, "Settings
@@ -37,6 +38,56 @@ export function SwitchRow({
         {label}
       </Label>
       {children}
+    </div>
+  );
+}
+
+/**
+ * A two- or three-way choice as one row of pills (docs/design-system/components/SegmentedToggle, the
+ * `source-toggle.tsx` look): the picked one is `secondary-container` with a leading Check and
+ * `aria-pressed`, since the tonal fill alone is too faint to say "on". Nothing is pressed while
+ * `value` is unknown (the theme before hydration). Named by `labelledBy`, else `label`.
+ */
+export function SegmentedChoice<T extends string>({
+  label,
+  labelledBy,
+  describedBy,
+  value,
+  options,
+  onChange,
+}: {
+  label?: string;
+  labelledBy?: string;
+  describedBy?: string;
+  value: T | undefined;
+  options: readonly { value: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={labelledBy ? undefined : label}
+      aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
+      className="inline-flex h-8 items-center justify-self-start rounded-full border p-0.5"
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "inline-flex h-7 cursor-pointer items-center gap-1 rounded-full px-3 text-label-medium transition-colors duration-150",
+            value === option.value
+              ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
+              : "text-muted-foreground hover:bg-muted",
+          )}
+        >
+          {value === option.value && <Check className="size-3" aria-hidden="true" />}
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }

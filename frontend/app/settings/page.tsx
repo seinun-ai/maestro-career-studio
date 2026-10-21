@@ -1,21 +1,20 @@
 "use client";
 
 import { use } from "react";
-import { BookOpen } from "lucide-react";
 
-import { NewTabCue } from "@/components/new-tab-link";
 import { AboutSection } from "@/components/settings/about-section";
+import { AiModelSection } from "@/components/settings/ai-model-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { AutoApplySection } from "@/components/settings/auto-apply-section";
+import { CompanionFillSection } from "@/components/settings/companion-fill-section";
 import { ConnectedAgentsCard } from "@/components/settings/connected-agents-card";
 import { ConnectAssistantCard } from "@/components/settings/connect-assistant-card";
-import { FormFillingSection } from "@/components/settings/form-filling-section";
-import { FullAutomationSection } from "@/components/settings/full-automation-section";
+import { CompanionApplySection, FormFillingSection } from "@/components/settings/form-filling-section";
+import { FullAutomationSection, JobSiteLoginCard } from "@/components/settings/full-automation-section";
 import { McpWorkflowSection } from "@/components/settings/mcp-workflow-section";
-import {
-  ApiKeysSection,
-  ModelsSection,
-} from "@/components/settings/models-section";
+import { ModelsSection } from "@/components/settings/models-section";
+import { HoursPerYearSection } from "@/components/settings/hours-per-year-section";
+import { MoneySection } from "@/components/settings/money-section";
 import { PromptsSection } from "@/components/settings/prompts-section";
 import { QuickTailorSection } from "@/components/settings/quick-tailor-section";
 import { ResumesFolderSection } from "@/components/settings/resumes-folder-section";
@@ -23,33 +22,16 @@ import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SecondCopySection } from "@/components/settings/second-copy-section";
 import { CustomEndpointSection } from "@/components/settings/llm-endpoint";
 import { ModelCatalogSection } from "@/components/settings/model-catalog-panel";
-import { Button } from "@/components/ui/button";
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { useFocusSection } from "@/lib/use-focus-section";
 
-const guideButton = (
-  <Button
-    variant="outline"
-    size="sm"
-    nativeButton={false}
-    render={
-      <a
-        href="https://github.com/seinun-ai/maestro-career-studio/blob/main/docs/GETTING_STARTED.md"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <BookOpen className="size-4" />
-        Setup guide
-        <NewTabCue />
-      </a>
-    }
-  />
-);
-
 /**
- * System behaviour, in five tabs. Candidate facts live on `/profile`: see the page rule in
- * `docs/frontend-conventions.md`. The first tab is what a new install needs first (nothing works
- * without a key); the tab table, and which tab each card id opens, is `lib/settings-tabs.ts`.
+ * How the app behaves, in four tabs by purpose (owner decision D11; candidate facts live on
+ * `/profile`: see the page rule in `docs/frontend-conventions.md`). Basics is what a new install needs
+ * first (nothing works without an AI model), the Companion tab is the browser extension's, Agent apps is
+ * the connected agents', and Advanced holds the rest. The tab table, which tab each card id opens and
+ * where each old `?tab=` lands, is `lib/settings-tabs.ts`. Nothing was removed in the move: every item
+ * is pinned to its tab by test_frontend_settings_refresh.py.
  */
 export default function SettingsPage({
   searchParams,
@@ -63,42 +45,47 @@ export default function SettingsPage({
 
   return (
     <PageShell>
-      <PageHeader
-        title="Settings"
-        subtitle="Models, tailoring, connected agents and appearance."
-        actions={guideButton}
-      />
+      <PageHeader title="Settings" />
       <SettingsTabs
         page="settings"
         panels={{
-          models: (
+          basics: (
             <>
-              <ApiKeysSection />
-              <ModelsSection />
-              <FormFillingSection />
-              <ModelCatalogSection />
-              <CustomEndpointSection />
-              <PromptsSection />
+              <AiModelSection />
+              <MoneySection />
+              <ResumesFolderSection />
+              <AppearanceSection />
+              <AboutSection />
             </>
           ),
-          tailoring: (
+          companion: (
             <>
-              <QuickTailorSection />
-              <ResumesFolderSection />
+              <CompanionFillSection />
+              <CompanionApplySection />
+              <FormFillingSection />
             </>
           ),
           agents: (
             <>
-              <ConnectedAgentsCard />
               <ConnectAssistantCard />
+              <ConnectedAgentsCard />
               <FullAutomationSection />
-              <McpWorkflowSection />
               <AutoApplySection />
+              <JobSiteLoginCard />
+              <McpWorkflowSection />
               <SecondCopySection />
             </>
           ),
-          appearance: <AppearanceSection />,
-          about: <AboutSection />,
+          advanced: (
+            <>
+              <ModelsSection />
+              <ModelCatalogSection />
+              <CustomEndpointSection />
+              <PromptsSection />
+              <QuickTailorSection />
+              <HoursPerYearSection />
+            </>
+          ),
         }}
       />
     </PageShell>

@@ -17,20 +17,29 @@ export type SettingsTab = {
 };
 
 export const SETTINGS_TABS = [
-  {
-    value: "models",
-    label: "AI & models",
-    anchors: ["api-keys", "models", "form-filling", "model-catalog", "custom-endpoint", "prompts"],
-  },
-  { value: "tailoring", label: "Tailoring", anchors: ["quick-tailor", "resumes-folder"] },
-  // "connected-agents" is the explainer card mounted first in this tab.
+  // How the app behaves, by purpose (owner decision D11): what a new install needs first, then the
+  // Companion's own settings, then the connected agent apps, then the rest.
+  { value: "basics", label: "Basics", anchors: ["api-keys", "money", "resumes-folder", "appearance", "about"] },
+  { value: "companion", label: "Companion", anchors: ["companion-fill", "companion-apply", "form-filling"] },
+  // "connected-agents" is the folded explainer, after the connection card.
   {
     value: "agents",
-    label: "Connected agents",
-    anchors: ["connected-agents", "connect-assistant", "full-automation", "agent-hints", "auto-apply", "second-copy"],
+    label: "Agent apps",
+    anchors: [
+      "connect-assistant",
+      "connected-agents",
+      "full-automation",
+      "auto-apply",
+      "job-site-login",
+      "agent-hints",
+      "second-copy",
+    ],
   },
-  { value: "appearance", label: "Appearance", anchors: ["appearance"] },
-  { value: "about", label: "About", anchors: ["about"] },
+  {
+    value: "advanced",
+    label: "Advanced",
+    anchors: ["models", "model-catalog", "custom-endpoint", "prompts", "quick-tailor", "hours-per-year"],
+  },
 ] as const satisfies readonly SettingsTab[];
 
 export const PROFILE_TABS = [
@@ -49,6 +58,27 @@ const PREFIXES: Record<SettingsPage, readonly (readonly [string, string])[]> = {
   profile: [["autofill-", "autofill"]],
 };
 
+/**
+ * `?tab=` values an older build wrote, and the tab and card that hold what each one opened with: a
+ * bookmark from the five tabs before the four lands on its card. `ai` is the plan's name for the old
+ * first tab (its value was `models`). The old `agents` is still a tab (Agent apps), so it is not here.
+ */
+const OLD_TABS: Record<SettingsPage, Readonly<Record<string, { tab: string; anchor: string }>>> = {
+  settings: {
+    ai: { tab: "basics", anchor: "api-keys" },
+    models: { tab: "basics", anchor: "api-keys" },
+    tailoring: { tab: "advanced", anchor: "quick-tailor" },
+    appearance: { tab: "basics", anchor: "appearance" },
+    about: { tab: "basics", anchor: "about" },
+  },
+  profile: {},
+};
+
+/** The old value's landing, or undefined. Own keys only: `?tab=constructor` is not an old tab. */
+function oldTab(page: SettingsPage, value: string | undefined) {
+  return value !== undefined && Object.hasOwn(OLD_TABS[page], value) ? OLD_TABS[page][value] : undefined;
+}
+
 export function tabsFor(page: SettingsPage): readonly SettingsTab[] {
   return TABS[page];
 }
@@ -57,13 +87,23 @@ export function defaultTab(page: SettingsPage): string {
   return TABS[page][0].value;
 }
 
-/** `?tab=` as the page reads it: absent, repeated or unknown is the default tab. */
+/** `?tab=` as the page reads it: an old value is its new tab; absent, repeated or unknown is the default tab. */
 export function parseTab(
   page: SettingsPage,
   raw: string | readonly string[] | null | undefined,
 ): string {
   const value = typeof raw === "string" ? raw : raw?.[0];
-  return TABS[page].some((tab) => tab.value === value) ? (value as string) : defaultTab(page);
+  if (TABS[page].some((tab) => tab.value === value)) return value as string;
+  return oldTab(page, value)?.tab ?? defaultTab(page);
+}
+
+/** Where `?tab=` lands: its tab, and the card to land on when the value is an old one (else null). */
+export function landingFor(
+  page: SettingsPage,
+  raw: string | readonly string[] | null | undefined,
+): { tab: string; anchor: string | null } {
+  const value = typeof raw === "string" ? raw : raw?.[0];
+  return { tab: parseTab(page, raw), anchor: oldTab(page, value)?.anchor ?? null };
 }
 
 /** The tab that renders `anchor`, or null when no tab does (`#main-content`, the skip link). */

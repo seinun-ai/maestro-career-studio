@@ -134,7 +134,7 @@ def create_proposal(
     if company and company in {c.strip().lower() for c in cfg.company_blocklist}:
         raise HTTPException(
             409, detail="This company is on your Companies to skip list in Settings › "
-            "Connected agents.")
+            "Agent apps.")
 
     # One open proposal per job, with no unique index to say so: two creates that both check
     # before either inserts both insert (a double click on Queue for agent filed two accepted

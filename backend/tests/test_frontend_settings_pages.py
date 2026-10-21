@@ -25,7 +25,8 @@ def _read(rel: str) -> str:
 _TABS_LIB = _read("lib/settings-tabs.ts")
 _TAB_ROW = re.compile(r'\{\s*value: "(\w+)",\s*label: "[^"]*",\s*anchors: \[([^\]]*)\]')
 _IMPORT = re.compile(r'import\s*\{([^}]*)\}\s*from\s*"@/components/settings/([\w-]+)"')
-_CARD_ID = re.compile(r'<(?:SettingCard|Card)\b[^>]*?\bid="([\w-]+)"', re.S)
+# A card's id; a folded card (a `Fold` takes no id) carries it on the `div` around it.
+_CARD_ID = re.compile(r'<(?:SettingCard|Card|div)\b[^>]*?\bid="([\w-]+)"', re.S)
 
 
 def _tab_table(name: str) -> dict[str, set[str]]:
@@ -47,10 +48,10 @@ def test_the_tab_table_is_node_loadable_and_resolves_card_bodies_by_prefix():
     assert '["autofill-", "autofill"]' in _TABS_LIB
     # The default tab's URL carries no ?tab= (the analytics precedent).
     assert 'tab === defaultTab(page) ? ""' in _TABS_LIB
-    # Tab names are owner decision 10; slugs are never shown.
-    assert list(_tab_table("SETTINGS_TABS")) == ["models", "tailoring", "agents", "appearance", "about"]
+    # Tab names are owner decision D11 (design refresh plan, Task 7.3); slugs are never shown.
+    assert list(_tab_table("SETTINGS_TABS")) == ["basics", "companion", "agents", "advanced"]
     assert list(_tab_table("PROFILE_TABS")) == ["you", "autofill"]
-    for label in ("AI & models", "Tailoring", "Connected agents", "Appearance", "About", "About you", "Autofill"):
+    for label in ("Basics", "Companion", "Agent apps", "Advanced", "About you", "Autofill"):
         assert f'label: "{label}"' in _TABS_LIB, label
 
 
@@ -105,7 +106,7 @@ def test_the_tab_is_read_live_and_written_natively():
     assert "useSyncExternalStore(subscribeToLocation, readAnchor, noAnchor)" in src
     # The live URL, not the page's searchParams prop: the prop keeps the arrival value after a
     # native replaceState, so a link to another tab of the same page opened nothing.
-    assert 'parseTab(page, useSearchParams().getAll("tab"))' in src
+    assert 'const raw = useSearchParams().getAll("tab");\n  const urlTab = parseTab(page, raw);' in src
     assert "param" not in src
 
 
@@ -121,28 +122,33 @@ def test_both_pages_read_their_search_params_so_the_server_renders_the_tab():
         assert "useSearchParams(" not in src, page  # the page itself needs no Suspense
 
 
-def test_connected_agents_keeps_its_order_and_a_place_for_the_explainer():
-    """Planner decision 18 (Q2): the explainer card first, then the hints, then Auto-apply:
-    the explainer says what a connected agent is before the settings that bound one."""
+def test_agent_apps_keeps_its_order():
+    """Design refresh plan, Task 7.3: connect an app, then what agents can and can't do (folded), then
+    the limits (full automation, Auto-apply), then accounts and copies. The explainer still comes
+    before the limits it explains (its "the daily limit below")."""
     agents = _panels(_read("app/settings/page.tsx"), list(_tab_table("SETTINGS_TABS")))["agents"]
-    assert agents.count("<ConnectedAgentsCard />") == 1
-    assert agents.index("<ConnectedAgentsCard />") < agents.index("<McpWorkflowSection />")
-    assert agents.index("<McpWorkflowSection />") < agents.index("<AutoApplySection />")
+    order = [
+        "<ConnectAssistantCard />", "<ConnectedAgentsCard />", "<FullAutomationSection />",
+        "<AutoApplySection />", "<JobSiteLoginCard />", "<McpWorkflowSection />", "<SecondCopySection />",
+    ]
+    for tag in order:
+        assert agents.count(tag) == 1, tag
+    assert [agents.index(tag) for tag in order] == sorted(agents.index(tag) for tag in order)
 
 
-def test_connect_assistant_renders_right_after_the_connected_agents_explainer():
-    """Connection actions belong beside the explainer, before agent settings."""
+def test_the_connection_card_opens_agent_apps_and_the_explainer_follows_it():
+    """Connection actions come first; the explainer is folded right after them."""
     page = _read("app/settings/page.tsx")
     panels = _panels(page, list(_tab_table("SETTINGS_TABS")))
     assert page.count("<ConnectAssistantCard />") == 1
-    assert re.search(r"<ConnectedAgentsCard />\s*<ConnectAssistantCard />", panels["agents"])
+    assert re.search(r"<ConnectAssistantCard />\s*<ConnectedAgentsCard />", panels["agents"])
 
 
 def test_connect_assistant_card_id_matches_the_agents_tab_anchor():
-    """A connection-card deep link must open Connected agents and find its card."""
+    """A connection-card deep link must open Agent apps and find its card."""
     agents = re.search(r'value: "agents",.*?anchors: \[([^\]]*)\]', _TABS_LIB, re.S).group(1)
     anchors = re.findall(r'"([\w-]+)"', agents)
-    assert anchors[anchors.index("connected-agents") + 1] == "connect-assistant"
+    assert anchors[:2] == ["connect-assistant", "connected-agents"]
     assert 'id="connect-assistant"' in _read("components/settings/connect-assistant-card.tsx")
 
 

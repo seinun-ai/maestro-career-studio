@@ -3,12 +3,17 @@ import { test } from "node:test";
 
 import {
   PROVIDERS,
+  everydayCan,
+  everydayStatus,
   isRemoteEndpoint,
   keyWarning,
   modelName,
   providerLabel,
   showsModelId,
+  keysInUse,
+  runsOn,
   sourceLabel,
+  type EverydayState,
 } from "./model-catalog.ts";
 
 test("provider and source read as words, never keys", () => {
@@ -104,4 +109,45 @@ test("a custom AI server stands in for the OpenAI key only", () => {
     keyWarning("Fast model", "gpt-a", { ...KEYS, api_key_configured: false }),
     "Fast model uses OpenAI, but no OpenAI key is saved.",
   );
+});
+
+const everyday = (over: Partial<EverydayState> = {}): EverydayState => ({
+  api_key_configured: false,
+  gemini_api_key_configured: false,
+  anthropic_api_key_configured: true,
+  openrouter_api_key_configured: false,
+  custom_endpoint: false,
+  model_options: [
+    { id: "claude-haiku", provider: "anthropic" },
+    { id: "claude-sonnet", provider: "anthropic" },
+    { id: "gpt-luna", provider: "openai" },
+  ],
+  fast_model: "claude-haiku",
+  smart_model: "claude-sonnet",
+  chat_model: "claude-haiku",
+  capabilities: {},
+  ...over,
+});
+const passes = { text: true, json: true, tools: true };
+
+test("the everyday jobs name where they run, in screen order", () => {
+  assert.deepEqual(runsOn(everyday()), ["Claude"]);
+  assert.deepEqual(runsOn(everyday({ fast_model: "gpt-luna" })), ["OpenAI", "Claude"]);
+  // A custom server takes the OpenAI-style models and any the list lacks; Claude's stay Claude's.
+  assert.deepEqual(runsOn(everyday({ custom_endpoint: true, fast_model: "llama3" })), ["Claude", "your own AI server"]);
+  assert.deepEqual(runsOn(everyday({ custom_endpoint: true, fast_model: "gpt-luna", smart_model: "x", chat_model: "y" })), ["your own AI server"]);
+  assert.deepEqual(keysInUse(everyday({ fast_model: "gpt-luna" })), ["openai", "anthropic"]);
+  assert.deepEqual(keysInUse(everyday({ fast_model: "gpt-luna", custom_endpoint: true })), ["anthropic"]);
+});
+
+test("the status is the worst of the three jobs, from saved test results only", () => {
+  assert.deepEqual(everydayStatus(everyday({ fast_model: "gpt-luna" })), { kind: "no-key", words: "Add your OpenAI key" });
+  assert.equal(everydayStatus(everyday()).kind, "untested");
+  const tested = { "claude-haiku": passes, "claude-sonnet": passes };
+  assert.deepEqual(everydayStatus(everyday({ capabilities: tested })), { kind: "works", words: "Works" });
+  const noTools = { "claude-haiku": { ...passes, tools: false }, "claude-sonnet": passes };
+  // The Fast and Assistant models are one model here, so both jobs read its one result.
+  assert.deepEqual(everydayStatus(everyday({ capabilities: noTools })), { kind: "cannot", words: "Can't run the Assistant" });
+  assert.deepEqual(everydayCan(everyday({ capabilities: noTools })), ["reads jobs", "writes"]);
+  assert.deepEqual(everydayCan(everyday()), []);
 });

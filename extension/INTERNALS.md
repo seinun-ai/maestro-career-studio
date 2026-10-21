@@ -954,8 +954,8 @@ know, and each one was learned from a live failure.
   or No, so "do you require sponsorship?" mapped to an "F-1 OPT" status
   stays yours. No other value travels: a description names the question,
   never an answer.
-- **Which engine decides.** On the Jev engine (Settings › AI & models ›
-  Form filling), /map, /pick and /step ask Jev first. The fast model
+- **Which engine decides.** On the Jev engine (Settings › Companion ›
+  Form-filling engine), /map, /pick and /step ask Jev first. The fast model
   decides a request's fields in two cases, always at the same floors:
   when the Jev call fails, and as ONE second opinion per request for the
   fields Jev was unsure of. For /map, "unsure" means no readable answer,
@@ -1848,7 +1848,7 @@ footer alone).
   `run.js` `TERMINAL` to tell). Once the run starts, the run card takes over. Held, no-link and finish-first stops cross a line of their own. **Limit:** "Apply with the base
   resume" (the finish-first path) and quick tailor's nothing-to-tailor path use the base text as it is, with no voice repair, so a base summary
   written in the third person reaches the PDF; the health check flags it (`voice.third_person`), so fix it at the source, in the base resume.
-- **The switches** (Settings › AI & models › Form filling, `companion_apply`: `GET`/`PUT /api/settings/companion-apply`, `{auto_pick: true,
+- **The switches** (Settings › Companion › How the Companion applies, `companion_apply`: `GET`/`PUT /api/settings/companion-apply`, `{auto_pick: true,
   stop_each_step: false}`, file-mirrored and carried in the synced profile bundle). `loadAutomation` fetches both switches with the auto-apply
   setting in one breath and obeys them only with full automation On; a switch it cannot read is the default. **Choose the base resume for me**
   (`decisions.preselect`): the top match score must reach Auto-apply's `auto_pick_floor` and lead the next scored base by `auto_pick_margin` (a lone

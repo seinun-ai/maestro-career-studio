@@ -35,7 +35,7 @@ export function VersionBanner() {
         <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
         {/* A page older than the backend was loaded before an update: reloading
             fetches the new web app. Any other mismatch is a broken install, and
-            Settings › About's How to update says what to do for each install. */}
+            Settings › Basics › About's How to update says what to do for each install. */}
         {pageIsOlder(FRONTEND_VERSION, data.version) ? (
           <span>
             Maestro CS was updated. Reload this page to use the new version.{" "}
@@ -51,7 +51,7 @@ export function VersionBanner() {
           <span>
             Maestro CS didn&apos;t finish updating. See How to update in{" "}
             <Link className="underline underline-offset-4" href={anchorHref("/settings", "about")}>
-              Settings › About
+              Settings › Basics › About
             </Link>
             .
           </span>

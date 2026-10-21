@@ -510,8 +510,10 @@ def test_question_constraint_is_a_hint():
 def test_saved_key_is_a_hint_not_a_placeholder():
     src = _src("components/settings/models-section.tsx")
     assert "Saved · type to replace" not in src
-    # Only a configured key has the hint line; the inputs align at the bottom.
-    assert re.search(r'className="grid items-end gap-4 @lg/setting:grid-cols-2">\s*\{PROVIDERS.map\(\(p\) => \(\s*<KeyField', src)
+    # Only a configured key has the hint line; the inputs align at the bottom (the keys in use, and the
+    # other providers' in a Fold, share one row of fields: Settings › Basics' AI model card).
+    assert re.search(r'<div className="grid items-end gap-4 @lg/setting:grid-cols-2">\{providers.map\(field\)\}</div>', src)
+    assert "const field = (p: Provider) => (\n    <KeyField" in src
     # The format is a hint while no key is saved; the field itself stays blank.
     # …and where to get one (lane 9 first-read): the hint is words and a link, never a value.
     assert ">platform.openai.com</NewTabLink>. It starts with sk-." in src

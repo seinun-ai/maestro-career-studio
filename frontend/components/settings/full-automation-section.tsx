@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useConfirm } from "@/components/confirm-dialog";
 import { LoadErrorState } from "@/components/load-error-state";
 import { SettingCard } from "@/components/settings/setting-card";
-import { ACTION_ROW, GROUP_HEADING, SwitchRow } from "@/components/settings/setting-layout";
+import { ACTION_ROW, SwitchRow } from "@/components/settings/setting-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,8 +98,42 @@ function FullAutomationControls({ initial }: { initial: AutoApplySettings }) {
         />
       </SwitchRow>
       {pending && <p role="status" className="text-muted-foreground text-body-small">Saving…</p>}
-      {initial.full_automation && <JobSiteLoginSection />}
     </div>
+  );
+}
+
+/**
+ * The job-site login, in Agent apps' accounts and copies. It is handed out only while full automation
+ * is on (SYSTEM.md inv-job-site-password-local), so the editor shows only then: turning full automation
+ * off unmounts it, dropping any typed password and its leave guard. Reads the same setting as the switch.
+ */
+export function JobSiteLoginCard() {
+  const query = useQuery({
+    queryKey: AUTO_APPLY_KEY,
+    queryFn: () => apiFetch<AutoApplySetting>("/api/settings/auto-apply"),
+  });
+  return (
+    <SettingCard
+      id="job-site-login"
+      title="Job-site login"
+      description={"Used only for job-site accounts. Your agent gets it while full automation is on, so it passes through your agent's AI provider. Use it for nothing else."}
+      errorTitle="Couldn't load full automation settings."
+      skeleton="h-11 w-full"
+      query={query}
+    >
+      {(data) => <JobSiteLoginGate initial={data.value} />}
+    </SettingCard>
+  );
+}
+
+function JobSiteLoginGate({ initial }: { initial: AutoApplySettings }) {
+  return (
+    <>
+      {initial.full_automation && <JobSiteLoginSection />}
+      {!initial.full_automation && (
+        <p className="text-muted-foreground text-body-medium">Turn on full automation to add one.</p>
+      )}
+    </>
   );
 }
 
@@ -119,12 +153,6 @@ function JobSiteLoginSection() {
   });
   return (
     <section className="grid gap-4" aria-label="Job-site login">
-      <div className="grid content-end gap-1.5">
-        <h3 className={GROUP_HEADING}>Job-site login</h3>
-        <p className="text-muted-foreground text-body-small">
-          {"Used only for job-site accounts. Your agent gets it while full automation is on, so it passes through your agent's AI provider. Use it for nothing else."}
-        </p>
-      </div>
       {isLoadFailure(login) && !login.data ? (
         <LoadErrorState
           className="py-8"

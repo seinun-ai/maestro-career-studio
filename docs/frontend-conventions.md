@@ -1642,20 +1642,29 @@
   (`target="_blank"`) carries `NewTabCue` (components/new-tab-link.tsx): an
   icon, and "(opens in a new tab)" for a screen reader.
 - **Settings vs Profile — which page and tab does a new setting go on?**
-  `/settings` is how the SYSTEM behaves, in tabs (`lib/settings-tabs.ts`):
-  **AI & models** (API keys, models, AI instructions), **Tailoring** (Quick tailor
-  settings), **Connected agents** (the explainer, Connect an agent app,
-  next-step hints and Auto-apply limits), **Appearance** and **About**. `/profile` is who the
+  `/settings` is how the SYSTEM behaves, in four tabs by purpose
+  (`lib/settings-tabs.ts`, owner decision D11): **Basics** (the AI model card,
+  which holds the API keys, then Money, Resume PDFs, Appearance, and About as
+  the page's footer), **Companion** (what it may fill: agreements and
+  signatures and the screening answers; how it applies; the form-filling
+  engine), **Agent apps** (Connect an agent app, the folded explainer, the
+  limits, then the job-site login, next-step hints and the second copy) and
+  **Advanced** (model per job, more models, the custom AI server, AI
+  instructions, Quick tailor, Hours per year). `/profile` is who the
   CANDIDATE is: **About you** (Persona, Where you apply, Job preferences) and
-  **Autofill**. A new card goes on the tab whose subject it shares and adds
+  **Autofill**. A permission over what the Companion may fill is Settings ›
+  Companion's; a consent over a set of answers stays beside those answers in
+  Profile (the diversity switch, D10). Nothing leaves a tab without a home:
+  `test_frontend_settings_refresh.py` pins every item to its tab. A new card
+  goes on the tab whose subject it shares and adds
   its id to that tab's `anchors` (pinned). Both write `/api/settings/*`
   and both draw from
   `components/settings/` — the folder is not the split, this rule is. When a
   cross-page link points at a setting, deep-link the card id
   (`anchorHref("/profile", "autofill")`), never the bare page: sending a user
   to `/settings` for the autofill profile is a dead end that shipped once
-  already. In prose, a setting's place reads as a path: Settings › AI &
-  models, Profile › Autofill.
+  already. In prose, a setting's place reads as a path: Settings ›
+  Basics, Profile › Autofill.
   `?tab=` names the tab and the default tab has none; a tab click writes it
   with the native `history.replaceState` (no server round trip, no new
   history entry). The tab hook reads `?tab=` with `useSearchParams`, never
@@ -1667,9 +1676,16 @@
   A deep link is `anchorHref(home, cardId)`, which adds the tab, so the
   server renders the right panel (pinned: no source writes a hash-only
   `/settings#` or `/profile#` link); an old hash-only link still opens its
-  tab after hydration. `useFocusSection` waits until its target is SHOWN (a
+  tab after hydration. An old `?tab=` (one of the five tabs before the four)
+  is read as its new tab, so the server renders that one, and a layout effect
+  then writes the new tab and the card it opened with (`landingFor`:
+  `?tab=tailoring` lands on Advanced at Quick tailor) before the page's
+  landing effect reads the hash. `useFocusSection` waits until its target is SHOWN (a
   card in a hidden panel is mounted with no box), and an in-page jump to
-  another tab is a button calling its `focus`, never a link.
+  another tab is a button calling its `focus`, never a link. A card a `Fold`
+  folds (the Agent apps explainer) carries its id on the `div` around it.
+  A two- or three-way setting is a `SegmentedChoice` (setting-layout.tsx: Theme,
+  Show pay per), the SegmentedToggle look; a longer list is a Select.
 - **Every settings card renders through `SettingCard`**
   (`components/settings/setting-card.tsx`): it owns the header, the loading
   skeleton, and the one `LoadErrorState` with retry. Do not hand-roll

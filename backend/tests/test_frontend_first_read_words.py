@@ -49,8 +49,11 @@ def test_dates_read_as_words():
         "Feb 2021", "Feb 2021", "Jul 2022", "Present"]
     dates = _read("lib/format-date.ts")
     assert 'return date.toLocaleString("en-US", {' in dates and "date.toLocaleString();" not in dates
-    autofill = _read("components/settings/autofill-section.tsx")
-    assert "You agreed on {formatAbsoluteDateTime(consent.acknowledged_at)}" in autofill
+    # The consent date is the agreement card's (Settings › Companion); the diversity switch reads it there.
+    fill = _read("components/settings/companion-fill-section.tsx")
+    assert "You agreed on {formatAbsoluteDateTime(consent.acknowledged_at)}" in fill
+    assert 'import { AgreedOn } from "@/components/settings/companion-fill-section";' in _read(
+        "components/settings/autofill-section.tsx")
 
 
 def test_analytics_says_each_thing_once_in_one_format():

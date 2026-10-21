@@ -27,7 +27,7 @@ const UNAVAILABLE: Record<"not_here" | "always_on_copy", string> = {
 
 type Patch = { enabled?: boolean; folder?: string | null };
 
-/** Where Maestro saves a visible copy of each finished resume PDF (Settings > Tailoring). */
+/** Where Maestro saves a visible copy of each finished resume PDF (Settings › Basics › Resume PDFs). */
 export function ResumesFolderSection() {
   const qc = useQueryClient();
   const id = useId();
@@ -62,8 +62,8 @@ export function ResumesFolderSection() {
   return (
     <SettingCard
       id="resumes-folder"
-      title="Resumes folder"
-      description="Maestro saves a copy of each finished resume PDF here, so you can find it on your computer and in upload dialogs."
+      title="Resume PDFs"
+      description="Maestro saves a copy of each finished resume PDF in a folder, so you can find it on your computer and in upload dialogs."
       errorTitle="Couldn't load the resumes folder."
       skeleton="h-11 w-full"
       query={setting}

@@ -244,7 +244,7 @@ _FAILURE_BRANCHES = {
     "components/resume-step.tsx": "if (isLoadFailure(scores)) {",
     "components/settings/setting-card.tsx": "const loadFailed = queries.some((q) => isLoadFailure(q));",
     "components/settings/full-automation-section.tsx": "{isLoadFailure(login) && !login.data ? (",
-    "components/settings/form-filling-section.tsx": "{isLoadFailure(setting) && !setting.data ? (",
+    "components/settings/ai-model-section.tsx": ") : isLoadFailure(query) ? (",
     "components/career/first-run-import-card.tsx": "if (isLoadFailure(entities)) {",
     "components/resume-health/health-report-page.tsx": "if (isLoadFailure(baseQuery)) {",
     "components/resume-health/question-pass.tsx": "if (isLoadFailure(baseQuery)) {",

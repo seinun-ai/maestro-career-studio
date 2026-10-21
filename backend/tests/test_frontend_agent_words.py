@@ -8,8 +8,8 @@ are the glossary's (appendix D0, planner decisions 19 and 20): "Quick tailor",
 never "Fast tailor", and "Companion" as a proper name ("the Companion" in a
 sentence).
 
-The Settings › Connected agents tab opens with an explainer card; its mount
-order is pinned in test_frontend_settings_pages.py.
+Settings › Agent apps opens with the connection card, then the folded
+explainer; its mount order is pinned in test_frontend_settings_pages.py.
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ _WORDS = [
      "The Companion uses these to fill job applications."),
     ("components/settings/autofill-section.tsx", "Allow extension to fill these answers",
      "Let the Companion fill these answers"),
-    ("components/settings/autofill-section.tsx", "Allow extension to tick agreement boxes",
+    ("components/settings/companion-fill-section.tsx", "Allow extension to tick agreement boxes",
      "Let the Companion fill agreements and signatures"),
     ("components/settings/autofill-section.tsx", "matching the extension&apos;s",
      "Most recent first."),
@@ -126,11 +126,14 @@ def _card() -> str:
 
 
 def test_the_connected_agents_card_explains_before_the_limits():
+    """Folded in Agent apps (design refresh Task 7.3): read once, then out of the way. The id sits on
+    the wrapper, since a Fold takes none, so a deep link still lands on it."""
     card = _card()
-    assert '<Card id="connected-agents">' in card
+    assert '<div id="connected-agents">\n      <Fold title="What agents can and can\'t do">' in card
     assert "<SettingCard" not in card  # fetches nothing: the Appearance precedent
-    assert '<CardTitle role="heading" aria-level={2}>' in card
-    assert '<CardContent className="@container/setting">' in card
+    # Its columns read their own width, as a card body's do.
+    assert '<div className="@container/setting grid gap-6 text-body-medium">' in card
+    assert "Connected agents are AI apps on this computer" in " ".join(card.split())
     # MCP is the one term that stays; it is spelled out where it first appears.
     assert "MCP (Model Context Protocol)" in card
     assert "setup-mcp.sh" not in card  # only Cursor and others need it; the guide covers it

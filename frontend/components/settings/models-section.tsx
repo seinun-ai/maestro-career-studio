@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type ReactNode, type Ref } from "react";
+import { flushSync } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -12,6 +13,7 @@ import { ACTION_ROW } from "@/components/settings/setting-layout";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { Button } from "@/components/ui/button";
+import { Fold } from "@/components/ui/fold";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -35,7 +37,7 @@ import {
   showsModelId,
   type Provider,
 } from "@/lib/model-catalog";
-import type { CapabilityReport, OpenAIInfo } from "@/lib/types";
+import type { CapabilityReport, OpenAIInfo, RecommendedModelsInfo } from "@/lib/types";
 
 export type ModelSettingsPatch = {
   fast_model?: string;
@@ -55,6 +57,21 @@ export function useOpenAIInfo() {
     queryKey: ["settings", "openai"],
     queryFn: () => apiFetch<OpenAIInfo>("/api/settings/openai"),
   });
+}
+
+export const RECOMMENDED_KEY = ["settings", "models", "recommended"] as const;
+
+/** Whether the four roles use a provider's recommended set (`GET /api/settings/models/recommended`). */
+export function useRecommendedModels() {
+  return useQuery({
+    queryKey: RECOMMENDED_KEY,
+    queryFn: () => apiFetch<RecommendedModelsInfo>("/api/settings/models/recommended"),
+  });
+}
+
+/** The provider whose recommended set the roles use now, or null when they use your own picks. */
+export function followsSet(recommended: RecommendedModelsInfo | undefined): string | null {
+  return recommended?.on && recommended.active_provider ? providerLabel(recommended.active_provider) : null;
 }
 
 /**
@@ -126,8 +143,14 @@ const CAPABILITY_LABELS: { key: "text" | "json" | "tools"; label: string; gates:
   { key: "tools", label: "Assistant", gates: "the Assistant" },
 ];
 
+/**
+ * A model for each job. While Use recommended models is on (Settings › Basics) the pickers show the
+ * set read-only and say so: a pick then would be stored as your own and the role would still answer
+ * the set, so the picker would jump back. Your own picks return once it is off.
+ */
 export function ModelsSection() {
   const info = useOpenAIInfo();
+  const recommended = useRecommendedModels();
   const [probing, setProbing] = useState<string | null>(null);
   const save = useSaveModelSettings(() => toast.success("Model settings saved"));
 
@@ -178,40 +201,51 @@ export function ModelsSection() {
   return (
     <SettingCard
       id="models"
-      title="Models"
+      title="Model per job"
       description="Which model does each job."
       errorTitle="Couldn't load your model settings."
       skeleton="h-48 w-full"
       query={info}
+      also={[recommended]}
     >
-      {(data) => (
-        <div className="grid gap-6">
-          <ModelProfileNote />
-          <div className="grid gap-4 @2xl/setting:grid-cols-2 @4xl/setting:grid-cols-4">
-            {ROLES.map((role) => (
-              <RoleModel
-                key={role.key}
-                role={role}
-                info={data}
-                saving={save.isPending}
-                probing={probing}
-                onChange={(value) => value && save.mutate(role.patch(value))}
-                onProbe={(model) => probe.mutate(model)}
-              />
-            ))}
+      {(data) => {
+        const set = followsSet(recommended.data);
+        return (
+          <div className="grid gap-6">
+            <ModelProfileNote />
+            {set ? (
+              <p className="text-body-medium">
+                Recommended models are on, so each job uses {set}&apos;s. To pick your own, turn off Use
+                recommended models in Basics.
+              </p>
+            ) : null}
+            <div className="grid gap-4 @2xl/setting:grid-cols-2 @4xl/setting:grid-cols-4">
+              {ROLES.map((role) => (
+                <RoleModel
+                  key={role.key}
+                  role={role}
+                  info={data}
+                  saving={save.isPending}
+                  locked={set !== null}
+                  probing={probing}
+                  onChange={(value) => value && save.mutate(role.patch(value))}
+                  onProbe={(model) => probe.mutate(model)}
+                />
+              ))}
+            </div>
+            <p className="text-muted-foreground text-body-small">
+              Test a model to see what it can do. A model that fails the Assistant
+              test still works everywhere else.
+            </p>
           </div>
-          <p className="text-muted-foreground text-body-small">
-            Test a model to see what it can do. A model that fails the Assistant
-            test still works everywhere else.
-          </p>
-        </div>
-      )}
+        );
+      }}
     </SettingCard>
   );
 }
 
 /** The key problem a test's errors name, in words ("Add an API key in Settings › AI & models."), if any. */
-function keyProblemIn(report: CapabilityReport): string | undefined {
+export function keyProblemIn(report: CapabilityReport): string | undefined {
   return Object.values(report.errors)
     .map((error) => errorDetail(new Error(error)))
     .find((detail) => detail?.includes("API key"));
@@ -219,7 +253,7 @@ function keyProblemIn(report: CapabilityReport): string | undefined {
 
 /** A model test that never reached the model, and what to check: the custom AI server's address
  *  when one is set, else the provider's API key (there is no address to check then). */
-function unreachableText(info: OpenAIInfo | undefined, model: string, name: string): string {
+export function unreachableText(info: OpenAIInfo | undefined, model: string, name: string): string {
   if (!info || info.custom_endpoint) {
     return `Couldn't reach your AI server, so ${name} wasn't tested. Check the server address, then try again.`;
   }
@@ -236,6 +270,7 @@ function RoleModel({
   role,
   info,
   saving,
+  locked,
   probing,
   onChange,
   onProbe,
@@ -243,6 +278,8 @@ function RoleModel({
   role: (typeof ROLES)[number];
   info: OpenAIInfo;
   saving: boolean;
+  /** The recommended set answers this role: the picker shows it and takes no pick. */
+  locked: boolean;
   probing: string | null;
   onChange: (value: string | null) => void;
   onProbe: (model: string) => void;
@@ -262,7 +299,7 @@ function RoleModel({
         value={model}
         options={info.model_options}
         custom={info.custom_endpoint}
-        saving={saving}
+        readOnly={saving || locked}
         onChange={onChange}
       />
       <ModelCapability
@@ -449,14 +486,20 @@ const KEY_FIELDS: Record<
 
 const NO_KEYS: Record<Provider, string | null> = { openai: null, anthropic: null, gemini: null, openrouter: null };
 
-export function ApiKeysSection() {
-  const info = useOpenAIInfo();
+/**
+ * The API key fields and their one Save, inside the AI model card (ai-model-section.tsx). The keys the
+ * everyday jobs use show first; the other providers' sit in a Fold, its summary saying which are saved.
+ * With none in use (a new install), all four show.
+ */
+export function ApiKeysEditor({ data, inUse }: { data: OpenAIInfo; inUse: readonly Provider[] }) {
   // The API never returns key material, so these inputs hold only what the
   // user types this session. null = untouched, which means the PUT omits the
   // field entirely and the stored key survives.
   const [keys, setKeys] = useState<Record<Provider, string | null>>(NO_KEYS);
   // A typed key survives a tab switch, but a navigation dropped it silently.
   useLeaveGuard(PROVIDERS.some((p) => keys[p] !== null));
+  const others = PROVIDERS.filter((p) => !inUse.includes(p));
+  const [othersOpen, setOthersOpen] = useState(false);
 
   // A key in the wrong shape, refused at Save before anything is sent (lib/api-key-format.ts).
   const [problems, setProblems] = useState<Record<Provider, string | undefined>>({
@@ -486,6 +529,8 @@ export function ApiKeysSection() {
     setProblems(found);
     const first = PROVIDERS.find((p) => found[p]);
     if (first) {
+      // A refused key in the closed Fold: open it first, or focus would land on a hidden field.
+      if (others.includes(first)) flushSync(() => setOthersOpen(true));
       refs[first].current?.focus();
       return;
     }
@@ -497,57 +542,77 @@ export function ApiKeysSection() {
     saveKeysOnce(patch);
   };
 
-  return (
-    <SettingCard
-      id="api-keys"
-      title="API keys"
-      // A custom AI server on this computer needs no key (llm._get_client).
-      description="Lets the app use OpenAI, Claude, Gemini or OpenRouter. You need one unless you use a custom AI server."
-      errorTitle="Couldn't load your API keys."
-      skeleton="h-32 w-full"
-      query={info}
-    >
-      {(data) => (
-        <div className="grid gap-6">
-          {/* items-end: only a configured key has the hint line, so the
-              inputs line up at the bottom rather than the captions at the top.
-              Two columns only when the card body has room (32rem): at 768 the
-              viewport's `sm:` gave each key 208px, too narrow for its status. */}
-          <div className="grid items-end gap-4 @lg/setting:grid-cols-2">
-            {PROVIDERS.map((p) => (
-              <KeyField
-                key={p}
-                label={KEY_FIELDS[p].label}
-                hintUnset={KEY_FIELDS[p].hint}
-                note={KEY_FIELDS[p].note}
-                configured={data[CONFIGURED[p]]}
-                source={data[KEY_FIELDS[p].source]}
-                value={keys[p]}
-                saving={saveKeys.isPending}
-                problem={problems[p]}
-                inputRef={refs[p]}
-                onChange={(next) => {
-                  setKeys((k) => ({ ...k, [p]: next }));
-                  setProblems((q) => ({ ...q, [p]: undefined }));
-                }}
-              />
-            ))}
-          </div>
-          <div className={ACTION_ROW}>
-            <Button
-              size="sm"
-              focusableWhenDisabled
-              disabled={saveKeys.isPending || PROVIDERS.every((p) => keys[p] === null)}
-              className="data-disabled:pointer-events-none data-disabled:opacity-50"
-              onClick={() => onSave(data.custom_endpoint)}
-            >
-              {saveKeys.isPending ? "Saving…" : "Save"}
-            </Button>
-          </div>
-        </div>
-      )}
-    </SettingCard>
+  const field = (p: Provider) => (
+    <KeyField
+      key={p}
+      label={KEY_FIELDS[p].label}
+      hintUnset={KEY_FIELDS[p].hint}
+      note={KEY_FIELDS[p].note}
+      configured={data[CONFIGURED[p]]}
+      source={data[KEY_FIELDS[p].source]}
+      value={keys[p]}
+      saving={saveKeys.isPending}
+      problem={problems[p]}
+      inputRef={refs[p]}
+      onChange={(next) => {
+        setKeys((k) => ({ ...k, [p]: next }));
+        setProblems((q) => ({ ...q, [p]: undefined }));
+      }}
+    />
   );
+  // items-end: only a configured key has the hint line, so the inputs line up at the bottom rather
+  // than the captions at the top. Two columns only when the card body has room (32rem): at 768 the
+  // viewport's `sm:` gave each key 208px, too narrow for its status.
+  const fields = (providers: readonly Provider[]) => (
+    <div className="grid items-end gap-4 @lg/setting:grid-cols-2">{providers.map(field)}</div>
+  );
+
+  return (
+    <div className="grid gap-6">
+      {inUse.length === 0 ? (
+        <>
+          {/* A custom AI server on this computer needs no key (llm._get_client). */}
+          <p className="text-muted-foreground text-body-medium">
+            Lets the app use OpenAI, Claude, Gemini or OpenRouter. You need one unless you use a custom AI server.
+          </p>
+          {fields(PROVIDERS)}
+        </>
+      ) : (
+        <>
+          {fields(inUse)}
+          {others.length > 0 ? (
+            <Fold
+              title="Other keys"
+              summary={keysSummary(others, data)}
+              open={othersOpen}
+              onOpenChange={setOthersOpen}
+            >
+              {fields(others)}
+            </Fold>
+          ) : null}
+        </>
+      )}
+      <div className={ACTION_ROW}>
+        <Button
+          size="sm"
+          focusableWhenDisabled
+          disabled={saveKeys.isPending || PROVIDERS.every((p) => keys[p] === null)}
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
+          onClick={() => onSave(data.custom_endpoint)}
+        >
+          {saveKeys.isPending ? "Saving…" : "Save"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** "OpenAI saved · Gemini set outside the app", for the Fold that holds those keys; "None added". */
+function keysSummary(providers: readonly Provider[], data: OpenAIInfo): string {
+  const saved = providers
+    .filter((p) => data[CONFIGURED[p]])
+    .map((p) => `${providerLabel(p)} ${data[KEY_FIELDS[p].source] === "env" ? "set outside the app" : "saved"}`);
+  return saved.length > 0 ? saved.join(" · ") : "None added";
 }
 
 export function KeyField({
@@ -637,7 +702,7 @@ function ModelField({
   value,
   options,
   custom,
-  saving,
+  readOnly,
   onChange,
 }: {
   label: string;
@@ -649,7 +714,8 @@ function ModelField({
   value: string;
   options: OpenAIInfo["model_options"];
   custom: boolean;
-  saving: boolean;
+  /** While a pick saves, and while the recommended set answers the role. */
+  readOnly: boolean;
   onChange: (value: string | null) => void;
 }) {
   if (custom) {
@@ -661,7 +727,7 @@ function ModelField({
         describedBy={describedBy}
         message={message}
         value={value}
-        saving={saving}
+        readOnly={readOnly}
         onChange={onChange}
       />
     );
@@ -675,7 +741,7 @@ function ModelField({
       message={message}
       value={value}
       options={options}
-      saving={saving}
+      readOnly={readOnly}
       onChange={onChange}
     />
   );
@@ -688,7 +754,7 @@ function FreeTextModel({
   describedBy,
   message,
   value,
-  saving,
+  readOnly,
   onChange,
 }: {
   label: string;
@@ -697,7 +763,7 @@ function FreeTextModel({
   describedBy?: string;
   message?: ReactNode;
   value: string;
-  saving: boolean;
+  readOnly: boolean;
   onChange: (value: string | null) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -712,7 +778,7 @@ function FreeTextModel({
         id={id}
         aria-describedby={describedBy ?? hintId}
         value={draft ?? value}
-        readOnly={saving}
+        readOnly={readOnly}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
           const next = (draft ?? "").trim();
@@ -733,7 +799,7 @@ function ModelSelect({
   message,
   value,
   options,
-  saving,
+  readOnly,
   onChange,
 }: {
   label: string;
@@ -743,7 +809,7 @@ function ModelSelect({
   message?: ReactNode;
   value: string;
   options: OpenAIInfo["model_options"];
-  saving: boolean;
+  readOnly: boolean;
   onChange: (value: string | null) => void;
 }) {
   const selected = options.find((option) => option.id === value);
@@ -761,7 +827,7 @@ function ModelSelect({
       <p id={hintId} className="text-muted-foreground text-body-small">{hint}</p>
       {/* readOnly, not disabled, while a pick saves: the list closes onto its trigger, and a
           disabled trigger dropped focus to <body> after every pick (RolePicker's rule). */}
-      <Select value={value} onValueChange={onChange} readOnly={saving}>
+      <Select value={value} onValueChange={onChange} readOnly={readOnly}>
         <SelectTrigger id={id} aria-describedby={describedBy ?? hintId} className="w-full">
           <SelectValue>{stale ? value : selected?.label}</SelectValue>
         </SelectTrigger>

@@ -12,6 +12,7 @@ import { useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { focusIfStranded } from "@/lib/focus";
 import {
+  landingFor,
   parseTab,
   tabForAnchor,
   tabHref,
@@ -43,6 +44,11 @@ const noAnchor = () => "";
  *   docs, and `useFocusSection`'s in-page jumps, which announce the anchor with a `hashchange`);
  * - a click on the tab row.
  *
+ * An old `?tab=` (a bookmark from before the four Settings tabs) is read as its new tab, so the server
+ * renders that one, and once hydrated its URL becomes the new tab and the card it opened with. That is a
+ * layout effect, so it runs before the page's `useFocusSection` landing (a passive effect of the page,
+ * this component's parent) reads the hash: the card is scrolled to and rung like any deep link.
+ *
  * A click writes the URL with the NATIVE `history.replaceState`: Next copies its own state in and
  * updates `useSearchParams` with no server round trip and no new history entry
  * (`next/dist/client/components/app-router.js`, Next 16.3). The router's `replace` would fetch the page's
@@ -50,7 +56,9 @@ const noAnchor = () => "";
  * reload opens what is on screen.
  */
 export function useSettingsTab(page: SettingsPage) {
-  const urlTab = parseTab(page, useSearchParams().getAll("tab"));
+  const raw = useSearchParams().getAll("tab");
+  const urlTab = parseTab(page, raw);
+  const moved = landingFor(page, raw).anchor;
   const anchor = useSyncExternalStore(subscribeToLocation, readAnchor, noAnchor);
   const [tab, setTab] = useState(urlTab);
   const [seen, setSeen] = useState({ urlTab, anchor: "" });
@@ -60,6 +68,13 @@ export function useSettingsTab(page: SettingsPage) {
     if (anchored) setTab(anchored);
     else if (urlTab !== seen.urlTab) setTab(urlTab);
   }
+
+  // An old `?tab=` becomes the tab and card it moved to. A hash the link already had wins: it names a card.
+  useLayoutEffect(() => {
+    if (!moved) return;
+    const target = window.location.hash.slice(1) || moved;
+    window.history.replaceState(null, "", tabHref(page, tabForAnchor(page, target) ?? tab, target));
+  }, [page, tab, moved]);
 
   // A tab opened by anything but the tab row (a hash link, an in-page jump from inside another
   // panel) can hide the panel that holds focus. Inert blurs only at the browser's next focus fixup,

@@ -93,7 +93,7 @@
     if (!facts.appUrl) return line;
     const link = attach(node("a", null, "Change in Settings"), build.icon("external-link", { size: 12 }));
     link.setAttribute("aria-label", "Change in Settings (opens in a new tab)");
-    link.href = `${facts.appUrl}/settings#form-filling`;
+    link.href = `${facts.appUrl}/settings#companion-apply`;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     return attach(line, link);

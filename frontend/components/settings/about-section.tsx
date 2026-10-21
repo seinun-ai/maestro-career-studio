@@ -3,6 +3,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { NewTabLink } from "@/components/new-tab-link";
 import { SettingCard } from "@/components/settings/setting-card";
 import { useVersion } from "@/hooks/use-version";
@@ -55,6 +56,15 @@ export function AboutSection() {
               <OutLink href="https://github.com/seinun-ai/maestro-career-studio/releases">
                 Release notes
               </OutLink>
+            </Row>
+            {/* The page's footer (Settings › Basics): setup again, and the guide that was the header's button. */}
+            <Row label="Setup">
+              <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <Link href="/setup" className="text-primary underline underline-offset-4">
+                  Run setup again
+                </Link>
+                <OutLink href={GUIDE}>Setup guide</OutLink>
+              </span>
             </Row>
           </dl>
           <TechnicalDetails

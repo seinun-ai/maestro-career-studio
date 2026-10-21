@@ -6,13 +6,7 @@ import { BookOpen } from "lucide-react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { NewTabCue } from "@/components/new-tab-link";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Fold } from "@/components/ui/fold";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { AGENT_APPLICATIONS_URL, CONNECT_AGENT_GUIDE_URL, JOB_HUNT_SKILL_URL } from "@/lib/agent-links";
 
@@ -23,12 +17,14 @@ const LINKS = [
 ] as const;
 
 /**
- * What a connected agent is, first in Settings › Connected agents, above the
- * next-step hints and the Auto-apply limits it explains.
+ * What a connected agent is and what it can and can't do, folded in Settings ›
+ * Agent apps after the connection card and above the limits it explains (the
+ * Folded tier: read once, then out of the way).
  *
  * Not a SettingCard: it fetches nothing, so it has no loading or error state
- * (the Appearance precedent). It names the two helpers that are part of the
- * app, so "connected agent" means only MCP clients.
+ * (the Appearance precedent). The id sits on the wrapper, since a Fold takes
+ * none, so a deep link still lands on it. It names the two helpers that are
+ * part of the app, so "connected agent" means only MCP clients.
  *
  * Every line is what the MCP tools allow (backend/mcp_server/server.py), no
  * more and no less:
@@ -57,19 +53,14 @@ export function ConnectedAgentsCard() {
   const canId = useId();
   const cantId = useId();
   return (
-    <Card id="connected-agents">
-      <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          Connected agents
-        </CardTitle>
-        <CardDescription>
-          AI apps on this computer, such as Claude, Codex or the ChatGPT desktop app, that use
-          Maestro CS for you. They connect through MCP (Model Context Protocol), the standard
-          way AI apps reach other programs.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="@container/setting">
-        <div className="grid gap-6 text-body-medium">
+    <div id="connected-agents">
+      <Fold title="What agents can and can't do">
+        <div className="@container/setting grid gap-6 text-body-medium">
+          <p className="text-muted-foreground max-w-[65ch]">
+            Connected agents are AI apps on this computer, such as Claude, Codex or the ChatGPT
+            desktop app, that use Maestro CS for you. They connect through
+            MCP (Model Context Protocol), the standard way AI apps reach other programs.
+          </p>
           <div className="grid gap-4 @lg/setting:grid-cols-2">
             <div className="grid content-start gap-1.5">
               <h3 id={canId} className="font-medium">
@@ -149,7 +140,7 @@ export function ConnectedAgentsCard() {
             ))}
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </Fold>
+    </div>
   );
 }

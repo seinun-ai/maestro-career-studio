@@ -6,7 +6,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
 
 ## MCP server
 
-- **MCP server** (`backend/mcp_server/`; on screen **connected agents**, Settings › Connected agents): thin REST wrappers
+- **MCP server** (`backend/mcp_server/`; on screen **connected agents**, Settings › Agent apps): thin REST wrappers
   (`@_guard` → `ToolError`) via httpx (`BACKEND_URL`, default localhost:8000; compose host 8001). Loopback bypasses proxies; other hosts honor them (`mcp_server/tests/test_client_loopback.py`).
   **The docstring is the API**: behavior, records and requirements, never instructions (directory policy).
   `test_server.py` ratchets `title`, four `ToolAnnotations` (`_read`/`_write`) and ~2048-dedented-char docstrings;
@@ -24,7 +24,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   reverses them. `kb_sync_base` keeps a rephrasing as a wording (0.80+) and returns `compared_wording` (docs/entities/others.md, Career KB).
   Enable ONE profile per chat (`full` carries KB writes); `MAESTRO_CS_*` has no legacy fallback. **Apply executor:** headed Chrome (`docs/entities/others.md`, "Attended executor"; apply playbook, "Unattended (full automation)").
   **Plugin:** `plugins/maestro-career-studio/`: Claude Code's `.mcp.json` and Codex's `.codex-mcp.json` connect by URL; Codex prompts for durable decisions, login/upload, health-gate waivers, restores, KB approve/combine/retire and sync. Claude installs use a tagged local checkout; Codex uses a release-tag Git ref and sparse paths `.agents/plugins` + `plugins`; policy `PRIVACY.md`.
-  Settings › Connected agents' **Connect an agent app** (`connect-assistant`) selects a tool set and copies commands/URLs, opens install links or downloads the Claude Desktop bundle.
+  Settings › Agent apps' **Connect an agent app** (`connect-assistant`) selects a tool set and copies commands/URLs, opens install links or downloads the Claude Desktop bundle.
   `GET /api/setup/connect?profile=full` composes values from `MAESTRO_CS_PUBLIC_BACKEND_URL` (default localhost:8000; compose host port unless overridden); `/api/setup/connect/bundle` serves `MCPB_BUNDLE_PATH` (compose read-only mount; `tests/test_setup_connect.py`).
   The dependency-free Node ≥18 `.mcpb` bridges stdio↔HTTP with no assistant-side Docker/Python: `MAESTRO_CS_BACKEND_URL`
   defaults to localhost:8001; `MAESTRO_CS_MCP_PROFILE` selects `/mcp` or `/mcp/{profile}` (no trailing slash).
@@ -50,7 +50,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
     commits. **A hint never names a tool the active profile did not register** (`hunt` has no tailoring tools):
     options AND prose filter via `_active_allowed_tools()`; prose states facts, never commands (`test_workflow.py`).
   - **Two controls.** `mcp_workflow` `{hints: bool}` (`GET/PUT /api/settings/mcp-workflow` + its card in
-    Settings › Connected agents) is the USER's master switch; `brief=true` on `score_ats` is the AGENT's, for
+    Settings › Agent apps) is the USER's master switch; `brief=true` on `score_ats` is the AGENT's, for
     triage loops, checked FIRST so a loop pays no settings read. Tools **always wrap** (`next: null` when
     suppressed) — one tool must not return two shapes per runtime flag.
   - **LLM-free arc.** MCP `create_tailoring_session` defaults `enrich=False`; `quick_tailor` = create + `POST
@@ -94,7 +94,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   chat_system.txt. The router checks the Assistant's key before the capability check (no key → a 422 "The Assistant needs an API key…");
   `run_turn` streams through the adapter; working chips are words (`TOOL_PHRASES`), and deleting a chat asks first. Prompt rows seed at
   startup. `prompts.get_prompt` lazy-seeds only with a caller's session; its own session reads the file default without writing when a row
-  is absent. Prompt-file changes need the DB `prompt.chat_system` row reset (Settings › AI & models › AI instructions → Reset to default, or
+  is absent. Prompt-file changes need the DB `prompt.chat_system` row reset (Settings › Advanced › AI instructions → Reset to default, or
   delete the row); a deploy uses a SQLite-chain migration that deletes the row only while it still equals the previous default
   (`4022b54933e6` did it for `chat_system`; `tests/test_prompt_sync_guard.py` explains the mechanic).
 
@@ -142,7 +142,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   category rows, slow autocompletes, addresses, URLs and split dates as widgets of their own, commits and confirms each item of a list field (up to 20;
   never a closest pick), repeats no move that changed nothing (a run record's `memory` keeps what failed; `only` limits a call to named fields) and
   waits for the page to settle before typing (`extension/INTERNALS.md`, "The fill agent's rules"). **Answers decided in code** (`docs/entities/others.md`; `/pick`, `/step`): "How did you hear" takes the board the job came from (`jobs.referrer_board`, stamped from `services/board_visits`, the last board page the Companion looked up, 20 min, name only), else LinkedIn for a generic "Job board", always `assumed`; `derived.education_level` picks the highest threshold a finished degree meets, never "None of the above"; a "what type of sponsorship" list under a saved No takes none / not applicable (OPT counted as sponsorship uses the saved No: owner decision), else the user's; a saved No over a veteran list with exactly one "I am not a (protected) veteran" option takes it before polarity (`veteran_option`); `/map` is offered ONE start-date fact (the derived date), and a choice field gets the normalised words "Immediately".
-  **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`; Settings › AI & models › **Form filling**): `docs/entities/others.md`, "Form-filling engines". The second opinions and the fast polarity call get a floor by provider inside the 9 s request budget (Claude 3 s; every other, a custom server and OpenRouter 1 s: `autofill_map.second_opinion_floor`), and the trace names the fact a below-floor `none` fell under (`top_fact`).
+  **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`; Settings › Companion › **Form-filling engine**): `docs/entities/others.md`, "Form-filling engines". The second opinions and the fast polarity call get a floor by provider inside the 9 s request budget (Claude 3 s; every other, a custom server and OpenRouter 1 s: `autofill_map.second_opinion_floor`), and the trace names the fact a below-floor `none` fell under (`top_fact`).
 
 ## Queued run, one job (Apply)
 
@@ -151,7 +151,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   (consent channel `companion`), then drive THIS tab from the job's apply link (`apply_url`, else `source_url`; http(s) only; started on the job's saved posting it opens the
   saved link; on a job the user picked by hand, THIS page, saved as its `apply_url` if it has none, and `/api/jobs/match` reads both links) through sign-in, fill and Next to
   **Ready to submit**. While it prepares, a live checklist with Stop (taken between steps; what was done stays) shows each step and the base list is locked. Three switches,
-  Settings › Form filling (`companion_apply`, `GET/PUT /api/settings/companion-apply`, synced, read only with full automation On): **Choose the base resume for me** (default
+  Settings › Companion › How the Companion applies (`companion_apply`, `GET/PUT /api/settings/companion-apply`, synced, read only with full automation On): **Choose the base resume for me** (default
   On: pick only when the top score reaches Auto-apply's floor and margin, else ask), **Stop after each step** (default Off: three presses, the yes at Start filling) and **Think when stuck** (default On, below).
   **Submit is never clicked, at any setting**: `shared/page-kind.js` treats any Submit word, a dialog about submitting or an unseen Submit as the review page (Ready only on a
   real Submit: §6 inv-ready-real-review), and Next is pressed only by `page_advance` (`content/page-reader.js`), which re-sorts the button's labels at click time. A posting's

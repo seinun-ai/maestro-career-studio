@@ -165,6 +165,18 @@ a click.
 - **Make your own can now adapt any automation** to your agent app and routine.
 - **Apply runs ask wherever you can answer,** and leave a job in Needs you when nobody can.
 - **Mail status and Job hunt look back to their last run** instead of a fixed week.
+- **Settings in four tabs by purpose.** **Basics** leads with your AI model: where your jobs run,
+  whether they work, the model doing each job, **Use recommended models** and **Change provider**, and
+  your API keys, the other providers' folded away. Then **Money** (your home currency, pay per year, month
+  or hour, the European Central Bank's rates with Update, and the posted amount under a converted
+  figure), **Resume PDFs** and **Appearance**, now Light, Dark or Like my computer. About closes the page
+  with Run setup again and the setup guide. **Companion** holds what it may fill (agreements and
+  signatures, moved from Profile, and the screening answers), how it applies and the form-filling engine.
+  **Agent apps** has Connect an agent app, what agents can and can't do (folded), the limits, and the
+  job-site login, next-step hints and second copy. **Advanced** has the model for each job, more models,
+  your own AI server, AI instructions, Quick tailor and Hours per year. Nothing was removed, and a link
+  to an old tab opens the tab and card it moved to. While recommended models are on, Advanced's model
+  pickers show them and can't be changed.
 
 ### Fixed
 
