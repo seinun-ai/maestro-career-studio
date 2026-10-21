@@ -2267,6 +2267,32 @@ export interface MarketSettingResponse {
   offers_eeo: boolean;
 }
 
+/** How pay reads (`GET/PUT /api/settings/money`; docs/entities/money.md). */
+export interface MoneySettings {
+  /** ISO 4217 the user picked; null follows where they live. */
+  home_currency: string | null;
+  period: "year" | "month" | "hour";
+  show_posted: boolean;
+  hours_per_year: number;
+}
+
+export interface MoneySettingsResponse {
+  key: "money";
+  value: MoneySettings;
+  /** Resolved: the picked currency, else the home market's, else the deployment's. */
+  home_currency: string;
+}
+
+/** `GET /api/fx/rates`: ECB reference rates per euro; `date` null = none yet. */
+export interface FxRatesResponse {
+  base: string;
+  date: string | null;
+  rates: Record<string, number>;
+  fetched_at: string | null;
+  source: string;
+  source_url: string;
+}
+
 /** `GET /api/version` — baked image identity plus the live alembic head. */
 export interface VersionInfo {
   version: string;

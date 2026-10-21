@@ -8,8 +8,11 @@ import { useRoleLabel } from "@/components/role-category-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMoney } from "@/hooks/use-money";
 import type { Job } from "@/lib/types";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
+import { formatShortDate } from "@/lib/format-date";
+import { formatPay, payLine, periodWords, type FormattedPay } from "@/lib/money";
 
 const JobFactsIcon = CONCEPT_ICONS.jobFacts;
 const SkillsIcon = CONCEPT_ICONS.skills;
@@ -48,40 +51,22 @@ function extractStringList(
     .filter((item) => item.length > 0);
 }
 
-function formatMoney(
-  value: string | number | null | undefined,
-  currency: string | null | undefined = "USD",
-): string | null {
-  if (value === null || value === undefined || value === "") return null;
-  const n = typeof value === "string" ? Number(value) : value;
-  if (!Number.isFinite(n)) return null;
-  const code = (currency || "USD").toUpperCase();
-  try {
-    // Compact currency for resume-scale numbers; falls back below on exotic codes.
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: code,
-      notation: n >= 1000 ? "compact" : "standard",
-      maximumFractionDigits: n >= 1000 ? 1 : 0,
-    }).format(n);
-  } catch {
-    if (n >= 10_000) return `${code} ${Math.round(n / 1000)}k`;
-    if (n >= 1000) return `${code} ${(n / 1000).toFixed(1)}k`;
-    return `${code} ${n}`;
-  }
+/** A job's pay as `formatPay` reads it. */
+export function jobPay(job: Job) {
+  return {
+    min: job.salary_min,
+    max: job.salary_max,
+    currency: job.salary_currency,
+    period: job.salary_period,
+  };
 }
 
-export function formatSalary(
-  min: string | number | null,
-  max: string | number | null,
-  period: string | null,
-  currency: string | null = null,
-): string | null {
-  const lo = formatMoney(min, currency);
-  const hi = formatMoney(max, currency);
-  if (!lo && !hi) return null;
-  const range = lo && hi && lo !== hi ? `${lo}–${hi}` : (lo ?? hi);
-  return period ? `${range} / ${period}` : range;
+/** Under a converted figure: what the post said, and the date of the rate used. */
+function postedNote(pay: FormattedPay): string | null {
+  if (!pay.converted || !pay.posted) return null;
+  const words = periodWords(pay.postedPeriod);
+  const posted = `${pay.posted}${words ? ` ${words}` : ""} as posted`;
+  return pay.rateDate ? `${posted} · rate of ${formatShortDate(pay.rateDate)}` : posted;
 }
 
 function formatYears(min: number | null, max: number | null): string | null {
@@ -242,12 +227,17 @@ export function JobExtractedFields({
   const qualifications = extractStringList(job.extracted_json, "qualifications");
 
   const locationLine = formatLocationLine(job);
-  const salaryLine = formatSalary(
-    job.salary_min,
-    job.salary_max,
-    job.salary_period,
-    job.salary_currency,
-  );
+  const money = useMoney();
+  const pay = formatPay(jobPay(job), money);
+  const salaryLine = pay ? payLine(pay) : null;
+  // Converted: the posted amount stays in view. No rate: the figure is the post's own, and says so.
+  const salaryNote = !pay
+    ? null
+    : pay.noRate && money.ratesReady
+      ? "As posted: no exchange rate for this currency"
+      : money.showPosted
+        ? postedNote(pay)
+        : null;
   const salaryDisplay =
     salaryLine ??
     (job.salary_source_url
@@ -316,7 +306,14 @@ export function JobExtractedFields({
                       See pay range
                     </a>
                   ) : (
-                    salaryDisplay
+                    <>
+                      {salaryDisplay}
+                      {salaryNote && (
+                        <span className="text-muted-foreground block text-body-small">
+                          {salaryNote}
+                        </span>
+                      )}
+                    </>
                   )
                 }
               />

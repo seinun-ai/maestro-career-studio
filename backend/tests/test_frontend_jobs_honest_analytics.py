@@ -63,7 +63,7 @@ def test_job_market_captions_are_accurate():
 def test_job_market_money_has_one_format():
     market = _read("components/explore/explore-overview.tsx")
     assert "const fmtK" not in market
-    assert "formatSalary(min, max, null, currency ?? null)" in market
+    assert 'formatPay({ min, max, currency: currency ?? null, period: null })?.primary ?? "—"' in market
     assert "value={payRange(r.avg_min, r.avg_max, r.currency)}" in market
     assert "payRange(o.meta.salary_year_avg_min, o.meta.salary_year_avg_max, o.meta.salary_year_currency)" in market
 

@@ -3,13 +3,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { StatTile } from "@/components/analytics/stat-tile";
 
-import { formatSalary, humanizeEnum } from "@/components/job-extracted-fields";
+import { humanizeEnum } from "@/components/job-extracted-fields";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
 import { formatShortDate } from "@/lib/format-date";
+import { formatPay } from "@/lib/money";
 import { countryName, placeName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
 import { skillName } from "@/lib/skill-name";
@@ -59,7 +60,7 @@ function signalTitle(title: string, o: ExploreOverview): string {
 }
 /** Pay the way the job header shows it ("$171K–$214K", "£70K–£90K"): one money format. */
 const payRange = (min: number | null, max: number | null, currency?: string | null) =>
-  formatSalary(min, max, null, currency ?? null) ?? "—";
+  formatPay({ min, max, currency: currency ?? null, period: null })?.primary ?? "—";
 
 
 function BarList({

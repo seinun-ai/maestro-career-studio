@@ -26,8 +26,8 @@ import { CompanyMonogram } from "@/components/company-monogram";
 import { IconButton } from "@/components/icon-button";
 import {
   JobExtractedFields,
-  formatSalary,
   humanizeEnum,
+  jobPay,
 } from "@/components/job-extracted-fields";
 import { JobKnockoutCard, KnockoutLine } from "@/components/job-knockout-card";
 import { JobSteps } from "@/components/job-steps";
@@ -59,6 +59,7 @@ import { ResumeTag } from "@/components/visual/resume-swatch";
 import { ScoreBar } from "@/components/visual/score-bar";
 import { useBaseResumeColor } from "@/hooks/use-base-resume-label";
 import { useJobSteps } from "@/hooks/use-job-steps";
+import { useMoney } from "@/hooks/use-money";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
@@ -67,6 +68,7 @@ import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { headerProposalPill, historyStatusOf, proposalHasContent } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
+import { formatPay, payLine } from "@/lib/money";
 import { TAB_TO_STEP, currentStep, stepForTab, type StepKey } from "@/lib/job-steps";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { cn } from "@/lib/utils";
@@ -171,6 +173,7 @@ export default function JobDetailPage({
   // The four steps and what the header reads with them (the score pill, the proposal, where the job stands).
   const { proposalQuery, baseName, scoreShown, standing, steps } = useJobSteps(id, data);
   const colorOf = useBaseResumeColor();
+  const money = useMoney();
   const scoreResume = scoreShown?.tailored ? application?.base_resume ?? "" : scoreShown?.targetId ?? "";
   const proposalId = data?.job.proposal_id ?? null;
   const { patch } = useApplicationMutations({
@@ -288,12 +291,8 @@ export default function JobDetailPage({
   const { job } = data;
   const hasApp = !!application;
   const showSubmitted = Boolean(data.has_filled_answers) || submittedSeen;
-  const salary = formatSalary(
-    job.salary_min,
-    job.salary_max,
-    job.salary_period,
-    job.salary_currency,
-  );
+  const pay = formatPay(jobPay(job), money);
+  const salary = pay ? payLine(pay) : null;
   const metaLine = jobMetaLine([
     job.company ?? "Unknown company",
     job.location,

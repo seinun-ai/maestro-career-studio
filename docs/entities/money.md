@@ -35,5 +35,15 @@ are the ECB's daily reference rates; missing pay is never estimated. A job's *po
   no file mirror (a cache, refetched when lost). Each copy fetches its own, the always-on copy may write it (the flush
   guard refuses only profile rows, SYSTEM.md §6 inv-flush-guard) and a profile bundle never carries it. Rates are
   stored as the ECB's own text, so a figure is exact; `fx_rates.current` is the read that never fetches or writes.
+- **The browser formats every pay figure with one function** (`frontend/lib/money.ts` `formatPay(pay, options)`, options
+  from `hooks/use-money.ts` `useMoney`, which reads `GET /api/settings/money` and `GET /api/fx/rates` through
+  react-query): compact currency with each end written out ("€75K–€90K"; `formatRange` is not used, it collapses to
+  "€75–90K"), the narrow symbol for the home currency and the full one for others ("US$", "CA$"). A figure in another
+  currency, or made yearly from another period (`per`, `hoursPerYear`), reads "≈ …" and keeps `posted`; with no rate
+  it is the posting's own and `noRate` says so; with no pay it is null; with no currency it is a plain number, never
+  a guessed dollar. `payLine` adds the period in words ("a year"). The job page header, its Job details card (the
+  posted amount and rate date under a converted figure, while `show_posted` is on) and Analytics' pay ranges (as
+  posted) use it; there is no USD default anywhere.
 
-Pinned by `tests/test_money.py` and `tests/test_fx_rates.py` (one fetch per day, offline, no cache, machine-local).
+Pinned by `tests/test_money.py`, `tests/test_fx_rates.py` (one fetch per day, offline, no cache, machine-local) and
+`tests/test_frontend_money.py` (the `lib/money.test.ts` node suite and the callers).
