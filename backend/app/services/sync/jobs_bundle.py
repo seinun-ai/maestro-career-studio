@@ -73,6 +73,7 @@ TABLES: tuple[Table, ...] = (
     Table("ats_scores", models.AtsScore, "job_id", "job"),
     Table("tailoring_sessions", models.TailoringSession, "job_id", "job"),
     Table("qa_entries", models.QAEntry, "application_id", "app", paths=("pdf_path",)),
+    Table("application_status_events", models.ApplicationStatusEvent, "application_id", "app"),
     Table("filled_answers", models.FilledAnswer, "job_id", "job"),
     Table("resume_versions", models.ResumeVersion, "resume_key", "key", by_kind=True,
           order="version_number"),

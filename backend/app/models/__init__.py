@@ -1,6 +1,7 @@
 from app.models.agent_run import AgentRun
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
+from app.models.application_status_event import ApplicationStatusEvent
 from app.models.ats_score import AtsScore
 from app.models.autofill_field_observation import AutofillFieldObservation
 from app.models.autofill_mechanism_stat import AutofillMechanismStat
@@ -31,6 +32,7 @@ __all__ = [
     "AgentRun",
     "Application",
     "ApplicationProposal",
+    "ApplicationStatusEvent",
     "AtsScore",
     "AutofillFieldObservation",
     "AutofillMechanismStat",

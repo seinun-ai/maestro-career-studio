@@ -9,6 +9,7 @@ from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 if TYPE_CHECKING:
+    from app.models.application_status_event import ApplicationStatusEvent
     from app.models.qa_entry import QAEntry
 
 
@@ -51,6 +52,13 @@ class Application(Base):
 
     qa_entries: Mapped[list["QAEntry"]] = relationship(
         "QAEntry",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    # Written only by services/application_status.set_status, with application_id set (the flush
+    # guard ties a row to its job by that column); never appended through this collection.
+    status_events: Mapped[list["ApplicationStatusEvent"]] = relationship(
+        "ApplicationStatusEvent",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )

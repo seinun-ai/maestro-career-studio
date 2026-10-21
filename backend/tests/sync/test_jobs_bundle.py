@@ -26,7 +26,7 @@ SENTINEL = "SENTINEL-BODY-7731"
 MODELS = [
     models.Job, models.JobSkill, models.Application, models.ApplicationProposal,
     models.ConsentEvent, models.AtsScore, models.TailoringSession, models.QAEntry,
-    models.FilledAnswer, models.ResumeVersion, models.ResumeLintReport,
+    models.ApplicationStatusEvent, models.FilledAnswer, models.ResumeVersion, models.ResumeLintReport,
     models.HealthAskAnswer, models.HealthGateWaiver, models.KBPortLog,
 ]
 IGNORED = {"sync_rev", "owner_machine", "handover"}
@@ -126,6 +126,9 @@ def _add_children(db, ids, folder, referral_id, qa_count):
         base_ats_score_id=ids.score, created_at=WHEN, updated_at=WHEN))
     db.add(models.FilledAnswer(id=uuid.uuid4(), job_id=ids.job, channel="agent",
                                application_id=ids.app, fields=[{"q": "x"}], captured_at=WHEN))
+    db.add(models.ApplicationStatusEvent(id=uuid.uuid4(), application_id=ids.app,
+                                         from_status="draft", to_status="saved", at=WHEN,
+                                         source="claude-ai"))
     db.flush()
     db.add(models.ConsentEvent(id=uuid.uuid4(), proposal_id=ids.proposal, action="accept",
                                channel="web", evidence_manifest_json=["a"], created_at=WHEN))
@@ -214,6 +217,7 @@ def test_round_trip_is_row_for_row_and_files_arrive(home, recv, roots):
     roots.use("recv")
     assert snapshot(recv) == expected
     assert expected["qa_entries"] and expected["resume_versions"] and expected["kb_port_log"]
+    assert expected["application_status_events"]
     received = tree(roots.recv)
     assert received == {
         "Co_Role_a/resume.pdf": b"%PDF a", "Co_Role_a/resume.tex": b"tex a",

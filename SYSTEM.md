@@ -163,7 +163,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 | Entity | File | Scope |
 |---|---|---|
 | Job (`models/job.py`) | [`docs/entities/job.md`](docs/entities/job.md) | raw JD text + sha256 dedup; has no status of its own |
-| Application (`models/application.py`) | [`docs/entities/application.md`](docs/entities/application.md) | one per job (its base resume moves with a tailor); status vocabulary, tailored draft, render artifacts |
+| Application (`models/application.py`) | [`docs/entities/application.md`](docs/entities/application.md) | one per job (its base resume moves with a tailor); status vocabulary and the dated status-event log, tailored draft, render artifacts |
 | TailoringSession (`models/tailoring_session.py`) | [`docs/entities/tailoring-session.md`](docs/entities/tailoring-session.md) | the open → tailored | superseded | abandoned machine; frozen gaps |
 | AtsScore (`models/ats_score.py`) | [`docs/entities/ats-score.md`](docs/entities/ats-score.md) | base upsert-singletons vs appended tailored history; deterministic engine |
 | ResumeVersion (`models/resume_version.py`) | [`docs/entities/resume-version.md`](docs/entities/resume-version.md) | append-only snapshots on every write path — the undo story |

@@ -6,6 +6,7 @@ def test_all_planned_tables_are_registered():
     assert set(Base.metadata.tables) == {
         "agent_runs",
         "application_proposals",
+        "application_status_events",
         "applications",
         "ats_scores",
         "autofill_field_observations",

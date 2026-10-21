@@ -205,7 +205,8 @@ def test_refused_qa_keeps_pdf(client, seeded, tmp_path, db_session, method):
     assert row.pdf_path == str(pdf)
 
 
-@pytest.mark.parametrize("change", ["edit", "delete", "child", "move", "offered", "cancel-and-edit"])
+@pytest.mark.parametrize("change", ["edit", "delete", "child", "status-event", "move", "offered",
+                                    "cancel-and-edit"])
 def test_guard_blocks_flush(db_session, change):
     replica, owned = _seed_job(db_session), _seed_job(db_session, owner=None)
     child = models.Application(job_id=replica.id, base_resume="base")
@@ -218,6 +219,9 @@ def test_guard_blocks_flush(db_session, change):
         db_session.delete(replica)
     elif change == "child":
         db_session.add(models.QAEntry(application_id=child.id, kind="answer"))
+    elif change == "status-event":
+        db_session.add(models.ApplicationStatusEvent(application_id=child.id, to_status="applied",
+                                                     source="you"))
     elif change == "move":
         child.job_id = owned.id
     else:

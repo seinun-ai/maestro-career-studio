@@ -32,6 +32,14 @@ fields for the job's newest application (`for_job_rows`, four queries), so the C
   `schemas/application.py` = draft, applied, interviewing, offered, accepted,
   rejected, withdrawn. PATCH 422s on anything else. The frontend mirrors it as
   `APPLICATION_STATUSES` in `lib/types.ts` (kept in sync by hand — update both).
+- **Status-event log** (`models/application_status_event.py`, `application_status_events`): one row
+  per change of `status`, with `from_status` (null for the first), `to_status`, `at`, `source` (who
+  said so) and `backfilled`. The migration that made the table wrote one `backfilled` row per
+  application that already had a status (`source` "backfill", `at` = its `updated_at`, which is its
+  last update, not when the status changed): Analytics and Today count those for status and skip
+  them for timing. The rows are job rows for sync (`registry.TABLES`, tied to the job through
+  `application_id`): they travel in the job's bundle and leave with their application (ON DELETE
+  CASCADE plus `Application.status_events`).
 - **applied_at sync rule** (PATCH handler): entering applied/interviewing/
   offered/accepted stamps `applied_at` if unset (jumping straight to
   interviewing implies you applied); moving to draft clears it;

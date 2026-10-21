@@ -27,6 +27,7 @@ TABLES = {
     "ats_scores": JOB,
     "tailoring_sessions": JOB,
     "qa_entries": JOB,
+    "application_status_events": JOB,
     "filled_answers": JOB,
     "base_resumes": PROFILE,
     "templates": PROFILE,
@@ -93,7 +94,7 @@ def _link_of(obj: Base) -> tuple[str, type | None] | None:
     table = obj.__table__.name
     if table == "consent_events":
         return "proposal_id", ApplicationProposal
-    if table == "qa_entries":
+    if table in ("qa_entries", "application_status_events"):
         return "application_id", Application
     if TABLES.get(table) == "by_kind":
         return "resume_key", Application

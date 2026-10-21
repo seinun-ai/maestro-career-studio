@@ -47,7 +47,8 @@ LOCAL_MODELS = (
     models.AutofillWidgetGap,
 )
 SYNC_MODELS = (models.SyncState, models.SyncTombstone, models.SyncRequest)
-INDIRECT_JOB_MODELS = (models.ConsentEvent, models.QAEntry, *BY_KIND_MODELS)
+APPLICATION_CHILD_MODELS = (models.QAEntry, models.ApplicationStatusEvent)
+INDIRECT_JOB_MODELS = (models.ConsentEvent, *APPLICATION_CHILD_MODELS, *BY_KIND_MODELS)
 
 
 @pytest.fixture
@@ -65,7 +66,7 @@ def job_parents(db_session):
 def _child_of(model, application, proposal):
     if model is models.ConsentEvent:
         return model(proposal_id=proposal.id)
-    if model is models.QAEntry:
+    if model in APPLICATION_CHILD_MODELS:
         return model(application_id=application.id)
     return model(resume_kind="application", resume_key=str(application.id))
 
@@ -78,7 +79,8 @@ def test_every_table_is_classified():
     assert set(registry.TABLES.values()) == {"profile", "job", "run_log", "local", "sync", "by_kind"}
 
 
-@pytest.mark.parametrize("model", (models.Job, *DIRECT_JOB_MODELS, models.ConsentEvent, models.QAEntry))
+@pytest.mark.parametrize("model", (models.Job, *DIRECT_JOB_MODELS, models.ConsentEvent,
+                                   *APPLICATION_CHILD_MODELS))
 def test_job_tables_are_job_class(model):
     from app.services.sync import registry
 
@@ -168,7 +170,8 @@ def test_profile_rows_have_no_job(db_session, model):
     assert registry.job_id_of(db_session, row) is None
 
 
-@pytest.mark.parametrize("model", (models.Job, *DIRECT_JOB_MODELS, models.ConsentEvent, models.QAEntry))
+@pytest.mark.parametrize("model", (models.Job, *DIRECT_JOB_MODELS, models.ConsentEvent,
+                                   *APPLICATION_CHILD_MODELS))
 def test_job_rows_are_not_profile(model):
     from app.services.sync import registry
 
@@ -334,7 +337,7 @@ def test_job_ids_of_indirect_link_move(db_session, job_parents, model):
     row.id = uuid.uuid4()
     make_transient_to_detached(row)
     db_session.add(row)
-    if model is models.QAEntry:
+    if model in APPLICATION_CHILD_MODELS:
         row.application_id = other_application.id
     elif model is models.ConsentEvent:
         row.proposal_id = other_proposal.id
