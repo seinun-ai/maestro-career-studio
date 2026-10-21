@@ -16,19 +16,34 @@ from app.services import markets
 client = TestClient(app)
 
 
-def test_supported_markets_are_the_declared_six():
-    assert markets.keys() == ["US", "UK", "CA", "AU", "IE", "IN"]
+SUPPORTED = ["US", "UK", "CA", "AU", "IE", "IN", "DE", "NL"]
+
+
+def test_supported_markets_are_the_declared_eight():
+    assert markets.keys() == SUPPORTED
 
 
 @pytest.mark.parametrize(
     "market,currency",
-    [("US", "USD"), ("UK", "GBP"), ("CA", "CAD"), ("AU", "AUD"), ("IE", "EUR"), ("IN", "INR")],
+    [("US", "USD"), ("UK", "GBP"), ("CA", "CAD"), ("AU", "AUD"), ("IE", "EUR"), ("IN", "INR"),
+     ("DE", "EUR"), ("NL", "EUR")],
 )
 def test_each_market_has_its_own_currency(market, currency):
     assert markets.currency_for(market) == currency
 
 
-@pytest.mark.parametrize("market", ["CA", "AU", "IE", "IN"])
+@pytest.mark.parametrize("market,label", [("DE", "Germany"), ("NL", "Netherlands")])
+def test_germany_and_the_netherlands_are_data_with_no_diversity_set(market, label):
+    """Added as data alone: day-first dates, the generic work-permit wording and no EEO module,
+    because no German or Dutch question set has been checked against a primary source."""
+    assert markets.is_supported(market) and markets.is_supported(market.lower())
+    entry = markets.get(market)
+    assert (entry["label"], entry["date_format"]) == (label, "DMY")
+    assert entry["eeo_module"] is None and markets.offers_eeo(market) is False
+    assert entry["work_auth_vocab"] == "generic"
+
+
+@pytest.mark.parametrize("market", ["CA", "AU", "IE", "IN", "DE", "NL"])
 def test_unverified_markets_offer_no_eeo_module(market):
     """The whole point of the eeo_module field.
 
@@ -54,7 +69,7 @@ def test_unknown_market_falls_back_rather_than_raising():
 def test_get_market_returns_the_picker_and_the_eeo_posture():
     body = client.get("/api/settings/market").json()
     assert body["key"] == "market"
-    assert [m["key"] for m in body["supported"]] == ["US", "UK", "CA", "AU", "IE", "IN"]
+    assert [m["key"] for m in body["supported"]] == SUPPORTED
     # the picker carries offers_eeo so the frontend never decides this itself
     assert {m["key"]: m["offers_eeo"] for m in body["supported"]}["IN"] is False
 

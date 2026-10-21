@@ -73,3 +73,17 @@ markets:
     # are not ours to infer. No module until verified against a primary source.
     eeo_module: null
     work_auth_vocab: generic
+
+  - key: DE
+    label: Germany
+    currency: EUR
+    date_format: DMY
+    eeo_module: null          # not verified
+    work_auth_vocab: generic
+
+  - key: NL
+    label: Netherlands
+    currency: EUR
+    date_format: DMY
+    eeo_module: null          # not verified
+    work_auth_vocab: generic
