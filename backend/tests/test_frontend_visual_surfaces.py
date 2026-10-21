@@ -202,13 +202,14 @@ def test_health_rows_draw_the_evidence_ladder_and_priority_chip():
 
 def test_question_pass_rows_are_glyph_and_word_and_the_footer_has_a_bar():
     src = _read("components/resume-health/question-pass.tsx")
-    for icon in ("NotRunIcon", "Loader2", "CONCEPT_ICONS.fails", "SkipIcon", "DraftsIcon", "CONCEPT_ICONS.none"):
+    # The row being written shows the working dots (design refresh Task 4.5: a region waiting on the AI, not a spinner).
+    for icon in ("NotRunIcon", "<WorkingDots", "CONCEPT_ICONS.fails", "SkipIcon", "DraftsIcon", "CONCEPT_ICONS.none"):
         assert icon in src, icon
     assert "Clock" not in src and "SkipForward" not in src
     assert "CONCEPT_ICONS.notRun" in src and "CONCEPT_ICONS.skip" in src and "CONCEPT_ICONS.drafts" in src
     # "New wording ready" still needs the user's review: drafts, not a green done check.
     assert "CircleCheck" not in src and "text-success" not in src
-    assert "animate-spin" in src
+    assert "animate-spin" not in src and "Loader2" not in src
     # The count sits BESIDE the live words, not inside the polite region.
     assert '<p aria-live="polite">{progress.words}</p>' in src
     assert "<ProgressCount" in src and "showText={false}" in src

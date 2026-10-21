@@ -27,6 +27,7 @@ StatusChip is the only place an application's or a proposal's state is named and
 - 24px tall, `radius-full`, `label-medium`. An application chip's 6px dot is the role itself (`bg-warning`, `bg-success`); a proposal chip's dot is its own text color at 40%.
 - Every status also has a dot role for `StatusDot` and `LaneDot` (see StatusDot): Needs you and Check if sent `attention`, Proposed `primary`, Queued `on-secondary-container`, Approved and Applied `success`, Skipped and Expired `muted-foreground`.
 - The label always carries the meaning; the color only repeats it.
+- A changed status cross-fades (the old label out, the new one in, a 2px blur between, 200ms), then the chip pulses once (`animate-confirm`) when the change has settled; a failed change that rolls back pulses not at all.
 - Needs you is `attention` (orange), never `warning`: Interviewing sits in the same column.
 - A chip locks while its job is moving between copies (`lockedReason`): the chevron becomes a lock, the reason is its tooltip and its description for screen readers, it refuses to open but stays focusable, and it has no hover lift or pointer cursor.
 - An interactive chip shows a chevron, lifts with a shadow on hover and takes the solid `ring` outline on focus.

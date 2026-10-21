@@ -135,6 +135,7 @@ def test_the_status_cell_dates_the_status_from_the_status_log():
     assert run_node_test("lib/job-standing.test.ts").returncode == 0
     schema = (Path(__file__).resolve().parents[1] / "app/schemas/application.py").read_text(encoding="utf-8")
     assert "    status_since: datetime | None = None\n" in schema
+    assert "status_since?: string | null;" in _src("lib/types.ts")
 
 
 def test_the_tracker_lib_node_tests_pass():

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
@@ -25,7 +25,7 @@ import {
   type PassRow,
 } from "@/components/resume-health/pass-rows";
 import { usePassWrites } from "@/components/resume-health/use-pass-writes";
-import { ProgressCount } from "@/components/visual";
+import { ProgressCount, WorkingDots } from "@/components/visual";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -568,10 +568,9 @@ function PassRowView({
               <NotRunIcon className="size-3.5" aria-hidden="true" />Waiting to write…
             </p>
           )}
+          {/* The AI is writing this row's wording: the working dots, not a spinner (a region waits, not a button). */}
           {row.status === "drafting" && (
-            <p className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
-              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />Writing…
-            </p>
+            <WorkingDots label="Writing new wording" className="text-muted-foreground text-body-small" />
           )}
           {row.status === "failed" && (
             <p className="text-destructive inline-flex items-center gap-1 text-body-small">

@@ -120,7 +120,7 @@ def test_the_next_step_cell_links_the_one_control_from_the_servers_stage():
     opener = _TABLE[_TABLE.rindex("<TableCell", 0, _TABLE.index("{step ? (")) :]
     assert "onClick" not in open_tag(opener, "TableCell")
     link = squash(cell[: cell.index(") : waiting ? (")])
-    assert '<span className="inline-flex" onClick={(e) => e.stopPropagation()}>' in link
+    assert '<span className="inline-flex" onClick={(e) => e.stopPropagation()} onClickCapture={(e) => {' in link
     assert "<NextStep label={step.label} href={nextStepHref(jobId, step)} />" in link
     # It only navigates, so it is never disabled: the page it opens says whose the job is.
     assert "disabled=" not in link and "canWrite" not in link

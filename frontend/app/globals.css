@@ -435,6 +435,15 @@
   animation: check-draw var(--duration-medium2) var(--ease-out-strong) both;
 }
 
+/* A label that cross-fades to a new one (StatusChip): the old fades out and the new in, a 2px blur between, both
+   --duration-short4 (lib/motion.ts FADE_MS). Registered for the same reason as animate-confirm. */
+@utility animate-status-in {
+  animation: status-in var(--duration-short4) var(--ease-out-strong) both;
+}
+@utility animate-status-out {
+  animation: status-out var(--duration-short4) var(--ease-out-strong) both;
+}
+
 @layer utilities {
   /* Stagger entrance: each child fades + lifts in, delayed by --stagger. */
   @keyframes fade-rise {
@@ -500,6 +509,19 @@
     }
   }
 
+  @keyframes status-in {
+    from {
+      opacity: 0;
+      filter: blur(2px);
+    }
+  }
+  @keyframes status-out {
+    to {
+      opacity: 0;
+      filter: blur(2px);
+    }
+  }
+
   /* AI is working (WorkingDots): three dots rise in turn on one loop. A loop that says "still
      going", like the shimmer, not a change, so it runs past the 400ms budget. */
   @keyframes working-dot {
@@ -561,6 +583,21 @@
   }
 }
 
+/* The Jobs row opening into the job page, and back (components/job-morph.tsx): only the monogram and the title
+   carry names, so only they move, 250ms on a strong ease-out. The page itself swaps without a fade, and nothing
+   slides (no transition types). Clicks pass through to the live page while it runs. */
+::view-transition-group(.job-morph) {
+  animation-duration: 250ms;
+  animation-timing-function: var(--ease-out-strong);
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition {
+  pointer-events: none;
+}
+
 /* Respect users who don't want motion. Keep opacity, drop transform. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -580,5 +617,10 @@
   /* The dots hold still and dim; the check is drawn at once (dash offset 0). */
   .working-dot {
     opacity: 0.6;
+  }
+  /* The morph does not move: the named pair cross-fades in place (the group keeps its duration, which the two
+     snapshots' fades inherit). */
+  ::view-transition-group(*) {
+    animation-name: none !important;
   }
 }

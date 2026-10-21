@@ -620,7 +620,9 @@ def test_every_old_tab_link_still_lands_on_a_step():
 
 def test_the_rare_actions_sit_behind_one_more_actions_menu():
     page = _read(_JOB_PAGE)
-    header = page[page.index("<header") : page.index("</header>")]
+    # The loaded header (the loading one draws only Back and the morphing pair, design refresh Task 4.5).
+    start = page.rindex("<header", 0, page.index("<DropdownMenu>"))
+    header = page[start : page.index("</header>", start)]
     menu = header[header.index("<DropdownMenu>") : header.index("</DropdownMenu>")]
     items = [m.strip() for m in re.findall(r"\n\s*(?:\{promote\.isPending \? \"Queueing…\" : \"(Queue in Agent inbox)\"\}|\{reExtract\.isPending \? \"Refreshing…\" : \"(Refresh details)\"\}|(Delete job))", menu) for m in m if m]
     assert items == ["Queue in Agent inbox", "Refresh details", "Delete job"], items

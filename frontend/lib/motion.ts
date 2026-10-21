@@ -11,3 +11,6 @@ export const ROW_EXIT_MS = 200;
 
 /** A number rolling to its new value (NumberRoll): the same `--duration-medium4` as a confirming pulse. */
 export const ROLL_MS = 400;
+
+/** A label that cross-fades to a new one (StatusChip): globals.css `animate-status-in`/`-out` run `--duration-short4`. */
+export const FADE_MS = 200;

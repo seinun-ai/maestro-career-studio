@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LoadErrorState } from "@/components/load-error-state";
+import { WorkingDots } from "@/components/visual";
 import { ownershipControlProps } from "@/lib/job-ownership";
 import { useEditorFocusReturn } from "@/hooks/use-confirm-discard";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
@@ -296,6 +297,9 @@ export function QASections({
   const history = (
     <section tabIndex={-1} aria-labelledby={historyHeadingId} className="space-y-3 outline-none">
       <h2 id={historyHeadingId} className="text-title-small">History</h2>
+      {/* What the AI is writing into History right now: the working dots, while the button keeps its spinner. */}
+      {askQuestions.isPending ? <WorkingDots label="Answering your questions" className="flex" /> : null}
+      {coverLetter.isPending ? <WorkingDots label="Writing your cover letter" className="flex" /> : null}
       {isLoadFailure({ data: entries, isError, fetchStatus, errorUpdateCount }) ? (
         <LoadErrorState
           className="py-8"

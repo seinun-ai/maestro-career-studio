@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
-import { CONFIRM_MS } from "@/lib/motion";
+import { CONFIRM_MS, FADE_MS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { SegmentTone } from "@/components/visual";
 import { APPLICATION_STATUSES, type ApplicationStatus } from "@/lib/types";
@@ -209,16 +209,37 @@ export function StatusChip({
   const current = (status ?? "draft") as ApplicationStatus;
   const style = STATUS_STYLES[current] ?? STATUS_STYLES.draft;
 
-  // One soft ring pulse once a change has settled: not on first paint, and not
-  // when a failed PATCH rolls the status back to what it was before.
+  // A new status cross-fades in over the old one (a 2px blur between, `animate-status-in`/`-out`, FADE_MS), not on
+  // first paint. The old label stays, stacked under the new one, until the fade ends.
+  const [shownStatus, setShownStatus] = useState(current);
+  const [leaving, setLeaving] = useState<ApplicationStatus | null>(null);
+  const fadeEnds = useRef(0);
+  if (shownStatus !== current) {
+    setLeaving(shownStatus);
+    setShownStatus(current);
+  }
+  useEffect(() => {
+    if (leaving == null) return;
+    fadeEnds.current = performance.now() + FADE_MS;
+    const t = window.setTimeout(() => setLeaving(null), FADE_MS);
+    return () => window.clearTimeout(t);
+  }, [leaving]);
+  // Then one soft ring pulse once the change has settled, never before the fade ends: not on first paint, and
+  // not when a failed PATCH rolls the status back to what it was before.
   const settled = useRef(current);
   const [confirm, setConfirm] = useState(false);
   useEffect(() => {
     if (pending || settled.current === current) return;
     settled.current = current;
-    setConfirm(true);
-    const t = window.setTimeout(() => setConfirm(false), CONFIRM_MS);
-    return () => window.clearTimeout(t);
+    let off = 0;
+    const on = window.setTimeout(() => {
+      setConfirm(true);
+      off = window.setTimeout(() => setConfirm(false), CONFIRM_MS);
+    }, Math.max(0, fadeEnds.current - performance.now()));
+    return () => {
+      window.clearTimeout(on);
+      window.clearTimeout(off);
+    };
   }, [current, pending]);
   // A natively disabled trigger cannot take focus back when the menu closes, so
   // the chip stays focusable (aria-disabled) and just refuses to open meanwhile.
@@ -255,7 +276,19 @@ export function StatusChip({
             ) : (
               <span className={cn("size-1.5 rounded-full", style.dot)} />
             )}
-            {style.label}
+            {leaving == null ? (
+              style.label
+            ) : (
+              // The two labels share one cell, so the chip holds the wider one's width while they cross.
+              <span className="grid">
+                <span aria-hidden="true" className="animate-status-out col-start-1 row-start-1">
+                  {(STATUS_STYLES[leaving] ?? STATUS_STYLES.draft).label}
+                </span>
+                <span key={current} className="animate-status-in col-start-1 row-start-1">
+                  {style.label}
+                </span>
+              </span>
+            )}
             {lockedReason ? (
               <>
                 <CONCEPT_ICONS.locked className="size-3 opacity-50" aria-hidden="true" />

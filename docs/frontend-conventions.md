@@ -2040,7 +2040,8 @@ Every action answers. The answer depends on where the effect lands:
   pair fades in place (`::view-transition-group(*)` loses its animation). While a job's detail loads, its header draws
   the title and company a Jobs list holds (`hooks/use-cached-job-heading.ts`), so the pair is on the page in the
   navigation's first frame. Keyboard actions never animate: a row opened with Enter drops its names first
-  (`flushSync`), and no key handler starts motion. Pinned by `test_frontend_motion.py`.
+  (`flushSync`), as do the row's Next step and the job page's Back when a key presses them (a click with
+  `detail === 0`), and no key handler starts motion. Pinned by `test_frontend_motion.py`.
 - **A button, an input, every state.** Rest, hover, focus (solid ring), pressed (0.97), `pending`, disabled
   (with the reason tied by `aria-describedby`), and for a field `aria-invalid` (error) or `data-warning`
   (warning, never blocks a save).

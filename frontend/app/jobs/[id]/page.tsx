@@ -1,6 +1,7 @@
 "use client";
 
-import { use, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, use, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +25,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { ResumeStep } from "@/components/resume-step";
 import { CompanyMonogram } from "@/components/company-monogram";
 import { IconButton } from "@/components/icon-button";
+import { JobMorph } from "@/components/job-morph";
 import {
   JobExtractedFields,
   humanizeEnum,
@@ -59,6 +61,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ResumeTag } from "@/components/visual/resume-swatch";
 import { ScoreBar } from "@/components/visual/score-bar";
 import { useBaseResumeColor } from "@/hooks/use-base-resume-label";
+import { useCachedJobHeading } from "@/hooks/use-cached-job-heading";
 import { useJobSteps } from "@/hooks/use-job-steps";
 import { useMoney } from "@/hooks/use-money";
 import { useSingleFlight } from "@/hooks/use-single-flight";
@@ -178,6 +181,13 @@ export default function JobDetailPage({
     // submitted tab appears without a reload. One local call, and the content on screen stays.
     refetchOnWindowFocus: true,
   });
+  // The Jobs row's title and company while the detail loads: the morph from the row needs them in the first frame.
+  const known = useCachedJobHeading(id);
+  // Back pressed from the keyboard (a click with no pointer) leaves without the morph: keyboard actions never animate.
+  const [unmorphed, setUnmorphed] = useState(false);
+  const backClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.detail === 0) flushSync(() => setUnmorphed(true));
+  };
 
   const application = data?.application ?? null;
   const ownership = jobOwnershipView(data?.job.ownership);
@@ -302,10 +312,42 @@ export default function JobDetailPage({
   }
 
   if (isLoading || !data || !standing || !steps || jobLine == null) {
+    // A job a Jobs list holds draws its header at once, laid out as the loaded one (the rails, Back, the pair), so
+    // the row's monogram and title land where they stay.
+    const rail = seqPos >= 0 ? <div className="w-8 shrink-0" /> : null;
     return (
-      <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 p-6">
-        <Skeleton className="animate-shimmer h-16 w-2/3" />
-        <Skeleton className="animate-shimmer h-60 w-full" />
+      <main className="mx-auto flex w-full max-w-6xl flex-1 gap-1 p-6 sm:gap-2">
+        {rail}
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {known ? (
+            <header className="flex flex-wrap items-start gap-3">
+              <IconButton
+                label={fromProposals ? "Back to Agent inbox" : "Back to Jobs"}
+                icon={<ArrowLeft className="size-4" />}
+                size="icon-sm"
+                className="mt-1.5 shrink-0"
+                nativeButton={false}
+                render={
+                  <Link href={fromProposals ? "/proposals" : "/applications"} className="text-muted-foreground" onClick={backClick} />
+                }
+              />
+              <JobMorph jobId={id} part="monogram" off={unmorphed}>
+                <CompanyMonogram name={known.company} className="mt-0.5 size-10 text-body-large" />
+              </JobMorph>
+              <div className="min-w-0 grow basis-[16rem]">
+                <JobMorph jobId={id} part="title" off={unmorphed}>
+                  <h1 className="text-title-large font-medium tracking-tight break-words">
+                    {known.title ?? "Untitled role"}
+                  </h1>
+                </JobMorph>
+              </div>
+            </header>
+          ) : (
+            <Skeleton className="animate-shimmer h-16 w-2/3" />
+          )}
+          <Skeleton className="animate-shimmer h-60 w-full" />
+        </div>
+        {rail}
       </main>
     );
   }
@@ -435,18 +477,24 @@ export default function JobDetailPage({
               <Link
                 href={fromProposals ? "/proposals" : "/applications"}
                 className="text-muted-foreground"
+                onClick={backClick}
               />
             }
           />
-          <CompanyMonogram
-            name={job.company}
-            className="mt-0.5 size-10 text-body-large"
-          />
+          {/* The pair a Jobs row's own morphs into (components/job-morph.tsx), and back. */}
+          <JobMorph jobId={id} part="monogram" off={unmorphed}>
+            <CompanyMonogram
+              name={job.company}
+              className="mt-0.5 size-10 text-body-large"
+            />
+          </JobMorph>
           <div className="min-w-0 grow basis-[16rem]">
             {/* Wraps, never truncates: at 375 a long title lost its end, and this is the one place it shows. */}
-            <h1 className="text-title-large font-medium tracking-tight break-words">
-              {job.title ?? "Untitled role"}
-            </h1>
+            <JobMorph jobId={id} part="title" off={unmorphed}>
+              <h1 className="text-title-large font-medium tracking-tight break-words">
+                {job.title ?? "Untitled role"}
+              </h1>
+            </JobMorph>
             <p className="text-muted-foreground truncate text-body-medium" title={metaLine}>
               {metaLine}
             </p>

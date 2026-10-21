@@ -175,6 +175,9 @@ export interface ApplicationSummary {
   gaps_total?: number;
   has_draft?: boolean;
   has_pdf?: boolean;
+  /** List endpoint only (`application_status.status_since`): when the current status began, from the status log;
+   *  null when the log holds no change into it. Optional: an older backend omits it. */
+  status_since?: string | null;
 }
 
 export type KnockoutStatus =

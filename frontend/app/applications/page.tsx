@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +11,7 @@ import { JobOwnershipPopover } from "@/components/job-ownership";
 import { isSyncQueued, jobOwnershipView, ownershipSays } from "@/lib/job-ownership";
 
 import { CompanyMonogram } from "@/components/company-monogram";
+import { JobMorph } from "@/components/job-morph";
 import { EmptyState, TableFrame } from "@/components/empty-state";
 import { filterChipClass } from "@/components/filter-chips";
 import { FiltersButton } from "@/components/filters-button";
@@ -279,6 +281,8 @@ function ApplicationsContent() {
   const filtersId = useId();
   // Select mode, the Agent inbox's: a checkbox on every row, the bar at the bottom, a row's click picks it.
   const [selectMode, setSelectMode] = useState(false);
+  // The row a key opened: it draws its monogram and title without their morph names (keyboard actions never animate).
+  const [unmorphed, setUnmorphed] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const selectButton = useRef<HTMLButtonElement>(null);
   // Set when the bar leaves (Done, or its action landed): focus goes back to Select in that commit.
@@ -894,6 +898,8 @@ function ApplicationsContent() {
                       if (selectMode || e.target !== e.currentTarget) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
+                        // Keyboard actions never animate: the row drops its names before it opens the job.
+                        flushSync(() => setUnmorphed(jobId));
                         router.push(href);
                       }
                     }}
@@ -910,10 +916,15 @@ function ApplicationsContent() {
                     ) : null}
                     <TableCell className="max-w-0 whitespace-normal py-2.5">
                       <div className="flex min-w-0 items-center gap-3">
-                        <CompanyMonogram name={company} className="shrink-0" />
+                        {/* The monogram and title morph into the job page's (components/job-morph.tsx). */}
+                        <JobMorph jobId={jobId} part="monogram" off={unmorphed === jobId}>
+                          <CompanyMonogram name={company} className="shrink-0" />
+                        </JobMorph>
                         <div className="min-w-0 flex-1 overflow-hidden">
                           <p className="flex min-w-0 items-center gap-1.5 text-title-small">
-                            <span className="truncate">{title}</span>
+                            <JobMorph jobId={jobId} part="title" off={unmorphed === jobId}>
+                              <span className="truncate">{title}</span>
+                            </JobMorph>
                             {(r.kind === "saved" ? r.job.source : r.app.source) ===
                             "agent" ? (
                               // An SVG with only aria-label is announced
@@ -996,7 +1007,14 @@ function ApplicationsContent() {
                       {step ? (
                         // It only navigates, so it is never disabled: the page it opens says whose the job is.
                         // Its click stays its own; the rest of the cell opens the job like the row.
-                        <span className="inline-flex" onClick={(e) => e.stopPropagation()}>
+                        // A link opened from the keyboard (a click with no pointer) drops the row's names first too.
+                        <span
+                          className="inline-flex"
+                          onClick={(e) => e.stopPropagation()}
+                          onClickCapture={(e) => {
+                            if (e.detail === 0) flushSync(() => setUnmorphed(jobId));
+                          }}
+                        >
                           <NextStep label={step.label} href={nextStepHref(jobId, step)} />
                         </span>
                       ) : waiting ? (

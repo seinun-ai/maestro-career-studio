@@ -33,7 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { ResumeTag, SegmentedBar } from "@/components/visual";
+import { CheckDraw, ResumeTag, SegmentedBar } from "@/components/visual";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { useJobSteps } from "@/hooks/use-job-steps";
 import { useResumeSwitch } from "@/hooks/use-resume-switch";
@@ -114,7 +114,8 @@ function SaveIndicator({
           : state === "saved" && held
             ? (
               <>
-                <CircleCheck className="size-3 animate-confirm rounded-full" aria-hidden="true" />
+                {/* Done, drawn once as it mounts (CheckDraw), then the hold clears it. */}
+                <CheckDraw className="size-3" />
                 Saved
               </>
             )

@@ -1,9 +1,10 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
-import { CircleCheck, Loader2, TriangleAlert } from "lucide-react";
+import { Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { CheckDraw } from "@/components/visual";
 import { focusIfDropped } from "@/hooks/use-focus-return";
 import { useSavedHold } from "@/hooks/use-saved-hold";
 
@@ -75,7 +76,8 @@ export function AutosaveStatus({
           </>
         ) : !failed && justSaved ? (
           <>
-            <CircleCheck className="size-3 animate-confirm rounded-full" aria-hidden="true" />
+            {/* Done, drawn once as it mounts (CheckDraw), then the hold settles it. */}
+            <CheckDraw className="size-3" />
             Saved
           </>
         ) : !failed ? null : (

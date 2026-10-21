@@ -67,7 +67,7 @@ def test_motion_constants_are_imported_not_redeclared():
         "components/proposals/proposals-section.tsx": "ROW_EXIT_MS",
     }.items():
         src = (_FRONTEND / rel).read_text()
-        assert f'import {{ {name} }} from "@/lib/motion"' in src, rel
+        assert re.search(rf'import \{{[^}}]*\b{name}\b[^}}]*\}} from "@/lib/motion"', src), rel
         assert not re.search(r"\b(1200|400|200)\b", re.sub(r"//.*|/\*.*?\*/", "", src)), rel
     assert "SAVED_HOLD_MS" not in (_FRONTEND / "components/settings/autosave-status.tsx").read_text()
     page = (_FRONTEND / "app/jobs/[id]/tailor/[sessionId]/page.tsx").read_text()
@@ -118,3 +118,129 @@ def test_roll_ms_is_the_number_token_and_the_check_draws_in_budget():
     assert "@keyframes check-draw" in _UTILITIES and "@keyframes working-dot" in _UTILITIES
     check = (_FRONTEND / "components/visual/check-draw.tsx").read_text()
     assert "animate-check-draw" in check and 'pathLength="24"' in check
+
+
+# --- Design refresh Task 4.5: motion where something happens ---------------------------------------------------------
+
+_REDUCED = _CSS.split("@media (prefers-reduced-motion", 1)[1]
+
+
+def _src(rel: str) -> str:
+    return (_FRONTEND / rel).read_text(encoding="utf-8")
+
+
+def test_a_status_cross_fades_with_a_2px_blur_then_pulses_once():
+    chip = _src("components/status-chip.tsx")
+    assert 'import { CONFIRM_MS, FADE_MS } from "@/lib/motion";' in chip
+    assert 'className="animate-status-out col-start-1 row-start-1"' in chip
+    assert 'className="animate-status-in col-start-1 row-start-1"' in chip
+    # The old label leaves after the fade; the pulse waits for the fade's end, then runs once.
+    assert "window.setTimeout(() => setLeaving(null), FADE_MS);" in chip
+    assert "Math.max(0, fadeEnds.current - performance.now())" in chip
+    assert '"data-confirm:animate-confirm"' in chip
+    for name, frames in (("status-in", "from"), ("status-out", "to")):
+        utility = re.search(rf"@utility animate-{name}\s*\{{([^}}]*)\}}", _CSS)
+        assert utility and f"animation: {name} var(--duration-short4) var(--ease-out-strong) both;" in utility.group(1)
+        keyframes = re.search(rf"@keyframes {name}\s*\{{\s*{frames}\s*\{{([^}}]*)\}}", _UTILITIES)
+        assert keyframes and "opacity: 0;" in keyframes.group(1) and "filter: blur(2px);" in keyframes.group(1)
+    assert _const("FADE_MS") == _ms("duration-short4")
+
+
+def test_a_region_that_waits_on_ai_shows_the_working_dots_not_a_spinner():
+    """A button keeps its `pending` spinner; a region that waits on the AI says so with WorkingDots."""
+    passes = _src("components/resume-health/question-pass.tsx")
+    assert '<WorkingDots label="Writing new wording"' in passes and "Loader2" not in passes
+    qa = _src("components/qa-tab.tsx")
+    history = qa[qa.index("const history = (") : qa.index("return arrange({")]
+    assert '{askQuestions.isPending ? <WorkingDots label="Answering your questions" className="flex" /> : null}' in history
+    assert '{coverLetter.isPending ? <WorkingDots label="Writing your cover letter" className="flex" /> : null}' in history
+    # The buttons that started them keep their own spinner and words.
+    assert 'pending={askQuestions.isPending}' in qa and '{askQuestions.isPending ? "Answering…" : "Answer questions"}' in qa
+    assert 'pending={coverLetter.isPending}' in qa and '{coverLetter.isPending ? "Writing…" : "Write cover letter"}' in qa
+
+
+def test_saved_draws_its_check_where_saved_holds():
+    for rel in ("components/settings/autosave-status.tsx", "app/jobs/[id]/tailor/[sessionId]/page.tsx"):
+        src = _src(rel)
+        assert "useSavedHold(" in src and '<CheckDraw className="size-3" />' in src, rel
+
+
+def test_whole_numbers_roll_and_a_decimal_score_counts():
+    """NumberRoll for a whole number that changes in place; useCountUp keeps the one decimal it runs (the Match
+    score). No stat tile counts up: StatTile values are words (components/analytics, rebuilt in Phase 5)."""
+    users = sorted(
+        str(path.relative_to(_FRONTEND)) for path in _FRONTEND.glob("**/*.tsx")
+        if "node_modules" not in path.parts and "useCountUp(" in path.read_text(encoding="utf-8")
+    )
+    assert users == ["components/score-summary.tsx"], users
+    assert "const shownScore = useCountUp(score.composite);" in _src("components/score-summary.tsx")
+    assert "<NumberRoll value={count.value}" in _src("components/proposals/inbox-counts.tsx")
+
+
+_MORPH_SITES = ("app/applications/page.tsx", "app/jobs/[id]/page.tsx")
+
+
+def test_the_row_to_page_morph_names_only_the_monogram_and_the_title():
+    morph = _src("components/job-morph.tsx")
+    assert 'import { ViewTransition, type ReactElement } from "react";' in morph
+    # Only the named pair morphs: no transition of its own otherwise, and `share` is what pairs them.
+    assert '<ViewTransition name={morphName(jobId, part)} share="job-morph" default="none">' in morph
+    assert 'part: "monogram" | "title";' in morph
+    names = _src("lib/view-transition.ts")
+    assert 'export function morphName(jobId: string, part: "monogram" | "title"): string' in names
+    # The pair lives in one place: no other ViewTransition, and no hand-set view-transition-name.
+    for path in _FRONTEND.glob("**/*.tsx"):
+        if "node_modules" in path.parts or path.name == "job-morph.tsx":
+            continue
+        text = path.read_text(encoding="utf-8")
+        assert "<ViewTransition" not in text and "viewTransitionName" not in text, path
+    for rel in _MORPH_SITES:
+        parts = re.findall(r'<JobMorph jobId=\{[^}]+\} part="(\w+)"', _src(rel))
+        assert parts and set(parts) == {"monogram", "title"}, (rel, parts)
+    row = _src("app/applications/page.tsx")
+    assert row.count("<JobMorph") == 2
+    # 250ms, a strong ease-out; only the pair moves (the page itself swaps), and no slide anywhere.
+    group = re.search(r"::view-transition-group\(\.job-morph\)\s*\{([^}]*)\}", _CSS)
+    assert group and "animation-duration: 250ms;" in group.group(1)
+    assert re.search(r"::view-transition-old\(root\),\s*::view-transition-new\(root\)\s*\{\s*animation: none;", _CSS)
+    assert "transitionTypes" not in row and "nav-forward" not in _CSS and "nav-back" not in _CSS
+
+
+def test_reduced_motion_covers_the_dots_the_check_and_the_morph():
+    assert ".working-dot" in _REDUCED and "animate-check-draw" in _REDUCED
+    # The morph does not move under reduced motion: the pair fades in place (the group's own animation is off).
+    group = re.search(r"::view-transition-group\(\*\)\s*\{([^}]*)\}", _REDUCED)
+    assert group and "animation-name: none !important;" in group.group(1)
+
+
+def test_every_new_duration_stays_within_the_budget():
+    # The view transition rules sit outside the utilities layer: each of their durations is in budget too.
+    for decl in re.findall(r"::view-transition[^{]*\{[^}]*\}", _CSS):
+        for ms in map(int, re.findall(r"(\d+)ms", decl)):
+            assert ms <= 400, decl
+    for name in ("CONFIRM_MS", "ROW_EXIT_MS", "ROLL_MS", "FADE_MS"):
+        assert _const(name) <= 400, name
+
+
+def test_no_animation_starts_from_a_key_handler():
+    """Keyboard actions never animate (the motion budget). The new code adds no key handler that starts motion, and
+    the Jobs row's Enter, the one key that opens a job, opens it without the morph."""
+    starts = ("setConfirm", "setLeaving", "animate-", "startViewTransition", "data-confirm", ".animate(")
+    for rel in (*_MORPH_SITES, "components/status-chip.tsx", "components/job-morph.tsx", "components/apply-step.tsx",
+                "components/job-steps.tsx", "components/ui/lead-card.tsx", "components/tailored-resume-thumb.tsx"):
+        src = _src(rel)
+        for at in [m.start() for m in re.finditer(r"onKeyDown=\{", src)]:
+            handler = src[at : src.index("}}", at)]
+            assert not any(word in handler for word in starts), (rel, handler)
+    row = _src("app/applications/page.tsx")
+    key = row[row.index("onKeyDown={(e) => {") :]
+    key = key[: key.index("}}")]
+    assert "flushSync(() => setUnmorphed(jobId));" in key
+    assert key.index("flushSync(() => setUnmorphed(jobId));") < key.index("router.push(href);")
+    assert "off={unmorphed === jobId}" in row
+    # A link pressed from the keyboard is a click with no pointer (`detail === 0`): the row's Next step and the job
+    # page's Back drop the names first too.
+    assert "if (e.detail === 0) flushSync(() => setUnmorphed(jobId));" in row
+    page = _src("app/jobs/[id]/page.tsx")
+    assert "if (event.detail === 0) flushSync(() => setUnmorphed(true));" in page
+    assert page.count("onClick={backClick}") == 2 and page.count("off={unmorphed}") == 4
