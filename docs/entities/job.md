@@ -25,10 +25,11 @@ has no application: no draft time to read).
 - **`salary_currency`** (ISO 4217, nullable; migration `c37b89e136ad`) and
   **`salary_currency_assumed`** (bool, NOT NULL default false; migration `ff9591f140f7`).
   A bare "$" is no currency (`JobExtraction.normalize_salary_currency`; "US$" and "USD" are
-  USD). An amount without a code takes the job's country's currency (`countries.currency(country_code)`,
-  data in `services/data/country_currencies.yaml`), else the home currency
-  (`market_settings.default_currency_for_capture`: the market setting, else `HOME_CURRENCY`), both
-  marked `salary_currency_assumed` by `_salary_currency_for`; never hard-code `USD` at the call site.
+  USD). An amount without a code takes `market_settings.default_currency_for_capture(session,
+  country_code)`: the job's country's currency (`countries.currency`, data in
+  `services/data/country_currencies.yaml`), wherever the user lives, else the home currency (the
+  chosen home market's, else `HOME_CURRENCY`), both marked `salary_currency_assumed` by
+  `_salary_currency_for`; never hard-code `USD` at the call site.
   The backfill marked rows whose extraction named no currency; a "$" the old symbol table read as USD
   cannot be told from a stated one and stays unmarked. `salary_period` accepts `hour|day|week|month|year`
   (day/week for UK/EU contractor rates). The hourly pay hint (`jd_extraction._apply_salary_hints`, used

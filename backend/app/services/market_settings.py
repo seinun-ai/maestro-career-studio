@@ -3,7 +3,7 @@
 from sqlalchemy.orm import Session
 
 from app.schemas.market_settings import MarketSetting
-from app.services import markets
+from app.services import countries, markets
 from app.services.json_settings import JsonSetting
 
 MARKET = JsonSetting("market", "market.json", MarketSetting)
@@ -40,17 +40,14 @@ def is_set(setting: MarketSetting) -> bool:
     return MARKET.is_set(setting)
 
 
-def default_currency_for_capture(session: Session | None = None) -> str:
-    """ISO 4217 default stamped on a newly captured job that states an amount.
+def home_market_currency(session: Session | None = None) -> str:
+    """The currency of where the user lives: the chosen home market's, else `HOME_CURRENCY`.
 
-    Uses a NON-MUTATING read: this runs inside the capture transaction, and the
-    seeding read would write a Setting row mid-capture.
-
-    Precedence is market first, `HOME_CURRENCY` second. The market setting is
-    user-chosen and visible in the UI; the env var is deployment config. When no
-    market row exists yet — a pre-existing install that never opened the picker —
-    the env var still answers, so behaviour is unchanged until the user opts in.
-    Both must never be consulted for the same job; one source per answer.
+    Uses a NON-MUTATING read (capture runs it inside its transaction, and the seeding read would
+    write a Setting row mid-capture). The market setting is user-chosen and visible in the UI; the
+    env var is deployment config. With no market chosen yet (a stored value equal to the default
+    counts as none), the env var still answers, so behaviour is unchanged until the user opts in.
+    One source per answer, never both.
     """
     stored = peek_market(session)
     if is_set(stored):
@@ -58,6 +55,18 @@ def default_currency_for_capture(session: Session | None = None) -> str:
     from app.config import settings
 
     return settings.home_currency
+
+
+def default_currency_for_capture(
+    session: Session | None = None, job_country_code: str | None = None
+) -> str:
+    """ISO 4217 default stamped on a newly captured job that states an amount but no currency.
+
+    The job's own country first (`countries.currency`, data: a German job is posted in euros
+    wherever the user lives), else the home currency (`home_market_currency`). Either way it is an
+    assumption, and the caller marks it `salary_currency_assumed`.
+    """
+    return countries.currency(job_country_code) or home_market_currency(session)
 
 
 def offers_eeo(session: Session | None = None) -> bool:

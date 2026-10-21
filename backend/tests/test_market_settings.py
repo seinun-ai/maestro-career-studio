@@ -254,3 +254,43 @@ def test_capture_currency_follows_the_selected_market():
         _apply_extraction(job, {"company": "Acme"}, s)
         assert job.salary_currency is None
     client.put("/api/settings/market", json={"value": {"market": "US"}})
+
+
+def test_a_jobs_default_currency_is_its_own_countrys_then_the_home_currency():
+    """A German job saved by someone who lives in the UK is posted in euros; a job that names no
+    country (or a country with no currency in the data) takes the home currency. Both are
+    assumptions, and the job says so."""
+    from app.db import SessionLocal
+    from app.models.job import Job
+    from app.routers.jobs import _apply_extraction
+
+    client.put("/api/settings/market", json={"value": {"home": "UK", "apply_in": ["UK", "DE"]}})
+    pay = {"company": "Acme", "salary_min": 70000, "salary_max": 85000, "salary_period": "year"}
+    with SessionLocal() as s:
+        assert market_settings.default_currency_for_capture(s, "DE") == "EUR"
+        assert market_settings.default_currency_for_capture(s, "de") == "EUR"
+        assert market_settings.default_currency_for_capture(s, None) == "GBP"
+        assert market_settings.default_currency_for_capture(s, "AQ") == "GBP"  # no currency: home
+
+        german = Job(raw_text="de", raw_text_hash="f" * 64, source="user")
+        _apply_extraction(german, dict(pay, location="Berlin, Germany"), s)
+        assert german.country_code == "DE"
+        assert (german.salary_currency, german.salary_currency_assumed) == ("EUR", True)
+
+        nowhere = Job(raw_text="nowhere", raw_text_hash="9" * 64, source="user")
+        _apply_extraction(nowhere, dict(pay, location="Remote"), s)
+        assert nowhere.country_code is None
+        assert (nowhere.salary_currency, nowhere.salary_currency_assumed) == ("GBP", True)
+    client.put("/api/settings/market", json={"value": {"market": "US"}})
+
+
+def test_with_no_market_chosen_the_deployment_currency_answers(monkeypatch):
+    """Precedence: the job's country, else the home market the user chose, else HOME_CURRENCY."""
+    from app.config import settings
+    from app.db import SessionLocal
+
+    client.put("/api/settings/market", json={"value": {"market": "US"}})  # the default: not chosen
+    monkeypatch.setattr(settings, "home_currency", "CHF")
+    with SessionLocal() as s:
+        assert market_settings.default_currency_for_capture(s, None) == "CHF"
+        assert market_settings.default_currency_for_capture(s, "NL") == "EUR"

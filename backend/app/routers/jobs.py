@@ -158,19 +158,16 @@ def _salary_currency_for(
     (~40% of US postings and ~88% of German ones carry none, and an Illinois
     posting may legally just link to a pay page).
 
-    The home currency is `market_settings.default_currency_for_capture`: the market setting
-    when there is one (user-chosen and visible), else HOME_CURRENCY (deployment config), never
-    both for the same job — one source per answer. `job.country_code` must be set first.
+    The assumed one is `market_settings.default_currency_for_capture`: the job's country's
+    currency, else where the user lives (the home market when chosen, else HOME_CURRENCY), one
+    source per answer. `job.country_code` must be set first.
     """
     currency = _str_or_none(extraction.get("salary_currency"))
     if currency:
         return currency.upper(), False
     if job.salary_min is None and job.salary_max is None:
         return None, False
-    from_country = countries.currency(job.country_code)
-    if from_country:
-        return from_country, True
-    return market_settings.default_currency_for_capture(session), True
+    return market_settings.default_currency_for_capture(session, job.country_code), True
 
 
 def _job_from_extraction(
