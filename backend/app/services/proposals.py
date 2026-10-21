@@ -216,9 +216,13 @@ def _reserve_cap(session: Session, prop: ApplicationProposal) -> None:
 def transition(session: Session, prop: ApplicationProposal, new_status: str,
                *, consent: dict | None = None, reason: str | None = None,
                intervention: dict | None = None,
-               attested: bool = False, commit: bool = True) -> ApplicationProposal:
+               attested: bool = False, commit: bool = True,
+               source: str | None = None) -> ApplicationProposal:
     """`commit=False` flushes instead, for a caller that chains transitions and commits them
-    together (record_companion_submit): a failure on the second must not leave the first saved."""
+    together (record_companion_submit): a failure on the second must not leave the first saved.
+    `source` says who marked it submitted, for the application's status event
+    (`application_status.set_status`); without one the Companion's channel says "companion" and
+    anything else "you"."""
     if new_status not in ALLOWED.get(prop.status, set()):
         raise TransitionError(not_allowed_message(prop.status))
     if new_status in CONSENT_REQUIRED:
@@ -280,9 +284,14 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
     if new_status == "submitted" and prop.application_id is not None:
         app_row = session.get(Application, prop.application_id)
         if app_row is not None:
+            from app.services import application_status
+
+            if source is None:
+                companion = (consent or {}).get("channel") == COMPANION_CHANNEL
+                source = application_status.COMPANION if companion else application_status.YOU
             # Same stamping rule as PATCH /api/applications (routers/applications.py):
             # entering applied stamps applied_at once if unset.
-            app_row.status = "applied"
+            application_status.set_status(session, app_row, "applied", source)
             if app_row.applied_at is None:
                 app_row.applied_at = datetime.now(UTC)
             filled_answers.link_unlinked(session, app_row)
@@ -364,7 +373,7 @@ def _record_applied_yourself(session: Session, prop: ApplicationProposal,
                     f"seen; not counted ({refused_for})"})
         app_row = session.get(Application, prop.application_id) if prop.application_id else None
         if app_row is not None:
-            app_row.status = "applied"
+            application_status.set_status(session, app_row, "applied", application_status.COMPANION)
             # The job has no open proposal left to close, so this stamps and links only.
             application_status.apply_status_effects(session, app_row, {"status"})
         session.commit()

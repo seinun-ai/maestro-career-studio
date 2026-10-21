@@ -1,5 +1,6 @@
 import re
 import pytest
+from types import SimpleNamespace
 
 import mcp_server.server as srv
 
@@ -974,8 +975,10 @@ def test_update_application_tool_calls_client(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "update_application",
-        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None: seen.update(
-            app_id=app_id, status=status, applied_at=applied_at, notes=notes, referral_id=referral_id
+        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None,
+        from_email=False, origin_detail=None: seen.update(
+            app_id=app_id, status=status, applied_at=applied_at, notes=notes, referral_id=referral_id,
+            from_email=from_email,
         )
         or {"id": app_id, "status": status},
     )
@@ -987,6 +990,7 @@ def test_update_application_tool_calls_client(monkeypatch):
         "applied_at": None,
         "notes": None,
         "referral_id": None,
+        "from_email": False,
     }
 
 
@@ -995,13 +999,18 @@ def test_update_application_tool_forwards_all_args(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "update_application",
-        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None: seen.update(
-            app_id=app_id, status=status, applied_at=applied_at, notes=notes, referral_id=referral_id
+        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None,
+        from_email=False, origin_detail=None: seen.update(
+            app_id=app_id, status=status, applied_at=applied_at, notes=notes, referral_id=referral_id,
+            from_email=from_email, origin_detail=origin_detail,
         )
         or {"id": app_id},
     )
+    ctx = SimpleNamespace(session=SimpleNamespace(
+        client_params=SimpleNamespace(clientInfo=SimpleNamespace(name="claude-ai"))))
     srv.update_application(
-        "a1", status="rejected", applied_at="2026-07-01T00:00:00Z", notes="no fit", referral_id="r1"
+        "a1", status="rejected", applied_at="2026-07-01T00:00:00Z", notes="no fit", referral_id="r1",
+        from_email=True, ctx=ctx,
     )
     assert seen == {
         "app_id": "a1",
@@ -1009,7 +1018,39 @@ def test_update_application_tool_forwards_all_args(monkeypatch):
         "applied_at": "2026-07-01T00:00:00Z",
         "notes": "no fit",
         "referral_id": "r1",
+        "from_email": True,
+        "origin_detail": "claude-ai",
     }
+
+
+async def test_update_application_names_its_client_and_mail_for_the_status_log(monkeypatch):
+    """The backend's status log says who changed a status: the MCP client's own name travels as
+    the origin headers, and from_email as the body's status_source."""
+    import json
+
+    import httpx
+    import respx
+    from mcp.shared.memory import create_connected_server_and_client_session
+    from mcp.types import Implementation
+
+    from mcp_server.client import BackendClient
+
+    monkeypatch.setattr(srv, "_client", BackendClient("http://test-backend"))
+    with respx.mock() as mock:
+        route = mock.patch("http://test-backend/api/applications/a1").mock(
+            return_value=httpx.Response(200, json={"id": "a1", "status": "rejected"}))
+        async with create_connected_server_and_client_session(
+                srv.mcp, client_info=Implementation(name="claude-ai", version="1")) as session:
+            result = await session.call_tool("update_application", {
+                "application_id": "a1", "status": "rejected", "from_email": True})
+    assert not result.isError, result.content
+    request = route.calls.last.request
+    assert json.loads(request.read()) == {"status": "rejected", "status_source": "mail"}
+    assert request.headers["X-Maestro-CS-Origin"] == "mcp"
+    assert request.headers["X-Maestro-CS-Origin-Detail"] == "claude-ai"
+    tool = next(tool for tool in await srv.mcp.list_tools() if tool.name == "update_application")
+    assert "ctx" not in tool.inputSchema["properties"]
+    assert tool.inputSchema["properties"]["from_email"]["default"] is False
 
 
 def test_update_application_docstring_documents_statuses_and_limitation():

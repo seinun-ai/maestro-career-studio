@@ -426,6 +426,7 @@ def transition_proposal(
     payload: ProposalTransition,
     request: Request,
     db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
     prop = db.get(ApplicationProposal, proposal_id)
     if prop is None:
@@ -439,7 +440,9 @@ def transition_proposal(
             raise HTTPException(
                 409, detail="The Companion records an approval and a submit through "
                 "companion-submitted, not here.")
-    queued = sync_requests.queue_proposal_transition(db, prop, payload)
+    # Who marks it submitted, for the application's status event: you, or an agent by its name.
+    source = application_status.source_of(write_origin, companion=is_companion(request))
+    queued = sync_requests.queue_proposal_transition(db, prop, payload, source=source)
     if queued is not None:
         return queued
     try:
@@ -470,6 +473,7 @@ def transition_proposal(
             reason=payload.reason,
             intervention=payload.intervention,
             attested=payload.attested,
+            source=source,
         )
     except svc.TransitionError as e:
         detail = str(e)

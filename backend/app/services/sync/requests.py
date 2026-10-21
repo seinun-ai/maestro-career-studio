@@ -63,8 +63,10 @@ def enqueue(db: Session, kind: str, job_id: uuid.UUID, payload: dict) -> SyncReq
         if kind == "proposal_transition":
             earlier.payload_json = payload
         elif kind == "application_patch":
-            earlier.payload_json = {**payload, "fields": {**earlier.payload_json["fields"],
-                                                           **payload["fields"]}}
+            # The earlier status's source stays unless this patch brings a status of its own.
+            earlier.payload_json = {**earlier.payload_json, **payload,
+                                    "fields": {**earlier.payload_json["fields"],
+                                               **payload["fields"]}}
         db.commit()
         return earlier
     row = SyncRequest(kind=kind, job_id=job_id, payload_json=payload,
@@ -96,33 +98,40 @@ def _refuse_or_proceed(db: Session, job_id: uuid.UUID) -> None:
     hooks.require_owned(db, job_id)
 
 
-def _transition_payload(prop: ApplicationProposal, body: ProposalTransition | ProposalBulkTransition) -> dict:
-    # The user's own decision and words travel so the owner can record the ConsentEvent.
+def _transition_payload(prop: ApplicationProposal, body: ProposalTransition | ProposalBulkTransition,
+                        source: str | None = None) -> dict:
+    # The user's own decision and words travel so the owner can record the ConsentEvent; a submit
+    # also carries who said so, for the application's status event.
     payload = {"proposal_id": str(prop.id), "to": body.status, "reason": body.reason}
     if body.consent is not None:
         payload["consent"] = body.consent.model_dump(exclude_unset=True)
+    if source is not None and body.status == "submitted":
+        payload["source"] = source
     return payload
 
 
 def queue_proposal_transition(
-    db: Session, prop: ApplicationProposal, body: ProposalTransition,
+    db: Session, prop: ApplicationProposal, body: ProposalTransition, source: str | None = None,
 ) -> JSONResponse | None:
     """The 202 when the request was queued, None when the route should go on."""
     fields = body.model_fields_set
     if is_other_copys(db, prop.job_id) and fields and fields <= PROPOSAL_FIELDS:
-        enqueue(db, "proposal_transition", prop.job_id, _transition_payload(prop, body))
+        enqueue(db, "proposal_transition", prop.job_id, _transition_payload(prop, body, source))
         return queued_response()
     _refuse_or_proceed(db, prop.job_id)
     return None
 
 
 def queue_application_patch(
-    db: Session, application: Application, fields: dict,
+    db: Session, application: Application, fields: dict, source: str | None = None,
 ) -> JSONResponse | None:
-    """The 202 when the status/notes change was queued, None when the route should go on."""
+    """The 202 when the status/notes change was queued, None when the route should go on. A status
+    change carries `source`, who said so, for the owner's status event."""
     if is_other_copys(db, application.job_id) and fields and set(fields) <= APPLICATION_FIELDS:
-        enqueue(db, "application_patch", application.job_id,
-                {"application_id": str(application.id), "fields": fields})
+        payload = {"application_id": str(application.id), "fields": fields}
+        if source is not None and "status" in fields:
+            payload["source"] = source
+        enqueue(db, "application_patch", application.job_id, payload)
         return queued_response()
     _refuse_or_proceed(db, application.job_id)
     return None

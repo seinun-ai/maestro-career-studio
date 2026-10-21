@@ -100,7 +100,8 @@ def test_a_status_and_notes_patch_is_queued_not_applied(client, db_session, sync
     assert (row.kind, row.origin, row.status, row.job_id) == (
         "application_patch", "local", "pending", job.id)
     assert row.payload_json == {"application_id": str(application.id),
-                                "fields": {"status": "applied", "notes": "Sent it myself"}}
+                                "fields": {"status": "applied", "notes": "Sent it myself"},
+                                "source": "you"}  # who said so, for the owner's status event
 
 
 def test_take_over_is_queued_with_an_empty_payload(db_session, sync_on):
@@ -302,7 +303,8 @@ def test_notes_then_status_merge_into_one_request_and_later_values_win(
     _patch_application(client, application, notes="second")
     (row,) = _requests(db_session)
     assert row.payload_json == {"application_id": str(application.id),
-                                "fields": {"notes": "second", "status": "applied"}}
+                                "fields": {"notes": "second", "status": "applied"},
+                                "source": "you"}  # the status's source outlives a later notes edit
 
 
 def test_a_bulk_call_with_the_same_id_twice_stores_one_request(client, db_session, sync_on):

@@ -109,9 +109,9 @@ def test_mark_submitted_tool_calls_client(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "transition_proposal",
-        lambda proposal_id, status, consent=None, reason=None, fit=None, application_id=None: seen.update(
-            pid=proposal_id, st=status
-        ) or {"id": proposal_id, "status": status},
+        lambda proposal_id, status, consent=None, reason=None, fit=None, application_id=None,
+        origin_detail=None: seen.update(pid=proposal_id, st=status)
+        or {"id": proposal_id, "status": status},
     )
     res = srv.mark_submitted("p1")
     assert res["status"] == "submitted"
@@ -119,19 +119,27 @@ def test_mark_submitted_tool_calls_client(monkeypatch):
 
 
 def test_mark_submitted_attested_passes_consent(monkeypatch):
+    from types import SimpleNamespace
+
     seen = {}
     monkeypatch.setattr(
         srv._client,
         "transition_proposal",
-        lambda proposal_id, status, consent=None, reason=None, fit=None, application_id=None, attested=False: seen.update(
-            pid=proposal_id, st=status, consent=consent, attested=attested
+        lambda proposal_id, status, consent=None, reason=None, fit=None, application_id=None,
+        attested=False, origin_detail=None: seen.update(
+            pid=proposal_id, st=status, consent=consent, attested=attested,
+            origin_detail=origin_detail,
         ) or {"id": proposal_id, "status": status},
     )
-    res = srv.mark_submitted("p1", user_attested=True, channel="chat", note="user said submitted")
+    ctx = SimpleNamespace(session=SimpleNamespace(
+        client_params=SimpleNamespace(clientInfo=SimpleNamespace(name="claude-ai"))))
+    res = srv.mark_submitted("p1", user_attested=True, channel="chat", note="user said submitted",
+                             ctx=ctx)
     assert res["status"] == "submitted"
+    # the client's name rides along for the application's status log
     assert seen == {
         "pid": "p1", "st": "submitted", "attested": True,
-        "consent": {"channel": "chat", "note": "user said submitted"},
+        "consent": {"channel": "chat", "note": "user said submitted"}, "origin_detail": "claude-ai",
     }
 
 

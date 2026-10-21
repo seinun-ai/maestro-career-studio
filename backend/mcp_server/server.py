@@ -1175,6 +1175,8 @@ def update_application(
     applied_at: str | None = None,
     notes: str | None = None,
     referral_id: str | None = None,
+    from_email: bool = False,
+    ctx: Context | None = None,
 ) -> Any:
     """Update an application's tracking fields (status, applied_at, notes, referral_id).
 
@@ -1197,6 +1199,10 @@ def update_application(
     withdrawn) preserves whatever applied_at already holds. An explicit
     `applied_at` overrides that sync and must carry a UTC offset
     (e.g. `2026-08-18T14:32:11+00:00`) — a naive value is a 422.
+
+    Every status change is logged with its date and who made it (this client's
+    name). Pass `from_email=True` when you read the change in the user's job
+    email (the mail-status automation): the log then says it came from mail.
     """
     return _client.update_application(
         application_id,
@@ -1204,6 +1210,8 @@ def update_application(
         applied_at=applied_at,
         notes=notes,
         referral_id=referral_id,
+        from_email=from_email,
+        origin_detail=_client_label(ctx),
     )
 
 
@@ -2124,6 +2132,7 @@ def mark_submitted(
     user_attested: bool = False,
     channel: Literal["chat", "slack", "mcp", "auto"] = "chat",
     note: str | None = None,
+    ctx: Context | None = None,
 ) -> Any:
     """Flip an approved proposal to submitted (terminal; links the application to
     applied). Requires submission_receipt evidence, or `user_attested=True`,
@@ -2135,12 +2144,13 @@ def mark_submitted(
     channel `auto` records the agent's own word that the application went through, with
     `note` naming what confirmed it (the confirmation page or a confirmation email);
     no receipt is needed, and it is accepted only while full automation is on."""
+    origin_detail = _client_label(ctx)  # the application's status log names this client
     if user_attested or channel == "auto":
         return _client.transition_proposal(
             proposal_id, "submitted", attested=True,
-            consent={"channel": channel, "note": note},
+            consent={"channel": channel, "note": note}, origin_detail=origin_detail,
         )
-    return _client.transition_proposal(proposal_id, "submitted")
+    return _client.transition_proposal(proposal_id, "submitted", origin_detail=origin_detail)
 
 
 @mcp.tool(**_write("Record Triage Decision", destructive=True, idempotent=False))

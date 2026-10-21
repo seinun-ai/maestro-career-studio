@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import AliasChoices, AwareDatetime, BaseModel, Field, field_validator
@@ -43,6 +43,9 @@ class ApplicationPatch(BaseModel):
     # The row's updated_at the caller computed its edit from (a revert from the diff). When given and the row has
     # moved since, the PATCH is refused with a 409 and writes nothing. Never stored.
     expected_updated_at: AwareDatetime | None = None
+    # Who said the status changed when it is not the caller: "mail" when an agent read it from the user's job
+    # email (MCP update_application from_email). Recorded on the status event only; never a column.
+    status_source: Literal["mail"] | None = None
 
     @field_validator("status")
     @classmethod

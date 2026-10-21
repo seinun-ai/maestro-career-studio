@@ -26,6 +26,7 @@ from app.schemas.resume_edit import (
     ToggleEntry,
 )
 from app.services import (
+    application_status,
     application_writes,
     artifacts,
     ats_score,
@@ -1514,10 +1515,10 @@ def tailor(
             application = Application(
                 job_id=tailoring.job_id,
                 base_resume=tailoring.base_resume,
-                status="draft",
                 user_prompt=user_prompt,
             )
             session.add(application)
+            application_status.set_status(session, application, "draft", application_status.TAILOR)
         # Shared write-tail: stages the draft + version row and hands back the
         # stale artifact paths — disk removal waits until after the commit below.
         stale, _ = application_writes.stage_resume_update(

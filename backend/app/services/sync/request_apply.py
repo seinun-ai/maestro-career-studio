@@ -67,11 +67,15 @@ class _TransitionPayload(BaseModel):
     to: str
     reason: str | None = None
     consent: ConsentPayload | None = None
+    # Who asked for a submit on the other copy (its status event); absent from older requests.
+    source: Any = None
 
 
 class _PatchPayload(BaseModel):
     application_id: uuid.UUID
     fields: dict[str, Any]
+    # Who asked for a status change on the other copy; absent from older requests.
+    source: Any = None
 
 
 def _payload(model: type[Model], item: RequestIn) -> Model:
@@ -102,7 +106,8 @@ def _apply_transition(db: Session, item: RequestIn) -> None:
         if body.to == "pending_review" and proposal.status == "needs_decision":
             proposals.record_decision(db, proposal, fit={})  # as the web route does
         else:
-            proposals.transition(db, proposal, body.to, consent=consent, reason=body.reason)
+            proposals.transition(db, proposal, body.to, consent=consent, reason=body.reason,
+                                 source=application_status.clean_source(body.source))
     except proposals.TransitionError as rule:
         raise Refusal(str(rule)) from None
 
@@ -125,7 +130,8 @@ def _apply_patch(db: Session, item: RequestIn) -> None:
     application = db.get(Application, body.application_id)
     if application is None or application.job_id != job.id:
         raise Refusal(WRONG_JOB)
-    application_status.apply_status_and_notes(db, application, values)
+    application_status.apply_status_and_notes(db, application, values,
+                                              application_status.clean_source(body.source))
 
 
 def _apply_addition(db: Session, item: RequestIn) -> None:

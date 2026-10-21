@@ -196,6 +196,13 @@
       {"path": "backend/tests/sync/test_guard.py", "symbol": "test_deleted_previous_application_can_be_repaired"},
       {"path": "backend/tests/sync/test_guard.py", "symbol": "test_stale_proposal_read_skips_replicas"}
     ],
+    "inv-status-through-set-status": [
+      {"path": "backend/tests/test_status_events.py", "symbol": "test_only_set_status_writes_an_application_status"},
+      {"path": "backend/tests/test_status_events.py", "symbol": "test_the_scan_finds_an_application_status_write"},
+      {"path": "backend/tests/test_status_events.py", "symbol": "test_a_status_change_on_the_web_writes_one_event_said_by_you"},
+      {"path": "backend/tests/test_status_events.py", "symbol": "test_the_mcp_update_tool_names_its_client"},
+      {"path": "backend/app/services/application_status.py", "symbol": "def set_status"}
+    ],
     "inv-sync-channel": [
       {"path": "backend/tests/sync/test_seal.py", "symbol": "test_header_mac_and_ciphertext_use_the_spec_aad_and_keys"},
       {"path": "backend/tests/sync/test_seal.py", "symbol": "test_bad_or_absent_mac_does_not_open_a_body"},

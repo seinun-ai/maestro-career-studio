@@ -32,7 +32,8 @@ its links or attachments.
    before that rule may still have several: use the one already past `draft`,
    otherwise list it.
    Change nothing unless exactly one application matches.
-4. **Move the status** with `update_application`, only forward:
+4. **Move the status** with `update_application` and `from_email: true` (Maestro logs
+   the change as read from mail), only forward:
    - confirmation → `applied`, only from `draft`; pass `applied_at` as the email's
      date with a UTC offset, such as `2026-10-01T09:30:00+00:00`
    - interview invite → `interviewing`, from `draft` or `applied`

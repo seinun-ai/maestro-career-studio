@@ -3,12 +3,13 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import AwareDatetime, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.companion_origin import is_companion
 from app.services.sync import hooks, requests as sync_requests
 from app.services.sync import ownership as sync_ownership
 from app.db import get_db
@@ -54,6 +55,7 @@ from app.services.application_writes import (
 from app.services.base_resume_data import resume_label
 from app.services.resume_edit import ContentChangedError, apply_edits
 from app.schemas.proposal import AssertOpenProposalBody
+from app.write_origin import WriteOrigin, get_write_origin
 
 
 logger = logging.getLogger(__name__)
@@ -128,10 +130,10 @@ def create_application_from_base(
         application = Application(
             job_id=payload.job_id,
             base_resume=payload.base_resume,
-            status="draft",
             user_prompt=(payload.user_prompt or "").strip() or None,
         )
         db.add(application)
+        application_status.set_status(db, application, "draft", application_status.FROM_BASE)
         summary = f"Created from {resume_label(db, payload.base_resume)}"
     stale, _ = stage_resume_update(
         db, application, customized, source="import", summary=summary
@@ -317,7 +319,9 @@ def get_application(application_id: UUID, db: Annotated[Session, Depends(get_db)
 def patch_application(
     application_id: UUID,
     payload: ApplicationPatch,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
     """Patch application fields; a supplied ``customized_json`` is stored
     canonically.
@@ -333,18 +337,23 @@ def patch_application(
     if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    fields = payload.model_fields_set - {"expected_updated_at"}
+    fields = payload.model_fields_set - {"expected_updated_at", "status_source"}
     # An edit computed from an older copy of the row (a revert from a diff of an earlier draft) writes nothing.
     if payload.expected_updated_at is not None and payload.expected_updated_at != application.updated_at:
         raise HTTPException(status_code=409, detail=STALE_APPLICATION_EDIT)
+    source = application_status.source_of(
+        write_origin, companion=is_companion(request), from_email=payload.status_source == "mail")
     queued = sync_requests.queue_application_patch(
-        db, application, {name: getattr(payload, name) for name in fields})
+        db, application, {name: getattr(payload, name) for name in fields}, source=source)
     if queued is not None:
         return queued
     stale: list[Path] = []
     for field in fields:
         if field == "customized_json":
             continue  # handled below via the shared write-tail
+        if field == "status":
+            application_status.set_status(db, application, payload.status, source)
+            continue
         # `formatting` maps to the `formatting_json` column, not a same-named attr.
         if field == "formatting":
             try:

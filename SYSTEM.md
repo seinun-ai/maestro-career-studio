@@ -276,6 +276,9 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `applications/Company_Role_YYYYMMDD_<idprefix>/`, allocated once via `services/application_artifacts.get_dir`, persisted on
   `Application.artifact_dir`; resume/source/PDF, previews, cover letters and proposal `evidence/` colocate there. Upload constraints:
   `docs/entities/others.md`, "PDF upload staging".
+- **Status changes go through `set_status`.** `{#inv-status-through-set-status}` `application_status.set_status` alone writes
+  `Application.status`, adding one dated `application_status_events` row per change (docs/entities/application.md). Pinned by
+  `tests/test_status_events.py`.
 - **Resumes folder copies go one way.** `{#inv-resumes-folder-one-way}` After the commit, each finished PDF is copied into the resumes folder
   (Documents by default), never read back or deleted there; a copy failure never fails the caller; `resumes_folder.*` is machine-local, off
   without `RESUMES_FOLDER_DEFAULT` and on the always-on copy. Pinned by `tests/test_resumes_folder.py`.
@@ -299,13 +302,12 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `mcp_server/tests/test_server.py` and `tests/test_resume_edit_service.py`.
 - **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry` stores label,
   kind, rule id, option texts, outcome, host — never what was typed, was there before, or any AI answer: no value column, `extra="forbid"`, sw
-  re-filters to six keys. `POST /runs` stores one strict, value-free `RunTrace` (newest 50 kept): a label or section holding a value the run
-  wrote, was answered, left or found committed is blanked (`fill-loop.js` `rowKeys`/`siblingKeys`); option texts and the chosen index are kept
-  on every field, EEO too, with two exceptions; the rest is enums and numbers. `sw.js` `scrubTrace` whitelists against the schema; nothing
-  posts unless `telemetryEnabled` is `true` (default off; Options › Keep a fill log). `DELETE /telemetry` clears rows, runs and gaps, keeps
-  counters, never the capture toggle. The **known-gaps table** (`autofill_widget_gap`) and the **gesture report** behind the recipe book
-  (`content/recipes.js`) are value-free too. What each record holds, the exceptions, the reasoning rounds, `TRACE_SENTINELS`, the stats fold,
-  the time columns, the off answer and `scripts/fill_trace.py`: `docs/entities/others.md`, "Autofill telemetry details".
+  re-filters to six keys. `POST /runs` stores one strict, value-free `RunTrace` (newest 50 kept), any label or section holding a value the
+  run saw blanked. `sw.js` `scrubTrace` whitelists against the schema; nothing posts unless `telemetryEnabled` is `true` (default off; Options
+  › Keep a fill log), which `DELETE /telemetry` never clears. The **known-gaps table** (`autofill_widget_gap`) and the **gesture report**
+  behind the recipe book (`content/recipes.js`) are value-free too. What each record holds, the blanking, the option texts kept, the
+  reasoning rounds, `TRACE_SENTINELS`, the stats fold, the time columns, what `DELETE` clears, the off answer and `scripts/fill_trace.py`:
+  `docs/entities/others.md`, "Autofill telemetry details".
 - **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an agent filled into an application
   form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`) lives only in the local `filled_answers` table
   (`services/filled_answers.py`; `docs/entities/filled-answers.md`): one row per page run, linked to the job's application (by base on a legacy

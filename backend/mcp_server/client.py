@@ -818,11 +818,18 @@ class BackendClient:
         applied_at: str | None = None,
         notes: str | None = None,
         referral_id: str | None = None,
+        from_email: bool = False,
+        origin_detail: str | None = None,
     ) -> Any:
         payload = _drop_none(
             status=status, applied_at=applied_at, notes=notes, referral_id=referral_id
         )
-        return self._request("PATCH", f"/api/applications/{application_id}", json=payload)
+        if from_email:
+            payload["status_source"] = "mail"
+        return self._request(
+            "PATCH", f"/api/applications/{application_id}", json=payload,
+            headers=_origin_headers(origin_detail),
+        )
 
     # ---- apply package ----
     def generate_qa_answers(self, application_id: str, questions: list[str]) -> Any:
@@ -1279,6 +1286,7 @@ class BackendClient:
         fit: dict | None = None,
         application_id: str | None = None,
         attested: bool = False,
+        origin_detail: str | None = None,
     ) -> Any:
         payload = _drop_none(
             status=status, consent=consent, reason=reason, fit=fit,
@@ -1286,7 +1294,10 @@ class BackendClient:
         )
         if attested:
             payload["attested"] = True
-        return self._request("PATCH", f"/api/proposals/{proposal_id}", json=payload)
+        return self._request(
+            "PATCH", f"/api/proposals/{proposal_id}", json=payload,
+            headers=_origin_headers(origin_detail),
+        )
 
     def bulk_transition_proposals(
         self,

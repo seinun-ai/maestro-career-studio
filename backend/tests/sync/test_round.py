@@ -1293,9 +1293,9 @@ def test_a_request_applied_here_is_marked_in_the_transaction_of_its_change(world
     real = application_status.apply_status_and_notes
     before = []
 
-    def spy(db, application, values):
+    def spy(db, application, values, *source):
         before.append(db.get(models.SyncRequest, request_id).status)  # the applier commits itself
-        real(db, application, values)
+        real(db, application, values, *source)
 
     monkeypatch.setattr(application_status, "apply_status_and_notes", spy)
 
