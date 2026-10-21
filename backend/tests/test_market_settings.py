@@ -296,3 +296,18 @@ def test_with_no_market_chosen_the_deployment_currency_answers(monkeypatch):
     with SessionLocal() as s:
         assert market_settings.default_currency_for_capture(s, None) == "CHF"
         assert market_settings.default_currency_for_capture(s, "NL") == "EUR"
+
+
+def test_offers_eeo_answers_per_country_and_for_where_you_apply(db_session, tmp_path, monkeypatch):
+    """A country has a diversity set only when its market has a checked module (US, UK today); a
+    country no market covers has none, never the default market's."""
+    from app.services import text_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="DE", apply_in=["DE", "NL"]), db_session)
+    assert market_settings.offers_eeo(db_session) is False
+    for country, offered in (("US", True), ("UK", True), ("GB", True), ("DE", False), ("FR", False)):
+        assert market_settings.offers_eeo(db_session, country) is offered, country
+
+    market_settings.set_market(MarketSetting(home="DE", apply_in=["DE", "UK"]), db_session)
+    assert market_settings.offers_eeo(db_session) is True

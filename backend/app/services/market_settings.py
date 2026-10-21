@@ -69,7 +69,13 @@ def default_currency_for_capture(
     return countries.currency(job_country_code) or home_market_currency(session)
 
 
-def offers_eeo(session: Session | None = None) -> bool:
-    """Whether to offer an EEO section at all. Still reads the single `market` (= home) until
-    the diversity set is offered per apply_in country (SYSTEM.md §13 market-home-apply-in)."""
-    return markets.offers_eeo(peek_market(session).market)
+def offers_eeo(session: Session | None = None, country: str | None = None) -> bool:
+    """Whether a checked diversity set exists for `country` (a market key, "UK", or an ISO code,
+    "GB"); with no country, whether any market you apply in has one. A country no market covers
+    has none: `markets.offers_eeo` falls back to the default market for an unknown key, so it is
+    never asked about one. Non-mutating (`setup_status` reads it)."""
+    if country is None:
+        return any(markets.offers_eeo(market) for market in peek_market(session).apply_in)
+    key = country.strip().upper()
+    market = key if markets.is_supported(key) else markets.for_country(countries.normalize(key))
+    return market is not None and markets.offers_eeo(market)

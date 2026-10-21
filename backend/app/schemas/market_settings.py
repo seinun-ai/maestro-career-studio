@@ -22,8 +22,8 @@ class MarketSetting(BaseModel):
     A stored `{"market": X}` from before `home` existed reads as home = X, apply_in = [X]. The
     setting is a JSON text setting with a file mirror and may come from a sync peer that has not
     updated, so it is mapped when read, never migrated (the autofill veteran precedent). For the
-    same peers `market` (= `home`) is still written; it is also the read-only stand-in for callers
-    not moved to `home` yet (SYSTEM.md §13 `market-home-apply-in`).
+    same peers `market` (= `home`) is still written; no reader of it remains in the app (SYSTEM.md
+    §13 `market-home-apply-in`).
     """
 
     home: str = markets.DEFAULT_MARKET

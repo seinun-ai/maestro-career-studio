@@ -505,8 +505,10 @@
   ("UK", not ISO "GB"; `markets.country_code` / `for_country` bridge to the ISO codes jobs and base
   resumes store); an unknown key 422s, never coerced. GET answers `{key, value, home, apply_in,
   currency, offers_eeo, markets}` (each market's label, ISO code, currency, date format and EEO
-  posture); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. Migration state:
-  SYSTEM.md §13 `market-home-apply-in`.
+  posture); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. A diversity set is offered
+  per country: `market_settings.offers_eeo(session, country)` takes a market key or an ISO code (a country
+  no market covers has none) and, with no country, answers for any apply-in market; setup status asks the
+  diversity answers only then. Migration state: SYSTEM.md §13 `market-home-apply-in`.
 - **Career KB** (`models/career_kb.py`, `/career` pages; on screen **Career history**, its entities
   **items** and its points **bullets**): the durable record
   of experience/projects/education/certs + facts; deliberately a sidecar —

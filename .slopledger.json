@@ -152,7 +152,7 @@
           ]
         }
       ],
-      "hand_check": "The release after this one has shipped (a sync peer that has not updated reads the stored `market` key). Then drop the `market` computed field from MarketSetting. Keep the legacy {\"market\": X} read until no stored market blob lacks `home` (DB check on settings key 'market')."
+      "hand_check": "The absent trigger is met (offers_eeo now reads apply_in). The release after this one has shipped (a sync peer that has not updated reads the stored `market` key). Then drop the `market` computed field from MarketSetting. Keep the legacy {\"market\": X} read until no stored market blob lacks `home` (DB check on settings key 'market')."
     }
   ],
   "system_md_baselines": {

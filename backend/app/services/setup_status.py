@@ -99,8 +99,9 @@ def _autofill_step(db: Session) -> AutofillStep:
     # EEO-1's two-part hispanic_latino ethnicity split. Counting it as required
     # in a market with no verified question set made 100% readiness unreachable
     # for every non-US user, and readiness is what the setup strip reports as
-    # "done". A market that offers no EEO module contributes no EEO answers, so
-    # it is omitted from the denominator rather than scored as unanswered.
+    # "done". Only the countries you apply in that have a checked module (US, UK
+    # today) ask diversity answers; with none of them, the group is omitted from
+    # the denominator rather than scored as unanswered.
     if market_settings.offers_eeo(db):
         groups["eeo"] = _group(profile, "eeo", _EEO)
     answered = sum(g.answered for g in groups.values())

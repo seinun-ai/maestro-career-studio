@@ -426,3 +426,16 @@ def test_a_legacy_single_work_auth_answers_only_the_home_country(client, db_sess
 
     by_country = _status(client)["autofill"]["work_auth_by_country"]
     assert by_country == {"UK": {"answered": 3, "answerable": 3}, "NL": {"answered": 0, "answerable": 3}}
+
+
+def test_a_diversity_set_only_for_countries_you_apply_in_that_have_one(client, db_session, tmp_path, monkeypatch):
+    """Germany has no checked diversity set: applying there alone asks none. Adding the US asks the US set."""
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="DE", apply_in=["DE"]), db_session)
+    assert "eeo" not in _status(client)["autofill"]["groups"]
+
+    market_settings.set_market(MarketSetting(home="DE", apply_in=["DE", "US"]), db_session)
+    assert _status(client)["autofill"]["groups"]["eeo"] == {"answered": 0, "answerable": 4}
