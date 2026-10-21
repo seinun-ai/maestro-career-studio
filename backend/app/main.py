@@ -42,6 +42,7 @@ from app.routers import (
     sync,
     tailoring_sessions,
     templates,
+    today,
     version,
 )
 from app.routers import resumes_folder as resumes_folder_router
@@ -423,6 +424,7 @@ app.include_router(companion.router)
 app.include_router(referrals.router)
 app.include_router(explore.router)
 app.include_router(setup.router)
+app.include_router(today.router)
 app.include_router(settings.router)
 app.include_router(resumes_folder_router.router)
 app.include_router(autofill.router)

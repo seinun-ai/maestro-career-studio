@@ -444,6 +444,19 @@
   hand-mirror the frontend autofill groups; update both sides together —
   `tests/test_autofill_groups_parity.py` fails when they drift, per the §11
   rule that cross-boundary duplication needs a contract test, not a deletion.
+- **Today** (`GET /api/today?tz=&utc_offset_minutes=`, `services/today.py`): read-only, and it writes nothing (a
+  proposal past `expires_at` is left out via `proposals.past_expiry`, not expired). Like the Jobs list it reads the
+  other copy's replicas too. `next_up` is the first that exists in `NEXT_UP_ORDER`: an application at `offered`
+  (waited longest first), the `pdf_ready` rung (`services/stage.py`) with the best tracker score, a Needs you proposal
+  (newest, the lane's order); null when none. It carries `kind`, the job, application and proposal ids, title,
+  company, location, `pay` as posted, `base_resume` (slug, name, colour hue), `score`, `status`, `proposed_by`,
+  `reason` and `steps`, the ladder's dated steps only (saved, gaps_closed, tailored, applied, interviewing, offered,
+  proposed; a backfilled event has no date). `also` and `more` hold only non-zero counts with an `href`: to approve
+  (the inbox summary's `to_review`), to check (the `tailored` rung), quiet (`QUIET_FOLLOW_UP_DAYS` 14, through
+  `search_summary.quiet`); gaps to close (jobs on the `gaps` rung plus their unanswered gaps), health check
+  (selectable bases with no report or a stale one, `resume_lint.is_stale`). `week` buckets applied, first replies
+  and first interviews by local day for the last 7 days; local days follow `tz` when this server's zone database
+  has it, else `utc_offset_minutes` (a Windows install has no zone database), else UTC (`time_zone` says which).
 - **`job_preferences` setting**: fully typed, file-mirrored at
   `settings/job_preferences.json` (`GET/PUT /api/settings/job-preferences`):
   `favored_roles` (a catalog key, coarse OR specific, or free text),

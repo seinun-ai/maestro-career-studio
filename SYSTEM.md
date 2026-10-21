@@ -172,7 +172,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 | AgentRun (`models/agent_run.py`) | [`docs/entities/agent-runs.md`](docs/entities/agent-runs.md) | finished automation reports; Reporting cards, Recent runs, retention and phase 4 limits |
 | Health rubric | [docs/health-check-rubric.md](docs/health-check-rubric.md) | what the check judges and why: levels, questions, flags, word bank, disputes (the report's code contract: Others, ResumeLintReport) |
 | Money and rates (`services/money.py`, `fx_rates.py`) | [`docs/entities/money.md`](docs/entities/money.md) | the home currency, the `money` setting, conversion rules, the machine-local ECB rates cache |
-| Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, the settings endpoints (model settings, form-filling engines, persona draft, setup status), the uv install (`maestro`) and the secondary entities that need rules but not a file each |
+| Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, the settings endpoints (model settings, form-filling engines, persona draft, setup status), Today (`GET /api/today`), the uv install (`maestro`) and the secondary entities that need rules but not a file each |
 
 ## 5. The application workflow, end to end (web)
 

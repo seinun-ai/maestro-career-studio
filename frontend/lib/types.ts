@@ -1056,6 +1056,66 @@ export interface SearchSummary {
   min_replies_for_timing: number;
 }
 
+// --- Today (/api/today) -----------------------------------------------------
+
+/** A dated step of "Where this job is", in ladder order; a step the data cannot date is absent. */
+export interface TodayStep {
+  key: "saved" | "gaps_closed" | "tailored" | "applied" | "interviewing" | "offered" | "proposed";
+  at: string;
+}
+
+/** `services/today.py` NEXT_UP_ORDER: an offer awaiting your answer, the best ready PDF, a proposal's question. */
+export interface TodayNextUp {
+  kind: "offer" | "pdf_ready" | "needs_you";
+  job_id: UUID;
+  application_id: UUID | null;
+  /** Set only for `needs_you`. */
+  proposal_id: UUID | null;
+  title: string | null;
+  company: string | null;
+  location: string | null;
+  /** As posted (lib/money.ts `formatPay` words and converts it); null when the job states no pay. */
+  pay: { min: number | null; max: number | null; currency: string | null; period: string | null } | null;
+  base_resume: { slug: string; name: string | null; color_hue: number | null } | null;
+  score: number | null;
+  /** The application's status, or the proposal's for `needs_you`. */
+  status: ApplicationStatus | ProposalStatus | null;
+  /** `needs_you` only: the filer and what it asks. */
+  proposed_by: string | null;
+  reason: string | null;
+  steps: TodayStep[];
+}
+
+/** One non-zero count; a zero count is left out of `also` and `more`. */
+export interface TodayCount {
+  key: "to_approve" | "to_check" | "quiet" | "gaps_to_close" | "health_check";
+  count: number;
+  href: string;
+  /** `quiet`: the follow-up window. */
+  days?: number;
+  /** `gaps_to_close`: unanswered gaps across the `count` jobs. */
+  gaps?: number;
+}
+
+/** GET /api/today?tz=<IANA>&utc_offset_minutes=<east positive> (send both). */
+export interface TodayResponse {
+  /** The local date the week ends on. */
+  today: string;
+  /** The zone used: the IANA name, else "UTC+05:30" from the offset, else "UTC". */
+  time_zone: string;
+  next_up: TodayNextUp | null;
+  also: TodayCount[];
+  more: TodayCount[];
+  week: {
+    /** Seven local days, oldest first; the last is `today`. */
+    days: { date: string; applied: number }[];
+    applied: number;
+    replies: number;
+    interviews: number;
+    applied_all_time: number;
+  };
+}
+
 interface AutofillKindRate {
   kind: string;
   success: number;

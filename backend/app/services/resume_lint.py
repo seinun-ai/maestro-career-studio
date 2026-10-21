@@ -1217,3 +1217,10 @@ def latest_report(db: Session, kind: str, key: str) -> ResumeLintReport | None:
         .order_by(ResumeLintReport.created_at.desc())
         .limit(1)
     ).first()
+
+
+def is_stale(db: Session, row: ResumeLintReport) -> bool:
+    """The resume changed since this report: its newest version is not the one the report read.
+    The health page's "out of date" line and Today's "resumes to health check" both ask this."""
+    latest = _latest_version(db, row.resume_kind, row.resume_key)
+    return row.resume_version_number != (latest.version_number if latest else None)

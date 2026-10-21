@@ -20,7 +20,6 @@ from app.services import (
     health_score,
     health_wording,
     resume_lint,
-    resume_versions,
     resume_voice,
 )
 from app.services.application_writes import NO_TAILORED_RESUME
@@ -229,14 +228,6 @@ def _read(row, *, stale: bool = False) -> LintReportRead:
     )
 
 
-def _is_stale(db: Session, row) -> bool:
-    latest = resume_versions.latest_version(
-        db, row.resume_kind, row.resume_key
-    )
-    latest_number = latest.version_number if latest else None
-    return row.resume_version_number != latest_number
-
-
 def _load_resume(db: Session, kind: Kind, key: str) -> tuple[dict, str | None]:
     if kind == "base":
         row = db.get(BaseResume, key)
@@ -280,7 +271,7 @@ def get_latest_lint(kind: Kind, key: str, db: Annotated[Session, Depends(get_db)
     row = resume_lint.latest_report(db, kind, key)
     if row is None:
         raise HTTPException(status_code=404, detail="No health report yet")
-    return _read(row, stale=_is_stale(db, row))
+    return _read(row, stale=resume_lint.is_stale(db, row))
 
 
 @router.post("/{kind}/{key}/gates/{gate_id}/waive", status_code=204)

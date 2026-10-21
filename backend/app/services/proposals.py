@@ -9,8 +9,9 @@ import unicodedata
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import ColumnElement
 
 from app.models.application import NEWEST_FIRST, Application
 from app.models.application_proposal import ApplicationProposal
@@ -669,14 +670,25 @@ def _enforce_daily_cap(session: Session) -> None:
             f"daily submission cap reached ({cap['reserved_last_24h']}/{cap['max_per_day']})")
 
 
+# The waiting statuses that time out: `expire_stale` retires them once `expires_at` passes.
+EXPIRING_STATUSES = ("pending_review", "needs_decision")
+
+
+def past_expiry(now: datetime) -> ColumnElement[bool]:
+    """A waiting proposal whose `expires_at` has passed: what the next `expire_stale` retires. A
+    reader that must not write (Today) leaves these out instead."""
+    return and_(
+        ApplicationProposal.status.in_(EXPIRING_STATUSES),
+        ApplicationProposal.expires_at.is_not(None),
+        ApplicationProposal.expires_at < now,
+    )
+
+
 def expire_stale(session: Session) -> int:
     from app.services.sync import hooks
 
     now = datetime.now(UTC)
-    stale = session.scalars(select(ApplicationProposal).where(
-        ApplicationProposal.status.in_(("pending_review", "needs_decision")),
-        ApplicationProposal.expires_at.is_not(None),
-        ApplicationProposal.expires_at < now)).all()
+    stale = session.scalars(select(ApplicationProposal).where(past_expiry(now))).all()
     stale = [prop for prop in stale if hooks.owned_here(session, prop.job_id)]
     for prop in stale:
         prop.status = "expired"
