@@ -1,6 +1,7 @@
 export { ActorChip, type ActorKind } from "./actor-chip";
 export { DeltaChip } from "./delta-chip";
 export { DotMeter } from "./dot-meter";
+export { NextStep } from "./next-step";
 export { ProgressCount } from "./progress-count";
 export { ResumeSwatch, ResumeTag } from "./resume-swatch";
 export { ScoreBar } from "./score-bar";
