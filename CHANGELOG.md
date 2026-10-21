@@ -38,9 +38,14 @@ a click.
 
 - None. Migrations add a column (`kb_points.merged_into_point_id`), a table (`kb_point_kept_pairs`)
   and two job columns (`country_code`, `salary_currency_assumed`), and run by themselves at startup.
-  Existing API fields and MCP tools keep their shapes; the sync responses gain a field. A job's
-  `work_mode` and `level` now read as one key each (`on_site` where some read `onsite`, `senior` for
-  "Sr."), and the migration re-spells saved jobs the same way.
+  Existing API fields and MCP tools keep their shapes, except where pay and countries moved: the
+  sync responses gain a field; `GET /api/explore/overview` answers `pay_by_role` in place of
+  `salary_by_role`; job preferences' `min_salary` (and so `get_job_search_brief`) is
+  `{amount, currency, text}`, and an old text answer still reads; the autofill profile keeps
+  work-permit answers under `work_auth_by_country`, and an old `work_auth` still reads and is still
+  served; a knock-out check can be `cant_compare`. A job's `work_mode` and `level` now read as one key
+  each (`on_site` where some read `onsite`, `senior` for "Sr."), and the migration re-spells saved jobs
+  the same way.
 
 ### Added
 
@@ -51,6 +56,24 @@ a click.
   with replies and interviews. Pay reads in your home currency. A new user without an API key or a
   resume sees the two setup steps there instead. The sidebar leads with Today, which now carries the
   Needs you count, and folds Automations, Referrals, Templates and the Assistant under **More tools**.
+- **Where you live and where you apply.** Maestro now keeps one country you live in (your home
+  currency and date format) and every country you apply in (`PUT /api/settings/market` takes
+  `{home, apply_in}`; the Country setting is where you live).
+  **Germany and the Netherlands** join the list. A job saved in another country takes that country's
+  currency, and a job with none takes your home currency.
+- **Pay in your home currency.** Pay posted in another currency is converted on the European Central
+  Bank's daily reference rates, fetched at most once a day when a page asks, and reads with "≈", the
+  posted amount kept under it. A currency the ECB does not quote, or no rates yet (offline), shows the
+  posted amount as it is: a rate is never guessed. `GET/PUT /api/settings/money` sets the currency,
+  the period pay is shown per and the hours in a working year (2,080).
+- **Work-permit answers per country.** Your right-to-work and sponsorship answers are kept for each
+  country. A form question that names a country gets that country's answers, otherwise the job's
+  country's, and when neither is known the Companion asks you on that job instead of filling in
+  another country's answers. The answers you saved before are your home country's, and Profile edits
+  those. The job page's knock-out check reads the job's country's answers.
+- **A diversity set only where a checked one exists.** Setup asks the diversity questions only when a
+  country you apply in has a checked question set (the United States and the United Kingdom today):
+  applying only in Germany asks none.
 - **Wordings on every bullet.** A bullet that a resume words differently, that an older resume copy
   still carries, that was combined into it or that came from an imported resume shows an **N wordings**
   chip. It opens **Wordings of this bullet**: **Use as the main wording** makes that phrasing the
@@ -127,6 +150,15 @@ a click.
   the result "Kept N rewordings." (was "Noted N wording changes"). MCP `kb_sync_base` does the same.
 - Sync says when it could not compare wording: the sync status and result carry `compared_wording`,
   and the pill adds "Couldn't compare wording" when it is false.
+- **Salary checks compare one currency.** The job page's pay check converts the posted pay into your
+  desired salary's currency (the one it names, else your home currency) before comparing, and with no
+  exchange rate it says **Can't compare** instead of passing or warning. Job preferences' Minimum
+  salary is a number a year with a currency, your home one unless you pick another; an earlier answer
+  that was a number reads as one, and other text stays as you wrote it.
+- **Pay by role in your currency.** Analytics' Yearly pay by role shows every role's range in your home
+  currency, "≈" where pay was converted, with a line naming the currencies converted and the rate's
+  date. A role with fewer than 5 jobs that list pay is hidden and counted, and jobs whose currency has
+  no rate are left out and counted.
 - **The Automations page has one prompt per card, for any agent app.** The agent-app picker is
   gone. A scheduled card's prompt asks when to run, then uses whatever scheduler your agent app
   or computer has, and tells you plainly where else it could run when it has none.
@@ -138,9 +170,8 @@ a click.
 
 - **A sync that could not load the embedding model no longer reads every bullet as new in silence.**
   It still adds them, so sync works where the model cannot load, but it now says so.
-- **Best-paying role compares one currency.** It ranks only roles paid in the currency most jobs list
-  pay in, and says so when pay in another currency was left out, so ₹2,400,000 no longer beats
-  $170,000.
+- **Best-paying role compares pay in your currency.** It ranks roles by their pay converted into your
+  home currency and leaves out pay with no exchange rate, so ₹2,400,000 no longer beats $170,000.
 - **Skills by role stays within 100%.** A Level, employment type, country or currency filter now
   narrows both sides of each percentage, not only the job count under it.
 - **Roles over time follows the filters** and shows every week from the first to the last, with 0 for
