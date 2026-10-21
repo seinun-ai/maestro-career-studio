@@ -70,6 +70,7 @@ test("a country's answer lands on its own entry, keyed by market, and the others
 test("editing reads each country's legacy pair as typed answers, and a save sends no one-set view", () => {
   const served = {
     work_auth: { authorized_to_work: "yes" },
+    work_auth_market: "US",
     work_auth_by_country: {
       US: { authorized_to_work: "yes", requires_sponsorship: "no" },
       UK: { authorized_now: "Yes", sponsorship_future: "no" },
@@ -82,6 +83,8 @@ test("editing reads each country's legacy pair as typed answers, and a save send
   // The Companion's pause row types "Yes": it reads as the answer.
   assert.deepEqual(permitEntry(editing, "UK"), { authorized_now: true, sponsorship_future: false });
   assert.equal("work_auth" in forSaving(served), false);
+  assert.equal("work_auth_market" in forSaving(served), false, "the one set's marker goes with it");
+  assert.equal("work_auth_market" in editing, false);
 });
 
 test("answered: a boolean needs a yes or no, a select one of its options, text any words", () => {

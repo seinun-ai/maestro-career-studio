@@ -435,8 +435,9 @@ function typedEntry(raw: Record<string, unknown>): Record<string, unknown> {
 /** The profile as the editors hold it: every country's work-permit answers typed, and without the one-set
  *  `work_auth` view a read serves beside them (the per-country map is what Profile edits). */
 export function profileForEditing(profile: Profile): Profile {
-  const { work_auth: _oneSet, ...rest } = profile;
+  const { work_auth: _oneSet, work_auth_market: _itsMarket, ...rest } = profile;
   void _oneSet;
+  void _itsMarket;
   const stored = groupValues(profile, BY_COUNTRY);
   const byCountry = Object.fromEntries(
     Object.entries(stored).flatMap(([market, entry]) =>
@@ -448,12 +449,13 @@ export function profileForEditing(profile: Profile): Profile {
   return Object.keys(byCountry).length ? { ...rest, [BY_COUNTRY]: byCountry } : rest;
 }
 
-/** What a save sends: the profile without the one-set `work_auth` view, so the server keeps the per-country
- *  map it is given (backend autofill_profile `_as_stored`: a client that knows every country leaves
- *  `work_auth` out). */
+/** What a save sends: the profile without the one-set `work_auth` view or the `work_auth_market` a read names
+ *  it with, so the server keeps the per-country map it is given (backend autofill_profile `_as_stored`: a
+ *  client that knows every country leaves the one set out). */
 export function forSaving(profile: Profile): Profile {
-  const { work_auth: _oneSet, ...rest } = profile;
+  const { work_auth: _oneSet, work_auth_market: _itsMarket, ...rest } = profile;
   void _oneSet;
+  void _itsMarket;
   return rest;
 }
 

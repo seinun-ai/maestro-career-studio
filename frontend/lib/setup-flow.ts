@@ -23,17 +23,6 @@ export const SETUP_STEPS: readonly { id: SetupStepId; title: string; time: strin
 /** The autofill profile as Setup reads it: `PUT /api/settings/autofill` takes any JSON object. */
 export type AutofillProfile = Record<string, unknown>;
 
-/** The three knockout answers every country asks (`setup_status._WORK_AUTH_CORE`). The US visa status
- *  is the fourth only where a market's `work_auth_vocab` is `us_visa`; Profile asks it. */
-export const PERMIT_QUESTIONS = [
-  { key: "authorized_now", label: "Can you work there now?" },
-  { key: "sponsorship_now", label: "Do you need visa sponsorship now?" },
-  { key: "sponsorship_future", label: "Will you need visa sponsorship later?" },
-] as const;
-
-export type PermitKey = (typeof PERMIT_QUESTIONS)[number]["key"];
-export type PermitAnswers = Partial<Record<PermitKey, boolean>>;
-
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -46,45 +35,6 @@ function yesNo(value: unknown): boolean | undefined {
   return word === "yes" ? true : word === "no" ? false : undefined;
 }
 
-/** A save Setup sends: the profile without the one-set `work_auth` view, so the server keeps the
- *  per-country map it is given (backend autofill_profile `_as_stored`: a client that knows every
- *  country leaves `work_auth` out). */
-function forSaving(profile: AutofillProfile): AutofillProfile {
-  const { work_auth: _oneSet, ...rest } = profile;
-  void _oneSet;
-  return rest;
-}
-
-/** One country's answers, by market key ("UK", never the ISO "GB"). */
-export function permitAnswers(profile: AutofillProfile, market: string): PermitAnswers {
-  const entry = object(object(profile.work_auth_by_country)[market]);
-  const answers: PermitAnswers = {};
-  for (const { key } of PERMIT_QUESTIONS) {
-    const answer = yesNo(entry[key]);
-    if (answer !== undefined) answers[key] = answer;
-  }
-  return answers;
-}
-
-/** Every country you apply in has its three answers. */
-export function permitsAnswered(profile: AutofillProfile, applyIn: readonly string[]): boolean {
-  return applyIn.every((market) => Object.keys(permitAnswers(profile, market)).length === PERMIT_QUESTIONS.length);
-}
-
-/** The profile with one answer set on one country's entry; every other country and field as it was. */
-export function withPermitAnswer(
-  profile: AutofillProfile,
-  market: string,
-  key: PermitKey,
-  value: boolean,
-): AutofillProfile {
-  const byCountry = object(profile.work_auth_by_country);
-  return forSaving({
-    ...profile,
-    work_auth_by_country: { ...byCountry, [market]: { ...object(byCountry[market]), [key]: value } },
-  });
-}
-
 export type PreferenceKey = "notice_period" | "willing_to_relocate";
 
 export function preference(profile: AutofillProfile, key: PreferenceKey): string | boolean | undefined {
@@ -93,25 +43,22 @@ export function preference(profile: AutofillProfile, key: PreferenceKey): string
   return typeof value === "string" ? value : undefined;
 }
 
-export function withPreference(profile: AutofillProfile, key: PreferenceKey, value: string | boolean): AutofillProfile {
-  return forSaving({ ...profile, preferences: { ...object(profile.preferences), [key]: value } });
-}
-
 export type FormQuestion =
-  | { kind: "permit"; market: string; label: string }
+  | { kind: "permit"; market: string; label: string; vocab: string | undefined }
   | { kind: "notice" }
   | { kind: "relocate" }
   | { kind: "diversity"; countries: string[] };
 
-/** Step 4, one question at a time: a work permit per country you apply in (named), then notice period and
- *  relocation, then diversity only when a country you apply in has a checked set (`offers_eeo`, from the
- *  market list; never decided here). */
+/** Step 4, one question at a time: a work permit per country you apply in (named, in its own words), then
+ *  notice period and relocation, then diversity only when a country you apply in has a checked set
+ *  (`offers_eeo`, from the market list; never decided here). */
 export function formQuestions(applyIn: readonly string[], markets: readonly MarketOption[]): FormQuestion[] {
   const byKey = new Map(markets.map((m) => [m.key, m]));
   const permits: FormQuestion[] = applyIn.map((market) => ({
     kind: "permit",
     market,
     label: byKey.get(market)?.label ?? market,
+    vocab: byKey.get(market)?.work_auth_vocab,
   }));
   const withSet = applyIn.flatMap((market) => {
     const m = byKey.get(market);
@@ -125,13 +72,18 @@ export function formQuestions(applyIn: readonly string[], markets: readonly Mark
 export type StepsDone = Record<SetupStepId, boolean>;
 
 /** Each step, done from the data it writes: a key, a resume in career history, job preferences, and every
- *  country's work-permit answers. */
-export function stepsDone(status: SetupStatus, profile: AutofillProfile, applyIn: readonly string[]): StepsDone {
+ *  country's work-permit answers, each in its own words (setup status counts them per country, the visa
+ *  status where the vocabulary is `us_visa`). */
+export function stepsDone(status: SetupStatus, applyIn: readonly string[]): StepsDone {
+  const counted = status.autofill.work_auth_by_country;
   return {
     model: status.model_key.done,
     resume: status.import_resumes.done,
     where: status.job_preferences.done,
-    answers: permitsAnswered(profile, applyIn),
+    answers: applyIn.every((market) => {
+      const count = counted[market];
+      return count !== undefined && count.answered >= count.answerable;
+    }),
   };
 }
 

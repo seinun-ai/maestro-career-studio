@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { LeadCard } from "@/components/ui/lead-card";
 import { CheckDraw, NextStep } from "@/components/visual";
 import { COMPANION_GUIDE_URL, CONNECTED_AGENTS_SETTINGS } from "@/lib/agent-links";
+import { answered, groupCount, permitEntry, permitQuestions, profileForEditing } from "@/lib/autofill-options";
 import { SETUP_STEPS, type AutofillProfile, type FormQuestion, type StepsDone } from "@/lib/setup-flow";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { SetupStatus } from "@/lib/types";
@@ -19,8 +20,9 @@ const ALSO_CARD =
 /**
  * After the four steps: Add your first job is the Lead and the view's one filled button; Connect an agent
  * app and Add the Companion sit under it. It says plainly when a required step is still open (no key or no
- * resume) and what is left in Profile: a work-permit answer Setup does not ask, and the diversity answers
- * when you chose to give them.
+ * resume) and what is left in Profile: each country whose work permit you left unanswered, linked to that
+ * country's own first open question (never another country's set), and the diversity answers when you chose
+ * to give them and left some blank.
  */
 export function SetupDone({
   status,
@@ -43,15 +45,20 @@ export function SetupDone({
   const personal = profile.personal as Record<string, unknown> | undefined;
   const name = typeof personal?.first_name === "string" ? personal.first_name.trim() : "";
   const open = SETUP_STEPS.flatMap((s, i) => (done[s.id] ? [] : [{ ...s, index: i }]));
-  const permitsLeft = questions.some((q) => {
-    if (q.kind !== "permit") return false;
-    const counted = status.autofill.work_auth_by_country[q.market];
-    return counted ? counted.answered < counted.answerable : false;
+  const permitsLeft = questions.flatMap((q) => {
+    if (q.kind !== "permit") return [];
+    const entry = permitEntry(profileForEditing(profile), q.market);
+    const open = permitQuestions(q.vocab).find((field) => !answered(field, entry[field.key]));
+    // The country's own control in Profile's Work permits tile (`af-permit-<market>-<key>`).
+    return open
+      ? [{ label: `Finish your work permit for ${q.label}`, href: anchorHref("/profile", `af-permit-${q.market}-${open.key}`) }]
+      : [];
   });
+  const eeo = groupCount(profile, "eeo");
   const inProfile = [
-    ...(permitsLeft ? [{ label: "Finish your work-permit answers", href: anchorHref("/profile", "autofill-work_auth") }] : []),
-    ...(diversity === "answer"
-      ? [{ label: "Answer the diversity questions", href: anchorHref("/profile", "autofill-eeo") }]
+    ...permitsLeft,
+    ...(diversity === "answer" && eeo.answered < eeo.answerable
+      ? [{ label: "Finish the diversity questions", href: anchorHref("/profile", "autofill-eeo") }]
       : []),
   ];
 

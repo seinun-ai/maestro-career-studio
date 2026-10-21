@@ -2,29 +2,24 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  PERMIT_QUESTIONS,
   SETUP_STEPS,
   firstOpenStep,
   formQuestions,
   importCounts,
   modelPlan,
   opensSetup,
-  permitAnswers,
-  permitsAnswered,
   planWords,
   preference,
   progressWords,
   stepsDone,
   testPassed,
-  withPermitAnswer,
-  withPreference,
 } from "./setup-flow.ts";
 
 const MARKETS = [
-  { key: "US", label: "United States", country_code: "US", currency: "USD", date_format: "MDY", offers_eeo: true },
-  { key: "UK", label: "United Kingdom", country_code: "GB", currency: "GBP", date_format: "DMY", offers_eeo: true },
-  { key: "DE", label: "Germany", country_code: "DE", currency: "EUR", date_format: "DMY", offers_eeo: false },
-  { key: "IE", label: "Ireland", country_code: "IE", currency: "EUR", date_format: "DMY", offers_eeo: false },
+  { key: "US", label: "United States", country_code: "US", currency: "USD", date_format: "MDY", offers_eeo: true, work_auth_vocab: "us_visa" },
+  { key: "UK", label: "United Kingdom", country_code: "GB", currency: "GBP", date_format: "DMY", offers_eeo: true, work_auth_vocab: "uk" },
+  { key: "DE", label: "Germany", country_code: "DE", currency: "EUR", date_format: "DMY", offers_eeo: false, work_auth_vocab: "generic" },
+  { key: "IE", label: "Ireland", country_code: "IE", currency: "EUR", date_format: "DMY", offers_eeo: false, work_auth_vocab: "generic" },
 ];
 
 const step = (done: boolean) => ({ done, detail: {} });
@@ -55,14 +50,22 @@ test("four steps, each with a time", () => {
 });
 
 test("a step is done from the data it writes, never from a visit", () => {
-  const profile = { work_auth_by_country: { DE: { authorized_now: true, sponsorship_now: false, sponsorship_future: false } } };
-  assert.deepEqual(stepsDone(status(), {}, ["DE"]), { model: false, resume: false, where: false, answers: false });
+  // Setup status counts each country's work-permit answers in its own words (the US visa status too).
+  const counted = (byCountry: Record<string, { answered: number; answerable: number }>) => ({
+    autofill: { done: false, readiness: 0, groups: {}, blocking: [], work_auth_by_country: byCountry },
+  });
+  assert.deepEqual(stepsDone(status(), ["DE"]), { model: false, resume: false, where: false, answers: false });
   assert.deepEqual(
-    stepsDone(status({ model_key: step(true), import_resumes: step(true), job_preferences: step(true) }), profile, ["DE"]),
+    stepsDone(
+      status({ model_key: step(true), import_resumes: step(true), job_preferences: step(true), ...counted({ DE: { answered: 3, answerable: 3 } }) }),
+      ["DE"],
+    ),
     { model: true, resume: true, where: true, answers: true },
   );
-  // A second country with no answers keeps the form answers open.
-  assert.equal(stepsDone(status(), profile, ["DE", "UK"]).answers, false);
+  // A second country with answers left, the US visa status say, keeps the form answers open.
+  const two = counted({ DE: { answered: 3, answerable: 3 }, US: { answered: 3, answerable: 4 } });
+  assert.equal(stepsDone(status(two), ["DE", "US"]).answers, false);
+  assert.equal(stepsDone(status(two), ["DE", "UK"]).answers, false, "a country the status has not counted is open");
 });
 
 test("setup opens on the first step not done, and on the first one when all are", () => {
@@ -90,13 +93,15 @@ test("a brand-new install opens setup once; a returning user never", () => {
 test("form questions: one work permit per country you apply in, named, then notice and relocation", () => {
   const qs = formQuestions(["DE", "IE"], MARKETS);
   assert.deepEqual(qs, [
-    { kind: "permit", market: "DE", label: "Germany" },
-    { kind: "permit", market: "IE", label: "Ireland" },
+    { kind: "permit", market: "DE", label: "Germany", vocab: "generic" },
+    { kind: "permit", market: "IE", label: "Ireland", vocab: "generic" },
     { kind: "notice" },
     { kind: "relocate" },
   ]);
-  // A market the list lacks still carries its key, never nothing.
-  assert.deepEqual(formQuestions(["XX"], MARKETS)[0], { kind: "permit", market: "XX", label: "XX" });
+  // Each country carries its own work-permit wording from the market list.
+  assert.equal((formQuestions(["US"], MARKETS)[0] as { vocab?: string }).vocab, "us_visa");
+  // A market the list lacks still carries its key, never nothing (and no wording: generic).
+  assert.deepEqual(formQuestions(["XX"], MARKETS)[0], { kind: "permit", market: "XX", label: "XX", vocab: undefined });
 });
 
 test("diversity is asked only for the countries with a checked set, and names them", () => {
@@ -106,45 +111,8 @@ test("diversity is asked only for the countries with a checked set, and names th
   assert.equal(qs.filter((q) => q.kind === "permit").length, 3);
 });
 
-test("the three work-permit questions are the knockout keys", () => {
-  assert.deepEqual(PERMIT_QUESTIONS.map((q) => q.key), ["authorized_now", "sponsorship_now", "sponsorship_future"]);
-});
-
-test("answers are read per country, as booleans or as typed yes and no", () => {
-  const profile = { work_auth_by_country: { UK: { authorized_now: "Yes", sponsorship_now: "no", sponsorship_future: false, status: "citizen" } } };
-  assert.deepEqual(permitAnswers(profile, "UK"), { authorized_now: true, sponsorship_now: false, sponsorship_future: false });
-  assert.deepEqual(permitAnswers(profile, "DE"), {});
-  assert.equal(permitsAnswered(profile, ["UK"]), true);
-  assert.equal(permitsAnswered(profile, ["UK", "DE"]), false);
-  assert.equal(permitsAnswered({ work_auth_by_country: { UK: { authorized_now: "maybe" } } }, ["UK"]), false);
-});
-
-test("a work-permit answer lands on its own country and leaves the others alone", () => {
-  const before = {
-    personal: { first_name: "Lena" },
-    work_auth: { authorized_now: true },
-    work_auth_by_country: { DE: { authorized_now: true, status: "citizen" }, UK: { authorized_now: false } },
-  };
-  const after = withPermitAnswer(before, "UK", "sponsorship_now", true);
-  assert.deepEqual(after.work_auth_by_country, {
-    DE: { authorized_now: true, status: "citizen" },
-    UK: { authorized_now: false, sponsorship_now: true },
-  });
-  assert.deepEqual(after.personal, { first_name: "Lena" });
-  // The one-set view is left out, so the server keeps the per-country map (autofill_profile._as_stored).
-  assert.equal("work_auth" in after, false);
-  // The input is not changed.
-  assert.deepEqual(before.work_auth_by_country.UK, { authorized_now: false });
-  const first = withPermitAnswer({}, "IE", "authorized_now", false);
-  assert.deepEqual(first, { work_auth_by_country: { IE: { authorized_now: false } } });
-});
-
-test("notice period and relocation are preferences, kept beside the others", () => {
-  const before = { preferences: { desired_salary: "80k" }, work_auth: { authorized_now: true } };
-  const after = withPreference(before, "notice_period", "1 month");
-  assert.deepEqual(after.preferences, { desired_salary: "80k", notice_period: "1 month" });
-  assert.equal("work_auth" in after, false);
-  assert.equal(preference(after, "notice_period"), "1 month");
+test("a preference reads as stored: text, or a yes or no as typed", () => {
+  assert.equal(preference({ preferences: { notice_period: "1 month" } }, "notice_period"), "1 month");
   assert.equal(preference({ preferences: { willing_to_relocate: "Yes" } }, "willing_to_relocate"), true);
   assert.equal(preference({}, "willing_to_relocate"), undefined);
 });

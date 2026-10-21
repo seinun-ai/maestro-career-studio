@@ -14,7 +14,9 @@ function seen(): boolean {
   try {
     return window.localStorage.getItem(SEEN_KEY) === "1";
   } catch {
-    return false; // storage disabled: a new install still lands on Today's setup card
+    // Storage disabled: count it seen, so every visit to Today does not bounce to /setup; Today's setup card
+    // still leads the way.
+    return true;
   }
 }
 

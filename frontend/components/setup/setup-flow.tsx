@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { LoadErrorState } from "@/components/load-error-state";
 import { PageHeader, PageShell } from "@/components/page-shell";
+import { useEeoConsentQuery } from "@/components/profile/diversity-consent";
 import { useOpenAIInfo } from "@/components/settings/models-section";
 import { SetupAnswersStep } from "@/components/setup/setup-answers-step";
 import { SetupDone } from "@/components/setup/setup-done";
@@ -28,6 +29,7 @@ import {
   type StepsDone,
 } from "@/lib/setup-flow";
 import type {
+  EeoConsent,
   JobPreferences,
   MarketSettingResponse,
   OpenAIInfo,
@@ -43,9 +45,11 @@ export type SetupData = {
   market: MarketSettingResponse;
   prefs: JobPreferences;
   profile: AutofillProfile;
+  /** The diversity consent: Setup stores a diversity answer only once it is on record. */
+  consent: EeoConsent;
 };
 
-/** What the diversity question chose. Nothing is saved for it: answering happens in Profile, beside its consent. */
+/** What the diversity question chose, once its consent was given: answer them here, or decline them all. */
 export type DiversityChoice = "answer" | "decline" | null;
 
 /**
@@ -76,7 +80,8 @@ export function SetupFlow() {
     queryKey: ["settings", "autofill"],
     queryFn: () => apiFetch<SettingEnvelope<AutofillProfile>>("/api/settings/autofill"),
   });
-  const queries = [status, info, market, prefs, profile];
+  const consent = useEeoConsentQuery();
+  const queries = [status, info, market, prefs, profile, consent];
   const loadFailed = queries.some((q) => isLoadFailure(q));
   const failure = queries.find((q) => isLoadFailure(q));
 
@@ -90,7 +95,7 @@ export function SetupFlow() {
           retrying={queries.some((q) => q.isFetching)}
           onRetry={() => queries.forEach((q) => void (isLoadFailure(q) && q.refetch()))}
         />
-      ) : status.data && info.data && market.data && prefs.data && profile.data ? (
+      ) : status.data && info.data && market.data && prefs.data && profile.data && consent.data ? (
         <SetupScreens
           data={{
             status: status.data,
@@ -98,6 +103,7 @@ export function SetupFlow() {
             market: market.data,
             prefs: prefs.data.value,
             profile: profile.data.value,
+            consent: consent.data.value,
           }}
         />
       ) : (
@@ -112,7 +118,7 @@ export function SetupFlow() {
 
 function SetupScreens({ data }: { data: SetupData }) {
   const applyIn = data.market.apply_in;
-  const done = stepsDone(data.status, data.profile, applyIn);
+  const done = stepsDone(data.status, applyIn);
   const questions = formQuestions(applyIn, data.market.markets ?? []);
   // The step shown: 0 to 3, and the done screen after them.
   const [step, setStep] = useState(() => firstOpenStep(done));
@@ -197,7 +203,7 @@ function StepBody({
       return (
         <SetupAnswersStep
           profile={data.profile}
-          status={data.status}
+          consent={data.consent}
           questions={questions}
           question={question}
           onQuestion={onQuestion}

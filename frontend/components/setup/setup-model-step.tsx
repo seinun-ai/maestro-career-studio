@@ -3,7 +3,7 @@
 import { useId, useRef, useState, type RefObject } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { KeyField, type ModelSettingsPatch } from "@/components/settings/models-section";
+import { KEY_FIELDS, KeyField, type ModelSettingsPatch } from "@/components/settings/models-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,13 +35,6 @@ const CARDS: { id: Pick; name: string; note: string }[] = [
   { id: "openrouter", name: providerLabel("openrouter"), note: "Many models, one key" },
   { id: "server", name: "Your own server", note: "Ollama or LM Studio" },
 ];
-
-const SOURCE: Record<Provider, keyof OpenAIInfo> = {
-  openai: "openai_key_source",
-  anthropic: "anthropic_key_source",
-  gemini: "gemini_key_source",
-  openrouter: "openrouter_key_source",
-};
 
 type Outcome =
   | { kind: "report"; report: CapabilityReport; name: string; passed: boolean; problem?: string; words?: string }
@@ -264,9 +257,13 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
           ) : (
             <KeyField
               label={`${card.name} API key`}
-              hintUnset={`It's saved on this computer and sent only to ${card.name}.`}
+              hintUnset={
+                <>
+                  {KEY_FIELDS[card.id as Provider].hint} It&apos;s saved on this computer and sent only to {card.name}.
+                </>
+              }
               configured={info[CONFIGURED[card.id as Provider]] === true}
-              source={info[SOURCE[card.id as Provider]] as OpenAIInfo["openai_key_source"]}
+              source={info[KEY_FIELDS[card.id as Provider].source]}
               value={typed}
               saving={testing}
               problem={problem}

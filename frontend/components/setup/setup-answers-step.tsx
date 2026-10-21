@@ -1,42 +1,54 @@
 "use client";
 
-import { useEffect, useId, useRef, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 
+import { useCareerContact } from "@/components/profile/contact";
+import { DiversityConsentSwitch, useDiversityConsent } from "@/components/profile/diversity-consent";
+import { FieldGrid } from "@/components/profile/field-control";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import type { DiversityChoice } from "@/components/setup/setup-flow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NextStep } from "@/components/visual";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
+import {
+  booleanAnswer,
+  groupFields,
+  groupValues,
+  isBlank,
+  permitEntry,
+  permitQuestions,
+  profileForEditing,
+  staleAnswers,
+} from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
+import { contactAdditions, hasFillableContactDetails } from "@/lib/contact-from-history";
 import { couldnt } from "@/lib/error-text";
 import {
-  PERMIT_QUESTIONS,
-  permitAnswers,
-  preference,
+  questionAnswered,
+  withDiversityAnswer,
+  withDiversityDeclined,
   withPermitAnswer,
   withPreference,
-  type AutofillProfile,
-  type FormQuestion,
-} from "@/lib/setup-flow";
-import { anchorHref } from "@/lib/settings-tabs";
-import type { SettingEnvelope, SetupStatus } from "@/lib/types";
+} from "@/lib/setup-answers";
+import { preference, type AutofillProfile, type FormQuestion } from "@/lib/setup-flow";
+import type { EeoConsent, KBProfileOut, SettingEnvelope } from "@/lib/types";
 import { useAutosave } from "@/lib/use-autosave";
 import { cn } from "@/lib/utils";
 
 const NOTICE_CHOICES = ["Now", "2 weeks", "1 month", "3 months"] as const;
 
-function listWords(items: string[]): string {
-  return new Intl.ListFormat("en", { type: "conjunction" }).format(items);
-}
-
-function isBlank(value: unknown): boolean {
-  return typeof value !== "string" || !value.trim();
-}
+type Update = (next: (current: AutofillProfile) => AutofillProfile) => void;
 
 /** A one-of-a-few answer: buttons that say which is chosen (`aria-pressed` and a Check), in a named group. */
 function Choices<T extends string | boolean>({
@@ -78,15 +90,18 @@ const YES_NO = [
 
 /**
  * Step 4, the answers job forms ask, one question at a time. Work permits come first, one card per
- * country you apply in, named by its heading (each question's group is labelled by the country and the
- * question, so a country's answer is never asked or heard without it); then notice period and relocation.
- * Each answer saves to the autofill profile as you go (`PUT /api/settings/autofill`, the country's own
- * entry in `work_auth_by_country`). Diversity comes last and only for a country with a checked set; Setup
- * saves nothing for it: answering opens Profile, where the consent sits beside the answers (D10).
+ * country you apply in, named by its heading and asked in that country's words (its market's
+ * `work_auth_vocab`, the visa status only for `us_visa`; each answer's group is labelled by the country and
+ * the question, so a country's answer is never asked or heard without it); then notice period and
+ * relocation; then diversity, only for a country with a checked set. Each answer saves to the autofill
+ * profile as you go (`PUT /api/settings/autofill`, the country's own entry in `work_auth_by_country`, never
+ * the one-set `work_auth`). Contact fields fill from career history in place. Diversity is answered or
+ * declined in place, and only once the diversity consent is on record (the same confirm and server stamp as
+ * Profile's switch, which sits beside the answers here too, D10).
  */
 export function SetupAnswersStep({
   profile,
-  status,
+  consent,
   questions,
   question,
   onQuestion,
@@ -96,7 +111,7 @@ export function SetupAnswersStep({
   headingRef,
 }: {
   profile: AutofillProfile;
-  status: SetupStatus;
+  consent: EeoConsent;
   questions: FormQuestion[];
   question: number;
   onQuestion: (index: number) => void;
@@ -118,7 +133,8 @@ export function SetupAnswersStep({
     },
     onError: (err: Error) => toast.error(couldnt("save your answers", err)),
   });
-  const answers = useAutosave<AutofillProfile>(profile, (next) => save.mutateAsync(next));
+  // Each country's legacy pair read as typed answers, as Profile edits them.
+  const answers = useAutosave<AutofillProfile>(profileForEditing(profile), (next) => save.mutateAsync(next));
   const current = questions[question];
   const questionRef = useRef<HTMLHeadingElement>(null);
   const shown = useRef(question);
@@ -129,9 +145,6 @@ export function SetupAnswersStep({
   }, [question]);
 
   const advance = () => (question < questions.length - 1 ? onQuestion(question + 1) : onDone());
-  const personal = answers.value.personal;
-  const contactMissing =
-    !personal || typeof personal !== "object" || isBlank((personal as Record<string, unknown>).email);
 
   return (
     <section aria-labelledby="setup-answers-title" className="flex flex-col gap-6">
@@ -147,12 +160,7 @@ export function SetupAnswersStep({
         <AutosaveStatus pending={answers.pending} failed={answers.failed} onRetry={answers.retry} />
       </div>
 
-      {contactMissing ? (
-        <div className="group/row flex flex-wrap items-center gap-x-3 gap-y-1 text-body-medium">
-          <span>Profile fills your name, email and phone from your resume.</span>
-          <NextStep label="Fill from career history" href={anchorHref("/profile", "autofill-personal")} />
-        </div>
-      ) : null}
+      <ContactFromHistory profile={answers.value} update={answers.update} />
 
       {current ? (
         <div className="flex flex-col gap-5 rounded-corner-lg bg-card p-6">
@@ -160,13 +168,18 @@ export function SetupAnswersStep({
             <span className="text-label-medium text-muted-foreground tabular-nums">
               {question + 1} of {questions.length}
             </span>
+            {/* Round means a state: green only for a question that holds its answer, never one passed by. */}
             <span aria-hidden="true" className="flex gap-1">
               {questions.map((q, i) => (
                 <span
                   key={i}
                   className={cn(
                     "size-1.5 rounded-full",
-                    i < question ? "bg-success" : i === question ? "bg-primary" : "bg-surface-container-high",
+                    i === question
+                      ? "bg-primary"
+                      : questionAnswered(q, answers.value)
+                        ? "bg-success"
+                        : "bg-surface-container-high",
                   )}
                 />
               ))}
@@ -176,14 +189,11 @@ export function SetupAnswersStep({
             question={current}
             headingRef={questionRef}
             profile={answers.value}
-            status={status}
+            consent={consent}
             update={answers.update}
             advance={advance}
             diversity={diversity}
-            onDiversity={(choice) => {
-              onDiversity(choice);
-              advance();
-            }}
+            onDiversity={onDiversity}
           />
         </div>
       ) : null}
@@ -191,11 +201,71 @@ export function SetupAnswersStep({
   );
 }
 
+/** Your name, email and phone for forms, filled in place from your career history's contact block (blank
+ *  fields only, never over an answer you gave). Shown while the email is still blank. */
+function ContactFromHistory({ profile, update }: { profile: AutofillProfile; update: Update }) {
+  const kbProfile = useCareerContact();
+  const [filling, setFilling] = useState(false);
+  const reasonId = useId();
+  if (!isBlank(groupValues(profile, "personal").email)) return null;
+  const ready = hasFillableContactDetails(kbProfile.data?.contact);
+  const reason = kbProfile.isLoading
+    ? "Loading your career history…"
+    : kbProfile.isError
+      ? "Couldn't load your career history."
+      : "Add your contact details to your career history first.";
+
+  const fill = async () => {
+    setFilling(true);
+    try {
+      const { contact } = await apiFetch<KBProfileOut>("/api/kb/profile");
+      const count = Object.keys(contactAdditions(groupValues(profile, "personal"), contact)).length;
+      if (!count) {
+        toast.info("Nothing new to add");
+        return;
+      }
+      // Read again from the newest answers: a field typed while career history loaded stays yours.
+      update((now) => {
+        const personal = groupValues(now, "personal");
+        return { ...now, personal: { ...personal, ...contactAdditions(personal, contact) } };
+      });
+      toast.success(`Filled ${count} ${count === 1 ? "field" : "fields"} from your career history`);
+    } catch (err) {
+      toast.error(couldnt("load your career history", err));
+    } finally {
+      setFilling(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-medium">
+      <span>Your name, email and phone for forms come from your resume.</span>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        focusableWhenDisabled
+        disabled={!ready || filling}
+        aria-describedby={ready ? undefined : reasonId}
+        className="data-disabled:pointer-events-none data-disabled:opacity-50"
+        onClick={fill}
+      >
+        {filling ? "Filling…" : "Fill from career history"}
+      </Button>
+      {!ready ? (
+        <p id={reasonId} className="w-full text-body-small text-muted-foreground">
+          {reason}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function Question({
   question,
   headingRef,
   profile,
-  status,
+  consent,
   update,
   advance,
   diversity,
@@ -204,8 +274,8 @@ function Question({
   question: FormQuestion;
   headingRef: RefObject<HTMLHeadingElement | null>;
   profile: AutofillProfile;
-  status: SetupStatus;
-  update: (next: (current: AutofillProfile) => AutofillProfile) => void;
+  consent: EeoConsent;
+  update: Update;
   advance: () => void;
   diversity: DiversityChoice;
   onDiversity: (choice: DiversityChoice) => void;
@@ -213,7 +283,7 @@ function Question({
   const titleId = useId();
   const noticeId = useId();
   if (question.kind === "permit") {
-    return <PermitQuestion question={question} headingRef={headingRef} profile={profile} status={status} update={update} />;
+    return <PermitQuestion question={question} headingRef={headingRef} profile={profile} update={update} />;
   }
   if (question.kind === "notice") {
     const value = preference(profile, "notice_period");
@@ -268,8 +338,60 @@ function Question({
     );
   }
   return (
+    <DiversityQuestion
+      countries={question.countries}
+      headingRef={headingRef}
+      profile={profile}
+      consent={consent}
+      update={update}
+      advance={advance}
+      diversity={diversity}
+      onDiversity={onDiversity}
+    />
+  );
+}
+
+/**
+ * Diversity, answer or decline, in place. Either needs the diversity consent first: a pick asks for it in the
+ * same words as Profile's switch (`DIVERSITY_CONSENT_CONFIRM`) and the server stamps when it was given, and
+ * nothing is stored until that yes is on record. Cancel stores nothing and picks nothing. Declining sets each
+ * blank question to its decline choice and moves on; answering shows the questions here, beside the switch
+ * that covers them.
+ */
+function DiversityQuestion({
+  countries,
+  headingRef,
+  profile,
+  consent,
+  update,
+  advance,
+  diversity,
+  onDiversity,
+}: {
+  countries: string[];
+  headingRef: RefObject<HTMLHeadingElement | null>;
+  profile: AutofillProfile;
+  consent: EeoConsent;
+  update: Update;
+  advance: () => void;
+  diversity: DiversityChoice;
+  onDiversity: (choice: DiversityChoice) => void;
+}) {
+  const titleId = useId();
+  const { pending, setEeoConsentEnabled } = useDiversityConsent(consent);
+  const pick = async (choice: "answer" | "decline") => {
+    const allowed = consent.enabled || (await setEeoConsentEnabled(true));
+    if (!allowed) return;
+    onDiversity(choice);
+    if (choice === "decline") {
+      update((current) => withDiversityDeclined(current));
+      advance();
+    }
+  };
+  const stale = staleAnswers(profile).flatMap((item) => (item.startsWith("eeo.") ? [item.slice(4)] : []));
+  return (
     <div className="flex flex-col gap-4">
-      <span className="text-label-medium text-primary">{listWords(question.countries)}</span>
+      <span className="text-label-medium text-primary">{countries.join(", ")}</span>
       <h3 id={titleId} ref={headingRef} tabIndex={-1} className="text-title-large outline-none">
         Diversity questions on forms
       </h3>
@@ -277,42 +399,56 @@ function Question({
         labelledBy={titleId}
         options={[
           { value: "answer", label: "Answer them" },
-          { value: "decline", label: "Decline to answer" },
+          { value: "decline", label: "Decline them all" },
         ]}
-        value={diversity ?? undefined}
-        onPick={(choice) => onDiversity(choice as DiversityChoice)}
+        value={consent.enabled ? (diversity ?? undefined) : undefined}
+        onPick={(choice) => void pick(choice as "answer" | "decline")}
       />
       <p className="max-w-[65ch] text-body-small text-muted-foreground">
-        Voluntary, and asked only where a set is checked against official forms. Setup saves nothing here: you
-        answer in Profile, beside the permission that lets the Companion use your answers. Declining leaves these
-        questions to you on each form.
+        Voluntary, and asked only where a set is checked against official forms.{" "}
+        {consent.enabled
+          ? "The Companion may use these answers. You can turn that off here or in Profile."
+          : "Either choice first asks whether the Companion may use these answers. Nothing is saved until you allow it."}
       </p>
+      {diversity === "answer" && consent.enabled ? (
+        <div className="@container/setting grid gap-4">
+          <DiversityConsentSwitch
+            consent={consent}
+            pending={pending}
+            onChange={(next) => void setEeoConsentEnabled(next)}
+          />
+          <FieldGrid
+            idPrefix="setup-eeo"
+            group="eeo"
+            fields={groupFields("eeo")}
+            values={groupValues(profile, "eeo")}
+            stale={stale}
+            voluntary
+            onChange={(key, next) => update((current) => withDiversityAnswer(current, key, next))}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-/** One country's work permit: its name as the heading, then the three knockout answers, each a group named
- *  by the country and the question. Profile holds any answer this card does not ask (the US visa status). */
+/** One country's work permit: its name as the heading, then its required questions in its own words
+ *  (`work_auth_vocab`: the visa status first for `us_visa`), each a group named by the country and the
+ *  question. Every answer is that country's own entry. Never guessed for you. */
 function PermitQuestion({
   question,
   headingRef,
   profile,
-  status,
   update,
 }: {
   question: Extract<FormQuestion, { kind: "permit" }>;
   headingRef: RefObject<HTMLHeadingElement | null>;
   profile: AutofillProfile;
-  status: SetupStatus;
-  update: (next: (current: AutofillProfile) => AutofillProfile) => void;
+  update: Update;
 }) {
   const countryId = useId();
   const baseId = useId();
-  const given = permitAnswers(profile, question.market);
-  const counted = status.autofill.work_auth_by_country[question.market];
-  const allGiven = PERMIT_QUESTIONS.every((q) => given[q.key] !== undefined);
-  // Read from the server's count once it has these three: what Profile still asks for this country.
-  const more = allGiven && counted ? counted.answerable - counted.answered : 0;
+  const entry = permitEntry(profile, question.market);
   return (
     <div className="flex flex-col gap-4">
       <span className="flex items-center gap-1.5 text-label-medium text-primary">
@@ -323,43 +459,59 @@ function PermitQuestion({
         {question.label}
       </h3>
       <ul className="flex flex-col gap-4">
-        {PERMIT_QUESTIONS.map((q) => {
+        {permitQuestions(question.vocab).map((q) => {
           const questionId = `${baseId}-${q.key}`;
           return (
             <li key={q.key} className="flex flex-wrap items-center justify-between gap-3">
               <span id={questionId} className="text-body-large">
                 {q.label}
               </span>
-              <div role="group" aria-labelledby={`${countryId} ${questionId}`} className="flex gap-2">
-                {YES_NO.map((option) => {
-                  const on = given[q.key] === option.value;
-                  return (
-                    <Button
-                      key={option.label}
-                      type="button"
-                      variant={on ? "tonal" : "outline"}
-                      aria-pressed={on}
-                      onClick={() => update((current) => withPermitAnswer(current, question.market, q.key, option.value))}
-                    >
-                      {on ? <Check aria-hidden="true" /> : null}
-                      {option.label}
-                    </Button>
-                  );
-                })}
-              </div>
+              {q.boolean ? (
+                <div role="group" aria-labelledby={`${countryId} ${questionId}`} className="flex gap-2">
+                  {YES_NO.map((option) => {
+                    const on = booleanAnswer(entry[q.key]) === option.value;
+                    return (
+                      <Button
+                        key={option.label}
+                        type="button"
+                        variant={on ? "tonal" : "outline"}
+                        aria-pressed={on}
+                        onClick={() =>
+                          update((current) => withPermitAnswer(current, question.market, q.key, option.value))
+                        }
+                      >
+                        {on ? <Check aria-hidden="true" /> : null}
+                        {option.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <Select
+                  value={typeof entry[q.key] === "string" ? (entry[q.key] as string) : ""}
+                  onValueChange={(next) =>
+                    update((current) => withPermitAnswer(current, question.market, q.key, next ? String(next) : undefined))
+                  }
+                >
+                  <SelectTrigger aria-labelledby={`${countryId} ${questionId}`} className="w-64">
+                    <SelectValue placeholder="Choose">
+                      {q.options?.find((o) => o.value === entry[q.key])?.label}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {q.options?.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </li>
           );
         })}
       </ul>
       <p className="text-body-small text-muted-foreground">Each country asks this its own way. Never guessed for you.</p>
-      {more > 0 ? (
-        <div className="group/row flex flex-wrap items-center gap-x-3 text-body-small">
-          <span>
-            {more === 1 ? "1 more answer" : `${more} more answers`} for {question.label} in Profile.
-          </span>
-          <NextStep label="Answer in Profile" href={anchorHref("/profile", "autofill-work_auth")} />
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -194,6 +194,11 @@ a click.
   your own AI server, AI instructions, Quick tailor and Hours per year. Nothing was removed, and a link
   to an old tab opens the tab and card it moved to. While recommended models are on, Advanced's model
   pickers show them and can't be changed.
+- **Setup asks every form answer in place.** Each country's work permit is asked in that country's
+  words, the United States with your visa status too. You can answer the diversity questions or decline
+  them all right in Setup, once you allow the Companion to use them, with the permission beside the
+  answers as in Profile. **Fill from career history** fills your contact details there, and a question
+  you skip no longer shows as done.
 - **Profile is one page of facts about you.** The header shows your name, where you live and where you
   apply, and how many sections are ready. **Next up** asks the first answer job forms still need, starting
   with the work permit for each country you apply in, and you answer it right there. Nine tiles (Contact,

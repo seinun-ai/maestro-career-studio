@@ -2,7 +2,9 @@
 
 `/setup` (app/setup/page.tsx, components/setup/setup-flow.tsx and one file per step) writes through
 endpoints that already exist: Settings' key save, model test and recommended models; the resume
-import; the market, job preferences and the autofill profile. No route was added for it, and Setup
+import; the market, job preferences, the autofill profile and the diversity consent (through Profile's
+own consent hook, components/profile/diversity-consent.tsx); it reads career history's contact block to
+fill contact fields in place. No route was added for it, and Setup
 stores no progress: which step is done is read from what each step wrote (docs/entities/others.md,
 "Setup status"). The words and decisions are pure (lib/setup-flow.ts, its node suite) and the flow is
 rendered with seeded reads (components/setup/setup-flow.test.mjs).
@@ -24,7 +26,9 @@ _STEP_FILES = (
     "components/setup/setup-answers-step.tsx",
     "components/setup/setup-done.tsx",
 )
-_SETUP_FILES = ("app/setup/page.tsx", "components/setup/setup-flow.tsx", *_STEP_FILES)
+# Profile's modules Setup shares (design refresh Task 7.2): the consent flow and Fill from career history.
+_SHARED_FILES = ("components/profile/diversity-consent.tsx", "components/profile/contact.tsx")
+_SETUP_FILES = ("app/setup/page.tsx", "components/setup/setup-flow.tsx", *_STEP_FILES, *_SHARED_FILES)
 
 
 def _read(rel: str) -> str:
@@ -49,6 +53,11 @@ _CALLS = {
     ("PUT", "/api/settings/job-preferences"),
     ("GET", "/api/settings/autofill"),
     ("PUT", "/api/settings/autofill"),
+    # The diversity consent, only through Profile's own flow (the same confirm, the server's stamp).
+    ("GET", "/api/settings/eeo-consent"),
+    ("PUT", "/api/settings/eeo-consent"),
+    # Career history's contact block, for Fill from career history.
+    ("GET", "/api/kb/profile"),
 }
 # The resume import goes through the import dialog's own hook and lib/api.ts's two calls.
 _IMPORT_CALLS = {("POST", "/api/kb/import"), ("POST", "/api/kb/import/consolidate")}
@@ -141,22 +150,41 @@ def test_each_work_permit_question_carries_its_country():
     # The card's heading is the country, and every question's group is named by it AND the question.
     assert "{question.label}" in answers
     assert "aria-labelledby={`${countryId} ${questionId}`}" in answers
-    assert "PERMIT_QUESTIONS.map(" in answers
-    assert "withPermitAnswer(" in answers
+    # In that country's own words (its market's work_auth_vocab, the visa status only for us_visa), from the
+    # one table Profile asks from (lib/autofill-options.ts).
+    assert "permitQuestions(question.vocab).map(" in answers
+    assert "vocab: byKey.get(market)?.work_auth_vocab," in _read("lib/setup-flow.ts")
+    # Each answer is that country's own entry, sent without the one-set work_auth view.
+    assert "withPermitAnswer(current, question.market, q.key, option.value)" in answers
+    lib = _read("lib/setup-answers.ts")
+    assert "return forSaving(withPermit(profile, market, key, value));" in lib
+    # No link to Profile's set of another country (the old "Answer in Profile" edited the home one).
+    assert "Answer in Profile" not in answers and '"autofill-work_auth"' not in _read("components/setup/setup-done.tsx")
+    assert 'anchorHref("/profile", `af-permit-${q.market}-${open.key}`)' in _read("components/setup/setup-done.tsx")
 
 
 def test_diversity_only_for_a_country_with_a_set_and_only_through_consent():
     answers = _read("components/setup/setup-answers-step.tsx")
     lib = _read("lib/setup-flow.ts")
     assert "offers_eeo" in lib
-    # Setup stores no diversity answer and grants no consent: answering opens Profile's diversity
-    # section, where the consent switch sits beside the answers it covers (owner decision D10).
-    src = _setup_src()
-    assert "/api/settings/eeo-consent" not in src
-    assert not re.search(r"\beeo\s*:", src)
+    # Answer or decline in place, only through Profile's consent flow (the same confirm words and the
+    # server-owned stamp, inv-eeo-standing-consent), and never an answer stored before that yes is on record.
+    assert 'import { DiversityConsentSwitch, useDiversityConsent } from "@/components/profile/diversity-consent";' in answers
+    pick = answers[answers.index("const pick = async (") : answers.index("\n  };", answers.index("const pick = async ("))]
+    assert pick.index("const allowed = consent.enabled || (await setEeoConsentEnabled(true));") < pick.index(
+        "if (!allowed) return;") < pick.index("withDiversityDeclined(current)")
+    assert '{diversity === "answer" && consent.enabled ? (' in answers
+    consent = _read("components/profile/diversity-consent.tsx")
+    assert "await confirm(DIVERSITY_CONSENT_CONFIRM);" in consent
+    assert "acknowledged_at: enabled ? null : consent.acknowledged_at," in consent
+    # The switch sits beside the answers it covers (owner decision D10).
+    block = answers[answers.index('{diversity === "answer" && consent.enabled ? ('):]
+    assert block.index("<DiversityConsentSwitch") < block.index("<FieldGrid")
+    # Setup writes no eeo key of its own: only the shared helpers do (lib/setup-answers.ts).
+    assert not re.search(r"\beeo\s*:", "\n".join(_read(rel) for rel in _STEP_FILES))
     done = _read("components/setup/setup-done.tsx")
     assert 'anchorHref("/profile", "autofill-eeo")' in done
-    assert "Answer them" in answers and "Decline to answer" in answers
+    assert "Answer them" in answers and "Decline them all" in answers
 
 
 def test_the_done_screen_has_one_filled_action_and_two_others():
@@ -194,3 +222,25 @@ def test_setup_flow_node_suite():
     """The flow rendered with seeded reads: each step as the first one open, the rail, the done screen."""
     result = run_node_test("components/setup/setup-flow.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_progress_dot_says_done_only_for_an_answered_question():
+    """Round means a state: a question passed by or skipped is not answered, so its dot is not green."""
+    answers = _read("components/setup/setup-answers-step.tsx")
+    dots = answers[answers.index("{questions.map((q, i) => (") : answers.index("))}", answers.index("{questions.map((q, i) => ("))]
+    assert "i < question" not in dots
+    assert 'questionAnswered(q, answers.value)\n                        ? "bg-success"' in dots
+
+
+def test_blocked_storage_never_bounces_today_to_setup():
+    """A browser that refuses storage reads as seen: Today's setup card leads instead of /setup on every visit."""
+    first = _read("components/setup/use-first-run.ts")
+    seen = first[first.index("function seen(): boolean {") : first.index("\n}\n", first.index("function seen()"))]
+    assert seen.rstrip().endswith("return true;\n  }")
+
+
+def test_setup_says_where_to_get_each_key_in_settings_words():
+    model = _read("components/setup/setup-model-step.tsx")
+    assert "{KEY_FIELDS[card.id as Provider].hint}" in model
+    assert "source={info[KEY_FIELDS[card.id as Provider].source]}" in model
+    assert "const SOURCE" not in model

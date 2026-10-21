@@ -1155,7 +1155,8 @@
   the step and one nav row under it (Back from the second step, **Skip for now**, **Continue**, the
   view's one filled button). Back is free: the rail goes to any step. It stores no progress: a step is
   done from what it wrote (`lib/setup-flow.ts` `stepsDone`: a key, career history, job preferences,
-  every apply-in country's three work-permit answers), and it opens on the first step not done. Every
+  every apply-in country's work-permit answers as setup status counts them), and it opens on the first
+  step not done. Every
   step writes through an endpoint that already exists, and no `/api/setup` write route exists. **AI
   model**: five provider cards named in text (no logos); Test saves the key, tests the model it will
   use (WorkingDots, then a chip per everyday job), and only a passed test turns the provider's
@@ -1164,11 +1165,16 @@
   its resume lane), its counts only from the response (`importCounts`). **Where and what**: You live
   in, You apply in (chips), roles offered from your base resumes and the work mode, saving as you go.
   **Form answers**, one question at a time: a work-permit card per apply-in country, headed by the
-  country, each answer's group named by the country and the question; then notice period and
-  relocation; diversity only when an apply-in market `offers_eeo`, and Setup saves nothing for it
-  (answering opens Profile's diversity section, beside its consent, D10). The done screen leads with
+  country and asked in its own words (`work_auth_vocab`, the visa status for `us_visa`; Profile's one
+  table), each answer's group named by the country and the question and saved to that country's own
+  entry; then notice period and relocation; then diversity, only when an apply-in market `offers_eeo`:
+  **Answer them** or **Decline them all**, each only once the diversity consent is on record (Profile's
+  confirm and the server's stamp; Cancel stores nothing), with the switch beside the answers (D10). Above
+  the questions, while the email is blank, **Fill from career history** fills contact fields in place.
+  A question's dot is green only once it holds its answer. The done screen leads with
   **Add your first job**, then Connect an agent app and Add the Companion; while a required step is
-  open it says "Almost there". Pinned by `test_frontend_setup_flow.py`, which runs
+  open it says "Almost there", and it links each country whose work permit is left to that country's
+  own first open question in Profile. Pinned by `test_frontend_setup_flow.py`, which runs
   `lib/setup-flow.test.ts` and `components/setup/setup-flow.test.mjs`.
 - **Profile** (`app/profile/page.tsx`, `components/profile/*`, board "Profile, facts about you") is facts
   about you, one page with no tabs. The header is your name (from your contact answers, else "Profile"),
