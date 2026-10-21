@@ -585,7 +585,7 @@ export function kbImportResume(file: File, consolidate = true) {
 }
 
 export function kbImportConsolidate(slugs: string[]) {
-  return apiFetch<{ entities_created: number; points_approved: number }>(
+  return apiFetch<import("@/lib/types").ImportConsolidation>(
     "/api/kb/import/consolidate",
     { method: "POST", body: JSON.stringify({ slugs }) },
   );

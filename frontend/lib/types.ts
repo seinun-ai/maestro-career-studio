@@ -682,10 +682,21 @@ interface SkippedImportFile {
   reason: string;
 }
 
+/** `POST /api/kb/import/consolidate` (backend schemas/career_kb.py `ConsolidationReport`): what joined
+ *  career history. The newer counts are optional, so a reader shows what a response has. */
+export interface ImportConsolidation {
+  entities_created: number;
+  entities_matched?: number;
+  points_approved: number;
+  points_draft?: number;
+  /** The individual skills that landed; count these. */
+  skills_items_added?: string[];
+}
+
 export interface ImportReport {
   bases: ImportedBase[];
   skipped: SkippedImportFile[];
-  kb: { entities_created: number; points_approved: number } | null;
+  kb: ImportConsolidation | null;
 }
 
 export interface BaseResumeDetail extends BaseResumeSummary, RenderNoted {

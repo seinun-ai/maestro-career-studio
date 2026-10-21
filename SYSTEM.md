@@ -178,6 +178,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 
 The app opens on **Today** (`/today`; `/` redirects there): one read, `GET /api/today`, names the one move that matters most
 (an offer, the best ready PDF, a proposal's question) with counts that link into the steps below; frontend-conventions, "Today".
+A brand-new install (no key, no resume) opens **Setup** (`/setup`) once: four steps that write through the existing settings,
+import and profile endpoints and store no progress of their own; frontend-conventions, "Setup".
 
 1. **Capture** — `/new` (**Add job**): paste a job description → **Save job** → `POST /api/jobs` (LLM extract, dedup) → the
    job's page on step 2 (`?tab=fit`; the toast says "This job is already saved." on dedup). Or Companion/MCP `store_extracted_jd` → `POST

@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
 
 import { RoleCategoryPicker } from "@/components/role-category-picker";
 import { Dropzone } from "@/components/setup/dropzone";
 import { RowIcon } from "@/components/setup/row-icon";
+import { MAX_BYTES, MAX_FILES, useResumeImport } from "@/components/setup/use-resume-import";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,23 +18,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ResumeTag } from "@/components/visual";
 import { useBaseResumeColor } from "@/hooks/use-base-resume-label";
-import { kbImportConsolidate, kbImportResume } from "@/lib/api";
-import { couldnt, errorDetail } from "@/lib/error-text";
-import { notifyRenderNote } from "@/lib/render-note";
-import type { ImportReport } from "@/lib/types";
 import { acceptedFilesHint, RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
 
 const ACCEPT = RESUME_FILE_ACCEPT;
-const MAX_FILES = 10;
-const MAX_BYTES = 10 * 1024 * 1024;
-
-type FileRow =
-  | { file: File; state: "queued" }
-  | { file: File; state: "parsing" }
-  | { file: File; state: "done" }
-  | { file: File; state: "failed"; reason: string };
-
-type ConsolidateState = "idle" | "queued" | "running" | "done" | "failed";
 
 /** The resume lane's body, without dialog chrome.
  *
@@ -48,73 +33,23 @@ type ConsolidateState = "idle" | "queued" | "running" | "done" | "failed";
  * trust is gone on first contact.
  */
 export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient();
   // The import mints each resume's color on the server; the list invalidated below carries it.
   const colorOf = useBaseResumeColor();
   const [files, setFiles] = useState<File[]>([]);
   const [rejected, setRejected] = useState<{ file: File; reason: string }[]>([]);
-  const [report, setReport] = useState<ImportReport | null>(null);
-  const [rows, setRows] = useState<FileRow[]>([]);
-  const [consolidate, setConsolidate] = useState<ConsolidateState>("idle");
-  const [busy, setBusy] = useState(false);
+  // The import itself, shared with Setup's resume step (components/setup/use-resume-import.ts).
+  const importer = useResumeImport();
+  const { report, rows, consolidate, busy } = importer;
 
   const runImport = async (picked: File[]) => {
-    setBusy(true);
-    setRows(picked.map((file) => ({ file, state: "queued" as const })));
-    setConsolidate(picked.length ? "queued" : "idle");
-    const bases: ImportReport["bases"] = [];
-    const skipped: ImportReport["skipped"] = [];
-
-    for (let i = 0; i < picked.length; i++) {
-      const file = picked[i];
-      setRows((prev) => prev.map((r, idx) => (idx === i ? { file, state: "parsing" } : r)));
-      try {
-        const result = await kbImportResume(file, false);
-        bases.push(...result.bases);
-        skipped.push(...result.skipped);
-        setRows((prev) => prev.map((r, idx) => (idx === i ? { file, state: "done" } : r)));
-      } catch (err) {
-        const reason = errorDetail(err) ?? "Couldn't read this file.";
-        skipped.push({ filename: file.name, reason });
-        setRows((prev) =>
-          prev.map((r, idx) => (idx === i ? { file, state: "failed", reason } : r)),
-        );
-      }
-    }
-
-    // Every base rendered on the same host through the same default template,
-    // so their notes are one string: say it once, not once per file.
-    notifyRenderNote(bases.find((b) => b.render_note));
-
-    let kb: ImportReport["kb"] = null;
-    if (bases.length > 0) {
-      setConsolidate("running");
-      try {
-        kb = await kbImportConsolidate(bases.map((b) => b.slug));
-        setConsolidate("done");
-      } catch (err) {
-        setConsolidate("failed");
-        toast.error(couldnt("import the resumes", err));
-      }
-    } else {
-      setConsolidate("idle");
-    }
-
-    setReport({ bases, skipped, kb });
+    await importer.run(picked);
     setFiles([]);
-    qc.invalidateQueries({ queryKey: ["base-resumes"] });
-    qc.invalidateQueries({ queryKey: ["kb"] });
-    qc.invalidateQueries({ queryKey: ["setup-status"] });
-    setBusy(false);
   };
 
   const reset = () => {
     setFiles([]);
     setRejected([]);
-    setReport(null);
-    setRows([]);
-    setConsolidate("idle");
-    setBusy(false);
+    importer.reset();
   };
 
   const pointsAdded = report?.kb?.points_approved ?? 0;

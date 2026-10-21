@@ -7,6 +7,8 @@
 const REPO = "https://github.com/seinun-ai/maestro-career-studio/blob/main";
 
 export const CONNECT_AGENT_GUIDE_URL = `${REPO}/docs/GETTING_STARTED.md#5-connect-your-ai-assistant-optional`;
+/** How to load the Companion into Chrome (Setup's done screen); pinned by test_frontend_setup_flow.py. */
+export const COMPANION_GUIDE_URL = `${REPO}/docs/GETTING_STARTED.md#4-the-companion-browser-extension-optional`;
 export const JOB_HUNT_SKILL_URL = `${REPO}/docs/skills/README.md`;
 export const AGENT_APPLICATIONS_URL = `${REPO}/README.md#going-all-the-way-agent-applications`;
 /** Settings › Connected agents (lib/settings-tabs.ts). */

@@ -231,14 +231,13 @@ test("a new user without a key or a resume sees Setup's card instead", () => {
   assert.match(html, />Set up</);
   assert.match(html, /Add an API key/);
   assert.match(html, /Import your resumes/);
-  // Its one filled button opens the first required step that is not done.
+  // Its one filled button opens Setup, which starts on the first step not done (components/setup/setup-flow.tsx).
   assert.equal((html.match(FILLED) ?? []).length, 1);
-  const key = filled(html);
-  assert.equal(key.label, "Add API key");
-  assert.match(key.href, /^\/settings[^#]*#api-keys$/);
-  // A key in place: the resume is next, and its import opens in place.
+  assert.deepEqual(filled(html), { tag: "a", href: "/setup", label: "Start setup" });
+  // A key in place: one step left, and the same button finishes it.
   const keyed = render({ today: response({ next_up: null }), setup: { ...SETUP_NEW, model_key: step(true) } });
-  assert.deepEqual(filled(keyed), { tag: "button", href: null, label: "Import resumes" });
+  assert.match(keyed, /One step before your first job/);
+  assert.deepEqual(filled(keyed), { tag: "a", href: "/setup", label: "Finish setup" });
   // Next up outranks setup: a user with something to do sees it.
   const busy = render({ today: response(), setup: SETUP_NEW });
   assert.match(busy, />Next up</);

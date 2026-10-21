@@ -8,6 +8,7 @@ import { GuardedLink as Link } from "@/components/guarded-link";
 import { LoadErrorState } from "@/components/load-error-state";
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { SetupEntryCard, needsSetup } from "@/components/setup/setup-entry-card";
+import { useOpenSetupOnFirstLaunch } from "@/components/setup/use-first-run";
 import { Fold } from "@/components/ui/fold";
 import { LeadCard } from "@/components/ui/lead-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -59,7 +60,7 @@ function browserZone(): BrowserZone {
 /**
  * Today, the home page (`/` redirects here): Next up as the Lead, three counts under Also today, the rest in
  * one fold, then this week. One read, `GET /api/today`, picks and counts everything; Setup's entry card
- * takes the lead place for a new user with nothing to do yet.
+ * takes the lead place for a new user with nothing to do yet, and a brand-new install opens Setup once.
  */
 export default function TodayPage() {
   const zone = browserZone();
@@ -72,6 +73,8 @@ export default function TodayPage() {
     queryKey: ["setup-status"],
     queryFn: () => apiFetch<SetupStatus>("/api/setup/status"),
   });
+  // A brand-new install (no key, no resume) goes to Setup, once (components/setup/use-first-run.ts).
+  useOpenSetupOnFirstLaunch(setup.data);
   const data = today.data;
 
   return (

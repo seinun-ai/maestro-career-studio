@@ -251,6 +251,8 @@ _FAILURE_BRANCHES = {
     "components/resume-health/question-pass.tsx": "if (isLoadFailure(baseQuery)) {",
     "components/chat/chat-page.tsx": "const threadFailed = sessionId !== null && isLoadFailure(detail);",
     "components/setup/getting-started-card.tsx": "if (isLoadFailure(setupStatus)) {",
+    # Setup reads five settings at once and shows one failed state for them (components/setup/setup-flow.tsx).
+    "components/setup/setup-flow.tsx": "const loadFailed = queries.some((q) => isLoadFailure(q));",
     "components/chat/scope-picker.tsx": "{isLoadFailure(kbEntities) ? (",
     "components/proposals/proposals-section.tsx": "if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {",
     "components/proposals/proposal-agent-panel.tsx": "if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {",
@@ -303,6 +305,7 @@ def test_a_retry_keeps_the_error_mounted(relpath: str):
 _LOADING_GATES = [
     ("app/referrals/page.tsx", '<Skeleton className="h-40 w-full" />', "isLoadFailure(referrals) ?"),
     ("app/today/page.tsx", '<Skeleton className="h-56 w-full rounded-corner-lg" />', "isLoadFailure(today) ?"),
+    ("components/setup/setup-flow.tsx", '<Skeleton className="h-72 w-full rounded-corner-md" />', "{loadFailed ? ("),
     ("app/automations/page.tsx", '<Skeleton className="h-64 w-full" />', "isLoadFailure(query) ?"),
     ("app/applications/page.tsx", "animate-shimmer h-12", "loadFailed ? ("),
     ("components/proposals/proposals-section.tsx", "if (isLoading) {", "if (isLoadFailure("),

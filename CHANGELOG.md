@@ -56,6 +56,14 @@ a click.
   with replies and interviews. Pay reads in your home currency. A new user without an API key or a
   resume sees the two setup steps there instead. The sidebar leads with Today, which now carries the
   Needs you count, and folds Automations, Referrals, Templates and the Assistant under **More tools**.
+- **A four-step first run.** A new install opens **Setup**: pick the AI that does the writing (Claude,
+  OpenAI, Gemini, OpenRouter or your own server), paste its key and press Test to see what it can do;
+  drop your resume and see what it found; say where you live, where you apply, the roles you want and
+  how you want to work; then answer what job forms ask, one question at a time, starting with a work
+  permit for each country you apply in. Once a key passes its test, that provider's recommended models
+  are picked for you, unless your own picks already use it. Every step has **Skip for now**, you can go
+  back to any step, and each answer lands where it lives in Profile and Settings. Today's setup card
+  opens Setup until you have a key and a resume.
 - **Where you live and where you apply.** Maestro now keeps one country you live in (your home
   currency and date format) and every country you apply in (`PUT /api/settings/market` takes
   `{home, apply_in}`; the Country setting is where you live).

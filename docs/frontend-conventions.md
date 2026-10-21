@@ -1140,11 +1140,34 @@
   (`chart-1`, one `role="img"` sentence) with replies and interviews. The server leaves zero counts
   out and the page draws only what came. With nothing next, a new user with no API key or no career
   history (`needsSetup`) sees Setup's entry card (`components/setup/setup-entry-card.tsx`: the two
-  required steps of `setup-steps.ts`, its button the first one not done); everyone else sees
-  "Nothing waiting on you." While setup status loads the lead is a skeleton (never one card, then
-  the other); a failed read of it falls through to that line. A failed Today read is
-  `LoadErrorState`, never the empty line. Pinned by `test_frontend_today.py`, which runs
+  required steps of `setup-steps.ts`, its one button **Start setup** or **Finish setup** opening
+  `/setup`); everyone else sees "Nothing waiting on you." A brand-new install (no key AND no resume)
+  is sent to `/setup` once (`components/setup/use-first-run.ts`: Setup notes in this browser that it
+  was opened, so a user who skips it lands on Today next time). While setup status loads the lead is a
+  skeleton (never one card, then the other); a failed read of it falls through to that line. A failed
+  Today read is `LoadErrorState`, never the empty line. Pinned by `test_frontend_today.py`, which runs
   `components/today/today-page.test.mjs` (the page rendered with seeded reads).
+- **Setup** (`app/setup/page.tsx`, `components/setup/setup-flow.tsx` and one file per step, board
+  "Setup in four steps") is the first run: a rail of four steps (AI model, Your resume, Where and
+  what, Form answers), each with a time and "Done" once its data is there, under a progress bar; then
+  the step and one nav row under it (Back from the second step, **Skip for now**, **Continue**, the
+  view's one filled button). Back is free: the rail goes to any step. It stores no progress: a step is
+  done from what it wrote (`lib/setup-flow.ts` `stepsDone`: a key, career history, job preferences,
+  every apply-in country's three work-permit answers), and it opens on the first step not done. Every
+  step writes through an endpoint that already exists, and no `/api/setup` write route exists. **AI
+  model**: five provider cards named in text (no logos); Test saves the key, tests the model it will
+  use (WorkingDots, then a chip per everyday job), and only a passed test turns the provider's
+  recommended models on, unless your own picks already run on it (`modelPlan`, said under the chips).
+  **Your resume**: one drop zone into the import dialog's own flow (`use-resume-import.ts`, shared with
+  its resume lane), its counts only from the response (`importCounts`). **Where and what**: You live
+  in, You apply in (chips), roles offered from your base resumes and the work mode, saving as you go.
+  **Form answers**, one question at a time: a work-permit card per apply-in country, headed by the
+  country, each answer's group named by the country and the question; then notice period and
+  relocation; diversity only when an apply-in market `offers_eeo`, and Setup saves nothing for it
+  (answering opens Profile's diversity section, beside its consent, D10). The done screen leads with
+  **Add your first job**, then Connect an agent app and Add the Companion; while a required step is
+  open it says "Almost there". Pinned by `test_frontend_setup_flow.py`, which runs
+  `lib/setup-flow.test.ts` and `components/setup/setup-flow.test.mjs`.
 - **Tracker filter** (`app/applications/page.tsx`): the page runs two queries, the summary list
   (job fields joined on the server) and the saved jobs of the source toggle's source. "Saved" is a
   job with no application; agent-captured jobs stay out unless the toggle is **Agents**, which is
