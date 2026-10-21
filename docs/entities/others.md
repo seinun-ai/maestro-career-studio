@@ -1097,11 +1097,12 @@
   within the last 7 days, including the boundary. Naive `since` is interpreted as UTC.
   The browser remembers the previous visit in `cs-inbox-last-visit`, reads it once on mount,
   then stores now; absent, invalid or blocked storage falls back to the last 24 hours.
-  Rows created strictly after that visit get a **New** dot. One line above the lanes reads
-  "N new · N need you · N to review · N queued · N applied this week" (`lib/inbox-summary.ts`; `to_review`
-  is the summary's `pending_review` count): a zero part is left out, each part jumps to its lane (New to the
-  first lane drawn), and all zero renders nothing, so it never sits above the no-proposals empty state. An
-  empty lane is not drawn; History starts collapsed. The search and filters render for more than ten
+  Rows created strictly after that visit get a **New** dot. The page header carries three of the counts,
+  "N to review · N queued · N applied this week" (`lib/inbox-summary.ts` `inboxCounts`; `to_review` is the
+  summary's `pending_review` count): zeros stay, a count above zero jumps to its lane (applied this week to
+  History, which it opens), and nothing shows until the counts load. `new` is said by each row's dot and
+  `needs_you` by the Needs you lane and the sidebar badge. An empty lane is not drawn; History is a fold,
+  closed until opened. The search and filters render for more than ten
   proposals or while one is on; the daily limit line renders from 80 percent used (Analytics always shows
   it). The inbox also reads the newest run per automation ([agent-runs.md](agent-runs.md)) for one line,
   "<automation> proposed N jobs <time ago> · See runs" (to Automations' Recent runs), only when that

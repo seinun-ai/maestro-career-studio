@@ -36,8 +36,10 @@ def _name() -> str:
 
 
 def test_the_inbox_is_called_agent_inbox_wherever_it_is_named():
-    assert 'title="Agent inbox"' in _PAGE
-    assert "Jobs your connected agents found. Nothing is submitted without your yes." in _PAGE
+    # The header lives in the dashboard, beside the counts it shares a query with (design refresh Task 4.2).
+    assert "<InboxDashboard />" in _PAGE
+    assert 'title="Agent inbox"' in _dash()
+    assert "Nothing is sent without your yes" in _dash()
     assert 'fromProposals ? "Back to Agent inbox" : "Back to Jobs"' in _JOB
     assert '"Previous job in Agent inbox"' in _JOB
     assert '"Next job in Agent inbox"' in _JOB
@@ -57,7 +59,7 @@ def test_the_lanes_use_the_owners_words():
     titles = re.findall(r"<Lane\s+(?:ref=\{\w+\}\s+)?title=\{`([^$`]+) · \$\{", _SECTION)
     assert titles == ["Needs you", "To review", "Queued", "Applying"]
     assert "Nothing to review." not in _SECTION  # an empty lane is not drawn (B2)
-    history = _SECTION.index("History ·")
+    history = _SECTION.index('<Fold title="History"')
     assert _SECTION.index('title={`Applying · ') < history
     for old in ("Triage ·", "In flight ·", "pending triage"):
         assert old not in _SECTION, old
@@ -67,7 +69,7 @@ def test_the_lanes_use_the_owners_words():
 
 
 def test_the_header_keeps_only_cap_today():
-    assert "<CapToday onlyNearLimit />" in _PAGE
+    assert "subtitle={<CapToday onlyNearLimit />}" in _dash()
     cap = _read("components/proposals/cap-today.tsx")
     assert "useProposalFunnel()" in cap
     # The failure is its own state, decided before the readout.
@@ -269,7 +271,7 @@ def test_the_inbox_says_at_its_end_when_the_list_was_cut():
     notice = _SECTION.index(
         '<ListCapNotice loaded={items.length} limit={PROPOSALS_LIMIT} total={data?.total} noun="proposals" />'
     )
-    assert _SECTION.index("History ·") < notice < _SECTION.index("<BulkBar")
+    assert _SECTION.index('<Fold title="History"') < notice < _SECTION.index("<BulkBar")
     # After the lanes' ternary, not inside it: a filter that hides every row still says the list was cut (M10).
     assert "          ) : null}\n        </>\n      )}\n\n      <ListCapNotice" in _SECTION
 
@@ -676,7 +678,9 @@ def test_select_mode_is_opt_in_and_offers_only_what_every_pick_allows():
     """Photos' Select: no checkboxes until Select, a row's click picks it, and the bar offers an action
     only when every picked row's own buttons offer it (under the same ownership locks)."""
     assert "const showCheckbox = selecting;" in _SECTION
-    assert '{selecting ? "Done" : "Select"}' in _SECTION
+    # The quiet Select is the one Jobs uses too (components/selection-bar.tsx).
+    assert "<SelectToggle ref={selectButton} selecting={selecting} onClick={() => (selecting ? exitSelect() : setSelecting(true))} />" in _SECTION
+    assert '{selecting ? "Done" : "Select"}' in _read("components/selection-bar.tsx")
     assert "{selecting ? (\n        <BulkBar" in _SECTION
     assert "picked.length > 0 && picked.every((a) => a.includes(action))" in _SECTION
     actions = _SECTION[_SECTION.index("function bulkActionsOf(") :]
@@ -693,11 +697,12 @@ def test_select_mode_is_opt_in_and_offers_only_what_every_pick_allows():
     assert "Promise.all" not in many
 
 
-def test_a_row_says_where_its_job_is_in_its_by_line():
-    """The mark used to take a line of its own under every row, doubling its height; it is now the Jobs
-    table's one word, and a lock, a request or a waiting one opens from one small icon."""
+def test_a_row_says_where_its_job_is_only_when_it_is_not_here():
+    """The mark used to take a line of its own under every row, doubling its height; then it was the Jobs
+    table's Where word in the by-line. The Where column went (owner decision D4), and so did the word: one
+    small icon shows only when the job is on the other copy or a request waits, and opens the rest."""
     row = _row()
-    assert "const where = ownershipWhere(owner);" in row and "{whereMark}" in row
+    assert "ownershipWhere" not in _SECTION and "whereMark" not in row
     # Nothing under the row: a locked job's reason, its request and its progress sit in a pop-up.
     assert "<JobOwnershipPopover jobId={proposal.job_id} ownership={owner} />" in row
     assert "JobOwnershipNotice" not in _SECTION and "<JobOwnershipMark" not in _SECTION
@@ -852,7 +857,7 @@ def test_the_arrivals_anchors_keep_lane_titles_and_focus_attributes_in_order():
         assert opening.group(1) == anchor
     assert "anchor?: string;" in _SECTION
     assert "<section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor}" in _SECTION
-    assert '<section tabIndex={-1} aria-labelledby={historyId} id="inbox-history"' in _SECTION
+    assert '<section tabIndex={-1} aria-label="History" id="inbox-history"' in _SECTION
 
 
 _READINESS = _read("lib/inbox-readiness.ts")
@@ -880,10 +885,11 @@ def test_the_needs_you_help_says_where_a_stop_is_answered():
 
 
 def test_the_consent_line_is_said_once_on_the_inbox():
-    """The header carries it; the empty state doesn't repeat it (first-read pass)."""
+    """The header carries it, on the title's line with a lock (design refresh Task 4.2: the plan's words, "sent");
+    the empty state doesn't repeat it (first-read pass)."""
     empty = _SECTION[_SECTION.index("if (items.length === 0) {") : _SECTION.index("const rowProps")]
-    assert "Nothing is submitted without your yes." not in empty
-    assert "<p>Jobs your connected agents found. Nothing is submitted without your yes.</p>" in _PAGE
+    assert "Nothing is sent without your yes" not in empty
+    assert "Nothing is sent without your yes" in _dash() and "without your yes" not in _PAGE
 
 
 def test_readiness_steps_node():
@@ -904,7 +910,8 @@ def test_inbox_rows_use_actor_score_and_readiness_visuals():
 
 
 def test_empty_inbox_top_collapses():
-    assert "if (parts.length === 0) return null;" in _read("components/proposals/arrivals-strip.tsx")
+    # The counts claim nothing until they load; the no-proposals empty state is the answer below them.
+    assert "if (!data) return null;" in _counts()
 
 
 def test_run_outcome_is_a_glyph_and_a_word():
@@ -925,3 +932,65 @@ def test_data_only_evidence_rows_draw_no_thumbnail():
     # The Companion's final_review row has an empty path and its submission_receipt row the page's
     # URL path; an agent's screenshots, of any kind, are stored as evidence/<name>.
     assert '(data.evidence_json ?? []).filter((e) => (e.path ?? "").startsWith("evidence/"))' in _PANEL
+
+
+# ── Design refresh Task 4.2: lanes as one list card, header counts ─────────
+
+def _dash() -> str:
+    return _read("components/proposals/inbox-dashboard.tsx")
+
+
+def _counts() -> str:
+    return _read("components/proposals/inbox-counts.tsx")
+
+
+def test_each_lane_is_one_card_of_short_rows():
+    """Board "Agent inbox, same rows": one bg-card card per lane holding 60px rows, not a card per job."""
+    lane = _SECTION[_SECTION.index("function Lane(") : _SECTION.index("function SelectAll(")]
+    assert '<div className="divide-y overflow-clip rounded-corner-md bg-card">{children}</div>' in lane
+    assert "<Card" not in _SECTION and "CardContent" not in _SECTION
+    row = _row()
+    assert 'className="group flex min-h-15 items-stretch' in row
+    # To review's days are groups inside its one card; a day's rows sit in their own list (focusSuccessor).
+    assert '<div className="divide-y border-t">' in _SECTION
+
+
+def test_the_header_counts_replace_the_subtitle_and_the_lock_line_stays():
+    dash = _dash()
+    assert 'title="Agent inbox"' in dash
+    assert "Nothing is sent without your yes" in dash and "CONCEPT_ICONS.locked" in dash
+    assert "Jobs your connected agents found." not in dash and "Jobs your connected agents found." not in _PAGE
+    assert "subtitle={<CapToday onlyNearLimit />}" in dash
+    assert "actions={<InboxCounts since={since} onJump={openHistory} />}" in dash
+    # Three counts, zeros kept, from the summary the page already reads; each jumps to its lane.
+    counts = _counts()
+    assert '["proposals", "summary", since]' in counts and "inboxCounts(data)" in counts
+    assert "if (!data) return null;" in counts and "<NumberRoll" in counts
+    assert not (_FRONTEND / "components/proposals/arrivals-strip.tsx").exists()
+
+
+def test_one_sort_select_and_the_other_filters_under_filters():
+    toolbar = _toolbar()
+    row = toolbar[: toolbar.index("<div id={filtersId}")]
+    panel = toolbar[toolbar.index("<div id={filtersId}") :]
+    assert 'aria-label="Sort"' in row and "<FiltersButton" in row and "{selectToggle}" in row
+    for label in ("Role", "Job board", "Minimum score"):
+        assert f'aria-label="{label}"' in panel, label
+    assert "hidden={!filtersOpen}" in panel
+    assert "active={(role === \"all\" ? 0 : 1) + (board === \"all\" ? 0 : 1) + (minScore == null ? 0 : 1)}" in row
+
+
+def test_history_is_a_fold():
+    history = _SECTION[_SECTION.index('id="inbox-history"') :]
+    assert "<Fold" in history and 'title="History"' in history
+    assert "open={historyOpen}" in history and "onOpenChange={setHistoryOpen}" in history
+    assert "summary={historyAll.length}" in history
+    fold = _read("components/ui/fold.tsx")
+    assert "open?: boolean;" in fold and "onOpenChange?: (open: boolean) => void;" in fold
+
+
+def test_a_question_from_the_agent_is_one_truncated_line():
+    row = _row()
+    assert '{needs ? <p className="truncate text-body-small" title={needs}>{needs}</p> : null}' in row
+    # The resume square stays on the row (owner decision D2): the agent picked that resume.
+    assert "<ResumeTag hue={colorOf(base)}>{baseName}</ResumeTag>" in row

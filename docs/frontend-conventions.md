@@ -1150,23 +1150,32 @@
   `DEFAULT_FILTER`, so All is `?status=all`. The three filters are one state (`useTrackerFilters`,
   `lib/tracker-filters.ts`): a URL carrying any of `status`, `stage`, `source` is the whole state,
   and session memory is read only when it carries none. The Agent inbox
-  itself (`/proposals`) is one table of lanes (`lib/inbox-lanes.ts`; an empty lane is not drawn)
-  under one summary line (`/api/proposals/summary`; the last-visit window holds until the tab
-  reloads); its search and filters show only past ten proposals, the daily limit line only near the
-  limit, and a proposed-jobs line comes from the newest run (Recent runs, `agent_runs`, live on
-  Automations: docs/entities/agent-runs.md). Open rows carry read-time readiness
+  itself (`/proposals`, board "Agent inbox, same rows") is one table of lanes (`lib/inbox-lanes.ts`; an
+  empty lane is not drawn), each lane one `bg-card` card of rows divided by a hairline: a row is 60px
+  for two lines (the title and its marks, then "Company · Place · Mode", who filed it and when), and a
+  Needs-you question adds one truncated line, whole on hover. To review's days are groups inside its
+  card. History is a `Fold` ("History", its count on the right), closed until opened, with its status
+  `FilterChips` inside. The header (`components/proposals/inbox-dashboard.tsx`) has no subtitle: the
+  title, the lock line "Nothing is sent without your yes" (`PageHeader` `meta`) and three counts,
+  to review, queued and applied this week (`InboxCounts`, `/api/proposals/summary`; the last-visit
+  window holds until the tab reloads), each above zero a button to its lane; the daily limit line shows
+  under it only near the limit. The toolbar is the search and one sort select in view, with Role,
+  Job board and Minimum score behind **Filters** (`FiltersButton`); it shows only past ten proposals or
+  while a filter is on. A proposed-jobs line comes from the newest run (Recent runs, `agent_runs`,
+  live on Automations: docs/entities/agent-runs.md). Open rows carry read-time readiness
   (`services/inbox_readiness.py`). The rules: docs/entities/others.md, "Inbox readiness" and
-  "Arrivals summary". A row says where its job is in its by-line, the Jobs table's Where word
-  (`ownershipWhere`, the sentence on hover), and nothing goes under a row: a lock reason, **Work on
-  it here** / **Keep it here** and a waiting request open from one small always-visible icon outside
-  the row's link (`JobOwnershipPopover`: a lock, or the owner's icon, with a dot while a request
-  waits). A Needs-you question is one truncated line, whole on hover. Selection is
-  a mode, as in Photos: a quiet **Select** (end of the toolbar, or alone above the lanes) puts a
-  checkbox on every row, "Select all" on each lane (per day in To review), and a click on a row picks
-  it instead of opening the job; a row's own buttons step aside. The fixed bulk bar stays until
-  **Done** and offers Queue, Skip or Delete only when every picked row's own buttons offer it under
-  the same ownership locks (`bulkActionsOf`; Applying and Applied rows pick nothing). Delete asks once
-  and deletes one at a time. The bar's action, or Done, ends the mode and hands focus back to Select.
+  "Arrivals summary". A row keeps its base resume square and score (owner decision D2: the agent picked
+  that resume), and nothing goes under a row: a lock reason, **Work on it here** / **Keep it here** and a
+  waiting request open from one small icon outside the row's link (`JobOwnershipPopover`: a lock, or the
+  owner's icon, with a dot while a request waits), shown only when the job is not on this copy or a
+  request waits (`ownershipSays`), as on Jobs. Selection is a mode, as in Photos: a quiet **Select**
+  (`SelectToggle`, shared with Jobs; end of the toolbar, or alone above the lanes) puts a checkbox on
+  every row, "Select all" on each lane (per day in To review), and a click on a row picks it instead of
+  opening the job; a row's own buttons step aside. The fixed bulk bar (`SelectionBar`, shared with
+  Jobs) stays until **Done** and offers Queue (its one filled button), Skip or Delete only when every
+  picked row's own buttons offer it under the same ownership locks (`bulkActionsOf`; Applying and
+  Applied rows pick nothing). Delete asks once and deletes one at a time. The bar's action, or Done,
+  ends the mode and hands focus back to Select.
 - **Jobs row** (`app/applications/page.tsx`, board "Jobs, fewer words"): the page header is the title,
   a count (every row of the source, `PageHeader` `meta`) and the search, with no subtitle. The columns
   are Role, Match (read-only: an application's `ats_score`, a saved job's `best_ats_score`), Status (an

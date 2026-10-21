@@ -15,7 +15,8 @@ Module._resolveFilename = function (name, ...args) {
 for (const extension of [".ts", ".tsx"]) {
   Module._extensions[extension] = function (module, filename) {
     const output = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
+      // tsconfig.json's target: ES5's downlevel spread breaks `[..."123"]` (NumberRoll's digits).
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2017, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
       fileName: filename,
     });
     module._compile(output.outputText, filename);

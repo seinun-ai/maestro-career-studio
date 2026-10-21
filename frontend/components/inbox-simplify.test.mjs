@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { React, load, renderElement, withRouter } from "./render-harness.mjs";
 
-const { ArrivalsStrip } = load("components/proposals/arrivals-strip.tsx");
+const { InboxCounts } = load("components/proposals/inbox-counts.tsx");
 const { CapToday } = load("components/proposals/cap-today.tsx");
 const { InboxRunNotice, RefusedRequests } = load("components/proposals/inbox-run-notice.tsx");
 const { RecentRuns } = load("components/automations/recent-runs.tsx");
@@ -13,27 +13,25 @@ const { ProposalAgentPanel } = load("components/proposals/proposal-agent-panel.t
 const SINCE = "2026-10-01T00:00:00Z";
 const summary = (over) => [["proposals", "summary", SINCE],
   { since: SINCE, new: 0, ready: 0, to_review: 0, queued: 0, needs_you: 0, applied_this_week: 0, ...over }];
-const strip = (over) => renderElement(React.createElement(ArrivalsStrip, { since: SINCE }), [summary(over)]);
+const counts = (over) => renderElement(React.createElement(InboxCounts, { since: SINCE }), [summary(over)]);
 
-// ── B1: one summary line ────────────────────────────────────────────────────
+// ── The header's three counts (design refresh Task 4.2) ─────────────────────
 
-test("the summary is one line, zero parts left out, new first", () => {
-  const html = strip({ new: 3, needs_you: 1, to_review: 2, queued: 4, applied_this_week: 2 });
-  assert.match(html, /3 new/);
-  assert.match(html, /1 needs you/);
-  assert.match(html, /2 to review/);
-  assert.match(html, /4 queued/);
-  assert.match(html, /2 applied this week/);
-  assert.equal((html.match(/<button/g) ?? []).length, 5);
-  assert.doesNotMatch(html, /Ready to apply|New since your last visit/);
-  const some = strip({ queued: 4 });
-  assert.match(some, /4 queued/);
-  assert.doesNotMatch(some, /need|applied this week|new/);
+test("the header counts to review, queued and applied this week, and a count above zero jumps to its lane", () => {
+  const html = counts({ new: 3, needs_you: 1, to_review: 2, queued: 4, applied_this_week: 0 });
+  assert.match(html, /2<\/span>.*to review/);
+  assert.match(html, /4<\/span>.*queued/);
+  assert.match(html, /0<\/span>.*applied this week/);
+  assert.equal((html.match(/<button/g) ?? []).length, 2);
+  // New and needs-you are said where they are: a row's New mark, the Needs you lane and the sidebar's count.
+  assert.doesNotMatch(html, /new|need/);
 });
 
-test("all zero renders nothing, so it never sits above the no-proposals empty state", () => {
-  assert.equal(strip({}), "");
-  assert.equal(renderElement(React.createElement(ArrivalsStrip, { since: SINCE })), "");
+test("all zero is three zeros, and counts that have not loaded claim nothing", () => {
+  const html = counts({});
+  assert.equal((html.match(/<button/g) ?? []).length, 0);
+  assert.match(html, /applied this week/);
+  assert.equal(renderElement(React.createElement(InboxCounts, { since: SINCE })), "");
 });
 
 // ── B4: the daily limit only near it ────────────────────────────────────────

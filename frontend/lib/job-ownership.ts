@@ -26,20 +26,6 @@ function isMoving(ownership: JobOwnership): boolean {
   return ["offered", "returning"].includes(ownership.handover ?? "");
 }
 
-/** The Jobs table's Where cell: one word, whose copy it is, and the long sentence for its tooltip.
- * Moving keeps the icon of whoever holds the job now. `pending` is a request of yours still on its way
- * (the sentence then ends with where it stands). Null where the row has no mark: every row with sync off. */
-export function ownershipWhere(ownership?: JobOwnership):
-  { word: "Laptop" | "Bot" | "Moving"; bot: boolean; pending: boolean; sentence: string } | null {
-  const view = jobOwnershipView(ownership);
-  if (!ownership || !view.mark) return null;
-  const bot = ownership.owner === "bot";
-  const moving = isMoving(ownership);
-  const sentence = moving || !view.canWrite ? ownershipReason(ownership) : view.mark;
-  return { word: moving ? "Moving" : bot ? "Bot" : "Laptop", bot, pending: view.pending,
-    sentence: view.pending ? `${sentence} · ${REQUEST_QUEUED}` : sentence };
-}
-
 function ownershipMark(ownership?: JobOwnership): string {
   if (ownership?.handover === "offered") return "Going to your bot";
   return ownership?.owner === "bot" ? "With your bot" : "On your laptop";

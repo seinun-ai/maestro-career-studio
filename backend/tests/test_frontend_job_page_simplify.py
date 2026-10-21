@@ -113,14 +113,15 @@ def test_expires_shows_only_while_the_proposal_can_still_expire():
 
 # ── B1: one summary line instead of four tiles ──────────────────────────────
 
-_STRIP = _read("components/proposals/arrivals-strip.tsx")
+_STRIP = _read("components/proposals/inbox-counts.tsx")
 _SUMMARY_LIB = _read("lib/inbox-summary.ts")
 
 
 def test_the_inbox_opens_with_one_summary_line_whose_parts_jump_to_their_lanes():
-    for part in ('"inbox-needs-you"', '"inbox-queued"', '"inbox-history"', '"inbox-to-review"'):
+    """Now the header's three counts (design refresh Task 4.2): to review, queued, applied this week."""
+    for part in ('"inbox-queued"', '"inbox-history"', '"inbox-to-review"'):
         assert part in _SUMMARY_LIB
-    assert '"needs" : "need"' in _SUMMARY_LIB and "applied this week" in _SUMMARY_LIB and "queued" in _SUMMARY_LIB
+    assert "applied this week" in _SUMMARY_LIB and "queued" in _SUMMARY_LIB
     assert "<button" in _STRIP and "StatTile" not in _STRIP
 
 
@@ -171,7 +172,7 @@ def test_the_inbox_says_the_daily_limit_only_near_it_and_analytics_always_does()
     assert "onlyNearLimit && !capNearLimit(cap.reserved_last_24h, cap.max_per_day)" in cap
     # A failed load is still shown before the readout, so the error never hides.
     assert cap.index("if (isLoadFailure(query))") < cap.index("onlyNearLimit &&")
-    assert "<CapToday onlyNearLimit />" in _read("app/proposals/page.tsx")
+    assert "subtitle={<CapToday onlyNearLimit />}" in _read("components/proposals/inbox-dashboard.tsx")
     assert "<CapToday " in _read("components/analytics/agent-pipeline-card.tsx")
     assert "onlyNearLimit" not in _read("components/analytics/agent-pipeline-card.tsx")
 

@@ -1,27 +1,21 @@
-// The Agent inbox's one summary line (`GET /api/proposals/summary`): what needs you, what waits for review, what
-// is queued, what went out this week, and what is new. Pure, so `node --test` loads it (no imports).
+// The Agent inbox header's counts (`GET /api/proposals/summary`): what waits for review, what is queued, and what
+// went out this week. Pure, so `node --test` loads it (no imports).
 
-type SummaryCounts = { new: number; to_review: number; queued: number; needs_you: number; applied_this_week: number };
+type SummaryCounts = { to_review: number; queued: number; applied_this_week: number };
 
-export type SummaryPart = { key: keyof SummaryCounts; text: string; anchor: string };
+export type InboxCount = { key: keyof SummaryCounts; value: number; label: string; anchor: string };
 
-/** The parts of the line, in order; a zero count is left out, so nothing waiting is an empty list. */
-export function summaryParts(counts: SummaryCounts): SummaryPart[] {
-  const parts: SummaryPart[] = [];
-  if (counts.new > 0) parts.push({ key: "new", text: `${counts.new} new`, anchor: "inbox-to-review" });
-  if (counts.needs_you > 0) {
-    parts.push({
-      key: "needs_you",
-      text: `${counts.needs_you} ${counts.needs_you === 1 ? "needs" : "need"} you`,
-      anchor: "inbox-needs-you",
-    });
-  }
-  if (counts.to_review > 0) parts.push({ key: "to_review", text: `${counts.to_review} to review`, anchor: "inbox-to-review" });
-  if (counts.queued > 0) parts.push({ key: "queued", text: `${counts.queued} queued`, anchor: "inbox-queued" });
-  if (counts.applied_this_week > 0) {
-    parts.push({ key: "applied_this_week", text: `${counts.applied_this_week} applied this week`, anchor: "inbox-history" });
-  }
-  return parts;
+/**
+ * The three counts, in order, zeros kept: the header holds its shape, and a zero is a true answer. "Applied this
+ * week" is the server's rolling seven days of applications an agent sent or you made yourself; each count jumps
+ * to the lane that holds it (History for the applied ones).
+ */
+export function inboxCounts(counts: SummaryCounts): InboxCount[] {
+  return [
+    { key: "to_review", value: counts.to_review, label: "to review", anchor: "inbox-to-review" },
+    { key: "queued", value: counts.queued, label: "queued", anchor: "inbox-queued" },
+    { key: "applied_this_week", value: counts.applied_this_week, label: "applied this week", anchor: "inbox-history" },
+  ];
 }
 
 /** The share of the daily limit from which the cap meter is worth showing. */

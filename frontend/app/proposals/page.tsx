@@ -1,21 +1,10 @@
-import { CapToday } from "@/components/proposals/cap-today";
 import { InboxDashboard } from "@/components/proposals/inbox-dashboard";
-import { PageHeader, PageShell } from "@/components/page-shell";
+import { PageShell } from "@/components/page-shell";
 
+/** The Agent inbox. Its header lives in the dashboard, beside the counts it shares a query with. */
 export default function ProposalsPage() {
   return (
     <PageShell>
-      <PageHeader
-        title="Agent inbox"
-        // A node slot: PageHeader renders it in a <div>, so the <p> and the
-        // client-side cap line are valid children.
-        subtitle={
-          <>
-            <p>Jobs your connected agents found. Nothing is submitted without your yes.</p>
-            <CapToday onlyNearLimit />
-          </>
-        }
-      />
       <InboxDashboard />
     </PageShell>
   );

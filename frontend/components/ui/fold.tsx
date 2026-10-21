@@ -8,15 +8,24 @@ import { cn } from "@/lib/utils";
 /** The Folded tier: a row that keeps advanced or rare things one click away.
  * The title on the left, a short summary of what is inside on the right (a count, a few words),
  * so the row says what it holds without opening. A closed panel is `hidden`: out of the tab
- * order and the accessibility tree. */
-export function Fold({ title, summary, children, defaultOpen = false, className }: {
+ * order and the accessibility tree. It keeps its own open state unless the caller passes `open`
+ * and `onOpenChange` (a count elsewhere on the page that opens it, say). */
+export function Fold({ title, summary, children, defaultOpen = false, open: openProp, onOpenChange, className }: {
   title: string;
   summary?: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   className?: string;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [openState, setOpenState] = useState(defaultOpen);
+  const open = openProp ?? openState;
+  const setOpen = (next: (open: boolean) => boolean) => {
+    const value = next(open);
+    if (openProp === undefined) setOpenState(value);
+    onOpenChange?.(value);
+  };
   const panelId = useId();
   return (
     <div data-slot="fold" className={cn("rounded-corner-md bg-card", className)}>

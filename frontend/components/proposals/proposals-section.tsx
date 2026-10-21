@@ -17,12 +17,14 @@ import {
 
 import { CompanyMonogram } from "@/components/company-monogram";
 import { JobOwnershipPopover } from "@/components/job-ownership";
-import { jobOwnershipView, ownershipControlProps, ownershipWhere } from "@/lib/job-ownership";
+import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { EmptyState } from "@/components/empty-state";
 import { ListCapNotice } from "@/components/list-cap-notice";
 import { ListSearch } from "@/components/list-search";
 import { FilterChips } from "@/components/filter-chips";
+import { FiltersButton } from "@/components/filters-button";
 import { ListToolbar } from "@/components/list-toolbar";
+import { SelectToggle } from "@/components/selection-bar";
 import { useRoleLabel } from "@/components/role-category-picker";
 import {
   BulkBar,
@@ -36,8 +38,8 @@ import { IconButton } from "@/components/icon-button";
 import { humanizeEnum } from "@/components/job-extracted-fields";
 import { PROPOSAL_STATUS_CHIP } from "@/components/status-chip";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { Fold } from "@/components/ui/fold";
 import {
   Select,
   SelectContent,
@@ -225,6 +227,9 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
   const [role, setRole] = useState("all");
   const [board, setBoard] = useState("all");
   const [minScore, setMinScore] = useState<ScoreFloor | null>(null);
+  // Role, Job board and Minimum score sit behind Filters; the sort stays in view.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersId = useId();
   const roleLabel = useRoleLabel();
   const localHistory = useState(false);
   const [historyOpen, setHistoryOpen] = useContext(InboxHistoryContext) ?? localHistory;
@@ -240,7 +245,6 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
   // Set when a Skip from the dialog succeeds: the dialog's close hands focus on (its opener goes).
   const skipReturn = useRef<(() => HTMLElement | null) | null>(null);
   const toReview = useRef<HTMLElement>(null);
-  const historyId = useId();
   // Rows that were queued or skipped and are collapsing out, with the status they leave: the refetch
   // moves a queued row to another lane (a new row there, not leaving), so an id only leaves as that status.
   const [leavingIds, setLeavingIds] = useState<ReadonlyMap<string, ProposalStatus>>(new Map());
@@ -540,16 +544,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
       ? { checked: ids.every((id) => selected.has(id)), onChange: (on: boolean) => selectAllShown(ids, on) }
       : undefined;
   const selectToggle = nothingMatches ? null : (
-    <Button
-      ref={selectButton}
-      type="button"
-      variant="ghost"
-      size="sm"
-      className="ml-auto shrink-0"
-      onClick={() => (selecting ? exitSelect() : setSelecting(true))}
-    >
-      {selecting ? "Done" : "Select"}
-    </Button>
+    <SelectToggle ref={selectButton} selecting={selecting} onClick={() => (selecting ? exitSelect() : setSelecting(true))} />
   );
 
   return (
@@ -560,10 +555,10 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
       {/* Search and filters are for a long inbox, or while one is in use (so it can always be cleared). */}
       {filtersShown(items.length, { q, role, board, minScore, sort }) ? (
         <ListToolbar>
-          <ListSearch label="Search the Agent inbox" value={q} onChange={setQ} />
-          {/* On a phone the pills share a line wherever two fit whole (min-w-10rem put
-              one per line), and a value is never clipped: they wrap instead. */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          {/* The search and one sort select in view; Role, Job board and Minimum score under Filters. On a
+              phone the controls wrap whole instead of clipping a value. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <ListSearch label="Search the Agent inbox" value={q} onChange={setQ} />
             <Select
               value={sort}
               onValueChange={(v) => setSort((v as SortKey) ?? "score")}
@@ -579,6 +574,17 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
                 ))}
               </SelectContent>
             </Select>
+            <div className="ml-auto flex items-center gap-1">
+              <FiltersButton
+                open={filtersOpen}
+                onToggle={() => setFiltersOpen((o) => !o)}
+                controls={filtersId}
+                active={(role === "all" ? 0 : 1) + (board === "all" ? 0 : 1) + (minScore == null ? 0 : 1)}
+              />
+              {selectToggle}
+            </div>
+          </div>
+          <div id={filtersId} hidden={!filtersOpen} className="flex flex-wrap items-center gap-1.5">
             <Select value={role} onValueChange={(v) => setRole(v ?? "all")}>
               <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Role">
                 <SelectValue>{role === "all" ? "All roles" : roleLabel(role)}</SelectValue>
@@ -623,7 +629,6 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
                 ))}
               </SelectContent>
             </Select>
-            {selectToggle}
           </div>
         </ListToolbar>
       ) : selectToggle ? (
@@ -662,8 +667,9 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
                 const ids = selectableIds(dayItems, "triage");
                 const allSelected = ids.every((id) => selected.has(id));
                 return (
-                  <div key={day} className="flex flex-col gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
+                  // One group per day inside the lane's card: its header row, then its rows.
+                  <div key={day}>
+                    <div className="flex min-h-10 flex-wrap items-center gap-2 px-5">
                       <button
                         type="button"
                         className="text-muted-foreground inline-flex items-center gap-1 text-label-medium"
@@ -698,7 +704,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
                     </div>
                     {open ? (
                       // Rows only, so a row's neighbours are rows (focusSuccessor).
-                      <div className="flex flex-col gap-2">
+                      <div className="divide-y border-t">
                         {dayItems.map((p) => (
                           <ProposalRow
                             key={p.id}
@@ -736,59 +742,48 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
             </Lane>
           ) : null}
 
-          {/* A lane with nothing in it is not drawn; History is the one that starts collapsed. */}
+          {/* A lane with nothing in it is not drawn; History is a fold, closed until you open it. */}
           {historyAll.length > 0 ? (
-            <section tabIndex={-1} aria-labelledby={historyId} id="inbox-history" className="flex flex-col gap-2 outline-none tall:scroll-mt-28">
-              <button
-                id={historyId}
-                type="button"
-                aria-expanded={historyOpen}
-                className="text-muted-foreground inline-flex items-center gap-1.5 text-title-small"
-                onClick={() => setHistoryOpen((v) => !v)}
-              >
-                <ChevronDown
-                  className={cn(
-                    "size-3.5 transition-transform",
-                    !historyOpen && "-rotate-90",
-                  )}
-                  aria-hidden="true"
-                />
-                History · {historyAll.length}
-              </button>
-              {historyOpen ? (
-                <>
-                  <FilterChips
-                    label="History status"
-                    value={historyStatus}
-                    onChange={setHistoryStatus}
-                    options={INBOX_LANES.history.map((status) => ({
-                      value: status,
-                      label: STATUS_LABELS[status],
-                      count: historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length,
-                    }))}
-                  />
-                  {(() => {
-                    const select = laneSelect(selectableIds(history, "history"));
-                    return select ? <SelectAll {...select} className="self-end" /> : null;
-                  })()}
-                  {history.length === 0 ? (
-                    <p className="text-muted-foreground text-body-medium">
-                      No history with these statuses.
-                    </p>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      {history.map((p) => (
-                        <ProposalRow
-                          key={p.id}
-                          proposal={p}
-                          lane="history"
-                          {...rowProps}
-                        />
-                      ))}
+            <section tabIndex={-1} aria-label="History" id="inbox-history" className="outline-none tall:scroll-mt-28">
+              <Fold title="History" summary={historyAll.length} open={historyOpen} onOpenChange={setHistoryOpen}>
+                {historyOpen ? (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <FilterChips
+                        label="History status"
+                        value={historyStatus}
+                        onChange={setHistoryStatus}
+                        options={INBOX_LANES.history.map((status) => ({
+                          value: status,
+                          label: STATUS_LABELS[status],
+                          count: historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length,
+                        }))}
+                      />
+                      {(() => {
+                        const select = laneSelect(selectableIds(history, "history"));
+                        return select ? <SelectAll {...select} className="ml-auto" /> : null;
+                      })()}
                     </div>
-                  )}
-                </>
-              ) : null}
+                    {history.length === 0 ? (
+                      <p className="text-muted-foreground text-body-medium">
+                        No history with these statuses.
+                      </p>
+                    ) : (
+                      // The fold is the card: its rows reach its edges, as a lane's do.
+                      <div className="-mx-5 -mb-5 divide-y overflow-clip rounded-b-corner-md border-t">
+                        {history.map((p) => (
+                          <ProposalRow
+                            key={p.id}
+                            proposal={p}
+                            lane="history"
+                            {...rowProps}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </Fold>
             </section>
           ) : null}
         </>
@@ -870,10 +865,11 @@ function Lane({
   const headingId = useId();
   return (
     // tabIndex={-1}: named by its heading, it takes focus when the last row acted on, or the bulk
-    // bar, leaves it. Its rows sit in their own list, so a row's neighbours are rows.
+    // bar, leaves it. Its rows sit in their own list, so a row's neighbours are rows. One card per
+    // lane, its rows divided by a hairline (board "Agent inbox, same rows").
     <section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor} className="flex flex-col gap-2 overflow-x-auto outline-none tall:scroll-mt-28">
       <div className="flex items-center gap-2">
-        <h2 id={headingId} className="text-muted-foreground text-title-small">
+        <h2 id={headingId} className="text-title-small">
           {title}
         </h2>
         {select ? <SelectAll {...select} className="ml-auto" /> : null}
@@ -883,7 +879,7 @@ function Lane({
           {line}
         </p>
       ))}
-      <div className="flex flex-col gap-2">{children}</div>
+      <div className="divide-y overflow-clip rounded-corner-md bg-card">{children}</div>
     </section>
   );
 }
@@ -932,8 +928,6 @@ function ProposalRow({
   const job = proposal.job;
   const owner = job.ownership;
   const ownership = jobOwnershipView(owner);
-  const where = ownershipWhere(owner);
-  const WhereIcon = where?.bot ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop;
   const pickable = bulkActionsOf(proposal, lane).length > 0;
   const acting = actingIds.has(proposal.id);
   const base = chosenBase(proposal);
@@ -959,188 +953,177 @@ function ProposalRow({
     onAct(proposal, action, e.currentTarget);
   };
 
-  // Where the job is, as the Jobs table's Where column says it: one word in the by-line, the sentence
-  // for its tooltip and for a screen reader.
-  const whereMark = where ? (
-    <span className="inline-flex shrink-0 items-center gap-1" title={where.sentence}>
-      <WhereIcon className="size-3.5 shrink-0" aria-hidden="true" />
-      <span aria-hidden="true">{where.word}</span>
-      <span className="sr-only">{where.sentence}</span>
-    </span>
-  ) : null;
-
   return (
-    // One child, so the wrapper can close its height (.collapse-exit in globals.css).
+    // One child, so the wrapper can close its height (.collapse-exit in globals.css). A row of the lane's
+    // card, 60px for two lines; a question from the agent adds one truncated line.
     <div className="collapse-exit" data-leaving={leavingIds.get(proposal.id) === proposal.status || undefined}>
-      <Card className="group" data-pending={acting ? "true" : undefined}>
-        <CardContent className="p-0">
-          <div className="flex items-stretch gap-1">
-            {showCheckbox ? (
-              <label className="flex items-center px-3">
-                <Checkbox
-                  disabled={!pickable}
-                  checked={selected.has(proposal.id)}
-                  onCheckedChange={(next) => onToggleSelected(proposal.id, next)}
-                  aria-label={`Select ${job.title ?? "Untitled role"}${job.company ? ` at ${job.company}` : ""}`}
-                />
-              </label>
-            ) : null}
-            <Link
-              href={`/jobs/${proposal.job_id}?from=proposals`}
-              // In select mode the row is a big target for its checkbox (which keyboards use), as in Photos.
-              onClick={selecting ? (e) => {
-                e.preventDefault();
-                if (pickable) onToggleSelected(proposal.id, !selected.has(proposal.id));
-              } : undefined}
-              // flex-wrap + a real basis on the text, not flex-1 (the job
-              // header's fix): with basis-0 the shrink-0 chips kept their width
-              // and squeezed the title to a few letters at 768 and to nothing at
-              // 375. Narrow, the chips wrap under the text and the decorative
-              // monogram steps aside.
-              className="hover:bg-surface-container-low dark:hover:bg-surface-container-high flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-corner-md p-3 text-left transition-colors sm:p-4"
-            >
-              <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
-              <div className="min-w-0 grow basis-[10rem]">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="truncate text-title-small">
-                    {job.title ?? "Untitled role"}
-                  </span>
-                  {job.disqualifying_for_opt && proposal.readiness?.knockout !== "opt" ? (
-                    <span
-                      className="text-warning inline-flex items-center gap-1 text-body-small"
-                      title="OPT is the US student work permit"
-                    >
-                      <TriangleAlert className="size-3.5" aria-hidden="true" />
-                      May not accept OPT
-                    </span>
-                  ) : null}
-                  {isDup ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
-                      <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />
-                      Possible duplicate
-                    </span>
-                  ) : null}
-                  {isNew(proposal.created_at, since) ? (
-                    <span className="inline-flex items-center gap-1 text-label-small text-primary">
-                      <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
-                      New
-                    </span>
-                  ) : null}
-                  <ReadinessMarks readiness={proposal.readiness} />
-                </div>
-                <div className="text-muted-foreground truncate text-body-small">
-                  {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
-                </div>
-                {byLine ? (
-                  <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-body-small" title={meta}>
-                    <ActorChip kind={proposal.proposed_by === "you" ? "you" : "agent"} name={agentDisplayName(proposal.proposed_by)} className="min-w-0 shrink" />
-                    <span className="truncate">{formatTimeAgo(proposal.created_at)}</span>
-                    {whereMark}
-                  </div>
-                ) : (
-                  <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-body-small" title={meta}>
-                    <span className="truncate">{meta}</span>
-                    {whereMark}
-                  </div>
-                )}
-                {/* One line; the agent's whole question on hover and on the job page. */}
-                {needs ? <p className="mt-1 truncate text-body-small" title={needs}>{needs}</p> : null}
-              </div>
-              {base ? (
-                <span className="text-muted-foreground hidden shrink-0 items-center gap-2 text-body-small sm:inline-flex">
-                  <ResumeTag hue={colorOf(base)}>{baseName}</ResumeTag>
-                  {score != null ? <ScoreBar value={score} label="Match score" valueText={score.toFixed(1)} /> : null}
-                </span>
-              ) : null}
-              {/* D5: To review, Queued and Applying rows all share one status, so the lane says it. */}
-              {lane === "history" || lane === "needs_you" ? (
-                <Badge
-                  className={cn("shrink-0", STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)])}
-                  variant="secondary"
+      <div
+        className="group flex min-h-15 items-stretch gap-1 transition-colors hover:bg-surface-container-low dark:hover:bg-surface-container-high"
+        data-pending={acting ? "true" : undefined}
+      >
+        {showCheckbox ? (
+          <label className="flex items-center pl-5">
+            <Checkbox
+              disabled={!pickable}
+              checked={selected.has(proposal.id)}
+              onCheckedChange={(next) => onToggleSelected(proposal.id, next)}
+              aria-label={`Select ${job.title ?? "Untitled role"}${job.company ? ` at ${job.company}` : ""}`}
+            />
+          </label>
+        ) : null}
+        <Link
+          href={`/jobs/${proposal.job_id}?from=proposals`}
+          // In select mode the row is a big target for its checkbox (which keyboards use), as in Photos.
+          onClick={selecting ? (e) => {
+            e.preventDefault();
+            if (pickable) onToggleSelected(proposal.id, !selected.has(proposal.id));
+          } : undefined}
+          // flex-wrap + a real basis on the text, not flex-1 (the job
+          // header's fix): with basis-0 the shrink-0 chips kept their width
+          // and squeezed the title to a few letters at 768 and to nothing at
+          // 375. Narrow, the chips wrap under the text and the decorative
+          // monogram steps aside. The focus outline sits inside: the card clips.
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 text-left -outline-offset-2"
+        >
+          <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
+          <div className="min-w-0 grow basis-[10rem]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="truncate text-title-small">
+                {job.title ?? "Untitled role"}
+              </span>
+              {job.disqualifying_for_opt && proposal.readiness?.knockout !== "opt" ? (
+                <span
+                  className="text-warning inline-flex items-center gap-1 text-body-small"
+                  title="OPT is the US student work permit"
                 >
-                  {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
-                </Badge>
-              ) : null}
-            </Link>
-            {/* Always in view, outside the link: a locked job's reason and its request, in a pop-up. */}
-            <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
-              <JobOwnershipPopover jobId={proposal.job_id} ownership={owner} />
-            </div>
-            <div
-              className={cn(
-                "relative flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100",
-                // Select mode acts from the bar: a row's own buttons step aside (its spinner still shows).
-                selecting && !acting && "hidden",
-                // The buttons stay (focus is kept) under the spinner that answers the press; the focus ring moves out here.
-                acting && "rounded-full opacity-100 [&_button]:opacity-0! has-[button:focus-visible]:ring-3 has-[button:focus-visible]:ring-ring",
-              )}
-            >
-              {acting ? (
-                <span role="status" className="absolute inset-0 flex items-center justify-center">
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  <span className="sr-only">Working</span>
+                  <TriangleAlert className="size-3.5" aria-hidden="true" />
+                  May not accept OPT
                 </span>
               ) : null}
-              {lane === "triage" ? (
-                <>
-                  <IconButton
-                    label="Queue"
-                    icon={<QueueIcon />}
-                    data-row-action="queue"
-                    disabled={pending || !ownership.canRequest}
-                    focusableWhenDisabled
-                    className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                    onClick={act("queue")}
-                  />
-                  <IconButton
-                    label="Skip"
-                    icon={<X />}
-                    data-row-action="skip"
-                    disabled={pending || !ownership.canRequest}
-                    focusableWhenDisabled
-                    className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                    onClick={act("skip")}
-                  />
-                </>
+              {isDup ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
+                  <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />
+                  Possible duplicate
+                </span>
               ) : null}
-              {showKeep ? (
-                <IconButton
-                  label="Keep it"
-                  icon={<ApproveIcon />}
-                  data-row-action="keep"
-                  disabled={pending}
-                  {...ownershipControlProps(!ownership.canRequest)}
-                  focusableWhenDisabled
-                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                  onClick={act("keep")}
-                />
+              {isNew(proposal.created_at, since) ? (
+                <span className="inline-flex items-center gap-1 text-label-small text-primary">
+                  <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
+                  New
+                </span>
               ) : null}
-              {showDecline ? (
-                <IconButton
-                  label="Skip"
-                  icon={<X />}
-                  data-row-action="skip"
-                  disabled={pending || !ownership.canRequest}
-                  focusableWhenDisabled
-                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                  onClick={act("skip")}
-                />
-              ) : null}
-              {canDelete ? (
-                <IconButton
-                  label="Delete proposal"
-                  icon={<Trash2 />}
-                  data-row-action="delete"
-                  disabled={pending || !ownership.canWrite}
-                  focusableWhenDisabled
-                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                  onClick={act("delete")}
-                />
-              ) : null}
+              <ReadinessMarks readiness={proposal.readiness} />
             </div>
+            {/* One line: the job's facts, then who filed it and when (the whole sentence on hover). */}
+            <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-body-small" title={meta}>
+              <span className="min-w-0 truncate">
+                {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
+              </span>
+              {byLine ? (
+                <>
+                  <ActorChip kind={proposal.proposed_by === "you" ? "you" : "agent"} name={agentDisplayName(proposal.proposed_by)} className="min-w-0 shrink" />
+                  <span className="shrink-0">{formatTimeAgo(proposal.created_at)}</span>
+                </>
+              ) : (
+                <span className="shrink-0">{formatTimeAgo(proposal.created_at)}</span>
+              )}
+            </div>
+            {/* One line; the agent's whole question on hover and on the job page. */}
+            {needs ? <p className="truncate text-body-small" title={needs}>{needs}</p> : null}
           </div>
-        </CardContent>
-      </Card>
+          {base ? (
+            <span className="text-muted-foreground hidden shrink-0 items-center gap-2 text-body-small sm:inline-flex">
+              <ResumeTag hue={colorOf(base)}>{baseName}</ResumeTag>
+              {score != null ? <ScoreBar value={score} label="Match score" valueText={score.toFixed(1)} /> : null}
+            </span>
+          ) : null}
+          {/* D5: To review, Queued and Applying rows all share one status, so the lane says it. */}
+          {lane === "history" || lane === "needs_you" ? (
+            <Badge
+              className={cn("shrink-0", STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)])}
+              variant="secondary"
+            >
+              {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
+            </Badge>
+          ) : null}
+        </Link>
+        {/* Always in view, outside the link: a locked job's reason and its request, in a pop-up. */}
+        <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+          <JobOwnershipPopover jobId={proposal.job_id} ownership={owner} />
+        </div>
+        <div
+          className={cn(
+            "relative flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100",
+            // Select mode acts from the bar: a row's own buttons step aside (its spinner still shows).
+            selecting && !acting && "hidden",
+            // The buttons stay (focus is kept) under the spinner that answers the press; the focus ring moves out here.
+            acting && "rounded-full opacity-100 [&_button]:opacity-0! has-[button:focus-visible]:ring-3 has-[button:focus-visible]:ring-ring",
+          )}
+        >
+          {acting ? (
+            <span role="status" className="absolute inset-0 flex items-center justify-center">
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              <span className="sr-only">Working</span>
+            </span>
+          ) : null}
+          {lane === "triage" ? (
+            <>
+              <IconButton
+                label="Queue"
+                icon={<QueueIcon />}
+                data-row-action="queue"
+                disabled={pending || !ownership.canRequest}
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                onClick={act("queue")}
+              />
+              <IconButton
+                label="Skip"
+                icon={<X />}
+                data-row-action="skip"
+                disabled={pending || !ownership.canRequest}
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                onClick={act("skip")}
+              />
+            </>
+          ) : null}
+          {showKeep ? (
+            <IconButton
+              label="Keep it"
+              icon={<ApproveIcon />}
+              data-row-action="keep"
+              disabled={pending}
+              {...ownershipControlProps(!ownership.canRequest)}
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
+              onClick={act("keep")}
+            />
+          ) : null}
+          {showDecline ? (
+            <IconButton
+              label="Skip"
+              icon={<X />}
+              data-row-action="skip"
+              disabled={pending || !ownership.canRequest}
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
+              onClick={act("skip")}
+            />
+          ) : null}
+          {canDelete ? (
+            <IconButton
+              label="Delete proposal"
+              icon={<Trash2 />}
+              data-row-action="delete"
+              disabled={pending || !ownership.canWrite}
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
+              onClick={act("delete")}
+            />
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

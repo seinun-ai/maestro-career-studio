@@ -19,7 +19,7 @@ def _read(rel: str) -> str:
 
 _PAGE = _read("app/proposals/page.tsx")
 _DASH = _read("components/proposals/inbox-dashboard.tsx")
-_STRIP = _read("components/proposals/arrivals-strip.tsx")
+_STRIP = _read("components/proposals/inbox-counts.tsx")
 _RUNS = _read("components/automations/recent-runs.tsx")
 _NOTICE = _read("components/proposals/inbox-run-notice.tsx")
 _AUTOMATIONS = _read("app/automations/page.tsx")
@@ -30,16 +30,18 @@ _SECTION = _read("components/proposals/proposals-section.tsx")
 
 def test_the_page_renders_the_dashboard_in_order():
     assert "<InboxDashboard />" in _PAGE
-    assert _DASH.index("<ArrivalsStrip") < _DASH.index("<InboxRunNotice") < _DASH.index("<ProposalsSection")
+    # The header's counts (design refresh Task 4.2) took the summary line's place above the lanes.
+    assert _DASH.index("<PageHeader") < _DASH.index("<InboxCounts") < _DASH.index("<InboxRunNotice") < _DASH.index("<ProposalsSection")
     assert "RecentRuns" not in _DASH
     assert "<ProposalsSection since={since} />" in _DASH
 
 
-def test_the_strip_reads_the_summary_and_is_one_line():
+def test_the_header_counts_read_the_summary_and_are_one_line():
     assert "/api/proposals/summary" in _STRIP
     assert '["proposals", "summary", since]' in _STRIP  # refetches with every inbox action
-    assert "summaryParts(data)" in _STRIP and "Nothing waiting" not in _STRIP
-    assert "if (parts.length === 0) return null;" in _STRIP
+    assert "inboxCounts(data)" in _STRIP and "Nothing waiting" not in _STRIP
+    # A zero is plain text, a count above zero a button to its lane.
+    assert "count.value > 0 ? (" in _STRIP
     for tile in ("StatTile", "grid-cols-4", "New since your last visit", "Ready to apply"):
         assert tile not in _STRIP
     assert "scrollIntoView" in _STRIP
@@ -86,22 +88,24 @@ def test_history_jump_opens_history_synchronously():
     assert "<InboxHistoryContext.Provider value={history}>" in _DASH
     assert 'if (anchor === "inbox-history")' in _DASH
     assert "flushSync(() => history[1](true))" in _DASH
-    assert "onJump={openHistory}" in _DASH
+    assert "<InboxCounts since={since} onJump={openHistory} />" in _DASH
 
 
 def test_history_jump_opens_before_the_strip_scrolls():
     assert _STRIP.index("onJump?.(anchor)") < _STRIP.index("scrollIntoView")
-    assert "jumpTo(part.anchor, onJump)" in _STRIP
+    assert "jumpTo(count.anchor, onJump)" in _STRIP
 
 
 def test_history_state_is_shared_and_accessibly_named():
     assert "useContext(InboxHistoryContext) ?? localHistory" in _SECTION
-    assert "aria-expanded={historyOpen}" in _SECTION
+    # History is a Fold (design refresh Task 4.2): its button carries aria-expanded from this state.
+    assert "open={historyOpen} onOpenChange={setHistoryOpen}" in _SECTION
+    assert "aria-expanded={open}" in _read("components/ui/fold.tsx")
 
 
 def test_lane_targets_clear_the_sticky_toolbar():
     lane = _SECTION[_SECTION.index('<section ref={ref} tabIndex={-1} aria-labelledby={headingId}') :]
-    history = _SECTION[_SECTION.index('<section tabIndex={-1} aria-labelledby={historyId}') :]
+    history = _SECTION[_SECTION.index('<section tabIndex={-1} aria-label="History"') :]
     assert "tall:scroll-mt-28" in lane.split('className="', 1)[1].split('"', 1)[0]
     assert "tall:scroll-mt-28" in history.split('className="', 1)[1].split('"', 1)[0]
 

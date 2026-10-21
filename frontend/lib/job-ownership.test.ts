@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  jobOwnershipView, isOwnershipRefusal, isSyncQueued, ownershipReason, ownershipSays, ownershipWhere, syncActionMessage,
+  jobOwnershipView, isOwnershipRefusal, isSyncQueued, ownershipSays, syncActionMessage,
 } from "./job-ownership.ts";
 
 const off = { owned_here: true, owner: null, handover: null, pending_requests: 0 };
@@ -71,29 +71,6 @@ test("only the server's other-copy sentences count as an ownership refusal", () 
   assert.equal(isOwnershipRefusal("This job is with your bot; ask for it back with Work on it here."), true);
   assert.equal(isOwnershipRefusal("This gap analysis is out of date."), false);
   assert.equal(isOwnershipRefusal(undefined), false);
-});
-
-test("the Where column says Laptop, Bot or Moving, with the long sentence behind it", () => {
-  assert.equal(ownershipWhere(undefined), null);
-  assert.equal(ownershipWhere(off), null);
-  assert.deepEqual(ownershipWhere({ ...off, owner: "laptop" }),
-    { word: "Laptop", bot: false, pending: false, sentence: "On your laptop" });
-  const replica = { ...off, owned_here: false, owner: "bot" as const };
-  assert.deepEqual(ownershipWhere(replica),
-    { word: "Bot", bot: true, pending: false, sentence: ownershipReason(replica) });
-  const offered = { ...off, owner: "laptop" as const, handover: "offered", can_keep_here: true };
-  assert.deepEqual(ownershipWhere(offered),
-    { word: "Moving", bot: false, pending: false, sentence: ownershipReason(offered) });
-  // Moving keeps the icon of whoever holds the job now: the bot while it hands the job back.
-  const returning = ownershipWhere({ ...off, owned_here: false, owner: "bot", handover: "returning" });
-  assert.equal(returning?.word, "Moving");
-  assert.equal(returning?.bot, true);
-});
-
-test("a request still waiting for the next sync says so in the Where sentence", () => {
-  const waiting = ownershipWhere({ ...off, owned_here: false, owner: "bot", pending_requests: 1 });
-  assert.equal(waiting?.pending, true);
-  assert.equal(waiting?.sentence, `${ownershipReason({ ...off, owned_here: false, owner: "bot" })} · Sent at the next sync`);
 });
 
 test("a row's ownership icon shows only when the job is not here or a request waits", () => {

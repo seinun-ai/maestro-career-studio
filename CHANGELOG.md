@@ -74,11 +74,14 @@ a click.
   **Filters**. The subtitle is gone: the header is the title, a count and the search. A quiet
   **Select** works as in the Agent inbox: pick rows, then change their status, queue them in the
   Agent inbox or delete them, one at a time.
-- **Agent inbox rows are about half as tall.** Where a job is (Laptop, Bot) now sits in the row's
-  by-line as one word, as in the Jobs table, instead of a pill on a line of its own, with the full
-  sentence on hover. Nothing else sits under a row: why a job is locked, Work on it here and a
-  waiting request open from one small icon on the row, and an agent's question is one line, whole on
-  hover.
+- **Agent inbox lanes are one list each.** Each lane is one card of short rows instead of a tall card
+  per job, and History folds into one row with its count. The header drops its subtitle for three
+  counts, to review, queued and applied this week (a count jumps to its lane), beside "Nothing is sent
+  without your yes". The toolbar keeps the search and one sort; Role, Job board and Minimum score
+  sit behind **Filters**. Nothing sits under a row: why a job is locked, Work on it here and a
+  waiting request open from one small icon, shown only when the job is not on this laptop, and an
+  agent's question is one line, whole on hover. The Laptop / Bot word left the row with the Jobs
+  table's Where column.
 - **Select in the Agent inbox.** Checkboxes no longer sit on every To review row. A quiet **Select**
   button turns them on across Needs you, To review, Queued and History, with Select all per lane, and a
   click on a row picks it. The bar at the bottom offers Queue, Skip or **Delete** (new for many rows at
