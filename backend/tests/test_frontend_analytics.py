@@ -25,6 +25,7 @@ _HEATMAP = "components/charts/heatmap-chart.tsx"
 _LIFT = "components/charts/tailoring-lift-chart.tsx"
 _OVERVIEW = "components/explore/explore-overview.tsx"
 _GAPS = "components/analytics/gap-tiers-panel.tsx"
+_OVERVIEW_TAB = "components/analytics/analytics-overview.tsx"
 _PICKER = "components/role-category-picker.tsx"
 _CHIP = "components/status-chip.tsx"
 _CAREER = "app/career/page.tsx"
@@ -55,6 +56,9 @@ _PRESENT = {
     "overview-salary-label": (_OVERVIEW, "{label(r.role_category)}"),
     "overview-mix-label": (_OVERVIEW, "label: label(row.key),"),
     "lift-label": (_LIFT, "role: label(r.role_category),"),
+    # Overview's score gain follows the All / Yours / Agents toggle above it.
+    "overview-lift-source-key": (_OVERVIEW_TAB, "employment_type: null }, source],"),
+    "overview-lift-source-param": (_OVERVIEW_TAB, "apiFetch<TailoringLiftRow[]>(`/api/explore/tailoring-lift?${params}`)"),
     # The Skill-gaps panel renders the server's words.
     "gaps-server-label": (_GAPS, "row.category_label ?? null"),
     # Label fallback while the catalog loads or fails: the acronym-safe humanizer.

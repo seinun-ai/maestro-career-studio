@@ -326,8 +326,11 @@ def tailoring_lift(
     role_category: str | None = None,
     level: str | None = None,
     employment_type: str | None = None,
+    source: Literal["user", "agent"] | None = Query(default=None),
 ):
-    return explore_gaps.tailoring_lift(db, role_category, level, employment_type)
+    return explore_gaps.tailoring_lift(
+        db, role_category, level, employment_type, source=source
+    )
 
 
 @router.get("/activity")

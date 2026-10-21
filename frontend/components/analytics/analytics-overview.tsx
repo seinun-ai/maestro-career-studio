@@ -49,9 +49,14 @@ export function AnalyticsOverview({
       return apiFetch<ActivityResponse>(`/api/explore/activity?${params}`);
     },
   });
+  // The score gain sits under the same All / Yours / Agents toggle as the activity, so it follows it.
   const lift = useQuery({
-    queryKey: ["explore", "tailoring-lift", { role_category: null, level: null, employment_type: null }],
-    queryFn: () => apiFetch<TailoringLiftRow[]>("/api/explore/tailoring-lift"),
+    queryKey: ["explore", "tailoring-lift", { role_category: null, level: null, employment_type: null }, source],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (source === "user" || source === "agent") params.set("source", source);
+      return apiFetch<TailoringLiftRow[]>(`/api/explore/tailoring-lift?${params}`);
+    },
   });
   const gaps = useQuery({
     queryKey: ["explore", "gap-frequency", "teaser"],

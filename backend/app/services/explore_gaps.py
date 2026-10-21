@@ -299,6 +299,8 @@ def tailoring_lift(
     role_category: str | None = None,
     level: str | None = None,
     employment_type: str | None = None,
+    *,
+    source: str | None = None,
 ) -> list[dict[str, Any]]:
     """Composite lift (tailored - base) per role, plus an overall "all" row.
 
@@ -307,7 +309,8 @@ def tailoring_lift(
     Re-tailoring appends a new tailored row under the same application_id, so we
     keep only the most recent (created_at desc, id desc — the same tiebreak as
     ats_score._latest_row). Applications missing either phase never join and are
-    skipped.
+    skipped. `source` ("user" | "agent") keeps only applications of that origin,
+    the All / Yours / Agents toggle.
     """
     # Rank tailored rows within each application; row_number 1 is the latest.
     ranked = (
@@ -345,6 +348,8 @@ def tailoring_lift(
         .where(ranked.c.rn == 1)
     )
     stmt = _apply_job_filters(stmt, role_category, level, employment_type)
+    if source:
+        stmt = stmt.where(Application.source == source)
 
     per_role: dict[Any, list[tuple[float, float]]] = defaultdict(list)
     overall: list[tuple[float, float]] = []

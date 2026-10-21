@@ -734,6 +734,30 @@ def test_tailoring_lift_uses_latest_tailored_row_per_application(db_session, cli
     assert rows["all"]["avg_lift"] == 20.0
 
 
+def test_tailoring_lift_follows_the_source_toggle(db_session, client):
+    """All / Yours / Agents: with source=agent, tailoring you made yourself is left out."""
+    lifts = {"user": (40.0, 50.0), "agent": (40.0, 70.0)}
+    for source, (base, tailored) in lifts.items():
+        job = _seed_job(db_session, raw_hash=f"tl-src-{source}", role_category="data_engineer")
+        app_row = Application(job_id=job.id, base_resume="de_track", source=source)
+        db_session.add(app_row)
+        db_session.flush()
+        db_session.add_all([
+            _base_row(job.id, "de_track", base),
+            _tailored_row(job.id, str(app_row.id), tailored, application_id=app_row.id),
+        ])
+    db_session.commit()
+
+    def overall(params):
+        rows = client.get("/api/explore/tailoring-lift", params=params).json()
+        return next((r["n"], r["avg_lift"]) for r in rows if r["role_category"] == "all")
+
+    assert overall({}) == (2, 20.0)
+    assert overall({"source": "agent"}) == (1, 30.0)
+    assert overall({"source": "user"}) == (1, 10.0)
+    assert client.get("/api/explore/tailoring-lift", params={"source": "x"}).status_code == 422
+
+
 def test_ats_over_time_flags_low_sample_buckets(db_session):
     jobs = [
         _seed_job(db_session, raw_hash=f"aot-ls-{i}", role_category="data_scientist")
