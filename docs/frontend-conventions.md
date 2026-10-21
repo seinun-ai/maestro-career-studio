@@ -18,7 +18,7 @@
   `oklch(0.76 0.11 259)` dark; light focus ring `oklch(0.57 0.11 259)`, dark
   `oklch(0.62 0.09 259)`, so the solid ring is at least 3:1 on `--canvas`;
   the base-layer browser outline is that solid ring; motion utilities
-  `animate-fade-rise`, `animate-shimmer`, `animate-confirm`, `collapse-exit` with `[data-leaving]`, `[data-pending]`; `hooks/use-count-up.ts` counts a number to its new value).
+  `animate-fade-rise`, `animate-shimmer`, `animate-confirm`, `animate-check-draw`, `.working-dot`, `collapse-exit` with `[data-leaving]`, `[data-pending]`; `hooks/use-count-up.ts` counts a number to its new value).
 - **Colour roles are M3's, pinned for contrast.** `globals.css` derives primary
   and secondary container pairs (`--primary-container`/`--on-primary-container`
   and the secondary twins) from the primary's hue, each with a `-hover` token
@@ -133,7 +133,7 @@
   `className` (tailwind-merge knows `rounded-corner-*`), so a call site does not
   restate the default: `Card` takes no `rounded-*`.
   **Elevation** is `shadow-level1` to `shadow-level3`, for what floats
-  (level1 a hovered FAB or chip, a focused skip link, a modal sheet; level2
+  (level1 a hovered FAB or chip, a focused skip link, a modal sheet, the Lead card; level2
   menus, popovers, rich (chart) tooltips, sticky bars, the PDF page pill and a
   dragged row; level3 dialogs and toasts); tone separates everything else, so
   a card, tile, table, plain tooltip, input or tab rests flat. A toast's level
@@ -1867,6 +1867,12 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   | A trend with no axes | `Sparkline` |
   | A status's own colour where no chip fits (filters, analytics, a lane) | `StatusDot` (application) or `LaneDot` (proposal), from `status-chip.tsx` |
   | Which base resume a thing names | `ResumeSwatch` beside the name (`ResumeTag` is the pair) |
+  | What an automation's runs reported, day by day | `DayStrip` (round dots, worst outcome per local day) |
+  | A row's next move: yours, or theirs while you wait | `NextStep` |
+  | A count that changes in place | `NumberRoll` (or `useCountUp` to pass through every value) |
+- **The tiers** (`docs/design-system/README.md`, Shape): a page leads with one `LeadCard` (the view's one filled
+  button is its `action`), then the Also tier, then `Fold` rows for the advanced or rare. Pinned by
+  `test_frontend_tiers.py`.
 - **A base resume's name that truncates carries its whole value in `title`.** Every `truncate` span inside a
   `ResumeTag` (the Score breakdown's title, the select triggers, the import list) has
   `title={name}`: a trigger shows only its value and a cell has no other way to widen. Pinned by
@@ -1899,7 +1905,8 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   `DotMeter` is a `role="img"` ("Evidence 3 of 5: Specific, no result"), a `ScoreBar` a `role="meter"` with
   `aria-valuetext`, a `ProgressCount` a `role="progressbar"` whose `aria-label` holds the full sentence even with
   `showText={false}`, a `DeltaChip` a `role="img"` ("up to +6.2 points"), a `Sparkline` a `role="img"` named by
-  its `label`. The glyphs and dots inside are `aria-hidden`, so the sentence is read once. A `SegmentedBar` is
+  its `label`, a `DayStrip` a `role="img"` ("Last 14 days: a report on 4 days, 1 failed"). The glyphs and dots
+  inside are `aria-hidden`, so the sentence is read once. A `SegmentedBar` is
   decoration: its legend, a named list of "3 Applied", carries the text. A dot beside a status word is hidden
   and the word is not.
 - **Colour is a role and repeats a word.** A status colour is the role its chip uses (one table, `status-chip.tsx`);
@@ -1918,10 +1925,10 @@ Every action answers. The answer depends on where the effect lands:
   looking. A button runs `pending` while its request is in flight; Copy swaps to "Copied" (`CircleCheck`) for
   1.2s (`useCopy`, `CopyButton`); an autosave line reads Saving, then Saved for 1.2s (`useSavedHold`,
   `AutosaveStatus`); a changed status chip pulses once (`animate-confirm`); a number that moves counts to its
-  value (`useCountUp`). A failure is a toast through `couldnt(...)` or an inline error, never silence.
+  value (`useCountUp`) or rolls (`NumberRoll`); a done mark can draw its tick once (`CheckDraw`). A failure is a toast through `couldnt(...)` or an inline error, never silence.
 - **Runs in the background** (an agent's work, a render, a score refresh): a toast names the object on success
   ("Template deleted") and the surface that shows the result updates; a running job shows its own state where the
-  work is shown, never a global spinner.
+  work is shown (`WorkingDots` beside the words for it), never a global spinner.
 - **Which busy buttons change their label.** `pending` always adds the spinner. These also swap the label
   while they run: Save job ("Saving…"), Queue in Agent inbox in the job header's ⋯ ("Queueing…"), Update scores
   ("Updating scores…", a ⋯ item, with the same words as a status line beside ⋯), Approve ("Approving…"), Adapt and preview ("Adapting…"), Answer questions
@@ -1937,11 +1944,14 @@ Every action answers. The answer depends on where the effect lands:
   is not drawn as 0 while it loads.
 - **A leaving row collapses**, it does not vanish: `.collapse-exit` with `data-leaving` (200ms), then the row
   unmounts after `ROW_EXIT_MS`.
-- **Motion budget.** Nothing runs longer than 400ms except the 1.2s confirmation hold; no bounce. The timings
-  are `CONFIRM_HOLD_MS`, `CONFIRM_MS` and `ROW_EXIT_MS` in `lib/motion.ts`; import them. A variant (`data-x:`)
-  applies only to a registered `@utility` in `globals.css` (`animate-confirm` is one); a transition list names
-  `translate` or `scale`, never `transform`; reduced motion is the global rule in `globals.css` for CSS motion, and
-  `useCountUp` checks `prefers-reduced-motion` itself in JS.
+- **Motion budget.** Nothing runs longer than 400ms except the 1.2s confirmation hold and the two loops that say
+  "still going" (the shimmer, 1400ms, and the working dots, 900ms, each `infinite`); no bounce. The timings
+  are `CONFIRM_HOLD_MS`, `CONFIRM_MS`, `ROW_EXIT_MS` and `ROLL_MS` in `lib/motion.ts`; import them. A variant (`data-x:`)
+  applies only to a registered `@utility` in `globals.css` (`animate-confirm` and `animate-check-draw` are two); a
+  transition list names `translate`, `scale` or `rotate`, never `transform`; an M3 duration or a custom curve lives in
+  `:root`, so it is written `duration-(--duration-short3)` and `ease-(--ease-out-strong)` (the bare name compiles to
+  nothing). Reduced motion is the global rule in `globals.css` for CSS motion (the working dots hold still, the check
+  is drawn at once), and `useCountUp` and `NumberRoll` check `prefers-reduced-motion` themselves in JS.
 - **A button, an input, every state.** Rest, hover, focus (solid ring), pressed (0.97), `pending`, disabled
   (with the reason tied by `aria-describedby`), and for a field `aria-invalid` (error) or `data-warning`
   (warning, never blocks a save).

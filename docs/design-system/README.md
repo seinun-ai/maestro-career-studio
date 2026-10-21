@@ -19,7 +19,7 @@ Maestro Career Studio is a desktop web app for a job search: it tracks jobs, tai
 - **No em dash as a clause joiner.** Use two sentences or a colon. The dash stays for an empty cell and inside composed labels.
 - **Address the person as "you"; the app is not "we".** Say what happened and what to do: "Enter a number, such as 2."
 - **Be honest about state.** Never say saved while a save is pending; a failed load is its own state, not an empty one; a cut-off list says so at its end.
-- Page subtitles are one clause: "Jobs you saved and every application."
+- Page subtitles are one clause: "Jobs you saved and every application." A page built on the tiers (see Shape) has none: its Lead says what matters.
 - No emoji.
 
 ## Color
@@ -45,7 +45,8 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 - Status never rides on color alone: the chip's word, an icon or a Check says it too.
 - A link's color is `primary`. `bg-primary/N` with `text-primary` is not a component fill, and neither is `bg-background/N`: take the container pair, or the next surface step up. The exceptions, each named in the allow-list in `test_frontend_color_roles.py`: a bar that floats over scrolling content, a pill over an image, the hover tint on a solid primary fill (Button, Badge), and the editor's resize handle on a transparent fill.
 - Hover on a container is its pre-mixed 8% state layer (`primary-container-hover`, `secondary-container-hover`); a call site never picks an opacity.
-- `chart-1` to `chart-6` are for chart series only, in their fixed order. `brand-blue` and `brand-yellow` are for the mark only.
+- `chart-1` to `chart-6` are for chart series only, in their fixed order: blue, orange, teal, violet, ochre, slate. They are OKLCH near one lightness per theme, with no red or green series, so a chart never reads as good or bad, and each holds 3:1 on `card` in light and dark. One series is `chart-1`; the six are only for comparing. `brand-blue` and `brand-yellow` are for the mark only.
+- **Company monograms are neutral**: every company's initial sits on `surface-container-highest` with `foreground`, so the base resume square is the only hue in a row and a status chip the only state colour.
 - **Base resume color is identity, never state.** Each base resume has one hue, picked at random from the free presets when it is made and changeable in its Target. Draw it as a square (`ResumeSwatch`) beside the resume's name, never alone and never as a round pill or dot (round is status). The tones come from the hue (`resume`, `resume-container`, `on-resume-container`), so any hue holds contrast.
 - **Only a card that stands for one base resume** (its gallery card, its score card) carries the color as a 6px top band; the gallery card also tints its footer with `resume-container`, and the score card keeps its body as it is. Rows, pages and the sidebar never take it. PDFs never carry it.
 - **Charts split by base resume** color each series by its resume. Every other chart keeps `chart-1` to `chart-6`.
@@ -55,7 +56,7 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 - Separate surfaces by tone first. In light: `card` is the lightest, the page (`background`) sits just under it, then `surface-container-low`, `surface-container`, `surface-container-high`, `surface-container-highest`. Dark runs the same names from darkest up.
 - Use `surface-container-low` for stat tiles, hovered rows and quiet panels; `surface-container` for a neutral chip or a progress track. Never write `bg-muted` with an opacity.
 - `canvas` is only the ground behind a rendered resume page.
-- Shadows are for what floats: `shadow-level1` a hovered FAB or chip, a focused skip link, a modal sheet; `shadow-level2` menus, popovers, rich (chart) tooltips, sticky bars, the PDF page pill and a dragged row; `shadow-level3` dialogs and toasts. Cards, tiles, tables, plain tooltips and controls at rest have none.
+- Shadows are for what floats: `shadow-level1` a hovered FAB or chip, a focused skip link, a modal sheet; `shadow-level2` menus, popovers, rich (chart) tooltips, sticky bars, the PDF page pill and a dragged row; `shadow-level3` dialogs and toasts. Cards, tiles, tables, plain tooltips and controls at rest have none; the one exception is the Lead card, which floats a little on `shadow-level1`.
 
 ## Typography
 
@@ -80,7 +81,13 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 
 ## Shape
 
-One corner per kind of thing: `radius-corner-2xs` (2px) the resume square; `radius-corner-xs` (4px) menus, tooltips, the checkbox; `radius-corner-sm` (8px) buttons, inputs, selects; `radius-corner-md` (12px) cards, tiles, tables, callouts; `radius-corner-lg` (16px) the FAB and a sheet's open edge; `radius-corner-xl` (28px) dialogs; `radius-full` chips, badges, segmented toggles (the outline and its segments), the search field, every sidebar row (hover and current share the shape).
+One corner per kind of thing: `radius-corner-2xs` (2px) the resume square; `radius-corner-xs` (4px) menus, tooltips, the checkbox; `radius-corner-sm` (8px) buttons, inputs, selects; `radius-corner-md` (12px) cards, tiles, tables, callouts; `radius-corner-lg` (16px) the FAB, a sheet's open edge and the Lead card; `radius-corner-xl` (28px) dialogs; `radius-full` chips, badges, segmented toggles (the outline and its segments), the search field, every sidebar row (hover and current share the shape).
+
+**A page has three tiers: Lead, Also, Folded.** Each page has one thing that matters most, a few secondary things, and the advanced rest folded away.
+
+- **Lead**: the one thing that matters most, in a `LeadCard` at the top (`radius-corner-lg`, `card`, `p-7`, `shadow-level1`). An eyebrow in `primary` names it, and its one action is the view's one filled button. One per page.
+- **Also**: a few secondary things under a small heading, as plain cards or rows that rest flat, with tonal, outline or text actions. A row's next move is a `NextStep`.
+- **Folded**: advanced or rare things last, each a `Fold` row (a chevron, a title and a short summary on the right) that opens in place.
 
 ## Selection and state
 
@@ -109,10 +116,12 @@ One corner per kind of thing: `radius-corner-2xs` (2px) the resume square; `radi
 - Lists rise in with `animate-fade-rise`; skeletons use `animate-shimmer`.
 - **Confirm in place** with `animate-confirm`: one soft `ring` pulse (400ms) on the thing that changed, such as a status chip after its value changed. It is a registered `@utility`, so it takes variants (`data-confirm:animate-confirm`); a plain class under a variant compiles to nothing.
 - **A row that leaves its list** wraps in `.collapse-exit` with one child and sets `data-leaving`: it fades and its height closes (200ms, `ease-emphasized-accelerate`), so the rows below slide up.
-- **A number that changes** counts to its new value with `useCountUp` (400ms; no counting when reduced motion is on).
-- **Budget:** nothing runs longer than 400ms except the 1.2s hold of a confirmation ("Copied", "Saved") before it settles. No bounce, no overshoot. The three timings live in `lib/motion.ts` (`CONFIRM_HOLD_MS`, `CONFIRM_MS`, `ROW_EXIT_MS`); import them, never re-declare.
+- **A number that changes** counts to its new value with `useCountUp` (400ms; no counting when reduced motion is on), or rolls with `NumberRoll`: each digit is a 0–9 column that slides on `translate` over `ROLL_MS` (400ms, strong ease-out), so only the digits that changed move. With reduced motion it is the plain number. Neither announces; the parent holds a live region if the change should be spoken.
+- **The AI is working** shows `WorkingDots` beside the words for what it does ("Writing your cover letter"): three `primary` dots that rise in turn on a 900ms loop, in a `role="status"`. It replaces a spinner where the work is shown; with reduced motion the dots hold still.
+- **Saved, then settles**: `CheckDraw` draws the done mark's tick once (`animate-check-draw`, 300ms, strong ease-out), then the caller holds it 1.2s and settles. It is a registered `@utility`, so it takes variants. With reduced motion the tick is drawn at once.
+- **Budget:** nothing runs longer than 400ms except the 1.2s hold of a confirmation ("Copied", "Saved") before it settles, and the two loops that say "still going" (the skeleton shimmer, 1.4s, and the working dots, 0.9s). No bounce, no overshoot. The timings live in `lib/motion.ts` (`CONFIRM_HOLD_MS`, `CONFIRM_MS`, `ROW_EXIT_MS`, `ROLL_MS`); import them, never re-declare.
 - Transition lists name the CSS `translate`, `scale` and `rotate` properties (`transition-[opacity,translate]`), never `transform`: Tailwind v4's `translate-*` and `scale-*` set those properties, so a `transform` list jumps.
-- With reduced motion requested, the global rule in `globals.css` stops CSS transforms and animations and opacity changes stay; `useCountUp` checks `prefers-reduced-motion` itself in JS and jumps to the value.
+- With reduced motion requested, the global rule in `globals.css` stops CSS transforms and animations and opacity changes stay; `useCountUp` and `NumberRoll` check `prefers-reduced-motion` themselves in JS and show the value.
 
 ## Iconography
 
@@ -137,13 +146,15 @@ Each component page has a live preview in light and dark, what you provide, and 
 - Status: Badge, StatusChip
 - Selection: SegmentedToggle, FilterChips
 - Inputs: TextField, SelectionControls
+- Tiers: LeadCard (Lead) and Fold (Folded) from `components/ui/`
 - Containment: Card, StatTile
 - Navigation: Sidebar, PageHeader, Tabs
-- Data: JobsTable, HealthSummary
-- Visual primitives (eight): DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip and Sparkline from `components/visual/`, and StatusDot from `status-chip.tsx`, which also exports `LaneDot` for proposal statuses
+- Data: JobsTable, HealthSummary, NextStep (a row's next move)
+- Visual primitives (nine): DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline and DayStrip from `components/visual/`, and StatusDot from `status-chip.tsx`, which also exports `LaneDot` for proposal statuses
+- Motion: NumberRoll, WorkingDots and CheckDraw from `components/visual/`
 - Communication: Callout, EmptyState, JudgedText, Dialog
 - Base resume color: ResumeSwatch and ResumeTag from `components/visual/`, and ResumeColorPicker from `components/base-resumes/`
 
 ## Not synced
 
-Matches the app after all eight token steps and the six approved interface changes in `docs/plans/2026-10-02-design-system-tokens.md` (branch `claude/ds-steps`, on `main` at `5baf568c`); the repo's tests pin each rule. Skipped variables: `primary-container-hover` and `secondary-container-hover` (they are `color-mix()` values). Fonts: Geist and Geist Mono load from Google Fonts; no font files are stored. Components: previews are static HTML that uses the repo's own Tailwind classes, compiled with its `globals.css`; the React components were not built into a bundle, so menus, popovers and dialogs do not open. Not previewed: the eight visual primitives (DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, StatusDot), ResumeSwatch and ResumeColorPicker have a README and no `preview.html`, and the Button `pending` state and the field warning appear in their READMEs only; the motion utilities are described, not demonstrated. The claude.ai artifact copy was synced with the base resume color work on 2026-10-13 (README, tokens.json and the component READMEs); its `bundle.css` was not regenerated, so no preview draws the `resume` tones, the `radius-corner-2xs` square or the sticky dialog footer. Not yet covered: dropdown menu, popover, sheet, tooltip, slider, sortable list, chip input, the resume studio, gap-analysis cards, the Assistant, charts and the settings cards.
+Matches the app after all eight token steps and the six approved interface changes in `docs/plans/2026-10-02-design-system-tokens.md` (branch `claude/ds-steps`, on `main` at `5baf568c`); the repo's tests pin each rule. Skipped variables: `primary-container-hover` and `secondary-container-hover` (they are `color-mix()` values). Fonts: Geist and Geist Mono load from Google Fonts; no font files are stored. Components: previews are static HTML that uses the repo's own Tailwind classes, compiled with its `globals.css`; the React components were not built into a bundle, so menus, popovers and dialogs do not open. Not previewed: the nine visual primitives (DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, DayStrip, StatusDot), ResumeSwatch, ResumeColorPicker, the tiers (LeadCard, Fold), NextStep and the motion primitives (NumberRoll, WorkingDots, CheckDraw) have a README and no `preview.html`, and the Button `pending` state and the field warning appear in their READMEs only; the motion utilities are described, not demonstrated. The claude.ai artifact copy was synced with the base resume color work on 2026-10-13 (README, tokens.json and the component READMEs) and does not have the design refresh's tiers, motion primitives, OKLCH chart series or neutral monograms yet; its `bundle.css` was not regenerated, so no preview draws the `resume` tones, the `radius-corner-2xs` square or the sticky dialog footer, its chart tokens are the old hexes, and the JobsTable preview's neutral monogram reads `--surface-container-highest` through an inline style until the bundle has the class. Not yet covered: dropdown menu, popover, sheet, tooltip, slider, sortable list, chip input, the resume studio, gap-analysis cards, the Assistant, charts and the settings cards.
