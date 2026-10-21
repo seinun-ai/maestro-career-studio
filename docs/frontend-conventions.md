@@ -1017,14 +1017,14 @@
   when status changes. Window-focus refetch is off app-wide (`app/providers.tsx`);
   a query turns it on itself only when its data changes in another window: the
   job detail and What was submitted, since the Companion fills in a tab beside
-  this one. The tab's query also sets `staleTime: 0`, because tab panels stay
+  this one. The receipt's query also sets `staleTime: 0`, because its fold stays
   mounted and the app's 30 s freshness would show a receipt from before the fill.
 - Shared components: `StatusChip`/`SavedChip` (`components/status-chip.tsx` —
   the ONLY status vocabulary/color source in the UI), `CompanyMonogram` (the company's
   initial on one neutral fill, `surface-container-highest` with `text-foreground`, for
   every company: the base resume square is the only hue in a row and StatusChip the only
   place a state is coloured, so the name picks no tone. `test_company_monogram_is_neutral` pins it),
-  `ApplicationDetails` (step 4's disclosure; status lives in the chip, not there). "Needs
+  `ApplicationDetails` (the job page's Details and history fold; status lives in the chip, not there). "Needs
   you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object, the
   `attention` container pair; "Submission uncertain" is its own entry with the
   same pair. Every status and grade chip is a role container pair (Applied
@@ -1179,9 +1179,10 @@
 - **Jobs row** (`app/applications/page.tsx`, board "Jobs, fewer words"): the page header is the title,
   a count (every row of the source, `PageHeader` `meta`) and the search, with no subtitle. The columns
   are Role, Match (read-only: an application's `ats_score`, a saved job's `best_ats_score`), Status (an
-  inline `StatusChip` that PATCHes directly, with the applied date beside it when there is one: the
-  date the server has, never a status-change date, so its title and a screen-reader word say
-  "Applied"), Next step and a 32px slot; no Resume, Where, Applied or Added column (owner decisions D2
+  inline `StatusChip` that PATCHes directly, with a date beside it, `lib/job-standing.ts` `statusDate`: Applied
+  shows the applied date, any other status when it began, the list's `status_since` from the status log ("Since",
+  in its title and a screen-reader word), and a status older than the log the applied date, never a guess), Next
+  step and a 32px slot; no Resume, Where, Applied or Added column (owner decisions D2
   and D4). The sort menu (`SORTS`: Newest first, Oldest first, Recently applied, Best match first,
   Job title A–Z, By status) keeps every order the columns had, and the column it sorts carries
   `aria-sort`. Every row is two lines (the title, then "Company · Place"), so every row is one
@@ -1211,27 +1212,40 @@
   to Select. The job header and gap page keep `JobOwnershipMark`/`Notice`; Agent inbox rows use
   `JobOwnershipPopover`. Pinned by `test_frontend_jobs_where.py` and `test_frontend_jobs_refresh.py`.
 - **Job steps** (`components/job-steps.tsx`, data from `lib/job-steps.ts`): the job page has four numbered
-  steps where its tab row was, **Job**, **Resume and gaps**, **Tailored resume** and **Apply**, each a disc
-  (done: a Check on `success-container`; the stage's step: a 2px `ring` circle, its number in `primary`; later: a
-  `surface-container` disc), a `title-small` name and one `body-small` muted line, the receipt under a done
-  step or the hint under a later one. The step whose panel shows is underlined (2px `primary`) and
-  `aria-current="step"`. A step is a button when it is done, current or has something to show (`reachable`:
-  step 3 with a draft or PDF, step 4 with an application), named "Step N: title, done" (or ", current step")
-  with its line as the description; a later step with nothing to show is plain text, not focusable and
-  **never disabled**: no lock, no tooltip with a reason, its line says what opens it. `?tab=` keeps the values
-  the app has always written (`TAB_TO_STEP`: jd → Job, fit, output, qa, submitted → Apply's receipt), so
-  `/new`'s and the Companion's `?tab=fit` and the gap page's and the studio's `?tab=output` still land; with no
-  `?tab=` the stage's step opens, or Job while a proposal waits on you, set once from the first data so a
-  refetch never switches the panel; a `?tab=submitted` link puts the receipt above the questions. A panel mounts when first shown and
-  then stays, hidden (an answer being edited survives a look at another step). The header keeps the
-  proposal's triage, the score pill, the StatusChip and the job link; the rare actions sit behind one ⋯
-  (**More actions**): Queue in Agent inbox, Refresh details and Delete job, each with its confirm. The stage
-  is the detail's own `stage`, sent beside `job`; the nested job carries none (`JobDetail.job` is typed without it),
-  and read alone every job looked saved. One hook, `hooks/use-job-steps.ts`, holds the steps' queries and words for
-  the job page and the gap page. The gap page passes it the analysis on screen (`shown`: its resume, gaps and working
-  copy of the answers), and step 2's line then counts that analysis whatever the stage, so it never names an earlier
-  analysis's counts above a page showing a newer one. Pinned by `test_frontend_jobs_honest_words.py` and `test_frontend_visual_surfaces.py`.
-- **Resume and gaps** (step 2, `components/resume-step.tsx`), inside one card: the Match score lead, then
+  steps where its tab row was, **Job**, **Resume and gaps**, **Tailored resume** and **Apply** (board "Job page",
+  design refresh Task 4.3). Each is a 4px bar, then a mark, its `title-small` name and ONE number from the data in
+  `tabular-nums`, no sentences: Job counts its skills ("18 skills"), Resume and gaps the gaps closed of the
+  analysis it describes ("6 of 6 closed", "0 gaps"), Tailored resume the base resume's score and the tailored one
+  ("72.3 → 84.0", the tailored one alone without a base score), Apply none. Where the data has no number the step
+  shows none, never a made-up one. The bar is full when done, empty when later, and the current step's own share
+  where the data says one (gaps closed of all, a PDF made, the job applied); with no share it is a tonal
+  `primary-container` track that claims none. The mark: done is the register's CircleCheck in `success`, the stage's
+  step a ringed dot in `primary`, a later step its number on a `surface-container` disc. The step whose panel shows
+  has its name in `primary` and `aria-current="step"`. A step is a button when it is done, current or has something
+  to show (`reachable`: step 3 with a draft or PDF, step 4 with an application), named "Step N: title, done" (or ",
+  current step") with its number as the description; a later step with nothing to show is plain text, not focusable
+  and **never disabled**: no lock, no tooltip with a reason. `?tab=` keeps the values the app has always written
+  (`TAB_TO_STEP`: jd → Job, fit, output, qa, submitted → Apply with the What was submitted fold open and scrolled to),
+  so `/new`'s and the Companion's `?tab=fit` and the gap page's and the studio's `?tab=output` still land; with no
+  `?tab=` the stage's step opens, or Job while a proposal waits on you, set once from the first data so a refetch
+  never switches the panel. A panel mounts when first shown and then stays, hidden (an answer being edited survives
+  a look at another step). Under the panels sit the page's three folds (`Fold`), last: **Job description** (the
+  knock-out card, the job details and its link; its summary is the skills and the knock-out words, `jobFacts`; open
+  by default while step 1 shows, whatever the stage, closed under the other steps), **What was submitted** (the
+  receipt, only once something was filled; its summary counts what your profile gave, `answersSummary`, once the
+  receipt is in) and **Details and history** (the saved and applied dates, then `ApplicationDetails`, mounted only
+  while open). The header is the title, "Company · Place · Mode · pay" (pay from `formatPay`, with the posted
+  amount under a converted figure, and, when the post named no currency, `assumedCurrencyLine`: "Pay read as
+  Canadian dollars, job is in Canada"; no Change action, since no endpoint changes a job's currency), the
+  proposal's triage, the score pill, the StatusChip and the job link; the rare actions sit behind one ⋯ (**More
+  actions**): Queue in Agent inbox, Refresh details and Delete job, each with its confirm. The stage is the detail's
+  own `stage`, sent beside `job`; the nested job carries none (`JobDetail.job` is typed without it), and read alone
+  every job looked saved. One hook, `hooks/use-job-steps.ts`, holds the steps' queries and words for the job page
+  and the gap page. The gap page passes it the analysis on screen (`shown`: its resume, gaps and working copy of the
+  answers), and step 2's number then counts that analysis whatever the stage, so it never counts an earlier
+  analysis above a page showing a newer one. Pinned by `test_frontend_jobs_honest_words.py` and
+  `test_frontend_visual_surfaces.py`.
+- **Resume and gaps** (step 2, `components/resume-step.tsx`), the page's `LeadCard` ("Resume and gaps"): the Match score lead, then
   `ResumeChips` (`components/resume-chips.tsx`; its options from `useResumeChipOptions`, shared with the gap page), a group named "Base resume" of toggle chips with FilterChips'
   semantics (`aria-pressed`, 28px, `label-medium`, a 12px leading Check and `secondary-container` when picked;
   square, name, score in `tabular-nums`, a `secondary` Best badge on the top one), sorted by score, the top 3
@@ -1245,11 +1259,12 @@
   line on `surface-container-low`: the score out of 100 (counting from the last pick), Skills covered m of n,
   the Weakest subscore (none when all are equal) and a **Score breakdown** popover (the subscores, the skills
   meter, the Target pills, the dates note, that resume's own warnings; warnings every resume shares, and the
-  low-coverage banner, sit once above the card). Then the picked resume's state: an open gap analysis, its answered
-  count, **Continue gap analysis** (filled) and, at 0 answered, Use resume as is; else the finished analysis that
+  low-coverage banner, sit once above the card). Then the picked resume's state, one arm of `lead` each, whose
+  filled button is the lead card's `action` and whose outline one sits beside it: an open gap analysis, its answered
+  count, **Continue gap analysis** and, at 0 answered, Use resume as is; else the finished analysis that
   tailored the job's resume from it (`finishedAnalysis`), "Gap analysis done" with its answered and skipped counts,
-  **View tailored resume** (filled, opens step 3) and **Analyze gaps again**; else a dashed panel with **Analyze
-  gaps** (filled) and **Use resume as is**. One filled button in the view; one `busy` flag
+  **View tailored resume** (opens step 3) and **Analyze gaps again**; else what Analyze gaps does, **Analyze
+  gaps** and **Use resume as is**. One filled button in the view; one `busy` flag
   covers every write in flight, and a chip stays focusable while it is set. A job has one application: every
   action that writes with another resume than the application's (Analyze gaps, Continue, Restart, Use resume as
   is) asks first through `hooks/use-resume-switch.ts`, which the gap page shares, in words for what the job
@@ -1270,16 +1285,16 @@
   resume state); a failed detail or gap analyses list shows one Try again block above the footer saying
   what waits for it. A superseded or closed analysis's page offers **Go to Resume and gaps**. Pinned by
   `test_frontend_jobs_honest_words.py` and `test_frontend_gap_autosave.py`.
-- **Tailored resume** (step 3, `components/tailored-resume-step.tsx`), inside one card: a score strip on
-  `surface-container-low` (`AtsComparePanel compact`: before → after, the `DeltaChip` and the subscores that moved,
+- **Tailored resume** (step 3, `components/tailored-resume-step.tsx`), the page's `LeadCard` ("Tailored resume"):
+  the compact compare (`AtsComparePanel compact`: before → after, the `DeltaChip` and the subscores that moved,
   shown as "Keywords +21.3" and read as "Keywords up 21.3 points", `lib/ats-words` `subscoreMoves`), a **Score
   breakdown** disclosure (`aria-expanded`, `aria-controls`) that opens the full compare without its card frame
-  under the strip, ⋯ (**More actions for the tailored resume**: Tailor again opens step 2, Delete application
-  with Application details' confirm), **Edit resume** (outline, to the studio) and the view's one filled button:
-  **Create PDF** before a PDF, **Continue to Apply** once one exists. Then **Changes (N)**, the resume diff keyed
-  on the draft (`resumeDiffQuery` in `lib/api.ts`: `["resume-diff", id, updated_at]`, shared with the studio and
-  the page's step line; the previous list stands in while a new draft's loads, and Revert and Apply wait for the
-  real one). The header tallies each provenance as the studio's chip (`ProvenanceChip tinted`: **From your
+  under it, and the view's one filled button, the card's `action`: **Create PDF** before a PDF, **Continue to
+  Apply** once one exists; beside it **Edit resume** (outline, to the studio) and ⋯ (**More actions for the
+  tailored resume**: Tailor again opens step 2, Delete application with Application details' confirm). Under the
+  card, **Changes (N)**, the resume diff keyed on the draft (`resumeDiffQuery` in `lib/api.ts`:
+  `["resume-diff", id, updated_at]`, shared with the studio; the previous list stands in while a new draft's
+  loads, and Revert and Apply wait for the real one). The header tallies each provenance as the studio's chip (`ProvenanceChip tinted`: **From your
   career history**, **You**; an unattributed change has none, since the server cannot tell an AI rewrite from a
   hand edit) and a count badge. Each row: where it sits (`lib/resume-diff` `hunkPlace`), the chip, the old text
   in `<del>` and the new in `<ins>` with "Before:" and "Now:" for screen readers, and a **Revert this change**
@@ -1296,27 +1311,30 @@
   "In Documents › … · Change folder", Download PDF, Open PDF in new tab and Show in Finder as icon buttons,
   Update PDF small and outline), then the page preview, the only `canvas`. Pinned by
   `test_frontend_jobs_honest_words.py` and `test_frontend_first_read_words.py`.
-- **Apply** (step 4, `components/apply-step.tsx`), inside one card, two columns (`flex-wrap`; the right one
-  300 to 360px); its section titles are `<h2>`, as step 3's. Left: **Open the job post and apply** (the view's one
-  filled button, a new tab on the job's apply link, else its source link; the label drops "and apply" once the
-  application is applied or closed; without either link, Mark applied is the filled one; Answer questions and
-  Write cover letter are outline), then `QASections`' questions and History,
-  placed by its required `arrange` prop (the state stays in `QASections`, which never returns early since it
-  renders the whole step), then What was submitted in full once opened, then "Done applying?" with **Mark
-  applied** (tonal, Check, "Applying…", shown only while the status is Draft; its line says it sets today as the
-  applied date and that the later statuses are on the chip). The page holds one guarded status starter
-  (`useSingleFlight(patch.mutate)`) that the header's StatusChip and Mark applied share. Then an **Application
-  details** disclosure (a small link button with its chevron, as Score breakdown; `aria-expanded`, closed)
-  mounting `ApplicationDetails` only while open, on purpose unlike Settings' disclosures: each open reseeds from
-  the server, so a stale local note cannot overwrite an agent's. Applied on and Notes save on blur, only when
-  changed; the tracking link, Referral, Delete application with its confirm. Right: no PDF line and no preview
-  (step 3 holds the PDF and its download); the **Cover letter** card with a "Not written" chip until one
-  exists; and, once something was filled, **What was submitted**: three answers, newest page first and never a
-  voluntary one (`lib/filled-answers` `latestAnswers`), each with its source pill, and **All N answers**, which
-  opens the receipt and moves focus to it (a `?tab=submitted` link opens it first). The receipt's "Cover letter
-  attached" jumps to the letter's History entry (`COVER_LETTER_ID`). No Companion button: the web app cannot tell
-  whether the Companion is paired. Edit resume stays on step 3. Pinned by `test_frontend_jobs_honest_words.py`,
-  `test_frontend_job_submitted_tab.py` and `test_frontend_single_flight.py`.
+- **Apply** (step 4, `components/apply-step.tsx`), the page's `LeadCard` ("Ready to apply" while a draft, else
+  "Your application"): the job's resume as its `media` (`components/tailored-resume-thumb.tsx`: the 6px band, page 1
+  of the application's PDF or "No PDF yet", and the name with its square on the resume's tint; owner decision D2),
+  its Match score in `display-small` (the tailored score, else its base resume's) with a `DeltaChip` "from your base
+  resume" when both are scored, and where the job stands (`lib/job-standing.ts`). Then the view's one filled
+  button, the card's `action`: **Open the job post** (a new tab on the job's apply link, else its source link;
+  without either, Mark applied is the filled one), and beside it **Mark applied** (outline, Check, "Applying…",
+  shown only while the status is Draft; the line under them says it sets today as the applied date and that the
+  later statuses are on the chip). The page holds one guarded status starter (`useSingleFlight(patch.mutate)`)
+  that the header's StatusChip and Mark applied share; once marked, focus goes to the card's first control. Under
+  the buttons, two rows with `<h2>` names: **Cover letter** ("Written" or "Not written", said only once the
+  answers loaded) and **Application questions** (how many are answered), each with a tonal toggle (Write,
+  Answer; Hide while open, `aria-expanded`) that opens `QASections`' part under it: the tone and **Write cover
+  letter**, the questions box and **Answer questions** (both outline). History follows the card. `QASections`
+  places them through its required `arrange` prop and hands it `facts` for the rows (the state stays in
+  `QASections`, which never returns early since it renders the whole step). The receipt is the page's **What was
+  submitted** fold and the application's details its **Details and history** fold (Job steps): `ApplicationDetails`
+  mounts only while that fold is open, on purpose unlike Settings' disclosures: each open reseeds from the server,
+  so a stale local note cannot overwrite an agent's. Applied on and Notes save on blur, only when changed; the
+  tracking link, Referral, Delete application with its confirm. No PDF line and no preview (step 3 holds the PDF
+  and its download). The receipt's "Cover letter attached" jumps to the letter's History entry
+  (`COVER_LETTER_ID`). No Companion button: the web app cannot tell whether the Companion is paired. Edit resume
+  stays on step 3. Pinned by `test_frontend_jobs_honest_words.py`, `test_frontend_job_submitted_tab.py` and
+  `test_frontend_single_flight.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Jobs** (see *Canonical terms*). A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means
@@ -1503,7 +1521,7 @@
     wordings**, **Accept 2 new wordings**), never a new version.
     **skill group**, **School**, **On-site**, **Role**, **Employment type**,
     **Offer**, **Diversity questions (voluntary)**. **What was submitted** is
-    the answer receipt on the job page's step 4; its source pills are
+    the answer receipt, a fold on the job page; its source pills are
     **Profile**, **Resume**, **Custom**, **Written**, **Inferred**, **You** and
     **Upload**, and the Companion's group of flagged answers is **Check before
     you submit**. **Persona** keeps its
@@ -1765,9 +1783,12 @@
   gap-frequency chart and build-areas panel are merged into it). Salary
   aggregates on `/api/explore/overview` are currency-aware: filter by `country`
   / `salary_currency`; yearly means are suppressed when multiple currencies are
-  in scope (`salary_mixed_currencies`), with per-currency `salary_by_role` /
-  `salary_by_currency` rows instead of a blended mean, and the best-paying signal ranks only the
-  roles paid in the single most common currency (none on a tie) and carries it as `currency`; meta reports
+  in scope (`salary_mixed_currencies`), with `salary_by_currency` rows instead of a blended mean.
+  `pay_by_role` is yearly pay by role in the home currency (`explore_overview._pay_by_role`, ECB rates):
+  `converted_count`, `posted_currencies` and `rate_date`; a role under 5 jobs that list pay is in
+  `hidden_roles`; a job whose currency has no rate is counted in `unconverted`. It carries numbers only,
+  worded by `lib/money.ts` ("≈" on converted pay); the best-paying signal ranks the shown roles' converted
+  pay and carries it as `amount` in `currency` (`converted` adds "≈"); meta reports
   `jobs_with_salary` / `jobs_without_salary` — omitting pay is ordinary, not a
   gap. Endpoints: `/api/explore/activity` (drafted=created_at vs
   submitted=applied_at, day|week buckets; `interview_rate` is null below 20 submitted,

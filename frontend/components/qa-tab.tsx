@@ -58,13 +58,19 @@ const KIND_LABELS: Record<string, string> = {
 /** The saved cover letter's History entry: What was submitted's "Cover letter attached" line jumps to it on step 4. */
 export const COVER_LETTER_ID = "cover-letter";
 
-/** The three parts step 4 lays out: the questions and History on the left, the cover letter card on the right. */
-export type QAParts = { questions: ReactNode; coverLetter: ReactNode; history: ReactNode };
+/** What step 4 lays out: the questions box, the cover letter's tone and Write, their History, and what the
+ * answers hold for the rows that open the first two (undefined while the answers load: nobody knows yet). */
+export type QAParts = {
+  questions: ReactNode;
+  coverLetter: ReactNode;
+  history: ReactNode;
+  facts: { hasCoverLetter: boolean | undefined; answered: number | undefined };
+};
 
 /**
  * The application's questions, its cover letter and their History, with all their state, handed to `arrange` to
- * place. It renders the whole of step 4 (Mark applied, the details and the receipt sit inside `arrange`), so it must
- * never return early: a loading or error branch here would take the rest of the step with it.
+ * place. It renders the whole of step 4 (its lead card, with Mark applied, sits inside `arrange`), so it must never
+ * return early: a loading or error branch here would take the rest of the step with it.
  */
 export function QASections({
   applicationId,
@@ -218,90 +224,71 @@ export function QASections({
     onError: (err: Error) => toast.error(couldnt("create the PDF", err)),
   });
 
-  const questionsCard = (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <h2>Application questions</h2>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <p id={questionsHintId} className="text-muted-foreground text-body-small">
-          One question per line.
+  // The parts carry no title: step 4's rows name them (components/apply-step.tsx).
+  const questionsPart = (
+    <div className="space-y-2">
+      <p id={questionsHintId} className="text-muted-foreground text-body-small">
+        One question per line.
+      </p>
+      <Textarea
+        aria-label="Application questions"
+        disabled={readOnly}
+        aria-describedby={questionsHintId}
+        value={questions}
+        onChange={(e) => setQuestions(e.target.value)}
+        rows={4}
+      />
+      <Button
+        variant="outline"
+        onClick={() => askOnce(questions)}
+        pending={askQuestions.isPending}
+        disabled={noQuestions}
+        {...ownershipControlProps(readOnly)}
+        focusableWhenDisabled
+        aria-describedby={noQuestions ? needQuestionId : undefined}
+      >
+        {askQuestions.isPending ? "Answering…" : "Answer questions"}
+      </Button>
+      {noQuestions ? (
+        <p id={needQuestionId} className="text-muted-foreground text-body-small">
+          Type at least one question.
         </p>
-        <Textarea
-          aria-label="Application questions"
-          disabled={readOnly}
-          aria-describedby={questionsHintId}
-          value={questions}
-          onChange={(e) => setQuestions(e.target.value)}
-          rows={4}
-        />
-        <Button
-          variant="outline"
-          onClick={() => askOnce(questions)}
-          pending={askQuestions.isPending}
-          disabled={noQuestions}
-          {...ownershipControlProps(readOnly)}
-          focusableWhenDisabled
-          aria-describedby={noQuestions ? needQuestionId : undefined}
-        >
-          {askQuestions.isPending ? "Answering…" : "Answer questions"}
-        </Button>
-        {noQuestions ? (
-          <p id={needQuestionId} className="text-muted-foreground text-body-small">
-            Type at least one question.
-          </p>
-        ) : null}
-      </CardContent>
-    </Card>
+      ) : null}
+    </div>
   );
 
-  const coverLetterCard = (
-    <Card>
-      <CardHeader className="flex flex-row flex-wrap items-center gap-2">
-        <CardTitle>
-          <h2>Cover letter</h2>
-        </CardTitle>
-        {/* Said only once the answers loaded: while they load nobody knows. */}
-        {entries !== undefined && !hasCoverLetter ? (
-          <span className="bg-surface-container text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-label-medium">
-            Not written
-          </span>
-        ) : null}
-      </CardHeader>
-      <CardContent className="flex flex-wrap items-end gap-2">
-        <div className="grid gap-1.5">
-          <Label htmlFor="tone">Tone</Label>
-          <Select disabled={readOnly} value={tone} onValueChange={(v) => setTone(v ?? "balanced")}>
-            <SelectTrigger id="tone" className="w-44">
-              <SelectValue>{TONE_LABELS[tone] ?? tone}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {TONES.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {TONE_LABELS[t] ?? t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => void generateCoverLetter()}
-          pending={coverLetter.isPending}
-          disabled={letterEditing}
-          {...ownershipControlProps(readOnly)}
-          focusableWhenDisabled
-          className="data-disabled:pointer-events-none data-disabled:opacity-50"
-        >
-          {coverLetter.isPending ? "Writing…" : "Write cover letter"}
-        </Button>
-        {hasCoverLetter ? (
-          <p className="text-muted-foreground w-full text-body-small">Edit it or create its PDF in History.</p>
-        ) : null}
-      </CardContent>
-    </Card>
+  const coverLetterPart = (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="grid gap-1.5">
+        <Label htmlFor="tone">Tone</Label>
+        <Select disabled={readOnly} value={tone} onValueChange={(v) => setTone(v ?? "balanced")}>
+          <SelectTrigger id="tone" className="w-44">
+            <SelectValue>{TONE_LABELS[tone] ?? tone}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {TONES.map((t) => (
+              <SelectItem key={t} value={t}>
+                {TONE_LABELS[t] ?? t}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <Button
+        variant="outline"
+        onClick={() => void generateCoverLetter()}
+        pending={coverLetter.isPending}
+        disabled={letterEditing}
+        {...ownershipControlProps(readOnly)}
+        focusableWhenDisabled
+        className="data-disabled:pointer-events-none data-disabled:opacity-50"
+      >
+        {coverLetter.isPending ? "Writing…" : "Write cover letter"}
+      </Button>
+      {hasCoverLetter ? (
+        <p className="text-muted-foreground w-full text-body-small">Edit it or create its PDF in History.</p>
+      ) : null}
+    </div>
   );
 
   // tabIndex={-1}: where focus lands when the error below recovers. Named
@@ -376,7 +363,15 @@ export function QASections({
     </section>
   );
 
-  return arrange({ questions: questionsCard, coverLetter: coverLetterCard, history });
+  return arrange({
+    questions: questionsPart,
+    coverLetter: coverLetterPart,
+    history,
+    facts: {
+      hasCoverLetter: entries === undefined ? undefined : hasCoverLetter,
+      answered: entries?.filter((e) => e.kind === "question" && e.answer).length,
+    },
+  });
 }
 
 function QAEntryCard({

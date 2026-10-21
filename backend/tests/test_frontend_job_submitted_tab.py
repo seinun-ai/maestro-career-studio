@@ -28,18 +28,19 @@ _TYPES = _read("lib/types.ts")
 def test_the_receipt_is_deep_linkable_and_shown_once_something_was_filled():
     # ?tab=submitted still lands: step 4 (lib/job-steps.ts), with the receipt scrolled to.
     assert 'submitted: "qa"' in _read("lib/job-steps.ts")
-    # Opened by the link, the receipt comes first on step 4, above the questions (nothing to scroll past).
-    assert "{submittedSeen ? receipt : null}" in _PAGE and "{submittedSeen ? null : receipt}" in _PAGE
-    # With an application step 4 places it (components/apply-step.tsx): first when the link asked, else after
-    # the questions; closed until What was submitted's card opens it.
-    assert "receiptFirst={submittedSeen}" in _PAGE and "receipt={receipt}" in _PAGE
-    apply = _read("components/apply-step.tsx")
-    assert apply.index("{receiptFirst ? receiptBlock : null}") < apply.index("{questions}") < apply.index(
-        "{receiptFirst ? null : receiptBlock}")
-    assert "const [receiptOpen, setReceiptOpen] = useState(receiptFirst);" in apply
-    assert "hidden={!receiptOpen}" in apply
+    # The receipt is the What was submitted fold (design refresh Task 4.3), closed until opened; the link opens it
+    # and, once it is on the page, scrolls to it and focuses it, once.
+    fold = _PAGE[_PAGE.index('title="What was submitted"') - 200 :]
+    assert "{receipt ? (" in fold and "open={submittedOpen}" in fold and "{receipt}" in fold
+    assert "const [submittedOpen, setSubmittedOpen] = useState(submittedSeen);" in _PAGE
+    assert "const jumpedToReceipt = useRef(!submittedSeen);" in _PAGE
+    jump = _PAGE[_PAGE.index("if (jumpedToReceipt.current || !receiptRef.current) return;") :]
+    jump = jump[: jump.index("\n  });")]
+    assert "jumpedToReceipt.current = true;" in jump and "receiptRef.current.focus({ preventScroll: true });" in jump
+    # Its summary is a count the receipt really holds (lib/filled-answers `answersSummary`, node-tested).
+    assert "summary={filled.data ? answersSummary(filled.data) : undefined}" in _PAGE
     assert 'aria-label="What was submitted"' in _PAGE
-    assert 'Boolean(data.has_filled_answers) || submittedSeen' in _PAGE
+    assert 'Boolean(data?.has_filled_answers) || submittedSeen' in _PAGE
     assert "has_filled_answers: boolean;" in _TYPES
 
 
@@ -54,11 +55,13 @@ def test_the_job_refetches_on_focus_so_the_trigger_appears_after_a_fill_elsewher
 
 
 def test_the_receipt_is_not_behind_an_application():
-    # The receipt has its own condition only, and step 4 shows it beside the quiet panel too.
+    # The receipt has its own condition only, and its fold is a page fold, outside every step's panel.
     receipt = _PAGE[_PAGE.index("const receipt = showSubmitted ? (") : _PAGE.index("<JobSubmittedTab")]
     assert "application" not in receipt and "hasApp" not in receipt
+    assert "const showSubmitted = Boolean(data?.has_filled_answers) || submittedSeen;" in _PAGE
     step4 = _PAGE[_PAGE.index('{visited.has("qa") ? (') :]
-    assert step4.index("{submittedSeen ? receipt : null}") < step4.index("<NothingTailoredYet") < step4.index("{submittedSeen ? null : receipt}")
+    assert step4.index("<NothingTailoredYet") < step4.index('title="What was submitted"')
+    assert "receipt" not in step4[: step4.index("{/* The Folded tier")]
 
 
 def test_the_receipt_is_fetched_only_while_its_tab_is_open_and_never_from_a_stale_cache():
@@ -67,7 +70,9 @@ def test_the_receipt_is_fetched_only_while_its_tab_is_open_and_never_from_a_stal
     assert "enabled: active," in _TAB
     assert "staleTime: 0," in _TAB
     assert "refetchOnWindowFocus: true," in _TAB
-    assert 'active={step === "qa"}' in _PAGE
+    # The fold stays mounted: the receipt is asked for only while it is open, or while step 4 shows.
+    assert 'active={submittedOpen || step === "qa"}' in _PAGE
+    assert 'useFilledAnswers(id, showSubmitted && (submittedOpen || chosenStep === "qa"))' in _PAGE
 
 
 @pytest.mark.parametrize(("source", "word"), [

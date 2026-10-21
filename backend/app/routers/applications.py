@@ -214,6 +214,7 @@ def list_applications(
     sync_ownership.stamp(db, {job.id: job for _, job, _ in rows}.values())
     scores = ats_score.tracker_scores(db, [row[0] for row in rows])
     stages = stage.for_applications(db, [row[0] for row in rows])
+    since = application_status.status_since(db, [row[0] for row in rows])
     for application, job, base_name in rows:
         summary = ApplicationSummary.model_validate(application)
         st = stages[application.id]
@@ -229,6 +230,7 @@ def list_applications(
         summary.job_company = job.company
         summary.job_location = job.location
         summary.base_resume_name = base_name or None
+        summary.status_since = since.get(application.id)
         summaries.append(summary)
     return summaries
 

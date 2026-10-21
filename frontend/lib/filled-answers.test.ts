@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { allAnswersToggle, answerPreview, latestAnswers } from "./filled-answers.ts";
+import { answersSummary } from "./filled-answers.ts";
 import type { FilledField, FilledStep } from "./types";
 
 const field = (question: string, over: Partial<FilledField> = {}): FilledField => ({
@@ -26,48 +26,20 @@ const receipt = (steps: FilledStep[]) => ({
   job_id: "j", host: "jobs.example.com", pages: steps.length, captured_at: null, flag_count: 0, steps,
 });
 
-test("the newest page's answers come first, and the count is every answer the receipt holds", () => {
+test("the Autofill answers fold counts the answers your profile gave, else every answer", () => {
   const r = receipt([
-    page("2026-10-01T10:00:00Z", [field("Name"), field("Email")]),
-    page("2026-10-02T10:00:00Z", [field("Why us?")]),
+    page("2026-10-01T10:00:00Z", [field("Name"), field("Email"), field("Why us?", { source: "written" })]),
+    page("2026-10-02T10:00:00Z", [field("Gender", { eeo: true })]),
   ]);
-  const { fields, total } = latestAnswers(r, 2);
-  assert.deepEqual(fields.map((f) => f.question), ["Why us?", "Name"]);
-  assert.equal(total, 3);
+  assert.equal(answersSummary(r), "3 from your profile");
+  const one = receipt([page("2026-10-01T10:00:00Z", [field("Name")])]);
+  assert.equal(answersSummary(one), "1 from your profile");
+  const none = receipt([page("2026-10-01T10:00:00Z", [field("Why us?", { source: "written" }), field("CV", { source: "upload" })])]);
+  assert.equal(answersSummary(none), "2 answers");
+  assert.equal(answersSummary(receipt([])), null);
 });
 
-test("a voluntary answer is counted but never shown on the card", () => {
-  const r = receipt([page("2026-10-01T10:00:00Z", [field("Gender", { eeo: true }), field("Name")])]);
-  const { fields, total } = latestAnswers(r, 3);
-  assert.deepEqual(fields.map((f) => f.question), ["Name"]);
-  assert.equal(total, 2);
-});
-
-test("an answer reads as one short line", () => {
-  assert.equal(answerPreview(field("Skills", { answer: ["SQL", "Python"] })), "SQL, Python");
-  assert.equal(answerPreview(field("Middle name", { answer: "  " })), "Left blank");
-  assert.equal(answerPreview(field("Resume", { source: "upload", slot: "resume", answer: "cv.pdf" })), "Resume attached: cv.pdf");
-  assert.equal(
-    answerPreview(field("Letter", { source: "upload", slot: "cover_letter", answer: "letter.pdf" })),
-    "Cover letter attached: letter.pdf",
-  );
-});
-
-test("the link names the count, and one answer is not called all", () => {
-  assert.equal(allAnswersToggle(12, false), "All 12 answers");
-  assert.equal(allAnswersToggle(12, true), "Hide all answers");
-  assert.equal(allAnswersToggle(1, false), "Show it in full");
-});
-
-test("an open single answer reads Hide it", () => {
-  assert.equal(allAnswersToggle(1, true), "Hide it");
-});
-
-test("an upload with no file name still says what was attached", () => {
-  assert.equal(answerPreview(field("Resume", { source: "upload", slot: "resume", answer: null })), "Resume attached: a file");
-});
-
-test("a page with several sections keeps their order and counts every answer", () => {
+test("a page with several sections counts every answer", () => {
   const r = receipt([
     {
       step: null,
@@ -75,12 +47,10 @@ test("a page with several sections keeps their order and counts every answer", (
       channel: "companion",
       captured_at: "2026-10-01T10:00:00Z",
       sections: [
-        { section: "Contact", fields: [field("Name"), field("Email")] },
-        { section: "Questions", fields: [field("Why us?"), field("Gender", { eeo: true })] },
+        { section: "Contact", fields: [field("Name", { source: "you" })] },
+        { section: "Questions", fields: [field("Why us?", { source: "written" }), field("Gender", { eeo: true, source: "you" })] },
       ],
     },
   ]);
-  const { fields, total } = latestAnswers(r, 3);
-  assert.deepEqual(fields.map((f) => f.question), ["Name", "Email", "Why us?"]);
-  assert.equal(total, 4);
+  assert.equal(answersSummary(r), "3 answers");
 });

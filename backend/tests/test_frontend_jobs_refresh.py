@@ -123,11 +123,18 @@ def test_no_subtitle_the_header_is_the_title_a_count_and_the_search():
     assert "meta?: ReactNode;" in shell
 
 
-def test_the_status_cell_carries_the_applied_date():
+def test_the_status_cell_dates_the_status_from_the_status_log():
+    """Design refresh Task 4.3: the status log exists, so the cell says when the current status began ("Since Oct 3",
+    the list's `status_since`), Applied by the date you applied; a status older than the log falls back to the applied
+    date, and nothing is guessed (lib/job-standing.ts `statusDate`, node-tested)."""
     cell = _TABLE[_TABLE.index("<StatusChip") :]
     cell = cell[: cell.index("</TableCell>")]
-    assert "r.app.applied_at ?" in cell and "formatShortDate(r.app.applied_at)" in cell
-    assert '<span className="sr-only">Applied </span>' in cell
+    assert "{dated ? (" in cell and "formatShortDate(dated.at)" in cell
+    assert '<span className="sr-only">{dated.word} </span>' in cell
+    assert 'const dated = r.kind === "application" ? statusDate(r.app) : null;' in _TABLE
+    assert run_node_test("lib/job-standing.test.ts").returncode == 0
+    schema = (Path(__file__).resolve().parents[1] / "app/schemas/application.py").read_text(encoding="utf-8")
+    assert "    status_since: datetime | None = None\n" in schema
 
 
 def test_the_tracker_lib_node_tests_pass():

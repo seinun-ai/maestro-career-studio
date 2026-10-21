@@ -82,6 +82,15 @@ a click.
   waiting request open from one small icon, shown only when the job is not on this laptop, and an
   agent's question is one line, whole on hover. The Laptop / Bot word left the row with the Jobs
   table's Where column.
+- **The job page leads with one card.** Each of the four steps is a bar with one number from your
+  data (18 skills, 6 of 6 closed, 72.3 → 84.0) in place of a sentence. The step you are on is one card
+  with its one blue button. On Apply it shows your resume's first page in its colour, its match score
+  and the gain over your base resume, **Open the job post**, **Mark applied**, and two rows that open
+  the cover letter and the application questions. The job description, what was submitted and the
+  job's dates and details fold away below it. The header reads "Company · Place · Mode · pay"; pay in
+  another currency shows the posted amount under it, and pay whose post named no currency says how it
+  was read ("Pay read as Canadian dollars, job is in Canada"). On Jobs, a status other than Applied
+  shows the day it began.
 - **Automations show only what runs reported.** A three-step strip says how it works (copy a prompt,
   your agent schedules it, each run reports here) in place of the subtitle. An automation that reported
   in the last 14 days is a **Reporting** card: a dot per day, its newest report in one line ("2 hours ago

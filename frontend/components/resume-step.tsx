@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { GuardedLink as Link } from "@/components/guarded-link";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -15,6 +14,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { UploadDialog } from "@/components/setup/upload-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { LeadCard, type LeadAction } from "@/components/ui/lead-card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -459,6 +459,7 @@ export function ResumeStep({
     const asIsButton = (sessionId: string | null) => (
       <Button
         variant="outline"
+        size="lg"
         onClick={() => void asIsClick(pickedSlug, sessionId)}
         focusableWhenDisabled
         pending={asIs.isPending}
@@ -467,6 +468,75 @@ export function ResumeStep({
         Use resume as is
       </Button>
     );
+
+    // The picked resume's state, one arm per gap analysis it has (open, finished, none): its words, the view's one
+    // filled button (the lead card's action) and the outline one beside it.
+    const lead: { state: ReactNode; action: LeadAction; secondary: ReactNode } =
+      openSession && !creating
+        ? {
+            state: totalGaps > 0 ? <ProgressCount done={answered} total={totalGaps} noun="answered" /> : null,
+            action: {
+              label: "Continue gap analysis",
+              href: `/jobs/${jobId}/tailor/${openSession.id}`,
+              disabled: busy || readOnly,
+              // A link while nothing would be replaced; else the switch confirm goes first.
+              onClick: (event) => {
+                if (!switcher.switchWords(pickedSlug, "continue")) return;
+                event.preventDefault();
+                void switcher.continueOn(pickedSlug, openSession.id);
+              },
+            },
+            secondary: answered === 0 ? asIsButton(openSession.id) : null,
+          }
+        : finished
+          ? {
+              state: (
+                <div className="space-y-0.5">
+                  <p className="text-title-small">Gap analysis done</p>
+                  <p className="text-muted-foreground text-body-medium">
+                    {`${finishedCounts.answered} ${finishedCounts.answered === 1 ? "gap" : "gaps"} answered, ` +
+                      `${finishedCounts.skipped} skipped. Step 3 has the tailored resume.`}
+                  </p>
+                </div>
+              ),
+              action: { label: "View tailored resume", onClick: () => onOpenTailored?.() },
+              // A new gap analysis of the same resume: the draft stays until it is tailored again.
+              secondary: (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => void switcher.analyze(pickedSlug)}
+                  focusableWhenDisabled
+                  pending={creating}
+                  disabled={busy || readOnly}
+                >
+                  Analyze gaps again
+                </Button>
+              ),
+            }
+          : {
+              state: (
+                <div className="space-y-1">
+                  <p className="text-title-small">
+                    {pickedIsTheJobs ? `${pickedName} is this job's resume` : `No gap analysis for ${pickedName} yet`}
+                  </p>
+                  <p className="text-muted-foreground max-w-[70ch] text-body-medium">
+                    Analyze gaps finds the skills this job asks for that the resume does not show. It fills what your
+                    career history can answer and asks you about the rest. It opens on its own page, with these steps
+                    on top.
+                  </p>
+                </div>
+              ),
+              // Focusable while it starts: a natively disabled button dropped focus to <body>.
+              action: {
+                label: creating ? "Analyzing gaps…" : "Analyze gaps",
+                icon: creating ? undefined : <AnalyzeGapsIcon />,
+                onClick: () => void switcher.analyze(pickedSlug),
+                pending: creating,
+                disabled: busy || readOnly,
+              },
+              secondary: asIsButton(null),
+            };
 
     return (
       <div className="space-y-3">
@@ -486,8 +556,8 @@ export function ResumeStep({
             </ul>
           </div>
         )}
-        <Card data-pending={run.isPending ? "true" : undefined}>
-          <CardContent className="space-y-4">
+        <div data-pending={run.isPending ? "true" : undefined}>
+          <LeadCard eyebrow="Resume and gaps" action={lead.action} secondary={lead.secondary}>
             <AtsScoreLead />
             <div className="space-y-1.5">
               <ResumeChips
@@ -565,81 +635,9 @@ export function ResumeStep({
               showCoverage={!lowCoverageEverywhere}
               sharedWarnings={sharedWarnings}
             />
-            {openSession && !creating ? (
-              <div className="flex flex-wrap items-center gap-3 rounded-corner-md border p-4">
-                {totalGaps > 0 && <ProgressCount done={answered} total={totalGaps} noun="answered" />}
-                <div className="ml-auto flex flex-wrap items-center gap-2">
-                  {answered === 0 && asIsButton(openSession.id)}
-                  <Button
-                    disabled={busy || readOnly}
-                    aria-disabled={busy || readOnly || undefined}
-                    nativeButton={false}
-                    render={
-                      <Link
-                        href={`/jobs/${jobId}/tailor/${openSession.id}`}
-                        // A link while nothing would be replaced; else the switch confirm goes first.
-                        onClick={(event) => {
-                          if (!switcher.switchWords(pickedSlug, "continue")) return;
-                          event.preventDefault();
-                          void switcher.continueOn(pickedSlug, openSession.id);
-                        }}
-                      >
-                        Continue gap analysis
-                      </Link>
-                    }
-                  />
-                </div>
-              </div>
-            ) : finished ? (
-              <div className="flex flex-wrap items-center gap-3 rounded-corner-md border p-4">
-                <div className="space-y-0.5">
-                  <p className="text-title-small">Gap analysis done</p>
-                  <p className="text-muted-foreground text-body-medium">
-                    {`${finishedCounts.answered} ${finishedCounts.answered === 1 ? "gap" : "gaps"} answered, ` +
-                      `${finishedCounts.skipped} skipped. Step 3 has the tailored resume.`}
-                  </p>
-                </div>
-                <div className="ml-auto flex flex-wrap items-center gap-2">
-                  {/* A new gap analysis of the same resume: the draft stays until it is tailored again. */}
-                  <Button
-                    variant="outline"
-                    onClick={() => void switcher.analyze(pickedSlug)}
-                    focusableWhenDisabled
-                    pending={creating}
-                    disabled={busy || readOnly}
-                  >
-                    Analyze gaps again
-                  </Button>
-                  <Button onClick={onOpenTailored}>View tailored resume</Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3 rounded-corner-md border border-dashed p-4">
-                <p className="text-title-small">
-                  {pickedIsTheJobs ? `${pickedName} is this job's resume` : `No gap analysis for ${pickedName} yet`}
-                </p>
-                <p className="text-muted-foreground max-w-[70ch] text-body-medium">
-                  Analyze gaps finds the skills this job asks for that the resume does not show. It fills what your
-                  career history can answer and asks you about the rest. It opens on its own page, with these steps
-                  on top.
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Focusable while it starts: a natively disabled button dropped focus to <body>. */}
-                  <Button
-                    onClick={() => void switcher.analyze(pickedSlug)}
-                    focusableWhenDisabled
-                    pending={creating}
-                    disabled={busy || readOnly}
-                  >
-                    {creating ? null : <AnalyzeGapsIcon />}
-                    {creating ? "Analyzing gaps…" : "Analyze gaps"}
-                  </Button>
-                  {asIsButton(null)}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            {lead.state}
+          </LeadCard>
+        </div>
       </div>
     );
   }

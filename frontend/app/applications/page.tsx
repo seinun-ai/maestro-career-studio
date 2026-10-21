@@ -57,6 +57,7 @@ import { focusIfDropped, focusReturnPoint, focusSuccessor } from "@/lib/focus";
 import { formatShortDate } from "@/lib/format-date";
 import { selectedAmong } from "@/lib/inbox-lanes";
 import { jobMetaLine } from "@/lib/job-meta";
+import { statusDate } from "@/lib/job-standing";
 import { isListCapped } from "@/lib/list-cap";
 import { nextStep, nextStepHref, type Rung } from "@/lib/next-step";
 import { chipCount, matchesFilter } from "@/lib/tracker-counts";
@@ -865,6 +866,8 @@ function ApplicationsContent() {
                     : LINKED_APPLICATION_MARK;
                 const pickable = bulkActionsOf(r).length > 0;
                 const isPicked = selected.has(key);
+                // Beside the chip: when the status began (the status log), or when you applied.
+                const dated = r.kind === "application" ? statusDate(r.app) : null;
 
                 return (
                   <TableRow
@@ -981,11 +984,10 @@ function ApplicationsContent() {
                             }}
                           />
                         )}
-                        {/* The date the server has: when you applied. It is not when the status changed. */}
-                        {r.kind === "application" && r.app.applied_at ? (
-                          <span className="text-muted-foreground text-body-small tabular-nums" title={`Applied ${formatShortDate(r.app.applied_at)}`}>
-                            <span className="sr-only">Applied </span>
-                            {formatShortDate(r.app.applied_at)}
+                        {dated ? (
+                          <span className="text-muted-foreground text-body-small tabular-nums" title={`${dated.word} ${formatShortDate(dated.at)}`}>
+                            <span className="sr-only">{dated.word} </span>
+                            {formatShortDate(dated.at)}
                           </span>
                         ) : null}
                       </span>

@@ -316,7 +316,6 @@ _LOADING_GATES = [
     ("components/charts/tailoring-lift-chart.tsx", "if (isLoading)", "isLoadFailure(query)"),
     ("components/explore/explore-overview.tsx", "q.isLoading", "isLoadFailure(q)"),
     ("components/job-submitted-tab.tsx", '<Skeleton className="h-48 w-full" />', "if (isLoadFailure(query)) return <FilledAnswersError"),
-    ("components/job-submitted-tab.tsx", '<Skeleton className="h-24 w-full" />', 'return <FilledAnswersError query={query} className="py-4" />;'),
 ]
 
 

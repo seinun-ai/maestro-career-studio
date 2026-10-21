@@ -3,7 +3,6 @@
 import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowRight,
   ChevronDown,
   FileOutput,
   Pencil,
@@ -22,6 +21,7 @@ import { ResumesFolderNote } from "@/components/resumes-folder-actions";
 import { ProvenanceChip, revertHunk, sideText } from "@/components/resume-editor/diff-review";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { Button } from "@/components/ui/button";
+import { LeadCard, type LeadAction } from "@/components/ui/lead-card";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -153,8 +153,9 @@ function useDraftWrites({
 }
 
 /**
- * Step 3, Tailored resume, inside one card: the score strip, the full compare behind Score breakdown, the changes
- * tailoring made with a Revert on each, and once a PDF exists the PDF card. A revert is computed
+ * Step 3, Tailored resume, as the page's lead card: the compact compare, the full compare behind Score breakdown and
+ * the view's one filled button (Create PDF, then Continue to Apply) with Edit resume and ⋯ beside it. Under it, the
+ * changes tailoring made with a Revert on each, and once a PDF exists the PDF card. A revert is computed
  * from the draft the diff describes (the diff's `updated_at` is the application's) and sent with it, so the server
  * refuses one the row has moved past.
  */
@@ -253,25 +254,16 @@ export function TailoredResumeStep({
     );
   }
 
-  // The view's one filled button: Create PDF before a PDF, Continue to Apply once one exists.
-  const filled = hasPdf ? (
-    <Button onClick={() => onOpenStep("qa")}>
-      Continue to Apply
-      <ArrowRight data-icon="inline-end" className="size-4" />
-    </Button>
-  ) : (
-    <Button
-      onClick={() => renderOnce()}
-      // Focusable while it creates: a natively disabled button dropped focus to <body>.
-      className="data-disabled:pointer-events-none data-disabled:opacity-50"
-      focusableWhenDisabled
-      pending={renderPdf.isPending}
-      disabled={busy || readOnly}
-    >
-      <FileOutput className="size-4" />
-      {renderPdf.isPending ? pdfWords.pending : pdfWords.label}
-    </Button>
-  );
+  // The view's one filled button, the lead card's action: Create PDF before a PDF, Continue to Apply once one exists.
+  const filled: LeadAction = hasPdf
+    ? { label: "Continue to Apply", onClick: () => onOpenStep("qa") }
+    : {
+        label: renderPdf.isPending ? pdfWords.pending : pdfWords.label,
+        icon: <FileOutput className="size-4" />,
+        onClick: () => renderOnce(),
+        pending: renderPdf.isPending,
+        disabled: busy || readOnly,
+      };
   const updatePdf = (
     <Button
       variant="outline"
@@ -289,32 +281,50 @@ export function TailoredResumeStep({
   );
 
   return (
-    <Card>
-      <CardContent className="space-y-4">
-        <ScoreStrip
-          app={app}
-          jobId={jobId}
-          readOnly={readOnly}
-          onOpenStep={onOpenStep}
-          breakdown={
+    <div className="space-y-6">
+      {/* The lead: the compact compare, Score breakdown, then the filled button with Edit resume and ⋯ beside it. */}
+      <LeadCard
+        eyebrow="Tailored resume"
+        action={filled}
+        secondary={
+          <>
             <Button
-              variant="link"
-              size="sm"
-              className="h-auto px-1"
-              aria-expanded={breakdownOpen}
-              aria-controls={breakdownId}
-              onClick={() => setBreakdownOpen(!breakdownOpen)}
-            >
-              Score breakdown
-              <ChevronDown
-                aria-hidden="true"
-                className={cn("size-3.5 transition-[rotate] duration-short3 ease-standard", breakdownOpen && "rotate-180")}
-              />
-            </Button>
-          }
-          filled={filled}
-        />
-        {/* The full compare (subscore bars, each skill Gained, Lost or Same, Update score), under the strip. */}
+              variant="outline"
+              size="lg"
+              disabled={readOnly}
+              aria-disabled={readOnly || undefined}
+              // A link rendered as a button: `disabled:` never matches it, `data-disabled` does.
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
+              nativeButton={false}
+              render={
+                <Link href={`/applications/${app.id}/resume`}>
+                  <Pencil className="size-4" />
+                  Edit resume
+                </Link>
+              }
+            />
+            <TailoredResumeMenu app={app} jobId={jobId} readOnly={readOnly} onOpenStep={onOpenStep} />
+          </>
+        }
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} compact />
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto px-1"
+            aria-expanded={breakdownOpen}
+            aria-controls={breakdownId}
+            onClick={() => setBreakdownOpen(!breakdownOpen)}
+          >
+            Score breakdown
+            <ChevronDown
+              aria-hidden="true"
+              className={cn("size-3.5 transition-[rotate] duration-short3 ease-standard", breakdownOpen && "rotate-180")}
+            />
+          </Button>
+        </div>
+        {/* The full compare (subscore bars, each skill Gained, Lost or Same, Update score), under the compact one. */}
         <div id={breakdownId} hidden={!breakdownOpen} className="rounded-corner-md border p-4">
           {breakdownOpen ? <AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} bare /> : null}
         </div>
@@ -326,80 +336,43 @@ export function TailoredResumeStep({
             Creating the PDF failed. Try again.
           </p>
         ) : null}
+      </LeadCard>
 
-        <ChangesList
-          diff={diff}
-          hunks={hunks}
-          ids={ids}
-          draft={app.customized_json}
-          hasPdf={hasPdf}
-          disabled={busy || readOnly || !diffSettled}
-          writing={writes.writing}
-          announcement={writes.announcement}
-          onRevert={onRevert}
-        />
-
-        {hasPdf ? (
-          <PdfCard
-            app={app}
-            copyMissed={renderPdf.data?.copy_path === null}
-            update={updatePdf}
-            preview={
-              <div className="h-[80vh] min-h-[520px] overflow-hidden rounded-corner-md border"
-                data-pending={renderPdf.isPending ? "true" : undefined}
-              >
-                <PdfPagesPreview
-                  basePath={`/api/applications/${app.id}`}
-                  version={`${app.updated_at}-${previewVersion}`}
-                  emptyMessage="Couldn't show the preview. Update the PDF to try again."
-                />
-              </div>
-            }
+      {/* The Also tier: the changes tailoring made, then the PDF card once a PDF exists. */}
+      <Card>
+        <CardContent className="space-y-4">
+          <ChangesList
+            diff={diff}
+            hunks={hunks}
+            ids={ids}
+            draft={app.customized_json}
+            hasPdf={hasPdf}
+            disabled={busy || readOnly || !diffSettled}
+            writing={writes.writing}
+            announcement={writes.announcement}
+            onRevert={onRevert}
           />
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
 
-/** The strip: the compact compare and Score breakdown, then ⋯, Edit resume and the view's filled button, last. */
-function ScoreStrip({
-  app,
-  jobId,
-  readOnly,
-  onOpenStep,
-  breakdown,
-  filled,
-}: {
-  app: Application;
-  jobId: string;
-  readOnly: boolean;
-  onOpenStep: (key: StepKey) => void;
-  breakdown: ReactNode;
-  filled: ReactNode;
-}) {
-  return (
-    <div className="bg-surface-container-low flex flex-wrap items-center gap-2 rounded-corner-md py-2 pr-2 pl-4">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-        <AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} compact />
-        {breakdown}
-      </div>
-      <TailoredResumeMenu app={app} jobId={jobId} readOnly={readOnly} onOpenStep={onOpenStep} />
-      <Button
-        variant="outline"
-        disabled={readOnly}
-        aria-disabled={readOnly || undefined}
-        // A link rendered as a button: `disabled:` never matches it, `data-disabled` does.
-        className="data-disabled:pointer-events-none data-disabled:opacity-50"
-        nativeButton={false}
-        render={
-          <Link href={`/applications/${app.id}/resume`}>
-            <Pencil className="size-4" />
-            Edit resume
-          </Link>
-        }
-      />
-      {filled}
+          {hasPdf ? (
+            <PdfCard
+              app={app}
+              copyMissed={renderPdf.data?.copy_path === null}
+              update={updatePdf}
+              preview={
+                <div className="h-[80vh] min-h-[520px] overflow-hidden rounded-corner-md border"
+                  data-pending={renderPdf.isPending ? "true" : undefined}
+                >
+                  <PdfPagesPreview
+                    basePath={`/api/applications/${app.id}`}
+                    version={`${app.updated_at}-${previewVersion}`}
+                    emptyMessage="Couldn't show the preview. Update the PDF to try again."
+                  />
+                </div>
+              }
+            />
+          ) : null}
+        </CardContent>
+      </Card>
     </div>
   );
 }

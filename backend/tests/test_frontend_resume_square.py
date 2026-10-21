@@ -32,6 +32,8 @@ _SITES = [
     "components/career/send-to-resume-dialog.tsx",
     "components/career/resume-import-dialog.tsx",
     "components/analytics/base-summary-cards.tsx",
+    # Step 4's lead card draws the job's resume (design refresh D2: the square belongs on that card).
+    "components/tailored-resume-thumb.tsx",
 ]
 
 

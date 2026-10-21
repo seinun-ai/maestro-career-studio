@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { scorePill, standingLine } from "./job-standing.ts";
+import { scorePill, standingLine, statusDate } from "./job-standing.ts";
 
 const base = (target_id: string, composite: number) => ({
   phase: "base", target_id, composite, application_id: null, created_at: "2026-10-01T10:00:00Z",
@@ -131,4 +131,20 @@ test("a draft whose submit the agent could not confirm says so", () => {
   });
   assert.equal(line.text, "Not applied · your agent isn't sure it went through: check the Agent inbox");
   assert.equal(line.kind, "draft");
+});
+
+test("the Jobs row dates its status: when it began from the log, Applied by the date you applied", () => {
+  const row = (status: string | null, applied_at: string | null, status_since?: string | null) => ({ status, applied_at, status_since });
+  // Interviewing since the log's change into it.
+  assert.deepEqual(statusDate(row("interviewing", "2026-09-01", "2026-09-10")), { at: "2026-09-10", word: "Since" });
+  // Applied reads the applied date, which you can set, even when the log has its own time.
+  assert.deepEqual(statusDate(row("applied", "2026-09-01", "2026-09-03")), { at: "2026-09-01", word: "Applied" });
+  assert.deepEqual(statusDate(row("applied", null, "2026-09-03")), { at: "2026-09-03", word: "Since" });
+  // A status older than the log: the applied date, as before, else nothing (never a guess).
+  assert.deepEqual(statusDate(row("rejected", "2026-09-01", null)), { at: "2026-09-01", word: "Applied" });
+  assert.equal(statusDate(row("interviewing", null, null)), null);
+  assert.equal(statusDate(row("interviewing", null)), null);
+  // A draft has no status worth dating.
+  assert.equal(statusDate(row("draft", null, "2026-09-03")), null);
+  assert.equal(statusDate(row(null, null, "2026-09-03")), null);
 });

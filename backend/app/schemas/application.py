@@ -100,6 +100,9 @@ class ApplicationSummary(BaseModel):
     open_session_id: UUID | None = None
     gaps_done: int = 0
     gaps_total: int = 0
+    # List-endpoint-only, read-only (`application_status.status_since`): when the current status began, from the
+    # status log; null when the log holds no change into it (a status older than the log).
+    status_since: datetime | None = None
 
     model_config = {"from_attributes": True}
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from tests._jsx_pins import open_tag, tokens
@@ -69,15 +70,19 @@ def test_job_header_shows_the_best_score_and_the_steps_below_it():
     assert "ScoreBar" in src and "CONCEPT_ICONS.locked" not in src
     assert "<JobSteps steps={steps} current={step} onSelect={setStep} />" in src
     assert src.index("</header>") < src.index("<JobSteps")
-    # The stepper: a done disc ticks, the stage's step is ringed, a later one is quiet; the shown one is underlined.
+    # The stepper (design refresh Task 4.3): a 4px bar over each step, then its mark, its name and one number. Done
+    # is the register's CircleCheck in `success` (never a bare Check), the stage's step a ringed dot in `primary`, a
+    # later one its number on a quiet disc; the shown one's name is in `primary`.
     steps = _read("components/job-steps.tsx")
-    assert 'done: "bg-success-container text-on-success-container",' in steps  # the README pair
-    assert 'current: "border-2 border-ring text-primary",' in steps
-    assert 'next: "bg-surface-container text-muted-foreground",' in steps
-    assert 'const edge = shown ? "border-primary" : "border-transparent";' in steps
+    assert "const DoneIcon = CONCEPT_ICONS.done;" in steps and not re.search(r"\bCheck\b", steps)
+    assert '<DoneIcon aria-hidden="true" className="size-4 shrink-0 text-success" />' in steps
+    assert "border-2 border-primary" in steps and "bg-surface-container text-label-small text-muted-foreground" in steps
+    bar = steps[steps.index("function StepBar(") : steps.index("export function JobSteps(")]
+    assert "block h-1 w-full" in bar and 'progress === null ? "bg-primary-container" : "bg-surface-container-highest"' in bar
+    assert 'shown ? "text-primary"' in steps
     assert 'aria-current={shown ? "step" : undefined}' in steps and '<nav aria-label="Steps"' in steps
-    # A button is named "Step N: title, done" (or ", current step"); its line is the description.
-    assert "aria-labelledby={nameId}" in steps and "aria-describedby={step.summary ? lineId : undefined}" in steps
+    # A button is named "Step N: title, done" (or ", current step"); its number is the description.
+    assert "aria-labelledby={nameId}" in steps and "aria-describedby={step.metric ? lineId : undefined}" in steps
     assert 'done: ", done", current: ", current step", next: ""' in steps
     # The pill's visible words repeat the meter's aria-label ("Best base resume, <resume>").
     assert 'aria-hidden="true" className="text-muted-foreground">{scoreShown.label}</span>' in src

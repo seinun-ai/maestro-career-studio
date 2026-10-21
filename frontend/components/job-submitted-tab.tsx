@@ -14,12 +14,9 @@ import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
 import {
   SOURCE_LABELS,
-  allAnswersToggle,
-  answerPreview,
   fieldAnchor,
   firstFlagged,
   isBlankAnswer,
-  latestAnswers,
   receiptHeading,
   splitVoluntary,
 } from "@/lib/filled-answers";
@@ -34,25 +31,24 @@ type OpenTab = (tab: "output" | "qa") => void;
 const JUMP_TARGET =
   "scroll-mt-6 rounded-corner-xs focus:outline-2 focus:outline-offset-2 focus:outline-ring";
 
-/** The receipt's one query: the full receipt and step 4's card share it. */
-function useFilledAnswers(jobId: string, active: boolean) {
+/** The receipt's one query: the full receipt and the job page's Autofill answers fold, which counts it, share it. */
+export function useFilledAnswers(jobId: string, active: boolean) {
   return useQuery({
     queryKey: ["filled-answers", jobId],
     queryFn: () => apiFetch<FilledAnswers>(`/api/jobs/${jobId}/filled-answers`),
     enabled: active,
-    // The panel stays mounted, so the app's 30s freshness would show a receipt from before a fill:
-    // opening the tab always asks again.
+    // The fold stays mounted, so the app's 30s freshness would show a receipt from before a fill:
+    // opening it always asks again.
     staleTime: 0,
     // A fill happens in another window: coming back to this one asks again.
     refetchOnWindowFocus: true,
   });
 }
 
-/** The receipt's load failure, with Try again: the full receipt and step 4's card say it the same way. */
-function FilledAnswersError({ query, className }: { query: ReturnType<typeof useFilledAnswers>; className?: string }) {
+/** The receipt's load failure, with Try again. */
+function FilledAnswersError({ query }: { query: ReturnType<typeof useFilledAnswers> }) {
   return (
     <LoadErrorState
-      className={className}
       title="Couldn't load what was submitted."
       detail={loadErrorDetail(query.error)}
       retrying={query.isFetching}
@@ -64,7 +60,8 @@ function FilledAnswersError({ query, className }: { query: ReturnType<typeof use
 /**
  * What was submitted: every answer the Companion or a connected agent filled into this job's form,
  * the latest per question, with where it came from and what to check. Read-only.
- * `active`: step panels stay mounted once shown, so the receipt is fetched only while step 4 shows.
+ * `active`: the job page's Autofill answers fold stays mounted, so the receipt is fetched only while that fold
+ * is open or step 4 shows.
  */
 export function JobSubmittedTab({
   jobId,
@@ -88,62 +85,6 @@ export function JobSubmittedTab({
     );
   }
   return <Receipt receipt={query.data} onOpenTab={onOpenTab} />;
-}
-
-/** How many answers step 4's What was submitted card shows before its link to the whole receipt. */
-const LATEST_SHOWN = 3;
-
-/**
- * Step 4's What was submitted card: the latest few answers, each with its source pill, then a link that opens the
- * whole receipt (`receiptId`, the section on the left) and says how many answers it holds.
- */
-export function SubmittedLatest({
-  jobId,
-  active,
-  receiptId,
-  receiptOpen,
-  onToggleReceipt,
-}: {
-  jobId: string;
-  active: boolean;
-  receiptId: string;
-  receiptOpen: boolean;
-  onToggleReceipt: () => void;
-}) {
-  const query = useFilledAnswers(jobId, active);
-  if (isLoadFailure(query)) return <FilledAnswersError query={query} className="py-4" />;
-  if (!query.data) return <Skeleton className="h-24 w-full" />;
-  const { fields, total } = latestAnswers(query.data, LATEST_SHOWN);
-  if (total === 0) return <p className="text-muted-foreground text-body-medium">Nothing filled yet.</p>;
-  return (
-    <div className="space-y-3">
-      {fields.length > 0 ? (
-        <ul className="space-y-2">
-          {fields.map((field, i) => (
-            <li key={`${field.question}-${i}`} className="grid gap-0.5">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="min-w-0 truncate text-title-small" title={field.question}>
-                  {field.question}
-                </span>
-                <Badge variant="secondary" className="shrink-0">{SOURCE_LABELS[field.source]}</Badge>
-              </div>
-              <p className="text-muted-foreground line-clamp-2 text-body-small break-words">{answerPreview(field)}</p>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <Button
-        variant="link"
-        size="sm"
-        className="h-auto px-0"
-        aria-expanded={receiptOpen}
-        aria-controls={receiptId}
-        onClick={onToggleReceipt}
-      >
-        {allAnswersToggle(total, receiptOpen)}
-      </Button>
-    </div>
-  );
 }
 
 function Receipt({ receipt, onOpenTab }: { receipt: FilledAnswers; onOpenTab?: OpenTab }) {

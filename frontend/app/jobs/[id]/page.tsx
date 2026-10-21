@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { use, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { useApplicationMutations } from "@/components/application-panel";
+import { ApplicationDetails, useApplicationMutations } from "@/components/application-panel";
 import { ApplyStep } from "@/components/apply-step";
 import { TailoredResumeStep } from "@/components/tailored-resume-step";
 import { LoadErrorState } from "@/components/load-error-state";
@@ -31,7 +31,7 @@ import {
 } from "@/components/job-extracted-fields";
 import { JobKnockoutCard, KnockoutLine } from "@/components/job-knockout-card";
 import { JobSteps } from "@/components/job-steps";
-import { JobSubmittedTab } from "@/components/job-submitted-tab";
+import { JobSubmittedTab, useFilledAnswers } from "@/components/job-submitted-tab";
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
 import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
 import { ProposalAgentPanel } from "@/components/proposals/proposal-agent-panel";
@@ -54,6 +54,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Fold } from "@/components/ui/fold";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ResumeTag } from "@/components/visual/resume-swatch";
 import { ScoreBar } from "@/components/visual/score-bar";
@@ -67,8 +68,11 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { headerProposalPill, historyStatusOf, proposalHasContent } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
-import { jobMetaLine } from "@/lib/job-meta";
-import { formatPay, payLine } from "@/lib/money";
+import { assumedCurrencyLine, jobMetaLine } from "@/lib/job-meta";
+import { answersSummary } from "@/lib/filled-answers";
+import { formatShortDate } from "@/lib/format-date";
+import { formatPay, payLine, periodWords } from "@/lib/money";
+import { countryName } from "@/lib/place-name";
 import { TAB_TO_STEP, currentStep, stepForTab, type StepKey } from "@/lib/job-steps";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { cn } from "@/lib/utils";
@@ -78,6 +82,7 @@ import { CONCEPT_ICONS } from "@/lib/concept-icons";
 const QueueIcon = CONCEPT_ICONS.queue;
 const ApproveIcon = CONCEPT_ICONS.approve;
 const MoreIcon = CONCEPT_ICONS.more;
+const WarningIcon = CONCEPT_ICONS.warning;
 
 /** The proposal statuses that wait on you: the job opens on step 1, where the agent's card is. */
 const PROPOSAL_WAITS_ON_YOU = new Set(["pending_review", "needs_decision", "needs_human"]);
@@ -127,12 +132,18 @@ export default function JobDetailPage({
     requestedTab != null && Object.hasOwn(TAB_TO_STEP, requestedTab) ? stepForTab(requestedTab) : null,
   );
   const setStep = (key: StepKey) => setChosenStep(key);
-  // Once opened by link, What was submitted stays on step 4: the job's own flag may predate the fill.
+  // Once opened by link, What was submitted stays on the page: the job's own flag may predate the fill. The link
+  // opens its fold and jumps to it.
   const [submittedSeen] = useState(requestedTab === "submitted");
   const receiptRef = useRef<HTMLElement | null>(null);
-  // Step 1's job details open by default on every stage; Hide details is the reader's own choice.
+  const [submittedOpen, setSubmittedOpen] = useState(submittedSeen);
+  const jumpedToReceipt = useRef(!submittedSeen);
+  // Step 1 is the job's details: the Job description fold is open by default on every stage while step 1 shows,
+  // and folding it is the reader's own choice. Under the other steps it is one of the folds, closed by default.
   const [detailsOpen, setDetailsOpen] = useState(true);
-  const detailsId = useId();
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
+  // Details and history mounts the application's fields only while open: each open reseeds them from the server.
+  const [historyOpen, setHistoryOpen] = useState(false);
   // A step's panel mounts when first shown and then stays, hidden: an answer being edited on step 4
   // survives a look at step 2 (the tabs' keepMounted rule).
   const [visited, setVisited] = useState<ReadonlySet<StepKey>>(() => new Set());
@@ -171,11 +182,14 @@ export default function JobDetailPage({
   const application = data?.application ?? null;
   const ownership = jobOwnershipView(data?.job.ownership);
   // The four steps and what the header reads with them (the score pill, the proposal, where the job stands).
-  const { proposalQuery, baseName, scoreShown, standing, steps } = useJobSteps(id, data);
+  const { proposalQuery, baseName, scoreShown, standing, steps, jobLine, draft } = useJobSteps(id, data);
   const colorOf = useBaseResumeColor();
   const money = useMoney();
   const scoreResume = scoreShown?.tailored ? application?.base_resume ?? "" : scoreShown?.targetId ?? "";
   const proposalId = data?.job.proposal_id ?? null;
+  // The receipt's query, shared with What was submitted's own: its fold counts the answers once they are in.
+  const showSubmitted = Boolean(data?.has_filled_answers) || submittedSeen;
+  const filled = useFilledAnswers(id, showSubmitted && (submittedOpen || chosenStep === "qa"));
   const { patch } = useApplicationMutations({
     applicationId: application?.id ?? "",
     jobId: id,
@@ -226,6 +240,14 @@ export default function JobDetailPage({
     const active = document.activeElement;
     if (active && active !== document.body && !active.closest("[hidden]")) return;
     stepsRef.current?.querySelector<HTMLElement>('[aria-current="step"]')?.focus({ preventScroll: true });
+  });
+
+  // A ?tab=submitted link: once the receipt is on the page, scroll to it and focus it, once.
+  useLayoutEffect(() => {
+    if (jumpedToReceipt.current || !receiptRef.current) return;
+    jumpedToReceipt.current = true;
+    receiptRef.current.scrollIntoView({ block: "start" });
+    receiptRef.current.focus({ preventScroll: true });
   });
 
   // Prev/next: proposals list writes cs-proposals-seq; Jobs (/applications) writes
@@ -279,7 +301,7 @@ export default function JobDetailPage({
     );
   }
 
-  if (isLoading || !data || !standing || !steps) {
+  if (isLoading || !data || !standing || !steps || jobLine == null) {
     return (
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 p-6">
         <Skeleton className="animate-shimmer h-16 w-2/3" />
@@ -290,7 +312,7 @@ export default function JobDetailPage({
 
   const { job } = data;
   const hasApp = !!application;
-  const showSubmitted = Boolean(data.has_filled_answers) || submittedSeen;
+  // "Company · Place · Mode · pay": the level is in the Job description fold.
   const pay = formatPay(jobPay(job), money);
   const salary = pay ? payLine(pay) : null;
   const metaLine = jobMetaLine([
@@ -298,8 +320,16 @@ export default function JobDetailPage({
     job.location,
     humanizeEnum(job.work_mode),
     salary,
-    humanizeEnum(job.level),
   ]);
+  // Under a converted figure, what the post said (D8). A currency the post did not state says what it was read as.
+  const postedPay =
+    pay?.converted && pay.posted && money.showPosted
+      ? `${pay.posted}${periodWords(pay.postedPeriod) ? ` ${periodWords(pay.postedPeriod)}` : ""} as posted`
+      : null;
+  const assumedPay =
+    pay && job.salary_currency_assumed && job.salary_currency
+      ? assumedCurrencyLine(job.salary_currency, job.country_code ? countryName(job.country_code) : null)
+      : null;
 
   const proposalStatus = job.proposal_status ?? null;
   const proposalBy = proposalStatus
@@ -350,9 +380,14 @@ export default function JobDetailPage({
       ref={receiptRef}
       className="scroll-mt-6 rounded-corner-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
-      <JobSubmittedTab jobId={id} active={step === "qa"} onOpenTab={application ? setStep : undefined} />
+      <JobSubmittedTab jobId={id} active={submittedOpen || step === "qa"} onOpenTab={application ? setStep : undefined} />
     </section>
   ) : null;
+  // Details and history: the dates the job and its application carry (the status log has no reader yet).
+  const history = [
+    { what: "Saved", on: formatShortDate(job.created_at) },
+    application?.applied_at ? { what: "Applied", on: formatShortDate(application.applied_at) } : null,
+  ].filter((entry): entry is { what: string; on: string } => entry !== null && entry.on !== "");
   if (!visited.has(step)) setVisited(new Set(visited).add(step));
 
   return (
@@ -415,6 +450,12 @@ export default function JobDetailPage({
             <p className="text-muted-foreground truncate text-body-medium" title={metaLine}>
               {metaLine}
             </p>
+            {postedPay || assumedPay ? (
+              <p className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-body-small">
+                {assumedPay ? <WarningIcon aria-hidden="true" className="size-3.5 shrink-0 text-warning" /> : null}
+                <span className="truncate">{[postedPay, assumedPay].filter(Boolean).join(" · ")}</span>
+              </p>
+            ) : null}
             {ownership.mark ? <div className="mt-2"><JobOwnershipMark jobId={id} ownership={job.ownership} /></div> : null}
           </div>
           <div ref={actionsRef} className="mt-1 ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -621,28 +662,7 @@ export default function JobDetailPage({
               {proposalId && (proposalQuery.isError || (proposalQuery.data && proposalHasContent(proposalQuery.data))) ? (
                 <ProposalAgentPanel proposalId={proposalId} />
               ) : null}
-              {/* The receipt: step 1's line, and the details under it, open by default. */}
-              <div className="bg-surface-container-low flex items-center justify-between gap-3 rounded-corner-md px-4 py-2">
-                <p className="text-body-medium">{steps[0].summary}</p>
-                <Button
-                  size="sm"
-                  variant="link"
-                  aria-expanded={detailsOpen}
-                  aria-controls={detailsId}
-                  onClick={() => setDetailsOpen(!detailsOpen)}
-                >
-                  {detailsOpen ? "Hide details" : "View details"}
-                </Button>
-              </div>
-              <div id={detailsId} hidden={!detailsOpen} className="space-y-4">
-                <JobKnockoutCard scan={data?.knockout} job={job} />
-                <JobExtractedFields
-                  job={job}
-                  hideTitle
-                  statusSlot={<KnockoutLine scan={data?.knockout} job={job} />}
-                />
-                <JobTrackingUrlField jobId={id} sourceUrl={job.source_url} readOnly={!ownership.canWrite} />
-              </div>
+              {/* The job's details are the Job description fold below, open while step 1 shows. */}
             </div>
           ) : null}
 
@@ -701,31 +721,87 @@ export default function JobDetailPage({
           {visited.has("qa") ? (
             <div hidden={step !== "qa"} className="space-y-4">
               {application ? (
-                // Step 4: the questions, Mark applied and the application's details; the cover letter and the receipt.
+                // Step 4's lead card: the resume, its score, Open the job post, Mark applied, the cover letter and the
+                // questions; History under it. What was submitted and the application's details are folds below.
                 <ApplyStep
                   app={application}
                   job={job}
-                  jobId={id}
                   readOnly={!ownership.canWrite}
                   canRequest={ownership.canRequest}
                   setStatus={setStatus}
                   statusPending={patch.isPending}
                   pendingStatus={patch.variables?.status ?? null}
-                  active={step === "qa"}
-                  receipt={receipt}
-                  receiptRef={receiptRef}
-                  receiptFirst={submittedSeen}
+                  standing={standing}
+                  score={draft}
+                  resume={{
+                    hue: colorOf(application.base_resume),
+                    name: data.base_resume_name ?? baseName(application.base_resume),
+                    tailored: scoreShown?.tailored === true,
+                  }}
                 />
               ) : (
-                <>
-                  {/* A link that opened the receipt (?tab=submitted) puts it first; else it follows. */}
-                  {submittedSeen ? receipt : null}
-                  <NothingTailoredYet onOpenFit={() => setStep("fit")} />
-                  {submittedSeen ? null : receipt}
-                </>
+                <NothingTailoredYet onOpenFit={() => setStep("fit")} />
               )}
             </div>
           ) : null}
+        </div>
+
+        {/* The Folded tier, last: the job's details (open while step 1 shows), what was filled into its form, and
+            the job's dates with the application's details. */}
+        <div className="space-y-2">
+          <Fold
+            title="Job description"
+            summary={jobLine}
+            open={step === "job" ? detailsOpen : descriptionOpen}
+            onOpenChange={step === "job" ? setDetailsOpen : setDescriptionOpen}
+          >
+            <div className="space-y-4">
+              <JobKnockoutCard scan={data?.knockout} job={job} />
+              <JobExtractedFields
+                job={job}
+                hideTitle
+                statusSlot={<KnockoutLine scan={data?.knockout} job={job} />}
+              />
+              <JobTrackingUrlField jobId={id} sourceUrl={job.source_url} readOnly={!ownership.canWrite} />
+            </div>
+          </Fold>
+          {/* Not behind an application: a form can be filled before one exists. */}
+          {receipt ? (
+            <Fold
+              title="What was submitted"
+              summary={filled.data ? answersSummary(filled.data) : undefined}
+              open={submittedOpen}
+              onOpenChange={setSubmittedOpen}
+            >
+              {receipt}
+            </Fold>
+          ) : null}
+          <Fold
+            title="Details and history"
+            summary={history.map((entry) => `${entry.what} ${entry.on}`).join(" · ")}
+            open={historyOpen}
+            onOpenChange={setHistoryOpen}
+          >
+            <div className="space-y-5">
+              <ol className="space-y-1 text-body-medium">
+                {history.map((entry) => (
+                  <li key={entry.what} className="flex gap-3">
+                    <span className="w-24 text-muted-foreground">{entry.what}</span>
+                    <span className="tabular-nums">{entry.on}</span>
+                  </li>
+                ))}
+              </ol>
+              {historyOpen && application ? (
+                <ApplicationDetails
+                  app={application}
+                  jobId={id}
+                  jobSourceUrl={job.source_url}
+                  readOnly={!ownership.canWrite}
+                  canRequest={ownership.canRequest}
+                />
+              ) : null}
+            </div>
+          </Fold>
         </div>
 
         {proposalId ? (

@@ -103,3 +103,20 @@ export function standingLine(args: {
   }
   return { kind: "none", text: "Not applied yet", pdf: false, submitted: hasFilledAnswers };
 }
+
+/**
+ * The Jobs row's date beside its status chip. Applied reads the applied date (you can set it; it is when you
+ * applied). Any other status reads when it began, the status log's newest change into it (`status_since`, "Since
+ * Oct 3"). A status older than the log falls back to the applied date the server has; with neither, nothing, and a
+ * draft never. The date stays as sent: the caller formats it.
+ */
+export function statusDate(app: {
+  status: string | null;
+  applied_at: string | null;
+  status_since?: string | null;
+}): { at: string; word: "Applied" | "Since" } | null {
+  if (!app.status || app.status === "draft") return null;
+  if (app.status === "applied" && app.applied_at) return { at: app.applied_at, word: "Applied" };
+  if (app.status_since) return { at: app.status_since, word: "Since" };
+  return app.applied_at ? { at: app.applied_at, word: "Applied" } : null;
+}

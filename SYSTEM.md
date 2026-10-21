@@ -181,30 +181,34 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    /api/jobs/ingest` (pre-extracted; the client agent is the extractor by design). Both save paths score a new job against every
    selectable base after its commit (`_persist_job` → `score_all_bases`, inline); a failure rolls back only the scores, and a
    dedup hit is not re-scored.
-2. **Jobs** — `/applications` (the URL, `?status=`/`?source=`/`?stage=` and `cs-tracker-*` keep their names): the tracker.
-   Columns Role, Match, Status (with the applied date), **Next step** and a slot for where the job is (only when it is not on this
-   copy), under a header of title, count and search. Five chips (All active, the default; Ready to apply; Waiting to hear;
-   Interviews; Closed) are presets of the status and stage filters; the grouped status `Select`, the stage and a Tracked/Yours/
-   Agents `SourceToggle` sit behind **Filters**, and the sort menu keeps every order. Next step and the stage read the server's
-   stage, one ladder per job (saved → scored → gaps → tailored → pdf_ready → applied | closed; `services/stage.py`,
-   docs/entities/job.md), sent on both list shapes and the detail. "Saved" = job with no application; agent-captured jobs stay out
-   unless the toggle is `Agents`, so the default reads Tracked, not All. Status groups: All/All active/Interviews/Closed/Saved,
-   **Your applications** and **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`). **Select** is the Agent inbox's Select
-   mode; its bar changes status, queues or deletes one row at a time through the rows' own endpoints. Rows, options and the Agent
-   inbox page (`/proposals`): frontend-conventions, "Jobs row" and "Tracker filter".
-3. **The job page** — `/jobs/[id]`: identity header (monogram, meta line, ONE status: the application's inline StatusChip, else
+2. **Jobs** — `/applications` (the URL, `?status=`/`?source=`/`?stage=` and `cs-tracker-*` keep their names): the tracker. Columns
+   Role, Match, Status (dated when it began from the status log, Applied by its date), **Next step** and a slot for where the job
+   is (only when it is not on this copy), under a header of title, count and search. Five chips (All active, the default; Ready to
+   apply; Waiting to hear; Interviews; Closed) are presets of the status and stage filters; the grouped status `Select`, the stage
+   and a Tracked/Yours/Agents `SourceToggle` sit behind **Filters**, and the sort menu keeps every order. Next step and the stage
+   read the server's stage, one ladder per job (saved → scored → gaps → tailored → pdf_ready → applied | closed;
+   `services/stage.py`, docs/entities/job.md), sent on both list shapes and the detail. "Saved" = job with no application;
+   agent-captured jobs stay out unless the toggle is `Agents`, so the default reads Tracked, not All. Status groups: All/All
+   active/Interviews/Closed/Saved, **Your applications** and **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`).
+   **Select** is the Agent inbox's Select mode; its bar changes status, queues or deletes one row at a time through the rows' own
+   endpoints. Rows, options and the Agent inbox page (`/proposals`): frontend-conventions, "Jobs row" and "Tracker filter".
+3. **The job page** — `/jobs/[id]`: identity header (monogram, "Company · Place · Mode · pay" with the posted amount under a
+   converted figure and the currency a post did not state named, ONE status: the application's inline StatusChip, else
    the proposal's pill worded like History (`headerProposalPill`), naming its filer, + Queue/Skip; a score pill, **Resume match**
    (tailored) or **Best base resume**; a Needs-you question adds **Keep it**, PATCH `pending_review`, linking the job's application
    when the proposal has none; the job link; a ⋯ **More actions**: Queue in Agent inbox, Refresh details, Delete job). Under it
    four numbered steps (`components/job-steps.tsx`, `lib/job-steps.ts`): **Job**, **Resume and gaps**, **Tailored resume**,
-   **Apply**, each with one line (a done step's receipt, a later step's hint), read from the detail's top-level `stage`
-   (`hooks/use-job-steps.ts`, shared with the gap page). The stage's step opens, set once on load (step 1 while a proposal waits on
-   you). A step with something to show is a button (3: a draft or PDF; 4: an application), one with nothing plain text, never locked. `?tab=` keeps
-   jd/fit/output/qa/submitted so deep links land. Step 1 (**Job**): the proposal's card, titled with its filer (`proposed_by`,
-   worded by `lib/agent-name.ts`), only when it carries something (`proposalHasContent`), then a receipt row (details open by default;
-   **Hide details** folds them) over the **knock-out pre-scan** (`services/knockout.scan_for`: stated JD requirements vs the profile, flagged; the decision
-   stays yours (or your agent's); verdicts and chips: docs/entities/job.md, "Knock-out pre-scan"), the job details and tracking
-   link. `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`, else `cs-tracker-seq`. Every job read derives
+   **Apply**, each a 4px bar and ONE number from the data, no sentences (skills; gaps closed; base → tailored score), read from
+   the detail's top-level `stage` (`hooks/use-job-steps.ts`, shared with the gap page). The stage's step opens, set once on load
+   (step 1 while a proposal waits on you); a shown step 2, 3 or 4 is the page's `LeadCard`, its one filled button the card's
+   action. A step with something to show is a button (3: a draft or PDF; 4: an application), one with nothing plain text, never
+   locked. `?tab=` keeps jd/fit/output/qa/submitted so deep links land. Under the steps three folds: **Job description**, **What
+   was submitted** (the receipt) and **Details and history** (the job's dates, the application's details). Step 1 (**Job**): the
+   proposal's card, titled with its filer (`proposed_by`, worded by `lib/agent-name.ts`), only when it carries something
+   (`proposalHasContent`), over the Job description fold, open while step 1 shows (folding it is yours): the **knock-out
+   pre-scan** (`services/knockout.scan_for`: stated JD requirements vs the profile, flagged; the decision stays yours (or
+   your agent's); verdicts and chips: docs/entities/job.md, "Knock-out pre-scan"), the job details and tracking link.
+   `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`, else `cs-tracker-seq`. Every job read derives
    `proposal_status`/`proposal_id` from the newest proposal.
 4. **Score** — step 2 (**Resume and gaps**, `components/resume-step.tsx`) shows the bases set for the job's country (all when
    unknown), scored at save; its auto-run on first visit is the fallback for a job saved before any base resume existed or whose
@@ -228,19 +232,20 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    the new base: "Switched to {resume}" in version history) + version row → draft-KBPoint write-back → session `tailored` →
    tailored score, one transaction (tailor() commits once at its end). The UI then lands in the studio's review mode
    (`?review=1`); step 3 shows the same changes. Internals: docs/entities/tailoring-session.md, "The tailor pipeline".
-7. **Output** — step 3 (**Tailored resume**, `components/tailored-resume-step.tsx`): a score strip (the compact before/after
-   compare and its Score breakdown, ⋯ with Tailor again and Delete application, **Edit resume** → the studio
-   `/applications/[id]/resume`, where Save chains render → re-score) and one filled button, **Create PDF** then **Continue to
-   Apply**. Below it the changes tailoring made (`GET …/resume-diff`, which carries the draft's `updated_at`), each with a Revert
+7. **Output** — step 3 (**Tailored resume**, `components/tailored-resume-step.tsx`): the lead card (the compact before/after
+   compare and its Score breakdown; one filled button, **Create PDF** then **Continue to Apply**, with **Edit resume** → the
+   studio `/applications/[id]/resume`, where Save chains render → re-score, and ⋯ with Tailor again and Delete application
+   beside it). Below it the changes tailoring made (`GET …/resume-diff`, which carries the draft's `updated_at`), each with a Revert
    that PATCHes the draft with `expected_updated_at` (409, nothing written, if it moved) and re-scores it (wording checks
    stay in the studio).
    A draft write removes the PDF (Create PDF again): the PDF card shows only the draft's own, with Download / Open / **Show in
    Finder** (§6 inv-resumes-folder-one-way), **Update PDF** and the rasterized page preview.
-8. **Apply** — step 4 (**Apply**, `components/apply-step.tsx`), one card: **Open the job post and apply** (apply link, else source
-   link; just **Open the job post** once applied or closed), the questions and history (`QASections`), **Mark applied** while a draft
-   (the StatusChip's PATCH) and an **Application details** disclosure (applied date, tracking link, referral, notes, Delete application); beside them **Cover
-   letter** (tone, no PDF line: step 3 holds the PDF) and, once filled answers exist, **What was submitted**'s latest answers, linking the whole receipt
-   (docs/entities/filled-answers.md). Step 4's line, while current, is **Where this stands** (`lib/job-standing.ts`). Cold
+8. **Apply** — step 4 (**Apply**, `components/apply-step.tsx`), the lead card: the job's resume (its page, band and square),
+   its Match score and the gain over its base, **where this stands** (`lib/job-standing.ts`), **Open the job post** (apply link,
+   else source link), **Mark applied** while a draft (the StatusChip's PATCH), and rows that open the **Cover letter** (tone; no
+   PDF line: step 3 holds the PDF) and the application questions; their History (`QASections`) under it. The receipt is the
+   page's **What was submitted** fold (docs/entities/filled-answers.md), and the application's details (applied date, tracking
+   link, referral, notes, Delete application) its **Details and history** fold. Cold
    messages are free-form questions; the QA prompt injects the application's linked referral contact.
 9. **Track** — StatusChip anywhere (Jobs row or job header): draft → applied → interviewing → offered → accepted / rejected /
    withdrawn; the Jobs row's Next step gives way to "Waiting to hear back" while Applied, then nothing. A base resume grown past

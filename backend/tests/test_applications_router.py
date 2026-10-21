@@ -128,6 +128,42 @@ def test_list_applications_ignores_removed_not_applied_param(db_session, client)
     assert {str(pending.id), str(submitted.id)} <= ids
 
 
+def test_the_list_says_when_the_current_status_began_from_the_status_log(db_session, client):
+    """The Jobs list's Status cell dates the current status (design refresh Task 4.3): the newest logged change INTO
+    it. A backfilled row carries the application's last update, not a change time, so it never counts: a status older
+    than the log has no date, never a guessed one."""
+    from datetime import timedelta
+
+    from app.models.application_status_event import ApplicationStatusEvent
+
+    t0 = datetime(2026, 9, 1, tzinfo=UTC)
+    moved = Application(job_id=_job(db_session, role_category="since_moved").id, base_resume="ds", status="interviewing")
+    old = Application(job_id=_job(db_session, role_category="since_old").id, base_resume="ds", status="applied")
+    left = Application(job_id=_job(db_session, role_category="since_left").id, base_resume="ds", status="rejected")
+    db_session.add_all([moved, old, left])
+    db_session.commit()
+
+    def event(app, to, days, **extra):
+        return ApplicationStatusEvent(application_id=app.id, to_status=to, at=t0 + timedelta(days=days), **extra)
+
+    db_session.add_all([
+        # Into interviewing, out to applied, and back: the second entry is when the status began.
+        event(moved, "interviewing", 0, source="you"),
+        event(moved, "applied", 1, source="you", from_status="interviewing"),
+        event(moved, "interviewing", 3, source="mail", from_status="applied"),
+        # Only the migration's row: no change time is known.
+        event(old, "applied", 2, source="backfill", backfilled=True),
+        # Its newest change went elsewhere than where it is now (a row written past the log): no date.
+        event(left, "interviewing", 4, source="you"),
+    ])
+    db_session.commit()
+
+    rows = {row["id"]: row for row in client.get("/api/applications").json()}
+    assert rows[str(moved.id)]["status_since"].startswith("2026-09-04")
+    assert rows[str(old.id)]["status_since"] is None
+    assert rows[str(left.id)]["status_since"] is None
+
+
 def test_patch_application_updates_fields(db_session, client):
     job = _job(db_session)
     application = Application(job_id=job.id, base_resume="hybrid", status="draft")

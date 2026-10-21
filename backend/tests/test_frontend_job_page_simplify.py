@@ -31,7 +31,7 @@ def test_the_header_shows_one_status_and_the_proposal_pill_reads_like_history():
     assert "STATUS_BADGE_CLASS[pill.styleStatus]" in _JOB
     # The pill's reason comes from the proposal itself (the same query the Overview card shares).
     assert 'queryKey: ["proposal", proposalId]' in _STEPS
-    assert "const { proposalQuery, baseName, scoreShown, standing, steps } = useJobSteps(id, data);" in _JOB
+    assert "const { proposalQuery, baseName, scoreShown, standing, steps, jobLine, draft } = useJobSteps(id, data);" in _JOB
 
 
 # ── A2: a clear score ───────────────────────────────────────────────────────
@@ -52,15 +52,18 @@ def test_the_score_pill_says_what_it_scores():
 
 def test_the_page_says_where_the_job_stands_on_step_four():
     assert "const standing = standingLine({" in _STEPS
-    # The line under the header is gone: its words are step 4's summary (lib/job-steps.ts, applySummary).
+    # The line under the header is gone: its words are step 4's lead card's (design refresh Task 4.3; the steps
+    # show numbers, no sentences).
     assert 'data-testid="job-standing"' not in _JOB
-    assert "standing: standingText," in _STEPS and 'if (state === "current") return i.standing;' in _read("lib/job-steps.ts")
-    # The old View PDF / What was submitted link row went: step 3 holds the PDF, and step 4's What was submitted
-    # card (components/apply-step.tsx) carries the receipt, with a link that opens and jumps to it.
-    assert "View PDF" not in _JOB and "standing.pdf" not in _JOB
+    assert "standing: { ...standing, text: standingText }," in _STEPS and "standing" not in _read("lib/job-steps.ts")
     apply = _read("components/apply-step.tsx")
-    assert "<SubmittedLatest" in apply
-    assert "receiptRef.current?.scrollIntoView" in apply
+    assert '{standing.text ? <p className="text-body-medium">{standing.text}</p> : null}' in apply
+    assert "standing={standing}" in _JOB
+    # The old View PDF / What was submitted link row went: step 3 holds the PDF, and the What was submitted fold
+    # carries the receipt; a ?tab=submitted link opens it and jumps to it.
+    assert "View PDF" not in _JOB and "standing.pdf" not in _JOB
+    assert "const [submittedOpen, setSubmittedOpen] = useState(submittedSeen);" in _JOB
+    assert "receiptRef.current.scrollIntoView({ block: \"start\" });" in _JOB
     # The draft's pointer to the Companion and step 2 went with the line: the steps say what is next.
     assert "standing.pointer" not in _JOB and "Tailor and Apply in the Companion" not in _JOB
     # Built from data the detail response already carries: no new request.
@@ -264,7 +267,7 @@ def test_an_applied_job_has_no_delete_proposal_in_the_header():
     delete = _JOB[_JOB.index("const showDeleteProposal =") : _JOB.index("const triagePending")]
     assert 'standing.kind !== "applied"' in delete
     # The page waits for the hook's standing with the detail, so the header never reads it unset.
-    assert "if (isLoading || !data || !standing || !steps) {" in _JOB
+    assert "if (isLoading || !data || !standing || !steps || jobLine == null) {" in _JOB
 
 
 def test_a_skip_holds_its_pill_until_the_reason_loads():

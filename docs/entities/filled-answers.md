@@ -91,7 +91,7 @@ appended and never pruned; the values live here and nowhere else (SYSTEM.md §6 
 - **Surfaces.** `POST /api/jobs/{id}/filled-answers` answers `{id, application_id, flag_count, flags}`, the
   run's flags by index into the request's `fields` (the Companion's **Check before you submit** group);
   `GET` answers the grouped receipt: per question the latest answer, by step and section, with
-  `host`, `pages`, `captured_at` and `flag_count` (**What was submitted** on the job page's Apply step, shown when
+  `host`, `pages`, `captured_at` and `flag_count` (**What was submitted**, a fold on the job page, shown when
   `GET /api/jobs/{id}/detail` says `has_filled_answers`); `get_final_review` carries the job's flagged
   answers as `flags` (question, source, answer, reasons). Read-only: correcting an answer there does
   not learn it.

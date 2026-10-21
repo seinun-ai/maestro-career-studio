@@ -12,7 +12,7 @@ import unicodedata
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
@@ -82,6 +82,23 @@ def set_status(session: Session, application: Application, to_status: str | None
                                    to_status=to_status, source=clean_source(source, YOU))
     session.add(event)
     return event
+
+
+def status_since(session: Session, applications: list[Application]) -> dict[uuid.UUID, datetime]:
+    """When each application's current status began: its newest logged change INTO that status (the Jobs list's
+    Status cell). A `backfilled` row carries the application's last update, not a change time, so it never counts;
+    an application whose status has no logged change into it is left out, and the caller shows no date."""
+    current = {a.id: a.status for a in applications if a.status}
+    if not current:
+        return {}
+    newest = session.execute(
+        select(ApplicationStatusEvent.application_id, ApplicationStatusEvent.to_status,
+               func.max(ApplicationStatusEvent.at))
+        .where(ApplicationStatusEvent.application_id.in_(list(current)),
+               ApplicationStatusEvent.backfilled.is_(False))
+        .group_by(ApplicationStatusEvent.application_id, ApplicationStatusEvent.to_status)
+    ).all()
+    return {app_id: at for app_id, to_status, at in newest if current.get(app_id) == to_status}
 
 
 def _stamp_applied_at(application: Application, fields: set[str]) -> None:

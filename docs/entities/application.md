@@ -26,7 +26,10 @@ any column write moves (notes, referral, a render). So after Restart gap analysi
 step 3 keeps the rung at `gaps`: the draft did not change, and only a draft write (a Revert, an
 edit, a tailor) outranks the open session. The `GET /api/jobs/match` summary carries the same six
 fields for the job's newest application (`for_job_rows`, four queries), so the Companion and
-`find_job_by_url` see the rung the Jobs list shows.
+`find_job_by_url` see the rung the Jobs list shows. The list summary alone also carries
+`status_since`, when the current status began: the newest status event INTO it, never a
+`backfilled` row (`application_status.status_since`, one query per page); null when the log holds no
+change into the current status, and the Jobs row then shows the applied date it has.
 
 - **Status vocabulary is backend-owned**: `ALLOWED_STATUSES` in
   `schemas/application.py` = draft, applied, interviewing, offered, accepted,

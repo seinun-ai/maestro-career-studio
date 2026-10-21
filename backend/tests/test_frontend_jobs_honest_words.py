@@ -204,7 +204,7 @@ def test_the_gap_page_draws_step_two_with_the_resume_chips():
     # An analysis whose resume has no chip says why.
     assert "is archived, so it has no chip here." in page and "has no Match score for this job, so it has no chip here." in page
     # Step 2's no-session panel says where Analyze gaps goes.
-    assert "It opens on its own page, with these steps\n                  on top." in _read("components/resume-step.tsx")
+    assert "It opens on its own page, with these steps on top." in squash(_read("components/resume-step.tsx"))
 
 
 def test_gap_rows_read_whole():
@@ -304,11 +304,14 @@ def test_a_running_button_keeps_focus(rel: str, marker: str):
 
 def test_find_gaps_keeps_focus_while_it_starts():
     step = _read("components/resume-step.tsx")
-    # Analyze gaps, the step's own button: pending keeps focus on it while the gap analysis starts.
-    button = step[step.rfind("<Button", 0, step.index('{creating ? "Analyzing gaps…" : "Analyze gaps"}')) :]
-    button = button[: button.index("</Button>")]
-    assert "focusableWhenDisabled" in button and "pending={creating}" in button
-    assert '{creating ? "Analyzing gaps…" : "Analyze gaps"}' in button
+    # Analyze gaps, the step's own button, is the lead card's action (design refresh Task 4.3): pending keeps focus
+    # on it while the gap analysis starts, because the lead card's button is always focusable when disabled.
+    action = squash(step[step.index('label: creating ? "Analyzing gaps…" : "Analyze gaps",') :])
+    action = action[: action.index("},")]
+    assert "pending: creating," in action and "disabled: busy || readOnly," in action
+    lead = _read("components/ui/lead-card.tsx")
+    press = open_tag(lead[lead.rindex("<Button", 0, lead.index("pending={action.pending}")) :], "Button")
+    assert "focusableWhenDisabled" in press and "disabled={action.disabled}" in press
     # Use resume as is keeps it too (one button, drawn in either state of the picked resume).
     as_is = step[step.index("const asIsButton = ") : step.index("Use resume as is\n")]
     assert "focusableWhenDisabled" in as_is and "pending={asIs.isPending}" in as_is
@@ -317,30 +320,26 @@ def test_find_gaps_keeps_focus_while_it_starts():
 def test_step_two_has_one_filled_button():
     """Four blue "Find gaps and tailor" buttons, each with Start over and Mark applied under it, read as
     clutter. Step 2 now picks one resume from a chip row, so the view carries ONE filled button: Analyze
-    gaps, or Continue gap analysis while the picked resume has an open gap analysis. Use resume as is is
-    outline, and the rarer actions sit behind ⋯, whose items close onto ⋯ (it stays), so the confirms
-    return there."""
+    gaps, or Continue gap analysis while the picked resume has an open gap analysis, or View tailored resume once
+    its analysis tailored the job's resume. Since the design refresh (Task 4.3) the view is a LeadCard whose
+    `action` is that one button; Use resume as is and Analyze gaps again are outline, beside it (`secondary`), and
+    the rarer actions sit behind ⋯, whose items close onto ⋯ (it stays), so the confirms return there."""
     step = _read("components/resume-step.tsx")
     body = step[step.index("export function ResumeStep(") :]
     body = body[body.index("const asIsButton = ") : body.index("<UploadDialog")]
-    # Filled = the default variant: no `variant=` on the two actions; everything else names its own.
-    # The whole opening tag (open_tag skips the `>` of `=>` and braces), so a variant anywhere in it fails.
-    analyze_at = body.rfind("<Button", 0, body.index('{creating ? "Analyzing gaps…" : "Analyze gaps"}'))
-    analyze = open_tag(body[analyze_at:], "Button")
-    assert "pending={creating}" in analyze and "variant=" not in analyze
-    assert "disabled={busy || readOnly}" in analyze  # the tag's last attribute: the slice runs past onClick
-    cont_at = body.rfind("<Button", 0, body.index("Continue gap analysis"))
-    cont = open_tag(body[cont_at:], "Button")
-    assert "Continue gap analysis" in cont and "variant=" not in cont
-    # The branches of one ternary on the picked resume's gap analysis (open, finished, none): one filled button each.
-    view_at = body.rfind("<Button", 0, body.index("View tailored resume"))
-    assert body.index("{openSession && !creating ? (") < cont_at < body.index(") : finished ? (") < view_at
-    assert view_at < body.index(") : (") < analyze_at
-    assert "variant=" not in open_tag(body[view_at:], "Button")
-    assert "onClick={() => void switcher.analyze(pickedSlug)}" in analyze
+    # No Button in the view is filled by hand: each names its variant, and the filled one is the lead card's.
     buttons = _button_tags(body)
-    unnamed = [b for b in buttons if "variant=" not in b]
-    assert len(unnamed) == 3, unnamed  # Continue gap analysis, View tailored resume, Analyze gaps
+    assert buttons and all("variant=" in b for b in buttons), [b for b in buttons if "variant=" not in b]
+    assert "<LeadCard eyebrow=\"Resume and gaps\" action={lead.action} secondary={lead.secondary}>" in body
+    # The arms of one ternary on the picked resume's gap analysis (open, finished, none): one action each, in order.
+    lead = squash(body[body.index("const lead: {") : body.index("return (")])
+    arms = [lead.index("openSession && !creating ? {"), lead.index('label: "Continue gap analysis",'),
+            lead.index(": finished ? {"), lead.index('label: "View tailored resume",'),
+            lead.index('label: creating ? "Analyzing gaps…" : "Analyze gaps",')]
+    assert arms == sorted(arms), arms
+    assert lead.count("action: {") == 3
+    analyze = lead[lead.index('label: creating ? "Analyzing gaps…" : "Analyze gaps",') :]
+    assert "onClick: () => void switcher.analyze(pickedSlug), pending: creating, disabled: busy || readOnly," in analyze
     assert '"Analyze gaps"' in body and "Find gaps" not in step
     as_is = body[: body.index("Use resume as is")]
     assert 'variant="outline"' in as_is
@@ -376,14 +375,14 @@ def test_step_two_shows_the_gap_analysis_that_made_the_job_s_tailored_resume():
     assert 'import { defaultResumePick, finishedAnalysis } from "@/lib/resume-pick";' in step
     assert ("const finished = openSession ? null : finishedAnalysis({ sessions: sessions.data ?? [], application, "
             "picked: pickedSlug });") in squash(step)
-    done = _slice(step, ") : finished ? (", ") : (")
+    done = _slice(step, ": finished\n", "          : {")
     # The counts are the gap page's own (lib/gap-counts), worded as the step's line words them.
-    assert "gapCounts(" in step[step.index("const finishedCounts"):step.index(") : finished ? (")]
+    assert "gapCounts(" in step[step.index("const finishedCounts"):step.index(": finished\n")]
     assert '{`${finishedCounts.answered} ${finishedCounts.answered === 1 ? "gap" : "gaps"} answered, ' in done
     assert "${finishedCounts.skipped} skipped. Step 3 has the tailored resume.`}" in done
     assert '<p className="text-title-small">Gap analysis done</p>' in done
-    view = open_tag(done[done.rfind("<Button", 0, done.index("View tailored resume")):], "Button")
-    assert "onClick={onOpenTailored}" in view and "variant=" not in view
+    # View tailored resume is the lead card's action (filled); Analyze gaps again sits beside it, outline.
+    assert 'action: { label: "View tailored resume", onClick: () => onOpenTailored?.() },' in done
     again = open_tag(done[done.rfind("<Button", 0, done.index("Analyze gaps again")):], "Button")
     assert 'variant="outline"' in again and "onClick={() => void switcher.analyze(pickedSlug)}" in again
     assert "pending={creating}" in again and "focusableWhenDisabled" in again and "disabled={busy || readOnly}" in again
@@ -416,8 +415,9 @@ def test_a_resume_pick_is_a_preview_and_the_writes_confirm():
     step = _read("components/resume-step.tsx")
     assert "onPick={setChosen}" in step and "confirmSwitch" not in step[step.index("onPick=") - 200 : step.index("onPick=")]
     assert "const switcher = useResumeSwitch({ jobId, application, sessions: sessions.data ?? [] });" in step
-    # Continue stays a link while nothing would be replaced; else the confirm goes first.
-    cont = step[step.index("// A link while nothing would be replaced") : step.index("Continue gap analysis\n")]
+    # Continue stays a link while nothing would be replaced; else the confirm goes first (the lead card's action).
+    cont = step[step.index('label: "Continue gap analysis",') : step.index("secondary: answered === 0")]
+    assert "// A link while nothing would be replaced" in cont and "href: `/jobs/${jobId}/tailor/${openSession.id}`," in cont
     assert 'if (!switcher.switchWords(pickedSlug, "continue")) return;' in cont and "event.preventDefault();" in cont
     assert "void switcher.continueOn(pickedSlug, openSession.id);" in cont
     # Use resume as is: the switch words for another resume; the old Replace draft words for the same one.
@@ -525,20 +525,26 @@ def test_a_gap_row_hands_focus_to_what_replaces_it():
 # --- The job workspace ---------------------------------------------------------
 
 
-def test_no_step_is_locked_and_a_future_step_says_what_opens_it():
+def test_no_step_is_locked_and_a_future_step_shows_no_made_up_number():
+    """Design refresh Task 4.3: a step says one number from the data ("18 skills", "6 of 6 closed", "72.3 → 84.0"),
+    no sentences, so a later step's hint ("After Create PDF") went with the lines. A later step with nothing to show
+    is still plain text, never locked."""
     page = _read(_JOB_PAGE)
     steps = _read("components/job-steps.tsx")
     # A later step with nothing to show is plain text: not a button, never disabled, no lock, no tooltip.
     cell = steps[steps.index("              ) : (\n                <div") : steps.index("</li>")]
-    assert '<div className={cn(CELL, edge, busy && "opacity-50")}' in cell and "<button" not in cell and "tabIndex" not in cell
+    assert '<div className={cn(CELL, busy && "opacity-50")}' in cell and "<button" not in cell and "tabIndex" not in cell
     # Never natively disabled; `aria-disabled` only while the gap page's write runs (it stays focusable).
     assert not re.search(r"(?<!aria-)disabled=", steps)
     assert "title=" not in steps and "Lock" not in steps and "Tooltip" not in steps
     for gone in ("LOCKED_REASON", "lockedReasonId", "CONCEPT_ICONS.locked", "aria-describedby", "Unlocks after you tailor"):
         assert gone not in page, gone
-    # Its line says what opens it (lib/job-steps.ts, node-tested).
+    # No sentence under a step: its one number, or nothing where the data has none (lib/job-steps.ts, node-tested).
     lib = _read("lib/job-steps.ts")
-    assert '"Review the changes, edit, Create PDF"' in lib and '"After Create PDF"' in lib
+    assert "summary" not in lib and "metric: string | null;" in lib
+    for hint in ("Review the changes, edit, Create PDF", "After Create PDF", "Pick a resume and analyze its gaps"):
+        assert hint not in lib, hint
+    assert "{step.metric ? (" in steps
     # A link to step 3 or 4 before the job has its own resume shows a panel that says so, and points at step 2.
     assert '<p>Nothing tailored yet.</p>' in page and "Go to Resume and gaps" in page
     assert page.count('<NothingTailoredYet onOpenFit={() => setStep("fit")} />') == 2
@@ -553,7 +559,7 @@ def test_a_step_with_something_to_show_is_a_button():
     # The hook hands the builder the application itself, so `hasApplication` and the draft come from it.
     hook = _read(_STEPS_HOOK)
     assert "const application = detail?.application ?? null;" in hook
-    assert "jobStepsInput({" in hook and "      application,\n" in hook
+    assert "jobStepsInput({" in hook and "    application,\n" in hook
     assert "useJobSteps(id, data)" in page
 
 
@@ -583,8 +589,10 @@ def test_the_steps_read_the_details_own_stage():
 def test_step_one_reads_the_knockout_card_words():
     hook = _read(_STEPS_HOOK)
     assert 'import { knockoutWords } from "@/lib/knockout-line";' in hook
-    assert ("knockout: knockoutWords( detail.knockout?.status ?? null, "
-            "detail.knockout ? knockoutNotChecked(detail.knockout, job) : false, )") in squash(hook)
+    # Now the Job description fold's summary (design refresh Task 4.3): the step's own number is the skills.
+    assert ("const jobLine = jobFacts( skillCount, knockoutWords( detail.knockout?.status ?? null, "
+            "detail.knockout ? knockoutNotChecked(detail.knockout, job) : false, ), );") in squash(hook)
+    assert 'title="Job description" summary={jobLine}' in squash(_read(_JOB_PAGE))
 
 
 def test_every_old_tab_link_still_lands_on_a_step():
@@ -618,10 +626,12 @@ def test_the_rare_actions_sit_behind_one_more_actions_menu():
     assert items == ["Queue in Agent inbox", "Refresh details", "Delete job"], items
     assert menu.count("<DropdownMenuItem") == 3 and 'label="More actions"' in menu
     assert menu.count("returnFocus: moreTrigger,") == 2  # each confirm returns to ⋯
-    # Out of the header: the Details menu lives on step 4; nothing else is an icon-only delete.
+    # Out of the header: the application's details are the Details and history fold (design refresh Task 4.3);
+    # nothing else is an icon-only delete.
     assert "<ApplicationDetailsMenu" not in header and 'label="Delete job"' not in page
     assert page.index('{visited.has("qa") ? (') < page.index("<ApplyStep")
-    assert "<ApplicationDetails" in _read("components/apply-step.tsx")
+    fold = page[page.index('title="Details and history"') :]
+    assert "{historyOpen && application ? (" in fold and "<ApplicationDetails" in fold
     assert "ApplicationDetailsMenu" not in _read("components/application-panel.tsx")
     assert "actionsSlot=" not in page
 
@@ -831,16 +841,18 @@ def _slice(src: str, start: str, end: str) -> str:
 
 def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions():
     src = _read(_STEP_THREE)
-    step = _slice(src, "export function TailoredResumeStep(", "function ScoreStrip(")
-    # One filled button: Create PDF before a PDF, Continue to Apply once one exists (the two arms of one ternary).
-    filled = [t for t in _button_tags(src) if "variant=" not in t]
-    assert len(filled) == 2, filled
-    assert 'onClick={() => onOpenStep("qa")}' in filled[0] and "onClick={() => renderOnce()}" in filled[1]
-    assert step.index("const filled = hasPdf ? (") < step.index('onOpenStep("qa")') < step.index(") : (") < step.index(
-        "{renderPdf.isPending ? pdfWords.pending : pdfWords.label}")
-    # Edit resume is in the strip, an outline link; the page no longer places it above the step.
-    strip = _slice(src, "function ScoreStrip(", "function ChangesList(")
-    assert "<Link href={`/applications/${app.id}/resume`}>" in strip and "{filled}" in strip
+    step = _slice(src, "export function TailoredResumeStep(", "function ChangesList(")
+    # One filled button, the lead card's action (design refresh Task 4.3): Create PDF before a PDF, Continue to
+    # Apply once one exists (the two arms of one ternary). No Button in the file is filled by hand.
+    assert all("variant=" in t for t in _button_tags(src)), [t for t in _button_tags(src) if "variant=" not in t]
+    filled = squash(step[step.index("const filled: LeadAction = hasPdf") : step.index("const updatePdf")])
+    assert '? { label: "Continue to Apply", onClick: () => onOpenStep("qa") }' in filled
+    assert ": { label: renderPdf.isPending ? pdfWords.pending : pdfWords.label," in filled
+    assert "onClick: () => renderOnce(), pending: renderPdf.isPending, disabled: busy || readOnly," in filled
+    assert '<LeadCard eyebrow="Tailored resume" action={filled}' in squash(step)
+    # Edit resume sits beside it, an outline link; the page no longer places it above the step.
+    beside = step[step.index("secondary={") : step.index("</LeadCard>")]
+    assert "<Link href={`/applications/${app.id}/resume`}>" in beside and 'variant="outline"' in beside
     assert "Edit resume" not in _read(_JOB_PAGE)
     # The PDF card: the file's own actions as named icon buttons, then Update PDF (small, outline).
     card = _slice(src, "function PdfCard(", "function TailoredResumeMenu(")
@@ -853,12 +865,12 @@ def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions()
     assert len(update) == 1 and 'variant="outline"' in update[0] and 'size="sm"' in update[0]
     # canvas is only the ground the preview paints: the card's own line sits on surface-container-low.
     assert "bg-canvas" not in src
-    # The rare actions sit behind the strip's ⋯.
+    # The rare actions sit behind the lead card's ⋯.
     menu = src[src.index("function TailoredResumeMenu(") :]
     assert 'label="More actions for the tailored resume"' in menu
     assert 'onClick={() => onOpenStep("fit")}' in menu and "Tailor again" in menu and "Delete application" in menu
-    # The full compare (each skill Gained, Lost or Same, Update score): a disclosure under the strip, frameless.
-    toggle = open_tag(step, "Button", "breakdown={")
+    # The full compare (each skill Gained, Lost or Same, Update score): a disclosure under the compact one, frameless.
+    toggle = open_tag(step[step.rindex("<Button", 0, step.index("Score breakdown\n")) :], "Button")
     assert "aria-expanded={breakdownOpen}" in toggle and "aria-controls={breakdownId}" in toggle
     assert "<div id={breakdownId} hidden={!breakdownOpen}" in step
     assert "<AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} bare />" in step
@@ -866,22 +878,28 @@ def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions()
     assert "Creating the PDF failed. Try again." in step
 
 
-def test_step_four_applies_with_the_cover_letter_beside_it_and_the_details_under_it():
+def test_step_four_is_one_lead_card_with_the_details_folded():
+    """Design refresh Task 4.3: step 4 is the page's lead card. The job's resume (its page, band and square), its Match
+    score with the gain over its base resume, where the job stands, Open the job post (the one filled button), Mark
+    applied (outline) and two tonal rows that open the cover letter and the application questions; History under it.
+    What was submitted and the application's details are page folds."""
     src = _read("components/apply-step.tsx")
-    flat = " ".join(src.split())
+    flat = squash(src)
     # The job post opens in a new tab: its apply link, else its source link; without either, Mark applied is filled.
     assert "const postHref = job.apply_url || job.source_url || null;" in src
-    assert 'target="_blank" rel="noopener noreferrer"' in src
-    # "and apply" is a promise the page makes only while the application is a draft: once applied or closed the
-    # link still opens the job post, but the label stops asking the reader to apply again.
-    assert '{isDraft ? "Open the job post and apply" : "Open the job post"}' in src
-    assert 'variant={postHref ? "tonal" : "default"}' in src
-    # One filled button across the step: the step's own file and the questions and cover letter it lays out. The
-    # cover letter editor's Save is the one other, and it exists only while a letter is open for editing.
+    assert '{ label: "Open the job post", icon: <ExternalLink className="size-4" />, href: postHref, external: true }' in flat
+    lead = _read("components/ui/lead-card.tsx")
+    assert '<a href={action.href} target="_blank" rel="noopener noreferrer" onClick={onClick} />' in lead
+    # "and apply" was a promise to drop once applied; the label never makes it now, and the eyebrow says Ready to
+    # apply only while the application is a draft.
+    assert "Open the job post and apply" not in src
+    assert 'eyebrow={isDraft ? "Ready to apply" : "Your application"}' in src
+    # One filled button: no Button in the step or the parts it lays out is filled by hand (the cover letter editor's
+    # Save, the one other, exists only while a letter is open for editing).
     qa = _read("components/qa-tab.tsx")
     filled = [t for t in _button_tags(src) + _button_tags(qa) if "variant=" not in t]
-    assert len(filled) == 2 and "render={<a href={postHref}" in filled[0], filled
-    assert "await onSave(draft)" in filled[1] and "{isDocument && editing ? (" in qa
+    assert len(filled) == 1 and "await onSave(draft)" in filled[0], filled
+    assert "{isDocument && editing ? (" in qa
     for click in ("onClick={() => askOnce(questions)}", "onClick={() => void generateCoverLetter()}"):
         assert 'variant="outline"' in next(t for t in _button_tags(qa) if click in t), click
     # Mark applied is the header chip's transition through the page's one guarded starter, and shows only while
@@ -890,33 +908,48 @@ def test_step_four_applies_with_the_cover_letter_beside_it_and_the_details_under
     assert "const setStatus = useSingleFlight(patch.mutate);" in page
     assert "onSelect={(status) => setStatus({ status })}" in page and "setStatus={setStatus}" in page
     assert 'setStatus({ status: "applied" });' in src and "patch" not in src
-    assert "{isDraft ? (" in src and '{applying ? "Applying…" : "Mark applied"}' in src
+    mark = open_tag(src[src.rindex("<Button", 0, src.index("aria-describedby={markHintId}")) :], "Button")
+    assert 'variant="outline"' in mark and "pending={statusPending}" in mark and "onClick={mark}" in mark
+    assert "postHref && isDraft ? (" in src and src.count('{applying ? "Applying…" : "Mark applied"}') == 1
+    assert 'label: applying ? "Applying…" : "Mark applied",' in src  # filled, when there is no job post to open
     assert "Sets today as the applied date." in src
     assert "Interviewing, Offer and Rejected come after, on the status chip." in src
-    # Step 4's sections are headings, as step 3's are.
-    for title in ("Application questions", "Cover letter", "History"):
-        assert f">{title}</h2>" in qa, title
-    assert "<h2>What was submitted</h2>" in src and '<h2 className="text-title-small">Done applying?</h2>' in src
-    # The application's details: the page's disclosure toggle, closed by default, mounting the fields only while
-    # open (each open reseeds them from the server), and a blur saves only a field that changed.
-    assert "const [detailsOpen, setDetailsOpen] = useState(false);" in src
-    toggle = open_tag(src[src.rindex("<Button", 0, src.index("ref={detailsToggle}")) :], "Button")
-    assert 'variant="link"' in toggle and "aria-expanded={detailsOpen}" in toggle and "aria-controls={detailsId}" in toggle
-    assert "{detailsOpen ? ( <ApplicationDetails" in flat
+    # The rows are headings, and each opens its editor (a real disclosure); the parts carry no title of their own.
+    for title in ("Application questions", "Cover letter"):
+        assert f'title="{title}"' in src, title
+    assert '<h2 id={titleId} className="min-w-0 flex-1 text-title-small">{title}</h2>' in src
+    row = src[src.index("function ApplyRow(") : src.index("export function ApplyStep(")]
+    assert 'variant="tonal"' in row and "aria-expanded={open}" in row and "aria-controls={panelId}" in row
+    assert "<div id={panelId} hidden={!open}" in row
+    assert ">History</h2>" in qa and ">Cover letter</h2>" not in qa and ">Application questions</h2>" not in qa
+    # The cover letter's row says whether one is written, only once the answers loaded.
+    assert 'note={facts.hasCoverLetter === undefined ? null : facts.hasCoverLetter ? "Written" : "Not written"}' in src
+    assert "hasCoverLetter: entries === undefined ? undefined : hasCoverLetter," in qa
+    # The score is the draft's, with the gain over its base resume only when both are scored.
+    assert "const gain = score?.score != null && score.base != null ? score.score - score.base : null;" in src
+    assert "<DeltaChip value={gain} />" in src and "Match score" in src
+    # The resume's square belongs on this card (D2): the band, the page and the name on the resume's tint.
+    thumb = _read("components/tailored-resume-thumb.tsx")
+    assert '<div aria-hidden="true" className="h-1.5 shrink-0 bg-resume" />' in thumb
+    assert "<ResumeTag hue={hue}" in thumb and "bg-resume-container" in thumb and "style={resumeColorStyle(hue)}" in thumb
+    assert "<TailoredResumeThumb app={app} hue={resume.hue} name={resume.name} tailored={resume.tailored} />" in src
+    # The application's details: the page's Details and history fold, mounting the fields only while open (each
+    # open reseeds them from the server), and a blur saves only a field that changed.
+    assert "const [historyOpen, setHistoryOpen] = useState(false);" in page
+    assert "{historyOpen && application ? ( <ApplicationDetails" in squash(page)
     panel = " ".join(_read("components/application-panel.tsx").split())
     assert "if (appliedAt !== formatDateInput(app.applied_at)) onPatch({ applied_at: toIsoDate(appliedAt) });" in panel
     assert 'if (notes !== (app.notes ?? "")) onPatch({ notes });' in panel
     assert "each open reseeds the fields from the server, so a stale local note can never overwrite" in panel
-    # The right column has no PDF line and no preview: step 3 holds the PDF and its download (owner, 2026-10-16).
-    assert "PdfFileLine" not in src and "PdfPagesPreview" not in src and "No PDF yet" not in src
-    # The cover letter card moves to the right column; QASections keeps the state, and `arrange` is required.
-    assert "arrange={({ questions, coverLetter, history }) => (" in src
+    # No PDF line and no preview: step 3 holds the PDF and its download (owner, 2026-10-16).
+    assert "PdfFileLine" not in src and "PdfPagesPreview" not in src
+    # QASections keeps the state, and `arrange` is required.
+    assert "arrange={({ questions, coverLetter, history, facts }) => (" in src
     assert "arrange: (parts: QAParts) => ReactNode;" in qa and "arrange = " not in qa
-    assert "return arrange({ questions: questionsCard, coverLetter: coverLetterCard, history });" in qa
+    assert "questions: questionsPart," in qa and "coverLetter: coverLetterPart," in qa
     # The receipt's "Cover letter attached" jumps to the letter's History entry, not the card that writes one.
     assert "jumpId={isLetterTarget ? COVER_LETTER_ID : undefined}" in qa and "id={jumpId}" in qa
     assert "Edit it or create its PDF in History." in qa
-    assert "entries !== undefined && !hasCoverLetter ? (" in qa and "Not written" in qa
     # Edit resume lives on step 3; the Companion button waits for a way to tell it is paired.
     assert "Edit resume" not in src and "Let the Companion fill it" not in src
 
@@ -942,7 +975,7 @@ def test_step_three_change_rows_read_and_revert_one_by_one():
     assert "<li key={id}" in fold and "const id = ids[position];" in fold and "hunkIds(hunks)" in src
     assert '<p className="sr-only" aria-live="polite">' in rows
     # A revert edits the draft the list describes, and never creates the PDF again behind your back.
-    step = _slice(src, "export function TailoredResumeStep(", "function ScoreStrip(")
+    step = _slice(src, "export function TailoredResumeStep(", "function ChangesList(")
     # The diff names the draft it was computed from; a revert goes only against that one, and says so to the
     # server, which refuses it (409) if the row has moved since.
     assert "if (diff.data?.updated_at !== app.updated_at) {" in step
