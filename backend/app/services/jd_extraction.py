@@ -3,17 +3,27 @@ from decimal import Decimal
 from typing import Any
 
 from app.schemas.job_extraction import JobExtraction
-from app.services import llm, model_settings, prompt_assembly
+from app.services import countries, llm, model_settings, prompt_assembly
+
+
+# An hourly pay hint, for when the model left pay out. The unit is "per hour", "/hr", "an hour"
+# or "hourly" right after the amount, never a bare "40 hours", and the amount is pay only with a
+# currency mark beside it ($, £, €, ¥, ₹, "US$", "USD") or a pay word just before it: "40 hours
+# per week" is working time.
+_SYMBOL = r"(?:[A-Z]{0,2}\$|[£€¥₹])"
+_CODE = "(?-i:" + "|".join(sorted(countries.currency_codes())) + ")"
+_PER_HOUR = r"\s*(?:/\s*(?:hr|hour)|per\s+(?:hr|hour)|an\s+hour|hourly)\b"
+
+
+def _amount(name: str) -> str:
+    return rf"(?P<{name}_mark>{_SYMBOL})?\s*(?P<{name}>\d+(?:\.\d+)?)\s*(?P<{name}_code>{_CODE}\b)?"
 
 
 HOURLY_RANGE_RE = re.compile(
-    r"\$?\s*(?P<min>\d+(?:\.\d+)?)\s*(?:-|to|–|—)\s*\$?\s*(?P<max>\d+(?:\.\d+)?)\s*(?:/|\s*per\s*)?(?:hr|hour)",
-    re.IGNORECASE,
+    _amount("min") + r"\s*(?:-|to|–|—)\s*" + _amount("max") + _PER_HOUR, re.IGNORECASE
 )
-HOURLY_SINGLE_RE = re.compile(
-    r"\$?\s*(?P<value>\d+(?:\.\d+)?)\s*(?:/|\s*per\s*)?(?:hr|hour)",
-    re.IGNORECASE,
-)
+HOURLY_SINGLE_RE = re.compile(_amount("value") + _PER_HOUR, re.IGNORECASE)
+_PAY_WORD_BEFORE = re.compile(r"\b(?:pay|rate|salary|compensation|wage)s?\b[^.;\n]{0,40}$", re.IGNORECASE)
 
 
 # Work-authorization backstop. The LLM defaults to "unstated" when a posting
@@ -62,23 +72,29 @@ def apply_work_auth_backstop(
     return extraction
 
 
+def _is_pay(raw_text: str, match: re.Match[str], names: tuple[str, ...]) -> bool:
+    """A currency mark on an amount, or a pay word just before the match."""
+    groups = match.groupdict()
+    if any(groups.get(f"{name}_mark") or groups.get(f"{name}_code") for name in names):
+        return True
+    return bool(_PAY_WORD_BEFORE.search(raw_text[: match.start()]))
+
+
+def _hourly_pay(raw_text: str) -> tuple[str, str] | None:
+    for pattern, low, high in ((HOURLY_RANGE_RE, "min", "max"), (HOURLY_SINGLE_RE, "value", "value")):
+        for match in pattern.finditer(raw_text):
+            if _is_pay(raw_text, match, (low, high)):
+                return match.group(low), match.group(high)
+    return None
+
+
 def _apply_salary_hints(raw_text: str, extraction: dict[str, Any]) -> dict[str, Any]:
     if extraction.get("salary_min") is not None or extraction.get("salary_max") is not None:
         return extraction
-
-    range_match = HOURLY_RANGE_RE.search(raw_text)
-    if range_match:
-        extraction["salary_min"] = Decimal(range_match.group("min"))
-        extraction["salary_max"] = Decimal(range_match.group("max"))
+    found = _hourly_pay(raw_text)
+    if found:
+        extraction["salary_min"], extraction["salary_max"] = (Decimal(value) for value in found)
         extraction["salary_period"] = "hour"
-        return extraction
-
-    single_match = HOURLY_SINGLE_RE.search(raw_text)
-    if single_match:
-        extraction["salary_min"] = Decimal(single_match.group("value"))
-        extraction["salary_max"] = Decimal(single_match.group("value"))
-        extraction["salary_period"] = "hour"
-
     return extraction
 
 

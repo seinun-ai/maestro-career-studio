@@ -83,6 +83,11 @@ def label(code: str | None) -> str | None:
     return _load().get((code or "").strip().upper())
 
 
+def currency_codes() -> frozenset[str]:
+    """Every ISO 4217 code the data names, for telling "45 USD" from "45 WPM"."""
+    return frozenset(_currencies().values())
+
+
 def currency(code: str | None) -> str | None:
     """The ISO 4217 currency a country's pay is posted in ("CA" -> "CAD"), from data. None when
     the code is not a country or the data names no single currency for it (Antarctica)."""
