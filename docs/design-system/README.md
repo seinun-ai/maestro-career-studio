@@ -19,8 +19,32 @@ Maestro Career Studio is a desktop web app for a job search: it tracks jobs, tai
 - **No em dash as a clause joiner.** Use two sentences or a colon. The dash stays for an empty cell and inside composed labels.
 - **Address the person as "you"; the app is not "we".** Say what happened and what to do: "Enter a number, such as 2."
 - **Be honest about state.** Never say saved while a save is pending; a failed load is its own state, not an empty one; a cut-off list says so at its end.
-- Page subtitles are one clause: "Jobs you saved and every application." A page built on the tiers (see Shape) has none: its Lead says what matters.
+- **No page subtitle** (owner decision D1): the Lead says what matters, and a count or a one-line promise sits in the header's `meta`, on the title's line (Jobs' count, the Agent inbox's "Nothing is sent without your yes"). Where a subtitle stays (Add a job, a studio's save status, Profile's "Lives in … · applies in …"), it is one clause.
 - No emoji.
+
+## Rates and counts
+
+- **A rate shows only from 20 in its denominator** (owner decision D7): a percent with its Wilson 95% range in brackets, "19% (11–30%)". Below 20 it reads as the counts, "5 of 12", even when the server sends a rate; with nothing to count it is "—". One chip near the numbers says the rule ("A rate shows from 20"), and a second explains the brackets only while a range shows.
+- **Every share renders through `RateLabel`** (`lib/rates.ts` `rateWords` where the words go in a table cell and its title); no other file reads a share's rate or range.
+- **A colour ramp is for a share only.** A cell that reads "2 of 3" sits on a plain fill, so its colour claims no share.
+- A figure with its own minimum shows the count until it is met and says what it needs: "A typical time shows from 5 dated replies."
+
+## Money
+
+- **One home currency** (owner decision D8): the currency of the country you live in, unless you pick another (Settings › Basics › Money). Every pay figure goes through `formatPay` (`lib/money.ts`); a call site never formats pay itself.
+- **"≈" marks every figure that is not as posted**: converted from another currency, or made yearly from another period. The posted amount stays under it ("£70K–£85K a year as posted") while Show the posted amount too is on. A figure in the home currency, as posted, reads plain.
+- The home currency shows its narrow symbol ("€75K–€90K"); every other currency its full one ("US$", "CA$"), so a bare "$" never reads as dollars of an unknown country. A range writes both ends out.
+- **Rates are the European Central Bank's daily reference rates.** The rate date shows once a page, where its conversion is explained (the job's Job details, "rate of Oct 19"; Analytics' pay by role, "ECB rate of Oct 19"), never beside each figure. Settings › Basics › Money names the source and the date with Update.
+- **No rate, no conversion.** A currency the ECB does not quote, or no rates yet, shows the amount as posted, says so ("As posted: no exchange rate for this currency"), and is left out of every comparison: Analytics counts it under "left out: no exchange rate", and a salary check reads **Can't compare**.
+- **Missing pay is never estimated.** A post that states no pay shows none. A post that states no currency reads in its country's currency and says so ("Pay read as Canadian dollars, job is in Canada").
+- Nothing sorts or filters on pay. Analytics' yearly pay by role ranks the roles on their converted pay and hides a role with fewer than 5 jobs that list it, counting what it hid.
+
+## Countries and forms
+
+- **You live in** one country (the home currency and the date format) and **you apply in** one or more (owner decision D9). Both are picked from the markets in `markets.yaml`; a job can be in any country, stored as one ISO code and named in words (`countryName`), "Not stated" when the post names none. Countries, currencies and work-permit wording come from data files, never from a call site.
+- **Work-permit answers are kept per country you apply in**, each asked in that country's own words (`work_auth_vocab`: the United States adds the visa status, the United Kingdom asks about the right to work, the rest a generic set) and headed by the country's name.
+- **A form question gets the answer for the country it names, else the job's country, else none**: the Companion asks once on that job. A question that names two countries, or a country with no answers, is asked too: one country's answer is never filled into another's question. (The Companion's quick rule pass still sees only the job's set, a known limit: `docs/deferred.md` item 52.)
+- **A diversity set shows only where a checked one exists** (the United States and the United Kingdom today), its consent switch and date beside the answers (D10). Applying only where none exists asks none.
 
 ## Color
 
@@ -48,8 +72,9 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 - `chart-1` to `chart-6` are for chart series only, in their fixed order: blue, orange, teal, violet, ochre, slate. They are OKLCH near one lightness per theme, with no red or green series, so a chart never reads as good or bad, and each holds 3:1 on `card` in light and dark. One series is `chart-1`; the six are only for comparing. `brand-blue` and `brand-yellow` are for the mark only.
 - **Company monograms are neutral**: every company's initial sits on `surface-container-highest` with `foreground`, so the base resume square is the only hue in a row and a status chip the only state colour.
 - **Base resume color is identity, never state.** Each base resume has one hue, picked at random from the free presets when it is made and changeable in its Target. Draw it as a square (`ResumeSwatch`) beside the resume's name, never alone and never as a round pill or dot (round is status). The tones come from the hue (`resume`, `resume-container`, `on-resume-container`), so any hue holds contrast.
-- **Only a card that stands for one base resume** (its gallery card, its score card) carries the color as a 6px top band; the gallery card also tints its footer with `resume-container`, and the score card keeps its body as it is. Rows, pages and the sidebar never take it. PDFs never carry it.
-- **Charts split by base resume** color each series by its resume. Every other chart keeps `chart-1` to `chart-6`.
+- **Where the square goes** (owner decision D2): beside a base resume's name wherever a page names one, and on what the resume was picked for: Agent inbox rows (the agent picked that resume), the job page's resume chips, score card and tailored-resume card, Today's cards, Profile's apply-in chips (the resumes made for that country), Analytics' By resume rows and every chart split by resume, and the gallery card. **Never on the Jobs list** (a resume is picked after a job is saved, so a row's Match score names its resume only on hover), never as or beside a status, never on a button or in the sidebar, and never in a PDF.
+- **A card that stands for one base resume** carries the color as a 6px top band over its page image and a `resume-container` footer with `on-resume-container` text: the gallery card, and the tailored-resume card on the job page's Apply step (`TailoredResumeThumb`, the job's resume drawn like its gallery card). A card that only names a resume, such as a score card, takes the square alone. Rows and pages never take the band or the tint.
+- **Charts split by base resume** color each series by its resume, with `ResumeTag`s as the legend. Every other chart keeps `chart-1` to `chart-6`.
 
 ## Surfaces and elevation
 
@@ -111,7 +136,8 @@ One corner per kind of thing: `radius-corner-2xs` (2px) the resume square; `radi
 
 ## Motion
 
-- `ease-standard` with `duration-short3` (150ms) for hover and selection, `duration-short4` (200ms) for a control changing shape.
+- `ease-standard` with `--duration-short3` (150ms) for hover and selection, `--duration-short4` (200ms) for a control changing shape.
+- **The durations and the strong curves live in `:root`**, not `@theme`, so a utility reads them through the variable: `duration-(--duration-short3)`, `ease-(--ease-out-strong)`. The bare `duration-short3` compiles to nothing and the transition snaps. `ease-standard` and the two emphasized curves are theme tokens and work bare.
 - Things entering use `ease-emphasized-decelerate`; leaving, `ease-emphasized-accelerate`.
 - Lists rise in with `animate-fade-rise`; skeletons use `animate-shimmer`.
 - **A status that changes** cross-fades: the old label fades out and the new one in, with a 2px blur between (`animate-status-out` and `animate-status-in`, 200ms, strong ease-out), and the chip holds the wider label's width while they cross.
@@ -146,17 +172,23 @@ Each component page has a live preview in light and dark, what you provide, and 
 
 - Actions: Button
 - Status: Badge, StatusChip
-- Selection: SegmentedToggle, FilterChips
+- Selection: SegmentedToggle, FilterChips, FiltersButton (a list's rarer filters), and SelectToggle with SelectionBar (Select mode, shared by Jobs and the Agent inbox)
 - Inputs: TextField, SelectionControls
 - Tiers: LeadCard (Lead) and Fold (Folded) from `components/ui/`
-- Containment: Card, StatTile
+- Containment: Card, StatTile, TileCard (a Profile tile's editor)
 - Navigation: Sidebar, PageHeader, Tabs
-- Data: JobsTable, HealthSummary, NextStep (a row's next move)
+- Data: JobsTable, HealthSummary, NextStep (a row's next move), RateLabel (a share, D7)
 - Visual primitives (nine): DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline and DayStrip from `components/visual/`, and StatusDot from `status-chip.tsx`, which also exports `LaneDot` for proposal statuses
 - Motion: NumberRoll, WorkingDots and CheckDraw from `components/visual/`
-- Communication: Callout, EmptyState, JudgedText, Dialog
+- Communication: Callout, EmptyState, JudgedText, Dialog, HintTip (a section's explanation in a tooltip), AutosaveStatus (a card that saves as you go)
 - Base resume color: ResumeSwatch and ResumeTag from `components/visual/`, and ResumeColorPicker from `components/base-resumes/`
 
 ## Not synced
 
-Matches the app after all eight token steps and the six approved interface changes in `docs/plans/2026-10-02-design-system-tokens.md` (branch `claude/ds-steps`, on `main` at `5baf568c`); the repo's tests pin each rule. Skipped variables: `primary-container-hover` and `secondary-container-hover` (they are `color-mix()` values). Fonts: Geist and Geist Mono load from Google Fonts; no font files are stored. Components: previews are static HTML that uses the repo's own Tailwind classes, compiled with its `globals.css`; the React components were not built into a bundle, so menus, popovers and dialogs do not open. Not previewed: the nine visual primitives (DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, DayStrip, StatusDot), ResumeSwatch, ResumeColorPicker, the tiers (LeadCard, Fold), NextStep and the motion primitives (NumberRoll, WorkingDots, CheckDraw) have a README and no `preview.html`, and the Button `pending` state and the field warning appear in their READMEs only; the motion utilities are described, not demonstrated. The claude.ai artifact copy was synced with the base resume color work on 2026-10-13 (README, tokens.json and the component READMEs) and does not have the design refresh's tiers, motion primitives, OKLCH chart series or neutral monograms yet; its `bundle.css` was not regenerated, so no preview draws the `resume` tones, the `radius-corner-2xs` square or the sticky dialog footer, its chart tokens are the old hexes, and the JobsTable preview's neutral monogram reads `--surface-container-highest` through an inline style until the bundle has the class. Not yet covered: dropdown menu, popover, sheet, tooltip, slider, sortable list, chip input, the resume studio, gap-analysis cards, the Assistant, charts and the settings cards.
+This folder matches the app at the end of the design refresh (`docs/plans/2026-10-20-design-refresh.md`: the tiers, the motion primitives, the OKLCH chart series, neutral monograms, the resume-square rule, money, countries and rates), on top of the eight token steps in `docs/plans/2026-10-02-design-system-tokens.md`; the repo's tests pin each rule. What does not match yet:
+
+- **The claude.ai Design System artifact** (https://claude.ai/artifact/VxnjspbkP71d8Z183QqrB7) has not been synced with the design refresh. It holds the base resume color work (README, `tokens.json` and the component READMEs as of 2026-10-13) and none of the tiers, motion primitives, OKLCH chart series, neutral monograms, money, country or rate rules, or the new cards. Its owner syncs it.
+- **`components/bundle.css` was not regenerated.** Its chart tokens are the old Google-family hexes, it has no `resume` tones, no `radius-corner-2xs` square, no sticky dialog footer and no `bg-surface-container-highest`, so the JobsTable preview's neutral monogram reads that token through an inline style.
+- **Previews were not regenerated.** The JobsTable preview still draws the old columns (Resume, Applied, Added), the Sidebar preview the old order with no Today or More tools, and the PageHeader preview a subtitle. These have a README and no `preview.html`: the nine visual primitives (DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, DayStrip, StatusDot), ResumeSwatch, ResumeColorPicker, the tiers (LeadCard, Fold), NextStep, the motion primitives (NumberRoll, WorkingDots, CheckDraw), SelectionBar, FiltersButton, HintTip, RateLabel, TileCard and AutosaveStatus. The Button `pending` state and the field warning appear in their READMEs only, and the motion utilities are described, not demonstrated.
+- Skipped variables: `primary-container-hover` and `secondary-container-hover` (they are `color-mix()` values). Fonts: Geist and Geist Mono load from Google Fonts; no font files are stored. Previews are static HTML that uses the repo's own Tailwind classes, compiled with its `globals.css`; the React components were not built into a bundle, so menus, popovers and dialogs do not open.
+- Not yet covered: dropdown menu, popover, sheet, tooltip, slider, sortable list, chip input, the resume studio, gap-analysis cards, the Assistant, charts and the settings cards.
