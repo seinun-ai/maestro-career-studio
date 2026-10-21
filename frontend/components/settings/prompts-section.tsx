@@ -240,6 +240,7 @@ function PromptCard({
             </Button>
             <Button
               size="sm"
+              variant="tonal"
               focusableWhenDisabled
               disabled={save.isPending || value === prompt.value}
               className="data-disabled:pointer-events-none data-disabled:opacity-50"

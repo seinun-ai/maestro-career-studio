@@ -899,11 +899,13 @@ def test_step_four_is_one_lead_card_with_the_details_folded():
     # apply only while the application is a draft.
     assert "Open the job post and apply" not in src
     assert 'eyebrow={isDraft ? "Ready to apply" : "Your application"}' in src
-    # One filled button: no Button in the step or the parts it lays out is filled by hand (the cover letter editor's
-    # Save, the one other, exists only while a letter is open for editing).
+    # One filled button, the card's action: no Button in the step or the parts it lays out is filled by hand. The
+    # cover letter editor's Save shows inside the card while a letter is open for editing, so it is tonal
+    # (test_frontend_one_filled_button.py).
     qa = _read("components/qa-tab.tsx")
     filled = [t for t in _button_tags(src) + _button_tags(qa) if "variant=" not in t]
-    assert len(filled) == 1 and "await onSave(draft)" in filled[0], filled
+    assert filled == [], filled
+    assert 'variant="tonal"' in next(t for t in _button_tags(qa) if "await onSave(draft)" in t)
     assert "{isDocument && editing ? (" in qa
     for click in ("onClick={() => askOnce(questions)}", "onClick={() => void generateCoverLetter()}"):
         assert 'variant="outline"' in next(t for t in _button_tags(qa) if click in t), click

@@ -258,6 +258,8 @@ work-permit answers for each country you apply in.
   sponsorship questions in Profile › Work permits.", and the Companion says an answer it learned was
   "Saved to Profile › Start and pay." and that diversity filling is "turned off in Profile › Diversity
   questions".
+- **Save is a light button on Settings**, in How you come across and under a cover letter you edit, so
+  the one solid blue button on a page is its next step.
 
 ### Fixed
 

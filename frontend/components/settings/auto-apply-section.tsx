@@ -252,6 +252,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
         <Button
           ref={saveRef}
           type="button"
+          variant="tonal"
           focusableWhenDisabled
           disabled={!draft || save.isPending}
           className="data-disabled:pointer-events-none data-disabled:opacity-50"

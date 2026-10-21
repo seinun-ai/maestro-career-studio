@@ -283,8 +283,13 @@ def test_wave5_review_one_glyph_per_meaning_and_honest_marks():
     assert "findIndex((o) => o.concept === chip.concept)" in chat and "key={chip.concept}" in chat
     assert "FilePlus2" not in _read("components/resume-versions/version-history-sheet.tsx")
     assert '(row.matched ? "Matched" : "Missing")' in _read("components/ats-compare-panel.tsx")
+    # "PDF ready" is good news, so it is quiet: a neutral chip with the done glyph, never a tonal badge. (The cover
+    # letter editor's Save is a tonal Button: test_frontend_one_filled_button.py.)
     qa = _read("components/qa-tab.tsx")
-    assert "CONCEPT_ICONS.done" in qa and 'variant="tonal"' not in qa
+    at = re.search(r"\s+PDF ready\s*</span>", qa).start()
+    mark = qa[qa.rindex("<span", 0, at) : at]
+    assert "CONCEPT_ICONS.done" in mark and "bg-surface-container" in mark and "secondary-container" not in mark
+    assert "<Badge" not in qa
     for path in ("components/resume-step.tsx", "components/score-summary.tsx", "components/resume-health/question-pass.tsx"):
         src = _read(path)
         assert not any(w in src for w in ("TriangleAlert", "CircleX", "Minus")), path

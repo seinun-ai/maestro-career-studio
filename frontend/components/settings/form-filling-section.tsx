@@ -291,6 +291,7 @@ export function FormFillingSection() {
             </Button>
             <Button
               size="sm"
+              variant="tonal"
               disabled={save.isPending || key === null}
               onClick={() => saveOnce({ api_key: key?.trim() || null })}
             >

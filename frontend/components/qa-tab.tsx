@@ -532,6 +532,7 @@ function QAEntryCard({
             <div className="flex gap-2">
               <Button
                 size="sm"
+                variant="tonal"
                 disabled={isSaving || readOnly}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"

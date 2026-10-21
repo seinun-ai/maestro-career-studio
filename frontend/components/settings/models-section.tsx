@@ -596,6 +596,7 @@ export function ApiKeysEditor({ data, inUse }: { data: OpenAIInfo; inUse: readon
       <div className={ACTION_ROW}>
         <Button
           size="sm"
+          variant="tonal"
           focusableWhenDisabled
           disabled={saveKeys.isPending || PROVIDERS.every((p) => keys[p] === null)}
           className="data-disabled:pointer-events-none data-disabled:opacity-50"

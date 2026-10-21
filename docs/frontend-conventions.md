@@ -1490,7 +1490,11 @@
   size or colour override), then a hint, then the control. A list of
   switches is a `divide-y` of `SwitchRow` (44px tall, the label toggles it).
   Save and its siblings are the body's last row, `ACTION_ROW`: right-aligned,
-  secondary first (Discard, Reset to default, then Save). A second containment
+  secondary first (Discard, Reset to default, then Save). Save is tonal (outline
+  beside its field, as the custom AI server's address): every Settings card saves
+  its own form, so no action leads a tab, and a card's own Save under a lead card
+  (Profile's How you come across, Apply's cover letter) is tonal too. One filled
+  button per view is pinned by `test_frontend_one_filled_button.py`. A second containment
   level is a tonal `CardSection`, never a bordered box. A Remove in a list is
   `RemoveButton`: muted at rest, destructive only on hover or focus, named for
   its row (`Remove school 2`), and focus goes on to a neighbour or the Add

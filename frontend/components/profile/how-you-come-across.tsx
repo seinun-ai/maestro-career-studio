@@ -182,6 +182,7 @@ function PersonaEditor({
           </Button>
           <Button
             type="button"
+            variant="tonal"
             size="sm"
             focusableWhenDisabled
             disabled={save.isPending}

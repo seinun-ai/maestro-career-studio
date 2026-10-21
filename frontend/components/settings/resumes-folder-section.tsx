@@ -224,6 +224,7 @@ function FolderRow({
               Cancel
             </Button>
             <Button
+              variant="tonal"
               focusableWhenDisabled
               disabled={busy || !draft.trim()}
               className="data-disabled:pointer-events-none data-disabled:opacity-50"

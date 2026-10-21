@@ -288,6 +288,7 @@ function JobSiteLoginActions({ editor, saved }: { editor: LoginEditor; saved: bo
       </Button>
       <Button
         type="submit"
+        variant="tonal"
         focusableWhenDisabled
         className="data-disabled:pointer-events-none data-disabled:opacity-50"
         disabled={!dirty || busy}
