@@ -36,9 +36,11 @@ a click.
 
 ### Breaking changes
 
-- None. One migration adds a column (`kb_points.merged_into_point_id`) and a table
-  (`kb_point_kept_pairs`) and runs by itself at startup. Existing API fields and MCP tools keep their
-  shapes; the sync responses gain a field.
+- None. Migrations add a column (`kb_points.merged_into_point_id`), a table (`kb_point_kept_pairs`)
+  and two job columns (`country_code`, `salary_currency_assumed`), and run by themselves at startup.
+  Existing API fields and MCP tools keep their shapes; the sync responses gain a field. A job's
+  `work_mode` and `level` now read as one key each (`on_site` where some read `onsite`, `senior` for
+  "Sr."), and the migration re-spells saved jobs the same way.
 
 ### Added
 
@@ -98,6 +100,27 @@ a click.
 
 - **A sync that could not load the embedding model no longer reads every bullet as new in silence.**
   It still adds them, so sync works where the model cannot load, but it now says so.
+- **Best-paying role compares one currency.** It ranks only roles paid in the currency most jobs list
+  pay in, and says so when pay in another currency was left out, so ₹2,400,000 no longer beats
+  $170,000.
+- **Skills by role stays within 100%.** A Level, employment type, country or currency filter now
+  narrows both sides of each percentage, not only the job count under it.
+- **Roles over time follows the filters** and shows every week from the first to the last, with 0 for
+  a role that had no jobs that week.
+- **Match score over time reads one base resume per job.** The Base line plots each job's best base
+  instead of averaging every base it was scored against.
+- **No percentage on fewer than 20.** "At interview or later" reads "1 of 3" until 20 applications
+  are in, then shows the rate.
+- **Average score gain follows All / Yours / Agents.**
+- **Charts say when they fail to load,** with Try again, instead of "No data yet".
+- **Job market counts each value once.** "Hybrid" and "hybrid ", or "USA" and "United States", are
+  one bar, the Country filter lists each country once, and a job that names no country reads "Not
+  stated".
+- **Working hours are not pay.** "40 hours per week" no longer reads as an hourly rate of 40: an
+  hourly figure needs a currency mark or a word such as pay or rate beside it.
+- **A bare "$" takes the job's country.** A Toronto job's "$80,000" is Canadian dollars, not US
+  dollars. With no country it is your home currency, and either way the job notes the currency was
+  assumed.
 
 ## [0.11.1] — 2026-10-16
 
