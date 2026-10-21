@@ -86,6 +86,7 @@ def test_apply_extraction_maps_currency_and_home_fallback(monkeypatch):
         },
     )
     assert job.salary_currency == "GBP"
+    assert job.salary_currency_assumed is False  # the posting said it
     assert job.country == "GB"
 
     bare = Job(raw_text="y", raw_text_hash="i" * 64, source="user")
@@ -93,12 +94,14 @@ def test_apply_extraction_maps_currency_and_home_fallback(monkeypatch):
         bare,
         {"salary_min": "50", "salary_max": "60", "salary_period": "hour"},
     )
-    assert bare.salary_currency == "USD"  # HOME_CURRENCY default
+    assert bare.salary_currency == "USD"  # no country: the home currency (HOME_CURRENCY default)
+    assert bare.salary_currency_assumed is True
 
     none = Job(raw_text="z", raw_text_hash="j" * 64, source="user")
     _apply_extraction(none, {"title": "No pay stated"})
     assert none.salary_min is None
     assert none.salary_currency is None
+    assert none.salary_currency_assumed is False
 
 
 def test_apply_extraction_salary_source_url_without_numbers():
@@ -183,3 +186,37 @@ def test_apply_extraction_writes_the_country_code():
     unknown = Job(raw_text="z", raw_text_hash="cc3" * 21 + "z", source="user")
     _apply_extraction(unknown, {"title": "Engineer", "location_raw": "Remote"})
     assert unknown.country_code is None
+
+
+def test_a_bare_dollar_sign_is_not_us_dollars():
+    for text in ("$", " $ ", "dollars"):
+        assert JobExtraction.model_validate({"salary_currency": text}).salary_currency is None, text
+    for text in ("US$", "us$", "USD", "usd", "$USD", "USD $"):
+        assert JobExtraction.model_validate({"salary_currency": text}).salary_currency == "USD", text
+    assert JobExtraction.model_validate({"salary_currency": "CAD"}).salary_currency == "CAD"
+
+
+def test_a_bare_dollar_in_toronto_is_canadian_and_assumed():
+    from app.models.job import Job
+    from app.routers.jobs import _apply_extraction
+
+    extraction = JobExtraction.model_validate({
+        "title": "Analyst", "salary_min": "80000", "salary_max": "95000", "salary_period": "year",
+        "salary_currency": "$", "city": "Toronto", "state": "ON", "location_raw": "Toronto, ON, Canada",
+    }).model_dump(mode="json")
+    job = Job(raw_text="t", raw_text_hash="t" * 64, source="user")
+    _apply_extraction(job, extraction)
+    assert job.country_code == "CA"
+    assert job.salary_currency == "CAD"
+    assert job.salary_currency_assumed is True
+
+
+def test_a_country_with_no_currency_falls_back_to_home_and_is_assumed():
+    from app.models.job import Job
+    from app.routers.jobs import _apply_extraction
+
+    job = Job(raw_text="a", raw_text_hash="a" * 64, source="user")
+    _apply_extraction(job, {"salary_min": "10", "salary_period": "hour", "country": "AQ"})
+    assert job.country_code == "AQ"
+    assert job.salary_currency == "USD"  # HOME_CURRENCY default: Antarctica has no currency entry
+    assert job.salary_currency_assumed is True

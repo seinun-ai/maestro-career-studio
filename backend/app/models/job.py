@@ -58,6 +58,11 @@ class Job(Base):
     # postings carry no pay at all, and a posting may legally hyperlink a pay
     # page (IL 820 ILCS 112/10(b-25)) instead of stating numbers.
     salary_currency: Mapped[str | None] = mapped_column(Text)
+    # True when the posting gave an amount but no currency (a bare "$" included) and capture took
+    # the job's country's currency, else the home currency (routers/jobs._salary_currency_for).
+    salary_currency_assumed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=expression.false()
+    )
     salary_source_url: Mapped[str | None] = mapped_column(Text)
     work_authorization: Mapped[str | None] = mapped_column(Text)
     opt_accepted: Mapped[str | None] = mapped_column(Text)

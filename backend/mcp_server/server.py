@@ -423,7 +423,9 @@ def store_extracted_jd(
     map to these; any other level is kept in its own words), employment_type,
     work_mode: "remote"|"hybrid"|"on_site" (stored as that key), city/state/country
     (the job also stores country_code, the one ISO code they name),
-    location_raw, salary_min/max, salary_period,
+    location_raw, salary_min/max, salary_period, salary_currency (ISO 4217; a bare "$"
+    is no currency, so the job takes its country's, else the home one, and
+    salary_currency_assumed is true),
     work_authorization: "sponsorship_available"|"no_sponsorship"|"citizen_or_gc_required"|"unstated",
     opt_accepted: "yes"|"stem_opt_ok"|"no"|"unstated",
     years_experience_min/max, skills[{skill_name, skill_category,

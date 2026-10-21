@@ -137,7 +137,7 @@ def _apply_extraction(
     job.salary_min = _decimal_or_none(extraction.get("salary_min"))
     job.salary_max = _decimal_or_none(extraction.get("salary_max"))
     job.salary_period = extraction.get("salary_period")
-    job.salary_currency = _salary_currency_for(job, extraction, session)
+    job.salary_currency, job.salary_currency_assumed = _salary_currency_for(job, extraction, session)
     job.salary_source_url = _str_or_none(extraction.get("salary_source_url"))
     job.work_authorization = extraction.get("work_authorization")
     job.opt_accepted = extraction.get("opt_accepted")
@@ -149,24 +149,28 @@ def _apply_extraction(
 
 def _salary_currency_for(
     job: Job, extraction: dict[str, Any], session: Session | None = None
-) -> str | None:
-    """ISO code from the posting, else the selected market's currency.
+) -> tuple[str | None, bool]:
+    """(ISO code, assumed): the posting's own currency, else the job's country's, else the home
+    currency. The last two are assumptions and say so; a bare "$" is no currency of its own
+    (`JobExtraction.normalize_salary_currency`), so a Toronto job's "$" reads as CAD.
 
     Never invent a currency for a null salary — absent pay is the normal case
     (~40% of US postings and ~88% of German ones carry none, and an Illinois
     posting may legally just link to a pay page).
 
-    The market setting is the answer when there is one: it is user-chosen and
-    visible, whereas HOME_CURRENCY is an env var. Falling back to the env var
-    when the market is unset keeps existing deployments working, but the two
-    must never both be consulted for the same job — one source per answer.
+    The home currency is `market_settings.default_currency_for_capture`: the market setting
+    when there is one (user-chosen and visible), else HOME_CURRENCY (deployment config), never
+    both for the same job — one source per answer. `job.country_code` must be set first.
     """
     currency = _str_or_none(extraction.get("salary_currency"))
     if currency:
-        return currency.upper()
+        return currency.upper(), False
     if job.salary_min is None and job.salary_max is None:
-        return None
-    return market_settings.default_currency_for_capture(session)
+        return None, False
+    from_country = countries.currency(job.country_code)
+    if from_country:
+        return from_country, True
+    return market_settings.default_currency_for_capture(session), True
 
 
 def _job_from_extraction(

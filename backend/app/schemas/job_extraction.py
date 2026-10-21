@@ -247,19 +247,19 @@ class JobExtraction(BaseModel):
     @field_validator("salary_currency", mode="before")
     @classmethod
     def normalize_salary_currency(cls, value: Any) -> str | None:
+        """An ISO 4217 code, from a code or an unambiguous symbol. A bare "$" is no currency: it
+        is the dollar of a dozen countries, so the capture path reads the job's country instead
+        (`routers/jobs._salary_currency_for`) and marks the result assumed."""
         text = _blank_to_none(value)
         if text is None:
             return None
         cleaned = text.strip().upper()
-        symbols = {"£": "GBP", "€": "EUR", "¥": "JPY", "₹": "INR", "$": "USD"}
+        symbols = {"£": "GBP", "€": "EUR", "¥": "JPY", "₹": "INR", "US$": "USD"}
         if cleaned in symbols:
             return symbols[cleaned]
-        for prefix in ("US$", "$"):
-            if cleaned.startswith(prefix):
-                cleaned = cleaned[len(prefix) :].strip() or "USD"
-                break
-        if len(cleaned) == 3 and cleaned.isalpha():
-            return cleaned
+        code = re.sub(r"[\s$]", "", cleaned)  # "$USD" and "USD $" name their code; "$" names none
+        if len(code) == 3 and code.isalpha():
+            return code
         return None
 
     @field_validator("work_authorization", mode="before")

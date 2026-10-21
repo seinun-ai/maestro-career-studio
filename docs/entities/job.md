@@ -22,11 +22,18 @@ has no application: no draft time to read).
   pay; some laws let a posting hyperlink a pay page — capture that as
   `salary_source_url`, leave min/max null). Never treat a null salary as a
   parse failure or quality defect.
-- **`salary_currency`** (ISO 4217, nullable; migration `c37b89e136ad`). Amounts
-  without a code fall back to `HOME_CURRENCY` (default `USD`) in
-  `_apply_extraction` and in the migration backfill — never hard-code `USD` at
-  the call site. `salary_period` accepts `hour|day|week|month|year` (day/week
-  for UK/EU contractor rates).
+- **`salary_currency`** (ISO 4217, nullable; migration `c37b89e136ad`) and
+  **`salary_currency_assumed`** (bool, NOT NULL default false; migration `ff9591f140f7`).
+  A bare "$" is no currency (`JobExtraction.normalize_salary_currency`; "US$" and "USD" are
+  USD). An amount without a code takes the job's country's currency (`countries.currency(country_code)`,
+  data in `services/data/country_currencies.yaml`), else the home currency
+  (`market_settings.default_currency_for_capture`: the market setting, else `HOME_CURRENCY`), both
+  marked `salary_currency_assumed` by `_salary_currency_for`; never hard-code `USD` at the call site.
+  The backfill marked rows whose extraction named no currency; a "$" the old symbol table read as USD
+  cannot be told from a stated one and stays unmarked. `salary_period` accepts `hour|day|week|month|year`
+  (day/week for UK/EU contractor rates). The hourly pay hint (`jd_extraction._apply_salary_hints`, used
+  only when the model left pay out) needs a currency mark or a pay word beside the amount and a
+  per-hour unit, so "40 hours per week" is never pay.
 - **Extraction→columns mapping** lives in ONE place: `_apply_extraction`
   (routers/jobs.py) — used by create and re-extract. Keep it that way; a drifted
   second mapper once wrote only 12 of 22 fields, so never reintroduce a

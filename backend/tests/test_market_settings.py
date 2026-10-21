@@ -120,6 +120,7 @@ def test_capture_currency_follows_the_selected_market():
         job = Job(raw_text="x", raw_text_hash="a" * 64, source="user")
         _apply_extraction(job, dict(extraction), s)
         assert job.salary_currency == "INR"
+        assert job.salary_currency_assumed is True  # the job names no country: the home currency
 
         client.put("/api/settings/market", json={"value": {"market": "UK"}})
         job = Job(raw_text="y", raw_text_hash="b" * 64, source="user")
@@ -130,6 +131,12 @@ def test_capture_currency_follows_the_selected_market():
         job = Job(raw_text="z", raw_text_hash="c" * 64, source="user")
         _apply_extraction(job, dict(extraction, salary_currency="eur"), s)
         assert job.salary_currency == "EUR"
+        assert job.salary_currency_assumed is False
+
+        # a job in a country takes that country's currency before the market's, still assumed
+        job = Job(raw_text="v", raw_text_hash="e" * 64, source="user")
+        _apply_extraction(job, dict(extraction, country="DE"), s)
+        assert (job.salary_currency, job.salary_currency_assumed) == ("EUR", True)
 
         # and a posting with no pay still gets no currency invented for it
         job = Job(raw_text="w", raw_text_hash="d" * 64, source="user")

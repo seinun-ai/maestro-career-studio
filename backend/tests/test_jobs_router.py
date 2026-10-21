@@ -886,3 +886,22 @@ def test_capture_stores_one_country_code_and_one_spelling(db_session, client):
     assert body["level"] == "senior"
     listed = next(j for j in client.get("/api/jobs").json() if j["id"] == body["id"])
     assert listed["country_code"] == "CA"
+
+
+def test_ingest_reads_a_bare_dollar_as_the_jobs_country_currency(db_session, client):
+    """The MCP `store_extracted_jd` path gets the capture rule: a bare "$" is no currency, so a
+    job in Canada takes CAD, marked assumed."""
+    extraction = dict(
+        _valid_extraction(), salary_min=90000, salary_max=110000, salary_period="year",
+        salary_currency="$", country="CA", location_raw="Toronto, ON",
+    )
+    r = client.post("/api/jobs/ingest", json={"extracted_json": extraction, "raw_text": "cad jd"})
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["salary_currency"], body["salary_currency_assumed"]) == ("CAD", True)
+    listed = next(j for j in client.get("/api/jobs").json() if j["id"] == body["id"])
+    assert listed["salary_currency_assumed"] is True
+
+    stated = dict(_valid_extraction(), salary_min=90000, salary_currency="USD", country="CA")
+    r = client.post("/api/jobs/ingest", json={"extracted_json": stated, "raw_text": "usd jd"})
+    assert (r.json()["salary_currency"], r.json()["salary_currency_assumed"]) == ("USD", False)

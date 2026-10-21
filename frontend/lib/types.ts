@@ -68,6 +68,9 @@ export interface Job {
   salary_max: string | number | null;
   salary_period: string | null;
   salary_currency: string | null;
+  /** True when the posting gave no currency (a bare "$" included) and capture took the job's
+   *  country's, else the home currency. Optional: an older backend does not send it. */
+  salary_currency_assumed?: boolean;
   salary_source_url: string | null;
   work_authorization: string | null;
   opt_accepted: string | null;

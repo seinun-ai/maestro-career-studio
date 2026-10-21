@@ -101,6 +101,8 @@ class JobRead(BaseModel):
     salary_max: Decimal | None = None
     salary_period: str | None = None
     salary_currency: str | None = None
+    # True when the posting gave no currency and capture assumed one (_salary_currency_for).
+    salary_currency_assumed: bool = False
     salary_source_url: str | None = None
     work_authorization: str | None = None
     opt_accepted: str | None = None
@@ -158,6 +160,7 @@ class JobSummary(BaseModel):
     salary_max: Decimal | None = None
     salary_period: str | None = None
     salary_currency: str | None = None
+    salary_currency_assumed: bool = False
     salary_source_url: str | None = None
     work_authorization: str | None = None
     opt_accepted: str | None = None

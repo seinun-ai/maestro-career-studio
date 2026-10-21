@@ -2,7 +2,8 @@
 #
 # Data, like countries.yaml beside it (services/countries.currency reads it). It answers one
 # question: when a posting states an amount but no currency, which currency is that country's?
-# A currency read from here is an assumption about a posting, never what it said.
+# A currency read from here is an assumption about a posting, never what it said, so a job
+# that takes one is marked jobs.salary_currency_assumed.
 #
 # A country with no single currency has NO entry, so the answer is None, never a guess:
 # Antarctica (AQ) has none, and Palestine (PS) has no universal one. Where ISO 4217 lists a
