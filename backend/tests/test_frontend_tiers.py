@@ -1,5 +1,6 @@
 """The Lead / Also / Folded tiers (design refresh, Phase 0)."""
 
+import re
 from pathlib import Path
 
 from tests._jsx_pins import squash
@@ -32,3 +33,18 @@ def test_next_step_has_one_look_for_a_move_and_one_for_waiting():
     assert "group-hover/row:bg-secondary-container" in src
     assert "group-hover/row:text-on-secondary-container" in src
     assert 'export { NextStep } from "./next-step";' in _src("components/visual/index.ts")
+
+
+def test_lead_card_has_an_eyebrow_one_filled_action_and_floats_a_little():
+    """The Lead tier: an eyebrow in `primary` names the section, the content is the caller's, and the
+    card takes at most one action, the view's one filled button. It floats a little (`shadow-level1`)."""
+    src = squash(_src("components/ui/lead-card.tsx"))
+    assert 'id={eyebrowId} className="text-label-medium text-primary"' in src
+    assert "aria-labelledby={eyebrowId}" in src
+    assert "{children}" in src and "{aside}" in src
+    assert "action?: LeadAction" in src and "actions" not in src  # one action, never a list
+    variants = re.findall(r'variant="([\w-]+)"', src)
+    assert variants and set(variants) == {"default"}, variants  # filled, and nothing else
+    assert set(re.findall(r"shadow-[\w-]+", src)) == {"shadow-level1"}
+    assert "rounded-corner-lg bg-card p-7" in src and "bg-surface-container-low" in src
+    assert "flex-[1_1_420px]" in src and "flex-[0_1_300px]" in src
