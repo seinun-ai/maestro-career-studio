@@ -14,9 +14,10 @@ its answers are knockout answers. Migration state: SYSTEM.md §13
 maps a MARKET key ("UK", the market setting's own key, not the ISO "GB") to that
 country's answers. A profile from before holds one `work_auth`: it is the home
 market's, mapped when read and kept as written until the user saves (the veteran
-precedent below). What a read returns carries both: `work_auth_by_country`, and
-`work_auth` as the home market's set, for the editors and the Companion's pause row
-that know one set. Which set a form gets is `autofill_country`'s rule. Migration
+precedent below), or until the home moves, which first pins it to the home it was
+read as (`pin_legacy_work_auth`). What a read returns carries both:
+`work_auth_by_country`, and `work_auth` as the home market's set, for the editors
+and the Companion's pause row that know one set. Which set a form gets is `autofill_country`'s rule. Migration
 state: SYSTEM.md §13 `autofill-work-auth-by-country`.
 """
 
@@ -151,6 +152,25 @@ def _parse_stored(raw: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def pin_legacy_work_auth(market: str, session: Session | None = None) -> None:
+    """Before "You live in" moves away from `market` (`market_settings.set_market`): a stored top-level
+    `work_auth`, the one set from before per-country answers, is read as the home market's, and nothing in
+    it says which country it was for, so the next home must not inherit it. It is pinned to `market`, the
+    home it has been read as: into that market's entry when it has none; when it has one, the old set was
+    read for no country and goes. Everything else stays as written (old words are mapped when read). No
+    legacy set, no write. A profile row: the flush guard refuses this where the move is refused too."""
+    stored = _parse_stored(text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session))
+    legacy = stored.get(WORK_AUTH)
+    if not isinstance(legacy, dict):
+        return
+    key = market.strip().upper()
+    by_country = stored.get(BY_COUNTRY) if isinstance(stored.get(BY_COUNTRY), dict) else {}
+    pinned = {k: v for k, v in stored.items() if k != WORK_AUTH}
+    if key not in work_auth_entries({BY_COUNTRY: by_country}, None):
+        pinned[BY_COUNTRY] = {**by_country, key: dict(legacy)}
+    text_settings.set_text(AUTOFILL_KEY, AUTOFILL_FILE, json.dumps(pinned, indent=2, sort_keys=True), session)
 
 
 def get_profile(session: Session | None = None) -> dict[str, Any]:

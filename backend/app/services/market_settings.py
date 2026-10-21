@@ -27,7 +27,23 @@ def peek_market(session: Session | None = None) -> MarketSetting:
 
 
 def set_market(setting: MarketSetting, session: Session | None = None) -> MarketSetting:
-    return MARKET.set(setting, session)
+    """Store where you live and apply. A move of `home` first pins a legacy one-set work-permit answer
+    to the home it has been read as (`autofill_profile.pin_legacy_work_auth`), in the same session. The
+    pin first, because on its own it changes no read: a refusal or a failure before the move lands
+    leaves both settings meaning what they meant."""
+    from app.db import SessionLocal
+    from app.services import autofill_profile
+
+    owns_session = session is None
+    session = session or SessionLocal()
+    try:
+        before = peek_market(session).home
+        if setting.home != before:
+            autofill_profile.pin_legacy_work_auth(before, session)
+        return MARKET.set(setting, session)
+    finally:
+        if owns_session:
+            session.close()
 
 
 def is_set(setting: MarketSetting) -> bool:

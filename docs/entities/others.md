@@ -304,7 +304,9 @@
 - **Work permits per country** (inv-work-permit-per-country; `services/autofill_country.py`, `autofill_profile.py`, owner decision D9).
   **Storage.** `work_auth_by_country` maps a market key (the market setting's own, "UK", never the ISO "GB" a job stores) to that country's
   answers, read through the typed `WorkAuth` reader. A profile from before holds one top-level `work_auth`: it is the home market's, mapped
-  when READ and kept as written until a save (the veteran precedent). A read serves `work_auth_by_country` and, for the clients that know
+  when READ and kept as written until a save (the veteran precedent) or a move of "You live in": `market_settings.set_market` first pins it,
+  in the same session, to the home it was read as (`pin_legacy_work_auth`; dropped when that home has an entry of its own, since it was then
+  read for no country), so a new home never inherits it. A read serves `work_auth_by_country` and, for the clients that know
   one set (the Companion's pause row, a peer that has not updated), `work_auth` as the home set; Profile and Setup edit the map and
   send it without `work_auth`. A save stores `work_auth_by_country` alone: a `work_auth` that differs from the one the store would serve, or a save with no home
   entry, is the home market's new answers; otherwise the map stands, so a client that knows every country leaves `work_auth` as served or
