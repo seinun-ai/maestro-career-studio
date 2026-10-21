@@ -94,6 +94,8 @@ class JobRead(BaseModel):
     city: str | None = None
     state: str | None = None
     country: str | None = None
+    # ISO 3166-1 alpha-2, derived at capture (services/countries.for_job); `country` is as written.
+    country_code: str | None = None
     location_raw: str | None = None
     salary_min: Decimal | None = None
     salary_max: Decimal | None = None
@@ -151,6 +153,7 @@ class JobSummary(BaseModel):
     work_mode: str | None = None
     location: str | None = None
     country: str | None = None
+    country_code: str | None = None
     salary_min: Decimal | None = None
     salary_max: Decimal | None = None
     salary_period: str | None = None

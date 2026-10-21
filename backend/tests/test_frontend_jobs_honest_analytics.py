@@ -70,11 +70,20 @@ def test_job_market_money_has_one_format():
 
 def test_job_market_places_and_skills_read_as_words():
     market = _read("components/explore/explore-overview.tsx")
-    assert "label: placeName(r.key)" in market and "label: countryName(r.key)" in market
+    assert "label: placeName(r.key)" in market
+    # Country keys are ISO codes, and a job naming no one country reads "Not stated".
+    assert 'label: r.key === "unknown" ? "Not stated" : countryName(r.key),' in market
+    assert 'o.work_mode.find((r) => r.key === "on_site")' in market
     assert "label: skillName(s.skill_name)" in market
     places = _read("lib/place-name.ts")
     assert 'CA: "California",' in places and '(no city)' in places
     assert not re.search(r"^import (?!type )", places, re.M)
+
+
+def test_the_country_filter_offers_one_code_per_country_in_words():
+    page = _read("app/analytics/page.tsx")
+    assert "if (job.country_code) countries.add(job.country_code);" in page
+    assert "options.countries,\n        countryName,\n      )}" in page
 
 
 @pytest.mark.parametrize(

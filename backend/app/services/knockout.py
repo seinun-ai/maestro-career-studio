@@ -220,8 +220,8 @@ def _experience_check(job: Job, years_experience: int | None) -> dict[str, Any] 
     return {**check, "result": "pass", "message": None}
 
 
-# The job's work mode, in the extraction's words (`prompts/extract_jd.txt`: remote | hybrid |
-# onsite | unknown) and the ones an agent's ingest may use.
+# The job's work mode: the stored key (`schemas/job_extraction.work_mode_key`: remote | hybrid |
+# on_site), and any older spelling ("onsite", "In office"), all read as one.
 _WORK_MODES = {"remote": "remote", "hybrid": "hybrid", "onsite": "onsite", "inoffice": "onsite",
                "office": "onsite", "inperson": "onsite"}
 # A US state as its two-letter code, whichever way it was written: the extraction writes codes,

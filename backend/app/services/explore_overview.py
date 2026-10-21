@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.models.job import Job
 from app.models.job_skill import JobSkill
-from app.services import role_categories
+from app.schemas.job_extraction import level_key, work_mode_key
+from app.services import countries, role_categories
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +28,8 @@ def _apply(stmt, filters: JobFilters):
     if filters.employment_type:
         stmt = stmt.where(Job.employment_type == filters.employment_type)
     if filters.country:
-        stmt = stmt.where(Job.country == filters.country)
+        # Any spelling of a country filters on its code ("Germany" and "DE" are one filter).
+        stmt = stmt.where(Job.country_code == (countries.normalize(filters.country) or filters.country))
     if filters.salary_currency:
         stmt = stmt.where(Job.salary_currency == filters.salary_currency)
     return stmt
@@ -40,6 +42,21 @@ def _count_by(db, column, filters: JobFilters, *, coalesce="unstated"):
         filters,
     ).group_by(key).order_by(func.count().desc(), key)
     return [{"key": str(k), "count": int(c)} for k, c in db.execute(stmt).all()]
+
+
+def _count_by_key(db, columns, to_key, filters: JobFilters, *, missing: str) -> list[dict[str, Any]]:
+    """Counts per normalised key: one bar per value however it was spelled. Captures store keys,
+    and this folds any row written another way ("Onsite", "USA") into its key, `missing` when
+    there is none."""
+    stmt = _apply(select(*columns, func.count()).select_from(Job), filters).group_by(*columns)
+    counts: Counter[str] = Counter()
+    for *values, n in db.execute(stmt).all():
+        counts[to_key(*values) or missing] += int(n)
+    return [{"key": k, "count": c} for k, c in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+
+def _country_key(code: str | None, country: str | None) -> str | None:
+    return code or countries.for_job(country, None)
 
 
 def compute_signals(o: dict[str, Any]) -> list[dict[str, Any]]:
@@ -286,20 +303,18 @@ def build_overview(
     top_required_skills, locations = _top_skills_and_locations(
         db, filters, top_n_skills, top_n_locations
     )
-    countries = [
-        r
-        for r in _count_by(db, Job.country, filters, coalesce="unknown")
-        if r["key"] != "unknown" or r["count"] > 0
-    ]
     overview = {
         **block,
         "role_mix": _count_by(db, Job.role_category, filters, coalesce="unknown"),
-        "level_breakdown": _count_by(db, Job.level, filters),
-        "work_mode": _count_by(db, Job.work_mode, filters),
+        "level_breakdown": _count_by_key(db, (Job.level,), level_key, filters, missing="unstated"),
+        "work_mode": _count_by_key(db, (Job.work_mode,), work_mode_key, filters, missing="unstated"),
         "top_required_skills": top_required_skills,
         "salary_by_role": _salary_by_role_rows(db, filters),
         "locations": locations,
-        "countries": countries,
+        # ISO codes; "unknown" when a job names no one country (the web app says "Not stated").
+        "countries": _count_by_key(
+            db, (Job.country_code, Job.country), _country_key, filters, missing="unknown"
+        ),
         "work_auth": {
             "opt": _count_by(db, Job.opt_accepted, filters),
             "sponsorship": _count_by(db, Job.work_authorization, filters),

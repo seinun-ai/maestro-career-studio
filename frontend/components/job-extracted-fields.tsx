@@ -102,13 +102,13 @@ function formatLocationLine(job: Job): string | null {
 
 /**
  * Stored enum → label where plain capitalization reads wrong. Keys are the
- * STORED values (`extract_jd.txt`, `schemas/job_extraction.py`): work mode is
- * `onsite`, so a key of `on_site` never matched and every on-site job read
- * "Onsite".
+ * STORED values (`schemas/job_extraction.py`): work mode is stored as
+ * `on_site` (`work_mode_key`); `onsite` is how rows saved before that read.
  */
 const ENUM_LABELS: Record<string, string> = {
   full_time: "Full-time",
   part_time: "Part-time",
+  on_site: "On-site",
   onsite: "On-site",
   citizen_or_gc_required: "Citizen or green card required",
   no_sponsorship: "No sponsorship",

@@ -31,6 +31,17 @@ has no application: no draft time to read).
   (routers/jobs.py) — used by create and re-extract. Keep it that way; a drifted
   second mapper once wrote only 12 of 22 fields, so never reintroduce a
   parallel copy.
+- **One spelling per value** (migration `2d3de2d60a4c`). `country_code` is the job's country as one
+  ISO 3166-1 alpha-2 code beside `country`, which keeps what the posting said: `services/countries.for_job`
+  reads the country field, else the one country the location line names (`named_in`: names and aliases
+  only, never a bare two-letter part, since "San Francisco, CA" is California; two countries or none is
+  null). `work_mode` is stored as a key, `on_site` | `hybrid` | `remote` (`schemas/job_extraction.work_mode_key`),
+  and `level` as the extraction vocabulary `intern` | `entry` | `mid` | `senior` | `lead` (`level_key`;
+  a level outside it keeps its own words as one key, "director"); the web app words the keys
+  (`ENUM_LABELS`). Every capture writes them through `_apply_extraction` and the validators; the migration
+  backfilled `country_code` and re-spelled older rows, and the analytics overview still folds any other
+  spelling into its key (`explore_overview._count_by_key`; a country it cannot name is `unknown`, shown
+  "Not stated"). Its Country filter takes any spelling and matches `country_code`.
 - **Dedup rules** (`_find_existing`): exact `raw_text_hash` always;
   `source_url` fallback **only when there is no raw text** (MCP/extension
   capture path, whose hash is of the LLM extraction JSON and unstable) — and

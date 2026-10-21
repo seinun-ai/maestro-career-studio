@@ -869,3 +869,20 @@ def test_the_plain_job_read_carries_the_newest_proposal(db_session):
         assert body["proposal_status"] == "accepted"
         assert body["proposal_id"] == str(newest.id)
         assert body["proposal_proposed_by"] == "you"
+
+
+def test_capture_stores_one_country_code_and_one_spelling(db_session, client):
+    """Ingest (the MCP `store_extracted_jd` path) stores the country as a code beside the words,
+    and work mode and level as keys; the list and the read both carry the code."""
+    extraction = dict(
+        _valid_extraction(), country=None, location_raw="Toronto, ON, Canada",
+        work_mode="On-site", level="Sr.",
+    )
+    r = client.post("/api/jobs/ingest", json={"extracted_json": extraction, "raw_text": "cc jd"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["country_code"] == "CA"
+    assert body["work_mode"] == "on_site"
+    assert body["level"] == "senior"
+    listed = next(j for j in client.get("/api/jobs").json() if j["id"] == body["id"])
+    assert listed["country_code"] == "CA"

@@ -181,10 +181,11 @@ def test_the_job_fields_print_no_enum_key():
     # `full_time`, `onsite`: words, never the stored keys.
     for field in ("level", "employment_type"):
         assert f"humanizeEnum(job.{field})" in _FIELDS, field
-    # The map keys the STORED value: `on_site` never matched, so every on-site
-    # job read "Onsite" (appendix D10.4).
+    # The map keys the STORED value: work mode is stored as `on_site`
+    # (`work_mode_key`), and `onsite` is how older rows read; both say "On-site",
+    # never "On site" or "Onsite" (appendix D10.4).
+    assert 'on_site: "On-site"' in _FIELDS
     assert 'onsite: "On-site"' in _FIELDS
-    assert "on_site:" not in _FIELDS
 
 
 _RAW_ROLE = re.compile(

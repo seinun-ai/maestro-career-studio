@@ -101,8 +101,12 @@ function BarList({
 /** Location keys are a state, else a city, else a country: "CA" read as Canada or California. */
 const toPlaceBars = (rows: ExploreCountRow[]) =>
   rows.map((r) => ({ label: placeName(r.key), count: r.count }));
+/** Country keys are ISO codes; "unknown" is a job that names no one country. */
 const toCountryBars = (rows: ExploreCountRow[]) =>
-  rows.map((r) => ({ label: countryName(r.key), count: r.count }));
+  rows.map((r) => ({
+    label: r.key === "unknown" ? "Not stated" : countryName(r.key),
+    count: r.count,
+  }));
 /** Bars whose keys are stored enums (`onsite`, `stem_opt_ok`): words, never the key. */
 const toEnumBars = (rows: ExploreCountRow[]) =>
   rows.map((r) => ({ label: humanizeEnum(r.key) ?? r.key, count: r.count }));
@@ -143,7 +147,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
       </p>
     );
 
-  const onsite = o.work_mode.find((r) => r.key === "onsite")?.count ?? 0;
+  const onsite = o.work_mode.find((r) => r.key === "on_site")?.count ?? 0;
   const optAccept =
     (o.work_auth.opt.find((r) => r.key === "yes")?.count ?? 0) +
     (o.work_auth.opt.find((r) => r.key === "stem_opt_ok")?.count ?? 0);

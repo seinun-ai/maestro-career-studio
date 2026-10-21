@@ -58,7 +58,11 @@ export interface Job {
   location: string | null;
   city: string | null;
   state: string | null;
+  /** As the posting wrote it; `country_code` is the one ISO code it names. */
   country: string | null;
+  /** ISO 3166-1 alpha-2, derived at capture from the country, else the location line; null when
+   *  neither names exactly one country. Optional: an older backend does not send it. */
+  country_code?: string | null;
   location_raw: string | null;
   salary_min: string | number | null;
   salary_max: string | number | null;

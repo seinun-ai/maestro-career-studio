@@ -41,6 +41,7 @@ from app.services import (
     base_eligibility,
     base_resume_data,
     board_visits,
+    countries,
     filled_answers,
     jd_extraction,
     job_search_brief,
@@ -131,6 +132,7 @@ def _apply_extraction(
     job.city = extraction.get("city")
     job.state = extraction.get("state")
     job.country = extraction.get("country")
+    job.country_code = countries.for_job(job.country, location)
     job.location_raw = location
     job.salary_min = _decimal_or_none(extraction.get("salary_min"))
     job.salary_max = _decimal_or_none(extraction.get("salary_max"))

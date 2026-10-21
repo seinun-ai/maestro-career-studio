@@ -36,6 +36,7 @@ MATRIX = [
     ("onsite elsewhere, free text", "onsite", NYC, HOME_TX, "Open to relocating for the right role",
      "profile_missing"),
     ("on-site spelled out, will relocate", "on-site", NYC, HOME_TX, True, "pass"),
+    ("the stored key, won't relocate", "on_site", NYC, HOME_TX, False, "conflict"),
     ("no home on file", "onsite", NYC, {}, False, "profile_missing"),
     ("no home, will relocate", "onsite", NYC, {}, "yes", "pass"),
     ("typed yes with a full stop", "onsite", NYC, HOME_TX, "Yes.", "pass"),

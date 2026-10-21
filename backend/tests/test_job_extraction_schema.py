@@ -127,3 +127,59 @@ def test_apply_extraction_requisition_id_falsy_is_none():
     kept = Job(raw_text="y", raw_text_hash="s" * 64, source="user")
     _apply_extraction(kept, {"company": "Acme", "requisition_id": " R-123 "})
     assert kept.requisition_id == "R-123"
+
+
+def test_work_mode_is_stored_as_one_key():
+    from app.schemas.job_extraction import work_mode_key
+
+    for text in ("On-site", "onsite", "on site", " On Site ", "In office", "in-person", "ONSITE"):
+        assert JobExtraction.model_validate({"work_mode": text}).work_mode == "on_site", text
+    for text in ("Hybrid", "hybrid ", "Hybrid (3 days in office)"):
+        assert JobExtraction.model_validate({"work_mode": text}).work_mode == "hybrid", text
+    for text in ("Remote", "REMOTE", "Fully remote", "Remote (US)", "work from home"):
+        assert JobExtraction.model_validate({"work_mode": text}).work_mode == "remote", text
+    for text in (None, "", "unknown", "N/A"):
+        assert JobExtraction.model_validate({"work_mode": text}).work_mode is None, text
+    # A value naming no mode, or two, keeps its own words as one key: never a guess.
+    assert work_mode_key("Field-based") == "field_based"
+    assert work_mode_key("Remote or on-site") == "remote_or_on_site"
+    # Already a key: unchanged.
+    for key in ("on_site", "hybrid", "remote"):
+        assert work_mode_key(key) == key
+
+
+def test_level_maps_to_the_extraction_vocabulary():
+    from app.schemas.job_extraction import level_key
+
+    cases = {
+        "Senior": "senior", "senior ": "senior", "Sr.": "senior", "Senior level": "senior",
+        "Junior": "entry", "Entry-level": "entry", "Entry": "entry", "New grad": "entry",
+        "Mid-level": "mid", "Intermediate": "mid", "MID": "mid",
+        "Internship": "intern", "Intern": "intern",
+        "Lead": "lead", "Staff": "lead", "Principal": "lead",
+    }
+    for text, key in cases.items():
+        assert JobExtraction.model_validate({"level": text}).level == key, text
+    assert JobExtraction.model_validate({"level": "unknown"}).level is None
+    # A level outside the vocabulary keeps its own words, as one spelling.
+    assert level_key("Director") == "director"
+    assert level_key(" director") == "director"
+    assert level_key("Mid-Senior level") == "mid_senior_level"
+
+
+def test_apply_extraction_writes_the_country_code():
+    from app.models.job import Job
+    from app.routers.jobs import _apply_extraction
+
+    named = Job(raw_text="x", raw_text_hash="cc1" * 21 + "x", source="user")
+    _apply_extraction(named, {"title": "Engineer", "country": "United States"})
+    assert named.country == "United States"  # kept as written
+    assert named.country_code == "US"
+
+    from_place = Job(raw_text="y", raw_text_hash="cc2" * 21 + "y", source="user")
+    _apply_extraction(from_place, {"title": "Engineer", "location_raw": "Toronto, ON, Canada"})
+    assert from_place.country_code == "CA"
+
+    unknown = Job(raw_text="z", raw_text_hash="cc3" * 21 + "z", source="user")
+    _apply_extraction(unknown, {"title": "Engineer", "location_raw": "Remote"})
+    assert unknown.country_code is None

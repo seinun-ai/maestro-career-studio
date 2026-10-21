@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
@@ -57,6 +58,72 @@ def _coerce_enum(value: Any, allowed: set[str], default: str) -> str:
     if text not in allowed:
         return default
     return text
+
+
+def _value_words(value: Any) -> str | None:
+    """A stated value as plain lower-case words ("On-Site " -> "on site"), None when unstated."""
+    text = _blank_to_none(value)
+    if text is None:
+        return None
+    return " ".join(re.sub(r"[^0-9a-z]+", " ", text.casefold()).split()) or None
+
+
+# Work mode is stored as a key and worded by the UI. The extraction prompt asks for
+# remote | hybrid | onsite; agents and older rows say "On-site", "In office", "Remote (US)".
+_ON_SITE = {"onsite", "inoffice", "office", "officebased", "inperson", "onpremises", "onpremise", "onprem"}
+_REMOTE = {"remote", "fullyremote", "remotefirst", "workfromhome", "wfh"}
+_MODE_WORDS = (
+    ("on_site", re.compile(r"\b(?:on ?site|in office|office based|in person|on prem(?:ise|ises)?)\b")),
+    ("hybrid", re.compile(r"\bhybrid\b")),
+    ("remote", re.compile(r"\b(?:remote|work from home|wfh)\b")),
+)
+
+
+def work_mode_key(value: Any) -> str | None:
+    """One key per work mode: `on_site`, `hybrid` or `remote`.
+
+    A known spelling is its key. Otherwise the words decide: hybrid wins (a hybrid job names its
+    office days), else the one mode named. A value naming no mode, or both remote and on-site,
+    keeps its own words as one key ("field_based"): never a guess, and the same spelling twice
+    is one value.
+    """
+    words = _value_words(value)
+    if words is None:
+        return None
+    compact = words.replace(" ", "")
+    if compact in _ON_SITE:
+        return "on_site"
+    if compact == "hybrid":
+        return "hybrid"
+    if compact in _REMOTE:
+        return "remote"
+    named = [key for key, pattern in _MODE_WORDS if pattern.search(words)]
+    if "hybrid" in named:
+        return "hybrid"
+    if len(named) == 1:
+        return named[0]
+    return words.replace(" ", "_")
+
+
+# The level vocabulary is the extraction prompt's (`prompts/extract_jd.txt`):
+# intern | entry | mid | senior | lead. These are the other spellings of each.
+_LEVELS = {
+    "intern": "intern", "internship": "intern",
+    "entry": "entry", "entry level": "entry", "junior": "entry", "jr": "entry",
+    "graduate": "entry", "new grad": "entry", "new graduate": "entry",
+    "mid": "mid", "mid level": "mid", "midlevel": "mid", "intermediate": "mid",
+    "senior": "senior", "sr": "senior", "senior level": "senior",
+    "lead": "lead", "staff": "lead", "principal": "lead",
+}
+
+
+def level_key(value: Any) -> str | None:
+    """One key per level: the vocabulary's when the value is one of its spellings, else the value's
+    own words as one key ("Director" -> "director"), so a field outside tech keeps its levels."""
+    words = _value_words(value)
+    if words is None:
+        return None
+    return _LEVELS.get(words) or words.replace(" ", "_")
 
 
 _WORK_AUTH_VALUES = {"sponsorship_available", "no_sponsorship", "citizen_or_gc_required", "unstated"}
@@ -134,6 +201,16 @@ class JobExtraction(BaseModel):
             values = dict(values)
             values["location_raw"] = values["location"]
         return values
+
+    @field_validator("work_mode", mode="after")
+    @classmethod
+    def normalize_work_mode(cls, value: str | None) -> str | None:
+        return work_mode_key(value)
+
+    @field_validator("level", mode="after")
+    @classmethod
+    def normalize_level(cls, value: str | None) -> str | None:
+        return level_key(value)
 
     @field_validator("salary_min", "salary_max", mode="before")
     @classmethod

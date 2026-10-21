@@ -270,7 +270,7 @@ def test_overview_aggregates(db_session, client):
     role = {r["key"]: r["count"] for r in body["role_mix"]}
     assert role["data_scientist"] == 2 and role["data_engineer"] == 1
     wm = {r["key"]: r["count"] for r in body["work_mode"]}
-    assert wm["onsite"] == 2 and wm["remote"] == 1
+    assert wm["on_site"] == 2 and wm["remote"] == 1  # stored "onsite" reads as the key
     skills = {r["skill_name"]: r["n"] for r in body["top_required_skills"]}
     assert skills["Python"] == 2 and skills["SQL"] == 1
     opt = {r["key"]: r["count"] for r in body["work_auth"]["opt"]}
@@ -319,11 +319,41 @@ def test_overview_null_salary_is_ordinary(db_session, client):
 def test_overview_filters_by_country(db_session, client):
     us = _seed_job(db_session, raw_hash="c1", role_category="data_scientist")
     de = _seed_job(db_session, raw_hash="c2", role_category="data_scientist")
-    us.country = "US"
-    de.country = "DE"
+    us.country, us.country_code = "US", "US"
+    de.country, de.country_code = "Germany", "DE"
     db_session.flush()
     r = client.get("/api/explore/overview", params={"country": "DE"})
     assert r.json()["meta"]["total_jobs"] == 1
+    # The filter takes any spelling of the country: it matches the stored code.
+    named = client.get("/api/explore/overview", params={"country": "Germany"})
+    assert named.json()["meta"]["total_jobs"] == 1
+
+
+def test_overview_groups_one_spelling_per_value(db_session, client):
+    """Rows written before values were normalised (or by hand) still group as one key each."""
+    seeds = [
+        ("sp1", "Hybrid", "Senior", "USA", None),
+        ("sp2", "hybrid ", "senior", "United States", None),
+        ("sp3", "On-site", "Sr.", None, "US"),
+        ("sp4", "Onsite", "mid", "Narnia", None),
+        ("sp5", None, None, None, None),
+    ]
+    for raw_hash, mode, level, country, code in seeds:
+        job = _seed_job(db_session, raw_hash=raw_hash, role_category="data_scientist", level=level)
+        job.work_mode, job.country, job.country_code = mode, country, code
+    db_session.flush()
+
+    body = client.get("/api/explore/overview").json()
+
+    assert body["work_mode"] == [
+        {"key": "hybrid", "count": 2}, {"key": "on_site", "count": 2}, {"key": "unstated", "count": 1},
+    ]
+    assert body["level_breakdown"] == [
+        {"key": "senior", "count": 3}, {"key": "mid", "count": 1}, {"key": "unstated", "count": 1},
+    ]
+    # Every spelling of a country is its ISO code; a country the list cannot name is "unknown",
+    # which the web app words as "Not stated".
+    assert body["countries"] == [{"key": "US", "count": 3}, {"key": "unknown", "count": 2}]
 
 
 def test_overview_filters_by_role(db_session, client):
@@ -543,7 +573,7 @@ def test_role_mix_over_time_follows_filters_and_zero_fills_weeks(db_session, cli
     ]
     for raw_hash, role, country, created_at in rows:
         job = _seed_job(db_session, raw_hash=raw_hash, role_category=role, created_at=created_at)
-        job.country = country
+        job.country = job.country_code = country
     db_session.commit()
 
     us = client.get("/api/explore/role-mix-over-time", params={"country": "US"}).json()

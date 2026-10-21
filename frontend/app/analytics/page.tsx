@@ -18,6 +18,7 @@ import {
 } from "@/components/charts/top-skills-chart";
 import { ExploreOverview } from "@/components/explore/explore-overview";
 import { humanizeEnum } from "@/components/job-extracted-fields";
+import { countryName } from "@/lib/place-name";
 import { useRoleLabel } from "@/components/role-category-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -89,7 +90,7 @@ function AnalyticsContent() {
       if (job.role_category) roles.add(job.role_category);
       if (job.level) levels.add(job.level);
       if (job.employment_type) employment.add(job.employment_type);
-      if (job.country) countries.add(job.country);
+      if (job.country_code) countries.add(job.country_code);
       if (job.salary_currency) currencies.add(job.salary_currency);
     }
     return {
@@ -98,7 +99,7 @@ function AnalyticsContent() {
       ),
       levels: [...levels].sort(),
       employment: [...employment].sort(),
-      countries: [...countries].sort(),
+      countries: [...countries].sort((a, b) => countryName(a).localeCompare(countryName(b))),
       currencies: [...currencies].sort(),
     };
   }, [jobs.data, label]);
@@ -161,7 +162,14 @@ function AnalyticsContent() {
         options.employment,
         enumLabel,
       )}
-      {filterSelect(`${panel}-country`, "Country", country, setCountry, options.countries)}
+      {filterSelect(
+        `${panel}-country`,
+        "Country",
+        country,
+        setCountry,
+        options.countries,
+        countryName,
+      )}
       {filterSelect(
         `${panel}-salary_currency`,
         "Currency",

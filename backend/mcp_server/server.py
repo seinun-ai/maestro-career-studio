@@ -419,7 +419,10 @@ def store_extracted_jd(
     makes no LLM call).
 
     extracted_json must match the app's JobExtraction schema: company, title,
-    role_category, level, employment_type, work_mode, city/state/country,
+    role_category, level: "intern"|"entry"|"mid"|"senior"|"lead" (other spellings
+    map to these; any other level is kept in its own words), employment_type,
+    work_mode: "remote"|"hybrid"|"on_site" (stored as that key), city/state/country
+    (the job also stores country_code, the one ISO code they name),
     location_raw, salary_min/max, salary_period,
     work_authorization: "sponsorship_available"|"no_sponsorship"|"citizen_or_gc_required"|"unstated",
     opt_accepted: "yes"|"stem_opt_ok"|"no"|"unstated",

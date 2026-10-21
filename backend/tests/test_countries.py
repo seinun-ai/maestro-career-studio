@@ -58,3 +58,85 @@ def test_get_countries_route():
     body = TestClient(app).get("/api/countries").json()
     assert {"code": "GB", "name": "United Kingdom"} in body
     assert [c["code"] for c in body] == list(countries.labels())
+
+
+def test_country_spellings_collapse_to_one_code():
+    for text in ["United States", "USA", "U.S.", "united states ", "United States of America"]:
+        assert countries.normalize(text) == "US"
+    assert countries.normalize("Canada / United States") is None  # more than one: no guess
+    assert countries.normalize("unknown") is None
+    assert countries.label("GB") == "United Kingdom"
+    assert countries.label(" gb ") == "United Kingdom"
+    # "UK" is input the normalizer accepts, never a stored code, so it has no label.
+    assert countries.label("UK") is None
+    assert countries.label(None) is None
+
+
+def test_market_keys_name_their_country():
+    """markets.yaml says "UK" where ISO says GB; the normalizer joins the two."""
+    from app.services import markets
+
+    assert countries.normalize("UK") == "GB"
+    for key in markets.keys():
+        assert countries.normalize(key) is not None, key
+
+
+def test_currency_is_data_and_never_a_guess():
+    assert countries.currency("CA") == "CAD"
+    assert countries.currency("ca") == "CAD"
+    assert countries.currency("US") == "USD"
+    assert countries.currency("GB") == "GBP"
+    assert countries.currency("DE") == "EUR"
+    assert countries.currency("IN") == "INR"
+    assert countries.currency("AQ") is None  # Antarctica pays in nothing: no entry, no guess
+    assert countries.currency("UK") is None  # not a code
+    assert countries.currency(None) is None
+
+
+def test_currency_entries_are_listed_countries_with_iso_codes():
+    table = countries._currencies()
+    assert len(table) >= 240
+    for code, currency in table.items():
+        assert code in countries.labels(), code
+        assert len(currency) == 3 and currency.isalpha() and currency.isupper(), (code, currency)
+
+
+def test_each_market_currency_is_its_country_currency():
+    from app.services import markets
+
+    for key in markets.keys():
+        assert countries.currency(countries.normalize(key)) == markets.currency_for(key), key
+
+
+@pytest.mark.parametrize("place, code", [
+    ("Toronto, ON, Canada", "CA"),
+    ("London, UK", "GB"),
+    ("Berlin (Germany)", "DE"),
+    ("New York, NY, United States", "US"),
+    ("Remote - United States", "US"),
+    ("Sarajevo, Bosnia and Herzegovina", "BA"),
+    ("Canada", "CA"),
+    ("DE", "DE"),
+    # A two-letter part is a state as often as a country: California, not Canada.
+    ("San Francisco, CA", None),
+    ("Austin, TX (Hybrid)", None),
+    # Two countries named, or none: no guess.
+    ("Toronto, Canada / Seattle, United States", None),
+    ("Remote", None),
+    # A US state with a country's name names neither.
+    ("Atlanta, Georgia", None),
+    ("Georgia", None),
+    ("", None),
+    (None, None),
+])
+def test_a_place_names_at_most_one_country(place, code):
+    assert countries.named_in(place) == code
+
+
+def test_a_job_country_comes_from_its_country_then_its_location():
+    assert countries.for_job("United States", "Toronto, Canada") == "US"
+    assert countries.for_job(None, "Toronto, Canada") == "CA"
+    assert countries.for_job("Remote", "London, UK") == "GB"
+    assert countries.for_job("Canada / United States", None) is None
+    assert countries.for_job("Georgia", None) == "GE"  # a country field names a country
+    assert countries.for_job(None, None) is None

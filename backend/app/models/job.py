@@ -46,6 +46,10 @@ class Job(Base):
     city: Mapped[str | None] = mapped_column(Text)
     state: Mapped[str | None] = mapped_column(Text)
     country: Mapped[str | None] = mapped_column(Text)
+    # The country as one ISO 3166-1 alpha-2 code (services/countries.for_job: `country`, else the
+    # location line), written by every capture; `country` keeps what the posting said. Null when
+    # neither names exactly one country.
+    country_code: Mapped[str | None] = mapped_column(String(2))
     location_raw: Mapped[str | None] = mapped_column(Text)
     salary_min: Mapped[Decimal | None] = mapped_column(Numeric)
     salary_max: Mapped[Decimal | None] = mapped_column(Numeric)
