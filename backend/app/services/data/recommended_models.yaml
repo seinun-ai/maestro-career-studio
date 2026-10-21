@@ -1,0 +1,35 @@
+# Recommended models: the set "Use recommended models" gives the four roles, per provider.
+#
+# The roles: fast (reads jobs and documents), smart (tailors and writes), assistant (runs the
+# Assistant) and reasoning (the Companion's reasoning step when a page has it stuck).
+#
+# Every id comes from the built-in catalog (services/model_settings.py MODEL_OPTIONS) and must be a
+# model of the provider it is listed under: tests/test_model_settings.py fails otherwise, so this file
+# can never name a model the app cannot call. A provider with no set (null) keeps your own picks while
+# recommended is on: OpenRouter until the catalog lists its models, and your own AI server, which is
+# not a provider here at all.
+#
+# DATA, NOT CODE: changing a pick needs no code change, only the test above.
+
+providers:
+  openai:
+    # GPT-5.6 Luna: the most complete extraction measured and the cheapest per application
+    # (the catalog's 2026-08 benchmark), the install default for the first three roles.
+    fast: gpt-5.6-luna
+    smart: gpt-5.6-luna
+    assistant: gpt-5.6-luna
+    # The strong OpenAI model, the reasoning step's default (model_settings.STRONG_BY_PROVIDER).
+    reasoning: gpt-6.1-sol
+  anthropic:
+    fast: claude-haiku-5-5
+    smart: claude-sonnet-5-5
+    assistant: claude-haiku-5-5
+    reasoning: claude-sonnet-5-5
+  gemini:
+    # The catalog's Gemini models are both Flash; 3.7 is the one it recommends (3.5 Flash-Lite
+    # misses requirements in extraction).
+    fast: gemini-3.7-flash
+    smart: gemini-3.7-flash
+    assistant: gemini-3.7-flash
+    reasoning: gemini-3.7-flash
+  openrouter: null

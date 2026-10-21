@@ -1,14 +1,18 @@
 import json
 from dataclasses import asdict, dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
+import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import SessionLocal
 from app.models.setting import Setting
+from app.services.llm_providers.registry import PROVIDERS
 
 
 FAST_MODEL_KEY = "llm.fast_model"
@@ -16,6 +20,13 @@ SMART_MODEL_KEY = "llm.smart_model"
 CHAT_MODEL_KEY = "llm.chat_model"
 EXTRA_MODELS_KEY = "llm.extra_models"
 REASONING_MODEL_KEY = "llm.reasoning_model"
+# "Use recommended models": no row is off; "auto" uses the first provider (PROVIDERS order) with a key
+# and a set; a provider name uses that provider's set while its key is there.
+RECOMMENDED_KEY = "llm.recommended_models"
+RECOMMENDED_AUTO = "auto"
+# The four roles, as the recommended sets name them ("assistant" is the chat model).
+ROLES = ("fast", "smart", "assistant", "reasoning")
+_RECOMMENDED_FILE = Path(__file__).parent / "data" / "recommended_models.yaml"
 
 
 @dataclass(frozen=True)
@@ -77,25 +88,98 @@ def _set_value(session: Session, key: str, value: str) -> str:
     return value
 
 
+# The role getters below are the ONE place a role's model id is read (every caller, the registry's
+# routing included, starts from them): "Use recommended models" changes what they return, it adds no
+# second resolver. `own_models` is what they return with it off.
+
+
 def get_fast_model(session: Session | None = None) -> str:
     if session is None:
         with SessionLocal() as owned:
-            return _get_value(owned, FAST_MODEL_KEY, settings.fast_model)
-    return _get_value(session, FAST_MODEL_KEY, settings.fast_model)
+            return get_fast_model(owned)
+    return _recommended(session, "fast") or _get_value(session, FAST_MODEL_KEY, settings.fast_model)
 
 
 def get_smart_model(session: Session | None = None) -> str:
     if session is None:
         with SessionLocal() as owned:
-            return _get_value(owned, SMART_MODEL_KEY, settings.smart_model)
-    return _get_value(session, SMART_MODEL_KEY, settings.smart_model)
+            return get_smart_model(owned)
+    return _recommended(session, "smart") or _get_value(session, SMART_MODEL_KEY, settings.smart_model)
 
 
 def get_chat_model(session: Session | None = None) -> str:
     if session is None:
         with SessionLocal() as owned:
-            return _get_value(owned, CHAT_MODEL_KEY, settings.chat_model)
-    return _get_value(session, CHAT_MODEL_KEY, settings.chat_model)
+            return get_chat_model(owned)
+    return _recommended(session, "assistant") or _get_value(session, CHAT_MODEL_KEY, settings.chat_model)
+
+
+def own_models(session: Session) -> dict[str, str]:
+    """Your own pick per role (else the install's default), whatever "recommended" says: what the
+    roles answer once it is off, and what a settings save writes back when it sends no role."""
+    return {
+        "fast": _get_value(session, FAST_MODEL_KEY, settings.fast_model),
+        "smart": _get_value(session, SMART_MODEL_KEY, settings.smart_model),
+        "assistant": _get_value(session, CHAT_MODEL_KEY, settings.chat_model),
+        "reasoning": _get_raw_value(session, REASONING_MODEL_KEY) or default_reasoning_model(session),
+    }
+
+
+@lru_cache(maxsize=1)
+def recommended_sets() -> dict[str, dict[str, str]]:
+    """provider -> {role: model id} from data/recommended_models.yaml; a provider with no set is
+    absent. tests/test_model_settings.py holds every id to the catalog and its provider."""
+    raw = yaml.safe_load(_RECOMMENDED_FILE.read_text(encoding="utf-8")) or {}
+    return {
+        provider: {role: str(roles[role]) for role in ROLES}
+        for provider, roles in (raw.get("providers") or {}).items()
+        if isinstance(roles, dict) and all(roles.get(role) for role in ROLES)
+    }
+
+
+def _has_key(session: Session, provider: str) -> bool:
+    """A stored or environment key (the env key is the fallback, as `llm`'s key getters read it). An
+    OpenAI key sent to your own server is that server's, so OpenAI's set never applies to it."""
+    if provider == "openai" and using_custom_endpoint(session):
+        return False
+    return bool(get_api_key(provider, session) or getattr(settings, f"{provider}_api_key", ""))
+
+
+def get_recommended(session: Session) -> tuple[bool, str | None]:
+    """(on, the provider you chose or None for the first with a key)."""
+    raw = _get_raw_value(session, RECOMMENDED_KEY)
+    if raw is None:
+        return False, None
+    return True, (None if raw == RECOMMENDED_AUTO else raw)
+
+
+def recommended_provider(session: Session) -> str | None:
+    """The provider whose set the roles answer: the one you chose while its key is there, else the
+    first in PROVIDERS with a key and a set; None while recommended is off or no such provider exists."""
+    on, chosen = get_recommended(session)
+    if not on:
+        return None
+    sets = recommended_sets()
+    keyed = [p for p in PROVIDERS if p in sets and _has_key(session, p)]
+    if chosen in keyed:
+        return chosen
+    return keyed[0] if keyed else None
+
+
+def _recommended(session: Session, role: str) -> str | None:
+    provider = recommended_provider(session)
+    return recommended_sets()[provider][role] if provider else None
+
+
+def set_recommended(session: Session, *, on: bool, provider: str | None = None) -> None:
+    """On with a provider (one that has a set) or None for the first with a key; off forgets the
+    choice. Your own picks are never touched."""
+    if not on:
+        _set_raw_value(session, RECOMMENDED_KEY, None)
+        return
+    if provider is not None and provider not in recommended_sets():
+        raise ValueError(f"There are no recommended models for {provider}.")
+    _set_raw_value(session, RECOMMENDED_KEY, provider or RECOMMENDED_AUTO)
 
 
 # The models strong enough to reason over a stuck page, and each provider's one. NOT the catalog's `tier`:
@@ -237,7 +321,7 @@ def default_reasoning_model(session: Session | None = None) -> str:
     if session is None:
         with SessionLocal() as owned:
             return default_reasoning_model(owned)
-    smart = get_smart_model(session)
+    smart = _get_value(session, SMART_MODEL_KEY, settings.smart_model)  # your own pick, not the set's
     if smart in STRONG_MODELS or using_custom_endpoint(session):
         return smart
     seeded = next((opt.provider for opt in MODEL_OPTIONS if opt.id == smart), None)
@@ -246,7 +330,10 @@ def default_reasoning_model(session: Session | None = None) -> str:
 
 def get_reasoning_model(session: Session | None = None) -> str:
     """The model the Companion's reasoning step calls (any catalog model; unset: the strong one)."""
-    return _read(session, REASONING_MODEL_KEY) or default_reasoning_model(session)
+    if session is None:
+        with SessionLocal() as owned:
+            return get_reasoning_model(owned)
+    return _recommended(session, "reasoning") or own_models(session)["reasoning"]
 
 
 def validate_reasoning_model(session: Session, value: str | None) -> None:
@@ -431,10 +518,12 @@ def configured_options(session: Session) -> list[ModelOption]:
     and the entry disappears the moment the role points elsewhere.
     """
     out: list[ModelOption] = []
+    own = own_models(session)
+    # Your own picks, which a save validates even while the recommended set answers (its ids are seeds).
     for role, model_id in (
-        ("fast", get_fast_model(session)),
-        ("smart", get_smart_model(session)),
-        ("smart", get_chat_model(session)),
+        ("fast", own["fast"]),
+        ("smart", own["smart"]),
+        ("smart", own["assistant"]),
     ):
         cleaned = (model_id or "").strip()
         if cleaned and cleaned not in {opt.id for opt in out}:
@@ -518,11 +607,8 @@ def remove_extra_model(session: Session, model_id: str) -> None:
     extras = get_extra_models(session)
     if not any(opt.id == cleaned_id for opt in extras):
         raise KeyError(f"Model not in catalog: {cleaned_id}")
-    in_use = {
-        get_fast_model(session),
-        get_smart_model(session),
-        get_chat_model(session),
-    }
+    own = own_models(session)  # your picks hold their models even while the recommended set answers
+    in_use = {own["fast"], own["smart"], own["assistant"]}
     if cleaned_id in in_use:
         raise ValueError(
             f"The model {cleaned_id} is your Fast, Smart or Assistant model. Pick "

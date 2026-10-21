@@ -156,6 +156,34 @@ class ModelSettingsPayload(BaseModel):
     openrouter_api_key: str | None = None
 
 
+RoleModels = dict[Literal["fast", "smart", "assistant", "reasoning"], str]
+ProviderName = Literal["openai", "gemini", "anthropic", "openrouter"]
+
+
+class RecommendedModelsInfo(BaseModel):
+    """GET/PUT /api/settings/models/recommended: whether the four roles use the recommended set."""
+
+    on: bool
+    # The provider you chose; null is the first provider (the screen's order) with a key and a set.
+    provider: ProviderName | None
+    # Whose set the roles answer now; null while off, or when no provider with a set has a key.
+    active_provider: ProviderName | None
+    # That set (the roles' models now); null when `active_provider` is.
+    models: RoleModels | None
+    # Your own picks: what the roles answer once it is off.
+    own: RoleModels
+    # Every provider's set (from services/data/recommended_models.yaml); one with none is absent.
+    sets: dict[str, RoleModels]
+
+
+class RecommendedModelsPayload(BaseModel):
+    """`provider` absent keeps the choice; null is the first provider with a key."""
+
+    model_config = ConfigDict(extra="forbid")
+    on: StrictBool
+    provider: ProviderName | None = None
+
+
 class PersonaDraft(BaseModel):
     draft: str
 
@@ -548,8 +576,11 @@ def put_openai_info(payload: ModelSettingsPayload, db: Annotated[Session, Depend
     # role fields resolve the same way, which is what makes a key-only or
     # one-dropdown PUT legal.
     sent = payload.model_fields_set
-    fast_model = payload.fast_model or model_settings.get_fast_model(db)
-    smart_model = payload.smart_model or model_settings.get_smart_model(db)
+    # Your own picks, not the roles' current answer: while "Use recommended models" is on that is the
+    # set's, and writing it back would overwrite the picks turning it off restores.
+    own = model_settings.own_models(db)
+    fast_model = payload.fast_model or own["fast"]
+    smart_model = payload.smart_model or own["smart"]
     # chat_model keeps its own tri-state: `set_models` treats None as "not
     # supplied" and skips the streaming-tool-call gate, so an absent field must
     # arrive as None rather than as the stored value re-validated.
@@ -589,6 +620,40 @@ def put_openai_info(payload: ModelSettingsPayload, db: Annotated[Session, Depend
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return get_openai_info(db)
+
+
+def _recommended_info(db: Session) -> RecommendedModelsInfo:
+    on, provider = model_settings.get_recommended(db)
+    active = model_settings.recommended_provider(db)
+    sets = model_settings.recommended_sets()
+    return RecommendedModelsInfo(
+        on=on,
+        provider=provider,
+        active_provider=active,
+        models=sets[active] if active else None,
+        own=model_settings.own_models(db),
+        sets=sets,
+    )
+
+
+@router.get("/models/recommended", response_model=RecommendedModelsInfo)
+def get_recommended_models(db: Annotated[Session, Depends(get_db)]):
+    return _recommended_info(db)
+
+
+@router.put("/models/recommended", response_model=RecommendedModelsInfo)
+def put_recommended_models(payload: RecommendedModelsPayload, db: Annotated[Session, Depends(get_db)]):
+    """Turn the recommended set on (for `provider`, or the first provider with a key) or off. Your
+    own picks are never written: off, the roles answer them again."""
+    if payload.on and "provider" not in payload.model_fields_set:
+        provider = model_settings.get_recommended(db)[1]
+    else:
+        provider = payload.provider
+    try:
+        model_settings.set_recommended(db, on=payload.on, provider=provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _recommended_info(db)
 
 
 class ProbePayload(BaseModel):

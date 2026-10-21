@@ -468,6 +468,25 @@ export interface OpenAIInfo {
   capabilities: Record<string, CapabilityReport>;
 }
 
+/** The four roles as a recommended set names them ("assistant" is `chat_model`). */
+export type RoleModels = Record<"fast" | "smart" | "assistant" | "reasoning", string>;
+
+/** GET/PUT /api/settings/models/recommended. PUT `{on, provider?}`: `provider` absent keeps the choice,
+ *  null is the first provider with a key; one with no set is a 400. While on, OpenAIInfo's four
+ *  role fields are the set's. */
+export interface RecommendedModelsInfo {
+  on: boolean;
+  /** The provider you chose; null is the first (the screen's order) with a key and a set. */
+  provider: "openai" | "gemini" | "anthropic" | "openrouter" | null;
+  /** Whose set the roles use now; null while off, or when no provider with a set has a key. */
+  active_provider: "openai" | "gemini" | "anthropic" | "openrouter" | null;
+  models: RoleModels | null;
+  /** Your own picks, which the roles use again once it is off. */
+  own: RoleModels;
+  /** Each provider's set; a provider with none (OpenRouter) is absent. */
+  sets: Record<string, RoleModels>;
+}
+
 export interface CatalogRole {
   key: string;
   label: string;

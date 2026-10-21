@@ -224,6 +224,15 @@
   by PUT (`set_api_keys`, only the ones sent; role ids are validated first, so a 400 saves no key); an env
   key stays a fallback for each, shown as source "env". `registry.resolve` routes a model id: catalog tag,
   then `claude-`/`gemini-` prefix when that provider has a key, else the OpenAI-compatible client.
+  The four role getters (`get_fast_model`, `get_smart_model`, `get_chat_model`, `get_reasoning_model`) are
+  the one place a role's model id is read. **Use recommended models** (`GET/PUT
+  /api/settings/models/recommended`, `{on, provider}`; row `llm.recommended_models`, off by default)
+  changes what they answer, not who resolves: the set in `services/data/recommended_models.yaml` for the
+  provider you chose while its key is there, else the first in `registry.PROVIDERS` with a key and a set.
+  An OpenAI key sent to your own server has no set, nor does OpenRouter (the catalog lists none of its
+  models); `tests/test_model_settings.py` holds every id to the catalog and its provider. Your own picks
+  (`own_models`) are never written by it: they answer again once it is off, a `PUT /api/settings/openai`
+  that sends no role writes them back (never the set), and they stay "in use" for the catalog.
   Capabilities are probed on Test and stored per model; `require()` blocks only on a stored No, so an
   unprobed model passes (the Assistant is gated on tools this way). JSON mode is capability-gated:
   `response_format=json_object` goes out only when `llm._json_mode_supported()` (other servers may hard-400
