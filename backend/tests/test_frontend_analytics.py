@@ -40,6 +40,10 @@ _PRESENT = {
     "ats-hidden-caption": (_ATS, "Pick a role above to see the other ${hidden.length}."),
     "mix-split": (_MIX, "splitTopSeries("),
     "mix-more-roles": (_MIX, 'name={cat === MORE_ROLES ? "More roles" : label(cat)}'),
+    # Roles over time follows the filter row, and a series with one week draws a dot (an area needs two).
+    "mix-filters": (_MIX, 'buildQuery(filters, { window: "week" })'),
+    "mix-page-filters": ("app/analytics/page.tsx", "<RoleMixChart filters={filters} />"),
+    "mix-single-point-dot": (_MIX, "dot={points.get(cat) === 1}"),
     "fit-series-cap": (_FIT, "(row) => row.n,\n      MAX_FIT_SERIES,"),
     "fit-hidden-caption": (_FIT, '${hidden.length} more ${hidden.length === 1 ? "is" : "are"} not shown.'),
     # The legend says the resume's own name; the slug stays the dataKey

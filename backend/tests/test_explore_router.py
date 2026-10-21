@@ -533,6 +533,34 @@ def test_role_mix_over_time_groups_by_week(db_session, client):
     assert keys == sorted(keys)
 
 
+def test_role_mix_over_time_follows_filters_and_zero_fills_weeks(db_session, client):
+    """A Country filter changes the series, and the weeks run unbroken from the
+    first to the last, with 0 for a role in a week that had none of it."""
+    rows = [
+        ("rm-us-1", "data_scientist", "US", datetime(2026, 4, 7, tzinfo=UTC)),
+        ("rm-us-2", "data_engineer", "US", datetime(2026, 4, 22, tzinfo=UTC)),
+        ("rm-de-1", "data_scientist", "DE", datetime(2026, 4, 14, tzinfo=UTC)),
+    ]
+    for raw_hash, role, country, created_at in rows:
+        job = _seed_job(db_session, raw_hash=raw_hash, role_category=role, created_at=created_at)
+        job.country = country
+    db_session.commit()
+
+    us = client.get("/api/explore/role-mix-over-time", params={"country": "US"}).json()
+    every = client.get("/api/explore/role-mix-over-time").json()
+
+    # US only: the DE job's week (2026-04-13) is still a week, with zeros.
+    assert us == [
+        {"week_start": "2026-04-06", "role_category": "data_engineer", "count": 0},
+        {"week_start": "2026-04-06", "role_category": "data_scientist", "count": 1},
+        {"week_start": "2026-04-13", "role_category": "data_engineer", "count": 0},
+        {"week_start": "2026-04-13", "role_category": "data_scientist", "count": 0},
+        {"week_start": "2026-04-20", "role_category": "data_engineer", "count": 1},
+        {"week_start": "2026-04-20", "role_category": "data_scientist", "count": 0},
+    ]
+    assert {"week_start": "2026-04-13", "role_category": "data_scientist", "count": 1} in every
+
+
 def test_top_skills_collapses_one_name_across_categories(db_session, client):
     job1 = _seed_job(db_session, raw_hash="agg-1", role_category="data_scientist")
     job2 = _seed_job(db_session, raw_hash="agg-2", role_category="data_scientist")

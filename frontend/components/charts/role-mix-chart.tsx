@@ -14,27 +14,30 @@ import {
 } from "recharts";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { CHART_COLORS as COLORS, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE, weekLabel, weekTick } from "@/components/charts/chart-kit";
+import { CHART_COLORS as COLORS, buildQuery, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE, weekLabel, weekTick } from "@/components/charts/chart-kit";
 import { useRoleLabel } from "@/components/role-category-picker";
 import { splitTopSeries } from "@/lib/analytics-series";
 import { apiFetch } from "@/lib/api";
 import type { RoleMixRow } from "@/lib/types";
+import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
 
 const MORE_ROLES = "__more__";
 
-export function RoleMixChart() {
+export function RoleMixChart({ filters }: { filters: TopSkillsFilters }) {
   const { data, isLoading } = useQuery({
-    queryKey: ["explore", "role-mix-over-time"],
+    queryKey: ["explore", "role-mix-over-time", filters],
     queryFn: () =>
-      apiFetch<RoleMixRow[]>("/api/explore/role-mix-over-time?window=week"),
+      apiFetch<RoleMixRow[]>(
+        `/api/explore/role-mix-over-time?${buildQuery(filters, { window: "week" })}`,
+      ),
   });
 
   const label = useRoleLabel();
 
   // Counts add, so the tail is one honest "More roles" bucket (not "Other",
   // which is a real category). Five named roles plus that bucket is 6 hues.
-  const { chartData, categories } = useMemo(() => {
-    if (!data) return { chartData: [], categories: [] as string[] };
+  const { chartData, categories, points } = useMemo(() => {
+    if (!data) return { chartData: [], categories: [] as string[], points: new Map<string, number>() };
     const { shown, hidden } = splitTopSeries(
       data,
       (row) => row.role_category,
@@ -52,10 +55,12 @@ export function RoleMixChart() {
     const chartData = [...weeks.values()].sort((a, b) =>
       String(a.week).localeCompare(String(b.week)),
     );
-    return {
-      chartData,
-      categories: hidden.length ? [...shown, MORE_ROLES] : shown,
-    };
+    const categories = hidden.length ? [...shown, MORE_ROLES] : shown;
+    // Weeks each series has a value in: an area needs two, so a lone week draws as a dot.
+    const points = new Map(
+      categories.map((cat) => [cat, chartData.filter((week) => week[cat] !== undefined).length]),
+    );
+    return { chartData, categories, points };
   }, [data]);
 
   if (isLoading) return <Skeleton className="h-80 w-full" />;
@@ -81,6 +86,7 @@ export function RoleMixChart() {
             stroke={COLORS[i]}
             fill={COLORS[i]}
             fillOpacity={0.6}
+            dot={points.get(cat) === 1}
           />
         ))}
       </AreaChart>

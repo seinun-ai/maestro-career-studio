@@ -220,7 +220,7 @@ function AnalyticsContent() {
                 <CardTitle>Roles over time</CardTitle>
               </CardHeader>
               <CardContent>
-                <RoleMixChart />
+                <RoleMixChart filters={filters} />
               </CardContent>
             </Card>
           </div>

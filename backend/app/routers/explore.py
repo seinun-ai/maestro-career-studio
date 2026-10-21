@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -269,21 +269,31 @@ def fit_distribution(db: Annotated[Session, Depends(get_db)]):
 @router.get("/role-mix-over-time")
 def role_mix_over_time(
     db: Annotated[Session, Depends(get_db)],
+    filters: Annotated[explore_overview.JobFilters, Depends(job_filters)],
     window: str = "week",
 ):
+    """Jobs per role per week, through the same filters as the other Job market charts.
+
+    Every week from the first to the last is a row for every role, with 0 where the role had no
+    jobs, so a stacked chart never draws a straight line across a week with nothing in it."""
     if window != "week":
         window = "week"
 
-    rows = db.execute(
-        select(Job.created_at, Job.role_category).where(Job.role_category.is_not(None))
-    ).all()
+    stmt = select(Job.created_at, Job.role_category).where(Job.role_category.is_not(None))
     counts: dict[tuple[date, str], int] = {}
-    for created_at, category in rows:
+    for created_at, category in db.execute(_apply_job_filters(stmt, filters)).all():
         key = (bucket_for(created_at, "week"), category)
         counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return []
+    first = min(ws for ws, _ in counts)
+    last = max(ws for ws, _ in counts)
+    weeks = [first + timedelta(weeks=i) for i in range((last - first).days // 7 + 1)]
+    categories = sorted({category for _, category in counts})
     return [
-        {"week_start": ws.isoformat(), "role_category": category, "count": n}
-        for (ws, category), n in sorted(counts.items())
+        {"week_start": ws.isoformat(), "role_category": category, "count": counts.get((ws, category), 0)}
+        for ws in weeks
+        for category in categories
     ]
 
 

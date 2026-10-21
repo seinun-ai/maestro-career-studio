@@ -1770,7 +1770,9 @@
   (`test_frontend_resume_chart.py`). ATS-over-time draws at most 4 roles (`MAX_ROLE_SERIES` in
   `lib/analytics-series.ts`) and leaves the tail off the chart, naming the
   hidden count in the caption; role mix folds that tail into one "More roles"
-  series so the week still sums. Role text on these charts, the filters, the
+  series so the week still sums. Roles over time takes the filter row, and
+  `/role-mix-over-time` zero-fills every week from the first to the last for every role; a series with
+  one week draws a dot. Role text on these charts, the filters, the
   heatmap, and the Job market bars comes from `useRoleLabel`, never the slug;
   so does a job's Role family chip and the `/new` summary's role badge (whose
   level, employment and work-mode badges read `humanizeEnum`'s words, never

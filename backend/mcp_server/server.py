@@ -1458,7 +1458,8 @@ def explore_skill_heatmap(limit: int | None = None) -> Any:
 @mcp.tool(**_read("Role Mix Over Time"))
 @_guard
 def explore_role_mix_over_time() -> Any:
-    """Counts of jobs by role category per week."""
+    """Counts of jobs by role category per week. Every week from the first to the
+    last has a row for every role, with count 0 where the role had no jobs."""
     return _client.explore_role_mix_over_time()
 
 
