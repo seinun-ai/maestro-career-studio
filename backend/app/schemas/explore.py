@@ -97,6 +97,8 @@ class OverviewMeta(BaseModel):
 class OverviewSignal(BaseModel):
     title: str
     detail: str
+    # Set on a signal that names pay: the one currency it compared (null: the jobs list none).
+    currency: str | None = None
 
 
 class ExploreOverviewResponse(BaseModel):

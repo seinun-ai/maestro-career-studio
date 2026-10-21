@@ -1751,7 +1751,9 @@ export interface ExploreOverview {
   locations: ExploreCountRow[];
   countries: ExploreCountRow[];
   work_auth: { opt: ExploreCountRow[]; sponsorship: ExploreCountRow[] };
-  signals: { title: string; detail: string }[];
+  /** Server-worded insights. `currency` is set on one that names pay: the single currency it compared,
+   * so pay is never ranked across currencies (`explore_overview._best_paying_signal`). */
+  signals: { title: string; detail: string; currency?: string | null }[];
 }
 
 // ---------------------------------------------------------------------------

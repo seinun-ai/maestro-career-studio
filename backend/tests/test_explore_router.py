@@ -415,6 +415,54 @@ def test_best_paying_signal_skips_the_other_bucket(db_session):
     assert best == ["Best-paying role: AI/ML Engineer"]
 
 
+def _seed_pay(db_session, tag, role, count, top, currency):
+    for i in range(count):
+        job = _seed_job(db_session, raw_hash=f"{tag}-{i}", role_category=role)
+        job.salary_max, job.salary_period, job.salary_currency = top, "year", currency
+
+
+def _best_paying(client, **params):
+    signals = client.get("/api/explore/overview", params=params).json()["signals"]
+    return [s for s in signals if s["title"].startswith("Best-paying role:")]
+
+
+def test_best_paying_signal_never_compares_across_currencies(db_session, client):
+    """₹2,400,000 is not more than $170,000. With no single most common currency
+    there is nothing honest to compare, so the signal names role B or none."""
+    _seed_pay(db_session, "inr", "data_scientist", 3, 2_400_000, "INR")
+    _seed_pay(db_session, "usd", "ai_ml_engineer", 3, 170_000, "USD")
+    db_session.flush()
+
+    best = _best_paying(client)
+
+    assert [s["title"] for s in best] in ([], ["Best-paying role: AI/ML Engineer"])
+    assert not any("Data Scientist" in s["title"] for s in best)
+
+
+def test_best_paying_signal_compares_the_most_common_currency(db_session, client):
+    """Only roles paid in the most common currency are compared, and the signal
+    carries that currency and says so when other pay was set aside."""
+    _seed_pay(db_session, "inr", "data_scientist", 3, 2_400_000, "INR")
+    _seed_pay(db_session, "usd-a", "ai_ml_engineer", 2, 170_000, "USD")
+    _seed_pay(db_session, "usd-b", "data_engineer", 2, 150_000, "USD")
+    db_session.flush()
+
+    best = _best_paying(client)
+    usd_only = _best_paying(client, salary_currency="USD")
+
+    assert [s["title"] for s in best] == ["Best-paying role: AI/ML Engineer"]
+    assert best[0]["currency"] == "USD"
+    assert best[0]["detail"] == (
+        "Average top of the pay range: about $170K, from 2 jobs that list pay. "
+        "Only jobs that pay in USD are compared."
+    )
+    # One currency in scope: nothing was set aside, so the detail says no more.
+    assert usd_only[0]["currency"] == "USD"
+    assert usd_only[0]["detail"] == (
+        "Average top of the pay range: about $170K, from 2 jobs that list pay."
+    )
+
+
 def test_top_skill_signal_title_starts_with_words(db_session):
     """Skill names are stored casefolded, so the title leads with words and
     keeps the stored name verbatim instead of inventing a casing for it."""

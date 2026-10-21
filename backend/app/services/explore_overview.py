@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,7 +42,7 @@ def _count_by(db, column, filters: JobFilters, *, coalesce="unstated"):
     return [{"key": str(k), "count": int(c)} for k, c in db.execute(stmt).all()]
 
 
-def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
+def compute_signals(o: dict[str, Any]) -> list[dict[str, Any]]:
     """The first five insights; `candidate_signals` is every one that fires."""
     return candidate_signals(o)[:5]
 
@@ -63,11 +64,47 @@ def _jobs(n: int) -> str:
     return f"{n} {'job' if n == 1 else 'jobs'}"
 
 
-def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
+def _best_paying_signal(o: dict[str, Any]) -> dict[str, Any] | None:
+    """The best-paying role among jobs paid in the single most common currency.
+
+    ₹2,400,000 is not more than $170,000, so roles are never compared across currencies: only the
+    currency most jobs list pay in takes part, and a tie means there is no honest comparison. The
+    signal carries that currency, and its detail names it whenever pay in another one was left out."""
+    # Reserved buckets are not a role: "Best-paying role: Unknown" says nothing.
+    paid = [
+        r for r in o["salary_by_role"]
+        if r.get("avg_max") and r["role_category"] not in role_categories.RESERVED
+    ]
+    jobs_by_currency: Counter[str | None] = Counter()
+    for r in paid:
+        jobs_by_currency[r.get("currency")] += r["n"]
+    ranked = jobs_by_currency.most_common(2)
+    if not ranked or (len(ranked) == 2 and ranked[0][1] == ranked[1][1]):
+        return None
+    currency = ranked[0][0]
+    set_aside = len(jobs_by_currency) > 1
+    if set_aside and currency is None:
+        return None  # pay with no currency cannot be named beside pay that has one
+    best = max((r for r in paid if r.get("currency") == currency), key=lambda r: r["avg_max"])
+    cur = currency or o["meta"].get("salary_year_currency")
+    detail = (
+        f"Average top of the pay range: about {_thousands(best['avg_max'], cur)}, "
+        f"from {_jobs(best['n'])} that {'lists' if best['n'] == 1 else 'list'} pay."
+    )
+    if set_aside:
+        detail += f" Only jobs that pay in {currency} are compared."
+    return {
+        "title": f"Best-paying role: {role_categories.label_for(best['role_category'])}",
+        "detail": detail,
+        "currency": currency,
+    }
+
+
+def candidate_signals(o: dict[str, Any]) -> list[dict[str, Any]]:
     total = o["meta"]["total_jobs"]
     if not total:
         return []
-    signals: list[dict[str, str]] = []
+    signals: list[dict[str, Any]] = []
 
     # No OPT signal: the Job market tab's own tile shows that share, and `work_auth.opt` carries
     # the counts for every other reader. A signal said it a second time on the same screen.
@@ -87,21 +124,9 @@ def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
             "detail": f"Required in {s['n']} of {_jobs(total)}, more than any other skill.",
         })
 
-    # Reserved buckets are not a role: "Best-paying role: Unknown" says nothing.
-    paid = [
-        r for r in o["salary_by_role"]
-        if r.get("avg_max") and r["role_category"] not in role_categories.RESERVED
-    ]
-    if paid:
-        best = max(paid, key=lambda r: r["avg_max"])
-        cur = best.get("currency") or o["meta"].get("salary_year_currency")
-        signals.append({
-            "title": f"Best-paying role: {role_categories.label_for(best['role_category'])}",
-            "detail": (
-                f"Average top of the pay range: about {_thousands(best['avg_max'], cur)}, "
-                f"from {_jobs(best['n'])} that {'lists' if best['n'] == 1 else 'list'} pay."
-            ),
-        })
+    best_paying = _best_paying_signal(o)
+    if best_paying:
+        signals.append(best_paying)
 
     without = o["meta"].get("jobs_without_salary") or 0
     if without:
