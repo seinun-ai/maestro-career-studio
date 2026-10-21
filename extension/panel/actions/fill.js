@@ -47,8 +47,7 @@
   // The rule pass's one finding about the PROFILE rather than the page. It is
   // thrown inside the runner's swallow (the AI pass still runs), so `startFill`
   // watches for it and puts it at the head of the run's note.
-  const NO_SAVED_ANSWERS = "No saved answers yet. Add them in Maestro CS under "
-    + "Profile › Autofill.";
+  const NO_SAVED_ANSWERS = "No saved answers yet. Add them in Maestro CS under Profile.";
 
   /** Which resume the fill's employment blocks and skills come from.
    *

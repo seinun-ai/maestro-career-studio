@@ -11,11 +11,11 @@ at to your local Maestro CS app.
   one; you can pick another.
 - **Pick or tailor a resume.** Use a base resume as is, run Quick tailor, or
   open the job in the app for a custom tailoring session.
-- **Fill the application.** Fill the form from your saved answers (Profile ›
-  Autofill in the app), with optional AI help for the questions they cannot
-  answer. Fields it could not fill are listed so you can finish them. Autofill
-  also attaches your tailored resume PDF to an empty resume upload box, and
-  Attach resume does it by hand.
+- **Fill the application.** Fill the form from your saved answers (Profile in
+  the app: Contact, Work permits, Start and pay and the rest), with optional AI
+  help for the questions they cannot answer. Fields it could not fill are
+  listed so you can finish them. Autofill also attaches your tailored resume
+  PDF to an empty resume upload box, and Attach resume does it by hand.
 - **Apply to one job for you** (needs **full automation** on in Settings ›
   Agent apps). The Job step shows **Apply**: it saves the job, settles the
   resume, queues the job as your yes, then works through the application in this

@@ -77,13 +77,13 @@ def _work_auth_warnings(work_auth: dict[str, Any]) -> list[str]:
     if not authorized or not sponsorship:
         return [
             "Your work authorization answers are incomplete. Fix them in "
-            "Profile › Autofill before filtering jobs on them. The brief never guesses."
+            "Profile › Work permits before filtering jobs on them. The brief never guesses."
         ]
     if authorized == "no" and sponsorship == "no":
         return [
             "Your work authorization answers are contradictory: not authorized to "
             "work, and no sponsorship needed. The brief passes them on unchanged. "
-            "Correct them in Profile › Autofill before relying on them."
+            "Correct them in Profile › Work permits before relying on them."
         ]
     return []
 

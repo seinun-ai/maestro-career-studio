@@ -63,7 +63,7 @@
       // match a decline ("Decline to self-identify"), and nothing does.
       self_describe: [SELF_DESCRIBE],
     };
-    // The values Profile › Autofill stores. Anything else (a hand-edited
+    // The values Profile's Diversity questions store. Anything else (a hand-edited
     // "Woman") has no words: it is matched exactly or not at all, where it
     // used to fall back to the DECLINE words and answer for the user.
     const GENDER_VALUES = new Set(["male", "female", "non_binary", "self_describe", "decline"]);

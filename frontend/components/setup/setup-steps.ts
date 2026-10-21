@@ -44,7 +44,7 @@ function detailString(
   return typeof value === "string" ? value : null;
 }
 
-/** What is missing, in words, for each autofill group (Profile › Autofill's headings). */
+/** What is missing, in words, for each autofill group. */
 const GROUP_MISSING: Record<string, string> = {
   personal: "Personal details are missing.",
   work_auth: "Work authorization is missing.",

@@ -286,14 +286,14 @@ def test_experience_check_omitted_when_posting_states_no_minimum():
 # --- the words (D §9.3) --------------------------------------------------------
 #
 # Every message the job page's knock-out card prints (and MCP `get_job`
-# relays). The answers these point at live on Profile › Autofill, not Settings
-# (D §10.20), and none of them joins two clauses with a semicolon.
+# relays). The answers these point at live in Profile's Work permits tile, not
+# Settings (D §10.20), and none of them joins two clauses with a semicolon.
 
 _MESSAGES = [
     (dict(work_authorization="citizen_or_gc_required"), WorkAuth(), {},
      "work_authorization",
      "This job requires US citizenship or a green card. Add your work "
-     "authorization in Profile › Autofill."),
+     "authorization in Profile › Work permits."),
     (dict(work_authorization="citizen_or_gc_required"), WorkAuth(status="h1b"), {},
      "work_authorization", "This job requires US citizenship or a green card."),
     (dict(work_authorization="no_sponsorship"), WorkAuth(status="h1b"), {},
@@ -305,11 +305,11 @@ _MESSAGES = [
     (dict(work_authorization="no_sponsorship"), WorkAuth(), {},
      "work_authorization",
      "This job doesn't sponsor visas. Answer the sponsorship questions in "
-     "Profile › Autofill."),
+     "Profile › Work permits."),
     (dict(work_authorization="sponsorship_available"), WorkAuth(status="h1b"), {},
      "work_authorization", "This job sponsors visas."),
     (dict(opt_accepted="yes"), WorkAuth(), {}, "opt",
-     "This job states an OPT policy. Add your work authorization in Profile › Autofill."),
+     "This job states an OPT policy. Add your work authorization in Profile › Work permits."),
     (dict(opt_accepted="no"), WorkAuth(status="opt"), {}, "opt",
      "This job doesn't accept OPT."),
     (dict(opt_accepted="stem_opt_ok"), WorkAuth(status="opt"), {}, "opt",
@@ -335,13 +335,14 @@ def test_knockout_messages_read_as_plain_sentences():
     assert _scanned_messages() == [expected for *_rest, expected in _MESSAGES]
 
 
-def test_knockout_points_to_profile_autofill():
-    """Every message that names a place names Profile › Autofill, where the
-    work-authorization answers live; none sends the user to Settings."""
+def test_knockout_points_to_the_work_permits_tile():
+    """Every work-authorization message that names a place names Profile › Work
+    permits, the tile the job card's link opens (`autofill-work_auth`); none
+    sends the user to Settings, or to the Autofill section Profile no longer has."""
     messages = _scanned_messages()
     places = [m for m in messages if " in Profile" in m or " in Settings" in m]
     assert len(places) == 3
-    assert [m for m in places if not m.endswith("in Profile › Autofill.")] == []
+    assert [m for m in places if not m.endswith("in Profile › Work permits.")] == []
 
 
 # --- surfaces -----------------------------------------------------------------

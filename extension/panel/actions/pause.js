@@ -377,6 +377,13 @@
     await putProfile(store, profile);
   }
 
+  // Where Profile shows a learned typed key: the tile or fold that holds its group (the titles in the web
+  // app's lib/profile-tiles.ts; backend/tests/test_settings_paths_in_words.py checks every "Profile ›").
+  const SAVED_IN = {
+    preferences: " Saved to Profile › Start and pay.",
+    eligibility: " Saved to Profile › Eligibility.",
+  };
+
   /** What became of a learned answer, said after "Filled …". A work-permit answer names its country's
    * set, and one with no country says it was not saved: the next form asks again. */
   function learnedSentence(target) {
@@ -384,7 +391,8 @@
       return " Not saved: it isn't clear which country's work permit this is, so it will ask again.";
     }
     if (target.market) return ` Saved to Profile › Work permits (${target.market}).`;
-    return target.store === "profile" ? " Saved to Profile › Autofill." : " Saved. It won't ask again.";
+    if (target.store !== "profile") return " Saved. It won't ask again.";
+    return SAVED_IN[target.path[0]] ?? " Saved to Profile.";
   }
 
   /** Answer ONE open field from the panel, and — unless the user said not to —

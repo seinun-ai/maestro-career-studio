@@ -349,7 +349,7 @@ not deleted.
 ### Tell it how you sound — once
 
 A **persona** describes you as a candidate: vision, strengths, goals, working
-style, how your writing should sound. Set it once in Profile › About you (or have it drafted
+style, how your writing should sound. Set it once in Profile › How you come across (or have it drafted
 from your career history, then review and save it), and every generated document
 uses that voice. It shapes tone and emphasis only — never facts.
 
@@ -393,7 +393,8 @@ evidence for can only go in your skills list, never into an invented bullet.
 ![The Companion beside a job: it saves the job, picks the resume, and with full automation on, Apply fills each page, clicks Next and stops on the review page. You press Submit.](assets/extension.gif)
 
 The **Companion** is a side panel in Chrome: save a job from the job board you're reading, score
-it, and fill application forms from your saved answers (**Profile › Autofill**). It leaves
+it, and fill application forms from your saved answers (in **Profile**: Contact, Work permits, Start
+and pay and the rest). It leaves
 signatures, agreement boxes and government IDs to you unless you turn
 on the agreement permission in Settings › Companion. Autofill never types a password, and the Companion never submits. Autofill does not move to the next page either; only **Apply** does, with full automation on in Settings › Agent apps (see the Companion's README).
 
@@ -490,7 +491,7 @@ as "City, State" when the form also asks for a state, and Apply picks the option
 leave it to you. An optional field you have a saved answer for that stayed empty is listed under **Check before you submit** as **Left for
 you**; it never stops the run. An optional field the run left blank is listed there too, as **Left blank — optional**, and goes when a later fill answers it.
 
-Veteran status is one question in **Profile › Autofill**: "Are you a veteran?" (Yes, No, or "I don't
+Veteran status is one question in **Profile › Diversity questions**: "Are you a veteran?" (Yes, No, or "I don't
 wish to answer"). A No answers every "I am not a protected veteran" option on a form, and picks the one such option on a list without asking a model. A Yes never picks
 a protected class for you, so the Companion leaves that list to you, and a Yes never answers "are you currently serving?" either. A No
 also answers "have you ever served?" with the never-served option, and says it was assumed. If your Profile still held the old

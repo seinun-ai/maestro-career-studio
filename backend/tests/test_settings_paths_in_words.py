@@ -1,9 +1,12 @@
-"""Every "Settings › …" the app or its guides name is a tab Settings has (design refresh Task 7.3).
+"""Every "Settings › …" the app or its guides name is a tab Settings has (design refresh Task 7.3), and
+every "Profile › …" a tile or fold Profile has (Task 7.2).
 
 Settings went from five tabs (AI & models, Tailoring, Connected agents, Appearance, About) to four
 (Basics, Companion, Agent apps, Advanced), and the server's error sentences, the Companion's notes and
 the guides kept sending people to the old ones. The tab labels are read from `lib/settings-tabs.ts`, so
-a renamed tab fails here until every sentence that names it follows.
+a renamed tab fails here until every sentence that names it follows. Profile lost its tabs (About you,
+Autofill) for tiles and folds (Contact, Work permits, Start and pay, Diversity questions, …), read from
+`lib/profile-tiles.ts` the same way.
 
 - **The app's own words** (server messages, MCP text, the Companion, the web app; comments too, since
   they are copied into messages): the first place after "Settings ›" is a current tab label.
@@ -24,6 +27,11 @@ _ROOT = Path(__file__).resolve().parents[2]
 # HTML entity; a path wrapped onto the next line of a comment or a Markdown paragraph still reads.
 _PATH = re.compile(
     r"Settings(?:\s*(?:›|→|&gt;|\\u203a)|\s+>)(?:\s|//|\*|#)*([A-Z][^›→>.,;:()\n*`\"]*)"
+)
+
+# The same spellings after "Profile" (a whole word: "AutofillProfile → x" is no path, nor a generic).
+_PROFILE_PATH = re.compile(
+    r"\bProfile(?:\s*(?:›|→|&gt;|\\u203a)|\s+>)(?:\s|//|\*|#)*([A-Z][^›→>.,;:()\n*`\"]*)"
 )
 
 _SOURCE_TREES: dict[str, tuple[str, ...]] = {
@@ -67,9 +75,32 @@ def _tab_labels() -> tuple[str, ...]:
     return labels
 
 
-def _paths(text: str) -> list[tuple[int, str]]:
-    """(line, first place after "Settings ›") for every Settings path in `text`."""
-    return [(text.count("\n", 0, m.start()) + 1, m.group(1).strip()[:40]) for m in _PATH.finditer(text)]
+def _profile_places() -> tuple[str, ...]:
+    """Profile's tile and fold titles, as `lib/profile-tiles.ts` names them."""
+    src = (_ROOT / "frontend/lib/profile-tiles.ts").read_text(encoding="utf-8")
+    titles = []
+    for table in ("PROFILE_TILES", "PROFILE_FOLDS"):
+        found = re.search(rf"export const {table} = \[(.+?)\] as const", src, re.S)
+        assert found, f"{table} moved: this pin reads Profile's titles from it"
+        titles += re.findall(r'title: "([^"]+)"', found.group(1))
+    assert titles, "no tile or fold titles found in lib/profile-tiles.ts"
+    return tuple(titles)
+
+
+def _paths(text: str, pattern: re.Pattern[str] = _PATH) -> list[tuple[int, str]]:
+    """(line, first place after "Settings ›", or after `pattern`'s page) for every path in `text`."""
+    return [(text.count("\n", 0, m.start()) + 1, m.group(1).strip()[:40]) for m in pattern.finditer(text)]
+
+
+def _own_words() -> list[tuple[Path, str]]:
+    """Every source file of the app's own words, with its text."""
+    out = []
+    for tree, patterns in _SOURCE_TREES.items():
+        for pattern in patterns:
+            for path in sorted((_ROOT / tree).rglob(pattern)):
+                if not _is_test(path.relative_to(_ROOT)):
+                    out.append((path.relative_to(_ROOT), path.read_text(encoding="utf-8", errors="replace")))
+    return out
 
 
 def _is_test(path: Path) -> bool:
@@ -90,14 +121,10 @@ def test_the_scan_reads_a_path_however_it_is_written():
 def test_every_settings_path_in_the_apps_own_words_names_a_current_tab():
     labels = _tab_labels()
     wrong = []
-    for tree, patterns in _SOURCE_TREES.items():
-        for pattern in patterns:
-            for path in sorted((_ROOT / tree).rglob(pattern)):
-                if _is_test(path.relative_to(_ROOT)):
-                    continue
-                for line, place in _paths(path.read_text(encoding="utf-8", errors="replace")):
-                    if not place.startswith(labels + _FOREIGN):
-                        wrong.append(f"{path.relative_to(_ROOT)}:{line}: Settings › {place}")
+    for rel, text in _own_words():
+        for line, place in _paths(text):
+            if not place.startswith(labels + _FOREIGN):
+                wrong.append(f"{rel}:{line}: Settings › {place}")
     assert not wrong, f"not a Settings tab ({', '.join(labels)}):\n" + "\n".join(wrong)
 
 
@@ -110,3 +137,47 @@ def test_the_guides_name_only_current_settings_tabs():
             if not place.startswith(labels + _FOREIGN):
                 wrong.append(f"{rel}:{line}: Settings › {place}")
     assert not wrong, f"not a Settings tab ({', '.join(labels)}):\n" + "\n".join(wrong)
+
+
+# --- Profile's tiles and folds -------------------------------------------------------------------------
+
+
+def test_the_scan_reads_a_profile_path_however_it_is_written():
+    """Not vacuous: a learn note, a wrapped comment, an arrow and a guide's bold path are each read, and a
+    TypeScript generic or a longer name ending in "Profile" is not a path."""
+    def read(text):
+        return _paths(text, _PROFILE_PATH)
+
+    assert read("Saved to Profile › Work permits (United Kingdom).") == [(1, "Work permits")]
+    assert read("turned off in Profile ›\n   * Diversity questions, which") == [(1, "Diversity questions")]
+    assert read("x\nanswers (**Profile ›\n  Autofill**)") == [(2, "Autofill")]
+    assert read("(Profile → Eligibility) cover") == [(1, "Eligibility")]
+    assert read("const answers = useAutosave<Profile>(initial);") == []
+    assert read("SettingEnvelope<AutofillProfile> → Start") == []
+
+
+def test_profile_places_come_from_its_tiles_and_folds():
+    places = _profile_places()
+    assert {"Contact", "Work permits", "Start and pay", "Your own questions"} <= set(places)
+    assert {"Diversity questions", "Eligibility"} <= set(places)
+    assert "Autofill" not in places and "About you" not in places
+
+
+def test_every_profile_path_in_the_apps_own_words_names_a_tile_or_fold():
+    places = _profile_places()
+    wrong = []
+    for rel, text in _own_words():
+        for line, place in _paths(text, _PROFILE_PATH):
+            if not place.startswith(places):
+                wrong.append(f"{rel}:{line}: Profile › {place}")
+    assert not wrong, f"not a Profile tile or fold ({', '.join(places)}):\n" + "\n".join(wrong)
+
+
+def test_the_guides_name_only_profile_tiles_and_folds():
+    places = _profile_places()
+    wrong = []
+    for rel in _GUIDES:
+        for line, place in _paths((_ROOT / rel).read_text(encoding="utf-8"), _PROFILE_PATH):
+            if not place.startswith(places):
+                wrong.append(f"{rel}:{line}: Profile › {place}")
+    assert not wrong, f"not a Profile tile or fold ({', '.join(places)}):\n" + "\n".join(wrong)

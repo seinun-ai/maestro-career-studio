@@ -276,7 +276,7 @@ Five steps from nothing to a PDF:
 ## 4. The Companion browser extension (optional)
 
 The **Companion** is a Chrome side panel: save the job posting you're looking at, score your
-resumes against it, fill the application form from your saved answers (Profile › Autofill), and
+resumes against it, fill the application form from your saved answers (in Profile), and
 mark it applied — without leaving the tab. The app must be running. With **Full automation** on
 (Settings › Agent apps), its **Apply** button fills each page, presses Next and stops on the
 review page. Submit is always yours.

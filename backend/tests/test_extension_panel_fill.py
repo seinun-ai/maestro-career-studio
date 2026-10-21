@@ -1120,7 +1120,7 @@ def test_the_progress_rows_are_the_runs_own_report(tmp_path):
         # r1 was written; q1 and q2 went to no model and q3 is an essay, so
         # three are still open.
         ("Application questions", "1 filled · 3 need you"),
-        ("Diversity questions", "turned off in Profile › Autofill"),
+        ("Diversity questions", "turned off in Profile › Diversity questions"),
     ]
     # The state is a visible WORD beside its mark, so the mark needs no
     # `aria-label` of its own and neither colour nor shape carries it alone.
@@ -1338,7 +1338,7 @@ def test_a_collect_that_reaches_nobody_never_erases_the_rule_pass(tmp_path):
     # The rule pass's rows are on screen, because the rule pass happened.
     assert _rows_of(settled["rail"]) == [
         ("Saved answers", "2 filled · 1 already filled · 1 not accepted"),
-        ("Diversity questions", "turned off in Profile › Autofill"),
+        ("Diversity questions", "turned off in Profile › Diversity questions"),
     ]
     # …and NOT a questions row: the collect never ran, so a row reading
     # "0 filled" there would report zeros about a step that did not happen.
@@ -1393,7 +1393,7 @@ def test_a_second_press_reports_the_second_run_and_never_the_first(tmp_path):
     # Run 2's rows, and only run 2's.
     assert _rows_of(settled["rail"]) == [
         ("Saved answers", "1 filled"),
-        ("Diversity questions", "turned off in Profile › Autofill"),
+        ("Diversity questions", "turned off in Profile › Diversity questions"),
     ]
     # Run 1's still-open list is GONE rather than restated: it described a page
     # the user has been working on since, and the second run never collected.
@@ -1444,7 +1444,7 @@ def test_a_finished_fill_is_reopened_for_the_wizards_next_page(tmp_path):
     assert _rows_of(settled["rail"]) == [
         ("Saved answers", "1 filled"),
         ("Application questions", "1 filled · 3 need you"),
-        ("Diversity questions", "turned off in Profile › Autofill"),
+        ("Diversity questions", "turned off in Profile › Diversity questions"),
     ]
     assert "2 filled · 1 already filled" not in _text(settled["rail"])
     # The still-open list is this page's, under a row that is still ticked.
@@ -1490,7 +1490,7 @@ def test_a_fill_with_no_saved_answers_says_where_to_add_them(tmp_path):
                 api={"/api/autofill/context": _reply({**FILL_CONTEXT, "profile": {}})})
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
-        "No saved answers yet. Add them in Maestro CS under Profile › Autofill. "
+        "No saved answers yet. Add them in Maestro CS under Profile. "
         "3 fields need your answer.")
     # Nothing was filled from a profile that has nothing in it.
     assert "profile_fill" not in _broadcast_types(out)
@@ -1511,7 +1511,7 @@ def test_with_no_saved_answers_only_a_run_that_wrote_says_it_finished(
                 api={"/api/autofill/context": _reply({**FILL_CONTEXT, "profile": {}})})
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
-        "No saved answers yet. Add them in Maestro CS under Profile › Autofill." + tail)
+        "No saved answers yet. Add them in Maestro CS under Profile." + tail)
 
 
 def test_a_second_run_whose_rules_never_ran_says_so(tmp_path):
@@ -1828,7 +1828,7 @@ def test_a_typed_answer_is_written_to_the_one_field_it_names(tmp_path):
     # "Saved to your profile", because this question HAS a declared key — the
     # sentence names which of the two things happened.
     assert note["text"] == (
-        "Filled “how did you hear about us?”. Saved to Profile › Autofill. "
+        "Filled “how did you hear about us?”. Saved to Profile › Start and pay. "
         "2 fields need your answer.")
 
 
@@ -1849,6 +1849,22 @@ def test_the_answer_is_remembered_in_the_profile_the_rules_actually_read(tmp_pat
     assert body["value"]["preferences"]["desired_salary"] == "$180,000"
     assert body["value"]["first_name"] == "Ada"
     assert body["value"]["custom"] == [{"question": "preferred shift", "answer": "Day"}]
+
+
+def test_a_learned_answer_names_the_profile_fold_that_shows_it(tmp_path):
+    """A typed key is shown by the tile or fold that holds its group (lib/profile-tiles.ts's titles): an
+    eligibility answer in Profile's Eligibility fold, as a preference is in Start and pay."""
+    frames = {"collect_open_questions": [{"frameId": 0, "result": {
+        "host": "job-boards.greenhouse.io",
+        "questions": [{"qid": "el1", "label": "Are you 18 years of age or older?", "kind": "select",
+                       "options": ["Yes", "No"]}],
+        "retryables": [],
+    }}]}
+    out = _answer(tmp_path, answer={"qid": "el1", "text": "Yes"}, frames=frames)
+    [body] = _profile_put(out)
+    assert body["value"]["eligibility"]["over_18"] == "Yes"
+    [note] = _by_class(out["answered"]["foot"], "note")
+    assert "Saved to Profile › Eligibility." in note["text"]
 
 
 def _work_permit_answer(tmp_path, market, served, label="Do you currently require sponsorship?", text="Yes"):
@@ -3725,7 +3741,7 @@ def test_the_note_counts_the_blank_fields_as_well_as_the_open_ones(tmp_path):
                 api={"/api/autofill/context": _reply({**FILL_CONTEXT, "profile": {}})})
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
-        "No saved answers yet. Add them in Maestro CS under Profile › Autofill. "
+        "No saved answers yet. Add them in Maestro CS under Profile. "
         "9 fields are blank and 3 need your answer.")
 
 
@@ -3790,7 +3806,7 @@ def test_a_typed_answer_names_the_field_as_the_page_wrote_it_and_counts_the_blan
                   frames={"collect_open_questions": frames})
     [note] = _by_class(out["answered"]["foot"], "note")
     assert note["text"] == (
-        "Filled “How did you hear about us?”. Saved to Profile › Autofill. "
+        "Filled “How did you hear about us?”. Saved to Profile › Start and pay. "
         "9 fields are blank and 2 need your answer.")
 
 

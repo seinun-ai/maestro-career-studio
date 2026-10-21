@@ -303,9 +303,9 @@
     // how a user comes to believe there are two.
     resume: "Quick tailor",
     // One word, and short on purpose (owner decision, 2026-09-27): "Fill this
-    // form" wrapped onto three lines beside the status chips. "Autofill" is
-    // the app's own word for the answers it fills from (Profile › Autofill),
-    // and the mode control above the button says which pass is about to run.
+    // form" wrapped onto three lines beside the status chips. "Autofill" says
+    // what it does, filling the form from the answers Profile keeps, and the
+    // mode control above the button says which pass is about to run.
     // The STEP is still "Fill".
     fill: "Autofill",
     // AND NO `track`, which is a decision rather than an omission — this map is

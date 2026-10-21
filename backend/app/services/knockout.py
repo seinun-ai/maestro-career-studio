@@ -70,7 +70,7 @@ def _gc_required_verdict(work_auth: WorkAuth) -> tuple[str, str | None]:
         return (
             "profile_missing",
             "This job requires US citizenship or a green card. Add your work "
-            "authorization in Profile › Autofill.",
+            "authorization in Profile › Work permits.",
         )
     if work_auth.status in _CITIZEN_OR_GC:
         return "pass", None
@@ -89,7 +89,7 @@ def _no_sponsorship_verdict(work_auth: WorkAuth) -> tuple[str, str | None]:
         return (
             "profile_missing",
             "This job doesn't sponsor visas. Answer the sponsorship questions in "
-            "Profile › Autofill.",
+            "Profile › Work permits.",
         )
     return "pass", None
 
@@ -134,7 +134,7 @@ def _opt_verdict(stated: str, status: str | None, holder: bool) -> tuple[str, st
         return (
             "profile_missing",
             "This job states an OPT policy. Add your work authorization in "
-            "Profile › Autofill.",
+            "Profile › Work permits.",
         )
     if not holder:
         return "pass", None
@@ -361,11 +361,11 @@ def _on_site_verdict(job: Job, mode: str, answer: str | None,
         return "pass", None
     if not (_words(personal.get("city")) or _words(personal.get("state"))):
         return "profile_missing", (f"This job is {kind} in {where}. Add your city and state in "
-                                   "Profile › Autofill.")
+                                   "Profile › Contact.")
     if answer == "no":
         return "conflict", f"This job is {kind} in {where}. Your profile says you won't relocate."
     return "profile_missing", (f"This job is {kind} in {where}. Answer Willing to relocate in "
-                               "Profile › Autofill.")
+                               "Profile › Start and pay.")
 
 
 def _on_site_check(job: Job, preferences: dict[str, Any] | None,

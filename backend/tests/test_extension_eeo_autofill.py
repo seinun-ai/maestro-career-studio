@@ -1033,7 +1033,7 @@ def test_the_protected_class_vocabulary_never_leaks_into_the_engine():
 
 # ---------- gender beyond Male and Female ----------
 #
-# Profile › Autofill offers Male, Female, Non-binary, Prefer to self-describe
+# Profile's Diversity questions offer Male, Female, Non-binary, Prefer to self-describe
 # (with the user's own words in `gender_self_describe`) and Decline to answer.
 # The bar is the protected-class one above: an option is chosen only when it
 # says what the user said, and a form without that option is left for the user.

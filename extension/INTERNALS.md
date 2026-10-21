@@ -698,8 +698,8 @@ know, and each one was learned from a live failure.
   `/api/autofill/context`) — you grant it in Profile in the web app, and this
   extension offers no toggle that could turn it on. While it is off, those fields
   are seen and skipped and the Fill stage's Diversity questions row says
-  "turned off in Profile › Autofill", so the silence does not read as a fill
-  that missed a whole section. While it is on,
+  "turned off in Profile › Diversity questions" (the fold that holds the switch),
+  so the silence does not read as a fill that missed a whole section. While it is on,
   writes are **exact or nothing**: a control that already carries an answer is
   never written over (a "decline to self-identify" is a real answer), and an
   option is chosen only by an exact normalized match or by a curated word list.
@@ -1012,10 +1012,10 @@ know, and each one was learned from a live failure.
   was an explicit, confident "no fact of yours answers this" — a profile
   answer always wins. The model decides which kind a question is; there are
   no label rules.
-  1. **Low-stakes** — off by default; the web app's "Answer low-stakes
-     questions for me" in Profile › Autofill (`/api/settings/autofill-options`),
-     re-read server-side by /map, /pick and /step, never trusted from the
-     Companion. Answered the way an applicant keen on this job would: how you
+  1. **Low-stakes** — on at the web app's Screening answers **Balanced** (the
+     default) and **Confident**, in Settings › Companion
+     (`/api/settings/autofill-options`), re-read server-side by /map, /pick and
+     /step, never trusted from the Companion. Answered the way an applicant keen on this job would: how you
      heard about the job or a referral source, preferred contact method,
      willingness or comfort (relocate, travel, on site, shifts, overtime, a
      drug test), openness to other roles, "related to or previously employed

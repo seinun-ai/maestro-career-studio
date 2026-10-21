@@ -1742,7 +1742,10 @@
   deep-link the card id (`anchorHref("/profile", "autofill-work_auth")`),
   never the bare page: sending a user to `/settings` for the autofill
   profile is a dead end that shipped once already. In prose, a setting's
-  place reads as a path: Settings › Basics, Profile › Work permits.
+  place reads as a path: Settings › Basics, Profile › Work permits. The
+  place after "Settings ›" is a tab label (`SETTINGS_TABS`) and after
+  "Profile ›" a tile or fold title (`lib/profile-tiles.ts`), in the app's
+  own words and in the guides (`test_settings_paths_in_words.py`).
   `?tab=` names the tab and the default tab has none; a tab click writes it
   with the native `history.replaceState` (no server round trip, no new
   history entry). The tab hook reads `?tab=` with `useSearchParams`, never

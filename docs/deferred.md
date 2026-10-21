@@ -139,14 +139,10 @@
     apart for protanopia in light, and the dark steps (L 0.72) sit outside its lightness band. The six tokens hold 3:1 on `card` and
     are pinned (`test_frontend_color_roles.py`), so they stay as they are. Do when a chart draws chart-2 and chart-3 as neighbours a
     reader must tell apart, or the palette is next revised (rerun the validator and move the pins with it).
-59. Words and pictures from before the refresh: user messages still name "Profile › Autofill", a section Profile no longer has (its
-    answers are tiles: Contact, Work permits, Start and pay and the rest): the Companion's learn note ("Saved to Profile ›
-    Autofill.", `extension/panel/actions/pause.js`), its fill and consent notes (`panel/actions/fill.js`, `panel/stages/fill.js`),
-    the knock-out and job-search-brief messages (`services/knockout.py`, `services/job_search_brief.py`), and GETTING_STARTED,
-    USING_MAESTRO and the extension README; `test_settings_paths_in_words.py` checks Settings places only. `docs/assets/
-    connected-agents.png` shows the old Settings tab (its alt text is current), and the design-system previews draw the old
-    layouts (`docs/design-system/README.md`, "Not synced"). Do when one of those files is next changed, or extend the pin to
-    Profile's tile names.
+59. A picture from before the refresh: `docs/assets/connected-agents.png` (USING_MAESTRO's Agent apps section) shows the
+    old Settings tab; its alt text is current. The design-system previews are listed under "Not synced" in
+    `docs/design-system/README.md`. Do when the screenshots are next retaken, or that section of USING_MAESTRO is next
+    changed.
 60. `frontend/.slopconfig.json` (`allowed_clones`) and `frontend/.slop-baseline.json` still name
     `components/settings/autofill-section.tsx`, which the Profile rebuild split into `components/profile/*`, so the slop ratchet
     (maintainer-run, SYSTEM.md §9) reads a pair that no longer exists. Do when the frontend slop ratchet is next run: drop the pair

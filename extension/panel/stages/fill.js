@@ -155,9 +155,9 @@
    * held. Three states, and they are three different sentences:
    *
    * - consent granted: the count of protected-characteristic fields written;
-   * - consent withheld: "turned off in Profile › Autofill", which explains a
-   *   silence that would otherwise read as a fill that missed a whole section,
-   *   and says where the switch is;
+   * - consent withheld: "turned off in Profile › Diversity questions", which
+   *   explains a silence that would otherwise read as a fill that missed a whole
+   *   section, and says where the switch is (the fold beside those answers);
    * - no answer at all: "not asked". The endpoint told us nothing about
    *   consent, and reporting that as "off" would be this surface deciding a
    *   question it is not allowed to decide.
@@ -167,7 +167,7 @@
                                              "not asked");
     if (consent.enabled !== true) {
       return progressRow(ctx, SKIPPED, "Diversity questions",
-                         "turned off in Profile › Autofill");
+                         "turned off in Profile › Diversity questions");
     }
     const filled = fill.eeoFilled.length;
     return progressRow(ctx, filled ? DONE : SKIPPED, "Diversity questions",

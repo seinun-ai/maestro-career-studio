@@ -114,14 +114,14 @@ def test_a_conflict_is_the_scans_verdict():
 
 MESSAGES = [
     (HOME_TX, False, "This job is on-site in New York. Your profile says you won't relocate."),
-    (HOME_TX, None, "This job is on-site in New York. Answer Willing to relocate in Profile › Autofill."),
-    ({}, False, "This job is on-site in New York. Add your city and state in Profile › Autofill."),
+    (HOME_TX, None, "This job is on-site in New York. Answer Willing to relocate in Profile › Start and pay."),
+    ({}, False, "This job is on-site in New York. Add your city and state in Profile › Contact."),
 ]
 
 
 @pytest.mark.parametrize(("relocate", "message"), [
     (False, "This job is hybrid in New York. Your profile says you won't relocate."),
-    (None, "This job is hybrid in New York. Answer Willing to relocate in Profile › Autofill."),
+    (None, "This job is hybrid in New York. Answer Willing to relocate in Profile › Start and pay."),
 ])
 def test_a_hybrid_job_is_called_hybrid(relocate, message):
     check, _ = _on_site("hybrid", NYC, HOME_TX, relocate)

@@ -62,7 +62,7 @@ def test_an_unstated_knockout_says_what_it_could_not_check():
 
 def test_an_unrun_knockout_names_the_check_and_its_salary_field():
     """Which check, and which of the two salary fields it reads: knockout reads
-    preferences.desired_salary (the Autofill tab's), not Job preferences' Minimum salary."""
+    preferences.desired_salary (Profile's Start and pay), not Job preferences' Minimum salary."""
     src = Path(knockout.__file__).read_text(encoding="utf-8")
     card = _read("components/job-knockout-card.tsx")
     assert "uncheckedLabel" not in card and "check: not run yet" not in card

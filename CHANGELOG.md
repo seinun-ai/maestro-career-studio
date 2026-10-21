@@ -250,7 +250,11 @@ work-permit answers for each country you apply in.
   it.
 - **Autofill coverage is under Settings › Advanced › Diagnostics**, unchanged, with its Clear data.
 - **Messages that send you to Settings name its new tabs**, such as "Add an API key in Settings ›
-  Basics." The Companion's Change in Settings link opens the Companion tab.
+  Basics." The Companion's Change in Settings link opens the Companion tab. Messages that send you to
+  Profile name the tile or fold that holds the answer: a job's knock-out card says "Answer the
+  sponsorship questions in Profile › Work permits.", and the Companion says an answer it learned was
+  "Saved to Profile › Start and pay." and that diversity filling is "turned off in Profile › Diversity
+  questions".
 
 ### Fixed
 
