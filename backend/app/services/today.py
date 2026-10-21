@@ -1,8 +1,8 @@
 """Today (GET /api/today): the one thing that matters most now, the few counts behind it, and this
 week. Read-only, and it never writes: every number comes from a reader that already exists (the job
-stage ladder, the tracker score, the Agent inbox's summary, the status-event log through
-`search_summary`, the health report), and a proposal past its expiry is left out rather than expired
-(the Agent inbox's own read does that).
+stage ladder, the tracker score, the Agent inbox's lanes, the status-event log through
+`search_summary`, the health report), and a proposal past its expiry is left out of next up and the
+counts rather than expired (the Agent inbox's own read does that, so its lists never hold one).
 
 Like the Jobs list, it reads every job, the other copy's replicas included: an action on one becomes
 a request for the next sync (docs/entities/job.md, "Ownership under sync").
@@ -241,6 +241,15 @@ def _needs_you(db: Session, now: datetime) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------- counts
 
 
+def _to_review(db: Session, now: datetime) -> int:
+    """Agent jobs waiting for your review (the Agent inbox's To review lane); one past its expiry is
+    left out, as next up leaves it out: the inbox retires it on its next read."""
+    return db.scalar(
+        select(func.count()).select_from(ApplicationProposal).where(
+            ApplicationProposal.status == "pending_review", not_(proposals.past_expiry(now)))
+    ) or 0
+
+
 def _gaps_to_close(db: Session) -> tuple[int, int]:
     """(jobs, gaps): jobs on the `gaps` rung (an open gap analysis is their next step) and the gaps
     still unanswered across them."""
@@ -325,8 +334,7 @@ def build(db: Session, *, zone: tzinfo = UTC, zone_label: str = "UTC",
         "time_zone": zone_label,
         "next_up": next_up,
         "also": _counts([
-            {"key": "to_approve", "count": inbox_readiness.summary(db)["to_review"],
-             "href": "/proposals"},
+            {"key": "to_approve", "count": _to_review(db, now), "href": "/proposals"},
             {"key": "to_check", "count": sum(st.rung == "tailored" for st in rungs.values()),
              "href": "/applications?stage=tailored"},
             {"key": "quiet", "count": quiet, "days": QUIET_FOLLOW_UP_DAYS,

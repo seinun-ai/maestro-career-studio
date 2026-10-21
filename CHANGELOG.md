@@ -220,6 +220,9 @@ a click.
   It still adds them, so sync works where the model cannot load, but it now says so.
 - **Best-paying role compares pay in your currency.** It ranks roles by their pay converted into your
   home currency and leaves out pay with no exchange rate, so ₹2,400,000 no longer beats $170,000.
+- **Today's counts match where they lead.** Agent jobs to review leaves out a proposal past its expiry,
+  which the Agent inbox no longer lists, and No reply after 14 days says its link opens all your jobs
+  waiting to hear, the quiet ones among them.
 - **Skills by role shows counts for a small role.** A role with fewer than 20 jobs reads "2 of 3" in
   each cell, not a percentage, and its cells are not shaded as shares.
 - **Skills by role stays within 100%.** A Level, employment type, country or currency filter now

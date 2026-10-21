@@ -70,6 +70,13 @@ export function countWords(count: TodayCount): string {
   }
 }
 
+/** Where a count's people are when the list its link opens holds more than the count, else null. The Jobs
+ * list has no "no reply" filter, so the quiet card opens every job waiting to hear and says the quiet ones
+ * are among them, rather than promising a list of only those. */
+export function countWhere(count: TodayCount): string | null {
+  return count.key === "quiet" ? "Among your jobs waiting to hear" : null;
+}
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }

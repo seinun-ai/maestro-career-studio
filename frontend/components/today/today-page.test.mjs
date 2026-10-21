@@ -186,7 +186,8 @@ test("also today: three counts, each a link to its list", () => {
   assert.match(html, /Also today/);
   assert.match(html, /<a[^>]*href="\/proposals"[^>]*>.*?3.*?Agent jobs to review<\/span><\/a>/s);
   assert.match(html, /<a[^>]*href="\/applications\?stage=tailored"[^>]*>.*?Tailored resumes to check<\/span><\/a>/s);
-  assert.match(html, /<a[^>]*href="\/applications\?status=applied"[^>]*>.*?No reply after 14 days<\/span><\/a>/s);
+  // The quiet ones are among every job waiting to hear, and the card says so.
+  assert.match(html, /<a[^>]*href="\/applications\?status=applied"[^>]*>.*?No reply after 14 days<\/span><span[^>]*>Among your jobs waiting to hear<\/span><\/a>/s);
   // A count of zero is left out by the server, and the page draws only what came.
   const one = render({ today: response({ also: [{ key: "to_check", count: 1, href: "/applications?stage=tailored" }] }) });
   assert.match(one, /Tailored resume to check/);

@@ -1137,7 +1137,8 @@
   job from the Agent inbox (`?from=proposals`), on the agent's card. It carries the base resume's
   square (D2), pay through `formatPay` with the posted amount under a converted figure (D8), and
   "Where this job is": only the steps the server dates, then the move the button makes. Also today
-  is up to three cards with `NumberRoll` counts, each a link to its list; the rest is one "N more"
+  is up to three cards with `NumberRoll` counts, each a link to its list (a list that holds more than
+  the count, the quiet card's Waiting to hear, is named under the words: `countWhere`); the rest is one "N more"
   `Fold` whose summary says what it holds, each row a `NextStep`; This week is seven bars
   (`chart-1`, one `role="img"` sentence) with replies and interviews. The server leaves zero counts
   out and the page draws only what came. With nothing next, a new user with no API key or no career

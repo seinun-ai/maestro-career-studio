@@ -24,6 +24,7 @@ import { formatPay, payLine, periodWords } from "@/lib/money";
 import { isLoadFailure } from "@/lib/query-state";
 import {
   STEP_WORDS,
+  countWhere,
   countWords,
   dayHeading,
   moreStepLabel,
@@ -199,6 +200,7 @@ function AlsoToday({ counts }: { counts: TodayCount[] }) {
       <ul className="grid grid-cols-3 gap-3">
         {counts.map((count) => {
           const Icon = COUNT_ICONS[count.key];
+          const where = countWhere(count);
           return (
             <li key={count.key} className="flex">
               <Link
@@ -210,6 +212,7 @@ function AlsoToday({ counts }: { counts: TodayCount[] }) {
                   <NumberRoll value={count.count} className="text-headline-medium" />
                 </span>
                 <span className="text-title-small">{countWords(count)}</span>
+                {where ? <span className="-mt-1.5 text-body-small text-muted-foreground">{where}</span> : null}
               </Link>
             </li>
           );

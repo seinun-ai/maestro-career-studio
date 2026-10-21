@@ -497,8 +497,10 @@
   company, location, `pay` as posted, `base_resume` (slug, name, colour hue), `score`, `status`, `proposed_by`,
   `reason` and `steps`, the ladder's dated steps only (saved, gaps_closed, tailored, applied, interviewing, offered,
   proposed; a backfilled event has no date). `also` and `more` hold only non-zero counts with an `href`: to approve
-  (the inbox summary's `to_review`), to check (the `tailored` rung), quiet (`QUIET_FOLLOW_UP_DAYS` 14, through
-  `search_summary.quiet`); gaps to close (jobs on the `gaps` rung plus their unanswered gaps), health check
+  (`pending_review` proposals not past expiry, `proposals.past_expiry`, as next up skips them: the inbox retires
+  those on its next read), to check (the `tailored` rung), quiet (`QUIET_FOLLOW_UP_DAYS` 14, through
+  `search_summary.quiet`; its link opens every Applied job, since the Jobs list has no "no reply" filter, and the
+  card says the quiet ones are among them); gaps to close (jobs on the `gaps` rung plus their unanswered gaps), health check
   (selectable bases with no report or a stale one, `resume_lint.is_stale`). `week` buckets applied, first replies
   and first interviews by local day for the last 7 days; local days follow `tz` when this server's zone database
   has it, else `utc_offset_minutes` (a Windows install has no zone database), else UTC (`time_zone` says which).

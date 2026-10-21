@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  countWhere,
   countWords,
   dayHeading,
   moreStepLabel,
@@ -63,6 +64,15 @@ test("a count's words agree with the count", () => {
   assert.equal(countWords({ key: "gaps_to_close", count: 3, gaps: 7, href: "/x" }), "Jobs with gaps to close");
   assert.equal(countWords({ key: "health_check", count: 1, href: "/x" }), "Base resume needs a health check");
   assert.equal(countWords({ key: "health_check", count: 2, href: "/x" }), "Base resumes need a health check");
+});
+
+test("a count whose list holds more than it says where they are, and promises no list of them", () => {
+  // The Jobs list has no "no reply" filter: the link opens every job waiting to hear, the quiet ones among them.
+  assert.equal(countWhere({ key: "quiet", count: 5, days: 14, href: "/applications?status=applied" }),
+    "Among your jobs waiting to hear");
+  for (const key of ["to_approve", "to_check", "gaps_to_close", "health_check"] as const) {
+    assert.equal(countWhere({ key, count: 2, href: "/x" }), null, key);
+  }
 });
 
 test("the fold says what it holds without opening", () => {

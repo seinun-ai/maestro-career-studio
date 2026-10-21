@@ -216,6 +216,22 @@ def test_also_and_more_counts_come_from_the_existing_readers(db_session):
     assert more[-1] == {"key": "health_check", "count": 2, "href": "/base-resumes"}
 
 
+def test_a_proposal_past_its_expiry_is_not_counted_to_review(db_session):
+    """The Agent inbox retires it when it next reads (`proposals.expire_stale`), so the count it leads to
+    does not have it; Today leaves it out the same way next up does, and writes nothing."""
+    waiting = _job(db_session)
+    db_session.add(ApplicationProposal(job_id=waiting.id, status="pending_review"))
+    db_session.add(ApplicationProposal(job_id=_job(db_session).id, status="pending_review",
+                                       expires_at=NOW + timedelta(days=1)))
+    stale = ApplicationProposal(job_id=_job(db_session).id, status="pending_review",
+                                expires_at=NOW - timedelta(hours=1))
+    db_session.add(stale)
+    body = _build(db_session)
+    assert body["also"] == [{"key": "to_approve", "count": 2, "href": "/proposals"}]
+    db_session.expire_all()
+    assert db_session.get(ApplicationProposal, stale.id).status == "pending_review"
+
+
 # ---------------------------------------------------------------------------- this week
 
 
