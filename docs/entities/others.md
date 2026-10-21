@@ -307,7 +307,7 @@
   when READ and kept as written until a save (the veteran precedent) or a move of "You live in": `market_settings.set_market` first pins it,
   in the same session, to the home it was read as (`pin_legacy_work_auth`; dropped when that home has an entry of its own, since it was then
   read for no country), so a new home never inherits it. A read serves `work_auth_by_country` and, for a client that knows one
-  set (the Companion's pause row, a page or peer that has not updated), `work_auth` as the home set, with
+  set (a Companion from before the per-country learn, a page or peer that has not updated), `work_auth` as the home set, with
   `work_auth_market` naming the market that set is for whenever the profile holds answers (a `/context` profile names the job's market,
   null with none); the marker is never stored. Profile and Setup edit the map and send it without `work_auth`. A save stores
   `work_auth_by_country` alone, merged by market: a market it sends replaces that market's answers (null removes them), one it leaves out
@@ -328,7 +328,13 @@
   country (`work_auth_by_country` on the autofill step), the US visa status only where `work_auth_vocab` is `us_visa`. **Known limits.**
   The Companion's deterministic rule pass reads the resolved `work_auth` and cannot see which country a label names, so on a German job a
   question about the UK gets the German set there (before, every question got the one set); the answer flags compare with the job's set
-  whatever the question names; a pause-row answer is saved to the home set.
+  whatever the question names. **The pause row learns per country.** A work-permit answer typed in the Companion (a pause row, or a
+  queued run's Resume) goes to one entry: `/context?question=<label>` (with the application, when there is one) names the market that
+  question gets in `work_auth_market` (`profile_for_job` with `question`: the country it names, else the job's), and the panel writes
+  `work_auth_by_country[<market>]`, promoting that entry's legacy pair first (`workAuthForWrite`) and leaving the served `work_auth`
+  as it came. With no market (no job and no country named, a country no market covers, two countries) the field is filled and nothing
+  is learned: the next form asks again. The label table stays one (inv-one-label-pattern-table): it names `work_auth.*`, and only the
+  learn maps that onto the country's entry.
 - **Answers decided in code, and the polarity retry** (live check 7; `services/autofill_pick.py`, `autofill_step.py`, `autofill_education.py`, `autofill_place.py`, `autofill_polarity.py`).
   **Relocate**: "Are you located in X and/or willing to relocate?" over a saved `preferences.willing_to_relocate` Yes is the same way as the fact, decided by code with no model
   (`_located_or_relocate`, in `/pick` and `/step`). It must be ONE question: both halves in one sentence that is a question (or an unpunctuated last line addressed to "you"),

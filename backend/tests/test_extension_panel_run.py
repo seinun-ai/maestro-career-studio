@@ -728,6 +728,41 @@ def test_a_typed_key_the_question_has_a_home_for_lands_there_and_undo_puts_every
     assert "Undid 1 answer." in _body_text(out["shots"][-1])
 
 
+US_ANSWERS = {"authorized_now": True, "sponsorship_now": False}
+SERVED_HOME_US = {"work_auth_by_country": {"US": US_ANSWERS}, "work_auth": US_ANSWERS, "work_auth_market": "US"}
+SPONSORSHIP = "Do you currently require sponsorship?"
+
+
+def _work_permit_run(tmp_path, market, steps=()):
+    return _run(tmp_path, [{"start": SEED}, {"press": "run-resume"}, *steps], pages=(STEP1, REVIEW),
+                reports=[{"fields": [needs("q1", SPONSORSHIP)]}, {"fields": [verified("f1")]}],
+                inventory=[_field("q1", "Yes", question=SPONSORSHIP)],
+                profileStore=json.loads(json.dumps(SERVED_HOME_US)),
+                api={"/api/autofill/context?question=": _reply({"profile": {"work_auth_market": market}})})
+
+
+def test_a_work_permit_answer_typed_while_a_run_waited_saves_to_its_jobs_country(tmp_path):
+    """The run's application names the job, the backend names its country: the UK entry learns the answer, the
+    US answers and the served one set stay, and Undo empties the UK entry again (sent, so the save keeps it)."""
+    out = _work_permit_run(tmp_path, "UK", [{"press": "run-undo-saved"}])
+    [ask] = [m["path"] for m in _api_calls(out, "question=")]
+    assert ask == f"/api/autofill/context?question={SPONSORSHIP.replace(' ', '+').replace('?', '%3F')}&application_id=app-1"
+    puts = [json.loads(m["init"]["body"])["value"] for m in _api_calls(out, "/api/settings/autofill")
+            if (m.get("init") or {}).get("method") == "PUT"]
+    assert puts[0]["work_auth_by_country"] == {"US": US_ANSWERS, "UK": {"sponsorship_now": "Yes"}}
+    assert (puts[0]["work_auth"], puts[0]["work_auth_market"]) == (US_ANSWERS, "US")
+    assert "Saved 1 answer to your profile · Undo" in _body_text(out["shots"][-2])
+    assert out["profile"]["work_auth_by_country"] == {"US": US_ANSWERS, "UK": {}}
+    assert "Undid 1 answer." in _body_text(out["shots"][-1])
+
+
+def test_a_work_permit_answer_with_no_country_is_not_saved_by_resume(tmp_path):
+    out = _work_permit_run(tmp_path, None)
+    assert out["profile"] == SERVED_HOME_US
+    assert not [m for m in _api_calls(out, "/api/settings/autofill") if (m.get("init") or {}).get("method") == "PUT"]
+    assert "Saved" not in _body_text(out["shots"][-1])
+
+
 def test_undo_restores_a_replaced_custom_answer_and_removes_a_new_one(tmp_path):
     two = [_field("q1", "Yes", question="Have you used our product before?"),
            _field("q3", "Blue", question="Favourite colour?")]

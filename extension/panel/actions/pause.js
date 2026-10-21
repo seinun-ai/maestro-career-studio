@@ -122,16 +122,46 @@
     };
   };
 
+  /** WORK-PERMIT ANSWERS ARE PER COUNTRY (inv-work-permit-per-country). The
+   * label table names `work_auth.*` (the resolved set the fill engine reads off
+   * `/context`), but a learned answer belongs to ONE country's entry in
+   * `work_auth_by_country`: the market the backend's own rule gives this
+   * question, the country it names, else the job's. The panel never decides
+   * that and never guesses it; `workAuthMarketFor` asks. The served one-set
+   * `work_auth` is left exactly as it came, and the server keeps the map edit
+   * (`autofill_profile._as_stored`). */
+  const BY_COUNTRY = "work_auth_by_country";
+  const isWorkPermit = (target) => target.store === "profile" && target.path[0] === "work_auth";
+
+  // A country's entry is a work-permit set: its legacy pair is promoted before the first typed write.
+  const isWorkPermitSet = (at) => at.length === 2 && at[0] === BY_COUNTRY;
+
   // An `answer` of undefined takes the key out again: Undo puts back a profile that never had it.
-  function withProfileAnswer(profile, path, answer) {
+  function withProfileAnswer(profile, path, answer, at = []) {
     const [head, ...rest] = path;
     const base = { ...(profile ?? {}) };
-    const child = head === "work_auth" && rest.length
+    const here = [...at, head];
+    const child = rest.length && isWorkPermitSet(here)
       ? workAuthForWrite(base[head])
       : base[head] ?? {};
     if (!rest.length && answer === undefined) delete base[head];
-    else base[head] = rest.length ? withProfileAnswer(child, rest, answer) : answer;
+    else base[head] = rest.length ? withProfileAnswer(child, rest, answer, here) : answer;
     return base;
+  }
+
+  /** The market a work-permit answer to `question` is learned into, as
+   * `/api/autofill/context` names it (`work_auth_market`, with `question`): the
+   * country the question names, else the application's job's. NULL — so the
+   * answer is not learned and the next form asks again — with no application
+   * and no country in the question, for a job whose country no market covers,
+   * or for a question naming two countries. Only the market is read: that
+   * profile is the job's view and is never PUT back (see `learnAnswer`). */
+  async function workAuthMarketFor(store, question, applicationId) {
+    const params = new URLSearchParams({ question });
+    if (applicationId) params.set("application_id", applicationId);
+    const context = await store.api(`/api/autofill/context?${params}`);
+    const market = context?.profile?.work_auth_market;
+    return typeof market === "string" && market ? market : null;
   }
 
   const valueAt = (profile, path) => path.reduce((at, key) => (at && typeof at === "object" ? at[key] : undefined), profile);
@@ -231,9 +261,14 @@
    * `before` is what Undo needs and nothing more: the typed key's old value (undefined when the
    * profile had none), or the custom row this question had (null when it had none) and the scope of
    * the row the answer landed in, which with a scoped row for another job beside it is what tells the
-   * two apart. */
-  function applyAnswer(profile, label, answer, job) {
-    const target = saveTargetFor(label);
+   * two apart. A work-permit answer goes to `market`'s entry (`workAuthMarketFor`); with no market
+   * it is not learned (`store: "unsaved"`, the profile unchanged, nothing to undo). */
+  function applyAnswer(profile, label, answer, job, market) {
+    let target = saveTargetFor(label);
+    if (isWorkPermit(target)) {
+      if (!market) return { profile, target: { store: "unsaved" }, before: null };
+      target = { ...target, path: [BY_COUNTRY, market, ...target.path.slice(1)], market };
+    }
     if (target.store === "profile") {
       return { profile: withProfileAnswer(profile, target.path, answer), target,
                before: { path: target.path, value: valueAt(profile, target.path) } };
@@ -273,16 +308,25 @@
    * the Settings page itself already makes with every save. If a later round
    * adds a merge route, this function is the one caller to move.
    *
+   * A WORK-PERMIT ANSWER asks `/api/autofill/context` first which country's
+   * set it belongs to (`workAuthMarketFor`), and is learned into that entry
+   * only; with no country it is not learned at all, and no profile is read.
+   *
    * THROWS on failure, and the caller treats that as a NOTE rather than a
    * rollback — see `submitAnswer`.
    */
   async function learnAnswer(store, row, answer) {
-    const current = await store.api("/api/settings/autofill");
     const facts = store.read();
+    let market = null;
+    if (isWorkPermit(saveTargetFor(row.label))) {
+      market = await workAuthMarketFor(store, row.label, facts.application?.id);
+      if (!market) return { store: "unsaved" };
+    }
+    const current = await store.api("/api/settings/autofill");
     const { profile, target } = applyAnswer(current?.value ?? {}, row.label, answer, {
       company: facts.job?.company ?? facts.application?.job_company,
       location: facts.job?.location,
-    });
+    }, market);
     await putProfile(store, profile);
     return target;
   }
@@ -291,18 +335,27 @@
    * typed on a page at once), and say what each replaced so `unlearnAnswers` can put it back. The
    * whole-object PUT is why this is one round trip and not one per answer: a second PUT built from
    * a read taken before the first would erase it. Items are `{label, answer}`; `job` is the
-   * `{company, location}` the page was answered for (a run's record), which scopes an answer that
-   * names it. */
+   * `{company, location, applicationId}` the page was answered for (a run's record): the company and
+   * city scope an answer that names them, the application gives a work-permit answer its country.
+   * A work-permit answer with no country is left out (it asks again), so `saved` can be shorter than
+   * `items`, and with nothing to save there is no write. */
   async function learnAnswers(store, items, job) {
+    const markets = new Map();
+    for (const { label } of items) {
+      if (isWorkPermit(saveTargetFor(label)) && !markets.has(label)) {
+        markets.set(label, await workAuthMarketFor(store, label, job?.applicationId));
+      }
+    }
     const current = await store.api("/api/settings/autofill");
     let profile = current?.value ?? {};
     const saved = [];
     for (const { label, answer } of items) {
-      const next = applyAnswer(profile, label, answer, job);
+      const next = applyAnswer(profile, label, answer, job, markets.get(label));
+      if (next.target.store === "unsaved") continue;
       profile = next.profile;
       saved.push({ target: next.target, before: next.before });
     }
-    await putProfile(store, profile);
+    if (saved.length) await putProfile(store, profile);
     return saved;
   }
 
@@ -322,6 +375,16 @@
       profile = { ...profile, custom: before.row ? [...rows, before.row] : rows };
     }
     await putProfile(store, profile);
+  }
+
+  /** What became of a learned answer, said after "Filled …". A work-permit answer names its country's
+   * set, and one with no country says it was not saved: the next form asks again. */
+  function learnedSentence(target) {
+    if (target.store === "unsaved") {
+      return " Not saved: it isn't clear which country's work permit this is, so it will ask again.";
+    }
+    if (target.market) return ` Saved to Profile › Work permits (${target.market}).`;
+    return target.store === "profile" ? " Saved to Profile › Autofill." : " Saved. It won't ask again.";
   }
 
   /** Answer ONE open field from the panel, and — unless the user said not to —
@@ -415,10 +478,7 @@
       if (!stuck || !learn) return { stuck, learned: "" };
       try {
         const target = await learnAnswer(store, row, answer);
-        return { stuck,
-          learned: target.store === "profile"
-            ? " Saved to Profile › Autofill."
-            : " Saved. It won't ask again." };
+        return { stuck, learned: learnedSentence(target) };
       } catch (err) {
         // CAUGHT HERE rather than left to `duringAction`, and that is what keeps
         // the two halves independent now that they share a span. A throw out of

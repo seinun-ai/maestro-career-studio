@@ -251,3 +251,43 @@ def test_a_profile_resolved_for_a_job_names_the_jobs_market(db_session):
     assert autofill_job.profile_for_job(db_session, profile, None)["work_auth_market"] is None
     autofill_profile.set_profile({**uk, "work_auth": {**UK_SET, "sponsorship_future": True}}, db_session)
     assert _map(db_session) == {"US": US_SET, "UK": {**UK_SET, "sponsorship_future": True}}
+
+
+# --- finding: the Companion's pause row saved a job's answer to the home set ------------------------------------------
+#
+# /context names the market its `work_auth` is for. With `question` (the label a pause-row answer was typed for) it
+# resolves the market that question gets, by the one rule (`autofill_country.market_for_question`): the country the
+# question names, else the job's. The panel learns into that market's entry, and asks again when there is none.
+
+def _application(db, country_code):
+    from app.models.application import Application
+    from tests.test_proposals_models import _mk_job
+
+    job = _mk_job(db, company="Acme", country_code=country_code)
+    app = Application(job_id=job.id, base_resume="hybrid", customized_json={"contact": {"name": "Ada"}})
+    db.add(app)
+    db.commit()
+    return app
+
+
+def test_context_names_the_market_a_question_gets(db_session, client):
+    _home(db_session, "US", ["US", "UK"])
+    autofill_profile.set_profile({"work_auth_by_country": {"US": US_SET, "UK": UK_SET}}, db_session)
+    us_job, no_country = _application(db_session, "US"), _application(db_session, "FR")
+
+    def profile(**params):
+        response = client.get("/api/autofill/context", params=params)
+        assert response.status_code == 200, response.text
+        return response.json()["profile"]
+
+    assert profile(application_id=str(us_job.id))["work_auth_market"] == "US"
+    named = profile(application_id=str(us_job.id), question="Are you authorized to work in the United Kingdom?")
+    assert named["work_auth_market"] == "UK" and named["work_auth"]["sponsorship_now"] is True
+    assert profile(application_id=str(us_job.id), question="Will you need sponsorship?")["work_auth_market"] == "US"
+    # Two countries, or a job whose country no market covers: no market, so nothing is learned.
+    assert profile(application_id=str(us_job.id),
+                   question="Can you work in the United States or Canada?")["work_auth_market"] is None
+    assert profile(application_id=str(no_country.id), question="Will you need sponsorship?")["work_auth_market"] is None
+    # No job (a form not tracked yet): the country the question names, else none.
+    assert profile(question="Are you authorized to work in the United Kingdom?")["work_auth_market"] == "UK"
+    assert profile(question="Will you need sponsorship?")["work_auth_market"] is None

@@ -241,6 +241,9 @@ a click.
 - **A save never puts one country's work-permit answers on another.** A page opened before you moved
   where you live saves its answers to the country it showed them for, and a save that does not know
   a country leaves that country's answers as they are.
+- **The Companion saves a work-permit answer to its job's country.** An answer you type in the panel
+  for a UK job goes to your UK answers, not to the country you live in, so the next UK job doesn't
+  ask again. When it can't tell the country, it fills the field and asks again next time.
 - **A bare "$" takes the job's country.** A Toronto job's "$80,000" is Canadian dollars, not US
   dollars. With no country it is your home currency, and either way the job notes the currency was
   assumed.

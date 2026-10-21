@@ -9,7 +9,6 @@ market's, mapped when read and kept as written until the user saves.
 """
 
 import json
-import re
 from pathlib import Path
 
 import pytest
@@ -220,14 +219,22 @@ def test_the_fill_loop_answers_each_question_from_its_own_country(db_session, cl
 
 
 def test_the_extension_reads_only_the_resolved_work_auth():
-    """The Companion never picks a country itself: it reads `profile.work_auth` from /context, which the
-    server resolved to the job's country (`profile_for_job`). No extension file reads the per-country map."""
+    """The Companion never picks a country itself: it fills from `profile.work_auth` off /context, which the
+    server resolved to the job's country (`profile_for_job`). The one file that names the per-country map is
+    the pause row, which learns an answer into the entry /context names for its question
+    (`work_auth_market`) and never into one it chose."""
+    pause = REPO / "extension/panel/actions/pause.js"
     for path in sorted((REPO / "extension").rglob("*.js")):
-        if "node_modules" in path.parts:
+        if "node_modules" in path.parts or path == pause:
             continue
         assert "work_auth_by_country" not in path.read_text(encoding="utf-8"), path
     fill = (REPO / "extension/content/autofill.js").read_text(encoding="utf-8")
     assert "profile.work_auth" in fill
+    learn = pause.read_text(encoding="utf-8")
+    assert 'const BY_COUNTRY = "work_auth_by_country";' in learn
+    assert "await store.api(`/api/autofill/context?${params}`)" in learn
+    assert "context?.profile?.work_auth_market" in learn
+    assert "path: [BY_COUNTRY, market, ...target.path.slice(1)]" in learn
 
 
 def test_the_knockout_scan_reads_the_job_countrys_answers(db_session):

@@ -1851,28 +1851,75 @@ def test_the_answer_is_remembered_in_the_profile_the_rules_actually_read(tmp_pat
     assert body["value"]["custom"] == [{"question": "preferred shift", "answer": "Day"}]
 
 
-def test_a_typed_work_auth_learn_carries_legacy_answers_forward(tmp_path):
-    """The first typed learn must not orphan the legacy authorization pair."""
-    label = "Do you currently require sponsorship?"
+def _work_permit_answer(tmp_path, market, served, label="Do you currently require sponsorship?", text="Yes"):
+    """One work-permit pause row answered, on a job `/api/autofill/context` says is `market`'s (None: no
+    country), with `served` as `GET /api/settings/autofill` reads."""
     frames = {"collect_open_questions": [{"frameId": 0, "result": {
         "host": "job-boards.greenhouse.io",
-        "questions": [{"qid": "wa1", "label": label, "kind": "select",
-                       "options": ["Yes", "No"]}],
+        "questions": [{"qid": "wa1", "label": label, "kind": "select", "options": ["Yes", "No"]}],
         "retryables": [],
     }}]}
-    legacy = _reply({"key": "autofill_profile", "value": {
-        "work_auth": {
-            "authorized_to_work": True,
-            "requires_sponsorship": False,
-        },
-    }})
-    out = _answer(
-        tmp_path,
-        answer={"qid": "wa1", "text": "Yes"},
-        api={"/api/settings/autofill": legacy},
-        frames=frames,
-    )
+    context = {**FILL_CONTEXT, "profile": {**FILL_CONTEXT["profile"], "work_auth_market": market}}
+    return _answer(tmp_path, answer={"qid": "wa1", "text": text}, frames=frames,
+                   api={"/api/settings/autofill": _reply({"key": "autofill_profile", "value": served}),
+                        "/api/autofill/context": _reply(context)})
+
+
+# Home US, applying in the US and the UK, the US answers given: what a read of the settings serves.
+US_ANSWERS = {"authorized_now": True, "sponsorship_now": False}
+SERVED_HOME_US = {"work_auth_by_country": {"US": US_ANSWERS}, "work_auth": US_ANSWERS, "work_auth_market": "US"}
+
+
+def _market_asks(out):
+    return [msg["path"] for msg in out["sent"] if msg["type"] == "api" and "question=" in msg["path"]]
+
+
+def test_a_paused_work_permit_answer_saves_to_the_jobs_country(tmp_path, db_session, monkeypatch):
+    """The review's case: on a UK job the sponsorship question pauses and the user answers Yes. It is the UK's
+    answer, so the UK entry learns it and the US answers stay as they were; the next UK job does not ask."""
+    out = _work_permit_answer(tmp_path, "UK", SERVED_HOME_US)
+    # The country comes from the backend's one rule, asked with this question.
+    assert _market_asks(out) == ["/api/autofill/context?question=Do+you+currently+require+sponsorship%3F"]
     [body] = _profile_put(out)
+    assert body["value"]["work_auth_by_country"] == {"US": US_ANSWERS, "UK": {"sponsorship_now": "Yes"}}
+    # The one set is left exactly as it was served.
+    assert (body["value"]["work_auth"], body["value"]["work_auth_market"]) == (US_ANSWERS, "US")
+    [note] = _by_class(out["answered"]["foot"], "note")
+    assert "Saved to Profile › Work permits (UK)." in note["text"]
+
+    # …and the server stores what the panel meant.
+    from app.schemas.market_settings import MarketSetting
+    from app.services import autofill_profile, market_settings, text_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path / "settings")
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "UK"]), db_session)
+    autofill_profile.set_profile({"work_auth_by_country": {"US": US_ANSWERS}}, db_session)
+    saved = autofill_profile.set_profile(body["value"], db_session)
+    assert saved["work_auth_by_country"] == {"US": US_ANSWERS, "UK": {"sponsorship_now": "Yes"}}
+    assert autofill_profile.get_work_auth(db_session, "UK").sponsorship_now is True
+    assert autofill_profile.get_work_auth(db_session, "US").sponsorship_now is False
+
+
+def test_a_paused_work_permit_answer_with_no_country_is_filled_and_not_learned(tmp_path):
+    """No country for this answer (a job no market covers, no job and none named, two countries named): the
+    field is filled, nothing is learned and no profile is read, and the note says it will ask again."""
+    out = _work_permit_answer(tmp_path, None, SERVED_HOME_US)
+    assert [msg["message"]["pairs"] for msg in out["broadcasts"] if msg["message"]["type"] == "fill_answers"] == [
+        [{"qid": "wa1", "answer": "Yes", "kind": "select"}]]
+    assert _profile_put(out) == []
+    assert [msg for msg in out["sent"] if msg["type"] == "api" and msg["path"] == "/api/settings/autofill"] == []
+    [note] = _by_class(out["answered"]["foot"], "note")
+    assert "Not saved: it isn't clear which country's work permit this is, so it will ask again." in note["text"]
+
+
+def test_a_typed_work_auth_learn_carries_legacy_answers_forward(tmp_path):
+    """The first typed learn must not orphan the legacy authorization pair, now in that country's entry."""
+    legacy = {"authorized_to_work": True, "requires_sponsorship": False}
+    out = _work_permit_answer(tmp_path, "US", {
+        "work_auth_by_country": {"US": legacy}, "work_auth": legacy, "work_auth_market": "US"})
+    [body] = _profile_put(out)
+    entry = body["value"]["work_auth_by_country"]["US"]
+    assert entry["sponsorship_now"] == "Yes"
 
     next_fill = run_profile_fill(
         tmp_path,
@@ -1888,7 +1935,8 @@ def test_a_typed_work_auth_learn_carries_legacy_answers_forward(tmp_path):
                  {"value": "no", "textContent": "No"},
              ]},
         ],
-        profile=body["value"],
+        # What /context serves a US job: that entry as the one resolved set.
+        profile={"work_auth": entry},
     )
     assert next_fill["values"] == {
         "Are you authorized to work in the United States?": "yes",

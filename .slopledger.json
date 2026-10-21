@@ -94,7 +94,7 @@
           ]
         }
       ],
-      "hand_check": "The one client that writes one top-level work_auth set: the panel's pause row (extension/panel); Profile and Setup write work_auth_by_country and send no work_auth (frontend/lib/autofill-options.ts forSaving). extension/content reading the resolved profile.work_auth from /context is the design, deliberately outside the trigger paths. Then the release after has shipped; keep the legacy read in autofill_profile.work_auth_entries until no stored autofill profile holds a top-level work_auth (check settings/autofill.json and the autofill_profile Setting row)."
+      "hand_check": "No current client writes one top-level work_auth set: the panel's pause row learns into work_auth_by_country[<the market /context names for its question>] (extension/panel/actions/pause.js), and Profile and Setup write work_auth_by_country and send no work_auth (frontend/lib/autofill-options.ts forSaving); Companion builds from before still write work_auth. extension/content reading the resolved profile.work_auth from /context is the design, deliberately outside the trigger paths. Then the release after has shipped; keep the legacy read in autofill_profile.work_auth_entries until no stored autofill profile holds a top-level work_auth (check settings/autofill.json and the autofill_profile Setting row)."
     },
     {
       "id": "job-location-raw",

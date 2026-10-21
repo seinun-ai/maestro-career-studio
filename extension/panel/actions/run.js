@@ -818,9 +818,11 @@
       }
       if (!items.length) return;
       try {
-        state.undo.set(record.id, await ns.panelLearn.learnAnswers(store, items,
-          { company: record.company, location: record.location }));
-        record.learned = { count: items.length, undone: false, failed: false };
+        // The application gives a work-permit answer its country; one with none is not saved (it asks again).
+        const saved = await ns.panelLearn.learnAnswers(store, items,
+          { company: record.company, location: record.location, applicationId: record.applicationId });
+        state.undo.set(record.id, saved);
+        record.learned = { count: saved.length, undone: false, failed: false };
       } catch (err) {
         console.warn("[maestro-cs] learning the answers failed:", err);
         record.learned = { count: 0, undone: false, failed: true };

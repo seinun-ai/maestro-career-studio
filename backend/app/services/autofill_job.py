@@ -29,15 +29,21 @@ def job_market(job: Job | None) -> str | None:
     return autofill_country.market_for_job_country(job.country_code) if job is not None else None
 
 
-def profile_for_job(db: Session, profile: Any, application_id: UUID | None) -> Any:
+def profile_for_job(db: Session, profile: Any, application_id: UUID | None,
+                    question: str | None = None) -> Any:
     """The profile with the saved answers that hold for the application's job, and the job's
-    country's work-permit answers as `work_auth`. With no application (a form not tracked yet) a
-    scoped answer holds nowhere, and there are no work-permit answers: a question that names its
-    country is answered on the fill loop, where the question is known."""
+    country's work-permit answers as `work_auth` (`work_auth_market` names it). With no application
+    (a form not tracked yet) a scoped answer holds nowhere, and there are no work-permit answers: a
+    question that names its country is answered on the fill loop, where the question is known.
+    `question` is that case for one question (the Companion's pause row learning an answer): the
+    market it gets by `autofill_country.market_for_question`, the country it names, else the job's."""
     if not isinstance(profile, dict):
         return profile
     job = application_job(db, application_id)
-    profile = autofill_country.with_work_auth(profile, job_market(job))
+    market = job_market(job)
+    if question is not None:
+        market = autofill_country.market_for_question(question, market)
+    profile = autofill_country.with_work_auth(profile, market)
     if "custom" not in profile:
         return profile
     return {**profile, "custom": autofill_catalog.custom_for_job(

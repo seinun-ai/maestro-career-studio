@@ -256,8 +256,14 @@ def get_autofill_context(
     db: Annotated[Session, Depends(get_db)],
     application_id: Annotated[UUID | None, Query()] = None,
     base: Annotated[str | None, Query()] = None,
+    question: Annotated[str | None, Query(max_length=2000)] = None,
 ):
     """Everything one fill needs, resolved from ONE load of the resume.
+
+    `profile.work_auth` is one country's work-permit answers and `profile.work_auth_market` names
+    that market (inv-work-permit-per-country): the job's, or with `question`, the one that question
+    gets (the country it names, else the job's). The Companion's pause row asks with `question` to
+    learn an answer into that market's entry, and never learns one when it is null.
 
     Per-section nulls rather than a whole-request failure: the three feeds this
     replaces each degraded independently, and a skills outage must not stop an
@@ -344,7 +350,7 @@ def get_autofill_context(
     # A saved answer that named another job's company or city (`only_for`) is not
     # this fill's: the deterministic pass matches `custom` by question on every
     # form, so it would fill "Have you worked at Acme before?" at the next employer.
-    sections["profile"] = autofill_job.profile_for_job(db, sections["profile"], application_id)
+    sections["profile"] = autofill_job.profile_for_job(db, sections["profile"], application_id, question)
     return sections
 
 
