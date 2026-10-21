@@ -1754,8 +1754,9 @@
   surface that reads career history, read-only; tailoring still never does). Overview also
   carries the **Autofill coverage** card (`autofill-coverage-card.tsx`, key
   `["autofill-telemetry-summary"]`) fed by `/api/autofill/telemetry/summary`.
-  Chart conventions: `--chart-1..6` are a validated categorical palette
-  (separate light/dark steps; re-run the dataviz palette validator if changed);
+  Chart conventions: `--chart-1..6` are a categorical palette in OKLCH
+  (separate light/dark steps near one lightness, no red or green series, each
+  3:1 on `--card`; `test_frontend_color_roles.py` computes it);
   shared helpers live in `components/charts/chart-kit.tsx` — never re-declare
   per-chart COLORS arrays; the heatmap uses a `color-mix` primary-blue
   sequential ramp. A chart split by base resume is the one exception: the

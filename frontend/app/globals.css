@@ -224,15 +224,17 @@
   --input: oklch(0.922 0 0);
   /* Solid ring is at least 3:1 on --canvas. 0.65 was 2.52:1 there. */
   --ring: oklch(0.57 0.11 259);
-  /* Categorical chart palette (Google-family hues), fixed assignment order.
-     Validated against the light surface with the dataviz six-check script —
-     re-run it if you change any step. */
-  --chart-1: #4285f4;
-  --chart-2: #ea4335;
-  --chart-3: #e8710a;
-  --chart-4: #188038;
-  --chart-5: #9334e6;
-  --chart-6: #0097a7;
+  /* Categorical chart palette, fixed assignment order: blue, orange, teal,
+     violet, ochre, slate. OKLCH like every other token, near one lightness
+     and calmer chroma, and no red or green series, so a chart never reads as
+     good or bad. Each step holds 3:1 on --card (a graphical object); pinned
+     with the hue rule by backend/tests/test_frontend_color_roles.py. */
+  --chart-1: oklch(0.55 0.14 259);
+  --chart-2: oklch(0.62 0.13 50);
+  --chart-3: oklch(0.55 0.1 175);
+  --chart-4: oklch(0.55 0.14 310);
+  --chart-5: oklch(0.6 0.11 95);
+  --chart-6: oklch(0.5 0.03 259);
   /* Status roles: M3 "custom colours". Each is a tonal palette cut from the
      hue the app already used for that meaning (emerald, amber, orange,
      violet), at M3's three slots: the role itself (text and dots on a
@@ -319,14 +321,14 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.62 0.09 259);
-  /* Dark-mode categorical steps — selected for the dark surface (not a flip
-     of light) and validated with the dataviz six-check script. */
-  --chart-1: #5c93f0;
-  --chart-2: #e05a50;
-  --chart-3: #d97706;
-  --chart-4: #2e9e52;
-  --chart-5: #a254e8;
-  --chart-6: #0ea5b7;
+  /* Chart series on dark: the same hues and chroma at lightness 0.72
+     (the slate at 0.68), 3:1 or more on the dark --card. */
+  --chart-1: oklch(0.72 0.14 259);
+  --chart-2: oklch(0.72 0.13 50);
+  --chart-3: oklch(0.72 0.1 175);
+  --chart-4: oklch(0.72 0.14 310);
+  --chart-5: oklch(0.72 0.11 95);
+  --chart-6: oklch(0.68 0.03 259);
   /* Status roles on dark: role near tone 80, container near tone 30, text
      on it near tone 90. */
   --success: oklch(0.83 0.11 163);

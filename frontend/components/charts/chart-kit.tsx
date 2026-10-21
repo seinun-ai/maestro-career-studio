@@ -20,15 +20,16 @@ export const weekLabel = (value: unknown) => formatWeekOf(String(value));
 
 /**
  * Categorical palette, fixed assignment order (never cycle or generate hues).
- * Values live in globals.css (--chart-1..6, validated light + dark).
+ * Values live in globals.css (--chart-1..6, OKLCH, light + dark); the
+ * fallbacks are the light steps.
  */
 export const CHART_COLORS = [
-  "var(--chart-1, #4285f4)",
-  "var(--chart-2, #ea4335)",
-  "var(--chart-3, #e8710a)",
-  "var(--chart-4, #188038)",
-  "var(--chart-5, #9334e6)",
-  "var(--chart-6, #0097a7)",
+  "var(--chart-1, oklch(0.55 0.14 259))",
+  "var(--chart-2, oklch(0.62 0.13 50))",
+  "var(--chart-3, oklch(0.55 0.1 175))",
+  "var(--chart-4, oklch(0.55 0.14 310))",
+  "var(--chart-5, oklch(0.6 0.11 95))",
+  "var(--chart-6, oklch(0.5 0.03 259))",
 ];
 
 /** Theme-aware styles for recharts' default <Tooltip />. */

@@ -645,6 +645,40 @@ def test_muted_foreground_meets_aa_on_page_and_card(mode):
         assert ratio >= 4.5, f"{mode}: --muted-foreground on --{surface} is {ratio:.2f}:1"
 
 
+# Chart series (design refresh, Task 0.1): OKLCH like every other token, one
+# lightness per theme, and no traffic-light hue, so a series never reads as
+# good or bad.
+_CHART_SERIES = [f"chart-{n}" for n in range(1, 7)]
+
+
+def test_chart_series_are_oklch_with_no_red_or_green_series():
+    for n in range(1, 7):
+        values = re.findall(rf"--chart-{n}:\s*([^;]+);", _CSS)
+        assert len(values) == 2, n  # light and dark
+        assert all(v.strip().startswith("oklch(") for v in values), values
+    hues = [float(m) for m in re.findall(r"--chart-\d:\s*oklch\([\d.]+ [\d.]+ ([\d.]+)\)", _CSS)]
+    assert len(hues) == 12, hues
+    assert not any(15 <= h <= 35 or 135 <= h <= 150 for h in hues), hues  # no red, no green
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_chart_series_hold_3_to_1_on_a_card(mode):
+    """A bar or a line is a graphical object (WCAG 1.4.11): 3:1 on the card it sits on."""
+    t = _MODES[mode]
+    card = _rgb(t, "card")
+    for name in _CHART_SERIES:
+        ratio = _contrast(_rgb(t, name), card)
+        assert ratio >= 3, f"{mode}: --{name} on --card is {ratio:.2f}:1"
+
+
+def test_chart_kit_fallbacks_are_the_light_series():
+    kit = _read("components/charts/chart-kit.tsx")
+    fallbacks = re.findall(r'"var\(--(chart-\d), (oklch\([^)]*\))\)"', kit)
+    light = {n: f"oklch({v.strip()})" for n, v in re.findall(r"--(chart-\d):\s*oklch\(([^)]*)\)", _block(":root"))}
+    assert [n for n, _ in fallbacks] == _CHART_SERIES, fallbacks
+    assert all(light[n] == v for n, v in fallbacks), (fallbacks, light)
+
+
 # A link's colour is a ROLE, never a raw palette shade: the referral careers
 # URL was `text-blue-600` with no dark variant, 3.77:1 on the dark page.
 _PALETTE = (
