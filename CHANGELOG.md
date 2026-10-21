@@ -34,54 +34,88 @@ rewrites, as one of its wordings, and only a genuinely new bullet asks for your 
 already sitting there, **Tidy bullets** finds the near copies on an item and folds them into one on
 a click.
 
+The app is also calmer. Maestro opens on **Today**, the one thing that matters most, and a new install
+starts with a four-step **Setup**. Every page leads with one card and folds the rest away, rates show
+only once there are 20 to count from, pay reads in your home currency, and your profile keeps
+work-permit answers for each country you apply in.
+
 ### Breaking changes
 
-- None. Migrations add a column (`kb_points.merged_into_point_id`), a table (`kb_point_kept_pairs`)
-  and two job columns (`country_code`, `salary_currency_assumed`), and run by themselves at startup.
-  Existing API fields and MCP tools keep their shapes, except where pay and countries moved: the
-  sync responses gain a field; `GET /api/explore/overview` answers `pay_by_role` in place of
-  `salary_by_role`; job preferences' `min_salary` (and so `get_job_search_brief`) is
-  `{amount, currency, text}`, and an old text answer still reads; the autofill profile keeps
-  work-permit answers under `work_auth_by_country`, and an old `work_auth` still reads and is still
-  served; a knock-out check can be `cant_compare`. A job's `work_mode` and `level` now read as one key
-  each (`on_site` where some read `onsite`, `senior` for "Sr."), and the migration re-spells saved jobs
-  the same way.
+- No step to take by hand. Migrations add a column (`kb_points.merged_into_point_id`), two tables
+  (`kb_point_kept_pairs`, and `application_status_events`, filled with one undated row for each
+  application that already has a status) and two job columns (`country_code`,
+  `salary_currency_assumed`), and run by themselves at startup. Existing API fields and MCP tools keep
+  their shapes, except where pay, countries and rates moved: the sync responses gain a field;
+  `GET /api/explore/overview` answers `pay_by_role` in place of `salary_by_role`;
+  `GET /api/explore/activity`'s `interview_rate` is null below 20 submitted applications; job
+  preferences' `min_salary` (and so `get_job_search_brief`) is `{amount, currency, text}`, and an old
+  text answer still reads; the market setting is `{home, apply_in}` (`PUT /api/settings/market` takes
+  it or the old `{market}`, the GET lists `markets` where it listed `supported`, and `value.market`
+  stays, equal to `home`, for readers that have not moved); the autofill profile keeps work-permit
+  answers under `work_auth_by_country`, and an old `work_auth` still reads and is still served, now
+  named by `work_auth_market`; a knock-out check can be `cant_compare`. A job's `work_mode` and `level`
+  now read as one key each (`on_site` where some read `onsite`, `senior` for "Sr."), and the migration
+  re-spells saved jobs the same way.
+- Settings' tabs are **Basics**, **Companion**, **Agent apps** and **Advanced**
+  (`?tab=basics|companion|agents|advanced`), Profile has no tabs (`/profile#<card>`), and Jobs opens on
+  All active (`?status=all` lists every job). A link or bookmark to an old tab opens the tab and card
+  it moved to.
 
 ### Added
 
 - **Today is the home page.** Maestro now opens on Today: the one thing that matters most (an offer to
   answer, the ready resume with the best match, or your agent's question) with its one button and the
-  dates of the steps behind it, three counts (agent jobs to review, tailored resumes to check, no reply
-  after 14 days) that open their lists, the rest behind one row, and this week's applications as bars
-  with replies and interviews. Pay reads in your home currency. A new user without an API key or a
-  resume sees the two setup steps there instead. The sidebar leads with Today, which now carries the
-  Needs you count, and folds Automations, Referrals, Templates and the Assistant under **More tools**.
+  dates of the steps behind it, three counts that open their lists (agent jobs to review, leaving out
+  any past its expiry; tailored resumes to check; no reply after 14 days, which opens your jobs
+  waiting to hear), the rest behind one row, and this week's applications as bars with replies and
+  interviews. Pay reads in your home currency. A new user without an API key or a resume sees the two
+  setup steps there instead. The sidebar leads with Today, which now carries the Needs you count, and
+  folds Automations, Referrals, Templates and the Assistant under **More tools**.
 - **A four-step first run.** A new install opens **Setup**: pick the AI that does the writing (Claude,
   OpenAI, Gemini, OpenRouter or your own server), paste its key and press Test to see what it can do;
   drop your resume and see what it found; say where you live, where you apply, the roles you want and
-  how you want to work; then answer what job forms ask, one question at a time, starting with a work
-  permit for each country you apply in. Once a key passes its test, that provider's recommended models
-  are picked for you, unless your own picks already use it. Every step has **Skip for now**, you can go
-  back to any step, and each answer lands where it lives in Profile and Settings. Today's setup card
-  opens Setup until you have a key and a resume.
+  how you want to work; then answer what job forms ask, one question at a time: a work permit for each
+  country you apply in, in that country's words (the United States with your visa status too), then
+  your notice period and relocation, then the diversity questions where a country has a checked set,
+  which you can answer or decline all right there once you allow the Companion to use them, the
+  permission beside the answers as in Profile. **Fill from career history** fills your contact
+  details, and a question's dot turns green only once it holds its answer. Once a key passes its test,
+  that provider's recommended models are picked for you, unless your own picks already use it. Every
+  step has **Skip for now**, you can go back to any step, and each answer lands where it lives in
+  Profile and Settings. Today's setup card opens Setup until you have a key and a resume.
 - **Where you live and where you apply.** Maestro now keeps one country you live in (your home
-  currency and date format) and every country you apply in (`PUT /api/settings/market` takes
-  `{home, apply_in}`; the Country setting is where you live).
+  currency and date format) and every country you apply in: **You live in** and **You apply in** in
+  Setup and in Profile's Where you apply.
   **Germany and the Netherlands** join the list. A job saved in another country takes that country's
   currency, and a job with none takes your home currency.
 - **Pay in your home currency.** Pay posted in another currency is converted on the European Central
   Bank's daily reference rates, fetched at most once a day when a page asks, and reads with "≈", the
   posted amount kept under it. A currency the ECB does not quote, or no rates yet (offline), shows the
-  posted amount as it is: a rate is never guessed. `GET/PUT /api/settings/money` sets the currency,
-  the period pay is shown per and the hours in a working year (2,080).
+  posted amount as it is: a rate is never guessed. Settings › Basics › Money picks the currency (it
+  follows where you live until you pick one) and whether pay reads per year, month or hour, and
+  Advanced › Hours per year sets the hours in a working year (2,080).
 - **Work-permit answers per country.** Your right-to-work and sponsorship answers are kept for each
-  country. A form question that names a country gets that country's answers, otherwise the job's
+  country you apply in, each asked in that country's words (only the United States asks your visa
+  status). A form question that names a country gets that country's answers, otherwise the job's
   country's, and when neither is known the Companion asks you on that job instead of filling in
-  another country's answers. The answers you saved before are your home country's, and Profile edits
-  those. The job page's knock-out check reads the job's country's answers.
-- **A diversity set only where a checked one exists.** Setup asks the diversity questions only when a
-  country you apply in has a checked question set (the United States and the United Kingdom today):
-  applying only in Germany asks none.
+  another country's answers. An answer you type in the Companion's panel is saved to the country its
+  question is about, so the next job there doesn't ask again. The one set of answers you gave before
+  stays with the country you lived in when you gave it, even after you move, and a save never puts
+  one country's answers on another's. The job page's knock-out check reads the job's country's
+  answers.
+- **A diversity set only where a checked one exists.** Setup and Profile ask the diversity questions
+  only when a country you apply in has a checked question set (the United States and the United
+  Kingdom today): applying only in Germany asks none.
+- **A dated log of every status change.** Maestro records when each application's status changed and
+  who changed it: you, your agent app by its name, the Companion, or your mail through the mail-status
+  automation. Jobs shows the day a status began, and Analytics and Today count from it; a status from
+  before the log still counts but gives no date. MCP `update_application` takes `from_email` for a
+  change read from your mail.
+- REST: `GET /api/today`, `GET /api/explore/search-summary`, `GET/PUT /api/settings/money`,
+  `GET /api/fx/rates` and `POST /api/fx/rates/refresh`, and `GET/PUT /api/settings/models/recommended`.
+  `GET /api/applications` rows carry `status_since`, a job carries `country_code` and
+  `salary_currency_assumed`, the market GET lists each market's `work_auth_vocab`, and
+  `/api/autofill/context` takes an optional `question`.
 - **Wordings on every bullet.** A bullet that a resume words differently, that an older resume copy
   still carries, that was combined into it or that came from an imported resume shows an **N wordings**
   chip. It opens **Wordings of this bullet**: **Use as the main wording** makes that phrasing the
@@ -103,15 +137,15 @@ a click.
 
 ### Changed
 
-- **Jobs has fewer words and five columns.** Each row shows the role, then "Company · Place", its match,
-  its status with the date you applied, and its next step as a blue link (grey while you wait to hear
-  back). The Resume, Where, Applied and Added columns are gone; sorting by when you added or applied a
-  job is in the new sort menu, and a small icon shows only when a job is not on this laptop. Five chips
-  (All active, Ready to apply, Waiting to hear, Interviews, Closed) with counts replace the quick
-  filters, and the list now opens on All active; the status, stage and source filters sit behind
-  **Filters**. The subtitle is gone: the header is the title, a count and the search. A quiet
-  **Select** works as in the Agent inbox: pick rows, then change their status, queue them in the
-  Agent inbox or delete them, one at a time.
+- **Jobs has fewer words and five columns.** Each row shows the role, then "Company · Place", its
+  match, its status with the day it began (the date you applied, while Applied), and its next step as
+  a blue link (grey while you wait to hear back). The Resume, Where, Applied and Added columns are
+  gone; sorting by when you added or applied a job is in the new sort menu, and a small icon shows
+  only when a job is not on this laptop. Five chips (All active, Ready to apply, Waiting to hear,
+  Interviews, Closed) with counts replace the quick filters, and the list now opens on All active; the
+  status, stage and source filters sit behind **Filters**. The subtitle is gone: the header is the
+  title, a count and the search. A quiet **Select** works as in the Agent inbox: pick rows, then
+  change their status, queue them in the Agent inbox or delete them, one at a time.
 - **Agent inbox lanes are one list each.** Each lane is one card of short rows instead of a tall card
   per job, and History folds into one row with its count. The header drops its subtitle for three
   counts, to review, queued and applied this week (a count jumps to its lane), beside "Nothing is sent
@@ -127,20 +161,27 @@ a click.
   the cover letter and the application questions. The job description, what was submitted and the
   job's dates and details fold away below it. The header reads "Company · Place · Mode · pay"; pay in
   another currency shows the posted amount under it, and pay whose post named no currency says how it
-  was read ("Pay read as Canadian dollars, job is in Canada"). On Jobs, a status other than Applied
-  shows the day it began.
+  was read ("Pay read as Canadian dollars, job is in Canada").
+- **Calmer chart colours.** Charts use six series near one lightness (blue, orange, teal, violet,
+  ochre, slate) with no red or green, so no series reads as good or bad, and each stays readable on its
+  card in light and dark.
+- **Company initials are neutral.** A company's monogram is its initial on one grey fill, so a base
+  resume's square is the only colour in a row and a status chip the only colour that means a state.
 - **Motion where something happens.** A status you change fades into its new name, then the chip
   pulses once. Where the AI is writing (a new wording, your answers, a cover letter) three dots say so
-  instead of a spinner, and "Saved" draws its check. Opening a job from Jobs carries its monogram and
-  title into the job page, and back. Nothing moves when you use the keyboard, and with reduced motion
-  the pair fades in place.
+  instead of a spinner, and screen readers hear it; "Saved" draws its check. Opening a job from Jobs
+  carries its monogram and title into the job page, and back. Nothing moves when you use the keyboard,
+  and with reduced motion the pair fades in place.
 - **Automations show only what runs reported.** A three-step strip says how it works (copy a prompt,
-  your agent schedules it, each run reports here) in place of the subtitle. An automation that reported
-  in the last 14 days is a **Reporting** card: a dot per day, its newest report in one line ("2 hours ago
-  · 3 updated · by Claude"), one Copy prompt and one link, **See in Agent inbox** when it proposed jobs or
-  **Last report** for its digest. The others are short rows under **No reports yet**. Recent runs and
-  "What each one never does" fold away, the Scheduled and Attended badges and Show prompt are gone, and
-  the connect note shows only until a first run reports. Counts read number first ("12 found, 4 proposed").
+  your agent schedules it, each run reports here) in place of the subtitle. An automation that
+  reported in the last 14 days is a **Reporting** card: a dot per day, its newest report in one line
+  ("2 hours ago · 3 updated · by Claude"), one Copy prompt and one link, **See in Agent inbox** when
+  it proposed jobs or **Last report** for its digest. The others are short rows under **No reports
+  yet**. Recent runs and "What each one never does" fold away, the Scheduled and Attended badges and
+  Show prompt are gone, and the connect note shows only until a first run reports. Counts read number
+  first ("12 found, 4 proposed"). The one prompt works in any agent app: the agent-app picker is gone,
+  and a scheduled card's prompt asks when to run, then uses whatever scheduler your agent app or
+  computer has, and tells you plainly where else it could run when it has none.
 - **Fewer words on Career history, Base resumes, Templates, Referrals and the Assistant.** The page
   subtitles are gone, and hints that repeated their label went. The rest of a section's explanation
   sits behind a small info button beside its title (Drafts to review, Bullets, Notes, the Career
@@ -160,56 +201,51 @@ a click.
   and the pill adds "Couldn't compare wording" when it is false.
 - **Salary checks compare one currency.** The job page's pay check converts the posted pay into your
   desired salary's currency (the one it names, else your home currency) before comparing, and with no
-  exchange rate it says **Can't compare** instead of passing or warning. Job preferences' Minimum
-  salary is a number a year with a currency, your home one unless you pick another; an earlier answer
-  that was a number reads as one, and other text stays as you wrote it.
+  exchange rate it says **Can't compare** instead of passing or warning. Minimum salary (Profile ›
+  Jobs you want) is a number a year with a currency, your home one unless you pick another; an earlier
+  answer that was a number reads as one, and other text stays as you wrote it.
 - **Analytics is one page.** The tabs are gone. A period (4 weeks, 12 weeks or All) and All / Yours /
   Agents sit at the top, and the page leads with where your applications went: applied, heard back,
-  interview and offer. A rate shows once there are 20 to count from, with its likely range in brackets;
-  below that it reads "5 of 12". Under it: applications per week, time to hear back, no reply after 30
-  days, the score gain from tailoring, each week's applications and replies, and each resume's results.
-  **Jobs you saved** shows yearly pay by role in your home currency, the work-mode split, the five skills
-  jobs ask for most and your most common gaps (the quick wins card is now a tag on a gap row). Match
-  scores, skill gaps, the market in detail, the agent pipeline and how everything is counted fold away
-  below. The OPT tile, the average pay tile and the Autofill coverage card left Analytics.
+  interview and offer. A rate shows once there are 20 to count from, with its likely range in
+  brackets; below that it reads "5 of 12". Under it: applications per week, time to hear back, no
+  reply after 30 days, the score gain from tailoring, each week's applications and replies, and each
+  resume's results. **Jobs you saved** shows yearly pay by role in your home currency, the work-mode
+  split, the five skills jobs ask for most and your most common gaps (the quick wins card is now a tag
+  on a gap row). Match scores, skill gaps, the market in detail, the agent pipeline and how everything
+  is counted fold away below. The period and All / Yours / Agents scope every figure about your
+  applications, the score gain included; Jobs you saved counts every saved job. The OPT tile, the
+  average pay tile and the Autofill coverage card left Analytics.
 - **Pay by role in your currency.** Analytics' Yearly pay by role shows every role's range in your home
   currency, "≈" where pay was converted, with a line naming the currencies converted and the rate's
   date. A role with fewer than 5 jobs that list pay is hidden and counted, and jobs whose currency has
-  no rate are left out and counted.
-- **The Automations page has one prompt per card, for any agent app.** The agent-app picker is
-  gone. A scheduled card's prompt asks when to run, then uses whatever scheduler your agent app
-  or computer has, and tells you plainly where else it could run when it has none.
+  no rate are left out and counted. The best-paying role in the overview's signals ranks converted pay
+  too, so ₹2,400,000 no longer beats $170,000.
 - **Make your own can now adapt any automation** to your agent app and routine.
 - **Apply runs ask wherever you can answer,** and leave a job in Needs you when nobody can.
 - **Mail status and Job hunt look back to their last run** instead of a fixed week.
 - **Settings in four tabs by purpose.** **Basics** leads with your AI model: where your jobs run,
   whether they work, the model doing each job, **Use recommended models** and **Change provider**, and
-  your API keys, the other providers' folded away. Then **Money** (your home currency, pay per year, month
-  or hour, the European Central Bank's rates with Update, and the posted amount under a converted
-  figure), **Resume PDFs** and **Appearance**, now Light, Dark or Like my computer. About closes the page
-  with Run setup again and the setup guide. **Companion** holds what it may fill (agreements and
-  signatures, moved from Profile, and the screening answers), how it applies and the form-filling engine.
-  **Agent apps** has Connect an agent app, what agents can and can't do (folded), the limits, and the
-  job-site login, next-step hints and second copy. **Advanced** has the model for each job, more models,
-  your own AI server, AI instructions, Quick tailor and Hours per year. Nothing was removed, and a link
-  to an old tab opens the tab and card it moved to. While recommended models are on, Advanced's model
-  pickers show them and can't be changed.
-- **Setup asks every form answer in place.** Each country's work permit is asked in that country's
-  words, the United States with your visa status too. You can answer the diversity questions or decline
-  them all right in Setup, once you allow the Companion to use them, with the permission beside the
-  answers as in Profile. **Fill from career history** fills your contact details there, and a question
-  you skip no longer shows as done.
+  your API keys, the other providers' folded away. Then **Money** (your home currency, pay per year,
+  month or hour, the European Central Bank's rates with Update, and the posted amount under a
+  converted figure), **Resume PDFs** and **Appearance**, now Light, Dark or Like my computer. About
+  closes the page with Run setup again and the setup guide. **Companion** holds what it may fill
+  (agreements and signatures, moved from Profile, and the screening answers), how it applies and the
+  form-filling engine. **Agent apps** has Connect an agent app, what agents can and can't do (folded),
+  the limits, and the job-site login, next-step hints and second copy. **Advanced** has the model for
+  each job, more models, your own AI server, AI instructions, Quick tailor and Hours per year. Nothing
+  was removed, and a link to an old tab opens the tab and card it moved to. While recommended models
+  are on, Advanced's model pickers show them and can't be changed.
 - **Profile is one page of facts about you.** The header shows your name, where you live and where you
-  apply, and how many sections are ready. **Next up** asks the first answer job forms still need, starting
-  with the work permit for each country you apply in, and you answer it right there. Nine tiles (Contact,
-  Where you apply, Work permits, Jobs you want, How you come across, Start and pay, Education, Languages,
-  Your own questions) show what each holds and open their answers below; Diversity questions and
-  Eligibility are folded under them. Work permits are asked for each country you apply in, in that
-  country's words, and only the United States asks your visa status. Where you apply says **You live in**
-  and **You apply in**, and a country shows the square of a base resume made for it. Your answers save as
-  you go: the Save answers button is gone. The diversity permission stays beside the diversity answers,
-  and Decline the rest now declines the veteran question too. The tabs and the setup strip are gone, and
-  a link to an old tab or card opens the tile that holds it.
+  apply, and how many sections are ready. **Next up** asks the first answer job forms still need,
+  starting with the work permit for each country you apply in, and you answer it right there. Nine
+  tiles (Contact, Where you apply, Work permits, Jobs you want, How you come across, Start and pay,
+  Education, Languages, Your own questions) show what each holds and open their answers below;
+  Diversity questions and Eligibility are folded under them. Work permits are asked for each country
+  you apply in, in that country's words, and only the United States asks your visa status. Where you
+  apply says **You live in** and **You apply in**, and a country shows the square of a base resume
+  made for it. Your answers save as you go: the Save answers button is gone. The diversity permission
+  stays beside the diversity answers, and Decline the rest now declines the veteran question too. The
+  tabs and the setup strip are gone, and a link to an old tab or card opens the tile that holds it.
 - **Autofill coverage is under Settings › Advanced › Diagnostics**, unchanged, with its Clear data.
 - **Messages that send you to Settings name its new tabs**, such as "Add an API key in Settings ›
   Basics." The Companion's Change in Settings link opens the Companion tab.
@@ -218,40 +254,20 @@ a click.
 
 - **A sync that could not load the embedding model no longer reads every bullet as new in silence.**
   It still adds them, so sync works where the model cannot load, but it now says so.
-- **Best-paying role compares pay in your currency.** It ranks roles by their pay converted into your
-  home currency and leaves out pay with no exchange rate, so ₹2,400,000 no longer beats $170,000.
-- **An automation's day strip starts at "13 days ago",** the day of its oldest dot, not "14 days ago".
-- **Screen readers say when the AI is working.** "Writing your cover letter" and the other working
-  lines are now spoken when they appear.
-- **Today's counts match where they lead.** Agent jobs to review leaves out a proposal past its expiry,
-  which the Agent inbox no longer lists, and No reply after 14 days says its link opens all your jobs
-  waiting to hear, the quiet ones among them.
-- **Skills by role shows counts for a small role.** A role with fewer than 20 jobs reads "2 of 3" in
-  each cell, not a percentage, and its cells are not shaded as shares.
-- **Skills by role stays within 100%.** A Level, employment type, country or currency filter now
-  narrows both sides of each percentage, not only the job count under it.
+- **Skills by role stays within 100% and shows counts for a small role.** A Level, employment type,
+  country or currency filter now narrows both sides of each percentage, not only the job count under
+  it, and a role with fewer than 20 jobs reads "2 of 3" in each cell, not a percentage, its cells not
+  shaded as shares.
 - **Roles over time follows the filters** and shows every week from the first to the last, with 0 for
   a role that had no jobs that week.
 - **Match score over time reads one base resume per job.** The Base line plots each job's best base
   instead of averaging every base it was scored against.
-- **No percentage on fewer than 20.** "At interview or later" reads "1 of 3" until 20 applications
-  are in, then shows the rate.
-- **Average score gain follows All / Yours / Agents.**
 - **Charts say when they fail to load,** with Try again, instead of "No data yet".
 - **Job market counts each value once.** "Hybrid" and "hybrid ", or "USA" and "United States", are
   one bar, the Country filter lists each country once, and a job that names no country reads "Not
   stated".
 - **Working hours are not pay.** "40 hours per week" no longer reads as an hourly rate of 40: an
   hourly figure needs a currency mark or a word such as pay or rate beside it.
-- **Work-permit answers from before stay with their country.** Moving where you live no longer hands
-  the one set of answers you gave before per-country answers to the new country: they stay with the
-  country they were read for, and a form in the new one asks.
-- **A save never puts one country's work-permit answers on another.** A page opened before you moved
-  where you live saves its answers to the country it showed them for, and a save that does not know
-  a country leaves that country's answers as they are.
-- **The Companion saves a work-permit answer to its job's country.** An answer you type in the panel
-  for a UK job goes to your UK answers, not to the country you live in, so the next UK job doesn't
-  ask again. When it can't tell the country, it fills the field and asks again next time.
 - **A bare "$" takes the job's country.** A Toronto job's "$80,000" is Canadian dollars, not US
   dollars. With no country it is your home currency, and either way the job notes the currency was
   assumed.
