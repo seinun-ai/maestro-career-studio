@@ -10,7 +10,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Row, func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.application import Application
@@ -43,59 +43,78 @@ def _most_common(counter: Counter) -> Any:
     return sorted(counter.items(), key=lambda kv: (-kv[1], str(kv[0])))[0][0]
 
 
-def _best_base_gap_rows(
-    db: Session, role_category, level, employment_type
-) -> list[tuple[Any, dict]]:
-    """(job_id, gaps_json) for the best-scoring base row per job.
+def _best_base_rows(
+    db: Session, role_category, level, employment_type, *, need_gaps: bool = True
+) -> list[Row]:
+    """The best-scoring base row per job: the ONE base each analytics read uses.
 
     Every job is scored against every selectable base (score_all_bases), so
     pooling rows lets a weak secondary base manufacture gaps for skills the
-    user's real resume covers — analytics must read only the base you would
-    actually send. Base-phase rows are upsert singletons per (job, target),
-    so "best" is a plain max-composite pick; ties break on target_id asc for
-    deterministic reruns.
+    user's real resume covers, and pulls a job's match score down to the
+    average of bases you would never send. Base-phase rows are upsert
+    singletons per (job, target), so "best" is a plain max-composite pick; ties
+    break on target_id asc for deterministic reruns.
 
     A base the country rule skips for the job's country (base_eligibility) is
-    never the pick, so a base written for another country cannot supply the
-    gaps. No other filter is added.
+    never the pick, so a base written for another country cannot stand in for
+    yours. No other filter is added.
+
+    need_gaps (the gap sweeps) passes over rows with no gaps_json; the Base
+    line of ats_over_time reads the composite only, so a row from before gap
+    analysis still counts there. Each row carries job_id, role_category,
+    target_id, composite, created_at and gaps_json.
     """
     stmt = (
         select(
             AtsScore.job_id,
             Job.country,
+            Job.role_category,
             AtsScore.target_id,
             AtsScore.composite,
+            AtsScore.created_at,
             AtsScore.gaps_json,
         )
         .join(Job, Job.id == AtsScore.job_id)
-        .where(
-            AtsScore.phase == "base",
-            AtsScore.target_type == "base_resume",
-            AtsScore.gaps_json.is_not(None),
-        )
+        .where(AtsScore.phase == "base", AtsScore.target_type == "base_resume")
     )
+    if need_gaps:
+        stmt = stmt.where(AtsScore.gaps_json.is_not(None))
     stmt = _apply_job_filters(stmt, role_category, level, employment_type)
 
     skipped_by_country: dict[str | None, set[str]] = {}
-    best: dict[Any, tuple[tuple[float, str], dict]] = {}
-    for job_id, job_country, target_id, composite, gaps in db.execute(stmt).all():
-        code = countries.normalize(job_country)
+    best: dict[Any, tuple[tuple[float, str], Row]] = {}
+    for row in db.execute(stmt).all():
+        code = countries.normalize(row.country)
         if code not in skipped_by_country:
             skipped_by_country[code] = set(
                 base_eligibility.candidates_for_country(db, code).skipped
             )
-        if str(target_id) in skipped_by_country[code]:
+        if str(row.target_id) in skipped_by_country[code]:
             continue
         # The SQL is_not(None) does NOT catch these: SQLAlchemy writes a Python
         # None into JSONB as the JSON scalar `null`, not SQL NULL, so such rows
         # survive the WHERE and would blow up gaps.get() below. Guard before the
         # pick, never after — a null-gaps row must not win and erase the job.
-        if not gaps:
+        if need_gaps and not row.gaps_json:
             continue
-        key = (-float(composite), str(target_id))
-        if job_id not in best or key < best[job_id][0]:
-            best[job_id] = (key, gaps)
-    return [(job_id, gaps) for job_id, (_, gaps) in best.items()]
+        key = (-float(row.composite), str(row.target_id))
+        if row.job_id not in best or key < best[row.job_id][0]:
+            best[row.job_id] = (key, row)
+    return [row for _, row in best.values()]
+
+
+def _best_base_gap_rows(
+    db: Session, role_category, level, employment_type
+) -> list[tuple[Any, dict]]:
+    """(job_id, gaps_json) for the best-scoring base row per job (_best_base_rows).
+
+    Analytics must read only the base you would actually send, so the gap
+    sweeps never pool a job's rows across bases.
+    """
+    return [
+        (row.job_id, row.gaps_json)
+        for row in _best_base_rows(db, role_category, level, employment_type)
+    ]
 
 
 def _skill_gap_occurrences(gaps: dict) -> Iterator[tuple[str | None, dict, str]]:
@@ -236,19 +255,29 @@ def ats_over_time(
     level: str | None = None,
     employment_type: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Weekly avg ATS composite + count, split by phase and Job.role_category."""
-    stmt = (
-        select(AtsScore.created_at, AtsScore.phase, Job.role_category, AtsScore.composite)
-        .join(Job, Job.id == AtsScore.job_id)
-        .where(Job.role_category.is_not(None))
-    )
-    stmt = _apply_job_filters(stmt, role_category, level, employment_type)
+    """Weekly avg ATS composite + count, split by phase and Job.role_category.
 
+    The Base line reads ONE base per job, its best (_best_base_rows), bucketed
+    by that row's week: a job scored against three bases is one point, not
+    three. The Tailored line reads every tailored row.
+    """
     # Kept as Decimal, not float: composite is Numeric(5, 1), and averaging
     # floats turns an exact .x5 tie like 76.95 into 76.9499... -> 76.9.
     groups: dict[tuple[date, str, str], list[Decimal]] = defaultdict(list)
-    for created_at, phase, category, composite in db.execute(stmt):
-        groups[(bucket_for(created_at, "week"), phase, category)].append(composite)
+    for row in _best_base_rows(db, role_category, level, employment_type, need_gaps=False):
+        if row.role_category is not None:
+            groups[(bucket_for(row.created_at, "week"), "base", row.role_category)].append(
+                row.composite
+            )
+
+    tailored = (
+        select(AtsScore.created_at, Job.role_category, AtsScore.composite)
+        .join(Job, Job.id == AtsScore.job_id)
+        .where(AtsScore.phase == "tailored", Job.role_category.is_not(None))
+    )
+    tailored = _apply_job_filters(tailored, role_category, level, employment_type)
+    for created_at, category, composite in db.execute(tailored):
+        groups[(bucket_for(created_at, "week"), "tailored", category)].append(composite)
 
     # Same order the SQL version produced: week, role_category, phase.
     ordered = sorted(groups.items(), key=lambda item: (item[0][0], item[0][2], item[0][1]))

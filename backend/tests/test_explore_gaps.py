@@ -598,11 +598,13 @@ def test_ats_over_time_averages_exactly_at_a_rounding_tie(db_session):
     Averaging the composites as floats yields 76.9499... and rounds DOWN to
     76.9, so this pins the Decimal arithmetic, not just the output shape.
     """
+    # Two jobs, not two bases on one job: the Base line reads one base per job.
     job = _seed_job(db_session, raw_hash="aot-tie", role_category="data_scientist")
+    job2 = _seed_job(db_session, raw_hash="aot-tie-2", role_category="data_scientist")
     db_session.add_all(
         [
             _base_row(job.id, "a", 56.3, created_at=datetime(2026, 4, 21, tzinfo=UTC)),
-            _base_row(job.id, "b", 97.6, created_at=datetime(2026, 4, 22, tzinfo=UTC)),
+            _base_row(job2.id, "b", 97.6, created_at=datetime(2026, 4, 22, tzinfo=UTC)),
         ]
     )
     db_session.commit()
@@ -615,6 +617,36 @@ def test_ats_over_time_averages_exactly_at_a_rounding_tie(db_session):
             "phase": "base",
             "role_category": "data_scientist",
             "avg_composite": 77.0,
+            "n": 2,
+            "low_sample": True,
+        }
+    ]
+
+
+def test_ats_over_time_base_line_reads_one_base_per_job(db_session):
+    """score_all_bases scores a job against every base, but the Base line plots
+    the one you would send: three bases on one job are one point, its best."""
+    job = _seed_job(db_session, raw_hash="aot-3-bases", role_category="data_scientist")
+    other = _seed_job(db_session, raw_hash="aot-1-base", role_category="data_scientist")
+    week = datetime(2026, 4, 21, tzinfo=UTC)
+    db_session.add_all(
+        [
+            _base_row(job.id, "a", 40.0, created_at=week),
+            _base_row(job.id, "b", 70.0, created_at=week),
+            _base_row(job.id, "c", 55.0, created_at=week),
+            _base_row(other.id, "a", 50.0, created_at=week),
+        ]
+    )
+    db_session.commit()
+
+    base = [r for r in explore_gaps.ats_over_time(db_session) if r["phase"] == "base"]
+
+    assert base == [
+        {
+            "week_start": "2026-04-20",
+            "phase": "base",
+            "role_category": "data_scientist",
+            "avg_composite": 60.0,  # (70 + 50) / 2, never (40 + 70 + 55 + 50) / 4
             "n": 2,
             "low_sample": True,
         }

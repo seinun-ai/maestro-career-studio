@@ -1795,9 +1795,10 @@
   goes in `TOKEN_CASE`; `test_frontend_analytics.py` fails until it does. The
   fit-distribution legend names each resume by `display_name` and draws at
   most six (`MAX_FIT_SERIES`), the ones with the most scores; each takes its
-  resume's color. **The gap sweeps read ONE base per job.** Both
+  resume's color. **The gap sweeps and the Base line read ONE base per job.** Both
   `explore_gaps.gap_frequency` and `explore_build_areas.build_areas` go through
-  `explore_gaps._best_base_gap_rows` — the single highest-composite base-phase
+  `explore_gaps._best_base_gap_rows`, and Match score over time's Base line through the same
+  pick, `_best_base_rows(need_gaps=False)` — the single highest-composite base-phase
   row per job (ties break `target_id` asc for deterministic reruns). Pooling
   every row is wrong: `score_all_bases` scores each job against EVERY
   selectable base, so one weak secondary base manufactures demand for skills
