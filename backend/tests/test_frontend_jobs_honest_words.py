@@ -695,8 +695,11 @@ def test_save_job_opens_the_job_on_resume_and_gaps():
 
 
 def test_the_tracker_says_where_agent_jobs_are():
+    """The subtitle that said so went (owner decision D1); the source toggle under Filters says it in its
+    segments, Tracked (your saved jobs and every application) and Agents."""
     page = _read("app/applications/page.tsx")
-    assert "Jobs a connected agent found are under Agents." in page
+    assert "subtitle=" not in page
+    assert 'allLabel="Tracked"' in page and 'if (next === "agent") void qc.prefetchQuery(savedJobsQuery("agent"));' in page
 
 
 def test_the_inbox_explains_mcp_and_the_skill_once():
@@ -812,8 +815,9 @@ def test_a_skill_with_no_example_never_contradicts_mentioned_in():
 
 
 def test_the_tracker_names_its_match_score_column():
+    # "Match" on the board; each meter is named "Match score" (or "Best match score") for a screen reader.
     page = _read("app/applications/page.tsx")
-    assert 'header("ats", "Match score",' in page
+    assert '>Match</TableHead>' in page and '"Match score"' in page
 
 
 def _button_tags(src: str) -> list[str]:

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  jobOwnershipView, isOwnershipRefusal, isSyncQueued, ownershipReason, ownershipWhere, syncActionMessage,
+  jobOwnershipView, isOwnershipRefusal, isSyncQueued, ownershipReason, ownershipSays, ownershipWhere, syncActionMessage,
 } from "./job-ownership.ts";
 
 const off = { owned_here: true, owner: null, handover: null, pending_requests: 0 };
@@ -94,4 +94,13 @@ test("a request still waiting for the next sync says so in the Where sentence", 
   const waiting = ownershipWhere({ ...off, owned_here: false, owner: "bot", pending_requests: 1 });
   assert.equal(waiting?.pending, true);
   assert.equal(waiting?.sentence, `${ownershipReason({ ...off, owned_here: false, owner: "bot" })} · Sent at the next sync`);
+});
+
+test("a row's ownership icon shows only when the job is not here or a request waits", () => {
+  assert.equal(ownershipSays(undefined), false);
+  assert.equal(ownershipSays(off), false);
+  assert.equal(ownershipSays({ ...off, owner: "laptop" }), false);
+  assert.equal(ownershipSays({ ...off, owned_here: false, owner: "bot" }), true);
+  assert.equal(ownershipSays({ ...off, owner: "laptop", handover: "offered", can_keep_here: true }), true);
+  assert.equal(ownershipSays({ ...off, owner: "laptop", pending_requests: 1 }), true);
 });

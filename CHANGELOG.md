@@ -63,6 +63,15 @@ a click.
 
 ### Changed
 
+- **Jobs has fewer words and five columns.** Each row shows the role, then "Company · Place", its match,
+  its status with the date you applied, and its next step as a blue link (grey while you wait to hear
+  back). The Resume, Where, Applied and Added columns are gone; sorting by when you added or applied a
+  job is in the new sort menu, and a small icon shows only when a job is not on this laptop. Five chips
+  (All active, Ready to apply, Waiting to hear, Interviews, Closed) with counts replace the quick
+  filters, and the list now opens on All active; the status, stage and source filters sit behind
+  **Filters**. The subtitle is gone: the header is the title, a count and the search. A quiet
+  **Select** works as in the Agent inbox: pick rows, then change their status, queue them in the
+  Agent inbox or delete them, one at a time.
 - **Agent inbox rows are about half as tall.** Where a job is (Laptop, Bot) now sits in the row's
   by-line as one word, as in the Jobs table, instead of a pill on a line of its own, with the full
   sentence on hover. Nothing else sits under a row: why a job is locked, Work on it here and a

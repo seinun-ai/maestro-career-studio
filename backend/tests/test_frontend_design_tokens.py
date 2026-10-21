@@ -714,14 +714,18 @@ def test_filter_chips_are_toggle_buttons_in_a_named_group_with_a_check_on_the_se
     assert 'type="button"' in button and "aria-pressed={on}" in button
     # The count is said in the chip's name (a count beside the label can drop out of it).
     assert "aria-label={`${o.label} ${o.count}`}" in button
-    # On: tonal plus a leading Check (the tonal fill alone is too faint). Off: outline and muted text.
+    # On: tonal plus a leading Check (the tonal fill alone is too faint). Off: outline and muted text. The
+    # look is one function, which the Jobs list's chips (one on at a time) share.
     assert "{on && <Check" in button and 'aria-hidden="true"' in button
-    on, off = re.search(r'on\s*\? "([^"]+)"\s*: "([^"]+)"', button).groups()
+    assert "className={filterChipClass(on)}" in button
+    look = _FILTER_CHIPS[_FILTER_CHIPS.index("export function filterChipClass(") :]
+    look = look[: look.index("\n}\n")]
+    on, off = re.search(r'on\s*\? "([^"]+)"\s*: "([^"]+)"', look).groups()
     assert "bg-secondary-container" in on and "text-on-secondary-container" in on
     assert "border-border" in off and "text-muted-foreground" in off
     # 28px, a pill, label-medium, tabular numerals, the solid 2px ring outline.
     for cls in ("h-7", "rounded-full", "text-label-medium", "gap-1", "focus-visible:outline-2", "focus-visible:outline-ring"):
-        assert cls in re.split(r"[\s\"]+", button), cls
+        assert cls in re.split(r"[\s\"]+", look), cls
     assert 'className="tabular-nums"' in button
     assert "gap-2" in _FILTER_CHIPS  # 8px between chips
     # Several can be on together: a set, toggled one value at a time.

@@ -179,14 +179,17 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    /api/jobs/ingest` (pre-extracted; the client agent is the extractor by design). Both save paths score a new job against every
    selectable base after its commit (`_persist_job` → `score_all_bases`, inline); a failure rolls back only the scores, and a
    dedup hit is not re-scored.
-2. **Jobs** — `/applications` (the URL, `?status=`/`?source=` and `cs-tracker-*` keep their names): the tracker. Columns Role,
-   Match score, Status, Where, Applied, **Next step** and Added, with search, sort, a grouped status `Select`, a Tracked/Yours/Agents
-   `SourceToggle` and quick filters (Ready to apply, Tailored, review, Gaps open, Needs you). Next step and the quick filters read
-   the server's stage, one ladder per job (saved → scored → gaps → tailored → pdf_ready → applied | closed; `services/stage.py`,
+2. **Jobs** — `/applications` (the URL, `?status=`/`?source=`/`?stage=` and `cs-tracker-*` keep their names): the tracker.
+   Columns Role, Match, Status (with the applied date), **Next step** and a slot for where the job is (only when it is not on this
+   copy), under a header of title, count and search. Five chips (All active, the default; Ready to apply; Waiting to hear;
+   Interviews; Closed) are presets of the status and stage filters; the grouped status `Select`, the stage and a Tracked/Yours/
+   Agents `SourceToggle` sit behind **Filters**, and the sort menu keeps every order. Next step and the stage read the server's
+   stage, one ladder per job (saved → scored → gaps → tailored → pdf_ready → applied | closed; `services/stage.py`,
    docs/entities/job.md), sent on both list shapes and the detail. "Saved" = job with no application; agent-captured jobs stay out
-   unless the toggle is `Agents`, so the default reads Tracked, not All. Filter groups: All/Saved, **Your applications** and
-   **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`). Rows, options and the Agent inbox page (`/proposals`):
-   frontend-conventions, "Jobs row" and "Tracker filter".
+   unless the toggle is `Agents`, so the default reads Tracked, not All. Status groups: All/All active/Interviews/Closed/Saved,
+   **Your applications** and **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`). **Select** is the Agent inbox's Select
+   mode; its bar changes status, queues or deletes one row at a time through the rows' own endpoints. Rows, options and the Agent
+   inbox page (`/proposals`): frontend-conventions, "Jobs row" and "Tracker filter".
 3. **The job page** — `/jobs/[id]`: identity header (monogram, meta line, ONE status: the application's inline StatusChip, else
    the proposal's pill worded like History (`headerProposalPill`), naming its filer, + Queue/Skip; a score pill, **Resume match**
    (tailored) or **Best base resume**; a Needs-you question adds **Keep it**, PATCH `pending_review`, linking the job's application

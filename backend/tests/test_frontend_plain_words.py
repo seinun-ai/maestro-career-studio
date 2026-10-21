@@ -232,7 +232,8 @@ def test_a_day_reads_as_words_and_never_shifts():
     assert "date.getFullYear() === now.getFullYear() ? {} : { year: \"numeric\" }" in lib
     assert not re.search(r"^import ", lib, re.M)
     tracker = _read("app/applications/page.tsx")
-    assert 'return (value && formatShortDate(value)) || "—";' in tracker
+    # The Applied and Added columns went (design refresh Task 4.1): the applied date sits in the Status cell.
+    assert "formatShortDate(r.app.applied_at)" in tracker
     assert ".slice(0, 10)" not in tracker
     assert "tickFormatter={(value: string) => formatShortDate(value)}" in _read(
         "components/analytics/activity-chart.tsx"

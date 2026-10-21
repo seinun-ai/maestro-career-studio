@@ -216,19 +216,20 @@ def test_preview_thumbnail_shows_a_skeleton_until_the_image_loads():
     assert "else setFailedSrc(src)" in src and "img.naturalWidth > 0" in src
 
 
-def test_tracker_shows_scores_dots_and_a_needs_strip():
+def test_tracker_shows_scores_dots_and_chips():
     src = _read("app/applications/page.tsx")
     assert "ScoreBar" in src and "StatusDot" in src
-    # The dots are Task 14's own (reused, not copied). Three chips filter by the server's stage, and
-    # Needs you through the Status filter.
-    assert "LaneDot" in src and 'update({ filter: filter === "needs_you" ? "all" : "needs_you" })' in src
-    assert "update({ stage: stageFilter === stage ? null : stage })" in src
+    # The dots are Task 14's own (reused, not copied). The quick-filter strip became the five chips (design
+    # refresh Task 4.1); the stages are a select under Filters, and Needs you is still a Status value.
+    assert "LaneDot" in src and 'needs_you: "Needs you",' in src
+    assert "update({ stage: v && v !== \"any\" ? (v as StageFilter) : null })" in src
     assert 'pdf_ready: "Ready to apply",' in src
     assert 'tailored: "Tailored, review",' in src and 'gaps: "Gaps open",' in src
-    assert 'label: "Needs you"' in src and "Drafts not applied" not in src
-    assert "aria-pressed={on}" in src and "<Check " in src and 'variant="tonal"' in src
+    assert "Drafts not applied" not in src
+    # A chip that is on: the filter chips' look, a leading Check and aria-pressed.
+    assert "aria-pressed={on}" in src and "<Check " in src and "className={filterChipClass(on)}" in src
     # An unscored row is a dash with words, never 0; it sorts last whichever way.
-    assert "No score yet" in src and 'header("ats", "Match score"' in src
+    assert "No score yet" in src and "if (as === null) return 1;" in src
     assert "valueText={score.toFixed(1)}" in src
     types = _read("lib/types.ts")
     assert "ats_score?: number | null" in types and "best_ats_score?: number | null" in types

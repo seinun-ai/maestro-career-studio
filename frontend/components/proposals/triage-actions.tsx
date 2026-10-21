@@ -6,6 +6,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { SelectionBar } from "@/components/selection-bar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -385,8 +386,8 @@ export function DeclineDialog({
 export type BulkActions = { queue: boolean; skip: boolean; delete: boolean };
 
 /**
- * Select mode's bar, on screen until Done (Photos' model: pick rows, then act). It offers only what
- * every picked row allows, the same actions each row's own buttons offer; a mixed pick says so.
+ * The Agent inbox's Select-mode bar (`SelectionBar`, shared with Jobs). It offers only what every picked row
+ * allows, the same actions each row's own buttons offer; a mixed pick says so. Queue is its one filled button.
  */
 export function BulkBar({
   selectedCount,
@@ -411,73 +412,52 @@ export function BulkBar({
 }) {
   const nothingFits = selectedCount > 0 && !can.queue && !can.skip && !can.delete;
   return (
-    // data-slot: globals.css keeps a focused row above this fixed bar. Its buttons stay focusable
-    // while they run, and the page hands focus on when an action or Done takes the bar away.
-    <div
-      data-slot="bulk-bar"
-      className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm animate-in slide-in-from-bottom-2 fade-in-0 duration-(--duration-short4) ease-(--ease-emphasized-decelerate) fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3"
+    <SelectionBar
+      selectedCount={selectedCount}
+      nothingFits={nothingFits}
+      hint="No one action fits all of these. Pick jobs from one lane."
+      pending={pending}
+      onDone={onDone}
     >
-      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-2">
-        <span role="status" className="text-title-small tabular-nums">
-          {selectedCount > 0 ? `${selectedCount} selected` : "Pick the jobs to act on"}
-        </span>
-        {can.queue ? (
-          <Button
-            type="button"
-            size="sm"
-            onClick={onQueue}
-            pending={queuePending}
-            disabled={pending}
-            focusableWhenDisabled
-          >
-            Queue
-          </Button>
-        ) : null}
-        {can.skip ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
-            onClick={onDecline}
-            disabled={pending}
-            focusableWhenDisabled
-          >
-            Skip
-          </Button>
-        ) : null}
-        {can.delete ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
-            onClick={onDelete}
-            disabled={pending}
-            focusableWhenDisabled
-          >
-            <Trash2 aria-hidden="true" />
-            Delete
-          </Button>
-        ) : null}
-        {nothingFits ? (
-          <span className="text-muted-foreground text-body-small">
-            No one action fits all of these. Pick jobs from one lane.
-          </span>
-        ) : null}
+      {can.queue ? (
         <Button
           type="button"
           size="sm"
-          variant="ghost"
-          // Beside the actions, not at the far end: toasts land in the bottom-right corner over it.
-          className="data-disabled:pointer-events-none data-disabled:opacity-50"
-          onClick={onDone}
+          onClick={onQueue}
+          pending={queuePending}
           disabled={pending}
           focusableWhenDisabled
         >
-          Done
+          Queue
         </Button>
-      </div>
-    </div>
+      ) : null}
+      {can.skip ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
+          onClick={onDecline}
+          disabled={pending}
+          focusableWhenDisabled
+        >
+          Skip
+        </Button>
+      ) : null}
+      {can.delete ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
+          onClick={onDelete}
+          disabled={pending}
+          focusableWhenDisabled
+        >
+          <Trash2 aria-hidden="true" />
+          Delete
+        </Button>
+      ) : null}
+    </SelectionBar>
   );
 }

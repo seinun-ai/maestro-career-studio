@@ -255,7 +255,8 @@ _SLOT_OWNERS = {
     "list-toolbar": ("components/list-toolbar.tsx", "export function ListToolbar("),
     "table-header": ("components/ui/table.tsx", "function TableHeader("),
     "table-body": ("components/ui/table.tsx", "function TableBody("),
-    "bulk-bar": ("components/proposals/triage-actions.tsx", "export function BulkBar("),
+    # Select mode's bar, shared by the Agent inbox and Jobs.
+    "bulk-bar": ("components/selection-bar.tsx", "export function SelectionBar("),
 }
 
 
@@ -311,11 +312,14 @@ def test_referrals_header_sticks():
 
 def test_the_tracker_search_is_the_shared_list_search():
     """One list search box (planner decision 16, Q12): Applications and the
-    Agent inbox render the same component, so the two never drift."""
+    Agent inbox render the same component, so the two never drift. On Jobs it
+    sits in the page header beside the title and its count (design refresh
+    Task 4.1, board "Jobs, fewer words"); the toolbar under it holds the chips."""
     assert 'placeholder="Search company or role…"' in _SEARCH
     assert "aria-label={label}" in _SEARCH
-    toolbar = _TRACKER[_TRACKER.index("<ListToolbar>") : _TRACKER.index("</ListToolbar>")]
-    assert '<ListSearch label="Search jobs" value={q} onChange={setQ} />' in toolbar
+    header = _TRACKER[_TRACKER.index("<PageHeader") : _TRACKER.index("<ListToolbar>")]
+    assert '<ListSearch label="Search jobs" value={q} onChange={setQ} />' in header
+    assert _TRACKER.count("<ListSearch") == 1
     # No second copy of the box left behind in the page.
     assert "placeholder=" not in _TRACKER
     assert "<Input" not in _TRACKER

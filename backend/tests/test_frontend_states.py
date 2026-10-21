@@ -134,8 +134,10 @@ def test_inbox_rows_leave_with_an_exit_transition():
 
 
 def test_the_bulk_bar_slides_up_on_mount():
-    bar = _read("components/proposals/triage-actions.tsx").split("export function BulkBar(", 1)[1]
+    # Select mode's bar is one component, the Agent inbox's and Jobs'.
+    bar = _read("components/selection-bar.tsx").split("export function SelectionBar(", 1)[1]
     assert "animate-in slide-in-from-bottom-2 fade-in-0 duration-(--duration-short4)" in bar
+    assert "<SelectionBar" in _read("components/proposals/triage-actions.tsx").split("export function BulkBar(", 1)[1]
 
 
 def test_reversible_actions_offer_undo():

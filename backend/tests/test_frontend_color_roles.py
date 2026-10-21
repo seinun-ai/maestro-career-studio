@@ -357,7 +357,7 @@ _OVERLAY_FILES = {
     "app/jobs/[id]/tailor/[sessionId]/page.tsx": ("sticky footer", 1),
     "components/resume-health/health-report-page.tsx": ("sticky bar", 1),
     "components/resume-health/question-pass.tsx": ("sticky bar", 1),
-    "components/proposals/triage-actions.tsx": ("fixed bar", 1),
+    "components/selection-bar.tsx": ("fixed bar", 1),
     "components/sidebar-reveal-trigger.tsx": ("floating trigger", 1),
     "components/gallery/preview-thumbnail.tsx": ("two pills over the page image", 2),
     "components/templates/template-gallery.tsx": ("the selected pill over the preview image", 1),

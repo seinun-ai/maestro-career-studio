@@ -187,12 +187,15 @@ def test_build_draft_keeps_focus_while_it_runs_and_hands_it_on():
 
 
 def test_a_tracker_row_queue_keeps_focus_on_the_row():
-    # The Queue button unmounts once the job has a proposal; focus went to <body>.
+    # Queue in Agent inbox is an item of the row's ⋯ (design refresh Task 4.1): the closing menu returns focus
+    # to ⋯, and when the queued row leaves the list (a Saved filter) focus moves on from there.
     tracker = (_FRONTEND / "app/applications/page.tsx").read_text()
-    queue = _button_at(tracker, "promoteJobOnce(r.job.id);", "<IconButton")
-    assert "focusableWhenDisabled" in queue and "data-disabled:opacity-50" in queue
-    # The row's ⋯ takes focus once the button leaves, read at the click.
-    assert "queued.current = { jobId: r.job.id, next: focusReturnPoint(moreActions(e.currentTarget)) };" in queue
+    item = tracker[tracker.rfind("<DropdownMenuItem", 0, tracker.index("promoteJobOnce(r.job.id);")) :]
+    item = item[: item.index("</DropdownMenuItem>")]
+    assert "disabled={promoteJob.isPending || !ownership.canWrite}" in item
+    # The row's ⋯ takes focus once the item's menu closes, read at the click while the row is there.
+    assert "queued.current = { jobId: r.job.id, next: focusReturnPoint(moreActions(key)) };" in item
+    assert 'return document.querySelector<HTMLElement>(`[data-row="${key}"] [aria-label="More actions"]`);' in tracker
     handoff = tracker[tracker.index("const q = queued.current;") :]
     handoff = handoff[: handoff.index("}, [filtered]);")]
     assert 'r.kind === "saved" && r.job.id === q.jobId && !r.job.proposal_status' in handoff

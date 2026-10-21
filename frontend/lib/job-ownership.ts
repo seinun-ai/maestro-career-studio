@@ -15,6 +15,13 @@ export function jobOwnershipView(ownership?: JobOwnership) {
     pending: ownership.pending_requests > 0 };
 }
 
+/** Whether a list row's ownership popover has something to say: a lock, a request you can make, or one on its
+ * way. A job on this copy with nothing waiting, and every job with sync off, says nothing, so its row shows no icon. */
+export function ownershipSays(ownership?: JobOwnership): boolean {
+  const view = jobOwnershipView(ownership);
+  return !!view.mark && (!!view.action || !!view.reason || view.pending);
+}
+
 function isMoving(ownership: JobOwnership): boolean {
   return ["offered", "returning"].includes(ownership.handover ?? "");
 }

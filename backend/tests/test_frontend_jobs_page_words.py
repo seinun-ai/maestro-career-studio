@@ -42,8 +42,9 @@ _TOGGLE = _read("components/source-toggle.tsx")
 def test_the_page_and_its_sidebar_item_are_called_jobs():
     assert '{ href: "/applications", label: "Jobs", icon: CONCEPT_ICONS.jobs },' in _read("components/app-sidebar.tsx")
     assert 'title="Jobs"' in _TRACKER
-    # What it lists, truthfully: Tracked is the default and holds exactly this.
-    assert 'subtitle="Jobs you saved and every application. Jobs a connected agent found are under Agents."' in _TRACKER
+    # No subtitle (owner decision D1): the title, its count and the search. What Tracked holds is said where
+    # it is chosen, the source toggle under Filters (test_tracked_is_exactly_the_old_all_set).
+    assert "subtitle=" not in _TRACKER
 
 
 def test_every_way_back_names_jobs():

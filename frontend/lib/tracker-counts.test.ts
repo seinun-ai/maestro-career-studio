@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { chipCount } from "./tracker-counts.ts";
+import { chipCount, matchesFilter } from "./tracker-counts.ts";
 
 const rows = [
   { filterKey: "draft", stage: "pdf_ready" },
@@ -40,4 +40,37 @@ test("Needs you replaces the Status filter and keeps the stage chip", () => {
 test("a row without a stage counts for no stage chip", () => {
   assert.equal(chipCount([{ filterKey: "saved" }], none, { stage: "gaps" }), 0);
   assert.equal(chipCount([{ filterKey: "saved" }], none, { filter: "saved" }), 1);
+});
+
+test("the group values stand for their keys", () => {
+  for (const key of ["saved", "draft", "applied", "interviewing", "offered", "accepted", "proposed", "queued", "needs_you"]) {
+    assert.equal(matchesFilter("active", key), true, key);
+    assert.equal(matchesFilter("closed", key), false, key);
+  }
+  for (const key of ["rejected", "withdrawn", "skipped"]) {
+    assert.equal(matchesFilter("active", key), false, key);
+    assert.equal(matchesFilter("closed", key), true, key);
+  }
+  assert.deepEqual(
+    ["applied", "interviewing", "offered", "accepted"].map((k) => matchesFilter("interviews", k)),
+    [false, true, true, false],
+  );
+  assert.equal(matchesFilter("all", "rejected"), true);
+  assert.equal(matchesFilter("draft", "draft"), true);
+  assert.equal(matchesFilter("draft", "applied"), false);
+});
+
+test("a list chip counts its preset of both axes", () => {
+  const list = [
+    { filterKey: "draft", stage: "pdf_ready" },
+    { filterKey: "applied", stage: "applied" },
+    { filterKey: "interviewing", stage: "applied" },
+    { filterKey: "rejected", stage: "closed" },
+    { filterKey: "skipped", stage: "scored" },
+  ];
+  assert.equal(chipCount(list, { filter: "active", stage: null }, {}), 3);
+  assert.equal(chipCount(list, { filter: "active", stage: "pdf_ready" }, {}), 1);
+  assert.equal(chipCount(list, { filter: "applied", stage: null }, {}), 1);
+  assert.equal(chipCount(list, { filter: "interviews", stage: null }, {}), 1);
+  assert.equal(chipCount(list, { filter: "closed", stage: null }, {}), 2);
 });

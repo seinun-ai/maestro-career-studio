@@ -794,11 +794,11 @@
     its `pending` prop is the loading state: a spinner in place of the icon, `aria-busy`, kept
     focus and ignored presses (`pending` sets `focusableWhenDisabled` for you). A locked button
     that must keep its hover title adds `data-disabled:pointer-events-auto` (`LOCKED_BTN`).
-    A tracker row's Queue in Agent inbox and the tailored studio's
-    Create draft keep focus while they run too, through `focusableWhenDisabled`; each leaves once its
-    request lands, so focus is handed on: the row's ⋯, the studio's `<main>` (`BuildDraft`'s
-    `useFocusHandoff`). The job header's Queue in Agent inbox is an item of its ⋯, so the closing
-    menu returns focus to ⋯, which stays. A text
+    The tailored studio's Create draft keeps focus while it runs too, through
+    `focusableWhenDisabled`, and leaves once its request lands, so focus is handed on to the studio's
+    `<main>` (`BuildDraft`'s `useFocusHandoff`). Queue in Agent inbox is an item of a ⋯ (a Jobs row's,
+    the job header's), so the closing menu returns focus to ⋯; a Jobs row the queue takes out of the
+    list hands it on from there. A text
     field a submit would disable goes `readOnly` instead (Add item's,
     the API key and Custom AI server fields while they save, and the Target
     dialog's fields while each one saves: `RolePicker`'s and `CountryPicker`'s
@@ -980,7 +980,8 @@
   items, Suggest edits, Apply, Write new wording, Adapt, Add as is) submits
   through `useSingleFlight` too, and so do the Templates Create and Duplicate,
   `/new`'s Save job, both studios' Save, the tailored studio's Create draft and
-  Start over (one guard), Queue in Agent inbox (tracker row and the job header's ⋯), every
+  Start over (one guard), Queue in Agent inbox (a Jobs row's ⋯ and the job header's ⋯) and Jobs'
+  Select bar actions, every
   explicit settings Save (API keys, Prompts' Save and Reset, Auto-apply,
   Persona and its Draft, Custom AI server) and Available models' + and Remove
   (the chat composer's `sendingRef` is the same guard, inline). A write whose
@@ -1125,26 +1126,30 @@
 - **Tracker filter** (`app/applications/page.tsx`): the page runs two queries, the summary list
   (job fields joined on the server) and the saved jobs of the source toggle's source. "Saved" is a
   job with no application; agent-captured jobs stay out unless the toggle is **Agents**, which is
-  why the default reads **Tracked**, not All (the toggle's words: *Canonical terms*). The status
-  counts follow the toggle, and `?source=` is deep-linkable. Three groups, All/Saved,
+  why the default reads **Tracked**, not All (the toggle's words: *Canonical terms*). Over the list
+  sit five chips, one on at a time (`aria-pressed`, FilterChips' look via `filterChipClass`), each a
+  preset of the Status filter and the stage (`VIEW_FILTERS` in `lib/tracker-filters.ts`): **All
+  active** (Status `active`, the default), **Ready to apply** (active and stage `pdf_ready`), **Waiting
+  to hear** (`applied`), **Interviews** (`interviews`: interviewing and offered) and **Closed**
+  (`closed`: rejected, withdrawn and skipped agent jobs). Pressing the chip that is on shows All. The
+  group values are `matchesFilter` in `lib/tracker-counts.ts`. A chip counts the rows pressing it
+  shows in the toggle's source (`chipCount`), "…" while the other source loads. Everything else sits behind one **Filters**
+  button (`FiltersButton`, `aria-expanded`, "Filters · N" while N of its filters are on that no chip
+  names) that opens a row in the toolbar: the grouped Status `Select` (All, the three groups, Saved,
   Your applications (`APPLICATION_STATUSES`) and Agent inbox (`proposed`/`queued`/`needs_you`/
   `skipped`, from the newest `proposal_status` via `rowFilterKey`; `skipped` absorbs proposal
-  `rejected` AND `expired`, while the row chip still says Expired). `FILTERS` derives from those groups,
-  so a key can never filter rows yet never appear as an option. **Empty
-  buckets are hidden**: an option renders iff `count > 0 || f === "all" || f
-  === filter`, the trailing clause so the active filter can never vanish under
-  the user who picked it (re-check if the control changes again). An unknown
-  `?status=` falls back to `all` via the `FILTERS.includes` guard. The status
-  filter and the source toggle (Tracked, Yours, Agents) write the URL with
-  `router.replace(…, { scroll: false })`: the default scrolls to the top, off the rows being read
-  (`test_a_filter_change_keeps_the_scroll_position`). The quick-filter strip under the toolbar is tonal
-  `aria-pressed` buttons reading "label · count": **Ready to apply**, **Tailored, review** and **Gaps
-  open** filter by the server's stage (`pdf_ready`, `tailored`, `gaps`), a filter of their own that
-  ANDs with the Status select (`?stage=`, `cs-tracker-stage`), and **Needs you** is the Status value.
-  A chip counts the rows pressing it shows (`lib/tracker-counts.ts`) and is hidden at zero unless it is
-  on. The three filters are one state (`useTrackerFilters`, `lib/tracker-filters.ts`): a URL carrying
-  any of `status`, `stage`, `source` is the whole state, and session memory is read only when it
-  carries none. The Agent inbox
+  `rejected` AND `expired`, while the row chip still says Expired)), the stage `Select` (Ready to
+  apply, Tailored, review, Gaps open: the server's stage, `?stage=`, ANDed with Status) and the source
+  toggle. `FILTERS` derives from the Status groups, so a key can never filter rows yet never appear
+  as an option. **Empty buckets are hidden**: an option renders iff `count > 0 || f === "all" || f
+  === filter` (a stage option iff it has rows or is on), the trailing clause so the active filter can
+  never vanish under the user who picked it. An unknown `?status=` falls back to `active` via the
+  `FILTERS.includes` guard. The status filter, the stage and the source toggle (Tracked, Yours,
+  Agents) write the URL with `router.replace(…, { scroll: false })`: the default scrolls to the top,
+  off the rows being read (`test_a_filter_change_keeps_the_scroll_position`); the URL leaves out
+  `DEFAULT_FILTER`, so All is `?status=all`. The three filters are one state (`useTrackerFilters`,
+  `lib/tracker-filters.ts`): a URL carrying any of `status`, `stage`, `source` is the whole state,
+  and session memory is read only when it carries none. The Agent inbox
   itself (`/proposals`) is one table of lanes (`lib/inbox-lanes.ts`; an empty lane is not drawn)
   under one summary line (`/api/proposals/summary`; the last-visit window holds until the tab
   reloads); its search and filters show only past ten proposals, the daily limit line only near the
@@ -1162,32 +1167,40 @@
   **Done** and offers Queue, Skip or Delete only when every picked row's own buttons offer it under
   the same ownership locks (`bulkActionsOf`; Applying and Applied rows pick nothing). Delete asks once
   and deletes one at a time. The bar's action, or Done, ends the mode and hands focus back to Select.
-- **Jobs row** (`app/applications/page.tsx`): the columns are Role, Match score (read-only:
-  an application's `ats_score`, a saved job's `best_ats_score`), Status (an inline `StatusChip`
-  that PATCHes directly), Where, Applied, Next step and Added. Every row is two lines (company, then role and
-  location), so every row is one height; nothing a row can gain (an ownership mark, a notice) goes
-  inside the Role cell. Ownership is the **Where** column after Status: a muted icon (whoever holds
-  the job now) and one word (`ownershipWhere` in `lib/job-ownership.ts`: Laptop, Bot, Moving), the
-  long sentence as its tooltip and an sr-only sentence, and a small "Waiting" under the label while a
-  request of yours waits for the next sync (any request, so it is only a note; "Queued" is a saved job's
-  chip). It shows only when some visible row has an owner (sync
-  off: no column, and Role takes its room). The page reads only each row's own `ownership`, never
-  `use-job-ownership`. A chip locks while the job is moving between copies (`StatusChip`
-  `lockedReason`: a lock, the reason as title and `aria-describedby`, `aria-disabled` so it stays
-  focusable). **Work on it here** / **Keep it here** are in the row's ⋯ menu (`OwnershipMenuItem`,
-  disabled only while its own request is in flight); the header mark and the menu share one request
-  state per job (`ownershipKey`). **Next step** sits between Applied and Added: the one control
-  `lib/next-step.ts` gives the row's stage: ghost Score and Analyze gaps, outline Continue gaps · 2 of
-  5 and Review resume, tonal Apply (none filled: one filled button per view, and a list has many
-  rows). It is a link whose own click stops at the button, so the rest of the cell opens the job; it is
-  never disabled, since it only navigates and the page it opens says whose the job is. An applied row
-  reads "Waiting to hear back" only while its status is Applied, and a later or closed row shows
-  nothing. The Match score's meter name and hover name the row's resume (an application's; a saved
-  job's best base is not named). Columns with fixed content are in rem (the
-  table scrolls at 57rem, where a percentage of it left "Offer accepted" no room); Role takes the rest,
-  11.5rem at that width with Where.
-  The job header and gap page keep `JobOwnershipMark`/`Notice`; Agent inbox rows use `JobOwnershipPopover`.
-  Pinned by `test_frontend_jobs_where.py`.
+- **Jobs row** (`app/applications/page.tsx`, board "Jobs, fewer words"): the page header is the title,
+  a count (every row of the source, `PageHeader` `meta`) and the search, with no subtitle. The columns
+  are Role, Match (read-only: an application's `ats_score`, a saved job's `best_ats_score`), Status (an
+  inline `StatusChip` that PATCHes directly, with the applied date beside it when there is one: the
+  date the server has, never a status-change date, so its title and a screen-reader word say
+  "Applied"), Next step and a 32px slot; no Resume, Where, Applied or Added column (owner decisions D2
+  and D4). The sort menu (`SORTS`: Newest first, Oldest first, Recently applied, Best match first,
+  Job title A–Z, By status) keeps every order the columns had, and the column it sorts carries
+  `aria-sort`. Every row is two lines (the title, then "Company · Place"), so every row is one
+  height; nothing a row can gain goes inside the Role cell. Columns with fixed content are in rem
+  with `px-3` (the table scrolls at 57rem); Role takes the rest. **Next step** is `NextStep` (D3), the
+  one control `lib/next-step.ts` gives the row's stage as a blue text link with a chevron (Score,
+  Analyze gaps, Continue gaps · 2 of 5, Review resume, Apply), its click kept from opening the row; it
+  is never disabled, since it only navigates and the page it opens says whose the job is. An applied
+  row reads "Waiting to hear back" in grey only while its status is Applied, and a later or closed row
+  shows nothing. Rows carry `group/row`, so the link fills only on hover. The Match score's meter name
+  and hover name the row's resume (an application's; a saved job's best base is not named). The
+  **slot** holds the Agent inbox's `JobOwnershipPopover` while the job is on the other copy or a
+  request of yours waits (`ownershipSays` in `lib/job-ownership.ts`): an icon (a lock, or the owner's,
+  with a dot while a request waits) that opens why the job is locked and Work on it here / Keep it
+  here. Otherwise it holds the row's ⋯ on hover (Queue in Agent inbox for a saved job with no
+  proposal, Delete job or Delete application), whose writes a job on the other copy could not take
+  anyway. The page reads only each row's own `ownership`, never `use-job-ownership`. A chip locks
+  while the job is moving between copies (`StatusChip` `lockedReason`: a lock, the reason as title and
+  `aria-describedby`, `aria-disabled` so it stays focusable). **Select mode** is the Agent inbox's: a
+  quiet **Select** (`SelectToggle`) at the end of the chip row puts a checkbox on every row and "Select
+  all shown" in the header, and a click on a row picks it (keyboards use its checkbox). The bar
+  (`SelectionBar`, `app/applications/job-bulk.tsx`) offers an action only when every picked row's own
+  controls allow it under the same ownership locks (`bulkActionsOf`): **Change status** (applications),
+  **Queue in Agent inbox** (saved jobs with no proposal) and **Delete** (all saved jobs or all
+  applications). No archive or bulk endpoint exists, so each sends the row's own request one row at a
+  time (Delete asks once). None is filled. The bar's action, or Done, ends the mode and hands focus back
+  to Select. The job header and gap page keep `JobOwnershipMark`/`Notice`; Agent inbox rows use
+  `JobOwnershipPopover`. Pinned by `test_frontend_jobs_where.py` and `test_frontend_jobs_refresh.py`.
 - **Job steps** (`components/job-steps.tsx`, data from `lib/job-steps.ts`): the job page has four numbered
   steps where its tab row was, **Job**, **Resume and gaps**, **Tailored resume** and **Apply**, each a disc
   (done: a Check on `success-container`; the stage's step: a 2px `ring` circle, its number in `primary`; later: a
@@ -1505,7 +1518,7 @@
     inbox** (`/proposals`), never Agent proposals; its lanes are **Needs
     you**, **To review**, **Queued**, **Applying** and **History** (one table,
     `lib/inbox-lanes.ts`; a lane with nothing in it is not drawn); its verbs **Queue** and **Skip** in the inbox and
-    **Queue in Agent inbox** on a tracker row and in the job header's ⋯; its chips
+    **Queue in Agent inbox** in a Jobs row's ⋯, Jobs' Select bar and the job header's ⋯; its chips
     (`PROPOSAL_STATUS_CHIP`) **Proposed**, **Queued**, **Approved**,
     **Applied** and **Skipped** (plus **Needs you**, **Expired**, **Check if
     sent**), never Triage, In flight or Submitted, and a proposal is never

@@ -664,7 +664,7 @@ def test_a_status_change_that_filters_out_its_row_hands_focus_to_the_next_chip()
         "leaving.current = null; focusIfDropped(l.next()); }, [filtered]);"
     ) in page
     assert (
-        'onSelect={(status) => { if (filter !== "all" && filter !== status) leaving.current = { key, '
+        'onSelect={(status) => { if (filter !== "all" && !matchesFilter(filter, status)) leaving.current = { key, '
         'next: focusSuccessor( document.querySelector(`[data-row="${key}"]`), "[data-status-chip]", ), }; '
         "patchStatus.mutate({ id: r.app.id, status }); }}"
     ) in page

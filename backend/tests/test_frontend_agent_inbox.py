@@ -192,7 +192,9 @@ def test_the_toolbar_sticks_and_the_lanes_are_its_later_siblings():
 def test_the_bulk_bar_leaves_room_below_a_focused_row():
     """O7: the fixed bulk bar covered a focused row (WCAG 2.4.11). Scoped like
     the toolbar's clearance, so focus in the toolbar or a dialog never jumps."""
-    assert 'data-slot="bulk-bar"' in _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
+    # Select mode's bar is one component, shared with Jobs; the inbox's BulkBar fills it.
+    assert 'data-slot="bulk-bar"' in _read("components/selection-bar.tsx")
+    assert "<SelectionBar" in _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
     css = _read("app/globals.css")
     rule = css[css.index('html:has([data-slot="bulk-bar"])') :]
     assert rule.startswith('html:has([data-slot="bulk-bar"]):has([data-slot="list-toolbar"] ~ :focus-within) {')  # M24
@@ -391,7 +393,7 @@ def test_queue_is_the_word_for_what_becomes_queued():
     row = _SECTION[_SECTION.index("function ProposalRow(") :]
     assert 'label="Queue"' in row and 'label="Accept"' not in row
     bar = _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
-    assert "\n            Queue\n          </Button>" in bar and "Accept" not in bar
+    assert "\n          Queue\n        </Button>" in bar and "Accept" not in bar
     assert "\n                Queue\n              </Button>" in _JOB
     assert "\n                Accept\n              </Button>" not in _JOB
 
@@ -421,7 +423,9 @@ def test_queue_and_accept_say_queued():
     assert "Queued. A connected agent" not in _JOB
     assert "Accepted —" not in _JOB
     assert '{promote.isPending ? "Queueing…" : "Queue in Agent inbox"}' in _JOB
-    assert 'label="Queue in Agent inbox"' in _TRACKER
+    # A Jobs row's ⋯ item and Select mode's bar (design refresh Task 4.1): the row's icon button went.
+    assert "\n                                Queue in Agent inbox\n                              </DropdownMenuItem>" in _TRACKER
+    assert "\n          Queue in Agent inbox\n        </Button>" in _read("app/applications/job-bulk.tsx")
     assert "<SelectLabel>Agent inbox</SelectLabel>" in _TRACKER
     for old in ("Queue for agent apply", "Agent lane<"):
         assert old not in _TRACKER, old
@@ -660,8 +664,12 @@ def test_the_bulk_bar_hands_focus_back_to_select_when_it_leaves():
     done = _SECTION[_SECTION.index("onDone: (ids, became) => {") :]
     assert 'if (leaving.current?.kind === "bar") setSelecting(false);' in done[: done.index("\n    },\n")]
     bar = _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
-    assert bar.count("focusableWhenDisabled") == 4
-    assert bar.count("data-disabled:pointer-events-none data-disabled:opacity-50") == 3  # Queue spins via pending
+    assert bar.count("focusableWhenDisabled") == 3  # Queue, Skip and Delete; Done is the shared bar's
+    assert bar.count("data-disabled:pointer-events-none data-disabled:opacity-50") == 2  # Queue spins via pending
+    shared = _read("components/selection-bar.tsx")
+    done = shared[shared.index("export function SelectionBar(") :]
+    done = done[done.rindex("<Button", 0, done.index("Done\n")) :]
+    assert "focusableWhenDisabled" in done and "data-disabled:pointer-events-none data-disabled:opacity-50" in done
 
 
 def test_select_mode_is_opt_in_and_offers_only_what_every_pick_allows():

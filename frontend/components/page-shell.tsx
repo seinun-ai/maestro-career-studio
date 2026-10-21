@@ -74,25 +74,36 @@ export function PageMeasure({
  */
 export function PageHeader({
   title,
+  meta,
   subtitle,
   actions,
   leading,
   className,
 }: {
   title: ReactNode;
+  /** A short note on the title's line: a count (Jobs), a one-line promise (the Agent inbox's lock line). */
+  meta?: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
   /** Rendered before the title block — a back button, a monogram. */
   leading?: ReactNode;
   className?: string;
 }) {
+  const heading = <h1 className="text-title-large font-medium tracking-tight">{title}</h1>;
   return (
     <header
       className={cn("flex flex-wrap items-start justify-between gap-3", className)}
     >
       {leading}
       <div className="min-w-0 grow basis-[16rem]">
-        <h1 className="text-title-large font-medium tracking-tight">{title}</h1>
+        {meta ? (
+          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+            {heading}
+            {meta}
+          </div>
+        ) : (
+          heading
+        )}
         {/* A div, not a <p>: the subtitle slot takes NODES, not just prose
             (both studios put their save-status line here). A <div> inside a
             <p> is invalid HTML, and React reported it as a hydration error on

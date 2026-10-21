@@ -1,33 +1,35 @@
 "use client";
 
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Bot, Check, FilePlus2, KeyRound, Inbox, SendHorizontal, Trash2 } from "lucide-react";
+import { Bot, Check, FilePlus2, KeyRound, Inbox, SendHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { OwnershipMenuItem } from "@/components/job-ownership";
-import { isSyncQueued, jobOwnershipView, ownershipWhere } from "@/lib/job-ownership";
+import { JobOwnershipPopover } from "@/components/job-ownership";
+import { isSyncQueued, jobOwnershipView, ownershipSays } from "@/lib/job-ownership";
 
 import { CompanyMonogram } from "@/components/company-monogram";
 import { EmptyState, TableFrame } from "@/components/empty-state";
-import { IconButton } from "@/components/icon-button";
+import { filterChipClass } from "@/components/filter-chips";
+import { FiltersButton } from "@/components/filters-button";
 import { ListCapNotice } from "@/components/list-cap-notice";
 import { ListSearch } from "@/components/list-search";
 import { ListToolbar } from "@/components/list-toolbar";
 import { LoadErrorState } from "@/components/load-error-state";
+import { SelectToggle } from "@/components/selection-bar";
 import { GettingStartedCard } from "@/components/setup/getting-started-card";
 import { useSidebarHidden } from "@/components/sidebar-reveal-trigger";
 import { SourceToggle } from "@/components/source-toggle";
 import { LaneDot, SavedJobChip, StatusChip, StatusDot, statusLabel } from "@/components/status-chip";
-import { ScoreBar } from "@/components/visual";
+import { NextStep, ScoreBar } from "@/components/visual";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -53,10 +55,20 @@ import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { focusIfDropped, focusReturnPoint, focusSuccessor } from "@/lib/focus";
 import { formatShortDate } from "@/lib/format-date";
+import { selectedAmong } from "@/lib/inbox-lanes";
+import { jobMetaLine } from "@/lib/job-meta";
 import { isListCapped } from "@/lib/list-cap";
 import { nextStep, nextStepHref, type Rung } from "@/lib/next-step";
-import { chipCount } from "@/lib/tracker-counts";
-import { STAGE_FILTERS, type StageFilter } from "@/lib/tracker-filters";
+import { chipCount, matchesFilter } from "@/lib/tracker-counts";
+import {
+  DEFAULT_FILTER,
+  STAGE_FILTERS,
+  TRACKER_VIEWS,
+  VIEW_FILTERS,
+  type StageFilter,
+  type TrackerView,
+  viewOf,
+} from "@/lib/tracker-filters";
 import { isLoadFailure } from "@/lib/query-state";
 import { anchorHref } from "@/lib/settings-tabs";
 import { cn } from "@/lib/utils";
@@ -70,6 +82,7 @@ import {
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
+import { JobsBulkBar, bulkCan, useJobBulkActions, type JobBulkAction } from "./job-bulk";
 import { storeValue, useTrackerFilters } from "./use-tracker-filters";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
@@ -91,7 +104,9 @@ const AGENT_LANE_FILTERS = [
 ] as const;
 // The three dropdown groups, in render order — FILTERS is derived from them so
 // a new key can never type-check and filter rows yet never appear as an option.
-const TOP_FILTERS = ["all", "saved"] as const;
+// "active", "interviews" and "closed" are groups of the keys below (lib/tracker-counts.ts
+// `matchesFilter`): the list's chips set them, and the Status filter names them too.
+const TOP_FILTERS = ["all", DEFAULT_FILTER, "interviews", "closed", "saved"] as const;
 const FILTERS = [
   ...TOP_FILTERS,
   ...APPLICATION_STATUSES,
@@ -107,9 +122,21 @@ const AGENT_LANE_LABELS: Record<AgentLaneFilter, string> = {
   skipped: "Skipped",
 };
 
+// The list's chips, each a preset of the Status filter and the stage (lib/tracker-filters.ts `VIEW_FILTERS`).
+const VIEW_LABELS: Record<TrackerView, string> = {
+  active: "All active",
+  ready: "Ready to apply",
+  waiting: "Waiting to hear",
+  interviews: "Interviews",
+  closed: "Closed",
+};
+
 function filterLabel(value: Filter): string {
   if (value === "all") return "All";
   if (value === "saved") return "Saved";
+  if (value === "active") return VIEW_LABELS.active;
+  if (value === "interviews") return VIEW_LABELS.interviews;
+  if (value === "closed") return VIEW_LABELS.closed;
   if ((AGENT_LANE_FILTERS as readonly string[]).includes(value)) {
     return AGENT_LANE_LABELS[value as AgentLaneFilter];
   }
@@ -138,13 +165,24 @@ function savedJobsQuery(savedSource: "user" | "agent") {
   };
 }
 
-/** The row's ⋯ trigger: where focus goes once the row's Queue for agent leaves it. */
-function moreActions(el: HTMLElement): HTMLElement | null {
-  return el.closest("tr")?.querySelector<HTMLElement>('[aria-label="More actions"]') ?? null;
+/** A row's ⋯ trigger: where focus goes once the row's Queue in Agent inbox closes the menu. */
+function moreActions(key: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[data-row="${key}"] [aria-label="More actions"]`);
 }
 
 type SortKey = "created_at" | "role" | "status" | "applied_at" | "ats";
-type SortDir = "asc" | "desc";
+
+// The sort menu: the Added and Applied columns went, and their orders stay here. Values that describe
+// themselves, as the Agent inbox's: the toolbar has no captions.
+const SORTS = {
+  added: { label: "Newest first", key: "created_at", dir: "desc" },
+  oldest: { label: "Oldest first", key: "created_at", dir: "asc" },
+  applied: { label: "Recently applied", key: "applied_at", dir: "desc" },
+  match: { label: "Best match first", key: "ats", dir: "desc" },
+  title: { label: "Job title A–Z", key: "role", dir: "asc" },
+  status: { label: "By status", key: "status", dir: "asc" },
+} as const satisfies Record<string, { label: string; key: SortKey; dir: "asc" | "desc" }>;
+type SortName = keyof typeof SORTS;
 
 type Row =
   | { kind: "application"; app: ApplicationSummary }
@@ -192,17 +230,13 @@ function rowStage(r: Row): Rung | undefined {
   return r.kind === "saved" ? r.job.stage : r.app.stage;
 }
 
-// The quick-filter strip's stage chips: a filter of their own that ANDs with the Status select,
-// whose options stay the statuses. Needs you, the strip's last chip, is a Status value.
+// The stage filter (under Filters): a filter of its own that ANDs with the Status filter. Ready to apply is
+// also a chip, with the active jobs.
 const STAGE_LABELS: Record<StageFilter, string> = {
   pdf_ready: "Ready to apply",
   tailored: "Tailored, review",
   gaps: "Gaps open",
 };
-
-function formatDate(value: string | null): string {
-  return (value && formatShortDate(value)) || "—";
-}
 
 function rowCompany(r: Row): string {
   return (r.kind === "saved" ? r.job.company : r.app.job_company) ?? "";
@@ -217,6 +251,18 @@ function rowKey(r: Row): string {
   return r.kind === "saved" ? `job-${r.job.id}` : `app-${r.app.id}`;
 }
 
+/** What a picked row lets Select mode's bar do: the actions its own controls offer, under the same locks. */
+function bulkActionsOf(r: Row): JobBulkAction[] {
+  const ownership = jobOwnershipView(r.kind === "saved" ? r.job.ownership : r.app.ownership);
+  const out: JobBulkAction[] = [];
+  // The status chip: an application's, locked while its job moves between copies.
+  if (r.kind === "application" && ownership.canRequest) out.push("status");
+  // The row menu's Queue in Agent inbox: a saved job with no proposal yet.
+  if (r.kind === "saved" && !r.job.proposal_status && ownership.canWrite) out.push("queue");
+  if (ownership.canWrite) out.push(r.kind === "saved" ? "deleteJob" : "deleteApp");
+  return out;
+}
+
 function ApplicationsContent() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -225,8 +271,17 @@ function ApplicationsContent() {
   const baseName = useBaseResumeLabel();
   const { filter, stage: stageFilter, source, update } = useTrackerFilters(FILTERS);
   const [q, setQ] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("created_at");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sort, setSort] = useState<SortName>("added");
+  const sortKey = SORTS[sort].key;
+  const sortDir = SORTS[sort].dir;
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersId = useId();
+  // Select mode, the Agent inbox's: a checkbox on every row, the bar at the bottom, a row's click picks it.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const selectButton = useRef<HTMLButtonElement>(null);
+  // Set when the bar leaves (Done, or its action landed): focus goes back to Select in that commit.
+  const barLeft = useRef(false);
 
   // Two queries: the summary list carries job fields server-side now, and
   // one unfiltered fetch gives the filter chips their counts for free.
@@ -256,8 +311,8 @@ function ApplicationsContent() {
   // back to, out of the list once the refetch lands. Where focus goes then is
   // read when the status is picked, while the row is still there.
   const leaving = useRef<{ key: string; next: () => HTMLElement | null } | null>(null);
-  // Queue for agent leaves its row once the job has a proposal, taking focus with it: the row's ⋯
-  // takes it, read at the click while the row is there.
+  // Queue in Agent inbox can take its row out of the list (a Saved filter), and the row's ⋯ with it: where
+  // focus goes is read at the click, while the row is there.
   const queued = useRef<{ jobId: string; next: () => HTMLElement | null } | null>(null);
 
   const patchStatus = useMutation({
@@ -356,14 +411,10 @@ function ApplicationsContent() {
     );
   }, [allRows, source]);
 
+  // Every Status value's count, the groups included (a row counts under each value that shows it).
   const counts = useMemo(() => {
-    const map = new Map<Filter, number>();
-    map.set("all", sourceScopedRows.length);
-    for (const r of sourceScopedRows) {
-      const key = rowFilterKey(r);
-      map.set(key, (map.get(key) ?? 0) + 1);
-    }
-    return map;
+    const keys = sourceScopedRows.map(rowFilterKey);
+    return new Map<Filter, number>(FILTERS.map((f) => [f, keys.filter((k) => matchesFilter(f, k)).length]));
   }, [sourceScopedRows]);
 
   // Empty buckets are noise — drop them, except "all" and whatever is active
@@ -385,7 +436,7 @@ function ApplicationsContent() {
   const filtered = useMemo(() => {
     let list = sourceScopedRows;
     if (filter !== "all") {
-      list = list.filter((r) => rowFilterKey(r) === filter);
+      list = list.filter((r) => matchesFilter(filter, rowFilterKey(r)));
     }
     if (stageFilter) {
       list = list.filter((r) => rowStage(r) === stageFilter);
@@ -399,12 +450,13 @@ function ApplicationsContent() {
     }
 
     const dir = sortDir === "asc" ? 1 : -1;
-    const pick = (r: Row): string => {
+    const pick = (r: Row): string | number => {
       switch (sortKey) {
         case "role":
           return rowTitle(r).toLowerCase();
         case "status":
-          return rowFilterKey(r);
+          // In the Status filter's order: saved, then each application status, then the agent lanes.
+          return FILTERS.indexOf(rowFilterKey(r));
         case "applied_at":
           return r.kind === "saved" ? "" : (r.app.applied_at ?? "");
         case "created_at":
@@ -429,33 +481,45 @@ function ApplicationsContent() {
     });
   }, [sourceScopedRows, filter, stageFilter, q, sortKey, sortDir]);
 
-  // With sync off no row carries ownership and the table stays as it was, with no Where column.
-  const showWhere = filtered.some((r) => ownershipWhere(r.kind === "saved" ? r.job.ownership : r.app.ownership));
-
-  // Kept rows are only worth keeping when there are some: an empty kept list would say "Nothing
-  // matches" about rows that are still on their way.
-  // Each chip counts the rows pressing it shows (source-scoped, before the search; nothing while the
-  // other source loads). An empty chip is hidden unless it is on, so it can never vanish under the user.
+  // Each chip and stage option counts the rows pressing it shows (source-scoped, before the search; nothing
+  // while the other source loads).
   const countRows = sourceScopedRows.map((r) => ({ filterKey: rowFilterKey(r), stage: rowStage(r) }));
   const axes = { filter, stage: stageFilter };
-  const needsStrip = stale
-    ? []
-    : [
-        ...STAGE_FILTERS.map((stage) => ({
-          key: stage,
-          label: STAGE_LABELS[stage],
-          count: chipCount(countRows, axes, { stage }),
-          on: stageFilter === stage,
-          toggle: () => update({ stage: stageFilter === stage ? null : stage }),
-        })),
-        {
-          key: "needs_you",
-          label: "Needs you",
-          count: chipCount(countRows, axes, { filter: "needs_you" }),
-          on: filter === "needs_you",
-          toggle: () => update({ filter: filter === "needs_you" ? "all" : "needs_you" }),
-        },
-      ].filter((s) => s.count > 0 || s.on);
+  const view = viewOf(axes);
+  const chips = TRACKER_VIEWS.map((v) => ({
+    v,
+    on: view === v,
+    count: stale ? "…" : chipCount(countRows, VIEW_FILTERS[v], {}),
+  }));
+  // A stage option shows while it has rows, or while it is on, so it can never vanish under the user.
+  const stageOptions = STAGE_FILTERS.map((s) => ({ s, count: chipCount(countRows, axes, { stage: s }) })).filter(
+    ({ s, count }) => count > 0 || s === stageFilter,
+  );
+  // What Filters holds that no chip says: a Status value or a stage no chip names, and the source. A link or
+  // an earlier visit can set them, so the button counts them.
+  const filtersOn = (view ? 0 : (filter !== "all" ? 1 : 0) + (stageFilter ? 1 : 0)) + (source !== "all" ? 1 : 0);
+
+  // Select mode acts on the rows shown, never one a filter or the search hides (as the Agent inbox does).
+  const rowsShown = useMemo(() => filtered.map((r) => ({ id: rowKey(r), r, actions: bulkActionsOf(r) })), [filtered]);
+  const selectedShown = useMemo(() => selectedAmong(rowsShown, selected), [rowsShown, selected]);
+  const picked = rowsShown.filter((row) => selected.has(row.id));
+  const can = bulkCan(picked.map((row) => row.actions));
+  const pickableIds = rowsShown.filter((row) => row.actions.length > 0).map((row) => row.id);
+  const allPicked = pickableIds.length > 0 && pickableIds.every((id) => selected.has(id));
+  const toggleSelected = (id: string, on: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const endSelect = () => {
+    barLeft.current = true;
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+  const bulk = useJobBulkActions({ onDone: endSelect, returnFocus: () => selectButton.current });
+
   const loading = apps.isLoading || savedJobs.isLoading || (stale && filtered.length === 0);
   // Checked BEFORE the empty state, which is the whole bug: with `data`
   // undefined after a failure, `filtered.length === 0` is true and the branch
@@ -494,7 +558,7 @@ function ApplicationsContent() {
     focusIfDropped(l.next());
   }, [filtered]);
 
-  // The same commit for Queue for agent: once the queued job's row stops offering it.
+  // The same commit for Queue in Agent inbox: once the queued job's row stops offering it.
   useLayoutEffect(() => {
     const q = queued.current;
     if (!q) return;
@@ -504,65 +568,103 @@ function ApplicationsContent() {
     focusIfDropped(q.next());
   }, [filtered]);
 
-  const header = (key: SortKey, label: string, className?: string) => {
-    const active = sortKey === key;
-    return (
-      <TableHead
-        aria-sort={
-          active ? (sortDir === "asc" ? "ascending" : "descending") : undefined
-        }
-        className={cn("cursor-pointer select-none", className)}
-        onClick={() => {
-          if (active) setSortDir(sortDir === "asc" ? "desc" : "asc");
-          else {
-            setSortKey(key);
-            setSortDir("desc");
-          }
-        }}
-      >
-        {label}
-        {active && (
-          <span className="text-muted-foreground ml-1 inline-flex align-middle">
-            {sortDir === "asc" ? (
-              <ArrowUp className="size-3" aria-hidden="true" />
-            ) : (
-              <ArrowDown className="size-3" aria-hidden="true" />
-            )}
-          </span>
-        )}
-      </TableHead>
-    );
-  };
+  // The bar's commit: its action or Done took it away, so focus goes back to Select.
+  useLayoutEffect(() => {
+    if (selectMode || !barLeft.current) return;
+    barLeft.current = false;
+    focusIfDropped(selectButton.current);
+  }, [selectMode]);
+
+  // A column the sort menu orders by says so to a screen reader.
+  const sortedAs = (key: SortKey) =>
+    sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : undefined;
 
   return (
     <PageShell>
       <PageHeader
         title="Jobs"
-        // What Tracked (the default) lists; agent-found jobs sit under Agents by
-        // design (SYSTEM §5 step 2), and the subtitle says so.
-        subtitle="Jobs you saved and every application. Jobs a connected agent found are under Agents."
+        // How many jobs the source toggle holds, every status included; the chips split them.
+        meta={
+          loading || loadFailed ? null : (
+            <span className="text-muted-foreground text-body-large tabular-nums">
+              {countOf("all")}
+              <span className="sr-only"> jobs</span>
+            </span>
+          )
+        }
         actions={
-          // The sidebar's FAB is THE Add job while it is showing (M3:
-          // a FAB's action is not repeated on its screen). The sidebar slides
-          // off-canvas when collapsed and below 768px; then this is the only
-          // way to start one, so it renders exactly when the FAB cannot be seen.
-          sidebarHidden ? (
-            <Button
-              nativeButton={false}
-              render={
-                <Link href="/new">
-                  <FilePlus2 className="size-4" />
-                  Add job
-                </Link>
-              }
-            />
-          ) : null
+          <>
+            <ListSearch label="Search jobs" value={q} onChange={setQ} />
+            {/* The sidebar's FAB is THE Add job while it is showing (M3:
+                a FAB's action is not repeated on its screen). The sidebar slides
+                off-canvas when collapsed and below 768px; then this is the only
+                way to start one, so it renders exactly when the FAB cannot be seen. */}
+            {sidebarHidden ? (
+              <Button
+                nativeButton={false}
+                render={
+                  <Link href="/new">
+                    <FilePlus2 className="size-4" />
+                    Add job
+                  </Link>
+                }
+              />
+            ) : null}
+          </>
         }
       />
 
       <ListToolbar>
-        <ListSearch label="Search jobs" value={q} onChange={setQ} />
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* One chip on at a time: each is a preset of the Status filter and the stage. Pressing the one
+              that is on shows everything. */}
+          <div role="group" aria-label="Show" className="flex flex-wrap items-center gap-2">
+            {chips.map(({ v, on, count }) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={on}
+                aria-label={`${VIEW_LABELS[v]} ${count}`}
+                className={filterChipClass(on)}
+                onClick={() => update(on ? { filter: "all", stage: null } : VIEW_FILTERS[v])}
+              >
+                {on ? <Check className="size-3" aria-hidden="true" /> : null}
+                {VIEW_LABELS[v]}
+                <span className="tabular-nums">{count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center gap-1">
+            <Select value={sort} onValueChange={(v) => setSort((v as SortName) ?? "added")}>
+              <SelectTrigger className="h-8 min-w-[10rem]" aria-label="Sort">
+                <SelectValue>{SORTS[sort].label}</SelectValue>
+              </SelectTrigger>
+              <SelectContent align="end" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
+                {(Object.keys(SORTS) as SortName[]).map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {SORTS[name].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FiltersButton
+              open={filtersOpen}
+              onToggle={() => setFiltersOpen((o) => !o)}
+              controls={filtersId}
+              active={filtersOn}
+            />
+            {filtered.length > 0 || selectMode ? (
+              <SelectToggle
+                ref={selectButton}
+                selecting={selectMode}
+                onClick={() => (selectMode ? endSelect() : setSelectMode(true))}
+              />
+            ) : null}
+          </div>
+        </div>
+        {/* Every filter the list had keeps its home here: the Status filter (each application status and
+            Agent inbox lane), the stage and the source. */}
+        <div id={filtersId} hidden={!filtersOpen} className="flex flex-wrap items-center gap-1.5">
           <Select
             value={filter}
             onValueChange={(v) => {
@@ -603,6 +705,22 @@ function ApplicationsContent() {
               ) : null}
             </SelectContent>
           </Select>
+          <Select
+            value={stageFilter ?? "any"}
+            onValueChange={(v) => update({ stage: v && v !== "any" ? (v as StageFilter) : null })}
+          >
+            <SelectTrigger className="h-8 min-w-[10rem]" aria-label="Filter by stage">
+              <SelectValue>{stageFilter ? STAGE_LABELS[stageFilter] : "Any stage"}</SelectValue>
+            </SelectTrigger>
+            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
+              <SelectItem value="any">Any stage</SelectItem>
+              {stageOptions.map(({ s, count }) => (
+                <SelectItem key={s} value={s}>
+                  {`${STAGE_LABELS[s]} · ${stale ? "…" : count}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <SourceToggle
             className="ml-auto"
             // Your saved jobs and every application, agent ones included:
@@ -620,17 +738,6 @@ function ApplicationsContent() {
           />
         </div>
       </ListToolbar>
-
-      {!loadFailed && !loading && needsStrip.length > 0 ? (
-        <div role="group" aria-label="Quick filters" className="flex flex-wrap items-center gap-2">
-          {needsStrip.map(({ key, label, count, on, toggle }) => (
-            <Button key={key} type="button" size="sm" variant="tonal" aria-pressed={on} onClick={toggle}>
-              {on ? <Check className="size-3.5" aria-hidden="true" /> : null}
-              {`${label} · ${count}`}
-            </Button>
-          ))}
-        </div>
-      ) : null}
 
       {loadFailed ? (
         <LoadErrorState
@@ -664,7 +771,7 @@ function ApplicationsContent() {
                 ? needsKey
                   ? "Add an API key first, then add a job."
                   : "Add a job to get started."
-                : "Try a different status, turn off the quick filter, or clear the search."
+                : "Try another chip or filter, or clear the search."
             }
             action={
               allRows.length === 0 ? (
@@ -695,25 +802,41 @@ function ApplicationsContent() {
           {allRows.length === 0 ? <GettingStartedCard /> : null}
         </div>
       ) : (
-        <TableFrame>
+        <TableFrame className={cn(selectMode && "mb-16")}>
           {/* minWidth engages Table's own overflow-x-auto container. Without
               it the table shrinks to whatever width is left (462px at 768px,
               where the sidebar has not yet collapsed), and because the layout
               is fixed the status chip cannot widen its column, so it paints
-              over the Applied date instead. It is also the width the header
+              over its date instead. It is also the width the header
               sticks from: a table wider than its frame scrolls sideways, and
               then its header cannot stick to the window. */}
           <Table minWidth="57rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
             <TableHeader>
               <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
-                {header("role", "Role", "w-full")}
-                {header("ats", "Match score", "w-[6.75rem] px-3")}
-                {header("status", "Status", "w-[9.25rem] px-3")}
-                {showWhere ? <TableHead className="w-[4.5rem] px-3">Where</TableHead> : null}
-                {header("applied_at", "Applied", "w-[5.5rem] px-3")}
-                <TableHead className="w-[11.5rem] px-3">Next step</TableHead>
-                {header("created_at", "Added", "w-[5.5rem] px-3")}
-                <TableHead className="w-10" />
+                {selectMode ? (
+                  <TableHead className="w-10 pr-0">
+                    <Checkbox
+                      aria-label="Select all shown"
+                      checked={allPicked}
+                      disabled={pickableIds.length === 0}
+                      onCheckedChange={(on) =>
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          for (const id of pickableIds) {
+                            if (on) next.add(id);
+                            else next.delete(id);
+                          }
+                          return next;
+                        })
+                      }
+                    />
+                  </TableHead>
+                ) : null}
+                <TableHead className="w-full" aria-sort={sortedAs("role")}>Role</TableHead>
+                <TableHead className="w-[6.75rem] px-3" aria-sort={sortedAs("ats")}>Match</TableHead>
+                <TableHead className="w-[12.5rem] px-3" aria-sort={sortedAs("status")}>Status</TableHead>
+                <TableHead className="w-[12rem] px-3">Next step</TableHead>
+                <TableHead className="w-10 px-1" />
               </TableRow>
             </TableHeader>
             <TableBody className={cn("transition-opacity", stale && "opacity-60")}>
@@ -722,18 +845,17 @@ function ApplicationsContent() {
                 const jobId = r.kind === "saved" ? r.job.id : r.app.job_id;
                 const owner = r.kind === "saved" ? r.job.ownership : r.app.ownership;
                 const ownership = jobOwnershipView(owner);
-                const where = ownershipWhere(owner);
-                const WhereIcon = where?.bot ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop;
                 const href =
                   r.kind === "saved"
                     ? `/jobs/${r.job.id}`
                     : `/jobs/${r.app.job_id}`;
                 const company = rowCompany(r) || "—";
                 const title = rowTitle(r) || "Untitled role";
+                const place = jobMetaLine([rowCompany(r), r.kind === "saved" ? r.job.location : r.app.job_location]);
                 const resumeName = r.kind === "application" ? r.app.base_resume_name || baseName(r.app.base_resume) : "";
                 const stage = rowStage(r);
                 const step = nextStep(stage, r.kind === "saved" ? r.job : r.app);
-                // Applied and closed rows have no control: only a plain applied one says it is waiting.
+                // Applied and closed rows have no next step: only a plain applied one says it is waiting.
                 const waiting = stage === "applied" && r.kind === "application" && r.app.status === "applied";
                 // A saved job an agent captured names its filer; an application is "agent" only
                 // because a proposal was linked to it, whoever made it.
@@ -741,36 +863,54 @@ function ApplicationsContent() {
                   r.kind === "saved"
                     ? agentMarkLabel(r.job.proposal_proposed_by)
                     : LINKED_APPLICATION_MARK;
+                const pickable = bulkActionsOf(r).length > 0;
+                const isPicked = selected.has(key);
 
                 return (
                   <TableRow
                     key={key}
                     data-row={key}
-                    className="group cursor-pointer"
+                    className="group/row cursor-pointer"
+                    aria-selected={selectMode ? isPicked : undefined}
                     // The row was click-only: no tabIndex, no key handler, no
                     // role. A keyboard user could reach the status chip and the
                     // overflow menu inside the row but had no way to open the
                     // job it points at. Proposals solves the identical case
                     // with a real <Link>; a table row cannot contain one
                     // without breaking the row semantics, so it takes the
-                    // link role and the two keys that role implies.
-                    role="link"
-                    tabIndex={0}
-                    onClick={() => router.push(href)}
+                    // link role and the two keys that role implies. In Select
+                    // mode a click picks the row instead, and keyboards use its
+                    // checkbox, as in the Agent inbox.
+                    role={selectMode ? undefined : "link"}
+                    tabIndex={selectMode ? undefined : 0}
+                    onClick={() => {
+                      if (!selectMode) router.push(href);
+                      else if (pickable) toggleSelected(key, !isPicked);
+                    }}
                     onKeyDown={(e) => {
-                      if (e.target !== e.currentTarget) return;
+                      if (selectMode || e.target !== e.currentTarget) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         router.push(href);
                       }
                     }}
                   >
+                    {selectMode ? (
+                      <TableCell className="w-10 pr-0" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          disabled={!pickable}
+                          checked={isPicked}
+                          onCheckedChange={(on) => toggleSelected(key, on)}
+                          aria-label={`Select ${title}${rowCompany(r) ? ` at ${rowCompany(r)}` : ""}`}
+                        />
+                      </TableCell>
+                    ) : null}
                     <TableCell className="max-w-0 whitespace-normal py-2.5">
                       <div className="flex min-w-0 items-center gap-3">
                         <CompanyMonogram name={company} className="shrink-0" />
                         <div className="min-w-0 flex-1 overflow-hidden">
                           <p className="flex min-w-0 items-center gap-1.5 text-title-small">
-                            <span className="truncate">{company}</span>
+                            <span className="truncate">{title}</span>
                             {(r.kind === "saved" ? r.job.source : r.app.source) ===
                             "agent" ? (
                               // An SVG with only aria-label is announced
@@ -783,10 +923,7 @@ function ApplicationsContent() {
                             ) : null}
                           </p>
                           <p className="text-muted-foreground truncate text-body-small">
-                            {title}
-                            {r.kind === "application" && r.app.job_location
-                              ? ` · ${r.app.job_location}`
-                              : ""}
+                            {place || company}
                           </p>
                         </div>
                       </div>
@@ -820,90 +957,56 @@ function ApplicationsContent() {
                       })()}
                     </TableCell>
                     <TableCell className="px-3">
-                      {r.kind === "saved" ? (
-                        <SavedJobChip proposalStatus={r.job.proposal_status} />
-                      ) : (
-                        <StatusChip
-                          status={r.app.status}
-                          lockedReason={ownership.canRequest ? undefined : (ownership.reason ?? undefined)}
-                          pending={
-                            patchStatus.isPending &&
-                            patchStatus.variables?.id === r.app.id
-                          }
-                          onSelect={(status) => {
-                            if (filter !== "all" && filter !== status)
-                              leaving.current = {
-                                key,
-                                next: focusSuccessor(
-                                  document.querySelector(`[data-row="${key}"]`),
-                                  "[data-status-chip]",
-                                ),
-                              };
-                            patchStatus.mutate({ id: r.app.id, status });
-                          }}
-                        />
-                      )}
-                    </TableCell>
-                    {showWhere ? (
-                      <TableCell className="px-3 text-body-small">
-                        {where ? (
-                          <span className="flex flex-col" title={where.sentence}>
-                            <span className="inline-flex items-center gap-1.5">
-                              <WhereIcon
-                                className="text-muted-foreground size-3.5 shrink-0"
-                                aria-hidden="true"
-                              />
-                              {where.word}
-                            </span>
-                            {where.pending ? (
-                              <span className="text-muted-foreground pl-5 text-label-small" aria-hidden="true">Waiting</span>
-                            ) : null}
-                            <span className="sr-only">{where.sentence}</span>
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        {r.kind === "saved" ? (
+                          <SavedJobChip proposalStatus={r.job.proposal_status} />
+                        ) : (
+                          <StatusChip
+                            status={r.app.status}
+                            lockedReason={ownership.canRequest ? undefined : (ownership.reason ?? undefined)}
+                            pending={
+                              patchStatus.isPending &&
+                              patchStatus.variables?.id === r.app.id
+                            }
+                            onSelect={(status) => {
+                              if (filter !== "all" && !matchesFilter(filter, status))
+                                leaving.current = {
+                                  key,
+                                  next: focusSuccessor(
+                                    document.querySelector(`[data-row="${key}"]`),
+                                    "[data-status-chip]",
+                                  ),
+                                };
+                              patchStatus.mutate({ id: r.app.id, status });
+                            }}
+                          />
+                        )}
+                        {/* The date the server has: when you applied. It is not when the status changed. */}
+                        {r.kind === "application" && r.app.applied_at ? (
+                          <span className="text-muted-foreground text-body-small tabular-nums" title={`Applied ${formatShortDate(r.app.applied_at)}`}>
+                            <span className="sr-only">Applied </span>
+                            {formatShortDate(r.app.applied_at)}
                           </span>
                         ) : null}
-                      </TableCell>
-                    ) : null}
-                    <TableCell className="px-3 text-muted-foreground text-body-small tabular-nums">
-                      {r.kind === "saved" ? "—" : formatDate(r.app.applied_at)}
+                      </span>
                     </TableCell>
                     <TableCell className="px-3">
                       {step ? (
                         // It only navigates, so it is never disabled: the page it opens says whose the job is.
                         // Its click stays its own; the rest of the cell opens the job like the row.
-                        <Button
-                          size="sm"
-                          variant={step.variant}
-                          className="tabular-nums"
-                          onClick={(e) => e.stopPropagation()}
-                          nativeButton={false}
-                          render={<Link href={nextStepHref(jobId, step)}>{step.label}</Link>}
-                        />
+                        <span className="inline-flex" onClick={(e) => e.stopPropagation()}>
+                          <NextStep label={step.label} href={nextStepHref(jobId, step)} />
+                        </span>
                       ) : waiting ? (
-                        <span className="text-muted-foreground text-body-small">Waiting to hear back</span>
+                        <NextStep waiting="Waiting to hear back" />
                       ) : null}
                     </TableCell>
-                    <TableCell className="px-3 text-muted-foreground text-body-small tabular-nums">
-                      {formatDate(
-                        r.kind === "saved" ? r.job.created_at : r.app.created_at,
-                      )}
-                    </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        {r.kind === "saved" && !r.job.proposal_status ? (
-                          <IconButton
-                            label="Queue in Agent inbox"
-                            icon={<SendHorizontal />}
-                            // Focusable while it queues: a disabled button dropped focus to <body>.
-                            focusableWhenDisabled
-                            disabled={promoteJob.isPending || !ownership.canWrite}
-                            className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 data-disabled:pointer-events-none data-disabled:opacity-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              queued.current = { jobId: r.job.id, next: focusReturnPoint(moreActions(e.currentTarget)) };
-                              promoteJobOnce(r.job.id);
-                            }}
-                          />
-                        ) : null}
+                    {/* Where the job is, only when it is not on this copy or a request waits; else the row's ⋯,
+                        whose actions a job on the other copy could not take anyway. */}
+                    <TableCell className="px-1" onClick={(e) => e.stopPropagation()}>
+                      {ownershipSays(owner) ? (
+                        <JobOwnershipPopover jobId={jobId} ownership={owner} />
+                      ) : selectMode ? null : (
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             render={
@@ -911,18 +1014,24 @@ function ApplicationsContent() {
                                 variant="ghost"
                                 size="icon-sm"
                                 aria-label="More actions"
-                                className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                                className="opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 aria-expanded:opacity-100"
                               >
                                 <MoreIcon className="size-4" />
                               </Button>
                             }
                           />
                           <DropdownMenuContent align="end" className="w-max">
-                            {ownership.action ? (
-                              <>
-                                <OwnershipMenuItem jobId={jobId} action={ownership.action} />
-                                <DropdownMenuSeparator />
-                              </>
+                            {r.kind === "saved" && !r.job.proposal_status ? (
+                              <DropdownMenuItem
+                                disabled={promoteJob.isPending || !ownership.canWrite}
+                                onClick={() => {
+                                  queued.current = { jobId: r.job.id, next: focusReturnPoint(moreActions(key)) };
+                                  promoteJobOnce(r.job.id);
+                                }}
+                              >
+                                <SendHorizontal className="size-4" />
+                                Queue in Agent inbox
+                              </DropdownMenuItem>
                             ) : null}
                             {r.kind === "saved" ? (
                               <DropdownMenuItem
@@ -961,7 +1070,7 @@ function ApplicationsContent() {
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
@@ -977,6 +1086,25 @@ function ApplicationsContent() {
             <ListCapNotice key={cap.noun} {...cap} />
           ))}
         </div>
+      ) : null}
+
+      {selectMode ? (
+        <JobsBulkBar
+          selectedCount={selectedShown.length}
+          can={can}
+          running={bulk.running}
+          onStatus={(status) =>
+            bulk.setStatus({ ids: picked.flatMap(({ r }) => (r.kind === "application" ? [r.app.id] : [])), status })
+          }
+          onQueue={() => bulk.queue(picked.map(({ r }) => (r.kind === "saved" ? r.job.id : r.app.job_id)))}
+          onDelete={() =>
+            bulk.remove({
+              ids: picked.map(({ r }) => (r.kind === "saved" ? r.job.id : r.app.id)),
+              kind: can.delete === "deleteJob" ? "saved" : "application",
+            })
+          }
+          onDone={endSelect}
+        />
       ) : null}
     </PageShell>
   );

@@ -11,6 +11,16 @@ export type FilterChipOption<T extends string> = {
   count: number | string;
 };
 
+/** A filter chip's look, off or on. The Jobs list's chips, one of which is on at a time, share it. */
+export function filterChipClass(on: boolean): string {
+  return cn(
+    "inline-flex h-7 cursor-pointer items-center gap-1 rounded-full border px-3 text-label-medium whitespace-nowrap transition-colors duration-(--duration-short3) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+    on
+      ? "border-transparent bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
+      : "border-border text-muted-foreground hover:bg-surface-container",
+  );
+}
+
 /**
  * Filter chips: one field narrowed by a few values, every choice and its count
  * on view (docs/design-system/components/FilterChips). Several can be on at
@@ -57,12 +67,7 @@ export function FilterChips<T extends string>({
             aria-pressed={on}
             aria-label={`${o.label} ${o.count}`}
             onClick={() => toggle(o.value)}
-            className={cn(
-              "inline-flex h-7 cursor-pointer items-center gap-1 rounded-full border px-3 text-label-medium whitespace-nowrap transition-colors duration-(--duration-short3) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-              on
-                ? "border-transparent bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
-                : "border-border text-muted-foreground hover:bg-surface-container",
-            )}
+            className={filterChipClass(on)}
           >
             {on && <Check className="size-3" aria-hidden="true" />}
             {o.label}

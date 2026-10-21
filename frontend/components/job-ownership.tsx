@@ -3,18 +3,17 @@
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
-import { REQUEST_QUEUED, jobOwnershipView, syncActionMessage, type OwnershipActionName } from "@/lib/job-ownership";
+import { REQUEST_QUEUED, jobOwnershipView, ownershipSays, syncActionMessage, type OwnershipActionName } from "@/lib/job-ownership";
 import type { JobOwnership } from "@/lib/types";
 
 const ACTION_LABEL = { "keep-here": "Keep it here", "work-here": "Work on it here" } as const;
 
-/** One key for a job's ownership request, so every button for it (a header's, a row menu's) reads one state. */
+/** One key for a job's ownership request, so every button for it (a header's, a row's pop-up) reads one state. */
 const ownershipKey = (jobId: string) => ["job-ownership", jobId];
 
 /** True while a request to move this job is in flight, wherever on screen it was started. */
@@ -62,23 +61,6 @@ export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownershi
   );
 }
 
-/** The row menu's "Work on it here" / "Keep it here". A menu closes on click, so the request's progress
- * is read from the query client: reopening the menu mid-request finds the item disabled. A request
- * waiting for the next sync does not disable it: the count includes status changes and take-overs, and
- * the server already keeps one take-over per job. */
-export function OwnershipMenuItem({ jobId, action }: { jobId: string; action: OwnershipActionName }) {
-  const mutation = useOwnershipAction(jobId);
-  const act = useSingleFlight(mutation.mutate);
-  const busy = useOwnershipBusy(jobId);
-  const Icon = CONCEPT_ICONS.laptop;
-  return (
-    <DropdownMenuItem disabled={busy} onClick={() => act(action)}>
-      <Icon className="size-4" aria-hidden="true" />
-      {ACTION_LABEL[action]}
-    </DropdownMenuItem>
-  );
-}
-
 export function JobOwnershipNotice({ ownership }: { ownership?: JobOwnership }) {
   const { reason } = jobOwnershipView(ownership);
   if (!reason) return null;
@@ -97,7 +79,7 @@ export function JobOwnershipPopover({ jobId, ownership }: { jobId: string; owner
   const mutation = useOwnershipAction(jobId);
   const act = useSingleFlight(mutation.mutate);
   const busy = useOwnershipBusy(jobId);
-  if (!view.mark || (!view.action && !view.reason && !view.pending)) return null;
+  if (!ownershipSays(ownership)) return null;
   const Icon = view.reason ? CONCEPT_ICONS.locked : ownership?.owner === "bot" ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop;
   return (
     <Popover>
