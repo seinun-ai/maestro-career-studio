@@ -68,11 +68,12 @@
           "paths": [
             "backend/app/services/autofill_profile.py",
             "extension/content",
-            "extension/panel"
+            "extension/panel",
+            "frontend/lib"
           ]
         }
       ],
-      "hand_check": "job_search_brief's identically named response fields are a frozen outward projection, NOT a legacy reader \u2014 deliberately outside the trigger paths. Also requires Profile's legacy bridge (frontend/lib/autofill-options.ts typedEntry) gone and GET /api/settings/autofill clean. Trigger paths are DIRECTORIES, not files: extension/content/ was widened 2026-08-02 after the phase-2 split moved the dual-read out of agent.js, and extension/panel/ was added after the panel's workAuthForWrite (actions/pause.js) turned out to promote the legacy pair before the first typed pause-row write while the content-only path read green. A file-pinned path goes green on the next rename without the reader dying."
+      "hand_check": "job_search_brief's identically named response fields are a frozen outward projection, NOT a legacy reader \u2014 deliberately outside the trigger paths. The four storage readers are all inside them: autofill_profile.typed_work_auth's legacy branch, the extension's dual-read (extension/content/autofill.js), the panel's workAuthForWrite (extension/panel/actions/pause.js) and Profile's legacy-on-edit bridge (frontend/lib/autofill-options.ts typedEntry, whose test file in frontend/lib goes with it). Also requires GET /api/settings/autofill clean. Trigger paths are DIRECTORIES, not files: extension/content/ was widened 2026-08-02 after the phase-2 split moved the dual-read out of agent.js, extension/panel/ was added after the panel's workAuthForWrite turned out to promote the legacy pair before the first typed pause-row write while the content-only path read green, and frontend/lib/ holds the Profile bridge since the 2026-10 Profile rebuild. A file-pinned path goes green on the next rename without the reader dying."
     },
     {
       "id": "autofill-work-auth-by-country",
@@ -144,7 +145,13 @@
           "kind": "absent",
           "pattern": "\\.market\\b",
           "paths": [
-            "backend/app",
+            "backend/app"
+          ]
+        },
+        {
+          "kind": "absent",
+          "pattern": "value\\??\\.market\\b",
+          "paths": [
             "frontend/app",
             "frontend/components",
             "frontend/lib",
@@ -152,32 +159,32 @@
           ]
         }
       ],
-      "hand_check": "The absent trigger is met (offers_eeo now reads apply_in). The release after this one has shipped (a sync peer that has not updated reads the stored `market` key). Then drop the `market` computed field from MarketSetting. Keep the legacy {\"market\": X} read until no stored market blob lacks `home` (DB check on settings key 'market')."
+      "hand_check": "Both absent triggers are met: the backend reads no `.market` (offers_eeo reads apply_in), and the frontend reads no `value.market` of the market setting (its other `.market` hits are a permit question's own market key, so the frontend pattern is the setting's value, not a bare `.market`). The release after this one has shipped (a sync peer that has not updated reads the stored `market` key). Then drop the `market` computed field from MarketSetting and from MarketSettingResponse.value in frontend/lib/types.ts. Keep the legacy {\"market\": X} read until no stored market blob lacks `home` (DB check on settings key 'market')."
     }
   ],
   "system_md_baselines": {
     "cap_bytes": 125800,
-    "total_bytes": 101177,
-    "lines": 923,
+    "total_bytes": 111126,
+    "lines": 972,
     "sections_bytes": {
       "(preamble)": 5479,
-      "1. What this is": 760,
-      "2. Repo layout": 3314,
-      "3. Architecture at a glance": 2385,
-      "4. Core entities and their lifecycles": 2064,
-      "5. The application workflow, end to end (web)": 8024,
-      "6. Cross-cutting invariants (do not break these)": 31327,
-      "7. Agent surfaces": 4435,
-      "8. Frontend conventions": 590,
+      "1. What this is": 993,
+      "2. Repo layout": 3555,
+      "3. Architecture at a glance": 2603,
+      "4. Core entities and their lifecycles": 2603,
+      "5. The application workflow, end to end (web)": 10276,
+      "6. Cross-cutting invariants (do not break these)": 31446,
+      "7. Agent surfaces": 4654,
+      "8. Frontend conventions": 831,
       "9. Dev & test environment": 10841,
-      "10. Design-decision record": 8250,
-      "11. Known deferred items (priority order)": 4277,
-      "12. Gotchas that have bitten before": 10168,
-      "13. Active migrations & deprecation ledger": 9263
+      "10. Design-decision record": 9717,
+      "11. Known deferred items (priority order)": 4663,
+      "12. Gotchas that have bitten before": 12104,
+      "13. Active migrations & deprecation ledger": 11361
     },
     "extraction_candidates": [
       "7. Agent surfaces"
     ],
-    "reason": "grooming pass 2026-10-16: the v5 gate's one FAIL (\u00a76 over its 25% budget) and its grooming backlog closed without a cap move (cap stays 125,800 B); \u00a76 reflowed and its worked detail moved to docs/entities/others.md, filled-answers.md and job.md; \u00a77 extracted to docs/agent-surfaces.md with a summary and index left; every \u00a711 item given a do-when trigger, seven kept and 30 overflowed to docs/deferred.md with their numbers; \u00a710 rewritten as one line per owner decision with the superseded alternative; 100 long prose lines reflowed; inv-honesty, inv-tailor-vs-edit and inv-pdf-word-spacing pinned. Bytes before\u2192after per section: header 5,306\u21925,479; 1 760\u2192760; 2 3,314\u21923,314; 3 2,385\u21922,385; 4 2,064\u21922,064; 5 8,018\u21928,024; 6 35,484\u219231,327; 7 23,545\u21924,435; 8 590\u2192590; 9 10,831\u219210,841; 10 1,632\u21928,250; 11 11,954\u21924,277; 12 10,150\u219210,168; 13 9,263\u21929,263; total 125,296\u2192101,177. Extraction-candidate history is not extended because the warning no longer fires."
+    "reason": "design refresh integration 2026-10-21 (docs/plans/2026-10-20-design-refresh.md, Task 8.2): no cap move (cap stays 125,800 B). Sections rewritten in present tense for what the refresh built: \u00a71 Today, Setup, home currency and per-country permits; \u00a72 the new services and data files; \u00a74 index rows (Job.country_code and salary_currency_assumed, set_status and ApplicationStatusEvent, formatPay, the market setting, recommended models); \u00a75 Today/Setup intro and the Jobs, job page, Apply and Track steps (other tasks integrated most of this as they landed); \u00a77 Automations from reports and the MCP index row; \u00a78 the page index and tiers; \u00a710 seven lines for owner decisions D1-D11 with what each superseded; \u00a711 overflow pointer for items 53-62 (in docs/deferred.md); \u00a712 four dated gotchas; \u00a713 market-home-apply-in and autofill-work-auth-shape triggers corrected. \u00a76 unchanged at 31,446 B (4 B under budget). Bytes baseline\u2192now per section: header 5,479\u21925,479; 1 760\u2192993; 2 3,314\u21923,555; 3 2,385\u21922,603; 4 2,064\u21922,603; 5 8,024\u219210,276; 6 31,327\u219231,446; 7 4,435\u21924,654; 8 590\u2192831; 9 10,841\u219210,841; 10 8,250\u21929,717; 11 4,277\u21924,663; 12 10,168\u219212,104; 13 9,263\u219211,362; total 101,177\u2192111,127. Extraction-candidate history is not extended because the 90% warning does not fire (88%)."
   }
 }

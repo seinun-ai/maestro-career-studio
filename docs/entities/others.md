@@ -315,7 +315,8 @@
   stored answers of the market its `work_auth_market` names, with the client's own map entry there unedited, is that market's new answers;
   a marker that is null or unknown names none, and a save with no marker (a client from before it) is the home's only while no other
   market has answers. So a client served under the old home and saving after a move writes the old home's entry, and no save puts one
-  country's answers over another's (`autofill_profile._as_stored`, pinned by `tests/test_autofill_work_auth_markets.py`). **Which set.** `countries.mentioned_in` reads the question: English names and aliases as whole words, without accents, in any case;
+  country's answers over another's (`autofill_profile._as_stored`, pinned by `tests/test_autofill_work_auth_markets.py`); a stale save
+  for the same country still overwrites, since the PUT has no version check (`docs/deferred.md` item 57). **Which set.** `countries.mentioned_in` reads the question: English names and aliases as whole words, without accents, in any case;
   a code only as "US" or "UK" in capitals ("CA", "DE" and "IN" are US states as often); "New Mexico", "Latin America" and "Georgia" name
   nothing; the longer name wins ("Northern Ireland" is the UK). One named country gives its market's answers; one with no market or no
   answers, or two countries ("the United States or Canada"), gives none; none named gives the job's (`markets.for_country(country_code)`);
@@ -327,8 +328,8 @@
   country's set, and a job with no country with the home set (an advisory check, not an answer given). Setup status counts each apply-in
   country (`work_auth_by_country` on the autofill step), the US visa status only where `work_auth_vocab` is `us_visa`. **Known limits.**
   The Companion's deterministic rule pass reads the resolved `work_auth` and cannot see which country a label names, so on a German job a
-  question about the UK gets the German set there (before, every question got the one set); the answer flags compare with the job's set
-  whatever the question names. **The pause row learns per country.** A work-permit answer typed in the Companion (a pause row, or a
+  question about the UK gets the German set there (`docs/deferred.md` item 52); the answer flags compare with the job's set whatever
+  the question names. **The pause row learns per country.** A work-permit answer typed in the Companion (a pause row, or a
   queued run's Resume) goes to one entry: `/context?question=<label>` (with the application, when there is one) names the market that
   question gets in `work_auth_market` (`profile_for_job` with `question`: the country it names, else the job's), and the panel writes
   `work_auth_by_country[<market>]`, promoting that entry's legacy pair first (`workAuthForWrite`) and leaving the served `work_auth`
@@ -511,7 +512,7 @@
   employment types, locations, remote, notes, and `min_salary` (`{amount, currency, text}`: a yearly
   amount in an ISO 4217 currency, the home one filled in when read; an old free-text answer reads as an
   amount when the text is a number, "£80,000" or "150k", else stays in `text`, stored as written until a
-  save; the Settings field offers the ECB currencies). Catalog labels are
+  save; Profile's Minimum salary, under Jobs you want, offers the ECB currencies). Catalog labels are
   DERIVED and **`role_categories` is a COMPUTED PROJECTION** of the parents, so
   consumers needed no change. Writes 422 invalid keys, never `normalize()`ing
   them; reads degrade a stale favored-role per item to label-preserving free
@@ -524,8 +525,8 @@
   chosen; empty reads as `[home]`; home need not be in it). Markets are the keys of `data/markets.yaml`
   ("UK", not ISO "GB"; `markets.country_code` / `for_country` bridge to the ISO codes jobs and base
   resumes store); an unknown key 422s, never coerced. GET answers `{key, value, home, apply_in,
-  currency, offers_eeo, markets}` (each market's label, ISO code, currency, date format and EEO
-  posture); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. A diversity set is offered
+  currency, offers_eeo, markets}` (each market's label, ISO code, currency, date format, EEO posture and
+  `work_auth_vocab`, how its work-permit questions are worded: `us_visa`, `uk` or `generic`); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. A diversity set is offered
   per country: `market_settings.offers_eeo(session, country)` takes a market key or an ISO code (a country
   no market covers has none) and, with no country, answers for any apply-in market; setup status asks the
   diversity answers only then. Migration state: SYSTEM.md §13 `market-home-apply-in`.
@@ -1193,7 +1194,7 @@
   The run digest is unverified agent text, including the prompt's claim that it has no email
   text. There is no overdue logic because Maestro does not know the user's schedule.
 
-- **Automations page** (`/automations`, sidebar after Agent inbox): copy-only. `GET /api/automations` reads only the full-automation switch
+- **Automations page** (`/automations`, under the sidebar's More tools): copy-only. `GET /api/automations` reads only the full-automation switch
   (`services/automations.py` parses `app/automations/skills/<name>/SKILL.md`; card-only fields sit under frontmatter
   `metadata:`) returns `{cards}`, each with its finished `prompt`: an app-neutral wrapper, then the skill body. A
   scheduled card opens with `SCHEDULED_WRAPPER`: ask how often and when, then use a scheduler built into the agent's

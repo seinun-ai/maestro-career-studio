@@ -121,7 +121,7 @@
   **Corners** are `rounded-corner-xs` (menus, tooltips, the checkbox, code and
   grade chips), `-sm` (controls: buttons, inputs, selects, option tiles), `-md` (any
   container: cards, tiles, callouts, wells, list boxes, dropzones, a popover
-  that is a panel), `-lg` (the FAB, sheets), `-xl` (dialogs), and `rounded-full`
+  that is a panel), `-lg` (the FAB, sheets, the Lead card), `-xl` (dialogs), and `rounded-full`
   for pills (chips, badges, tracks, segmented toggles and their segments, every sidebar row); a Button, SelectTrigger or Tab never passes `rounded-full`, and a tab nests in its list at `-xs`. One corner per kind of
   thing, picked by what the element is, never by its old size: a container
   nested in a container keeps the container's corner, and a side form
@@ -275,7 +275,12 @@
   `max-w-[65ch]` on the sentences), never a shell concern.** The one-column
   health report keeps its ~65ch measure inside card prose, not as `PageMeasure` around the page.
   `PageHeader` owns the type scale; call sites pass
-  `title`/`subtitle`/`actions`/`leading` and do not restate classes; its
+  `title`/`meta`/`subtitle`/`actions`/`leading` and do not restate classes. A
+  page has no subtitle (owner decision D1): its Lead says what matters, and a
+  count or a one-line promise goes in `meta`, on the title's line (Jobs' count,
+  the Agent inbox's lock line). Where one stays (Add a job, the studios' save
+  status, Profile's "Lives in … · applies in …", the inbox's daily-limit line
+  near the limit) it is one clause. Its
   actions cluster sits in a wrapping row under `justify-between` so a long
   title never squeezes the title block to zero width, and so a toolbar that
   wraps aligns with the title instead of floating against the right edge with
@@ -1466,7 +1471,7 @@
   (header to body 16px). A card body is a `grid gap-6` stack of blocks, never
   `space-y-*`, `mb-*` or `mt-*`. Fields in a block sit `grid gap-4`, in two
   columns only at `@lg/setting:grid-cols-2` and three at
-  `@2xl/setting:grid-cols-3` (`@3xl` for Autofill): the columns read the card
+  `@2xl/setting:grid-cols-3` (`@3xl` for Profile's answer fields): the columns read the card
   body's width (`CardContent` is `@container/setting`), never the viewport's.
   Measured with the sidebar pinned, the body is about 944px at 1280, 432px at
   768 and 295px at 375, so every card is one column at 768: a viewport
@@ -1559,8 +1564,8 @@
     **Save job** (its submit and the Companion's), never New application or
     Extract job: a job becomes an application when you tailor or apply.
     **Autofill** is the Companion's Fill-step button that fills the form in
-    front of you (never Fill this form or Start fill); it is distinct from the
-    web app's **Autofill** settings tab, which holds the answers it fills from.
+    front of you (never Fill this form or Start fill); the answers it fills
+    from are Profile's tiles (Contact, Work permits, Start and pay and the rest).
     **Jobs** (the page at `/applications` and its sidebar item, which list
     saved jobs as well as applications), never Applications as a page name
     (the ratchet's "Applications page" rule; a count of actual applications
@@ -1569,6 +1574,13 @@
     applied to are only under Agents), **Yours** and **Agents**; Analytics'
     reads **All**, since it counts every application, **Yours** and **Agents**.
     The URL, `?status=`/`?source=` and the `cs-tracker-*` keys keep their names.
+    **Today** is the home page and its Lead is **Next up** (Profile's Lead is
+    Next up too); **Setup** is the first run (**Skip for now**, and **Run
+    setup again** in Settings › Basics' About); **More tools** is the
+    sidebar's fold. **You live in** (one country) and **You apply in** (one or
+    more) are the market setting on screen; **Work permits** is Profile's tile
+    of each country's answers. Settings' tabs are **Basics**, **Companion**,
+    **Agent apps** and **Advanced**.
     **Refresh details**, never re-extract. **gap analysis**, never session
     or tailoring session. A job page has four numbered **steps**, never tabs:
     **Job**, **Resume and gaps**, **Tailored resume** and **Apply** (a step's
@@ -1665,9 +1677,8 @@
     Applications).
   - *Toasts*: a success toast names its object ("Template deleted", never
     "Deleted"); an error toast says what failed (see *Errors*). A count and
-    its noun agree ("1 bullet", "3 bullets"). A toast carries an **Undo** action only where
-    the server can reverse the change: Approve on a draft bullet (PATCH back to `draft`) and
-    Archive on a base resume (`/unarchive`). Skip and Queue get no Undo. Undo answers too: a
+    its noun agree ("1 bullet", "3 bullets"). A toast's **Undo** follows *Undo only where
+    the server can reverse the change* (States and feedback, below). Undo answers too: a
     failure toasts through `couldnt(...)`.
   - *Copy*: every clipboard write goes through `useCopy` (`hooks/use-copy.ts`: holds `copied` for 1.2s;
     a refused write toasts through `couldnt(...)`, or calls `onError` instead, never both). An icon-only
@@ -1706,7 +1717,14 @@
   engine), **Agent apps** (Connect an agent app, the folded explainer, the
   limits, then the job-site login, next-step hints and the second copy) and
   **Advanced** (model per job, more models, the custom AI server, AI
-  instructions, Quick tailor, Hours per year). `/profile` is who the
+  instructions, Quick tailor, Hours per year, and Diagnostics with the Autofill
+  coverage card, D6). Each tab's `anchors` are its card ids, in order: Basics
+  `api-keys`, `money`, `resumes-folder`, `appearance`, `about`; Companion
+  `companion-fill`, `companion-apply`, `form-filling`; Agent apps
+  `connect-assistant`, `connected-agents`, `full-automation`, `auto-apply`,
+  `job-site-login`, `agent-hints`, `second-copy`; Advanced `models`,
+  `model-catalog`, `custom-endpoint`, `prompts`, `quick-tailor`,
+  `hours-per-year`, `diagnostics`. `/profile` is who the
   CANDIDATE is, one page with no tabs ("Profile" below). A permission over
   what the Companion may fill is Settings › Companion's; a consent over a set
   of answers stays beside those answers in Profile (the diversity switch,
@@ -1749,8 +1767,8 @@
   `Card → isError → isLoading → editor` again — the copies drifted into four
   different failure behaviours, three of which showed the user nothing.
   Readiness is `data !== undefined`, never `!isLoading`; failure is
-  `isLoadFailure`. Appearance and the Connected agents explainer
-  (`connected-agents-card.tsx`) are the exemptions: they fetch nothing.
+  `isLoadFailure`. Appearance and the Agent apps explainer (What agents can
+  and can't do, `connected-agents-card.tsx`) are the exemptions: they fetch nothing.
   Its header has one action slot. The body renders into it with
   `SettingCardAction`, a portal, so the controlling state stays in the editor,
   and a screen reader reads the action after the title. The title is a level-2
@@ -1801,10 +1819,11 @@
   steps, deep links, locally dismissible, gone when setup completes. The
   API-key and import steps carry a Required badge until done (`required` in
   `setup-steps.ts`): nothing extracts without a key, nothing scores without a
-  base resume. `["setup-status"]` has three readers (the Profile header, Getting
-  started, `/new`), each `refetchOnMount: "always"` to bypass the 30-second
-  stale window; Profile's section saves AND the Settings model/key save
-  invalidate it. `/new` names a missing key BEFORE the paste: an amber notice
+  base resume. `["setup-status"]` is read by the Profile header, Getting
+  started, `/new` and Setup, each `refetchOnMount: "always"` to bypass the
+  30-second stale window, and shared by Today (the first-run redirect and its
+  setup card) and the Jobs page (its no-key notice); every Profile and Setup
+  save AND the Settings model/key save invalidate it. `/new` names a missing key BEFORE the paste: an amber notice
   with Add API key, and a disabled Save job whose `aria-describedby` points at
   it, since a disabled button says nothing about why. A failed status fetch
   blocks nothing. With no base resume step 2 (Resume and gaps) offers Import resumes and documents
@@ -1909,7 +1928,7 @@
   `jobs_with_salary` / `jobs_without_salary` — omitting pay is ordinary, not a
   gap. Endpoints: `/api/explore/activity` (drafted=created_at vs
   submitted=applied_at, day|week buckets; `interview_rate` is null below 20 submitted,
-  `services/rates.py` `MIN_RATE_N`; MCP reads it, the web app reads `/search-summary`),
+  `services/rates.py` `MIN_RATE_N`; the Assistant's analytics tool reads it, no MCP tool does, and the web app reads `/search-summary`),
   `/search-summary?weeks=4|12|N|all&source=all|user|agent` (`services/search_summary.py`, read from the dated
   status events: a backfilled event counts for status, never for timing; the window is N Monday-based UTC weeks
   including this one, or since the first application sent; every share is `rates.rate`, `{count, of, rate, low,
@@ -2038,6 +2057,8 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   | What an automation's runs reported, day by day | `DayStrip` (round dots, worst outcome per local day) |
   | A row's next move: yours, or theirs while you wait | `NextStep` |
   | A count that changes in place | `NumberRoll` (or `useCountUp` to pass through every value) |
+  | A share of a count (a rate) | `RateLabel` (`components/analytics/`: a percent with its range from 20, "5 of 12" below) |
+  | Pay | `formatPay` (`lib/money.ts`: "≈" and the posted amount under a converted figure; docs/entities/money.md) |
 - **The tiers** (`docs/design-system/README.md`, Shape): a page leads with one `LeadCard` (the view's one filled
   button is its `action`), then the Also tier, then `Fold` rows for the advanced or rare. Pinned by
   `test_frontend_tiers.py`.

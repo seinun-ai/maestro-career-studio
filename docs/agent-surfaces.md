@@ -31,6 +31,17 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   Requests are ordered; stale sessions replay initialize + initialized before one retry, preserving `clientInfo`
   (`mcpb/tests/bridge.test.js`). HTTP `serverInfo.version` reads `APP_VERSION`, else `dev` (`mcp_server/tests/test_http.py`).
 
+- **What tools send and read.** A status change through MCP (`update_application`, `mark_submitted`) carries the client's name
+  (`X-Maestro-CS-Origin: mcp` with `X-Maestro-CS-Origin-Detail`), which becomes the status event's source, "mcp" when the client
+  gave none (docs/entities/application.md); `update_application(from_email=True)` sends `status_source: "mail"` for a change the
+  mail-status automation read in the user's mail. `get_autofill_profile` returns `work_auth` resolved for the job's country (none
+  without one), every country's answers under `work_auth_by_country` (market keys, "UK") and `work_auth_market` naming whose set
+  `work_auth` is (§6 inv-work-permit-per-country). `store_extracted_jd` stores `work_mode` and `level` as keys (`on_site`, `senior`)
+  and reads a bare "$" as no currency, so the job's country's applies (`salary_currency_assumed`; docs/entities/job.md).
+  `explore_skill_heatmap` rows carry `count` and `of` beside `pct_jobs`, and `explore_role_mix_over_time` returns every week from
+  the first to the last for every role, 0 where it had none. No tool reads Today, the search summary, money or the market setting,
+  and the explore tools take no period or source.
+
 ## Guided tailoring workflow
 
 - **Guided tailoring workflow** (`mcp_server/workflow.py`): wrapped tools carry a `next` envelope
@@ -77,10 +88,13 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
 
 ## Automations page
 
-- **Automations page** (`/automations`, sidebar after Agent inbox): **Copy prompt** hands work to the user's agent;
-  Maestro runs NO scheduler. Each run prompt ends with MCP `record_run`; a card's status comes only
-  from those reports (a 14-day strip and the newest report), never a schedule or a connection state.
-  Catalog, wrappers and startup rules: [docs/entities/others.md](docs/entities/others.md), "Automations page".
+- **Automations page** (`/automations`, under the sidebar's More tools): **Copy prompt** hands work to the user's agent;
+  Maestro runs NO scheduler (owner decision D5). Each run prompt ends with MCP `record_run`; a card's status comes only
+  from those reports (`GET /api/agent-runs?limit=200`): an automation that reported in the last 14 days is a Reporting card
+  (a `DayStrip`, the newest report's outcome and one line, one tonal Copy prompt, one link to the result), the rest are
+  short rows, and Recent runs and What each one never does are folds. Never a schedule, a connection state, an app's name
+  on a button or a logo; the connect note shows until a first run reports. Catalog, wrappers and startup rules:
+  [docs/entities/others.md](docs/entities/others.md), "Automations page"; the run log: docs/entities/agent-runs.md.
 
 ## In-app chat (the Assistant)
 

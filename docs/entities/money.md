@@ -19,7 +19,8 @@ are the ECB's daily reference rates; missing pay is never estimated. A job's *po
 - **The arithmetic is pure** (`services/money.py`, `Decimal` only; `frontend/lib/money.ts` mirrors it): `convert` goes
   through the euro and returns None for a currency with no rate or with no cache, never a guess (the same currency
   needs no rate); `to_yearly` is hour × hours per year, day × 260, week × 52, month × 12, year × 1, and None for an
-  unknown period; `midpoint` is a range's middle or its one end. Sorting and filtering compare yearly midpoints.
+  unknown period; `midpoint` is a range's middle or its one end. Nothing sorts or filters on pay yet; Analytics' pay by
+  role ranks roles on their converted pay (`explore_overview._pay_by_role`).
 - **ECB reference rates** (`services/fx_rates.py`): the euro reference rates file at
   `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml`, about 29 currencies per euro, published around
   16:00 CET on working days; the ECB asks to be cited and calls them information only, so a page names the source and
@@ -42,8 +43,12 @@ are the ECB's daily reference rates; missing pay is never estimated. A job's *po
   currency, or made yearly from another period (`per`, `hoursPerYear`), reads "≈ …" and keeps `posted`; with no rate
   it is the posting's own and `noRate` says so; with no pay it is null; with no currency it is a plain number, never
   a guessed dollar. `payLine` adds the period in words ("a year"). The job page header, its Job details card (the
-  posted amount and rate date under a converted figure, while `show_posted` is on) and Analytics' pay ranges (as
-  posted) use it; there is no USD default anywhere.
+  posted amount and rate date under a converted figure, while `show_posted` is on), Today's Next up and Analytics'
+  yearly pay by role (each role's range in the home currency, "≈" when any of it was converted, with one line naming
+  the currencies converted and the ECB rate date) use it; Profile's Minimum salary and Setup's where step read
+  `useMoney` for the home currency (and the ECB's currencies). There is no USD default anywhere. Settings › Basics ›
+  Money sets `home_currency`, `period` and `show_posted` and shows the rate date with Update; Advanced › Hours per year
+  sets `hours_per_year`.
 
 Pinned by `tests/test_money.py`, `tests/test_fx_rates.py` (one fetch per day, offline, no cache, machine-local) and
 `tests/test_frontend_money.py` (the `lib/money.test.ts` node suite and the callers).

@@ -48,7 +48,7 @@ change into the current status, and the Jobs row then shows the applied date it 
   is a change from null; clearing the status writes no event. `source` words: `you` (the web app),
   the MCP client's own `clientInfo` name sent as the origin headers (`mcp` when it gave none or
   named itself like one of these words), `mail` (`update_application` with `from_email`, the body's
-  `status_source`), `companion` (the Companion's extension origin: its PATCH and the Submit it
+  `status_source`; its `at` is when the call ran, not the email's date: `docs/deferred.md` item 56), `companion` (the Companion's extension origin: its PATCH and the Submit it
   saw), `tailor` and `from_base` (the pipeline that made the job's first draft), `sync` (the other
   copy's request did not say who asked) and `backfill`. A status or submit change queued for the
   other copy carries its `source` in the `sync_requests` payload, and the owner records it.

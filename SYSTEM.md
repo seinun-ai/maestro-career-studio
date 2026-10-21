@@ -81,9 +81,11 @@
 
 ## 1. What this is
 
-A single-user job-application copilot: capture job descriptions, score base resumes against them with a
-deterministic ATS engine, walk a gap-analysis workflow, LLM-tailor the resume, render a LaTeX PDF, generate the
-apply package (cover letter, screening answers), and track every application from Saved to Accepted. Three
+A single-user job-application copilot for any field and any country: capture job descriptions, score base resumes
+against them with a deterministic ATS engine, walk a gap-analysis workflow, LLM-tailor the resume, render a LaTeX
+PDF, generate the apply package (cover letter, screening answers), and track every application from Saved to
+Accepted. It opens on **Today** (the one move that matters most), a new install runs a four-step **Setup** once, pay
+reads in one home currency (ECB rates) and work-permit answers are kept per country applied in. Three
 surfaces drive the same backend: a Next.js web app, an MCP server (Claude Desktop et al.; on screen its clients
 are **connected agents**), and an in-app chat agent (the **Assistant**); the Chrome extension (the **Companion**)
 captures and fills from job pages. The web app is desktop-only (1024px and up; checked at 1280 and 1024, never
@@ -100,14 +102,16 @@ backend/
     models/            ORM (application, job, tailoring_session, ats_score, resume_version, base_resume, …)
     schemas/           Pydantic request/response models
     routers/           HTTP endpoints, one module per resource (applications, jobs, tailoring_sessions, ats,
-                       base_resumes, templates, qa, career_kb, chat, autofill, proposals, settings, …)
+                       base_resumes, templates, qa, career_kb, chat, autofill, proposals, settings, today, fx, …)
     services/          business logic (ats/, tailoring_session, gap_analysis, kb_import, application_writes,
                        engines (the ONE probe), pdf_render (dual-engine: pdflatex + typst), jd_extraction,
                        resume_lint, resume_voice, health_*, chat_agent + chat_tools, transcript (chat rows as
                        neutral parts; NULL `parts` = legacy row), llm_providers/ (neutral LLM types, errors,
                        registry (model id to provider), OpenAI-compatible, Gemini and Claude adapters),
                        attachment_extract (bounded DOCX/PPTX + notes; decks are documents),
-                       autofill_choose + autofill_reason + contact_scan + autofill_slots + autofill_education + autofill_place + autofill_sponsorship + board_visits + jev (Companion fill), resumes_folder (visible PDF copies), …)
+                       autofill_choose + autofill_reason + contact_scan + autofill_slots + autofill_education + autofill_place + autofill_sponsorship + board_visits + jev (Companion fill), resumes_folder (visible PDF copies),
+                       application_status (the one status writer), countries + markets + autofill_country (data:
+                       services/data/*.yaml), money + money_settings + fx_rates (ECB), rates, search_summary, today, …)
     automations/skills/  the agent prompts, one <name>/SKILL.md each: the Automations
                        source of the Automations page; indexed by docs/skills/README.md
     templates/         six seeded resume designs + both cover-letter sources (licenses: THIRD_PARTY_NOTICES.md)
@@ -147,7 +151,8 @@ inv-flush-guard). Resume JSON/rendered files stay on disk (`base_resumes` row + 
 keeps all of it in one per-user folder (inv-one-home). **LLM calls** go through the front door `llm.py` (`call_openai`, key getters; four keys, env
 keys as fallback). `llm_providers/registry.resolve` routes a model id by catalog tag, then keys/prefix, to an adapter (OpenAI-compatible incl. custom
 servers and the privacy-locked OpenRouter preset, Claude, Gemini); chat streams through the same adapters. The scoring model's first download and the ECB
-exchange rates (at most once a day when a page asks, `services/fx_rates.py`) are outbound calls with no user data; PRIVACY.md lists every one.
+exchange rates (when a page asks: one success a day, a failed try waits an hour; `services/fx_rates.py`) are outbound calls with no
+user data; PRIVACY.md lists every one.
 
 **Sync** is optional, on only while a key file exists (`docs/sync-setup.md`): the laptop owns the profile, each job has one owner
 (docs/entities/job.md), nothing merges (inv-one-writer-ownership). The always-on copy drives: `sync.sh` (cron; `--now` forces a round) or MCP
@@ -163,16 +168,16 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 
 | Entity | File | Scope |
 |---|---|---|
-| Job (`models/job.py`) | [`docs/entities/job.md`](docs/entities/job.md) | raw JD text + sha256 dedup; has no status of its own |
-| Application (`models/application.py`) | [`docs/entities/application.md`](docs/entities/application.md) | one per job (its base resume moves with a tailor); status vocabulary and the dated status-event log, tailored draft, render artifacts |
+| Job (`models/job.py`) | [`docs/entities/job.md`](docs/entities/job.md) | raw JD text + sha256 dedup; one ISO `country_code`, work mode and level as keys, posted pay with `salary_currency_assumed`; has no status of its own |
+| Application (`models/application.py`) | [`docs/entities/application.md`](docs/entities/application.md) | one per job (its base resume moves with a tailor); status vocabulary, the one writer `set_status` and its dated log (`ApplicationStatusEvent`), tailored draft, render artifacts |
 | TailoringSession (`models/tailoring_session.py`) | [`docs/entities/tailoring-session.md`](docs/entities/tailoring-session.md) | the open → tailored | superseded | abandoned machine; frozen gaps |
 | AtsScore (`models/ats_score.py`) | [`docs/entities/ats-score.md`](docs/entities/ats-score.md) | base upsert-singletons vs appended tailored history; deterministic engine |
 | ResumeVersion (`models/resume_version.py`) | [`docs/entities/resume-version.md`](docs/entities/resume-version.md) | append-only snapshots on every write path — the undo story |
 | FilledAnswer (`models/filled_answer.py`) | [`docs/entities/filled-answers.md`](docs/entities/filled-answers.md) | the answer receipt: what each form page run filled, each answer's source, the warn-only flags, the EEO lifecycle |
 | AgentRun (`models/agent_run.py`) | [`docs/entities/agent-runs.md`](docs/entities/agent-runs.md) | finished automation reports; Reporting cards, Recent runs, retention and phase 4 limits |
 | Health rubric | [docs/health-check-rubric.md](docs/health-check-rubric.md) | what the check judges and why: levels, questions, flags, word bank, disputes (the report's code contract: Others, ResumeLintReport) |
-| Money and rates (`services/money.py`, `fx_rates.py`) | [`docs/entities/money.md`](docs/entities/money.md) | the home currency, the `money` setting, conversion rules, the machine-local ECB rates cache |
-| Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, the settings endpoints (model settings, form-filling engines, persona draft, setup status), Today (`GET /api/today`), the uv install (`maestro`) and the secondary entities that need rules but not a file each |
+| Money and rates (`services/money.py`, `fx_rates.py`) | [`docs/entities/money.md`](docs/entities/money.md) | the home currency, the `money` setting, conversion rules, `formatPay`, the machine-local ECB rates cache |
+| Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, the settings endpoints (model settings and recommended models, form-filling engines, persona draft, setup status), the `market` setting (`home` + `apply_in`) and work permits per country, Today (`GET /api/today`), the uv install (`maestro`) and the secondary entities that need rules but not a file each |
 
 ## 5. The application workflow, end to end (web)
 
@@ -247,13 +252,16 @@ import and profile endpoints and store no progress of their own; frontend-conven
    Finder** (§6 inv-resumes-folder-one-way), **Update PDF** and the rasterized page preview.
 8. **Apply** — step 4 (**Apply**, `components/apply-step.tsx`), the lead card: the job's resume (its page, band and square),
    its Match score and the gain over its base, **where this stands** (`lib/job-standing.ts`), **Open the job post** (apply link,
-   else source link), **Mark applied** while a draft (the StatusChip's PATCH), and rows that open the **Cover letter** (tone; no
+   else source link; the card's filled button, **Mark applied** when there is no link), **Mark applied** (outline) while a draft
+   (the StatusChip's PATCH), and rows that open the **Cover letter** (tone; no
    PDF line: step 3 holds the PDF) and the application questions; their History (`QASections`) under it. The receipt is the
    page's **What was submitted** fold (docs/entities/filled-answers.md), and the application's details (applied date, tracking
    link, referral, notes, Delete application) its **Details and history** fold. Cold
    messages are free-form questions; the QA prompt injects the application's linked referral contact.
 9. **Track** — StatusChip anywhere (Jobs row or job header): draft → applied → interviewing → offered → accepted / rejected /
-   withdrawn; the Jobs row's Next step gives way to "Waiting to hear back" while Applied, then nothing. A base resume grown past
+   withdrawn. Every write goes through `set_status`, which logs the change with its source (you, the agent app by name, the
+   Companion, mail: §6 inv-status-through-set-status); the Jobs row dates a status from that log, and Analytics' search summary
+   and Today count from it. The Jobs row's Next step gives way to "Waiting to hear back" while Applied, then nothing. A base resume grown past
    your career history shows an "Add N things to career history" toolbar pill (N excludes already-recorded rewordings); its **Add
    now**, with no LLM, drafts only new bullets and keeps a rewording (cosine 0.80+, `services/kb_claims.place`) as a wording of the
    bullet it rewrites, near-matching entities instead of forking duplicates. An item's **Tidy bullets** combines near copies on a click
@@ -525,7 +533,8 @@ Code citing "§7" lands here; the table says which section to open. What orienta
   `workflow.py` (the guided tailoring and onboarding workflows) is PURE — a **deliberate exception to the thin-wrapper rule** — and its
   `next` envelopes walk §5's arc unnarrated: the server ranks, the agent narrates; `offer` ≠ `ask_user`; **a hint never names a tool the
   active profile did not register**.
-- **Automations page** (`/automations`): **Copy prompt** hands work to the user's agent; Maestro runs NO scheduler.
+- **Automations page** (`/automations`): **Copy prompt** hands work to the user's agent; Maestro runs NO scheduler, and a card
+  shows only what its runs reported through MCP `record_run` (`agent_runs`), never a schedule or a connection state.
 - **In-app chat**, the **Assistant** (`services/chat_agent.py` + `chat_tools.py`): a distinct toolset (resume edit, KB capture, template
   admin including the mutations MCP deliberately lacks); its resume-edit tool runs the SAME pipeline as the REST endpoints
   (`services/resume_ops.py`).
@@ -538,7 +547,7 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 
 | Surface | Section in `docs/agent-surfaces.md` | Scope |
 |---|---|---|
-| MCP server | [MCP server](docs/agent-surfaces.md#mcp-server) | transport and loopback, docstring ratchets, scoped profiles, plugin, Connect an agent app, the `.mcpb` bridge |
+| MCP server | [MCP server](docs/agent-surfaces.md#mcp-server) | transport and loopback, docstring ratchets, scoped profiles, plugin, Connect an agent app, the `.mcpb` bridge, what tools send and read (status sources, per-country answers, analytics rows) |
 | Guided tailoring workflow | [Guided tailoring workflow](docs/agent-surfaces.md#guided-tailoring-workflow) | the `next` envelope, ranking vs narrating, `offer` vs `ask_user`, the two controls, the LLM-free arc, apply readiness |
 | Onboarding workflow | [Onboarding workflow](docs/agent-surfaces.md#onboarding-workflow) | ingest → approve → base → render with zero in-house LLM; hint rules |
 | Automations page | [Automations page](docs/agent-surfaces.md#automations-page) | copy-only prompts, `record_run`, status from reports |
@@ -557,7 +566,9 @@ Reference tier, like §4: consulted while working in `frontend/`, not read for o
 M3 colour roles, the studios' save and preview model, a11y and focus behaviour, naming, the copy rules and the one
 glossary (the app calls its fixed-rules score **Match score**; *Canonical terms*; ratchets `test_frontend_vocabulary.py`,
 `test_frontend_sentence_length.py`), each
-with the failure mode that bought it. Code citing "§8" lands here.
+with the failure mode that bought it. One bullet per page (sidebar, Today, Setup, Profile, Settings' four tabs and their
+anchors, Jobs, Agent inbox, job steps, Analytics); the tiers (one `LeadCard`, the Also tier, `Fold`s, no subtitle) and
+`NextStep` are under Visual encodings. Code citing "§8" lands here.
 
 ## 9. Dev & test environment
 
@@ -732,6 +743,20 @@ exception, so ingest lands drafts and consent-gated `kb_approve_points` is the o
 - 2026-10-15 — A generic "How did you hear" answer takes LinkedIn or a specific board the list offers, assumed, and the saved sponsorship
   No holds even when a question counts OPT as sponsorship; superseded asking, and an extra OPT guard, because both are listed under Check
   before you submit.
+- 2026-10-20 — The design refresh (`docs/plans/2026-10-20-design-refresh.md`, D1–D11): each page leads with one card, then a few
+  secondary things, then folds, with no subtitle; superseded pages of equal-weight cards because the owner found the app "a lot going on".
+- 2026-10-20 — Jobs drops its Resume and Where columns for one Next-step style and the Agent inbox's Select (D2–D4); superseded the
+  Resume column because a resume is picked after a job is saved.
+- 2026-10-20 — A rate shows only from 20 in its denominator, with a Wilson 95% range (D7); superseded a percentage on any count
+  because 1 of 3 read as 33%.
+- 2026-10-20 — Pay reads in one home currency on ECB reference rates, "≈" with the posted amount kept (D8); superseded figures in
+  each posted currency and a USD default because pay across countries could not be compared.
+- 2026-10-20 — Where you live plus where you apply, and work-permit answers per country (D9); superseded one `market` and one
+  `work_auth` set because a form in one country was answered with another's facts.
+- 2026-10-20 — Automations show only what runs reported (D5); superseded connection dots and per-app buttons because Maestro
+  schedules nothing.
+- 2026-10-20 — Profile holds facts about you, Settings how the app behaves in four tabs, and a four-step Setup runs first (D10,
+  D11); superseded tabs by area because a new user needs one short path and each of the 156 items still needs a home.
 
 ## 11. Known deferred items (priority order)
 
@@ -773,8 +798,11 @@ overflow moves to `docs/deferred.md` under this same contract, each item keeping
     the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits". Do when Phase 3 (run list, Queue view, parallel tabs) is
     built or a listed limit is reproduced.
 
-The other 34 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32, 33, 37–43, 45–49) live in [`docs/deferred.md`](docs/deferred.md),
-each keeping its number and carrying its trigger; code citing "§11 item N" for one of them lands there.
+The other 47 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32, 33, 37–43, 45–62) live in [`docs/deferred.md`](docs/deferred.md),
+each keeping its number and carrying its trigger; code citing "§11 item N" for one of them lands there. The design refresh's
+not-fixed observations are 53–62 there: one diversity set for every country, no per-country work-permit breakdown, Today never
+expiring proposals, mail events dated when learned, no version check on profile saves, the chart palette, stale words and pictures,
+the slop ratchet's stale pair, a bare `duration-short3`, readers still on a job's country text.
 
 ## 12. Gotchas that have bitten before
 
@@ -782,6 +810,17 @@ each keeping its number and carrying its trigger; code citing "§11 item N" for 
 invariant has done its job: promote it (into Cross-cutting invariants or `.system_md_enforcement.json`) and delete
 the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 
+- **A `:root` token used as a bare utility draws nothing** (2026-10-21): `duration-short3` and `ease-out-strong` compiled to no CSS, so a
+  chevron or a hover fill snapped → the M3 durations and the strong curves live in `:root`, not `@theme`: write
+  `duration-(--duration-short3)` and `ease-(--ease-out-strong)` (the last bare use: `docs/deferred.md` item 61).
+- **Tests leaked state through `/app/settings`** (2026-10-21): the settings file mirrors default to that container-absolute folder, so a
+  test that saved a setting unisolated left `market.json`, `eeo_consent.json` or a `secrets/sync-key` behind (order-dependent
+  `test_eeo_consent` / `test_market_settings` failures; a stray sync key failed 17 sync tests) → isolate every mirror, check the folder.
+- **Parallel agents in one checkout swept each other's work** (2026-10-21): `git commit -- <path>` takes a file's whole working copy, so
+  another agent's hunks in CHANGELOG.md, `lib/types.ts` or frontend-conventions.md rode in the wrong commit → one worktree per writer,
+  or serialize the shared files.
+- **A node-tested `lib/*.ts` file cannot import another's values** (2026-10-21): `node --test` needs the `.ts` specifier and `tsc`
+  refuses it (TS5097) → a node-loaded lib file imports types only; a shared helper goes in its own file (`lib/setup-answers.ts`).
 - **A copied stack rendered into its source** (2026-10-16): rows keep absolute paths (applications `pdf_path`/`tex_path`/`artifact_dir`,
   base_resumes, kb_documents), so a draft write and render on a copied state dir replaced the source stack's PDF → rewrite those
   paths to the copy before any render or draft write.
@@ -899,14 +938,14 @@ survives as fallback/backup) · `blocked` (trigger cannot be evaluated until a n
 | `texlive-layer` | minimal TeX Live layer (`backend/Dockerfile`) → `typst==0.15.0` in-process | blocked | Layer is already slim (install-tl `scheme-basic` + 18 tlmgr packages) and XCharter is vendored at `backend/app/assets/fonts/xcharter/` (keep the Bitstream Charter notice alongside; `settings.typst_font_paths` defaults there, so typst no longer reaches into texlive). The remaining FULL cut requires only: `grep -rn pdflatex backend/app` returns only comments. Blocked on `latex-render-path`. | medium |
 | `chat-selection-kind` | untagged resume chips → `ChatSelection.kind` (`resume`\|`kb_entity`) | both-live | All three scope-picker constructors emit `kind:"resume"`, THEN zero `chat_messages.meta_json->'selections'` elements lack a `kind` key. | small |
 | `autofill-education-shape` | single-object `education`, coerced in 2 clients → list (the server returns the stored JSON as is) | both-live | `GET /api/settings/autofill` returns `education` absent or an array for a pre-normalization profile. Cut the frontend coercion first, the extension one release later. | small |
-| `autofill-work-auth-shape` | `work_auth.authorized_to_work` + `requires_sponsorship` (two timeless booleans, stored "yes"/"no") → typed `WorkAuth` (`schemas/autofill_profile.py`: `status`, `authorized_now`, `sponsorship_now`, `sponsorship_future`, `authorization_expires_on`, `countries_authorized`) | both-live | Delete when no raw-profile reader uses either legacy key. Today's storage readers are FOUR: `services/autofill_profile.py`'s legacy branch, Profile's legacy-on-edit bridge (`lib/autofill-options.ts` `typedEntry`, per country), the fill engine's dual-read (`content/autofill.js`, the `w` binding in the profile normalizer; moved from agent.js at the phase-2 split), and the panel's `workAuthForWrite` (`panel/actions/pause.js`), which promotes the legacy pair before the first typed pause-row write. The panel copy is the trap: `.slopledger.json`'s trigger paths cover `extension/content` only, so the mechanical check goes GREEN while that reader lives — widen the paths or verify it by hand. `job_search_brief`'s identically named response fields are a frozen outward compatibility projection from typed `authorized_now` / `sponsorship_future`, not a legacy reader, and do not block removal. ALSO `GET /api/settings/autofill` must return no `work_auth` or `work_auth_by_country` entry carrying either legacy key. Then delete the legacy branch of BOTH `autofill_profile.typed_work_auth` and the extension's `w` binding. Per `autofill-education-shape`: cut the frontend first, the extension one release later. | small |
-| `autofill-work-auth-by-country` | one top-level `work_auth` (the one market's answers) → `work_auth_by_country` keyed by market (`services/autofill_country`, inv-work-permit-per-country) | new-is-default | A stored `work_auth` reads as the home market's entry (mapped when read, folded into the map on the next save, pinned to that home before a move: `autofill_profile.pin_legacy_work_auth`), and a read still serves `work_auth` as the home set, named by `work_auth_market` (a save folds it into the market it names, never the home it finds), for clients that still write one set: Companion builds from before the pause row learned into `work_auth_by_country[<the market /context names>]` (`panel/actions/pause.js`); Profile and Setup write the map and send no `work_auth` (`lib/autofill-options.ts` `forSaving`). No current client writes `work_auth`: cut the projection and the fold (`autofill_profile._with_work_auth_by_country`, `_as_stored`) once the release after this one has shipped; keep the legacy read until no stored profile holds a top-level `work_auth`. `content/autofill.js` reading the resolved `profile.work_auth` from /context is the design, not a legacy reader. | small |
+| `autofill-work-auth-shape` | `work_auth.authorized_to_work` + `requires_sponsorship` (two timeless booleans, stored "yes"/"no") → typed `WorkAuth` (`schemas/autofill_profile.py`: `status`, `authorized_now`, `sponsorship_now`, `sponsorship_future`, `authorization_expires_on`, `countries_authorized`) | both-live | Delete when no raw-profile reader uses either legacy key. Today's storage readers are FOUR: `services/autofill_profile.py`'s legacy branch, Profile's legacy-on-edit bridge (`lib/autofill-options.ts` `typedEntry`, per country), the fill engine's dual-read (`content/autofill.js`, the `w` binding in the profile normalizer; moved from agent.js at the phase-2 split), and the panel's `workAuthForWrite` (`panel/actions/pause.js`), which promotes the legacy pair before the first typed pause-row write. All four sit under `.slopledger.json`'s trigger paths, which are directories (`extension/content`, `extension/panel`, `frontend/lib`), so a reader that moves stays covered; a new reader elsewhere needs its directory added. `job_search_brief`'s identically named response fields are a frozen outward compatibility projection from typed `authorized_now` / `sponsorship_future`, not a legacy reader, and do not block removal. ALSO `GET /api/settings/autofill` must return no `work_auth` or `work_auth_by_country` entry carrying either legacy key. Then delete the legacy branch of BOTH `autofill_profile.typed_work_auth` and the extension's `w` binding. Per `autofill-education-shape`: cut the frontend first, the extension one release later. | small |
+| `autofill-work-auth-by-country` | one top-level `work_auth` (the one market's answers) → `work_auth_by_country` keyed by market (`services/autofill_country`, inv-work-permit-per-country) | new-is-default | A stored `work_auth` reads as the home market's entry (mapped when read, folded into the map on the next save, pinned to that home before a move: `autofill_profile.pin_legacy_work_auth`), and a read still serves `work_auth` as the home set, named by `work_auth_market` (a save folds it into the market it names, never the home it finds), for clients that still write one set: Companion builds from before the pause row learned into `work_auth_by_country[<the market /context names>]` (`panel/actions/pause.js`); Profile and Setup write the map and send no `work_auth` (`lib/autofill-options.ts` `forSaving`). No current client writes `work_auth`: cut the projection and the one-set fold (`autofill_profile._with_work_auth_by_country`, the `work_auth` branch of `_as_stored`) once the release after this one has shipped; keep the legacy read until no stored profile holds a top-level `work_auth`. `content/autofill.js` reading the resolved `profile.work_auth` from /context is the design, not a legacy reader. | small |
 | `job-location-raw` | `jobs.location` (dual-written) → `location_raw` + city/state/country | both-live | Stage 1 (schema shim + `.location` property) already met. Stage 2: no reader of `jobs.location` remains, then `op.drop_column`. | small |
 | `health-rewrite-cache` | unattended rewrite always-LLM → `bullet_rewrites` (NULL text = tried-ask) + ephemeral ask answers → `health_ask_answers` | new-is-default | Migration `85a1bb628e28` (pre-SQLite chain, removed in v0.5.0; the tables are in the SQLite baseline). The LLM miss path is the intended fallback, not a second product — cut this row when a follow-up deletes either table or the GET `/api/resume-lint/{kind}/{key}/answers` rehydrate. | small |
 | `chat-message-parts` | `chat_messages.tool_calls` / `tool_call_id` columns → neutral versioned `parts` (+ `provider`, `model`; migration `cf0804d00ae2` backfills) | new-is-default | The release after this one ships: drop both columns, `transcript.from_legacy` and the `ChatMessageRead` legacy fields in one migration. Readers: `transcript.from_legacy` fallback, `ChatMessageRead`. | small |
 | `native-scripts-to-maestro` | `backend/scripts/native/*.sh` (always-on bot) → the `maestro` command | both-live | The always-on bot runs on `maestro` for one release, then delete `backend/scripts/native/`, `docs/native-install.md` and `tests/test_native_scripts.py`. | medium |
 | `lock-wheel-deps` | `requirements.lock` as the image's whole runtime set (names the old `maestro-career-studio-backend`, no `psutil`) → regenerated lock that omits `nodejs-wheel-binaries` (`pip-compile --unsafe-package`); the image adds the project with `--no-deps -e .` | both-live | Lock regenerated in `python:3.12-slim`: it has `psutil==`, `nodejs-wheel-binaries` not pinned, no `maestro-career-studio-backend`. | small |
-| `market-home-apply-in` | one `market` setting → `home` (where you live: home currency, date format) + `apply_in` (every market you apply in), `schemas/market_settings.py` | new-is-default | A stored `{"market": X}` reads as home = X, apply_in = [X] (mapped when read, never migrated), and `market` (= `home`, a computed field) is still written so a sync peer that has not updated reads the same country. No reader of `.market` remains (`git grep -nE '\.market\b' backend/app frontend` is empty). Cut the `market` field when the release after this one has shipped; keep the legacy read until no stored `market` blob lacks `home`. | small |
+| `market-home-apply-in` | one `market` setting → `home` (where you live: home currency, date format) + `apply_in` (every market you apply in), `schemas/market_settings.py` | new-is-default | A stored `{"market": X}` reads as home = X, apply_in = [X] (mapped when read, never migrated), and `market` (= `home`, a computed field) is still written so a sync peer that has not updated reads the same country. No reader of the setting's `.market` remains: `git grep -nE '\.market\b' backend/app` and `git grep -nE 'value\??\.market\b' frontend` are empty (the frontend's other `.market` is a permit question's own market key). Cut the `market` field when the release after this one has shipped; keep the legacy read until no stored `market` blob lacks `home`. | small |
 
 **Row notes** (only where the trigger hides a trap):
 
@@ -915,8 +954,8 @@ survives as fallback/backup) · `blocked` (trigger cannot be evaluated until a n
 - `chat-selection-kind`: inverted today — the branch four comments call "legacy" is the only form the
   frontend emits (`scope-picker.tsx` sets `kind` on kb chips only), so `kind:"resume"` is unreachable and
   those comments mislead until stage 1 ships.
-- `autofill-work-auth-shape`: three traps. (0) The reader count is FOUR and one of them sits outside the
-  trigger paths — see the row. (1) `sponsorship_now` has NO legacy source and stays `None` on purpose —
+- `autofill-work-auth-shape`: three traps. (0) The reader count is FOUR, across three surfaces; the trigger
+  paths are directories so a renamed file stays covered — see the row. (1) `sponsorship_now` has NO legacy source and stays `None` on purpose —
   defaulting it from `requires_sponsorship` answers the OPT case wrong (no sponsorship NOW, needed later);
   unknown must stay unknown. (2) `job_search_brief`'s public legacy-named response fields are a frozen
   projection of the typed reader, not a storage-migration blocker.

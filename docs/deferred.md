@@ -113,3 +113,49 @@
     is the extension's: send a work-permit label that names a country other than the job's to the fill loop instead of the rules.
     The answer flags (`filled_answers.flag_context`) likewise compare with the job's set. Do when the rule pass's work-authorization
     rules are next changed, or a wrong-country answer is reported.
+53. Diversity answers are one set for every country: the profile stores one `eeo` set, so Profile and Setup show it wherever an
+    apply-in market `offers_eeo` and name those countries, a UK form (the GSS categories) reads the same answers as a US one
+    (EEO-1), and a UK-only user's readiness counts the stored US-shaped fields, since the profile has no UK question set.
+    Per-country answers need a storage change (`eeo` keyed by market, like `work_auth_by_country`) and a UK question set. Do when a
+    second checked set's categories must differ from the stored set's, or a UK-only user reports a US-only diversity question.
+54. No payload breaks work authorization down by the countries you apply in: Analytics' Market in detail shows the jobs' stated
+    work authorization (the overview's `work_auth` block) and narrows it to one country through the fold's Country filter. A view per
+    apply-in country needs an explore payload keyed by market. Do when a per-country work-permit view is asked for, or the overview's
+    work-authorization block is next changed.
+55. Today's reads never write: `GET /api/today` runs no `proposals.expire_stale`, so a proposal past `expires_at` stays
+    `pending_review` until the Agent inbox's next read retires it. Today leaves such a proposal out of next up and of agent jobs to
+    review (`proposals.past_expiry`); any other reader that counts `pending_review` must apply the same predicate. Do when another
+    reader counts pending proposals, or expiry moves to a write path (at startup, or on each proposal write).
+56. A status change found in mail is dated when Maestro learned of it: `update_application(from_email=True)` writes its event at
+    the time of the call, not the email's date, so time to hear back from replies the mail-status automation finds runs late by the
+    gap between the email and the run. Fix: let `from_email` carry the message's date as the event's `at` (validated, never in the
+    future). Do when time to hear back looks long for mail-found replies, or `update_application` or the mail-status prompt is next
+    changed.
+57. Whole-profile saves have no version check: a `PUT /api/settings/autofill` from a page or a Companion that read the profile
+    before another save overwrites that save's answers for the same country (`work_auth_market` protects only other countries'
+    answers). It needs an `expected_updated_at` with a 409 when the profile moved, as the resume draft has. Do when a lost
+    same-country edit is reported, or the autofill PUT is next changed.
+58. The chart palette fails the dataviz skill's validator: chart-3's chroma sits at its 0.10 floor, chart-2 and chart-3 are ΔE 7.3
+    apart for protanopia in light, and the dark steps (L 0.72) sit outside its lightness band. The six tokens hold 3:1 on `card` and
+    are pinned (`test_frontend_color_roles.py`), so they stay as they are. Do when a chart draws chart-2 and chart-3 as neighbours a
+    reader must tell apart, or the palette is next revised (rerun the validator and move the pins with it).
+59. Words and pictures from before the refresh: user messages still name "Profile › Autofill", a section Profile no longer has (its
+    answers are tiles: Contact, Work permits, Start and pay and the rest): the Companion's learn note ("Saved to Profile ›
+    Autofill.", `extension/panel/actions/pause.js`), its fill and consent notes (`panel/actions/fill.js`, `panel/stages/fill.js`),
+    the knock-out and job-search-brief messages (`services/knockout.py`, `services/job_search_brief.py`), and GETTING_STARTED,
+    USING_MAESTRO and the extension README; `test_settings_paths_in_words.py` checks Settings places only. `docs/assets/
+    connected-agents.png` shows the old Settings tab (its alt text is current), and the design-system previews draw the old
+    layouts (`docs/design-system/README.md`, "Not synced"). Do when one of those files is next changed, or extend the pin to
+    Profile's tile names.
+60. `frontend/.slopconfig.json` (`allowed_clones`) and `frontend/.slop-baseline.json` still name
+    `components/settings/autofill-section.tsx`, which the Profile rebuild split into `components/profile/*`, so the slop ratchet
+    (maintainer-run, SYSTEM.md §9) reads a pair that no longer exists. Do when the frontend slop ratchet is next run: drop the pair
+    and re-baseline with a reason.
+61. `components/tailored-resume-step.tsx` (the Score breakdown's chevron) still writes the bare `duration-short3`, which compiles to
+    nothing (SYSTEM.md §12), so the chevron turns with no transition; it should read `duration-(--duration-short3)`. No pin scans
+    for a bare `:root` token used as a utility. Do when that file is next changed, or when such a scan joins `test_frontend_motion.py`.
+62. Readers still on a job's country TEXT: `base_eligibility`, `inbox_readiness`, `proposals` (the proposal's `job_country`) and
+    `explore_gaps` call `countries.normalize(job.country)` instead of reading `job.country_code`, so a job whose country is named
+    only in its location line (`countries.for_job`'s fallback) reads as having none there; Analytics' places group the raw state,
+    city or country text. Do when one of those readers is next changed, or a job with a location-only country is scored or proposed
+    as if it had none.
