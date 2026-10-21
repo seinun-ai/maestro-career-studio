@@ -14,10 +14,13 @@ import {
 } from "recharts";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadErrorState } from "@/components/load-error-state";
 import { CHART_COLORS as COLORS, buildQuery, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE, weekLabel, weekTick } from "@/components/charts/chart-kit";
 import { useRoleLabel } from "@/components/role-category-picker";
 import { MAX_ROLE_SERIES, splitTopSeries } from "@/lib/analytics-series";
 import { apiFetch } from "@/lib/api";
+import { loadErrorDetail } from "@/lib/error-text";
+import { isLoadFailure } from "@/lib/query-state";
 import type { AtsOverTimeRow } from "@/lib/types";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
 
@@ -35,13 +38,14 @@ interface Series {
 }
 
 export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
-  const { data, isLoading } = useQuery({
+  const query = useQuery({
     queryKey: ["explore", "ats-over-time", filters],
     queryFn: () =>
       apiFetch<AtsOverTimeRow[]>(
         `/api/explore/ats-over-time?${buildQuery(filters)}`,
       ),
   });
+  const { data, isLoading } = query;
 
   // One role selected → collapse series to just base/tailored; otherwise the
   // top roles by score count, tail excluded so colours never cycle. Base is
@@ -100,6 +104,18 @@ export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
     };
   }, [data, singleRole]);
 
+  // A failed fetch is its own state, never "No data yet." (conventions).
+  if (isLoadFailure(query)) {
+    return (
+      <LoadErrorState
+        className="py-8"
+        title="Couldn't load the match score over time."
+        detail={loadErrorDetail(query.error)}
+        retrying={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
   if (isLoading) return <Skeleton className="h-80 w-full" />;
   if (chartData.length === 0) {
     return <p className="text-muted-foreground text-body-medium">No data yet.</p>;

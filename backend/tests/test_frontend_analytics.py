@@ -103,6 +103,23 @@ def test_analytics_role_text_uses_the_catalog_label(rel):
     assert "useRoleLabel()" in _read(rel)
 
 
+# A failed fetch is its own state, never "No data yet." (conventions). Each chart reads the failure
+# (`isLoadFailure` reads the query's isError) and renders the shared LoadErrorState with a retry,
+# before its loading gate: a retry of a data-less query would otherwise paint the skeleton.
+_CHARTS = (_ATS, _FIT, _MIX, _LIFT, _HEATMAP, "components/charts/top-skills-chart.tsx")
+
+
+@pytest.mark.parametrize("rel", _CHARTS)
+def test_a_failed_chart_says_it_failed(rel):
+    src = _read(rel)
+    branch = "if (isLoadFailure(query)) {"
+    assert branch in src
+    assert "<LoadErrorState" in src[src.index(branch):]
+    assert "retrying={query.isFetching}" in src and "onRetry={() => void query.refetch()}" in src
+    assert src.index(branch) < src.index("if (isLoading)")
+    assert src.index(branch) < src.index(">No data yet.</p>")
+
+
 def test_charts_never_index_the_palette_modulo():
     cycling = [
         f"{path.name}: {m.group(0)}"
