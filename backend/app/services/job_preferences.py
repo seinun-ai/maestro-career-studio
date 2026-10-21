@@ -52,12 +52,24 @@ JOB_PREFERENCES_KEY = JOB_PREFERENCES.key
 JOB_PREFERENCES_FILE = JOB_PREFERENCES.filename
 
 
+def _in_home_currency(prefs: JobPreferences, session: Session | None) -> JobPreferences:
+    """A minimum salary with an amount and no currency is in your home currency (schemas
+    `MinSalary`), filled in when read so every reader compares it in one."""
+    wanted = prefs.min_salary
+    if wanted is None or wanted.amount is None or wanted.currency is not None:
+        return prefs
+    from app.services import money_settings
+
+    currency = money_settings.home_currency(session)
+    return prefs.model_copy(update={"min_salary": wanted.model_copy(update={"currency": currency})})
+
+
 def get_preferences(session: Session | None = None) -> JobPreferences:
-    return JOB_PREFERENCES.get(session)
+    return _in_home_currency(JOB_PREFERENCES.get(session), session)
 
 
 def peek_preferences(session: Session | None = None) -> JobPreferences:
-    return JOB_PREFERENCES.peek(session)
+    return _in_home_currency(JOB_PREFERENCES.peek(session), session)
 
 
 def set_preferences(prefs: JobPreferences, session: Session | None = None) -> JobPreferences:

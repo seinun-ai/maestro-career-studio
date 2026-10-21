@@ -185,7 +185,8 @@ export type KnockoutStatus =
 
 export interface KnockoutCheck {
   kind: "work_authorization" | "opt" | "salary" | "experience" | "on_site";
-  result: "pass" | "conflict" | "warning" | "job_unstated" | "profile_missing";
+  /** `cant_compare`: pay with no exchange rate, or a side that names no currency. Never a pass. */
+  result: "pass" | "conflict" | "warning" | "job_unstated" | "profile_missing" | "cant_compare";
   job_value: string | null;
   profile_value: string | null;
   message: string | null;
@@ -528,8 +529,16 @@ export interface JobPreferences {
   employment_types: string[];
   locations: string[];
   remote: "remote" | "hybrid" | "onsite" | "any" | null;
-  min_salary: string | null;
+  /** The lowest yearly pay you want. `currency` is filled with your home currency when read; `text` keeps
+   *  an old free-text answer that was not a number (backend/app/schemas/job_preferences.py `MinSalary`). */
+  min_salary: MinSalary | null;
   notes: string | null;
+}
+
+export interface MinSalary {
+  amount: number | null;
+  currency: string | null;
+  text: string | null;
 }
 
 /** GET/PUT /api/settings/auto-apply — the agent lane's guardrails. The model

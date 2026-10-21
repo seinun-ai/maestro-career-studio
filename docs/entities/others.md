@@ -491,7 +491,10 @@
   `settings/job_preferences.json` (`GET/PUT /api/settings/job-preferences`):
   `favored_roles` (a catalog key, coarse OR specific, or free text),
   `years_experience` (one number, comparable to extracted JD year bounds),
-  employment types, locations, remote, salary, notes. Catalog labels are
+  employment types, locations, remote, notes, and `min_salary` (`{amount, currency, text}`: a yearly
+  amount in an ISO 4217 currency, the home one filled in when read; an old free-text answer reads as an
+  amount when the text is a number, "£80,000" or "150k", else stays in `text`, stored as written until a
+  save; the Settings field offers the ECB currencies). Catalog labels are
   DERIVED and **`role_categories` is a COMPUTED PROJECTION** of the parents, so
   consumers needed no change. Writes 422 invalid keys, never `normalize()`ing
   them; reads degrade a stale favored-role per item to label-preserving free

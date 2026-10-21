@@ -187,6 +187,62 @@ def test_hourly_pay_is_not_compared_to_a_yearly_target():
     assert not [c for c in result["checks"] if c["kind"] == "salary"]
 
 
+# --- salary in one currency (plan Task 3.8) ---------------------------------------
+#
+# ECB reference rates are units per euro; £60,000 is about €68,415 at 0.8770.
+_RATES = {"base": "EUR", "date": "2026-10-19",
+          "rates": {"USD": Decimal("1.0870"), "GBP": Decimal("0.8770")}}
+
+
+def _pay(ceiling, currency, desired, **kw):
+    return scan_job(
+        _job(salary_max=Decimal(ceiling), salary_period="year", salary_currency=currency),
+        WorkAuth(), preferences={"desired_salary": desired}, **kw)
+
+
+def test_salary_converts_to_one_currency_before_comparing():
+    below = _check(_pay(60000, "GBP", "€70,000", home_currency="EUR", rates=_RATES), "salary")
+    assert below["result"] == "warning"
+    assert below["message"] == "The posted pay tops out below your desired salary."
+    assert below["job_value"] == "60000 GBP" and below["profile_value"] == "70000 EUR"
+    above = _check(_pay(62000, "GBP", "€70,000", home_currency="EUR", rates=_RATES), "salary")
+    assert above["result"] == "pass"   # £62,000 is about €70,695
+
+
+def test_an_unmarked_desired_salary_is_in_your_home_currency():
+    assert _check(_pay(60000, "GBP", "70000", home_currency="EUR", rates=_RATES), "salary")["result"] == "warning"
+    # A bare "$" is the dollar of a dozen countries: it names no currency, so the home one stands.
+    assert _check(_pay(80000, "USD", "$70k", home_currency="USD", rates=None), "salary")["result"] == "pass"
+    assert _check(_pay(80000, "USD", "70000 EUR", home_currency="USD", rates=_RATES),
+                  "salary")["result"] == "pass"   # $80,000 is about €73,597
+
+
+def test_with_no_rate_the_salary_check_cannot_compare_and_never_passes_or_fails():
+    for rates, currency in ((None, "GBP"), (_RATES, "ARS")):
+        result = _pay(60000, currency, "€70,000", home_currency="EUR", rates=rates)
+        check = _check(result, "salary")
+        assert check["result"] == "cant_compare"
+        assert check["message"] == (f"There's no exchange rate for {currency} yet, so this pay can't be "
+                                    "compared with your desired salary.")
+        assert result["status"] == "unstated"   # not a pass: nothing was compared
+
+
+def test_a_job_with_no_currency_cannot_be_compared_with_one_that_has_one():
+    check = _check(_pay(60000, None, "70000", home_currency="EUR", rates=_RATES), "salary")
+    assert check["result"] == "cant_compare"
+    assert check["message"] == "This job's pay names no currency, so it can't be compared with your desired salary."
+
+
+def test_the_scan_reads_your_home_currency_and_the_rates(db_session, tmp_path, monkeypatch):
+    from app.services import fx_rates, knockout, money_settings
+
+    monkeypatch.setattr(settings, "settings_dir", tmp_path)
+    monkeypatch.setattr(money_settings, "home_currency", lambda session=None: "EUR")
+    monkeypatch.setattr(fx_rates, "current", lambda session: _RATES)
+    args = knockout.scan_args(db_session)
+    assert args["home_currency"] == "EUR" and args["rates"] == _RATES
+
+
 # --- years of experience --------------------------------------------------
 
 def test_experience_below_the_posted_minimum_warns_but_does_not_block():
@@ -326,3 +382,12 @@ def test_final_review_carries_the_knockout_scan_and_drops_the_dead_warnings_key(
     # the knockout scan replaces that dead concept.
     assert "warnings" not in body["job"]
     assert db_session.get(ApplicationProposal, UUID(pid)) is not None
+
+
+def test_the_job_page_says_it_cannot_compare():
+    """The card words the new result itself: a chip and its message row, never a pass."""
+    from pathlib import Path
+
+    card = (Path(__file__).resolve().parents[2] / "frontend/components/job-knockout-card.tsx").read_text()
+    assert "cant_compare: { icon: NotRunIcon, word: \"Can't compare\"" in card
+    assert '"profile_missing", "cant_compare"]' in card   # its message gets a row

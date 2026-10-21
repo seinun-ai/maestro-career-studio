@@ -116,9 +116,14 @@ has no application: no draft time to read).
   `get_final_review` and `GET /api/jobs/match` as `knockout`): the JD's stated requirements (work
   auth, OPT, salary, on-site vs where you live and relocation) against the profile, recomputed on
   every read. Verdicts are `conflict` / `clear` / `incomplete_profile` / `unstated`: unstated is
-  NEVER a pass, and salary only warns (pay is negotiable). On the job page (step 1, Job) only a conflict
-  or a missing profile answer is a banner, with a per-check chip strip (OK / Conflict / Warning /
-  Add answer / Not listed / Not run); anything else is one small line in the Job details card. It is
+  NEVER a pass, and salary only warns (pay is negotiable). Work authorization is screened with the job's
+  country's answers (a job with no country, the home market's; inv-work-permit-per-country). Salary
+  compares in one currency: the posted ceiling converted (`money.convert`, ECB rates) into the desired
+  salary's currency, the one its text names, else the home currency; with no rate, or a side that names
+  no currency, the check is `cant_compare` (Can't compare), never a pass or a warning. On the job page
+  (step 1, Job) only a conflict or a missing profile answer is a banner, with a per-check chip strip (OK /
+  Conflict / Warning / Add answer / Not listed / Not run / Can't compare); anything else is one small line
+  in the Job details card. It is
   informational, like G11 tier 2: it flags, and the consent/submit decision stays human unless the
   user's agent follows the full-automation prompt (SYSTEM.md §7). Inbox readiness reads only a
   `conflict` ([agent-runs](agent-runs.md)); the on-site check rides with the answer receipt

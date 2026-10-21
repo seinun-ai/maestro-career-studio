@@ -16,10 +16,15 @@ Verdict semantics (inv-honesty applied to screening):
                             Not a pass either: "no blockers stated" is a
                             weaker claim than "you clear the stated blockers".
 
-Salary never conflicts — pay is negotiable — it only warns.
+Salary never conflicts — pay is negotiable — it only warns. It compares in one
+currency: the posted ceiling is converted into your desired salary's currency
+(the one its text names, else your home currency) on the ECB reference rates.
+With no rate, or a side that names no currency, the check says it cannot
+compare (``cant_compare``), never a pass or a warning.
 """
 
 import re
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
@@ -27,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.models.job import Job
 from app.schemas.autofill_profile import WorkAuth
+from app.services import money
 
 # Statuses that clear a citizen/green-card gate.
 _CITIZEN_OR_GC = {"citizen", "permanent_resident"}
@@ -138,32 +144,36 @@ def _opt_verdict(stated: str, status: str | None, holder: bool) -> tuple[str, st
     return "pass", None
 
 
-_NUMBER = re.compile(r"(\d[\d,.]*)\s*([kK])?")
-
-
 def parse_desired_salary(raw: Any) -> Decimal | None:
     """First number in a free-text desired salary; '150k' style honored.
 
     Returns None when nothing parses — the scan then stays silent rather than
     comparing against a guess.
     """
-    if isinstance(raw, (int, float, Decimal)):
-        return Decimal(str(raw))
-    if not isinstance(raw, str):
-        return None
-    match = _NUMBER.search(raw)
-    if not match:
-        return None
-    try:
-        value = Decimal(match.group(1).replace(",", "").rstrip("."))
-    except ArithmeticError:
-        return None
-    if match.group(2):
-        value *= 1000
-    return value
+    return money.parse_amount(raw)[0]
 
 
-def _salary_check(job: Job, preferences: dict[str, Any] | None) -> dict[str, Any] | None:
+def _plain(amount: Decimal, currency: str | None) -> str:
+    figure = f"{amount.normalize():f}" if amount == amount.to_integral() else str(amount)
+    return f"{figure} {currency}" if currency else figure
+
+
+def _rated(code: str, rates: Mapping[str, Any] | None) -> bool:
+    return money.convert(Decimal(1), code, str((rates or {}).get("base") or "EUR"), rates) is not None
+
+
+def _cannot_compare(posted: str | None, wanted: str | None, rates: Mapping[str, Any] | None) -> str:
+    if posted is None:
+        return "This job's pay names no currency, so it can't be compared with your desired salary."
+    if wanted is None:
+        return "Your desired salary names no currency, so this pay can't be compared with it."
+    missing = posted if not _rated(posted, rates) else wanted
+    return (f"There's no exchange rate for {missing} yet, so this pay can't be compared with your "
+            "desired salary.")
+
+
+def _salary_check(job: Job, preferences: dict[str, Any] | None, home_currency: str | None = None,
+                  rates: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
     ceiling = job.salary_max if job.salary_max is not None else job.salary_min
     if ceiling is None:
         return None
@@ -174,15 +184,26 @@ def _salary_check(job: Job, preferences: dict[str, Any] | None) -> dict[str, Any
     )
     if not yearly:
         return None
-    desired = parse_desired_salary((preferences or {}).get("desired_salary"))
+    desired, named = money.parse_amount((preferences or {}).get("desired_salary"))
     if desired is None:
         return None
+    wanted = named or (home_currency.strip().upper() if home_currency else None)
+    posted = job.salary_currency.strip().upper() if job.salary_currency else None
     check: dict[str, Any] = {
         "kind": "salary",
-        "job_value": str(ceiling),
-        "profile_value": str(desired),
+        "job_value": _plain(Decimal(ceiling), posted),
+        "profile_value": _plain(desired, wanted),
     }
-    if Decimal(ceiling) < desired:
+    if posted == wanted:
+        # The same currency, or (a direct call with no home currency) neither side names one.
+        compared = Decimal(ceiling)
+    elif posted is None or wanted is None:
+        compared = None
+    else:
+        compared = money.convert(Decimal(ceiling), posted, wanted, rates)
+    if compared is None:
+        return {**check, "result": "cant_compare", "message": _cannot_compare(posted, wanted, rates)}
+    if compared < desired:
         return {
             **check,
             "result": "warning",
@@ -386,9 +407,12 @@ def scan_job(
     *,
     work_auth_by_market: dict[str, WorkAuth] | None = None,
     home_market: str | None = None,
+    home_currency: str | None = None,
+    rates: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """`work_auth`: the answers to screen with; None reads the job's country's from
-    `work_auth_by_market` (`scan_args`)."""
+    `work_auth_by_market` (`scan_args`). `home_currency` and `rates` (ECB, `fx_rates.current`)
+    put the salary check in one currency."""
     if work_auth is None:
         work_auth = _work_auth_for_job(job, work_auth_by_market or {}, home_market)
     # settings/autofill.json is hand-editable loose JSON; `preferences` and `personal` may
@@ -398,7 +422,7 @@ def scan_job(
     personal = personal if isinstance(personal, dict) else {}
     optional = (
         _opt_check(job, work_auth),
-        _salary_check(job, preferences),
+        _salary_check(job, preferences, home_currency, rates),
         _experience_check(job, years_experience),
         _on_site_check(job, preferences, personal),
     )
@@ -419,10 +443,12 @@ def scan_job(
 def scan_args(session: Session) -> dict[str, Any]:
     """The stored profile as `scan_job`'s keyword arguments, read once: a batch reuses it. Every
     market's work-permit answers ride along, and each job is screened with its own country's."""
-    from app.services import autofill_profile, job_preferences, market_settings
+    from app.services import autofill_profile, fx_rates, job_preferences, market_settings, money_settings
 
     profile = autofill_profile.get_profile(session)
     return {
+        "home_currency": money_settings.home_currency(session),
+        "rates": fx_rates.current(session),
         "work_auth_by_market": {
             market: autofill_profile.typed_work_auth(raw)
             for market, raw in autofill_profile.work_auth_entries(profile, None).items()

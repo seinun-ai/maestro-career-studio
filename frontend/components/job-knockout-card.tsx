@@ -31,11 +31,13 @@ const SUMMARY_BY_RESULT: Record<KnockoutCheck["result"], Summary> = {
   warning: { icon: WarningIcon, word: "Warning", tone: "bg-warning-container text-on-warning-container" },
   profile_missing: { icon: UnknownIcon, word: "Add answer", tone: "bg-surface-container" },
   job_unstated: { icon: NoneIcon, word: "Not listed", tone: "bg-surface-container text-muted-foreground" },
+  // Pay in another currency with no exchange rate yet: neither a pass nor a warning.
+  cant_compare: { icon: NotRunIcon, word: "Can't compare", tone: "bg-surface-container" },
 };
 const NOT_RUN: Summary = { icon: NotRunIcon, word: "Not run", tone: "bg-surface-container" };
 
 /** Rows worth a line of their own; passes and unstated checks are covered by their chip. */
-const ROW_RESULTS = new Set(["conflict", "warning", "profile_missing"]);
+const ROW_RESULTS = new Set(["conflict", "warning", "profile_missing", "cant_compare"]);
 
 /** Which autofill group answers each knock-out check.
  *
@@ -117,7 +119,8 @@ function CheckChip({ label, summary, href, hint }: { label: string; summary: Sum
 
 /** A job that lists pay or years the profile can't answer is not "no requirements listed" (the job page's step 1 reads it too). */
 export function knockoutNotChecked(scan: KnockoutScan, job: Job): boolean {
-  return scan.status === "unstated" && uncheckedItems(job, scan).length > 0;
+  const cantCompare = scan.checks.some((c) => c.result === "cant_compare");
+  return scan.status === "unstated" && (cantCompare || uncheckedItems(job, scan).length > 0);
 }
 
 /** What both renderings read from a scan: the chips, the detail rows and what could not be compared. */

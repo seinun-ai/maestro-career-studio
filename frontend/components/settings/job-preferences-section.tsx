@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { RolePicker } from "@/components/role-picker";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useMoney } from "@/hooks/use-money";
 import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,6 +94,7 @@ function JobPreferencesEditor({
   roleCategories?: RoleCategory[];
 }) {
   const qc = useQueryClient();
+  const money = useMoney();
   const employmentLabelId = useId();
   const [locationsText, setLocationsText] = useState(initial.locations.join("\n"));
 
@@ -134,6 +136,18 @@ function JobPreferencesEditor({
   };
   const remote =
     preferences.remote && isRemoteOption(preferences.remote) ? preferences.remote : NO_PREFERENCE;
+
+  // Minimum salary is an amount in a currency, your home one unless you pick another; the list is the
+  // currencies pay can be compared in (the ECB's), plus your own.
+  const minSalary = preferences.min_salary;
+  const salaryCurrency = minSalary?.currency ?? money.home ?? null;
+  const currencies = [
+    ...new Set(
+      [salaryCurrency, money.home, money.rates?.base, ...Object.keys(money.rates?.rates ?? {})].filter(
+        (code): code is string => Boolean(code),
+      ),
+    ),
+  ].sort();
 
   const setFavoredRoles = (next: FavoredRole[]) => {
     update((current) => ({ ...current, favored_roles: next }));
@@ -244,16 +258,58 @@ function JobPreferencesEditor({
           <Label htmlFor="job-preferences-min-salary" optional>
             Minimum salary
           </Label>
-          <Input
-            id="job-preferences-min-salary"
-            value={preferences.min_salary ?? ""}
-            onChange={(event) =>
-              update((current) => ({
-                ...current,
-                min_salary: event.target.value || null,
-              }))
-            }
-          />
+          <p id="job-preferences-min-salary-hint" className="text-muted-foreground text-body-small">
+            A year.
+            {minSalary?.text && minSalary.amount == null
+              ? ` You wrote “${minSalary.text}”. Add it as a number to compare pay.`
+              : null}
+          </p>
+          <div className="flex gap-2">
+            <Input
+              aria-describedby="job-preferences-min-salary-hint"
+              id="job-preferences-min-salary"
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={minSalary?.amount ?? ""}
+              onChange={(event) => {
+                const raw = event.target.value;
+                const amount = raw === "" ? null : Math.max(0, Math.trunc(Number(raw)));
+                if (amount !== null && Number.isNaN(amount)) return;
+                update((current) => ({
+                  ...current,
+                  min_salary:
+                    amount === null
+                      ? null
+                      : { amount, currency: current.min_salary?.currency ?? salaryCurrency, text: null },
+                }));
+              }}
+            />
+            <Select
+              value={salaryCurrency ?? ""}
+              onValueChange={(value) =>
+                update((current) => ({
+                  ...current,
+                  min_salary: {
+                    amount: current.min_salary?.amount ?? null,
+                    currency: value || null,
+                    text: current.min_salary?.text ?? null,
+                  },
+                }))
+              }
+            >
+              <SelectTrigger aria-label="Currency" className="w-28">
+                <SelectValue>{salaryCurrency ?? ""}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {currencies.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 

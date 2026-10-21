@@ -276,5 +276,48 @@ def test_stale_stored_favored_role_degrades_per_item_without_blanket_data_loss(
     assert prefs.employment_types == ["full_time"]
     assert prefs.locations == ["Chicago", "Remote"]
     assert prefs.remote == "hybrid"
-    assert prefs.min_salary == "150000"
+    # The old free text is a number, so it reads as an amount in your home currency (plan Task 3.8).
+    assert prefs.min_salary.amount == 150000 and prefs.min_salary.currency == "USD"
     assert prefs.notes == "Keep every unrelated preference."
+
+
+# --- Minimum salary: an amount and a currency (plan Task 3.8) -------------------------------
+
+@pytest.mark.parametrize("old, amount, currency", [
+    ("150000", 150000, None), ("150,000", 150000, None), ("$150k", 150000, None),
+    ("£80,000", 80000, "GBP"), ("70000 EUR", 70000, "EUR"), ("  95k ", 95000, None),
+])
+def test_an_old_minimum_salary_that_is_a_number_reads_as_an_amount(old, amount, currency):
+    got = JobPreferences.model_validate({"min_salary": old}).min_salary
+    assert (got.amount, got.currency, got.text) == (amount, currency, None)
+
+
+@pytest.mark.parametrize("old", ["competitive", "120-150k", "150k plus equity"])
+def test_an_old_minimum_salary_that_is_not_a_number_stays_readable(old):
+    got = JobPreferences.model_validate({"min_salary": old}).min_salary
+    assert (got.amount, got.currency, got.text) == (None, None, old)
+
+
+def test_a_minimum_salary_names_a_known_currency():
+    got = JobPreferences.model_validate({"min_salary": {"amount": 70000, "currency": "eur"}}).min_salary
+    assert (got.amount, got.currency) == (70000, "EUR")
+    with pytest.raises(ValidationError):
+        JobPreferences.model_validate({"min_salary": {"amount": 70000, "currency": "XYZ"}})
+    with pytest.raises(ValidationError):
+        JobPreferences.model_validate({"min_salary": {"amount": -1}})
+    assert JobPreferences.model_validate({"min_salary": ""}).min_salary is None
+
+
+def test_a_minimum_salary_with_no_currency_reads_in_your_home_currency(db_session, tmp_path, monkeypatch):
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings, text_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="DE"), db_session)
+    text_settings.set_text(job_preferences.JOB_PREFERENCES_KEY, job_preferences.JOB_PREFERENCES_FILE,
+                           '{"min_salary": "70000"}', db_session)
+    got = job_preferences.get_preferences(db_session).min_salary
+    assert (got.amount, got.currency) == (70000, "EUR")
+    # Kept as written until you save: the stored text is the old one.
+    assert '"70000"' in text_settings.peek_text(job_preferences.JOB_PREFERENCES_KEY,
+                                               job_preferences.JOB_PREFERENCES_FILE, db_session)

@@ -17,7 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.services import role_categories
+from app.services import countries, money, role_categories
 
 MAX_FAVORED_ROLES = 25
 MAX_LABEL_CHARS = 80
@@ -71,6 +71,44 @@ class FavoredRole(BaseModel):
         return self
 
 
+class MinSalary(BaseModel):
+    """The lowest yearly pay you want: an amount in a currency (ISO 4217).
+
+    `currency` None is your home currency: `job_preferences.get_preferences` fills it in when
+    read, so the figure is never compared as a bare number. A stored preference from before
+    (free text) reads as an amount when the text is a number ("150000", "£80,000", "150k");
+    any other text stays readable in `text`, with no amount, until you save a number. Mapped
+    when read, never migrated: the stored text stays as written until a save.
+    """
+
+    amount: int | None = Field(default=None, ge=0)
+    currency: str | None = None
+    text: str | None = None
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _known_currency(cls, value):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        code = str(value).strip().upper()
+        if code not in countries.currency_codes():
+            raise ValueError(f"currency must be an ISO 4217 code, got {value!r}")
+        return code
+
+
+def _min_salary_from_text(value):
+    """The old free-text minimum salary as `MinSalary` fields (see `MinSalary`)."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not text:
+        return None
+    amount, currency = money.parse_amount(text, whole=True)
+    if amount is None:
+        return {"text": text}
+    return {"amount": int(amount), "currency": currency}
+
+
 class JobPreferences(BaseModel):
     favored_roles: list[FavoredRole] = []
     role_categories: list[str] = []  # DERIVED — see _project_role_categories.
@@ -78,8 +116,13 @@ class JobPreferences(BaseModel):
     employment_types: list[str] = []
     locations: list[str] = []
     remote: Literal["remote", "hybrid", "onsite", "any"] | None = None
-    min_salary: str | None = None
+    min_salary: MinSalary | None = None
     notes: str | None = None
+
+    @field_validator("min_salary", mode="before")
+    @classmethod
+    def _old_min_salary(cls, value):
+        return _min_salary_from_text(value)
 
     @field_validator("role_categories")
     @classmethod

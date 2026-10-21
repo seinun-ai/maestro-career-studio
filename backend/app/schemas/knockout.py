@@ -3,7 +3,8 @@ from typing import Literal
 from pydantic import BaseModel
 
 KnockoutStatus = Literal["conflict", "clear", "incomplete_profile", "unstated"]
-KnockoutResult = Literal["pass", "conflict", "warning", "job_unstated", "profile_missing"]
+# `cant_compare`: the salary check had no exchange rate, or a side named no currency. Never a pass.
+KnockoutResult = Literal["pass", "conflict", "warning", "job_unstated", "profile_missing", "cant_compare"]
 
 
 class KnockoutCheck(BaseModel):

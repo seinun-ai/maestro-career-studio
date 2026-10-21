@@ -291,7 +291,8 @@ def test_search_brief_carries_preferences_and_auto_apply_guardrails(
     body = _get_brief(db_session).json()
     prefs = body["job_preferences"]
     assert prefs["role_categories"] == ["data_scientist"]
-    assert prefs["min_salary"] == "120000"
+    # Minimum salary is an amount and a currency (the home one when the old text named none).
+    assert prefs["min_salary"] == {"amount": 120000, "currency": "USD", "text": None}
 
     auto = body["auto_apply"]
     assert auto["company_blocklist"] == ["BadCo"]
