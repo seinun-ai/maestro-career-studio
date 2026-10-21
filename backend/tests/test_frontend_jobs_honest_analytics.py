@@ -56,6 +56,21 @@ def test_the_heatmap_says_it_shows_the_top_30_percent():
     assert "Shows the top 30% of skills, the ones jobs ask for most." in heatmap
 
 
+def test_skills_by_role_shows_counts_below_twenty_jobs_in_a_role():
+    """D7 on the heatmap: each row carries its role's job count (`of`, routers/explore.py) and a cell reads
+    "2 of 3" while the role has fewer than rates.MIN_RATE_N jobs, a share only from there
+    (components/charts/heatmap-chart.test.mjs renders it)."""
+    from tests.node_ts import run_node_test
+
+    src = Path(explore.__file__).read_text(encoding="utf-8")
+    assert '"count": row.n,' in src and '"of": role_totals.get(row.role_category, 0),' in src
+    heatmap = _read("components/charts/heatmap-chart.tsx")
+    assert "const words = rateWords(share).value;" in heatmap and "const counts = of < MIN_RATE_N;" in heatmap
+    assert "toFixed(0)}%" not in heatmap
+    result = run_node_test("components/charts/heatmap-chart.test.mjs")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_job_market_captions_are_accurate():
     market = _read("components/explore/explore-overview.tsx")
     assert "Sorted from each job description into one of these levels." in market

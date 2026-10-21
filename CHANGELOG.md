@@ -220,6 +220,8 @@ a click.
   It still adds them, so sync works where the model cannot load, but it now says so.
 - **Best-paying role compares pay in your currency.** It ranks roles by their pay converted into your
   home currency and leaves out pay with no exchange rate, so ₹2,400,000 no longer beats $170,000.
+- **Skills by role shows counts for a small role.** A role with fewer than 20 jobs reads "2 of 3" in
+  each cell, not a percentage, and its cells are not shaded as shares.
 - **Skills by role stays within 100%.** A Level, employment type, country or currency filter now
   narrows both sides of each percentage, not only the job count under it.
 - **Roles over time follows the filters** and shows every week from the first to the last, with 0 for

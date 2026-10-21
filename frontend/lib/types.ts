@@ -1354,6 +1354,9 @@ export interface HeatmapRow {
   skill_name: string;
   role_category: string;
   pct_jobs: number;
+  /** Jobs in the role that ask for the skill, of `of`, the role's jobs: a share shows from MIN_RATE_N in `of`. */
+  count: number;
+  of: number;
 }
 
 export interface FitDistributionRow {

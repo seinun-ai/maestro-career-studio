@@ -1890,7 +1890,9 @@
   prefixed with the fold. **Every share renders through `RateLabel`** (`components/analytics/rate-label.tsx`
   over `lib/rates.ts` `rateWords`): a percent with its Wilson range in brackets from `MIN_RATE_N` (20) in
   its denominator, "5 of 12" below it (even if a rate arrives), "—" with nothing to count; no other
-  Analytics file reads a share's `rate`, `low` or `high`. Whole numbers roll (`NumberRoll`), decimals count
+  Analytics file reads a share's `rate`, `low` or `high`. Skills by role's cells call `rateWords` directly
+  (the words go in the cell and its title) with each role's job count (`of` on `/api/explore/heatmap`):
+  "2 of 3" on a plain fill below `MIN_RATE_N`, the colour ramp only for a share. Whole numbers roll (`NumberRoll`), decimals count
   (`useCountUp`). Not on Analytics: OPT (one country's student work permit), the Autofill coverage card
   (Settings › Advanced › Diagnostics, D6), a quick wins card, page and card subtitles, the server-worded
   `signals` and an average-pay tile. No payload breaks work authorization down per country you apply in,

@@ -207,6 +207,8 @@ def heatmap(
         .order_by(JobSkill.skill_name, Job.role_category)
     ).all()
 
+    # `count` of `of` (the role's jobs) beside the share: a page shows a share only from
+    # rates.MIN_RATE_N jobs in the role and the counts below it (owner decision D7).
     return [
         {
             "skill_name": row.skill_name,
@@ -214,6 +216,8 @@ def heatmap(
             "pct_jobs": round((row.n / role_totals[row.role_category]) * 100, 2)
             if role_totals.get(row.role_category)
             else 0.0,
+            "count": row.n,
+            "of": role_totals.get(row.role_category, 0),
         }
         for row in rows
     ]

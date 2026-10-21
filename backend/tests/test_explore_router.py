@@ -153,6 +153,11 @@ def test_heatmap_returns_percent_jobs_by_role(db_session, client):
     assert rows[("Python", "data_scientist")] == 50.0
     assert rows[("Python", "data_engineer")] == 100.0
     assert rows[("SQL", "data_scientist")] == 50.0
+    # The counts behind each share (owner decision D7): the page shows "1 of 2" while a role has fewer
+    # than rates.MIN_RATE_N jobs, and the share only from there.
+    counts = {(item["skill_name"], item["role_category"]): (item["count"], item["of"]) for item in response.json()}
+    assert counts == {("Python", "data_scientist"): (1, 2), ("Python", "data_engineer"): (1, 1),
+                      ("SQL", "data_scientist"): (1, 2)}
 
 
 def test_heatmap_numerator_honours_every_filter(db_session, client):

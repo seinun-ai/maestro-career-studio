@@ -10,9 +10,11 @@ import { useRoleLabel } from "@/components/role-category-picker";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
+import { MIN_RATE_N, rateWords } from "@/lib/rates";
 import type { HeatmapRow } from "@/lib/types";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
 import { skillName } from "@/lib/skill-name";
+import { cn } from "@/lib/utils";
 
 function cellColor(pct: number): string {
   // Sequential single-hue ramp from the theme's primary blue (theme-aware,
@@ -40,19 +42,23 @@ export function HeatmapChart({
 
   const label = useRoleLabel();
 
-  const { skills, roles, matrix } = useMemo(() => {
+  const { skills, roles, matrix, jobsIn } = useMemo(() => {
     const skills = new Set<string>();
     const roles = new Set<string>();
-    const matrix = new Map<string, number>();
+    const matrix = new Map<string, HeatmapRow>();
+    // Each role's job count, the denominator of every share in its column.
+    const jobsIn = new Map<string, number>();
     for (const row of data ?? []) {
       skills.add(row.skill_name);
       roles.add(row.role_category);
-      matrix.set(`${row.skill_name}|${row.role_category}`, row.pct_jobs);
+      matrix.set(`${row.skill_name}|${row.role_category}`, row);
+      jobsIn.set(row.role_category, row.of);
     }
     return {
       skills: [...skills].sort(),
       roles: [...roles].sort(),
       matrix,
+      jobsIn,
     };
   }, [data]);
 
@@ -77,6 +83,7 @@ export function HeatmapChart({
     <div className="overflow-x-auto">
       <p className="text-muted-foreground mb-3 text-body-small">
         Share of jobs in each role that ask for each skill. Shows the top 30% of skills, the ones jobs ask for most.
+        A role with fewer than {MIN_RATE_N} jobs shows its counts, such as 2 of 3.
       </p>
       <table className="border-separate border-spacing-0.5 text-body-small">
         <thead>
@@ -99,15 +106,24 @@ export function HeatmapChart({
                 {skillName(skill)}
               </th>
               {roles.map((role) => {
-                const pct = matrix.get(`${skill}|${role}`) ?? 0;
+                const row = matrix.get(`${skill}|${role}`);
+                const of = row?.of ?? jobsIn.get(role) ?? 0;
+                const count = row?.count ?? 0;
+                // D7: a share from MIN_RATE_N jobs in the role; below that the counts, coloured as no share.
+                const share = { count, of, rate: of ? count / of : null, low: null, high: null };
+                const words = rateWords(share).value;
+                const counts = of < MIN_RATE_N;
                 return (
                   <td
                     key={role}
-                    title={`${skillName(skill)} · ${label(role)}: ${pct}%`}
-                    className="h-8 min-w-12 rounded-corner-xs text-center align-middle text-label-small"
-                    style={{ backgroundColor: cellColor(pct) }}
+                    title={`${skillName(skill)} · ${label(role)}: ${words}`}
+                    className={cn(
+                      "h-8 min-w-12 rounded-corner-xs text-center align-middle text-label-small",
+                      counts && "bg-surface-container-high",
+                    )}
+                    style={counts ? undefined : { backgroundColor: cellColor((count / of) * 100) }}
                   >
-                    {pct > 0 ? `${pct.toFixed(0)}%` : ""}
+                    {count > 0 ? words : ""}
                   </td>
                 );
               })}
