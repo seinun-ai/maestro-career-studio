@@ -27,6 +27,7 @@ from app.schemas.job_site_login import (
 )
 from app.schemas.market_settings import MarketSetting
 from app.schemas.mcp_workflow import McpWorkflowSettings
+from app.schemas.money import MoneySettings, MoneySettingsResponse
 from app.schemas.settings import (
     AutofillProfilePayload,
     PromptPayload,
@@ -48,6 +49,7 @@ from app.services import (
     markets,
     mcp_workflow,
     model_settings,
+    money_settings,
     persona,
     prompts,
     quick_tailor,
@@ -391,6 +393,19 @@ def get_market(db: Annotated[Session, Depends(get_db)]):
 def put_market(payload: SettingValueIn[MarketSetting], db: Annotated[Session, Depends(get_db)]):
     """Takes `{home, apply_in}` or the old `{market}` (read as home = apply_in = market)."""
     return _market_body(market_settings.set_market(payload.value, db))
+
+
+@router.get("/money", response_model=MoneySettingsResponse)
+def get_money(db: Annotated[Session, Depends(get_db)]):
+    """How pay reads, plus the currency it resolves to (yours, else where you live)."""
+    value = money_settings.get_settings(db)
+    return {"key": "money", "value": value, "home_currency": money_settings.home_currency(db)}
+
+
+@router.put("/money", response_model=MoneySettingsResponse)
+def put_money(payload: SettingValueIn[MoneySettings], db: Annotated[Session, Depends(get_db)]):
+    value = money_settings.set_settings(payload.value, db)
+    return {"key": "money", "value": value, "home_currency": money_settings.home_currency(db)}
 
 
 def _lock_auto_apply_settings(db: Session) -> AutoApplySettings:

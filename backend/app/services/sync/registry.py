@@ -63,7 +63,7 @@ TABLES = {
     "alembic_version": SYNC,
 }
 
-LOCAL_SETTING_PREFIXES = ("sync.", "llm.capabilities.", "kb.seeded", "resumes_folder.")
+LOCAL_SETTING_PREFIXES = ("sync.", "llm.capabilities.", "kb.seeded", "resumes_folder.", "fx_rates")
 
 
 def _application_id(resume_key: str | None) -> UUID | None:

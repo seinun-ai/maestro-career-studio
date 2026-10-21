@@ -250,9 +250,11 @@ class Settings(BaseSettings):
     # a TeX-less host: MAESTRO_CS_PDFLATEX=/nonexistent.
     maestro_cs_pdflatex: Path | None = None
 
-    # Default ISO 4217 currency assumed for jobs that disclose a salary amount
-    # without a currency code (legacy rows + extraction fallback). Override via
-    # HOME_CURRENCY — never hard-code USD at the call site or in migrations.
+    # The deployment's fallback home currency (ISO 4217), last in line: the
+    # currency the user picked (money setting), else their home market's, else
+    # this (docs/entities/money.md). It is also the assumed currency of a job
+    # stating an amount with no code, no country and no market chosen. Override
+    # via HOME_CURRENCY; never hard-code USD at the call site or in migrations.
     home_currency: str = "USD"
 
     @field_validator("home_currency", mode="before")

@@ -146,7 +146,8 @@ subtree (`services/sync/hooks.py`; the write guard is §6
 inv-flush-guard). Resume JSON/rendered files stay on disk (`base_resumes` row + file required); job-site login: `settings/secrets/` (§6). A uv install
 keeps all of it in one per-user folder (inv-one-home). **LLM calls** go through the front door `llm.py` (`call_openai`, key getters; four keys, env
 keys as fallback). `llm_providers/registry.resolve` routes a model id by catalog tag, then keys/prefix, to an adapter (OpenAI-compatible incl. custom
-servers and the privacy-locked OpenRouter preset, Claude, Gemini); chat streams through the same adapters.
+servers and the privacy-locked OpenRouter preset, Claude, Gemini); chat streams through the same adapters. The scoring model's first download and the ECB
+exchange rates (at most once a day when a page asks, `services/fx_rates.py`) are outbound calls with no user data; PRIVACY.md lists every one.
 
 **Sync** is optional, on only while a key file exists (`docs/sync-setup.md`): the laptop owns the profile, each job has one owner
 (docs/entities/job.md), nothing merges (inv-one-writer-ownership). The always-on copy drives: `sync.sh` (cron; `--now` forces a round) or MCP
@@ -170,6 +171,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 | FilledAnswer (`models/filled_answer.py`) | [`docs/entities/filled-answers.md`](docs/entities/filled-answers.md) | the answer receipt: what each form page run filled, each answer's source, the warn-only flags, the EEO lifecycle |
 | AgentRun (`models/agent_run.py`) | [`docs/entities/agent-runs.md`](docs/entities/agent-runs.md) | finished automation reports; Recent runs, Last ran, retention and phase 4 limits |
 | Health rubric | [docs/health-check-rubric.md](docs/health-check-rubric.md) | what the check judges and why: levels, questions, flags, word bank, disputes (the report's code contract: Others, ResumeLintReport) |
+| Money and rates (`services/money.py`, `fx_rates.py`) | [`docs/entities/money.md`](docs/entities/money.md) | the home currency, the `money` setting, conversion rules, the machine-local ECB rates cache |
 | Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, the settings endpoints (model settings, form-filling engines, persona draft, setup status), the uv install (`maestro`) and the secondary entities that need rules but not a file each |
 
 ## 5. The application workflow, end to end (web)

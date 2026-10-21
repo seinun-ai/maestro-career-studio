@@ -149,6 +149,19 @@ Nothing here is your career data. Each request carries what any web request does
   recreated container. The request names the model; no resume or job text is
   sent, and the scoring itself runs on your computer.
 
+### Exchange rates
+
+To show pay in your home currency, the backend asks the European Central Bank
+for its daily euro reference rates
+(`www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml`). It asks only when a
+page needs the rates and the saved ones are more than a day old, so at most
+once a day (after a failed try it waits an hour), and again when you ask for an
+update. The request carries what any web request does (your IP address, the
+program's name) and nothing about you: no job, no pay, no currency. The rates
+are kept in that machine's database, and each copy fetches its own. Offline,
+the last rates stay in use; with none yet, pay shows as posted and nothing is
+converted.
+
 ### Optional Langfuse tracing
 
 Off by default. It requires the optional `tracing` SDK extra (included in the
