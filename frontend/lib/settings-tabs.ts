@@ -38,7 +38,7 @@ export const SETTINGS_TABS = [
   {
     value: "advanced",
     label: "Advanced",
-    anchors: ["models", "model-catalog", "custom-endpoint", "prompts", "quick-tailor", "hours-per-year"],
+    anchors: ["models", "model-catalog", "custom-endpoint", "prompts", "quick-tailor", "hours-per-year", "diagnostics"],
   },
 ] as const satisfies readonly SettingsTab[];
 

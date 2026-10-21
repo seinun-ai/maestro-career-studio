@@ -500,7 +500,7 @@ It can keep a **fill log**: *which* fields it met and whether they filled,
 never what you typed. The log is off unless you tick **Keep a fill log** in the
 Companion's options (right-click its toolbar icon, then **Options**). It stays
 on your computer, but it does show which companies you applied to and when, so
-it is yours to switch on. With it on, **Analytics → Autofill coverage** shows
+it is yours to switch on. With it on, **Settings → Advanced → Autofill coverage** shows
 where autofill misses; **Clear data** there deletes it.
 
 ### Analytics: what the market keeps asking you for

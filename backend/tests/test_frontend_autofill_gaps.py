@@ -6,7 +6,7 @@ from tests.node_ts import run_node_test
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 CARD = (FRONTEND / "components/settings/form-filling-section.tsx").read_text()
-COVERAGE = (FRONTEND / "components/analytics/autofill-coverage-card.tsx").read_text()
+COVERAGE = (FRONTEND / "components/settings/autofill-coverage-card.tsx").read_text()
 
 
 def test_the_line_words_node():

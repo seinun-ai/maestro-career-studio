@@ -7,6 +7,7 @@ import { AiModelSection } from "@/components/settings/ai-model-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { AutoApplySection } from "@/components/settings/auto-apply-section";
 import { CompanionFillSection } from "@/components/settings/companion-fill-section";
+import { DiagnosticsSection } from "@/components/settings/diagnostics-section";
 import { ConnectedAgentsCard } from "@/components/settings/connected-agents-card";
 import { ConnectAssistantCard } from "@/components/settings/connect-assistant-card";
 import { CompanionApplySection, FormFillingSection } from "@/components/settings/form-filling-section";
@@ -84,6 +85,7 @@ export default function SettingsPage({
               <PromptsSection />
               <QuickTailorSection />
               <HoursPerYearSection />
+              <DiagnosticsSection />
             </>
           ),
         }}

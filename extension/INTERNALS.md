@@ -2271,7 +2271,7 @@ Two things bound that:
    three standing-eligibility fields were chosen — can only ever mine *their
    own*.
 2. **`DELETE /api/autofill/telemetry` erases it**, surfaced in the web app as
-   **Analytics → Autofill coverage → Clear data**. It reports how many rows went
+   **Settings → Advanced → Autofill coverage → Clear data**. It reports how many rows went
    and it does *not* turn capture off — clearing history and opting out are two
    different decisions, and the button only makes the one you asked for.
 

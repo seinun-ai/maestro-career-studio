@@ -77,16 +77,16 @@ _WORDS = [
      "Most recent first."),
     # The Companion has no ⋯ menu. Capture is its fill log: off unless the user ticks
     # Keep a fill log in the Companion's options (extension/options.html).
-    ("components/analytics/autofill-coverage-card.tsx", "extension card's",
+    ("components/settings/autofill-coverage-card.tsx", "extension card's",
      "New fills are logged only while Keep a fill log is on in the Companion's options."),
-    ("components/analytics/autofill-coverage-card.tsx", "Recording continues while the Companion runs.",
+    ("components/settings/autofill-coverage-card.tsx", "Recording continues while the Companion runs.",
      "choose Options, and tick Keep a fill log."),
-    ("components/analytics/autofill-coverage-card.tsx", "⋯ menu", "You can't undo this."),
-    ("components/analytics/autofill-coverage-card.tsx", "where the extension's fill pipeline",
+    ("components/settings/autofill-coverage-card.tsx", "⋯ menu", "You can't undo this."),
+    ("components/settings/autofill-coverage-card.tsx", "where the extension's fill pipeline",
      "where the Companion's autofill misses."),
-    ("components/analytics/autofill-coverage-card.tsx", "with the extension to start capturing",
+    ("components/settings/autofill-coverage-card.tsx", "with the extension to start capturing",
      "The fill log is off unless you turn it on."),
-    ("components/analytics/autofill-coverage-card.tsx",
+    ("components/settings/autofill-coverage-card.tsx",
      "Use the Companion on an application form to start.",
      "right-click the Companion's toolbar icon"),
 ]

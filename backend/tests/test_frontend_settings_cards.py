@@ -257,6 +257,9 @@ def test_a_local_server_raises_no_warning():
 # --- Rhythm (Task 12, appendix C8) ---------------------------------------------
 
 _SETTINGS = sorted((_FRONTEND / "components/settings").glob("*.tsx"))
+# Diagnostics' Autofill coverage (owner decision D6) is the chart card Analytics had, moved as it was: a
+# ChartCard with a table, whose rows are ruled like every table's. The form-card rhythm is not its rule.
+_CHART_CARD = "autofill-coverage-card.tsx"
 
 
 def test_settings_cards_share_one_rhythm():
@@ -265,6 +268,8 @@ def test_settings_cards_share_one_rhythm():
     for path in _SETTINGS:
         src = path.read_text()
         name = path.name
+        if name == _CHART_CARD:
+            continue
         assert "AutosaveRow" not in src, name
         assert re.search(r'className="[^"]*\bm[tby]-\d', src) is None, name
         assert re.search(r"\b(?:sm|md|lg):grid-cols-", src) is None, name

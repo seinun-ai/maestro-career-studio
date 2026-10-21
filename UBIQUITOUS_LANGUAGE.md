@@ -76,7 +76,7 @@ and the screen speaks plainly ("item", "bullet", "Career history"). Do not
 | --- | --- | --- | --- |
 | **Autofill Profile** | The stored answers the extension fills application forms from | saved answers, under Profile › Autofill | profile, saved data |
 | **Autofill Rule** | A pattern that maps a form field to a profile answer | — | matcher, mapping, selector |
-| **Field Observation** | One record of what happened when the extension met one form field | Autofill coverage (Analytics) | telemetry row, event, log |
+| **Field Observation** | One record of what happened when the extension met one form field | Autofill coverage (Settings › Advanced) | telemetry row, event, log |
 | **Outcome** | What became of one field — a success, a failure, or neither | filled, missed (Autofill coverage); not accepted (the Companion) | result, status |
 | **Neutral Outcome** | An outcome that moves no rate, because declining to fill a field is not a failure | — | ignored, skipped |
 | **Saturation** | The point at which further capture stops revealing new field patterns | — | coverage, completeness |

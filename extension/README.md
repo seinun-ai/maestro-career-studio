@@ -246,7 +246,7 @@ Autofill decided each field. It includes the page's own option texts and which
 option was chosen, demographic (EEO) questions included, and never anything you
 typed or any text from your profile. The last 50 runs are kept.
 
-- **Clear it:** in the web app, **Analytics → Autofill coverage → Clear data**.
+- **Clear it:** in the web app, **Settings → Advanced → Autofill coverage → Clear data**.
   This deletes the records, the run traces and the list of fields the fill could
   not work (hosts and field shapes, never answers) but does not turn the log off.
   That list is only kept while the log is on.

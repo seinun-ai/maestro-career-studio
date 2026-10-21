@@ -188,7 +188,7 @@ switch. A fill that uses AI also keeps a run trace of how each field was
 decided: the page's own option texts and which option was chosen, demographic
 (EEO) questions included, never anything you typed or any text from your
 profile. The last 50 runs are kept. The same switch covers both, and nothing
-is recorded while it is off. **Analytics → Autofill coverage → Clear data**
+is recorded while it is off. **Settings → Advanced → Autofill coverage → Clear data**
 deletes the usage log and the run traces, and leaves only counters that hold
 no sites, labels or answers. Withdrawing your EEO consent does not remove
 traces already kept; Clear data does. Extension preferences (not career data)

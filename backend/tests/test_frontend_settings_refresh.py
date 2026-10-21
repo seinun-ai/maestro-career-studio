@@ -7,8 +7,8 @@
 - **Old links keep working.** Each `?tab=` value an older build wrote lands on the tab and card that
   hold it now, and every card id the old tabs named still opens a tab.
 
-Two board items are not here on purpose: Diagnostics' "Autofill coverage" and "Clear autofill data"
-arrive with Task 7.6, which moves the card and extends `_BOARD`.
+- **Diagnostics** (owner decision D6, Task 7.6): Autofill coverage and its Clear data moved from
+  Analytics to Settings › Advanced, the card's file with them (components/settings/).
 """
 
 from __future__ import annotations
@@ -128,6 +128,9 @@ _BOARD: list[tuple[str, str, tuple[str, ...]]] = [
     ("advanced", "Match summary and title", ('label: "Match your summary and title to the job"',)),
     ("advanced", "Add keywords to projects", ('label: "Add keywords to projects"',)),
     ("advanced", "Extra instruction", ("Extra instruction",)),
+    # Diagnostics (from Analytics › Overview, D6)
+    ("advanced", "Autofill coverage", ('title="Autofill coverage"',)),
+    ("advanced", "Clear autofill data", ('"Clear data"', 'title: "Clear captured autofill data?"')),
 ]
 
 # Connect an app: each command is the server's (backend/app/services/connect.py); the card renders
@@ -163,7 +166,7 @@ _EXTRA: list[tuple[str, str, tuple[str, ...]]] = [
 ]
 
 _TAB_ROW = re.compile(r'\{\s*value: "(\w+)",\s*label: "([^"]*)",\s*anchors: \[([^\]]*)\]')
-_IMPORT = re.compile(r'import\s*\{([^}]*)\}\s*from\s*"@/components/(settings/[\w-]+|analytics/autofill-coverage-card)"')
+_IMPORT = re.compile(r'import\s*\{([^}]*)\}\s*from\s*"@/components/(settings/[\w-]+)"')
 
 
 def _tabs() -> dict[str, tuple[str, list[str]]]:
@@ -215,12 +218,12 @@ def test_settings_has_the_four_tabs_by_purpose():
 
 
 def test_the_board_counts_match_the_plan():
-    """The board's Settings groups hold 23, 11, 26 and 22 items; Diagnostics' two arrive with 7.6."""
+    """The board's Settings groups hold 23, 11, 26 and 22 items."""
     counts = {group: 0 for group in ("basics", "companion", "agents", "advanced")}
     for group, _, _ in _BOARD:
         counts[group] += 1
     counts["agents"] += len(_CLIENTS)
-    assert counts == {"basics": 23, "companion": 11, "agents": 26, "advanced": 22 - 2}
+    assert counts == {"basics": 23, "companion": 11, "agents": 26, "advanced": 22}
 
 
 @pytest.mark.parametrize(("group", "label", "needles"), _BOARD + _EXTRA, ids=[f"{g}: {lbl}" for g, lbl, _ in _BOARD + _EXTRA])
@@ -270,6 +273,22 @@ def test_the_model_rows_are_the_three_everyday_jobs():
     ]
     result = run_node_test("lib/model-catalog.test.ts")
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_autofill_coverage_lives_under_diagnostics_not_analytics():
+    """D6: Settings › Advanced renders the card (Diagnostics, its own anchor), the file lives with the
+    settings cards, and no Analytics file imports it."""
+    assert not (_FRONTEND / "components/analytics/autofill-coverage-card.tsx").exists()
+    card = _read("components/settings/autofill-coverage-card.tsx")
+    assert "export function AutofillCoverageCard()" in card
+    section = _read("components/settings/diagnostics-section.tsx")
+    assert 'import { AutofillCoverageCard } from "@/components/settings/autofill-coverage-card";' in section
+    assert '<div id="diagnostics"' in section and "<AutofillCoverageCard />" in section
+    assert "<DiagnosticsSection />" in _panel("advanced")
+    assert "diagnostics" in _tabs()["advanced"][1]
+    for folder in ("app/analytics", "components/analytics", "components/explore", "components/charts"):
+        for path in (_FRONTEND / folder).rglob("*.ts*"):
+            assert "autofill-coverage-card" not in path.read_text(encoding="utf-8"), path.relative_to(_FRONTEND)
 
 
 # ------------------------------------------------------------------------ Old links
