@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests.node_ts import run_node_test
+
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 
@@ -120,3 +122,20 @@ def test_email_and_cover_letter_have_one_glyph_each():
     assert "CONCEPT_ICONS.email" in _CARD and "AtSign" not in _CARD
     assert "CONCEPT_ICONS.coverLetter" in _read("components/qa-tab.tsx")
     assert "CONCEPT_ICONS.email" in _read("components/career/profile-panel.tsx")
+
+
+def test_day_strip_node_suite():
+    """The 14-day strip buckets runs by the local calendar day, worst outcome first (design refresh, Task 0.7)."""
+    result = run_node_test("lib/day-strip.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_day_strip_is_round_status_dots_with_a_sentence_and_a_legend():
+    src = _read("components/visual/day-strip.tsx")
+    assert 'role="img"' in src and "aria-label={dayStripLabel(cells)}" in src
+    assert "rounded-full" in src and "rounded-corner" not in src  # round means status
+    for role in ("bg-success", "bg-warning", "bg-destructive", "bg-surface-container-high"):
+        assert role in src, role
+    assert "outcomeWord(" in src and "No report" in src  # the legend says each colour in words
+    assert 'export { DayStrip } from "./day-strip";' in _read("components/visual/index.ts")
+

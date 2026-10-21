@@ -1,5 +1,6 @@
 export { ActorChip, type ActorKind } from "./actor-chip";
 export { CheckDraw } from "./check-draw";
+export { DayStrip } from "./day-strip";
 export { DeltaChip } from "./delta-chip";
 export { DotMeter } from "./dot-meter";
 export { NextStep } from "./next-step";
