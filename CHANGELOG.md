@@ -238,6 +238,9 @@ a click.
 - **Work-permit answers from before stay with their country.** Moving where you live no longer hands
   the one set of answers you gave before per-country answers to the new country: they stay with the
   country they were read for, and a form in the new one asks.
+- **A save never puts one country's work-permit answers on another.** A page opened before you moved
+  where you live saves its answers to the country it showed them for, and a save that does not know
+  a country leaves that country's answers as they are.
 - **A bare "$" takes the job's country.** A Toronto job's "$80,000" is Canadian dollars, not US
   dollars. With no country it is your home currency, and either way the job notes the currency was
   assumed.

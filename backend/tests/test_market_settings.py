@@ -205,23 +205,40 @@ def test_non_eeo_market_can_reach_full_autofill_readiness():
     two-part hispanic_latino split. Counting it as required made 100% readiness
     unreachable for every non-US user, since those questions have no answer to
     give. Switching market must change the DENOMINATOR, not just hide the form.
+
+    Every answer but the diversity set is given, for both countries: work-permit answers are per
+    country, so this profile is its own and not whatever an earlier test left in the settings.
     """
-    client.put("/api/settings/market", json={"value": {"market": "US"}})
-    us = client.get("/api/setup/status").json()["autofill"]
-    assert "eeo" in us["groups"]
+    from app.services import setup_status
 
-    client.put("/api/settings/market", json={"value": {"market": "IN"}})
-    india = client.get("/api/setup/status").json()["autofill"]
-    assert "eeo" not in india["groups"], "EEO must not be required in a market with no module"
+    work_auth = {"status": "citizen", "authorized_now": True, "sponsorship_now": False, "sponsorship_future": False}
+    before = client.get("/api/settings/autofill").json()["value"]
+    client.put("/api/settings/autofill", json={"value": {
+        "personal": {key: "x" for key in setup_status._PERSONAL},
+        "preferences": {key: "x" for key in setup_status._PREFERENCES},
+        "work_auth_by_country": {"US": work_auth, "IN": work_auth},
+    }})
+    try:
+        client.put("/api/settings/market", json={"value": {"market": "US"}})
+        us = client.get("/api/setup/status").json()["autofill"]
+        assert "eeo" in us["groups"]
 
-    us_answerable = sum(g["answerable"] for g in us["groups"].values())
-    in_answerable = sum(g["answerable"] for g in india["groups"].values())
-    # The four US EEO fields leave the denominator, and so does the US visa status, which only a
-    # market whose work_auth_vocab is us_visa asks.
-    assert in_answerable == us_answerable - 4 - 1, "the four US EEO fields leave the denominator"
-    assert india["readiness"] >= us["readiness"]
+        client.put("/api/settings/market", json={"value": {"market": "IN"}})
+        india = client.get("/api/setup/status").json()["autofill"]
+        assert "eeo" not in india["groups"], "EEO must not be required in a market with no module"
 
-    client.put("/api/settings/market", json={"value": {"market": "US"}})
+        us_answerable = sum(g["answerable"] for g in us["groups"].values())
+        in_answerable = sum(g["answerable"] for g in india["groups"].values())
+        # The four US EEO fields leave the denominator, and so does the US visa status, which only a
+        # market whose work_auth_vocab is us_visa asks.
+        assert in_answerable == us_answerable - 4 - 1, "the four US EEO fields leave the denominator"
+        assert india["readiness"] == 1.0 > us["readiness"]
+    finally:
+        client.put("/api/settings/market", json={"value": {"market": "US"}})
+        had = before.get("work_auth_by_country") or {}
+        restore = {k: v for k, v in before.items() if k not in ("work_auth", "work_auth_market")}
+        restore["work_auth_by_country"] = {**had, "US": had.get("US"), "IN": had.get("IN")}
+        client.put("/api/settings/autofill", json={"value": restore})
 
 
 def test_capture_currency_follows_the_selected_market():

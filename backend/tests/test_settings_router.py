@@ -33,10 +33,11 @@ def test_autofill_endpoints_round_trip_json(db_session, tmp_path, monkeypatch, c
     assert empty.json() == {"key": "autofill_profile", "value": {}}
     assert put_response.status_code == 200
     # Work-permit answers are stored per country (the home market, US by default); a read serves
-    # them per country and, for an editor that knows one set, as `work_auth` too.
+    # them per country and, for an editor that knows one set, as `work_auth` too, with
+    # `work_auth_market` naming the market that set is for (never stored).
     stored = {"personal": profile["personal"], "custom": profile["custom"],
               "work_auth_by_country": {"US": profile["work_auth"]}}
-    assert get_response.json()["value"] == {**stored, "work_auth": profile["work_auth"]}
+    assert get_response.json()["value"] == {**stored, "work_auth": profile["work_auth"], "work_auth_market": "US"}
     import json
 
     assert json.loads((tmp_path / "autofill.json").read_text(encoding="utf-8")) == stored

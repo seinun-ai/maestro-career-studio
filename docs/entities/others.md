@@ -306,11 +306,16 @@
   answers, read through the typed `WorkAuth` reader. A profile from before holds one top-level `work_auth`: it is the home market's, mapped
   when READ and kept as written until a save (the veteran precedent) or a move of "You live in": `market_settings.set_market` first pins it,
   in the same session, to the home it was read as (`pin_legacy_work_auth`; dropped when that home has an entry of its own, since it was then
-  read for no country), so a new home never inherits it. A read serves `work_auth_by_country` and, for the clients that know
-  one set (the Companion's pause row, a peer that has not updated), `work_auth` as the home set; Profile and Setup edit the map and
-  send it without `work_auth`. A save stores `work_auth_by_country` alone: a `work_auth` that differs from the one the store would serve, or a save with no home
-  entry, is the home market's new answers; otherwise the map stands, so a client that knows every country leaves `work_auth` as served or
-  out. **Which set.** `countries.mentioned_in` reads the question: English names and aliases as whole words, without accents, in any case;
+  read for no country), so a new home never inherits it. A read serves `work_auth_by_country` and, for a client that knows one
+  set (the Companion's pause row, a page or peer that has not updated), `work_auth` as the home set, with
+  `work_auth_market` naming the market that set is for whenever the profile holds answers (a `/context` profile names the job's market,
+  null with none); the marker is never stored. Profile and Setup edit the map and send it without `work_auth`. A save stores
+  `work_auth_by_country` alone, merged by market: a market it sends replaces that market's answers (null removes them), one it leaves out
+  keeps them, since a client that does not know a country cannot have meant to remove its answers. A `work_auth` that differs from the
+  stored answers of the market its `work_auth_market` names, with the client's own map entry there unedited, is that market's new answers;
+  a marker that is null or unknown names none, and a save with no marker (a client from before it) is the home's only while no other
+  market has answers. So a client served under the old home and saving after a move writes the old home's entry, and no save puts one
+  country's answers over another's (`autofill_profile._as_stored`, pinned by `tests/test_autofill_work_auth_markets.py`). **Which set.** `countries.mentioned_in` reads the question: English names and aliases as whole words, without accents, in any case;
   a code only as "US" or "UK" in capitals ("CA", "DE" and "IN" are US states as often); "New Mexico", "Latin America" and "Georgia" name
   nothing; the longer name wins ("Northern Ireland" is the UK). One named country gives its market's answers; one with no market or no
   answers, or two countries ("the United States or Canada"), gives none; none named gives the job's (`markets.for_country(country_code)`);

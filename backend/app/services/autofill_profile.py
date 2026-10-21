@@ -16,9 +16,11 @@ country's answers. A profile from before holds one `work_auth`: it is the home
 market's, mapped when read and kept as written until the user saves (the veteran
 precedent below), or until the home moves, which first pins it to the home it was
 read as (`pin_legacy_work_auth`). What a read returns carries both:
-`work_auth_by_country`, and `work_auth` as the home market's set, for the editors
-and the Companion's pause row that know one set. Which set a form gets is `autofill_country`'s rule. Migration
-state: SYSTEM.md §13 `autofill-work-auth-by-country`.
+`work_auth_by_country`, and `work_auth` as the home market's set for a client that
+knows one set, with `work_auth_market` naming the market that set is for; a save
+folds an edited `work_auth` into the market its client names (`_as_stored`). Which
+set a form gets is `autofill_country`'s rule. Migration state: SYSTEM.md §13
+`autofill-work-auth-by-country`.
 """
 
 import json
@@ -28,12 +30,14 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_profile import WorkAuth
-from app.services import text_settings
+from app.services import markets, text_settings
 
 AUTOFILL_KEY = "autofill_profile"
 AUTOFILL_FILE = "autofill.json"
 WORK_AUTH = "work_auth"
 BY_COUNTRY = "work_auth_by_country"
+# The market the `work_auth` beside it is for: served on a read, never stored.
+WORK_AUTH_MARKET = "work_auth_market"
 
 # A profile is "new shape" if it carries ANY typed key. Detecting on one or two
 # chosen keys would send a profile holding only `sponsorship_now` down the
@@ -101,31 +105,79 @@ def work_auth_entries(profile: Any, home: str | None) -> dict[str, dict[str, Any
 
 
 def _with_work_auth_by_country(data: dict[str, Any], home: str | None) -> dict[str, Any]:
-    """The read view: every market's answers under `work_auth_by_country`, and `work_auth` as the
-    home market's (absent when it has none)."""
+    """The read view: every market's answers under `work_auth_by_country`, `work_auth` as the home
+    market's (absent when it has none), and `work_auth_market` naming the home whenever the profile
+    holds any work-permit answers, so a client that adds or edits the one set says whose it is."""
     entries = work_auth_entries(data, home)
-    view = {k: v for k, v in data.items() if k not in (WORK_AUTH, BY_COUNTRY)}
+    view = {k: v for k, v in data.items() if k not in (WORK_AUTH, BY_COUNTRY, WORK_AUTH_MARKET)}
     if entries:
         view[BY_COUNTRY] = entries
+        if home:
+            view[WORK_AUTH_MARKET] = home
     if home in entries:
         view[WORK_AUTH] = dict(entries[home])
     return view
 
 
+def _sent_entries(sent: Any) -> dict[str, dict[str, Any] | None]:
+    """A save's `work_auth_by_country` by market ("uk " is "UK"): an object is that market's answers,
+    anything else (null) removes them."""
+    if not isinstance(sent, dict):
+        return {}
+    return {
+        str(key).strip().upper(): dict(value) if isinstance(value, dict) else None
+        for key, value in sent.items()
+        if str(key).strip()
+    }
+
+
+def _one_set_market(profile: dict[str, Any], answered: set[str], home: str | None) -> str | None:
+    """The market a save's one `work_auth` set is for, or None when that cannot be told.
+
+    The market the client names (`work_auth_market`, as a read served it), when it is one this store
+    knows; a marker that is null (a /context profile for a job with no country), empty or unknown names
+    none. A client from before the marker names nothing: its set is the home's, as it always was, but
+    only while no other market has answers (`answered`); once one does, the set could be either and
+    the stored answers stand. Never a guess."""
+    if WORK_AUTH_MARKET in profile:
+        mark = profile[WORK_AUTH_MARKET]
+        key = mark.strip().upper() if isinstance(mark, str) else ""
+        return key if markets.is_supported(key) else None
+    return home if home and not (answered - {home}) else None
+
+
 def _as_stored(profile: dict[str, Any], before: dict[str, Any], home: str | None) -> dict[str, Any]:
-    """What a save stores: `work_auth_by_country` alone. A client that knows one set (the Settings
-    editor, the Companion's pause row, a peer that has not updated) edits `work_auth`, the home set it
-    was served: when that differs from what the store would serve now (`before`), or the client sent
-    no home entry, it is the home market's new answers. Otherwise the per-country map stands, so a
-    client that knows every country leaves `work_auth` as served, or out."""
-    entries = work_auth_entries({BY_COUNTRY: profile.get(BY_COUNTRY)}, None)
+    """What a save stores: `work_auth_by_country` alone, and never one market's answers written over
+    another's.
+
+    - **The map is merged by market.** A market the save sends replaces that market's answers (sent
+      as null, they go); a market it leaves out, or a save with no map at all, keeps its stored
+      answers: a client that does not know a country cannot have meant to remove them.
+    - **The one set goes to the market it names.** A client that knows one set (the Companion's pause
+      row, an older page) edits `work_auth`, the set a read served beside `work_auth_market`. When it
+      differs from that market's stored answers (`before`), and the client's own map entry for that
+      market is not an edit of its own, it is that market's new answers (`_one_set_market`; no market,
+      no fold). So a client served under the old home, saving after a move, writes the old home's
+      entry, and a client that knows every country leaves `work_auth` as served, or out."""
+    stored = work_auth_entries(before, None)
+    sent = _sent_entries(profile.get(BY_COUNTRY))
+    entries = dict(stored)
+    for market, answers in sent.items():
+        if answers is None:
+            entries.pop(market, None)
+        else:
+            entries[market] = answers
     single = profile.get(WORK_AUTH)
-    if home and isinstance(single, dict) and (single != before.get(WORK_AUTH) or home not in entries):
-        entries[home] = dict(single)
-    stored = {k: v for k, v in profile.items() if k not in (WORK_AUTH, BY_COUNTRY)}
+    if isinstance(single, dict):
+        answered = {m for m, answers in {**stored, **sent}.items() if answers}
+        market = _one_set_market(profile, answered, home)
+        unedited_in_map = sent.get(market, stored.get(market)) == stored.get(market)
+        if market and single != stored.get(market) and unedited_in_map:
+            entries[market] = dict(single)
+    out = {k: v for k, v in profile.items() if k not in (WORK_AUTH, BY_COUNTRY, WORK_AUTH_MARKET)}
     if entries:
-        stored[BY_COUNTRY] = entries
-    return stored
+        out[BY_COUNTRY] = entries
+    return out
 
 
 def _home(session: Session | None) -> str:

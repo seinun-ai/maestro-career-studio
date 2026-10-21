@@ -98,10 +98,12 @@ def entry(profile: Any, market: str | None, home: str | None = None) -> dict[str
 
 def with_work_auth(profile: Any, market: str | None, home: str | None = None) -> Any:
     """The profile with `work_auth` set to one market's answers, so every reader downstream
-    (the catalog, the Companion's deterministic fill) stays country-blind."""
+    (the catalog, the Companion's deterministic fill) stays country-blind, and `work_auth_market`
+    naming that market (None: no market, so no country's answers)."""
     if not isinstance(profile, dict):
         return profile
-    return {**profile, autofill_profile.WORK_AUTH: entry(profile, market, home)}
+    return {**profile, autofill_profile.WORK_AUTH: entry(profile, market, home),
+            autofill_profile.WORK_AUTH_MARKET: market}
 
 
 def work_auth_for(profile: Any, *, question: str, job_country: str | None,
