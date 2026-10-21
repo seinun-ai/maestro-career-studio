@@ -6,7 +6,7 @@ export type NavBadge = { text: string; spoken: string };
 /** The sidebar badge for a count. Hidden (null) at 0, and while the count is
  *  unknown (loading, failed, or the server-rendered fallback), so it never
  *  claims a number it does not have. "99+" past 99. `spoken` completes the
- *  link's accessible name: "Agent inbox, 3 need you". */
+ *  link's accessible name: "Today, 3 need you". */
 export function needsYouBadge(count: number | null | undefined): NavBadge | null {
   if (count == null || !Number.isFinite(count) || count < 1) return null;
   const n = Math.floor(count);

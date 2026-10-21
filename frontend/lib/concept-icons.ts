@@ -5,7 +5,7 @@
 import {
   Ban, BarChart3, BookOpen, BookPlus, Bot, BriefcaseBusiness, CalendarClock, CircleCheck, CircleDashed,
   CircleHelp, CircleX, Ellipsis, FileInput, FileOutput, FilePen, FileText, FolderGit2, FolderOpen, Handshake,
-  HeartPulse, IdCard, Inbox, Laptop, LayoutTemplate, Layers, Lock, Merge, MessageSquare, Minus, Paperclip,
+  HeartPulse, Hourglass, House, IdCard, Inbox, Laptop, LayoutTemplate, Layers, Lock, Merge, MessageSquare, Minus, Paperclip,
   Mail, RefreshCw, RotateCcw, ScanSearch, School, ScrollText, SendHorizontal, Settings, SkipForward, Sparkles, Tags, TextQuote,
   ThumbsUp, TrendingDown, TrendingUp, TriangleAlert, UserRound, Wand2, Workflow,
   type LucideIcon,
@@ -13,6 +13,7 @@ import {
 
 export const CONCEPT_ICONS = {
   // Sections (the sidebar's icons win: they were learned first).
+  today: House,
   jobs: Inbox,
   // Bot means "agents" (D1): the Agent inbox and connected agents share it; never add a second Bot key.
   agentInbox: Bot,
@@ -58,6 +59,8 @@ export const CONCEPT_ICONS = {
   none: Minus,
   locked: Lock,
   scheduled: CalendarClock,
+  // Sent and waiting to hear back (Today's "No reply after 14 days").
+  waiting: Hourglass,
   increase: TrendingUp,
   decrease: TrendingDown,
   // Actions.

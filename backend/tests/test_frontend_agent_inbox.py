@@ -503,7 +503,9 @@ def test_the_badge_hides_at_zero_and_caps_at_99():
 def test_the_count_is_in_the_link_name_and_not_read_twice():
     sidebar = _sidebar()
     assert "const needsYou = needsYouBadge(useNeedsYouCount());" in sidebar
-    assert 'badges={{ "/proposals": needsYou }}' in sidebar
+    # The count sits on Today, the home page (design refresh, Task 6.2), and on no other row.
+    assert 'badges={{ "/today": needsYou }}' in sidebar
+    assert '"/proposals": needsYou' not in sidebar
     # The words are the link's name. Browser-found: an sr-only span, out of
     # flow, made Chrome's name "Agent inbox , 3 need you".
     assert "aria-label={badge ? `${item.label}, ${badge.spoken}` : undefined}" in sidebar

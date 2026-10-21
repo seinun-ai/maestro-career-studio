@@ -7,7 +7,7 @@ import { NEEDS_YOU_STATUSES } from "@/lib/inbox-lanes";
 import type { ProposalListResponse } from "@/lib/types";
 
 /**
- * How many proposals wait on the user, for the sidebar's Agent inbox badge.
+ * How many proposals wait on the user, for the badge on the sidebar's Today row.
  *
  * `limit=1`: the list endpoint counts the whole filtered set in `total` before
  * paging, after the same lazy expiry as the inbox. The key sits under

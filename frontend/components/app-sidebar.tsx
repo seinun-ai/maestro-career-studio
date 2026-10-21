@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useId, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { FilePlus2, type LucideIcon } from "lucide-react";
+import { ChevronRight, FilePlus2, type LucideIcon } from "lucide-react";
 
 import {
   Sidebar,
@@ -11,7 +11,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -31,31 +30,22 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
-const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
-  {
-    label: "Job search",
-    items: [
-      { href: "/applications", label: "Jobs", icon: CONCEPT_ICONS.jobs },
-      { href: "/proposals", label: "Agent inbox", icon: CONCEPT_ICONS.agentInbox },
-      { href: "/automations", label: "Automations", icon: CONCEPT_ICONS.automations },
-      { href: "/referrals", label: "Referrals", icon: CONCEPT_ICONS.referrals },
-    ],
-  },
-  {
-    label: "Career library",
-    items: [
-      { href: "/career", label: "Career history", icon: CONCEPT_ICONS.careerHistory },
-      { href: "/base-resumes", label: "Base resumes", icon: CONCEPT_ICONS.baseResume },
-      { href: "/templates", label: "Templates", icon: CONCEPT_ICONS.templates },
-    ],
-  },
-  {
-    label: "Tools",
-    items: [
-      { href: "/chat", label: "Assistant", icon: CONCEPT_ICONS.assistant },
-      { href: "/analytics", label: "Analytics", icon: CONCEPT_ICONS.analytics },
-    ],
-  },
+// Today first, then the pages a job search lives on (board "Today page"). The rarer tools fold under
+// More tools; Profile and Settings sit in the footer. A new route goes in one of these lists.
+const MAIN_ITEMS: NavItem[] = [
+  { href: "/today", label: "Today", icon: CONCEPT_ICONS.today },
+  { href: "/applications", label: "Jobs", icon: CONCEPT_ICONS.jobs },
+  { href: "/proposals", label: "Agent inbox", icon: CONCEPT_ICONS.agentInbox },
+  { href: "/base-resumes", label: "Base resumes", icon: CONCEPT_ICONS.baseResume },
+  { href: "/career", label: "Career history", icon: CONCEPT_ICONS.careerHistory },
+  { href: "/analytics", label: "Analytics", icon: CONCEPT_ICONS.analytics },
+];
+
+const MORE_TOOLS: NavItem[] = [
+  { href: "/automations", label: "Automations", icon: CONCEPT_ICONS.automations },
+  { href: "/referrals", label: "Referrals", icon: CONCEPT_ICONS.referrals },
+  { href: "/templates", label: "Templates", icon: CONCEPT_ICONS.templates },
+  { href: "/chat", label: "Assistant", icon: CONCEPT_ICONS.assistant },
 ];
 
 const ACCOUNT_ITEMS: NavItem[] = [
@@ -138,20 +128,56 @@ function MainNav({ pathname, from }: { pathname: string; from: string | null | u
           Add job
         </Link>
       </div>
-      {NAV_GROUPS.map((group) => (
-        <SidebarGroup key={group.label}>
-          <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <NavMenu
-              items={group.items}
-              pathname={pathname}
-              from={from}
-              badges={{ "/proposals": needsYou }}
-            />
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <NavMenu
+            items={MAIN_ITEMS}
+            pathname={pathname}
+            from={from}
+            badges={{ "/today": needsYou }}
+          />
+        </SidebarGroupContent>
+      </SidebarGroup>
+      <MoreTools pathname={pathname} from={from} />
     </nav>
+  );
+}
+
+/** The rarer tools behind one disclosure row. Untouched, it is open on a page it holds, so the current
+ *  page is never folded out of sight; once pressed, it keeps what you chose from page to page. */
+function MoreTools({ pathname, from }: { pathname: string; from: string | null | undefined }) {
+  const panelId = useId();
+  const holdsCurrent = MORE_TOOLS.some((item) => navCurrent(pathname, item.href, from) !== undefined);
+  const [open, setOpen] = useState<boolean | null>(null);
+  const expanded = open ?? holdsCurrent;
+  return (
+    <SidebarGroup className="pt-0">
+      <SidebarGroupContent>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              type="button"
+              aria-expanded={expanded}
+              aria-controls={panelId}
+              onClick={() => setOpen(!expanded)}
+              className="text-muted-foreground"
+            >
+              <ChevronRight
+                aria-hidden="true"
+                className={cn(
+                  "transition-[rotate] duration-(--duration-short3) ease-standard",
+                  expanded && "rotate-90",
+                )}
+              />
+              <span>More tools</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <div id={panelId} hidden={!expanded}>
+          <NavMenu items={MORE_TOOLS} pathname={pathname} from={from} />
+        </div>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 
@@ -180,8 +206,8 @@ function NavMenu({
                 <Link
                   href={item.href}
                   aria-current={current}
-                  // The count in words, in the name: "Agent inbox, 3 need
-                  // you". Starts with the visible label (WCAG 2.5.3). Not an
+                  // The count in words, in the name: "Today, 3 need you".
+                  // Starts with the visible label (WCAG 2.5.3). Not an
                   // sr-only span: out of flow, Chrome joined it as "Agent
                   // inbox , 3 need you".
                   aria-label={badge ? `${item.label}, ${badge.spoken}` : undefined}

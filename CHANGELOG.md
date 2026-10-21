@@ -44,6 +44,13 @@ a click.
 
 ### Added
 
+- **Today is the home page.** Maestro now opens on Today: the one thing that matters most (an offer to
+  answer, the ready resume with the best match, or your agent's question) with its one button and the
+  dates of the steps behind it, three counts (agent jobs to review, tailored resumes to check, no reply
+  after 14 days) that open their lists, the rest behind one row, and this week's applications as bars
+  with replies and interviews. Pay reads in your home currency. A new user without an API key or a
+  resume sees the two setup steps there instead. The sidebar leads with Today, which now carries the
+  Needs you count, and folds Automations, Referrals, Templates and the Assistant under **More tools**.
 - **Wordings on every bullet.** A bullet that a resume words differently, that an older resume copy
   still carries, that was combined into it or that came from an imported resume shows an **N wordings**
   chip. It opens **Wordings of this bullet**: **Use as the main wording** makes that phrasing the
@@ -91,6 +98,11 @@ a click.
   another currency shows the posted amount under it, and pay whose post named no currency says how it
   was read ("Pay read as Canadian dollars, job is in Canada"). On Jobs, a status other than Applied
   shows the day it began.
+- **Motion where something happens.** A status you change fades into its new name, then the chip
+  pulses once. Where the AI is writing (a new wording, your answers, a cover letter) three dots say so
+  instead of a spinner, and "Saved" draws its check. Opening a job from Jobs carries its monogram and
+  title into the job page, and back. Nothing moves when you use the keyboard, and with reduced motion
+  the pair fades in place.
 - **Automations show only what runs reported.** A three-step strip says how it works (copy a prompt,
   your agent schedules it, each run reports here) in place of the subtitle. An automation that reported
   in the last 14 days is a **Reporting** card: a dot per day, its newest report in one line ("2 hours ago

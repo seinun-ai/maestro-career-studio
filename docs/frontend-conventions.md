@@ -1109,20 +1109,41 @@
   (`useModKey`) and `aria-keyshortcuts="Meta+B Control+B"`, and each names
   what a press does, never the mechanism: "Hide sidebar" in the sidebar,
   "Show sidebar" on the reveal pill, and `SidebarTrigger`'s own name follows
-  the open state. Groups:
-  **Job search** (Jobs, Agent inbox, Automations, Referrals), **Career library** (Career history,
-  Base resumes, Templates), **Tools** (Assistant, Analytics); the pinned button
-  above the groups is **Add job**; Profile + Settings
-  pinned in `SidebarFooter`. The Agent inbox item carries a Needs-you count:
+  the open state. The order (board "Today page"): **Add job** pinned above; then **Today**, Jobs,
+  Agent inbox, Base resumes, Career history and Analytics, with no group labels (`MAIN_ITEMS`); then
+  **More tools**, a disclosure row (`aria-expanded`, `aria-controls`, the list `hidden` while closed)
+  holding Automations, Referrals, Templates and Assistant (`MORE_TOOLS`). Until it is pressed it is
+  open on a page it holds, so the current row is never folded out of sight; once pressed it keeps
+  that choice from page to page. Profile + Settings are pinned in `SidebarFooter`. The Today item
+  carries the Needs-you count (moved from the Agent inbox row, never on both):
   it counts the Needs you lane's statuses (`NEEDS_YOU_STATUSES`, `lib/inbox-lanes.ts`),
   `needsYouBadge` (`lib/needs-you.ts`) hides it at 0 or while unknown, the pill
-  is `aria-hidden` and the link's `aria-label` reads "Agent inbox, N need you"
+  is `aria-hidden` and the link's `aria-label` reads "Today, N need you"
   (an sr-only span, out of flow, made Chrome's name "Agent inbox , N…"); it
   polls every 60 s (a connected agent changes proposals outside the tab), and
   its `attention` pair is measured on all four row states
-  (`test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state`). Add new routes to the right group in
-  `components/app-sidebar.tsx` (`NAV_GROUPS`), not a flat list. Pinned by
-  `test_frontend_sidebar_nav.py` and `test_frontend_first_run.py`.
+  (`test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state`). A new route goes in `MAIN_ITEMS`
+  or `MORE_TOOLS` in `components/app-sidebar.tsx`. Pinned by
+  `test_frontend_sidebar_nav.py`, `test_frontend_today.py` and `test_frontend_first_run.py`.
+- **Today** (`app/today/page.tsx`, board "Today page") is the home page: `app/page.tsx` redirects `/`
+  there. It makes one read, `GET /api/today` (`docs/entities/others.md`), with the browser's zone
+  name AND its offset (`tz`, `utc_offset_minutes`): a Windows install may have no zone database.
+  `lib/today.ts` holds the URL and the words (node-tested). The Lead is Next up, a `LeadCard` whose one
+  button is the view's one filled button: **Apply** (a ready PDF) and **Review the offer** open the
+  job's Apply step (`?tab=qa`); **Answer** (or **See what it needs** for a stopped agent) opens the
+  job from the Agent inbox (`?from=proposals`), on the agent's card. It carries the base resume's
+  square (D2), pay through `formatPay` with the posted amount under a converted figure (D8), and
+  "Where this job is": only the steps the server dates, then the move the button makes. Also today
+  is up to three cards with `NumberRoll` counts, each a link to its list; the rest is one "N more"
+  `Fold` whose summary says what it holds, each row a `NextStep`; This week is seven bars
+  (`chart-1`, one `role="img"` sentence) with replies and interviews. The server leaves zero counts
+  out and the page draws only what came. With nothing next, a new user with no API key or no career
+  history (`needsSetup`) sees Setup's entry card (`components/setup/setup-entry-card.tsx`: the two
+  required steps of `setup-steps.ts`, its button the first one not done); everyone else sees
+  "Nothing waiting on you." While setup status loads the lead is a skeleton (never one card, then
+  the other); a failed read of it falls through to that line. A failed Today read is
+  `LoadErrorState`, never the empty line. Pinned by `test_frontend_today.py`, which runs
+  `components/today/today-page.test.mjs` (the page rendered with seeded reads).
 - **Tracker filter** (`app/applications/page.tsx`): the page runs two queries, the summary list
   (job fields joined on the server) and the saved jobs of the source toggle's source. "Saved" is a
   job with no application; agent-captured jobs stay out unless the toggle is **Agents**, which is
@@ -1457,7 +1478,7 @@
     then what it replaces:
     **Career history** (the page; "your career history" in prose), never
     Career KB, KB, Knowledge Base, library, career record or career data; the
-    sidebar group stays **Career library** and the file-size unit KB stays.
+    file-size unit KB stays.
     **item** (one thing in your career history, such as a job, a project or a
     school, or one row in a resume section), never entity, record or entry;
     adding one is **Add item**. **bullet** (one line in an item), never
@@ -2003,12 +2024,23 @@ Every action answers. The answer depends on where the effect lands:
   unmounts after `ROW_EXIT_MS`.
 - **Motion budget.** Nothing runs longer than 400ms except the 1.2s confirmation hold and the two loops that say
   "still going" (the shimmer, 1400ms, and the working dots, 900ms, each `infinite`); no bounce. The timings
-  are `CONFIRM_HOLD_MS`, `CONFIRM_MS`, `ROW_EXIT_MS` and `ROLL_MS` in `lib/motion.ts`; import them. A variant (`data-x:`)
+  are `CONFIRM_HOLD_MS`, `CONFIRM_MS`, `ROW_EXIT_MS`, `ROLL_MS` and `FADE_MS` in `lib/motion.ts`; import them. A variant (`data-x:`)
   applies only to a registered `@utility` in `globals.css` (`animate-confirm` and `animate-check-draw` are two); a
   transition list names `translate`, `scale` or `rotate`, never `transform`; an M3 duration or a custom curve lives in
   `:root`, so it is written `duration-(--duration-short3)` and `ease-(--ease-out-strong)` (the bare name compiles to
   nothing). Reduced motion is the global rule in `globals.css` for CSS motion (the working dots hold still, the check
-  is drawn at once), and `useCountUp` and `NumberRoll` check `prefers-reduced-motion` themselves in JS.
+  is drawn at once), and `useCountUp` and `NumberRoll` check `prefers-reduced-motion` themselves in JS. Motion goes
+  where something happens (design refresh Task 4.5): a StatusChip's label cross-fades with a 2px blur
+  (`animate-status-in`/`-out`, `FADE_MS`), then pulses once it settles; a region that waits on the AI shows
+  `WorkingDots` (a button keeps its `pending` spinner); "Saved" draws its check (`CheckDraw`); a whole number that
+  changes in place rolls (`NumberRoll`) and the Match score's decimal counts (`useCountUp`). A Jobs row opens into the
+  job page with a View Transition (React's `ViewTransition`, no flag in Next 16.3) that names only the monogram and the
+  title (`components/job-morph.tsx`, `lib/view-transition.ts` `morphName`, `default="none"` with `share`), 250ms;
+  the page itself swaps without a fade, nothing slides, back navigation morphs by name, and under reduced motion the
+  pair fades in place (`::view-transition-group(*)` loses its animation). While a job's detail loads, its header draws
+  the title and company a Jobs list holds (`hooks/use-cached-job-heading.ts`), so the pair is on the page in the
+  navigation's first frame. Keyboard actions never animate: a row opened with Enter drops its names first
+  (`flushSync`), and no key handler starts motion. Pinned by `test_frontend_motion.py`.
 - **A button, an input, every state.** Rest, hover, focus (solid ring), pressed (0.97), `pending`, disabled
   (with the reason tied by `aria-describedby`), and for a field `aria-invalid` (error) or `data-warning`
   (warning, never blocks a save).

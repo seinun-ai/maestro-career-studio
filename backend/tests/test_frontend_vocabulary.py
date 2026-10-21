@@ -115,7 +115,7 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("career record", re.compile(r"\bcareer (?:record|facts|data)\b", re.I), "career history"),
     ("KB point", re.compile(r"\b(?:draft|approved|career|new|unapproved) points?\b|\bpoint\(s\)", re.I), "bullet"),
     ("entry", re.compile(r"\bentr(?:y|ies)\b", re.I), "item"),
-    ("library", re.compile(r"\blibrary\b", re.I), "career history (the sidebar group is Career library)"),
+    ("library", re.compile(r"\blibrary\b", re.I), "career history"),
     ("posting", re.compile(r"\bpostings?\b", re.I), "job or job post"),
     ("as-is", re.compile(r"\bas-is\b", re.I), "as is"),
     ("find gaps", re.compile(r"\bfind (?:the )?gaps\b", re.I), "Analyze gaps"),
@@ -146,8 +146,6 @@ _ALLOWED: frozenset[tuple[str, str]] = frozenset(
         # The ONE sentence that says what the Companion is (appendix A8):
         # "Companion, the Maestro CS browser extension".
         ("frontend/components/settings/connected-agents-card.tsx", "browser extension"),
-        # The sidebar group that holds Career history, Base resumes and Templates.
-        ("frontend/components/app-sidebar.tsx", "library"),
         # The health report's Fixed list: this visit's fixes, not a gap analysis.
         ("frontend/components/resume-health/done-tab.tsx", "session"),
         # A COUNT of actual applications (linked to a referral; one base
