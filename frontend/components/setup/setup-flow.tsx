@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { LoadErrorState } from "@/components/load-error-state";
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { useEeoConsentQuery } from "@/components/profile/diversity-consent";
+import { useAutofillQuery } from "@/components/profile/use-autofill-query";
 import { useOpenAIInfo } from "@/components/settings/models-section";
 import { SetupAnswersStep } from "@/components/setup/setup-answers-step";
 import { SetupDone } from "@/components/setup/setup-done";
@@ -76,10 +77,8 @@ export function SetupFlow() {
     queryKey: ["settings", "job-preferences"],
     queryFn: () => apiFetch<SettingEnvelope<JobPreferences>>("/api/settings/job-preferences"),
   });
-  const profile = useQuery({
-    queryKey: ["settings", "autofill"],
-    queryFn: () => apiFetch<SettingEnvelope<AutofillProfile>>("/api/settings/autofill"),
-  });
+  // Read again on coming back to the tab: the Companion learns answers into it from another window.
+  const profile = useAutofillQuery();
   const consent = useEeoConsentQuery();
   const queries = [status, info, market, prefs, profile, consent];
   const loadFailed = queries.some((q) => isLoadFailure(q));

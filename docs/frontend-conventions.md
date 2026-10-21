@@ -1200,7 +1200,10 @@
   per apply-in country under its name, worded by the market's `work_auth_vocab` (the visa status only for
   `us_visa`), each answer that country's own entry in `work_auth_by_country`. Every answer saves as you go
   (`AutofillProfileProvider`: one `useAutosave` for the answers, whose status shows in the editor that made
-  the last edit, and `adopt` takes another writer's change only while every edit is on the server); the
+  the last edit). The Companion's pause row learns answers into the same profile from another window and a
+  save sends the whole profile, so the answers are read again each time you come back to the tab
+  (`autofillQuery`, `refetchOnWindowFocus: "always"`: a learn within the 30 s a read stays fresh counts too)
+  and `adopt` takes that copy only while every edit is on the server; Setup's form answers do the same. The
   persona keeps Save and Discard, because a drafted persona is read before it is saved. A deep link
   (`anchorHref("/profile", card)` is `/profile#card`, an old `?tab=autofill#…` bookmark too) opens the tile
   or fold that holds the card (`useProfileSections`, the hash), and the page's one `useFocusSection` lands

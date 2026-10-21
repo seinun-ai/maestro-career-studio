@@ -135,6 +135,15 @@ export function SetupAnswersStep({
   });
   // Each country's legacy pair read as typed answers, as Profile edits them.
   const answers = useAutosave<AutofillProfile>(profileForEditing(profile), (next) => save.mutateAsync(next));
+  // A newer copy (the Companion learned an answer while this tab was away) is taken only while every edit is
+  // on the server, as Profile does: the next save carries it rather than erasing it.
+  const seen = useRef(profile);
+  const { adopt } = answers;
+  useEffect(() => {
+    if (profile === seen.current) return;
+    seen.current = profile;
+    adopt(profileForEditing(profile));
+  }, [profile, adopt]);
   const current = questions[question];
   const questionRef = useRef<HTMLHeadingElement>(null);
   const shown = useRef(question);

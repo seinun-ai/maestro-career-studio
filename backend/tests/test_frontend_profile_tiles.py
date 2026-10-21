@@ -121,6 +121,30 @@ def test_the_answers_save_as_you_go():
     assert "pending: answers.pending && last === surface" in provider
 
 
+def test_an_open_page_reads_the_answers_again_when_you_come_back():
+    """The Companion's pause row learns answers into the profile from another window, and Profile and Setup save
+    the WHOLE profile: one that kept its old copy would erase a learned answer on its next edit. So each reads it
+    again on focus (`"always"`, since a learn within the 30 s a read stays fresh would be skipped by `true`) and
+    takes the new copy only while every edit is on the server (`adopt`)."""
+    result = run_node_test("components/profile/use-autofill-query.test.mjs")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'refetchOnWindowFocus: "always",' in _src("components/profile/use-autofill-query.ts")
+    for rel in ("components/profile/profile-view.tsx", "components/setup/setup-flow.tsx"):
+        assert "useAutofillQuery()" in _src(rel), rel
+    # No second query on the key that could miss the rule.
+    others = [
+        str(path.relative_to(_FRONTEND))
+        for tree in ("app", "components", "lib", "hooks")
+        for path in sorted((_FRONTEND / tree).rglob("*.ts*"))
+        if path.name != "use-autofill-query.ts" and 'queryKey: ["settings", "autofill"]' in path.read_text(encoding="utf-8")
+    ]
+    assert others == [], others
+    provider = _src("components/profile/autofill-profile.tsx")
+    assert "adopt(profileForEditing(served));" in provider
+    setup = _src("components/setup/setup-answers-step.tsx")
+    assert "if (profile === seen.current) return;" in setup and "adopt(profileForEditing(profile));" in setup
+
+
 def test_every_profile_editor_stays_mounted_and_the_persona_keeps_its_save():
     """One open tile at a time, each editor kept mounted while closed (typed drafts and leave guards survive).
     The persona keeps Save and Discard: a drafted persona is read before it is saved (inv-drafted-answers)."""
