@@ -1,5 +1,5 @@
 import { outcomeWord, type RunOutcome } from "@/lib/agent-runs";
-import { dayStrip, dayStripLabel } from "@/lib/day-strip";
+import { STRIP_DAYS, dayStrip, dayStripLabel } from "@/lib/day-strip";
 import { cn } from "@/lib/utils";
 
 const DOT: Record<RunOutcome, string> = { ok: "bg-success", partial: "bg-warning", failed: "bg-destructive" };
@@ -10,7 +10,7 @@ const EMPTY = "bg-surface-container-high";
  * the left and today on the right: the day's worst outcome, or an empty dot for no report. Only
  * what the runs reported: Maestro schedules nothing, so an empty day is not a miss. The strip is one
  * `role="img"` sentence; the legend under it names each colour that appears, in words. */
-export function DayStrip({ runs, today = new Date(), days = 14, className }: {
+export function DayStrip({ runs, today = new Date(), days = STRIP_DAYS, className }: {
   runs: readonly { finished_at: string; outcome: RunOutcome }[];
   today?: Date;
   days?: number;

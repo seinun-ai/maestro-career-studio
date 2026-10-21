@@ -1521,8 +1521,8 @@
     through `lib/agent-name.ts`, never printed raw. Bare "Agent" appears only
     in Agent inbox, the source toggle's "Agents" and Agent pipeline. The
     **Automations** page calls the app a user runs a prompt in an **agent app**,
-    never naming one, and each card **Scheduled** or
-    **Attended** (or Custom); it copies a prompt and never promises to run one.
+    never naming one; a card's status is what its runs **reported** (Reporting, No reports yet), never
+    a schedule; it copies a prompt and never promises to run one.
     **Agent
     inbox** (`/proposals`), never Agent proposals; its lanes are **Needs
     you**, **To review**, **Queued**, **Applying** and **History** (one table,

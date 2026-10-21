@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dayStrip, dayStripLabel } from "./day-strip.ts";
+import { STRIP_DAYS, dayStrip, dayStripLabel, reportedInStrip } from "./day-strip.ts";
 
 test("one cell per local day, the worst outcome wins a day, empty days stay empty", () => {
   const today = new Date("2026-10-20T12:00:00");
@@ -45,4 +45,13 @@ test("the sentence counts days with a report and names what was not done", () =>
     dayStripLabel(dayStrip([run("20", "ok"), run("19", "partial"), run("18", "failed"), run("17", "ok")], today, 14)),
     "Last 14 days: a report on 4 days, 1 failed, 1 partly done",
   );
+});
+
+test("an automation is reporting while a run sits in the strip, and the strip is 14 days", () => {
+  const today = new Date("2026-10-20T12:00:00");
+  assert.equal(STRIP_DAYS, 14);
+  assert.equal(reportedInStrip([], today), false);
+  assert.equal(reportedInStrip([{ finished_at: "2026-10-07T09:00:00", outcome: "failed" }], today), true);
+  // The day before the strip's first day is out, like the strip itself.
+  assert.equal(reportedInStrip([{ finished_at: "2026-10-06T23:00:00", outcome: "ok" }], today), false);
 });

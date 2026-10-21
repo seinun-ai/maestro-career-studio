@@ -82,6 +82,13 @@ a click.
   waiting request open from one small icon, shown only when the job is not on this laptop, and an
   agent's question is one line, whole on hover. The Laptop / Bot word left the row with the Jobs
   table's Where column.
+- **Automations show only what runs reported.** A three-step strip says how it works (copy a prompt,
+  your agent schedules it, each run reports here) in place of the subtitle. An automation that reported
+  in the last 14 days is a **Reporting** card: a dot per day, its newest report in one line ("2 hours ago
+  · 3 updated · by Claude"), one Copy prompt and one link, **See in Agent inbox** when it proposed jobs or
+  **Last report** for its digest. The others are short rows under **No reports yet**. Recent runs and
+  "What each one never does" fold away, the Scheduled and Attended badges and Show prompt are gone, and
+  the connect note shows only until a first run reports. Counts read number first ("12 found, 4 proposed").
 - **Select in the Agent inbox.** Checkboxes no longer sit on every To review row. A quiet **Select**
   button turns them on across Needs you, To review, Queued and History, with Select all per lane, and a
   click on a row picks it. The bar at the bottom offers Queue, Skip or **Delete** (new for many rows at

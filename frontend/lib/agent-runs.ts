@@ -6,15 +6,31 @@ const COUNT_ORDER = ["found", "proposed", "tailored", "updated", "skipped", "nee
 
 function countWords(key: (typeof COUNT_ORDER)[number], n: number): string {
   if (key === "needs_you") return `${n} ${n === 1 ? "needs" : "need"} you`;
-  return `${key} ${n}`;
+  return `${n} ${key}`;
 }
 
-/** "Found 12 · proposed 4 · skipped 8": fixed order, zeros left out, first word capitalized. */
+/** "12 found, 4 proposed, 8 skipped": the number first, a fixed order, zeros left out. */
 export function countsLine(counts: Record<string, number>): string {
   const parts = COUNT_ORDER.filter((k) => (counts[k] ?? 0) > 0).map((k) => countWords(k, counts[k]));
-  if (parts.length === 0) return "Nothing to report";
-  const line = parts.join(" · ");
-  return line[0].toUpperCase() + line.slice(1);
+  return parts.length === 0 ? "Nothing to report" : parts.join(", ");
+}
+
+/**
+ * A Reporting card's line about its newest run: "2 hours ago · 12 found, 4 proposed · by Claude on your bot".
+ * All-zero counts say nothing. `who` is the agent's display name (lib/agent-name.ts; this file imports
+ * nothing), null when unknown; `on_bot` is absent from an older backend.
+ */
+export function reportLine(
+  run: { finished_at: string; counts: Record<string, number>; on_bot?: boolean },
+  who: string | null,
+  ago: (iso: string) => string,
+): string {
+  const parts = [ago(run.finished_at)];
+  if (COUNT_ORDER.some((k) => (run.counts[k] ?? 0) > 0)) parts.push(countsLine(run.counts));
+  const where = run.on_bot ? "on your bot" : "";
+  if (who) parts.push(where ? `by ${who} ${where}` : `by ${who}`);
+  else if (where) parts.push(where);
+  return parts.join(" · ");
 }
 
 const OUTCOME_WORDS: Record<RunOutcome, string> = { ok: "Done", partial: "Partly done", failed: "Failed" };
@@ -23,24 +39,32 @@ export function outcomeWord(outcome: RunOutcome): string {
   return OUTCOME_WORDS[outcome] ?? outcome;
 }
 
-/** automation → its newest run's finish time and outcome (the list comes newest first). */
-export function latestByAutomation(
-  runs: readonly { automation: string; finished_at: string; outcome: RunOutcome }[],
-) {
-  const map = new Map<string, { finished_at: string; outcome: RunOutcome }>();
+/** automation → its runs, newest first like the list they come from. */
+export function runsByAutomation<T extends { automation: string }>(runs: readonly T[]): Map<string, T[]> {
+  const map = new Map<string, T[]>();
   for (const run of runs) {
-    if (!map.has(run.automation)) map.set(run.automation, { finished_at: run.finished_at, outcome: run.outcome });
+    const list = map.get(run.automation);
+    if (list) list.push(run);
+    else map.set(run.automation, [run]);
   }
   return map;
 }
 
-/** An Automations card's line. `undefined` while unknown (loading or failed): no line. */
-export function lastRanLine(finishedAt: string | null | undefined, ago: (iso: string) => string): string | null {
-  if (finishedAt === undefined) return null;
-  return finishedAt === null ? "Not run yet" : `Last ran ${ago(finishedAt)}`;
+/** The Recent runs row's summary: how many runs it lists (the newest per automation), then the ones that did
+ * not finish: "3 · 1 failed, 1 partly done". Null when it lists none. */
+export function recentRunsSummary(latest: readonly { outcome: RunOutcome }[]): string | null {
+  if (latest.length === 0) return null;
+  const failed = latest.filter((r) => r.outcome === "failed").length;
+  const partly = latest.filter((r) => r.outcome === "partial").length;
+  const notDone = [failed ? `${failed} failed` : "", partly ? `${partly} partly done` : ""].filter(Boolean);
+  return notDone.length ? `${latest.length} · ${notDone.join(", ")}` : String(latest.length);
 }
 
 export const AGENT_RUNS_LATEST_KEY = ["agent-runs", "latest"] as const;
+
+/** Every retained run, newest first: the log keeps 200 (backend services/agent_runs.py), the list's top limit. */
+export const AGENT_RUNS_PATH = "/api/agent-runs?limit=200";
+export const AGENT_RUNS_KEY = ["agent-runs", "all"] as const;
 
 /** Where the inbox's "See runs" goes: the Recent runs list on the Automations page. */
 export const RECENT_RUNS_HREF = "/automations#recent-runs";

@@ -1,21 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { countsLine, lastRanLine, latestByAutomation, proposedLine, recentRefusals, outcomeWord } from "./agent-runs.ts";
+import { countsLine, outcomeWord, proposedLine, recentRefusals, recentRunsSummary, reportLine, runsByAutomation } from "./agent-runs.ts";
 
-test("counts read in a fixed order, zeros left out", () => {
-  assert.equal(countsLine({ skipped: 8, found: 12, proposed: 4, updated: 0 }),
-    "Found 12 · proposed 4 · skipped 8");
+test("counts read number first in a fixed order, zeros left out", () => {
+  assert.equal(countsLine({ skipped: 8, found: 12, proposed: 4, updated: 0 }), "12 found, 4 proposed, 8 skipped");
   assert.equal(countsLine({ needs_you: 1 }), "1 needs you");
-  assert.equal(countsLine({ needs_you: 2, tailored: 3 }), "Tailored 3 · 2 need you");
+  assert.equal(countsLine({ needs_you: 2, tailored: 3 }), "3 tailored, 2 need you");
   assert.equal(countsLine({}), "Nothing to report");
 });
 
 test("every supported count has a place and unknown keys are left out", () => {
   assert.equal(countsLine({ needs_you: 2, skipped: 5, updated: 4, tailored: 3, proposed: 2, found: 1 }),
-    "Found 1 · proposed 2 · tailored 3 · updated 4 · skipped 5 · 2 need you");
+    "1 found, 2 proposed, 3 tailored, 4 updated, 5 skipped, 2 need you");
   assert.equal(countsLine({ found: 0, needs_you: 0 }), "Nothing to report");
-  assert.equal(countsLine({ unknown: 8, updated: 1 }), "Updated 1");
+  assert.equal(countsLine({ unknown: 8, updated: 1 }), "1 updated");
 });
 
 test("outcomes in words", () => {
@@ -24,39 +23,41 @@ test("outcomes in words", () => {
   assert.equal(outcomeWord("failed"), "Failed");
 });
 
-test("the newest run per automation, and the card's line", () => {
-  const map = latestByAutomation([
-    { automation: "job-hunt", finished_at: "2026-10-05T10:00:00Z", outcome: "partial" },
-    { automation: "mail-status", finished_at: "2026-10-04T10:00:00Z", outcome: "ok" },
-  ]);
-  assert.deepEqual(map.get("job-hunt"), { finished_at: "2026-10-05T10:00:00Z", outcome: "partial" });
-  assert.equal(lastRanLine(undefined, (x) => x), null);
-  assert.equal(lastRanLine(null, (x) => x), "Not run yet");
-  assert.equal(lastRanLine("t", () => "2 hours ago"), "Last ran 2 hours ago");
-});
-
-test("an older run of the same automation does not replace its newest time", () => {
-  const map = latestByAutomation([
-    { automation: "job-hunt", finished_at: "2026-10-05T10:00:00Z", outcome: "ok" },
-    { automation: "mail-status", finished_at: "2026-10-04T10:00:00Z", outcome: "failed" },
-    { automation: "job-hunt", finished_at: "2026-10-03T10:00:00Z", outcome: "failed" },
-  ]);
-  assert.deepEqual([...map], [
-    ["job-hunt", { finished_at: "2026-10-05T10:00:00Z", outcome: "ok" }],
-    ["mail-status", { finished_at: "2026-10-04T10:00:00Z", outcome: "failed" }],
-  ]);
+test("runs grouped by automation keep the list's newest-first order", () => {
+  const runs = [
+    { automation: "job-hunt", finished_at: "2026-10-05T10:00:00Z" },
+    { automation: "mail-status", finished_at: "2026-10-04T10:00:00Z" },
+    { automation: "job-hunt", finished_at: "2026-10-03T10:00:00Z" },
+  ];
+  const map = runsByAutomation(runs);
+  assert.deepEqual([...map.keys()], ["job-hunt", "mail-status"]);
+  assert.deepEqual(map.get("job-hunt")?.map((r) => r.finished_at), ["2026-10-05T10:00:00Z", "2026-10-03T10:00:00Z"]);
   assert.equal(map.get("unreported"), undefined);
-  assert.equal(latestByAutomation([]).size, 0);
+  assert.equal(runsByAutomation([]).size, 0);
 });
 
-test("a card formats only a known finish time", () => {
+test("a card's report line: when, what the counts say, and who sent it", () => {
   const ago = (iso: string) => {
     assert.equal(iso, "2026-10-05T10:00:00Z");
     return "2 hours ago";
   };
-  assert.equal(lastRanLine(undefined, ago), null);
-  assert.equal(lastRanLine(null, ago), "Not run yet");
-  assert.equal(lastRanLine("2026-10-05T10:00:00Z", ago), "Last ran 2 hours ago");
+  const run = (counts: Record<string, number>, on_bot = false) => ({ finished_at: "2026-10-05T10:00:00Z", counts, on_bot });
+  assert.equal(reportLine(run({ updated: 3 }), "Claude", ago), "2 hours ago · 3 updated · by Claude");
+  assert.equal(reportLine(run({ found: 12, proposed: 4 }, true), "Claude", ago),
+    "2 hours ago · 12 found, 4 proposed · by Claude on your bot");
+  // No counts say nothing, and an unknown agent is not named.
+  assert.equal(reportLine(run({ found: 0 }), null, ago), "2 hours ago");
+  assert.equal(reportLine(run({}, true), null, ago), "2 hours ago · on your bot");
+  // An older backend does not send on_bot.
+  assert.equal(reportLine({ finished_at: "2026-10-05T10:00:00Z", counts: { tailored: 2 } }, null, ago), "2 hours ago · 2 tailored");
+});
+
+test("the Recent runs row says how many it lists and how many did not finish", () => {
+  assert.equal(recentRunsSummary([]), null);
+  assert.equal(recentRunsSummary([{ outcome: "ok" }, { outcome: "ok" }]), "2");
+  assert.equal(recentRunsSummary([{ outcome: "ok" }, { outcome: "failed" }, { outcome: "partial" }]),
+    "3 · 1 failed, 1 partly done");
+  assert.equal(recentRunsSummary([{ outcome: "partial" }]), "1 · 1 partly done");
 });
 
 const hunt = (proposed: number, over: Record<string, unknown> = {}) => ({

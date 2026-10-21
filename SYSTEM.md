@@ -169,7 +169,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 | AtsScore (`models/ats_score.py`) | [`docs/entities/ats-score.md`](docs/entities/ats-score.md) | base upsert-singletons vs appended tailored history; deterministic engine |
 | ResumeVersion (`models/resume_version.py`) | [`docs/entities/resume-version.md`](docs/entities/resume-version.md) | append-only snapshots on every write path — the undo story |
 | FilledAnswer (`models/filled_answer.py`) | [`docs/entities/filled-answers.md`](docs/entities/filled-answers.md) | the answer receipt: what each form page run filled, each answer's source, the warn-only flags, the EEO lifecycle |
-| AgentRun (`models/agent_run.py`) | [`docs/entities/agent-runs.md`](docs/entities/agent-runs.md) | finished automation reports; Recent runs, Last ran, retention and phase 4 limits |
+| AgentRun (`models/agent_run.py`) | [`docs/entities/agent-runs.md`](docs/entities/agent-runs.md) | finished automation reports; Reporting cards, Recent runs, retention and phase 4 limits |
 | Health rubric | [docs/health-check-rubric.md](docs/health-check-rubric.md) | what the check judges and why: levels, questions, flags, word bank, disputes (the report's code contract: Others, ResumeLintReport) |
 | Money and rates (`services/money.py`, `fx_rates.py`) | [`docs/entities/money.md`](docs/entities/money.md) | the home currency, the `money` setting, conversion rules, the machine-local ECB rates cache |
 | Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, the settings endpoints (model settings, form-filling engines, persona draft, setup status), the uv install (`maestro`) and the secondary entities that need rules but not a file each |
@@ -529,7 +529,7 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 | MCP server | [MCP server](docs/agent-surfaces.md#mcp-server) | transport and loopback, docstring ratchets, scoped profiles, plugin, Connect an agent app, the `.mcpb` bridge |
 | Guided tailoring workflow | [Guided tailoring workflow](docs/agent-surfaces.md#guided-tailoring-workflow) | the `next` envelope, ranking vs narrating, `offer` vs `ask_user`, the two controls, the LLM-free arc, apply readiness |
 | Onboarding workflow | [Onboarding workflow](docs/agent-surfaces.md#onboarding-workflow) | ingest → approve → base → render with zero in-house LLM; hint rules |
-| Automations page | [Automations page](docs/agent-surfaces.md#automations-page) | copy-only prompts, `record_run`, Last ran |
+| Automations page | [Automations page](docs/agent-surfaces.md#automations-page) | copy-only prompts, `record_run`, status from reports |
 | In-app chat | [In-app chat (the Assistant)](docs/agent-surfaces.md#in-app-chat-the-assistant) | toolset, pinned-resume hint, social posts, key and capability checks, prompt rows and their reset |
 | Chrome extension | [Chrome extension (the Companion)](docs/agent-surfaces.md#chrome-extension-the-companion) | panel family, rail, footer primary, shared scripts, posting identity, options, packing |
 | Guided fill | [Guided fill](docs/agent-surfaces.md#guided-fill) | fill modes, the runner, `/choose` batching, readback, receipts, answers decided in code, the two engines |

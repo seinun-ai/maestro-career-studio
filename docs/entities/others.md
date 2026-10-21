@@ -1136,7 +1136,8 @@
   and custom cards open with `ATTENDED_WRAPPER`: do the job now. Both stop and ask the user to connect when Maestro's
   tools are unreachable, and neither names an agent app or scheduling mechanism
   (`test_wrappers_name_no_agent_app_or_scheduler`). **Copy prompt** is always on and puts that `prompt` on the
-  clipboard; the page notes that the agent must be connected first and browser-only apps can't reach Maestro yet.
+  clipboard; until any run has reported, a callout says to connect the agent first and that browser-only apps
+  can't reach Maestro yet.
   Maestro runs NO scheduler. **Make your own** (`customize-job-skills`) also adapts any card to the user's agent app
   and routine, keeping its steps, guard rails and `record_run` id so runs still show on that card. The setting read is
   `auto_apply_settings.peek_settings`, never seeds or writes. Off serves the
@@ -1144,10 +1145,11 @@
   `apply-auto`, keeping card/run id `apply-session`. `load_cards()` is strict
   and runs at startup, including the alternate `apply-auto` body and includes,
   so a broken alternate fails boot even while full automation is Off.
-  Each run prompt ends with MCP `record_run`. Cards read `GET /api/agent-runs/latest` and
-  show **Last ran** or **Not run yet** after data arrives; a read that never produced data
-  shows no line, while a failed background refetch keeps the cached line ([agent-runs.md](agent-runs.md)). A
-  ran card also wears its newest run's outcome chip; until a card has run, the connect-your-agent note is a callout.
+  Each run prompt ends with MCP `record_run`. The page reads `GET /api/agent-runs?limit=200`: a card
+  with a run in the last 14 days is a Reporting card (day strip, newest report, one link to the result),
+  the rest are compact rows; Recent runs and "What each one never does" are folds
+  ([agent-runs.md](agent-runs.md)). No card shows a schedule, a connection state, an app's name or a
+  logo (owner rule D5), and there is no Scheduled / Attended badge.
 
 - **The uv install** (`backend/maestro_cs/`, command `maestro`; route summary in SYSTEM.md §9, folder in §6 inv-one-home).
   - **The wheel** is `backend/` renamed `maestro-career-studio` (version = `backend/pyproject.toml`), `py3-none-any`: `scripts/build_wheel.py`

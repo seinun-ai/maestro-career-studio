@@ -86,7 +86,8 @@ test("a recent refused request shows, an old one does not", () => {
 
 test("Automations lists the runs, each with its digest and job links", () => {
   const html = renderElement(linked(React.createElement(RecentRuns)), [runs([run({ found: 12 })])]);
-  assert.match(html, /Recent runs/);
+  // The page's Recent runs fold gives the list its title (design refresh Task 4.4).
+  assert.match(html, /<details[^>]*>.*Job hunt.*12 found/s);
   assert.match(html, /Looked at four boards\./);
   assert.match(html, /<a[^>]*href="\/jobs\/j1"[^>]*>Data Scientist, Acme<\/a>/);
   assert.match(renderElement(linked(React.createElement(RecentRuns)), [runs([])]), /No runs yet/);

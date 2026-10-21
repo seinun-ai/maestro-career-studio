@@ -78,7 +78,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
 ## Automations page
 
 - **Automations page** (`/automations`, sidebar after Agent inbox): **Copy prompt** hands work to the user's agent;
-  Maestro runs NO scheduler. Each run prompt ends with MCP `record_run`; cards show Last ran.
+  Maestro runs NO scheduler. Each run prompt ends with MCP `record_run`; a card's status comes only
+  from those reports (a 14-day strip and the newest report), never a schedule or a connection state.
   Catalog, wrappers and startup rules: [docs/entities/others.md](docs/entities/others.md), "Automations page".
 
 ## In-app chat (the Assistant)

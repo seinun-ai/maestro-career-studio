@@ -5,6 +5,9 @@ import type { RunOutcome } from "./agent-runs";
 
 export type DayCell = { day: string; outcome: RunOutcome | null };
 
+/** How many days a strip shows: the Automations cards' window. */
+export const STRIP_DAYS = 14;
+
 const SEVERITY: Record<RunOutcome, number> = { ok: 1, partial: 2, failed: 3 };
 
 /** "2026-10-20" for the local calendar day `date` falls on. */
@@ -48,4 +51,13 @@ export function dayStripLabel(cells: readonly DayCell[]): string {
   if (failed === 0 && partly === 0) return `${head}: ${on}, all done`;
   const notDone = [failed ? `${failed} failed` : "", partly ? `${partly} partly done` : ""].filter(Boolean);
   return `${head}: ${on}, ${notDone.join(", ")}`;
+}
+
+/** Whether any run falls inside the strip ending on `today`: what puts an automation under Reporting. */
+export function reportedInStrip(
+  runs: readonly { finished_at: string; outcome: RunOutcome }[],
+  today: Date,
+  days: number = STRIP_DAYS,
+): boolean {
+  return dayStrip(runs, today, days).some((c) => c.outcome !== null);
 }

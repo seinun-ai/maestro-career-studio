@@ -3,7 +3,7 @@
 > Reference tier, indexed from [SYSTEM.md](../../SYSTEM.md) §4. Its header contract governs this file too: integrate, present tense, no dated history, and update alongside the behavior described.
 
 One `agent_runs` row records a finished automation run reported by the user's agent.
-It feeds the Automations page's **Recent runs** list, the Automations cards' **Last ran** line and the Agent inbox's one line about the newest run.
+It feeds the Automations page's Reporting cards (their day strips and report line), its **Recent runs** list and the Agent inbox's one line about the newest run.
 The model is `backend/app/models/agent_run.py`; the SQLite revision is `7d3c1a9e5b20`.
 
 ## Stored fields
@@ -39,24 +39,32 @@ The model is `backend/app/models/agent_run.py`; the SQLite revision is `7d3c1a9e
 ## Reading and prompts
 
 - **Run reads**: `GET /api/agent-runs?limit=` returns newest first (default 20, range 1–200);
-  `GET /api/agent-runs/latest` returns one newest retained run per automation, newest first.
+  `GET /api/agent-runs/latest` returns one newest retained run per automation, newest first. The
+  Automations page reads `?limit=200`, every retained run, for its day strips.
   Both return `{items: [...]}`. `title` is resolved at read time from the catalog, or falls
   back to the custom name. Reads return `jobs` with id/title/company rather than `job_ids`;
   a job deleted since recording is omitted. There is no MCP read tool for the run log.
-- **Recent runs** (on the Automations page): one expandable line per automation shows its title, relative finish time,
+- **Recent runs** (a fold on the Automations page; its summary counts the lines and the ones not done,
+  "3 · 1 failed"): one expandable line per automation shows its title, relative finish time,
   agent label, outcome and counts; expanding shows the digest and job links. Outcomes read
-  **Done**, **Partly done**, **Failed**. Counts have a fixed order and omit zeros; all-zero
-  counts read **Nothing to report**. The empty state is **No runs yet. Copy a prompt into your
-  agent app and its reports show here.** A failed read says **Couldn't load recent runs.**
+  **Done**, **Partly done**, **Failed**. Counts read number first in a fixed order and omit zeros
+  ("12 found, 4 proposed"); all-zero counts read **Nothing to report**. The empty state is **No runs
+  yet. Copy a prompt into your agent app and its reports show here.** A failed read says **Couldn't
+  load recent runs.** The inbox's **See runs** (`/automations#recent-runs`) opens the fold.
 - **Agent inbox line**: when the newest run's `proposed` count is above zero the inbox reads
   "<title> proposed N jobs <time ago> · See runs" (a link to Automations' Recent runs, which scrolls to
   the list); otherwise it says nothing about runs. Requests the other copy refused still show in the
   inbox, below the lanes, with their reason, but only those answered since your last visit and never
   older than a week.
-- **Automations cards**: a successful latest-runs read shows **Last ran** plus relative time,
-  or **Not run yet** when that automation has no retained record. When the read never
-  produced data, no line appears. A failed background refetch keeps the cached Last ran
-  line; it does not erase the last known time.
+- **Automations cards**: a card with a run in the last 14 local days is under **Reporting**: a
+  `DayStrip` of those days, the newest run's outcome and one line, "2 hours ago · 3 updated · by
+  Claude on your bot" (counts, `agentDisplayName`, `on_bot`), Copy prompt and one link to the result:
+  **See in Agent inbox** when it proposed jobs (the run does not say how many are still open, so the
+  count stays in the line), else **Last report**, which opens its digest and job links in place. The
+  rest are compact rows under **No reports yet**, or **No reports in 14 days** when one of them has an
+  older retained run (that row says **Last report** plus its time). Until the run read has data the
+  page shows a skeleton; a read that never produced data shows every card as a row under "Couldn't
+  load reports." and claims nothing; a failed background refetch keeps the cached runs.
 - **Automation prompts**: each of the five run prompts ends with `record_run`;
   `customize-job-skills` tells a new automation to record under its own name and an adapted card
   to keep the card's id. `job-hunt`
