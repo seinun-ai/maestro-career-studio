@@ -391,3 +391,38 @@ def test_model_key_step_done_with_a_custom_endpoint_alone(client, db_session, mo
     db_session.add(Setting(key="llm.base_url", value="http://localhost:11434/v1"))
     db_session.commit()
     assert _status(client)["model_key"]["done"] is True
+
+
+def test_work_permits_count_once_per_country_you_apply_in(client, db_session, tmp_path, monkeypatch):
+    """Each apply-in country has its own work-permit answers (D9). The US set also asks the visa
+    status (`work_auth_vocab: us_visa`); a generic one asks now, now-sponsorship and later."""
+    from app.schemas.market_settings import MarketSetting
+    from app.services import autofill_profile, market_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "DE"]), db_session)
+    autofill_profile.set_profile({"work_auth_by_country": {
+        "US": {"status": "citizen", "authorized_now": True, "sponsorship_now": False,
+               "sponsorship_future": False},
+        "DE": {"authorized_now": False},
+        "UK": {"authorized_now": True},   # not applied in: not counted
+    }}, db_session)
+
+    body = _status(client)["autofill"]
+    assert body["work_auth_by_country"] == {
+        "US": {"answered": 4, "answerable": 4}, "DE": {"answered": 1, "answerable": 3}}
+    assert body["groups"]["work_auth"] == {"answered": 5, "answerable": 7}
+    assert body["blocking"] == ["work_auth"]
+
+
+def test_a_legacy_single_work_auth_answers_only_the_home_country(client, db_session, tmp_path, monkeypatch):
+    from app.schemas.market_settings import MarketSetting
+    from app.services import autofill_profile, market_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="UK", apply_in=["UK", "NL"]), db_session)
+    autofill_profile.set_profile({"work_auth": {"authorized_now": True, "sponsorship_now": False,
+                                                "sponsorship_future": False}}, db_session)
+
+    by_country = _status(client)["autofill"]["work_auth_by_country"]
+    assert by_country == {"UK": {"answered": 3, "answerable": 3}, "NL": {"answered": 0, "answerable": 3}}

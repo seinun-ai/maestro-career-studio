@@ -107,3 +107,9 @@
     two project items differing only by an em dash versus a hyphen slip past `kb_consolidation.find_near_identity`
     (`_near_project`); merge them by hand meanwhile. Do when Tidy bullets or `kb_groom` is next changed, a wrong Undo or
     label is reported, or a dash-variant duplicate item is reported again.
+52. The Companion's deterministic rule pass (`content/autofill.js`) reads one resolved `work_auth` (the job's country's, from
+    /context) and cannot see which country a label names, so on a job in one country a work-permit question about another gets the
+    job's answers there; only the fill loop (/map, /pick, /step) reads the question's country (inv-work-permit-per-country). The fix
+    is the extension's: send a work-permit label that names a country other than the job's to the fill loop instead of the rules.
+    The answer flags (`filled_answers.flag_context`) likewise compare with the job's set. Do when the rule pass's work-authorization
+    rules are next changed, or a wrong-country answer is reported.

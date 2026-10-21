@@ -28,3 +28,10 @@ class WorkAuth(BaseModel):
     sponsorship_future: bool | None = None
     authorization_expires_on: str | None = None
     countries_authorized: list[str] = []
+
+
+# Work-permit answers per country, keyed by MARKET ("UK", the market setting's key, not the ISO
+# "GB"): `work_auth_by_country` in the autofill profile (services/autofill_profile,
+# services/autofill_country). `countries_authorized` is derived from the keys whose
+# `authorized_now` is Yes.
+WorkAuthByCountry = dict[str, WorkAuth]

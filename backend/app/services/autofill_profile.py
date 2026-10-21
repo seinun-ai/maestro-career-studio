@@ -9,6 +9,15 @@ intentionally loose — the extension treats every field as optional.
 `work_auth` is the one namespace with a typed reader (`get_work_auth`), because
 its answers are knockout answers. Migration state: SYSTEM.md §13
 `autofill-work-auth-shape`.
+
+**Work-permit answers are per country** (owner decision D9): `work_auth_by_country`
+maps a MARKET key ("UK", the market setting's own key, not the ISO "GB") to that
+country's answers. A profile from before holds one `work_auth`: it is the home
+market's, mapped when read and kept as written until the user saves (the veteran
+precedent below). What a read returns carries both: `work_auth_by_country`, and
+`work_auth` as the home market's set, for the editors and the Companion's pause row
+that know one set. Which set a form gets is `autofill_country`'s rule. Migration
+state: SYSTEM.md §13 `autofill-work-auth-by-country`.
 """
 
 import json
@@ -22,6 +31,8 @@ from app.services import text_settings
 
 AUTOFILL_KEY = "autofill_profile"
 AUTOFILL_FILE = "autofill.json"
+WORK_AUTH = "work_auth"
+BY_COUNTRY = "work_auth_by_country"
 
 # A profile is "new shape" if it carries ANY typed key. Detecting on one or two
 # chosen keys would send a profile holding only `sponsorship_now` down the
@@ -72,14 +83,65 @@ def _with_current_words(data: dict[str, Any]) -> dict[str, Any]:
     return {**data, STALE_KEY: [STALE_VETERAN]} if stale and not _answered_veteran(data) else data
 
 
-def _parse_profile(raw: str) -> dict[str, Any]:
+def work_auth_entries(profile: Any, home: str | None) -> dict[str, dict[str, Any]]:
+    """Each market's raw work-permit answers, keyed by market ("UK"): `work_auth_by_country`'s
+    entries (an entry that is not an object is no answers), and a legacy top-level `work_auth`
+    as the home market's when it has none of its own. Copies: a caller may change them."""
+    stored = profile.get(BY_COUNTRY) if isinstance(profile, dict) else None
+    entries = {
+        str(key).strip().upper(): dict(value)
+        for key, value in (stored.items() if isinstance(stored, dict) else ())
+        if isinstance(value, dict) and str(key).strip()
+    }
+    legacy = profile.get(WORK_AUTH) if isinstance(profile, dict) else None
+    if home and home not in entries and isinstance(legacy, dict):
+        entries[home] = dict(legacy)
+    return entries
+
+
+def _with_work_auth_by_country(data: dict[str, Any], home: str | None) -> dict[str, Any]:
+    """The read view: every market's answers under `work_auth_by_country`, and `work_auth` as the
+    home market's (absent when it has none)."""
+    entries = work_auth_entries(data, home)
+    view = {k: v for k, v in data.items() if k not in (WORK_AUTH, BY_COUNTRY)}
+    if entries:
+        view[BY_COUNTRY] = entries
+    if home in entries:
+        view[WORK_AUTH] = dict(entries[home])
+    return view
+
+
+def _as_stored(profile: dict[str, Any], before: dict[str, Any], home: str | None) -> dict[str, Any]:
+    """What a save stores: `work_auth_by_country` alone. A client that knows one set (the Settings
+    editor, the Companion's pause row, a peer that has not updated) edits `work_auth`, the home set it
+    was served: when that differs from what the store would serve now (`before`), or the client sent
+    no home entry, it is the home market's new answers. Otherwise the per-country map stands, so a
+    client that knows every country leaves `work_auth` as served, or out."""
+    entries = work_auth_entries({BY_COUNTRY: profile.get(BY_COUNTRY)}, None)
+    single = profile.get(WORK_AUTH)
+    if home and isinstance(single, dict) and (single != before.get(WORK_AUTH) or home not in entries):
+        entries[home] = dict(single)
+    stored = {k: v for k, v in profile.items() if k not in (WORK_AUTH, BY_COUNTRY)}
+    if entries:
+        stored[BY_COUNTRY] = entries
+    return stored
+
+
+def _home(session: Session | None) -> str:
+    """Where the user lives: the market whose answers a legacy `work_auth` holds. Non-mutating."""
+    from app.services import market_settings
+
+    return market_settings.peek_market(session).home
+
+
+def _parse_profile(raw: str, home: str | None = None) -> dict[str, Any]:
     if not raw.strip():
         return {}
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    return _with_current_words(data) if isinstance(data, dict) else {}
+    return _with_work_auth_by_country(_with_current_words(data), home) if isinstance(data, dict) else {}
 
 
 def _parse_stored(raw: str) -> dict[str, Any]:
@@ -92,25 +154,27 @@ def _parse_stored(raw: str) -> dict[str, Any]:
 
 
 def get_profile(session: Session | None = None) -> dict[str, Any]:
-    return _parse_profile(text_settings.get_text(AUTOFILL_KEY, AUTOFILL_FILE, session))
+    return _parse_profile(text_settings.get_text(AUTOFILL_KEY, AUTOFILL_FILE, session), _home(session))
 
 
 def peek_profile(session: Session | None = None) -> dict[str, Any]:
-    return _parse_profile(text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session))
+    return _parse_profile(text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session), _home(session))
 
 
 def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict[str, Any]:
+    """Store `profile` and return it as a read serves it (`work_auth` = the home set)."""
+    raw = text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session)
+    home = _home(session)
     # The hint outlasts any save that does not answer the question: whatever is stored, or the client's
     # own marker, keeps it; an explicit veteran answer clears it.
-    stale = _marks_veteran_stale(profile) or _marks_veteran_stale(
-        _parse_stored(text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session)))
-    profile = {k: v for k, v in profile.items() if k != STALE_KEY}
+    stale = _marks_veteran_stale(profile) or _marks_veteran_stale(_parse_stored(raw))
+    profile = _as_stored({k: v for k, v in profile.items() if k != STALE_KEY}, _parse_profile(raw, home), home)
     if stale and not _answered_veteran(profile):
         profile = {**profile, STALE_KEY: [STALE_VETERAN]}
     text_settings.set_text(
         AUTOFILL_KEY, AUTOFILL_FILE, json.dumps(profile, indent=2, sort_keys=True), session
     )
-    return profile
+    return _with_work_auth_by_country(profile, home)
 
 
 def _usable_answers_only(values: dict[str, Any]) -> WorkAuth:
@@ -138,14 +202,18 @@ def _usable_answers_only(values: dict[str, Any]) -> WorkAuth:
 
 
 def work_auth_from_profile(profile: dict[str, Any]) -> WorkAuth:
-    """Read work authorization, tolerating the pre-2026-07 two-boolean shape.
+    """Read `profile["work_auth"]` (one country's set), tolerating the pre-2026-07 two-boolean shape.
 
     Dual-read, not a rewrite-on-load: the extension ships independently and an
     older panel may still POST the legacy shape. Cutting the legacy branch
     follows the `autofill-education-shape` precedent in SYSTEM.md §13 — frontend
     first, extension one release later.
     """
-    raw = profile.get("work_auth")
+    return typed_work_auth(profile.get(WORK_AUTH))
+
+
+def typed_work_auth(raw: Any) -> WorkAuth:
+    """One country's raw answers as `WorkAuth`: the typed keys, else the legacy pair."""
     if not isinstance(raw, dict):
         # Loose JSON: `work_auth` may be absent, null, or hand-edited to a
         # string. No answers, rather than an AttributeError mid-fill.
@@ -163,12 +231,21 @@ def work_auth_from_profile(profile: dict[str, Any]) -> WorkAuth:
     )
 
 
-def get_work_auth(session: Session | None = None) -> WorkAuth:
-    return work_auth_from_profile(get_profile(session))
+def get_work_auth(session: Session | None = None, market: str | None = None) -> WorkAuth:
+    """One market's answers ("UK"); `market` None is the home market's, the profile's own set (the
+    job-search brief). A FORM's answer is `autofill_country.work_auth_for`, where no country is
+    no answer."""
+    return _work_auth_of(get_profile(session), market)
 
 
-def peek_work_auth(session: Session | None = None) -> WorkAuth:
-    return work_auth_from_profile(peek_profile(session))
+def peek_work_auth(session: Session | None = None, market: str | None = None) -> WorkAuth:
+    return _work_auth_of(peek_profile(session), market)
+
+
+def _work_auth_of(view: dict[str, Any], market: str | None) -> WorkAuth:
+    if market is None:
+        return work_auth_from_profile(view)
+    return typed_work_auth((view.get(BY_COUNTRY) or {}).get(market.strip().upper()))
 
 
 def _personal_str(personal: dict[str, Any], key: str) -> str | None:

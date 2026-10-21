@@ -13,6 +13,8 @@ class AutofillStep(BaseModel):
     readiness: float  # 0.0-1.0 over required groups
     groups: dict[str, GroupCompleteness]
     blocking: list[str]  # group keys whose gaps are knockout-grade (work_auth)
+    # Each apply-in market's work-permit answers ("UK"), summed in groups["work_auth"].
+    work_auth_by_country: dict[str, GroupCompleteness] = {}
 
 
 class SetupStep(BaseModel):

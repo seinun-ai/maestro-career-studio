@@ -35,7 +35,9 @@ _AUTOFILL_TSX = (
 
 _EXPECTED = {
     "personal": setup_status._PERSONAL,
-    "work_auth": setup_status._WORK_AUTH_CORE,
+    # The editor's one work-authorization set is the US-worded one (visa status first); a
+    # country whose `work_auth_vocab` is not us_visa asks the three yes/no answers only.
+    "work_auth": setup_status._US_VISA_CORE,
     "eeo": setup_status._EEO,
     "preferences": setup_status._PREFERENCES,
 }

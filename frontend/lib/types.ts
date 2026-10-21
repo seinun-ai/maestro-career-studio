@@ -597,6 +597,8 @@ export interface SetupStatus {
     readiness: number;
     groups: Record<string, { answered: number; answerable: number }>;
     blocking: string[];
+    /** Each apply-in market's work-permit answers ("UK"), summed in `groups.work_auth`. */
+    work_auth_by_country: Record<string, { answered: number; answerable: number }>;
   };
   job_preferences: SetupStep;
   persona: SetupStep;

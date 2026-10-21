@@ -7,6 +7,9 @@ APPLICATION_STATUSES precedent) — update BOTH when a field is added. Rules:
 "complete" means ANSWERABLE, not filled ("decline" answers count; optional
 fields are excluded), and work_auth is read through the typed reader because
 its answers are the knockout ones the extension reports missing_source on.
+Work-permit answers count once per country you apply in (`work_auth_by_country`,
+keyed by market): the `work_auth` group sums them, and each country's own count
+rides along for the setup flow's one-question-per-country step.
 """
 
 from sqlalchemy import func, select
@@ -30,6 +33,7 @@ from app.services import (
     engines,
     job_preferences,
     market_settings,
+    markets,
     persona,
     role_categories,
 )
@@ -45,10 +49,11 @@ _PREFERENCES = [
     "desired_salary", "notice_period", "earliest_start_date",
     "willing_to_relocate", "how_heard",
 ]
-# The typed work-auth core; authorization and sponsorship answers are knockout-grade.
-_WORK_AUTH_CORE = [
-    "status", "authorized_now", "sponsorship_now", "sponsorship_future",
-]
+# The typed work-auth core; authorization and sponsorship answers are knockout-grade. The visa
+# status list is the US one (`opt`, `h1b`, `tn`), so only a market whose `work_auth_vocab` is
+# `us_visa` asks it; every country asks the other three.
+_WORK_AUTH_CORE = ["authorized_now", "sponsorship_now", "sponsorship_future"]
+_US_VISA_CORE = ["status", *_WORK_AUTH_CORE]
 
 
 def _answered(value) -> bool:
@@ -67,14 +72,26 @@ def _group(profile: dict, key: str, fields: list[str]) -> GroupCompleteness:
     return GroupCompleteness(answered=answered, answerable=len(fields))
 
 
+def _work_permits(profile: dict, apply_in: list[str]) -> dict[str, GroupCompleteness]:
+    """Each apply-in country's work-permit answers, counted through the typed reader."""
+    entries = profile.get(autofill_profile.BY_COUNTRY) or {}
+    out: dict[str, GroupCompleteness] = {}
+    for market in apply_in:
+        work_auth = autofill_profile.typed_work_auth(entries.get(market))
+        fields = _US_VISA_CORE if markets.get(market)["work_auth_vocab"] == "us_visa" else _WORK_AUTH_CORE
+        out[market] = GroupCompleteness(
+            answered=sum(1 for f in fields if getattr(work_auth, f) is not None), answerable=len(fields))
+    return out
+
+
 def _autofill_step(db: Session) -> AutofillStep:
     profile = autofill_profile.peek_profile(db)
-    work_auth = autofill_profile.peek_work_auth(db)
+    by_country = _work_permits(profile, market_settings.peek_market(db).apply_in)
     groups = {
         "personal": _group(profile, "personal", _PERSONAL),
         "work_auth": GroupCompleteness(
-            answered=sum(1 for f in _WORK_AUTH_CORE if getattr(work_auth, f) is not None),
-            answerable=len(_WORK_AUTH_CORE),
+            answered=sum(g.answered for g in by_country.values()),
+            answerable=sum(g.answerable for g in by_country.values()),
         ),
         "preferences": _group(profile, "preferences", _PREFERENCES),
     }
@@ -92,7 +109,8 @@ def _autofill_step(db: Session) -> AutofillStep:
     blocking = ["work_auth"] if wa.answered < wa.answerable else []
     readiness = round(answered / answerable, 3) if answerable else 1.0
     return AutofillStep(
-        done=readiness >= 1.0, readiness=readiness, groups=groups, blocking=blocking
+        done=readiness >= 1.0, readiness=readiness, groups=groups, blocking=blocking,
+        work_auth_by_country=by_country,
     )
 
 

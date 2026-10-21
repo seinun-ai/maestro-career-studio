@@ -299,6 +299,27 @@
   the never-served option, reported `assumed` (`veteran_inferred`); a Yes never claims CURRENT service — a question about it alone, or an option
   that says so, is asked (`veteran_overreach`); the readers are /pick, /step, /map and `content/eeo.js`. Known limits: a lowercase mention of an
   employer outside a parsed list still reads No, and the veteran-class guard errs toward asking.
+- **Work permits per country** (inv-work-permit-per-country; `services/autofill_country.py`, `autofill_profile.py`, owner decision D9).
+  **Storage.** `work_auth_by_country` maps a market key (the market setting's own, "UK", never the ISO "GB" a job stores) to that country's
+  answers, read through the typed `WorkAuth` reader. A profile from before holds one top-level `work_auth`: it is the home market's, mapped
+  when READ and kept as written until a save (the veteran precedent). A read serves `work_auth_by_country` and, for the clients that know
+  one set (the Settings editor until the Profile rebuild, the Companion's pause row, a peer that has not updated), `work_auth` as the home
+  set. A save stores `work_auth_by_country` alone: a `work_auth` that differs from the one the store would serve, or a save with no home
+  entry, is the home market's new answers; otherwise the map stands, so a client that knows every country leaves `work_auth` as served or
+  out. **Which set.** `countries.mentioned_in` reads the question: English names and aliases as whole words, without accents, in any case;
+  a code only as "US" or "UK" in capitals ("CA", "DE" and "IN" are US states as often); "New Mexico", "Latin America" and "Georgia" name
+  nothing; the longer name wins ("Northern Ireland" is the UK). One named country gives its market's answers; one with no market or no
+  answers, or two countries ("the United States or Canada"), gives none; none named gives the job's (`markets.for_country(country_code)`);
+  a job with no country gives none. `countries_authorized` is derived: the entry's own list, then each market whose `authorized_now` is
+  Yes, by country name. **Readers.** `/context` and `/choose` through `profile_for_job` (the job's set; no job, no set); `/map` and `/pick`
+  group their fields by the set each question gets and decide each group on its own catalog (a second model call only when a question
+  names a country whose answers differ from the job's); `/step` takes its question's set; `/sections` and `/reason` the job's; run-trace
+  redaction every country's; the answer flags (`filled_answers.flag_context`) the job's. The knock-out scan screens with the job's
+  country's set, and a job with no country with the home set (an advisory check, not an answer given). Setup status counts each apply-in
+  country (`work_auth_by_country` on the autofill step), the US visa status only where `work_auth_vocab` is `us_visa`. **Known limits.**
+  The Companion's deterministic rule pass reads the resolved `work_auth` and cannot see which country a label names, so on a German job a
+  question about the UK gets the German set there (before, every question got the one set); the answer flags compare with the job's set
+  whatever the question names; a pause-row answer is saved to the home set.
 - **Answers decided in code, and the polarity retry** (live check 7; `services/autofill_pick.py`, `autofill_step.py`, `autofill_education.py`, `autofill_place.py`, `autofill_polarity.py`).
   **Relocate**: "Are you located in X and/or willing to relocate?" over a saved `preferences.willing_to_relocate` Yes is the same way as the fact, decided by code with no model
   (`_located_or_relocate`, in `/pick` and `/step`). It must be ONE question: both halves in one sentence that is a question (or an unpunctuated last line addressed to "you"),
@@ -1295,7 +1316,11 @@
   - **KB provenance details** (inv-provenance-no-decay): a retired `user_cannot_confirm` point lands on the entity its placement names, else
     the archived "Unconfirmed claims" holder; later sessions pre-resolve the claim by normalized-text match, and evidence autos win.
   - **Job-site login file details** (inv-job-site-password-local): writes serialize and replace from unique temp files; damaged JSON and
-    non-object files read empty.
+    non-object files read empty. On `POST /api/companion/job-site-login`, `page_sign_in` types the login in the TOP frame alone, only on a
+    known ATS host (`shared/ats-hosts.js`; elsewhere the run parks `sign_in_yourself`), once (a failure parks, never retried). **Account
+    creation** (owner decision, reversing "it always parks"): `page_create_account`, the same route, top frame and host rule, once, never
+    retried; it ticks only a REQUIRED box agreeing to create the account or to the privacy notice and presses only "Create Account";
+    anything else parks (`verify`, `create_account_failed`). The page shape and box rules: `extension/INTERNALS.md`, "Account creation".
   - **Proposal relink from the Companion** (inv-auto-consent-gated): `POST /api/proposals` moves an `accepted` proposal to a newer draft of
     its job only for the Companion's exact origin, when the yes came on channel `companion`, no final review exists and the old draft is gone
     or still a draft; every other mismatch stays a 409, and an application of another job is refused on every linking route. The

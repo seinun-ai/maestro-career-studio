@@ -33,7 +33,7 @@ _CURRENCY_FILE = Path(__file__).parent / "data" / "country_currencies.yaml"
 # A name the list already holds (Russia, Vietnam, Türkiye) needs no entry here.
 _ALIASES = {
     "uk": "GB", "great britain": "GB", "britain": "GB", "england": "GB", "scotland": "GB",
-    "wales": "GB",
+    "wales": "GB", "northern ireland": "GB",
     "usa": "US", "u.s.": "US", "u.s.a.": "US", "us of a": "US", "america": "US",
     "united states of america": "US",
     "turkey": "TR",
@@ -81,6 +81,14 @@ def label(code: str | None) -> str | None:
     """A stored code's English name ("GB" -> "United Kingdom"); None for anything that is not a
     code in the list, the input-only "UK" included."""
     return _load().get((code or "").strip().upper())
+
+
+def aliases_for(code: str | None) -> list[str]:
+    """The input-only variants that read as this code, folded ("GB" -> ["uk", "great britain", ...]),
+    in table order; none for a code with no variant. A question names a country by these as often
+    as by its name (`autofill_country`)."""
+    wanted = (code or "").strip().upper()
+    return [alias for alias, target in _ALIASES.items() if target == wanted]
 
 
 def currency_codes() -> frozenset[str]:
@@ -141,6 +149,43 @@ def named_in(place: str | None) -> str | None:
         if code:
             found.add(code)
     return found.pop() if len(found) == 1 else None
+
+
+# Place names that hold a country's name and are no country: a US state ("New Mexico"), an Australian
+# one ("New South Wales"), a region ("Latin America"). A sentence reads them as nothing.
+_NOT_COUNTRIES = (
+    "new mexico", "new jersey", "new south wales", "latin america", "south america",
+    "north america", "central america",
+)
+# Two capital letters count in a sentence only for the codes everyone writes as a word ("in the US",
+# "the UK"): "CA", "DE" and "IN" are US states, and "us" in lower case is a word.
+_SENTENCE_CODES = {"US": "US", **{alias.upper(): code for alias, code in _ALIASES.items() if len(alias) == 2}}
+
+
+@lru_cache(maxsize=1)
+def _sentence_table() -> tuple[re.Pattern[str], dict[str, str | None]]:
+    """Every name and alias (and a dotted alias without its last dot, "u.s"), longest first, so
+    "Northern Ireland" is read before "Ireland" and "Papua New Guinea" before "Guinea"; each folded
+    word's code, None for a place that is no country."""
+    words: dict[str, str | None] = {**_names(), **_ALIASES}
+    words.update({alias.rstrip("."): code for alias, code in _ALIASES.items() if alias.endswith(".")})
+    words.update(dict.fromkeys((*_NOT_COUNTRIES, *_AMBIGUOUS_PLACES)))
+    names = sorted((w for w in words if len(w) > 2), key=len, reverse=True)
+    return re.compile(r"(?<!\w)(" + "|".join(re.escape(n) for n in names) + r")(?!\w)"), words
+
+
+def mentioned_in(text: str | None) -> set[str]:
+    """Every country a sentence names ("Can you work in Germany or the Netherlands?" -> {"DE",
+    "NL"}), by its English name or an alias, whole words, without accents, in any case; a code only
+    as "US" or "UK" in capitals. A place that holds a country's name and is none ("New Mexico",
+    "Georgia") names nothing. A sentence, not a place line: `named_in` reads a job's location."""
+    if not text:
+        return set()
+    pattern, words = _sentence_table()
+    found = {words[m.group(1)] for m in pattern.finditer(_fold(text))}
+    found |= {code for word, code in _SENTENCE_CODES.items() if re.search(rf"(?<![\w$]){word}(?![\w$])", text)}
+    found.discard(None)
+    return found
 
 
 def for_job(country: str | None, location: str | None) -> str | None:

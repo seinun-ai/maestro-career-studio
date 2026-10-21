@@ -906,7 +906,9 @@ def create_base_resume_from_kb(
 @_guard
 def get_autofill_profile(application_id: str | None = None, base: str | None = None) -> Any:
     """Read the user's application-form autofill data: `profile` (personal
-    contact + address, typed work-authorization answers, preferences like
+    contact + address, work-authorization answers (`work_auth`: the job's
+    country's, none without one; `work_auth_by_country`: per market key, e.g.
+    UK; a question naming a country takes its), preferences like
     salary/notice/relocation, education, `languages` — each a language with
     read/speak/write level Basic/Intermediate/Fluent and separate `native`
     and `fluent` booleans — custom Q&A presets), plus `employment`
@@ -914,9 +916,8 @@ def get_autofill_profile(application_id: str | None = None, base: str | None = N
     given. Response is labeled `source: "profile"` and includes
     `canonical_identity` (`legal_first`, `legal_last`, `preferred`) mapped only
     from stored autofill personal fields; it is the source of truth for form
-    identity fields and takes precedence over ATS-parsed values. This is the
-    same feed the Chrome extension's deterministic fill uses, so it supplies
-    real stored values for ATS forms. EEO/demographic answer values
+    identity fields and takes precedence over ATS-parsed values. It is the
+    feed the Chrome extension's deterministic fill uses. EEO/demographic answer values
     (`profile.eeo`) are returned ONLY when Profile standing consent is active
     (`eeo_consent.enabled`) and are stripped otherwise; when returned they are
     the user's stored answers, intended for Playwright/agent fill verbatim with
@@ -929,7 +930,7 @@ def get_autofill_profile(application_id: str | None = None, base: str | None = N
     self-describe box. A form lacking a matching option is left to the user.
     Missing EEO values are completed by the user in Profile or in the browser;
     consented answers are not pasted or re-dictated through chat. A value absent
-    here (e.g. an unstored county) is not in the profile and is not guessable.
+    here (a county) is not in the profile and is not guessable.
     WOTC, signatures and terms are human-only."""
     return _client.get_autofill_context(application_id=application_id, base=base)
 

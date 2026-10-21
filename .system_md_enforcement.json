@@ -326,6 +326,12 @@
       {"path": "backend/tests/test_autofill_choose.py", "symbol": "test_the_backstop_never_drafts_these_even_if_the_map_allowed_it"},
       {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_middle_name_box_is_never_filled_from_another_name"},
       {"path": "backend/tests/browser/test_fill_core_fields.py", "symbol": "test_a_native_date_given_a_month_is_written_as_the_first_and_says_so"}
+    ],
+    "inv-work-permit-per-country": [
+      {"path": "backend/app/services/autofill_country.py", "symbol": "def market_for_question"},
+      {"path": "backend/tests/test_autofill_country.py", "symbol": "test_a_named_country_without_answers_is_unknown_not_the_job_country"},
+      {"path": "backend/tests/test_autofill_country.py", "symbol": "test_no_country_in_the_question_uses_the_job_country_then_asks"},
+      {"path": "backend/tests/test_autofill_country.py", "symbol": "test_the_fill_loop_answers_each_question_from_its_own_country"}
     ]
   },
   "unpinned": {

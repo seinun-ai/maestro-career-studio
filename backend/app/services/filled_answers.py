@@ -25,7 +25,7 @@ from app.models.filled_answer import FilledAnswer
 from app.models.job import Job
 from app.models.resume_version import ResumeVersion
 from app.schemas.filled_answers import FilledAnswersCreate, FilledField
-from app.services import answer_flags, autofill_catalog, eeo_consent
+from app.services import answer_flags, autofill_catalog, autofill_country, autofill_job, eeo_consent
 from app.services.autofill_catalog import Fact
 
 logger = logging.getLogger(__name__)
@@ -98,9 +98,11 @@ def _host_of(url: str | None) -> str | None:
 
 def flag_context(session: Session, job: Job,
                  profile: dict[str, Any] | None = None) -> tuple[dict[str, Fact], set[str]]:
-    """What the flags compare against: the profile as the fill would serve it. A batch passes
+    """What the flags compare against: the profile as the fill would serve it, with the job's
+    country's work-permit answers (`autofill_job.profile_for_job`'s rule). A batch passes
     `profile` (`eeo_consent.disclosable_profile`) so it is read once."""
     profile = eeo_consent.disclosable_profile(session) if profile is None else profile
+    profile = autofill_country.with_work_auth(profile, autofill_job.job_market(job))
     facts = autofill_catalog.build(profile, [], [], company=job.company, location=job.location)
     return facts, answer_flags.saved_eeo(profile)
 

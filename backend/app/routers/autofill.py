@@ -9,6 +9,7 @@ application, and taking them from anywhere else would let the extension send an
 employer something the resume beside it does not say."""
 
 import hashlib
+import json
 import logging
 from collections import Counter
 from datetime import UTC, date, datetime
@@ -31,8 +32,10 @@ from app.models.autofill_widget_gap import AutofillWidgetGap
 from app.models.job import Job
 from app.schemas.autofill_choose import ChooseRequest, ChooseResponse
 from app.schemas.autofill_fill import (
+    Mapped,
     MapRequest,
     MapResponse,
+    Picked,
     PickRequest,
     PickResponse,
     SectionsRequest,
@@ -47,6 +50,7 @@ from app.schemas.autofill_trace import RunTrace
 from app.services import (
     autofill_catalog,
     autofill_choose,
+    autofill_country,
     autofill_gaps,
     autofill_job,
     autofill_map,
@@ -377,51 +381,101 @@ def _today(theirs: date | None) -> date:
     return theirs if theirs is not None and abs((theirs - ours).days) <= 1 else ours
 
 
-def _facts(
-    db: Session, application_id: UUID | None, base: str | None, today: date | None = None
-) -> tuple[dict[str, autofill_catalog.Fact], bool]:
-    """The fact catalog and whether EEO answers may be disclosed.
+class _Catalog:
+    """The fill loop's fact catalog for one request, and whose work-permit answers each question gets.
 
     Built from the CONSENT-GATED profile (inv-eeo-standing-consent): without
     standing consent there is no `eeo.*` fact, so no model is ever offered one,
     and without the agreement permission (`consent_forms`, as served: a lapsed
-    one is off) there is no `derived.agrees_to_terms`. The resume is the one the panel points at — `_selected_resume`, as /context,
-    so an unknown application stays a 404 — and neither selector is a
-    profile-only fill."""
-    resume = (
-        None
-        if application_id is None and base is None
-        else _selected_resume(db, application_id, base)
-    )
-    try:
-        consent = eeo_consent.get_consent(db)
-        consented, agrees = consent.enabled, consent.consent_forms
-    except Exception:  # noqa: BLE001 — fail closed, as withhold_unconsented does
-        logger.exception("eeo consent could not be read; the fill treats it as not given")
-        consented = agrees = False
-    # The job's company, so "previously employed here" can be read off the
-    # history for THIS application (autofill_catalog._worked_here).
-    job = autofill_job.application_job(db, application_id)
-    facts = autofill_catalog.build(
-        eeo_consent.disclosable_profile(db),
-        employment_blocks(resume) if resume else [],
-        resume_skills(resume) if resume else [],
-        today=_today(today),
-        company=job.company if job else None,
-        location=job.location if job else None,
-    )
-    # Served: an agreement given under an older policy reads off (lapsed).
-    return autofill_catalog.with_agreement(facts, agrees), consented
+    one is off) there is no `derived.agrees_to_terms`. The resume is the one the
+    panel points at — `_selected_resume`, as /context, so an unknown application
+    stays a 404 — and neither selector is a profile-only fill.
+
+    `work_auth` is one country's answers (inv-work-permit-per-country): the
+    country a question names, else the job's, else none (`autofill_country`).
+    `facts()` is the job's; `split` groups a request's fields by the answers
+    their questions get, so a question naming another country is decided
+    against that country's facts and nothing else changes."""
+
+    def __init__(self, db: Session, application_id: UUID | None, base: str | None,
+                 today: date | None = None):
+        resume = (
+            None
+            if application_id is None and base is None
+            else _selected_resume(db, application_id, base)
+        )
+        try:
+            consent = eeo_consent.get_consent(db)
+            self.consented, self._agrees = consent.enabled, consent.consent_forms
+        except Exception:  # noqa: BLE001 — fail closed, as withhold_unconsented does
+            logger.exception("eeo consent could not be read; the fill treats it as not given")
+            self.consented = self._agrees = False
+        # The job's company, so "previously employed here" can be read off the
+        # history for THIS application (autofill_catalog._worked_here).
+        job = autofill_job.application_job(db, application_id)
+        self._profile = eeo_consent.disclosable_profile(db)
+        self._employment = employment_blocks(resume) if resume else []
+        self._skills = resume_skills(resume) if resume else []
+        self._today = _today(today)
+        self._company = job.company if job else None
+        self._location = job.location if job else None
+        self.job_market = autofill_job.job_market(job)
+        self._built: dict[str, dict[str, autofill_catalog.Fact]] = {}
+
+    def _keyed(self, market: str | None) -> tuple[str, dict[str, autofill_catalog.Fact]]:
+        """The facts for one market's answers, built once per distinct set of answers."""
+        profile = autofill_country.with_work_auth(self._profile, market)
+        key = json.dumps(profile.get(autofill_profile.WORK_AUTH), sort_keys=True, default=str)
+        if key not in self._built:
+            facts = autofill_catalog.build(
+                profile, self._employment, self._skills, today=self._today,
+                company=self._company, location=self._location,
+            )
+            # Served: an agreement given under an older policy reads off (lapsed).
+            self._built[key] = autofill_catalog.with_agreement(facts, self._agrees)
+        return key, self._built[key]
+
+    def facts(self) -> dict[str, autofill_catalog.Fact]:
+        """The facts with the job's country's work-permit answers."""
+        return self._keyed(self.job_market)[1]
+
+    def facts_for_market(self, market: str) -> dict[str, autofill_catalog.Fact]:
+        return self._keyed(market)[1]
+
+    def for_question(self, question: str) -> dict[str, autofill_catalog.Fact]:
+        return self._keyed(autofill_country.market_for_question(question, self.job_market))[1]
+
+    def split[F](self, fields: list[F]) -> list[tuple[dict[str, autofill_catalog.Fact], list[F]]]:
+        """The fields grouped by the facts their questions get, in page order within a group; one
+        group (the usual case) when no question names a country whose answers differ from the job's."""
+        groups: dict[str, tuple[dict[str, autofill_catalog.Fact], list[F]]] = {}
+        for field in fields:
+            key, facts = self._keyed(autofill_country.market_for_question(field.question, self.job_market))
+            groups.setdefault(key, (facts, []))[1].append(field)
+        return list(groups.values())
+
+
+def _facts(
+    db: Session, application_id: UUID | None, base: str | None, today: date | None = None
+) -> tuple[dict[str, autofill_catalog.Fact], bool]:
+    """The job's fact catalog and whether EEO answers may be disclosed (`_Catalog`)."""
+    catalog = _Catalog(db, application_id, base, today)
+    return catalog.facts(), catalog.consented
 
 
 MAX_REDACTION_BASES = 8
 
 
 def _redaction_facts(db: Session) -> dict[str, autofill_catalog.Fact]:
-    """Every value a stored page text must not repeat: the profile's, and each active base resume's employers, titles, schools
-    and skills (a trace names no application, so it cannot say which resume the run used). Later bases' facts keep
-    their value under a numbered key."""
-    out = dict(_facts(db, None, None)[0])
+    """Every value a stored page text must not repeat: the profile's, every country's work-permit answers, and
+    each active base resume's employers, titles, schools and skills (a trace names no application, so it cannot
+    say which resume the run used). Later bases' facts, and other countries' answers, keep their value under a
+    numbered or marked key."""
+    catalog = _Catalog(db, None, None)
+    out = dict(catalog.facts())
+    for market in autofill_profile.work_auth_entries(autofill_profile.get_profile(db), None):
+        out.update({f"{key}#{market}": fact for key, fact in catalog.facts_for_market(market).items()
+                    if key.startswith(("work_auth.", "derived."))})
     for n, slug in enumerate(base_resume_data.active_base_resume_slugs(db)[:MAX_REDACTION_BASES], 1):
         out.update({f"{key}#{n}": fact for key, fact in _facts(db, None, slug)[0].items()})
     return out
@@ -481,27 +535,33 @@ def post_map(payload: MapRequest, db: Annotated[Session, Depends(get_db)]) -> Ma
     """Which applicant fact each field asks for; labels only reach the model.
 
     Low-stakes comes from the server-side setting, never the request."""
-    facts, consented = _facts(db, payload.application_id, payload.base, payload.today)
-    return MapResponse(fields=autofill_map.map_fields(
-        payload.fields, facts, db, eeo_consented=consented,
-        low_stakes=model_settings.get_autofill_low_stakes(db),
-        level=model_settings.get_answer_level(db), queued=_queued(db, payload.application_id, payload.page_url)))
+    catalog = _Catalog(db, payload.application_id, payload.base, payload.today)
+    low_stakes, level = model_settings.get_autofill_low_stakes(db), model_settings.get_answer_level(db)
+    queued = _queued(db, payload.application_id, payload.page_url)
+    mapped: dict[str, Mapped] = {}
+    for facts, fields in catalog.split(payload.fields):
+        mapped |= autofill_map.map_fields(fields, facts, db, eeo_consented=catalog.consented,
+                                          low_stakes=low_stakes, level=level, queued=queued)
+    return MapResponse(fields={f.fid: mapped[f.fid] for f in payload.fields if f.fid in mapped})
 
 
 @router.post("/pick", response_model=PickResponse)
 def post_pick(payload: PickRequest, db: Annotated[Session, Depends(get_db)]) -> PickResponse:
     """Which live option states each field's fact."""
-    facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
-    return PickResponse(picks=autofill_pick.pick(
-        payload.fields, facts, db, _job_hint(db, payload.application_id, payload.source_hint),
-        queued=_queued(db, payload.application_id, payload.page_url)))
+    catalog = _Catalog(db, payload.application_id, payload.base, payload.today)
+    hint = _job_hint(db, payload.application_id, payload.source_hint)
+    queued = _queued(db, payload.application_id, payload.page_url)
+    picks: dict[str, Picked] = {}
+    for facts, fields in catalog.split(payload.fields):
+        picks |= autofill_pick.pick(fields, facts, db, hint, queued=queued)
+    return PickResponse(picks={f.fid: picks[f.fid] for f in payload.fields if f.fid in picks})
 
 
 @router.post("/step", response_model=StepResponse)
 def post_step(payload: StepRequest, db: Annotated[Session, Depends(get_db)]) -> StepResponse:
     """The next move for a field the generic path could not finish, chosen from
     the moves the page's code generated. The fact comes from the slot."""
-    facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
+    facts = _Catalog(db, payload.application_id, payload.base, payload.today).for_question(payload.question)
     return autofill_step.step(payload, facts, db, _job_hint(db, payload.application_id, payload.source_hint),
                               queued=_queued(db, payload.application_id, payload.page_url))
 

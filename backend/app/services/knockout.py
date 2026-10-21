@@ -367,13 +367,30 @@ def _on_site_check(job: Job, preferences: dict[str, Any] | None,
     return {**check, "result": result, "message": message}
 
 
+def _work_auth_for_job(job: Job, by_market: dict[str, WorkAuth], home_market: str | None) -> WorkAuth:
+    """The job's country's work-permit answers (inv-work-permit-per-country). A job that names no
+    country is screened with the home market's, the one assumption this advisory scan makes (a form
+    on that job still gets none, `autofill_country`); a country no market covers has none."""
+    from app.services import autofill_country
+
+    market = autofill_country.market_for_job_country(job.country_code) if job.country_code else home_market
+    return by_market.get(market or "") or WorkAuth()
+
+
 def scan_job(
     job: Job,
-    work_auth: WorkAuth,
-    preferences: dict[str, Any] | None,
+    work_auth: WorkAuth | None = None,
+    preferences: dict[str, Any] | None = None,
     years_experience: int | None = None,
     personal: dict[str, Any] | None = None,
+    *,
+    work_auth_by_market: dict[str, WorkAuth] | None = None,
+    home_market: str | None = None,
 ) -> dict[str, Any]:
+    """`work_auth`: the answers to screen with; None reads the job's country's from
+    `work_auth_by_market` (`scan_args`)."""
+    if work_auth is None:
+        work_auth = _work_auth_for_job(job, work_auth_by_market or {}, home_market)
     # settings/autofill.json is hand-editable loose JSON; `preferences` and `personal` may
     # arrive as any shape.
     if not isinstance(preferences, dict):
@@ -400,12 +417,17 @@ def scan_job(
 
 
 def scan_args(session: Session) -> dict[str, Any]:
-    """The stored profile as `scan_job`'s keyword arguments, read once: a batch reuses it."""
-    from app.services import autofill_profile, job_preferences
+    """The stored profile as `scan_job`'s keyword arguments, read once: a batch reuses it. Every
+    market's work-permit answers ride along, and each job is screened with its own country's."""
+    from app.services import autofill_profile, job_preferences, market_settings
 
     profile = autofill_profile.get_profile(session)
     return {
-        "work_auth": autofill_profile.work_auth_from_profile(profile),
+        "work_auth_by_market": {
+            market: autofill_profile.typed_work_auth(raw)
+            for market, raw in autofill_profile.work_auth_entries(profile, None).items()
+        },
+        "home_market": market_settings.peek_market(session).home,
         "preferences": profile.get("preferences"),
         "years_experience": job_preferences.get_preferences(session).years_experience,
         "personal": profile.get("personal"),

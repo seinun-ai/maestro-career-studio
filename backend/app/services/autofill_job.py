@@ -1,9 +1,12 @@
 """The job an autofill call is for, and the profile as that job may see it.
 
 A saved answer that named a company or city (`custom[].only_for`) holds for jobs
-there only (`autofill_catalog.custom_for_job`). Every route that hands the
-profile onward, to the deterministic fill (/context) or to a model (/choose),
-passes it through `profile_for_job`, so the scope is decided in one place."""
+there only (`autofill_catalog.custom_for_job`), and `work_auth` is the job's
+country's work-permit answers (`autofill_country`: none for a job with no
+country). Every route that hands the profile onward, to the deterministic fill
+(/context) or to a model (/choose), passes it through `profile_for_job`, so the
+scope is decided in one place. The fill loop's catalog (`routers/autofill._facts`)
+resolves `work_auth` the same way, and per question."""
 
 from typing import Any
 from urllib.parse import urlsplit
@@ -13,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.job import Job
-from app.services import autofill_catalog
+from app.services import autofill_catalog, autofill_country
 
 
 def application_job(db: Session, application_id: UUID | None) -> Job | None:
@@ -21,12 +24,22 @@ def application_job(db: Session, application_id: UUID | None) -> Job | None:
     return db.get(Job, application.job_id) if application is not None else None
 
 
+def job_market(job: Job | None) -> str | None:
+    """The market of the job's country ("GB" is "UK"); None with no job or no market for it."""
+    return autofill_country.market_for_job_country(job.country_code) if job is not None else None
+
+
 def profile_for_job(db: Session, profile: Any, application_id: UUID | None) -> Any:
-    """The profile with the saved answers that hold for the application's job.
-    With no application (a form not tracked yet) a scoped answer holds nowhere."""
-    if not isinstance(profile, dict) or "custom" not in profile:
+    """The profile with the saved answers that hold for the application's job, and the job's
+    country's work-permit answers as `work_auth`. With no application (a form not tracked yet) a
+    scoped answer holds nowhere, and there are no work-permit answers: a question that names its
+    country is answered on the fill loop, where the question is known."""
+    if not isinstance(profile, dict):
         return profile
     job = application_job(db, application_id)
+    profile = autofill_country.with_work_auth(profile, job_market(job))
+    if "custom" not in profile:
+        return profile
     return {**profile, "custom": autofill_catalog.custom_for_job(
         profile["custom"], job.company if job else None, job.location if job else None)}
 

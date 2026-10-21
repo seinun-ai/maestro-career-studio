@@ -213,7 +213,9 @@ def test_non_eeo_market_can_reach_full_autofill_readiness():
 
     us_answerable = sum(g["answerable"] for g in us["groups"].values())
     in_answerable = sum(g["answerable"] for g in india["groups"].values())
-    assert in_answerable == us_answerable - 4, "the four US EEO fields leave the denominator"
+    # The four US EEO fields leave the denominator, and so does the US visa status, which only a
+    # market whose work_auth_vocab is us_visa asks.
+    assert in_answerable == us_answerable - 4 - 1, "the four US EEO fields leave the denominator"
     assert india["readiness"] >= us["readiness"]
 
     client.put("/api/settings/market", json={"value": {"market": "US"}})
