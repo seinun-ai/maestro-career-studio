@@ -1,9 +1,12 @@
 export { ActorChip, type ActorKind } from "./actor-chip";
+export { CheckDraw } from "./check-draw";
 export { DeltaChip } from "./delta-chip";
 export { DotMeter } from "./dot-meter";
 export { NextStep } from "./next-step";
+export { NumberRoll } from "./number-roll";
 export { ProgressCount } from "./progress-count";
 export { ResumeSwatch, ResumeTag } from "./resume-swatch";
 export { ScoreBar } from "./score-bar";
 export { SegmentedBar, type SegmentTone } from "./segmented-bar";
 export { Sparkline } from "./sparkline";
+export { WorkingDots } from "./working-dots";

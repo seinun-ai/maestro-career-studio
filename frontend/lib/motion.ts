@@ -8,3 +8,6 @@ export const CONFIRM_MS = 400;
 
 /** How long a leaving row takes to collapse: globals.css `.collapse-exit` runs `--duration-short4`. */
 export const ROW_EXIT_MS = 200;
+
+/** A number rolling to its new value (NumberRoll): the same `--duration-medium4` as a confirming pulse. */
+export const ROLL_MS = 400;

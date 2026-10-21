@@ -428,6 +428,13 @@
   animation: confirm-ring var(--duration-medium4) var(--ease-standard);
 }
 
+/* A check that draws itself once (CheckDraw, "Saved"): its path is 24 long (pathLength="24"), so the
+   dash offset runs 24 to 0. Registered for the same reason as animate-confirm. */
+@utility animate-check-draw {
+  stroke-dasharray: 24;
+  animation: check-draw var(--duration-medium2) var(--ease-out-strong) both;
+}
+
 @layer utilities {
   /* Stagger entrance: each child fades + lifts in, delayed by --stagger. */
   @keyframes fade-rise {
@@ -484,6 +491,43 @@
     }
   }
 
+  @keyframes check-draw {
+    from {
+      stroke-dashoffset: 24;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* AI is working (WorkingDots): three dots rise in turn on one loop. A loop that says "still
+     going", like the shimmer, not a change, so it runs past the 400ms budget. */
+  @keyframes working-dot {
+    0%,
+    70%,
+    100% {
+      translate: 0 0;
+      opacity: 0.35;
+    }
+    30% {
+      translate: 0 -6px;
+      opacity: 1;
+    }
+  }
+  .working-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 9999px;
+    background: var(--primary);
+    animation: working-dot 900ms ease-in-out infinite;
+  }
+  .working-dot:nth-child(2) {
+    animation-delay: 120ms;
+  }
+  .working-dot:nth-child(3) {
+    animation-delay: 240ms;
+  }
+
   /* A row leaving a list it no longer belongs to (a skipped proposal): wrap it
      in .collapse-exit with one child, then set data-leaving. The row fades and
      its height closes (1fr to 0fr), so the rows below slide up. */
@@ -528,7 +572,13 @@
     scroll-behavior: auto !important;
   }
   .animate-fade-rise,
-  .animate-shimmer::after {
+  .animate-shimmer::after,
+  .working-dot,
+  .animate-check-draw {
     animation: none !important;
+  }
+  /* The dots hold still and dim; the check is drawn at once (dash offset 0). */
+  .working-dot {
+    opacity: 0.6;
   }
 }

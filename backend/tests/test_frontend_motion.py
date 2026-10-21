@@ -19,8 +19,11 @@ def test_motion_utilities_exist_and_stay_within_budget():
     assert "confirm-ring var(--duration-medium4)" in _CSS
     assert ".animate-row-exit" not in _CSS
     assert "[data-leaving]" in _UTILITIES
-    for ms in re.findall(r"(\d+)ms", _UTILITIES):
-        assert int(ms) <= 400 or int(ms) == 1400, ms  # 1400 is the existing shimmer
+    for decl in re.findall(r"[^;{}]*\b\d+ms\b[^;{}]*", _UTILITIES):
+        for ms in map(int, re.findall(r"(\d+)ms", decl)):
+            # Over 400 only as a loop that says "still going", not a change: the skeleton shimmer
+            # (1400) and the working dots (900).
+            assert ms <= 400 or (ms in (900, 1400) and "infinite" in decl), decl
 
 
 def test_no_bounce_curve_is_introduced():
@@ -75,7 +78,8 @@ def test_motion_constants_are_imported_not_redeclared():
 def test_every_motion_token_is_within_budget():
     root = _CSS.split(":root", 1)[1]
     used = set(re.findall(r"var\(--(duration-[\w-]+)\)", _UTILITIES))
-    used |= set(re.findall(r"var\(--(duration-[\w-]+)\)", re.search(r"@utility animate-confirm\s*\{[^}]*\}", _CSS).group(0)))
+    for block in re.findall(r"@utility animate-[\w-]+\s*\{[^}]*\}", _CSS):  # animate-confirm, animate-check-draw
+        used |= set(re.findall(r"var\(--(duration-[\w-]+)\)", block))
     assert "duration-medium4" in used and "duration-short4" in used
     for token in used:
         assert re.search(rf"--{token}:\s*(\d+)ms", _CSS), token
@@ -90,3 +94,27 @@ def test_count_up_default_is_within_budget_and_continues_from_the_screen():
     assert "from.current = v" in step  # the value on screen, written inside the frame callback
     effect = hook[hook.index("useEffect("): hook.index("const reduce")]
     assert "setShown" not in effect and "from.current = target" not in hook
+
+
+def test_number_roll_and_working_dots_stay_in_budget_and_respect_reduced_motion():
+    """Design refresh Task 0.6: a number rolls, the AI says it is working, a save draws its check."""
+    roll = (_FRONTEND / "components/visual/number-roll.tsx").read_text()
+    assert "ROLL_MS" in roll and "translate" in roll and "aria-live" not in roll  # the parent announces
+    assert "useReducedMotion" in roll or "prefers-reduced-motion" in roll
+    assert 'import { ROLL_MS } from "@/lib/motion"' in roll and "400" not in roll
+    assert "transition-[translate]" in roll and "transform" not in roll
+    dots = (_FRONTEND / "components/visual/working-dots.tsx").read_text()
+    assert 'role="status"' in dots and "working-dot" in dots
+    reduced = _CSS.split("@media (prefers-reduced-motion", 1)[1]
+    assert ".working-dot" in reduced and "animate-check-draw" in reduced
+
+
+def test_roll_ms_is_the_number_token_and_the_check_draws_in_budget():
+    assert _const("ROLL_MS") == _ms("duration-medium4")
+    draw = re.search(r"@utility animate-check-draw\s*\{([^}]*)\}", _CSS)
+    assert draw, "animate-check-draw is a registered utility, so variants apply"
+    assert "stroke-dasharray: 24" in draw.group(1)
+    assert "var(--duration-medium2)" in draw.group(1) and "var(--ease-out-strong)" in draw.group(1)
+    assert "@keyframes check-draw" in _UTILITIES and "@keyframes working-dot" in _UTILITIES
+    check = (_FRONTEND / "components/visual/check-draw.tsx").read_text()
+    assert "animate-check-draw" in check and 'pathLength="24"' in check
