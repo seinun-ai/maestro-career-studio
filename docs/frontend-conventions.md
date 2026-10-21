@@ -1019,11 +1019,10 @@
   this one. The tab's query also sets `staleTime: 0`, because tab panels stay
   mounted and the app's 30 s freshness would show a receipt from before the fill.
 - Shared components: `StatusChip`/`SavedChip` (`components/status-chip.tsx` —
-  the ONLY status vocabulary/color source in the UI), `CompanyMonogram` (a hash of the company name
-  picks one of four tones: primary, tertiary and secondary container, and
-  `surface-container-highest` with `text-foreground`; never a status container,
-  because StatusChip is the only place a state is coloured and the tint is
-  identity. `test_company_monogram_tones_are_not_statuses` pins it),
+  the ONLY status vocabulary/color source in the UI), `CompanyMonogram` (the company's
+  initial on one neutral fill, `surface-container-highest` with `text-foreground`, for
+  every company: the base resume square is the only hue in a row and StatusChip the only
+  place a state is coloured, so the name picks no tone. `test_company_monogram_is_neutral` pins it),
   `ApplicationDetails` (step 4's disclosure; status lives in the chip, not there). "Needs
   you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object, the
   `attention` container pair; "Submission uncertain" is its own entry with the
@@ -1745,7 +1744,8 @@
   aggregates on `/api/explore/overview` are currency-aware: filter by `country`
   / `salary_currency`; yearly means are suppressed when multiple currencies are
   in scope (`salary_mixed_currencies`), with per-currency `salary_by_role` /
-  `salary_by_currency` rows instead of a blended mean; meta reports
+  `salary_by_currency` rows instead of a blended mean, and the best-paying signal ranks only the
+  roles paid in the single most common currency (none on a tie) and carries it as `currency`; meta reports
   `jobs_with_salary` / `jobs_without_salary` — omitting pay is ordinary, not a
   gap. Endpoints: `/api/explore/activity` (drafted=created_at vs
   submitted=applied_at, day|week buckets), `/base-summaries`, `/build-areas`

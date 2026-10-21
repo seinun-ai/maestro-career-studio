@@ -739,9 +739,9 @@ def test_theme_exposes_role_utilities():
 # copy its shape): text on its own tint, over the page, a card and --muted
 # (a selected tracker row), both modes. A chip's dark text and tint fall back
 # to the light ones when it declares none, as the browser does. Both are role
-# pairs, read from globals.css. (CompanyMonogram's tones are role containers too;
-# test_company_monogram_tones_are_role_container_pairs pins them, and each pair's
-# contrast is pinned above and in test_frontend_design_tokens.py.)
+# pairs, read from globals.css. (CompanyMonogram is neutral, `foreground` on
+# `surface-container-highest`: test_company_monogram_is_neutral in
+# test_frontend_design_tokens.py, which pins that text on every surface.)
 _CHIP_SOURCES = (
     "components/status-chip.tsx",
     "components/career/entity-card.tsx",

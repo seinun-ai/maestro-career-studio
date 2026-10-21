@@ -19,7 +19,7 @@ Use this table when touching a file that still carries the old classes. The toke
 | A tinted card or row edge (`border-amber-500/40`, `border-violet-500/30`) | `border-border`: the card's own label or action already says its kind (a Serious badge, Review or Answer, the question line) |
 | A faint whole-row tint (`bg-amber-500/5`, `bg-emerald-500/5`) | drop it when a chip, dot or icon on the row states the state; otherwise the container fill |
 | An outline badge with a tinted border and palette text (`border-amber-500/40 text-amber-700`) | `border-transparent bg-warning-container text-on-warning-container` |
-| `bg-blue-600/10 text-blue-700`, `bg-violet-*`, `bg-green-*`, `bg-amber-*`, `bg-rose-*`, `bg-cyan-*` on a `CompanyMonogram` | one of four non-status tones: `bg-primary-container`, `bg-tertiary-container`, `bg-secondary-container` with their `text-on-*` partners, or `bg-surface-container-highest text-foreground`. Never a success, warning, attention or error container: StatusChip is the only place a state is coloured, and the monogram's tint is identity |
+| `bg-blue-600/10 text-blue-700`, `bg-violet-*`, `bg-green-*`, `bg-amber-*`, `bg-rose-*`, `bg-cyan-*` on a `CompanyMonogram` | `bg-surface-container-highest text-foreground` for every company. The name picks no tone: the base resume square is the only hue in a row, and StatusChip is the only place a state is coloured |
 | A gradient on text (`from-primary via-violet-500 to-rose-400 bg-clip-text`) | `text-foreground` |
 
 The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (`border-primary/25 bg-primary/[0.04]`) stay as they are.

@@ -214,25 +214,18 @@ def test_no_palette_class_is_written():
     assert not hits, "a palette utility is left at:\n" + "\n".join(hits)
 
 
-def test_company_monogram_tones_are_not_statuses():
-    """The monogram's tint is identity, not state. StatusChip is the only place a state is
-    coloured, so no success / warning / attention / error container may be a tone. Four
-    tones, picked by the same hash modulo, each AA on its own fill (the container pairs and
-    `foreground` on the ladder are pinned for both modes elsewhere)."""
+def test_company_monogram_is_neutral():
+    """A monogram is neutral (design refresh, Task 0.2), so the base resume square is the only
+    hue in a row and StatusChip stays the only place a state is coloured. One fill for every
+    company, `surface-container-highest` with `foreground` (AA on that step is pinned for both
+    modes elsewhere), and the name picks no tone: no hash, no container of any hue."""
     source = _read("components/company-monogram.tsx")
-    block = re.search(r"const TONES = \[(.*?)\];", source, re.S)
-    assert block, "CompanyMonogram's TONES is no longer an array literal"
-    tones = re.findall(r'"([^"]*)"', block.group(1))
-    assert tones == [
-        "bg-primary-container text-on-primary-container",
-        "bg-tertiary-container text-on-tertiary-container",
-        "bg-secondary-container text-on-secondary-container",
-        "bg-surface-container-highest text-foreground",
-    ], tones
-    for status in ("success", "warning", "attention", "error"):
-        assert f"{status}-container" not in block.group(1), f"a monogram is tinted as a {status}"
-    assert "TONES[Math.abs(hash) % TONES.length]" in source
-    assert "identity, not state" in source, "say in the comment that a tint is never a status"
+    assert "bg-surface-container-highest" in source and "text-foreground" in source
+    for picker in ("TONES", "hash", "charCodeAt", "%"):
+        assert picker not in source, f"the company name picks a tone again ({picker})"
+    for hue in ("primary", "secondary", "tertiary", "success", "warning", "attention", "error"):
+        assert f"{hue}-container" not in source, f"a monogram is tinted {hue}"
+    assert "only hue in a row" in source, "say in the comment why the monogram is neutral"
 
 
 def _class_strings(rel: str):
