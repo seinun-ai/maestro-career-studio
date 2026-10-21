@@ -55,9 +55,9 @@ const CHECK_GROUP: Partial<Record<KnockoutCheck["kind"], string>> = {
  *  Same rule as `setup-steps.ts:112`: landing on a 900-line form and hunting
  *  for the unanswered question is barely better than landing on the wrong
  *  page, which is what this link used to do — it pointed at `/settings`, where
- *  the autofill card has never lived. The `autofill-<group>` ids are the
- *  fieldsets in `settings/autofill-section.tsx`; `anchorHref` adds the Autofill
- *  tab, so the server renders the panel that holds them. */
+ *  the autofill card has never lived. The `autofill-<group>` ids are Profile's
+ *  tile cards (`lib/profile-tiles.ts`), and the link opens the tile that holds
+ *  one. */
 function autofillHref(kind: KnockoutCheck["kind"] | undefined): string {
   const group = kind ? CHECK_GROUP[kind] : undefined;
   return anchorHref("/profile", group ? `autofill-${group}` : "autofill");

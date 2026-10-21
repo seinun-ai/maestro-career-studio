@@ -1,14 +1,16 @@
 /**
- * The tabs on /settings and /profile, and which tab holds each deep-link anchor
+ * The tabs on /settings, and which tab holds each deep-link anchor
  * (docs/frontend-conventions.md, "Settings vs Profile"). No imports: `node --test`
- * loads this file as it is (settings-tabs.test.ts).
+ * loads this file as it is (settings-tabs.test.ts). /profile has no tabs: its
+ * tiles and folds are `lib/profile-tiles.ts`, and a deep link there is
+ * `/profile#<card>` (anchorHref).
  *
- * The FIRST tab of each page is its default, and its URL carries no `?tab=`.
- * `anchors` lists every card id a panel renders (a pin checks the pages against
- * it); ids INSIDE a card resolve by prefix (`autofill-work_auth`, the fieldsets
- * setup-steps.ts and the job knock-out card aim at). The slugs are never shown.
+ * The FIRST tab is the default, and its URL carries no `?tab=`.
+ * `anchors` lists every card id a panel renders (a pin checks the page against
+ * it); ids INSIDE a card would resolve by prefix (`PREFIXES`; none today). The
+ * slugs are never shown.
  */
-export type SettingsPage = "settings" | "profile";
+export type SettingsPage = "settings";
 
 export type SettingsTab = {
   value: string;
@@ -42,20 +44,13 @@ export const SETTINGS_TABS = [
   },
 ] as const satisfies readonly SettingsTab[];
 
-export const PROFILE_TABS = [
-  { value: "you", label: "About you", anchors: ["persona", "market", "job-preferences"] },
-  { value: "autofill", label: "Autofill", anchors: ["autofill"] },
-] as const satisfies readonly SettingsTab[];
-
 const TABS: Record<SettingsPage, readonly SettingsTab[]> = {
   settings: SETTINGS_TABS,
-  profile: PROFILE_TABS,
 };
 
 /** [id prefix, tab]: ids inside a card that no table row names. */
 const PREFIXES: Record<SettingsPage, readonly (readonly [string, string])[]> = {
   settings: [],
-  profile: [["autofill-", "autofill"]],
 };
 
 /**
@@ -71,7 +66,6 @@ const OLD_TABS: Record<SettingsPage, Readonly<Record<string, { tab: string; anch
     appearance: { tab: "basics", anchor: "appearance" },
     about: { tab: "basics", anchor: "about" },
   },
-  profile: {},
 };
 
 /** The old value's landing, or undefined. Own keys only: `?tab=constructor` is not an old tab. */
@@ -115,18 +109,18 @@ export function tabForAnchor(page: SettingsPage, anchor: string): string | null 
   return prefixed ? prefixed[1] : null;
 }
 
-/** `/profile?tab=autofill#autofill-eeo`; the default tab writes no `?tab=`. */
+/** `/settings?tab=agents#agent-hints`; the default tab writes no `?tab=`. */
 export function tabHref(page: SettingsPage, tab: string, anchor?: string): string {
   const query = tab === defaultTab(page) ? "" : `?tab=${tab}`;
   return `/${page}${query}${anchor ? `#${anchor}` : ""}`;
 }
 
-/** The tabbed page a pathname is, or null for every other route. */
+/** The tabbed page a pathname is, or null for every other route (Profile included: it has no tabs). */
 export function settingsPageAt(pathname: string): SettingsPage | null {
-  return pathname === "/settings" ? "settings" : pathname === "/profile" ? "profile" : null;
+  return pathname === "/settings" ? "settings" : null;
 }
 
-/** A deep link to `anchor` on `home`: settings and profile name the tab, other routes are `home#anchor`. */
+/** A deep link to `anchor` on `home`: settings names the tab, other routes are `home#anchor`. */
 export function anchorHref(home: string, anchor: string): string {
   const page = settingsPageAt(home);
   if (page === null) return `${home}#${anchor}`;

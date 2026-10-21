@@ -5,9 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { TileCard, type TileView } from "@/components/profile/tile";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
-import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
+import { SettingCardAction } from "@/components/settings/setting-card";
 import { ACTION_ROW } from "@/components/settings/setting-layout";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { Button } from "@/components/ui/button";
@@ -17,30 +18,33 @@ import { couldnt } from "@/lib/error-text";
 import { canApplyAsyncDraft } from "@/lib/onboarding";
 import type { SettingValue } from "@/lib/types";
 
-/**
- * The candidate's persona: vision, strengths, goals, working style.
- *
- * This was `TextSettingSection`, a generic parameterised by `settingKey` —
- * except the type of that prop was the single literal `"persona"`. It had been
- * built to serve persona and a `memory` sibling; memory is gone, so the
- * generality was 255 lines of machinery serving one caller. If a second
- * freeform text setting ever appears, generalise then, from two real examples.
- */
-export function PersonaSection({
-  draftDisabledReason,
-}: {
-  /** Why "Draft from my career history" cannot run yet, or undefined when it can. */
-  draftDisabledReason?: string;
-}) {
-  const query = useQuery({
+export function usePersonaQuery() {
+  return useQuery({
     queryKey: ["settings", "persona"],
     queryFn: () => apiFetch<SettingValue>("/api/settings/persona"),
   });
+}
 
+/**
+ * How you come across: the candidate's persona (vision, strengths, goals, working style). It sets the tone of
+ * tailoring, cover letters and answers, and never adds facts to your resume.
+ */
+export function usePersonaTile(done: boolean | undefined, draftDisabledReason?: string): TileView {
+  const persona = usePersonaQuery();
+  const text = persona.data?.value.trim() ?? "";
+  return {
+    state: done ? { kind: "ready" } : { kind: "none" },
+    summary: <span className="line-clamp-2">{persona.data ? text || "Not written yet" : "Loading…"}</span>,
+    note: "Sets the tone of letters and answers",
+    panel: <PersonaCard draftDisabledReason={draftDisabledReason} />,
+  };
+}
+
+function PersonaCard({ draftDisabledReason }: { draftDisabledReason?: string }) {
+  const query = usePersonaQuery();
   return (
-    <SettingCard
-      id="persona"
-      title="Persona"
+    <TileCard
+      tile="persona"
       description="How you'd describe yourself as a candidate: your goals, strengths and how you work. It sets the tone of tailoring, cover letters and answers, and never adds facts to your resume."
       errorTitle="Couldn't load your persona."
       query={query}
@@ -51,7 +55,7 @@ export function PersonaSection({
           draftDisabledReason={draftDisabledReason}
         />
       )}
-    </SettingCard>
+    </TileCard>
   );
 }
 

@@ -82,7 +82,8 @@ _QUERY_SURFACES: list[tuple[str, str]] = [
     ("components/resume-health/health-report-page.tsx", "No health report yet."),
     ("components/setup/getting-started-card.tsx", "Getting started"),
     ("app/applications/[id]/page.tsx", "This application no longer exists."),
-    ("app/profile/page.tsx", "<SetupStatusStrip"),
+    # Profile (design refresh Task 7.2): the tiles need the answers, the consent and your countries.
+    ("components/profile/profile-view.tsx", "<AutofillProfileProvider"),
     ("app/referrals/page.tsx", "Add your first referral"),
 ]
 
@@ -123,15 +124,11 @@ def test_query_surface_error_branch_precedes_empty_state(relpath: str, empty_mar
 _SETTINGS_CARDS = [
     "about-section.tsx",
     "auto-apply-section.tsx",
-    "autofill-section.tsx",
     "full-automation-section.tsx",
-    "job-preferences-section.tsx",
     "llm-endpoint.tsx",
-    "market-section.tsx",
     "mcp-workflow-section.tsx",
     "model-catalog-panel.tsx",
     "models-section.tsx",
-    "persona-section.tsx",
     "prompts-section.tsx",
     "quick-tailor-section.tsx",
 ]
@@ -157,6 +154,23 @@ def test_settings_cards_route_through_the_shared_shell(filename: str):
         f"{filename} builds its own CardHeader — that is the shell's job, and "
         "hand-rolling it is how the loading and error branches drifted apart."
     )
+
+
+# Profile's tiles (design refresh Task 7.2) moved the Autofill, Persona, Job preferences and Where you apply
+# cards out of components/settings: each tile's editor is a `TileCard`, which renders through SettingCard.
+_PROFILE_TILE_CARDS = [
+    "contact.tsx", "where-you-apply.tsx", "work-permits.tsx", "jobs-you-want.tsx", "how-you-come-across.tsx",
+    "start-and-pay.tsx", "education.tsx", "languages.tsx", "own-questions.tsx",
+]
+
+
+@pytest.mark.parametrize("filename", _PROFILE_TILE_CARDS)
+def test_profile_tile_cards_route_through_the_shared_shell(filename: str):
+    source = (_FRONTEND / "components/profile" / filename).read_text()
+    assert re.search(r"<TileCard[\s>]", source), f"{filename} must render its editor through TileCard"
+    assert "<CardHeader" not in source and "<LoadErrorState" not in source, filename
+    tile = (_FRONTEND / "components/profile/tile.tsx").read_text()
+    assert re.search(r"<SettingCard[\s>]", tile) and "<CardHeader" not in tile
 
 
 def test_query_client_never_pauses_requests_for_being_offline():
@@ -236,7 +250,8 @@ _FAILURE_BRANCHES = {
     "app/automations/page.tsx": "{isLoadFailure(query) ? (",
     "app/today/page.tsx": "{isLoadFailure(today) ? (",
     "app/base-resumes/page.tsx": "{isLoadFailure(resumes) ? (",
-    "app/profile/page.tsx": "{isLoadFailure(setupStatus) ? (",
+    # Profile draws once the answers, the consent record and your countries are in (Task 7.2).
+    "components/profile/profile-view.tsx": "if (loadFailed && !ready) {",
     "app/applications/page.tsx": "const loadFailed = isLoadFailure(apps) || isLoadFailure(savedJobs);",
     "app/applications/[id]/page.tsx": "if (lastError != null) {",
     "app/templates/page.tsx": "{isLoadFailure(templates) ? (",
@@ -306,6 +321,7 @@ _LOADING_GATES = [
     ("app/referrals/page.tsx", '<Skeleton className="h-40 w-full" />', "isLoadFailure(referrals) ?"),
     ("app/today/page.tsx", '<Skeleton className="h-56 w-full rounded-corner-lg" />', "isLoadFailure(today) ?"),
     ("components/setup/setup-flow.tsx", '<Skeleton className="h-72 w-full rounded-corner-md" />', "{loadFailed ? ("),
+    ("components/profile/profile-view.tsx", '<Skeleton className="h-14 w-72" />', "if (loadFailed && !ready) {"),
     ("app/automations/page.tsx", '<Skeleton className="h-64 w-full" />', "isLoadFailure(query) ?"),
     ("app/applications/page.tsx", "animate-shimmer h-12", "loadFailed ? ("),
     ("components/proposals/proposals-section.tsx", "if (isLoading) {", "if (isLoadFailure("),

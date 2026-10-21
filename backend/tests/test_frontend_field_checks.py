@@ -15,7 +15,7 @@ def _src(path: str) -> str:
 
 
 def test_contact_fields_use_the_checks_and_the_shared_message():
-    for path in ("components/settings/autofill-section.tsx", "components/resume-editor/contact-form.tsx"):
+    for path in ("components/profile/field-control.tsx", "components/resume-editor/contact-form.tsx"):
         src = _src(path)
         assert "emailWarning(" in src
         assert "useFieldMessage" in src

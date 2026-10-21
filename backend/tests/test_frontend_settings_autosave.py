@@ -30,12 +30,14 @@ def _arrow(source: str, head: str) -> str:
 
 _HOOK = _read("lib/use-autosave.ts")
 _STATUS = _read("components/settings/autosave-status.tsx")
+# Job preferences and Where you apply are Profile tiles since design refresh Task 7.2; Where you apply
+# queues its writes now (You apply in is several chips), so it is an autosave card with a retry.
 _AUTOSAVE_CARDS = (
     "components/settings/quick-tailor-section.tsx",
-    "components/settings/job-preferences-section.tsx",
+    "components/profile/jobs-you-want.tsx",
+    "components/profile/where-you-apply.tsx",
 )
 _SERVER_VALUE_CARDS = (
-    "components/settings/market-section.tsx",
     "components/settings/mcp-workflow-section.tsx",
 )
 
@@ -146,7 +148,7 @@ def test_the_status_reserves_its_width():
 
 def test_persona_draft_is_a_header_action_with_its_reason_read():
     # A native `disabled` shows no `title` to a keyboard or screen-reader user.
-    src = _read("components/settings/persona-section.tsx")
+    src = _read("components/profile/how-you-come-across.tsx")
     action = src[src.index("<SettingCardAction>") : src.index("</SettingCardAction>")]
     assert "Draft from my career" in action
     assert "aria-describedby={draftDisabledReason ? reasonId : undefined}" in action
@@ -177,8 +179,8 @@ def test_gap_page_saved_holds_then_clears():
 
 
 def test_market_select_dims_while_saving():
-    src = _read("components/settings/market-section.tsx")
-    assert 'data-pending={save.isPending ? "true" : undefined}' in src
+    src = _read("components/profile/where-you-apply.tsx")
+    assert 'data-pending={pending ? "true" : undefined}' in src
 
 
 def test_form_filling_saves_are_visible():
@@ -210,3 +212,19 @@ def test_manual_update_scores_confirms_but_automatic_rescore_does_not():
     assert 'toast.success("Match scores updated")' in src
     assert 'runOnce("manual")' in src
     assert 'if (manual === "manual")' in src
+
+
+# --- Profile saves as you go (design refresh Task 7.2) ----------------------------
+
+
+def test_an_idle_autosave_takes_another_writers_change_and_a_busy_one_never_does():
+    """The Companion's pause row learns answers into the autofill profile while Profile is open: `adopt` takes
+    the newer server copy only while nothing is in flight and nothing failed, so it never overwrites an edit."""
+    adopt = _flat(_HOOK[_HOOK.index("const adopt = useCallback(") : _HOOK.index("}, []);", _HOOK.index("const adopt"))])
+    assert "if (inFlight.current !== null || failedNow.current) return;" in adopt
+    assert "queued.current = next; setValue(next);" in adopt
+    settle = _arrow(_HOOK, "const settle = (")
+    assert "failedNow.current = !ok;" in settle
+    provider = _read("components/profile/autofill-profile.tsx")
+    assert "adopt(profileForEditing(served));" in provider
+    assert "if (served === seen.current) return;" in provider

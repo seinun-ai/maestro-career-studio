@@ -133,12 +133,12 @@ def test_a_save_in_the_new_words_is_kept_as_it_is(db_session, tmp_path):
     assert json.loads((tmp_path / autofill_profile.AUTOFILL_FILE).read_text())["eeo"]["veteran_status"] == "no"
 
 
-def test_the_settings_page_asks_one_veteran_question():
-    """The Settings control: "Are you a veteran?" with No / Yes / decline, in the values the backend reads."""
+def test_the_profile_asks_one_veteran_question():
+    """Profile's control: "Are you a veteran?" with No / Yes / decline, in the values the backend reads."""
     from pathlib import Path
 
-    source = (Path(__file__).resolve().parents[2] / "frontend/components/settings/autofill-section.tsx").read_text(
-        encoding="utf-8")
+    frontend = Path(__file__).resolve().parents[2] / "frontend"
+    source = (frontend / "lib/autofill-options.ts").read_text(encoding="utf-8")
     block = source[source.index('key: "veteran_status"'):source.index('key: "disability_status"')]
     assert 'label: "Are you a veteran?"' in block
     assert ('{ value: "no", label: "No, I am not a veteran" }' in block
@@ -147,4 +147,8 @@ def test_the_settings_page_asks_one_veteran_question():
     assert "not_veteran" not in block.split("options:")[1] and "protected veteran" not in block.split("options:")[1]
     # Asked again when the old answer ("not a protected veteran") was dropped.
     assert 'staleHint: "Answer again: this question changed."' in block
-    assert 'staleAnswers(profile).includes(`${group.key}.${field.key}`)' in source
+    fields = (frontend / "components/profile/field-control.tsx").read_text(encoding="utf-8")
+    assert "isBlank(rawValue) && stale.includes(field.key)" in fields
+    fold = (frontend / "components/profile/diversity.tsx").read_text(encoding="utf-8")
+    assert 'staleAnswers(profile).flatMap((item) => (item.startsWith("eeo.") ? [item.slice(4)] : []))' in fold
+    assert "stale={stale}" in fold

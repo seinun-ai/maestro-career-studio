@@ -2425,6 +2425,9 @@ export interface MarketOption {
   /** "DMY" or "MDY". */
   date_format: string;
   offers_eeo: boolean;
+  /** How its work-permit questions are worded: `us_visa` (with the US visa status), `uk` or `generic`
+   *  (markets.yaml; lib/autofill-options.ts `permitQuestions` reads an unknown one as generic). */
+  work_auth_vocab: string;
 }
 
 /** Where the user lives and applies (`GET/PUT /api/settings/market`). */

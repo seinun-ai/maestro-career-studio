@@ -32,7 +32,13 @@ def _between(src: str, start: str, end: str) -> str:
     return src[at : src.index(end, at)]
 
 
-_AUTOFILL = _read("components/settings/autofill-section.tsx")
+# Profile's answers for job forms (design refresh Task 7.2): every tile and fold, and the field definitions
+# they render (lib/autofill-options.ts, shared with Setup).
+_AUTOFILL = "".join(p.read_text(encoding="utf-8") for p in sorted((_FRONTEND / "components/profile").glob("*.tsx")))
+_AUTOFILL += _read("lib/autofill-options.ts")
+_CONSENT = _read("components/profile/diversity-consent.tsx")
+_DIVERSITY = _read("components/profile/diversity.tsx")
+_FIELDS = _read("components/profile/field-control.tsx")
 # The agreement switch and the screening-answer setting are Settings › Companion's (owner decision
 # D10, design refresh Task 7.3); the diversity switch stays in Profile beside its answers.
 _FILL = _read("components/settings/companion-fill-section.tsx")
@@ -109,7 +115,7 @@ def test_every_prompt_has_words_on_screen():
 
 def test_work_location_has_one_no_preference():
     """"Not specified" and "Any" meant the same; a stored "any" reads No preference."""
-    prefs = _read("components/settings/job-preferences-section.tsx")
+    prefs = _read("components/profile/jobs-you-want.tsx")
     assert 'const REMOTE_OPTIONS = ["remote", "hybrid", "onsite"] as const;' in prefs
     assert '"Any"' not in prefs and "Not specified" not in prefs
     assert "preferences.remote && isRemoteOption(preferences.remote) ? preferences.remote : NO_PREFERENCE" in prefs
@@ -271,19 +277,24 @@ def test_the_diversity_switch_points_at_the_answers_below():
     assert "Uses only your exact answers below." in flat
     assert "using only your exact answers below." in flat
     assert "answers above" not in flat
-    eeo = _AUTOFILL.index('{group.key === "eeo" && (\n            // A permission, not a field.')
-    assert eeo < _AUTOFILL.index('id="eeo-standing-consent"') < _AUTOFILL.index("{group.fields.map((field) =>")
+    # The fold draws the switch, then the answers it covers.
+    assert _DIVERSITY.index("<DiversityConsentSwitch") < _DIVERSITY.index("<FieldGrid")
+    assert 'id="eeo-standing-consent"' in _between(_CONSENT, "export function DiversityConsentSwitch(", "</CardSection>")
 
 
 def test_decline_the_rest_fills_only_blank_answers():
     """M22: it declines the questions still unanswered and never overwrites one."""
-    decline = _between(_AUTOFILL, "const declineAllEeo = () => {", "\n  };")
-    assert 'if (field.type !== "select" || !isBlank(eeo[field.key])) return [];' in decline
-    assert "eeo: { ...groupValues(current, \"eeo\"), ...declines }," in decline
-    flat = _joined(_AUTOFILL)
-    # What it does in the words of the answer it writes (first-read pass).
-    assert "Fills your blank diversity questions with “Decline to answer”. Select Save answers to keep it." in flat
-    assert "aria-describedby={declineHintId}" in _AUTOFILL
+    lib = _read("lib/autofill-options.ts")
+    declined = _between(lib, "export function declinedEeo(", "\n}\n")
+    assert 'if (field.type !== "select" || !isBlank(eeo[field.key])) return [];' in declined
+    # Each select's own decline choice, whatever its words (the veteran one says "I don't wish to answer").
+    assert 'field.options?.find((option) => option.value === "decline")' in declined
+    decline = _between(_DIVERSITY, "const declineAllEeo = () => {", "\n  };")
+    assert "const declines = declinedEeo(profile);" in decline
+    assert 'eeo: { ...groupValues(current, "eeo"), ...declines }' in decline
+    # What it does, in the words of what it writes; it saves as you go (design refresh Task 7.2).
+    assert "Fills each blank diversity question with its decline choice." in _joined(_DIVERSITY)
+    assert "aria-describedby={declineHintId}" in _DIVERSITY
 
 
 def test_turning_a_switch_off_keeps_the_agreement_time():
@@ -296,10 +307,12 @@ def test_a_consent_opens_on_cancel():
     """Enter must never grant a standing permission: both consent confirms open on Cancel."""
     dialog = _read("components/confirm-dialog.tsx")
     assert "initialFocus={opts?.destructive || opts?.consent ? cancelRef : confirmRef}" in dialog
-    for name, src in (("setEeoConsentEnabled", _AUTOFILL), ("setConsentFormsEnabled", _FILL)):
-        body = _between(src, f"const {name} = ", "\n  };")
-        assert "consent: true," in body, name
-        assert 'confirmLabel: "Allow",' in body, name
+    body = _between(_FILL, "const setConsentFormsEnabled = ", "\n  };")
+    assert "consent: true," in body and 'confirmLabel: "Allow",' in body
+    # The diversity confirm's words are one constant, shared by Profile and Setup.
+    words = _between(_CONSENT, "export const DIVERSITY_CONSENT_CONFIRM = {", "} as const;")
+    assert "consent: true," in words and 'confirmLabel: "Allow",' in words
+    assert "await confirm(DIVERSITY_CONSENT_CONFIRM);" in _between(_CONSENT, "const setEeoConsentEnabled = ", "\n  };")
 
 
 def test_the_agreement_box_switch_has_its_own_card():
@@ -312,7 +325,7 @@ def test_the_agreement_box_switch_has_its_own_card():
     boxes = _between(_FILL, "function CompanionPermissions(", "\n}\n")
     assert 'id="consent-forms"' in boxes and 'id="eeo-standing-consent"' not in _FILL
     assert 'id="consent-forms"' not in _AUTOFILL and "setConsentFormsEnabled" not in _AUTOFILL
-    eeo = _between(_AUTOFILL, '{group.key === "eeo" && (\n            // A permission, not a field.', "</CardSection>")
+    eeo = _between(_CONSENT, "export function DiversityConsentSwitch(", "</CardSection>")
     assert 'id="eeo-standing-consent"' in eeo
 
 
@@ -325,13 +338,14 @@ def test_fill_from_career_history_says_why_it_waits():
     assert "<p id={fillHintId}" in _AUTOFILL
     # Race sits in a voluntary group, so its label carries no "(optional)" of its own;
     # it stays optional for readiness (test_autofill_groups_parity.py).
-    assert "<Label htmlFor={id} optional={field.optional && group.key !== \"eeo\"}>" in _AUTOFILL
+    assert "<Label htmlFor={id} optional={field.optional && !voluntary}>" in _FIELDS
+    assert "voluntary\n" in _between(_DIVERSITY, "<FieldGrid", "/>")
 
 
 def test_sentences_say_the_companion():
     """Planner decision 20: "the Companion" in a sentence, bare "Companion" only in a label."""
     for rel, sentence in (
-        ("components/settings/autofill-section.tsx", 'description="The Companion uses these to fill job applications."'),
+        ("components/profile/contact.tsx", 'description="The Companion types these where a form asks."'),
         ("components/settings/companion-fill-section.tsx", 'title: "Let the Companion fill agreements and signatures?",'),
         ("components/settings/prompts-section.tsx", '"How the Companion picks answers for form choices."'),
         ("components/settings/connected-agents-card.tsx", "The Companion, the Maestro CS browser extension, saves jobs"),
@@ -431,9 +445,11 @@ def test_catalog_ids_show_only_when_they_add_something():
 def test_profile_and_agent_limits_speak_plainly():
     """Minor: the words match what the server does (routers and services/proposals.py)."""
     for rel, words in (
-        ("components/settings/market-section.tsx", "Sets the default currency for jobs you save and which diversity questions apply."),
-        ("components/settings/persona-section.tsx", "It sets the tone of tailoring, cover letters and answers, and never adds facts to your resume."),
-        ("components/settings/persona-section.tsx", "Draft from my career history"),
+        ("components/profile/where-you-apply.tsx", "Sets your home currency and date format."),
+        ("components/profile/where-you-apply.tsx",
+         "Each country has its own work-permit answers and its own diversity questions, if it has a checked set."),
+        ("components/profile/how-you-come-across.tsx", "It sets the tone of tailoring, cover letters and answers, and never adds facts to your resume."),
+        ("components/profile/how-you-come-across.tsx", "Draft from my career history"),
         ("components/settings/auto-apply-section.tsx", 'label: "Jobs per search",'),
         ("components/settings/auto-apply-section.tsx", 'hint: "Connected agents are told to file no more than this from one search.",'),
         ("components/settings/auto-apply-section.tsx", 'label: "Move unreviewed jobs to History after (days)",'),
@@ -498,9 +514,11 @@ def test_errors_and_setup_speak_plainly():
     card = _read("components/setup/getting-started-card.tsx")
     # A PDF step with nothing to do is not a step; a TeX that needs an update is.
     assert '!(row.id === "engines" && row.done && pdflatex.available && !pdflatex.warning)' in card
-    strip = _flat(_read("components/setup/setup-status-strip.tsx"))
-    assert '<span className="text-muted-foreground text-label-medium">Setup steps:</span>' in strip
-    assert '<Check aria-hidden="true" className="size-3" />' in strip
+    # Profile's setup strip went with the tabs (design refresh Task 7.2): its header says how many sections
+    # are ready, in words beside the ring, and Setup and Today's setup card carry the steps.
+    header = _flat(_read("components/profile/profile-header.tsx"))
+    assert "const words = `${ready} of ${total} sections ready`;" in header
+    assert 'role="img" aria-label={words}' in header and '<span className="text-body-small text-muted-foreground">sections ready</span>' in header
     assert "<DialogTitle>Import resumes and documents</DialogTitle>" in _read("components/setup/upload-dialog.tsx")
 
 
@@ -717,9 +735,13 @@ def test_the_web_app_recognises_every_key_sentence_the_server_writes():
 
 
 def test_every_setup_chip_marks_done_or_not_done():
-    strip = _read("components/setup/setup-status-strip.tsx")
-    assert '<Circle aria-hidden="true" className="size-3" />' in strip
-    assert 'return `${step.label}, ${step.done ? "done" : "not done"}`;' in strip
+    """A tile's state is a word beside its mark, never a colour alone: Ready with its check, Needs you with
+    its dot, or a count; and the tile button is named by its title and that word."""
+    tile = _read("components/profile/tile.tsx")
+    marks = _between(tile, "export function TileStateMark(", "\n}\n")
+    assert '<CONCEPT_ICONS.done aria-hidden="true" className="size-4" />\n        Ready' in marks
+    assert '<span aria-hidden="true" className="size-1.5 rounded-full bg-attention" />\n        Needs you' in marks
+    assert "aria-labelledby={view.state.kind === \"none\" ? titleId : `${titleId} ${stateId}`}" in tile
 
 
 # --- The owner's calls (SYSTEM.md §11 item 36, resolved 2026-09-24) -------------------
@@ -749,12 +771,12 @@ def test_the_covenant_question_explains_its_legal_term():
     field = _between(_AUTOFILL, 'key: "non_compete",', "},")
     assert 'label: "Subject to a restrictive covenant?",' in field
     assert 'hint: "Such as a non-compete or non-solicit agreement.",' in field
-    renderer = _between(_AUTOFILL, "{group.fields.map((field) => {", "</fieldset>")
-    assert 'const hint = stale ? field.staleHint : field.hint;' in renderer
+    renderer = _between(_FIELDS, "export function FieldGrid(", "\n}\n")
+    assert 'const hint = isStale ? field.staleHint : field.hint;' in renderer
     assert 'const hintId = hint ? `${id}-hint` : undefined;' in renderer
     assert "<p id={hintId}" in renderer
     assert "hintId={hintId}" in renderer  # handed to the shared control …
-    control = _between(_AUTOFILL, "function FieldControl(", "\n}\n")
+    control = _between(_FIELDS, "export function FieldControl(", "\n}\n")
     assert control.count("aria-describedby={hintId}") == 1  # … which the select reads directly …
     assert "useFieldMessage({ warning, hintId })" in control  # … and the input through its message wiring
 
@@ -781,9 +803,9 @@ def test_the_self_description_shows_only_for_self_describe_and_goes_with_it():
     assert 'when: ["gender", "self_describe"],' in field
     assert "optional: true," in field
     assert 'hint: "The Companion types this where a form asks you to self-describe.",' in field
-    renderer = _between(_AUTOFILL, "{group.fields.map((field) => {", "</fieldset>")
-    assert "if (field.when && groupValues(profile, group.key)[field.when[0]] !== field.when[1]) {" in renderer
-    set_field = _between(_AUTOFILL, "const setField = (", "\n  };")
+    renderer = _between(_FIELDS, "export function FieldGrid(", "\n}\n")
+    assert "if (field.when && values[field.when[0]] !== field.when[1]) {" in renderer
+    set_field = _between(_AUTOFILL, "export function withField(", "\n}\n")
     assert "if (field.when?.[0] === key && field.when[1] !== value) delete values[field.key];" in set_field
 
 

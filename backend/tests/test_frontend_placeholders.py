@@ -475,7 +475,7 @@ def _order(src: str, *needles: str) -> None:
 
 
 def test_locations_hint_is_between_the_label_and_the_field():
-    src = _src("components/settings/job-preferences-section.tsx")
+    src = _src("components/profile/jobs-you-want.tsx")
     _order(
         src,
         'htmlFor="job-preferences-locations"',
@@ -580,7 +580,7 @@ def test_metric_fields_have_visible_labels():
 
 
 def test_custom_answer_has_a_visible_label_not_a_placeholder():
-    src = _src("components/settings/autofill-section.tsx")
+    src = _src("components/profile/own-questions.tsx")
     assert 'placeholder="Answer"' not in src
     assert "e.g. Why do you want to work here?" not in src
     _order(

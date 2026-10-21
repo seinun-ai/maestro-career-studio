@@ -219,7 +219,8 @@ test("the done screen: Add your first job filled, the agent app and the Companio
   assert.match(html, /href="\/settings\?tab=agents"[^>]*>.*?Connect an agent app/s);
   assert.match(html, /href="https:\/\/github\.com\/[^"]+GETTING_STARTED\.md#4-the-companion-browser-extension-optional"[^>]*target="_blank"[^>]*>.*?Add the Companion/s);
   // Chose to answer diversity: where to do it, beside its consent.
-  assert.match(html, /href="\/profile\?tab=autofill#autofill-eeo"[^>]*>Answer the diversity questions/);
+  // Profile has no tabs (design refresh Task 7.2): the hash opens the Diversity fold.
+  assert.match(html, /href="\/profile#autofill-eeo"[^>]*>Answer the diversity questions/);
   // Open required steps say so instead of "You're set".
   const early = renderElement(
     React.createElement(SetupDone, {

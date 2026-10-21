@@ -67,13 +67,14 @@ _WORDS = [
     ("components/settings/quick-tailor-section.tsx", "Fast tailor",
      "What Quick tailor may change on your resume, on the gap analysis page and in the Companion."),
     ("components/settings/quick-tailor-section.tsx", "one-shot tailoring", 'title="Quick tailor"'),
-    ("components/settings/autofill-section.tsx", "Preset answers the browser extension uses",
-     "The Companion uses these to fill job applications."),
-    ("components/settings/autofill-section.tsx", "Allow extension to fill these answers",
+    # Profile's tiles hold the answers since design refresh Task 7.2: each card says what the Companion does.
+    ("components/profile/contact.tsx", "Preset answers the browser extension uses",
+     "The Companion types these where a form asks."),
+    ("components/profile/diversity-consent.tsx", "Allow extension to fill these answers",
      "Let the Companion fill these answers"),
     ("components/settings/companion-fill-section.tsx", "Allow extension to tick agreement boxes",
      "Let the Companion fill agreements and signatures"),
-    ("components/settings/autofill-section.tsx", "matching the extension&apos;s",
+    ("components/profile/education.tsx", "matching the extension&apos;s",
      "Most recent first."),
     # The Companion has no ⋯ menu. Capture is its fill log: off unless the user ticks
     # Keep a fill log in the Companion's options (extension/options.html).

@@ -18,18 +18,18 @@ function ring(el: HTMLElement) {
   window.setTimeout(() => el.classList.remove(...added), 1600);
 }
 
-/** Shown, not merely mounted: a card in a hidden tab panel is in the DOM with no box. */
+/** Shown, not merely mounted: a card in a hidden tab panel, a closed tile or a fold is in the DOM with no box. */
 function shown(anchor: string): HTMLElement | null {
   const el = document.getElementById(anchor);
   return el && el.getClientRects().length > 0 ? el : null;
 }
 
 /**
- * Put `anchor` in the address bar with no history entry and no scroll, and tell the page. A tabbed
- * page (Settings, Profile) opens the tab that renders it (`useSettingsTab` listens for hashchange);
- * Next listens for no hashchange, so the synthetic event reaches only that hook. There the URL
- * also names that tab (`?tab=`), so the address bar matches the tab shown and a reload opens it;
- * an anchor no tab renders keeps the query as it is.
+ * Put `anchor` in the address bar with no history entry and no scroll, and tell the page. Settings
+ * opens the tab that renders it (`useSettingsTab` listens for hashchange), and Profile the tile or
+ * fold that holds it (`useProfileSections`); Next listens for no hashchange, so the synthetic event
+ * reaches only those hooks. On Settings the URL also names that tab (`?tab=`), so the address bar
+ * matches the tab shown and a reload opens it; an anchor no tab renders keeps the query as it is.
  */
 function announce(anchor: string) {
   const { pathname, search } = window.location;

@@ -1,10 +1,9 @@
 """Guard: the autofill field taxonomy is written twice, so pin it.
 
 `setup_status._PERSONAL` and friends are, in that module's own words, "a
-hand-mirror of the frontend GROUPS array in
-frontend/components/settings/autofill-section.tsx ... update BOTH when a field
-is added". A comment asking two people in two languages to stay in sync is not
-a mechanism; nothing failed when they drifted.
+hand-mirror of the frontend GROUPS array in frontend/lib/autofill-options.ts
+... update BOTH when a field is added". A comment asking two people in two
+languages to stay in sync is not a mechanism; nothing failed when they drifted.
 
 Serving the taxonomy from the backend was the alternative considered and
 rejected: GROUPS carries labels, placeholders and select options, which are
@@ -14,7 +13,10 @@ same shape. So the two lists stay, and this makes the drift loud instead.
 Parity rule: for each group, the backend's REQUIRED field list must equal the
 frontend's non-`optional` fields, in order. Readiness counts answerable
 fields, so a field the editor marks optional must not count against it, and a
-field the editor added must count.
+field the editor added must count. Work permits are asked once per country in
+its own words (`WORK_PERMIT_QUESTIONS`, keyed by a market's `work_auth_vocab`):
+the `us_visa` set is `_US_VISA_CORE` (the visa status first), every other set
+is `_WORK_AUTH_CORE`.
 
 Precedent: `test_frontend_query_error_states.py`, `test_formatting_parity.py`.
 """
@@ -30,16 +32,20 @@ from app.services import setup_status
 
 _AUTOFILL_TSX = (
     Path(__file__).resolve().parents[2]
-    / "frontend/components/settings/autofill-section.tsx"
+    / "frontend/lib/autofill-options.ts"
 )
 
 _EXPECTED = {
     "personal": setup_status._PERSONAL,
-    # The editor's one work-authorization set is the US-worded one (visa status first); a
-    # country whose `work_auth_vocab` is not us_visa asks the three yes/no answers only.
-    "work_auth": setup_status._US_VISA_CORE,
     "eeo": setup_status._EEO,
     "preferences": setup_status._PREFERENCES,
+}
+
+# Each vocabulary's required work-permit keys (markets.yaml `work_auth_vocab`).
+_PERMITS = {
+    "us_visa": setup_status._US_VISA_CORE,
+    "uk": setup_status._WORK_AUTH_CORE,
+    "generic": setup_status._WORK_AUTH_CORE,
 }
 
 
@@ -92,3 +98,23 @@ def test_backend_required_fields_match_the_editor(group: str):
         "computed from the backend list, so a mismatch either hides a question "
         "the user must answer or blocks setup on one the editor never shows."
     )
+
+
+def _frontend_permit_keys() -> dict[str, list[str]]:
+    source = _AUTOFILL_TSX.read_text()
+    start = source.index("const WORK_PERMIT_QUESTIONS: Record<WorkAuthVocab, PermitQuestion[]> = {")
+    block = source[start : source.index("\n};", start)]
+    return {
+        vocab: re.findall(r'key: "(\w+)"', body)
+        for vocab, body in re.findall(r"\n  (\w+): \[(.*?)\n  \],", block, re.S)
+    }
+
+
+@pytest.mark.parametrize("vocab", sorted(_PERMITS))
+def test_each_countrys_required_work_permit_keys_match_setup_status(vocab: str):
+    found = _frontend_permit_keys()
+    assert set(found) == set(_PERMITS), sorted(found)
+    assert found[vocab] == _PERMITS[vocab], (vocab, found[vocab])
+    # The backend picks the set the same way: only `us_visa` counts the visa status.
+    markets_yaml = (Path(setup_status.__file__).parent / "data/markets.yaml").read_text()
+    assert set(re.findall(r"work_auth_vocab: (\w+)", markets_yaml)) <= set(_PERMITS)

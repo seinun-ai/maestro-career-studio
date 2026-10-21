@@ -1,8 +1,10 @@
 """Pins for the extra leave-guard surfaces (UX next, Task 13, plus the review fixes).
 
-Persona, Autofill, Prompts and a pasted job description ask before a link
-drops the text. Extract on /new starts one request per click. A Save that
-lands while the user kept typing keeps the later text, and keeps it dirty.
+Persona, Prompts and a pasted job description ask before a link drops the text,
+and Profile's answers for job forms ask while a failed save leaves them unsaved
+(they save as you go since design refresh Task 7.2). Extract on /new starts one
+request per click. A save that lands while the user kept typing keeps the later
+text.
 """
 
 from __future__ import annotations
@@ -20,13 +22,14 @@ def _flat(source: str) -> str:
     return " ".join(source.split())
 
 
-_AUTOFILL = _read("components/settings/autofill-section.tsx")
+_AUTOFILL = _read("components/profile/autofill-profile.tsx")
 _NEW = _read("app/new/page.tsx")
 
 
 def test_explicit_save_cards_ask_before_leaving():
-    assert "useLeaveGuard(dirty)" in _read("components/settings/persona-section.tsx")
-    assert "useLeaveGuard(dirty)" in _AUTOFILL
+    assert "useLeaveGuard(dirty)" in _read("components/profile/how-you-come-across.tsx")
+    # Autosaved: only a failed write leaves answers on screen the server lacks.
+    assert "useLeaveGuard(answers.failed)" in _AUTOFILL
     assert "useLeaveGuard(value !== prompt.value)" in _read(
         "components/settings/prompts-section.tsx"
     )
@@ -45,16 +48,17 @@ def test_new_job_page_extracts_once_per_click():
 
 
 def test_autofill_counts_every_edit():
-    update = _AUTOFILL[_AUTOFILL.index("const updateProfile = (") :]
-    assert update.index("editRevision.current += 1;") < update.index("setProfile(next);")
+    # Every editor's change goes through the one autosave: each edit is queued, the newest goes out next.
+    update = _flat(_AUTOFILL[_AUTOFILL.index("update: (surface, next) => {") :])
+    assert update.startswith("update: (surface, next) => { setLast(surface); answers.update(next); },")
+    assert "useAutosave<Profile>(initial, (next) => save.mutateAsync(next));" in _flat(_AUTOFILL)
 
 
 def test_autofill_save_keeps_text_typed_while_it_ran():
-    # Marking the form clean re-seeds it from the saved copy, overwriting what
-    # was typed meanwhile, and disables Save. Clean only if nothing changed.
+    # A save landing re-seeds nothing while an edit is queued or in flight (`adopt` refuses), so text typed
+    # while it ran stays and goes out next; the server copy is taken only once every edit is on it.
     src = _flat(_AUTOFILL)
-    assert "saveOnce({ value: profileRef.current, revision: editRevision.current })" in src
-    assert "if (editRevision.current === revision) setDirty(false);" in src
-    assert "setDirty(false)" not in src.replace(
-        "if (editRevision.current === revision) setDirty(false);", ""
-    )
+    assert "adopt(profileForEditing(served));" in src
+    hook = _flat(_read("lib/use-autosave.ts"))
+    assert "if (inFlight.current !== null || failedNow.current) return;" in hook
+    assert "if (queued.current !== inFlight.current) { flush(); return; }" in hook

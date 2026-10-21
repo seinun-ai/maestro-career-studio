@@ -511,8 +511,10 @@
   same URL, or a press the question or a step over the duplicate settles, is
   stopped. A page that remounts on a search change must not rely on this. When a tab opened by a hash or an in-page jump hides the
   panel holding focus, `focusIfStranded` (`lib/focus.ts`) moves it to the
-  open panel. Persona, Autofill, Prompts, Auto-apply, API keys and Custom AI server
-  register while their explicit Save is dirty. `/new` registers while a pasted job description has not been
+  open panel. Persona, Prompts, Auto-apply, API keys and Custom AI server
+  register while their explicit Save is dirty; an autosaving card (Profile's
+  answers for job forms, Job preferences) while a failed write leaves a value
+  the server lacks. `/new` registers while a pasted job description has not been
   extracted.
 - **The Q&A cover-letter editor closes only after its save lands**
   (`components/qa-tab.tsx`). Save awaits `mutateAsync`: a failed save toasts
@@ -1168,6 +1170,29 @@
   **Add your first job**, then Connect an agent app and Add the Companion; while a required step is
   open it says "Almost there". Pinned by `test_frontend_setup_flow.py`, which runs
   `lib/setup-flow.test.ts` and `components/setup/setup-flow.test.mjs`.
+- **Profile** (`app/profile/page.tsx`, `components/profile/*`, board "Profile, facts about you") is facts
+  about you, one page with no tabs. The header is your name (from your contact answers, else "Profile"),
+  one line of where you live and where you apply, and a ring of the sections setup status reports ready
+  (never a count of its own). **Next up** is the Lead: the first required answer still missing
+  (`lib/autofill-options.ts` `missingAnswers`: each apply-in country's work permit first, then contact, then
+  start and pay), answered in place beside "Never guessed for you"; a Yes or No moves on, a typed answer
+  stays until Next, Skip leaves one for this visit, and diversity only opens its fold. Nine tiles
+  (`lib/profile-tiles.ts`: Contact, Where you apply, Work permits, Jobs you want, How you come across, Start
+  and pay, Education, Languages, Your own questions) each say what they hold in real values with a state
+  word (Ready, Needs you, a count) and open their editor, a `TileCard` (a `SettingCard` with Close), under
+  the grid, one at a time; every editor stays mounted while closed. Two folds follow: **Diversity
+  questions**, only where an apply-in market `offers_eeo`, with the consent switch and its date beside the
+  answers (D10; the confirm's words are `DIVERSITY_CONSENT_CONFIRM`, shared with Setup), and
+  **Eligibility**. Where you apply holds **You live in** and **You apply in** (chips; a chip carries the
+  square of each base resume that stores its country, its name read with it). Work permits asks one set
+  per apply-in country under its name, worded by the market's `work_auth_vocab` (the visa status only for
+  `us_visa`), each answer that country's own entry in `work_auth_by_country`. Every answer saves as you go
+  (`AutofillProfileProvider`: one `useAutosave` for the answers, whose status shows in the editor that made
+  the last edit, and `adopt` takes another writer's change only while every edit is on the server); the
+  persona keeps Save and Discard, because a drafted persona is read before it is saved. A deep link
+  (`anchorHref("/profile", card)` is `/profile#card`, an old `?tab=autofill#…` bookmark too) opens the tile
+  or fold that holds the card (`useProfileSections`, the hash), and the page's one `useFocusSection` lands
+  it. Pinned by `test_frontend_profile_tiles.py`.
 - **Tracker filter** (`app/applications/page.tsx`): the page runs two queries, the summary list
   (job fields joined on the server) and the saved jobs of the source toggle's source. "Saved" is a
   job with no application; agent-captured jobs stay out unless the toggle is **Agents**, which is
@@ -1513,7 +1538,7 @@
     KB, Send to resume or Port. **Import resumes and documents** is the upload
     dialog's title and the button that opens it on Career history and in the
     ⋯ of Resume and gaps; the setup step that opens the same dialog (Getting
-    started, Profile's setup strip) is labelled **Import resumes**, and so is
+    started) is labelled **Import resumes**, and so is
     the first-run card, which opens the resume-only dialog "Import your
     resumes". **Match score**, explained once per surface where it first
     appears as the app's own fixed-rules match: `lib/ats-words.ts` `ATS_SCORE_LEAD`
@@ -1675,20 +1700,21 @@
   limits, then the job-site login, next-step hints and the second copy) and
   **Advanced** (model per job, more models, the custom AI server, AI
   instructions, Quick tailor, Hours per year). `/profile` is who the
-  CANDIDATE is: **About you** (Persona, Where you apply, Job preferences) and
-  **Autofill**. A permission over what the Companion may fill is Settings ›
-  Companion's; a consent over a set of answers stays beside those answers in
-  Profile (the diversity switch, D10). Nothing leaves a tab without a home:
-  `test_frontend_settings_refresh.py` pins every item to its tab. A new card
-  goes on the tab whose subject it shares and adds
-  its id to that tab's `anchors` (pinned). Both write `/api/settings/*`
-  and both draw from
-  `components/settings/` — the folder is not the split, this rule is. When a
-  cross-page link points at a setting, deep-link the card id
-  (`anchorHref("/profile", "autofill")`), never the bare page: sending a user
-  to `/settings` for the autofill profile is a dead end that shipped once
-  already. In prose, a setting's place reads as a path: Settings ›
-  Basics, Profile › Autofill.
+  CANDIDATE is, one page with no tabs ("Profile" below). A permission over
+  what the Companion may fill is Settings › Companion's; a consent over a set
+  of answers stays beside those answers in Profile (the diversity switch,
+  D10). Nothing leaves a tab without a home:
+  `test_frontend_settings_refresh.py` pins every Settings item to its tab and
+  `test_frontend_profile_tiles.py` every Profile item to the tiles. A new
+  Settings card goes on the tab whose subject it shares and adds its id to
+  that tab's `anchors` (pinned); a new Profile card is a tile or fold in
+  `lib/profile-tiles.ts`. Both write `/api/settings/*`; Settings draws from
+  `components/settings/`, Profile from `components/profile/` (its cards are
+  `SettingCard`s too). When a cross-page link points at a setting,
+  deep-link the card id (`anchorHref("/profile", "autofill-work_auth")`),
+  never the bare page: sending a user to `/settings` for the autofill
+  profile is a dead end that shipped once already. In prose, a setting's
+  place reads as a path: Settings › Basics, Profile › Work permits.
   `?tab=` names the tab and the default tab has none; a tab click writes it
   with the native `history.replaceState` (no server round trip, no new
   history entry). The tab hook reads `?tab=` with `useSearchParams`, never
@@ -1751,7 +1777,7 @@
   lands, both status lines move focus with `focusIfDropped` (only from
   `<body>`), and a failed retry disarms the move, so a later save never pulls
   focus out of a field mid-typing. An explicit Save that lands while the user
-  kept typing (Persona, Autofill) keeps the form dirty and the later text.
+  kept typing (Persona) keeps the form dirty and the later text.
 - Settings shows four curated user-voice prompts (cover_letter, qa,
   gap_tailor, chat_system) in its AI instructions card; the other internal
   prompts sit behind a "More instructions" disclosure, each titled in words
@@ -1761,15 +1787,14 @@
   The disclosure hides its list and never unmounts it, so a collapse keeps
   typed drafts and their leave-guard registrations; both toggles carry
   `aria-expanded`.
-- **Derived setup guidance**: Profile starts with `SetupStatusStrip` above its
-  tab row; About you holds Persona (disabled-until-import "Draft from my
-  career history"), Where you apply (the market) and Job preferences; Autofill holds the answers for job forms.
-  The empty tracker leads with its empty state, what
+- **Derived setup guidance**: Profile's header counts the sections setup
+  status reports ready, and its Next up asks the first required answer still
+  missing (above). The empty tracker leads with its empty state, what
   the page is for, and places `GettingStartedCard` BELOW it: the same derived
   steps, deep links, locally dismissible, gone when setup completes. The
   API-key and import steps carry a Required badge until done (`required` in
   `setup-steps.ts`): nothing extracts without a key, nothing scores without a
-  base resume. `["setup-status"]` has three readers (the Profile strip, Getting
+  base resume. `["setup-status"]` has three readers (the Profile header, Getting
   started, `/new`), each `refetchOnMount: "always"` to bypass the 30-second
   stale window; Profile's section saves AND the Settings model/key save
   invalidate it. `/new` names a missing key BEFORE the paste: an amber notice

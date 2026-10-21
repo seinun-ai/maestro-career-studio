@@ -434,8 +434,9 @@ function ModelProfileNote() {
   );
 }
 
-/** One row per provider: its label, where to get a key, and which payload field names its source (CONFIGURED has the set flag). */
-const KEY_FIELDS: Record<
+/** One row per provider: its label, where to get a key, and which payload field names its source (CONFIGURED has the set flag).
+ *  Exported so Setup's AI model step can say where to get each key, in the same words. */
+export const KEY_FIELDS: Record<
   Provider,
   {
     label: string;

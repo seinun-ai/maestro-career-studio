@@ -72,7 +72,7 @@
           ]
         }
       ],
-      "hand_check": "job_search_brief's identically named response fields are a frozen outward projection, NOT a legacy reader \u2014 deliberately outside the trigger paths. Also requires the Settings editor legacy bridge gone and GET /api/settings/autofill clean. Trigger paths are DIRECTORIES, not files: extension/content/ was widened 2026-08-02 after the phase-2 split moved the dual-read out of agent.js, and extension/panel/ was added after the panel's workAuthForWrite (actions/pause.js) turned out to promote the legacy pair before the first typed pause-row write while the content-only path read green. A file-pinned path goes green on the next rename without the reader dying."
+      "hand_check": "job_search_brief's identically named response fields are a frozen outward projection, NOT a legacy reader \u2014 deliberately outside the trigger paths. Also requires Profile's legacy bridge (frontend/lib/autofill-options.ts typedEntry) gone and GET /api/settings/autofill clean. Trigger paths are DIRECTORIES, not files: extension/content/ was widened 2026-08-02 after the phase-2 split moved the dual-read out of agent.js, and extension/panel/ was added after the panel's workAuthForWrite (actions/pause.js) turned out to promote the legacy pair before the first typed pause-row write while the content-only path read green. A file-pinned path goes green on the next rename without the reader dying."
     },
     {
       "id": "autofill-work-auth-by-country",
@@ -94,7 +94,7 @@
           ]
         }
       ],
-      "hand_check": "The two clients that write one top-level work_auth set: the Settings editor (frontend) and the panel's pause row (extension/panel). extension/content reading the resolved profile.work_auth from /context is the design, deliberately outside the trigger paths. Then the release after has shipped; keep the legacy read in autofill_profile.work_auth_entries until no stored autofill profile holds a top-level work_auth (check settings/autofill.json and the autofill_profile Setting row)."
+      "hand_check": "The one client that writes one top-level work_auth set: the panel's pause row (extension/panel); Profile and Setup write work_auth_by_country and send no work_auth (frontend/lib/autofill-options.ts forSaving). extension/content reading the resolved profile.work_auth from /context is the design, deliberately outside the trigger paths. Then the release after has shipped; keep the legacy read in autofill_profile.work_auth_entries until no stored autofill profile holds a top-level work_auth (check settings/autofill.json and the autofill_profile Setting row)."
     },
     {
       "id": "job-location-raw",

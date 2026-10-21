@@ -256,7 +256,9 @@ def test_a_local_server_raises_no_warning():
 
 # --- Rhythm (Task 12, appendix C8) ---------------------------------------------
 
-_SETTINGS = sorted((_FRONTEND / "components/settings").glob("*.tsx"))
+# Profile's tile cards (design refresh Task 7.2) are settings cards too, moved out of components/settings.
+_SETTINGS = sorted((_FRONTEND / "components/settings").glob("*.tsx")) + sorted(
+    (_FRONTEND / "components/profile").glob("*.tsx"))
 # Diagnostics' Autofill coverage (owner decision D6) is the chart card Analytics had, moved as it was: a
 # ChartCard with a table, whose rows are ruled like every table's. The form-card rhythm is not its rule.
 _CHART_CARD = "autofill-coverage-card.tsx"
@@ -287,32 +289,36 @@ def test_every_card_body_is_the_container_its_columns_read():
 
 
 def test_autofill_groups_are_headed_not_ruled():
-    src = _read("components/settings/autofill-section.tsx")
+    # Work permits: one headed fieldset per country (the other answers are one tile or fold each).
+    src = _read("components/profile/work-permits.tsx")
     assert "fieldset~fieldset>legend]:border-t" not in src
-    assert 'const LEGEND = cn(GROUP_HEADING, "flex w-full items-center justify-between gap-2");' in src
+    assert '<legend className={cn(GROUP_HEADING, "flex items-center gap-1.5")}>' in src
     # A fieldset stays block flow: a legend is not a grid item, so gap never reaches it.
     assert re.search(r"<fieldset[^>]*className=\"[^\"]*\bgrid\b", src) is None
     assert '<div className="grid gap-8">' in src
 
 
 def test_autofill_removes_are_named_and_hand_focus_to_add():
-    src = _read("components/settings/autofill-section.tsx")
+    education = _read("components/profile/education.tsx")
+    questions = _read("components/profile/own-questions.tsx")
     # "Remove education entry" on every row named none of them; a removed row took focus with it.
-    assert "label={`Remove school ${i + 1}`}" in src and "label={`Remove custom question ${i + 1}`}" in src
-    assert "armFocus(addEducationRef);" in src and "armFocus(addQuestionRef);" in src
-    assert "const armFocus = useFocusOnNextCommit();" in src
+    assert "label={`Remove school ${i + 1}`}" in education and "label={`Remove custom question ${i + 1}`}" in questions
+    assert "armFocus(addEducationRef);" in education and "armFocus(addQuestionRef);" in questions
+    for src in (education, questions):
+        assert "const armFocus = useFocusOnNextCommit();" in src
     # Each ref on its own Add: swapped, a removed school focused Add question.
-    assert "ref={addEducationRef}" in _button_at(src, "onClick={() => setEducation([...education, {}])}")
-    assert "ref={addQuestionRef}" in _button_at(src, "onClick={() => setCustom([...custom, {")
+    assert "ref={addEducationRef}" in _button_at(education, "onClick={() => setEducation([...education, {}])}")
+    assert "ref={addQuestionRef}" in _button_at(questions, "onClick={() => setCustom([...custom, {")
 
 
 def test_languages_are_edited_like_education_and_saved_in_the_same_body():
     """Fill-engine plan Task 10: one entry per language, most important first,
     with the levels forms offer (Basic / Intermediate / Fluent) and native and
     fluent as separate Yes/No answers, stored under `languages` in the profile
-    the one Save PUTs."""
-    src = _read("components/settings/autofill-section.tsx")
-    fieldset = _slice(src, "<legend className={LEGEND}>Languages</legend>", "</fieldset>")
+    the profile that saves as you go (Profile's Languages tile since design refresh Task 7.2)."""
+    lib = _read("lib/autofill-options.ts")
+    src = _read("components/profile/languages.tsx") + lib + _read("components/profile/field-control.tsx")
+    fieldset = _slice(src, "function LanguagesEditor() {", "\n}\n")
     from app.services.autofill_catalog import MAX_LANGUAGES
 
     # The catalog serves the first MAX_LANGUAGES, and a language missing a level
@@ -323,31 +329,31 @@ def test_languages_are_edited_like_education_and_saved_in_the_same_body():
             "only when its reading, speaking and writing levels are all set.") in " ".join(fieldset.split())
     assert "{LANGUAGE_FIELDS.map((field) => {" in fieldset
     assert "id = `af-languages-${i}-${field.key}`" in fieldset
-    fields = _slice(src, "const LANGUAGE_FIELDS: FieldDef[] = [", "\n];")
+    fields = _slice(lib, "export const LANGUAGE_FIELDS: FieldDef[] = [", "\n];")
     assert re.findall(r'key: "(\w+)", label: "([^"]+)"', fields) == [
         ("language", "Language"), ("read", "Reading"), ("speak", "Speaking"), ("write", "Writing"),
         ("native", "Native speaker"), ("fluent", "Fluent")]
     assert fields.count("boolean: true") == 2  # native and fluent: Yes/No, stored as booleans
-    levels = _slice(src, "const LANGUAGE_LEVELS = [", "]")
+    levels = _slice(lib, "export const LANGUAGE_LEVELS = [", "]")
     assert re.findall(r'"(\w+)"', levels) == ["Basic", "Intermediate", "Fluent"]
     # Add and Remove as Education has them: a named Remove that hands focus to Add.
     assert "label={`Remove language ${i + 1}`}" in fieldset and "armFocus(addLanguageRef);" in fieldset
     add = _button_at(src, "onClick={() => setLanguages([...languages, {}])}")
     assert "ref={addLanguageRef}" in add and "Add language" in add
-    # The same profile, the same Save: the list is a key of the PUT body.
-    set_languages = _slice(src, "const setLanguages = (", "\n  };")
-    assert "setDirty(true);" in set_languages and "languages: next" in set_languages
+    # The same profile, the same autosave: the list is a key of the PUT body.
+    set_languages = _slice(src, "const setLanguages = (", ";\n")
+    assert "update(SURFACE, (current) => ({ ...current, languages: next }))" in " ".join(set_languages.split())
     # A cleared answer removes its key, never stores "" …
-    with_answer = _slice(src, "function withAnswer(", "\n}\n")
+    with_answer = _slice(lib, "export function withAnswer(", "\n}\n")
     assert 'if (value === undefined || value === "") delete next[key];' in with_answer
     assert "else next[key] = value;" in with_answer
     assert "withAnswer(entry2, field.key, next)" in fieldset
     # … and "Not set" is what clears a select: it stores nothing.
-    control = _slice(src, "function FieldControl(", "\n}\n")
+    control = _slice(src, "export function FieldControl(", "\n}\n")
     assert "onChange(v === NOT_SET.value ? undefined : storedFieldValue(field, v))" in control
     # The select shows "Not set", not "Choose", once chosen; a level stored in
     # another case ("fluent") shows as its option, never blank.
-    shown = _slice(src, "function languageValue(", "\n}\n")
+    shown = _slice(lib, "export function languageValue(", "\n}\n")
     assert "o.value.toLowerCase() === value.toLowerCase()" in shown and "|| NOT_SET.value" in shown
     assert "value={languageValue(field, entry[field.key as keyof LanguageEntry])}" in fieldset
     assert "<FieldControl" in fieldset
@@ -355,7 +361,7 @@ def test_languages_are_edited_like_education_and_saved_in_the_same_body():
 
 def test_a_custom_question_has_a_visible_label():
     # Only an aria-label named it; a sighted user saw an unlabelled box.
-    src = _read("components/settings/autofill-section.tsx")
+    src = _read("components/profile/own-questions.tsx")
     assert "<Label htmlFor={`af-custom-${i}-question`}>Question</Label>" in src
     assert "id={`af-custom-${i}-question`}" in src
 
@@ -363,14 +369,15 @@ def test_a_custom_question_has_a_visible_label():
 def test_a_scoped_custom_question_says_which_job_it_is_for():
     # A saved answer that names a company or city is kept for it (Task 20c); the row says so, and
     # editing question or answer spreads the row, so the scope survives.
-    src = _read("components/settings/autofill-section.tsx")
-    assert 'only_for_kind?: "company" | "city";' in src and "only_for?: string;" in src
+    src = _read("components/profile/own-questions.tsx")
+    lib = _read("lib/autofill-options.ts")
+    assert 'only_for_kind?: "company" | "city";' in lib and "only_for?: string;" in lib
     assert "{qa.only_for ? (" in src and "Only for {qa.only_for}" in src
     assert "{ ...c, question: e.target.value }" in src and "{ ...c, answer: e.target.value }" in src
 
 
 def test_a_scoped_custom_question_can_be_made_general_again():
-    src = _read("components/settings/autofill-section.tsx")
+    src = _read("components/profile/own-questions.tsx")
     control = _slice(src, "{qa.only_for ? (", ") : null}")
     assert "Use for every job" in control
     assert "delete general.only_for;" in control and "delete general.only_for_kind;" in control
@@ -426,9 +433,10 @@ def test_a_remove_is_quiet_until_hovered_or_focused():
 
 def test_every_explicit_save_row_is_the_shared_actions_row():
     # Save sits last, right-aligned, secondary first (R8).
-    for rel in ("models-section.tsx", "auto-apply-section.tsx", "persona-section.tsx",
-                "prompts-section.tsx", "autofill-section.tsx"):
-        assert "className={ACTION_ROW}" in _read(f"components/settings/{rel}"), rel
+    # Profile's answers for job forms save as you go (design refresh Task 7.2): no Save row of their own.
+    for rel in ("settings/models-section.tsx", "settings/auto-apply-section.tsx", "profile/how-you-come-across.tsx",
+                "settings/prompts-section.tsx"):
+        assert "className={ACTION_ROW}" in _read(f"components/{rel}"), rel
     auto = _read("components/settings/auto-apply-section.tsx")
     row = auto[auto.index("className={ACTION_ROW}") :]
     # Nothing is cancelled: the button drops unsaved edits, as Persona's Discard does.
@@ -467,24 +475,23 @@ def _button_at(src: str, marker: str) -> str:
 def test_a_save_that_disables_itself_keeps_focus():
     # A native `disabled` Save dropped focus to <body> the moment it was pressed.
     cases = [
-        ("models-section.tsx", "onClick={() => onSave(data.custom_endpoint)}"),
-        ("auto-apply-section.tsx", "onClick={() => draft && saveOnce(draft)}"),
-        ("autofill-section.tsx", "saveOnce({ value: profileRef.current, revision: editRevision.current })"),
-        ("prompts-section.tsx", "onClick={() => saveOnce()}"),
-        ("prompts-section.tsx", "onClick={() => resetOnce()}"),
-        ("persona-section.tsx", "onClick={() => saveOnce(value)}"),
-        ("llm-endpoint.tsx", "onSave({ base_url: draft?.trim() || null })"),
-        ("autofill-section.tsx", '{isFillingFromResume ? "Filling…" : "Fill from career history"}'),
+        ("settings/models-section.tsx", "onClick={() => onSave(data.custom_endpoint)}"),
+        ("settings/auto-apply-section.tsx", "onClick={() => draft && saveOnce(draft)}"),
+        ("settings/prompts-section.tsx", "onClick={() => saveOnce()}"),
+        ("settings/prompts-section.tsx", "onClick={() => resetOnce()}"),
+        ("profile/how-you-come-across.tsx", "onClick={() => saveOnce(value)}"),
+        ("settings/llm-endpoint.tsx", "onSave({ base_url: draft?.trim() || null })"),
+        ("profile/contact.tsx", '{isFillingFromResume ? "Filling…" : "Fill from career history"}'),
     ]
     for rel, marker in cases:
-        button = _button_at(_read(f"components/settings/{rel}"), marker)
+        button = _button_at(_read(f"components/{rel}"), marker)
         assert "focusableWhenDisabled" in button, (rel, marker)
         assert "data-disabled:opacity-50" in button, (rel, marker)
 
 
 def test_a_row_that_unmounts_on_save_or_discard_hands_focus_on():
     # Persona's Save row and Auto-apply's Discard leave with the edit; focus went with them.
-    persona = _read("components/settings/persona-section.tsx")
+    persona = _read("components/profile/how-you-come-across.tsx")
     success = persona[persona.index("onSuccess: (result) => {") : persona.index("const draft = useMutation(")]
     discard = _button_at(persona, "setValue(saved);")
     assert "focusNext(textareaRef);" in success and "focusNext(textareaRef);" in discard
@@ -522,7 +529,8 @@ def test_a_header_action_renders_nowhere_until_the_slot_exists():
 
 # --- The low-stakes switch (fill-engine plan Task 9) -----------------------------
 
-_AUTOFILL = _read("components/settings/autofill-section.tsx")
+# Profile's answers for job forms, every tile and fold (design refresh Task 7.2).
+_AUTOFILL = "".join(p.read_text() for p in sorted((_FRONTEND / "components/profile").glob("*.tsx")))
 # The screening-answer setting moved to Settings › Companion with the agreement switch (owner
 # decision D10, design refresh Task 7.3); the pins below follow it there.
 _FILL = _read("components/settings/companion-fill-section.tsx")
@@ -608,8 +616,8 @@ def test_the_screening_answers_save_is_not_scoped():
 
 def test_saved_answers_past_the_limit_are_flagged():
     """The fill uses the first `MAX_CUSTOM` saved answers only; the line shows for 31 rows, not for 30."""
-    src = _read("components/settings/autofill-section.tsx")
-    assert f"const CUSTOM_IN_USE = {MAX_CUSTOM};" in src
+    src = _read("components/profile/own-questions.tsx")
+    assert f"export const CUSTOM_IN_USE = {MAX_CUSTOM};" in _read("lib/autofill-options.ts")
     assert "custom.length > CUSTOM_IN_USE" in src
     flat = " ".join(src.split())
     assert (

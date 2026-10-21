@@ -46,14 +46,15 @@ _SITES = [
     ("components/settings/prompts-section.tsx", "save"),
     ("components/settings/prompts-section.tsx", "reset"),
     ("components/settings/auto-apply-section.tsx", "save"),
-    ("components/settings/persona-section.tsx", "save"),
-    ("components/settings/persona-section.tsx", "draft"),
+    # Persona moved to Profile's How you come across tile (design refresh Task 7.2), its Save kept.
+    ("components/profile/how-you-come-across.tsx", "save"),
+    ("components/profile/how-you-come-across.tsx", "draft"),
     ("components/settings/llm-endpoint.tsx", "save"),
     ("components/settings/model-catalog-panel.tsx", "add"),
     ("components/settings/model-catalog-panel.tsx", "remove"),
-    # Profile › Autofill's Save and the Assistant's New chat (waves 1+2 integrated browser pass: a
-    # double click sent two PUTs and two toasts, or made two chats).
-    ("components/settings/autofill-section.tsx", "save"),
+    # The Assistant's New chat (waves 1+2 integrated browser pass: a double click made two chats). Profile's
+    # answers for job forms have no Save since design refresh Task 7.2: they autosave one write at a time
+    # (useAutosave, pinned in test_frontend_profile_tiles.py).
     ("components/chat/chat-page.tsx", "newSession"),
     # Build draft and Rebuild share one guard; Queue for agent on a tracker row and the job header
     # (a double click filed two accepted proposals for one job).

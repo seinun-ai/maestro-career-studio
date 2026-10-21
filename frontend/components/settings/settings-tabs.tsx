@@ -38,9 +38,9 @@ const noAnchor = () => "";
  *   route dynamic: the server renders the tab the URL names (an internal link that carries it never
  *   flashes the default tab), and this hook needs no `<Suspense>` boundary. The prop itself is NOT
  *   read here: it keeps the ARRIVAL value after a native `replaceState` (Next restores the entry's
- *   tree, not the page's props), so a later link to another tab of this page (`/profile` from
- *   `/profile?tab=autofill`) would parse the same value and open nothing;
- * - the hash, once hydrated: `/profile#autofill` opens the tab that renders `#autofill` (old links,
+ *   tree, not the page's props), so a later link to another tab of this page (`/settings` from
+ *   `/settings?tab=agents`) would parse the same value and open nothing;
+ * - the hash, once hydrated: `/settings#prompts` opens the tab that renders `#prompts` (old links,
  *   docs, and `useFocusSection`'s in-page jumps, which announce the anchor with a `hashchange`);
  * - a click on the tab row.
  *
@@ -96,14 +96,13 @@ export function useSettingsTab(page: SettingsPage) {
 
 const LIST_LABEL: Record<SettingsPage, string> = {
   settings: "Settings sections",
-  profile: "Profile sections",
 };
 
 /**
  * The tab row and one kept-mounted panel per tab. `keepMounted`, not Base UI's default: a never-opened
  * panel would not exist (so a deep link has no target), and a visited one survives only because these
  * panels have no closing transition (the `[&[inert]]:hidden` note in ui/tabs.tsx). Kept mounted, no
- * editor ever unmounts on a tab switch: Persona, Prompts and Autofill keep their typed text, and their
+ * editor ever unmounts on a tab switch: Prompts and the API keys keep their typed text, and their
  * `useLeaveGuard` registrations (effects of a mounted, inert component) keep asking.
  */
 export function SettingsTabs({

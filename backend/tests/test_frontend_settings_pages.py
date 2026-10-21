@@ -1,6 +1,7 @@
-"""Pins for the Settings and Profile tabs, deep links and the shared tab row
+"""Pins for the Settings tabs, deep links into Settings and Profile, and the shared tab row
 (2026-09-23 UX IA plan, Appendix C §1-§5). Source pins: CI does not run the node
-tests in frontend/lib/settings-tabs.test.ts.
+tests in frontend/lib/settings-tabs.test.ts. Profile has no tabs since design refresh
+Task 7.2: its tiles and folds open from the hash (`lib/profile-tiles.ts`).
 
 Sections: "Tabs", "Deep links", "Tab row" (settings-tabs lane). The settings-cards
 lane appends its own sections ("Models", "Rhythm") below them.
@@ -45,14 +46,19 @@ def _panels(src: str, values: list[str]) -> dict[str, str]:
 
 def test_the_tab_table_is_node_loadable_and_resolves_card_bodies_by_prefix():
     assert "import " not in _TABS_LIB  # node --test loads it bare
-    assert '["autofill-", "autofill"]' in _TABS_LIB
     # The default tab's URL carries no ?tab= (the analytics precedent).
     assert 'tab === defaultTab(page) ? ""' in _TABS_LIB
     # Tab names are owner decision D11 (design refresh plan, Task 7.3); slugs are never shown.
     assert list(_tab_table("SETTINGS_TABS")) == ["basics", "companion", "agents", "advanced"]
-    assert list(_tab_table("PROFILE_TABS")) == ["you", "autofill"]
-    for label in ("Basics", "Companion", "Agent apps", "Advanced", "About you", "Autofill"):
+    for label in ("Basics", "Companion", "Agent apps", "Advanced"):
         assert f'label: "{label}"' in _TABS_LIB, label
+    # Profile is one page of tiles (design refresh Task 7.2): no tab table, no tabbed route.
+    assert "PROFILE_TABS" not in _TABS_LIB and 'pathname === "/profile"' not in _TABS_LIB
+    # An id inside a Profile card still resolves, by prefix, to the tile that holds it.
+    tiles = _read("lib/profile-tiles.ts")
+    assert "import " not in tiles
+    assert 'prefixes: ["job-preferences-"]' in tiles
+    assert "section.prefixes.some((prefix) => anchor.startsWith(prefix))" in tiles
 
 
 def _card_ids_by_panel(page: str, values: list[str]) -> dict[str, set[str]]:
@@ -71,10 +77,7 @@ def _card_ids_by_panel(page: str, values: list[str]) -> dict[str, set[str]]:
     return found
 
 
-@pytest.mark.parametrize(
-    ("page", "table"),
-    [("app/settings/page.tsx", "SETTINGS_TABS"), ("app/profile/page.tsx", "PROFILE_TABS")],
-)
+@pytest.mark.parametrize(("page", "table"), [("app/settings/page.tsx", "SETTINGS_TABS")])
 def test_every_card_id_resolves_to_the_tab_that_renders_it(page, table):
     """A deep link opens the tab `tabForAnchor` names. A card moved to another panel without
     its id moving in lib/settings-tabs.ts would land on the wrong tab, ringing nothing."""
@@ -86,6 +89,25 @@ def test_every_card_id_resolves_to_the_tab_that_renders_it(page, table):
         # nothing (the merged Models split once lost two cards this way).
         missing = tabs[value] - ids
         assert not missing, (page, value, sorted(missing))
+
+
+def test_every_profile_card_id_renders_where_its_tile_or_fold_says():
+    """A deep link opens the tile or fold `sectionForAnchor` names. Every tile's editor is a TileCard for that
+    tile (its card id is the tile's first anchor), and each fold carries its id on the div around it."""
+    tiles = _read("lib/profile-tiles.ts")
+    rows = re.findall(r'\{ id: "(\w+)", title: "[^"]+", anchors: \["([\w-]+)"\]', tiles)
+    tile_block = tiles[tiles.index("export const PROFILE_TILES = [") : tiles.index("export const PROFILE_FOLDS")]
+    tile_ids = re.findall(r'\{ id: "(\w+)"', tile_block)
+    assert len(rows) == 11 and len(tile_ids) == 9
+    profile = "".join(p.read_text() for p in sorted((_FRONTEND / "components/profile").glob("*.tsx")))
+    for tile_id, card in rows:
+        if tile_id in tile_ids:
+            assert f'tile="{tile_id}"' in profile, tile_id
+        else:
+            assert f'<div id="{card}">' in profile, (tile_id, card)
+    assert "id={section ? cardId(section) : tile}" in _read("components/profile/tile.tsx")
+    # The old Autofill card's id lands on the tiles themselves.
+    assert '<section id="autofill"' in _read("components/profile/profile-view.tsx")
 
 
 def test_tab_panels_stay_mounted():
@@ -115,11 +137,17 @@ def test_both_pages_read_their_search_params_so_the_server_renders_the_tab():
     internal link that carries it never flashes the default one), and SettingsTabs'
     useSearchParams needs no Suspense boundary. Without it `next build` prerenders the page
     and fails ("useSearchParams() should be wrapped in a suspense boundary")."""
-    for page, name in (("app/settings/page.tsx", "settings"), ("app/profile/page.tsx", "profile")):
+    for page, name in (("app/settings/page.tsx", "settings"),):
         src = _read(page)
         assert "\n  use(searchParams);\n" in src, page
         assert f'<SettingsTabs\n        page="{name}"\n        panels={{{{' in src, page
         assert "useSearchParams(" not in src, page  # the page itself needs no Suspense
+    # Profile reads no query at all: its sections open from the hash, after hydration (useProfileSections).
+    profile = _read("app/profile/page.tsx")
+    assert "SettingsTabs" not in profile and "searchParams" not in profile
+    hook = _read("components/profile/use-profile-sections.ts")
+    assert "useSyncExternalStore(subscribeToLocation, readAnchor, noAnchor)" in hook
+    assert "useSearchParams" not in hook
 
 
 def test_agent_apps_keeps_its_order():
@@ -154,14 +182,16 @@ def test_connect_assistant_card_id_matches_the_agents_tab_anchor():
 
 def test_profile_lands_a_hash_once():
     """Planner decision 18 (Q9): one `useFocusSection()` on /profile, so a hash landing polls
-    and rings once. The strip is handed the page's `focus`."""
+    and rings once. The view is handed the page's `focus` (Next up jumps to the Diversity fold with
+    it); nothing under it calls the hook again."""
     page = _read("app/profile/page.tsx")
     assert page.count("useFocusSection()") == 1
-    assert "<SetupStatusStrip" in page and "focus={focus}" in page
-    strip = _read("components/setup/setup-status-strip.tsx")
-    assert '"@/lib/use-focus-section"' not in strip
-    assert "useFocusSection()" not in strip
-    assert "focus: (anchor: string) => void;" in strip
+    assert "<ProfileView focus={focus} />" in page
+    for path in sorted((_FRONTEND / "components/profile").glob("*.ts*")):
+        assert "useFocusSection()" not in path.read_text(), path.name
+    view = _read("components/profile/profile-view.tsx")
+    assert "focus: (anchor: string) => void" in view
+    assert 'sections.setFold("diversity", true);\n          focus("autofill-eeo");' in view
 
 
 def _body(src: str, start: str, end: str) -> str:

@@ -5,11 +5,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 
+import { TileCard, type TileView } from "@/components/profile/tile";
 import { RolePicker } from "@/components/role-picker";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
+import { SettingCardAction } from "@/components/settings/setting-card";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useMoney } from "@/hooks/use-money";
-import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,12 +55,48 @@ function isRemoteOption(value: string): value is (typeof REMOTE_OPTIONS)[number]
   return (REMOTE_OPTIONS as readonly string[]).includes(value);
 }
 
-export function JobPreferencesSection() {
-  const preferences = useQuery({
+export function useJobPreferencesQuery() {
+  return useQuery({
     queryKey: ["settings", "job-preferences"],
     queryFn: () =>
       apiFetch<JobPreferencesSetting>("/api/settings/job-preferences"),
   });
+}
+
+/** Each answer Jobs you want holds, set or not: what the tile counts. */
+function setCount(p: JobPreferences): number {
+  return [
+    p.favored_roles.length > 0,
+    p.years_experience != null,
+    p.remote != null && isRemoteOption(p.remote),
+    p.locations.length > 0,
+    p.min_salary?.amount != null,
+    p.employment_types.length > 0,
+  ].filter(Boolean).length;
+}
+
+/** Jobs you want: the roles, years, work location, places, lowest pay and job types (job preferences),
+ *  which suggest base resumes. Saves as you go. */
+export function useJobsTile(done: boolean | undefined): TileView {
+  const preferences = useJobPreferencesQuery();
+  const value = preferences.data?.value;
+  const roles = value?.favored_roles.map((role) => role.label) ?? [];
+  const mode = value?.remote && isRemoteOption(value.remote) ? REMOTE_LABEL[value.remote] : null;
+  const words = [roles.slice(0, 2).join(", "), mode].filter(Boolean).join(" · ");
+  return {
+    state: done
+      ? { kind: "ready" }
+      : value
+        ? { kind: "count", text: `${setCount(value)} of 6` }
+        : { kind: "none" },
+    summary: <span className="line-clamp-2">{value ? words || "No roles picked yet" : "Loading…"}</span>,
+    note: "Used to suggest base resumes",
+    panel: <JobsCard />,
+  };
+}
+
+function JobsCard() {
+  const preferences = useJobPreferencesQuery();
   // Not gated through `also`: the picker degrades to free text without the
   // catalog, so a slow or failed role fetch must not hold up the whole card.
   const roles = useQuery({
@@ -68,9 +105,8 @@ export function JobPreferencesSection() {
   });
 
   return (
-    <SettingCard
-      id="job-preferences"
-      title="Job preferences"
+    <TileCard
+      tile="jobs"
       description="The jobs you want. Used to suggest base resumes."
       errorTitle="Couldn't load your job preferences."
       skeleton="h-56 w-full"
@@ -82,7 +118,7 @@ export function JobPreferencesSection() {
           roleCategories={roles.data}
         />
       )}
-    </SettingCard>
+    </TileCard>
   );
 }
 

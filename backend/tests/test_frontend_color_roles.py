@@ -213,7 +213,7 @@ def test_fab_variant_uses_primary_container():
 
 
 def test_employment_types_carry_their_state():
-    prefs = _read("components/settings/job-preferences-section.tsx")
+    prefs = _read("components/profile/jobs-you-want.tsx")
     assert 'variant={selected ? "tonal" : "outline"}' in prefs
     assert "aria-pressed={selected}" in prefs
     assert "{selected && <Check" in prefs

@@ -148,7 +148,10 @@ def test_get_market_returns_the_picker_and_the_eeo_posture():
     assert {m["key"]: m["offers_eeo"] for m in body["markets"]}["IN"] is False
     uk = next(m for m in body["markets"] if m["key"] == "UK")
     assert uk == {"key": "UK", "label": "United Kingdom", "country_code": "GB", "currency": "GBP",
-                  "date_format": "DMY", "offers_eeo": True}
+                  "date_format": "DMY", "offers_eeo": True, "work_auth_vocab": "uk"}
+    # Each market's work-permit wording rides along (data), so the Profile asks it per country.
+    vocab = {m["key"]: m["work_auth_vocab"] for m in body["markets"]}
+    assert (vocab["US"], vocab["DE"], vocab["IN"]) == ("us_visa", "generic", "generic")
 
 
 def test_put_market_takes_home_and_apply_in_or_the_old_single_market():

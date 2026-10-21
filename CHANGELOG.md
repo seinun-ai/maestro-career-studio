@@ -194,6 +194,17 @@ a click.
   your own AI server, AI instructions, Quick tailor and Hours per year. Nothing was removed, and a link
   to an old tab opens the tab and card it moved to. While recommended models are on, Advanced's model
   pickers show them and can't be changed.
+- **Profile is one page of facts about you.** The header shows your name, where you live and where you
+  apply, and how many sections are ready. **Next up** asks the first answer job forms still need, starting
+  with the work permit for each country you apply in, and you answer it right there. Nine tiles (Contact,
+  Where you apply, Work permits, Jobs you want, How you come across, Start and pay, Education, Languages,
+  Your own questions) show what each holds and open their answers below; Diversity questions and
+  Eligibility are folded under them. Work permits are asked for each country you apply in, in that
+  country's words, and only the United States asks your visa status. Where you apply says **You live in**
+  and **You apply in**, and a country shows the square of a base resume made for it. Your answers save as
+  you go: the Save answers button is gone. The diversity permission stays beside the diversity answers,
+  and Decline the rest now declines the veteran question too. The tabs and the setup strip are gone, and
+  a link to an old tab or card opens the tile that holds it.
 - **Autofill coverage is under Settings › Advanced › Diagnostics**, unchanged, with its Clear data.
 - **Messages that send you to Settings name its new tabs**, such as "Add an API key in Settings ›
   Basics." The Companion's Change in Settings link opens the Companion tab.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 /**
  * Autosave with at most one write in flight and only the newest edit queued.
@@ -24,10 +24,13 @@ import { useRef, useState } from "react";
  * every earlier change and clears `failed`. An outcome with a newer value
  * queued behind it decides nothing. `retry` sends the newest value again.
  *
- * Deliberately does NOT re-seed from a background refetch. There is no
- * non-destructive moment to do it — an autosaving card is almost always either
- * mid-edit or mid-write, and re-seeding in either state overwrites the user.
- * Job preferences, the card this pattern came from, has always worked this way.
+ * It never re-seeds from a background refetch on its own. An autosaving card is
+ * usually mid-edit or mid-write, and re-seeding in either state overwrites the
+ * user; Job preferences, the card this pattern came from, has always worked this
+ * way. `adopt` is the one safe moment, for a value another writer also changes
+ * (the Companion's pause row learns answers into the autofill profile): it takes
+ * a newer server copy only while nothing is in flight and nothing failed, so
+ * every edit is already on the server it came from.
  */
 export function useAutosave<T>(initial: T, commit: (next: T) => Promise<unknown>) {
   const [value, setValue] = useState(initial);
@@ -35,6 +38,8 @@ export function useAutosave<T>(initial: T, commit: (next: T) => Promise<unknown>
   const [failed, setFailed] = useState(false);
   const queued = useRef(initial);
   const inFlight = useRef<T | null>(null);
+  // `failed` for `adopt`, which runs outside a render.
+  const failedNow = useRef(false);
 
   const flush = () => {
     const next = queued.current;
@@ -57,6 +62,7 @@ export function useAutosave<T>(initial: T, commit: (next: T) => Promise<unknown>
       return;
     }
     inFlight.current = null;
+    failedNow.current = !ok;
     setPending(false);
     setFailed(!ok);
   };
@@ -73,5 +79,12 @@ export function useAutosave<T>(initial: T, commit: (next: T) => Promise<unknown>
     if (inFlight.current === null) flush();
   };
 
-  return { value, update, pending, failed, retry };
+  /** Take a newer server copy, only while every edit is on the server: nothing in flight, nothing failed. */
+  const adopt = useCallback((next: T) => {
+    if (inFlight.current !== null || failedNow.current) return;
+    queued.current = next;
+    setValue(next);
+  }, []);
+
+  return { value, update, pending, failed, retry, adopt };
 }

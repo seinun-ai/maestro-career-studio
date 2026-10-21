@@ -1,9 +1,10 @@
 """Setup status, derived entirely from existing data — onboarding stores NO
 wizard progress (FirstRunImportCard doctrine: derived signals, dismissible).
 
-The autofill field lists are a hand-mirror of the frontend GROUPS array in
-frontend/components/settings/autofill-section.tsx (the ALLOWED_STATUSES /
-APPLICATION_STATUSES precedent) — update BOTH when a field is added. Rules:
+The autofill field lists are a hand-mirror of the frontend GROUPS array and its
+per-country WORK_PERMIT_QUESTIONS in frontend/lib/autofill-options.ts (the
+ALLOWED_STATUSES / APPLICATION_STATUSES precedent; test_autofill_groups_parity.py)
+— update BOTH when a field is added. Rules:
 "complete" means ANSWERABLE, not filled ("decline" answers count; optional
 fields are excluded), and work_auth is read through the typed reader because
 its answers are the knockout ones the extension reports missing_source on.

@@ -53,7 +53,7 @@ def test_dates_read_as_words():
     fill = _read("components/settings/companion-fill-section.tsx")
     assert "You agreed on {formatAbsoluteDateTime(consent.acknowledged_at)}" in fill
     assert 'import { AgreedOn } from "@/components/settings/companion-fill-section";' in _read(
-        "components/settings/autofill-section.tsx")
+        "components/profile/diversity-consent.tsx")
 
 
 def test_analytics_says_each_thing_once_in_one_format():

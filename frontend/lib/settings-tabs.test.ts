@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  PROFILE_TABS,
   SETTINGS_TABS,
   anchorHref,
   landingFor,
@@ -17,15 +16,13 @@ test("an absent, repeated or unknown ?tab= reads as the page's first tab", () =>
   assert.equal(parseTab("settings", "nope"), "basics");
   assert.equal(parseTab("settings", "constructor"), "basics", "an own key, not the prototype's");
   assert.equal(parseTab("settings", "agents"), "agents");
-  assert.equal(parseTab("profile", ["autofill", "you"]), "autofill");
-  assert.equal(parseTab("profile", null), "you");
+  assert.equal(parseTab("settings", ["advanced", "basics"]), "advanced");
+  assert.equal(parseTab("settings", null), "basics");
 });
 
 test("every anchor belongs to exactly one tab", () => {
-  for (const tabs of [SETTINGS_TABS, PROFILE_TABS]) {
-    const all = tabs.flatMap((tab) => [...tab.anchors]);
-    assert.equal(new Set(all).size, all.length);
-  }
+  const all = SETTINGS_TABS.flatMap((tab) => [...tab.anchors]);
+  assert.equal(new Set(all).size, all.length);
 });
 
 test("Agent apps opens with the connection card, then the folded explainer", () => {
@@ -46,7 +43,6 @@ test("an old ?tab= lands on the tab and card that hold what it opened with", () 
   assert.deepEqual(landingFor("settings", "agents"), { tab: "agents", anchor: null });
   assert.deepEqual(landingFor("settings", "nope"), { tab: "basics", anchor: null });
   assert.deepEqual(landingFor("settings", "constructor"), { tab: "basics", anchor: null });
-  assert.deepEqual(landingFor("profile", "autofill"), { tab: "autofill", anchor: null });
   assert.equal(parseTab("settings", "tailoring"), "advanced");
 });
 
@@ -59,32 +55,29 @@ test("every card an old tab held still opens a tab", () => {
   assert.equal(tabForAnchor("settings", "prompts"), "advanced");
 });
 
-test("a card id resolves to its tab, an id inside the autofill card by prefix", () => {
+test("a card id resolves to its tab", () => {
   assert.equal(tabForAnchor("settings", "api-keys"), "basics");
   assert.equal(tabForAnchor("settings", "agent-hints"), "agents");
   assert.equal(tabForAnchor("settings", "connected-agents"), "agents");
-  assert.equal(tabForAnchor("profile", "autofill"), "autofill");
-  assert.equal(tabForAnchor("profile", "autofill-work_auth"), "autofill");
-  assert.equal(tabForAnchor("profile", "persona"), "you");
-  assert.equal(tabForAnchor("profile", "main-content"), null);
+  assert.equal(tabForAnchor("settings", "main-content"), null);
   assert.equal(tabForAnchor("settings", ""), null);
-  assert.equal(tabForAnchor("profile", "not-autofill-x"), null, "a prefix, not a substring");
 });
 
 test("hrefs name the tab only when it is not the default", () => {
   assert.equal(tabHref("settings", "basics"), "/settings");
   assert.equal(tabHref("settings", "advanced"), "/settings?tab=advanced");
-  assert.equal(tabHref("profile", "autofill", "autofill-eeo"), "/profile?tab=autofill#autofill-eeo");
+  assert.equal(tabHref("settings", "agents", "agent-hints"), "/settings?tab=agents#agent-hints");
   assert.equal(anchorHref("/settings", "api-keys"), "/settings#api-keys");
   assert.equal(anchorHref("/settings", "agent-hints"), "/settings?tab=agents#agent-hints");
   assert.equal(anchorHref("/profile", "job-preferences"), "/profile#job-preferences");
-  assert.equal(anchorHref("/profile", "autofill-work_auth"), "/profile?tab=autofill#autofill-work_auth");
+  // Profile has no tabs: its tiles open from the hash (lib/profile-tiles.ts).
+  assert.equal(anchorHref("/profile", "autofill-work_auth"), "/profile#autofill-work_auth");
   assert.equal(anchorHref("/career", "kb-entities"), "/career#kb-entities");
 });
 
-test("only /settings and /profile are tabbed pages", () => {
+test("only /settings is a tabbed page", () => {
   assert.equal(settingsPageAt("/settings"), "settings");
-  assert.equal(settingsPageAt("/profile"), "profile");
+  assert.equal(settingsPageAt("/profile"), null);
   assert.equal(settingsPageAt("/career"), null);
   assert.equal(settingsPageAt("/settings/x"), null);
 });

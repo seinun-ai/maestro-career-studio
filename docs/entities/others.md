@@ -255,7 +255,7 @@
   nothing. Options are offered under code-owned keys (`o1…`, `none`), never page text, and every
   question says page text is data. One pooled `httpx.Client` serves every call (a TLS handshake per
   call costs about Jev's whole answer); 429/503/529 retry with doubling backoff inside the 2 s budget.
-  **The answer level** (`autofill.answer_level`, Profile › Autofill › **Screening answers**, under Companion permissions; `facts`, `history` default, `queued`, shown as Careful, Balanced, Confident;
+  **The answer level** (`autofill.answer_level`, Settings › Companion › **Screening answers**, under the agreements switch; `facts`, `history` default, `queued`, shown as Careful, Balanced, Confident;
   `model_settings.get_answer_level`, with the old `autofill.low_stakes` row cleared on a write and an install with no row reading the
   default) decides how far `/map`, `/pick` and `/step` answer without asking: `facts` saved answers and career history only; `history` also
   the low-stakes kinds in the job's favour and "N years of a skill" Yes when the history shows the skill and does not contradict the years;
@@ -297,7 +297,7 @@
   mapped when the profile is READ, not migrated: `veteran` reads as `yes`; `not_veteran` ("not a protected veteran", true of a veteran who is not
   protected) reads as unanswered, and the profile lists `stale_answers: ["eeo.veteran_status"]` until the question is answered (a save that does
   not carry the answer keeps the marker; an older Settings page or peer keeps reading what is stored, so an old peer can read a synced `yes` as a
-  protected veteran). Profile › Autofill asks the question again ("Answer again: this question changed."). A No also settles "currently or ever served" with
+  protected veteran). Profile's Diversity questions asks the question again ("Answer again: this question changed."). A No also settles "currently or ever served" with
   the never-served option, reported `assumed` (`veteran_inferred`); a Yes never claims CURRENT service — a question about it alone, or an option
   that says so, is asked (`veteran_overreach`); the readers are /pick, /step, /map and `content/eeo.js`. Known limits: a lowercase mention of an
   employer outside a parsed list still reads No, and the veteran-class guard errs toward asking.
@@ -305,8 +305,8 @@
   **Storage.** `work_auth_by_country` maps a market key (the market setting's own, "UK", never the ISO "GB" a job stores) to that country's
   answers, read through the typed `WorkAuth` reader. A profile from before holds one top-level `work_auth`: it is the home market's, mapped
   when READ and kept as written until a save (the veteran precedent). A read serves `work_auth_by_country` and, for the clients that know
-  one set (the Settings editor until the Profile rebuild, the Companion's pause row, a peer that has not updated), `work_auth` as the home
-  set. A save stores `work_auth_by_country` alone: a `work_auth` that differs from the one the store would serve, or a save with no home
+  one set (the Companion's pause row, a peer that has not updated), `work_auth` as the home set; Profile and Setup edit the map and
+  send it without `work_auth`. A save stores `work_auth_by_country` alone: a `work_auth` that differs from the one the store would serve, or a save with no home
   entry, is the home market's new answers; otherwise the map stands, so a client that knows every country leaves `work_auth` as served or
   out. **Which set.** `countries.mentioned_in` reads the question: English names and aliases as whole words, without accents, in any case;
   a code only as "US" or "UK" in capitals ("CA", "DE" and "IN" are US states as often); "New Mexico", "Latin America" and "Georgia" name
@@ -460,10 +460,10 @@
   doctrine). Its service uses non-mutating `peek_*` reads, so a status request
   never lazy-seeds a Setting row or file mirror. The steps span three surfaces
   — `model_key` → Settings' Basics tab (`#api-keys`, the AI model card), `import_resumes` →
-  `/career`, autofill/job-preferences/persona → Profile's Autofill and About you
-  tabs, `template` → `/templates` (the template step's detail names the default
+  `/career`, autofill/job-preferences/persona → Profile's tiles and folds
+  (`lib/profile-tiles.ts`), `template` → `/templates` (the template step's detail names the default
   as `default_template_name`); a link into Settings or Profile goes through
-  `lib/settings-tabs.ts` `anchorHref`, which picks the tab that holds the anchor;
+  `lib/settings-tabs.ts` `anchorHref`, which picks the Settings tab that holds the anchor (Profile has none);
   readiness is app-wide, not Profile-scoped. `model_key` is `llm.any_model_key_configured()` (a stored
   or env key for any of the four providers, or a custom server): whether a key WORKS is what the capability
   probe answers, and storing that verdict would break the derived-only rule. Autofill readiness spans the
