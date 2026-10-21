@@ -1002,6 +1002,60 @@ export interface ActivityResponse {
   status_counts: Record<string, number>;
 }
 
+/** `services/rates.py` `rate()`: `rate`, `low` and `high` are null below `min_rate_n` in `of`; show "5 of 12". */
+export interface RateCount {
+  count: number;
+  of: number;
+  rate: number | null;
+  /** Wilson 95% range, the likely true rate. */
+  low: number | null;
+  high: number | null;
+}
+
+/** GET /api/explore/search-summary?weeks=12|N|all&source=all|user|agent (`services/search_summary.py`). */
+export interface SearchSummary {
+  /** The weeks asked for; null for all time. */
+  weeks: number | null;
+  /** Monday (UTC) the window starts on: N-1 weeks before this one, or the first application's week. */
+  window_start: string;
+  source: "all" | "user" | "agent";
+  applied: number;
+  /** The mean over every week of `series`. */
+  applied_per_week: number;
+  /** Of `applied`. */
+  heard_back: RateCount;
+  /** Reached interviewing or later, of `heard_back.count`. */
+  interview: RateCount;
+  /** Of `interview.count`. */
+  offer: RateCount;
+  /** Dated replies only; the days are null while `replies` is under `min_replies_for_timing`. */
+  time_to_hear_back: {
+    replies: number;
+    median_days: number | null;
+    p25_days: number | null;
+    p75_days: number | null;
+  };
+  /** Of the applications sent at least `after_days` ago, those with no event since. */
+  quiet: RateCount & { after_days: number };
+  /** Tailored minus base match score, medians over the applications tailored in the window. */
+  score_gain: { n: number; median: number | null; median_base: number | null; median_tailored: number | null };
+  /** Most applied first; both shares are of `applied`. */
+  by_resume: {
+    slug: string;
+    name: string | null;
+    color_hue: number | null;
+    applied: number;
+    heard_back: RateCount;
+    interview: RateCount;
+  }[];
+  /** Every week of the window, zero-filled; a reply counts in the week it came. */
+  series: { week_start: string; applied: number; replies: number }[];
+  /** Replies the migration backfilled: counted in `heard_back`, in no week of `series`. */
+  undated_replies: number;
+  min_rate_n: number;
+  min_replies_for_timing: number;
+}
+
 interface AutofillKindRate {
   kind: string;
   success: number;

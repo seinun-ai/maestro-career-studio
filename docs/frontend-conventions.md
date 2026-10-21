@@ -1772,7 +1772,17 @@
   gap. Endpoints: `/api/explore/activity` (drafted=created_at vs
   submitted=applied_at, day|week buckets; `interview_rate` is null below 20 submitted,
   `services/rates.py` `MIN_RATE_N`, and the tile reads "1 of 3" from `interview_plus` of `submitted`),
-  `/base-summaries`, `/build-areas`
+  `/search-summary?weeks=12|N|all&source=all|user|agent` (`services/search_summary.py`, read from the dated
+  status events: a backfilled event counts for status, never for timing; the window is N Monday-based UTC weeks
+  including this one, or since the first application sent; every share is `rates.rate`, `{count, of, rate, low,
+  high}` with `rate`/`low`/`high` null below 20 in `of` and a Wilson 95% range from 20: `heard_back` of
+  `applied`, `interview` (reached interviewing or later) of heard back, `offer` of interview; `time_to_hear_back`
+  `{replies, median_days, p25_days, p75_days}` from dated replies that moved an Applied application on, days null
+  below 5; `quiet` (`after_days` 30) of those sent 30 or more days ago; `score_gain` `{n, median, median_base,
+  median_tailored}` from the tailoring lift's rows tailored in the window; `by_resume` `{slug, name, color_hue,
+  applied, heard_back, interview}` per base resume, both shares of applied; `series` `{week_start, applied,
+  replies}` zero-filled, a reply in the week it came, and `undated_replies` for backfilled replies no week can
+  hold), `/base-summaries`, `/build-areas`
   (gap frequency re-keyed on the engine's canonical skill form, classified
   against career history evidence as missing | in_kb | ported — the ONE analytics
   surface that reads career history, read-only; tailoring still never does). Overview also

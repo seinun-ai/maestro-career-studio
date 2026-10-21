@@ -6,7 +6,7 @@ app/routers/explore.py wrap these and return plain JSON lists.
 """
 from collections import Counter, defaultdict
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -294,15 +294,17 @@ def ats_over_time(
     ]
 
 
-def tailoring_lift(
+def lift_pairs(
     db: Session,
     role_category: str | None = None,
     level: str | None = None,
     employment_type: str | None = None,
     *,
     source: str | None = None,
-) -> list[dict[str, Any]]:
-    """Composite lift (tailored - base) per role, plus an overall "all" row.
+    since: datetime | None = None,
+) -> list[tuple[Any, float, float]]:
+    """(role_category, base composite, tailored composite) per tailored application: the rows
+    behind the tailoring lift (`tailoring_lift`, and the search summary's score gain).
 
     Joins the LATEST tailored AtsScore row per application to that application's
     base row (same job_id, target_id == application.base_resume, base phase).
@@ -310,13 +312,15 @@ def tailoring_lift(
     keep only the most recent (created_at desc, id desc — the same tiebreak as
     ats_score._latest_row). Applications missing either phase never join and are
     skipped. `source` ("user" | "agent") keeps only applications of that origin,
-    the All / Yours / Agents toggle.
+    the All / Yours / Agents toggle; `since` keeps only applications whose latest
+    tailored row is that recent.
     """
     # Rank tailored rows within each application; row_number 1 is the latest.
     ranked = (
         select(
             AtsScore.application_id.label("application_id"),
             AtsScore.composite.label("tailored_composite"),
+            AtsScore.created_at.label("tailored_at"),
             func.row_number()
             .over(
                 partition_by=AtsScore.application_id,
@@ -350,11 +354,31 @@ def tailoring_lift(
     stmt = _apply_job_filters(stmt, role_category, level, employment_type)
     if source:
         stmt = stmt.where(Application.source == source)
+    if since is not None:
+        stmt = stmt.where(ranked.c.tailored_at >= since)
+    return [
+        (role, float(base_composite), float(tailored_composite))
+        for role, base_composite, tailored_composite in db.execute(stmt).all()
+    ]
 
+
+def tailoring_lift(
+    db: Session,
+    role_category: str | None = None,
+    level: str | None = None,
+    employment_type: str | None = None,
+    *,
+    source: str | None = None,
+) -> list[dict[str, Any]]:
+    """Composite lift (tailored - base) per role, plus an overall "all" row, over `lift_pairs`.
+    `source` ("user" | "agent") keeps only applications of that origin, the All / Yours / Agents
+    toggle."""
     per_role: dict[Any, list[tuple[float, float]]] = defaultdict(list)
     overall: list[tuple[float, float]] = []
-    for role, base_composite, tailored_composite in db.execute(stmt).all():
-        pair = (float(base_composite), float(tailored_composite))
+    for role, base_composite, tailored_composite in lift_pairs(
+        db, role_category, level, employment_type, source=source
+    ):
+        pair = (base_composite, tailored_composite)
         # Skip role-less jobs in the per-role bars (mirrors ats_over_time, and the
         # frontend types role_category as a non-null string); they still count in
         # the overall "all" row.

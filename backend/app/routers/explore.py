@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, distinct, func, not_, select
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.services import (
     explore_build_areas,
     explore_gaps,
     explore_overview,
+    search_summary,
 )
 from app.services.explore_activity import bucket_for
 from app.services.explore_skills import TOP_TIER_FRACTION, classify_skill_rows
@@ -364,3 +365,33 @@ def build_areas(
     return explore_build_areas.build_areas(
         db, role_category, level, employment_type, limit=limit
     )
+
+
+def _summary_weeks(
+    weeks: Annotated[
+        str,
+        Query(description="a number of weeks from 1 to 520, or all", pattern=r"^(all|[0-9]{1,3})$"),
+    ] = "12",
+) -> int | None:
+    """The period control: N calendar weeks back from this one, or "all" (None)."""
+    if weeks == "all":
+        return None
+    value = int(weeks)
+    if not 1 <= value <= search_summary.MAX_WEEKS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"weeks is a number from 1 to {search_summary.MAX_WEEKS}, or all",
+        )
+    return value
+
+
+@router.get("/search-summary")
+def get_search_summary(
+    db: Annotated[Session, Depends(get_db)],
+    weeks: Annotated[int | None, Depends(_summary_weeks)],
+    source: Literal["all", "user", "agent"] = "all",
+):
+    """Where your applications went: sent, heard back, interview, offer (rates from 20, with a
+    Wilson range), time to hear back, quiet after 30 days, score gain, by resume and per week,
+    read from the dated status events. Read-only."""
+    return search_summary.build(db, weeks=weeks, source=None if source == "all" else source)
