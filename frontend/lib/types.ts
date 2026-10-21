@@ -1877,12 +1877,29 @@ interface ExploreSkillCountRow {
   skill_name: string;
   n: number;
 }
-interface ExploreSalaryByRole {
+interface ExplorePayByRoleRow {
   role_category: string;
-  currency: string | null;
   n: number;
   avg_min: number | null;
   avg_max: number | null;
+  /** How many of the `n` jobs were posted in another currency and converted (shown with "≈"). */
+  converted_count: number;
+  posted_currencies: string[];
+}
+/** Yearly pay by role in your home currency (`explore_overview._pay_by_role`): numbers, worded by lib/money.ts. */
+export interface ExplorePayByRole {
+  currency: string;
+  /** The ECB rate date, when any pay was converted. */
+  rate_date: string | null;
+  min_jobs: number;
+  roles: ExplorePayByRoleRow[];
+  /** Roles with fewer than `min_jobs` jobs that list pay. */
+  hidden_roles: { role_category: string; n: number }[];
+  converted_count: number;
+  /** The converted jobs by the currency they were posted in. */
+  posted_currencies: ExploreCountRow[];
+  /** Jobs left out: their currency has no rate, or they name none. */
+  unconverted: number;
 }
 export interface ExploreOverview {
   meta: {
@@ -1900,14 +1917,20 @@ export interface ExploreOverview {
   level_breakdown: ExploreCountRow[];
   work_mode: ExploreCountRow[];
   top_required_skills: ExploreSkillCountRow[];
-  salary_by_role: ExploreSalaryByRole[];
+  pay_by_role: ExplorePayByRole;
   salary_by_currency: ExploreCountRow[];
   locations: ExploreCountRow[];
   countries: ExploreCountRow[];
   work_auth: { opt: ExploreCountRow[]; sponsorship: ExploreCountRow[] };
-  /** Server-worded insights. `currency` is set on one that names pay: the single currency it compared,
-   * so pay is never ranked across currencies (`explore_overview._best_paying_signal`). */
-  signals: { title: string; detail: string; currency?: string | null }[];
+  /** Server-worded insights. One that names pay carries it as `amount` in `currency` (your home currency,
+   * converted pay compared: `explore_overview._best_paying_signal`), worded here; `converted` adds "≈". */
+  signals: {
+    title: string;
+    detail: string;
+    currency?: string | null;
+    amount?: number | null;
+    converted?: boolean;
+  }[];
 }
 
 // ---------------------------------------------------------------------------

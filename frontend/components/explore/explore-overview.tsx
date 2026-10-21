@@ -10,11 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
 import { formatShortDate } from "@/lib/format-date";
-import { formatPay } from "@/lib/money";
+import { APPROX, formatPay } from "@/lib/money";
 import { countryName, placeName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
 import { skillName } from "@/lib/skill-name";
-import type { ExploreCountRow, ExploreOverview } from "@/lib/types";
+import type { ExploreCountRow, ExploreOverview, ExplorePayByRole } from "@/lib/types";
 import { LowSampleCaption } from "@/components/explore/low-sample-hint";
 import { useRoleLabel } from "@/components/role-category-picker";
 
@@ -61,6 +61,39 @@ function signalTitle(title: string, o: ExploreOverview): string {
 /** Pay the way the job header shows it ("$171K–$214K", "£70K–£90K"): one money format. */
 const payRange = (min: number | null, max: number | null, currency?: string | null) =>
   formatPay({ min, max, currency: currency ?? null, period: null })?.primary ?? "—";
+
+/** Pay already in your home currency (`pay_by_role`): its narrow symbol, and "≈" when any of it was converted. */
+const homePay = (min: number | null, max: number | null, home: string, converted: boolean) => {
+  const text = formatPay({ min, max, currency: home, period: null }, { home })?.primary;
+  return text ? `${converted ? APPROX : ""}${text}` : "—";
+};
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** "9 GBP and 7 USD jobs converted, ECB rate of Oct 19." and what was left out, under the pay card's title. */
+function payNotes(pay: ExplorePayByRole): string[] {
+  const notes: string[] = [];
+  if (pay.converted_count > 0 && pay.rate_date) {
+    const parts = pay.posted_currencies.map((c) => `${c.count} ${c.key}`);
+    const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+    notes.push(
+      `${list} ${pay.converted_count === 1 ? "job" : "jobs"} converted, ECB rate of ${formatShortDate(pay.rate_date)}.`,
+    );
+  }
+  if (pay.hidden_roles.length > 0) {
+    notes.push(`${count(pay.hidden_roles.length, "role", "roles")} hidden: under ${pay.min_jobs} jobs.`);
+  }
+  if (pay.unconverted > 0) {
+    notes.push(`${count(pay.unconverted, "job", "jobs")} left out: no exchange rate.`);
+  }
+  return notes;
+}
+
+/** A pay signal's figure, worded here: the server sends the number and the currency (lib/money.ts). */
+function signalPay(s: ExploreOverview["signals"][number]): string | null {
+  if (s.amount == null || !s.currency) return null;
+  return homePay(null, s.amount, s.currency, Boolean(s.converted));
+}
 
 
 function BarList({
@@ -203,7 +236,10 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           {o.signals.map((s, i) => (
             <div key={i} className="bg-surface-container-low rounded-corner-md px-3 py-2">
               <p className="text-foreground text-title-small">{signalTitle(s.title, o)}</p>
-              <p className="text-muted-foreground mt-0.5 text-body-small">{s.detail}</p>
+              <p className="text-muted-foreground mt-0.5 text-body-small">
+                {signalPay(s) ? <span className="text-foreground">{`${signalPay(s)}. `}</span> : null}
+                {s.detail}
+              </p>
             </div>
           ))}
         </div>
@@ -306,24 +342,26 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Yearly pay by role</CardTitle>
-            {o.meta.salary_mixed_currencies ? (
-              <p className="text-muted-foreground text-body-small">
-                Shown per currency, since jobs use more than one.
+            {payNotes(o.pay_by_role).map((note) => (
+              <p key={note} className="text-muted-foreground text-body-small">
+                {note}
               </p>
-            ) : null}
+            ))}
           </CardHeader>
           <CardContent>
-            {o.salary_by_role.length === 0 ? (
+            {o.pay_by_role.roles.length === 0 ? (
               <p className="text-muted-foreground text-body-medium">
-                No pay data yet. Most jobs don&apos;t list pay.
+                {o.pay_by_role.hidden_roles.length > 0
+                  ? `No role has ${o.pay_by_role.min_jobs} jobs that list pay yet.`
+                  : "No pay data yet. Most jobs don't list pay."}
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">
-                {o.salary_by_role.map((r) => (
+                {o.pay_by_role.roles.map((r) => (
                   <StatTile
-                    key={`${r.role_category}:${r.currency ?? "unknown"}`}
-                    label={`${label(r.role_category)}${r.currency ? ` · ${r.currency}` : ""}`}
-                    value={payRange(r.avg_min, r.avg_max, r.currency)}
+                    key={r.role_category}
+                    label={label(r.role_category)}
+                    value={homePay(r.avg_min, r.avg_max, o.pay_by_role.currency, r.converted_count > 0)}
                     sub={`${r.n} ${r.n === 1 ? "job" : "jobs"} with pay listed`}
                   />
                 ))}

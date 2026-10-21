@@ -64,7 +64,11 @@ def test_job_market_money_has_one_format():
     market = _read("components/explore/explore-overview.tsx")
     assert "const fmtK" not in market
     assert 'formatPay({ min, max, currency: currency ?? null, period: null })?.primary ?? "—"' in market
-    assert "value={payRange(r.avg_min, r.avg_max, r.currency)}" in market
+    # Yearly pay by role arrives in your home currency (plan Task 3.9): "≈" when any of a role's pay
+    # was converted, and no server-worded money ("$150K") anywhere on the page.
+    assert "value={homePay(r.avg_min, r.avg_max, o.pay_by_role.currency, r.converted_count > 0)}" in market
+    assert "${converted ? APPROX : \"\"}${text}" in market
+    assert "salary_by_role" not in market
     assert "payRange(o.meta.salary_year_avg_min, o.meta.salary_year_avg_max, o.meta.salary_year_currency)" in market
 
 

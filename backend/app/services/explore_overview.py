@@ -1,5 +1,6 @@
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import distinct, func, or_, select
@@ -8,7 +9,11 @@ from sqlalchemy.orm import Session
 from app.models.job import Job
 from app.models.job_skill import JobSkill
 from app.schemas.job_extraction import level_key, work_mode_key
-from app.services import countries, role_categories
+from app.services import countries, fx_rates, money, money_settings, role_categories
+
+# A role's yearly pay shows only from this many jobs that list it (converted into your currency);
+# fewer are named under `hidden_roles` with their count.
+MIN_ROLE_JOBS = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,56 +69,37 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, Any]]:
     return candidate_signals(o)[:5]
 
 
-# The symbols en-US `Intl.NumberFormat` writes, so a signal's pay reads like the tile beside it.
-_SYMBOLS = {"USD": "$", "EUR": "€", "GBP": "£", "INR": "₹", "CAD": "CA$", "AUD": "A$"}
-
-
-def _thousands(amount: float, currency: str | None) -> str:
-    """Pay as the web app writes it (`formatMoney`, which reads a missing currency as USD):
-    "$214K", "€150K", else "150K CHF"."""
-    code = (currency or "USD").upper()
-    k = f"{round(amount / 1000)}K"
-    return f"{_SYMBOLS[code]}{k}" if code in _SYMBOLS else f"{k} {code}"
-
-
 def _jobs(n: int) -> str:
     """"1 job", "3 jobs": a count and its noun agree (appendix D §1)."""
     return f"{n} {'job' if n == 1 else 'jobs'}"
 
 
 def _best_paying_signal(o: dict[str, Any]) -> dict[str, Any] | None:
-    """The best-paying role among jobs paid in the single most common currency.
+    """The best-paying role, by the average top of its pay range in your currency.
 
-    ₹2,400,000 is not more than $170,000, so roles are never compared across currencies: only the
-    currency most jobs list pay in takes part, and a tie means there is no honest comparison. The
-    signal carries that currency, and its detail names it whenever pay in another one was left out."""
+    Pay is compared only once converted into the home currency (`pay_by_role`: ECB reference
+    rates; a job whose currency has no rate is left out, never compared as posted), and only
+    among the roles that show (enough jobs list pay). The signal carries the figure as a number
+    with its currency; the browser words it (`lib/money.ts`), with "≈" when any of it was
+    converted."""
+    pay = o.get("pay_by_role") or {}
     # Reserved buckets are not a role: "Best-paying role: Unknown" says nothing.
     paid = [
-        r for r in o["salary_by_role"]
+        r for r in pay.get("roles") or []
         if r.get("avg_max") and r["role_category"] not in role_categories.RESERVED
     ]
-    jobs_by_currency: Counter[str | None] = Counter()
-    for r in paid:
-        jobs_by_currency[r.get("currency")] += r["n"]
-    ranked = jobs_by_currency.most_common(2)
-    if not ranked or (len(ranked) == 2 and ranked[0][1] == ranked[1][1]):
+    if not paid:
         return None
-    currency = ranked[0][0]
-    set_aside = len(jobs_by_currency) > 1
-    if set_aside and currency is None:
-        return None  # pay with no currency cannot be named beside pay that has one
-    best = max((r for r in paid if r.get("currency") == currency), key=lambda r: r["avg_max"])
-    cur = currency or o["meta"].get("salary_year_currency")
-    detail = (
-        f"Average top of the pay range: about {_thousands(best['avg_max'], cur)}, "
-        f"from {_jobs(best['n'])} that {'lists' if best['n'] == 1 else 'list'} pay."
-    )
-    if set_aside:
-        detail += f" Only jobs that pay in {currency} are compared."
+    best = max(paid, key=lambda r: r["avg_max"])
     return {
         "title": f"Best-paying role: {role_categories.label_for(best['role_category'])}",
-        "detail": detail,
-        "currency": currency,
+        "detail": (
+            f"Average top of the pay range, from {_jobs(best['n'])} that "
+            f"{'lists' if best['n'] == 1 else 'list'} pay."
+        ),
+        "currency": pay.get("currency"),
+        "amount": best["avg_max"],
+        "converted": bool(best.get("converted_count")),
     }
 
 
@@ -197,33 +183,68 @@ def _salary_year_stats(db, filters: JobFilters):
     return currency_rows, mixed, year_currency, avg_min, avg_max
 
 
-def _salary_by_role_rows(db, filters: JobFilters) -> list[dict]:
+def _average(values: list[Decimal]) -> float | None:
+    return float(sum(values) / len(values)) if values else None
+
+
+def _pay_by_role(db, filters: JobFilters, home: str, rates: dict[str, Any] | None) -> dict[str, Any]:
+    """Yearly pay by role in the home currency (owner decision D8).
+
+    Every yearly job that lists a top of its range is converted into `home` on the ECB
+    reference rates (`money.convert`); a job whose currency has no rate, or that names none, is
+    counted in `unconverted` and left out, never compared as posted. A role shows from
+    `MIN_ROLE_JOBS` converted jobs; fewer are listed in `hidden_roles` with their count. The
+    payload carries numbers only; the browser words them (`lib/money.ts`).
+    """
     rc_key = func.coalesce(Job.role_category, "unknown")
-    cur_key = func.coalesce(Job.salary_currency, "unknown")
     rows = db.execute(
         _apply(
-            select(
-                rc_key.label("rc"),
-                cur_key.label("cur"),
-                func.count().label("n"),
-                func.avg(Job.salary_min),
-                func.avg(Job.salary_max),
-            )
+            select(rc_key, Job.salary_currency, Job.salary_min, Job.salary_max)
             .select_from(Job)
             .where(Job.salary_period == "year", Job.salary_max.is_not(None)),
             filters,
-        ).group_by(rc_key, cur_key).order_by(func.avg(Job.salary_max).desc(), rc_key, cur_key)
+        )
     ).all()
-    return [
-        {
-            "role_category": rc,
-            "currency": None if cur == "unknown" else cur,
-            "n": int(n),
-            "avg_min": float(amin) if amin is not None else None,
-            "avg_max": float(amax) if amax is not None else None,
-        }
-        for rc, cur, n, amin, amax in rows
-    ]
+    by_role: dict[str, list[tuple[Decimal | None, Decimal, str]]] = defaultdict(list)
+    unconverted = 0
+    for role, currency, low, high in rows:
+        code = currency.strip().upper() if currency else None
+        top = money.convert(Decimal(str(high)), code, home, rates) if code else None
+        if top is None:
+            unconverted += 1
+            continue
+        bottom = money.convert(Decimal(str(low)), code, home, rates) if low is not None else None
+        by_role[str(role)].append((bottom, top, code))
+
+    shown, hidden = [], []
+    converted: Counter[str] = Counter()
+    for role, jobs in by_role.items():
+        posted = [code for *_, code in jobs]
+        if len(jobs) < MIN_ROLE_JOBS:
+            hidden.append({"role_category": role, "n": len(jobs)})
+            continue
+        converted.update(code for code in posted if code != home)
+        shown.append({
+            "role_category": role,
+            "n": len(jobs),
+            "avg_min": _average([low for low, _top, _code in jobs if low is not None]),
+            "avg_max": _average([top for _low, top, _code in jobs]),
+            "converted_count": sum(1 for code in posted if code != home),
+            "posted_currencies": sorted(set(posted)),
+        })
+    shown.sort(key=lambda r: (-r["avg_max"], r["role_category"]))
+    hidden.sort(key=lambda r: (-r["n"], r["role_category"]))
+    return {
+        "currency": home,
+        "rate_date": rates.get("date") if rates and converted else None,
+        "min_jobs": MIN_ROLE_JOBS,
+        "roles": shown,
+        "hidden_roles": hidden,
+        "converted_count": sum(converted.values()),
+        "posted_currencies": [{"key": k, "count": n} for k, n in
+                              sorted(converted.items(), key=lambda kv: (-kv[1], kv[0]))],
+        "unconverted": unconverted,
+    }
 
 
 def _overview_meta(db, filters: JobFilters) -> dict[str, Any]:
@@ -309,7 +330,7 @@ def build_overview(
         "level_breakdown": _count_by_key(db, (Job.level,), level_key, filters, missing="unstated"),
         "work_mode": _count_by_key(db, (Job.work_mode,), work_mode_key, filters, missing="unstated"),
         "top_required_skills": top_required_skills,
-        "salary_by_role": _salary_by_role_rows(db, filters),
+        "pay_by_role": _pay_by_role(db, filters, money_settings.home_currency(db), fx_rates.current(db)),
         "locations": locations,
         # ISO codes; "unknown" when a job names no one country (the web app says "Not stated").
         "countries": _count_by_key(

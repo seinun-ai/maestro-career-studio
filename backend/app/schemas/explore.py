@@ -69,12 +69,37 @@ class SkillCountRow(BaseModel):
     n: int
 
 
-class SalaryByRoleRow(BaseModel):
+class PayByRoleRow(BaseModel):
+    """One role's yearly pay, in `PayByRole.currency`: `n` jobs that list it, `converted_count`
+    of them posted in another currency (shown with "≈"), the currencies they were posted in."""
+
     role_category: str
-    currency: str | None = None
     n: int
     avg_min: float | None = None
     avg_max: float | None = None
+    converted_count: int = 0
+    posted_currencies: list[str] = []
+
+
+class HiddenRole(BaseModel):
+    role_category: str
+    n: int
+
+
+class PayByRole(BaseModel):
+    """Yearly pay by role in your home currency (`explore_overview._pay_by_role`): numbers only,
+    worded by the browser (`lib/money.ts`). `rate_date` is the ECB rate date when any pay was
+    converted; `posted_currencies` counts the converted jobs by the currency they were posted in;
+    `unconverted` counts jobs left out because their currency has no rate or they name none."""
+
+    currency: str
+    rate_date: str | None = None
+    min_jobs: int
+    roles: list[PayByRoleRow]
+    hidden_roles: list[HiddenRole] = []
+    converted_count: int = 0
+    posted_currencies: list[CountRow] = []
+    unconverted: int = 0
 
 
 class WorkAuthBreakdown(BaseModel):
@@ -97,8 +122,11 @@ class OverviewMeta(BaseModel):
 class OverviewSignal(BaseModel):
     title: str
     detail: str
-    # Set on a signal that names pay: the one currency it compared (null: the jobs list none).
+    # Set on a signal that names pay: the figure as a number in `currency` (your home currency),
+    # worded by the browser, and whether any of it was converted (shown with "≈").
     currency: str | None = None
+    amount: float | None = None
+    converted: bool = False
 
 
 class ExploreOverviewResponse(BaseModel):
@@ -107,7 +135,7 @@ class ExploreOverviewResponse(BaseModel):
     level_breakdown: list[CountRow]
     work_mode: list[CountRow]
     top_required_skills: list[SkillCountRow]
-    salary_by_role: list[SalaryByRoleRow]
+    pay_by_role: PayByRole
     salary_by_currency: list[CountRow] = []
     locations: list[CountRow]
     countries: list[CountRow] = []

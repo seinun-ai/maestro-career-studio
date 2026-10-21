@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -277,8 +278,9 @@ def test_overview_aggregates(db_session, client):
     assert opt["yes"] == 1 and opt["no"] == 1 and opt["unstated"] == 1
     locs = {r["key"]: r["count"] for r in body["locations"]}
     assert locs["Texas"] == 2 and locs["California"] == 1
-    sbr = {r["role_category"]: r for r in body["salary_by_role"]}
-    assert "data_scientist" in sbr and "data_engineer" not in sbr
+    # Two yearly-paid data scientists are under the five a role needs to show; the hourly job is not yearly.
+    pay = body["pay_by_role"]
+    assert pay["roles"] == [] and pay["hidden_roles"] == [{"role_category": "data_scientist", "n": 2}]
     assert len(body["signals"]) <= 5
 
 
@@ -395,30 +397,25 @@ def test_overview_signal_copy_has_no_em_dash(db_session):
     """Insight title and detail are sentences. An em dash is a clause joiner, not copy.
 
     Reads the UNCAPPED list: the endpoint keeps five, and this fixture fires all
-    six, so a sixth signal's copy would otherwise go unchecked."""
+    five, so a sixth signal's copy would otherwise go unchecked."""
     j1 = _seed_job(db_session, raw_hash="s1", role_category="data_scientist")
     j2 = _seed_job(db_session, raw_hash="s2", role_category="data_scientist")
-    paid = _seed_job(db_session, raw_hash="s3", role_category="data_scientist")
-    j1.opt_accepted, j2.opt_accepted, paid.opt_accepted = "yes", "no", "stem_opt_ok"
-    j1.state, j2.state, paid.state = "Texas", "Texas", "Texas"
-    j1.work_mode, j2.work_mode, paid.work_mode = "onsite", "onsite", "onsite"
-    paid.salary_min, paid.salary_max, paid.salary_period, paid.salary_currency = (
-        150000,
-        180000,
-        "year",
-        "USD",
-    )
-    _add_skill(db_session, j1, "Python", requirement="required")
-    _add_skill(db_session, j2, "Python", requirement="required")
-    _add_skill(db_session, paid, "Python", requirement="required")
+    paid = [_seed_job(db_session, raw_hash=f"s3-{i}", role_category="data_scientist") for i in range(5)]
+    for job in (j1, j2, *paid):
+        job.state, job.work_mode = "Texas", "onsite"
+        _add_skill(db_session, job, "Python", requirement="required")
+    for job in paid:
+        job.salary_min, job.salary_max, job.salary_period, job.salary_currency = 150000, 180000, "year", "USD"
     db_session.flush()
     signals = explore_overview.candidate_signals(explore_overview.build_overview(db_session))
     assert len(signals) == 5, [s["title"] for s in signals]
     copy = " ".join(f"{s['title']} {s['detail']}" for s in signals)
     assert "Remote roles are scarce" in copy
     assert "—" not in copy
-    # One money format, the web app's ("$140K–$180K"): never "180k USD".
-    assert "about $180K, from 1 job that lists pay." in copy
+    # The payload carries pay as numbers; the browser words them (lib/money.ts), never the server.
+    best = next(s for s in signals if s["title"].startswith("Best-paying role:"))
+    assert best["detail"] == "Average top of the pay range, from 5 jobs that list pay."
+    assert (best["amount"], best["currency"], best["converted"]) == (180000, "USD", False)
 
 
 # AI/ML Engineer out-earns Data Scientist. A reserved bucket is appended to out-earn both.
@@ -426,13 +423,14 @@ _TRACKS = [("data_scientist", 100000, 150000), ("ai_ml_engineer", 160000, 200000
 
 
 def _best_paying_titles(db_session, pay):
-    """Overview signal titles with one yearly-USD job per (role, min, max);
-    a role of None is stored NULL and reads back as `unknown`."""
+    """Overview signal titles with five yearly-USD jobs per (role, min, max), the fewest a role
+    shows with; a role of None is stored NULL and reads back as `unknown`."""
     for i, (role, low, high) in enumerate(pay):
-        job = _seed_job(db_session, raw_hash=f"pay-{i}", role_category="data_scientist")
-        job.role_category = role
-        job.salary_min, job.salary_max = low, high
-        job.salary_period, job.salary_currency = "year", "USD"
+        for k in range(explore_overview.MIN_ROLE_JOBS):
+            job = _seed_job(db_session, raw_hash=f"pay-{i}-{k}", role_category="data_scientist")
+            job.role_category = role
+            job.salary_min, job.salary_max = low, high
+            job.salary_period, job.salary_currency = "year", "USD"
     db_session.flush()
     client = TestClient(app)
     app.dependency_overrides[get_db] = _override_db(db_session)
@@ -475,41 +473,23 @@ def _best_paying(client, **params):
     return [s for s in signals if s["title"].startswith("Best-paying role:")]
 
 
-def test_best_paying_signal_never_compares_across_currencies(db_session, client):
-    """₹2,400,000 is not more than $170,000. With no single most common currency
-    there is nothing honest to compare, so the signal names role B or none."""
-    _seed_pay(db_session, "inr", "data_scientist", 3, 2_400_000, "INR")
-    _seed_pay(db_session, "usd", "ai_ml_engineer", 3, 170_000, "USD")
+def test_best_paying_signal_compares_pay_in_your_currency(db_session, client, monkeypatch):
+    """₹2,400,000 is not more than $170,000: converted, it is about €26,700 against €156,400.
+    With no rate the rupee jobs are left out, never compared as posted."""
+    _seed_pay(db_session, "inr", "data_scientist", 5, 2_400_000, "INR")
+    _seed_pay(db_session, "usd", "ai_ml_engineer", 5, 170_000, "USD")
     db_session.flush()
 
+    _in(monkeypatch, "EUR", {**_RATES, "rates": {**_RATES["rates"], "INR": Decimal("90.0")}})
     best = _best_paying(client)
-
-    assert [s["title"] for s in best] in ([], ["Best-paying role: AI/ML Engineer"])
-    assert not any("Data Scientist" in s["title"] for s in best)
-
-
-def test_best_paying_signal_compares_the_most_common_currency(db_session, client):
-    """Only roles paid in the most common currency are compared, and the signal
-    carries that currency and says so when other pay was set aside."""
-    _seed_pay(db_session, "inr", "data_scientist", 3, 2_400_000, "INR")
-    _seed_pay(db_session, "usd-a", "ai_ml_engineer", 2, 170_000, "USD")
-    _seed_pay(db_session, "usd-b", "data_engineer", 2, 150_000, "USD")
-    db_session.flush()
-
-    best = _best_paying(client)
-    usd_only = _best_paying(client, salary_currency="USD")
-
     assert [s["title"] for s in best] == ["Best-paying role: AI/ML Engineer"]
-    assert best[0]["currency"] == "USD"
-    assert best[0]["detail"] == (
-        "Average top of the pay range: about $170K, from 2 jobs that list pay. "
-        "Only jobs that pay in USD are compared."
-    )
-    # One currency in scope: nothing was set aside, so the detail says no more.
-    assert usd_only[0]["currency"] == "USD"
-    assert usd_only[0]["detail"] == (
-        "Average top of the pay range: about $170K, from 2 jobs that list pay."
-    )
+    assert best[0]["currency"] == "EUR" and best[0]["converted"] is True
+    assert round(best[0]["amount"]) == 156394
+
+    _in(monkeypatch, "USD", None)
+    best = _best_paying(client)
+    assert [s["title"] for s in best] == ["Best-paying role: AI/ML Engineer"]
+    assert best[0]["converted"] is False
 
 
 def test_top_skill_signal_title_starts_with_words(db_session):
@@ -651,12 +631,12 @@ def test_fit_distribution_excludes_soft_deleted_base_resume(db_session, client):
 def test_a_count_of_one_job_is_one_job():
     """"(1 jobs)" and "from 1 jobs" are the plural bug appendix D §1 names."""
     one = {
-        "meta": {"total_jobs": 1, "jobs_without_salary": 0, "salary_year_currency": "USD"},
+        "meta": {"total_jobs": 1, "jobs_without_salary": 0},
         "work_auth": {"opt": []},
         "locations": [{"key": "Tacoma, WA", "count": 1}],
         "top_required_skills": [{"skill_name": "sql", "n": 1}],
-        "salary_by_role": [{"role_category": "data_scientist", "avg_max": 150000, "n": 1,
-                            "currency": "USD"}],
+        "pay_by_role": {"currency": "USD", "roles": [
+            {"role_category": "data_scientist", "avg_max": 150000, "n": 1, "converted_count": 0}]},
         "work_mode": [{"key": "onsite", "count": 1}],
     }
     copy = {s["title"]: s["detail"] for s in explore_overview.candidate_signals(one)}
@@ -664,22 +644,83 @@ def test_a_count_of_one_job_is_one_job():
     assert copy["Most required skill: sql (100% of jobs)"] == (
         "Required in 1 of 1 job, more than any other skill.")
     assert copy["Best-paying role: Data Scientist"] == (
-        "Average top of the pay range: about $150K, from 1 job that lists pay.")
+        "Average top of the pay range, from 1 job that lists pay.")
     six = {**one, "meta": {**one["meta"], "total_jobs": 6},
            "work_mode": [{"key": "remote", "count": 1}, {"key": "onsite", "count": 5}]}
     remote = {s["title"]: s["detail"] for s in explore_overview.candidate_signals(six)}
     assert remote["Remote roles are scarce (17%)"] == "Only 1 of 6 jobs is remote."
 
 
-@pytest.mark.parametrize("code,pay", [("USD", "$150K"), ("EUR", "€150K"), ("CHF", "150K CHF")])
-def test_best_paying_pay_reads_like_the_web_app(code, pay):
-    """One money format, the web app's `formatMoney` ("$214K"), never "214k USD"."""
+@pytest.mark.parametrize("code", ["USD", "EUR", "CHF"])
+def test_best_paying_pay_is_a_number_the_browser_words(code):
+    """The server words no money ("$150K" came from a symbol table here): the signal carries the
+    figure and its currency, and lib/money.ts writes it."""
     one = {
-        "meta": {"total_jobs": 1, "jobs_without_salary": 0, "salary_year_currency": "USD"},
+        "meta": {"total_jobs": 1, "jobs_without_salary": 0},
         "work_auth": {"opt": []}, "locations": [], "top_required_skills": [],
-        "salary_by_role": [{"role_category": "data_scientist", "avg_max": 150000, "n": 1, "currency": code}],
+        "pay_by_role": {"currency": code, "roles": [
+            {"role_category": "data_scientist", "avg_max": 150000, "n": 1, "converted_count": 1}]},
         "work_mode": [{"key": "onsite", "count": 1}],
     }
-    copy = {s["title"]: s["detail"] for s in explore_overview.candidate_signals(one)}
-    assert copy["Best-paying role: Data Scientist"] == (
-        f"Average top of the pay range: about {pay}, from 1 job that lists pay.")
+    best = next(s for s in explore_overview.candidate_signals(one) if s["title"].startswith("Best-paying"))
+    assert (best["amount"], best["currency"], best["converted"]) == (150000, code, True)
+    assert "150" not in best["detail"]
+    assert not hasattr(explore_overview, "_thousands") and not hasattr(explore_overview, "_SYMBOLS")
+
+
+# --- yearly pay by role in your currency (plan Task 3.9) ---------------------------------------
+
+# ECB reference rates, units per euro: £87,700 and $108,700 are both €100,000.
+_RATES = {"base": "EUR", "date": "2026-10-19", "fetched_at": "2026-10-19T16:30:00+00:00",
+          "rates": {"USD": Decimal("1.0870"), "GBP": Decimal("0.8770")}}
+
+
+def _in(monkeypatch, home, rates):
+    from app.services import fx_rates, money_settings
+
+    monkeypatch.setattr(money_settings, "home_currency", lambda session=None: home)
+    monkeypatch.setattr(fx_rates, "current", lambda session: rates)
+
+
+def _paid(db_session, tag, role, count, currency, top, low=None):
+    for i in range(count):
+        job = _seed_job(db_session, raw_hash=f"{tag}-{i}", role_category=role)
+        job.salary_min, job.salary_max, job.salary_period, job.salary_currency = low, top, "year", currency
+
+
+def test_yearly_pay_by_role_is_in_your_home_currency(db_session, client, monkeypatch):
+    _paid(db_session, "ds-eur", "data_scientist", 3, "EUR", 90000, 70000)
+    _paid(db_session, "ds-gbp", "data_scientist", 2, "GBP", 87700, 70160)
+    _paid(db_session, "ml-usd", "ai_ml_engineer", 5, "USD", 108700)
+    _paid(db_session, "de-eur", "data_engineer", 2, "EUR", 80000)       # under five: hidden
+    _paid(db_session, "ds-ars", "data_scientist", 1, "ARS", 30_000_000)  # no ECB rate: left out
+    _paid(db_session, "ds-none", "data_scientist", 1, None, 95000)       # no currency: left out
+    db_session.flush()
+    _in(monkeypatch, "EUR", _RATES)
+
+    pay = client.get("/api/explore/overview").json()["pay_by_role"]
+
+    assert (pay["currency"], pay["rate_date"], pay["min_jobs"]) == ("EUR", "2026-10-19", 5)
+    roles = {r["role_category"]: r for r in pay["roles"]}
+    assert [r["role_category"] for r in pay["roles"]] == ["ai_ml_engineer", "data_scientist"]
+    ds = roles["data_scientist"]
+    assert (ds["n"], ds["converted_count"], ds["posted_currencies"]) == (5, 2, ["EUR", "GBP"])
+    assert round(ds["avg_max"]) == 94000 and round(ds["avg_min"]) == 74000
+    ml = roles["ai_ml_engineer"]
+    assert (ml["n"], ml["converted_count"], round(ml["avg_max"]), ml["avg_min"]) == (5, 5, 100000, None)
+    assert pay["hidden_roles"] == [{"role_category": "data_engineer", "n": 2}]
+    assert pay["unconverted"] == 2
+    assert pay["converted_count"] == 7
+    assert pay["posted_currencies"] == [{"key": "USD", "count": 5}, {"key": "GBP", "count": 2}]
+
+
+def test_with_no_rates_only_pay_in_your_currency_counts(db_session, client, monkeypatch):
+    _paid(db_session, "eur", "data_scientist", 5, "EUR", 90000)
+    _paid(db_session, "gbp", "data_scientist", 2, "GBP", 87700)
+    db_session.flush()
+    _in(monkeypatch, "EUR", None)
+
+    pay = client.get("/api/explore/overview").json()["pay_by_role"]
+
+    assert pay["rate_date"] is None and pay["converted_count"] == 0 and pay["unconverted"] == 2
+    assert [(r["role_category"], r["n"], r["converted_count"]) for r in pay["roles"]] == [("data_scientist", 5, 0)]
