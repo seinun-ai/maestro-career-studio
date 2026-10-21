@@ -8,9 +8,12 @@ US protected-veteran status, the last is the EEO-1's two-part ethnicity
 structure); and the work-auth vocabulary is a US visa taxonomy (`opt`,
 `stem_opt`, `h1b`, `tn`).
 
-One `market` setting now drives all three, and the vocabulary lives in
-`data/markets.yaml` so adding a market needs no code change — the same contract
-`role_categories.yaml` already declares for roles.
+The market setting (`home`, where the user lives, plus `apply_in`, every market
+they apply in; `schemas/market_settings.py`) drives all three, and the
+vocabulary lives in `data/markets.yaml` so adding a market needs no code change
+— the same contract `role_categories.yaml` already declares for roles. Keys are
+the setting's own ("UK"); `country_code` / `for_country` bridge them to the ISO
+codes jobs and base resumes store ("GB").
 
 **The EEO posture is the load-bearing part.** `eeo_module` is null for every
 market whose question set has not been verified against a primary source, and
@@ -26,6 +29,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from app.services import countries
 
 _DATA_FILE = Path(__file__).parent / "data" / "markets.yaml"
 
@@ -76,6 +81,25 @@ def get(key: str | None) -> dict[str, Any]:
     resolved = str(key or "").strip().upper()
     entries = _load()
     return entries.get(resolved) or entries[DEFAULT_MARKET]
+
+
+def country_code(key: str | None) -> str | None:
+    """A market key's ISO 3166-1 alpha-2 code ("UK" -> "GB"); None for an unknown key.
+
+    Keys stay as the setting stores them ("UK"); jobs and base resumes store ISO codes, and
+    `countries.normalize` is the one bridge (a test pins every key to a country).
+    """
+    if not is_supported(key):
+        return None
+    return countries.normalize(str(key).strip().upper())
+
+
+def for_country(code: str | None) -> str | None:
+    """The market for an ISO country code ("GB" -> "UK"), or None when no market covers it."""
+    wanted = str(code or "").strip().upper()
+    if not wanted:
+        return None
+    return next((key for key in _load() if country_code(key) == wanted), None)
 
 
 def currency_for(key: str | None) -> str:

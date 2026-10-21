@@ -18,8 +18,10 @@ import { couldnt } from "@/lib/error-text";
 import type { MarketSettingResponse } from "@/lib/types";
 
 /**
- * Which market the user applies in. Drives the default currency on captured
- * jobs and whether a voluntary-disclosure (EEO) section is offered at all.
+ * Where the user lives (`home`). Drives the default currency on captured jobs
+ * that name no country and whether a voluntary-disclosure (EEO) section is
+ * offered at all. Picking a country keeps `apply_in` following it while you
+ * apply only where you live; a longer list is left as it is.
  *
  * The supported list, each market's currency, and whether it offers an EEO
  * module all come from the API — this component hardcodes none of it, because
@@ -35,10 +37,10 @@ export function MarketSection() {
   });
 
   const save = useMutation({
-    mutationFn: (next: string) =>
+    mutationFn: ({ home, apply_in }: { home: string; apply_in: string[] }) =>
       apiFetch<MarketSettingResponse>("/api/settings/market", {
         method: "PUT",
-        body: JSON.stringify({ value: { market: next } }),
+        body: JSON.stringify({ value: { home, apply_in } }),
       }),
     onSuccess: (result) => {
       qc.setQueryData(["settings", "market"], (prev: MarketSettingResponse | undefined) =>
@@ -64,8 +66,10 @@ export function MarketSection() {
       query={market}
     >
       {(data) => {
-        const selected = data.value.market;
-        const current = data.supported.find((m) => m.key === selected);
+        const selected = data.home;
+        const options = data.markets ?? [];
+        const current = options.find((m) => m.key === selected);
+        const onlyHome = data.apply_in.length === 1 && data.apply_in[0] === selected;
         return (
           <div className="grid gap-4">
             <SettingCardAction>
@@ -80,7 +84,12 @@ export function MarketSection() {
               </p>
               <Select
                 value={selected}
-                onValueChange={(next) => save.mutate(String(next))}
+                onValueChange={(next) =>
+                  save.mutate({
+                    home: String(next),
+                    apply_in: onlyHome ? [String(next)] : data.apply_in,
+                  })
+                }
               >
                 <SelectTrigger
                   id="market-select"
@@ -91,7 +100,7 @@ export function MarketSection() {
                   <SelectValue>{current ? current.label : selected}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {data.supported.map((m) => (
+                  {options.map((m) => (
                     <SelectItem key={m.key} value={m.key}>
                       {m.label} ({m.currency})
                     </SelectItem>

@@ -113,6 +113,24 @@
           "cmd": "! grep -q 'maestro-career-studio-backend' backend/requirements.lock"
         }
       ]
+    },
+    {
+      "id": "market-home-apply-in",
+      "status": "new-is-default",
+      "triggers": [
+        {
+          "kind": "absent",
+          "pattern": "\\.market\\b",
+          "paths": [
+            "backend/app",
+            "frontend/app",
+            "frontend/components",
+            "frontend/lib",
+            "frontend/hooks"
+          ]
+        }
+      ],
+      "hand_check": "The release after this one has shipped (a sync peer that has not updated reads the stored `market` key). Then drop the `market` computed field from MarketSetting. Keep the legacy {\"market\": X} read until no stored market blob lacks `home` (DB check on settings key 'market')."
     }
   ],
   "system_md_baselines": {

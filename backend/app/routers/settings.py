@@ -350,41 +350,47 @@ def put_job_preferences(
     return {"key": "job_preferences", "value": job_preferences.set_preferences(payload.value, db)}
 
 
-@router.get("/market")
-def get_market(db: Annotated[Session, Depends(get_db)]):
-    """Selected market plus the vocabulary it drives.
-
-    `supported` and `offers_eeo` ride along so the picker and the EEO section
-    are driven by one response — the frontend must never hardcode the market
-    list or decide for itself whether to show demographic questions.
-    """
-    setting = market_settings.get_market(db)
+def _market_body(setting: MarketSetting) -> dict[str, Any]:
+    """`{key, value}` like every settings blob, with `home` and `apply_in` beside it and the
+    home market's currency and EEO posture, so one response drives the picker."""
     return {
         "key": "market",
         "value": setting,
-        "supported": [
+        "home": setting.home,
+        "apply_in": setting.apply_in,
+        "currency": markets.currency_for(setting.home),
+        "offers_eeo": markets.offers_eeo(setting.home),
+    }
+
+
+@router.get("/market")
+def get_market(db: Annotated[Session, Depends(get_db)]):
+    """Where the user lives and applies, plus the vocabulary it drives.
+
+    `markets` and each one's `offers_eeo` ride along so the picker and the EEO section are
+    driven by one response: the frontend must never hardcode the market list or decide for
+    itself whether to show demographic questions.
+    """
+    return {
+        **_market_body(market_settings.get_market(db)),
+        "markets": [
             {
                 "key": k,
                 "label": markets.labels()[k],
+                "country_code": markets.country_code(k),
                 "currency": markets.currency_for(k),
+                "date_format": markets.get(k)["date_format"],
                 "offers_eeo": markets.offers_eeo(k),
             }
             for k in markets.keys()
         ],
-        "currency": markets.currency_for(setting.market),
-        "offers_eeo": markets.offers_eeo(setting.market),
     }
 
 
 @router.put("/market")
 def put_market(payload: SettingValueIn[MarketSetting], db: Annotated[Session, Depends(get_db)]):
-    setting = market_settings.set_market(payload.value, db)
-    return {
-        "key": "market",
-        "value": setting,
-        "currency": markets.currency_for(setting.market),
-        "offers_eeo": markets.offers_eeo(setting.market),
-    }
+    """Takes `{home, apply_in}` or the old `{market}` (read as home = apply_in = market)."""
+    return _market_body(market_settings.set_market(payload.value, db))
 
 
 def _lock_auto_apply_settings(db: Session) -> AutoApplySettings:

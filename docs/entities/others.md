@@ -455,6 +455,15 @@
   text (or skip it when no usable label exists), preserving every other valid
   preference field. Setup status uses it for missing-role suggestions (an
   unmapped custom role drives none); persona drafting uses it as a goals signal.
+- **`market` setting** (`schemas/market_settings.py`, `services/market_settings.py`; file-mirrored at
+  `settings/market.json`; `GET/PUT /api/settings/market`): `home`, the one market the user lives in (the
+  home currency and date format), and `apply_in`, every market they apply in (each once, in the order
+  chosen; empty reads as `[home]`; home need not be in it). Markets are the keys of `data/markets.yaml`
+  ("UK", not ISO "GB"; `markets.country_code` / `for_country` bridge to the ISO codes jobs and base
+  resumes store); an unknown key 422s, never coerced. GET answers `{key, value, home, apply_in,
+  currency, offers_eeo, markets}` (each market's label, ISO code, currency, date format and EEO
+  posture); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. Migration state:
+  SYSTEM.md §13 `market-home-apply-in`.
 - **Career KB** (`models/career_kb.py`, `/career` pages; on screen **Career history**, its entities
   **items** and its points **bullets**): the durable record
   of experience/projects/education/certs + facts; deliberately a sidecar —

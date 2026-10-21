@@ -7,11 +7,15 @@ US EEO-1 form and "Other ethnic group / Arab" on the UK GSS list), so a
 fallback does not degrade gracefully — it files a false answer.
 """
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from app.main import app
-from app.services import markets
+from app.schemas.market_settings import MarketSetting
+from app.services import market_settings, markets
 
 client = TestClient(app)
 
@@ -66,12 +70,104 @@ def test_unknown_market_falls_back_rather_than_raising():
     assert markets.is_supported("ZZ") is False
 
 
+def test_market_keys_map_to_iso_country_codes_and_back():
+    """Jobs and base resumes store ISO codes ("GB"); market keys stay as written ("UK")."""
+    assert markets.country_code("UK") == "GB"
+    assert markets.country_code("de") == "DE"
+    assert markets.country_code("ZZ") is None
+    assert markets.for_country("GB") == "UK"
+    assert markets.for_country("nl") == "NL"
+    assert markets.for_country("FR") is None  # a country with no market is no market
+    assert markets.for_country(None) is None
+    for key in markets.keys():
+        assert markets.for_country(markets.country_code(key)) == key
+
+
+# ---------------------------------------------------------------- home + apply_in
+
+
+def test_a_legacy_single_market_reads_as_home_and_apply_in():
+    setting = MarketSetting.model_validate({"market": "UK"})
+    assert setting.home == "UK" and setting.apply_in == ["UK"]
+
+
+def test_apply_in_always_holds_known_markets_once():
+    setting = MarketSetting.model_validate({"home": "DE", "apply_in": ["de", "UK", "UK", "US"]})
+    assert setting.apply_in == ["DE", "UK", "US"]
+
+
+def test_an_unknown_market_is_refused_not_coerced():
+    with pytest.raises(ValidationError):
+        MarketSetting.model_validate({"home": "XX", "apply_in": ["XX"]})
+    with pytest.raises(ValidationError):
+        MarketSetting.model_validate({"home": "UK", "apply_in": ["UK", "XX"]})
+    with pytest.raises(ValidationError):
+        MarketSetting.model_validate({"market": "XX"})
+
+
+def test_home_alone_applies_in_home_and_need_not_be_in_apply_in():
+    assert MarketSetting.model_validate({"home": "NL"}).apply_in == ["NL"]
+    lives_away = MarketSetting.model_validate({"home": "UK", "apply_in": ["DE"]})
+    assert (lives_away.home, lives_away.apply_in) == ("UK", ["DE"])
+
+
+def test_the_old_market_name_reads_home_and_is_stored_for_peers_not_yet_updated():
+    """`market` is the read-only stand-in for callers not moved to `home` yet (SYSTEM.md §13
+    market-home-apply-in), and it is written into the stored JSON so a sync peer that has not
+    updated reads the same country instead of falling back to US."""
+    setting = MarketSetting(home="DE", apply_in=["DE", "NL"])
+    assert setting.market == "DE"
+    stored = json.loads(setting.model_dump_json())
+    assert stored == {"home": "DE", "apply_in": ["DE", "NL"], "market": "DE"}
+    assert MarketSetting.model_validate(stored) == setting
+
+
+def test_a_stored_legacy_blob_is_mapped_when_read_and_never_rewritten():
+    from app.db import SessionLocal
+    from app.models.setting import Setting
+
+    with SessionLocal() as s:
+        row = s.get(Setting, market_settings.MARKET_KEY)
+        if row is None:
+            row = Setting(key=market_settings.MARKET_KEY, value="")
+            s.add(row)
+        row.value = json.dumps({"market": "IN"})
+        s.commit()
+        assert market_settings.peek_market(s).home == "IN"
+        assert market_settings.get_market(s).apply_in == ["IN"]
+        s.refresh(row)
+        assert json.loads(row.value) == {"market": "IN"}  # mapped when read, never migrated
+    client.put("/api/settings/market", json={"value": {"market": "US"}})
+
+
 def test_get_market_returns_the_picker_and_the_eeo_posture():
     body = client.get("/api/settings/market").json()
     assert body["key"] == "market"
-    assert [m["key"] for m in body["supported"]] == SUPPORTED
+    assert [m["key"] for m in body["markets"]] == SUPPORTED
     # the picker carries offers_eeo so the frontend never decides this itself
-    assert {m["key"]: m["offers_eeo"] for m in body["supported"]}["IN"] is False
+    assert {m["key"]: m["offers_eeo"] for m in body["markets"]}["IN"] is False
+    uk = next(m for m in body["markets"] if m["key"] == "UK")
+    assert uk == {"key": "UK", "label": "United Kingdom", "country_code": "GB", "currency": "GBP",
+                  "date_format": "DMY", "offers_eeo": True}
+
+
+def test_put_market_takes_home_and_apply_in_or_the_old_single_market():
+    new = client.put("/api/settings/market", json={"value": {"home": "UK", "apply_in": ["UK", "de"]}})
+    assert new.status_code == 200, new.text
+    body = new.json()
+    assert (body["home"], body["apply_in"]) == ("UK", ["UK", "DE"])
+    assert body["value"] == {"home": "UK", "apply_in": ["UK", "DE"], "market": "UK"}
+    assert body["currency"] == "GBP"
+    got = client.get("/api/settings/market").json()
+    assert (got["home"], got["apply_in"]) == ("UK", ["UK", "DE"])
+
+    old = client.put("/api/settings/market", json={"value": {"market": "NL"}})
+    assert old.status_code == 200, old.text
+    assert (old.json()["home"], old.json()["apply_in"]) == ("NL", ["NL"])
+
+    refused = client.put("/api/settings/market", json={"value": {"home": "UK", "apply_in": ["XX"]}})
+    assert refused.status_code == 422
+    client.put("/api/settings/market", json={"value": {"market": "US"}})
 
 
 def test_put_market_switches_currency_and_eeo_posture():

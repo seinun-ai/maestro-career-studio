@@ -2234,16 +2234,34 @@ export interface CareerExportMetadata {
   download_url: "/api/exports/career";
 }
 
-/** Which market the user applies in (`GET/PUT /api/settings/market`). */
-export interface MarketSettingResponse {
+/** One market the app knows (`markets.yaml`); `key` is what the setting stores ("UK"). */
+export interface MarketOption {
   key: string;
-  value: { market: string };
+  label: string;
+  /** ISO 3166-1 alpha-2, as jobs and base resumes store it ("GB"). */
+  country_code: string | null;
+  currency: string;
+  /** "DMY" or "MDY". */
+  date_format: string;
+  offers_eeo: boolean;
+}
+
+/** Where the user lives and applies (`GET/PUT /api/settings/market`). */
+export interface MarketSettingResponse {
+  key: "market";
+  /** `market` is the old single market, kept equal to `home` for readers not moved yet. */
+  value: { home: string; apply_in: string[]; market: string };
+  /** Where the user lives: the home currency and date format. */
+  home: string;
+  /** Every market the user applies in, each once; at least one. */
+  apply_in: string[];
   /** Present on GET only; PUT returns just the resolved values. */
-  supported: { key: string; label: string; currency: string; offers_eeo: boolean }[];
+  markets?: MarketOption[];
+  /** The home market's currency. */
   currency: string;
   /**
    * Whether a VERIFIED voluntary-disclosure question set exists for the
-   * selected market. Never decide this client-side — the categories are not
+   * home market. Never decide this client-side: the categories are not
    * interchangeable between countries.
    */
   offers_eeo: boolean;

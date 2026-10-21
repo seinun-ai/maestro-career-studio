@@ -1,4 +1,4 @@
-"""Selected-market storage, plus the currency rule that reads it."""
+"""Where the user lives and applies (`MarketSetting`): storage, plus the rules that read it."""
 
 from sqlalchemy.orm import Session
 
@@ -54,12 +54,13 @@ def default_currency_for_capture(session: Session | None = None) -> str:
     """
     stored = peek_market(session)
     if is_set(stored):
-        return markets.currency_for(stored.market)
+        return markets.currency_for(stored.home)
     from app.config import settings
 
     return settings.home_currency
 
 
 def offers_eeo(session: Session | None = None) -> bool:
-    """Whether to offer an EEO section at all for the selected market."""
+    """Whether to offer an EEO section at all. Still reads the single `market` (= home) until
+    the diversity set is offered per apply_in country (SYSTEM.md §13 market-home-apply-in)."""
     return markets.offers_eeo(peek_market(session).market)
