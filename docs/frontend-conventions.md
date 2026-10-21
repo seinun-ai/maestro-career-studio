@@ -1174,8 +1174,10 @@
   country and asked in its own words (`work_auth_vocab`, the visa status for `us_visa`; Profile's one
   table), each answer's group named by the country and the question and saved to that country's own
   entry; then notice period and relocation; then diversity, only when an apply-in market `offers_eeo`:
-  **Answer them** or **Decline them all**, each only once the diversity consent is on record (Profile's
-  confirm and the server's stamp; Cancel stores nothing), with the switch beside the answers (D10). Above
+  **Answer them** or **Decline the rest**, each only once the diversity consent is on record (Profile's
+  confirm and the server's stamp; Cancel stores nothing), with the switch beside the answers (D10). As in
+  Profile, Decline the rest gives each blank question its decline choice (`declinedEeo`, selects only, the
+  veteran one included); race or ethnicity is typed and stays yours, and both say so (`RACE_STAYS_YOURS`). Above
   the questions, while the email is blank, **Fill from career history** fills contact fields in place.
   A question's dot is green only once it holds its answer. The done screen leads with
   **Add your first job**, then Connect an agent app and Add the Companion; while a required step is
@@ -1194,7 +1196,9 @@
   word (Ready, Needs you, a count) and open their editor, a `TileCard` (a `SettingCard` with Close), under
   the grid, one at a time; every editor stays mounted while closed. Two folds follow: **Diversity
   questions**, only where an apply-in market `offers_eeo`, with the consent switch and its date beside the
-  answers (D10; the confirm's words are `DIVERSITY_CONSENT_CONFIRM`, shared with Setup), and
+  answers (D10; the confirm's words are `DIVERSITY_CONSENT_CONFIRM`, shared with Setup); while the consent
+  is off its summary says the Companion won't fill them (the server withholds them, and setup readiness
+  still counts the answers given), and
   **Eligibility**. Where you apply holds **You live in** and **You apply in** (chips; a chip carries the
   square of each base resume that stores its country, its name read with it). Work permits asks one set
   per apply-in country under its name, worded by the market's `work_auth_vocab` (the visa status only for

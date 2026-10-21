@@ -33,6 +33,10 @@ from app.services import autofill_profile, countries, markets
 # The market a question names that has no answers here, or that no market covers: unknown on any job.
 _NOWHERE = ""
 
+# Beside `work_auth_market` on a profile resolved for one question: the country that question's answer is
+# for, in words, a country no market covers included (`country_for_question`).
+WORK_AUTH_COUNTRY = "work_auth_country"
+
 
 def market_for_job_country(code: str | None) -> str | None:
     """A job's ISO country ("GB") as its market ("UK"); None when the job has none or no market
@@ -64,6 +68,17 @@ def market_for_question(question: str, job_market: str | None) -> str | None:
     if named is None:
         return job_market
     return named or None
+
+
+def country_for_question(question: str, job_country: str | None) -> str | None:
+    """The ISO country a work-permit question is about: the one it names, else the job's; None when it
+    names two or more, or when neither names one. Unlike `market_for_question` it keeps a country no market
+    covers ("BR"), so the Companion can say it cannot keep answers there rather than that the country is
+    unclear."""
+    named = countries.mentioned_in(question)
+    if named:
+        return next(iter(named)) if len(named) == 1 else None
+    return countries.normalize(job_country)
 
 
 def _authorized_countries(entries: dict[str, dict[str, Any]]) -> list[str]:

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.job import Job
-from app.services import autofill_catalog, autofill_country
+from app.services import autofill_catalog, autofill_country, countries
 
 
 def application_job(db: Session, application_id: UUID | None) -> Job | None:
@@ -36,7 +36,9 @@ def profile_for_job(db: Session, profile: Any, application_id: UUID | None,
     (a form not tracked yet) a scoped answer holds nowhere, and there are no work-permit answers: a
     question that names its country is answered on the fill loop, where the question is known.
     `question` is that case for one question (the Companion's pause row learning an answer): the
-    market it gets by `autofill_country.market_for_question`, the country it names, else the job's."""
+    market it gets by `autofill_country.market_for_question`, the country it names, else the job's,
+    and `work_auth_country` naming that country in words, one no market covers too (None: no one
+    country), so the pause row can say why an answer was not kept."""
     if not isinstance(profile, dict):
         return profile
     job = application_job(db, application_id)
@@ -44,6 +46,9 @@ def profile_for_job(db: Session, profile: Any, application_id: UUID | None,
     if question is not None:
         market = autofill_country.market_for_question(question, market)
     profile = autofill_country.with_work_auth(profile, market)
+    if question is not None:
+        code = autofill_country.country_for_question(question, job.country_code if job else None)
+        profile = {**profile, autofill_country.WORK_AUTH_COUNTRY: countries.label(code)}
     if "custom" not in profile:
         return profile
     return {**profile, "custom": autofill_catalog.custom_for_job(

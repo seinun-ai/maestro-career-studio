@@ -224,7 +224,10 @@ test("diversity: only for a country with a set, named, and nothing stored before
   assert.match(html, /Diversity questions on forms/);
   assert.match(html, /United Kingdom, United States/);
   assert.match(html, />Answer them</);
-  assert.match(html, />Decline them all</);
+  // Decline fills only the blank questions that have a decline choice: race or ethnicity is typed, and stays yours.
+  assert.match(html, />Decline the rest</);
+  assert.doesNotMatch(html, /Decline them all/);
+  assert.match(html, /Race or ethnicity has no decline choice, so it stays yours to answer\./);
   assert.match(html, /Nothing is saved until you allow it\./);
   // No question to answer, and no choice shown picked, until the consent is on record.
   assert.doesNotMatch(html, /Are you a veteran\?/);
@@ -278,10 +281,12 @@ test("what Setup writes: each answer on its own country, never the one-set view"
   assert.deepEqual(withPermitAnswer({}, "US", "status", "citizen"), { work_auth_by_country: { US: { status: "citizen" } } });
   const prefs = withPreference({ preferences: { desired_salary: "80k" }, work_auth: {} }, "notice_period", "1 month");
   assert.deepEqual(prefs, { preferences: { desired_salary: "80k", notice_period: "1 month" } });
-  // Declining fills each blank diversity question with its decline choice, the veteran one too.
+  // Declining fills each blank diversity question with its decline choice, the veteran one too, and leaves
+  // race or ethnicity (typed, with no decline choice) blank.
   assert.deepEqual(withDiversityDeclined({ eeo: { gender: "female" } }).eeo, {
     gender: "female", veteran_status: "decline", disability_status: "decline", hispanic_latino: "decline",
   });
+  assert.equal("race_ethnicity" in withDiversityDeclined({}).eeo, false);
   assert.equal(questionAnswered({ kind: "notice" }, { preferences: { notice_period: "  " } }), false);
   assert.equal(questionAnswered({ kind: "relocate" }, { preferences: { willing_to_relocate: "No" } }), true);
   assert.equal(questionAnswered(formQuestions(["US"], MARKETS)[0], { work_auth_by_country: { US: PERMITS } }), false,

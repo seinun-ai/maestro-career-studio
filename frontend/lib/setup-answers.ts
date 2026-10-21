@@ -33,7 +33,8 @@ export function withPreference(profile: Profile, key: "notice_period" | "willing
   return forSaving(withField(profile, "preferences", key, value));
 }
 
-/** The profile with one diversity answer (`eeo`), or with every blank one declined. Only ever sent once the
+/** The profile with one diversity answer (`eeo`), or with the rest declined: every blank question that has a
+ *  decline choice (`declinedEeo`; race or ethnicity is typed and stays blank). Only ever sent once the
  *  diversity consent is on record (components/setup/setup-answers-step.tsx). */
 export function withDiversityAnswer(profile: Profile, key: string, value: string | boolean | undefined): Profile {
   return forSaving(withField(profile, "eeo", key, value));

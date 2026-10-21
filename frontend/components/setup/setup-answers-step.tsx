@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
 import {
+  RACE_STAYS_YOURS,
   booleanAnswer,
   groupFields,
   groupValues,
@@ -363,8 +364,9 @@ function Question({
 /**
  * Diversity, answer or decline, in place. Either needs the diversity consent first: a pick asks for it in the
  * same words as Profile's switch (`DIVERSITY_CONSENT_CONFIRM`) and the server stamps when it was given, and
- * nothing is stored until that yes is on record. Cancel stores nothing and picks nothing. Declining sets each
- * blank question to its decline choice and moves on; answering shows the questions here, beside the switch
+ * nothing is stored until that yes is on record. Cancel stores nothing and picks nothing. Decline the rest,
+ * as in Profile, sets each blank question that has a decline choice to it and moves on (race or ethnicity is
+ * typed, so it stays blank, and the step says so); answering shows the questions here, beside the switch
  * that covers them.
  */
 function DiversityQuestion({
@@ -408,13 +410,13 @@ function DiversityQuestion({
         labelledBy={titleId}
         options={[
           { value: "answer", label: "Answer them" },
-          { value: "decline", label: "Decline them all" },
+          { value: "decline", label: "Decline the rest" },
         ]}
         value={consent.enabled ? (diversity ?? undefined) : undefined}
         onPick={(choice) => void pick(choice as "answer" | "decline")}
       />
       <p className="max-w-[65ch] text-body-small text-muted-foreground">
-        Voluntary, and asked only where a set is checked against official forms.{" "}
+        Voluntary, and asked only where a set is checked against official forms. {RACE_STAYS_YOURS}{" "}
         {consent.enabled
           ? "The Companion may use these answers. You can turn that off here or in Profile."
           : "Either choice first asks whether the Companion may use these answers. Nothing is saved until you allow it."}

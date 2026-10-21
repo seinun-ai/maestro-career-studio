@@ -9,6 +9,7 @@ import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { Button } from "@/components/ui/button";
 import { Fold } from "@/components/ui/fold";
 import {
+  RACE_STAYS_YOURS,
   declinedEeo,
   groupCount,
   groupFields,
@@ -56,8 +57,15 @@ export function DiversityFold({
   const count = groupCount(profile, "eeo");
   const hasAnswers = groupFields("eeo").some((field) => !isBlank(eeo[field.key]));
   const allDeclined = count.answered > 0 && groupFields("eeo").every((f) => f.type !== "select" || eeo[f.key] === "decline");
+  // Answers count as given (setup readiness counts them) whether or not the Companion may use them; while
+  // it may not, it fills none (`withhold_unconsented`), and the summary says so.
   const summary = countries.length
-    ? `Voluntary · ${countries.join(", ")} · ${allDeclined ? "set to decline" : `${count.answered} of ${count.answerable} answered`}`
+    ? [
+        "Voluntary",
+        countries.join(", "),
+        allDeclined ? "set to decline" : `${count.answered} of ${count.answerable} answered`,
+        ...(consent.enabled ? [] : ["the Companion won't fill these until you let it"]),
+      ].join(" · ")
     : "Not asked where you apply";
   const stale = staleAnswers(profile).flatMap((item) => (item.startsWith("eeo.") ? [item.slice(4)] : []));
 
@@ -98,7 +106,7 @@ export function DiversityFold({
                   Decline the rest
                 </Button>
                 <p id={declineHintId} className="text-muted-foreground text-body-small">
-                  Fills each blank diversity question with its decline choice.
+                  Fills each blank diversity question with its decline choice. {RACE_STAYS_YOURS}
                 </p>
               </div>
               <FieldGrid

@@ -263,7 +263,9 @@ def get_autofill_context(
     `profile.work_auth` is one country's work-permit answers and `profile.work_auth_market` names
     that market (inv-work-permit-per-country): the job's, or with `question`, the one that question
     gets (the country it names, else the job's). The Companion's pause row asks with `question` to
-    learn an answer into that market's entry, and never learns one when it is null.
+    learn an answer into that market's entry, and never learns one when it is null; with `question`,
+    `profile.work_auth_country` names that question's one country in words (a country no market covers
+    too), so the panel can say why it kept nothing.
 
     Per-section nulls rather than a whole-request failure: the three feeds this
     replaces each degraded independently, and a skills outage must not stop an

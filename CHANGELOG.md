@@ -77,8 +77,9 @@ work-permit answers for each country you apply in.
   how you want to work; then answer what job forms ask, one question at a time: a work permit for each
   country you apply in, in that country's words (the United States with your visa status too), then
   your notice period and relocation, then the diversity questions where a country has a checked set,
-  which you can answer or decline all right there once you allow the Companion to use them, the
-  permission beside the answers as in Profile. **Fill from career history** fills your contact
+  which you can answer, or decline the rest, right there once you allow the Companion to use them (race
+  or ethnicity has no decline choice, so it stays yours to answer), the permission beside the answers
+  as in Profile. **Fill from career history** fills your contact
   details, and a question's dot turns green only once it holds its answer. Once a key passes its test,
   that provider's recommended models are picked for you, unless your own picks already use it. Every
   step has **Skip for now**, you can go back to any step, and each answer lands where it lives in
@@ -99,10 +100,11 @@ work-permit answers for each country you apply in.
   status). A form question that names a country gets that country's answers, otherwise the job's
   country's, and when neither is known the Companion asks you on that job instead of filling in
   another country's answers. An answer you type in the Companion's panel is saved to the country its
-  question is about, so the next job there doesn't ask again. The one set of answers you gave before
-  stays with the country you lived in when you gave it, even after you move, and a save never puts
-  one country's answers on another's. The job page's knock-out check reads the job's country's
-  answers.
+  question is about, which its note names, so the next job there doesn't ask again; for a country
+  Profile keeps no work-permit answers for, such as Brazil, the note says so. The one set of answers
+  you gave before stays with the country you lived in when you gave it, even after you move, and a
+  save never puts one country's answers on another's. The job page's knock-out check reads the job's
+  country's answers.
 - **A diversity set only where a checked one exists.** Setup and Profile ask the diversity questions
   only when a country you apply in has a checked question set (the United States and the United
   Kingdom today): applying only in Germany asks none.
@@ -246,8 +248,9 @@ work-permit answers for each country you apply in.
   made for it. Your answers save as you go: the Save answers button is gone, and each answer you change
   says Saved only once it has saved. Coming back to Profile or Setup reads your answers again, so one
   the Companion learned in the meantime is kept. The diversity permission stays beside the diversity
-  answers, and Decline the rest now declines the veteran question too. The tabs and the setup strip are
-  gone, and a link to an old tab or card opens the tile that holds it.
+  answers, and Decline the rest now declines the veteran question too. While the Companion may not use
+  them, the Diversity questions fold says it won't fill them. The tabs and the setup strip are gone,
+  and a link to an old tab or card opens the tile that holds it.
 - **Autofill coverage is under Settings › Advanced › Diagnostics**, unchanged, with its Clear data.
 - **Messages that send you to Settings name its new tabs**, such as "Add an API key in Settings ›
   Basics." The Companion's Change in Settings link opens the Companion tab. Messages that send you to

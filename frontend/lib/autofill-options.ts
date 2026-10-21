@@ -546,6 +546,10 @@ export function withField(
   return { ...profile, [group]: values };
 }
 
+/** What "Decline the rest" leaves to you, said beside it in Profile and Setup: `declinedEeo` declines selects
+ *  only, and race or ethnicity is typed. */
+export const RACE_STAYS_YOURS = "Race or ethnicity has no decline choice, so it stays yours to answer.";
+
 /** "Decline the rest": each diversity select still blank gets its decline option (every one offers the
  *  value "decline", whatever its words), and nothing already answered changes. Empty when nothing is blank. */
 export function declinedEeo(profile: Profile): Record<string, string> {

@@ -189,7 +189,10 @@ def test_diversity_only_for_a_country_with_a_set_and_only_through_consent():
     assert not re.search(r"\beeo\s*:", "\n".join(_read(rel) for rel in _STEP_FILES))
     done = _read("components/setup/setup-done.tsx")
     assert 'anchorHref("/profile", "autofill-eeo")' in done
-    assert "Answer them" in answers and "Decline them all" in answers
+    # "Decline the rest", as Profile: only a blank question with a decline choice is declined, so race or
+    # ethnicity (typed) stays the user's, and the step says so.
+    assert "Answer them" in answers and 'label: "Decline the rest"' in answers and "Decline them all" not in answers
+    assert "{RACE_STAYS_YOURS}" in answers
 
 
 def test_the_done_screen_has_one_filled_action_and_two_others():

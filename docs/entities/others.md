@@ -333,8 +333,11 @@
   queued run's Resume) goes to one entry: `/context?question=<label>` (with the application, when there is one) names the market that
   question gets in `work_auth_market` (`profile_for_job` with `question`: the country it names, else the job's), and the panel writes
   `work_auth_by_country[<market>]`, promoting that entry's legacy pair first (`workAuthForWrite`) and leaving the served `work_auth`
-  as it came. With no market (no job and no country named, a country no market covers, two countries) the field is filled and nothing
-  is learned: the next form asks again. The label table stays one (inv-one-label-pattern-table): it names `work_auth.*`, and only the
+  as it came; `work_auth_country` names that question's one country in words, a country no market covers too (null: none known), and
+  the note says "Saved to Profile › Work permits (United Kingdom)." by that name, never the market key. With no market (no job and
+  no country named, a country no market covers, two countries) the field is filled and nothing is learned: the next form asks again,
+  and the note says why ("Profile can't keep work-permit answers for Brazil", else "it isn't clear which country's work permit
+  this is"). The label table stays one (inv-one-label-pattern-table): it names `work_auth.*`, and only the
   learn maps that onto the country's entry.
 - **Answers decided in code, and the polarity retry** (live check 7; `services/autofill_pick.py`, `autofill_step.py`, `autofill_education.py`, `autofill_place.py`, `autofill_polarity.py`).
   **Relocate**: "Are you located in X and/or willing to relocate?" over a saved `preferences.willing_to_relocate` Yes is the same way as the fact, decided by code with no model

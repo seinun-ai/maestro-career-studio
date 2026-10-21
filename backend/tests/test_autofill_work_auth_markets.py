@@ -291,3 +291,29 @@ def test_context_names_the_market_a_question_gets(db_session, client):
     # No job (a form not tracked yet): the country the question names, else none.
     assert profile(question="Are you authorized to work in the United Kingdom?")["work_auth_market"] == "UK"
     assert profile(question="Will you need sponsorship?")["work_auth_market"] is None
+
+
+def test_context_names_the_country_a_question_is_about(db_session, client):
+    """With `question`, `work_auth_country` names in words the one country the answer is for: the market's
+    country, or a country no market covers (the pause row says it cannot keep answers there), and null when
+    no one country is known (no job and none named, or two named). Without `question` it is not served."""
+    _home(db_session, "US", ["US", "UK"])
+    autofill_profile.set_profile({"work_auth_by_country": {"US": US_SET, "UK": UK_SET}}, db_session)
+    us_job, france_job = _application(db_session, "US"), _application(db_session, "FR")
+
+    def country(**params):
+        response = client.get("/api/autofill/context", params=params)
+        assert response.status_code == 200, response.text
+        served = response.json()["profile"]
+        return served["work_auth_market"], served.get("work_auth_country", "absent")
+
+    sponsorship = "Will you need sponsorship?"
+    assert country(application_id=str(us_job.id), question=sponsorship) == ("US", "United States")
+    assert country(application_id=str(us_job.id),
+                   question="Are you authorized to work in the United Kingdom?") == ("UK", "United Kingdom")
+    assert country(application_id=str(france_job.id), question=sponsorship) == (None, "France")
+    assert country(application_id=str(us_job.id), question="Can you work in Brazil?") == (None, "Brazil")
+    assert country(application_id=str(us_job.id),
+                   question="Can you work in the United States or Canada?") == (None, None)
+    assert country(question=sponsorship) == (None, None)
+    assert country(application_id=str(us_job.id)) == ("US", "absent")

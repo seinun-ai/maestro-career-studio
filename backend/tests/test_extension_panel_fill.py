@@ -1867,15 +1867,18 @@ def test_a_learned_answer_names_the_profile_fold_that_shows_it(tmp_path):
     assert "Saved to Profile › Eligibility." in note["text"]
 
 
-def _work_permit_answer(tmp_path, market, served, label="Do you currently require sponsorship?", text="Yes"):
+def _work_permit_answer(tmp_path, market, served, label="Do you currently require sponsorship?", text="Yes",
+                        country=None):
     """One work-permit pause row answered, on a job `/api/autofill/context` says is `market`'s (None: no
-    country), with `served` as `GET /api/settings/autofill` reads."""
+    market), the question's country named `country` in words (None: no one country), with `served` as
+    `GET /api/settings/autofill` reads."""
     frames = {"collect_open_questions": [{"frameId": 0, "result": {
         "host": "job-boards.greenhouse.io",
         "questions": [{"qid": "wa1", "label": label, "kind": "select", "options": ["Yes", "No"]}],
         "retryables": [],
     }}]}
-    context = {**FILL_CONTEXT, "profile": {**FILL_CONTEXT["profile"], "work_auth_market": market}}
+    context = {**FILL_CONTEXT, "profile": {**FILL_CONTEXT["profile"], "work_auth_market": market,
+                                           "work_auth_country": country}}
     return _answer(tmp_path, answer={"qid": "wa1", "text": text}, frames=frames,
                    api={"/api/settings/autofill": _reply({"key": "autofill_profile", "value": served}),
                         "/api/autofill/context": _reply(context)})
@@ -1893,7 +1896,7 @@ def _market_asks(out):
 def test_a_paused_work_permit_answer_saves_to_the_jobs_country(tmp_path, db_session, monkeypatch):
     """The review's case: on a UK job the sponsorship question pauses and the user answers Yes. It is the UK's
     answer, so the UK entry learns it and the US answers stay as they were; the next UK job does not ask."""
-    out = _work_permit_answer(tmp_path, "UK", SERVED_HOME_US)
+    out = _work_permit_answer(tmp_path, "UK", SERVED_HOME_US, country="United Kingdom")
     # The country comes from the backend's one rule, asked with this question.
     assert _market_asks(out) == ["/api/autofill/context?question=Do+you+currently+require+sponsorship%3F"]
     [body] = _profile_put(out)
@@ -1901,7 +1904,8 @@ def test_a_paused_work_permit_answer_saves_to_the_jobs_country(tmp_path, db_sess
     # The one set is left exactly as it was served.
     assert (body["value"]["work_auth"], body["value"]["work_auth_market"]) == (US_ANSWERS, "US")
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert "Saved to Profile › Work permits (UK)." in note["text"]
+    # The country by its name, as the Work permits tile heads its set, never the market key.
+    assert "Saved to Profile › Work permits (United Kingdom)." in note["text"]
 
     # …and the server stores what the panel meant.
     from app.schemas.market_settings import MarketSetting
@@ -1917,8 +1921,8 @@ def test_a_paused_work_permit_answer_saves_to_the_jobs_country(tmp_path, db_sess
 
 
 def test_a_paused_work_permit_answer_with_no_country_is_filled_and_not_learned(tmp_path):
-    """No country for this answer (a job no market covers, no job and none named, two countries named): the
-    field is filled, nothing is learned and no profile is read, and the note says it will ask again."""
+    """No one country for this answer (no job and none named, two countries named): the field is filled,
+    nothing is learned and no profile is read, and the note says it will ask again."""
     out = _work_permit_answer(tmp_path, None, SERVED_HOME_US)
     assert [msg["message"]["pairs"] for msg in out["broadcasts"] if msg["message"]["type"] == "fill_answers"] == [
         [{"qid": "wa1", "answer": "Yes", "kind": "select"}]]
@@ -1926,6 +1930,16 @@ def test_a_paused_work_permit_answer_with_no_country_is_filled_and_not_learned(t
     assert [msg for msg in out["sent"] if msg["type"] == "api" and msg["path"] == "/api/settings/autofill"] == []
     [note] = _by_class(out["answered"]["foot"], "note")
     assert "Not saved: it isn't clear which country's work permit this is, so it will ask again." in note["text"]
+
+
+def test_a_paused_work_permit_answer_for_a_country_with_no_set_says_so(tmp_path):
+    """A known country no market covers (a job in Brazil): the answer is filled and not learned, and the note
+    says Profile keeps no set for that country, not that the country is unclear."""
+    out = _work_permit_answer(tmp_path, None, SERVED_HOME_US, country="Brazil")
+    assert _profile_put(out) == []
+    [note] = _by_class(out["answered"]["foot"], "note")
+    assert "Not saved: Profile can't keep work-permit answers for Brazil, so it will ask again." in note["text"]
+    assert "isn't clear" not in note["text"]
 
 
 def test_a_typed_work_auth_learn_carries_legacy_answers_forward(tmp_path):

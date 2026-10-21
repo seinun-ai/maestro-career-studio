@@ -53,11 +53,11 @@ const PERSONAL = {
   city: "London", state: "LDN", postal_code: "N1", country: "United Kingdom", linkedin: "x", github: "x", website: "x",
 };
 
-function render({ applyIn = ["DE", "UK", "US"], profile = { personal: PERSONAL } } = {}) {
+function render({ applyIn = ["DE", "UK", "US"], profile = { personal: PERSONAL }, consent = CONSENT } = {}) {
   return renderElement(withRouter(React.createElement(ProfileView, { focus: () => {} })), [
     [["setup-status"], STATUS],
     [["settings", "autofill"], { key: "autofill_profile", value: profile }],
-    [["settings", "eeo-consent"], { key: "eeo_consent", value: CONSENT }],
+    [["settings", "eeo-consent"], { key: "eeo_consent", value: consent }],
     [["settings", "market"], {
       key: "market", value: { home: "DE", apply_in: applyIn, market: "DE" }, home: "DE", apply_in: applyIn,
       markets: MARKETS, currency: "EUR", offers_eeo: false,
@@ -137,4 +137,18 @@ test("diversity is folded beside its consent, and only where a country has a che
   const germanyOnly = render({ applyIn: ["DE"] });
   assert.match(germanyOnly, /Not asked where you apply/);
   assert.doesNotMatch(germanyOnly, /id="eeo-standing-consent"/);
+});
+
+test("while the Companion may not use the diversity answers, the fold says it won't fill them", () => {
+  // Answered, and declined: setup readiness counts them either way (the answers are given), so the summary
+  // says what the consent switch decides.
+  const declined = { veteran_status: "decline", disability_status: "decline", gender: "decline", hispanic_latino: "decline" };
+  const off = render({ profile: { personal: PERSONAL, eeo: declined } });
+  assert.match(off, /Voluntary · United Kingdom, United States · set to decline · the Companion won&#x27;t fill these until you let it/);
+  const on = render({
+    profile: { personal: PERSONAL, eeo: declined },
+    consent: { ...CONSENT, enabled: true, acknowledged_at: "2026-10-01T00:00:00Z" },
+  });
+  assert.match(on, /Voluntary · United Kingdom, United States · set to decline/);
+  assert.doesNotMatch(on, /won&#x27;t fill these/);
 });
