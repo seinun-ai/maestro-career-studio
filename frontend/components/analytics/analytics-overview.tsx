@@ -31,6 +31,9 @@ import type {
 } from "@/lib/types";
 import { APPLICATION_STATUSES } from "@/lib/types";
 
+/** `services/rates.py` MIN_RATE_N: below it the server sends counts and no rate (owner decision D7). */
+const MIN_RATE_N = 20;
+
 export function AnalyticsOverview({
   onOpenTab,
 }: {
@@ -127,13 +130,17 @@ export function AnalyticsOverview({
             value={
               totals?.interview_rate != null
                 ? `${Math.round(totals.interview_rate * 100)}%`
-                : "—"
+                : totals?.submitted
+                  ? `${totals.interview_plus} of ${totals.submitted}`
+                  : "—"
             }
             sub={
-              totals?.submitted
-                ? // "36% of your 11 applications are there now": a current count, not a history.
+              totals?.interview_rate != null
+                ? // "36% of your 41 applications are there now": a current count, not a history.
                   `of your ${totals.submitted} ${totals.submitted === 1 ? "application is" : "applications are"} there now`
-                : "No applications yet"
+                : totals?.submitted
+                  ? `Applications there now. A rate shows from ${MIN_RATE_N}.`
+                  : "No applications yet"
             }
           />
           <StatTile

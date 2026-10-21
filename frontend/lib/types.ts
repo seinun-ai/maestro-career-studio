@@ -987,6 +987,9 @@ export interface ActivityResponse {
     submitted: number;
     submitted_last7: number;
     in_flight: number;
+    /** Applications at interview or later now: the rate's numerator (`submitted` is its denominator). */
+    interview_plus: number;
+    /** Null below 20 submitted (`services/rates.py` MIN_RATE_N): show "1 of 3" from the counts instead. */
     interview_rate: number | null;
   };
   status_counts: Record<string, number>;

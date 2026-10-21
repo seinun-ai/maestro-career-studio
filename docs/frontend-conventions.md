@@ -1748,7 +1748,9 @@
   roles paid in the single most common currency (none on a tie) and carries it as `currency`; meta reports
   `jobs_with_salary` / `jobs_without_salary` — omitting pay is ordinary, not a
   gap. Endpoints: `/api/explore/activity` (drafted=created_at vs
-  submitted=applied_at, day|week buckets), `/base-summaries`, `/build-areas`
+  submitted=applied_at, day|week buckets; `interview_rate` is null below 20 submitted,
+  `services/rates.py` `MIN_RATE_N`, and the tile reads "1 of 3" from `interview_plus` of `submitted`),
+  `/base-summaries`, `/build-areas`
   (gap frequency re-keyed on the engine's canonical skill form, classified
   against career history evidence as missing | in_kb | ported — the ONE analytics
   surface that reads career history, read-only; tailoring still never does). Overview also

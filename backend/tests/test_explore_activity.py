@@ -74,6 +74,7 @@ def test_activity_empty_db_zero_filled(db_session):
         "submitted": 0,
         "submitted_last7": 0,
         "in_flight": 0,
+        "interview_plus": 0,
         "interview_rate": None,
     }
     assert body["status_counts"] == {}
@@ -112,13 +113,43 @@ def test_activity_counts_and_pipeline(db_session):
     assert totals["submitted"] == 3  # rejected still counts as submitted
     assert totals["submitted_last7"] == 3
     assert totals["in_flight"] == 2  # applied + interviewing
-    assert totals["interview_rate"] == round(1 / 3, 3)  # interviewing / 3 submitted
+    # 1 of 3 submitted is at interview: counts, no rate below rates.MIN_RATE_N (owner D7).
+    assert totals["interview_plus"] == 1
+    assert totals["interview_rate"] is None
     assert body["status_counts"] == {
         "interviewing": 1,
         "applied": 1,
         "rejected": 1,
         "draft": 1,
     }
+
+
+def _seed_submitted(db_session, prefix: str, statuses: list[str]) -> None:
+    now = datetime.now(UTC)
+    for i, status in enumerate(statuses):
+        _seed_application(db_session, _seed_job(db_session, f"{prefix}-{i}"), status=status, applied_at=now)
+    db_session.commit()
+
+
+def test_interview_rate_is_counts_below_twenty_submitted(db_session):
+    """Owner decision D7: no rate on fewer than 20; the counts say "1 of 3"."""
+    _seed_submitted(db_session, "few", ["interviewing", "applied", "applied"])
+
+    totals = _get(db_session, "/api/explore/activity?granularity=day&weeks=1").json()["totals"]
+
+    assert totals["interview_rate"] is None
+    assert totals["interview_plus"] == 1
+    assert totals["submitted"] == 3
+
+
+def test_interview_rate_shows_from_twenty_submitted(db_session):
+    _seed_submitted(db_session, "many", ["interviewing"] * 4 + ["offered"] + ["applied"] * 15)
+
+    totals = _get(db_session, "/api/explore/activity?granularity=day&weeks=1").json()["totals"]
+
+    assert totals["submitted"] == explore_activity.rates.MIN_RATE_N == 20
+    assert totals["interview_plus"] == 5
+    assert totals["interview_rate"] == 0.25
 
 
 def test_activity_week_granularity_and_coercion(db_session):

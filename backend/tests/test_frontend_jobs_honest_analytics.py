@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from app.routers import explore
+from app.services import rates
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -28,6 +29,14 @@ def test_interview_rate_says_it_is_a_current_count():
     assert ('`of your ${totals.submitted} ${totals.submitted === 1 ? "application is" : "applications are"}'
             ' there now`') in overview
     assert "Reached interviews" not in overview
+
+
+def test_interview_rate_reads_as_counts_below_the_minimum():
+    # Owner decision D7: below rates.MIN_RATE_N the server sends no rate, and the tile says "1 of 3".
+    overview = _read("components/analytics/analytics-overview.tsx")
+    assert f"const MIN_RATE_N = {rates.MIN_RATE_N};" in overview
+    assert "`${totals.interview_plus} of ${totals.submitted}`" in overview
+    assert "`Applications there now. A rate shows from ${MIN_RATE_N}.`" in overview
 
 
 def test_the_cap_line_says_one_window():

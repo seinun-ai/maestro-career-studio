@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
+from app.services import rates
 
 # Current statuses meaning "submitted and still moving".
 IN_FLIGHT_STATUSES = ("applied", "interviewing", "offered")
@@ -19,6 +20,8 @@ IN_FLIGHT_STATUSES = ("applied", "interviewing", "offered")
 # interview_rate means "currently at interview+ per submitted", not "ever
 # reached an interview" (no status history exists; a first_interview_at stamp
 # would be needed for funnel semantics — recorded as deferred in the design).
+# Below rates.MIN_RATE_N submitted, interview_rate is None and the counts
+# (interview_plus of submitted) are what a surface shows.
 INTERVIEW_PLUS_STATUSES = ("interviewing", "offered", "accepted")
 
 
@@ -126,8 +129,9 @@ def activity(
             "submitted": total_submitted,
             "submitted_last7": submitted_last7,
             "in_flight": in_flight,
+            "interview_plus": interview_plus,
             "interview_rate": round(interview_plus / total_submitted, 3)
-            if total_submitted
+            if total_submitted >= rates.MIN_RATE_N
             else None,
         },
         "status_counts": status_counts,
