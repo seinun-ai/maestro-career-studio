@@ -190,7 +190,8 @@ def heatmap(
     role_stmt = role_stmt.group_by(Job.role_category)
     role_totals = dict(db.execute(role_stmt).all())
 
-    rows = db.execute(
+    # The numerator counts the same filtered jobs as role_totals, so a share never passes 100%.
+    skill_stmt = (
         select(
             JobSkill.skill_name,
             Job.role_category,
@@ -198,13 +199,12 @@ def heatmap(
         )
         .join(Job, Job.id == JobSkill.job_id)
         .where(JobSkill.skill_name.in_(top_skill_names), Job.role_category.is_not(None))
+    )
+    rows = db.execute(
+        _apply_job_filters(skill_stmt, filters)
         .group_by(JobSkill.skill_name, Job.role_category)
         .order_by(JobSkill.skill_name, Job.role_category)
     ).all()
-
-    filtered_rows = rows
-    if filters.role_category:
-        filtered_rows = [row for row in rows if row.role_category == filters.role_category]
 
     return [
         {
@@ -214,7 +214,7 @@ def heatmap(
             if role_totals.get(row.role_category)
             else 0.0,
         }
-        for row in filtered_rows
+        for row in rows
     ]
 
 

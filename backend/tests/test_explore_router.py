@@ -154,6 +154,25 @@ def test_heatmap_returns_percent_jobs_by_role(db_session, client):
     assert rows[("SQL", "data_scientist")] == 50.0
 
 
+def test_heatmap_numerator_honours_every_filter(db_session, client):
+    """The share's top and bottom count the same jobs: a Level filter that halves
+    the role's jobs must halve the skill's count too, never read 200%."""
+    senior = _seed_job(db_session, raw_hash="lvl-senior", role_category="data_scientist", level="senior")
+    mid = _seed_job(db_session, raw_hash="lvl-mid", role_category="data_scientist", level="mid")
+    for job in (senior, mid):
+        _add_skill(db_session, job, "Python")
+    _add_skill(db_session, mid, "SQL")
+    db_session.commit()
+
+    rows = client.get("/api/explore/heatmap", params={"level": "senior"}).json()
+
+    assert rows, "the filtered heatmap has rows"
+    assert all(row["pct_jobs"] <= 100 for row in rows), rows
+    assert {(r["skill_name"], r["role_category"]): r["pct_jobs"] for r in rows} == {
+        ("Python", "data_scientist"): 100.0,
+    }
+
+
 def test_fit_distribution_buckets_scores(db_session, client):
     job1 = _seed_job(db_session, raw_hash="fit-job-1", role_category="data_scientist")
     job2 = _seed_job(db_session, raw_hash="fit-job-2", role_category="data_scientist")
