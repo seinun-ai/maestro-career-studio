@@ -135,10 +135,6 @@
     before another save overwrites that save's answers for the same country (`work_auth_market` protects only other countries'
     answers). It needs an `expected_updated_at` with a 409 when the profile moved, as the resume draft has. Do when a lost
     same-country edit is reported, or the autofill PUT is next changed.
-58. The chart palette fails the dataviz skill's validator: chart-3's chroma sits at its 0.10 floor, chart-2 and chart-3 are ΔE 7.3
-    apart for protanopia in light, and the dark steps (L 0.72) sit outside its lightness band. The six tokens hold 3:1 on `card` and
-    are pinned (`test_frontend_color_roles.py`), so they stay as they are. Do when a chart draws chart-2 and chart-3 as neighbours a
-    reader must tell apart, or the palette is next revised (rerun the validator and move the pins with it).
 59. A picture from before the refresh: `docs/assets/connected-agents.png` (USING_MAESTRO's Agent apps section) shows the
     old Settings tab; its alt text is current. The design-system previews are listed under "Not synced" in
     `docs/design-system/README.md`. Do when the screenshots are next retaken, or that section of USING_MAESTRO is next

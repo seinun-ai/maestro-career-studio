@@ -228,8 +228,9 @@ Ordered by how much the answer changes. Items with a deferred-ledger number are 
     Use this draft or Discard (inv-drafted-answers).
 
 **Analytics**
-16. The chart palette fails the dataviz validator (chart-3 at its chroma floor; chart-2 and chart-3 close for
-    protan viewers in light; dark steps outside the band) (item 58). Retune the tokens?
+16. ~~The chart palette fails the dataviz validator (chart-3 at its chroma floor; chart-2 and chart-3 close for
+    protan viewers in light; dark steps outside the band) (item 58). Retune the tokens?~~ Decided 2026-10-22: yes.
+    Orange and teal re-stepped, slate became plum, dark steps at L 0.66; both modes pass and a pin holds it.
 17. Market shares at 20 and over (skills, work mode, Skills by role cells) show plain percentages without a Wilson
     range. Does D7's range apply to shares of saved jobs, or only to the funnel's rates?
 

@@ -166,8 +166,8 @@ work-permit answers for each country you apply in.
   was read when the job is in another country than where you live ("Pay read as Canadian dollars, job
   is in Canada").
 - **Calmer chart colours.** Charts use six series near one lightness (blue, orange, teal, violet,
-  ochre, slate) with no red or green, so no series reads as good or bad, and each stays readable on its
-  card in light and dark.
+  ochre, plum) with no red or green, so no series reads as good or bad. Each stays readable on its
+  card in light and dark, and neighbouring series stay apart for colour-blind readers.
 - **Company initials are neutral.** A company's monogram is its initial on one grey fill, so a base
   resume's square is the only colour in a row and a status chip the only colour that means a state.
 - **Motion where something happens.** A status you change fades into its new name, then the chip
