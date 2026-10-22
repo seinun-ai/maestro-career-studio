@@ -211,6 +211,29 @@ class KBCaptureResponse(BaseModel):
     point_ids: list[UUID]
 
 
+class KBDraftPointsCreate(BaseModel):
+    """Bullets the caller wrote for one entity; each lands as a DRAFT point."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    points: list[str] = Field(min_length=1, max_length=50)
+
+    @field_validator("points")
+    @classmethod
+    def _points_nonempty(cls, v: list[str]) -> list[str]:
+        stripped = [point.strip() for point in v]
+        if not all(stripped):
+            raise ValueError("every point must be non-empty")
+        if any(len(point) > 1000 for point in stripped):
+            raise ValueError("a point is at most 1000 characters")
+        return stripped
+
+
+class KBDraftPointsResponse(KBCaptureResponse):
+    # Texts already on the entity (any state) or repeated in the request.
+    skipped: list[str] = Field(default_factory=list)
+
+
 class KBPointPatch(BaseModel):
     text: str | None = None
     state: str | None = None

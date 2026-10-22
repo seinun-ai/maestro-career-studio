@@ -493,6 +493,19 @@ class BackendClient:
             timeout=_LLM_TIMEOUT,
         )
 
+    def kb_add_points(
+        self,
+        entity_id: str,
+        points: list[str],
+        origin_detail: str | None = None,
+    ) -> Any:
+        return self._request(
+            "POST",
+            f"/api/kb/entities/{entity_id}/drafts",
+            json={"points": points},
+            headers=_origin_headers(origin_detail),
+        )
+
     def kb_edit_point(
         self,
         point_id: str,
@@ -846,6 +859,31 @@ class BackendClient:
             "/api/qa",
             json={"application_id": application_id, "cover_letter": {"tone": tone}},
             timeout=_LLM_TIMEOUT,
+        )
+
+    def store_cover_letter(
+        self, application_id: str, text: str, origin_detail: str | None = None
+    ) -> Any:
+        # Stores, then renders the letter's PDF in the same request.
+        return self._request(
+            "POST",
+            "/api/qa/cover-letter",
+            json={"application_id": application_id, "text": text},
+            headers=_origin_headers(origin_detail),
+            timeout=_RENDER_TIMEOUT,
+        )
+
+    def store_qa_answers(
+        self,
+        application_id: str,
+        answers: list[dict[str, str]],
+        origin_detail: str | None = None,
+    ) -> Any:
+        return self._request(
+            "POST",
+            "/api/qa/answers",
+            json={"application_id": application_id, "answers": answers},
+            headers=_origin_headers(origin_detail),
         )
 
     def render_base_resume(self, slug: str, template_id: str | None = None) -> Any:

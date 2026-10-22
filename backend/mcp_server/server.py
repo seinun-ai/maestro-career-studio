@@ -152,6 +152,30 @@ _RUN_REPORT_FIELD = Field(
 )
 RunReportArg = Annotated[RunReport | None, _RUN_REPORT_FIELD]
 
+class AuthoredAnswerInput(TypedDict):
+    """One screening question with the caller's own answer."""
+
+    question: str
+    answer: str
+
+
+_AUTHORED_ANSWERS_FIELD = Field(
+    min_length=1,
+    max_length=50,
+    description=(
+        "1-50 {question, answer} pairs: question as the form asks it (at most 2000 "
+        "characters), answer as it goes into the form (at most 10000)."
+    ),
+)
+AuthoredAnswers = Annotated[list[AuthoredAnswerInput], _AUTHORED_ANSWERS_FIELD]
+
+_KB_POINTS_FIELD = Field(
+    min_length=1,
+    max_length=50,
+    description="1-50 bullets for the one entity, each at most 1000 characters.",
+)
+KBPoints = Annotated[list[str], _KB_POINTS_FIELD]
+
 _INGEST_DATA_FIELD = Field(
     description=(
         "ResumeData. Only contact.name and contact.email are required. 422 if "
@@ -346,7 +370,8 @@ def list_referrals() -> Any:
 @mcp.tool(**_read("List Application Answers"))
 @_guard
 def list_qa_entries(application_id: str) -> Any:
-    """List the generated screening answers and cover letters for an application, newest first."""
+    """List an application's screening answers and cover letters, newest first:
+    the ones the app's model generated and the ones a caller stored."""
     return _client.list_qa_entries(application_id)
 
 
@@ -572,14 +597,42 @@ def kb_capture(
 ) -> Any:
     """Capture free-text career news into DRAFT points. A model matches it to an
     existing entity or proposes a new one (this call uses the configured LLM
-    provider); pass entity_id to force placement. Points land as drafts for the
-    user to approve at /career. The text is stored as the user's own words and
-    facts; the server does not verify it."""
+    provider; with no API key set it returns an error); pass entity_id to force
+    placement. Points land as drafts for the user to approve at /career. The
+    text is stored as the user's own words and facts; the server does not verify
+    it. kb_add_points stores bullets the caller already wrote, with no LLM call."""
     return _client.kb_capture(
         text,
         entity_id=entity_id,
         origin_detail=_client_label(ctx),
     )
+
+
+@mcp.tool(**_write("Add Career Points as Drafts", destructive=False, idempotent=True))
+@_guard
+def kb_add_points(
+    entity_id: str,
+    points: KBPoints,
+    ctx: Context | None = None,
+) -> Any:
+    """Add bullets the caller wrote to an existing Career KB entity as DRAFT
+    points, with no LLM call (kb_capture with entity_id, minus the model that
+    splits and places free text). Drafts appear on no resume and in no career
+    export until approved with kb_approve_points (or at /career). The text is
+    stored as the user's own words and facts; the server does not verify it.
+
+    Store-time rules: en and em dashes become a hyphen in a range
+    ("2020-2023") and a comma elsewhere. Resume text is implied first person, so
+    a bullet with I/my, he/she/his/her or the owner's name returns 400 naming
+    the lines and stores nothing. A bullet already on the entity in any state
+    (case and spacing ignored), or repeated in the call, is skipped, so a
+    repeated call adds nothing; a rephrasing is added as a new draft
+    (kb_groom_entity reports similar bullets).
+
+    Returns {entity_id, entity_title, point_ids, skipped}: the new DRAFT point
+    ids and the skipped texts. An unknown entity_id is a 404; kb_list_entities
+    returns the ids, and kb_create_entity makes a new entity."""
+    return _client.kb_add_points(entity_id, points, origin_detail=_client_label(ctx))
 
 
 @mcp.tool(**_write("Edit Career Point", destructive=True, idempotent=True))
@@ -1224,16 +1277,66 @@ def generate_qa_answers(application_id: str, questions: list[str]) -> Any:
     `questions` is the complete list of questions to answer in this batch.
     Outreach/cold messages are asked as free-form questions here (e.g. "Write a
     short LinkedIn DM to the hiring manager") — answers are grounded in the
-    resume and the application's linked referral contact when one exists."""
+    resume and the application's linked referral contact when one exists.
+    This call uses the configured LLM provider (with no API key set it returns
+    an error); store_qa_answers stores answers the caller wrote, with no LLM call."""
     return _client.generate_qa_answers(application_id, questions)
+
+
+@mcp.tool(**_write("Store Screening Answers", destructive=True, idempotent=True))
+@_guard
+def store_qa_answers(
+    application_id: str,
+    answers: AuthoredAnswers,
+    ctx: Context | None = None,
+) -> Any:
+    """Store screening-question answers the caller wrote for an application,
+    with no LLM call (generate_qa_answers has the app's configured model write
+    them). One entry per question, shown in the job's Apply step history and in
+    list_qa_entries. A question the application already holds (the same words,
+    case and spacing ignored) has its answer replaced and the others are added,
+    so a repeated call changes nothing. Answers are stored as plain form text,
+    as generated ones are: markdown bold, headings, bullet markers and backticks
+    are removed, and en and em dashes become a hyphen in a range ("2020-2023")
+    and a comma elsewhere. The text is stored as the user's own words; the
+    server does not verify it. An answer that is empty once its formatting is
+    removed is a 400 that stores nothing. Returns the stored entries [{id, kind,
+    prompt, answer, model_used, created_at}]; model_used names the agent."""
+    return _client.store_qa_answers(
+        application_id, [dict(item) for item in answers], origin_detail=_client_label(ctx)
+    )
 
 
 @mcp.tool(**_write("Generate Cover Letter", destructive=True, idempotent=False, open_world=True))
 @_guard
 def generate_cover_letter(application_id: str, tone: str) -> Any:
     """Generate a cover letter for an application in the requested tone. This
-    replaces the application's prior generated cover-letter entry."""
+    replaces the application's prior generated cover-letter entry. This call
+    uses the configured LLM provider (with no API key set it returns an error);
+    store_cover_letter stores a letter the caller wrote, with no LLM call."""
     return _client.generate_cover_letter(application_id, tone)
+
+
+@mcp.tool(**_write("Store Cover Letter", destructive=True, idempotent=True))
+@_guard
+def store_cover_letter(application_id: str, text: str, ctx: Context | None = None) -> Any:
+    """Store a cover letter the caller wrote for an application and render its
+    PDF, with no LLM call (generate_cover_letter has the app's configured model
+    write it). It replaces the application's cover letter and that letter's PDF
+    (an application holds one); the new one shows on the job's Apply step and in
+    list_qa_entries. The text is stored as the user's own letter; the server does
+    not verify its facts. As with a generated letter, en and em dashes become a
+    hyphen in a range ("2020-2023") and a comma elsewhere; the rest is stored as
+    written, paragraphs included, up to 20000 characters. The PDF puts the base
+    resume's contact block above the letter, in the engine of the application's
+    resume template.
+
+    Returns the stored entry {id, application_id, kind, answer, model_used,
+    pdf_path, render_note, render_error, created_at}; model_used names the
+    agent. render_error non-null means the letter is stored and its PDF could
+    not be made (pdf_path is null). render_note is non-null only when a TeX-less
+    backend rendered a LaTeX template through a Typst one."""
+    return _client.store_cover_letter(application_id, text, origin_detail=_client_label(ctx))
 
 
 @mcp.tool(**_write("Render Resume PDF", destructive=False, idempotent=True))

@@ -65,6 +65,38 @@ def test_list_qa_entries_gets_application_entries():
 
 
 @respx.mock
+def test_store_cover_letter_posts_the_callers_text_with_its_name():
+    route = respx.post(f"{BASE}/api/qa/cover-letter").mock(
+        return_value=httpx.Response(200, json={"id": "q1", "pdf_path": "/x.pdf"})
+    )
+
+    out = BackendClient(BASE).store_cover_letter("a1", "Dear team,", origin_detail="Claude")
+
+    assert out == {"id": "q1", "pdf_path": "/x.pdf"}
+    request = route.calls.last.request
+    assert json.loads(request.read()) == {"application_id": "a1", "text": "Dear team,"}
+    assert request.headers["X-Maestro-CS-Origin"] == "mcp"
+    assert request.headers["X-Maestro-CS-Origin-Detail"] == "Claude"
+    # The PDF renders in the same request; no model call to wait for.
+    assert set(request.extensions["timeout"].values()) == {150.0}
+
+
+@respx.mock
+def test_store_qa_answers_posts_the_pairs():
+    route = respx.post(f"{BASE}/api/qa/answers").mock(
+        return_value=httpx.Response(200, json=[{"id": "q1"}])
+    )
+    answers = [{"question": "Why us?", "answer": "The team."}]
+
+    out = BackendClient(BASE).store_qa_answers("a1", answers)
+
+    assert out == [{"id": "q1"}]
+    request = route.calls.last.request
+    assert json.loads(request.read()) == {"application_id": "a1", "answers": answers}
+    assert request.headers["X-Maestro-CS-Origin"] == "mcp"
+
+
+@respx.mock
 def test_waive_health_gate_posts_reason():
     route = respx.post(f"{BASE}/api/resume-lint/base/master/gates/S1/waive").mock(
         return_value=httpx.Response(204)

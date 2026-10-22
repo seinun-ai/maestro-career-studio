@@ -135,7 +135,7 @@ scripts/               setup-mcp.sh (deprecated stdio, §13), update.sh (Docker 
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (91 REST wrappers)
+ extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (94 REST wrappers)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼ ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
                     ▼ TailoringSession (frozen gaps → resolutions → LLM tailor ops)
@@ -365,7 +365,7 @@ import and profile endpoints and store no progress of their own; frontend-conven
   `qa_entries`** — that table is application-scoped and no reader feeds it back into a fill, so "pause once, learn forever" is only true of
   `profile.custom` (matched by the deterministic rule pass on every later form) and the typed keys. Wiring faults are loud rather than silent
   (the two load-time throws: `docs/entities/others.md`, "Label-pattern table details").
-- **Em-dash rule** `{#inv-em-dash}`: generated Q&A answers and cover letters are scrubbed of U+2014/U+2013 at store time
+- **Em-dash rule** `{#inv-em-dash}`: Q&A answers, cover letters and agents' KB drafts lose U+2014/U+2013 at store time
   (`qa.scrub_typographic_dashes`); rendered PDFs must not contain em-dashes (ATS parsers); the MCP client's slim `get_rendered_pdf` scan
   remains a resume-PDF backstop (`docs/entities/others.md`, "Em-dash backstop").
 - **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record (`settings/eeo_consent.json`,
@@ -472,7 +472,7 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **Resume text is the owner's own, in implied first person.** `{#inv-resume-voice}` Every rewrite prompt carries the VOICE rule (built in
   code, so a customised row keeps it); `services/resume_voice.py` finds the shapes about the owner. Model and caller text NEVER stores a
   blocking third-person hit (one retry, then repair, then drop); the owner's base lines get only mechanical repairs and are never dropped.
-  Ambiguous shapes are flagged, never rewritten. MCP ops with a hit get a 400 (the advisory and the response field:
+  Ambiguous shapes are flagged, never rewritten. MCP writes with a hit get a 400 (the advisory and the response field:
   `docs/entities/others.md`, "Voice check details"). Pinned by `tests/test_resume_voice.py`, `test_tailoring_voice.py`.
 - **A Next the page rejects is not a move, and only a page the run filled is pressed.** `{#inv-rejected-next}` A press that leaves address
   and step heading while the page shows errors keeps `step` and `seen`; the driver reads `page_errors` (the page's own words, never a value),
@@ -529,7 +529,7 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 
 - **MCP server** (`backend/mcp_server/`; on screen **connected agents**): thin wrappers over REST via httpx (`@_guard` → `ToolError`),
   served at `/mcp` and `/mcp/{profile}` inside FastAPI (§6 inv-mcp-inside-the-app, inv-tools-off-loop); **the docstring is the API** —
-  behavior, records and requirements, never instructions. Six scoped profiles (91 tools; `/mcp` = `full`); enable ONE per chat.
+  behavior, records and requirements, never instructions. Six scoped profiles (94 tools; `/mcp` = `full`); enable ONE per chat.
   `workflow.py` (the guided tailoring and onboarding workflows) is PURE — a **deliberate exception to the thin-wrapper rule** — and its
   `next` envelopes walk §5's arc unnarrated: the server ranks, the agent narrates; `offer` ≠ `ask_user`; **a hint never names a tool the
   active profile did not register**.

@@ -3,6 +3,7 @@
 import logging
 import shutil
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -47,6 +48,8 @@ from app.schemas.career_kb import (
     KBContextResponse,
     KBDocumentIngestResponse,
     KBDocumentOut,
+    KBDraftPointsCreate,
+    KBDraftPointsResponse,
     KBEntityCreate,
     KBEntityCreateResponse,
     KBEntityDetail,
@@ -345,28 +348,61 @@ def create_point(
     return svc._to_point_out(db, point)
 
 
+@router.post("/entities/{entity_id}/drafts", response_model=KBDraftPointsResponse)
+def add_draft_points(
+    entity_id: UUID,
+    payload: KBDraftPointsCreate,
+    db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
+):
+    """Caller-written bullets as DRAFT points (MCP `kb_add_points`; no model
+    call). Unlike POST .../points, which is the user typing at /career and
+    lands approved, these wait for the user's approval."""
+    return _land_drafts(
+        db,
+        lambda: kb_ingest.add_draft_points(
+            db,
+            entity_id,
+            payload.points,
+            origin=write_origin.origin or "manual",
+            origin_detail=write_origin.detail,
+        ),
+    )
+
+
 @router.post("/capture", response_model=KBCaptureResponse)
 def capture_points(
     payload: KBCaptureRequest,
     db: Annotated[Session, Depends(get_db)],
     write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
-    try:
-        entity, points = kb_ingest.capture(
+    # The response model drops `skipped`: capture has none.
+    return _land_drafts(
+        db,
+        lambda: kb_ingest.capture(
             db,
             payload.text,
             entity_id=payload.entity_id,
             origin=write_origin.origin or "manual",
             origin_detail=write_origin.detail,
-        )
+        ),
+    )
+
+
+def _land_drafts(db: Session, write: Callable[[], tuple]) -> KBDraftPointsResponse:
+    """Run a draft-point write ((entity, points[, skipped])), map its errors
+    (an unknown entity is a 404, refused input a 400), commit, refresh the export."""
+    try:
+        entity, points, *skipped = write()
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    resp = KBCaptureResponse(
+    resp = KBDraftPointsResponse(
         entity_id=entity.id,
         entity_title=entity.title,
         point_ids=[p.id for p in points],
+        skipped=skipped[0] if skipped else [],
     )
     db.commit()
     career_exports.best_effort_refresh(db)

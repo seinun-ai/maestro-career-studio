@@ -14,7 +14,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `_best_effort_hint` returns `next: null` on a failed lookup after a landed write.
   Coverage: [docs/entities/others.md](docs/entities/others.md), "MCP tool coverage".
   **Scoped profiles**:
-  `profiles.py` owns `full` / `hunt` / `apply` / `explore` / `templates` / `career` (91 tools); `/mcp` = `full`, `/mcp/{profile}` = its allowlist.
+  `profiles.py` owns `full` / `hunt` / `apply` / `explore` / `templates` / `career` (94 tools); `/mcp` = `full`, `/mcp/{profile}` = its allowlist.
   Lifespans run fresh stateful JSON sessions; tools use `http.py`'s eight-worker limiter (§6 inv-tools-off-loop).
   Stdio filters `MAESTRO_CS_MCP_PROFILE` (default `full`; migration state: §13 `mcp-stdio-venv`).
   Hints use request `CURRENT_PROFILE`, else env (pins: `mcp_server/tests/test_profiles.py`, `test_server.py`, `test_http.py`).
@@ -22,6 +22,12 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `kb_combine_points` (fold points into one keeper; the others become its wordings) and `kb_retire_points` (the retire twin of
   `kb_approve_points`); the two writes share `kb_approve_points`' convention gate and are `destructive=False` because `/career`
   reverses them. `kb_sync_base` keeps a rephrasing as a wording (0.80+) and returns `compared_wording` (docs/entities/others.md, Career KB).
+  **No AI key needed.** The tools that call the app's model have caller-authored twins (all but `run_health_check`), so a
+  connected agent with no key in Maestro does the writing and the server validates and stores it: `store_extracted_jd` (extraction), `tailor_session(ops=…)`
+  (tailoring), `store_cover_letter` (replaces the application's letter, then renders its PDF; a failed render returns `render_error`
+  with the letter kept), `store_qa_answers` (replaces the answer to the same question) and `kb_add_points` (DRAFT bullets on an
+  existing entity). The store rules are the generated path's: the dash scrub (§6 inv-em-dash), answers as plain form text, and the
+  voice rule for KB bullets (inv-resume-voice; a letter and its answers are the owner's first person).
   Enable ONE profile per chat (`full` carries KB writes); `MAESTRO_CS_*` has no legacy fallback. **Apply executor:** headed Chrome (`docs/entities/others.md`, "Attended executor"; apply playbook, "Unattended (full automation)").
   **Plugin:** `plugins/maestro-career-studio/`: Claude Code's `.mcp.json` and Codex's `.codex-mcp.json` connect by URL; Codex prompts for durable decisions, login/upload, health-gate waivers, restores, KB approve/combine/retire and sync. Claude installs use a tagged local checkout; Codex uses a release-tag Git ref and sparse paths `.agents/plugins` + `plugins`; policy `PRIVACY.md`.
   Settings › Agent apps' **Connect an agent app** (`connect-assistant`) selects a tool set and copies commands/URLs, opens install links or downloads the Claude Desktop bundle.

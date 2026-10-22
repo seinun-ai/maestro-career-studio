@@ -128,7 +128,7 @@ work-permit answers for each country you apply in.
   to keep (approved, then the most recently edited, then the longest). Each group is its own
   decision: **Combine into one**, **Stop using** one of them, or **Not the same**, which is
   remembered. Every action has an Undo, and nothing changes on your resumes. No AI call is made.
-- **Three MCP tools** in the `career` and `full` profiles (91 tools now): `kb_groom_entity` reads the
+- **Three MCP tools** in the `career` and `full` profiles: `kb_groom_entity` reads the
   similar-bullet report, `kb_combine_points` folds points into a keeper and `kb_retire_points`
   retires points. The two writes act only on your yes, like `kb_approve_points`, and the Codex
   plugin asks before both.
@@ -136,6 +136,13 @@ work-permit answers for each country you apply in.
   `POST /api/kb/points/{id}/split-wording`, `POST`/`DELETE /api/kb/points/keep-apart`, and
   `PATCH /api/kb/points/{id}` takes `unmerge`. A point carries `wordings` and
   `merged_into_point_id`.
+- **A connected agent can finish an application with no AI key in Maestro.** Three MCP tools store what
+  the agent wrote itself (94 tools now): `store_cover_letter` replaces the application's cover letter and
+  makes its PDF, `store_qa_answers` keeps screening answers (an answer to the same question is replaced),
+  and `kb_add_points` adds bullets to a career history item as drafts for your review. Both show on the
+  job's Apply step. What the agent wrote follows the rules the app's own writing follows: no em dashes,
+  answers as plain text, and career bullets in your own voice. REST: `POST /api/qa/cover-letter`, `POST /api/qa/answers`,
+  `POST /api/kb/entities/{id}/drafts`.
 
 ### Changed
 

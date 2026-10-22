@@ -1,7 +1,8 @@
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel, Field
 
 
 class CoverLetterRequest(BaseModel):
@@ -25,6 +26,42 @@ class QARequest(BaseModel):
 class QAResponse(BaseModel):
     answers: list[str] | None = None
     cover_letter: str | None = None
+
+
+def _stripped(value: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("must be non-empty")
+    return stripped
+
+
+NonBlank = Annotated[str, AfterValidator(_stripped)]
+
+
+class AuthoredCoverLetter(BaseModel):
+    """A cover letter the caller wrote itself (a connected agent with no AI key
+    in Maestro): stored as written, after the store-time dash scrub."""
+
+    model_config = {"extra": "forbid"}
+
+    application_id: UUID
+    text: NonBlank = Field(max_length=20_000)
+
+
+class AuthoredAnswer(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    question: NonBlank = Field(max_length=2_000)
+    answer: NonBlank = Field(max_length=10_000)
+
+
+class AuthoredAnswers(BaseModel):
+    """Screening answers the caller wrote itself, one entry per question."""
+
+    model_config = {"extra": "forbid"}
+
+    application_id: UUID
+    answers: list[AuthoredAnswer] = Field(min_length=1, max_length=50)
 
 
 class QARegenerateRequest(BaseModel):
@@ -51,3 +88,9 @@ class QAEntryRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AuthoredCoverLetterRead(QAEntryRead):
+    # Transient like render_note: the letter is stored either way, and a
+    # non-null value says why its PDF could not be made.
+    render_error: str | None = None

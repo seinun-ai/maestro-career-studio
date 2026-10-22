@@ -14,6 +14,9 @@ from app.models.application import Application
 from app.models.job import Job
 from app.models.qa_entry import QAEntry
 from app.schemas.qa import (
+    AuthoredAnswers,
+    AuthoredCoverLetter,
+    AuthoredCoverLetterRead,
     QAEntryRead,
     QAEntryUpdate,
     QARegenerateRequest,
@@ -30,6 +33,7 @@ from app.services import (
     resumes_folder,
     role_titles,
 )
+from app.write_origin import WriteOrigin, get_write_origin
 
 
 router = APIRouter(prefix="/api/qa", tags=["qa"])
@@ -106,6 +110,67 @@ def _run_qa(payload: QARequest, db: Session) -> QAResponse:
             )
 
     return response
+
+
+@router.post("/cover-letter", response_model=AuthoredCoverLetterRead)
+def store_cover_letter(
+    payload: AuthoredCoverLetter,
+    db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
+):
+    """A cover letter the caller wrote (MCP `store_cover_letter`; no model call):
+    it replaces the application's letter like a generated one does, then its PDF
+    is made. The letter stays stored when the PDF fails; `render_error` says why."""
+    application = db.get(Application, payload.application_id)
+    job = db.get(Job, application.job_id) if application else None
+    if application is None or job is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    hooks.require_owned(db, job.id)
+    prior_ids = list(
+        db.scalars(
+            select(QAEntry.id).where(
+                QAEntry.application_id == application.id,
+                QAEntry.kind == "cover_letter",
+            )
+        )
+    )
+    entry = qa_service.store_cover_letter(
+        application.id, payload.text, db, author=write_origin.detail or write_origin.origin
+    )
+    _remove_entries(db, prior_ids)
+    try:
+        render_note = _render_letter(db, entry, application, job)
+    except (ValueError, RuntimeError, OSError) as exc:
+        db.rollback()
+        db.refresh(entry)
+        entry.render_error = (
+            pdf_render.extract_render_error(str(exc)) or "The PDF could not be made."
+        )
+        return entry
+    entry.render_note = render_note
+    return entry
+
+
+@router.post("/answers", response_model=list[QAEntryRead])
+def store_answers(
+    payload: AuthoredAnswers,
+    db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
+):
+    """Screening answers the caller wrote (MCP `store_qa_answers`; no model call)."""
+    application = db.get(Application, payload.application_id)
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    hooks.require_owned(db, application.job_id)
+    try:
+        return qa_service.store_answers(
+            application.id,
+            [(item.question, item.answer) for item in payload.answers],
+            db,
+            author=write_origin.detail or write_origin.origin,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _remove_entries(db: Session, ids: list[UUID]) -> None:
@@ -192,16 +257,27 @@ def render_cover_letter(entry_id: UUID, db: Annotated[Session, Depends(get_db)])
         raise HTTPException(status_code=404, detail="Application or job not found")
 
     hooks.require_owned(db, job.id)
+    try:
+        render_note = _render_letter(db, entry, application, job)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    # Transient, unmapped (QAEntryRead.render_note): lives on the row, never in it.
+    entry.render_note = render_note
+    return entry
+
+
+def _render_letter(db: Session, entry: QAEntry, application: Application, job: Job) -> str | None:
+    """Make the cover letter's PDF, record it on the entry, commit; returns the
+    render note. Raises ValueError for a template that cannot render it (and a
+    resume that cannot be read) and RuntimeError for a failed compile. The
+    caller checks ownership first: this writes to disk."""
     base_resume = base_resume_data.load_base_resume(application.base_resume, db)
     contact = base_resume.get("contact", {})
     # The cover letter follows the RESUME's engine: resolve the application's
     # template exactly as application_render.render_resume does (None → the
     # default), fallback rule included. Resolved BEFORE get_dir so a 400 never
     # allocates (and persists) an empty artifact directory.
-    try:
-        tmpl, render_note = pdf_render.resolve_render_template(application.template_id, db)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    tmpl, render_note = pdf_render.resolve_render_template(application.template_id, db)
     rendered_at = datetime.now(UTC)
     role_label = role_titles.generic_role_title(
         role_category=job.role_category,
@@ -231,9 +307,7 @@ def render_cover_letter(entry_id: UUID, db: Annotated[Session, Depends(get_db)])
     db.commit()
     db.refresh(entry)
     resumes_folder.copy_application(application.id)  # never raises
-    # Transient, unmapped (QAEntryRead.render_note): lives on the row, never in it.
-    entry.render_note = render_note
-    return entry
+    return render_note
 
 
 @router.get("/{entry_id}/pdf")
