@@ -16,9 +16,9 @@
   ],
   "allowed_clones": [
     {
-      "a": "app/settings/page.tsx",
-      "b": "components/settings/autofill-section.tsx",
-      "reason": "Import block only, not logic (verified against the jscpd JSON report 2026-08-04). Both are settings surfaces assembled from the same shadcn primitives, so their import lists already agreed for 13 lines; adding `import { Label }` to page.tsx pushed the identical run past the 50-token threshold. Shared imports cannot be deduplicated. Allowlisted rather than re-baselined so a real duplication regression in either file still trips the gate."
+      "a": "components/settings/form-filling-section.tsx",
+      "b": "components/settings/money-section.tsx",
+      "reason": "Import block only, not logic (verified against the jscpd report 2026-10-22). Both are Settings cards built from the same autosave, setting-card, switch-row and select primitives, so 15 lines of their import lists agree. Shared imports cannot be deduplicated. Allowlisted rather than re-baselined so a real duplication regression in either file still trips the gate."
     },
     {
       "a": "components/career/merge-entity-dialog.tsx",
