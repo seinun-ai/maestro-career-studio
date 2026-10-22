@@ -1967,7 +1967,8 @@
   (separate light/dark steps near one lightness, no red or green series, each
   3:1 on `--card`; `test_frontend_color_roles.py` computes it);
   shared helpers live in `components/charts/chart-kit.tsx` — never re-declare
-  per-chart COLORS arrays; the heatmap uses a `color-mix` primary-blue
+  per-chart COLORS arrays, failed/loading/empty states (`chartGate`) or week
+  bucketing (`weekRows`); the heatmap uses a `color-mix` primary-blue
   sequential ramp. A chart split by base resume is the one exception: the
   fit-distribution chart fills each series with its resume's own color
   (`resumeFill` in `lib/resume-color.ts`) and its legend is `ResumeTag`s, so a
