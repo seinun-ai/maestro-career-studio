@@ -91,9 +91,32 @@ that read as machine-written — so the leverage is in depth per application.
   description. It is not an employer's score or a prediction of an interview.
 - **AI service** — OpenAI, Gemini or Claude, whichever you choose.
 
+### 0. Set up in four steps
+
+<!-- Screenshots in this guide (all but extension.gif) were retaken 2026-10-22
+     for 0.12.0 with the fictional demo persona; sources in the private
+     marketing repo (site-media-1022/). -->
+
+![Setup: four steps, each with its time, and the first one open: pick the AI that does the writing and add its key](assets/setup.png)
+
+A new install opens **Setup** once. It walks through four steps: **AI model**,
+**Your resume**, **Where and what** and **Form answers**. Any step can wait
+(**Skip for now**), and **Run setup again** is in Settings › Basics.
+
+![Profile: the next open question at the top, then one tile for each kind of fact, such as Contact, Where you apply, Work permits and Start and pay](assets/profile.png)
+
+**Profile** then holds the facts job forms ask for, one tile each. **Next up**
+at the top asks the next question still open.
+
+![Today: Next up with where that job stands and its next move, three counts under Also today, and this week's applications, replies and interviews](assets/today.png)
+
+**Today** is the home page. **Next up** is the job to act on now, **Also
+today** counts what else is waiting, and **This week** counts what you applied
+to and what came back.
+
 ### 1. Build your career history first (once)
 
-![Drop in your resumes, get your career history](assets/kb-onboarding.png)
+![Career history › Import resumes and documents: resumes on one tab become base resumes, other documents on the second tab add detail to your career history](assets/kb-onboarding.png)
 
 Upload **every** resume version you have — old ones, role-specific ones, the
 too-long one. Maestro merges duplicates across them and builds one **career
@@ -101,8 +124,8 @@ history**: your verified record in one place.
 
 This step pays off every time. Everything later is built from approved bullets,
 so its quality is the ceiling on everything else. Add certifications,
-project write-ups and performance-review notes too — anything true about your
-work can become evidence later. Import PDF, DOCX, PowerPoint (.pptx, including
+project write-ups and performance-review notes too, under **Other documents** —
+anything true about your work can become evidence later. Import PDF, DOCX, PowerPoint (.pptx, including
 speaker notes), Markdown or text files.
 
 > **Review your drafts before tailoring.** Bullets taken unchanged from your files
@@ -112,22 +135,14 @@ speaker notes), Markdown or text files.
 
 ### 2. Build a base resume per career track
 
-<!-- base-resume.png refreshed 2026-08-23 (post UI-clarity round). Contact
-     header is the approved public set (sanitized +1-999-999-9999,
-     ajey@seinun.com); "Liberty Hill, TX" experience location previously
-     reviewed and accepted. 1400px wide to match the asset set. -->
-
-![One base resume per track, with its health grade and live preview](assets/base-resume.png)
+![A base resume for one track: its health grade, template and sections on the left, the one-page PDF preview on the right](assets/base-resume.png)
 
 One base per kind of role you actually target (such as *Data Scientist* or *ML
 Engineer*) — not one per job. **New base resume › From career history** suggests
 which entries belong, with a reason for each one it leaves out, plus a drafted
 summary.
 
-<!-- kb-import.png captured 2026-08-23: the editor's Add from career history
-     drawer; background contact panel deliberately blurred at capture time. -->
-
-![Adding bullets from your career history is explicit and versioned](assets/kb-import.png)
+![Add from career history: tick the bullets to add to this resume; drafts are not offered, and Version history can undo it](assets/kb-import.png)
 
 The optional instruction box steers the *shape*, not the facts: "lead with
 pipeline and cloud work, keep it mid-level, leave off teaching." **Bullets are
@@ -136,31 +151,35 @@ what keeps a generated resume defensible.
 
 ### 3. Save the job, then close the gaps
 
-![Every job you have saved, each with its Next step, from saved to signed](assets/applications.png)
+![Jobs on All active, which leaves out closed jobs: each row has its match score, status and Next step](assets/applications.png)
 
 Paste the job description (**Add job**) or save it with the Companion. Saving
 scores it against your base resumes, and **Save job** opens the job on its
 **Resume and gaps** step. Scoring uses no AI service, so the same
-resume and job always get the same number. On **Jobs**, each row's **Next step**
-says what the job is waiting for.
+resume and job always get the same number. **Jobs** opens on **All active**;
+closed jobs are under **Closed**. Each row's **Next step** says what the job is
+waiting for.
 
-<!-- Screenshots in this guide were retaken 2026-10-12 on v0.10.1 with the
-     fictional demo persona (Jordan Ellis, example.com, sample-company names);
-     sources live in the private marketing repo (site-media/). -->
-
-![A job's four numbered steps, its score and details, with a check of its stated requirements against your profile](assets/job-overview.png)
+![A saved job on its Job step: the header with company, place, pay, Resume match and status, the four steps with their numbers, and the job's details from No knock-outs to work authorization and OPT](assets/job-overview.png)
 
 Every saved job also gets a **requirements check**: what the posting *states*
 about work authorization, visa (OPT) policy, salary and years of experience,
 compared with your profile — so a mismatch shows up now, not at the screening
 call. It is a banner only when something blocks you (a conflict, or an answer
-your profile is missing); otherwise it is one small line in the job's details.
+your profile is missing); otherwise it is one small line in the job's details
+(**No knock-outs**), with a chip for anything worth a look.
+
+![A London job's details: the pay converted to US dollars with the posted pounds under it, and a pay warning because it tops out below the desired salary](assets/money.png)
+
+Pay posted in another currency shows in your home currency (Settings › Basics ›
+**Money**), with the amount as posted under it.
 
 The top of a job's page answers two things: what you do next, and where the job
 stands. The header carries one status and one score (**Resume match** once the
 job has its own tailored resume, **Best base resume** before). Under it are four
 numbered steps, **Job**, **Resume and gaps**, **Tailored resume** and **Apply**,
-each with one line saying what is done or what comes next. A job has one
+each with a bar and, where there is one, a single number: the skills found, the
+gaps closed, the score before and after tailoring. A job has one
 application: tailoring it with another resume replaces the draft after asking,
 and version history keeps the old one.
 
@@ -189,6 +208,15 @@ Cover letter, screening answers, and the PDF. Read everything before it goes
 anywhere — it's your name on it.
 
 ### 5. Choose your models deliberately
+
+![Settings › Basics: the AI model card with the model for each of three jobs (reads jobs and documents, tailors and writes, runs the Assistant), Use recommended models and the API key, then the Money, Resume PDFs and Appearance cards](assets/settings-basics.png)
+
+**Settings › Basics › AI model** shows the model doing each everyday job:
+**Reads jobs and documents** is the Fast role, **Tailors and writes** the Smart
+role and **Runs the Assistant** the Assistant role. **Test** checks them.
+**Change provider** or **Use recommended models** switches every role to one
+provider's recommended models at once; with **Use recommended models** off,
+each role uses the model you pick in Advanced.
 
 **Settings › Advanced › Model per job** has four model roles: **Fast** (reading postings, bulk work),
 **Smart** (tailoring, finding gaps), **Assistant** (the in-app Assistant) and
@@ -224,7 +252,7 @@ may keep.
 Neither OpenAI nor Gemini is better overall, and any OpenAI-compatible model can be used instead.
 A fresh install starts with the OpenAI setup, because a model that misses
 requirements quietly *inflates* your score — by about nine points in our tests.
-With only a Gemini or Claude key, switch the Fast, Smart and Assistant roles in **Settings › Advanced › Model per job** (or set
+With only a Gemini or Claude key, pick it under **Change provider** in Basics, or switch the Fast, Smart and Assistant roles in **Settings › Advanced › Model per job** (or set
 `FAST_MODEL`/`SMART_MODEL`/`CHAT_MODEL` in `.env`). The Reasoning model follows your Smart model's provider
 until you pick one. Press **Test** next to each model
 to check it works; **Find Gemini models** (or **Find OpenAI models**, **Find Claude models**) lists
@@ -237,7 +265,7 @@ Claude (Desktop or Code), the ChatGPT desktop app or the Codex CLI can run the
 whole process in conversation — read a posting, score it, work the gaps, make
 the PDF. It runs on **your computer** against **your** data.
 
-![Settings › Agent apps: what a connected agent can and can't do, and the one-line command to connect Claude Code or Codex](assets/connected-agents.png)
+![Settings › Agent apps: Connect an agent app with its Tool set, one-line commands for Claude Code and Codex CLI, steps for the Codex app, buttons for Cursor, VS Code and Claude Desktop, a URL for any MCP agent, and Full automation, off](assets/connected-agents.png)
 
 <!-- TODO(P4) mcp-chat.png — a SECOND shot for this section is still open: a
      Claude conversation answering a real question over the explore tools
@@ -260,7 +288,7 @@ and choose a **Tool set**:
   Desktop's settings. Desktop rewrites that file while it runs, so with Desktop
   open the command waits, writes the entry after you quit it, and `--now` writes at once.
 - **URL clients** — Claude Code and Codex CLI get a copyable command; Cursor and
-  VS Code get install buttons; other HTTP MCP clients get a URL. The default is
+  VS Code get install buttons; the Codex app and **Any MCP agent** get a URL. The default is
   `http://localhost:8001/mcp`. Use `/mcp` exactly — no trailing slash.
 
 **On a uv install, `maestro connect` does this from the terminal.** With no app
@@ -353,11 +381,11 @@ style, how your writing should sound. Set it once in Profile › How you come ac
 type; a draft from your career history waits until you read it and press Use this draft), and every generated document
 uses that voice. It shapes tone and emphasis only — never facts.
 
-### Health Report — is this resume sound at all?
+### Health report — is this resume sound at all?
 
-![A grade for the resume on its own, and what each problem is costing you](assets/health-report.png)
+![Health report: a grade and score for one resume on its own, what is left to fix sorted into tabs, and a question for each finding](assets/health-report.png)
 
-A gap needs a job. A **Health Report** doesn't: it checks one resume on its own —
+A gap needs a job. A **Health report** doesn't: it checks one resume on its own —
 can it be read by application systems, are the dates right, is the evidence
 strong, is the format sound. A serious problem **blocks** tailoring, because
 tailoring can't fix a broken resume. You can **Mark as OK** a check you disagree with, with a reason
@@ -365,7 +393,7 @@ on record.
 
 ### Templates you actually own
 
-![LaTeX and Typst templates, built on your computer](assets/templates.png)
+![Templates: six ready designs, each previewed with sample content, the default marked with a star](assets/templates.png)
 
 Switching templates is a button, not a rebuild: your content stays the same and
 renders through any template. There are two kinds — **LaTeX** and **Typst** —
@@ -506,25 +534,32 @@ where autofill misses; **Clear data** there deletes it.
 
 ### Analytics: what the market keeps asking you for
 
-![Your search in numbers: applications over time, where they stand, and the gaps that keep coming up](assets/analytics.png)
+![Analytics: Where your applications went (applied, heard back, interview, offer, as counts until a rate shows from 20), four tiles, each week's applications and replies, results by resume, and the jobs you saved](assets/analytics.png)
+
+**Analytics** is one page. It opens on **Where your applications went**: how
+many you applied to, heard back from, interviewed for and got an offer from.
+Each share reads as a count, such as 6 of 9 applications, until there are 20 to
+count from (**A rate shows from 20**).
 
 Every saved job adds to a picture of the market you're applying into — top
-skills, a skill heatmap, role mix over time — filterable by role, level and job
-type. The most useful view is **Skill gaps**: skills jobs keep asking for,
+skills, a skill heatmap, role mix over time — under **Market in detail**,
+filterable by role, level and job type. The most useful view is **Skill gaps**: skills jobs keep asking for,
 marked as *not in your career history*, *in your career history* or *used before*. Frequent
 and missing is worth learning next; frequent and already in your history is
-something you have but keep forgetting to say. **Resume fit** shows the score
-before and after tailoring for each base resume, so you can see whether
+something you have but keep forgetting to say. **Match scores in detail** shows
+how much tailoring raised the score for each base resume, so you can see whether
 tailoring is helping.
 
 ### Hunt with the agent you already use
 
-![Your Agent inbox: one line of what is waiting, then what a hunt found for your review](assets/agent-inbox.png)
+![Agent inbox: three counts at the top, then Needs you (a question from your agent), To review (jobs your agents found, each with its best resume and score) and Queued](assets/agent-inbox.png)
 
 Your AI assistant can job-hunt for you. It reads your job preferences from the
 app, finds postings on whatever sites it can use, saves and scores them against
 your resumes, and hands back a ranked shortlist for you to review. There's no
 job-board integration to be locked into.
+
+![Automations: copy a prompt, your agent schedules it, each run reports here; then the automations that are reporting, each with its last 14 days and newest report, and those with no reports yet](assets/automations.png)
 
 Ready-made skills (`job-hunt`, `apply-session`, `apply-auto`, `mail-status`, `referral-pages`,
 `tailor-run`) are in [`docs/skills/`](skills/) — copy a prompt from the
@@ -549,8 +584,9 @@ part rather than skim it.
 
 A job your agent finds becomes a **proposal**. You review proposals in the
 **Agent inbox** and **Queue** or **Skip** them (in bulk if you like). The inbox
-opens with one line of what is waiting (how many need you, wait for review, are
-queued, or went out this week), then only the lanes that have something in them. The search and
+opens with one line of counts (how many wait for review, are queued, or went
+out this week), then only the groups that have something in them, such as
+**Needs you**, **To review** and **Queued**. The search and
 filters appear once the inbox holds more than ten, and the daily limit shows when
 you are close to it. What each automation run did is on the **Automations** page. An
 apply run then works **only the ones you queued**: it tailors, renders and

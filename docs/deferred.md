@@ -135,10 +135,6 @@
     before another save overwrites that save's answers for the same country (`work_auth_market` protects only other countries'
     answers). It needs an `expected_updated_at` with a 409 when the profile moved, as the resume draft has. Do when a lost
     same-country edit is reported, or the autofill PUT is next changed.
-59. A picture from before the refresh: `docs/assets/connected-agents.png` (USING_MAESTRO's Agent apps section) shows the
-    old Settings tab; its alt text is current. The design-system previews are listed under "Not synced" in
-    `docs/design-system/README.md`. Do when the screenshots are next retaken, or that section of USING_MAESTRO is next
-    changed.
 60. `frontend/.slopconfig.json` (`allowed_clones`) and `frontend/.slop-baseline.json` still name
     `components/settings/autofill-section.tsx`, which the Profile rebuild split into `components/profile/*`, so the slop ratchet
     (maintainer-run, SYSTEM.md §9) reads a pair that no longer exists. Do when the frontend slop ratchet is next run: drop the pair
