@@ -3,7 +3,7 @@
 import { useId, useRef, useState, type RefObject } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { KEY_FIELDS, KeyField, type ModelSettingsPatch } from "@/components/settings/models-section";
+import { KEY_FIELDS, KeyField, keyProblemIn, type ModelSettingsPatch } from "@/components/settings/models-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,7 @@ import { CheckDraw, WorkingDots } from "@/components/visual";
 import { keyFormatProblem } from "@/lib/api-key-format";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt } from "@/lib/error-text";
 import {
   CONFIGURED,
   EVERYDAY_JOBS,
@@ -40,13 +40,6 @@ type Outcome =
   | { kind: "report"; report: CapabilityReport; name: string; passed: boolean; problem?: string; words?: string }
   | { kind: "saved"; words: string }
   | { kind: "error"; text: string };
-
-/** A result's key problem, in words ("Claude refused your API key. …"), from the test's own errors. */
-function keyProblem(report: CapabilityReport): string | undefined {
-  return Object.values(report.errors)
-    .map((error) => errorDetail(new Error(error)))
-    .find((detail) => detail?.includes("API key"));
-}
 
 /** Where a new install starts: your own server when one is set, else a provider whose key is saved. */
 function startingPick(info: OpenAIInfo): Pick | null {
@@ -141,7 +134,7 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
         method: "POST",
         body: JSON.stringify({ model: plan.test }),
       });
-      const refused = keyProblem(report);
+      const refused = keyProblemIn(report);
       const passed = testPassed(report, Boolean(refused));
       // A key that has not passed changes no model: the recommended set waits for a working key.
       if (passed && plan.change) {
