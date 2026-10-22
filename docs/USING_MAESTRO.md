@@ -237,11 +237,12 @@ tested setups, one per AI service:
 | Cost per application | **about $0.01** | **under $0.03** *(Gemini promo pricing doubles Jan 2027)* |
 | Made-up skills | none measured | none measured |
 
-| | **Claude** · your key, your roles |
+| | **Claude** · your key |
 |---|---|
 | The one key you need | Claude (Anthropic) |
 | Models you can pick | `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` |
-| Roles | you choose per role (Fast, Smart, Assistant, Reasoning) in **Settings › Advanced › Model per job** |
+| Recommended set | `claude-haiku-5-5` reads jobs and runs the Assistant, `claude-sonnet-5-5` tailors and writes and is the Reasoning model |
+| Roles | the recommended set, or your own pick per role (Fast, Smart, Assistant, Reasoning) in **Settings › Advanced › Model per job** |
 
 We have not measured Claude against the other two, so there are no figures for
 it here. Press **Test** next to each model to check it works. An OpenRouter key
@@ -252,6 +253,8 @@ may keep.
 Neither OpenAI nor Gemini is better overall, and any OpenAI-compatible model can be used instead.
 A fresh install starts with the OpenAI setup, because a model that misses
 requirements quietly *inflates* your score — by about nine points in our tests.
+Once the key you add in **Setup** passes its test, that provider's recommended
+models are picked for you, unless your own picks already use it.
 With only a Gemini or Claude key, pick it under **Change provider** in Basics, or switch the Fast, Smart and Assistant roles in **Settings › Advanced › Model per job** (or set
 `FAST_MODEL`/`SMART_MODEL`/`CHAT_MODEL` in `.env`). The Reasoning model follows your Smart model's provider
 until you pick one. Press **Test** next to each model
