@@ -34,8 +34,8 @@ def set_persona(text: str, session: Session | None = None) -> str:
 def draft_persona(session: Session) -> str:
     """Propose persona text from the KB compose + job preferences.
 
-    Persists nothing: the user reviews and explicitly saves the resulting
-    draft in the persona editor. An empty KB cannot ground a persona.
+    Persists nothing: the persona editor shows the draft until the user
+    reads it and presses Use this draft. An empty KB cannot ground a persona.
     """
     from app.services import career_kb, job_preferences, llm, model_settings, prompts
 

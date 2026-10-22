@@ -27,7 +27,8 @@ _NEW = _read("app/new/page.tsx")
 
 
 def test_explicit_save_cards_ask_before_leaving():
-    assert "useLeaveGuard(dirty)" in _read("components/profile/how-you-come-across.tsx")
+    # The persona saves as you go: a failed write or a draft not yet used is what a link would drop.
+    assert "useLeaveGuard(failed || review !== null)" in _read("components/profile/how-you-come-across.tsx")
     # Autosaved: only a failed write leaves answers on screen the server lacks.
     assert "useLeaveGuard(answers.failed)" in _AUTOFILL
     assert "useLeaveGuard(value !== prompt.value)" in _read(

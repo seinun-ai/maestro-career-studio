@@ -349,8 +349,8 @@ not deleted.
 ### Tell it how you sound — once
 
 A **persona** describes you as a candidate: vision, strengths, goals, working
-style, how your writing should sound. Set it once in Profile › How you come across (or have it drafted
-from your career history, then review and save it), and every generated document
+style, how your writing should sound. Set it once in Profile › How you come across (it saves as you
+type; a draft from your career history waits until you read it and press Use this draft), and every generated document
 uses that voice. It shapes tone and emphasis only — never facts.
 
 ### Health Report — is this resume sound at all?

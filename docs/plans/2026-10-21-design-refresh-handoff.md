@@ -224,7 +224,8 @@ Ordered by how much the answer changes. Items with a deferred-ledger number are 
 13. Recommended models: Claude's Assistant is Haiku 5.5; Gemini uses 3.7 Flash for all four roles; OpenRouter has no
     set until the catalog lists OpenRouter models. All are data in `recommended_models.yaml`.
 14. The ECB retry rule: one hour after a failure, or strictly once a day?
-15. Should the persona autosave too?
+15. ~~Should the persona autosave too?~~ Decided 2026-10-22: yes. Typing saves as you go; a drafted persona waits for
+    Use this draft or Discard (inv-drafted-answers).
 
 **Analytics**
 16. The chart palette fails the dataviz validator (chart-3 at its chroma floor; chart-2 and chart-3 close for

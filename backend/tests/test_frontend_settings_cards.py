@@ -482,7 +482,6 @@ def test_a_save_that_disables_itself_keeps_focus():
         ("settings/auto-apply-section.tsx", "onClick={() => draft && saveOnce(draft)}"),
         ("settings/prompts-section.tsx", "onClick={() => saveOnce()}"),
         ("settings/prompts-section.tsx", "onClick={() => resetOnce()}"),
-        ("profile/how-you-come-across.tsx", "onClick={() => saveOnce(value)}"),
         ("settings/llm-endpoint.tsx", "onSave({ base_url: draft?.trim() || null })"),
         ("profile/contact.tsx", '{isFillingFromResume ? "Filling…" : "Fill from career history"}'),
     ]
@@ -493,11 +492,11 @@ def test_a_save_that_disables_itself_keeps_focus():
 
 
 def test_a_row_that_unmounts_on_save_or_discard_hands_focus_on():
-    # Persona's Save row and Auto-apply's Discard leave with the edit; focus went with them.
+    # Persona's draft row and Auto-apply's Discard leave with the edit; focus went with them.
     persona = _read("components/profile/how-you-come-across.tsx")
-    success = persona[persona.index("onSuccess: (result) => {") : persona.index("const draft = useMutation(")]
-    discard = _button_at(persona, "setValue(saved);")
-    assert "focusNext(textareaRef);" in success and "focusNext(textareaRef);" in discard
+    use = _button_at(persona, ">\n            Use this draft\n")
+    discard = _button_at(persona, ">\n            Discard\n")
+    assert "focusNext(textareaRef);" in use and "focusNext(textareaRef);" in discard
     assert "ref={textareaRef}" in persona
     auto = _read("components/settings/auto-apply-section.tsx")
     assert "focusNext(saveRef);" in auto and "ref={saveRef}" in auto

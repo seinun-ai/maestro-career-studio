@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { TileCard, type TileView } from "@/components/profile/tile";
+import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { SettingCardAction } from "@/components/settings/setting-card";
@@ -16,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { canApplyAsyncDraft } from "@/lib/onboarding";
+import { useAutosave } from "@/lib/use-autosave";
 import type { SettingValue } from "@/lib/types";
 
 export function usePersonaQuery() {
@@ -60,14 +62,11 @@ function PersonaCard({ draftDisabledReason }: { draftDisabledReason?: string }) 
 }
 
 /**
- * Explicit Save / Discard, and deliberately NOT autosave.
- *
- * It used to be both: a save fired on blur AND a Save/Discard pair appeared
- * once dirty, so the same edit could be committed two ways and leaving the
- * field committed silently. Persona is not a preference — it is rewritten into
- * every cover letter, screening answer and tailored bullet — so under the rule
- * in `autosave-status.tsx` it is the explicit-Save kind. Dropping the blur half
- * also retires the queued-write machinery it needed.
+ * Typing saves as you go, like the rest of Profile (owner, 2026-10-22); a draft from your career history does not.
+ * The persona is rewritten into every cover letter, screening answer and tailored bullet, so a drafted one is read
+ * before it is kept (inv-drafted-answers): it fills the box with Use this draft and Discard under it, and nothing
+ * reaches the server until Use this draft. Editing the draft keeps it a draft; Use this draft keeps what the box
+ * holds then.
  */
 function PersonaEditor({
   initial,
@@ -77,14 +76,14 @@ function PersonaEditor({
   draftDisabledReason?: string;
 }) {
   const qc = useQueryClient();
-  const [value, setValue] = useState(initial);
-  const [saved, setSaved] = useState(initial);
+  // The drafted text waiting for Use this draft or Discard; null when none waits.
+  const [review, setReview] = useState<string | null>(null);
   // Bumped on every edit so a draft that lands late can tell whether the user
   // has typed since it was requested.
   const editRevision = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // The Save row leaves once the text is clean (after a Save or a Discard),
-  // taking the pressed button, and focus, with it.
+  // The draft row leaves on Use this draft or Discard, taking the pressed
+  // button, and focus, with it.
   const focusNext = useFocusOnNextCommit();
 
   const save = useMutation({
@@ -94,14 +93,14 @@ function PersonaEditor({
         body: JSON.stringify({ value: next }),
       }),
     onSuccess: (result) => {
-      setSaved(result.value);
-      focusNext(textareaRef);
       qc.setQueryData(["settings", "persona"], result);
       void qc.invalidateQueries({ queryKey: ["setup-status"] });
-      toast.success("Persona saved");
     },
+    // Errors still toast: a FAILED save is exactly the thing you must notice.
     onError: (err: Error) => toast.error(couldnt("save your persona", err)),
   });
+  // One write in flight and only the newest text queued, so typing never sends a PUT per key.
+  const { value, update, pending, failed, retry } = useAutosave(initial, (next) => save.mutateAsync(next));
 
   const draft = useMutation({
     mutationFn: (requestRevision: number) =>
@@ -113,27 +112,26 @@ function PersonaEditor({
         toast.info("Draft finished, but your newer edits were kept.");
         return;
       }
-      setValue(result.draft);
+      setReview(result.draft);
       editRevision.current += 1;
       toast.success("Draft ready to review");
     },
     onError: (err: Error) => toast.error(couldnt("draft your persona", err)),
   });
 
-  // One request per gesture: a double click sent two PUTs (or two model calls).
-  const saveOnce = useSingleFlight(save.mutate);
+  // One request per gesture: a double click sent two model calls.
   const draftOnce = useSingleFlight(draft.mutate);
 
-  const dirty = value !== saved;
-  useLeaveGuard(dirty);
+  useLeaveGuard(failed || review !== null);
   const reasonId = useId();
 
   return (
     <div className="grid gap-4">
-      {/* A card-level action, so it sits beside the title. It stays focusable
+      {/* Card-level actions, so they sit beside the title. Draft stays focusable
           while disabled: a native `disabled` dropped focus to <body> when a
           draft started, and hid the reason (a `title`) from the keyboard. */}
       <SettingCardAction>
+        <AutosaveStatus pending={pending} failed={failed} idle={review === null} onRetry={retry} />
         <Button
           type="button"
           variant="outline"
@@ -156,24 +154,23 @@ function PersonaEditor({
       <Textarea
         ref={textareaRef}
         rows={10}
-        value={value}
+        value={review ?? value}
         aria-label="Persona"
         onChange={(e) => {
-          setValue(e.target.value);
+          const next = e.target.value;
           editRevision.current += 1;
+          if (review !== null) setReview(next);
+          else update(() => next);
         }}
       />
-      {dirty ? (
+      {review !== null ? (
         <div className={ACTION_ROW}>
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            focusableWhenDisabled
-            disabled={save.isPending}
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
             onClick={() => {
-              setValue(saved);
+              setReview(null);
               editRevision.current += 1;
               focusNext(textareaRef);
             }}
@@ -184,13 +181,13 @@ function PersonaEditor({
             type="button"
             variant="tonal"
             size="sm"
-            focusableWhenDisabled
-            disabled={save.isPending}
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
-            onClick={() => saveOnce(value)}
+            onClick={() => {
+              update(() => review);
+              setReview(null);
+              focusNext(textareaRef);
+            }}
           >
-            {save.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-            Save
+            Use this draft
           </Button>
         </div>
       ) : null}

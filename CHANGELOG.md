@@ -246,8 +246,9 @@ work-permit answers for each country you apply in.
   Diversity questions and Eligibility are folded under them. Work permits are asked for each country
   you apply in, in that country's words, and only the United States asks your visa status. Where you
   apply says **You live in** and **You apply in**, and a country shows the square of a base resume
-  made for it. Your answers save as you go: the Save answers button is gone, and each answer you change
-  says Saved only once it has saved. Coming back to Profile or Setup reads your answers again, so one
+  made for it. Your answers save as you go, your persona too: the Save buttons are gone, and each answer
+  you change says Saved only once it has saved. A persona drafted from your career history waits for
+  **Use this draft** or **Discard**, so you read it before it is kept. Coming back to Profile or Setup reads your answers again, so one
   the Companion learned in the meantime is kept. The diversity permission stays beside the diversity
   answers, and Decline the rest now declines the veteran question too. While the Companion may not use
   them, the Diversity questions fold says it won't fill them. The tabs and the setup strip are gone,
