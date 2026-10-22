@@ -26,12 +26,13 @@ _STEP_FILES = (
     "components/setup/setup-answers-step.tsx",
     "components/setup/setup-done.tsx",
 )
-# Profile's modules Setup shares (design refresh Task 7.2): the consent flow, Fill from career history and the
-# answers' query (it reads again on focus).
+# Profile's modules Setup shares (design refresh Task 7.2): the consent flow, Fill from career history, the
+# answers' query (it reads again on focus) and You live in / You apply in.
 _SHARED_FILES = (
     "components/profile/diversity-consent.tsx",
     "components/profile/contact.tsx",
     "components/profile/use-autofill-query.ts",
+    "components/profile/country-fields.tsx",
 )
 _SETUP_FILES = ("app/setup/page.tsx", "components/setup/setup-flow.tsx", *_STEP_FILES, *_SHARED_FILES)
 

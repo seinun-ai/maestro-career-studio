@@ -1,36 +1,21 @@
 "use client";
 
-import { useId } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check } from "lucide-react";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 
+import { ApplyInField, LiveInField, useCountriesAutosave } from "@/components/profile/country-fields";
 import { TileCard, type TileView } from "@/components/profile/tile";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCardAction } from "@/components/settings/setting-card";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ResumeSwatch } from "@/components/visual";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { apiFetch } from "@/lib/api";
-import { couldnt } from "@/lib/error-text";
 import {
   baseResumeLabel,
   type BaseResumeSummary,
   type MarketOption,
   type MarketSettingResponse,
 } from "@/lib/types";
-import { useAutosave } from "@/lib/use-autosave";
-
-type Place = { home: string; apply_in: string[] };
 
 export function useMarketQuery() {
   return useQuery({
@@ -110,123 +95,46 @@ function WhereCard() {
 }
 
 /**
- * You live in and You apply in, saving as you go (`PUT /api/settings/market`, one write in flight and the
- * newest queued). While you apply only where you live, the list follows you (Setup's Where and what does
- * the same); a longer list is left as it is, and at least one country stays. The supported list, each
- * market's currency and whether it has a checked diversity set all come from the API: deciding that here is
- * exactly the mistake that files a US answer into a UK form.
+ * You live in and You apply in, saving as you go (`useCountriesAutosave`; Setup's Where and what saves the
+ * same way). The supported list, each market's currency and whether it has a checked diversity set all come
+ * from the API: deciding that here is exactly the mistake that files a US answer into a UK form.
  */
 function WhereEditor({ market }: { market: MarketSettingResponse }) {
-  const qc = useQueryClient();
   const resumes = useBaseResumes();
-  const homeId = useId();
-  const homeHintId = useId();
-  const applyLabelId = useId();
-  const applyHintId = useId();
   const options = market.markets ?? [];
-
-  const save = useMutation({
-    mutationFn: (next: Place) =>
-      apiFetch<MarketSettingResponse>("/api/settings/market", {
-        method: "PUT",
-        body: JSON.stringify({ value: next }),
-      }),
-    onSuccess: (result) => {
-      qc.setQueryData(["settings", "market"], (prev: MarketSettingResponse | undefined) =>
-        prev ? { ...prev, ...result } : prev,
-      );
-      // Readiness counts each country's questions, the capture currency changes, and the profile's one-set
-      // work-permit view follows where you live: each must refetch, not go stale.
-      for (const key of [["setup-status"], ["settings", "market"], ["settings", "money"], ["settings", "autofill"]]) {
-        void qc.invalidateQueries({ queryKey: key });
-      }
-    },
-    // Errors still toast: a FAILED save is exactly the thing you must notice.
-    onError: (err: Error) => toast.error(couldnt("save your countries", err)),
-  });
-  const {
-    value: place,
-    update,
-    pending,
-    failed,
-    retry,
-  } = useAutosave<Place>({ home: market.home, apply_in: market.apply_in }, (next) => save.mutateAsync(next));
+  const { value: place, pending, failed, retry, setHome, toggleCountry } = useCountriesAutosave(market);
   useLeaveGuard(failed);
 
-  const home = options.find((m) => m.key === place.home);
   const withoutSet = place.apply_in.flatMap((key) => {
     const m = options.find((o) => o.key === key);
     return m && !m.offers_eeo ? [m.label] : [];
   });
-  const setHome = (next: string) =>
-    update((current) => ({
-      home: next,
-      apply_in: current.apply_in.length === 1 && current.apply_in[0] === current.home ? [next] : current.apply_in,
-    }));
-  const toggleCountry = (key: string) =>
-    update((current) =>
-      current.apply_in.includes(key)
-        ? current.apply_in.length === 1
-          ? current // At least one: an empty list reads as where you live anyway.
-          : { ...current, apply_in: current.apply_in.filter((k) => k !== key) }
-        : { ...current, apply_in: [...current.apply_in, key] },
-    );
 
   return (
     <div className="grid gap-6">
       <SettingCardAction>
         <AutosaveStatus pending={pending} failed={failed} onRetry={retry} />
       </SettingCardAction>
-      <div className="grid max-w-sm gap-1.5">
-        <Label htmlFor={homeId}>You live in</Label>
-        <p id={homeHintId} className="text-muted-foreground text-body-small">
-          Sets your home currency and date format.
-        </p>
-        <Select value={place.home} onValueChange={(next) => next && setHome(String(next))}>
-          <SelectTrigger
-            id={homeId}
-            aria-describedby={homeHintId}
-            className="w-full"
-            data-pending={pending ? "true" : undefined}
-          >
-            <SelectValue>{home ? home.label : place.home}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((m) => (
-              <SelectItem key={m.key} value={m.key}>
-                {m.label} ({m.currency})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="grid gap-1.5">
-        <span id={applyLabelId} className="text-label-large">
-          You apply in
-        </span>
-        <p id={applyHintId} className="text-muted-foreground text-body-small">
-          Each country has its own work-permit answers and its own diversity questions, if it has a checked set.
-          A square is a base resume made for that country. Keep at least one.
-        </p>
-        <div role="group" aria-labelledby={applyLabelId} aria-describedby={applyHintId} className="flex flex-wrap gap-2">
-          {options.map((m) => {
-            const on = place.apply_in.includes(m.key);
-            return (
-              <Button
-                key={m.key}
-                type="button"
-                size="sm"
-                variant={on ? "tonal" : "outline"}
-                aria-pressed={on}
-                onClick={() => toggleCountry(m.key)}
-              >
-                {on ? <Check aria-hidden="true" /> : null}
-                <CountryName market={m} label={m.label} resumes={resumes.data ?? []} />
-              </Button>
-            );
-          })}
-        </div>
-      </div>
+      <LiveInField
+        markets={options}
+        home={place.home}
+        setHome={setHome}
+        hint="Sets your home currency and date format."
+        pending={pending}
+        className="max-w-sm"
+      />
+      <ApplyInField
+        markets={options}
+        applyIn={place.apply_in}
+        toggleCountry={toggleCountry}
+        hint={
+          <>
+            Each country has its own work-permit answers and its own diversity questions, if it has a checked set.
+            A square is a base resume made for that country. Keep at least one.
+          </>
+        }
+        chip={(m) => <CountryName market={m} label={m.label} resumes={resumes.data ?? []} />}
+      />
       {withoutSet.length ? (
         <p className="text-muted-foreground max-w-prose text-body-small">
           Maestro CS has no checked diversity questions for{" "}

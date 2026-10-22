@@ -179,8 +179,10 @@ def test_gap_page_saved_holds_then_clears():
 
 
 def test_market_select_dims_while_saving():
-    src = _read("components/profile/where-you-apply.tsx")
+    # The select is shared with Setup (country-fields.tsx); Where you apply passes its pending write.
+    src = _read("components/profile/country-fields.tsx")
     assert 'data-pending={pending ? "true" : undefined}' in src
+    assert "pending={pending}" in _read("components/profile/where-you-apply.tsx")
 
 
 def test_form_filling_saves_are_visible():

@@ -217,8 +217,10 @@ def test_a_country_chip_shows_the_square_of_a_resume_made_for_it():
     assert "<ResumeSwatch key={resume.slug} hue={resume.color_hue} />" in where
     # The square is identity: the resume's name is read with it.
     assert '<span className="sr-only">' in where
-    # D9's words for the two settings.
-    assert ">You live in</Label>" in where and "You apply in\n" in where
+    # D9's words for the two settings, in the fields Profile shares with Setup.
+    fields = _src("components/profile/country-fields.tsx")
+    assert ">You live in</Label>" in fields and "You apply in\n" in fields
+    assert "<LiveInField" in where and "<ApplyInField" in where
 
 
 def test_old_profile_links_open_their_tile_or_fold():

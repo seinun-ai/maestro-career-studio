@@ -61,7 +61,7 @@ def _missing(needles: tuple[Needle, ...], src: str) -> list[Needle]:
 # The files each tile or fold renders from (its card and editor), by its title in lib/profile-tiles.ts.
 _PROFILE_FILES: dict[str, tuple[str, ...]] = {
     "Contact": ("components/profile/contact.tsx",),
-    "Where you apply": ("components/profile/where-you-apply.tsx",),
+    "Where you apply": ("components/profile/where-you-apply.tsx", "components/profile/country-fields.tsx"),
     "Work permits": ("components/profile/work-permits.tsx",),
     "Jobs you want": ("components/profile/jobs-you-want.tsx",),
     "How you come across": ("components/profile/how-you-come-across.tsx",),
@@ -81,7 +81,7 @@ _PREFERENCES = 'fields={groupFields("preferences")}'
 _EEO = 'fields={groupFields("eeo")}'
 _ELIGIBILITY = 'const fields = groupFields("eligibility");'
 _PERMITS = ("applyIn.map((key) => {", "workPermitFields(market?.work_auth_vocab)")
-_APPLY_IN = ("frontend/components/profile/where-you-apply.tsx", "You apply in </span>")
+_APPLY_IN = ("frontend/components/profile/country-fields.tsx", "You apply in </span>")
 
 # (tile or fold, board label, needles)
 _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
@@ -234,7 +234,7 @@ _SETUP_FILES: dict[str, tuple[str, ...]] = {
     "Your resume": (
         "components/setup/setup-resume-step.tsx", "components/setup/dropzone.tsx", "components/setup/use-resume-import.ts",
     ),
-    "Where and what": ("components/setup/setup-where-step.tsx",),
+    "Where and what": ("components/setup/setup-where-step.tsx", "components/profile/country-fields.tsx"),
     "Form answers": ("components/setup/setup-answers-step.tsx", "lib/setup-flow.ts", "lib/setup-answers.ts"),
 }
 _STEP_COMPONENTS = {
