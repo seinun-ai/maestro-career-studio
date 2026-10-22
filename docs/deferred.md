@@ -148,3 +148,10 @@
     only in its location line (`countries.for_job`'s fallback) reads as having none there; Analytics' places group the raw state,
     city or country text. Do when one of those readers is next changed, or a job with a location-only country is scored or proposed
     as if it had none.
+63. The health report's change line after Check again compares the two reports' findings, never the two versions
+    (`lib/health-report.explainScoreDelta`), so five reworded bullets read only as what their findings show ("1 bullet in
+    Northwind Analytics now needs work"), and a reword of a strong bullet is invisible. The fuller line: `resume_lint.run_report`
+    already holds the prior report, so it can diff the checked version against the current one (`resume_diff.diff_resume`) and
+    store added, edited and removed bullet counts per entry on the report (an additive field, passed through by
+    `run_health_check` and `get_health_report`), and the line says "5 bullets reworded. 1 in Northwind Analytics now needs
+    work." Do when the health report is next changed, or a change line is reported as missing what was edited.

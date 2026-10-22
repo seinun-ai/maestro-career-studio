@@ -265,7 +265,7 @@ test("explainScoreDelta names implied Awards bullets entering the score", () => 
     explainScoreDelta(prior, next, (key) =>
       key === "extra:awards" ? "Awards & Honors" : key,
     ),
-    "2 new bullets in Awards & Honors.",
+    "2 bullets in Awards & Honors now need work.",
   );
 });
 
@@ -996,4 +996,35 @@ test("saveBatch: no Undo when the write made no new version, or V0 could not be 
 test("saveBatch: any other failure is the caller's", async () => {
   const { deps: d } = deps({ write: async () => Promise.reject(new Error("boom")) });
   await assert.rejects(saveBatch(rows, d), /boom/);
+});
+
+// The change line after Check again compares the two reports' findings, never the two versions, so it says only
+// what the findings show: a bullet that now needs work, one still flagged after a reword, an issue fixed.
+const bulletFinding = (hash: string, bullet: number, index = 0) => ({
+  type: "bullet",
+  location: { section: "experience", index, bullet_index: bullet },
+  content_hash: hash,
+  classification_level: "specific_no_result",
+});
+const titled = (key: string) => (key === "experience:0" ? "Northwind Analytics" : key);
+
+test("a finding that appears says the bullet now needs work, never that it is new", () => {
+  // Five bullets reworded; one of them, unflagged before, is flagged now.
+  assert.equal(
+    explainScoreDelta([], [bulletFinding("h-new", 2)], titled),
+    "1 bullet in Northwind Analytics now needs work.",
+  );
+  assert.equal(
+    explainScoreDelta([], [bulletFinding("a", 1), bulletFinding("b", 3)], titled),
+    "2 bullets in Northwind Analytics now need work.",
+  );
+});
+
+test("a reworded bullet that is still flagged is one bullet, not one new and one fixed", () => {
+  assert.equal(
+    explainScoreDelta([bulletFinding("before", 2)], [bulletFinding("after", 2)], titled),
+    "1 reworded bullet still needs work.",
+  );
+  // A finding gone from a bullet is an issue fixed.
+  assert.equal(explainScoreDelta([bulletFinding("before", 2)], [], titled), "1 issue fixed.");
 });

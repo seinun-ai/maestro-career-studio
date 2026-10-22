@@ -281,6 +281,9 @@ work-permit answers for each country you apply in.
   stated".
 - **"AWS SageMaker" is not added to a line that already says "AWS (SageMaker, EKS, S3)".** The fix for
   #50 caught "AWS" and "SageMaker" on their own; the job's joined wording now counts as named too.
+- **The health report no longer calls a reworded bullet new.** After Check again, a bullet that now has a
+  problem reads "now needs work", and a reworded bullet that still has one is not counted as one new
+  bullet and one fixed issue.
 - **The job header shows its pay again.** Beside a long resume name the header's line of facts was cut
   short and lost the pay at its end; it now wraps, and a work mode the location already names ("Remote
   (United States) · Remote") shows once, in the header and the Agent inbox.
