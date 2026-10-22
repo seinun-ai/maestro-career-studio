@@ -158,7 +158,7 @@ work-permit answers for each country you apply in.
   table's Where column.
 - **The job page leads with one card.** Each of the four steps is a bar with one number from your
   data (18 skills, 6 of 6 closed, 72.3 → 84.0) in place of a sentence. The step you are on is one card
-  with its one blue button. On Apply it shows your resume's first page in its colour, its match score
+  with its one blue button, and a job whose PDF is made opens on Apply. On Apply it shows your resume's first page in its colour, its match score
   and the gain over your base resume, **Open the job post**, **Mark applied**, and two rows that open
   the cover letter and the application questions. The job description, what was submitted and the
   job's dates and details fold away below it. The header reads "Company · Place · Mode · pay"; pay in

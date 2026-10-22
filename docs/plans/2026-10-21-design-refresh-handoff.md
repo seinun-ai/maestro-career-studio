@@ -212,8 +212,8 @@ Ordered by how much the answer changes. Items with a deferred-ledger number are 
 
 **Pages**
 7. Jobs opens on All active (closed jobs hidden; All is `?status=all`). Right?
-8. A `pdf_ready` job opens on step 3 (Tailored resume) with Continue to Apply; the board shows Apply current. Should
-   `pdf_ready` open Apply?
+8. ~~A `pdf_ready` job opens on step 3 (Tailored resume) with Continue to Apply; the board shows Apply current. Should
+   `pdf_ready` open Apply?~~ Decided 2026-10-22: yes, a job with its PDF opens on Apply (`lib/job-steps.currentStep`).
 9. Today's sidebar badge counts every Needs-you proposal while the page shows one as Next up. Keep?
 10. The bulk Change status offers every status. Limit it to the closed ones?
 11. Sort labels differ: "Best score first" (Agent inbox) and "Best match first" (Jobs). Unify?
