@@ -13,7 +13,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { CHART_COLORS as COLORS, buildQuery, chartGate, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE, weekLabel, weekTick } from "@/components/charts/chart-kit";
+import { CHART_COLORS as COLORS, buildQuery, chartGate, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE, weekLabel, weekRows, weekTick } from "@/components/charts/chart-kit";
 import { useRoleLabel } from "@/components/role-category-picker";
 import { splitTopSeries } from "@/lib/analytics-series";
 import { apiFetch } from "@/lib/api";
@@ -45,15 +45,10 @@ export function RoleMixChart({ filters }: { filters: TopSkillsFilters }) {
       5,
     );
     const shownSet = new Set(shown);
-    const weeks = new Map<string, Record<string, number | string>>();
-    for (const row of data) {
-      const key = shownSet.has(row.role_category) ? row.role_category : MORE_ROLES;
-      const bucket = weeks.get(row.week_start) ?? { week: row.week_start };
-      bucket[key] = ((bucket[key] as number) ?? 0) + row.count;
-      weeks.set(row.week_start, bucket);
-    }
-    const chartData = [...weeks.values()].sort((a, b) =>
-      String(a.week).localeCompare(String(b.week)),
+    const chartData = weekRows(
+      data,
+      (row) => (shownSet.has(row.role_category) ? row.role_category : MORE_ROLES),
+      (row, sum) => (sum ?? 0) + row.count,
     );
     const categories = hidden.length ? [...shown, MORE_ROLES] : shown;
     // Weeks each series has a value in: an area needs two, so a lone week draws as a dot.

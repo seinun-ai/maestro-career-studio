@@ -20,6 +20,23 @@ import { isLoadFailure, type LoadQuery } from "@/lib/query-state";
 export const weekTick = (value: unknown) => formatShortDate(String(value));
 export const weekLabel = (value: unknown) => formatWeekOf(String(value));
 
+/** A weekly chart's rows, oldest week first: one per `week_start`, `{ week, [series]: value }`, where `fold`
+ *  makes a series' value from each of its rows (`current` is what the week holds for it so far). */
+export function weekRows<Row extends { week_start: string }>(
+  rows: readonly Row[],
+  seriesOf: (row: Row) => string,
+  fold: (row: Row, current: number | undefined) => number,
+): Record<string, number | string>[] {
+  const weeks = new Map<string, Record<string, number | string>>();
+  for (const row of rows) {
+    const key = seriesOf(row);
+    const bucket = weeks.get(row.week_start) ?? { week: row.week_start };
+    bucket[key] = fold(row, bucket[key] as number | undefined);
+    weeks.set(row.week_start, bucket);
+  }
+  return [...weeks.values()].sort((a, b) => String(a.week).localeCompare(String(b.week)));
+}
+
 /**
  * Categorical palette, fixed assignment order (never cycle or generate hues).
  * Values live in globals.css (--chart-1..6, OKLCH, light + dark); the

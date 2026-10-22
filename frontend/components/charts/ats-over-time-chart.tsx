@@ -13,7 +13,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { CHART_COLORS as COLORS, buildQuery, chartGate, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE, weekLabel, weekTick } from "@/components/charts/chart-kit";
+import { CHART_COLORS as COLORS, buildQuery, chartGate, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE, weekLabel, weekRows, weekTick } from "@/components/charts/chart-kit";
 import { useRoleLabel } from "@/components/role-category-picker";
 import { MAX_ROLE_SERIES, splitTopSeries } from "@/lib/analytics-series";
 import { apiFetch } from "@/lib/api";
@@ -67,21 +67,12 @@ export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
       : data.filter((row) => split.shown.includes(row.role_category));
     const roleColor = (role: string) => COLORS[split.shown.indexOf(role)];
 
-    const weeks = new Map<string, Record<string, number | string>>();
-    const seriesMeta = new Map<string, SeriesMeta>();
-    for (const row of drawn) {
-      const key = singleRole
-        ? row.phase
-        : `${row.role_category} · ${row.phase}`;
-      seriesMeta.set(key, { role: row.role_category, phase: row.phase });
-      const bucket = weeks.get(row.week_start) ?? { week: row.week_start };
-      bucket[key] = row.avg_composite;
-      weeks.set(row.week_start, bucket);
-    }
-
-    const chartData = [...weeks.values()].sort((a, b) =>
-      String(a.week).localeCompare(String(b.week)),
+    const seriesOf = (row: AtsOverTimeRow) =>
+      singleRole ? row.phase : `${row.role_category} · ${row.phase}`;
+    const seriesMeta = new Map<string, SeriesMeta>(
+      drawn.map((row) => [seriesOf(row), { role: row.role_category, phase: row.phase }]),
     );
+    const chartData = weekRows(drawn, seriesOf, (row) => row.avg_composite);
     const series = [...seriesMeta.keys()].sort().map((key) => {
       const meta = seriesMeta.get(key)!;
       const stroke = singleRole
