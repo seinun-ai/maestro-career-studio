@@ -1,6 +1,6 @@
 "use client";
 
-import { type MouseEvent, type ReactNode, use, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, use, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
@@ -155,6 +155,11 @@ function JobHeadingLead({
       </div>
     </>
   );
+}
+
+// Nothing to subscribe to: `useSyncExternalStore` here only tells the hydration render from the ones after it.
+function subscribeNoop() {
+  return () => {};
 }
 
 function readSequence(key: string): string[] {
@@ -318,10 +323,13 @@ export default function JobDetailPage({
 
   // Prev/next: proposals list writes cs-proposals-seq; Jobs (/applications) writes
   // cs-tracker-seq. ?from=proposals selects which queue and back target.
+  // sessionStorage is the browser's: the server renders no sequence, so the hydration render reads none either (it
+  // drew the rails the server had not, and React logged "Hydration failed"); the render after it reads the list.
+  const hydrated = useSyncExternalStore(subscribeNoop, () => true, () => false);
   const sequence = useMemo<string[]>(
     () =>
-      readSequence(fromProposals ? "cs-proposals-seq" : "cs-tracker-seq"),
-    [fromProposals],
+      hydrated ? readSequence(fromProposals ? "cs-proposals-seq" : "cs-tracker-seq") : [],
+    [hydrated, fromProposals],
   );
   const seqPos = sequence.indexOf(id);
   const prevJobId = seqPos > 0 ? sequence[seqPos - 1] : null;
@@ -401,11 +409,11 @@ export default function JobDetailPage({
   // "Company · Place · Mode · pay": the level is in the Job description fold.
   const pay = formatPay(jobPay(job), money);
   const salary = pay ? payLine(pay) : null;
+  // The pay is its own span below, so the line can wrap between its facts but never inside "$165K–$195K a year".
   const metaLine = jobMetaLine([
     job.company ?? "Unknown company",
     job.location,
     workModeUnlessSaid(job.location, humanizeEnum(job.work_mode)),
-    salary,
   ]);
   // Under a converted figure, what the post said (D8). A currency the post did not state says what it was read as.
   const postedPay =
@@ -522,7 +530,15 @@ export default function JobDetailPage({
           >
             {/* Both lines wrap, like the title: beside a wide Resume match pill the block is narrow, and a
                 truncated line lost the pay at its end. */}
-            <p className="text-muted-foreground text-body-medium break-words">{metaLine}</p>
+            <p className="text-muted-foreground text-body-medium break-words">
+              {metaLine}
+              {salary ? (
+                <>
+                  {metaLine ? " · " : null}
+                  <span className="whitespace-nowrap">{salary}</span>
+                </>
+              ) : null}
+            </p>
             {postedPay || assumedPay ? (
               <p className="text-muted-foreground flex min-w-0 items-start gap-1.5 text-body-small">
                 {assumedPay ? <WarningIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" /> : null}
