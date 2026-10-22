@@ -58,16 +58,18 @@ def test_the_role_models_are_fast_smart_and_assistant():
 
 
 def test_each_consent_switch_announces_itself():
-    """D10.1: both switches share one mutation, whose toast read only `enabled`,
-    so ticking the agreement-box switch announced the diversity state."""
+    """D10.1: both switches once shared one mutation whose toast read only `enabled`,
+    so ticking the agreement-box switch announced the diversity state. They share
+    one save again (hooks/use-save-consent.ts), and it never toasts a save."""
     assert "EEO standing consent" not in _AUTOFILL
-    shared = _between(_AUTOFILL, "const saveConsent = useMutation({", "\n  });")
+    shared = _between(_read("hooks/use-save-consent.ts"), "return useMutation({", "\n  });")
     assert "toast.success(" not in shared
+    for switch in (_CONSENT, _FILL):
+        assert "const saveConsent = useSaveConsent();" in switch
     diversity = _between(_AUTOFILL, "const setEeoConsentEnabled = ", "\n  };")
     assert '"The Companion can now answer diversity questions"' in diversity
     assert '"The Companion won\'t answer diversity questions"' in diversity
-    # The agreement switch has its own mutation now, in its own card, and it toasts per call too.
-    assert "toast.success(" not in _between(_FILL, "const saveConsent = useMutation({", "\n  });")
+    # The agreement switch, in its own card, toasts per call too.
     boxes = _between(_FILL, "const setConsentFormsEnabled = ", "\n  };")
     assert '"The Companion can now fill agreements and signatures"' in boxes
     assert '"The Companion won\'t fill agreements and signatures"' in boxes
@@ -845,4 +847,4 @@ def test_an_agreement_yes_names_the_policy_it_agreed_to():
     types = _read("lib/types.ts")
     update = _between(types, "export interface EeoConsentUpdate extends EeoConsent {", "\n}")
     assert "agreed_policy?: string;" in update
-    assert "mutationFn: (value: EeoConsentUpdate) =>" in _AUTOFILL and "mutationFn: (value: EeoConsentUpdate) =>" in _FILL
+    assert "mutationFn: (value: EeoConsentUpdate) =>" in _read("hooks/use-save-consent.ts")

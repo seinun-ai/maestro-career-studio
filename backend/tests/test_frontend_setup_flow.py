@@ -34,6 +34,7 @@ _SHARED_FILES = (
     "components/profile/use-autofill-query.ts",
     "components/profile/autofill-profile.tsx",
     "components/profile/country-fields.tsx",
+    "hooks/use-save-consent.ts",
 )
 _SETUP_FILES = ("app/setup/page.tsx", "components/setup/setup-flow.tsx", *_STEP_FILES, *_SHARED_FILES)
 

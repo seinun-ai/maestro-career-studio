@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -9,9 +9,9 @@ import { AgreedOn } from "@/components/settings/companion-fill-section";
 import { CardSection } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useSaveConsent } from "@/hooks/use-save-consent";
 import { apiFetch } from "@/lib/api";
-import { couldnt } from "@/lib/error-text";
-import type { EeoConsent, EeoConsentUpdate, SettingEnvelope } from "@/lib/types";
+import type { EeoConsent, SettingEnvelope } from "@/lib/types";
 
 /** The words a yes to the diversity permission is given under, in Profile and in Setup alike. */
 export const DIVERSITY_CONSENT_CONFIRM = {
@@ -41,24 +41,9 @@ export function useEeoConsentQuery() {
  * an answer only after the consent it needs is on record.
  */
 export function useDiversityConsent(consent: EeoConsent | undefined) {
-  const qc = useQueryClient();
   const confirm = useConfirm();
-
-  const saveConsent = useMutation({
-    mutationFn: (value: EeoConsentUpdate) =>
-      apiFetch<SettingEnvelope<EeoConsent>>("/api/settings/eeo-consent", {
-        method: "PUT",
-        body: JSON.stringify({ value }),
-      }),
-    onSuccess: (result) => {
-      qc.setQueryData(["settings", "eeo-consent"], result);
-      // No toast here: each call names its own switch. The record's other
-      // permission, agreements and signatures, is Settings › Companion's
-      // (companion-fill-section.tsx); a shared toast once announced the
-      // diversity state when that switch moved.
-    },
-    onError: (err: Error) => toast.error(couldnt("save your consent", err)),
-  });
+  // The one record's save: it toasts only a failure, so the yes or no is said below.
+  const saveConsent = useSaveConsent();
 
   const setEeoConsentEnabled = async (enabled: boolean): Promise<boolean> => {
     if (!consent) return false;

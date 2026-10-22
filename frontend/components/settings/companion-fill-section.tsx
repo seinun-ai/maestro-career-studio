@@ -9,24 +9,18 @@ import { SettingCard } from "@/components/settings/setting-card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, Radio } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
+import { CONSENT_KEY, useSaveConsent } from "@/hooks/use-save-consent";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import { inOrder } from "@/lib/in-order";
-import type {
-  AutofillOptions,
-  EeoConsent,
-  EeoConsentUpdate,
-  SettingEnvelope,
-} from "@/lib/types";
+import type { AutofillOptions, EeoConsent, SettingEnvelope } from "@/lib/types";
 
 /** The policy whose wording the agreement confirm (setConsentFormsEnabled)
  *  describes. Bump it with CURRENT_POLICY_VERSION
  *  (backend/app/schemas/eeo_consent.py) whenever that wording changes; the
  *  server grants the agreement only under its current policy. */
 const AGREEMENT_POLICY = "2";
-
-const CONSENT_KEY = ["settings", "eeo-consent"] as const;
 
 /**
  * Settings › Companion: what the Companion may fill (owner decision D10). The agreements and signatures
@@ -53,19 +47,9 @@ export function CompanionFillSection() {
 }
 
 function CompanionFillEditor({ consent }: { consent: EeoConsent }) {
-  const qc = useQueryClient();
   const confirm = useConfirm();
-
   // The record holds the diversity permission too (Profile's switch): a write sends it back as served.
-  const saveConsent = useMutation({
-    mutationFn: (value: EeoConsentUpdate) =>
-      apiFetch<SettingEnvelope<EeoConsent>>("/api/settings/eeo-consent", {
-        method: "PUT",
-        body: JSON.stringify({ value }),
-      }),
-    onSuccess: (result) => qc.setQueryData(CONSENT_KEY, result),
-    onError: (err: Error) => toast.error(couldnt("save your consent", err)),
-  });
+  const saveConsent = useSaveConsent();
 
   /** The second permission in the record: with it on, the extension's
    *  label policy (extension/shared/policy.js) refuses nothing, so a fill may
