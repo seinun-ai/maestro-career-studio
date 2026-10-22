@@ -108,21 +108,31 @@ def test_analytics_role_text_uses_the_catalog_label(rel):
     assert "useRoleLabel()" in _read(rel)
 
 
-# A failed fetch is its own state, never "No data yet." (conventions). Each chart reads the failure
-# (`isLoadFailure` reads the query's isError) and renders the shared LoadErrorState with a retry,
-# before its loading gate: a retry of a data-less query would otherwise paint the skeleton.
+# A failed fetch is its own state, never "No data yet." (conventions). Each chart's states are chart-kit's
+# chartGate: it reads the failure (`isLoadFailure` reads the query's isError) and renders the shared
+# LoadErrorState with a retry, before its loading gate: a retry of a data-less query would otherwise paint
+# the skeleton.
 _CHARTS = (_ATS, _FIT, _MIX, _LIFT, _HEATMAP, "components/charts/top-skills-chart.tsx")
+
+
+def test_the_chart_gate_says_a_failure_before_loading_or_empty():
+    gate = _read("components/charts/chart-kit.tsx")
+    gate = gate[gate.index("export function chartGate(") : gate.index("\n}\n", gate.index("export function chartGate("))]
+    branch = "if (isLoadFailure(query)) {"
+    assert "<LoadErrorState" in gate[gate.index(branch):]
+    assert "retrying={query.isFetching}" in gate and "onRetry={() => void query.refetch()}" in gate
+    assert gate.index(branch) < gate.index("if (query.isLoading)")
+    assert gate.index(branch) < gate.index(">No data yet.</p>")
 
 
 @pytest.mark.parametrize("rel", _CHARTS)
 def test_a_failed_chart_says_it_failed(rel):
     src = _read(rel)
-    branch = "if (isLoadFailure(query)) {"
-    assert branch in src
-    assert "<LoadErrorState" in src[src.index(branch):]
-    assert "retrying={query.isFetching}" in src and "onRetry={() => void query.refetch()}" in src
-    assert src.index(branch) < src.index("if (isLoading)")
-    assert src.index(branch) < src.index(">No data yet.</p>")
+    # Nothing is drawn before the gate: each chart returns its state first, with its own error title.
+    at = src.index("const gate = chartGate(query, {")
+    assert 'errorTitle: "Couldn\'t load ' in src[at:]
+    assert "return gate;" in src[at : src.index("return (", at)]
+    assert "<LoadErrorState" not in src and "isLoadFailure(" not in src
 
 
 def test_charts_never_index_the_palette_modulo():

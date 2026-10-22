@@ -2,18 +2,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { buildQuery } from "@/components/charts/chart-kit";
-import { LoadErrorState } from "@/components/load-error-state";
+import { buildQuery, chartGate } from "@/components/charts/chart-kit";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
-import { loadErrorDetail } from "@/lib/error-text";
-import { isLoadFailure } from "@/lib/query-state";
 import { skillName } from "@/lib/skill-name";
 import type { TopSkillRow, TopSkillsResponse } from "@/lib/types";
 import { LowSampleBadge } from "@/components/explore/low-sample-hint";
@@ -120,24 +116,15 @@ export function TopSkillsChart({
     queryFn: () =>
       apiFetch<TopSkillsResponse>(`/api/explore/top-skills?${buildQuery(filters, { limit })}`),
   });
-  const { data, isLoading } = query;
+  const { data } = query;
 
-  // A failed fetch is its own state, never "No data yet." (conventions).
-  if (isLoadFailure(query)) {
-    return (
-      <LoadErrorState
-        className="py-8"
-        title="Couldn't load the top skills."
-        detail={loadErrorDetail(query.error)}
-        retrying={query.isFetching}
-        onRetry={() => void query.refetch()}
-      />
-    );
-  }
-  if (isLoading) return <Skeleton className="h-48 w-full" />;
-  if (!data || (data.top.length === 0 && data.rest.length === 0)) {
-    return <p className="text-muted-foreground text-body-medium">No data yet.</p>;
-  }
+  const gate = chartGate(query, {
+    errorTitle: "Couldn't load the top skills.",
+    empty: !data || (data.top.length === 0 && data.rest.length === 0),
+    skeleton: "h-48 w-full",
+  });
+  // No data is always gated (it is empty), so `data` is here past this line.
+  if (gate || !data) return gate;
 
   return (
     <div className="space-y-0">

@@ -13,14 +13,10 @@ import {
   YAxis,
 } from "recharts";
 
-import { Skeleton } from "@/components/ui/skeleton";
-import { LoadErrorState } from "@/components/load-error-state";
-import { CHART_COLORS as COLORS, buildQuery, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE, weekLabel, weekTick } from "@/components/charts/chart-kit";
+import { CHART_COLORS as COLORS, buildQuery, chartGate, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE, weekLabel, weekTick } from "@/components/charts/chart-kit";
 import { useRoleLabel } from "@/components/role-category-picker";
 import { splitTopSeries } from "@/lib/analytics-series";
 import { apiFetch } from "@/lib/api";
-import { loadErrorDetail } from "@/lib/error-text";
-import { isLoadFailure } from "@/lib/query-state";
 import type { RoleMixRow } from "@/lib/types";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
 
@@ -34,7 +30,7 @@ export function RoleMixChart({ filters }: { filters: TopSkillsFilters }) {
         `/api/explore/role-mix-over-time?${buildQuery(filters, { window: "week" })}`,
       ),
   });
-  const { data, isLoading } = query;
+  const { data } = query;
 
   const label = useRoleLabel();
 
@@ -67,22 +63,8 @@ export function RoleMixChart({ filters }: { filters: TopSkillsFilters }) {
     return { chartData, categories, points };
   }, [data]);
 
-  // A failed fetch is its own state, never "No data yet." (conventions).
-  if (isLoadFailure(query)) {
-    return (
-      <LoadErrorState
-        className="py-8"
-        title="Couldn't load roles over time."
-        detail={loadErrorDetail(query.error)}
-        retrying={query.isFetching}
-        onRetry={() => void query.refetch()}
-      />
-    );
-  }
-  if (isLoading) return <Skeleton className="h-80 w-full" />;
-  if (chartData.length === 0) {
-    return <p className="text-muted-foreground text-body-medium">No data yet.</p>;
-  }
+  const gate = chartGate(query, { errorTitle: "Couldn't load roles over time.", empty: chartData.length === 0 });
+  if (gate) return gate;
 
   return (
     <ResponsiveContainer width="100%" height={320}>

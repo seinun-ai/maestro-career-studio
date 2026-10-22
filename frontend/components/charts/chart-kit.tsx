@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 
 import {
   Card,
@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
-import { couldnt } from "@/lib/error-text";
+import { LoadErrorState } from "@/components/load-error-state";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { formatShortDate, formatWeekOf } from "@/lib/format-date";
+import { isLoadFailure, type LoadQuery } from "@/lib/query-state";
 
 /** A weekly chart's axis ("Sep 21") and tooltip ("Week of Sep 21"): an ISO day read as machine output. */
 export const weekTick = (value: unknown) => formatShortDate(String(value));
@@ -67,6 +69,31 @@ export function buildQuery(
     }
   }
   return params.toString();
+}
+
+/**
+ * What a chart shows before it can draw, or null once it can. A failed fetch is its own state, never "No data
+ * yet." (conventions), and it comes before the loading gate: a retry of a data-less query would otherwise
+ * paint the skeleton and drop focus. Then the skeleton while it loads, then No data yet when `empty`.
+ */
+export function chartGate(
+  query: LoadQuery & { error: Error | null; isLoading: boolean; isFetching: boolean; refetch: () => unknown },
+  { errorTitle, empty, skeleton = "h-80 w-full" }: { errorTitle: string; empty: boolean; skeleton?: string },
+): ReactElement | null {
+  if (isLoadFailure(query)) {
+    return (
+      <LoadErrorState
+        className="py-8"
+        title={errorTitle}
+        detail={loadErrorDetail(query.error)}
+        retrying={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
+  if (query.isLoading) return <Skeleton className={skeleton} />;
+  if (empty) return <p className="text-muted-foreground text-body-medium">No data yet.</p>;
+  return null;
 }
 
 /** Uniform analytics panel: title + optional one-clause description + states. */
