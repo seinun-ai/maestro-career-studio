@@ -72,7 +72,7 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { headerProposalPill, historyStatusOf, proposalHasContent } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
-import { assumedCurrencyLine, jobMetaLine, showsAssumedCurrency } from "@/lib/job-meta";
+import { assumedCurrencyLine, jobMetaLine, showsAssumedCurrency, workModeUnlessSaid } from "@/lib/job-meta";
 import { answersSummary } from "@/lib/filled-answers";
 import { formatShortDate } from "@/lib/format-date";
 import { formatPay, payLine, periodWords } from "@/lib/money";
@@ -404,7 +404,7 @@ export default function JobDetailPage({
   const metaLine = jobMetaLine([
     job.company ?? "Unknown company",
     job.location,
-    humanizeEnum(job.work_mode),
+    workModeUnlessSaid(job.location, humanizeEnum(job.work_mode)),
     salary,
   ]);
   // Under a converted figure, what the post said (D8). A currency the post did not state says what it was read as.
@@ -520,13 +520,13 @@ export default function JobDetailPage({
             unmorphed={unmorphed}
             onBack={backClick}
           >
-            <p className="text-muted-foreground truncate text-body-medium" title={metaLine}>
-              {metaLine}
-            </p>
+            {/* Both lines wrap, like the title: beside a wide Resume match pill the block is narrow, and a
+                truncated line lost the pay at its end. */}
+            <p className="text-muted-foreground text-body-medium break-words">{metaLine}</p>
             {postedPay || assumedPay ? (
-              <p className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-body-small">
-                {assumedPay ? <WarningIcon aria-hidden="true" className="size-3.5 shrink-0 text-warning" /> : null}
-                <span className="truncate">{[postedPay, assumedPay].filter(Boolean).join(" · ")}</span>
+              <p className="text-muted-foreground flex min-w-0 items-start gap-1.5 text-body-small">
+                {assumedPay ? <WarningIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" /> : null}
+                <span className="min-w-0 break-words">{[postedPay, assumedPay].filter(Boolean).join(" · ")}</span>
               </p>
             ) : null}
             {ownership.mark ? <div className="mt-2"><JobOwnershipMark jobId={id} ownership={job.ownership} /></div> : null}

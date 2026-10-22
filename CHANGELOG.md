@@ -279,6 +279,11 @@ work-permit answers for each country you apply in.
 - **Job market counts each value once.** "Hybrid" and "hybrid ", or "USA" and "United States", are
   one bar, the Country filter lists each country once, and a job that names no country reads "Not
   stated".
+- **The job header shows its pay again.** Beside a long resume name the header's line of facts was cut
+  short and lost the pay at its end; it now wraps, and a work mode the location already names ("Remote
+  (United States) · Remote") shows once, in the header and the Agent inbox.
+- **OPT shows only where it applies.** The US student work permit line shows for a job in the United
+  States, or when a posting says something about it, not as "Not stated" on a London job.
 - **Working hours are not pay.** "40 hours per week" no longer reads as an hourly rate of 40: an
   hourly figure needs a currency mark or a word such as pay or rate beside it.
 - **A bare "$" takes the job's country.** A Toronto job's "$80,000" is Canadian dollars, not US

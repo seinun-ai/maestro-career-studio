@@ -47,3 +47,22 @@ export function showsAssumedCurrency(job: string | null | undefined, home: strin
 export function assumedCurrencyLine(currency: string, country: string): string {
   return `Pay read as ${currencyWords(currency)}, job is in ${country}`;
 }
+
+/**
+ * The work mode unless the location already names it: "Remote (United States) · Remote" read the mode twice. A whole
+ * word only, whatever its case, so "Remoteville" keeps it. `mode` is the mode in words ("Remote", "On-site").
+ */
+export function workModeUnlessSaid(location: string | null | undefined, mode: string | null | undefined): string | null {
+  if (!mode) return null;
+  const word = mode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return location && new RegExp(`(^|[^\\w-])${word}($|[^\\w-])`, "i").test(location) ? null : mode;
+}
+
+/**
+ * Whether the job details show the OPT line. OPT is a US student work permit, so the line shows for a job in the
+ * United States, or when the posting says anything about it; an unstated line on a UK job was noise.
+ */
+export function showsOptLine(opt: string | null | undefined, country: string | null | undefined): boolean {
+  const stated = !!opt && opt !== "unstated" && opt !== "unknown";
+  return stated || country?.toUpperCase() === "US";
+}

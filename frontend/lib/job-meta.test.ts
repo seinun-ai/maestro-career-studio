@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { assumedCurrencyLine, jobMetaLine, showsAssumedCurrency } from "./job-meta.ts";
+import { assumedCurrencyLine, jobMetaLine, showsAssumedCurrency, showsOptLine, workModeUnlessSaid } from "./job-meta.ts";
 
 test("empty parts and Not stated drop out", () => {
   assert.equal(jobMetaLine(["Acme", null, "Not stated", "", "Senior"]), "Acme · Senior");
@@ -27,4 +27,26 @@ test("the read-as line shows only for a job in another country than where you li
   assert.equal(showsAssumedCurrency("DE", null), true);
   // Where you live not loaded yet: nothing, so the line never flashes in and out.
   assert.equal(showsAssumedCurrency("DE", undefined), false);
+});
+
+test("a work mode the location already names drops out", () => {
+  assert.equal(workModeUnlessSaid("Remote (United States)", "Remote"), null);
+  assert.equal(workModeUnlessSaid("Denver, CO (Hybrid)", "Hybrid"), null);
+  assert.equal(workModeUnlessSaid("Chicago, IL (on-site)", "On-site"), null, "case does not matter");
+  assert.equal(workModeUnlessSaid("London, United Kingdom", "Hybrid"), "Hybrid");
+  // A whole word only: a place that merely contains the letters keeps the mode.
+  assert.equal(workModeUnlessSaid("Remoteville, OR", "Remote"), "Remote");
+  assert.equal(workModeUnlessSaid(null, "Remote"), "Remote");
+  assert.equal(workModeUnlessSaid("Remote", null), null);
+});
+
+test("OPT shows for a US job or a posting that says something about it", () => {
+  assert.equal(showsOptLine("unstated", "US"), true);
+  assert.equal(showsOptLine(null, "us"), true);
+  // OPT is a US student permit: on a UK job an unstated line is noise.
+  assert.equal(showsOptLine("unstated", "GB"), false);
+  assert.equal(showsOptLine(null, null), false);
+  // What the posting says always shows.
+  assert.equal(showsOptLine("stem_opt_ok", "GB"), true);
+  assert.equal(showsOptLine("no", null), true);
 });
