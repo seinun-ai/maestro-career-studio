@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 871,
-    "total_loc": 273985,
-    "src_loc": 73617,
-    "test_loc": 200368,
+    "modules": 904,
+    "total_loc": 283375,
+    "src_loc": 76150,
+    "test_loc": 207225,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -19,19 +19,27 @@
       },
       {
         "file": "tests/test_frontend_jobs_honest_words.py",
-        "line": 865,
-        "name": "test_step_four_applies_with_the_cover_letter_beside_it_and_the_details_under_it",
-        "complexity": 48,
+        "line": 886,
+        "name": "test_step_four_is_one_lead_card_with_the_details_folded",
+        "complexity": 64,
         "params": 0,
-        "lines": 53
+        "lines": 76
       },
       {
         "file": "mcp_server/tests/test_server.py",
-        "line": 644,
+        "line": 645,
         "name": "test_audit_one_sentence_docstring_fixes",
         "complexity": 47,
         "params": 0,
         "lines": 59
+      },
+      {
+        "file": "app/services/proposals.py",
+        "line": 217,
+        "name": "transition",
+        "complexity": 43,
+        "params": 9,
+        "lines": 89
       },
       {
         "file": "tests/browser/test_fill_end_to_end.py",
@@ -48,14 +56,6 @@
         "complexity": 40,
         "params": 0,
         "lines": 63
-      },
-      {
-        "file": "app/services/proposals.py",
-        "line": 216,
-        "name": "transition",
-        "complexity": 40,
-        "params": 8,
-        "lines": 80
       },
       {
         "file": "app/services/explore_build_areas.py",
@@ -123,11 +123,19 @@
       },
       {
         "file": "tests/test_frontend_jobs_honest_words.py",
-        "line": 920,
+        "line": 964,
         "name": "test_step_three_change_rows_read_and_revert_one_by_one",
         "complexity": 35,
         "params": 0,
         "lines": 40
+      },
+      {
+        "file": "tests/test_search_summary.py",
+        "line": 106,
+        "name": "test_summary_counts_from_events",
+        "complexity": 35,
+        "params": 1,
+        "lines": 53
       },
       {
         "file": "app/services/kb_consolidation.py",
@@ -170,8 +178,16 @@
         "lines": 152
       },
       {
+        "file": "tests/test_frontend_jobs_honest_words.py",
+        "line": 847,
+        "name": "test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions",
+        "complexity": 31,
+        "params": 0,
+        "lines": 37
+      },
+      {
         "file": "app/services/tailoring_session.py",
-        "line": 1372,
+        "line": 1373,
         "name": "tailor",
         "complexity": 31,
         "params": 4,
@@ -184,22 +200,6 @@
         "complexity": 31,
         "params": 6,
         "lines": 137
-      },
-      {
-        "file": "tests/test_frontend_jobs_honest_words.py",
-        "line": 828,
-        "name": "test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions",
-        "complexity": 29,
-        "params": 0,
-        "lines": 35
-      },
-      {
-        "file": "tests/test_explore_router.py",
-        "line": 218,
-        "name": "test_overview_aggregates",
-        "complexity": 29,
-        "params": 2,
-        "lines": 46
       },
       {
         "file": "scripts/health_golden.py",
@@ -219,7 +219,7 @@
       },
       {
         "file": "app/services/proposals.py",
-        "line": 541,
+        "line": 551,
         "name": "get_final_review",
         "complexity": 29,
         "params": 2,
@@ -234,12 +234,12 @@
         "lines": 42
       },
       {
-        "file": "tests/test_frontend_jobs_honest_words.py",
-        "line": 317,
-        "name": "test_step_two_has_one_filled_button",
+        "file": "tests/test_explore_router.py",
+        "line": 243,
+        "name": "test_overview_aggregates",
         "complexity": 28,
-        "params": 0,
-        "lines": 51
+        "params": 2,
+        "lines": 47
       },
       {
         "file": "scripts/live_provider_check.py",
@@ -259,7 +259,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1143,
+        "line": 1144,
         "name": "_live_text_fragments",
         "complexity": 28,
         "params": 1,
@@ -306,6 +306,14 @@
         "lines": 36
       },
       {
+        "file": "tests/test_frontend_visual_surfaces.py",
+        "line": 265,
+        "name": "test_wave5_review_one_glyph_per_meaning_and_honest_marks",
+        "complexity": 26,
+        "params": 0,
+        "lines": 31
+      },
+      {
         "file": "app/services/career_kb.py",
         "line": 137,
         "name": "compose_context",
@@ -330,6 +338,14 @@
         "lines": 42
       },
       {
+        "file": "tests/test_frontend_jobs_honest_words.py",
+        "line": 320,
+        "name": "test_step_two_has_one_filled_button",
+        "complexity": 25,
+        "params": 0,
+        "lines": 47
+      },
+      {
         "file": "tests/test_extension_panel.py",
         "line": 1689,
         "name": "test_a_loaded_page_renders_as_itself_from_end_to_end",
@@ -339,7 +355,7 @@
       },
       {
         "file": "tests/test_frontend_visual_surfaces.py",
-        "line": 131,
+        "line": 136,
         "name": "test_gap_actions_carry_icons_and_explain_once",
         "complexity": 25,
         "params": 0,
@@ -392,25 +408,9 @@
         "complexity": 24,
         "params": 0,
         "lines": 73
-      },
-      {
-        "file": "tests/test_setup_connect.py",
-        "line": 20,
-        "name": "test_connect_composes_every_client_for_the_full_profile",
-        "complexity": 24,
-        "params": 2,
-        "lines": 37
-      },
-      {
-        "file": "tests/test_frontend_visual_surfaces.py",
-        "line": 254,
-        "name": "test_wave5_review_one_glyph_per_meaning_and_honest_marks",
-        "complexity": 24,
-        "params": 0,
-        "lines": 26
       }
     ],
-    "hotspot_count": 960,
+    "hotspot_count": 1048,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -499,8 +499,8 @@
       }
     ],
     "error_masking_count": 17,
-    "internal_import_edges": 3894,
-    "imports_per_module": 4.47,
+    "internal_import_edges": 4109,
+    "imports_per_module": 4.55,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -530,8 +530,8 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.45,
-    "duplicated_lines": 403,
+    "percentage": 0.43,
+    "duplicated_lines": 399,
     "clones": 46,
     "allowlisted_clones": 0,
     "worst_files": [
@@ -576,10 +576,6 @@
         3
       ],
       [
-        "app/schemas/job.py",
-        3
-      ],
-      [
         "app/services/kb_ingest.py",
         3
       ],
@@ -593,6 +589,10 @@
       ],
       [
         "app/routers/career_kb.py",
+        2
+      ],
+      [
+        "app/routers/jobs.py",
         2
       ]
     ]
@@ -649,7 +649,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "960 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
+      "detail": "1048 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -662,16 +662,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 273985,
-    "src_loc": 73617,
-    "test_loc": 200368,
-    "modules": 871,
+    "total_loc": 283375,
+    "src_loc": 76150,
+    "test_loc": 207225,
+    "modules": 904,
     "orphan_loc": 0,
-    "duplication_pct": 0.45,
-    "duplicated_lines": 403,
+    "duplication_pct": 0.43,
+    "duplicated_lines": 399,
     "clone_count": 46,
-    "complexity_hotspots": 960,
+    "complexity_hotspots": 1048,
     "error_masking": 17,
-    "imports_per_module": 4.47
+    "imports_per_module": 4.55
   }
 }
