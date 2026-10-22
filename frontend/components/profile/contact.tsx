@@ -11,7 +11,7 @@ import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCardAction } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
-import { groupCount, groupFields, groupValues, isBlank, withField } from "@/lib/autofill-options";
+import { groupCount, groupFields, groupValues, isBlank, withField, type Profile } from "@/lib/autofill-options";
 import { contactAdditions, hasFillableContactDetails } from "@/lib/contact-from-history";
 import { couldnt } from "@/lib/error-text";
 import type { KBProfileOut } from "@/lib/types";
@@ -58,8 +58,12 @@ function ContactCard() {
   );
 }
 
-function ContactEditor() {
-  const { profile, update, saveState } = useAutofillProfile();
+/**
+ * Fill from career history: the blank contact fields filled from your career history's contact block, never
+ * over an answer you gave. Profile's Contact and Setup's Form answers both offer it, each with its own
+ * `update`. While career history has no contact details, `resumeDisabledReason` says why.
+ */
+export function useFillFromResume(profile: Profile, update: (next: (current: Profile) => Profile) => void) {
   const kbProfile = useCareerContact();
   const [isFillingFromResume, setIsFillingFromResume] = useState(false);
   const fillHintId = useId();
@@ -82,7 +86,7 @@ function ContactEditor() {
         return;
       }
       // Read again from the newest answers: a field typed while career history loaded is yours, and stays.
-      update(SURFACE, (current) => {
+      update((current) => {
         const personal = groupValues(current, "personal");
         return { ...current, personal: { ...personal, ...contactAdditions(personal, contact) } };
       });
@@ -94,28 +98,43 @@ function ContactEditor() {
     }
   };
 
+  return { contactReady, resumeDisabledReason, fillHintId, isFillingFromResume, fillFromResume };
+}
+
+/** Its button. It reads career history (GET /api/kb/profile), and says so. Disabled, it keeps focus and is
+ *  described by `fillHintId`: the reason is text beside it, not a hover. */
+export function FillFromResumeButton({ fill }: { fill: ReturnType<typeof useFillFromResume> }) {
+  const { contactReady, fillHintId, isFillingFromResume, fillFromResume } = fill;
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      focusableWhenDisabled
+      disabled={!contactReady || isFillingFromResume}
+      aria-describedby={contactReady ? undefined : fillHintId}
+      className="data-disabled:pointer-events-none data-disabled:opacity-50"
+      onClick={fillFromResume}
+    >
+      {isFillingFromResume ? "Filling…" : "Fill from career history"}
+    </Button>
+  );
+}
+
+function ContactEditor() {
+  const { profile, update, saveState } = useAutofillProfile();
+  const fill = useFillFromResume(profile, (next) => update(SURFACE, next));
+
   return (
     <div className="grid gap-4">
       <SettingCardAction>
         <AutosaveStatus {...saveState(SURFACE)} />
-        {/* It reads career history (GET /api/kb/profile), and says so. */}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          focusableWhenDisabled
-          disabled={!contactReady || isFillingFromResume}
-          aria-describedby={contactReady ? undefined : fillHintId}
-          className="data-disabled:pointer-events-none data-disabled:opacity-50"
-          onClick={fillFromResume}
-        >
-          {isFillingFromResume ? "Filling…" : "Fill from career history"}
-        </Button>
+        <FillFromResumeButton fill={fill} />
       </SettingCardAction>
       {/* A disabled button's reason is text, not a hover. */}
-      {!contactReady ? (
-        <p id={fillHintId} className="text-muted-foreground text-body-small">
-          {resumeDisabledReason}
+      {!fill.contactReady ? (
+        <p id={fill.fillHintId} className="text-muted-foreground text-body-small">
+          {fill.resumeDisabledReason}
         </p>
       ) : null}
       <FieldGrid

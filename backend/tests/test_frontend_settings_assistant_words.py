@@ -335,7 +335,9 @@ def test_fill_from_career_history_says_why_it_waits():
     assert '"Fill from resume"' not in _AUTOFILL
     assert "<TooltipContent>{resumeDisabledReason}</TooltipContent>" not in _AUTOFILL
     assert "aria-describedby={contactReady ? undefined : fillHintId}" in _AUTOFILL
-    assert "<p id={fillHintId}" in _AUTOFILL
+    # Contact and Setup's Form answers share the button (contact.tsx) and each shows the reason as text.
+    assert "<p id={fill.fillHintId}" in _read("components/profile/contact.tsx")
+    assert "<p id={fill.fillHintId}" in _read("components/setup/setup-answers-step.tsx")
     # Race sits in a voluntary group, so its label carries no "(optional)" of its own;
     # it stays optional for readiness (test_autofill_groups_parity.py).
     assert "<Label htmlFor={id} optional={field.optional && !voluntary}>" in _FIELDS

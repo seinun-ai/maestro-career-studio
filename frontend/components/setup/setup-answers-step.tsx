@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, type RefObject } from "react";
 import { Check } from "lucide-react";
-import { toast } from "sonner";
 
 import { useAdoptServed, useSaveAnswers } from "@/components/profile/autofill-profile";
-import { useCareerContact } from "@/components/profile/contact";
+import { FillFromResumeButton, useFillFromResume } from "@/components/profile/contact";
 import { DiversityConsentSwitch, useDiversityConsent } from "@/components/profile/diversity-consent";
 import { FieldGrid } from "@/components/profile/field-control";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
@@ -20,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { apiFetch } from "@/lib/api";
 import {
   RACE_STAYS_YOURS,
   booleanAnswer,
@@ -33,8 +31,6 @@ import {
   staleAnswers,
 } from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
-import { contactAdditions, hasFillableContactDetails } from "@/lib/contact-from-history";
-import { couldnt } from "@/lib/error-text";
 import {
   questionAnswered,
   withDiversityAnswer,
@@ -43,7 +39,7 @@ import {
   withPreference,
 } from "@/lib/setup-answers";
 import { preference, type AutofillProfile, type FormQuestion } from "@/lib/setup-flow";
-import type { EeoConsent, KBProfileOut } from "@/lib/types";
+import type { EeoConsent } from "@/lib/types";
 import { useAutosave } from "@/lib/use-autosave";
 import { cn } from "@/lib/utils";
 
@@ -192,60 +188,18 @@ export function SetupAnswersStep({
   );
 }
 
-/** Your name, email and phone for forms, filled in place from your career history's contact block (blank
- *  fields only, never over an answer you gave). Shown while the email is still blank. */
+/** Your name, email and phone for forms, filled in place from your career history (Profile's Fill from
+ *  career history: blank fields only, never over an answer you gave). Shown while the email is still blank. */
 function ContactFromHistory({ profile, update }: { profile: AutofillProfile; update: Update }) {
-  const kbProfile = useCareerContact();
-  const [filling, setFilling] = useState(false);
-  const reasonId = useId();
+  const fill = useFillFromResume(profile, update);
   if (!isBlank(groupValues(profile, "personal").email)) return null;
-  const ready = hasFillableContactDetails(kbProfile.data?.contact);
-  const reason = kbProfile.isLoading
-    ? "Loading your career history…"
-    : kbProfile.isError
-      ? "Couldn't load your career history."
-      : "Add your contact details to your career history first.";
-
-  const fill = async () => {
-    setFilling(true);
-    try {
-      const { contact } = await apiFetch<KBProfileOut>("/api/kb/profile");
-      const count = Object.keys(contactAdditions(groupValues(profile, "personal"), contact)).length;
-      if (!count) {
-        toast.info("Nothing new to add");
-        return;
-      }
-      // Read again from the newest answers: a field typed while career history loaded stays yours.
-      update((now) => {
-        const personal = groupValues(now, "personal");
-        return { ...now, personal: { ...personal, ...contactAdditions(personal, contact) } };
-      });
-      toast.success(`Filled ${count} ${count === 1 ? "field" : "fields"} from your career history`);
-    } catch (err) {
-      toast.error(couldnt("load your career history", err));
-    } finally {
-      setFilling(false);
-    }
-  };
-
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-medium">
       <span>Your name, email and phone for forms come from your resume.</span>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        focusableWhenDisabled
-        disabled={!ready || filling}
-        aria-describedby={ready ? undefined : reasonId}
-        className="data-disabled:pointer-events-none data-disabled:opacity-50"
-        onClick={fill}
-      >
-        {filling ? "Filling…" : "Fill from career history"}
-      </Button>
-      {!ready ? (
-        <p id={reasonId} className="w-full text-body-small text-muted-foreground">
-          {reason}
+      <FillFromResumeButton fill={fill} />
+      {!fill.contactReady ? (
+        <p id={fill.fillHintId} className="w-full text-body-small text-muted-foreground">
+          {fill.resumeDisabledReason}
         </p>
       ) : null}
     </div>
