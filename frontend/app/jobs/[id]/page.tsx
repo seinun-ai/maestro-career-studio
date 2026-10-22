@@ -1,6 +1,6 @@
 "use client";
 
-import { type MouseEvent, use, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, use, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
@@ -99,6 +99,60 @@ function NothingTailoredYet({ onOpenFit }: { onOpenFit: () => void }) {
         Go to Resume and gaps
       </Button>
     </div>
+  );
+}
+
+/**
+ * The header's lead: Back, then the pair a Jobs row's own morphs into (components/job-morph.tsx), and back. The
+ * loading header draws it from the row a Jobs list holds, so the monogram and title land where they stay.
+ * `children` sit under the title.
+ */
+function JobHeadingLead({
+  jobId,
+  company,
+  title,
+  fromProposals,
+  unmorphed,
+  onBack,
+  children,
+}: {
+  jobId: string;
+  company: string | null;
+  title: string | null;
+  fromProposals: boolean;
+  unmorphed: boolean;
+  onBack: (event: MouseEvent<HTMLAnchorElement>) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <>
+      <IconButton
+        label={fromProposals ? "Back to Agent inbox" : "Back to Jobs"}
+        icon={<ArrowLeft className="size-4" />}
+        size="icon-sm"
+        className="mt-1.5 shrink-0"
+        nativeButton={false}
+        render={
+          <Link
+            href={fromProposals ? "/proposals" : "/applications"}
+            className="text-muted-foreground"
+            onClick={onBack}
+          />
+        }
+      />
+      <JobMorph jobId={jobId} part="monogram" off={unmorphed}>
+        <CompanyMonogram name={company} className="mt-0.5 size-10 text-body-large" />
+      </JobMorph>
+      <div className="min-w-0 grow basis-[16rem]">
+        {/* Wraps, never truncates: at 375 a long title lost its end, and this is the one place it shows. */}
+        <JobMorph jobId={jobId} part="title" off={unmorphed}>
+          <h1 className="text-title-large font-medium tracking-tight break-words">
+            {title ?? "Untitled role"}
+          </h1>
+        </JobMorph>
+        {children}
+      </div>
+    </>
   );
 }
 
@@ -321,26 +375,14 @@ export default function JobDetailPage({
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {known ? (
             <header className="flex flex-wrap items-start gap-3">
-              <IconButton
-                label={fromProposals ? "Back to Agent inbox" : "Back to Jobs"}
-                icon={<ArrowLeft className="size-4" />}
-                size="icon-sm"
-                className="mt-1.5 shrink-0"
-                nativeButton={false}
-                render={
-                  <Link href={fromProposals ? "/proposals" : "/applications"} className="text-muted-foreground" onClick={backClick} />
-                }
+              <JobHeadingLead
+                jobId={id}
+                company={known.company}
+                title={known.title}
+                fromProposals={fromProposals}
+                unmorphed={unmorphed}
+                onBack={backClick}
               />
-              <JobMorph jobId={id} part="monogram" off={unmorphed}>
-                <CompanyMonogram name={known.company} className="mt-0.5 size-10 text-body-large" />
-              </JobMorph>
-              <div className="min-w-0 grow basis-[16rem]">
-                <JobMorph jobId={id} part="title" off={unmorphed}>
-                  <h1 className="text-title-large font-medium tracking-tight break-words">
-                    {known.title ?? "Untitled role"}
-                  </h1>
-                </JobMorph>
-              </div>
             </header>
           ) : (
             <Skeleton className="animate-shimmer h-16 w-2/3" />
@@ -467,34 +509,14 @@ export default function JobDetailPage({
             to width:0 — and `truncate` hides an element of zero width entirely,
             so the page rendered with no title at all below ~600px. */}
         <header className="flex flex-wrap items-start gap-3">
-          <IconButton
-            label={fromProposals ? "Back to Agent inbox" : "Back to Jobs"}
-            icon={<ArrowLeft className="size-4" />}
-            size="icon-sm"
-            className="mt-1.5 shrink-0"
-            nativeButton={false}
-            render={
-              <Link
-                href={fromProposals ? "/proposals" : "/applications"}
-                className="text-muted-foreground"
-                onClick={backClick}
-              />
-            }
-          />
-          {/* The pair a Jobs row's own morphs into (components/job-morph.tsx), and back. */}
-          <JobMorph jobId={id} part="monogram" off={unmorphed}>
-            <CompanyMonogram
-              name={job.company}
-              className="mt-0.5 size-10 text-body-large"
-            />
-          </JobMorph>
-          <div className="min-w-0 grow basis-[16rem]">
-            {/* Wraps, never truncates: at 375 a long title lost its end, and this is the one place it shows. */}
-            <JobMorph jobId={id} part="title" off={unmorphed}>
-              <h1 className="text-title-large font-medium tracking-tight break-words">
-                {job.title ?? "Untitled role"}
-              </h1>
-            </JobMorph>
+          <JobHeadingLead
+            jobId={id}
+            company={job.company}
+            title={job.title}
+            fromProposals={fromProposals}
+            unmorphed={unmorphed}
+            onBack={backClick}
+          >
             <p className="text-muted-foreground truncate text-body-medium" title={metaLine}>
               {metaLine}
             </p>
@@ -505,7 +527,7 @@ export default function JobDetailPage({
               </p>
             ) : null}
             {ownership.mark ? <div className="mt-2"><JobOwnershipMark jobId={id} ownership={job.ownership} /></div> : null}
-          </div>
+          </JobHeadingLead>
           <div ref={actionsRef} className="mt-1 ml-auto flex flex-wrap items-center justify-end gap-2">
             {pill ? (
               <Badge

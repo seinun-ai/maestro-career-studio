@@ -259,7 +259,10 @@ def test_no_animation_starts_from_a_key_handler():
     assert "if (e.detail === 0) flushSync(() => setUnmorphed(jobId));" in row
     page = _src("app/jobs/[id]/page.tsx")
     assert "if (event.detail === 0) flushSync(() => setUnmorphed(true));" in page
-    assert page.count("onClick={backClick}") == 2 and page.count("off={unmorphed}") == 4
+    # Both headers (loading and loaded) are one JobHeadingLead: its Back takes the handler, both morphs the flag.
+    lead = page[page.index("function JobHeadingLead(") : page.index("\n}\n", page.index("function JobHeadingLead("))]
+    assert lead.count("onClick={onBack}") == 1 and lead.count("off={unmorphed}") == 2
+    assert page.count("onBack={backClick}") == 2 and page.count("unmorphed={unmorphed}") == 2
 
 
 # --- a :root token is not a utility (docs/frontend-conventions.md, "Motion budget") ----------------------------
