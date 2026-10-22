@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 
+import { useAdoptServed, useSaveAnswers } from "@/components/profile/autofill-profile";
 import { useCareerContact } from "@/components/profile/contact";
 import { DiversityConsentSwitch, useDiversityConsent } from "@/components/profile/diversity-consent";
 import { FieldGrid } from "@/components/profile/field-control";
@@ -43,7 +43,7 @@ import {
   withPreference,
 } from "@/lib/setup-answers";
 import { preference, type AutofillProfile, type FormQuestion } from "@/lib/setup-flow";
-import type { EeoConsent, KBProfileOut, SettingEnvelope } from "@/lib/types";
+import type { EeoConsent, KBProfileOut } from "@/lib/types";
 import { useAutosave } from "@/lib/use-autosave";
 import { cn } from "@/lib/utils";
 
@@ -121,30 +121,11 @@ export function SetupAnswersStep({
   onDiversity: (choice: DiversityChoice) => void;
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
-  const qc = useQueryClient();
-  const save = useMutation({
-    mutationFn: (next: AutofillProfile) =>
-      apiFetch<SettingEnvelope<AutofillProfile>>("/api/settings/autofill", {
-        method: "PUT",
-        body: JSON.stringify({ value: next }),
-      }),
-    onSuccess: (result) => {
-      qc.setQueryData(["settings", "autofill"], result);
-      void qc.invalidateQueries({ queryKey: ["setup-status"] });
-    },
-    onError: (err: Error) => toast.error(couldnt("save your answers", err)),
-  });
-  // Each country's legacy pair read as typed answers, as Profile edits them.
+  // Saved as Profile saves: each country's legacy pair read as typed answers, and a newer copy (the Companion
+  // learned an answer while this tab was away) taken only while every edit is on the server.
+  const save = useSaveAnswers();
   const answers = useAutosave<AutofillProfile>(profileForEditing(profile), (next) => save.mutateAsync(next));
-  // A newer copy (the Companion learned an answer while this tab was away) is taken only while every edit is
-  // on the server, as Profile does: the next save carries it rather than erasing it.
-  const seen = useRef(profile);
-  const { adopt } = answers;
-  useEffect(() => {
-    if (profile === seen.current) return;
-    seen.current = profile;
-    adopt(profileForEditing(profile));
-  }, [profile, adopt]);
+  useAdoptServed(profile, answers.adopt);
   const current = questions[question];
   const questionRef = useRef<HTMLHeadingElement>(null);
   const shown = useRef(question);

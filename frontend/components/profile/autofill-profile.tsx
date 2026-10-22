@@ -24,21 +24,12 @@ type AutofillEditing = {
 
 const AutofillContext = createContext<AutofillEditing | null>(null);
 
-/**
- * The answers for job forms, held once for every Profile editor that changes them (Contact, Work permits,
- * Start and pay, Education, Languages, Your own questions, the Diversity and Eligibility folds, Next up).
- * They save as you go: one write in flight and only the newest queued (`useAutosave`), each write the
- * whole profile without the one-set `work_auth` view, so the server keeps the per-country map
- * (`forSaving`). No toast on a save, a toast on a failure. Each editor shows the status of its own newest
- * edit (`lib/save-surfaces.ts`): Saving until a write that carries it lands, Not saved if the last one
- * failed, and nothing for an editor with no edit waiting, so two open editors never both announce one save
- * and neither says Saved before its edit is on the server. A refetch that brings another writer's change
- * (the Companion's pause row learns answers into this profile; `autofillQuery` reads again on focus) is
- * taken only while every edit is already on the server (`adopt`).
- */
-export function AutofillProfileProvider({ served, children }: { served: Profile; children: ReactNode }) {
+/** `PUT /api/settings/autofill`: the whole profile without the one-set `work_auth` view (`forSaving`), the
+ *  read it returns cached and readiness refetched. No toast on a save, a toast on a failure. Profile's
+ *  editors and Setup's Form answers both save through it. */
+export function useSaveAnswers() {
   const qc = useQueryClient();
-  const save = useMutation({
+  return useMutation({
     mutationFn: (next: Profile) =>
       apiFetch<SettingEnvelope<Profile>>("/api/settings/autofill", {
         method: "PUT",
@@ -50,6 +41,33 @@ export function AutofillProfileProvider({ served, children }: { served: Profile;
     },
     onError: (err: Error) => toast.error(couldnt("save your answers", err)),
   });
+}
+
+/** A refetch that brings another writer's change (the Companion's pause row learns answers into this profile;
+ *  `autofillQuery` reads again on focus) is taken only while every edit is already on the server (`adopt`):
+ *  the next save carries it rather than erasing it. */
+export function useAdoptServed(served: Profile, adopt: (next: Profile) => void) {
+  const seen = useRef(served);
+  useEffect(() => {
+    if (served === seen.current) return;
+    seen.current = served;
+    adopt(profileForEditing(served));
+  }, [served, adopt]);
+}
+
+/**
+ * The answers for job forms, held once for every Profile editor that changes them (Contact, Work permits,
+ * Start and pay, Education, Languages, Your own questions, the Diversity and Eligibility folds, Next up).
+ * They save as you go: one write in flight and only the newest queued (`useAutosave`), each write the
+ * whole profile without the one-set `work_auth` view, so the server keeps the per-country map
+ * (`forSaving`). No toast on a save, a toast on a failure. Each editor shows the status of its own newest
+ * edit (`lib/save-surfaces.ts`): Saving until a write that carries it lands, Not saved if the last one
+ * failed, and nothing for an editor with no edit waiting, so two open editors never both announce one save
+ * and neither says Saved before its edit is on the server. Another writer's change is taken as
+ * `useAdoptServed` says.
+ */
+export function AutofillProfileProvider({ served, children }: { served: Profile; children: ReactNode }) {
+  const save = useSaveAnswers();
   const [initial] = useState(() => profileForEditing(served));
   // Which editors' edits are on the server: state to draw from, and its newest value for the write path.
   const [saves, setSaves] = useState<SurfaceSaves>(NO_EDITS);
@@ -68,14 +86,7 @@ export function AutofillProfileProvider({ served, children }: { served: Profile;
   });
   // A failed write leaves answers on screen the server lacks.
   useLeaveGuard(answers.failed);
-
-  const seen = useRef(served);
-  const { adopt } = answers;
-  useEffect(() => {
-    if (served === seen.current) return;
-    seen.current = served;
-    adopt(profileForEditing(served));
-  }, [served, adopt]);
+  useAdoptServed(served, answers.adopt);
 
   const editing: AutofillEditing = {
     profile: answers.value,

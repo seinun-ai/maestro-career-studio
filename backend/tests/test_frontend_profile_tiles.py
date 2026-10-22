@@ -156,9 +156,12 @@ def test_an_open_page_reads_the_answers_again_when_you_come_back():
     ]
     assert others == [], others
     provider = _src("components/profile/autofill-profile.tsx")
-    assert "adopt(profileForEditing(served));" in provider
+    adopt = _between(provider, "export function useAdoptServed(", "\n}\n")
+    assert "if (served === seen.current) return;" in adopt and "adopt(profileForEditing(served));" in adopt
+    # Profile's provider and Setup's Form answers both take a newer copy through it, and save the same way.
+    assert "useAdoptServed(served, answers.adopt);" in provider
     setup = _src("components/setup/setup-answers-step.tsx")
-    assert "if (profile === seen.current) return;" in setup and "adopt(profileForEditing(profile));" in setup
+    assert "useAdoptServed(profile, answers.adopt);" in setup and "const save = useSaveAnswers();" in setup
 
 
 def test_every_profile_editor_stays_mounted_and_the_persona_keeps_its_save():
