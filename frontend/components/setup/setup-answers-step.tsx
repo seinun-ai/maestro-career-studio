@@ -206,17 +206,9 @@ function ContactFromHistory({ profile, update }: { profile: AutofillProfile; upd
   );
 }
 
-function Question({
-  question,
-  headingRef,
-  profile,
-  consent,
-  update,
-  advance,
-  diversity,
-  onDiversity,
-}: {
-  question: FormQuestion;
+/** What every question card is handed: the heading that takes focus, the answers and how to change them, how
+ *  to move on, and the diversity consent and choice. */
+type QuestionProps = {
   headingRef: RefObject<HTMLHeadingElement | null>;
   profile: AutofillProfile;
   consent: EeoConsent;
@@ -224,7 +216,10 @@ function Question({
   advance: () => void;
   diversity: DiversityChoice;
   onDiversity: (choice: DiversityChoice) => void;
-}) {
+};
+
+function Question({ question, ...props }: QuestionProps & { question: FormQuestion }) {
+  const { headingRef, profile, update, advance } = props;
   const titleId = useId();
   const noticeId = useId();
   if (question.kind === "permit") {
@@ -282,18 +277,7 @@ function Question({
       </div>
     );
   }
-  return (
-    <DiversityQuestion
-      countries={question.countries}
-      headingRef={headingRef}
-      profile={profile}
-      consent={consent}
-      update={update}
-      advance={advance}
-      diversity={diversity}
-      onDiversity={onDiversity}
-    />
-  );
+  return <DiversityQuestion countries={question.countries} {...props} />;
 }
 
 /**
@@ -313,16 +297,7 @@ function DiversityQuestion({
   advance,
   diversity,
   onDiversity,
-}: {
-  countries: string[];
-  headingRef: RefObject<HTMLHeadingElement | null>;
-  profile: AutofillProfile;
-  consent: EeoConsent;
-  update: Update;
-  advance: () => void;
-  diversity: DiversityChoice;
-  onDiversity: (choice: DiversityChoice) => void;
-}) {
+}: QuestionProps & { countries: string[] }) {
   const titleId = useId();
   const { pending, setEeoConsentEnabled } = useDiversityConsent(consent);
   const pick = async (choice: "answer" | "decline") => {
