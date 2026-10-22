@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 904,
-    "total_loc": 283375,
-    "src_loc": 76150,
-    "test_loc": 207225,
+    "modules": 906,
+    "total_loc": 284355,
+    "src_loc": 76625,
+    "test_loc": 207730,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -27,7 +27,7 @@
       },
       {
         "file": "mcp_server/tests/test_server.py",
-        "line": 645,
+        "line": 648,
         "name": "test_audit_one_sentence_docstring_fixes",
         "complexity": 47,
         "params": 0,
@@ -410,7 +410,7 @@
         "lines": 73
       }
     ],
-    "hotspot_count": 1048,
+    "hotspot_count": 1051,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -499,7 +499,7 @@
       }
     ],
     "error_masking_count": 17,
-    "internal_import_edges": 4109,
+    "internal_import_edges": 4123,
     "imports_per_module": 4.55,
     "entry_points_used": [
       "app.main",
@@ -531,7 +531,7 @@
       "mode": "weak"
     },
     "percentage": 0.43,
-    "duplicated_lines": 399,
+    "duplicated_lines": 398,
     "clones": 46,
     "allowlisted_clones": 0,
     "worst_files": [
@@ -649,7 +649,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "1048 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
+      "detail": "1051 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -662,15 +662,15 @@
     }
   ],
   "metrics": {
-    "total_loc": 283375,
-    "src_loc": 76150,
-    "test_loc": 207225,
-    "modules": 904,
+    "total_loc": 284355,
+    "src_loc": 76625,
+    "test_loc": 207730,
+    "modules": 906,
     "orphan_loc": 0,
     "duplication_pct": 0.43,
-    "duplicated_lines": 399,
+    "duplicated_lines": 398,
     "clone_count": 46,
-    "complexity_hotspots": 1048,
+    "complexity_hotspots": 1051,
     "error_masking": 17,
     "imports_per_module": 4.55
   }
