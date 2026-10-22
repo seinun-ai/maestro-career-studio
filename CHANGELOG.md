@@ -163,7 +163,8 @@ work-permit answers for each country you apply in.
   the cover letter and the application questions. The job description, what was submitted and the
   job's dates and details fold away below it. The header reads "Company · Place · Mode · pay"; pay in
   another currency shows the posted amount under it, and pay whose post named no currency says how it
-  was read ("Pay read as Canadian dollars, job is in Canada").
+  was read when the job is in another country than where you live ("Pay read as Canadian dollars, job
+  is in Canada").
 - **Calmer chart colours.** Charts use six series near one lightness (blue, orange, teal, violet,
   ochre, slate) with no red or green, so no series reads as good or bad, and each stays readable on its
   card in light and dark.
@@ -280,8 +281,8 @@ work-permit answers for each country you apply in.
 - **Working hours are not pay.** "40 hours per week" no longer reads as an hourly rate of 40: an
   hourly figure needs a currency mark or a word such as pay or rate beside it.
 - **A bare "$" takes the job's country.** A Toronto job's "$80,000" is Canadian dollars, not US
-  dollars. With no country it is your home currency, and either way the job notes the currency was
-  assumed.
+  dollars. With no country it is your home currency. A job in another country than where you live
+  says what its pay was read as.
 - **The Score breakdown's arrow turns** as it opens and closes, instead of jumping.
 
 ## [0.11.1] — 2026-10-16

@@ -28,12 +28,22 @@ function currencyWords(code: string): string {
 }
 
 /**
- * The header's line under a pay figure whose currency the posting did not state (`salary_currency_assumed`, a bare
- * "$" included): what it was read as and why, from data alone ("Pay read as Canadian dollars, job is in Canada").
- * Capture takes the job's country's currency, else the home one (backend `routers/jobs._salary_currency_for`), so
- * `country` is the job's country by name, or null when the job names none.
+ * Whether the header explains a pay figure whose currency the posting did not state: only for a job in another
+ * country than where you live (owner, 2026-10-22). Capture reads such pay as the job's country's currency, else the
+ * home one (backend `routers/jobs._salary_currency_for`), so a job at home or one naming no country was read as your
+ * own currency and the line would only add noise. `home` is the home market's ISO code: null for a market with no
+ * country, undefined until the setting loads (then nothing shows, so the line never flashes in and out).
  */
-export function assumedCurrencyLine(currency: string, country: string | null): string {
-  const words = currencyWords(currency);
-  return country ? `Pay read as ${words}, job is in ${country}` : `Pay read as ${words}, your home currency`;
+export function showsAssumedCurrency(job: string | null | undefined, home: string | null | undefined): boolean {
+  if (!job || home === undefined) return false;
+  return job.toUpperCase() !== home?.toUpperCase();
+}
+
+/**
+ * The header's line under a pay figure whose currency the posting did not state (`salary_currency_assumed`, a bare
+ * "$" included) when `showsAssumedCurrency` says so: what it was read as and why ("Pay read as Canadian dollars, job
+ * is in Canada"). `country` is the job's country by name.
+ */
+export function assumedCurrencyLine(currency: string, country: string): string {
+  return `Pay read as ${currencyWords(currency)}, job is in ${country}`;
 }

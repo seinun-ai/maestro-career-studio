@@ -63,6 +63,7 @@ import { ScoreBar } from "@/components/visual/score-bar";
 import { useBaseResumeColor } from "@/hooks/use-base-resume-label";
 import { useCachedJobHeading } from "@/hooks/use-cached-job-heading";
 import { useJobSteps } from "@/hooks/use-job-steps";
+import { useHomeCountry } from "@/hooks/use-market";
 import { useMoney } from "@/hooks/use-money";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
@@ -71,7 +72,7 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { headerProposalPill, historyStatusOf, proposalHasContent } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
-import { assumedCurrencyLine, jobMetaLine } from "@/lib/job-meta";
+import { assumedCurrencyLine, jobMetaLine, showsAssumedCurrency } from "@/lib/job-meta";
 import { answersSummary } from "@/lib/filled-answers";
 import { formatShortDate } from "@/lib/format-date";
 import { formatPay, payLine, periodWords } from "@/lib/money";
@@ -249,6 +250,7 @@ export default function JobDetailPage({
   const { proposalQuery, baseName, scoreShown, standing, steps, jobLine, draft } = useJobSteps(id, data);
   const colorOf = useBaseResumeColor();
   const money = useMoney();
+  const homeCountry = useHomeCountry();
   const scoreResume = scoreShown?.tailored ? application?.base_resume ?? "" : scoreShown?.targetId ?? "";
   const proposalId = data?.job.proposal_id ?? null;
   // The receipt's query, shared with What was submitted's own: its fold counts the answers once they are in.
@@ -411,8 +413,9 @@ export default function JobDetailPage({
       ? `${pay.posted}${periodWords(pay.postedPeriod) ? ` ${periodWords(pay.postedPeriod)}` : ""} as posted`
       : null;
   const assumedPay =
-    pay && job.salary_currency_assumed && job.salary_currency
-      ? assumedCurrencyLine(job.salary_currency, job.country_code ? countryName(job.country_code) : null)
+    pay && job.salary_currency_assumed && job.salary_currency && job.country_code
+    && showsAssumedCurrency(job.country_code, homeCountry)
+      ? assumedCurrencyLine(job.salary_currency, countryName(job.country_code))
       : null;
 
   const proposalStatus = job.proposal_status ?? null;
