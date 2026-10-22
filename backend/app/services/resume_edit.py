@@ -236,17 +236,21 @@ def _apply_replace_skills_group(resume: dict[str, Any], op: ReplaceSkillsGroup) 
 
 
 _SKILL_TERM_SPLIT = re.compile(r"[(),;]")
+_SKILL_HEAD_GROUP = re.compile(r"([^(),;]+?)\s*\(([^()]*)\)")
 
 
 def _skill_terms(items: list[Any]) -> set[str]:
     """Every term a skills line already names, casefolded: each item whole, and each part of it split at
-    parentheses, commas and semicolons, so "AWS (SageMaker, EKS, S3)" names AWS, SageMaker, EKS and S3 too.
-    A slash or a space joins one term ("CI/CD", "model monitoring")."""
+    parentheses, commas and semicolons, so "AWS (SageMaker, EKS, S3)" names AWS, SageMaker, EKS and S3 too,
+    and each member joined to its head ("AWS SageMaker", the job's own wording). A slash or a space joins one
+    term ("CI/CD", "model monitoring")."""
     terms: set[str] = set()
     for item in items:
         text = " ".join(str(item).split()).casefold()
         terms.add(text)
         terms.update(part.strip() for part in _SKILL_TERM_SPLIT.split(text) if part.strip())
+        for head, members in _SKILL_HEAD_GROUP.findall(text):
+            terms.update(f"{head.strip()} {m.strip()}" for m in re.split(r"[,;]", members) if m.strip())
     return terms
 
 

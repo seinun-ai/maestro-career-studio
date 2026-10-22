@@ -279,6 +279,8 @@ work-permit answers for each country you apply in.
 - **Job market counts each value once.** "Hybrid" and "hybrid ", or "USA" and "United States", are
   one bar, the Country filter lists each country once, and a job that names no country reads "Not
   stated".
+- **"AWS SageMaker" is not added to a line that already says "AWS (SageMaker, EKS, S3)".** The fix for
+  #50 caught "AWS" and "SageMaker" on their own; the job's joined wording now counts as named too.
 - **The job header shows its pay again.** Beside a long resume name the header's line of facts was cut
   short and lost the pay at its end; it now wraps, and a work mode the location already names ("Remote
   (United States) · Remote") shows once, in the header and the Agent inbox.
