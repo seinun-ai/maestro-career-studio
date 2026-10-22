@@ -163,19 +163,24 @@ def test_repair_proxy_env_leaves_a_clean_env_alone(monkeypatch, caplog):
     assert caplog.records == []
 
 
+# The premise is httpx's own: it rejects the bracketed entry. The OpenAI SDK used to fail the same way (2.x
+# builds an httpx client); 3.x builds on its own httpx fork, which accepts it. Either way the SDK, a plain
+# client and a child process all build after the repair.
 def test_after_the_repair_the_openai_sdk_and_a_child_process_build_their_clients():
     code = (
         "import subprocess, sys\n"
+        "import httpx\n"
         "from openai import OpenAI\n"
         "from app.services import http_client\n"
         "try:\n"
-        "    OpenAI(api_key='x')\n"
-        "except Exception as exc:\n"
-        "    assert type(exc).__name__ == 'InvalidURL', exc\n"
+        "    httpx.Client()\n"
+        "except httpx.InvalidURL:\n"
+        "    pass\n"
         "else:\n"
-        "    raise SystemExit('the premise failed: the SDK accepted the bad entry')\n"
+        "    raise SystemExit('the premise failed: httpx accepted the bad entry')\n"
         "http_client.repair_proxy_env()\n"
         "OpenAI(api_key='x')\n"
+        "httpx.Client()\n"
         "subprocess.run([sys.executable, '-c', 'import httpx; httpx.Client()'], check=True)\n")
     result = _run(code, {"NO_PROXY": BAD, "no_proxy": BAD})
     assert result.returncode == 0, result.stderr[-800:]
