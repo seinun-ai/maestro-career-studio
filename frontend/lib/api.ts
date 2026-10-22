@@ -679,6 +679,19 @@ export function setChatCardState(messageId: UUID, status: "applied" | "discarded
   });
 }
 
+/** A failed raw `fetch` (an upload, a stream) as an ApiError: the server's `detail` when its body has one,
+ *  else `fallback`. */
+async function failedResponse(res: Response, fallback: string): Promise<ApiError> {
+  let detail = fallback;
+  try {
+    const body = (await res.json()) as { detail?: string };
+    if (body.detail) detail = body.detail;
+  } catch {
+    // keep default detail
+  }
+  return new ApiError(res.status, detail, null);
+}
+
 export async function uploadChatAttachment(sessionId: UUID, file: File) {
   const form = new FormData();
   form.append("file", file);
@@ -687,14 +700,7 @@ export async function uploadChatAttachment(sessionId: UUID, file: File) {
     body: form,
   });
   if (!res.ok) {
-    let detail = res.status === 413 ? "This file is too large." : "Couldn't upload the file.";
-    try {
-      const body = (await res.json()) as { detail?: string };
-      if (body.detail) detail = body.detail;
-    } catch {
-      // keep default detail
-    }
-    throw new ApiError(res.status, detail, null);
+    throw await failedResponse(res, res.status === 413 ? "This file is too large." : "Couldn't upload the file.");
   }
   return (await res.json()) as import("@/lib/types").ChatAttachmentInfo;
 }
@@ -717,16 +723,7 @@ export async function streamChatMessage(
     body: JSON.stringify({ content, context }),
     signal,
   });
-  if (!res.ok || !res.body) {
-    let detail = "The Assistant couldn't reply. Try again.";
-    try {
-      const body = (await res.json()) as { detail?: string };
-      if (body.detail) detail = body.detail;
-    } catch {
-      // keep default detail
-    }
-    throw new ApiError(res.status, detail, null);
-  }
+  if (!res.ok || !res.body) throw await failedResponse(res, "The Assistant couldn't reply. Try again.");
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
