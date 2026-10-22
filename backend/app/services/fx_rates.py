@@ -195,6 +195,7 @@ def refresh(session: Session, fetch: Fetch | None = None, *, now: datetime | Non
         if _due(_load(session), now):
             try:
                 fetch_now(session, fetch, now=now)
-            except FetchFailed:
-                pass
+            except FetchFailed as exc:
+                # The cache stays in use and the next try waits an hour; say so instead of hiding it.
+                logger.warning("ECB reference rates not refreshed, keeping the cached ones: %s", exc)
         return current(session)
