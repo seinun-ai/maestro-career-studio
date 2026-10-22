@@ -190,11 +190,14 @@ def test_the_rows_ownership_request_is_in_its_pop_up():
     the ⋯ keeps Queue in Agent inbox and Delete, each only for a row this copy can write."""
     comp = _src("components/job-ownership.tsx")
     pop = squash(comp[comp.index("export function JobOwnershipPopover") :])
-    assert '<Button size="xs" variant="outline" pending={busy} onClick={() => act(view.action!)}>' in pop
-    assert "{ACTION_LABEL[view.action]}" in pop
+    # The request and its words, as the header mark draws them (OwnershipRequest).
+    assert "<OwnershipRequest view={view} {...request} />" in pop
+    request = squash(comp[comp.index("function OwnershipRequest(") : comp.index("export function JobOwnershipMark")])
+    assert '<Button size="xs" variant="outline" pending={busy} onClick={() => act(view.action!)}>' in request
+    assert "{ACTION_LABEL[view.action]}" in request
     # A request waiting for the next sync: a dot on the icon, and its words inside.
     assert "{view.pending ? <span className=\"absolute top-1 right-1 size-1.5 rounded-full bg-primary\" aria-hidden=\"true\" /> : null}" in pop
-    assert '{view.pending ? <span role="status" className="text-muted-foreground text-body-small">{REQUEST_QUEUED}</span> : null}' in pop
+    assert '{view.pending ? <span role="status" className="text-muted-foreground text-body-small">{REQUEST_QUEUED}</span> : null}' in request
     assert "OwnershipMenuItem" not in comp and "OwnershipMenuItem" not in _PAGE
     menu = squash(_TABLE[_TABLE.index("<DropdownMenuContent") : _TABLE.index("</DropdownMenuContent>")])
     assert menu.index("Queue in Agent inbox") < menu.index("Delete job")
@@ -209,8 +212,11 @@ def test_the_header_mark_and_the_row_pop_up_share_one_request_state_per_job():
     assert "useIsMutating({ mutationKey: ownershipKey(jobId) }) > 0" in comp
     mark = comp[comp.index("export function JobOwnershipMark") : comp.index("export function JobOwnershipNotice")]
     pop = comp[comp.index("export function JobOwnershipPopover") :]
-    assert "useOwnershipBusy(jobId)" in mark and "pending={busy}" in mark
-    assert "useOwnershipBusy(jobId)" in pop and "pending={busy}" in pop
+    hook = comp[comp.index("function useOwnershipRequest(") : comp.index("function OwnershipRequest(")]
+    assert "useOwnershipBusy(jobId)" in hook
+    assert "pending={busy}" in comp[comp.index("function OwnershipRequest(") : comp.index("export function JobOwnershipMark")]
+    for user in (mark, pop):
+        assert "const request = useOwnershipRequest(jobId);" in user and "<OwnershipRequest view={view} {...request} />" in user
 
 
 def test_the_ownership_slot_is_in_the_design_system():

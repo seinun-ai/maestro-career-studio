@@ -37,11 +37,39 @@ function useOwnershipAction(jobId: string) {
   });
 }
 
-export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownership?: JobOwnership }) {
-  const view = jobOwnershipView(ownership);
+/** Ask to move this job, once per press; `busy` while any request for it is in flight, wherever it started. */
+function useOwnershipRequest(jobId: string) {
   const mutation = useOwnershipAction(jobId);
   const act = useSingleFlight(mutation.mutate);
   const busy = useOwnershipBusy(jobId);
+  return { act, busy };
+}
+
+/** The request's button (Keep it here, Work on it here) and, once one is queued, that it goes at the next sync. */
+function OwnershipRequest({
+  view,
+  act,
+  busy,
+}: {
+  view: ReturnType<typeof jobOwnershipView>;
+  act: (action: OwnershipActionName) => void;
+  busy: boolean;
+}) {
+  return (
+    <>
+      {view.action ? (
+        <Button size="xs" variant="outline" pending={busy} onClick={() => act(view.action!)}>
+          {ACTION_LABEL[view.action]}
+        </Button>
+      ) : null}
+      {view.pending ? <span role="status" className="text-muted-foreground text-body-small">{REQUEST_QUEUED}</span> : null}
+    </>
+  );
+}
+
+export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownership?: JobOwnership }) {
+  const view = jobOwnershipView(ownership);
+  const request = useOwnershipRequest(jobId);
   if (!view.mark) return null;
   // The bot is where your connected agents run, so it wears their glyph; the laptop has its own.
   const Icon = ownership?.owner === "bot" ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop;
@@ -51,12 +79,7 @@ export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownershi
         <Icon className="size-3 shrink-0" aria-hidden="true" />
         {view.mark}
       </span>
-      {view.action ? (
-        <Button size="xs" variant="outline" pending={busy} onClick={() => act(view.action!)}>
-          {ACTION_LABEL[view.action]}
-        </Button>
-      ) : null}
-      {view.pending ? <span role="status" className="text-muted-foreground text-body-small">{REQUEST_QUEUED}</span> : null}
+      <OwnershipRequest view={view} {...request} />
     </div>
   );
 }
@@ -76,9 +99,7 @@ export function JobOwnershipNotice({ ownership }: { ownership?: JobOwnership }) 
  * that request's progress. Nothing to say (your laptop's job, nothing waiting): nothing drawn. */
 export function JobOwnershipPopover({ jobId, ownership }: { jobId: string; ownership?: JobOwnership }) {
   const view = jobOwnershipView(ownership);
-  const mutation = useOwnershipAction(jobId);
-  const act = useSingleFlight(mutation.mutate);
-  const busy = useOwnershipBusy(jobId);
+  const request = useOwnershipRequest(jobId);
   if (!ownershipSays(ownership)) return null;
   const Icon = view.reason ? CONCEPT_ICONS.locked : ownership?.owner === "bot" ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop;
   return (
@@ -99,12 +120,7 @@ export function JobOwnershipPopover({ jobId, ownership }: { jobId: string; owner
       </PopoverTrigger>
       <PopoverContent align="end" className="flex max-w-72 flex-col items-start gap-2">
         <p className="text-body-small">{view.reason ?? view.mark}</p>
-        {view.action ? (
-          <Button size="xs" variant="outline" pending={busy} onClick={() => act(view.action!)}>
-            {ACTION_LABEL[view.action]}
-          </Button>
-        ) : null}
-        {view.pending ? <span role="status" className="text-muted-foreground text-body-small">{REQUEST_QUEUED}</span> : null}
+        <OwnershipRequest view={view} {...request} />
       </PopoverContent>
     </Popover>
   );
