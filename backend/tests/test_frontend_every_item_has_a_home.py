@@ -66,9 +66,10 @@ _PROFILE_FILES: dict[str, tuple[str, ...]] = {
     "Jobs you want": ("components/profile/jobs-you-want.tsx",),
     "How you come across": ("components/profile/how-you-come-across.tsx",),
     "Start and pay": ("components/profile/start-and-pay.tsx",),
-    "Education": ("components/profile/education.tsx",),
-    "Languages": ("components/profile/languages.tsx",),
-    "Your own questions": ("components/profile/own-questions.tsx",),
+    # The three list tiles render their Remove and Add through one list (answer-list.tsx).
+    "Education": ("components/profile/education.tsx", "components/profile/answer-list.tsx"),
+    "Languages": ("components/profile/languages.tsx", "components/profile/answer-list.tsx"),
+    "Your own questions": ("components/profile/own-questions.tsx", "components/profile/answer-list.tsx"),
     "Diversity questions": ("components/profile/diversity.tsx", "components/profile/diversity-consent.tsx"),
     "Eligibility": ("components/profile/eligibility.tsx",),
     # Not a tile: the one provider every answer editor saves through, and the status each one shows.
@@ -82,6 +83,7 @@ _EEO = 'fields={groupFields("eeo")}'
 _ELIGIBILITY = 'const fields = groupFields("eligibility");'
 _PERMITS = ("applyIn.map((key) => {", "workPermitFields(market?.work_auth_vocab)")
 _APPLY_IN = ("frontend/components/profile/country-fields.tsx", "You apply in </span>")
+_ADD = "onClick={() => setEntries([...entries, newEntry()])}"
 
 # (tile or fold, board label, needles)
 _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
@@ -139,7 +141,7 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Education", "GPA", ('{ key: "gpa", label: "GPA" }', "{EDUCATION_FIELDS.map((field) => {")),
     ("Education", "Start year", ('{ key: "start_year", label: "Start year" }', "{EDUCATION_FIELDS.map((field) => {")),
     ("Education", "Graduation year", ('{ key: "end_year", label: "Graduation year" }', "{EDUCATION_FIELDS.map((field) => {")),
-    ("Education", "Add education", ("Add education", "onClick={() => setEducation([...education, {}])}")),
+    ("Education", "Add education", ('addLabel="Add education"', "newEntry={() => ({})}", _ADD)),
     ("Languages", "Language", ('{ key: "language", label: "Language" }', "{LANGUAGE_FIELDS.map((field) => {")),
     # Each level is a select of the words forms offer (LANGUAGE_LEVELS: Basic, Intermediate, Fluent).
     ("Languages", "Reading level",
@@ -151,13 +153,13 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Languages", "Writing level",
      ('{ key: "write", label: "Writing", type: "select", options: [NOT_SET, ...LANGUAGE_LEVELS] }',
       "{LANGUAGE_FIELDS.map((field) => {")),
-    ("Languages", "Add language", ("Add language", "onClick={() => setLanguages([...languages, {}])}")),
+    ("Languages", "Add language", ('addLabel="Add language"', "newEntry={() => ({})}", _ADD)),
     ("Your own questions", "Question and answer", (
         "<Label htmlFor={`af-custom-${i}-question`}>Question</Label>",
         "<Label htmlFor={`af-custom-${i}-answer`}>Answer</Label>",
     )),
     ("Your own questions", "Add question",
-     ("Add question", 'onClick={() => setCustom([...custom, { question: "", answer: "" }])}')),
+     ('addLabel="Add question"', 'newEntry={() => ({ question: "", answer: "" })}', _ADD)),
     # Diversity, folded, with its consent beside the answers it covers (D10).
     ("Diversity questions", "Let the Companion fill these answers",
      ("Let the Companion fill these answers", "<DiversityConsentSwitch")),

@@ -1,19 +1,11 @@
 "use client";
 
-import { useRef } from "react";
-import { Plus } from "lucide-react";
-
+import { AnswerList } from "@/components/profile/answer-list";
 import { useAutofillProfile } from "@/components/profile/autofill-profile";
 import { FieldControl } from "@/components/profile/field-control";
 import { TileCard, type TileView } from "@/components/profile/tile";
 import { useAutofillQuery } from "@/components/profile/use-autofill-query";
-import { AutosaveStatus } from "@/components/settings/autosave-status";
-import { SettingCardAction } from "@/components/settings/setting-card";
-import { RemoveButton } from "@/components/settings/setting-layout";
-import { Button } from "@/components/ui/button";
-import { CardSection } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import {
   LANGUAGE_FIELDS,
   booleanAnswer,
@@ -65,68 +57,46 @@ function LanguagesCard() {
 }
 
 function LanguagesEditor() {
-  const { profile, update, saveState } = useAutofillProfile();
+  const { profile, update } = useAutofillProfile();
   const languages: LanguageEntry[] = Array.isArray(profile.languages) ? profile.languages : [];
   const setLanguages = (next: LanguageEntry[]) =>
     update(SURFACE, (current) => ({ ...current, languages: next }));
-  // A removed language takes its focused Remove with it; focus goes to Add language below the list.
-  const armFocus = useFocusOnNextCommit();
-  const addLanguageRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="grid gap-4">
-      <SettingCardAction>
-        <AutosaveStatus {...saveState(SURFACE)} />
-      </SettingCardAction>
-      <p className="text-muted-foreground text-body-small">
-        Most important first. The first four are used, and the Companion adds a
-        language to a form only when its reading, speaking and writing levels are all set.
-      </p>
-      {languages.map((entry, i) => (
-        <CardSection key={i} className="flex items-start gap-2">
-          <div className="grid flex-1 items-end gap-4 @xl/setting:grid-cols-3">
-            {LANGUAGE_FIELDS.map((field) => {
-              const id = `af-languages-${i}-${field.key}`;
-              return (
-                <div key={field.key} className="grid gap-1.5">
-                  <Label htmlFor={id}>{field.label}</Label>
-                  <FieldControl
-                    id={id}
-                    group="language"
-                    field={field}
-                    value={languageValue(field, entry[field.key as keyof LanguageEntry])}
-                    onChange={(next) =>
-                      setLanguages(
-                        languages.map((entry2, j) =>
-                          j === i ? withAnswer(entry2, field.key, next) : entry2,
-                        ),
-                      )
-                    }
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <RemoveButton
-            label={`Remove language ${i + 1}`}
-            onClick={() => {
-              setLanguages(languages.filter((_, j) => j !== i));
-              armFocus(addLanguageRef);
-            }}
-          />
-        </CardSection>
-      ))}
-      <div>
-        <Button
-          ref={addLanguageRef}
-          variant="outline"
-          size="sm"
-          onClick={() => setLanguages([...languages, {}])}
-        >
-          <Plus className="size-4" />
-          Add language
-        </Button>
-      </div>
-    </div>
+    <AnswerList
+      surface={SURFACE}
+      entries={languages}
+      setEntries={setLanguages}
+      intro={
+        <p className="text-muted-foreground text-body-small">
+          Most important first. The first four are used, and the Companion adds a
+          language to a form only when its reading, speaking and writing levels are all set.
+        </p>
+      }
+      boxed
+      removeLabel={(i) => `Remove language ${i + 1}`}
+      addLabel="Add language"
+      newEntry={() => ({})}
+    >
+      {(entry, i, change) => (
+        <div className="grid flex-1 items-end gap-4 @xl/setting:grid-cols-3">
+          {LANGUAGE_FIELDS.map((field) => {
+            const id = `af-languages-${i}-${field.key}`;
+            return (
+              <div key={field.key} className="grid gap-1.5">
+                <Label htmlFor={id}>{field.label}</Label>
+                <FieldControl
+                  id={id}
+                  group="language"
+                  field={field}
+                  value={languageValue(field, entry[field.key as keyof LanguageEntry])}
+                  onChange={(next) => change(withAnswer(entry, field.key, next))}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </AnswerList>
   );
 }

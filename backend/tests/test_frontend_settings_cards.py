@@ -302,13 +302,16 @@ def test_autofill_removes_are_named_and_hand_focus_to_add():
     education = _read("components/profile/education.tsx")
     questions = _read("components/profile/own-questions.tsx")
     # "Remove education entry" on every row named none of them; a removed row took focus with it.
-    assert "label={`Remove school ${i + 1}`}" in education and "label={`Remove custom question ${i + 1}`}" in questions
-    assert "armFocus(addEducationRef);" in education and "armFocus(addQuestionRef);" in questions
+    assert "removeLabel={(i) => `Remove school ${i + 1}`}" in education
+    assert "removeLabel={(i) => `Remove custom question ${i + 1}`}" in questions
+    # One list renders each tile's rows (answer-list.tsx), so each tile's ref is on its own Add: swapped, a
+    # removed school focused Add question.
+    shell = _read("components/profile/answer-list.tsx")
+    assert "const armFocus = useFocusOnNextCommit();" in shell and "armFocus(addRef);" in shell
+    assert "label={removeLabel(i)}" in shell
+    assert "ref={addRef}" in _button_at(shell, "onClick={() => setEntries([...entries, newEntry()])}")
     for src in (education, questions):
-        assert "const armFocus = useFocusOnNextCommit();" in src
-    # Each ref on its own Add: swapped, a removed school focused Add question.
-    assert "ref={addEducationRef}" in _button_at(education, "onClick={() => setEducation([...education, {}])}")
-    assert "ref={addQuestionRef}" in _button_at(questions, "onClick={() => setCustom([...custom, {")
+        assert "<AnswerList" in src and "useFocusOnNextCommit" not in src
 
 
 def test_languages_are_edited_like_education_and_saved_in_the_same_body():
@@ -336,10 +339,10 @@ def test_languages_are_edited_like_education_and_saved_in_the_same_body():
     assert fields.count("boolean: true") == 2  # native and fluent: Yes/No, stored as booleans
     levels = _slice(lib, "export const LANGUAGE_LEVELS = [", "]")
     assert re.findall(r'"(\w+)"', levels) == ["Basic", "Intermediate", "Fluent"]
-    # Add and Remove as Education has them: a named Remove that hands focus to Add.
-    assert "label={`Remove language ${i + 1}`}" in fieldset and "armFocus(addLanguageRef);" in fieldset
-    add = _button_at(src, "onClick={() => setLanguages([...languages, {}])}")
-    assert "ref={addLanguageRef}" in add and "Add language" in add
+    # Add and Remove as Education has them, from the same list (answer-list.tsx): a named Remove that hands
+    # focus to Add.
+    assert "<AnswerList" in fieldset and "removeLabel={(i) => `Remove language ${i + 1}`}" in fieldset
+    assert 'addLabel="Add language"' in fieldset and "setEntries={setLanguages}" in fieldset
     # The same profile, the same autosave: the list is a key of the PUT body.
     set_languages = _slice(src, "const setLanguages = (", ";\n")
     assert "update(SURFACE, (current) => ({ ...current, languages: next }))" in " ".join(set_languages.split())
@@ -347,7 +350,7 @@ def test_languages_are_edited_like_education_and_saved_in_the_same_body():
     with_answer = _slice(lib, "export function withAnswer(", "\n}\n")
     assert 'if (value === undefined || value === "") delete next[key];' in with_answer
     assert "else next[key] = value;" in with_answer
-    assert "withAnswer(entry2, field.key, next)" in fieldset
+    assert "change(withAnswer(entry, field.key, next))" in fieldset
     # … and "Not set" is what clears a select: it stores nothing.
     control = _slice(src, "export function FieldControl(", "\n}\n")
     assert "onChange(v === NOT_SET.value ? undefined : storedFieldValue(field, v))" in control
@@ -373,7 +376,7 @@ def test_a_scoped_custom_question_says_which_job_it_is_for():
     lib = _read("lib/autofill-options.ts")
     assert 'only_for_kind?: "company" | "city";' in lib and "only_for?: string;" in lib
     assert "{qa.only_for ? (" in src and "Only for {qa.only_for}" in src
-    assert "{ ...c, question: e.target.value }" in src and "{ ...c, answer: e.target.value }" in src
+    assert "{ ...qa, question: e.target.value }" in src and "{ ...qa, answer: e.target.value }" in src
 
 
 def test_a_scoped_custom_question_can_be_made_general_again():
