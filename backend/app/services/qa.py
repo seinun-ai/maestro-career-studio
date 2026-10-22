@@ -140,13 +140,22 @@ _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
 _BULLET_RE = re.compile(r"^(\s*)[-*•]\s+")
 # Adjacent word chars: 2020–2023, client—server. Spaced dashes are clause breaks.
 _RANGE_DASH_RE = re.compile(r"(?<=[\w])[\u2013\u2014](?=[\w])")
-_CLAUSE_DASH_RE = re.compile(r"\s*[\u2013\u2014]\s*")
+# A dash opening a line ("— Jane", a dash bullet) goes and the line break stays;
+# one ending a line becomes a comma. Horizontal space only: a line break beside
+# a dash is never eaten.
+_LINE_START_DASH_RE = re.compile(r"^([ \t]*)[\u2013\u2014][ \t]*", re.MULTILINE)
+_LINE_END_DASH_RE = re.compile(r"[ \t]*[\u2013\u2014][ \t]*$", re.MULTILINE)
+_CLAUSE_DASH_RE = re.compile(r"[ \t]*[\u2013\u2014][ \t]*")
 
 
 def scrub_typographic_dashes(text: str) -> str:
-    """Replace U+2013/U+2014 in generated prose. Ranges become ASCII hyphen;
-    clause dashes become a comma+space. Idempotent on ASCII-only text."""
+    """Replace U+2013/U+2014 in prose. Ranges become ASCII hyphen; clause
+    dashes become a comma+space, a dash ending a line a comma, and a dash
+    opening a line is dropped. Line breaks are kept. Idempotent on ASCII-only
+    text."""
     text = _RANGE_DASH_RE.sub("-", text)
+    text = _LINE_START_DASH_RE.sub(r"\1", text)
+    text = _LINE_END_DASH_RE.sub(",", text)
     return _CLAUSE_DASH_RE.sub(", ", text)
 
 
@@ -385,13 +394,17 @@ def store_cover_letter(
     """A cover letter the caller wrote itself, stored under a generated letter's
     store-time rule: en and em dashes scrubbed (§6 inv-em-dash). The resume voice
     rule does not apply: a letter is the owner's own first person. `author` names
-    the agent that wrote it, in `model_used`. Commits; the caller removes the
-    letter this one replaces."""
+    the agent that wrote it, in `model_used`. Raises ValueError, writing nothing,
+    when no text is left. Commits; the caller removes the letter this one
+    replaces."""
+    answer = scrub_typographic_dashes(text).strip()
+    if not answer:
+        raise ValueError("The cover letter is empty once its dashes are removed.")
     entry = QAEntry(
         application_id=application_id,
         kind="cover_letter",
         prompt=None,
-        answer=scrub_typographic_dashes(text).strip(),
+        answer=answer,
         model_used=author,
     )
     session.add(entry)

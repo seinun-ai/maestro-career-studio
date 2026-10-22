@@ -140,8 +140,9 @@ work-permit answers for each country you apply in.
   the agent wrote itself (94 tools now): `store_cover_letter` replaces the application's cover letter and
   makes its PDF, `store_qa_answers` keeps screening answers (an answer to the same question is replaced),
   and `kb_add_points` adds bullets to a career history item as drafts for your review. Both show on the
-  job's Apply step. What the agent wrote follows the rules the app's own writing follows: no em dashes,
-  answers as plain text, and career bullets in your own voice. REST: `POST /api/qa/cover-letter`, `POST /api/qa/answers`,
+  job's Apply step. What the agent wrote is held to the app's writing rules: no em dashes (a dash that
+  opens or ends a line no longer takes the line break with it, for written letters too), answers as plain
+  text, and career bullets in your own voice. REST: `POST /api/qa/cover-letter`, `POST /api/qa/answers`,
   `POST /api/kb/entities/{id}/drafts`.
 
 ### Changed

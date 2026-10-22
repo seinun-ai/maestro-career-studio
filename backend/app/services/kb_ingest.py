@@ -477,43 +477,43 @@ def add_draft_points(
     """Caller-written bullets -> DRAFT points on an existing entity, with no
     model call: `capture` with an entity_id, minus the model.
 
-    Each text has its en and em dashes scrubbed (§6 inv-em-dash) and is held to
-    the resume voice rule (§6 inv-resume-voice): one blocking third-person or
-    "I" hit raises ValueError naming the lines, and nothing is written. A text
+    Each text has its en and em dashes scrubbed (§6 inv-em-dash). A text
     already on the entity in any state (`point_text_key`: case and spacing
     ignored), or repeated in `texts`, is skipped and returned in the third
-    item. Returns (entity, new points, skipped texts). Raises LookupError for an
+    item. The rest are held to the resume voice rule (§6 inv-resume-voice): one
+    blocking hit raises ValueError naming the lines, and nothing is written.
+    Returns (entity, new points, skipped texts). Raises LookupError for an
     unknown entity (router -> 404). Flushes; the caller commits.
     """
     entity = session.get(KBEntity, entity_id)
     if entity is None:
         raise LookupError(f"entity {entity_id} not found")
-    cleaned = [scrub_typographic_dashes(text).strip() for text in texts]
-    cleaned = [text for text in cleaned if text]
-    profile = session.get(KBProfile, 1)
-    name = str(((profile.contact_json if profile else None) or {}).get("name") or "")
-    orgs = [value for value in (entity.title, entity.org) if value]
-    problems = [
-        ((), text, hits)
-        for text in cleaned
-        if (hits := resume_voice.blocking(resume_voice.third_person_hits(text, name, orgs)))
-    ]
-    if problems:
-        raise ValueError(resume_voice.ops_error(problems))
     held = {
         point_text_key(text)
         for text in session.scalars(select(KBPoint.text).where(KBPoint.entity_id == entity.id))
     }
-    points: list[KBPoint] = []
+    new: list[str] = []
     skipped: list[str] = []
-    for text in cleaned:
+    for text in (scrub_typographic_dashes(text).strip() for text in texts):
+        if not text:
+            continue
         key = point_text_key(text)
         if key in held:
             skipped.append(text)
             continue
         held.add(key)
-        point = _draft_point(entity, text, origin, origin_detail)
-        session.add(point)
-        points.append(point)
+        new.append(text)
+    profile = session.get(KBProfile, 1)
+    name = str(((profile.contact_json if profile else None) or {}).get("name") or "")
+    orgs = [value for value in (entity.title, entity.org) if value]
+    problems = [
+        ((), text, hits)
+        for text in new
+        if (hits := resume_voice.blocking(resume_voice.third_person_hits(text, name, orgs)))
+    ]
+    if problems:
+        raise ValueError(resume_voice.ops_error(problems))
+    points = [_draft_point(entity, text, origin, origin_detail) for text in new]
+    session.add_all(points)
     session.flush()
     return entity, points, skipped

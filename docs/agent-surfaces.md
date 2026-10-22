@@ -26,8 +26,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   connected agent with no key in Maestro does the writing and the server validates and stores it: `store_extracted_jd` (extraction), `tailor_session(ops=…)`
   (tailoring), `store_cover_letter` (replaces the application's letter, then renders its PDF; a failed render returns `render_error`
   with the letter kept), `store_qa_answers` (replaces the answer to the same question) and `kb_add_points` (DRAFT bullets on an
-  existing entity). The store rules are the generated path's: the dash scrub (§6 inv-em-dash), answers as plain form text, and the
-  voice rule for KB bullets (inv-resume-voice; a letter and its answers are the owner's first person).
+  existing entity). The store rules: the dash scrub (§6 inv-em-dash) and answers as plain form text, as for generated ones, and the
+  voice rule for KB bullets (inv-resume-voice), which `kb_capture` does not apply; a letter and its answers are the owner's first person.
   Enable ONE profile per chat (`full` carries KB writes); `MAESTRO_CS_*` has no legacy fallback. **Apply executor:** headed Chrome (`docs/entities/others.md`, "Attended executor"; apply playbook, "Unattended (full automation)").
   **Plugin:** `plugins/maestro-career-studio/`: Claude Code's `.mcp.json` and Codex's `.codex-mcp.json` connect by URL; Codex prompts for durable decisions, login/upload, health-gate waivers, restores, KB approve/combine/retire and sync. Claude installs use a tagged local checkout; Codex uses a release-tag Git ref and sparse paths `.agents/plugins` + `plugins`; policy `PRIVACY.md`.
   Settings › Agent apps' **Connect an agent app** (`connect-assistant`) selects a tool set and copies commands/URLs, opens install links or downloads the Claude Desktop bundle.

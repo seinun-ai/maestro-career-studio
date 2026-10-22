@@ -122,7 +122,7 @@ and analytics across your saved jobs.
 
 ## Tool profiles
 
-The plugin loads the `full` profile (all 91 tools). Scoped profiles are subsets
+The plugin loads the `full` profile (all 94 tools). Scoped profiles are subsets
 that keep a chat focused: `hunt` (21 tools), `apply` (50), `explore` (11),
 `templates` (12), `career` (21). Choose a tool set in **Connect an agent app**,
 or change the URL in your client's declaration to `/mcp/hunt`, `/mcp/apply`,

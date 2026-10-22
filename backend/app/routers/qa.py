@@ -1,3 +1,4 @@
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -134,13 +135,16 @@ def store_cover_letter(
             )
         )
     )
-    entry = qa_service.store_cover_letter(
-        application.id, payload.text, db, author=write_origin.detail or write_origin.origin
-    )
+    try:
+        entry = qa_service.store_cover_letter(
+            application.id, payload.text, db, author=write_origin.detail or write_origin.origin
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     _remove_entries(db, prior_ids)
     try:
         render_note = _render_letter(db, entry, application, job)
-    except (ValueError, RuntimeError, OSError) as exc:
+    except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as exc:
         db.rollback()
         db.refresh(entry)
         entry.render_error = (
@@ -269,8 +273,9 @@ def render_cover_letter(entry_id: UUID, db: Annotated[Session, Depends(get_db)])
 def _render_letter(db: Session, entry: QAEntry, application: Application, job: Job) -> str | None:
     """Make the cover letter's PDF, record it on the entry, commit; returns the
     render note. Raises ValueError for a template that cannot render it (and a
-    resume that cannot be read) and RuntimeError for a failed compile. The
-    caller checks ownership first: this writes to disk."""
+    resume that cannot be read), RuntimeError for a failed compile and
+    subprocess.TimeoutExpired for a hung one. The caller checks ownership first:
+    this writes to disk."""
     base_resume = base_resume_data.load_base_resume(application.base_resume, db)
     contact = base_resume.get("contact", {})
     # The cover letter follows the RESUME's engine: resolve the application's
@@ -291,6 +296,9 @@ def _render_letter(db: Session, entry: QAEntry, application: Application, job: J
         role_label=role_label,
         when=rendered_at.date(),
     )
+    # Allocating can move a legacy application's files on disk; committed now,
+    # so a failed compile's rollback never points the rows back at the old place.
+    db.commit()
     stem = artifact_naming.artifact_stem(
         contact=contact,
         role=role_label,

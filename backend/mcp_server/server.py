@@ -622,9 +622,12 @@ def kb_add_points(
     stored as the user's own words and facts; the server does not verify it.
 
     Store-time rules: en and em dashes become a hyphen in a range
-    ("2020-2023") and a comma elsewhere. Resume text is implied first person, so
-    a bullet with I/my, he/she/his/her or the owner's name returns 400 naming
-    the lines and stores nothing. A bullet already on the entity in any state
+    ("2020-2023") and a comma elsewhere, and one opening a bullet is dropped.
+    Resume text is implied first person:
+    a bullet where I, he or she opens a clause, his/her/my opens one or follows
+    its verb ("Grew his team"), or the owner's name appears returns 400 naming
+    the lines and stores nothing; they/their and pronouns about other people
+    are stored. A bullet already on the entity in any state
     (case and spacing ignored), or repeated in the call, is skipped, so a
     repeated call adds nothing; a rephrasing is added as a new draft
     (kb_groom_entity reports similar bullets).
@@ -1298,10 +1301,11 @@ def store_qa_answers(
     so a repeated call changes nothing. Answers are stored as plain form text,
     as generated ones are: markdown bold, headings, bullet markers and backticks
     are removed, and en and em dashes become a hyphen in a range ("2020-2023")
-    and a comma elsewhere. The text is stored as the user's own words; the
-    server does not verify it. An answer that is empty once its formatting is
-    removed is a 400 that stores nothing. Returns the stored entries [{id, kind,
-    prompt, answer, model_used, created_at}]; model_used names the agent."""
+    and a comma elsewhere, line breaks kept. The text is stored as the user's
+    own words; the server does not verify it. An answer that is empty once its
+    formatting is removed is a 400 that stores nothing. Returns the stored
+    entries [{id, kind, prompt, answer, model_used, created_at}]; model_used
+    names the agent."""
     return _client.store_qa_answers(
         application_id, [dict(item) for item in answers], origin_detail=_client_label(ctx)
     )
@@ -1326,8 +1330,9 @@ def store_cover_letter(application_id: str, text: str, ctx: Context | None = Non
     (an application holds one); the new one shows on the job's Apply step and in
     list_qa_entries. The text is stored as the user's own letter; the server does
     not verify its facts. As with a generated letter, en and em dashes become a
-    hyphen in a range ("2020-2023") and a comma elsewhere; the rest is stored as
-    written, paragraphs included, up to 20000 characters. The PDF puts the base
+    hyphen in a range ("2020-2023") and a comma elsewhere, and one opening a line
+    ("— Jane") is dropped; the rest is stored as written, line breaks and
+    paragraphs included, up to 20000 characters. The PDF puts the base
     resume's contact block above the letter, in the engine of the application's
     resume template.
 
@@ -1940,7 +1945,6 @@ def tailor_session(
     """Run the tailor pipeline for a session: resolutions -> edit ops ->
     tailored application, auto-scored.
 
-    `tailoring_session_id` is the id returned by create_tailoring_session.
     Two ways to produce the edit ops:
     - Default (ops omitted): the backend builds the tailor prompt from the saved
       resolutions and calls the LLM to generate the ops.
@@ -1955,8 +1959,9 @@ def tailor_session(
     (keyword-survival checks run only on the backend-LLM path). A skill the
     candidate cannot evidence goes only in the skills list (add_skill_item), not
     in a bullet; the compare view audits any edit beyond the saved resolutions.
-
-    Resume text must be implied first person: no I/he/she/they or the owner's name; a hit returns 400 naming the lines.
+    Resume text is implied first person: an edited line where I/he/she opens a
+    clause, his/her/my opens one or follows its verb ("Grew his team"), or the
+    owner's name appears returns 400 naming the lines.
 
     Optional user_prompt adds free-form tailoring guidance. Writes the job's ONE
     application from the base plus the ops: it rebuilds the draft and removes its

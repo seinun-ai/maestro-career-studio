@@ -94,6 +94,20 @@ def test_a_bullet_about_someone_else_is_a_400_that_stores_nothing(db_session, en
     assert len(_points(db_session, entity)) == 1
 
 
+def test_a_bullet_already_there_is_skipped_before_the_voice_check(db_session, entity, client):
+    """kb_capture stores unchecked text; resending such a bullet is a repeat,
+    not a refusal."""
+    db_session.add(KBPoint(entity_id=entity.id, text="He led the migration", state="draft", origin="mcp"))
+    db_session.commit()
+
+    response = client.post(
+        f"/api/kb/entities/{entity.id}/drafts", json={"points": ["he led the migration"]}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["skipped"] == ["he led the migration"]
+
+
 def test_an_unknown_entity_is_a_404_and_an_empty_list_a_422(db_session, entity, client):
     missing = client.post(
         "/api/kb/entities/00000000-0000-4000-8000-000000000000/drafts",

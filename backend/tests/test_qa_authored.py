@@ -7,12 +7,15 @@ store-time rules are a generated entry's: the dash scrub (§6 inv-em-dash), and
 plain form text for answers.
 """
 
+import subprocess
 from pathlib import Path
 
 import pytest
 from sqlalchemy import select
 
 from app.config import settings as app_settings
+from app.db import SessionLocal
+from app.models.application import Application
 from app.models.qa_entry import QAEntry
 from app.routers import qa
 from tests.test_qa_router import _application
@@ -125,6 +128,43 @@ def test_a_failed_pdf_keeps_the_stored_letter_and_says_why(
     assert body["render_error"] == "! LaTeX Error: something broke"
     assert body["model_used"] is None  # no origin header: not an agent's write
     assert [row.answer for row in _letters(db_session, application)] == ["Dear team,\n\nHello.\n\nJane"]
+
+
+def test_a_hung_compile_keeps_the_letter_and_its_folder(db_session, renders, monkeypatch, client):
+    """pdflatex's 60 s timeout is not a RuntimeError: it still reads as a failed
+    PDF, and the artifact folder allocated before the compile stays recorded
+    (allocating can move a legacy application's files, so a rollback must never
+    point the rows back at the old place)."""
+    application = _application(db_session)
+
+    def hung_compile(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="pdflatex", timeout=60)
+
+    monkeypatch.setattr(qa.pdf_render, "compile_cover_letter_pdf", hung_compile)
+
+    response = client.post(
+        "/api/qa/cover-letter",
+        json={"application_id": str(application.id), "text": "Dear team,\n\nHello.\n\nJane"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["pdf_path"] is None
+    assert "timed out" in response.json()["render_error"]
+    with SessionLocal() as observer:
+        assert observer.get(Application, application.id).artifact_dir
+
+
+def test_a_letter_of_only_dashes_is_a_400_that_keeps_the_saved_one(db_session, renders, client):
+    application = _application(db_session)
+    db_session.add(QAEntry(application_id=application.id, kind="cover_letter", answer="old"))
+    db_session.commit()
+
+    response = client.post(
+        "/api/qa/cover-letter", json={"application_id": str(application.id), "text": "\u2014"}
+    )
+
+    assert response.status_code == 400
+    assert [row.answer for row in _letters(db_session, application)] == ["old"]
 
 
 def test_a_letter_for_no_application_is_a_404_and_a_blank_one_a_422(db_session, client):
