@@ -164,13 +164,19 @@ def test_an_open_page_reads_the_answers_again_when_you_come_back():
     assert "useAdoptServed(profile, answers.adopt);" in setup and "const save = useSaveAnswers();" in setup
 
 
-def test_every_profile_editor_stays_mounted_and_only_a_drafted_persona_waits_for_a_click():
+def test_every_profile_editor_stays_mounted_and_saves_as_you_go():
     """One open tile at a time, each editor kept mounted while closed (typed drafts and leave guards survive).
-    Every Profile editor saves as you go, the persona too (owner, 2026-10-22). A drafted persona is read before
-    it is kept (inv-drafted-answers): it waits for Use this draft or Discard, and the status says nothing then."""
+    Every Profile editor saves as you go, the persona too (owner, 2026-10-22)."""
     view = _src("components/profile/profile-view.tsx")
     assert "hidden={sections.tile !== tile.id}" in view
     assert "{tiles[tile.id].panel}" in view
+    for path in (_FRONTEND / "components/profile").glob("*.tsx"):
+        assert "saveOnce(" not in path.read_text(encoding="utf-8"), path.name
+
+
+def test_only_a_drafted_persona_waits_for_a_click():
+    """A drafted persona is read before it is kept (inv-drafted-answers): it waits for Use this draft or Discard,
+    and the status says nothing then."""
     persona = _src("components/profile/how-you-come-across.tsx")
     assert "useAutosave(initial, (next) => save.mutateAsync(next))" in persona
     assert "<AutosaveStatus pending={pending} failed={failed} idle={review === null} onRetry={retry} />" in persona
@@ -178,8 +184,6 @@ def test_every_profile_editor_stays_mounted_and_only_a_drafted_persona_waits_for
     landed = persona[persona.index("const draft = useMutation(") : persona.index("// One request per gesture")]
     assert "setReview(result.draft);" in landed and "update(" not in landed
     assert "Use this draft" in persona and "Discard" in persona
-    for path in (_FRONTEND / "components/profile").glob("*.tsx"):
-        assert "saveOnce(" not in path.read_text(encoding="utf-8"), path.name
 
 
 # ------------------------------------------------------------------------- Header and Next up

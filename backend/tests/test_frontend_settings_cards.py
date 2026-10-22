@@ -304,14 +304,17 @@ def test_autofill_removes_are_named_and_hand_focus_to_add():
     # "Remove education entry" on every row named none of them; a removed row took focus with it.
     assert "removeLabel={(i) => `Remove school ${i + 1}`}" in education
     assert "removeLabel={(i) => `Remove custom question ${i + 1}`}" in questions
+    for src in (education, questions):
+        assert "<AnswerList" in src and "useFocusOnNextCommit" not in src
+
+
+def test_one_answer_list_hands_a_removed_rows_focus_to_its_own_add():
     # One list renders each tile's rows (answer-list.tsx), so each tile's ref is on its own Add: swapped, a
     # removed school focused Add question.
     shell = _read("components/profile/answer-list.tsx")
     assert "const armFocus = useFocusOnNextCommit();" in shell and "armFocus(addRef);" in shell
     assert "label={removeLabel(i)}" in shell
     assert "ref={addRef}" in _button_at(shell, "onClick={() => setEntries([...entries, newEntry()])}")
-    for src in (education, questions):
-        assert "<AnswerList" in src and "useFocusOnNextCommit" not in src
 
 
 def test_languages_are_edited_like_education_and_saved_in_the_same_body():
