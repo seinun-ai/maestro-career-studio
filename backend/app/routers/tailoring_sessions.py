@@ -226,4 +226,6 @@ def tailor_session(
         # quiet note so flywheel drops are never silent (Phase C Task 11).
         "kb_writeback_skips": getattr(row, "kb_writeback_skips", []),
         "voice_repairs": getattr(row, "voice_repairs", []),
+        "keywords_added": getattr(row, "keywords_added", []),
+        "answers_left_to_ops": getattr(row, "answers_left_to_ops", []),
     }

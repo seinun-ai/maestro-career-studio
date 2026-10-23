@@ -19,6 +19,7 @@ KB_TOOL_NAMES = {
     "kb_groom_entity",
     "kb_combine_points",
     "kb_retire_points",
+    "kb_add_points",
 }
 
 
@@ -66,6 +67,8 @@ def test_all_tools_registered():
         "update_application",
         "generate_qa_answers",
         "generate_cover_letter",
+        "store_qa_answers",
+        "store_cover_letter",
         "list_qa_entries",
         "waive_health_gate",
         "unwaive_health_gate",
@@ -387,6 +390,7 @@ async def test_tailoring_session_tools_expose_complete_input_schemas():
                         {"type": "null"},
                     ],
                     "default": None,
+                    "description": srv._TAILOR_OPS_FIELD.description,
                 },
             },
             "required": ["tailoring_session_id"],
@@ -778,6 +782,43 @@ def test_generate_qa_answers_docstring_mentions_outreach():
     assert "outreach" in doc
 
 
+def test_store_tools_forward_the_callers_text_and_name(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(srv, "_client_label", lambda ctx: "codex")
+    monkeypatch.setattr(
+        srv._client, "store_cover_letter",
+        lambda app_id, text, origin_detail=None: seen.update(letter=(app_id, text, origin_detail)) or {},
+    )
+    monkeypatch.setattr(
+        srv._client, "store_qa_answers",
+        lambda app_id, answers, origin_detail=None: seen.update(answers=(app_id, answers, origin_detail)) or [],
+    )
+    monkeypatch.setattr(
+        srv._client, "kb_add_points",
+        lambda entity_id, points, origin_detail=None: seen.update(points=(entity_id, points, origin_detail)) or {},
+    )
+    srv.store_cover_letter("a1", "Dear team,")
+    srv.store_qa_answers("a1", [{"question": "Why us?", "answer": "The team."}])
+    srv.kb_add_points("e1", ["Shipped the churn model"])
+    assert seen == {
+        "letter": ("a1", "Dear team,", "codex"),
+        "answers": ("a1", [{"question": "Why us?", "answer": "The team."}], "codex"),
+        "points": ("e1", ["Shipped the churn model"], "codex"),
+    }
+
+
+def test_generate_tools_name_their_llm_free_twins():
+    """With no AI key the generate tools fail; each names the tool that stores
+    what the caller wrote."""
+    pairs = {
+        "generate_cover_letter": "store_cover_letter",
+        "generate_qa_answers": "store_qa_answers",
+        "kb_capture": "kb_add_points",
+    }
+    for generator, twin in pairs.items():
+        assert twin in (getattr(srv, generator).__doc__ or ""), generator
+
+
 def test_get_application_tool_registered():
     assert "get_application" in set(srv.list_registered_tool_names())
 
@@ -871,6 +912,26 @@ async def test_tailor_session_accepts_cowork_style_kwargs(monkeypatch):
         "user_prompt": "Keep it concise",
         "ops": ops,
     }
+
+
+def test_tailor_session_hands_its_report_to_the_hint(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "tailor_session",
+        lambda sid, user_prompt=None, ops=None: {
+            "session": {"application_id": "a1"},
+            "keywords_added": ["Snowflake"],
+            "answers_left_to_ops": [{"gap_id": "g", "action": "user_input", "skill": "x"}],
+        },
+    )
+    monkeypatch.setattr(srv, "_hints_enabled", lambda: True)
+    monkeypatch.setattr(srv, "_active_allowed_tools", lambda: None)
+    monkeypatch.setattr(
+        srv.workflow, "next_after_tailor", lambda **kw: seen.update(kw) or {"call": "render_pdf"}
+    )
+    srv.tailor_session(tailoring_session_id="s1", ops=[])
+    assert seen["keywords_added"] == ["Snowflake"]
+    assert seen["answers_left_to_ops"] == [{"gap_id": "g", "action": "user_input", "skill": "x"}]
 
 
 def test_tailor_session_tool_ops_default_none(monkeypatch):
@@ -1390,6 +1451,12 @@ _PINNED_HINTS = {
     "kb_approve_points": (False, True, True, False),
     # Read-only report; proposes, writes nothing.
     "kb_groom_entity": (True, False, True, False),
+    # Caller-authored apply package: replaces the saved letter or an answer to
+    # the same question; the same call twice leaves the same state.
+    "store_cover_letter": (False, True, True, False),
+    "store_qa_answers": (False, True, True, False),
+    # Drafts only, and a bullet the entity already has is skipped.
+    "kb_add_points": (False, False, True, False),
     # Reversible from /career (unmerge / Use again), so not destructive; the same ids twice is a no-op.
     "kb_combine_points": (False, False, True, False),
     "kb_retire_points": (False, False, True, False),

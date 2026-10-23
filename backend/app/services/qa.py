@@ -3,6 +3,7 @@ from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -139,13 +140,22 @@ _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
 _BULLET_RE = re.compile(r"^(\s*)[-*•]\s+")
 # Adjacent word chars: 2020–2023, client—server. Spaced dashes are clause breaks.
 _RANGE_DASH_RE = re.compile(r"(?<=[\w])[\u2013\u2014](?=[\w])")
-_CLAUSE_DASH_RE = re.compile(r"\s*[\u2013\u2014]\s*")
+# A dash opening a line ("— Jane", a dash bullet) goes and the line break stays;
+# one ending a line becomes a comma. Horizontal space only: a line break beside
+# a dash is never eaten.
+_LINE_START_DASH_RE = re.compile(r"^([ \t]*)[\u2013\u2014][ \t]*", re.MULTILINE)
+_LINE_END_DASH_RE = re.compile(r"[ \t]*[\u2013\u2014][ \t]*$", re.MULTILINE)
+_CLAUSE_DASH_RE = re.compile(r"[ \t]*[\u2013\u2014][ \t]*")
 
 
 def scrub_typographic_dashes(text: str) -> str:
-    """Replace U+2013/U+2014 in generated prose. Ranges become ASCII hyphen;
-    clause dashes become a comma+space. Idempotent on ASCII-only text."""
+    """Replace U+2013/U+2014 in prose. Ranges become ASCII hyphen; clause
+    dashes become a comma+space, a dash ending a line a comma, and a dash
+    opening a line is dropped. Line breaks are kept. Idempotent on ASCII-only
+    text."""
     text = _RANGE_DASH_RE.sub("-", text)
+    text = _LINE_START_DASH_RE.sub(r"\1", text)
+    text = _LINE_END_DASH_RE.sub(",", text)
     return _CLAUSE_DASH_RE.sub(", ", text)
 
 
@@ -376,6 +386,77 @@ def generate_cover_letter(
     finally:
         if owns_session:
             session.close()
+
+
+def store_cover_letter(
+    application_id: UUID, text: str, session: Session, author: str | None = None
+) -> QAEntry:
+    """A cover letter the caller wrote itself, stored under a generated letter's
+    store-time rule: en and em dashes scrubbed (§6 inv-em-dash). The resume voice
+    rule does not apply: a letter is the owner's own first person. `author` names
+    the agent that wrote it, in `model_used`. Raises ValueError, writing nothing,
+    when no text is left. Commits; the caller removes the letter this one
+    replaces."""
+    answer = scrub_typographic_dashes(text).strip()
+    if not answer:
+        raise ValueError("The cover letter is empty once its dashes are removed.")
+    entry = QAEntry(
+        application_id=application_id,
+        kind="cover_letter",
+        prompt=None,
+        answer=answer,
+        model_used=author,
+    )
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return entry
+
+
+def _question_key(question: str) -> str:
+    return " ".join(question.split()).casefold()
+
+
+def store_answers(
+    application_id: UUID,
+    pairs: list[tuple[str, str]],
+    session: Session,
+    author: str | None = None,
+) -> list[QAEntry]:
+    """Screening answers the caller wrote itself, each made plain form text as a
+    generated answer is (`_plain_text`: markdown markers out, dashes scrubbed).
+    A question the application already holds (the same words, ignoring case and
+    spacing) has its newest entry's answer replaced; the rest are added, and a
+    question asked twice in `pairs` keeps its last answer. Raises ValueError,
+    writing nothing, when an answer is empty once formatted. Commits."""
+    cleaned: dict[str, tuple[str, str]] = {}
+    for question, answer in pairs:
+        text = _plain_text(answer)
+        if not text:
+            raise ValueError(f"The answer to {question!r} is empty once its formatting is removed.")
+        cleaned[_question_key(question)] = (question.strip(), text)
+    newest: dict[str, QAEntry] = {}
+    held = session.scalars(
+        select(QAEntry)
+        .where(QAEntry.application_id == application_id, QAEntry.kind == "question")
+        .order_by(QAEntry.created_at)
+    )
+    for entry in held:
+        if entry.prompt:
+            newest[_question_key(entry.prompt)] = entry
+    stored: list[QAEntry] = []
+    for key, (question, text) in cleaned.items():
+        entry = newest.get(key)
+        if entry is None:
+            entry = QAEntry(application_id=application_id, kind="question", prompt=question)
+            session.add(entry)
+        entry.answer = text
+        entry.model_used = author
+        stored.append(entry)
+    session.commit()
+    for entry in stored:
+        session.refresh(entry)
+    return stored
 
 
 def answer_questions_for_job(

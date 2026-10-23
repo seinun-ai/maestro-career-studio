@@ -32,14 +32,15 @@ const LINKS = [
  *   Accept or skip is yours; record_triage records the decision you state.
  * - Read: get_career_context, kb_list_entities, kb_get_entity, kb_list_points,
  *   get_job_search_brief (location, work authorization, persona).
- * - Add to and change: kb_capture, kb_ingest_resume and kb_edit_point leave
+ * - Add to and change: kb_capture, kb_add_points, kb_ingest_resume and kb_edit_point leave
  *   bullets in draft; kb_approve_points approves or retires them, and its "only after
  *   the user said yes" is a docstring rule the agent is given, not a server check;
  *   kb_create_entity, kb_edit_entity and kb_edit_profile write at once.
  * - Resumes: create_base_resume, duplicate_base_resume, update_base_resume,
  *   edit_base_resume, tailor_application, tailor_session, quick_tailor.
  * - Fill in and submit: list_proposals runs accepted proposals only;
- *   get_autofill_profile, generate_qa_answers, prepare_application_pdf_upload
+ *   get_autofill_profile, generate_qa_answers (or store_qa_answers and
+ *   store_cover_letter, for what the agent wrote), prepare_application_pdf_upload
  *   feed the agent's own browser; record_consent records your yes and reserves
  *   a daily-limit slot; mark_submitted needs a receipt or your own word.
  * - Can't delete: no MCP tool deletes an item or a bullet (retire and archive

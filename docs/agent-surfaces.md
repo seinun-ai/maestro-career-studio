@@ -22,6 +22,12 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `kb_combine_points` (fold points into one keeper; the others become its wordings) and `kb_retire_points` (the retire twin of
   `kb_approve_points`); the two writes share `kb_approve_points`' convention gate and are `destructive=False` because `/career`
   reverses them. `kb_sync_base` keeps a rephrasing as a wording (0.80+) and returns `compared_wording` (docs/entities/others.md, Career KB).
+  **No AI key needed.** The tools that call the app's model have caller-authored twins (all but `run_health_check`), so a
+  connected agent with no key in Maestro does the writing and the server validates and stores it: `store_extracted_jd` (extraction), `tailor_session(ops=…)`
+  (tailoring), `store_cover_letter` (replaces the application's letter, then renders its PDF; a failed render returns `render_error`
+  with the letter kept), `store_qa_answers` (replaces the answer to the same question) and `kb_add_points` (DRAFT bullets on an
+  existing entity). The store rules: the dash scrub (§6 inv-em-dash) and answers as plain form text, as for generated ones, and the
+  voice rule for KB bullets (inv-resume-voice), which `kb_capture` does not apply; a letter and its answers are the owner's first person.
   Enable ONE profile per chat (`full` carries KB writes); `MAESTRO_CS_*` has no legacy fallback. **Apply executor:** headed Chrome (`docs/entities/others.md`, "Attended executor"; apply playbook, "Unattended (full automation)").
   **Plugin:** `plugins/maestro-career-studio/`: Claude Code's `.mcp.json` and Codex's `.codex-mcp.json` connect by URL; Codex prompts for durable decisions, login/upload, health-gate waivers, restores, KB approve/combine/retire and sync. Claude installs use a tagged local checkout; Codex uses a release-tag Git ref and sparse paths `.agents/plugins` + `plugins`; policy `PRIVACY.md`.
   Settings › Agent apps' **Connect an agent app** (`connect-assistant`) selects a tool set and copies commands/URLs, opens install links or downloads the Claude Desktop bundle.
@@ -76,8 +82,10 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
     break the web path's transience), so the hint carries it as the `tailor_session` option's `user_prompt`,
     ONLY when the session has no note of its own — else quick tailor over MCP ignores a setting the web obeys.
     **The caller-ops honesty rule is enforced by DOCSTRING, not the server**: `apply_edits` has no honesty
-    gate, keyword-survival is LLM-path only. The server-side evidence gates (`save_resolutions` re-running
-    `enable_entry`/`port_kb_point`) still hold.
+    gate. Keyword survival runs on both paths (a saved `add_keyword` the ops leave out lands in the skills
+    list, never a bullet: `keywords_added`), and `user_input`/`attach_project` answers reach the resume only
+    through the ops (`answers_left_to_ops`; the `next` hint then offers `edit_application`). The server-side
+    evidence gates (`save_resolutions` re-running `enable_entry`/`port_kb_point`) still hold.
   - **Apply readiness** reads `setup/status`'s `autofill` block; the server cannot see whether the client holds
     browser tools, so the render offer says the handoff needs them rather than asserting the capability.
 

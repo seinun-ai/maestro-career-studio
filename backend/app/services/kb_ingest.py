@@ -8,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings  # re-exported so tests can patch kb_documents_dir here
-from app.models.career_kb import KBDocument, KBEntity, KBPoint
+from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBProfile
 from app.schemas.career_kb import KB_KINDS  # no circular import: schemas don't import services
-from app.services import llm, model_settings, prompts
+from app.services import llm, model_settings, prompts, resume_voice
+from app.services.kb_consolidation import point_text_key
+from app.services.qa import scrub_typographic_dashes
 from app.services.attachment_extract import extract_text
 
 __all__ = [
@@ -444,15 +446,74 @@ def capture(
         body = raw.strip() if isinstance(raw, str) else ""
         if not body:
             continue
-        p = KBPoint(
-            entity_id=target.id,
-            text=body,
-            state="draft",
-            origin=origin,
-            origin_detail=origin_detail,
-            provenance="user_stated",
-        )
+        p = _draft_point(target, body, origin, origin_detail)
         session.add(p)
         points.append(p)
     session.flush()
     return target, points
+
+
+def _draft_point(
+    entity: KBEntity, text: str, origin: str, origin_detail: str | None
+) -> KBPoint:
+    """A DRAFT point in the user's own words, for the user's approval at /career."""
+    return KBPoint(
+        entity_id=entity.id,
+        text=text,
+        state="draft",
+        origin=origin,
+        origin_detail=origin_detail,
+        provenance="user_stated",
+    )
+
+
+def add_draft_points(
+    session: Session,
+    entity_id,
+    texts: list[str],
+    origin: str = "manual",
+    origin_detail: str | None = None,
+) -> tuple[KBEntity, list[KBPoint], list[str]]:
+    """Caller-written bullets -> DRAFT points on an existing entity, with no
+    model call: `capture` with an entity_id, minus the model.
+
+    Each text has its en and em dashes scrubbed (§6 inv-em-dash). A text
+    already on the entity in any state (`point_text_key`: case and spacing
+    ignored), or repeated in `texts`, is skipped and returned in the third
+    item. The rest are held to the resume voice rule (§6 inv-resume-voice): one
+    blocking hit raises ValueError naming the lines, and nothing is written.
+    Returns (entity, new points, skipped texts). Raises LookupError for an
+    unknown entity (router -> 404). Flushes; the caller commits.
+    """
+    entity = session.get(KBEntity, entity_id)
+    if entity is None:
+        raise LookupError(f"entity {entity_id} not found")
+    held = {
+        point_text_key(text)
+        for text in session.scalars(select(KBPoint.text).where(KBPoint.entity_id == entity.id))
+    }
+    new: list[str] = []
+    skipped: list[str] = []
+    for text in (scrub_typographic_dashes(text).strip() for text in texts):
+        if not text:
+            continue
+        key = point_text_key(text)
+        if key in held:
+            skipped.append(text)
+            continue
+        held.add(key)
+        new.append(text)
+    profile = session.get(KBProfile, 1)
+    name = str(((profile.contact_json if profile else None) or {}).get("name") or "")
+    orgs = [value for value in (entity.title, entity.org) if value]
+    problems = [
+        ((), text, hits)
+        for text in new
+        if (hits := resume_voice.blocking(resume_voice.third_person_hits(text, name, orgs)))
+    ]
+    if problems:
+        raise ValueError(resume_voice.ops_error(problems))
+    points = [_draft_point(entity, text, origin, origin_detail) for text in new]
+    session.add_all(points)
+    session.flush()
+    return entity, points, skipped

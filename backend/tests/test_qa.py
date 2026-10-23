@@ -453,6 +453,15 @@ def test_scrub_typographic_dashes_turns_clause_dashes_into_commas():
     )
 
 
+def test_scrub_typographic_dashes_keeps_line_breaks():
+    # A dash opening a line (a sign-off, a dash bullet) goes; one ending a line
+    # becomes a comma; the line break beside either stays.
+    assert qa.scrub_typographic_dashes("Best regards,\n\u2014 Jane") == "Best regards,\nJane"
+    assert qa.scrub_typographic_dashes("\u2013 Led a team\n\u2013 Shipped") == "Led a team\nShipped"
+    assert qa.scrub_typographic_dashes("Thanks \u2014\nJane") == "Thanks,\nJane"
+    assert qa.scrub_typographic_dashes("Dear team,\n\nHello.\n\nJane") == "Dear team,\n\nHello.\n\nJane"
+
+
 def test_scrub_typographic_dashes_turns_range_dashes_into_hyphens():
     assert qa.scrub_typographic_dashes("2020–2023") == "2020-2023"
     assert qa.scrub_typographic_dashes("client—server") == "client-server"

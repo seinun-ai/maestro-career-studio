@@ -365,9 +365,9 @@ import and profile endpoints and store no progress of their own; frontend-conven
   `qa_entries`** — that table is application-scoped and no reader feeds it back into a fill, so "pause once, learn forever" is only true of
   `profile.custom` (matched by the deterministic rule pass on every later form) and the typed keys. Wiring faults are loud rather than silent
   (the two load-time throws: `docs/entities/others.md`, "Label-pattern table details").
-- **Em-dash rule** `{#inv-em-dash}`: generated Q&A answers and cover letters are scrubbed of U+2014/U+2013 at store time
-  (`qa.scrub_typographic_dashes`); rendered PDFs must not contain em-dashes (ATS parsers); the MCP client's slim `get_rendered_pdf` scan
-  remains a resume-PDF backstop (`docs/entities/others.md`, "Em-dash backstop").
+- **Em-dash rule** `{#inv-em-dash}`: model- or agent-written answers, cover letters and `kb_add_points` drafts lose U+2014/U+2013 at store
+  time (`qa.scrub_typographic_dashes`); a rendered PDF holds none (ATS parsers), and MCP `get_rendered_pdf` is the resume-PDF backstop
+  (`docs/entities/others.md`, "Em-dash backstop").
 - **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record (`settings/eeo_consent.json`,
   `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`), TWO permissions kept apart on purpose: `enabled` authorizes disclosing
   protected characteristics; `consent_forms` lifts the label policy (inv-policy-deny-list-single-source), only if agreed under policy ≥ 2 (an
@@ -472,7 +472,7 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **Resume text is the owner's own, in implied first person.** `{#inv-resume-voice}` Every rewrite prompt carries the VOICE rule (built in
   code, so a customised row keeps it); `services/resume_voice.py` finds the shapes about the owner. Model and caller text NEVER stores a
   blocking third-person hit (one retry, then repair, then drop); the owner's base lines get only mechanical repairs and are never dropped.
-  Ambiguous shapes are flagged, never rewritten. MCP ops with a hit get a 400 (the advisory and the response field:
+  Ambiguous shapes are flagged, never rewritten. `tailor_session` ops and `kb_add_points` with a hit get a 400 (details:
   `docs/entities/others.md`, "Voice check details"). Pinned by `tests/test_resume_voice.py`, `test_tailoring_voice.py`.
 - **A Next the page rejects is not a move, and only a page the run filled is pressed.** `{#inv-rejected-next}` A press that leaves address
   and step heading while the page shows errors keeps `step` and `seen`; the driver reads `page_errors` (the page's own words, never a value),

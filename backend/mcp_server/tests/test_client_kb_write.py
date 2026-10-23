@@ -24,6 +24,18 @@ def test_kb_capture_sends_origin_headers():
 
 
 @respx.mock
+def test_kb_add_points_posts_drafts_with_origin_headers():
+    route = respx.post(f"{BASE}/api/kb/entities/e1/drafts").mock(
+        return_value=httpx.Response(200, json={"entity_id": "e1", "point_ids": ["p1"]})
+    )
+    BackendClient(BASE).kb_add_points("e1", ["Shipped the churn model"], origin_detail="Codex")
+    request = route.calls.last.request
+    assert json.loads(request.read()) == {"points": ["Shipped the churn model"]}
+    assert request.headers["X-Maestro-CS-Origin"] == "mcp"
+    assert request.headers["X-Maestro-CS-Origin-Detail"] == "Codex"
+
+
+@respx.mock
 def test_kb_edit_point_forces_draft_when_text_changes():
     route = respx.patch(f"{BASE}/api/kb/points/p1").mock(
         return_value=httpx.Response(200, json={"id": "p1"})

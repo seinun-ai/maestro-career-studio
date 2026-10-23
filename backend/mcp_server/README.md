@@ -256,7 +256,8 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 - `get_autofill_profile`: your stored form-fill details (contact, work authorization, consented EEO answers).
 - `generate_qa_answers`: answers to an application's screening questions.
 - `generate_cover_letter`: a cover letter in the tone you ask for.
-- `list_qa_entries`: the answers and cover letters generated so far.
+- `store_qa_answers`, `store_cover_letter`: keep answers or a cover letter your assistant wrote itself, with no AI key in Maestro. The letter replaces the saved one and gets its PDF; both show on the job's Apply step.
+- `list_qa_entries`: the answers and cover letters saved so far.
 
 **Proposals and consent** (your yes, or automatic approval while full automation is On)
 - `propose_application`, `list_proposals`, `get_proposal`: file a job your assistant found for your review, and read the queue.
@@ -273,7 +274,7 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 **Career KB**
 - `get_career_context`, `get_career_export`: your full career record, as structured data or as `career.md`.
 - `kb_list_entities`, `kb_get_entity`, `kb_list_points`: browse entries and points, with their IDs.
-- `kb_capture`, `kb_ingest_resume`, `kb_sync_base`: add new material as draft points for you to approve. `kb_sync_base` keeps a rephrased bullet as a wording of the one it rewrites instead of a new draft.
+- `kb_capture`, `kb_add_points`, `kb_ingest_resume`, `kb_sync_base`: add new material as draft points for you to approve. `kb_add_points` takes bullets your assistant already wrote for an entry, with no AI call. `kb_sync_base` keeps a rephrased bullet as a wording of the one it rewrites instead of a new draft.
 - `kb_edit_point`, `kb_create_entity`, `kb_edit_entity`, `kb_edit_profile`: correct or add entries.
 - `kb_approve_points`: approve or retire points, only after you have approved them.
 - `kb_groom_entity`: find similar bullets on one entry, grouped, with one proposed to keep. Reads only, no AI call.

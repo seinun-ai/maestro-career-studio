@@ -73,7 +73,9 @@
     ],
     "inv-em-dash": [
       {"path": "backend/app/services/qa.py", "symbol": "scrub_typographic_dashes"},
-      {"path": "backend/tests/test_qa.py", "symbol": "test_scrub_typographic_dashes_turns_clause_dashes_into_commas"}
+      {"path": "backend/tests/test_qa.py", "symbol": "test_scrub_typographic_dashes_turns_clause_dashes_into_commas"},
+      {"path": "backend/tests/test_qa_authored.py", "symbol": "test_a_stored_letter_replaces_the_saved_one_and_gets_its_pdf"},
+      {"path": "backend/tests/test_kb_add_points.py", "symbol": "test_bullets_land_as_drafts_from_the_agent_and_repeats_are_skipped"}
     ],
     "inv-render-fallback-explained": [
       {"path": "backend/tests/test_render_fallback.py", "symbol": "test_latex_template_without_tex_renders_with_typst_and_says_so"},
@@ -267,6 +269,7 @@
       {"path": "backend/tests/test_resume_voice.py", "symbol": "test_repair_never_stores_a_blocking_hit"},
       {"path": "backend/tests/test_resume_voice.py", "symbol": "test_lint_advisory_flags_a_summary_written_about_someone_else"},
       {"path": "backend/tests/test_tailoring_voice.py", "symbol": "test_caller_ops_with_a_hit_return_400_and_store_nothing"},
+      {"path": "backend/tests/test_kb_add_points.py", "symbol": "test_a_bullet_about_someone_else_is_a_400_that_stores_nothing"},
       {"path": "backend/tests/test_tailoring_voice.py", "symbol": "test_the_response_lists_the_paths_the_repair_touched"},
       {"path": "backend/app/services/resume_voice.py", "symbol": "VOICE_RULE"}
     ],

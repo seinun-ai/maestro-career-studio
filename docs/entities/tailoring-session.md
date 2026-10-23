@@ -74,9 +74,13 @@ place the mode is decided.
 **The tailor pipeline** (`POST /tailoring-sessions/{id}/tailor`, `tailor()`). Deterministic
 pre-ops run first (`enable_entry` → `toggle_entry`, `port_kb_point` → `add_bullet` plus a
 `KBPortLog` row; deduped per point and entry); the remaining non-skip resolutions then go to the
-smart model, whose typed edit ops are applied. A keyword-survival check follows (one retry, then an
-`add_skill_item` fallback; LLM path only), then the voice check (one retry, then repair in code;
-**Voice** below). The application is reused or inserted, a version row is written, and substantive
+smart model, whose typed edit ops are applied; a missing required keyword or a third-person line
+earns one corrective retry (**Voice** below). On EVERY path, after the voice repair, keyword survival
+runs: a saved `add_keyword` whose word (its `wording`, else the gap's `jd_skill`) is not on the resume
+is added with `add_skill_item` to the skills category it chose, else Additional Skills, never as a
+bullet (SYSTEM.md §6 `inv-honesty`), and the response lists it as `keywords_added`. With caller ops
+the server applies only the pre-ops itself: `user_input` and `attach_project` answers reach the
+resume through the ops alone, listed as `answers_left_to_ops`. The application is reused or inserted, a version row is written, and substantive
 `user_input` answers are written back as draft KBPoints (`origin=gap_elicitation`). Every skipped
 write-back returns on the response as `kb_writeback_skips` with a reason (`too_short`,
 `wrong_section`, `no_entity_match`, `duplicate`, or `profile_owned_elsewhere`: on the always-on

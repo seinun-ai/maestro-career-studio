@@ -18,13 +18,18 @@
   legacy alias — and carry `base_anchors`; `resolve_gaps`' evidence-carrying actions are gated server-side — §4;
   `quick_tailor` is the profile-driven fast path; `score_ats(include_other_countries)` returns a `countries` block
   naming bases skipped for the job's country), render + PDF inspection/upload ("PDF tools" below), application
-  tracking, `record_run` (finished automation reports; `docs/entities/agent-runs.md`), the apply package,
+  tracking, `record_run` (finished automation reports; `docs/entities/agent-runs.md`), the apply package (`generate_*` through the
+  model, or `store_cover_letter`/`store_qa_answers` storing what the agent wrote: `POST /api/qa/cover-letter` replaces the letter and
+  renders its PDF, `POST /api/qa/answers` replaces an answer to the same question, case and spacing ignored; `model_used` names the
+  agent),
   templates (draft/validate only; Typst constraints in `create_template_draft`'s
   docstring, `fmt.*` knobs on `get_template`), explore analytics, `get_autofill_profile` (`profile.eeo` consent-gated),
   and `get_career_context` (read-only; anti-fabrication framing in the docstring). The Career KB is writable via MCP:
   reads carry IDs the context prose does not; entity/profile writes land directly, but POINTS go through the user's
   gate — ingest lands drafts, `kb_sync_base` drafts only new base-resume bullets and keeps a rephrasing as a wording
-  (no LLM, no auto-approve; it returns `compared_wording`), and `kb_approve_points` is the ONE approval path
+  (no LLM, no auto-approve; it returns `compared_wording`), `kb_add_points` drafts the agent's own bullets on an existing entity
+  (`POST /api/kb/entities/{id}/drafts`; no LLM, a bullet already on the entity is skipped, a voice hit is a 400 that stores
+  nothing), and `kb_approve_points` is the ONE approval path
   (`approved|retired`). `kb_retire_points` (its retire twin) and `kb_combine_points` (fold points into a keeper) write
   state under the same gate; `kb_groom_entity` reads the similar-bullet report. The gate is a convention the
   docstrings state (the value is the user's decision), not server enforcement (`record_consent` precedent).
@@ -1371,7 +1376,9 @@
   - **Flush guard details** (inv-flush-guard): `hooks.standing_aside(db)` sets `session.info["sync_apply"]` and restores the earlier value;
     a missing previous parent allows repair.
   - **Voice check details** (inv-resume-voice): an ambiguous shape is the health advisory `voice.third_person`; the tailor response lists
-    repaired paths as `voice_repairs`.
+    repaired paths as `voice_repairs`. The MCP writes refused with a 400 naming the lines are `tailor_session(ops=…)` and
+    `kb_add_points` (against the KB profile's name and the entity's title and org); a cover letter and screening answers are the
+    owner's first person and are not checked.
   - **Queued-run invariant mechanics** (inv-rejected-next, inv-one-resume-write, inv-ready-real-review; the code: `extension/INTERNALS.md`,
     "Queued run"). *Rejected Next*: the repair is `fix`, `runFill({only})`, each error once; a repeat, or an error it cannot work, parks
     `page_errors` naming only what is left; `filledPage` is path and step key, query ignored; a refused press or repair that ends on another

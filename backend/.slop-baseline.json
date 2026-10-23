@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 905,
-    "total_loc": 284012,
-    "src_loc": 76377,
-    "test_loc": 207635,
+    "modules": 907,
+    "total_loc": 284614,
+    "src_loc": 76715,
+    "test_loc": 207899,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -27,7 +27,7 @@
       },
       {
         "file": "mcp_server/tests/test_server.py",
-        "line": 645,
+        "line": 649,
         "name": "test_audit_one_sentence_docstring_fixes",
         "complexity": 47,
         "params": 0,
@@ -178,20 +178,20 @@
         "lines": 152
       },
       {
+        "file": "app/services/tailoring_session.py",
+        "line": 1401,
+        "name": "tailor",
+        "complexity": 32,
+        "params": 4,
+        "lines": 221
+      },
+      {
         "file": "tests/test_frontend_jobs_honest_words.py",
         "line": 847,
         "name": "test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions",
         "complexity": 31,
         "params": 0,
         "lines": 37
-      },
-      {
-        "file": "app/services/tailoring_session.py",
-        "line": 1374,
-        "name": "tailor",
-        "complexity": 31,
-        "params": 4,
-        "lines": 216
       },
       {
         "file": "app/services/chat_agent.py",
@@ -410,7 +410,7 @@
         "lines": 73
       }
     ],
-    "hotspot_count": 1052,
+    "hotspot_count": 1053,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -499,7 +499,7 @@
       }
     ],
     "error_masking_count": 17,
-    "internal_import_edges": 4119,
+    "internal_import_edges": 4125,
     "imports_per_module": 4.55,
     "entry_points_used": [
       "app.main",
@@ -531,7 +531,7 @@
       "mode": "weak"
     },
     "percentage": 0.43,
-    "duplicated_lines": 399,
+    "duplicated_lines": 398,
     "clones": 46,
     "allowlisted_clones": 0,
     "worst_files": [
@@ -649,7 +649,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "1052 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
+      "detail": "1053 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -662,15 +662,15 @@
     }
   ],
   "metrics": {
-    "total_loc": 284012,
-    "src_loc": 76377,
-    "test_loc": 207635,
-    "modules": 905,
+    "total_loc": 284614,
+    "src_loc": 76715,
+    "test_loc": 207899,
+    "modules": 907,
     "orphan_loc": 0,
     "duplication_pct": 0.43,
-    "duplicated_lines": 399,
+    "duplicated_lines": 398,
     "clone_count": 46,
-    "complexity_hotspots": 1052,
+    "complexity_hotspots": 1053,
     "error_masking": 17,
     "imports_per_module": 4.55
   }

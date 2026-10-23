@@ -95,6 +95,7 @@ def test_career_profile_registers_onboarding_tools_and_hunt_does_not():
         "kb_groom_entity",
         "kb_combine_points",
         "kb_retire_points",
+        "kb_add_points",
     }
     assert new_tools <= CAREER_TOOLS
     assert {"list_base_resumes", "get_base_resume"} <= CAREER_TOOLS
@@ -108,6 +109,12 @@ def test_career_profile_can_finish_the_arc_it_starts():
 
     assert {"render_pdf", "get_rendered_pdf"} <= CAREER_TOOLS
     assert {"score_ats", "tailor_session", "create_tailoring_session"}.isdisjoint(CAREER_TOOLS)
+
+
+def test_apply_profile_can_store_an_apply_package_without_an_ai_key():
+    """A key-less agent writes the letter and answers itself; apply carries the
+    store tools beside the generate ones."""
+    assert {"store_cover_letter", "store_qa_answers", "list_qa_entries"} <= APPLY_TOOLS
 
 
 def test_scoped_profiles_stay_read_only_on_the_kb():

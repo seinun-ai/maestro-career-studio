@@ -89,6 +89,20 @@ _RESOLUTIONS_FIELD = Field(
 )
 GapResolutions = Annotated[list[GapResolution], _RESOLUTIONS_FIELD]
 
+# Immune to the ~2048-char tool-description truncation: lives on the param schema.
+_TAILOR_OPS_FIELD = Field(
+    description=(
+        "Typed edit ops, the shapes edit_base_resume lists; omitted, the app's model "
+        "writes them. With ops the server itself applies only the saved enable_entry "
+        "and port_kb_point answers: user_input and attach_project answers reach the "
+        "resume only through these ops, and answers_left_to_ops lists them. On both "
+        "paths a saved add_keyword whose word (its wording, else the gap's jd_skill) "
+        "is not on the result is added to the skills list, in the category it chose, "
+        "else Additional Skills, never as a bullet; keywords_added lists those words."
+    )
+)
+TailorOps = Annotated[list[dict] | None, _TAILOR_OPS_FIELD]
+
 
 class FilledFieldInput(TypedDict):
     """One form field as record_filled_answers stores it."""
@@ -151,6 +165,30 @@ _RUN_REPORT_FIELD = Field(
     )
 )
 RunReportArg = Annotated[RunReport | None, _RUN_REPORT_FIELD]
+
+class AuthoredAnswerInput(TypedDict):
+    """One screening question with the caller's own answer."""
+
+    question: str
+    answer: str
+
+
+_AUTHORED_ANSWERS_FIELD = Field(
+    min_length=1,
+    max_length=50,
+    description=(
+        "1-50 {question, answer} pairs: question as the form asks it (at most 2000 "
+        "characters), answer as it goes into the form (at most 10000)."
+    ),
+)
+AuthoredAnswers = Annotated[list[AuthoredAnswerInput], _AUTHORED_ANSWERS_FIELD]
+
+_KB_POINTS_FIELD = Field(
+    min_length=1,
+    max_length=50,
+    description="1-50 bullets for the one entity, each at most 1000 characters.",
+)
+KBPoints = Annotated[list[str], _KB_POINTS_FIELD]
 
 _INGEST_DATA_FIELD = Field(
     description=(
@@ -346,7 +384,8 @@ def list_referrals() -> Any:
 @mcp.tool(**_read("List Application Answers"))
 @_guard
 def list_qa_entries(application_id: str) -> Any:
-    """List the generated screening answers and cover letters for an application, newest first."""
+    """List an application's screening answers and cover letters, newest first:
+    the ones the app's model generated and the ones a caller stored."""
     return _client.list_qa_entries(application_id)
 
 
@@ -603,14 +642,45 @@ def kb_capture(
 ) -> Any:
     """Capture free-text career news into DRAFT points. A model matches it to an
     existing entity or proposes a new one (this call uses the configured LLM
-    provider); pass entity_id to force placement. Points land as drafts for the
-    user to approve at /career. The text is stored as the user's own words and
-    facts; the server does not verify it."""
+    provider; with no API key set it returns an error); pass entity_id to force
+    placement. Points land as drafts for the user to approve at /career. The
+    text is stored as the user's own words and facts; the server does not verify
+    it. kb_add_points stores bullets the caller already wrote, with no LLM call."""
     return _client.kb_capture(
         text,
         entity_id=entity_id,
         origin_detail=_client_label(ctx),
     )
+
+
+@mcp.tool(**_write("Add Career Points as Drafts", destructive=False, idempotent=True))
+@_guard
+def kb_add_points(
+    entity_id: str,
+    points: KBPoints,
+    ctx: Context | None = None,
+) -> Any:
+    """Add bullets the caller wrote to an existing Career KB entity as DRAFT
+    points, with no LLM call (kb_capture with entity_id, minus the model that
+    splits and places free text). Drafts appear on no resume and in no career
+    export until approved with kb_approve_points (or at /career). The text is
+    stored as the user's own words and facts; the server does not verify it.
+
+    Store-time rules: en and em dashes become a hyphen in a range
+    ("2020-2023") and a comma elsewhere, and one opening a bullet is dropped.
+    Resume text is implied first person:
+    a bullet where I, he or she opens a clause, his/her/my opens one or follows
+    its verb ("Grew his team"), or the owner's name appears returns 400 naming
+    the lines and stores nothing; they/their and pronouns about other people
+    are stored. A bullet already on the entity in any state
+    (case and spacing ignored), or repeated in the call, is skipped, so a
+    repeated call adds nothing; a rephrasing is added as a new draft
+    (kb_groom_entity reports similar bullets).
+
+    Returns {entity_id, entity_title, point_ids, skipped}: the new DRAFT point
+    ids and the skipped texts. An unknown entity_id is a 404; kb_list_entities
+    returns the ids, and kb_create_entity makes a new entity."""
+    return _client.kb_add_points(entity_id, points, origin_detail=_client_label(ctx))
 
 
 @mcp.tool(**_write("Edit Career Point", destructive=True, idempotent=True))
@@ -1255,16 +1325,68 @@ def generate_qa_answers(application_id: str, questions: list[str]) -> Any:
     `questions` is the complete list of questions to answer in this batch.
     Outreach/cold messages are asked as free-form questions here (e.g. "Write a
     short LinkedIn DM to the hiring manager") — answers are grounded in the
-    resume and the application's linked referral contact when one exists."""
+    resume and the application's linked referral contact when one exists.
+    This call uses the configured LLM provider (with no API key set it returns
+    an error); store_qa_answers stores answers the caller wrote, with no LLM call."""
     return _client.generate_qa_answers(application_id, questions)
+
+
+@mcp.tool(**_write("Store Screening Answers", destructive=True, idempotent=True))
+@_guard
+def store_qa_answers(
+    application_id: str,
+    answers: AuthoredAnswers,
+    ctx: Context | None = None,
+) -> Any:
+    """Store screening-question answers the caller wrote for an application,
+    with no LLM call (generate_qa_answers has the app's configured model write
+    them). One entry per question, shown in the job's Apply step history and in
+    list_qa_entries. A question the application already holds (the same words,
+    case and spacing ignored) has its answer replaced and the others are added,
+    so a repeated call changes nothing. Answers are stored as plain form text,
+    as generated ones are: markdown bold, headings, bullet markers and backticks
+    are removed, and en and em dashes become a hyphen in a range ("2020-2023")
+    and a comma elsewhere, line breaks kept. The text is stored as the user's
+    own words; the server does not verify it. An answer that is empty once its
+    formatting is removed is a 400 that stores nothing. Returns the stored
+    entries [{id, kind, prompt, answer, model_used, created_at}]; model_used
+    names the agent."""
+    return _client.store_qa_answers(
+        application_id, [dict(item) for item in answers], origin_detail=_client_label(ctx)
+    )
 
 
 @mcp.tool(**_write("Generate Cover Letter", destructive=True, idempotent=False, open_world=True))
 @_guard
 def generate_cover_letter(application_id: str, tone: str) -> Any:
     """Generate a cover letter for an application in the requested tone. This
-    replaces the application's prior generated cover-letter entry."""
+    replaces the application's prior generated cover-letter entry. This call
+    uses the configured LLM provider (with no API key set it returns an error);
+    store_cover_letter stores a letter the caller wrote, with no LLM call."""
     return _client.generate_cover_letter(application_id, tone)
+
+
+@mcp.tool(**_write("Store Cover Letter", destructive=True, idempotent=True))
+@_guard
+def store_cover_letter(application_id: str, text: str, ctx: Context | None = None) -> Any:
+    """Store a cover letter the caller wrote for an application and render its
+    PDF, with no LLM call (generate_cover_letter has the app's configured model
+    write it). It replaces the application's cover letter and that letter's PDF
+    (an application holds one); the new one shows on the job's Apply step and in
+    list_qa_entries. The text is stored as the user's own letter; the server does
+    not verify its facts. As with a generated letter, en and em dashes become a
+    hyphen in a range ("2020-2023") and a comma elsewhere, and one opening a line
+    ("— Jane") is dropped; the rest is stored as written, line breaks and
+    paragraphs included, up to 20000 characters. The PDF puts the base
+    resume's contact block above the letter, in the engine of the application's
+    resume template.
+
+    Returns the stored entry {id, application_id, kind, answer, model_used,
+    pdf_path, render_note, render_error, created_at}; model_used names the
+    agent. render_error non-null means the letter is stored and its PDF could
+    not be made (pdf_path is null). render_note is non-null only when a TeX-less
+    backend rendered a LaTeX template through a Typst one."""
+    return _client.store_cover_letter(application_id, text, origin_detail=_client_label(ctx))
 
 
 @mcp.tool(**_write("Render Resume PDF", destructive=False, idempotent=True))
@@ -1863,12 +1985,11 @@ def resolve_gaps(
 def tailor_session(
     tailoring_session_id: str,
     user_prompt: str | None = None,
-    ops: list[dict] | None = None,
+    ops: TailorOps = None,
 ) -> Any:
     """Run the tailor pipeline for a session: resolutions -> edit ops ->
     tailored application, auto-scored.
 
-    `tailoring_session_id` is the id returned by create_tailoring_session.
     Two ways to produce the edit ops:
     - Default (ops omitted): the backend builds the tailor prompt from the saved
       resolutions and calls the LLM to generate the ops.
@@ -1879,12 +2000,13 @@ def tailor_session(
       get_base_resume).
 
     Caller-supplied ops are applied as authored: the server validates structure
-    only, so nothing gates fabricated skills, experience, metrics, or dates
-    (keyword-survival checks run only on the backend-LLM path). A skill the
-    candidate cannot evidence goes only in the skills list (add_skill_item), not
-    in a bullet; the compare view audits any edit beyond the saved resolutions.
-
-    Resume text must be implied first person: no I/he/she/they or the owner's name; a hit returns 400 naming the lines.
+    only, so nothing gates fabricated skills, experience, metrics, or dates. A
+    skill the candidate cannot evidence goes only in the skills list
+    (add_skill_item), not in a bullet; the compare view audits any edit beyond
+    the saved resolutions. `ops` says which saved answers the server applies.
+    Resume text is implied first person: an edited line where I/he/she opens a
+    clause, his/her/my opens one or follows its verb ("Grew his team"), or the
+    owner's name appears returns 400 naming the lines.
 
     Optional user_prompt adds free-form tailoring guidance. Writes the job's ONE
     application from the base plus the ops: it rebuilds the draft and removes its
@@ -1904,6 +2026,8 @@ def tailor_session(
                 application_id=application_id,
                 allowed_tools=_active_allowed_tools(),
                 hints_enabled=_hints_enabled(),
+                keywords_added=result.get("keywords_added") or [],
+                answers_left_to_ops=result.get("answers_left_to_ops") or [],
             )
         )
         if application_id
