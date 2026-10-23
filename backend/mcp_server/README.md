@@ -19,7 +19,7 @@ same URL, and its `maestro connect` command does the setup below from the termin
 ## Install
 
 Open Settings › Agent apps › **Connect an agent app** and choose a
-**Tool set**. Every route defaults to `full` (all 91 tools); see
+**Tool set**. Every route defaults to `full` (all 92 tools); see
 [Profiles](#profiles) to narrow it. Enable one connection per client.
 
 ### Claude Desktop
@@ -134,11 +134,11 @@ Each scoped URL lists exactly its allowlist and refuses tools outside it.
 
 | Profile | Use when | Tools |
 | --- | --- | --- |
-| `full` | Mixed use (default) | all 91 |
+| `full` | Mixed use (default) | all 92 |
 | `hunt` | Finding jobs and proposing them, no browser filling | 21 |
-| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 50 |
+| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 51 |
 | `explore` | Charts and trends across your saved jobs (`explore_*`) | 11 |
-| `templates` | Creating and testing resume templates | 12 |
+| `templates` | Creating and testing resume templates | 13 |
 | `career` | Reading and editing your Career KB | 21 |
 
 **Enable one profile per chat.** The scoped profiles are subsets of `full`, so
@@ -224,6 +224,7 @@ Each tool's own description (which your assistant sees) has the full details.
 
 **Health check** (run before tailoring)
 - `run_health_check`, `get_health_report`: score a resume on its own, without a job, and list what to fix.
+- `judge_health_bullets`: with no model key in the app, store your assistant's judgment of each bullet, by the app's own rubric, so the check can grade.
 - `waive_health_gate`, `unwaive_health_gate`: skip a failing check only when you say so, or undo that.
 
 **Scoring and tailoring**

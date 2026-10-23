@@ -73,6 +73,7 @@ APPLY_TOOLS = frozenset({
     "prepare_application_pdf_upload",
     "run_health_check",
     "get_health_report",
+    "judge_health_bullets",
     "propose_application",
     "list_proposals",
     "get_proposal",
@@ -118,6 +119,7 @@ TEMPLATES_TOOLS = frozenset({
     "get_base_resume",
     "run_health_check",
     "get_health_report",
+    "judge_health_bullets",
 })
 
 # Curate the Career KB itself: read with IDs, then capture/correct, plus the
