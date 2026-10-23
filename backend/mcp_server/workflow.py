@@ -632,8 +632,8 @@ def next_after_base_from_kb(
     if _registered("score_ats", allowed_tools):
         steps.append("score_ats (against a captured job)")
     autofill = (setup_status or {}).get("autofill")
-    if _registered("set_autofill_profile", allowed_tools) and isinstance(autofill, dict) \
-            and autofill.get("done") is False:
+    answers_open = isinstance(autofill, dict) and autofill.get("done") is False
+    if answers_open and _registered("set_autofill_profile", allowed_tools):
         steps.append("set_autofill_profile (the form answers, which setup reads as not done)")
     offer = f"Base {slug} is ready."
     if steps:
