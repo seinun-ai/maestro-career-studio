@@ -81,6 +81,10 @@ def test_all_tools_registered():
         "report_failure",
         "record_filled_answers",
         "record_run",
+        "set_autofill_profile",
+        "set_job_preferences",
+        "set_markets",
+        "set_persona",
     }
     expected |= KB_TOOL_NAMES
     assert expected <= names

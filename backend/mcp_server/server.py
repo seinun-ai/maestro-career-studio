@@ -13,8 +13,9 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import ConfigDict, Field, with_config
 
+from app.schemas.autofill_profile import WorkAuthStatus
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
-from app.services import http_client
+from app.services import http_client, markets
 from mcp_server import workflow
 from mcp_server.client import BackendClient, BackendError
 from mcp_server.profiles import allowed_tools, apply_profile_filter
@@ -160,6 +161,131 @@ _INGEST_DATA_FIELD = Field(
         "nothing persisted on a 422."
     )
 )
+
+
+# ---------- profile facts: the shapes the profile writes take ----------
+# Each refuses an unknown key, so a misspelt field is an error rather than an answer no reader
+# looks for; the keys are the ones Profile shows and the Companion fills. A market is the market
+# setting's own key ("UK", not the ISO "GB"), listed from services/data/markets.yaml.
+MarketKey = Literal[tuple(markets.keys())]
+
+
+@with_config(ConfigDict(extra="forbid"))
+class PersonalAnswers(TypedDict, total=False):
+    """Contact and address answers; a null removes one."""
+
+    first_name: str | None
+    last_name: str | None
+    preferred_name: str | None
+    email: str | None
+    phone: str | None
+    address: str | None
+    address_2: str | None
+    city: str | None
+    state: str | None
+    postal_code: str | None
+    country: str | None
+    linkedin: str | None
+    github: str | None
+    website: str | None
+
+
+@with_config(ConfigDict(extra="forbid"))
+class EligibilityAnswers(TypedDict, total=False):
+    """Yes/No eligibility answers (true is Yes); a null removes one."""
+
+    over_18: bool | None
+    previously_employed_here: bool | None
+    non_compete: bool | None
+
+
+@with_config(ConfigDict(extra="forbid"))
+class PreferenceAnswers(TypedDict, total=False):
+    """Start and pay answers, in the words a form gets; a null removes one."""
+
+    desired_salary: str | None
+    notice_period: str | None
+    earliest_start_date: str | None
+    willing_to_relocate: bool | None
+    how_heard: str | None
+
+
+@with_config(ConfigDict(extra="forbid"))
+class WorkPermitAnswers(TypedDict, total=False):
+    """One country's work-permit answers (true is Yes); a null removes one. status is the US
+    visa status, asked for the US only; authorization_expires_on is YYYY-MM-DD, absent when the
+    right to work there does not run out."""
+
+    status: WorkAuthStatus | None
+    authorized_now: bool | None
+    sponsorship_now: bool | None
+    sponsorship_future: bool | None
+    authorization_expires_on: str | None
+
+
+@with_config(ConfigDict(extra="forbid"))
+class EducationEntry(TypedDict, total=False):
+    """One school, most recent first in the list."""
+
+    school: str
+    degree: str
+    discipline: str
+    gpa: str
+    start_year: str
+    end_year: str
+
+
+LanguageLevel = Literal["Basic", "Intermediate", "Fluent"]
+
+
+@with_config(ConfigDict(extra="forbid"))
+class LanguageEntry(TypedDict, total=False):
+    """One language; native and fluent are separate answers, as forms ask them."""
+
+    language: str
+    read: LanguageLevel
+    speak: LanguageLevel
+    write: LanguageLevel
+    native: bool
+    fluent: bool
+
+
+@with_config(ConfigDict(extra="forbid"))
+class SavedAnswer(TypedDict):
+    """A question the profile's other sections do not answer, with the user's answer.
+    only_for names the one company or city it holds for (only_for_kind)."""
+
+    question: str
+    answer: str
+    only_for: NotRequired[str]
+    only_for_kind: NotRequired[Literal["company", "city"]]
+
+
+@with_config(ConfigDict(extra="forbid"))
+class FavoredRoleInput(TypedDict, total=False):
+    """A role the user wants: label in their own words, or role as a catalog key (its category
+    and label come from the catalog; an unknown key is a 422)."""
+
+    role: str | None
+    label: str
+    category: str | None
+
+
+@with_config(ConfigDict(extra="forbid"))
+class MinSalaryInput(TypedDict, total=False):
+    """The lowest yearly pay wanted; currency is ISO 4217, null for the home currency."""
+
+    amount: int
+    currency: str | None
+
+
+WorkPermitsArg = Annotated[
+    dict[MarketKey, WorkPermitAnswers | None] | None,
+    Field(description=(
+        "Work-permit answers by market key. Each country's answers merge key by key; a "
+        "country set to null loses its answers; a country left out keeps them."
+    )),
+]
 
 
 # Tool annotations: the spec defaults are destructive=true and openWorld=true when
@@ -933,6 +1059,116 @@ def get_autofill_profile(application_id: str | None = None, base: str | None = N
     here (a county) is not in the profile and is not guessable.
     WOTC, signatures and terms are human-only."""
     return _client.get_autofill_context(application_id=application_id, base=base)
+
+
+# ---------- profile facts: what Setup and Profile ask for ----------
+# Over MCP an agent writes the facts Setup and Profile ask the user, except the AI key and the
+# diversity answers. Settings' switches, the consent records and the job-site login stay the
+# user's (docs/plans/2026-10-23-mcp-profile-writes-design.md; mcp_server/tests/
+# test_profile_write_tools.py pins the settings the client writes).
+def _setup_autofill() -> dict[str, Any] | None:
+    """Setup's form-answer readiness, read after a landed write: null when the read fails."""
+    status = _best_effort_hint(_client.get_setup_status)
+    return status.get("autofill") if isinstance(status, dict) else None
+
+
+def _given(*, refusal: str, **fields: Any) -> dict[str, Any]:
+    """The fields a patch write was passed. None of them is refused, not sent back unchanged:
+    FastMCP drops an argument a tool does not declare, so a call naming only those (`eeo`)
+    reaches here as no change at all."""
+    given = {key: value for key, value in fields.items() if value is not None}
+    if not given:
+        raise ToolError(refusal)
+    return given
+
+
+@mcp.tool(**_write("Update Autofill Profile", destructive=True, idempotent=True))
+@_guard
+def set_autofill_profile(
+    personal: PersonalAnswers | None = None,
+    eligibility: EligibilityAnswers | None = None,
+    preferences: PreferenceAnswers | None = None,
+    work_auth_by_country: WorkPermitsArg = None,
+    education: list[EducationEntry] | None = None,
+    languages: list[LanguageEntry] | None = None,
+    custom: list[SavedAnswer] | None = None,
+) -> Any:
+    """Save the user's application-form answers: the profile get_autofill_profile reads and
+    the Companion fills forms from. Only the sections passed change. Inside personal,
+    eligibility, preferences and each country's work-permit answers only the keys passed
+    change, and a null removes one; education, languages and custom replace the stored list
+    whole (get_autofill_profile returns the current lists). A work-permit answer is per
+    country and a form question without one is asked on that form, never defaulted; setup
+    counts the answers of each country in apply_in (set_markets). Diversity (EEO) answers
+    have no field here: they and their consent are the user's, in Profile. An unknown
+    section, key or market key writes nothing. Returns {profile, setup}: the saved profile
+    without eeo, and setup status's form-answer readiness (readiness 0 to 1, groups,
+    blocking, work_auth_by_country counts), null when that read fails."""
+    changes = _given(
+        refusal=(
+            "Nothing to save: no section was passed. Diversity (eeo) answers have no field "
+            "here; they are the user's, in Profile."
+        ),
+        personal=personal, eligibility=eligibility, preferences=preferences,
+        work_auth_by_country=work_auth_by_country, education=education,
+        languages=languages, custom=custom,
+    )
+    return {"profile": _client.set_autofill_profile(changes), "setup": _setup_autofill()}
+
+
+@mcp.tool(**_write("Update Job Preferences", destructive=True, idempotent=True))
+@_guard
+def set_job_preferences(
+    favored_roles: list[FavoredRoleInput] | None = None,
+    years_experience: Annotated[int | None, Field(ge=0, le=60)] = None,
+    employment_types: list[Literal["full_time", "contract", "part_time", "internship"]] | None = None,
+    locations: list[str] | None = None,
+    remote: Literal["remote", "hybrid", "onsite", "any"] | None = None,
+    min_salary: MinSalaryInput | None = None,
+    notes: str | None = None,
+) -> Any:
+    """Save the jobs the user wants, which get_job_search_brief reads and setup counts as
+    done once any is set. Only the fields passed change; [] clears a list and "" clears
+    notes. favored_roles holds at most 25 roles, duplicates dropped. A role the catalog
+    does not know, a currency that is not ISO 4217 or more than 25 roles is a 422 that
+    saves nothing. Returns the stored preferences, with role_categories derived from
+    favored_roles."""
+    return _client.set_job_preferences(_given(
+        refusal="Nothing to save: no field was passed.",
+        favored_roles=favored_roles, years_experience=years_experience,
+        employment_types=employment_types, locations=locations, remote=remote,
+        min_salary=min_salary, notes=notes,
+    ))
+
+
+@mcp.tool(**_write("Set Where You Live and Apply", destructive=False, idempotent=True))
+@_guard
+def set_markets(
+    home: MarketKey | None = None,
+    apply_in: list[MarketKey] | None = None,
+    home_currency: str | None = None,
+) -> Any:
+    """Save where the user lives and applies. home (a market key, "UK" not "GB") sets the
+    date format and, while home_currency is unset, the currency pay is shown in. apply_in
+    is every market the user applies in, each asking its own work-permit answers; [] reads
+    as home alone, and a market dropped from it keeps its stored answers. home alone leaves
+    apply_in as stored. home_currency is ISO 4217; "" follows home again. Only the fields
+    passed change, and no field passed reads the current values. Returns {home, apply_in,
+    home_currency (the resolved one), setup}: setup is setup status's form-answer readiness,
+    null when that read fails."""
+    place = _client.set_markets(home=home, apply_in=apply_in, home_currency=home_currency)
+    return {**place, "setup": _setup_autofill()}
+
+
+@mcp.tool(**_write("Update Persona", destructive=True, idempotent=True))
+@_guard
+def set_persona(text: str) -> Any:
+    """Replace the user's persona: their direction, strengths and working style in their
+    own words. Every writing prompt (tailoring, application answers, cover letters) reads it
+    for tone and emphasis, never as a source of facts. The whole text is replaced; "" clears
+    it, and setup counts the step done while it is not empty. The app's own persona draft
+    needs Maestro's AI key and has no MCP tool. Returns {key, value}."""
+    return _client.set_persona(text)
 
 
 @mcp.tool(**_read("Find Job by URL"))
