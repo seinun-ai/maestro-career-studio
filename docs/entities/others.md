@@ -762,8 +762,11 @@
   withheld in the UI), `score_breakdown` (`raw_score`/`e_hot`/`n_scoreable`/`capped_by`, from
   `features_json`) and `next_grade` (`{grade, points}` to the next band's floor; null at A, and when
   a failed gate's cap sits below that floor, so a raw 50 under the fatal 54 cap gets no "5 points to C"). Every ask and fix on a scored bullet carries `gain`: the points one
-  level up is worth (`100 × step / n_scored`), never a promised jump to full credit; summary asks and
-  every note carry 0.
+  level up is worth (`100 × step / n_scored`, counting pending bullets), never a promised jump to
+  full credit; summary asks and every note carry 0. `judged` is `{done, pending, by}`: ladder texts a
+  judge has read, texts waiting (only on a keyless run) and the judges' model ids, sorted; while a
+  scored bullet is pending, `score`, `grade`, `next_grade` and `score_breakdown` are null and C1 is
+  not computed until every hot text is judged. Reports stored before `judged` existed lack it.
 - **The health evaluator** (`bullet_classify.py`, prompt `resume_bullet_classify`) judges; code
   validates and does all arithmetic. One batched smart-model call for the texts nothing stored
   answers returns, per text, a level, 1–3 `evidence` quotes, one `question`, `ask_kind`
@@ -776,13 +779,26 @@
   `FALLBACK_QUESTION`); a detail question that demands a number is swapped the same way; `direct`
   asks nothing; a slip's span must occur verbatim. A text the model skips reads `implied` + uncertain
   and is not stored. Results cache on `bullet_classifications` by `content_hash` and are reused only
-  under the current `RUBRIC_VERSION` AND smart model, so a prompt-contract change bumps the version
+  under the current `RUBRIC_VERSION` AND smart model (any judge on a keyless run, below), so a prompt-contract change bumps the version
   (SYSTEM.md §12); overrides survive both. Findings carry `ask_kind` (`reword` on a fix, and on the
   ask a ≤0.30 bullet gets when no safe rewrite exists), `measure_target` and `alt_question` (measure
   asks only), verbatim `evidence`, `classification_source` (which of override, dispute or evaluation
   rated it) and the question itself, which also reaches every rewrite of that bullet as context
   (`guarded_rewrite(question=)`). `evaluate_uncached` never touches the cache: disputes and
   `scripts/health_golden.py` (the rubric's pilot gate, run by hand) rely on that.
+- **The keyless check** (owner decision 2026-10-23: both paths, the key wins): `run_report` judges with
+  a model only when `llm.any_model_key_configured()`. Without one it calls no model:
+  `bullet_classify.stored_judgments` returns what is stored at the current `RUBRIC_VERSION` from ANY
+  judge (same precedence; overrides and disputes included) and the rest as pending; no verifier, no
+  rewrites (fix candidates become asks); the stored row's `model` is the single judge or null. The
+  run response then carries `judging` (`{rubric_version, pending_ids, prompt}`, `prompt` being
+  `evaluator_prompt`: the `resume_bullet_classify` prompt filled with the pending items, the text
+  the in-app model gets). `POST /{kind}/{key}/judgments` (`{classifications}`, ≤500, MCP
+  `judge_health_bullets`) stores a connected agent's answers: each entry names a pending id and passes
+  `_validate`, is stored with `model = "agent:<clientInfo.name>"` (`"agent"` unnamed, from the write
+  origin headers), then the report is rebuilt and returned with `accepted [{id, level as stored}]`,
+  `rejected [{id, reason}]` and `judging` while texts remain. 409 while a key is set: the app's model
+  judges then, and its next run re-judges what an agent judged (cache rows key on the smart model).
 - **Health disputes** (`health_disputes.py`; `POST /{kind}/{key}/dispute`, `GET /{kind}/{key}/disputes`,
   `DELETE /disputes/{content_hash}`) are the **Not right?** control: the evaluator re-run uncached on
   one bullet with the user's note (≤1000 chars). The note changes how the text is READ; the level

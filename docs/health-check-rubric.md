@@ -116,6 +116,17 @@ approved evaluator contract. Code validates the model response and computes scor
 - **Rewrites** [weak]: never invent numbers, drop protected entities or introduce placeholders.
   All appliable rewrites pass `health_guards`; a rejected suggestion is copy-only or absent.
   Source: `health_guards.py` and the product truthfulness requirement.
+- **No model key** [weak]: the check then calls no model. A stored judgment at the current rubric
+  version counts whoever made it, and every other line waits. While a scored bullet waits the report
+  has no score or grade and says how many lines wait; gates and rule notes still run, the hot-zone
+  check (C1) waits for every hot line, and there are no rewrites or detector vetoes. A score over
+  half the bullets would read as a verdict on all of them. Source: owner decision 2026-10-23,
+  `resume_lint.run_report`.
+- **Agent judgments** [weak]: with no key, a connected agent judges by this same evaluator prompt,
+  filled with the waiting lines, and every answer passes the same `_validate` checks as a model's;
+  it is cached under the agent's name. With a key the app's own model judges and agent answers are
+  refused. An agent is another model, not a validated judge: the golden set has not measured one.
+  Source: owner decision 2026-10-23, `bullet_classify.record_judgments`.
 - **Repeatability** [weak]: cache by text, rubric version and model, with user overrides preserved;
   a change to what the prompt judges bumps the rubric version. Source: evaluator cache contract.
   Repeatability is not proof of an accurate judgment.
@@ -126,7 +137,7 @@ approved evaluator contract. Code validates the model response and computes scor
 - **Pilot gate** [weak]: across three held-out trials, each role needs 80% within-one-level agreement,
   overall needs 90% within-one and 70% exact; unnatural number asks and overcredited disputes must
   be zero. Persisted no-number facts must suppress measure asks. Source: evaluation plan.
-- **Known limits** [weak]: disputes are web-only (no MCP tool); a rating hand-set to `direct`
+- **Known limits** [weak]: disputes are web-only (no MCP tool) and need a model key; a rating hand-set to `direct`
   leaves the report, so it can't be set back from the report's Done tab; custom-section suggestions
   are copy-only (no bullet edit op for them); a tailored draft gets the word bank but no automatic
   rubric check. Source: SYSTEM.md §11.

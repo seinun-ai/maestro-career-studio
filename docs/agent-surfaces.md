@@ -41,6 +41,11 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `explore_skill_heatmap` rows carry `count` and `of` beside `pct_jobs`, and `explore_role_mix_over_time` returns every week from
   the first to the last for every role, 0 where it had none. No tool reads Today, the search summary, money or the market setting,
   and the explore tools take no period or source.
+- **The health check without a model key.** `run_health_check` then calls no model and returns a report that counts only stored
+  judgments (`judged`, null `score`/`grade` while a scored bullet waits) plus `judging`: the app's own evaluator prompt filled with
+  the waiting bullets. `judge_health_bullets` (`apply`, `templates`, `full`) sends the agent's answers in that prompt's output
+  shape under the client's name; each passes `_validate` and the rebuilt report comes back with `accepted`/`rejected`. With a key
+  the write is a 409 and the app's model judges (docs/entities/others.md, "The keyless check").
 
 ## Guided tailoring workflow
 

@@ -798,7 +798,7 @@ overflow moves to `docs/deferred.md` under this same contract, each item keeping
     the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits". Do when Phase 3 (run list, Queue view, parallel tabs) is
     built or a listed limit is reproduced.
 
-The other 46 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32, 33, 37–43, 45–60, 62) live in [`docs/deferred.md`](docs/deferred.md),
+The other 47 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32, 33, 37–43, 45–60, 62, 63) live in [`docs/deferred.md`](docs/deferred.md),
 each keeping its number and carrying its trigger; code citing "§11 item N" for one of them lands there. The design refresh's
 not-fixed observations are 53–60 and 62 there: one diversity set for every country, no per-country work-permit breakdown, Today never
 expiring proposals, mail events dated when learned, no version check on profile saves, the chart palette, a picture from before
