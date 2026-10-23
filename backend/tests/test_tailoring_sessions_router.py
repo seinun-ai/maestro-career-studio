@@ -623,6 +623,19 @@ def test_create_session_warns_when_health_under_55(db_session, tmp_path, monkeyp
     assert "40" in body["health_warning"]
 
 
+def test_create_session_ungraded_report_no_warning(db_session, tmp_path, monkeypatch, client):
+    """A keyless report with bullets still waiting has no score: nothing to warn about."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _seed_health_report(db_session, slug, {"score": None, "grade": None, "gates": [],
+                                           "judged": {"done": 0, "pending": 4, "by": []}})
+
+    response = _create(client, job, slug, enrich=False)
+
+    assert response.status_code == 200
+    assert response.json()["health_warning"] is None
+
+
 def test_create_session_healthy_report_no_warning(db_session, tmp_path, monkeypatch, client):
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch)

@@ -230,3 +230,73 @@ def test_record_judgments_reads_the_resumes_own_bullets(db_session):
         {"id": bc.content_hash(VAGUE), "level": "implied", "confidence": 0.7}])
     assert accepted == [{"id": bc.content_hash(VAGUE), "level": "implied"}]
     assert rejected == []
+
+
+# --------------------------------------------------------------------------- #
+# REST: the run, the judging brief, the judgments write
+
+from app.models.base_resume import BaseResume  # noqa: E402
+
+MCP_CLAUDE = {"X-Maestro-CS-Origin": "mcp", "X-Maestro-CS-Origin-Detail": "claude-ai"}
+
+
+@pytest.fixture
+def seeded(db_session, pass_gates):
+    db_session.add(BaseResume(slug="keyless", display_name="Keyless", data_json=_resume()))
+    db_session.commit()
+    return "keyless"
+
+
+def _entry(text, level="direct", **extra):
+    return {"id": bc.content_hash(text), "level": level, "confidence": 0.9,
+            "evidence": [" ".join(text.split()[:4])], "reason": "r", **extra}
+
+
+def test_run_without_a_key_returns_an_ungraded_report_and_the_brief(client, seeded):
+    response = client.post(f"/api/resume-lint/base/{seeded}/run")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["score"], body["grade"], body["next_grade"]) == (None, None, None)
+    assert body["judged"] == {"done": 0, "pending": 5, "by": []}
+    assert body["score_breakdown"] is None
+    brief = body["judging"]
+    assert brief["rubric_version"] == bc.RUBRIC_VERSION
+    assert len(brief["pending_ids"]) == 5
+    assert all(pid in brief["prompt"] for pid in brief["pending_ids"])
+
+    latest = client.get(f"/api/resume-lint/base/{seeded}").json()
+    assert latest["judged"]["pending"] == 5 and latest["grade"] is None
+
+
+def test_judgments_from_an_agent_grade_the_report(client, db_session, seeded):
+    entries = [_entry(t, "implied" if t == VAGUE else "direct") for t in [*BULLETS, SUMMARY]]
+    response = client.post(f"/api/resume-lint/base/{seeded}/judgments",
+                           json={"classifications": entries}, headers=MCP_CLAUDE)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body["accepted"]) == 5 and body["rejected"] == []
+    assert isinstance(body["score"], int) and body["grade"] in "ABCDF"
+    assert body["judged"] == {"done": 5, "pending": 0, "by": ["agent:claude-ai"]}
+    assert body["judging"] is None
+    assert body["model"] == "agent:claude-ai"
+    assert db_session.get(BulletClassification, bc.content_hash(CUT)).model == "agent:claude-ai"
+
+
+def test_partial_judgments_leave_the_rest_in_the_brief(client, seeded):
+    response = client.post(f"/api/resume-lint/base/{seeded}/judgments",
+                           json={"classifications": [_entry(CUT), _entry(VAGUE, "ok")]})
+    body = response.json()
+    assert [a["id"] for a in body["accepted"]] == [bc.content_hash(CUT)]
+    assert [r["id"] for r in body["rejected"]] == [bc.content_hash(VAGUE)]
+    assert body["grade"] is None and body["judged"]["pending"] == 4
+    assert bc.content_hash(CUT) not in body["judging"]["pending_ids"]
+    assert body["judged"]["by"] == ["agent"]          # no MCP origin header: a nameless agent
+
+
+def test_judgments_are_refused_while_a_model_key_is_set(client, db_session, seeded, monkeypatch):
+    monkeypatch.setattr(llm, "any_model_key_configured", lambda: True)
+    response = client.post(f"/api/resume-lint/base/{seeded}/judgments",
+                           json={"classifications": [_entry(CUT)]}, headers=MCP_CLAUDE)
+    assert response.status_code == 409
+    assert "key" in response.json()["detail"]
+    assert db_session.get(BulletClassification, bc.content_hash(CUT)) is None
