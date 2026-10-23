@@ -19,7 +19,7 @@ same URL, and its `maestro connect` command does the setup below from the termin
 ## Install
 
 Open Settings › Agent apps › **Connect an agent app** and choose a
-**Tool set**. Every route defaults to `full` (all 91 tools); see
+**Tool set**. Every route defaults to `full` (all 95 tools); see
 [Profiles](#profiles) to narrow it. Enable one connection per client.
 
 ### Claude Desktop
@@ -134,12 +134,12 @@ Each scoped URL lists exactly its allowlist and refuses tools outside it.
 
 | Profile | Use when | Tools |
 | --- | --- | --- |
-| `full` | Mixed use (default) | all 91 |
+| `full` | Mixed use (default) | all 95 |
 | `hunt` | Finding jobs and proposing them, no browser filling | 21 |
-| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 50 |
+| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 51 |
 | `explore` | Charts and trends across your saved jobs (`explore_*`) | 11 |
 | `templates` | Creating and testing resume templates | 12 |
-| `career` | Reading and editing your Career KB | 21 |
+| `career` | Your Career KB, plus the answers Setup asks for | 25 |
 
 **Enable one profile per chat.** The scoped profiles are subsets of `full`, so
 running `full` beside one lists every shared tool twice and the model has to
@@ -256,6 +256,14 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 - `generate_qa_answers`: answers to an application's screening questions.
 - `generate_cover_letter`: a cover letter in the tone you ask for.
 - `list_qa_entries`: the answers and cover letters generated so far.
+
+**Your setup answers** (`career` and `full`; `set_autofill_profile` is in `apply` too)
+- `set_autofill_profile`: save the form answers you give: contact and address, work permits for each country you apply in, start and pay, education, languages and your own questions. Only what it is given changes.
+- `set_markets`: where you live, where you apply, and the currency pay reads in.
+- `set_job_preferences`: the roles, places, work mode and lowest pay you want.
+- `set_persona`: a few sentences on your direction and strengths, in your words; writing prompts read it for tone.
+
+Diversity answers and their consent, full automation, the job-site login and every Settings switch have no tool: they stay yours, in the app.
 
 **Proposals and consent** (your yes, or automatic approval while full automation is On)
 - `propose_application`, `list_proposals`, `get_proposal`: file a job your assistant found for your review, and read the queue.

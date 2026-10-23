@@ -14,7 +14,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `_best_effort_hint` returns `next: null` on a failed lookup after a landed write.
   Coverage: [docs/entities/others.md](docs/entities/others.md), "MCP tool coverage".
   **Scoped profiles**:
-  `profiles.py` owns `full` / `hunt` / `apply` / `explore` / `templates` / `career` (91 tools); `/mcp` = `full`, `/mcp/{profile}` = its allowlist.
+  `profiles.py` owns `full` / `hunt` / `apply` / `explore` / `templates` / `career` (95 tools); `/mcp` = `full`, `/mcp/{profile}` = its allowlist.
   Lifespans run fresh stateful JSON sessions; tools use `http.py`'s eight-worker limiter (§6 inv-tools-off-loop).
   Stdio filters `MAESTRO_CS_MCP_PROFILE` (default `full`; migration state: §13 `mcp-stdio-venv`).
   Hints use request `CURRENT_PROFILE`, else env (pins: `mcp_server/tests/test_profiles.py`, `test_server.py`, `test_http.py`).
@@ -39,8 +39,19 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `work_auth` is (§6 inv-work-permit-per-country). `store_extracted_jd` stores `work_mode` and `level` as keys (`on_site`, `senior`)
   and reads a bare "$" as no currency, so the job's country's applies (`salary_currency_assumed`; docs/entities/job.md).
   `explore_skill_heatmap` rows carry `count` and `of` beside `pct_jobs`, and `explore_role_mix_over_time` returns every week from
-  the first to the last for every role, 0 where it had none. No tool reads Today, the search summary, money or the market setting,
-  and the explore tools take no period or source.
+  the first to the last for every role, 0 where it had none. No tool reads Today or the search summary; `set_markets` is the one
+  door to the market and money settings, and the explore tools take no period or source.
+
+- **Profile writes** (`set_autofill_profile`, `set_job_preferences`, `set_markets`, `set_persona`; `career` and `full`, and
+  `set_autofill_profile` in `apply` too): an agent writes the facts Setup and Profile ask for, except the AI key and the diversity
+  answers. Each PUT replaces its whole setting, so the client reads it, merges in only the fields passed (answers key by key, a null
+  removes one; work permits per market, keyed from `markets.keys()`; education, languages and custom whole) and writes it back;
+  there is no PATCH route. `set_autofill_profile` has no `eeo` field, the client refuses any other section, the stored `eeo` is
+  written back as it was and never returned, and a call with nothing to save is refused (FastMCP drops undeclared arguments). The
+  writes return setup's form readiness. Human-only, with no tool: full automation and auto-apply (§6 inv-auto-consent-gated), EEO
+  consent and answers (inv-eeo-standing-consent), the job-site login (inv-job-site-password-local), the Screening answers dial, the
+  hints switch, model keys, prompts and quick tailor (§6 inv-mcp-controls). After `create_base_resume_from_kb` the hint names
+  `set_autofill_profile` while setup status reads the form answers as not done.
 
 ## Guided tailoring workflow
 

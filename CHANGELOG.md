@@ -136,6 +136,12 @@ work-permit answers for each country you apply in.
   `POST /api/kb/points/{id}/split-wording`, `POST`/`DELETE /api/kb/points/keep-apart`, and
   `PATCH /api/kb/points/{id}` takes `unmerge`. A point carries `wordings` and
   `merged_into_point_id`.
+- **Four MCP tools save what Setup asks for** (95 tools now), so an agent with no web page and no AI
+  key in Maestro can finish setup: `set_autofill_profile` (form answers, with work permits for each
+  country; `apply`, `career` and `full`), `set_job_preferences`, `set_markets` (where you live, where
+  you apply, the currency pay reads in) and `set_persona` (`career` and `full`). Each changes only
+  what it is given. Diversity answers and their consent, full automation, the job-site login and every
+  Settings switch stay yours, in the app.
 
 ### Changed
 

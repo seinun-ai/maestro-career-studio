@@ -135,7 +135,7 @@ scripts/               setup-mcp.sh (deprecated stdio, §13), update.sh (Docker 
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (91 REST wrappers)
+ extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (95 REST wrappers)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼ ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
                     ▼ TailoringSession (frozen gaps → resolutions → LLM tailor ops)
@@ -279,8 +279,7 @@ import and profile endpoints and store no progress of their own; frontend-conven
   paranoid mode, a fresh temp folder per run, Typst proxies pointed at a dead address. (6) **A template id is a slug, enforced in the
   REGISTRY** (`validate_template_id`). All six pinned in `tests/test_security_boundaries.py`,
   `test_frontend_host_guard.py`, `test_template_id_containment.py`. Why each exists, the middleware order, the bounds and the related controls
-  (`model_settings.set_base_url` scheme check, non-root `APP_UID`, `llm._log_call` metadata-only logging): `docs/entities/others.md`,
-  "Browser boundary details".
+  (base-URL scheme, non-root, logs): `docs/entities/others.md`, "Browser boundary details".
 - **An empty environment variable means UNSET.** `{#inv-empty-env-unset}` `config.scrub_empty_env()` deletes every empty or whitespace env var
   at import, before any SDK client is constructed (`config.SCRUBBED_ENV` records what went), because `docker-compose.yml` writes `VAR: ${VAR:-}`
   for optional settings — an EMPTY STRING, not an omission — and third-party SDKs read `os.environ` directly. App-level `or None` guards cannot
@@ -310,7 +309,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   placement-target contract, and the frontend's `buildPlacementTargets` hand-mirrors its targets shape. What an extra target requires:
   `docs/entities/others.md`,
   "Placement target details".
-- **MCP control invariants** `{#inv-mcp-controls}`: no tool name contains "delete"; no set-default-template tool (`mcp_server/tests/test_server.py`).
+- **MCP control invariants** `{#inv-mcp-controls}`: no tool name contains "delete"; no set-default-template tool; MCP writes five settings,
+  never `eeo` (`mcp_server/tests/test_server.py`, `test_profile_write_tools.py`).
 - **MCP lives inside the app.** `{#inv-mcp-inside-the-app}` `/mcp` and `/mcp/{profile}` are routed inside FastAPI behind REST's
   SyncPublicHost → Host → Origin → CORS stack; SDK DNS-rebinding protection is OFF so that stack stays the one definition; never a second port
   or `/api/sync` route. Pins: `tests/test_mcp_http_boundary.py`, `mcp_server/tests/test_http.py`.
@@ -529,7 +529,7 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 
 - **MCP server** (`backend/mcp_server/`; on screen **connected agents**): thin wrappers over REST via httpx (`@_guard` → `ToolError`),
   served at `/mcp` and `/mcp/{profile}` inside FastAPI (§6 inv-mcp-inside-the-app, inv-tools-off-loop); **the docstring is the API** —
-  behavior, records and requirements, never instructions. Six scoped profiles (91 tools; `/mcp` = `full`); enable ONE per chat.
+  behavior, records and requirements, never instructions. Six scoped profiles (95 tools; `/mcp` = `full`); enable ONE per chat.
   `workflow.py` (the guided tailoring and onboarding workflows) is PURE — a **deliberate exception to the thin-wrapper rule** — and its
   `next` envelopes walk §5's arc unnarrated: the server ranks, the agent narrates; `offer` ≠ `ask_user`; **a hint never names a tool the
   active profile did not register**.

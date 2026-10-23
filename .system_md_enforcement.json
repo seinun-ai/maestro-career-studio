@@ -46,7 +46,8 @@
       {"path": "backend/app/services/placement_targets.py", "symbol": "canonicalize"}
     ],
     "inv-mcp-controls": [
-      {"path": "backend/mcp_server/tests/test_server.py", "symbol": "def test_"}
+      {"path": "backend/mcp_server/tests/test_server.py", "symbol": "def test_"},
+      {"path": "backend/mcp_server/tests/test_profile_write_tools.py", "symbol": "def test_mcp_writes_only_the_settings_setup_and_profile_ask_for"}
     ],
     "inv-mcp-inside-the-app": [
       {"path": "backend/tests/test_mcp_http_boundary.py", "symbol": "test_a_forged_host_is_refused_on_mcp"},
