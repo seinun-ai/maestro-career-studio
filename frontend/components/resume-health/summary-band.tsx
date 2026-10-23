@@ -136,10 +136,13 @@ export function SummaryBand({
           {composition && <p className="text-muted-foreground text-body-small">{composition}</p>}
           {notJudged && <p className="max-w-[65ch] text-body-small">{notJudged}</p>}
           {judgedBy && <p className="text-muted-foreground text-body-small">{judgedBy}</p>}
-          <p className="text-muted-foreground text-body-small">
-            {remaining} left to fix
-            {marked > 0 && <> · {marked} marked not right</>}
-          </p>
+          {/* "0 left to fix" over unjudged lines would read as done. */}
+          {(graded || remaining > 0 || marked > 0) && (
+            <p className="text-muted-foreground text-body-small">
+              {remaining} left to fix
+              {marked > 0 && <> · {marked} marked not right</>}
+            </p>
+          )}
         </div>
         {/* A link styled as the filled button, not a Button rendering a link (SYSTEM.md §11 item 29:
             that announces a link as a button). */}
