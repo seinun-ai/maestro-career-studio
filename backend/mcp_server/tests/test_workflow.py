@@ -328,6 +328,26 @@ def test_tailor_hint_names_render_pdf_with_the_application_id():
     assert option["args"] == {"target_type": "application", "target_id": "a1"}
 
 
+def test_tailor_hint_reports_added_keywords_and_answers_left_to_the_ops():
+    left = [{"gap_id": "coverage:0", "action": "user_input", "skill": "Build ML models"}]
+    hint = workflow.next_after_tailor(
+        application_id="a1", allowed_tools=None, hints_enabled=True,
+        keywords_added=["Snowflake"], answers_left_to_ops=left,
+    )
+    render, carry = hint["options"]
+    assert hint["call"] == "render_pdf"
+    assert render["detail"]["keywords_added"] == ["Snowflake"]
+    assert carry["tool"] == "edit_application"
+    assert carry["args"] == {"application_id": "a1"}
+    assert carry["detail"]["answers_left_to_ops"] == left
+    # A profile without edit_application hears only of the render.
+    hint = workflow.next_after_tailor(
+        application_id="a1", allowed_tools=frozenset({"render_pdf"}), hints_enabled=True,
+        answers_left_to_ops=left,
+    )
+    assert [option["tool"] for option in hint["options"]] == ["render_pdf"]
+
+
 def test_tailor_hint_brief_and_switch_suppress():
     assert workflow.next_after_tailor(
         application_id="a1", allowed_tools=None, hints_enabled=True, brief=True

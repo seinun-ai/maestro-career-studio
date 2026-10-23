@@ -89,6 +89,20 @@ _RESOLUTIONS_FIELD = Field(
 )
 GapResolutions = Annotated[list[GapResolution], _RESOLUTIONS_FIELD]
 
+# Immune to the ~2048-char tool-description truncation: lives on the param schema.
+_TAILOR_OPS_FIELD = Field(
+    description=(
+        "Typed edit ops, the shapes edit_base_resume lists; omitted, the app's model "
+        "writes them. With ops the server itself applies only the saved enable_entry "
+        "and port_kb_point answers: user_input and attach_project answers reach the "
+        "resume only through these ops, and answers_left_to_ops lists them. On both "
+        "paths a saved add_keyword whose word (its wording, else the gap's jd_skill) "
+        "is not on the result is added to the skills list, in the category it chose, "
+        "else Additional Skills, never as a bullet; keywords_added lists those words."
+    )
+)
+TailorOps = Annotated[list[dict] | None, _TAILOR_OPS_FIELD]
+
 
 class FilledFieldInput(TypedDict):
     """One form field as record_filled_answers stores it."""
@@ -1940,7 +1954,7 @@ def resolve_gaps(
 def tailor_session(
     tailoring_session_id: str,
     user_prompt: str | None = None,
-    ops: list[dict] | None = None,
+    ops: TailorOps = None,
 ) -> Any:
     """Run the tailor pipeline for a session: resolutions -> edit ops ->
     tailored application, auto-scored.
@@ -1955,10 +1969,10 @@ def tailor_session(
       get_base_resume).
 
     Caller-supplied ops are applied as authored: the server validates structure
-    only, so nothing gates fabricated skills, experience, metrics, or dates
-    (keyword-survival checks run only on the backend-LLM path). A skill the
-    candidate cannot evidence goes only in the skills list (add_skill_item), not
-    in a bullet; the compare view audits any edit beyond the saved resolutions.
+    only, so nothing gates fabricated skills, experience, metrics, or dates. A
+    skill the candidate cannot evidence goes only in the skills list
+    (add_skill_item), not in a bullet; the compare view audits any edit beyond
+    the saved resolutions. `ops` says which saved answers the server applies.
     Resume text is implied first person: an edited line where I/he/she opens a
     clause, his/her/my opens one or follows its verb ("Grew his team"), or the
     owner's name appears returns 400 naming the lines.
@@ -1981,6 +1995,8 @@ def tailor_session(
                 application_id=application_id,
                 allowed_tools=_active_allowed_tools(),
                 hints_enabled=_hints_enabled(),
+                keywords_added=result.get("keywords_added") or [],
+                answers_left_to_ops=result.get("answers_left_to_ops") or [],
             )
         )
         if application_id

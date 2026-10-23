@@ -390,6 +390,7 @@ async def test_tailoring_session_tools_expose_complete_input_schemas():
                         {"type": "null"},
                     ],
                     "default": None,
+                    "description": srv._TAILOR_OPS_FIELD.description,
                 },
             },
             "required": ["tailoring_session_id"],
@@ -911,6 +912,26 @@ async def test_tailor_session_accepts_cowork_style_kwargs(monkeypatch):
         "user_prompt": "Keep it concise",
         "ops": ops,
     }
+
+
+def test_tailor_session_hands_its_report_to_the_hint(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "tailor_session",
+        lambda sid, user_prompt=None, ops=None: {
+            "session": {"application_id": "a1"},
+            "keywords_added": ["Snowflake"],
+            "answers_left_to_ops": [{"gap_id": "g", "action": "user_input", "skill": "x"}],
+        },
+    )
+    monkeypatch.setattr(srv, "_hints_enabled", lambda: True)
+    monkeypatch.setattr(srv, "_active_allowed_tools", lambda: None)
+    monkeypatch.setattr(
+        srv.workflow, "next_after_tailor", lambda **kw: seen.update(kw) or {"call": "render_pdf"}
+    )
+    srv.tailor_session(tailoring_session_id="s1", ops=[])
+    assert seen["keywords_added"] == ["Snowflake"]
+    assert seen["answers_left_to_ops"] == [{"gap_id": "g", "action": "user_input", "skill": "x"}]
 
 
 def test_tailor_session_tool_ops_default_none(monkeypatch):

@@ -77,8 +77,10 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
     break the web path's transience), so the hint carries it as the `tailor_session` option's `user_prompt`,
     ONLY when the session has no note of its own — else quick tailor over MCP ignores a setting the web obeys.
     **The caller-ops honesty rule is enforced by DOCSTRING, not the server**: `apply_edits` has no honesty
-    gate, keyword-survival is LLM-path only. The server-side evidence gates (`save_resolutions` re-running
-    `enable_entry`/`port_kb_point`) still hold.
+    gate. Keyword survival runs on both paths (a saved `add_keyword` the ops leave out lands in the skills
+    list, never a bullet: `keywords_added`), and `user_input`/`attach_project` answers reach the resume only
+    through the ops (`answers_left_to_ops`; the `next` hint then offers `edit_application`). The server-side
+    evidence gates (`save_resolutions` re-running `enable_entry`/`port_kb_point`) still hold.
   - **Apply readiness** reads `setup/status`'s `autofill` block; the server cannot see whether the client holds
     browser tools, so the render offer says the handoff needs them rather than asserting the capability.
 

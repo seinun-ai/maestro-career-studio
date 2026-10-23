@@ -1187,9 +1187,14 @@ def _live_text_fragments(document: dict[str, Any]) -> list[str]:
 
 
 def _missing_keywords(
-    customized: dict[str, Any], resolutions: list[dict[str, Any]]
+    customized: dict[str, Any],
+    resolutions: list[dict[str, Any]],
+    gaps: dict[str, dict[str, Any]] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Return requested keyword placements absent from the tailored document.
+
+    The word is the saved `wording`, else the gap's own `jd_skill` (`gaps`, by
+    gap_id): an MCP caller may save an add_keyword with only a place.
 
     Containment is checked per LIVE fragment (see _live_text_fragments), never
     against a whole-document JSON dump: a dump counts disabled entries the
@@ -1207,6 +1212,8 @@ def _missing_keywords(
             continue
         payload = item.get("payload") or {}
         wording = payload.get("wording")
+        if not isinstance(wording, str) or not wording.strip():
+            wording = (gaps or {}).get(item.get("gap_id"), {}).get("jd_skill")
         if not isinstance(wording, str) or not wording.strip():
             continue
         normalized_wording = normalize_term(wording)
@@ -1281,6 +1288,27 @@ def _keyword_fallback(
         ) from exc
 
 
+def _answers_left_to_ops(
+    resolutions: list[dict[str, Any]], gaps: dict[str, dict[str, Any]]
+) -> list[dict[str, str]]:
+    """Saved answers the server cannot apply without writing new text
+    (user_input, attach_project). On the caller-ops path they reach the resume
+    only through the ops, so the response names them."""
+    return [
+        {
+            "gap_id": item["gap_id"],
+            "action": item["action"],
+            "skill": str(
+                gaps.get(item["gap_id"], {}).get("jd_skill")
+                or gaps.get(item["gap_id"], {}).get("detail")
+                or ""
+            ),
+        }
+        for item in resolutions
+        if item.get("action") in ("user_input", "attach_project")
+    ]
+
+
 def _llm_customized(
     session: Session,
     tailoring: TailoringSession,
@@ -1291,9 +1319,10 @@ def _llm_customized(
     user_prompt: str | None,
 ) -> dict[str, Any]:
     """tailor()'s LLM phase: build the gap-tailor prompt, generate typed ops,
-    apply them, then enforce keyword survival — one corrective retry, then the
-    add_skill_item fallback so a required wording can never silently vanish.
-    Returns the customized resume dict; raises ValueError on invalid ops."""
+    apply them, then one corrective retry when a required keyword is missing
+    or a line is third person. A keyword still missing after it is left to
+    tailor()'s keyword survival step, which every path shares. Returns the
+    customized resume dict; raises ValueError on invalid ops."""
     job = session.get(Job, tailoring.job_id)
     if job is None or not job.extracted_json:
         raise ValueError(
@@ -1328,7 +1357,9 @@ def _llm_customized(
     except ValueError as exc:
         raise ValueError(f"Tailoring produced invalid edit ops: {exc}") from exc
 
-    missing = _missing_keywords(customized, tailoring.resolutions_json)
+    missing = _missing_keywords(
+        customized, tailoring.resolutions_json, _gap_index(tailoring.gaps_json)
+    )
     voice_problems = resume_voice.changed_hits(base, customized)
     if missing or voice_problems:
         # One corrective retry covers both defects, so a clean-but-keywordless
@@ -1364,9 +1395,6 @@ def _llm_customized(
             raise ValueError(
                 f"Tailoring produced invalid edit ops: {exc}"
             ) from exc
-        missing = _missing_keywords(customized, tailoring.resolutions_json)
-        if missing:
-            customized = _keyword_fallback(customized, missing)
     return customized
 
 
@@ -1482,12 +1510,15 @@ def tailor(
         repaired = resume_voice.repair_resume(base, customized)
         if repaired:
             logger.warning("third-person voice repaired in code at %s", repaired)
-            if not ops:
-                # The repair can take out the one line that carried a required
-                # keyword: put it back where the fallback always puts it.
-                missing = _missing_keywords(customized, tailoring.resolutions_json)
-                if missing:
-                    customized = _keyword_fallback(customized, missing)
+        # Keyword survival, every path: a saved add_keyword whose word is not on
+        # the resume (the model's ops or the caller's left it out, or the repair
+        # took out its line) goes into the skills list, never a bullet (§6
+        # inv-honesty), and the response names it.
+        gaps = _gap_index(tailoring.gaps_json)
+        keywords_added = _missing_keywords(customized, tailoring.resolutions_json, gaps)
+        if keywords_added:
+            customized = _keyword_fallback(customized, keywords_added)
+        left_to_ops = _answers_left_to_ops(tailoring.resolutions_json, gaps) if ops else []
 
         # A job has one application: tailoring REUSES the job's newest one, whatever
         # its base, rather than orphan it (the job page surfaces only the newest, so a
@@ -1581,6 +1612,8 @@ def tailor(
         # doesn't clear it.
         tailoring.kb_writeback_skips = writeback_skips
         tailoring.voice_repairs = [resume_voice.format_path(path) for path in repaired]
+        tailoring.keywords_added = [wording for wording, _ in keywords_added]
+        tailoring.answers_left_to_ops = left_to_ops
         artifacts.remove_files(stale)
         return tailoring
     finally:

@@ -306,7 +306,10 @@ def next_after_session(
             "note": (
                 "resolutions_json holds the saved decisions (including any "
                 "system-planned provenance-carrying entries); tailor_session "
-                "takes ops=[...] that implement them."
+                "takes ops=[...] that implement them. The server itself applies "
+                "enable_entry and port_kb_point, and adds a saved add_keyword the "
+                "ops leave out to the skills list; user_input and attach_project "
+                "reach the resume only through the ops."
             ),
         },
     }
@@ -348,23 +351,44 @@ def next_after_tailor(
     allowed_tools: "frozenset[str] | None",
     hints_enabled: bool,
     brief: bool = False,
+    keywords_added: list[str] | tuple[str, ...] = (),
+    answers_left_to_ops: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
 ) -> dict[str, Any] | None:
     """Compose the hint that follows tailor_session. There is no choice to
     present — the tailored application exists and has no PDF yet — so this is a
-    `call`, not an `ask_user`."""
+    `call`, not an `ask_user`. Saved keywords the server added to the skills
+    list ride on the render option; saved user_input and attach_project answers
+    the server left to the caller's ops add an edit_application option."""
     if _suppressed(hints_enabled, brief):
         return None
-    options = _visible(
-        [
+    render_option = {
+        "label": "Render the tailored application to PDF",
+        "tool": "render_pdf",
+        "args": {"target_type": "application", "target_id": application_id},
+        "detail": None,
+    }
+    if keywords_added:
+        render_option["detail"] = {
+            "keywords_added": list(keywords_added),
+            "note": "The edits left these saved keywords out; the server added them to the skills list.",
+        }
+    candidates = [render_option]
+    if answers_left_to_ops:
+        candidates.append(
             {
-                "label": "Render the tailored application to PDF",
-                "tool": "render_pdf",
-                "args": {"target_type": "application", "target_id": application_id},
-                "detail": None,
+                "label": "Write the saved answers the server left to the ops",
+                "tool": "edit_application",
+                "args": {"application_id": application_id},
+                "detail": {
+                    "answers_left_to_ops": list(answers_left_to_ops),
+                    "note": (
+                        "The server applies no user_input or attach_project answer when "
+                        "ops are given; each is on the resume only if the ops wrote it."
+                    ),
+                },
             }
-        ],
-        allowed_tools,
-    )
+        )
+    options = _visible(candidates, allowed_tools)
     return {
         "state": "tailored",
         "blocking": True,

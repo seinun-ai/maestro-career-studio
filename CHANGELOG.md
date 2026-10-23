@@ -271,6 +271,12 @@ work-permit answers for each country you apply in.
 
 ### Fixed
 
+- **A keyword you saved in a gap analysis reaches the tailored resume when your agent writes the
+  edits.** Before, a saved "add Power BI to Analytics" was dropped if the agent's own edits left it out.
+  Now any saved keyword missing after the edits goes into your skills list, in the category you chose
+  (never into a bullet), and the reply names it. That is true when the app tailors too. A keyword saved
+  with only a place uses the job's own word for it. Answers that need new wording (your own words about
+  a gap, a project to point to) are listed back to the agent when its edits had to carry them.
 - **A sync that could not load the embedding model no longer reads every bullet as new in silence.**
   It still adds them, so sync works where the model cannot load, but it now says so.
 - **Skills by role stays within 100% and shows counts for a small role.** A Level, employment type,
