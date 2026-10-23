@@ -2229,12 +2229,15 @@ export interface LintReport {
   resume_kind: "base" | "application";
   resume_key: string;
   resume_version_number: number | null;
-  score: number;
-  grade: string;
+  /** Null while a scored line waits for a judgment (no model key; see `judged`). */
+  score: number | null;
+  grade: string | null;
   tier?: string | null;
   counts: Record<string, number>;
   gates?: LintGate[];
   findings: LintFinding[];
+  /** Lines a judge has read, lines waiting, and who judged; absent on reports stored before it. */
+  judged?: { done: number; pending: number; by: string[] } | null;
   model: string | null;
   created_at: string;
   /** Absent until the scoring lane lands — treat missing as false. */

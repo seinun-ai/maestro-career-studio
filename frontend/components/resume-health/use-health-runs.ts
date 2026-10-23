@@ -63,7 +63,8 @@ export function useHealthRuns({
   const [scoreDelta, setScoreDelta] = useState<ScoreDelta | null>(null);
   const [resolved, setResolved] = useState<LintFinding[]>([]);
   const priorFindings = useRef<LintFinding[]>([]);
-  const priorScore = useRef<{ grade: string; score: number } | null>(null);
+  // Null grade and score: an ungraded report (lines wait for a judge), which shows no delta.
+  const priorScore = useRef<{ grade: string | null; score: number | null } | null>(null);
 
   useEffect(() => {
     if (!report || priorScore.current) return;
@@ -73,13 +74,17 @@ export function useHealthRuns({
 
   const adoptReport = (result: LintReport, fromReanalyze: boolean) => {
     if (fromReanalyze && priorScore.current) {
-      const delta = result.score - priorScore.current.score;
-      if (delta !== 0 || result.grade !== priorScore.current.grade) {
+      const { grade: fromGrade, score: fromScore } = priorScore.current;
+      const { grade: toGrade, score: toScore } = result;
+      if (
+        fromGrade != null && fromScore != null && toGrade != null && toScore != null &&
+        (toScore !== fromScore || toGrade !== fromGrade)
+      ) {
         setScoreDelta({
-          fromGrade: priorScore.current.grade,
-          fromScore: priorScore.current.score,
-          toGrade: result.grade,
-          toScore: result.score,
+          fromGrade,
+          fromScore,
+          toGrade,
+          toScore,
           explanation: explainScoreDelta(
             priorFindings.current,
             result.findings,

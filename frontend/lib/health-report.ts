@@ -195,14 +195,15 @@ const problems = (n: number, tier: string) => `${n} ${tier} ${n === 1 ? "problem
 /**
  * "Score limited to 54 by 1 must-fix problem" when failed checks cap the score, naming the real count and
  * tier (`health_score.gate_cap_tier`: one failed must-fix check, or two serious ones, cap at 54; one serious
- * check at 69). Null when nothing capped the score, and when the server sent no `score_breakdown`.
+ * check at 69). Null when nothing capped the score, when the server sent no `score_breakdown`, and
+ * when the report has no score (lines wait for a judge).
  */
 export function scoreCompositionLine(
-  score: number,
+  score: number | null,
   breakdown: ScoreBreakdown | null | undefined,
   gates: readonly GateLike[] = [],
 ): string | null {
-  if (!breakdown?.capped_by) return null;
+  if (!breakdown?.capped_by || score == null) return null;
   const failed = gates.filter((g) => g.status === "fail");
   const fatal = failed.filter((g) => g.tier === "fatal").length;
   const serious = failed.filter((g) => g.tier === "serious").length;
@@ -237,10 +238,55 @@ export function leftToFix(counts: Record<string, number>, findingsLeft: number):
 }
 
 /** The toast after a check: never a grade the rail says it can't give. */
-export function checkDoneWords(report: { grade: string; insufficient_evidence?: boolean }): string {
-  return reportInsufficientEvidence(report)
-    ? "Check done. Too little to grade yet."
-    : `Check done. Grade ${report.grade}.`;
+export function checkDoneWords(report: { grade: string | null; insufficient_evidence?: boolean }): string {
+  if (reportInsufficientEvidence(report)) return "Check done. Too little to grade yet.";
+  return report.grade == null ? "Check done. Some lines aren't judged yet." : `Check done. Grade ${report.grade}.`;
+}
+
+/** Lines a judge has read, lines waiting, and who judged (`judged` on the report; absent on old ones). */
+export type Judged = { done: number; pending: number; by: string[] };
+
+/**
+ * A grade to show. False while a scored line waits for a judgment: with no model key the check reads
+ * only stored judgments, and the server sends no score or grade until every scored line has one.
+ */
+export function reportGraded(report: { grade: string | null; score: number | null }): boolean {
+  return report.grade != null && report.score != null;
+}
+
+/** "4 lines aren't judged yet, so there's no grade. …", or null when no line waits. */
+export function notJudgedLine(report: { grade: string | null; judged?: Judged | null }): string | null {
+  const pending = report.judged?.pending ?? 0;
+  if (pending <= 0) return null;
+  const lines = pending === 1 ? "1 line isn't" : `${pending} lines aren't`;
+  const noGrade = report.grade == null ? ", so there's no grade" : "";
+  return (
+    `${lines} judged yet${noGrade}. Ask a connected agent to run the health check, ` +
+    "or add a model key in Settings."
+  );
+}
+
+const AGENT_JUDGE = "agent";
+
+/**
+ * "Judged by Claude, a connected agent." when a connected agent judged lines (`agent:<client>` in
+ * `judged.by`), null when only the app's own model did. `nameOf` is `agentDisplayName`, passed in
+ * because this node-loaded file imports no values.
+ */
+export function judgedByLine(
+  report: { judged?: Judged | null },
+  nameOf: (raw: string) => string | null,
+): string | null {
+  const agents = (report.judged?.by ?? []).filter(
+    (id) => id === AGENT_JUDGE || id.startsWith(`${AGENT_JUDGE}:`),
+  );
+  if (agents.length === 0) return null;
+  const names = [
+    ...new Set(agents.map((id) => nameOf(id.slice(AGENT_JUDGE.length + 1))).filter((n): n is string => !!n)),
+  ];
+  if (names.length === 0) return "Judged by a connected agent.";
+  if (names.length === 1) return `Judged by ${names[0]}, a connected agent.`;
+  return `Judged by ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}, connected agents.`;
 }
 
 export function potentialPoints(
@@ -465,15 +511,16 @@ export const GRADE_FLOORS = [40, 55, 70, 85] as const;
  * Null when there is no next grade to reach (an A, or a score a failed check caps).
  */
 export function nextGradeProgress(report: {
-  score: number;
+  score: number | null;
   next_grade?: { grade: string; points: number } | null;
 }): number | null {
   const next = report.next_grade;
-  if (!next) return null;
-  const target = report.score + next.points;
-  const floor = Math.max(0, ...GRADE_FLOORS.filter((f) => f <= report.score));
+  const score = report.score;
+  if (!next || score == null) return null;
+  const target = score + next.points;
+  const floor = Math.max(0, ...GRADE_FLOORS.filter((f) => f <= score));
   if (target <= floor) return null;
-  return Math.min(1, Math.max(0, (report.score - floor) / (target - floor)));
+  return Math.min(1, Math.max(0, (score - floor) / (target - floor)));
 }
 
 /** "Checked 2 minutes ago · Version 28": the header's stamp (`ago` is the relative time). */
@@ -1061,7 +1108,8 @@ export async function mapPool<T>(
   await Promise.all(Array.from({ length: n }, () => worker()));
 }
 
-export type PassOutcome = { points: number; fixed: number; notRight: number; skipped: number };
+/** `points` is null when either report has no score (lines wait for a judge). */
+export type PassOutcome = { points: number | null; fixed: number; notRight: number; skipped: number };
 
 /**
  * What a pass did, from the report it started on and the check it closes with: the score change,
@@ -1069,8 +1117,8 @@ export type PassOutcome = { points: number; fixed: number; notRight: number; ski
  * counts there instead), and the rows marked not right or skipped.
  */
 export function passOutcome<T extends Rated & { id: string; location: Where }>(
-  prior: { score: number; findings: T[] },
-  next: { score: number; findings: (Rated & { id: string; location: Where })[] },
+  prior: { score: number | null; findings: T[] },
+  next: { score: number | null; findings: (Rated & { id: string; location: Where })[] },
   passIds: ReadonlySet<string>,
   disputedHashes: ReadonlySet<string>,
   skipped: number,
@@ -1078,20 +1126,25 @@ export function passOutcome<T extends Rated & { id: string; location: Where }>(
   const fixed = resolvedFindings(prior.findings, next.findings).filter(
     (f) => passIds.has(f.id) && !(f.content_hash && disputedHashes.has(f.content_hash)),
   ).length;
-  return { points: next.score - prior.score, fixed, notRight: disputedHashes.size, skipped };
+  const points = next.score == null || prior.score == null ? null : next.score - prior.score;
+  return { points, fixed, notRight: disputedHashes.size, skipped };
 }
 
-/** The one toast a pass closes with: "+6 points · 3 fixed · 2 not right · 1 skipped". */
+/** The one toast a pass closes with: "+6 points · 3 fixed · 2 not right · 1 skipped". With no score
+ *  to compare (lines wait for a judge) it leaves the points out: "3 fixed", or "Check done." */
 export function passOutcomeWords({ points, fixed, notRight, skipped }: PassOutcome): string {
-  const score =
-    points === 0
-      ? "Same score"
-      : `${points > 0 ? "+" : ""}${points} ${Math.abs(points) === 1 ? "point" : "points"}`;
-  const parts = [score];
+  const parts: string[] = [];
+  if (points != null) {
+    parts.push(
+      points === 0
+        ? "Same score"
+        : `${points > 0 ? "+" : ""}${points} ${Math.abs(points) === 1 ? "point" : "points"}`,
+    );
+  }
   if (fixed > 0) parts.push(`${fixed} fixed`);
   if (notRight > 0) parts.push(`${notRight} not right`);
   if (skipped > 0) parts.push(`${skipped} skipped`);
-  return parts.join(" · ");
+  return parts.length > 0 ? parts.join(" · ") : "Check done.";
 }
 
 export type BulletContext = { heading: string; dates: string | null; bullets: string[]; active: number };

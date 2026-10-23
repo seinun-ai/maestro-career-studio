@@ -7,9 +7,13 @@ import { GRADE_STYLES } from "@/components/resume-health/finding-cards";
 import type { ScoreDelta } from "@/components/resume-health/use-health-runs";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { agentDisplayName } from "@/lib/agent-name";
 import {
+  judgedByLine,
   nextGradeLine,
   nextGradeProgress,
+  notJudgedLine,
+  reportGraded,
   reportInsufficientEvidence,
   scoreCompositionLine,
 } from "@/lib/health-report";
@@ -26,7 +30,8 @@ const TIER_LABELS: Record<string, string | undefined> = {
 /**
  * The report's full-width summary: the grade, the bar to the next band, what capped the score, what
  * is left and what the user marked not right, the page's ONE filled control (Start the questions),
- * the "No numbers anywhere" callout, and `children` (the stale banner).
+ * the "No numbers anywhere" callout, and `children` (the stale banner). With no model key, lines
+ * wait for a judge: no grade until every scored line has one, and the band says how many wait.
  */
 export function SummaryBand({
   body,
@@ -54,6 +59,9 @@ export function SummaryBand({
   children?: ReactNode;
 }) {
   const insufficient = reportInsufficientEvidence(body);
+  const graded = reportGraded(body);
+  const notJudged = notJudgedLine(body);
+  const judgedBy = judgedByLine(body, agentDisplayName);
   const gates = body.gates ?? [];
   const composition = scoreCompositionLine(body.score, body.score_breakdown, gates);
   const progress = !insufficient ? nextGradeProgress(body) : null;
@@ -65,9 +73,9 @@ export function SummaryBand({
     >
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
         <div className="flex items-center gap-3">
-          {insufficient ? (
+          {insufficient || body.grade == null ? (
             <span className="text-muted-foreground flex size-14 items-center justify-center rounded-corner-sm text-center text-label-small">
-              Too little to grade
+              {insufficient ? "Too little to grade" : "Not graded"}
             </span>
           ) : (
             <span
@@ -80,9 +88,11 @@ export function SummaryBand({
             </span>
           )}
           <div className="flex min-w-0 flex-col gap-1">
-            <span className={cn("text-title-small", insufficient && "text-muted-foreground")}>
-              {body.score}/100
-            </span>
+            {graded && (
+              <span className={cn("text-title-small", insufficient && "text-muted-foreground")}>
+                {body.score}/100
+              </span>
+            )}
             {scoreDelta && (
               <div className="space-y-0.5">
                 <p className="text-body-small">
@@ -124,6 +134,8 @@ export function SummaryBand({
             <p className="text-muted-foreground text-body-small">{nextGradeLine(body)}</p>
           )}
           {composition && <p className="text-muted-foreground text-body-small">{composition}</p>}
+          {notJudged && <p className="max-w-[65ch] text-body-small">{notJudged}</p>}
+          {judgedBy && <p className="text-muted-foreground text-body-small">{judgedBy}</p>}
           <p className="text-muted-foreground text-body-small">
             {remaining} left to fix
             {marked > 0 && <> · {marked} marked not right</>}
