@@ -894,6 +894,7 @@ def test_report_marks_a_disputed_finding(db_session, monkeypatch):
     monkeypatch.setattr(resume_lint, "structure_gates", lambda db, tid, data: [])
     monkeypatch.setattr(resume_lint.health_verify, "verify_detections",
                         lambda db, data, gaps, c2, prior_cache: (gaps, c2, {}))
+    monkeypatch.setattr(resume_lint.llm, "any_model_key_configured", lambda: True)
     row = resume_lint.run_report(db_session, "base", "data_scientist", SAMPLE_DATA)
     (finding,) = [f for f in row.report_json["findings"]
                   if f.get("content_hash") == bullet_classify.content_hash(DISPUTED_BULLET)]

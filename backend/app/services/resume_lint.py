@@ -10,7 +10,7 @@ See SYSTEM.md §4 (ResumeLintReport) for the report's place in the workflow.
 import hashlib
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any, Callable
 
 from sqlalchemy import select
@@ -26,6 +26,7 @@ from app.services import (
     health_verify,
     health_wording,
     health_zones,
+    llm,
     model_settings,
     pdf_render,
     resume_voice,
@@ -447,9 +448,10 @@ def structure_gates(db: Session, template_id: str | None, resume: dict) -> list[
 def _final_gates(
     levels_by_loc: dict[Location, dict], base_gates: list[dict], hot: set,
     waivers: set[str] | Mapping[str, str], c2_hit: dict | None, prior_report: dict | None,
-    resume_changed_since_prior: bool,
+    resume_changed_since_prior: bool, hot_pending: bool = False,
 ) -> tuple[list[dict], float | None]:
-    """Base gates + the two assembled-here gates (C1/C2), waivers applied."""
+    """Base gates + the two assembled-here gates (C1/C2), waivers applied. C1 is not
+    computed while a hot location waits for a judgment (`hot_pending`)."""
     gates = [
         {**g, **health_gates.gate_copy(g["id"])}
         for g in base_gates
@@ -457,7 +459,7 @@ def _final_gates(
 
     # C1 — hot-zone evidence floor (serious). E_hot spans hot locations incl. the summary.
     hot_values = [levels_by_loc[loc]["value"] for loc in hot if loc in levels_by_loc]
-    e_hot = sum(hot_values) / len(hot_values) if hot_values else None
+    e_hot = sum(hot_values) / len(hot_values) if hot_values and not hot_pending else None
     if e_hot is not None and e_hot < HOT_ZONE_FLOOR:
         gates.append(_gate_dict("C1", "serious", "fail", _c1_detail(hot)))
 
@@ -642,6 +644,7 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
              c2_hit: dict | None = None,
              rewrite_fn: Callable[[str], str | None] | None = None,
              word_bank: health_wording.WordBank = health_wording.DEFAULT_BANK,
+             pending: Iterable[Location] = (),
              ) -> dict[str, Any]:
     """Turn classified levels + gates into a scored report with typed findings.
 
@@ -654,7 +657,11 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
     `resume_changed_since_prior` defaults on to preserve existing direct callers.
     `word_bank` is the user's cliché/filler bank and Never flag list
     (`health_wording.load`); it defaults to the built-in bank.
+    `pending` lists the ladder locations no judge has read yet (the keyless check):
+    while a scored one waits, score, grade and next_grade are None, and C1 waits
+    for every hot location.
     """
+    pending = set(pending)
     gates, e_hot = _final_gates(
         levels_by_loc,
         base_gates,
@@ -663,15 +670,17 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
         c2_hit,
         prior_report,
         resume_changed_since_prior,
+        hot_pending=bool(pending & set(hot)),
     )
 
     # Score: mean over experience + projects + custom-section levels
-    # (summary is not scored), then capped by gates.
-    score_levels = [r["value"] for loc, r in levels_by_loc.items()
-                    if loc[0] in ("experience", "projects") or loc[0].startswith("extra:")]
-    raw_score = health_score.compute_score(score_levels)
-    score = health_score.apply_gates(raw_score, gates)
-    grade = health_score.grade_for(score)
+    # (summary is not scored), then capped by gates. No score while one waits.
+    score_levels = [r["value"] for loc, r in levels_by_loc.items() if _scored(loc)]
+    n_scoreable = len(score_levels) + sum(1 for loc in pending if _scored(loc))
+    graded = n_scoreable == len(score_levels)
+    raw_score = health_score.compute_score(score_levels) if graded else None
+    score = health_score.apply_gates(raw_score, gates) if graded else None
+    grade = health_score.grade_for(score) if graded else None
 
     # 1) gates, 2) per-bullet ladder, 3) employment gaps
     findings = [
@@ -684,11 +693,11 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
     for finding in findings:
         value = finding.get("level")
         section = finding["location"].get("section", "")
-        if finding["type"] in ("ask", "fix") and value is not None and score_levels and (
+        if finding["type"] in ("ask", "fix") and value is not None and n_scoreable and (
             section in ("experience", "projects") or section.startswith("extra:")
         ):
             next_value = min((v for v in health_score.LEVEL_VALUES.values() if v > value), default=value)
-            finding["gain"] = round(100 * (next_value - value) / len(score_levels))
+            finding["gain"] = round(100 * (next_value - value) / n_scoreable)
 
     # 4) shape notes + advisories — all type=note, weight 0.
     # A per-bullet advisory (length, etc.) must not duplicate a bullet that
@@ -723,18 +732,25 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
 
     report = {
         "score": score, "grade": grade, "tier": tier,
-        "next_grade": _next_grade(score, gates),
+        "next_grade": _next_grade(score, gates) if graded else None,
         "gates": gates, "counts": counts, "findings": findings,
-        "insufficient_evidence": len(score_levels) < MIN_SCOREABLE_ITEMS,
+        "insufficient_evidence": n_scoreable < MIN_SCOREABLE_ITEMS,
+        "judged": {"done": len(levels_by_loc), "pending": len(pending),
+                   "by": sorted({r["judge"] for r in levels_by_loc.values() if r.get("judge")})},
     }
     features = {
         "levels": {f"{loc[0]}:{loc[1]}:{loc[2]}": r["value"]
                    for loc, r in levels_by_loc.items()},
         "e_hot": e_hot, "raw_score": raw_score,
-        "n_scoreable": len(score_levels),
+        "n_scoreable": n_scoreable,
         "hot": [f"{loc[0]}:{loc[1]}:{loc[2]}" for loc in sorted(hot, key=str)],
     }
     return {"report": report, "features": features}
+
+
+def _scored(loc: Location) -> bool:
+    """Experience, project and custom-section bullets are scored; the summary is not."""
+    return loc[0] in ("experience", "projects") or loc[0].startswith("extra:")
 
 
 def _next_grade(score: int, gates: list[dict]) -> dict | None:
@@ -1111,8 +1127,18 @@ def rule_notes(resume: dict, *,
 # orchestration
 
 
+def _evaluator_items(resume: dict) -> list[dict]:
+    return [{"text": t, "hints": _classify_hints(t)} for _, t in _ladder_items(resume)]
+
+
 def run_report(db: Session, kind: str, key: str, resume: dict, *,
-               template_id: str | None = None, use_llm: bool = True) -> ResumeLintReport:
+               template_id: str | None = None, use_llm: bool | None = None) -> ResumeLintReport:
+    """Build and store a health report. `use_llm` None means a model judges when a key is
+    configured (`llm.any_model_key_configured`). Without a model, only stored judgments count
+    (`bullet_classify.stored_judgments`: any judge, current rubric version); the rest are
+    pending, and the report is ungraded while a scored bullet waits. No verifier, no rewrites."""
+    if use_llm is None:
+        use_llm = llm.any_model_key_configured()
     # Anchor provenance before any external call: if an edit lands mid-run,
     # this report keeps the pre-run version and correctly reads stale later.
     current_version = _latest_version(db, kind, key)
@@ -1127,16 +1153,21 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
 
     items = _ladder_items(resume)
     levels_by_loc: dict[Location, dict] = {}
+    pending: list[Location] = []
     model = None
     classified: dict[str, dict] = {}
-    if use_llm and items:
-        model = model_settings.get_smart_model(db)
-        classified = bullet_classify.classify_items(
-            db, [{"text": t, "hints": _classify_hints(t)} for _, t in items])
+    if items:
+        if use_llm:
+            model = model_settings.get_smart_model(db)
+            classified = bullet_classify.classify_items(db, _evaluator_items(resume))
+        else:
+            classified, _ = bullet_classify.stored_judgments(db, _evaluator_items(resume))
         for loc, text in items:
             r = classified.get(bullet_classify.content_hash(text))
             if r is not None:
                 levels_by_loc[loc] = r
+            elif not use_llm:
+                pending.append(loc)
 
     waivers = gate_waivers(db, kind, key)
 
@@ -1176,8 +1207,12 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
         c2_hit=c2_hit,
         rewrite_fn=_rewrite if use_llm else None,
         word_bank=health_wording.load(db),
+        pending=pending,
     )
     result["features"]["verifier"] = verifier_cache
+    if not use_llm:
+        judges = result["report"]["judged"]["by"]
+        model = judges[0] if len(judges) == 1 else None
 
     row = ResumeLintReport(
         resume_kind=kind, resume_key=key,
@@ -1190,6 +1225,23 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
     db.commit()
     db.refresh(row)
     return row
+
+
+def judging_brief(db: Session, resume: dict) -> dict | None:
+    """What a connected agent judges by when no key is set: the evaluator prompt filled with
+    this resume's pending texts, their ids and the rubric version. None when nothing waits."""
+    _, pending = bullet_classify.stored_judgments(db, _evaluator_items(resume))
+    if not pending:
+        return None
+    return {"rubric_version": bullet_classify.RUBRIC_VERSION, "pending_ids": list(pending),
+            "prompt": bullet_classify.evaluator_prompt(db, pending)}
+
+
+def record_judgments(db: Session, resume: dict, judge: str,
+                     entries: list) -> tuple[list[dict], list[dict]]:
+    """A connected agent's classifications of this resume's pending texts, validated and
+    stored under `judge` (`bullet_classify.record_judgments`)."""
+    return bullet_classify.record_judgments(db, judge, _evaluator_items(resume), entries)
 
 
 def gate_waivers(db: Session, kind: str, key: str) -> dict[str, str]:

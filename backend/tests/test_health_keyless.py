@@ -122,3 +122,111 @@ def test_record_judgments_rejects_what_it_cannot_store(db_session):
     assert all(r["reason"] for r in rejected)
     assert db_session.get(BulletClassification, bc.content_hash(REDESIGNED)).model == "gpt-old"
     assert db_session.get(BulletClassification, vague).level == "implied"
+
+
+# --------------------------------------------------------------------------- #
+# resume_lint: the keyless report
+
+from app.services import resume_lint as rl  # noqa: E402
+
+CUT = "Cut the nightly ETL runtime from 6 hours to 40 minutes by partitioning the fact tables"
+SUMMARY = "Data analyst who builds reporting for finance teams."
+BULLETS = [SHIPPED, REDESIGNED, VAGUE, CUT]
+
+
+def _resume():
+    return {
+        "contact": {"name": "Sample Person", "email": "a@example.com", "phone": "555"},
+        "summary": SUMMARY,
+        "experience": [{"company": "Example Co", "role": "Analyst", "start_date": "Jan 2021",
+                        "end_date": "Present", "bullets": list(BULLETS)}],
+        "projects": [], "education": [], "skills": [],
+    }
+
+
+@pytest.fixture
+def pass_gates(monkeypatch):
+    monkeypatch.setattr(rl, "structure_gates", lambda db, tid, data: [
+        {"id": g, "tier": "fatal", "status": "pass", "label": g, "detail": ""}
+        for g in ("S1", "S2", "S4")])
+
+
+def test_keyless_run_with_nothing_stored_is_ungraded_but_keeps_gates(db_session, pass_gates):
+    row = rl.run_report(db_session, "base", "keyless", _resume())
+    report = row.report_json
+    assert (report["score"], report["grade"], report["next_grade"]) == (None, None, None)
+    assert report["judged"] == {"done": 0, "pending": 5, "by": []}
+    assert report["insufficient_evidence"] is False      # four scored bullets wait, not too few
+    assert {g["id"] for g in report["gates"]} == {"S1", "S2", "S3", "S4", "S5"}   # no C1 yet
+    assert row.features_json["raw_score"] is None
+    assert row.features_json["n_scoreable"] == 4
+    assert row.model is None
+    assert not [f for f in report["findings"] if f["type"] in ("fix", "ask")
+                and f["location"].get("bullet_index") is not None]
+
+
+def test_keyless_run_grades_once_every_scored_bullet_is_stored(db_session, pass_gates):
+    for text in BULLETS:
+        _store(db_session, text, level="direct" if text != VAGUE else "implied",
+               model="agent:claude-ai")
+    _store(db_session, SUMMARY, level="adjacent", model="gpt-old")
+    row = rl.run_report(db_session, "base", "keyless-graded", _resume())
+    report = row.report_json
+    assert isinstance(report["score"], int) and report["grade"] in "ABCDF"
+    assert report["judged"] == {"done": 5, "pending": 0, "by": ["agent:claude-ai", "gpt-old"]}
+    assert row.model is None                  # two judges: the report names them in `judged`
+
+
+def test_keyless_run_with_only_the_summary_pending_grades_but_skips_c1(db_session, pass_gates):
+    for text in BULLETS:
+        _store(db_session, text, level="unaddressed", model="agent:claude-ai")
+    row = rl.run_report(db_session, "base", "keyless-summary", _resume())
+    report = row.report_json
+    assert report["grade"] is not None
+    assert report["judged"]["pending"] == 1
+    assert "C1" not in {g["id"] for g in report["gates"]}   # the summary is hot and unjudged
+    assert row.model == "agent:claude-ai"
+
+
+def test_use_llm_false_reads_stored_judgments(db_session, pass_gates):
+    for text in [*BULLETS, SUMMARY]:
+        _store(db_session, text, level="direct", model="gpt-old")
+    row = rl.run_report(db_session, "base", "no-llm", _resume(), use_llm=False)
+    assert row.report_json["score"] == 100
+
+
+def test_gain_divides_by_every_scored_bullet_judged_or_not():
+    resume = _resume()
+    levels = {("experience", 0, 0): {"level": "adjacent", "value": 0.5, "reason": "",
+                                     "confidence": 1.0, "source": "cache", "uncertain": False},
+              ("experience", 0, 1): {"level": "direct", "value": 1.0, "reason": "",
+                                     "confidence": 1.0, "source": "cache", "uncertain": False}}
+    out = rl.assemble(resume, levels, [], "experienced", set(),
+                      pending=[("experience", 0, 2), ("experience", 0, 3)],
+                      rewrite_fn=lambda t: None)
+    ask = next(f for f in out["report"]["findings"] if f["location"].get("bullet_index") == 0)
+    assert ask["gain"] == round(100 * (0.8 - 0.5) / 4)
+    assert out["report"]["score"] is None
+    assert out["features"]["n_scoreable"] == 4
+
+
+def test_judging_brief_hands_over_the_pending_bullets(db_session):
+    resume = _resume()
+    for text in [*BULLETS, SUMMARY]:
+        _store(db_session, text)
+    assert rl.judging_brief(db_session, resume) is None
+
+    resume["experience"][0]["bullets"].append("Responsible for weekly reports")
+    brief = rl.judging_brief(db_session, resume)
+    new_id = bc.content_hash("Responsible for weekly reports")
+    assert brief["pending_ids"] == [new_id]
+    assert brief["rubric_version"] == bc.RUBRIC_VERSION
+    assert new_id in brief["prompt"] and "weak_opener" in brief["prompt"]
+
+
+def test_record_judgments_reads_the_resumes_own_bullets(db_session):
+    resume = _resume()
+    accepted, rejected = rl.record_judgments(db_session, resume, "agent:codex", [
+        {"id": bc.content_hash(VAGUE), "level": "implied", "confidence": 0.7}])
+    assert accepted == [{"id": bc.content_hash(VAGUE), "level": "implied"}]
+    assert rejected == []
