@@ -24,6 +24,8 @@
   agent),
   templates (draft/validate only; Typst constraints in `create_template_draft`'s
   docstring, `fmt.*` knobs on `get_template`), explore analytics, `get_autofill_profile` (`profile.eeo` consent-gated),
+  the profile writes `set_autofill_profile` (no `eeo`), `set_job_preferences`, `set_markets` and `set_persona` (patches over the
+  settings PUTs; Settings switches, consent and the job-site login have no tool: docs/agent-surfaces.md, "Profile writes"),
   and `get_career_context` (read-only; anti-fabrication framing in the docstring). The Career KB is writable via MCP:
   reads carry IDs the context prose does not; entity/profile writes land directly, but POINTS go through the user's
   gate — ingest lands drafts, `kb_sync_base` drafts only new base-resume bullets and keeps a rephrasing as a wording

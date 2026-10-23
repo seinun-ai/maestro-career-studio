@@ -619,13 +619,17 @@ def next_after_base_from_kb(
     *,
     allowed_tools: "frozenset[str] | None",
     hints_enabled: bool,
+    setup_status: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Handoff into the tailoring arc: render the new base.
 
     Scoring is named in prose only — score_ats needs a job_id this composer
     cannot know, and an option whose args are incomplete is a 422 waiting to
     happen (the whole point of `args` is that they are callable verbatim). It
-    is named only where the profile registered it (career does not).
+    is named only where the profile registered it (career does not). The form
+    answers are prose for the same reason (they are the user's to give), named
+    only while GET /api/setup/status reads them as not done; an unknown status
+    names nothing.
     """
     if _suppressed(hints_enabled):
         return None
@@ -651,6 +655,10 @@ def next_after_base_from_kb(
         steps.append("render_pdf (preview)")
     if _registered("score_ats", allowed_tools):
         steps.append("score_ats (against a captured job)")
+    autofill = (setup_status or {}).get("autofill")
+    answers_open = isinstance(autofill, dict) and autofill.get("done") is False
+    if answers_open and _registered("set_autofill_profile", allowed_tools):
+        steps.append("set_autofill_profile (the form answers, which setup reads as not done)")
     offer = f"Base {slug} is ready."
     if steps:
         offer += f" Available next steps: {_listed(steps)}."

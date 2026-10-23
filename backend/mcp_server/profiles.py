@@ -51,6 +51,7 @@ APPLY_TOOLS = frozenset({
     "list_qa_entries",
     "get_career_context",
     "get_autofill_profile",
+    "set_autofill_profile",
     "get_job_search_brief",
     "sync_now",
     "score_ats",
@@ -129,7 +130,8 @@ TEMPLATES_TOOLS = frozenset({
 # profile with KB writes — hunt/apply/explore/templates stay read-only there.
 # render_pdf/get_rendered_pdf are here so the arc this profile starts can
 # finish with a document in hand; scoring and tailoring still belong to
-# apply/full.
+# apply/full. The set_* writes are the rest of what Setup asks for: form
+# answers, where the user lives and applies, the jobs they want, the persona.
 CAREER_TOOLS = frozenset({
     "get_career_context",
     "get_career_export",
@@ -153,6 +155,10 @@ CAREER_TOOLS = frozenset({
     "get_base_resume",
     "render_pdf",
     "get_rendered_pdf",
+    "set_autofill_profile",
+    "set_job_preferences",
+    "set_markets",
+    "set_persona",
 })
 
 # None => register every decorated tool (today's default).

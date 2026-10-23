@@ -145,13 +145,19 @@ work-permit answers for each country you apply in.
   answers get. The report then says which agent judged. With a key, Maestro's own model judges, as
   before.
 - **A connected agent can finish an application with no AI key in Maestro.** Three MCP tools store what
-  the agent wrote itself (94 tools now): `store_cover_letter` replaces the application's cover letter and
+  the agent wrote itself: `store_cover_letter` replaces the application's cover letter and
   makes its PDF, `store_qa_answers` keeps screening answers (an answer to the same question is replaced),
   and `kb_add_points` adds bullets to a career history item as drafts for your review. Both show on the
   job's Apply step. What the agent wrote is held to the app's writing rules: no em dashes (a dash that
   opens or ends a line no longer takes the line break with it, for written letters too), answers as plain
   text, and career bullets in your own voice. REST: `POST /api/qa/cover-letter`, `POST /api/qa/answers`,
   `POST /api/kb/entities/{id}/drafts`.
+- **Four MCP tools save what Setup asks for** (99 MCP tools in all now), so an agent with no web page and no AI
+  key in Maestro can finish setup: `set_autofill_profile` (form answers, with work permits for each
+  country; `apply`, `career` and `full`), `set_job_preferences`, `set_markets` (where you live, where
+  you apply, the currency pay reads in) and `set_persona` (`career` and `full`). Each changes only
+  what it is given. Diversity answers and their consent, full automation, the job-site login and every
+  Settings switch stay yours, in the app.
 
 ### Changed
 
