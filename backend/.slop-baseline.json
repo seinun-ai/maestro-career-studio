@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 904,
-    "total_loc": 283375,
-    "src_loc": 76150,
-    "test_loc": 207225,
+    "modules": 905,
+    "total_loc": 284012,
+    "src_loc": 76377,
+    "test_loc": 207635,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -91,7 +91,7 @@
       },
       {
         "file": "app/services/resume_lint.py",
-        "line": 987,
+        "line": 1003,
         "name": "_advisories",
         "complexity": 39,
         "params": 2,
@@ -187,7 +187,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1373,
+        "line": 1374,
         "name": "tailor",
         "complexity": 31,
         "params": 4,
@@ -200,6 +200,14 @@
         "complexity": 31,
         "params": 6,
         "lines": 137
+      },
+      {
+        "file": "app/services/resume_lint.py",
+        "line": 639,
+        "name": "assemble",
+        "complexity": 30,
+        "params": 13,
+        "lines": 110
       },
       {
         "file": "scripts/health_golden.py",
@@ -259,7 +267,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1144,
+        "line": 1145,
         "name": "_live_text_fragments",
         "complexity": 28,
         "params": 1,
@@ -378,14 +386,6 @@
         "lines": 68
       },
       {
-        "file": "app/services/resume_lint.py",
-        "line": 637,
-        "name": "assemble",
-        "complexity": 25,
-        "params": 12,
-        "lines": 101
-      },
-      {
         "file": "app/services/autofill_map.py",
         "line": 629,
         "name": "_route",
@@ -410,7 +410,7 @@
         "lines": 73
       }
     ],
-    "hotspot_count": 1048,
+    "hotspot_count": 1052,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -499,7 +499,7 @@
       }
     ],
     "error_masking_count": 17,
-    "internal_import_edges": 4109,
+    "internal_import_edges": 4119,
     "imports_per_module": 4.55,
     "entry_points_used": [
       "app.main",
@@ -649,7 +649,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "1048 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
+      "detail": "1052 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -662,15 +662,15 @@
     }
   ],
   "metrics": {
-    "total_loc": 283375,
-    "src_loc": 76150,
-    "test_loc": 207225,
-    "modules": 904,
+    "total_loc": 284012,
+    "src_loc": 76377,
+    "test_loc": 207635,
+    "modules": 905,
     "orphan_loc": 0,
     "duplication_pct": 0.43,
     "duplicated_lines": 399,
     "clone_count": 46,
-    "complexity_hotspots": 1048,
+    "complexity_hotspots": 1052,
     "error_masking": 17,
     "imports_per_module": 4.55
   }

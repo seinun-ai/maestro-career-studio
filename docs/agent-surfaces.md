@@ -14,7 +14,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `_best_effort_hint` returns `next: null` on a failed lookup after a landed write.
   Coverage: [docs/entities/others.md](docs/entities/others.md), "MCP tool coverage".
   **Scoped profiles**:
-  `profiles.py` owns `full` / `hunt` / `apply` / `explore` / `templates` / `career` (91 tools); `/mcp` = `full`, `/mcp/{profile}` = its allowlist.
+  `profiles.py` owns `full` / `hunt` / `apply` / `explore` / `templates` / `career` (92 tools); `/mcp` = `full`, `/mcp/{profile}` = its allowlist.
   Lifespans run fresh stateful JSON sessions; tools use `http.py`'s eight-worker limiter (§6 inv-tools-off-loop).
   Stdio filters `MAESTRO_CS_MCP_PROFILE` (default `full`; migration state: §13 `mcp-stdio-venv`).
   Hints use request `CURRENT_PROFILE`, else env (pins: `mcp_server/tests/test_profiles.py`, `test_server.py`, `test_http.py`).
@@ -41,6 +41,11 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `explore_skill_heatmap` rows carry `count` and `of` beside `pct_jobs`, and `explore_role_mix_over_time` returns every week from
   the first to the last for every role, 0 where it had none. No tool reads Today, the search summary, money or the market setting,
   and the explore tools take no period or source.
+- **The health check without a model key.** `run_health_check` then calls no model and returns a report that counts only stored
+  judgments (`judged`, null `score`/`grade` while a scored bullet waits) plus `judging`: the app's own evaluator prompt filled with
+  the waiting bullets. `judge_health_bullets` (`apply`, `templates`, `full`) sends the agent's answers in that prompt's output
+  shape under the client's name; each passes `_validate` and the rebuilt report comes back with `accepted`/`rejected`. With a key
+  the write is a 409 and the app's model judges (docs/entities/others.md, "The keyless check").
 
 ## Guided tailoring workflow
 

@@ -55,7 +55,8 @@ work-permit answers for each country you apply in.
   answers under `work_auth_by_country`, and an old `work_auth` still reads and is still served, now
   named by `work_auth_market`; a knock-out check can be `cant_compare`. A job's `work_mode` and `level`
   now read as one key each (`on_site` where some read `onsite`, `senior` for "Sr."), and the migration
-  re-spells saved jobs the same way.
+  re-spells saved jobs the same way. A health report's `score` and `grade` are null while its bullets
+  wait for a judge, which happens only without a model key.
 - Settings' tabs are **Basics**, **Companion**, **Agent apps** and **Advanced**
   (`?tab=basics|companion|agents|advanced`), Profile has no tabs (`/profile#<card>`), and Jobs opens on
   All active (`?status=all` lists every job). A link or bookmark to an old tab opens the tab and card
@@ -136,6 +137,13 @@ work-permit answers for each country you apply in.
   `POST /api/kb/points/{id}/split-wording`, `POST`/`DELETE /api/kb/points/keep-apart`, and
   `PATCH /api/kb/points/{id}` takes `unmerge`. A point carries `wordings` and
   `merged_into_point_id`.
+- **The health check works without a model key.** It used to stop with "No API key is set". Now it
+  checks everything that needs no AI (the structure checks, dates, placeholders, wording) and says how
+  many lines aren't judged yet, with no grade until they are, rather than a grade it can't back. Your
+  connected agent can judge them: `run_health_check` hands it Maestro's own rubric and the waiting
+  lines, and the new `judge_health_bullets` tool stores its answers after the same checks a model's
+  answers get. The report then says which agent judged. With a key, Maestro's own model judges, as
+  before.
 
 ### Changed
 

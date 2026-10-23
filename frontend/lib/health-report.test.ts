@@ -24,6 +24,9 @@ import {
   healthCounts,
   leftToFix,
   checkDoneWords,
+  judgedByLine,
+  notJudgedLine,
+  reportGraded,
   stripTrailingPunct,
   contentHash16,
   staleFindingIds,
@@ -119,6 +122,52 @@ test("must fix counts only failed fatal checks, and left to fix agrees with it",
 test("a check with too little to grade never announces a grade", () => {
   assert.equal(checkDoneWords({ grade: "F", insufficient_evidence: true }), "Check done. Too little to grade yet.");
   assert.equal(checkDoneWords({ grade: "B" }), "Check done. Grade B.");
+});
+
+test("an ungraded report (lines wait for a judge) announces no grade", () => {
+  const ungraded = { grade: null, score: null, judged: { done: 1, pending: 4, by: [] } };
+  assert.equal(reportGraded(ungraded), false);
+  assert.equal(reportGraded({ grade: "B", score: 74 }), true);
+  assert.equal(checkDoneWords(ungraded), "Check done. Some lines aren't judged yet.");
+  assert.equal(nextGradeProgress({ score: null, next_grade: null }), null);
+});
+
+test("a pass over an ungraded report leaves the points out", () => {
+  assert.equal(passOutcomeWords({ points: null, fixed: 3, notRight: 0, skipped: 1 }), "3 fixed · 1 skipped");
+  assert.equal(passOutcomeWords({ points: null, fixed: 0, notRight: 0, skipped: 0 }), "Check done.");
+  assert.equal(passOutcomeWords({ points: 0, fixed: 0, notRight: 0, skipped: 0 }), "Same score");
+});
+
+test("notJudgedLine says how many lines wait and who can judge them", () => {
+  assert.equal(
+    notJudgedLine({ grade: null, judged: { done: 0, pending: 4, by: [] } }),
+    "4 lines aren't judged yet, so there's no grade. Ask a connected agent to run the health check, " +
+      "or add a model key in Settings.",
+  );
+  assert.equal(
+    notJudgedLine({ grade: "B", judged: { done: 4, pending: 1, by: ["gpt-x"] } }),
+    "1 line isn't judged yet. Ask a connected agent to run the health check, or add a model key in Settings.",
+  );
+  assert.equal(notJudgedLine({ grade: "B", judged: { done: 5, pending: 0, by: [] } }), null);
+  assert.equal(notJudgedLine({ grade: "B" }), null); // a report stored before `judged` existed
+});
+
+test("judgedByLine names connected agents, never the app's own model", () => {
+  const nameOf = (raw: string) => ({ "claude-ai": "Claude", "codex-mcp-client": "Codex" })[raw] ?? null;
+  assert.equal(judgedByLine({ judged: { done: 5, pending: 0, by: ["gpt-x"] } }, nameOf), null);
+  assert.equal(
+    judgedByLine({ judged: { done: 5, pending: 0, by: ["agent:claude-ai", "gpt-x"] } }, nameOf),
+    "Judged by Claude, a connected agent.",
+  );
+  assert.equal(
+    judgedByLine({ judged: { done: 5, pending: 0, by: ["agent", "agent:mcp"] } }, nameOf),
+    "Judged by a connected agent.",
+  );
+  assert.equal(
+    judgedByLine({ judged: { done: 5, pending: 0, by: ["agent:claude-ai", "agent:codex-mcp-client"] } }, nameOf),
+    "Judged by Claude and Codex, connected agents.",
+  );
+  assert.equal(judgedByLine({}, nameOf), null);
 });
 
 test("potentialPoints is 100 × (1 − level) / n_scoreable", () => {

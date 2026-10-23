@@ -19,11 +19,13 @@ from app.services import (
     health_guards,
     health_score,
     health_wording,
+    llm,
     resume_lint,
     resume_voice,
 )
 from app.services.application_writes import NO_TAILORED_RESUME
 from app.services.health_guards import RewriteObjective
+from app.write_origin import WriteOrigin, get_write_origin
 
 router = APIRouter(prefix="/api/resume-lint", tags=["resume-lint"])
 
@@ -173,13 +175,20 @@ class NextGrade(BaseModel):
     points: int
 
 
+class JudgmentsBody(BaseModel):
+    """A connected agent's answer to the judging brief: entries in the evaluator prompt's
+    output shape (`classifications`)."""
+    classifications: list[Any] = Field(max_length=500)
+
+
 class LintReportRead(BaseModel):
     id: UUIDType
     resume_kind: str
     resume_key: str
     resume_version_number: int | None = None
-    score: int
-    grade: str
+    # Null while a scored bullet waits for a judgment (no model key; see `judged`).
+    score: int | None
+    grade: str | None
     tier: str | None = None
     counts: dict[str, int]
     gates: list[dict[str, Any]] = []
@@ -188,8 +197,19 @@ class LintReportRead(BaseModel):
     insufficient_evidence: bool = False
     score_breakdown: ScoreBreakdown | None = None
     next_grade: NextGrade | None = None
+    # {done, pending, by}: how many ladder texts a judge has read, how many wait, and who
+    # judged. Absent on reports stored before it existed.
+    judged: dict[str, Any] | None = None
+    # No model key and texts waiting: {rubric_version, pending_ids, prompt}, the evaluator
+    # prompt filled with the pending texts. Only on the run and judgments responses.
+    judging: dict[str, Any] | None = None
     model: str | None = None
     created_at: datetime
+
+
+class JudgmentsRead(LintReportRead):
+    accepted: list[dict[str, Any]]
+    rejected: list[dict[str, Any]]
 
 
 def _score_breakdown(row) -> ScoreBreakdown | None:
@@ -213,7 +233,7 @@ def _score_breakdown(row) -> ScoreBreakdown | None:
     )
 
 
-def _read(row, *, stale: bool = False) -> LintReportRead:
+def _read(row, *, stale: bool = False, judging: dict | None = None) -> LintReportRead:
     return LintReportRead(
         id=row.id,
         resume_kind=row.resume_kind,
@@ -223,6 +243,7 @@ def _read(row, *, stale: bool = False) -> LintReportRead:
         created_at=row.created_at,
         stale=stale,
         score_breakdown=_score_breakdown(row),
+        judging=judging,
         # A report stored before a gate was reworded shows today's label.
         **health_gates.with_current_labels(row.report_json),
     )
@@ -260,10 +281,40 @@ def put_wording(body: WordingBody, db: Annotated[Session, Depends(get_db)]):
         db, cliche=body.cliche, filler=body.filler, ignored=body.ignored).payload()
 
 
+def _judging(db: Session, resume: dict) -> dict | None:
+    """The brief a connected agent judges by: only while no model key is set."""
+    return None if llm.any_model_key_configured() else resume_lint.judging_brief(db, resume)
+
+
 @router.post("/{kind}/{key}/run", response_model=LintReportRead)
 def run_lint(kind: Kind, key: str, db: Annotated[Session, Depends(get_db)]):
     resume, template_id = _load_resume(db, kind, key)
-    return _read(resume_lint.run_report(db, kind, key, resume, template_id=template_id))
+    row = resume_lint.run_report(db, kind, key, resume, template_id=template_id)
+    return _read(row, judging=_judging(db, resume))
+
+
+@router.post("/{kind}/{key}/judgments", response_model=JudgmentsRead)
+def record_judgments(
+    kind: Kind, key: str, body: JudgmentsBody,
+    db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
+):
+    """A connected agent's judgments of the pending texts, validated like a model's answer and
+    stored under `agent:<client>`; then the report is rebuilt. Refused while a key is set: the
+    app's own model judges then."""
+    if llm.any_model_key_configured():
+        raise HTTPException(
+            status_code=409,
+            detail="A model key is set, so Maestro judges the bullets with its own model. "
+                   "Run the health check instead.",
+        )
+    resume, template_id = _load_resume(db, kind, key)
+    judge = bullet_classify.agent_judge(
+        write_origin.detail if write_origin.origin == "mcp" else None)
+    accepted, rejected = resume_lint.record_judgments(db, resume, judge, body.classifications)
+    row = resume_lint.run_report(db, kind, key, resume, template_id=template_id)
+    report = _read(row, judging=resume_lint.judging_brief(db, resume))
+    return JudgmentsRead(**report.model_dump(), accepted=accepted, rejected=rejected)
 
 
 @router.get("/{kind}/{key}", response_model=LintReportRead)

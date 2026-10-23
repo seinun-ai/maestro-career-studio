@@ -131,6 +131,7 @@ WRITE_PATHS = [
     ("POST", "/api/tailoring-sessions", {"job_id": "{job}", "base_resume": "guard_base", "enrich": False}),
     ("POST", "/api/resume-versions/application/{app}/1/restore", None),
     ("POST", "/api/resume-lint/application/{app}/run", None),
+    ("POST", "/api/resume-lint/application/{app}/judgments", {"classifications": []}),
     ("POST", "/api/resume-lint/application/{app}/gates/S1/waive", {"reason": "Example reason"}),
 ]
 

@@ -207,9 +207,10 @@ def create_session(
                 ]
                 if failed_fatal:
                     raise HealthGateBlockedError(_must_fix_message(failed_fatal))
-                if rj.get("score", 100) < 55:
+                score = rj.get("score")
+                if score is not None and score < 55:  # None: bullets not judged yet
                     health_warning = (
-                        f"Your base resume's health score is {rj.get('score')} "
+                        f"Your base resume's health score is {score} "
                         f"({rj.get('grade')}). Tailoring a weak resume gives weak results."
                     )
 

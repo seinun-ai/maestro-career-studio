@@ -115,9 +115,11 @@ def content_hash(text: str) -> str:
 
 
 def _result(level: str, *, reason: str = "", confidence: float | None = None,
-            source: str = "llm", uncertain: bool = False, assessment: dict | None = None) -> dict:
+            source: str = "llm", uncertain: bool = False, assessment: dict | None = None,
+            judge: str | None = None) -> dict:
     fields = assessment or {}
     return {
+        "judge": judge,
         "evidence": fields.get("evidence") or [],
         "question": fields.get("question"),
         "ask_kind": fields.get("ask_kind"),
@@ -170,15 +172,19 @@ def set_override(
 
 
 def _stored_result(row: BulletClassification | None, dispute: BulletDispute | None,
-                   model: str) -> dict | None:
+                   model: str | None) -> dict | None:
     """What is already stored for one text, by precedence: override > dispute (same rubric
-    version and model) > cached evaluation (same rubric version and model). None = a miss."""
+    version and model) > cached evaluation (same rubric version and model). None = a miss.
+    `model=None` accepts a dispute or evaluation from any judge at the current rubric version.
+    A result's `judge` is the model that made it (None for the user's own override)."""
     if row is not None and row.override_level:
         return _result(row.override_level, reason=row.override_reason or "user override",
                        confidence=1.0, source="override")
-    if dispute is not None and dispute.rubric_version == RUBRIC_VERSION and dispute.model == model:
-        return _dispute_result(dispute)
-    if row is None or row.rubric_version != RUBRIC_VERSION or row.model != model:
+    if dispute is not None and dispute.rubric_version == RUBRIC_VERSION and (
+            model is None or dispute.model == model):
+        return {**_dispute_result(dispute), "judge": dispute.model}
+    if row is None or row.rubric_version != RUBRIC_VERSION or (
+            model is not None and row.model != model):
         return None
     return _result(
         row.level, reason=row.reason or "", confidence=row.confidence, source="cache",
@@ -186,6 +192,7 @@ def _stored_result(row: BulletClassification | None, dispute: BulletDispute | No
         assessment={"evidence": row.evidence_json, "question": row.question,
                     "ask_kind": row.ask_kind, "measure_target": row.measure_target,
                     "alt_question": row.alt_question, "language": row.language_json},
+        judge=row.model,
     )
 
 
@@ -195,10 +202,28 @@ def classify_items(db: Session, items: list[dict]) -> dict[str, dict]:
     Precedence: override > dispute (same rubric version and model) > evaluation. A dispute's
     `metric_unavailable` is the user's fact about the work, so it demotes number asks on every
     evaluation of that text, whatever the model or rubric."""
+    out, pending, texts, disputes = _lookup(db, items, model_settings.get_smart_model(db))
+    if pending:
+        out.update(_classify_batch(db, pending))
+    _no_number_pass(out, texts, disputes)
+    return out
+
+
+def stored_judgments(db: Session, items: list[dict]) -> tuple[dict[str, dict], dict[str, dict]]:
+    """(judged, pending) for items [{text, hints}]: what is stored for each text at the current
+    rubric version, from ANY judge, by `classify_items`' precedence, and the rest as evaluator
+    items {id, text, hints} keyed by content hash. Never calls a model: the keyless health check."""
+    out, pending, texts, disputes = _lookup(db, items, None)
+    _no_number_pass(out, texts, disputes)
+    return out, pending
+
+
+def _lookup(db: Session, items: list[dict], model: str | None
+            ) -> tuple[dict[str, dict], dict[str, dict], dict[str, str], dict[str, BulletDispute]]:
+    """The free first pass: (stored results, pending evaluator items, texts, disputes)."""
     out: dict[str, dict] = {}
     pending: dict[str, dict] = {}
     texts: dict[str, str] = {}
-    model = model_settings.get_smart_model(db)
     hashes = {content_hash(str(item.get("text") or "").strip()) for item in items}
     disputes = {d.content_hash: d for d in db.scalars(
         select(BulletDispute).where(BulletDispute.content_hash.in_(hashes)))}
@@ -218,26 +243,33 @@ def classify_items(db: Session, items: list[dict]) -> dict[str, dict]:
             out[chash] = stored
             continue
         pending[chash] = {"id": chash, "text": text, "hints": item.get("hints") or []}
+    return out, pending, texts, disputes
 
-    if pending:
-        out.update(_classify_batch(db, pending))
+
+def _no_number_pass(out: dict[str, dict], texts: dict[str, str],
+                    disputes: dict[str, BulletDispute]) -> None:
     for chash, dispute in disputes.items():
         if dispute.metric_unavailable and out.get(chash, {}).get("source") in (
                 "cache", "llm", "dispute"):
             out[chash] = without_number_ask(texts[chash], out[chash])
-    return out
+
+
+def evaluator_prompt(db: Session, pending: dict[str, dict]) -> str:
+    """The `resume_bullet_classify` prompt filled with evaluator items: the exact text the
+    in-app model receives, and what a connected agent judges by when no key is set."""
+    template = prompts.get_prompt("resume_bullet_classify", db)
+    return StringTemplate(template).safe_substitute(
+        items_json=json.dumps(list(pending.values()), indent=2)
+    )
 
 
 def evaluate_uncached(db: Session, pending: dict[str, dict]) -> dict[str, dict]:
     """Validated assessments straight from the evaluator. It NEVER reads or writes
     `bullet_classifications`: disputes and the golden runner rely on that (cache isolation).
     `_classify_batch` is the only caller that stores what it returns."""
-    template = prompts.get_prompt("resume_bullet_classify", db)
-    prompt = StringTemplate(template).safe_substitute(
-        items_json=json.dumps(list(pending.values()), indent=2)
-    )
     raw = llm.call_openai(
-        prompt=prompt, model=model_settings.get_smart_model(db), response_format="json",
+        prompt=evaluator_prompt(db, pending), model=model_settings.get_smart_model(db),
+        response_format="json",
         trace_name="resume_bullet_classify",
     )
     entries = raw.get("classifications") if isinstance(raw, dict) else None
@@ -268,15 +300,61 @@ def _classify_batch(db: Session, pending: dict[str, dict]) -> dict[str, dict]:
         out[chash] = _result(
             entry["level"], reason=entry["reason"], confidence=confidence,
             source="cache", uncertain=confidence < CONFIDENCE_FLOOR, assessment=entry,
+            judge=model,
         )
-        row = db.get(BulletClassification, chash)
-        if row is None:
-            row = BulletClassification(content_hash=chash)
-            db.add(row)
-        row.level, row.reason, row.confidence = entry["level"], entry["reason"], confidence
-        row.model, row.rubric_version = model, RUBRIC_VERSION
-        row.evidence_json, row.language_json = entry["evidence"], entry["language"]
-        row.question, row.ask_kind = entry["question"], entry["ask_kind"]
-        row.measure_target, row.alt_question = entry["measure_target"], entry["alt_question"]
+        _store(db, chash, entry, model)
     db.commit()
     return out
+
+
+def _store(db: Session, chash: str, entry: dict, model: str) -> None:
+    """One validated assessment into the cache row for its text (an override on it stays)."""
+    row = db.get(BulletClassification, chash)
+    if row is None:
+        row = BulletClassification(content_hash=chash)
+        db.add(row)
+    row.level, row.reason, row.confidence = entry["level"], entry["reason"], entry["confidence"]
+    row.model, row.rubric_version = model, RUBRIC_VERSION
+    row.evidence_json, row.language_json = entry["evidence"], entry["language"]
+    row.question, row.ask_kind = entry["question"], entry["ask_kind"]
+    row.measure_target, row.alt_question = entry["measure_target"], entry["alt_question"]
+
+
+AGENT_JUDGE = "agent"
+
+
+def agent_judge(client: str | None) -> str:
+    """The model id a connected agent's judgments are stored under: "agent:<client name>",
+    or "agent" when the client gave no name."""
+    name = (client or "").strip()
+    return f"{AGENT_JUDGE}:{name}" if name else AGENT_JUDGE
+
+
+def record_judgments(db: Session, judge: str, items: list[dict], entries: list
+                     ) -> tuple[list[dict], list[dict]]:
+    """Stores a connected agent's evaluations of `items`' pending texts under `judge`, by the
+    same rules as a model's answer: each entry names a pending id (a text with no stored
+    judgment) and passes `_validate`. Returns (accepted [{id, level}] with the level as stored,
+    rejected [{id, reason}])."""
+    _, pending = stored_judgments(db, items)
+    accepted: list[dict] = []
+    rejected: list[dict] = []
+    for entry in entries:
+        key = entry.get("id") if isinstance(entry, dict) else None
+        if not isinstance(key, str):
+            rejected.append({"id": None, "reason": "An entry needs the id of a pending bullet."})
+            continue
+        if key not in pending:
+            rejected.append({"id": key, "reason": "Not a pending bullet of this resume: it is "
+                                                  "already judged, or its text changed."})
+            continue
+        assessment = _validate(pending[key]["text"], entry)
+        if assessment is None:
+            rejected.append({"id": key, "reason": "level must be one of: "
+                                                  + ", ".join(LEVEL_VALUES) + "."})
+            continue
+        _store(db, key, assessment, judge)
+        accepted.append({"id": key, "level": assessment["level"]})
+        del pending[key]   # a second entry for the same id is no longer pending
+    db.commit()
+    return accepted, rejected

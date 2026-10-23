@@ -152,3 +152,7 @@
     only in its location line (`countries.for_job`'s fallback) reads as having none there; Analytics' places group the raw state,
     city or country text. Do when one of those readers is next changed, or a job with a location-only country is scored or proposed
     as if it had none.
+63. Keyless health check limits (owner decision 2026-10-23 left them out): Today's "resumes to health check" counts no report whose
+    bullets wait for a judge, so an ungraded resume drops off Today once checked; **Not right?** disputes still need a model key; and
+    the first keyed run re-judges every bullet an agent judged (cache rows key on the smart model). Do when a keyless user loses an
+    ungraded resume from Today, or asks to dispute a rating without a key.

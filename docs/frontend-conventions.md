@@ -219,6 +219,12 @@
   question pass's is **Write N new wordings** until nothing is left to write, then **Accept all
   shown**; a modal's own confirm is filled, since it is a view of its own. Pinned by
   `test_one_filled_button_per_view` and `test_one_filled_button_in_view`.
+- **An ungraded health report** (no model key, lines waiting for a judge: `grade` and `score` null,
+  `judged.pending` above zero) never shows a grade or a score: the summary band's tile reads **Not
+  graded** (muted, like **Too little to grade**), `notJudgedLine` says how many lines wait and who can
+  judge them (and "0 left to fix" is left out, so waiting lines never read as done), and the header and
+  gallery chips read **Not graded** in muted colours, never a grade colour. `judgedByLine` names a connected agent that judged. A re-run shows no score delta and a
+  pass's toast no points while either side is ungraded (`lib/health-report.ts`).
 - **The health report** is one column (owner decision: no rail): the header's stamp ("Checked 2
   minutes ago · Version 28") with an icon Check again, a full-width summary band (grade, the bar to
   the server's `next_grade`, composition, the "No numbers anywhere" callout, the stale banner, Start

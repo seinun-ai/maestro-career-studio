@@ -888,7 +888,46 @@ def test_tailor_session_tool_ops_default_none(monkeypatch):
 
 def test_health_check_tools_registered():
     names = set(srv.list_registered_tool_names())
-    assert {"run_health_check", "get_health_report"} <= names
+    assert {"run_health_check", "get_health_report", "judge_health_bullets"} <= names
+
+
+def test_judge_health_bullets_is_in_every_profile_that_runs_the_check():
+    from mcp_server import profiles
+
+    for name in sorted(profiles.VALID_PROFILES - {"full"}):
+        allowed = profiles.allowed_tools(name)
+        assert ("run_health_check" in allowed) == ("judge_health_bullets" in allowed), name
+
+
+def test_judge_health_bullets_tool_sends_the_client_label(monkeypatch):
+    seen = {}
+
+    def fake(kind, key, classifications, origin_detail=None):
+        seen.update(kind=kind, key=key, classifications=classifications,
+                    origin_detail=origin_detail)
+        return {"grade": "B", "accepted": [], "rejected": []}
+
+    monkeypatch.setattr(srv._client, "judge_health_bullets", fake)
+    monkeypatch.setattr(srv, "_client_label", lambda ctx: "claude-ai")
+    entries = [{"id": "0123456789abcdef", "level": "direct"}]
+    out = srv.judge_health_bullets("base", "my-slug", entries)
+    assert out["grade"] == "B"
+    assert seen == {"kind": "base", "key": "my-slug", "classifications": entries,
+                    "origin_detail": "claude-ai"}
+
+
+def test_health_docstrings_state_the_keyless_report_and_the_agent_judgments():
+    run_doc = " ".join((srv.run_health_check.__doc__ or "").split())
+    for phrase in ("no model key", "judged", "judging", "null", "judge_health_bullets",
+                   "pending_ids", "prompt"):
+        assert phrase in run_doc, phrase
+    judge_doc = " ".join((srv.judge_health_bullets.__doc__ or "").split())
+    for phrase in ("classifications", "judging.prompt", "verbatim", "adjacent",
+                   "accepted", "rejected", "409", "model key", "run_health_check"):
+        assert phrase in judge_doc, phrase
+    # The docstring is the API: behavior, never instructions to the agent.
+    for imperative in ("you must", "you should", "call this", "always ", "never ask"):
+        assert imperative not in judge_doc.lower(), imperative
 
 
 def test_run_health_check_tool_calls_client(monkeypatch):
@@ -1336,6 +1375,8 @@ _PINNED_HINTS = {
     "set_base_resume_identity": (False, False, True, False),
     # The six tools that can reach the configured LLM provider.
     "run_health_check": (False, False, False, True),
+    # Stores the agent's own judgments and rebuilds the report: no provider call.
+    "judge_health_bullets": (False, False, False, False),
     "kb_capture": (False, False, False, True),
     "generate_qa_answers": (False, False, False, True),
     "generate_cover_letter": (False, True, False, True),
@@ -1448,7 +1489,7 @@ def _enum_of(prop: dict) -> list[str]:
 
 async def test_health_and_score_enums_are_in_the_machine_readable_schema():
     schemas = await _tool_schemas()
-    for name in ("run_health_check", "get_health_report"):
+    for name in ("run_health_check", "get_health_report", "judge_health_bullets"):
         assert _enum_of(schemas[name]["properties"]["kind"]) == ["base", "application"], name
     assert _enum_of(schemas["score_ats"]["properties"]["target_type"]) == [
         "base_resume",

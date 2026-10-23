@@ -38,3 +38,19 @@ def test_get_health_report_gets_latest_by_kind_key():
     assert out == SAMPLE_REPORT
     assert route.called
     assert route.calls.last.request.method == "GET"
+
+
+@respx.mock
+def test_judge_health_bullets_posts_classifications_with_the_client_name():
+    import json
+
+    route = respx.post(f"{BASE}/api/resume-lint/base/my-slug/judgments").mock(
+        return_value=httpx.Response(200, json={**SAMPLE_REPORT, "accepted": [], "rejected": []})
+    )
+    entries = [{"id": "0123456789abcdef", "level": "direct"}]
+    client = BackendClient(BASE)
+    client.judge_health_bullets("base", "my-slug", entries, origin_detail="claude-ai")
+    request = route.calls.last.request
+    assert json.loads(request.content) == {"classifications": entries}
+    assert request.headers["X-Maestro-CS-Origin"] == "mcp"
+    assert request.headers["X-Maestro-CS-Origin-Detail"] == "claude-ai"

@@ -693,6 +693,18 @@ class BackendClient:
     def get_health_report(self, kind: str, key: str) -> Any:
         return self._request("GET", f"/api/resume-lint/{kind}/{key}")
 
+    def judge_health_bullets(
+        self, kind: str, key: str, classifications: list[dict[str, Any]],
+        origin_detail: str | None = None,
+    ) -> Any:
+        """The client's name travels as the write origin: judgments are stored under it."""
+        return self._request(
+            "POST",
+            f"/api/resume-lint/{kind}/{key}/judgments",
+            json={"classifications": classifications},
+            headers=_origin_headers(origin_detail),
+        )
+
     def waive_health_gate(self, kind: str, key: str, gate_id: str, reason: str) -> Any:
         return self._request(
             "POST",

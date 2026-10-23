@@ -12,6 +12,13 @@ from app.services import bullet_classify, resume_versions
 from app.services import resume_lint as rl
 
 
+@pytest.fixture(autouse=True)
+def model_key_set(monkeypatch):
+    """These tests drive the keyed run (a model judges). The keyless run is
+    `test_health_keyless.py`; `use_llm=False` here reads stored judgments."""
+    monkeypatch.setattr(rl.llm, "any_model_key_configured", lambda: True)
+
+
 def _lv(value, uncertain=False):
     return {"level": rl._level_name(value), "value": value, "reason": "",
             "confidence": 1.0, "source": "cache", "uncertain": uncertain}

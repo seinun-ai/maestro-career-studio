@@ -358,11 +358,17 @@ def run_health_check(kind: Literal["base", "application"], key: str) -> Any:
     application. `kind` is 'base' (then `key` is the base-resume slug) or
     'application' (then `key` is the application id). Classifies every bullet on
     the evidence ladder, checks structure/content gates, and returns
-    {score, grade, tier, next_grade, gates, counts, findings} ranked by what each defect costs.
-    Concrete qualitative results can earn full credit. An ask/fix finding carries
-    question, ask_kind (measure|detail|reword), measure_target, alt_question, gain
-    and evidence. Notes score zero: the evidence.no_numbers flag and language.*
-    wording notes. Disputes and the word bank are web-only for now.
+    {score, grade, tier, next_grade, gates, counts, findings, judged} ranked by what
+    each defect costs. Concrete qualitative results can earn full credit. An ask/fix
+    finding carries question, ask_kind (measure|detail|reword), measure_target,
+    alt_question, gain and evidence. Notes score zero: the evidence.no_numbers flag and
+    language.* wording notes. Disputes and the word bank are web-only for now.
+    `judged` is {done, pending, by}: bullets a judge has read, bullets waiting, and the
+    judges' model ids. With no model key set, no model is called: only stored judgments
+    count (any judge, current rubric version); score, grade and next_grade are null while
+    a scored bullet is pending, and `judging` is {rubric_version, pending_ids, prompt},
+    where prompt is the app's own evaluator prompt filled with the pending bullets;
+    judge_health_bullets stores answers in that prompt's output shape.
     create_tailoring_session returns 409 when the base resume's latest, current
     report has an unwaived failing fatal gate; this call produces that report."""
     return _client.run_health_check(kind, key)
@@ -377,6 +383,31 @@ def get_health_report(kind: Literal["base", "application"], key: str) -> Any:
     (fields as in run_health_check), or an error if no report exists yet
     (run_health_check creates one)."""
     return _client.get_health_report(kind, key)
+
+
+@mcp.tool(**_write("Judge Resume Bullets", destructive=False, idempotent=False))
+@_guard
+def judge_health_bullets(
+    kind: Literal["base", "application"],
+    key: str,
+    classifications: list[dict[str, Any]],
+    ctx: Context | None = None,
+) -> Any:
+    """Stores evaluations of a resume's pending bullets while no model key is set, then
+    rebuilds its health report. `kind` is 'base' or 'application', `key` the slug or
+    application id. `classifications` is the `classifications` list in the output shape
+    that `judging.prompt` from run_health_check states, one entry per pending id. Each
+    entry gets the checks a model's answer gets: `level` is one of direct, analogue,
+    adjacent, implied, unaddressed; analogue and direct need a verbatim quote of three or
+    more words from the bullet in `evidence`, else the level is stored as adjacent; a
+    measure question survives only when its target is in the bullet's own words. An id
+    that is not pending (already judged, or its text changed) is rejected. Judgments are
+    stored under this client's name and count while no model key is set. Returns the
+    rebuilt report (fields as in run_health_check) plus accepted [{id, level as stored}]
+    and rejected [{id, reason}]. 409 while a model key is set: the app's own model judges
+    then."""
+    return _client.judge_health_bullets(
+        kind, key, classifications, origin_detail=_client_label(ctx))
 
 
 @mcp.tool(**_write("Waive Health Gate", destructive=False, idempotent=True))

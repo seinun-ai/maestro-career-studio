@@ -14,12 +14,21 @@ import type { LintGate } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type LintReport = {
-  score: number;
-  grade: string;
+  /** Null while lines wait for a judge (no model key): the report has no grade yet. */
+  score: number | null;
+  grade: string | null;
   counts: Record<string, number>;
   gates?: LintGate[];
   created_at: string;
 };
+
+// An ungraded report's chip: no grade colour, so it never reads as an F.
+const NOT_GRADED_STYLE = "bg-muted text-muted-foreground";
+
+/** "Grade B, score 74" or "Not graded yet": a report with no grade never names one. */
+function gradeWords(data: Pick<LintReport, "grade" | "score">): string {
+  return data.grade == null ? "Not graded yet" : `Grade ${data.grade}, score ${data.score}`;
+}
 
 /**
  * "2 must fix, 8 questions", worst first, skipping severities with nothing in
@@ -98,7 +107,7 @@ export function HealthBadges({
   // The counts only live in the tooltip now, and a tooltip is mouse-only —
   // aria-label carries the same sentence to screen readers and touch.
   const summary =
-    `Grade ${data.grade}, score ${data.score}. ` +
+    `${gradeWords(data)}. ` +
     `${summarizeCounts(healthCounts(data))}. Open report.`;
 
   return (
@@ -116,10 +125,10 @@ export function HealthBadges({
           severity signal now, so an F must not read like an A. */}
       <span
         className={`rounded-corner-xs px-1.5 py-0.5 text-label-medium ${
-          GRADE_STYLES[data.grade] ?? GRADE_STYLES.C
+          data.grade == null ? NOT_GRADED_STYLE : (GRADE_STYLES[data.grade] ?? GRADE_STYLES.C)
         }`}
       >
-        {data.grade}
+        {data.grade ?? "Not graded"}
       </span>
     </Link>
   );
@@ -144,7 +153,7 @@ export function HealthListChip({ slug }: { slug: string }) {
   const blocked = fatalGateFailed(data.gates);
   const summary = blocked
     ? "Has a must-fix problem. Open the report."
-    : `Grade ${data.grade}, score ${data.score}. Open report.`;
+    : `${gradeWords(data)}. Open report.`;
 
   return (
     <Link
@@ -153,14 +162,16 @@ export function HealthListChip({ slug }: { slug: string }) {
         "relative z-20 inline-flex shrink-0 items-center gap-1 rounded-corner-xs px-1.5 py-0.5 text-label-small",
         blocked
           ? "bg-error-container text-on-error-container"
-          : (GRADE_STYLES[data.grade] ?? GRADE_STYLES.C),
+          : data.grade == null
+            ? NOT_GRADED_STYLE
+            : (GRADE_STYLES[data.grade] ?? GRADE_STYLES.C),
       )}
       title={summary}
       aria-label={summary}
       onClick={(event) => event.stopPropagation()}
     >
       <CONCEPT_ICONS.health className="size-3" aria-hidden="true" />
-      {blocked ? "Must fix" : data.grade}
+      {blocked ? "Must fix" : (data.grade ?? "Not graded")}
     </Link>
   );
 }
