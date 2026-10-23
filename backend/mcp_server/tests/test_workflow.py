@@ -641,6 +641,33 @@ def test_base_from_kb_hint_drops_render_when_the_profile_lacks_it():
     assert "registers no render tool" in hint["offer"]
 
 
+def test_base_from_kb_hint_names_the_form_answers_while_setup_reads_them_open():
+    hint = workflow.next_after_base_from_kb(
+        {"slug": "ds"}, allowed_tools=None, hints_enabled=True,
+        setup_status=_autofill_setup_status(ready=False),
+    )
+    assert "set_autofill_profile" in hint["offer"]
+    # Prose only: an option's args are callable verbatim, and the answers are the user's to give.
+    assert set(_by_tool(hint)) == {"render_pdf"}
+
+
+@pytest.mark.parametrize("status", [None, {}, {"autofill": None}, "ready"])
+def test_base_from_kb_hint_leaves_out_the_form_answers_unless_setup_reads_them_open(status):
+    status = _autofill_setup_status(ready=True) if status == "ready" else status
+    hint = workflow.next_after_base_from_kb(
+        {"slug": "ds"}, allowed_tools=None, hints_enabled=True, setup_status=status,
+    )
+    assert "set_autofill_profile" not in hint["offer"]
+
+
+def test_base_from_kb_hint_leaves_out_the_form_answers_where_the_write_is_unregistered():
+    hint = workflow.next_after_base_from_kb(
+        {"slug": "ds"}, allowed_tools=frozenset({"render_pdf"}), hints_enabled=True,
+        setup_status=_autofill_setup_status(ready=False),
+    )
+    assert "set_autofill_profile" not in hint["offer"]
+
+
 def test_base_from_kb_hint_says_nothing_without_a_slug():
     # The server degrades a non-dict body to {}; target_id: "" is a footgun.
     assert workflow.next_after_base_from_kb(
@@ -700,6 +727,8 @@ def _every_hint(allow):
         "bulk_partial": workflow.next_after_bulk_state(
             [ok, bad], requested_state="approved", **kw),
         "base_from_kb": workflow.next_after_base_from_kb({"slug": "ds"}, **kw),
+        "base_from_kb_answers_open": workflow.next_after_base_from_kb(
+            {"slug": "ds"}, setup_status=_autofill_setup_status(ready=False), **kw),
     }
     return {name: h for name, h in hints.items() if h is not None}
 

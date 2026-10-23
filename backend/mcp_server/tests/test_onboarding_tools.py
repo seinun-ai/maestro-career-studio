@@ -135,6 +135,7 @@ def test_kb_approve_points_survives_a_non_dict_body(monkeypatch, hints_on):
 
 def test_create_base_resume_from_kb_forwards_every_argument(monkeypatch, hints_on):
     capture = _stub(monkeypatch, "create_base_resume_from_kb", {"slug": "ds"})
+    _stub(monkeypatch, "get_setup_status", {"autofill": {"done": True}})
 
     out = srv.create_base_resume_from_kb(
         ["e1", "e2"],
@@ -163,6 +164,51 @@ def test_create_base_resume_from_kb_hint_is_none_without_a_slug(monkeypatch, hin
     out = srv.create_base_resume_from_kb(["e1"], role_label="DS")
     assert out["base"] == ["unexpected"]
     assert out["next"] is None
+
+
+def test_create_base_resume_from_kb_offers_the_form_answers_while_setup_reads_them_open(
+    monkeypatch, hints_on
+):
+    _stub(monkeypatch, "create_base_resume_from_kb", {"slug": "ds"})
+    status = _stub(monkeypatch, "get_setup_status", {"autofill": {"done": False}})
+    out = srv.create_base_resume_from_kb(["e1"], role_label="DS")
+    assert status.calls
+    assert "set_autofill_profile" in out["next"]["offer"]
+    assert {o["tool"] for o in out["next"]["options"]} == {"render_pdf"}
+
+
+def test_create_base_resume_from_kb_reads_no_setup_status_with_hints_off(monkeypatch):
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+    _stub(monkeypatch, "create_base_resume_from_kb", {"slug": "ds"})
+    status = _stub(monkeypatch, "get_setup_status", {"autofill": {"done": False}})
+    out = srv.create_base_resume_from_kb(["e1"], role_label="DS")
+    assert not status.calls
+    assert out["next"] is None
+
+
+def test_create_base_resume_from_kb_reads_no_setup_status_where_the_write_is_unregistered(
+    monkeypatch, hints_on
+):
+    _stub(monkeypatch, "create_base_resume_from_kb", {"slug": "ds"})
+    status = _stub(monkeypatch, "get_setup_status", {"autofill": {"done": False}})
+    token = srv.CURRENT_PROFILE.set("templates")
+    try:
+        out = srv.create_base_resume_from_kb(["e1"], role_label="DS")
+    finally:
+        srv.CURRENT_PROFILE.reset(token)
+    assert not status.calls
+    assert "set_autofill_profile" not in out["next"]["offer"]
+
+
+def test_create_base_resume_from_kb_keeps_its_hint_when_setup_status_fails(monkeypatch, hints_on):
+    def _down():
+        raise BackendError("setup status unavailable")
+
+    _stub(monkeypatch, "create_base_resume_from_kb", {"slug": "ds"})
+    monkeypatch.setattr(srv._client, "get_setup_status", _down)
+    out = srv.create_base_resume_from_kb(["e1"], role_label="DS")
+    assert {o["tool"] for o in out["next"]["options"]} == {"render_pdf"}
+    assert "set_autofill_profile" not in out["next"]["offer"]
 
 
 # ---- @_guard ----------------------------------------------------------------

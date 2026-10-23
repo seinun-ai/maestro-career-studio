@@ -1016,16 +1016,23 @@ def create_base_resume_from_kb(
         include_summary=include_summary,
         summary=summary,
     )
-    return {
-        "base": base,
-        "next": _best_effort_hint(
-            lambda: workflow.next_after_base_from_kb(
-                base if isinstance(base, dict) else {},
-                allowed_tools=_active_allowed_tools(),
-                hints_enabled=_hints_enabled(),
-            )
-        ),
-    }
+    def compose() -> dict[str, Any] | None:
+        hints, allowed = _hints_enabled(), _active_allowed_tools()
+        # Setup status only where the hint could name the form answers: hints on and the
+        # write registered. A failed read names nothing and keeps the render hint.
+        status = (
+            _best_effort_hint(_client.get_setup_status)
+            if hints and (allowed is None or "set_autofill_profile" in allowed)
+            else None
+        )
+        return workflow.next_after_base_from_kb(
+            base if isinstance(base, dict) else {},
+            allowed_tools=allowed,
+            hints_enabled=hints,
+            setup_status=status,
+        )
+
+    return {"base": base, "next": _best_effort_hint(compose)}
 
 
 @mcp.tool(**_read("Get Autofill Profile"))

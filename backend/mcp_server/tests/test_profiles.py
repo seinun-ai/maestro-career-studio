@@ -110,6 +110,18 @@ def test_career_profile_can_finish_the_arc_it_starts():
     assert {"score_ats", "tailor_session", "create_tailoring_session"}.isdisjoint(CAREER_TOOLS)
 
 
+def test_profile_fact_writes_reach_apply_and_career_but_not_hunt():
+    """Career runs onboarding, so it writes every fact Setup asks for; apply saves a form
+    answer learned mid-application once; hunt reads the preferences and writes none."""
+    from mcp_server.profiles import CAREER_TOOLS
+
+    writes = {"set_autofill_profile", "set_job_preferences", "set_markets", "set_persona"}
+    assert writes <= CAREER_TOOLS
+    assert APPLY_TOOLS & writes == {"set_autofill_profile"}
+    for allowlist in (HUNT_TOOLS, EXPLORE_TOOLS, TEMPLATES_TOOLS):
+        assert writes.isdisjoint(allowlist)
+
+
 def test_scoped_profiles_stay_read_only_on_the_kb():
     for allowlist in (HUNT_TOOLS, APPLY_TOOLS, EXPLORE_TOOLS, TEMPLATES_TOOLS):
         assert not {tool for tool in allowlist if tool.startswith("kb_")}
