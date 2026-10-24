@@ -138,8 +138,8 @@ work-permit answers for each country you apply in.
   `PATCH /api/kb/points/{id}` takes `unmerge`. A point carries `wordings` and
   `merged_into_point_id`.
 - **The health check works without a model key.** It used to stop with "No API key is set". Now it
-  checks everything that needs no AI (the structure checks, dates, placeholders, wording) and says how
-  many lines aren't judged yet, with no grade until they are, rather than a grade it can't back. Your
+  checks everything that needs no AI (the structure checks, dates, placeholders, wording) and says some
+  lines aren't judged yet, with no grade until they are, rather than a grade it can't back. Your
   connected agent can judge them: `run_health_check` hands it Maestro's own rubric and the waiting
   lines, and the new `judge_health_bullets` tool stores its answers after the same checks a model's
   answers get. The report then says which agent judged. With a key, Maestro's own model judges, as

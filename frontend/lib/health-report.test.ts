@@ -138,15 +138,15 @@ test("a pass over an ungraded report leaves the points out", () => {
   assert.equal(passOutcomeWords({ points: 0, fixed: 0, notRight: 0, skipped: 0 }), "Same score");
 });
 
-test("notJudgedLine says how many lines wait and who can judge them", () => {
-  assert.equal(
-    notJudgedLine({ grade: null, judged: { done: 0, pending: 4, by: [] } }),
-    "4 lines aren't judged yet, so there's no grade. Ask a connected agent to run the health check, " +
-      "or add a model key in Settings.",
-  );
+test("notJudgedLine says lines wait and who can judge them, never how many", () => {
+  const ungraded =
+    "Some lines aren't judged yet, so there's no grade. Ask a connected agent to run the health check, " +
+    "or add a model key in Settings.";
+  assert.equal(notJudgedLine({ grade: null, judged: { done: 0, pending: 4, by: [] } }), ungraded);
+  assert.equal(notJudgedLine({ grade: null, judged: { done: 8, pending: 1, by: [] } }), ungraded);
   assert.equal(
     notJudgedLine({ grade: "B", judged: { done: 4, pending: 1, by: ["gpt-x"] } }),
-    "1 line isn't judged yet. Ask a connected agent to run the health check, or add a model key in Settings.",
+    "Some lines aren't judged yet. Ask a connected agent to run the health check, or add a model key in Settings.",
   );
   assert.equal(notJudgedLine({ grade: "B", judged: { done: 5, pending: 0, by: [] } }), null);
   assert.equal(notJudgedLine({ grade: "B" }), null); // a report stored before `judged` existed

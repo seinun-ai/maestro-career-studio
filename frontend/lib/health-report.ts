@@ -254,14 +254,15 @@ export function reportGraded(report: { grade: string | null; score: number | nul
   return report.grade != null && report.score != null;
 }
 
-/** "4 lines aren't judged yet, so there's no grade. …", or null when no line waits. */
+/**
+ * "Some lines aren't judged yet, so there's no grade. …", or null when no line waits. No count: the
+ * next step is the same however many wait (agents read `judged.pending`).
+ */
 export function notJudgedLine(report: { grade: string | null; judged?: Judged | null }): string | null {
-  const pending = report.judged?.pending ?? 0;
-  if (pending <= 0) return null;
-  const lines = pending === 1 ? "1 line isn't" : `${pending} lines aren't`;
+  if ((report.judged?.pending ?? 0) <= 0) return null;
   const noGrade = report.grade == null ? ", so there's no grade" : "";
   return (
-    `${lines} judged yet${noGrade}. Ask a connected agent to run the health check, ` +
+    `Some lines aren't judged yet${noGrade}. Ask a connected agent to run the health check, ` +
     "or add a model key in Settings."
   );
 }
