@@ -23,7 +23,8 @@ from mcp_server.profiles import allowed_tools, apply_profile_filter
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("maestro-career-studio")
+# The stdio server is the full set; each HTTP set gets its own text (mcp_server.http).
+mcp = FastMCP("maestro-career-studio", instructions=orientation.instructions_for("full"))
 _client = BackendClient()
 
 # HTTP sets this per request; stdio leaves it unset and uses the env profile.

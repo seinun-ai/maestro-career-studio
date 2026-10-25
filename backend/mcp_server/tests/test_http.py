@@ -261,3 +261,12 @@ def test_offloaded_tool_errors_keep_todays_text():
         res = _rpc(c, "/mcp", sid, "tools/call", {"name": "broken"}).json()["result"]
     assert res["isError"] is True
     assert res["content"][0]["text"] == "Error executing tool broken: broken input"
+
+
+@pytest.mark.parametrize("profile", ["full", "profile", "tailor", "templates"])
+def test_initialize_carries_the_sets_own_instructions(client, profile):
+    from mcp_server import orientation
+
+    path = "/mcp" if profile == "full" else f"/mcp/{profile}"
+    result = client.post(path, json=INIT, headers=HDR).json()["result"]
+    assert result["instructions"] == orientation.instructions_for(profile)

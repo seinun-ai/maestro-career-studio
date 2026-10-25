@@ -34,6 +34,7 @@ from mcp.types import Tool as MCPTool
 from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
+from mcp_server import orientation
 from mcp_server import server as tools_server
 from mcp_server.profiles import PROFILE_ALIASES, PROFILE_ALLOWLISTS
 
@@ -93,7 +94,9 @@ def offload_tools(mcp: FastMCP) -> int:
 
 def build_profile_server(mcp: FastMCP, profile: str, allowed: frozenset[str] | None) -> Server:
     server: Server = Server(
-        mcp.name, version=os.environ.get("APP_VERSION", "dev"), instructions=mcp.instructions
+        mcp.name,
+        version=os.environ.get("APP_VERSION", "dev"),
+        instructions=orientation.instructions_for(profile),  # each set says what it holds
     )
 
     @server.list_tools()

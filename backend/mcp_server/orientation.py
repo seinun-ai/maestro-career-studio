@@ -40,8 +40,49 @@ SETS: tuple[ToolSet, ...] = (
         "update my statuses, how is my search going",
         "applications and their statuses, referrals and the analytics charts",
     ),
-    ToolSet("templates", "make a resume design", "resume templates: drafting, checking and previewing"),
+    ToolSet("templates", "make a resume design", "drafting, checking and previewing resume templates"),
     ToolSet("full", "anything", "every tool"),
 )
 
 SET_NAMES: tuple[str, ...] = tuple(s.name for s in SETS)
+
+_BY_NAME = {s.name: s for s in SETS}
+
+_INTRO = "Maestro Career Studio keeps one person's job search on their own computer."
+_START = (
+    "Start with get_setup_status: it says where setup stands, whether Maestro has its own "
+    "AI key, which base resume is the shipped demo, and the next step."
+)
+_STYLE = (
+    "Talk with the user however suits them. Maestro supplies their facts, presets and rules, "
+    "not a script. However you work, Maestro keeps its rules: a skill the user has not shown "
+    "goes only into a skills list, resume lines stay in the owner's implied first person, and "
+    "saved keywords land."
+)
+
+
+def instructions_for(profile: str) -> str:
+    """The server instructions for one set: under Claude Code's 4,096-character cut, naming
+    every other set and no tool the set lacks (pinned by tests/test_orientation.py)."""
+    others = [s for s in SETS if s.name not in (profile, "full")]
+    rest = "; ".join(f"{s.name}: {s.holds}" for s in others)
+    if profile == "full":
+        parts = [
+            _INTRO,
+            "This is the full set: every tool. They also come in smaller sets, each at its own "
+            f"address (/mcp/<set>), for apps that load every tool up front: {rest}.",
+            _START,
+        ]
+    else:
+        me = _BY_NAME[profile]
+        parts = [
+            _INTRO,
+            f"This is the {me.name} set: {me.holds}. Use it when the user says things like: "
+            f"{me.use_when}.",
+            f"Other sets hold the rest: {rest}. The full set has every tool. When the user "
+            "needs one of those, say which set to connect.",
+        ]
+        if profile != "templates":
+            parts.append(_START)
+    parts.append(_STYLE)
+    return "\n\n".join(parts)
