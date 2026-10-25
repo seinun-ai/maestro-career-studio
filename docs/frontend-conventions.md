@@ -1208,7 +1208,9 @@
   **Eligibility**. Where you apply holds **You live in** and **You apply in** (chips; a chip carries the
   square of each base resume that stores its country, its name read with it). Work permits asks one set
   per apply-in country under its name, worded by the market's `work_auth_vocab` (the visa status only for
-  `us_visa`), each answer that country's own entry in `work_auth_by_country`. Every answer saves as you go
+  `us_visa`), each answer that country's own entry in `work_auth_by_country`. Contact's state line follows
+  where you live: it carries the home market's `state_label` (State, Province, County), and it is optional
+  (not counted, never Next up) where that market's `asks_state` is false. Every answer saves as you go
   (`AutofillProfileProvider`: one `useAutosave` for the answers). Each editor's status follows its own newest
   edit (`lib/save-surfaces.ts`): Saving until a write that carries it lands, Not saved when the last one
   failed, nothing while it has no edit waiting, so it never says Saved before its own edit is on the server

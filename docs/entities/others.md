@@ -494,7 +494,11 @@
   required personal, work-auth, EEO, and preferences groups and means
   **answerable**, not merely filled: `decline` is an answer, optional fields
   are excluded (in contact: address line 2 and the LinkedIn, GitHub and website links, which many
-  fields of work and countries have none of). Work authorization reads typed `WorkAuth`; its four-answer
+  fields of work and countries have none of). The contact's state line counts only where the home market's
+  addresses need one (`asks_state` in `data/markets.yaml`: the US, Canada, Australia and India; not the UK,
+  Ireland, Germany or the Netherlands), `_personal_fields(home)`; with no home set, home reads as the default
+  US and it counts. The frontend's `byHome` field resolves the same way, named by the home's `state_label`
+  and marked optional where it does not count. Work authorization reads typed `WorkAuth`; its four-answer
   knockout core is `status`, `authorized_now`, `sponsorship_now`,
   `sponsorship_future` — status never implies current authorization, and an
   incomplete core is blocking. The backend's required field lists deliberately
@@ -536,8 +540,10 @@
   chosen; empty reads as `[home]`; home need not be in it). Markets are the keys of `data/markets.yaml`
   ("UK", not ISO "GB"; `markets.country_code` / `for_country` bridge to the ISO codes jobs and base
   resumes store); an unknown key 422s, never coerced. GET answers `{key, value, home, apply_in,
-  currency, offers_eeo, markets}` (each market's label, ISO code, currency, date format, EEO posture and
-  `work_auth_vocab`, how its work-permit questions are worded: `us_visa`, `uk` or `generic`); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. A diversity set is offered
+  currency, offers_eeo, markets}` (each market's label, ISO code, currency, date format, EEO posture,
+  `work_auth_vocab`, how its work-permit questions are worded: `us_visa`, `uk` or `generic`, and
+  `asks_state` / `state_label`, whether an address there needs a state line and the country's word for it:
+  State, Province or County); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. A diversity set is offered
   per country: `market_settings.offers_eeo(session, country)` takes a market key or an ISO code (a country
   no market covers has none) and, with no country, answers for any apply-in market; setup status asks the
   diversity answers only then. Migration state: SYSTEM.md §13 `market-home-apply-in`.

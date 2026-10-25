@@ -52,6 +52,9 @@ def _load() -> dict[str, dict[str, Any]]:
             "date_format": str(entry.get("date_format") or "DMY").strip().upper(),
             "eeo_module": entry.get("eeo_module") or None,
             "work_auth_vocab": str(entry.get("work_auth_vocab") or "generic"),
+            # Undeclared reads as today's rule (a state counted, called "State"); every market declares both.
+            "asks_state": entry.get("asks_state") is not False,
+            "state_label": str(entry.get("state_label") or "State"),
         }
     return entries
 

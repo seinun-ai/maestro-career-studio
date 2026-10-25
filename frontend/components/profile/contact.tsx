@@ -7,11 +7,20 @@ import { toast } from "sonner";
 import { useAutofillProfile } from "@/components/profile/autofill-profile";
 import { FieldGrid } from "@/components/profile/field-control";
 import { TileCard, type TileView } from "@/components/profile/tile";
+import { useMarketQuery } from "@/components/profile/where-you-apply";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCardAction } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
-import { groupCount, groupFields, groupValues, isBlank, withField, type Profile } from "@/lib/autofill-options";
+import {
+  groupCount,
+  groupFields,
+  groupValues,
+  homeMarket,
+  isBlank,
+  withField,
+  type Profile,
+} from "@/lib/autofill-options";
 import { contactAdditions, hasFillableContactDetails } from "@/lib/contact-from-history";
 import { couldnt } from "@/lib/error-text";
 import type { KBProfileOut } from "@/lib/types";
@@ -27,11 +36,13 @@ export function useCareerContact() {
   });
 }
 
-/** Contact: the personal details forms ask, each saved as you go, and Fill from career history. */
+/** Contact: the personal details forms ask, each saved as you go, and Fill from career history. Where you live
+ *  (`homeMarket`) names the state line and says whether it counts; until that loads, it counts as "State". */
 export function useContactTile(): TileView {
   const { profile } = useAutofillProfile();
+  const home = homeMarket(useMarketQuery().data);
   const personal = groupValues(profile, "personal");
-  const count = groupCount(profile, "personal");
+  const count = groupCount(profile, "personal", home);
   const shown = ["email", "phone"].map((key) => personal[key]).filter((v): v is string => !isBlank(v));
   return {
     state:
@@ -123,6 +134,7 @@ export function FillFromResumeButton({ fill }: { fill: ReturnType<typeof useFill
 
 function ContactEditor() {
   const { profile, update, saveState } = useAutofillProfile();
+  const home = homeMarket(useMarketQuery().data);
   const fill = useFillFromResume(profile, (next) => update(SURFACE, next));
 
   return (
@@ -140,7 +152,7 @@ function ContactEditor() {
       <FieldGrid
         idPrefix="af-personal"
         group="personal"
-        fields={groupFields("personal")}
+        fields={groupFields("personal", home)}
         values={groupValues(profile, "personal")}
         onChange={(key, next) => update(SURFACE, (current) => withField(current, "personal", key, next))}
       />

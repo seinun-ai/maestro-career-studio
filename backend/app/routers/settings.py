@@ -400,7 +400,9 @@ def get_market(db: Annotated[Session, Depends(get_db)]):
     `markets` and each one's `offers_eeo` ride along so the picker and the EEO section are
     driven by one response: the frontend must never hardcode the market list or decide for
     itself whether to show demographic questions. Each market's `work_auth_vocab` (`us_visa`,
-    `uk`, `generic`) words its work-permit questions, read-only.
+    `uk`, `generic`) words its work-permit questions, and `asks_state` / `state_label` say whether
+    an address there needs a state line and what it is called (Contact counts and names it by the
+    home market), all read-only.
     """
     return {
         **_market_body(market_settings.get_market(db)),
@@ -413,6 +415,8 @@ def get_market(db: Annotated[Session, Depends(get_db)]):
                 "date_format": markets.get(k)["date_format"],
                 "offers_eeo": markets.offers_eeo(k),
                 "work_auth_vocab": markets.get(k)["work_auth_vocab"],
+                "asks_state": markets.get(k)["asks_state"],
+                "state_label": markets.get(k)["state_label"],
             }
             for k in markets.keys()
         ],

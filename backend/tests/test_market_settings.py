@@ -47,6 +47,24 @@ def test_germany_and_the_netherlands_are_data_with_no_diversity_set(market, labe
     assert entry["work_auth_vocab"] == "generic"
 
 
+@pytest.mark.parametrize(
+    "market,asks,word",
+    [("US", True, "State"), ("CA", True, "Province"), ("AU", True, "State"), ("IN", True, "State"),
+     ("UK", False, "County"), ("IE", False, "County"), ("DE", False, "State"), ("NL", False, "Province")],
+)
+def test_each_market_says_whether_its_addresses_need_a_state_and_its_word_for_one(market, asks, word):
+    """`asks_state` follows the address formats a form there requires (a state or province in the US,
+    Canada, Australia and India; Ireland writes a county but requires none). `state_label` is the
+    country's own word, which the Contact field shows."""
+    entry = markets.get(market)
+    assert (entry["asks_state"], entry["state_label"]) == (asks, word)
+
+
+def test_every_market_declares_its_state_line_rather_than_taking_a_default():
+    raw = markets._DATA_FILE.read_text(encoding="utf-8")
+    assert raw.count("asks_state:") == raw.count("state_label:") == len(SUPPORTED)
+
+
 @pytest.mark.parametrize("market", ["CA", "AU", "IE", "IN", "DE", "NL"])
 def test_unverified_markets_offer_no_eeo_module(market):
     """The whole point of the eeo_module field.
@@ -148,7 +166,8 @@ def test_get_market_returns_the_picker_and_the_eeo_posture():
     assert {m["key"]: m["offers_eeo"] for m in body["markets"]}["IN"] is False
     uk = next(m for m in body["markets"] if m["key"] == "UK")
     assert uk == {"key": "UK", "label": "United Kingdom", "country_code": "GB", "currency": "GBP",
-                  "date_format": "DMY", "offers_eeo": True, "work_auth_vocab": "uk"}
+                  "date_format": "DMY", "offers_eeo": True, "work_auth_vocab": "uk",
+                  "asks_state": False, "state_label": "County"}
     # Each market's work-permit wording rides along (data), so the Profile asks it per country.
     vocab = {m["key"]: m["work_auth_vocab"] for m in body["markets"]}
     assert (vocab["US"], vocab["DE"], vocab["IN"]) == ("us_visa", "generic", "generic")
