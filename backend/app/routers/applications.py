@@ -84,7 +84,9 @@ def _detail(
 
 @router.post("/from-base", response_model=ApplicationRead)
 def create_application_from_base(
-    payload: ApplicationFromBase, db: Annotated[Session, Depends(get_db)]
+    payload: ApplicationFromBase,
+    db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
     """Create or update an application by applying typed edit ops to a base resume.
 
@@ -94,6 +96,7 @@ def create_application_from_base(
     application is updated in place whatever its base resume, and its base moves
     to this one (the web UI confirms before replacing a tailored draft; version
     history keeps it). Pass application_id to target a specific application.
+    A connected agent's ops (the MCP origin) that write a third-person line are a 400.
     """
     if db.get(Job, payload.job_id) is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -112,6 +115,8 @@ def create_application_from_base(
 
     try:
         customized = apply_edits(base, payload.ops)
+        if write_origin.origin == "mcp":
+            resume_ops.refuse_third_person(base, customized)
     except ContentChangedError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
@@ -405,8 +410,10 @@ def edit_application_resume(
     application_id: UUID,
     payload: ResumeEditRequest,
     db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
-    """Apply typed edit ops to an existing application's customized_json (or base resume if customized_json is None)."""
+    """Apply typed edit ops to an existing application's customized_json (or base resume if customized_json is None).
+    A connected agent's ops (the MCP origin) that write a third-person line are a 400."""
     application = db.get(Application, application_id)
     if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -420,7 +427,8 @@ def edit_application_resume(
 
     try:
         application, _, applied = resume_ops.edit_application(
-            db, application, payload.ops, baseline=baseline, source="edit_ops"
+            db, application, payload.ops, baseline=baseline, source="edit_ops",
+            refuse_voice=write_origin.origin == "mcp",
         )
     except ContentChangedError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e

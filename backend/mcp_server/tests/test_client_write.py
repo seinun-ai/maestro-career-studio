@@ -314,3 +314,23 @@ def test_ats_candidates_sends_include_other_countries_only_when_true():
     assert "include_other_countries" not in route.calls.last.request.url.params
     client.ats_candidates("j1", include_other_countries=True)
     assert route.calls.last.request.url.params["include_other_countries"] == "true"
+
+
+@respx.mock
+def test_resume_writes_carry_the_agent_origin_so_the_voice_rule_applies():
+    """The backend refuses a third-person line only from a connected agent (the MCP
+    origin header); without the header these writes would store it like a web save."""
+    job = "2c8b09e6-ce44-438e-9d5b-e2efaf26be04"
+    app_id = "1a824847-f6ff-43d9-bca5-f536d978e3ca"
+    routes = [
+        respx.patch(f"{BASE}/api/base-resumes/master/edits").mock(return_value=httpx.Response(200, json={})),
+        respx.patch(f"{BASE}/api/applications/{app_id}/edits").mock(return_value=httpx.Response(200, json={})),
+        respx.post(f"{BASE}/api/applications/from-base").mock(return_value=httpx.Response(200, json={})),
+    ]
+    client = BackendClient(BASE)
+    ops = [{"kind": "replace_summary", "value": "Led the team."}]
+    client.edit_base_resume("master", ops)
+    client.edit_application(app_id, ops)
+    client.tailor_application(job, "master", ops)
+    for route in routes:
+        assert route.calls.last.request.headers.get("X-Maestro-CS-Origin") == "mcp"

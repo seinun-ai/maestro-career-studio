@@ -162,7 +162,8 @@ def tool_edit_resume(ctx: ToolContext, kind: str, key: str, ops: list[dict]) -> 
     try:
         if kind == "base":
             edited, version, _, _ = resume_ops.edit_base(
-                ctx.db, row, parsed, source="chat", source_ref=ctx.message_id
+                ctx.db, row, parsed, source="chat", source_ref=ctx.message_id,
+                refuse_voice=True,
             )
             # A base edit re-renders, so the card is a render response: on a
             # TeX-less host the substitution has to name itself here too, or
@@ -178,6 +179,7 @@ def tool_edit_resume(ctx: ToolContext, kind: str, key: str, ops: list[dict]) -> 
                 baseline=current,
                 source="chat",
                 source_ref=ctx.message_id,
+                refuse_voice=True,
             )
     except LookupError as e:
         raise ToolError(str(e)) from e

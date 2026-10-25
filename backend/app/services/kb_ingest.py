@@ -467,6 +467,22 @@ def _draft_point(
     )
 
 
+def refuse_third_person_bullets(session: Session, entity: KBEntity, texts: list[str]) -> None:
+    """Caller-written bullets are held to the resume voice rule (§6 inv-resume-voice):
+    one blocking hit, against the KB profile's name and the entity's title and org,
+    raises ValueError naming the lines."""
+    profile = session.get(KBProfile, 1)
+    name = str(((profile.contact_json if profile else None) or {}).get("name") or "")
+    orgs = [value for value in (entity.title, entity.org) if value]
+    problems = [
+        ((), text, hits)
+        for text in texts
+        if (hits := resume_voice.blocking(resume_voice.third_person_hits(text, name, orgs)))
+    ]
+    if problems:
+        raise ValueError(resume_voice.ops_error(problems))
+
+
 def add_draft_points(
     session: Session,
     entity_id,
@@ -503,16 +519,7 @@ def add_draft_points(
             continue
         held.add(key)
         new.append(text)
-    profile = session.get(KBProfile, 1)
-    name = str(((profile.contact_json if profile else None) or {}).get("name") or "")
-    orgs = [value for value in (entity.title, entity.org) if value]
-    problems = [
-        ((), text, hits)
-        for text in new
-        if (hits := resume_voice.blocking(resume_voice.third_person_hits(text, name, orgs)))
-    ]
-    if problems:
-        raise ValueError(resume_voice.ops_error(problems))
+    refuse_third_person_bullets(session, entity, new)
     points = [_draft_point(entity, text, origin, origin_detail) for text in new]
     session.add_all(points)
     session.flush()

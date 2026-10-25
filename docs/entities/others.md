@@ -1378,8 +1378,11 @@
   - **Flush guard details** (inv-flush-guard): `hooks.standing_aside(db)` sets `session.info["sync_apply"]` and restores the earlier value;
     a missing previous parent allows repair.
   - **Voice check details** (inv-resume-voice): an ambiguous shape is the health advisory `voice.third_person`; the tailor response lists
-    repaired paths as `voice_repairs`. The MCP writes refused with a 400 naming the lines are `tailor_session(ops=…)` and
-    `kb_add_points` (against the KB profile's name and the entity's title and org); a cover letter and screening answers are the
+    repaired paths as `voice_repairs`. Every resume or KB write from a connected agent (the `X-Maestro-CS-Origin: mcp` header) and
+    the Assistant's edit tool refuse a hit with a 400 naming the lines: `tailor_session(ops=…)`, `edit_application`,
+    `tailor_application` and `edit_base_resume` (`resume_ops.refuse_third_person`: what the ops wrote or changed), `kb_add_points` and
+    `kb_edit_point` (`kb_ingest.refuse_third_person_bullets`: against the KB profile's name and the entity's title and org; both scrub
+    dashes). The web studio's saves send no origin and keep the owner's text as written. A cover letter and screening answers are the
     owner's first person and are not checked.
   - **Queued-run invariant mechanics** (inv-rejected-next, inv-one-resume-write, inv-ready-real-review; the code: `extension/INTERNALS.md`,
     "Queued run"). *Rejected Next*: the repair is `fix`, `runFill({only})`, each error once; a repeat, or an error it cannot work, parks

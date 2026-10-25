@@ -23,11 +23,19 @@ from app.models.application import Application
 from app.models.base_resume import BaseResume
 from app.models.resume_version import ResumeVersion
 from app.schemas.resume_edit import ResumeEdit
-from app.services import artifacts, base_resume_render
+from app.services import artifacts, base_resume_render, resume_voice
 from app.services.application_writes import stage_resume_update
 from app.services.resume_edit import apply_edits
 
 logger = logging.getLogger(__name__)
+
+
+def refuse_third_person(before: dict, after: dict) -> None:
+    """Agent or model text never stores a blocking third-person line (§6 inv-resume-voice):
+    what the edit wrote or changed is checked, the owner's untouched lines are not."""
+    problems = resume_voice.changed_hits(before, after, summary_always=False)
+    if problems:
+        raise ValueError(resume_voice.ops_error(problems))
 
 
 def edit_base(
@@ -38,6 +46,7 @@ def edit_base(
     source: str,
     source_ref: str | None = None,
     template_id: str | None = None,
+    refuse_voice: bool = False,
 ) -> tuple[BaseResume, ResumeVersion, str | None, list[dict]]:
     """Apply ops to a base resume: persist + version + file write + tolerant
     re-render. Returns (row, version, render_error, applied).
@@ -48,9 +57,13 @@ def edit_base(
     problem — including an extras-incompatible template — degrades to a
     persisted render_error (stale-PDF banner). A 4xx after the commit would
     push clients to retry already-applied ops, double-applying additive ones.
+    `refuse_voice` (agent and model text) raises ValueError, before any write, on a
+    third-person line the ops wrote.
     """
     applied: list[dict] = []
     data_dict = apply_edits(row.data_json, ops, applied=applied)  # ValueError propagates
+    if refuse_voice:
+        refuse_third_person(row.data_json, data_dict)
 
     from app.services.resume_versions import record_version
 
@@ -91,15 +104,19 @@ def edit_application(
     baseline: dict,
     source: str,
     source_ref: str | None = None,
+    refuse_voice: bool = False,
 ) -> tuple[Application, ResumeVersion, list[dict]]:
     """Apply ops to an application draft via the staged write-tail (version
     row + artifact refs cleared in-transaction, files removed only after the
     commit). ``baseline`` is what the ops apply against — the current draft,
     or the base snapshot on the REST fallback path. Returns (application,
-    version, applied). ValueError (invalid ops) propagates for the caller to map.
+    version, applied). ValueError (invalid ops, or a third-person line under
+    `refuse_voice`) propagates for the caller to map.
     """
     applied: list[dict] = []
     customized = apply_edits(baseline, ops, applied=applied)  # ValueError propagates
+    if refuse_voice:
+        refuse_third_person(baseline, customized)
     stale, version = stage_resume_update(
         db, application, customized, source=source, source_ref=source_ref
     )

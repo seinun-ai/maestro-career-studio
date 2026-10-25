@@ -49,7 +49,9 @@ _EDIT_OPS_FIELD = Field(
         "add_extra_section/replace_extra_section `value` is "
         '{key,title,enabled,type:"entries"|"bullets"} plus EITHER '
         "entries:[{heading,subheading?,location?,date?,link?,enabled,bullets:[str]}] "
-        "OR bullets:[str] — never both; unknown keys are rejected (400, extra=\"forbid\")."
+        "OR bullets:[str] — never both; unknown keys are rejected (400, extra=\"forbid\"). "
+        "Text the ops write is implied first person: a line with I/he/she/they or the "
+        "owner's name is a 400 naming the lines, and nothing is written."
     )
 )
 EditOps = Annotated[list[dict], _EDIT_OPS_FIELD]
@@ -820,7 +822,8 @@ def kb_edit_point(
     """Reword a Career KB point or retag it. Changing the text sends the point
     back to DRAFT, so it leaves the composed resume and career export until it
     is re-approved (kb_approve_points or /career). Cannot approve, retire or
-    delete a point."""
+    delete a point. New text gets the kb_add_points rules: en and em dashes
+    become a hyphen or a comma, and a third-person line is a 400 naming it."""
     return _client.kb_edit_point(
         point_id,
         text=text,

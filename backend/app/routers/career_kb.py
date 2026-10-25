@@ -82,6 +82,7 @@ from app.services import kb_groom
 from app.services import kb_ingest
 from app.services import exports as career_exports
 from app.services.attachment_extract import UPLOAD_UNREADABLE, extract_text, plain_read_error
+from app.services.qa import scrub_typographic_dashes
 from app.services.sync import hooks
 from app.write_origin import WriteOrigin, get_write_origin
 
@@ -583,11 +584,20 @@ def patch_point(
     point_id: UUID,
     payload: KBPointPatch,
     db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
     point = db.get(KBPoint, point_id)
     if point is None:
         raise HTTPException(status_code=404, detail="Point not found")
     data = payload.model_dump(exclude_unset=True)
+    if data.get("text") is not None and write_origin.origin == "mcp":
+        # A connected agent's rewording is held to the rules its new bullets meet
+        # (kb_add_points): no en or em dash, implied first person.
+        data["text"] = scrub_typographic_dashes(data["text"]).strip()
+        try:
+            kb_ingest.refuse_third_person_bullets(db, point.entity, [data["text"]])
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
     if data.get("entity_id") is not None:
         target = db.get(KBEntity, data["entity_id"])
         if target is None:

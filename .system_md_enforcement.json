@@ -272,6 +272,8 @@
       {"path": "backend/tests/test_tailoring_voice.py", "symbol": "test_caller_ops_with_a_hit_return_400_and_store_nothing"},
       {"path": "backend/tests/test_kb_add_points.py", "symbol": "test_a_bullet_about_someone_else_is_a_400_that_stores_nothing"},
       {"path": "backend/tests/test_tailoring_voice.py", "symbol": "test_the_response_lists_the_paths_the_repair_touched"},
+      {"path": "backend/tests/test_agent_write_voice.py", "symbol": "test_an_agent_edit_to_an_application_refuses_a_third_person_line"},
+      {"path": "backend/tests/test_agent_write_voice.py", "symbol": "test_the_assistant_edit_tool_refuses_a_third_person_line"},
       {"path": "backend/app/services/resume_voice.py", "symbol": "VOICE_RULE"}
     ],
     "inv-rejected-next": [

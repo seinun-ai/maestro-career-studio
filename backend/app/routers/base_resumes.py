@@ -59,6 +59,7 @@ from app.services.resume_colors import BAD_HUE, pick_hue, valid_hue
 from app.services.resume_edit import ContentChangedError
 from app.services.resume_versions import record_version
 from app.services.sync import hooks
+from app.write_origin import WriteOrigin, get_write_origin
 
 
 logger = logging.getLogger(__name__)
@@ -367,13 +368,15 @@ def edit_base_resume(
     slug: str,
     payload: ResumeEditRequest,
     db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
     template_id: str | None = None,
 ):
     """Apply typed edit ops to a base resume server-side.
 
     The server reads the stored data, applies only the supplied ops, validates,
     persists, and re-renders. Unlike PUT, the caller never resends untouched
-    fields. Out-of-range indices / unknown skills categories -> 400.
+    fields. Out-of-range indices / unknown skills categories -> 400, and so is a
+    connected agent's (MCP origin) third-person line.
     """
     hooks.require_profile_writable(db)
     row = db.get(BaseResume, slug)
@@ -386,7 +389,8 @@ def edit_base_resume(
     # a 4xx that would push clients to retry already-applied ops.
     try:
         row, version, _, applied = resume_ops.edit_base(
-            db, row, payload.ops, source="edit_ops", template_id=template_id
+            db, row, payload.ops, source="edit_ops", template_id=template_id,
+            refuse_voice=write_origin.origin == "mcp",
         )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

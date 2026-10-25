@@ -896,6 +896,7 @@ class BackendClient:
             "PATCH",
             f"/api/base-resumes/{_seg(slug)}/edits",
             json={"ops": ops},
+            headers=_origin_headers(None),  # agent text: the backend applies the voice rule
             timeout=_RENDER_TIMEOUT,
         )
 
@@ -945,13 +946,16 @@ class BackendClient:
         payload: dict[str, Any] = {"job_id": job_id, "base_resume": base_resume, "ops": ops}
         if application_id is not None:
             payload["application_id"] = application_id
-        return self._request("POST", "/api/applications/from-base", json=payload)
+        return self._request(
+            "POST", "/api/applications/from-base", json=payload, headers=_origin_headers(None)
+        )
 
     def edit_application(self, application_id: str, ops: list[dict]) -> Any:
         return self._request(
             "PATCH",
             f"/api/applications/{_seg(application_id)}/edits",
             json={"ops": ops},
+            headers=_origin_headers(None),  # agent text: the backend applies the voice rule
             timeout=_RENDER_TIMEOUT,
         )
 
