@@ -30,6 +30,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import GetPromptResult, Prompt, PromptMessage, TextContent
 from mcp.types import Tool as MCPTool
 from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
@@ -115,6 +116,32 @@ def build_profile_server(mcp: FastMCP, profile: str, allowed: frozenset[str] | N
             return await mcp.call_tool(name, arguments)
         finally:
             tools_server.CURRENT_PROFILE.reset(token)
+
+    async def _cards() -> list[dict[str, Any]]:
+        # The automation playbooks, as the web's Copy prompt gives them, for this set
+        # (full: all). A REST read like the tools, so it runs off the event loop too.
+        catalog = await anyio.to_thread.run_sync(
+            tools_server._client.get_automations, limiter=_LIMITER.get()
+        )
+        cards = (catalog or {}).get("cards") or []
+        return [c for c in cards if profile == "full" or c.get("toolset") == profile]
+
+    @server.list_prompts()
+    async def _list_prompts() -> list[Prompt]:
+        return [
+            Prompt(name=c["id"], title=c.get("title"), description=c.get("summary"))
+            for c in await _cards()
+        ]
+
+    @server.get_prompt()
+    async def _get_prompt(name: str, arguments: dict[str, str] | None) -> GetPromptResult:
+        card = next((c for c in await _cards() if c["id"] == name), None)
+        if card is None:
+            raise ValueError(f"Unknown prompt: {name}")
+        return GetPromptResult(
+            description=card.get("summary"),
+            messages=[PromptMessage(role="user", content=TextContent(type="text", text=card["prompt"]))],
+        )
 
     return server
 

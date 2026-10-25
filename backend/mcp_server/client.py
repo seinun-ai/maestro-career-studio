@@ -803,6 +803,10 @@ class BackendClient:
     def get_quick_tailor_profile(self) -> Any:
         return self._request("GET", "/api/settings/quick-tailor").get("value", {})
 
+    def get_automations(self) -> Any:
+        """The automation cards with their copy prompts (the apply card follows full automation)."""
+        return self._request("GET", "/api/automations")
+
     def get_persona(self) -> str:
         return self._request("GET", "/api/settings/persona").get("value") or ""
 

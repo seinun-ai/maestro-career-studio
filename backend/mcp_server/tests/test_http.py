@@ -270,3 +270,40 @@ def test_initialize_carries_the_sets_own_instructions(client, profile):
     path = "/mcp" if profile == "full" else f"/mcp/{profile}"
     result = client.post(path, json=INIT, headers=HDR).json()["result"]
     assert result["instructions"] == orientation.instructions_for(profile)
+
+
+@pytest.fixture
+def catalog(monkeypatch):
+    """The automation cards as GET /api/automations serves them (no backend in these tests)."""
+    from app.services import automations
+
+    body = automations.catalog().model_dump(mode="json")
+    monkeypatch.setattr(srv._client, "get_automations", lambda: body)
+    return {c["id"]: c for c in body["cards"]}
+
+
+def test_a_set_offers_the_playbooks_that_use_it_as_prompts(client, catalog):
+    sid = _session(client, "/mcp/tailor")
+    prompts = _rpc(client, "/mcp/tailor", sid, "prompts/list").json()["result"]["prompts"]
+    assert [p["name"] for p in prompts] == ["tailor-run"]
+    assert prompts[0]["description"] == catalog["tailor-run"]["summary"]
+
+
+def test_the_full_set_offers_every_playbook(client, catalog):
+    sid = _session(client, "/mcp")
+    prompts = _rpc(client, "/mcp", sid, "prompts/list").json()["result"]["prompts"]
+    assert [p["name"] for p in prompts] == list(catalog)
+
+
+def test_a_prompt_is_exactly_the_copy_prompt(client, catalog):
+    sid = _session(client, "/mcp/tailor")
+    got = _rpc(client, "/mcp/tailor", sid, "prompts/get", {"name": "tailor-run"}).json()["result"]
+    assert got["messages"] == [
+        {"role": "user", "content": {"type": "text", "text": catalog["tailor-run"]["prompt"]}}
+    ]
+
+
+def test_a_playbook_from_another_set_is_not_served(client, catalog):
+    sid = _session(client, "/mcp/tailor")
+    res = _rpc(client, "/mcp/tailor", sid, "prompts/get", {"name": "job-hunt"}).json()
+    assert "error" in res
