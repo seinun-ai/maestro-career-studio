@@ -13,12 +13,21 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   overflow facts live in param `Field(description=…)` (`_EDIT_OPS_FIELD`). Lists page with bounded defaults;
   `_best_effort_hint` returns `next: null` on a failed lookup after a landed write.
   Coverage: [docs/entities/others.md](docs/entities/others.md), "MCP tool coverage".
-  **Scoped profiles**:
-  `profiles.py` owns `full` / `hunt` / `apply` / `explore` / `templates` / `career` (99 tools); `/mcp` = `full`, `/mcp/{profile}` = its allowlist.
+  **Tool sets**: `profiles.py` owns the allowlists and `orientation.py` the ordered table of what each holds: `profile` (onboarding:
+  career history, base resumes and anchors, health check, versions, form answers, preferences), `hunt`, `tailor` (saved job to tailored
+  PDF), `apply` (PDF to submitted), `track` (statuses, referrals, charts), `templates`, and `full` (101 tools); `/mcp` = `full`,
+  `/mcp/{set}` = its allowlist, and `career`/`explore` still serve `profile`/`track` for one release (`PROFILE_ALIASES`).
+  `tailor_application` is full-only. Each set's server instructions (`orientation.instructions_for`, under Claude Code's 4,096-character
+  cut) say what it holds, the other sets, "start with `get_setup_status`" and that the rules hold however the agent talks with the user;
+  each set serves the automation playbooks whose `metadata.toolset` names it as MCP prompts (the Copy prompt's exact text, from
+  `GET /api/automations`). Pins: `test_profiles.py`, `test_orientation.py`, `test_http.py`, `tests/test_automations_service.py`.
+  **Orientation reads** (no writes): `get_setup_status` (every set but templates: `ai_key`, `demo_bases`, the first undone setup step and
+  its set from the pure `workflow.setup_next_step`, the set table) and `get_tailoring_options` (tailor and full: each Quick tailor switch
+  with its plain meaning from `QuickTailorProfile`'s field descriptions, the instruction and persona; the presets stay the user's).
   Lifespans run fresh stateful JSON sessions; tools use `http.py`'s eight-worker limiter (§6 inv-tools-off-loop).
   Stdio filters `MAESTRO_CS_MCP_PROFILE` (default `full`; migration state: §13 `mcp-stdio-venv`).
   Hints use request `CURRENT_PROFILE`, else env (pins: `mcp_server/tests/test_profiles.py`, `test_server.py`, `test_http.py`).
-  **KB grooming tools** (`career` and `full`): `kb_groom_entity` (read-only similar-bullet report per entity, zero LLM calls),
+  **KB grooming tools** (`profile` and `full`): `kb_groom_entity` (read-only similar-bullet report per entity, zero LLM calls),
   `kb_combine_points` (fold points into one keeper; the others become its wordings) and `kb_retire_points` (the retire twin of
   `kb_approve_points`); the two writes share `kb_approve_points`' convention gate and are `destructive=False` because `/career`
   reverses them. `kb_sync_base` keeps a rephrasing as a wording (0.80+) and returns `compared_wording` (docs/entities/others.md, Career KB).
@@ -54,7 +63,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   shape under the client's name; each passes `_validate` and the rebuilt report comes back with `accepted`/`rejected`. With a key
   the write is a 409 and the app's model judges (docs/entities/others.md, "The keyless check").
 
-- **Profile writes** (`set_autofill_profile`, `set_job_preferences`, `set_markets`, `set_persona`; `career` and `full`, and
+- **Profile writes** (`set_autofill_profile`, `set_job_preferences`, `set_markets`, `set_persona`; `profile` and `full`, and
   `set_autofill_profile` in `apply` too): an agent writes the facts Setup and Profile ask for, except the AI key and the diversity
   answers. Each PUT replaces its whole setting, so the client reads it, merges in only the fields passed (answers key by key, a null
   removes one; work permits per market, keyed from `markets.keys()`; education, languages and custom whole) and writes it back;

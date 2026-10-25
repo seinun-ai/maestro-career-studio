@@ -67,7 +67,7 @@ gone stale):
 | See what the AI changed | No history | No | **Every change shown, undoable** |
 | PDF output | House web templates | HTML → PDF | **LaTeX and Typst, bring your own template** |
 | Career record | None (per document) | Plain markdown/YAML files | **Organized, versioned — exports to one `career.md`** |
-| Works with AI assistants | No | Command-line skill files | **99 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
+| Works with AI assistants | No | Command-line skill files | **101 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
 | Submits applications for you | N/A | Never (stated) | **Only with your yes per application, or with Full automation you turn on** |
 | Cost | $15–75/month | Free + AI usage | **Free (Apache 2.0) + your own AI usage — [about $0.01 per application](SETUP_REFERENCE.md#do-you-need-an-api-key)** |
 
@@ -293,11 +293,11 @@ removed in v0.10.0; see the [MCP guide](../backend/mcp_server/README.md#legacy-s
   reply."
 - "Across the jobs I've saved, which skills keep showing up as gaps?"
 
-**Tool sets.** All 99 tools are on by default (`full`). Smaller sets — `hunt`,
-`apply`, `explore`, `templates`, `career` — keep a chat focused; pick one in the
+**Tool sets.** All 101 tools are on by default (`full`). Smaller sets, one job each
+(`profile`, `hunt`, `tailor`, `apply`, `track`, `templates`), keep a chat focused; pick one in the
 card's **Tool set** selector or the Claude Desktop bundle's **Tool profile**
-setting. Scoped URLs end in `/mcp/hunt`, `/mcp/apply`, `/mcp/explore`,
-`/mcp/templates` or `/mcp/career`. Use one set at a time.
+setting. Scoped URLs end in `/mcp/profile`, `/mcp/hunt`, `/mcp/tailor`, `/mcp/apply`,
+`/mcp/track` or `/mcp/templates`. Use one set at a time.
 
 **Skills.** [`docs/skills/`](skills/) has ready-made skills for a daily job
 hunt, an apply run that asks you only for what the app doesn't know (plus one

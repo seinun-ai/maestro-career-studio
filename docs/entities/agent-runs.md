@@ -27,7 +27,7 @@ The model is `backend/app/models/agent_run.py`; the SQLite revision is `7d3c1a9e
   strings and lists are kept. The HTTP body is flat (`automation`, `outcome`, `counts`,
   `digest`, `job_ids`), not nested under `report`; explicit null values for these HTTP report
   fields are invalid. No web write UI, edit endpoint, delete endpoint, edit tool or delete
-  tool exists. `record_run` is available in `full`, `hunt` and `apply` profiles.
+  tool exists. `record_run` is in every set a playbook uses: `full`, `hunt`, `tailor`, `apply` and `track`.
 - **Report validation**: the MCP `RunReport` and `RunCounts` schemas use `extra=forbid`;
   unknown report or count keys are refused before an HTTP call. The backend also refuses
   unknown body or count keys with 422 (`schemas/agent_runs.py`). Invalid UUIDs and outcomes

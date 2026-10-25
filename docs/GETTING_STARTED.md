@@ -318,7 +318,7 @@ clients connect to the backend on this computer; claude.ai and chatgpt.com web
 connectors are outside this setup.
 
 Open Settings › Agent apps › **Connect an agent app**. Its **Tool set**
-selector defaults to `full` (all 99 tools). Choose one set per chat.
+selector defaults to `full` (all 101 tools). Choose one set per chat.
 
 ### On a uv install: `maestro connect`
 
@@ -338,8 +338,8 @@ Claude Desktop's settings file with the **full path** to the `maestro` command
 (Desktop does not see your terminal's PATH) and keeps a `.bak` copy of the old
 file. Desktop rewrites that file while it runs, so if it is open the command waits
 in the background and writes after you quit Desktop; `--now` writes at once, and
-`--print` shows the entry without changing anything. Add `--profile hunt` (or
-`apply`, `explore`, `templates`, `career`) for a smaller tool set. Restart the
+`--print` shows the entry without changing anything. Add `--profile profile` (or
+`hunt`, `tailor`, `apply`, `track`, `templates`) for a smaller tool set. Restart the
 app afterwards so it sees the tools.
 
 ### Claude Desktop
@@ -368,8 +368,8 @@ codex mcp add maestro-career-studio --url http://localhost:8001/mcp
 
 Use `/mcp` exactly — no trailing slash (`POST /mcp/` redirects with 307).
 `--scope user` makes Maestro available in every folder; without it, Claude Code adds it to the current project only.
-Scoped tool sets use `/mcp/hunt`, `/mcp/apply`, `/mcp/explore`, `/mcp/templates`
-or `/mcp/career`. If you changed the backend port, copy the card's values.
+Scoped tool sets use `/mcp/profile`, `/mcp/hunt`, `/mcp/tailor`, `/mcp/apply`, `/mcp/track`
+or `/mcp/templates`. If you changed the backend port, copy the card's values.
 
 For the Codex app, open **Plugins** › **Add** › **Create custom MCP server**,
 choose **Server URL**, paste the URL and set **Authentication** to **No authentication**. Leave

@@ -12,7 +12,8 @@
   `get_job_site_login` hands the login to a Queued/approved job's agent (§6); filer and create-lock rules: "MCP proposal filer" below), base resumes
   (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind is REST `base`|`application`, details carry the parent diff, a restore
   is a new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting; those
-  five and `set_base_resume_identity` (a base's only anchor writer and, after create, its only colour writer; `""`/`[]` clear) are **full-profile only**), health
+  five and `set_base_resume_identity` (a base's only anchor writer and, after create, its only colour writer; `""`/`[]` clear) are in the
+  `profile` and `full` sets; `list_resume_versions`/`restore_resume_version` are in `tailor` too), health
   (run/get + waivers; a finding carries its bullet's own `question`, `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`, a report `next_grade`; disputes and the word bank
   are web-only; the bank uses GET/PUT), the full tailoring workflow (session tools take **`tailoring_session_id`** — breaking rename, no
   legacy alias — and carry `base_anchors`; `resolve_gaps`' evidence-carrying actions are gated server-side — §4;

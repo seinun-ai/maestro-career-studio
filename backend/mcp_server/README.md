@@ -19,7 +19,7 @@ same URL, and its `maestro connect` command does the setup below from the termin
 ## Install
 
 Open Settings › Agent apps › **Connect an agent app** and choose a
-**Tool set**. Every route defaults to `full` (all 99 tools); see
+**Tool set**. Every route defaults to `full` (all 101 tools); see
 [Profiles](#profiles) to narrow it. Enable one connection per client.
 
 ### Claude Desktop
@@ -132,14 +132,21 @@ The **Tool set** selector picks a profile URL (`/mcp` for `full`, or
 `/mcp/{profile}`); the bundle uses `MAESTRO_CS_MCP_PROFILE` for the same choice.
 Each scoped URL lists exactly its allowlist and refuses tools outside it.
 
-| Profile | Use when | Tools |
+| Set | Use it when you say | Tools |
 | --- | --- | --- |
-| `full` | Mixed use (default) | all 99 |
-| `hunt` | Finding jobs and proposing them, no browser filling | 21 |
-| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 54 |
-| `explore` | Charts and trends across your saved jobs (`explore_*`) | 11 |
-| `templates` | Creating and testing resume templates | 13 |
-| `career` | Reading and editing your Career KB | 26 |
+| `full` | Anything (default) | all 101 |
+| `profile` | "Set me up", "import my resume", "add a project": career history, base resumes, health check, form answers, preferences | 39 |
+| `hunt` | "Find me jobs": capture, score and propose | 22 |
+| `tailor` | "Tailor my resume for this job": gaps, tailored resume, PDF, health check, undo | 32 |
+| `apply` | "Apply to this job": cover letter and answers, form answers, consent, submit | 34 |
+| `track` | "Update my statuses", "how's my search going": statuses, referrals, charts | 18 |
+| `templates` | "Make a resume design" | 13 |
+
+The sets follow a job search: profile, hunt, tailor, apply, track. Each set's server
+instructions say what it holds and which set has the rest, every set but templates starts
+with `get_setup_status`, and each serves the automation playbooks that use it as MCP prompts
+(in Claude Code, `/maestro-career-studio:<name>`). `/mcp/career` and `/mcp/explore` still
+serve `profile` and `track` for one release.
 
 **Enable one profile per chat.** The scoped profiles are subsets of `full`, so
 running `full` beside one lists every shared tool twice and the model has to
@@ -259,7 +266,7 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 - `store_qa_answers`, `store_cover_letter`: keep answers or a cover letter your assistant wrote itself, with no AI key in Maestro. The letter replaces the saved one and gets its PDF; both show on the job's Apply step.
 - `list_qa_entries`: the answers and cover letters saved so far.
 
-**Your setup answers** (`career` and `full`; `set_autofill_profile` is in `apply` too)
+**Your setup answers** (`profile` and `full`; `set_autofill_profile` is in `apply` too)
 - `set_autofill_profile`: save the form answers you give: contact and address, work permits for each country you apply in, start and pay, education, languages and your own questions. Only what it is given changes.
 - `set_markets`: where you live, where you apply, and the currency pay reads in.
 - `set_job_preferences`: the roles, places, work mode and lowest pay you want.

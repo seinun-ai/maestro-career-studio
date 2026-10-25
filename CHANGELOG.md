@@ -41,6 +41,12 @@ work-permit answers for each country you apply in.
 
 ### Breaking changes
 
+- **MCP tool sets follow a job search.** The smaller sets are now `profile` (was `career`: career
+  history, base resumes and their anchors, the health check, form answers and preferences), `hunt`,
+  `tailor` (new: from a saved job to its tailored resume and PDF), `apply` (now from the finished PDF to
+  a submitted application; tailoring moved to `tailor`), `track` (was `explore`: statuses, referrals and
+  the charts) and `templates`; `full` has all 101 tools. `/mcp/career` and `/mcp/explore` keep working
+  for one release. `tailor_application` is in `full` only.
 - No step to take by hand. Migrations add a column (`kb_points.merged_into_point_id`), two tables
   (`kb_point_kept_pairs`, and `application_status_events`, filled with one undated row for each
   application that already has a status) and two job columns (`country_code`,
@@ -64,6 +70,12 @@ work-permit answers for each country you apply in.
 
 ### Added
 
+- **A connected agent knows where to start.** Every tool set tells the agent what it holds and which
+  set has the rest. The new `get_setup_status` says where setup stands, whether Maestro has its own AI
+  key, which base resume is the shipped demo, and the next step. `get_tailoring_options` explains your
+  Quick tailor presets in plain words, so an agent can follow them or tailor with you its own way. The
+  automation playbooks are MCP prompts in the set they use, and each copied prompt says which set to
+  connect.
 - **Today is the home page.** Maestro now opens on Today: the one thing that matters most (an offer to
   answer, the ready resume with the best match, or your agent's question) with its one button and the
   dates of the steps behind it, three counts that open their lists (agent jobs to review, leaving out

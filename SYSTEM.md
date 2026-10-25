@@ -135,7 +135,7 @@ scripts/               setup-mcp.sh (deprecated stdio, §13), update.sh (Docker 
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (99 REST wrappers)
+ extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (101 tools)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼ ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
                     ▼ TailoringSession (frozen gaps → resolutions → LLM tailor ops)
@@ -530,7 +530,8 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 
 - **MCP server** (`backend/mcp_server/`; on screen **connected agents**): thin wrappers over REST via httpx (`@_guard` → `ToolError`),
   served at `/mcp` and `/mcp/{profile}` inside FastAPI (§6 inv-mcp-inside-the-app, inv-tools-off-loop); **the docstring is the API** —
-  behavior, records and requirements, never instructions. Six scoped profiles (99 tools; `/mcp` = `full`); enable ONE per chat.
+  behavior, records and requirements, never instructions. Tool sets in journey order (profile, hunt, tailor, apply, track, templates;
+  `/mcp` = `full`, 101 tools), each with its own instructions and playbook prompts; enable ONE per chat.
   `workflow.py` (the guided tailoring and onboarding workflows) is PURE — a **deliberate exception to the thin-wrapper rule** — and its
   `next` envelopes walk §5's arc unnarrated: the server ranks, the agent narrates; `offer` ≠ `ask_user`; **a hint never names a tool the
   active profile did not register**.
@@ -596,7 +597,7 @@ anchors, Jobs, Agent inbox, job steps, Analytics); the tiers (one `LeadCard`, th
   scripts.ats_calibration monotonicity` (same env) asserts "adding true evidence never lowers the score" over the whole corpus — run it
   after ANY matcher or tier change, not just a scoring-weight one.
 - Backend tests: `pytest tests/ mcp_server/tests/ -q -n auto --dist loadfile` from `backend/`; bare `tests/` skips MCP.
-  CI cold-installs `.[mcp]`, checks six stdio profiles and `/mcp` + `/mcp/hunt` over HTTP. xdist (~15 → ~3.5 min)
+  CI cold-installs `.[mcp]`, checks seven stdio sets and `/mcp` + `/mcp/hunt` over HTTP. xdist (~15 → ~3.5 min)
   uses `loadfile` to keep browser tests per file. conftest makes a SQLite file per process/worker (`TEST_DATABASE_URL` may name another,
   never under `data/` or with `-n`) and blanks the four provider keys (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`):
   a worker's `load_dotenv()` finds the

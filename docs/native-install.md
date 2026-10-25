@@ -205,7 +205,7 @@ http://127.0.0.1:8001/mcp
 ```
 
 Use `/mcp` exactly — no trailing slash (`POST /mcp/` is a 307 redirect).
-Use `/mcp/hunt` or `/mcp/apply` for a scoped tool set, and enable one at a time.
+Use `/mcp/profile`, `/mcp/hunt`, `/mcp/tailor`, `/mcp/apply`, `/mcp/track` or `/mcp/templates` for a scoped tool set, and enable one at a time.
 If you changed `MAESTRO_PORT`, change the URL's port too. `start.sh` exports
 `BACKEND_URL` for the MCP tools' REST loopback calls and
 `MAESTRO_CS_PUBLIC_BACKEND_URL` for the connection card. MCP is part of the
