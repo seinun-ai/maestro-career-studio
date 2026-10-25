@@ -120,7 +120,7 @@ test("counts are the required answers only, per group and per country", () => {
     work_auth_by_country: { US: { status: "citizen", authorized_now: true }, UK: { authorized_now: "No" } },
   };
   const counts = (p: Parameters<typeof groupCount>[0]) => groupCount(p, "personal");
-  assert.deepEqual(counts(profile), { answered: 1, answerable: 12 }, "address line 2 is optional");
+  assert.deepEqual(counts(profile), { answered: 1, answerable: 9 }, "address line 2 and the three links are optional");
   assert.deepEqual(permitCount(profile, "US", "us_visa"), { answered: 2, answerable: 4 });
   assert.deepEqual(permitCount(profile, "UK", "uk"), { answered: 1, answerable: 3 });
   assert.deepEqual(permitCount(profile, "DE", "generic"), { answered: 0, answerable: 3 });
@@ -147,4 +147,7 @@ test("next up asks each country's permit first, then contact, then start and pay
   const some = { personal: { first_name: "Ada" }, work_auth_by_country: { DE: { authorized_now: true, sponsorship_now: false, sponsorship_future: false } } };
   assert.deepEqual(keysOf(some, ["DE"]).slice(0, 2), ["personal:last_name", "personal:email"]);
   assert.equal(keysOf(some, ["DE"]).includes("personal:address_2"), false, "an optional field is never next up");
+  for (const link of ["linkedin", "github", "website"]) {
+    assert.equal(keysOf(some, ["DE"]).includes(`personal:${link}`), false, `${link} is optional, never next up`);
+  }
 });

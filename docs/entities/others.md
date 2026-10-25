@@ -493,7 +493,8 @@
   probe answers, and storing that verdict would break the derived-only rule. Autofill readiness spans the
   required personal, work-auth, EEO, and preferences groups and means
   **answerable**, not merely filled: `decline` is an answer, optional fields
-  are excluded. Work authorization reads typed `WorkAuth`; its four-answer
+  are excluded (in contact: address line 2 and the LinkedIn, GitHub and website links, which many
+  fields of work and countries have none of). Work authorization reads typed `WorkAuth`; its four-answer
   knockout core is `status`, `authorized_now`, `sponsorship_now`,
   `sponsorship_future` — status never implies current authorization, and an
   incomplete core is blocking. The backend's required field lists deliberately

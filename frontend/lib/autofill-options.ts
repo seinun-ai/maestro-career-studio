@@ -55,9 +55,10 @@ export const GROUPS: GroupDef[] = [
       { key: "state", label: "State" },
       { key: "postal_code", label: "Postal code" },
       { key: "country", label: "Country" },
-      { key: "linkedin", label: "LinkedIn profile link" },
-      { key: "github", label: "GitHub link" },
-      { key: "website", label: "Website" },
+      // Optional for readiness: many fields of work and many countries use none of the three links.
+      { key: "linkedin", label: "LinkedIn profile link", optional: true },
+      { key: "github", label: "GitHub link", optional: true },
+      { key: "website", label: "Website", optional: true },
     ],
   },
   {

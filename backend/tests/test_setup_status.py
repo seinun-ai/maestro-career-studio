@@ -319,7 +319,7 @@ def test_authorized_now_is_required_for_work_auth_readiness(client, db_session):
     body = _status(client)["autofill"]
 
     assert body["groups"]["work_auth"] == {"answered": 3, "answerable": 4}
-    assert body["readiness"] == 0.96
+    assert body["readiness"] == 0.955
     assert body["blocking"] == ["work_auth"]
     assert body["done"] is False
 
@@ -330,7 +330,42 @@ def test_malformed_profile_group_degrades_to_unanswered(client, db_session):
     autofill_profile.set_profile({"personal": "garbage"}, db_session)
 
     body = _status(client)["autofill"]
-    assert body["groups"]["personal"] == {"answered": 0, "answerable": 12}
+    assert body["groups"]["personal"] == {"answered": 0, "answerable": 9}
+
+
+def test_contact_links_are_optional_so_a_profile_without_them_is_done(client, db_session):
+    """Most people outside tech have no GitHub or website, and many no LinkedIn: a contact block with
+    every other answer given is complete, and an agent's setup next step moves past the form answers."""
+    from app.services import autofill_profile
+
+    autofill_profile.set_profile(
+        {
+            "personal": {
+                "first_name": "Sam", "last_name": "Lee", "email": "sam@example.com",
+                "phone": "555 0100", "address": "1 Main St", "city": "Springfield",
+                "state": "IL", "postal_code": "62701", "country": "United States",
+            },
+            "work_auth": {
+                "status": "citizen", "authorized_now": True,
+                "sponsorship_now": False, "sponsorship_future": False,
+            },
+            "eeo": {
+                "veteran_status": "decline", "disability_status": "decline",
+                "gender": "decline", "hispanic_latino": "decline",
+            },
+            "preferences": {
+                "desired_salary": "60000", "notice_period": "2 weeks",
+                "earliest_start_date": "2026-11-01", "willing_to_relocate": "no",
+                "how_heard": "job board",
+            },
+        },
+        db_session,
+    )
+
+    body = _status(client)["autofill"]
+    assert body["groups"]["personal"] == {"answered": 9, "answerable": 9}
+    assert body["readiness"] == 1.0
+    assert body["done"] is True
 
 
 def test_status_reports_engines_and_default_engine_availability(

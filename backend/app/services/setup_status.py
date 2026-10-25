@@ -39,11 +39,12 @@ from app.services import (
     role_categories,
 )
 
-# Required (answerable) fields per group. address_2 / education / custom Q&A
-# never count against readiness.
+# Required (answerable) fields per group. address_2, the three links (linkedin,
+# github, website: many fields of work and many countries have none of them),
+# education and custom Q&A never count against readiness.
 _PERSONAL = [
     "first_name", "last_name", "email", "phone", "address", "city", "state",
-    "postal_code", "country", "linkedin", "github", "website",
+    "postal_code", "country",
 ]
 _EEO = ["veteran_status", "disability_status", "gender", "hispanic_latino"]
 _PREFERENCES = [
