@@ -1,10 +1,10 @@
 import shutil
-import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
 from tests.pdf_fixtures import write_blank_pdf
+from tests.test_base_resumes_router import _stub_render_compilers
 import pytest
 
 from app.config import settings as app_settings
@@ -18,31 +18,6 @@ from app.services import bullet_classify, pdf_render
 def _write_valid_pdf(path: Path, pages: int = 1) -> None:
     """Write a real (rasterizable) PDF so the render path's page-image step works."""
     write_blank_pdf(path, pages)
-
-
-def _stub_render_compilers(monkeypatch) -> None:
-    def fake_run(argv, **kwargs):
-        out_dir = Path(
-            next(
-                arg.removeprefix("-output-directory=")
-                for arg in argv
-                if arg.startswith("-output-directory=")
-            )
-        )
-        jobname = next(
-            arg.removeprefix("-jobname=")
-            for arg in argv
-            if arg.startswith("-jobname=")
-        )
-        _write_valid_pdf(out_dir / f"{jobname}.pdf")
-        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(pdf_render.subprocess, "run", fake_run)
-
-    def fake_typst_compile(**kwargs):
-        _write_valid_pdf(Path(kwargs["output"]))
-
-    monkeypatch.setattr(pdf_render.typst_compiler, "compile_typst", fake_typst_compile)
 
 
 def _seed_render_templates(db_session) -> None:

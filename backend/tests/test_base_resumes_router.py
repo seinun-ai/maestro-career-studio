@@ -14,7 +14,7 @@ from app.main import app
 from app.models.base_resume import BaseResume
 from app.models.template import Template
 from app.routers import base_resumes as router_module
-from app.services import base_resume_render, bullet_classify, pdf_render
+from app.services import base_resume_render, bullet_classify, engines, pdf_render
 from app.services.template_validation import SAMPLE_RESUME
 
 
@@ -24,6 +24,18 @@ def _write_valid_pdf(path: Path, pages: int = 1) -> None:
 
 
 def _stub_render_compilers(monkeypatch) -> None:
+    # The fake compiler stands in for TeX being installed too. Unpinned, the
+    # resolver's probe runs `pdflatex --version` through the patched
+    # `subprocess.run` (StopIteration: no -output-directory) unless an earlier
+    # real render cached the banner, and a TeX-less host swaps in Typst.
+    monkeypatch.setattr(
+        engines,
+        "probe_pdflatex",
+        lambda: engines.EngineStatus(
+            "pdflatex", True, version="pdfTeX (test)", path="/opt/tex/bin/pdflatex"
+        ),
+    )
+
     def fake_run(argv, **kwargs):
         out_dir = Path(
             next(
