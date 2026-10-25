@@ -673,7 +673,8 @@ def test_base_from_kb_hint_drops_render_when_the_profile_lacks_it():
         hints_enabled=True,
     )
     assert hint["options"] == []
-    assert "registers no render tool" in hint["offer"]
+    assert "no render tool; the profile set has one" in hint["offer"]
+    assert "apply" not in hint["offer"]
 
 
 def test_base_from_kb_hint_names_the_form_answers_while_setup_reads_them_open():

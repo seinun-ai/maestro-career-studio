@@ -420,7 +420,7 @@ def next_after_render(
     detect them, rather than asserting a capability we cannot confirm. No tool
     `options` are emitted for the handoff itself — the browser tools are not
     ours to name. The upload/consent tools ARE ours, and are named only when the
-    active profile registered them (templates and career do not), so the offer is
+    active set registered them (only apply and full do), so the offer is
     None there. record_consent / mark_submitted are described as recording the
     USER's decisions: the consent semantics are statements of what they mean.
     """
@@ -679,7 +679,7 @@ def next_after_base_from_kb(
     if steps:
         offer += f" Available next steps: {_listed(steps)}."
     if not options:
-        offer += " This profile registers no render tool (apply and full do)."
+        offer += " This set has no render tool; the profile set has one."
     return {
         "state": "base_from_kb",
         "blocking": False,
