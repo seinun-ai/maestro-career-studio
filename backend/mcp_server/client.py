@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import tempfile
 from email.message import Message
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -384,6 +385,30 @@ class BackendError(Exception):
         self.body = body
 
 
+# Every id a tool puts into a path is a slug, a UUID, a number, a gate id or a file
+# name. httpx resolves `..` and ends the path at `?` or `#`, so anything else could
+# send the request to another route (a DELETE, or the stored EEO answers).
+_PATH_SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~-]*")
+
+
+def _seg(value: Any) -> str:
+    """One id as one path segment: a "/" inside it would move the request to a deeper route."""
+    segment = str(value)
+    if not _PATH_SEGMENT.fullmatch(segment):
+        shown = segment if len(segment) <= 80 else segment[:80] + "..."
+        raise BackendError(
+            f"Not a valid id: {shown!r}. An id holds only letters, digits, '-', '_' and '.', "
+            "and does not start with '.'."
+        )
+    return segment
+
+
+def _check_path(path: str) -> None:
+    """The backstop for a path built without _seg."""
+    for segment in path.split("/")[1:]:
+        _seg(segment)
+
+
 class BackendClient:
     def __init__(self, base_url: str | None = None, timeout: float = 60.0):
         self.base_url = (base_url or os.environ.get("BACKEND_URL") or DEFAULT_BASE_URL).rstrip("/")
@@ -391,6 +416,7 @@ class BackendClient:
 
     def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         """One HTTP round trip with the shared error mapping."""
+        _check_path(path)
         url = f"{self.base_url}{path}"
         try:
             proxy_options = {"trust_env": False} if _is_loopback(self.base_url) else {}
@@ -444,7 +470,7 @@ class BackendClient:
         return self._request("GET", "/api/base-resumes")
 
     def get_base_resume(self, slug: str) -> Any:
-        return self._request("GET", f"/api/base-resumes/{slug}")
+        return self._request("GET", f"/api/base-resumes/{_seg(slug)}")
 
     def list_jobs(
         self,
@@ -462,7 +488,7 @@ class BackendClient:
         return self._request("GET", "/api/jobs", params=params)
 
     def get_job(self, job_id: str) -> Any:
-        return self._request("GET", f"/api/jobs/{job_id}/detail")
+        return self._request("GET", f"/api/jobs/{_seg(job_id)}/detail")
 
     def get_job_search_brief(self) -> Any:
         return self._request("GET", "/api/jobs/search-brief")
@@ -493,7 +519,7 @@ class BackendClient:
         )
 
     def get_kb_entity(self, entity_id: str) -> Any:
-        return self._request("GET", f"/api/kb/entities/{entity_id}")
+        return self._request("GET", f"/api/kb/entities/{_seg(entity_id)}")
 
     def list_kb_points(
         self,
@@ -544,7 +570,7 @@ class BackendClient:
     ) -> Any:
         return self._request(
             "POST",
-            f"/api/kb/entities/{entity_id}/drafts",
+            f"/api/kb/entities/{_seg(entity_id)}/drafts",
             json={"points": points},
             headers=_origin_headers(origin_detail),
         )
@@ -564,7 +590,7 @@ class BackendClient:
             payload["state"] = "draft"
         return self._request(
             "PATCH",
-            f"/api/kb/points/{point_id}",
+            f"/api/kb/points/{_seg(point_id)}",
             json=payload,
             headers=_origin_headers(origin_detail),
         )
@@ -593,7 +619,7 @@ class BackendClient:
     ) -> Any:
         return self._request(
             "PATCH",
-            f"/api/kb/entities/{entity_id}",
+            f"/api/kb/entities/{_seg(entity_id)}",
             json=_drop_none(**fields),
             headers=_origin_headers(origin_detail),
         )
@@ -635,10 +661,10 @@ class BackendClient:
         )
 
     def kb_sync_base(self, slug: str) -> Any:
-        return self._request("POST", f"/api/base-resumes/{slug}/kb-sync")
+        return self._request("POST", f"/api/base-resumes/{_seg(slug)}/kb-sync")
 
     def get_kb_groom(self, entity_id: str) -> Any:
-        return self._request("GET", f"/api/kb/entities/{entity_id}/groom")
+        return self._request("GET", f"/api/kb/entities/{_seg(entity_id)}/groom")
 
     def kb_combine_points(self, keeper_id: str, point_ids: list[str]) -> Any:
         return self._request(
@@ -733,7 +759,7 @@ class BackendClient:
         }
 
     def get_application(self, application_id: str) -> Any:
-        return self._request("GET", f"/api/applications/{application_id}")
+        return self._request("GET", f"/api/applications/{_seg(application_id)}")
 
     def list_referrals(self) -> Any:
         return self._request("GET", "/api/referrals")
@@ -744,10 +770,10 @@ class BackendClient:
     # ---- health check ----
     def run_health_check(self, kind: str, key: str) -> Any:
         # Runs an LLM classification pass over every bullet; can exceed the 60s default.
-        return self._request("POST", f"/api/resume-lint/{kind}/{key}/run", timeout=_LLM_TIMEOUT)
+        return self._request("POST", f"/api/resume-lint/{_seg(kind)}/{_seg(key)}/run", timeout=_LLM_TIMEOUT)
 
     def get_health_report(self, kind: str, key: str) -> Any:
-        return self._request("GET", f"/api/resume-lint/{kind}/{key}")
+        return self._request("GET", f"/api/resume-lint/{_seg(kind)}/{_seg(key)}")
 
     def judge_health_bullets(
         self, kind: str, key: str, classifications: list[dict[str, Any]],
@@ -756,7 +782,7 @@ class BackendClient:
         """The client's name travels as the write origin: judgments are stored under it."""
         return self._request(
             "POST",
-            f"/api/resume-lint/{kind}/{key}/judgments",
+            f"/api/resume-lint/{_seg(kind)}/{_seg(key)}/judgments",
             json={"classifications": classifications},
             headers=_origin_headers(origin_detail),
         )
@@ -764,13 +790,13 @@ class BackendClient:
     def waive_health_gate(self, kind: str, key: str, gate_id: str, reason: str) -> Any:
         return self._request(
             "POST",
-            f"/api/resume-lint/{kind}/{key}/gates/{gate_id}/waive",
+            f"/api/resume-lint/{_seg(kind)}/{_seg(key)}/gates/{_seg(gate_id)}/waive",
             json={"reason": reason},
         )
 
     def unwaive_health_gate(self, kind: str, key: str, gate_id: str) -> Any:
         return self._request(
-            "DELETE", f"/api/resume-lint/{kind}/{key}/gates/{gate_id}/waive"
+            "DELETE", f"/api/resume-lint/{_seg(kind)}/{_seg(key)}/gates/{_seg(gate_id)}/waive"
         )
 
     # ---- settings & setup ----
@@ -856,19 +882,19 @@ class BackendClient:
         if display_name is not None:
             payload["display_name"] = display_name
         return self._request(
-            "PUT", f"/api/base-resumes/{slug}", json=payload, timeout=_RENDER_TIMEOUT
+            "PUT", f"/api/base-resumes/{_seg(slug)}", json=payload, timeout=_RENDER_TIMEOUT
         )
 
     def set_base_resume_identity(self, slug: str, **fields: Any) -> Any:
         """PATCH /identity with the fields the tool was given (display_name, role_category,
         role_label, countries, company, focus, color_hue). None is "not sent"; "" and [] are real values
         (they clear), so only None is dropped."""
-        return self._request("PATCH", f"/api/base-resumes/{slug}/identity", json=_drop_none(**fields))
+        return self._request("PATCH", f"/api/base-resumes/{_seg(slug)}/identity", json=_drop_none(**fields))
 
     def edit_base_resume(self, slug: str, ops: list[dict]) -> Any:
         return self._request(
             "PATCH",
-            f"/api/base-resumes/{slug}/edits",
+            f"/api/base-resumes/{_seg(slug)}/edits",
             json={"ops": ops},
             timeout=_RENDER_TIMEOUT,
         )
@@ -889,29 +915,29 @@ class BackendClient:
             payload["new_display_name"] = new_display_name
         return self._request(
             "POST",
-            f"/api/base-resumes/{slug}/duplicate",
+            f"/api/base-resumes/{_seg(slug)}/duplicate",
             json=payload,
             timeout=_RENDER_TIMEOUT,
         )
 
     def list_resume_versions(self, kind: str, key: str) -> Any:
-        return self._request("GET", f"/api/resume-versions/{kind}/{key}")
+        return self._request("GET", f"/api/resume-versions/{_seg(kind)}/{_seg(key)}")
 
     def get_resume_version(self, kind: str, key: str, number: int) -> Any:
-        return self._request("GET", f"/api/resume-versions/{kind}/{key}/{number}")
+        return self._request("GET", f"/api/resume-versions/{_seg(kind)}/{_seg(key)}/{_seg(number)}")
 
     def restore_resume_version(self, kind: str, key: str, number: int) -> Any:
         return self._request(
             "POST",
-            f"/api/resume-versions/{kind}/{key}/{number}/restore",
+            f"/api/resume-versions/{_seg(kind)}/{_seg(key)}/{_seg(number)}/restore",
             timeout=_RENDER_TIMEOUT,
         )
 
     def archive_base_resume(self, slug: str) -> Any:
-        return self._request("POST", f"/api/base-resumes/{slug}/archive")
+        return self._request("POST", f"/api/base-resumes/{_seg(slug)}/archive")
 
     def unarchive_base_resume(self, slug: str) -> Any:
-        return self._request("POST", f"/api/base-resumes/{slug}/unarchive")
+        return self._request("POST", f"/api/base-resumes/{_seg(slug)}/unarchive")
 
     def tailor_application(
         self, job_id: str, base_resume: str, ops: list[dict], application_id: str | None = None
@@ -924,7 +950,7 @@ class BackendClient:
     def edit_application(self, application_id: str, ops: list[dict]) -> Any:
         return self._request(
             "PATCH",
-            f"/api/applications/{application_id}/edits",
+            f"/api/applications/{_seg(application_id)}/edits",
             json={"ops": ops},
             timeout=_RENDER_TIMEOUT,
         )
@@ -945,7 +971,7 @@ class BackendClient:
         if from_email:
             payload["status_source"] = "mail"
         return self._request(
-            "PATCH", f"/api/applications/{application_id}", json=payload,
+            "PATCH", f"/api/applications/{_seg(application_id)}", json=payload,
             headers=_origin_headers(origin_detail),
         )
 
@@ -994,14 +1020,14 @@ class BackendClient:
     def render_base_resume(self, slug: str, template_id: str | None = None) -> Any:
         params = {"template_id": template_id} if template_id else {}
         return self._request(
-            "POST", f"/api/base-resumes/{slug}/render", params=params, timeout=_RENDER_TIMEOUT
+            "POST", f"/api/base-resumes/{_seg(slug)}/render", params=params, timeout=_RENDER_TIMEOUT
         )
 
     def render_application(self, application_id: str, template_id: str | None = None) -> Any:
         params = {"template_id": template_id} if template_id else {}
         return self._request(
             "POST",
-            f"/api/applications/{application_id}/render",
+            f"/api/applications/{_seg(application_id)}/render",
             params=params,
             timeout=_RENDER_TIMEOUT,
         )
@@ -1011,7 +1037,7 @@ class BackendClient:
         return self._request("GET", "/api/templates")
 
     def get_template(self, template_id: str) -> Any:
-        return self._request("GET", f"/api/templates/{template_id}")
+        return self._request("GET", f"/api/templates/{_seg(template_id)}")
 
     def create_template_draft(
         self,
@@ -1049,7 +1075,7 @@ class BackendClient:
             payload["display_name"] = display_name
         return self._request(
             "PUT",
-            f"/api/templates/{template_id}",
+            f"/api/templates/{_seg(template_id)}",
             json=payload,
             params={"validate": validate},
             timeout=_RENDER_TIMEOUT,
@@ -1057,14 +1083,14 @@ class BackendClient:
 
     def validate_template(self, template_id: str) -> Any:
         return self._request(
-            "POST", f"/api/templates/{template_id}/validate", timeout=_RENDER_TIMEOUT
+            "POST", f"/api/templates/{_seg(template_id)}/validate", timeout=_RENDER_TIMEOUT
         )
 
     def get_rendered_pdf(self, target_type: str, target_id: str) -> Any:
         paths = {
-            "base_resume": f"/api/base-resumes/{target_id}/pdf",
-            "application": f"/api/applications/{target_id}/pdf",
-            "template": f"/api/templates/{target_id}/preview.pdf",
+            "base_resume": f"/api/base-resumes/{_seg(target_id)}/pdf",
+            "application": f"/api/applications/{_seg(target_id)}/pdf",
+            "template": f"/api/templates/{_seg(target_id)}/preview.pdf",
         }
         if target_type not in paths:
             raise BackendError("target_type must be base_resume, application, or template")
@@ -1147,11 +1173,11 @@ class BackendClient:
         # P1: agent-sourced jobs must have an open proposal before staging upload.
         self._request(
             "POST",
-            f"/api/applications/{application_id}/assert-open-proposal",
+            f"/api/applications/{_seg(application_id)}/assert-open-proposal",
             json={"op": "prepare"},
         )
 
-        pdf_path = f"/api/applications/{application_id}/pdf"
+        pdf_path = f"/api/applications/{_seg(application_id)}/pdf"
         try:
             response = self._request_raw_response("GET", pdf_path)
         except BackendError as exc:
@@ -1282,7 +1308,7 @@ class BackendClient:
         return self._request("GET", "/api/ats-scores/candidates", params=params)
 
     def compare_ats(self, application_id: str) -> Any:
-        return self._request("GET", f"/api/applications/{application_id}/ats-compare")
+        return self._request("GET", f"/api/applications/{_seg(application_id)}/ats-compare")
 
     def create_tailoring_session(
         self, job_id: str, base_resume: str, enrich: bool = True
@@ -1307,20 +1333,20 @@ class BackendClient:
         return sessions
 
     def get_tailoring_session(self, session_id: str) -> Any:
-        return self._request("GET", f"/api/tailoring-sessions/{session_id}")
+        return self._request("GET", f"/api/tailoring-sessions/{_seg(session_id)}")
 
     def close_tailoring_session(self, session_id: str) -> Any:
-        return self._request("POST", f"/api/tailoring-sessions/{session_id}/close")
+        return self._request("POST", f"/api/tailoring-sessions/{_seg(session_id)}/close")
 
     def apply_quick_tailor_profile(self, tailoring_session_id: str) -> Any:
         return self._request(
-            "POST", f"/api/tailoring-sessions/{tailoring_session_id}/apply-profile"
+            "POST", f"/api/tailoring-sessions/{_seg(tailoring_session_id)}/apply-profile"
         )
 
     def resolve_gaps(self, session_id: str, resolutions: list[dict]) -> Any:
         return self._request(
             "PATCH",
-            f"/api/tailoring-sessions/{session_id}",
+            f"/api/tailoring-sessions/{_seg(session_id)}",
             json={"resolutions": resolutions},
         )
 
@@ -1336,7 +1362,7 @@ class BackendClient:
         # sent (via _drop_none) so the no-ops body stays clean.
         return self._request(
             "POST",
-            f"/api/tailoring-sessions/{session_id}/tailor",
+            f"/api/tailoring-sessions/{_seg(session_id)}/tailor",
             json=_drop_none(user_prompt=user_prompt, ops=ops),
             timeout=_LLM_TIMEOUT,
         )
@@ -1395,14 +1421,14 @@ class BackendClient:
         return self._request("GET", "/api/proposals", params=params)
 
     def get_proposal(self, proposal_id: str) -> Any:
-        return self._request("GET", f"/api/proposals/{proposal_id}")
+        return self._request("GET", f"/api/proposals/{_seg(proposal_id)}")
 
     def get_job_site_login(self, proposal_id: str, origin_detail: str | None = None) -> Any:
         # Unlike ordinary errors, a login response must never be copied into
         # BackendError.body or a message/traceback surfaced by the MCP guard.
         try:
             return self._request(
-                "POST", f"/api/proposals/{proposal_id}/job-site-login",
+                "POST", f"/api/proposals/{_seg(proposal_id)}/job-site-login",
                 headers=_origin_headers(origin_detail),
             )
         except BackendError as exc:
@@ -1438,7 +1464,7 @@ class BackendClient:
         if attested:
             payload["attested"] = True
         return self._request(
-            "PATCH", f"/api/proposals/{proposal_id}", json=payload,
+            "PATCH", f"/api/proposals/{_seg(proposal_id)}", json=payload,
             headers=_origin_headers(origin_detail),
         )
 
@@ -1469,7 +1495,7 @@ class BackendClient:
         data_bytes = base64.b64decode(image_base64)
         files = {"file": ("evidence.png", data_bytes, "image/png")}
         data = {"step": str(step), "label": label, "kind": kind}
-        return self._request("POST", f"/api/proposals/{proposal_id}/evidence", files=files, data=data)
+        return self._request("POST", f"/api/proposals/{_seg(proposal_id)}/evidence", files=files, data=data)
 
     def attach_evidence_file(
         self,
@@ -1507,7 +1533,7 @@ class BackendClient:
             raise BackendError("evidence file is not a PNG or JPEG image")
         files = {"file": (p.name, data_bytes, mime)}
         data = {"step": str(step), "label": label, "kind": kind}
-        return self._request("POST", f"/api/proposals/{proposal_id}/evidence", files=files, data=data)
+        return self._request("POST", f"/api/proposals/{_seg(proposal_id)}/evidence", files=files, data=data)
 
     def record_decision(
         self,
@@ -1522,23 +1548,23 @@ class BackendClient:
     def request_decision(self, proposal_id: str, reason: str | None = None) -> Any:
         return self._request(
             "POST",
-            f"/api/proposals/{proposal_id}/request-decision",
+            f"/api/proposals/{_seg(proposal_id)}/request-decision",
             json=_drop_none(reason=reason),
         )
 
     def resume_proposal(self, proposal_id: str) -> Any:
-        return self._request("POST", f"/api/proposals/{proposal_id}/resume")
+        return self._request("POST", f"/api/proposals/{_seg(proposal_id)}/resume")
 
     def report_failure(self, proposal_id: str, reason: str) -> Any:
         return self._request(
             "POST",
-            f"/api/proposals/{proposal_id}/report-failure",
+            f"/api/proposals/{_seg(proposal_id)}/report-failure",
             json={"reason": reason},
         )
 
     def get_final_review(self, proposal_id: str) -> Any:
         return _without_eeo_values(
-            self._request("GET", f"/api/proposals/{proposal_id}/final-review")
+            self._request("GET", f"/api/proposals/{_seg(proposal_id)}/final-review")
         )
 
     def record_filled_answers(
@@ -1548,7 +1574,7 @@ class BackendClient:
         if page.get("step") is not None:
             page["step"] = str(page["step"])
         body = {"channel": "agent", "fields": fields, **_drop_none(**page)}
-        return self._request("POST", f"/api/jobs/{job_id}/filled-answers", json=body)
+        return self._request("POST", f"/api/jobs/{_seg(job_id)}/filled-answers", json=body)
 
     def record_run(
         self, automation: str, outcome: str, report: dict[str, Any] | None,
