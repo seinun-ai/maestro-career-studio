@@ -46,7 +46,9 @@ work-permit answers for each country you apply in.
   `tailor` (new: from a saved job to its tailored resume and PDF), `apply` (now from the finished PDF to
   a submitted application; tailoring moved to `tailor`), `track` (was `explore`: statuses, referrals and
   the charts) and `templates`; `full` has all 101 tools. `/mcp/career` and `/mcp/explore` keep working
-  for one release. `tailor_application` is in `full` only.
+  for one release. `tailor_application` is in `full` only. The Apply session and Apply automatically
+  playbooks no longer tailor: a queued job that isn't tailored yet stays queued for the next Tailor run,
+  and the run's digest says so.
 - No step to take by hand. Migrations add a column (`kb_points.merged_into_point_id`), two tables
   (`kb_point_kept_pairs`, and `application_status_events`, filled with one undated row for each
   application that already has a status) and two job columns (`country_code`,

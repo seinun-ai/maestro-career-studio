@@ -27,12 +27,11 @@ The user's Maestro CS profile is the source of truth; distrust values an applica
 - Declines are posting-scoped and permanent (no company cooldown): a
   "job was declined" 409 on propose is a skip, and a dead posting found at
   fill time is `record_triage([id], "decline", reason="position closed")`.
-  Health-gate 409 on session create → `report_failure` → `needs_human`;
-  never waive gates autonomously.
-- Auto lane: `score_ats(job_id)`; tailor/create the application, then propose with `application_id` and `plan={"summary": "..."}`. Or propose first, tailor, then `propose_application` again with `application_id` to late-link — open-proposal retry is idempotent (same ID), not 409.
-- Ambiguous lane: propose unlinked, then call idempotent `request_decision`. If resume finds `pending_review` with no application and below-threshold/undecided fit, call `request_decision` before preparation.
-- On `needs_decision`, ask again when no durable `fit.chosen_base` exists; when the job already has a draft on another base, the question names it ("the job's draft is on A; choosing B replaces it"). Once chosen, tailor with that base (a job has one application; tailoring with another base resume replaces its draft, version history keeps the old one) and retry `record_decision` with `fit` and optional `application_id`; retries never duplicate. Late-link via `propose_application(..., application_id=...)` also works when the open proposal is still unlinked.
-- If `application_id` is omitted, `record_decision` links the job's application on the chosen base when there is one, else the job's one application, and sets `fit.chosen_base` to that application's resume. It returns 409 only when the job has no application; then resume safe application preparation, never invent a link.
+- Apply works on a job that is already tailored, by a Tailor run or in a chat with Maestro's tailor tool set. Never tailor here. A job is ready when its proposal links an application. When the proposal has no `application_id` but `get_job(job_id)` shows the job's latest `application` with a `customized_json`, link it with `propose_application(job_id, application_id=...)`: an open proposal returns the same ID, not 409.
+- Not tailored yet: leave the job for tailoring and say why. An `accepted` job keeps its status, so the next Tailor run finds it in the same queue; list it in the run's digest as waiting for tailoring. For a job the user is driving live, tell them it needs tailoring first.
+- Undecided base: if resume finds `pending_review` with no application and a below-threshold or undecided fit, its question was never asked; call idempotent `request_decision` before preparation.
+- On `needs_decision`, ask which base when no durable `fit.chosen_base` exists; when the job already has a tailored draft, the question names its base ("the job's draft is on A; choosing B means tailoring again"). When the job's draft is on the chosen base, `record_decision` with `fit` links it and returns the job to `pending_review`; retries never duplicate. Any other choice needs tailoring with that base first: record the answer with `request_decision(proposal_id, reason=...)` (the job stays in `needs_decision`) and leave it for tailoring.
+- If `application_id` is omitted, `record_decision` links the job's application on the chosen base when there is one, else the job's one application, and sets `fit.chosen_base` to that application's resume. It returns 409 only when the job has no application: the job is not tailored yet, so never invent a link.
 - Never duplicate a proposal, application, tailoring run, or current PDF. Relinking an already-linked proposal to a different application is refused (409).
 - `pending_review`: run the recovery check above, then prepare without prompting. `needs_human`: only `resume_proposal(proposal_id)` may return it to `pending_review`.
 - `submission_uncertain` is terminal and never accepted by `resume_proposal`. `submitted`/`rejected`/`expired` are also terminal.
@@ -40,11 +39,10 @@ The user's Maestro CS profile is the source of truth; distrust values an applica
 
 ## Prepare
 
-1. Ask about base only if none clears thresholds. Tailor/render only when the linked application or PDF is absent or stale; never recreate, overwrite, or upload a base resume.
-   Before any tailor, check `get_job(job_id)`: when the job's latest `application` already has a `customized_json` on another base than the one you would tailor with, that draft is the user's (a job has one application, and tailoring replaces it). Never overwrite it; leave the job for the user, by the proposal's status: from `accepted` or `approved`, `report_failure(proposal_id, reason=...)` (to `needs_human`); from `pending_review`, `request_decision`. The exceptions: a draft on the `fit.chosen_base` the user chose in `needs_decision` is the base to tailor with; and a tailor with that chosen base, after the question named the draft it replaces, is the user's own decision, not an overwrite.
+1. Confirm the job is tailored (Proposal state above). Send the tailored resume as it is: never tailor, recreate or overwrite an application, and never upload a base resume. `prepare_application_pdf_upload` renders the PDF when it has none yet.
 2. Fill ordinary pages without prompting. Ask only for missing/ambiguous facts, below-threshold base, login, email verification/account-access challenge, CAPTCHA, human-only or policy-blocked controls, or unrecoverable controls.
 3. Diff every filled field against canonical profile; fix mismatches.
-4. `edit_application` / `edit_base_resume`: `index` is 0-based into the full JSON array including `enabled: false` (PDF omits those). Check response `applied[].name` before assuming the right entry was touched.
+4. `edit_application`: `index` is 0-based into the full JSON array including `enabled: false` (PDF omits those). Check response `applied[].name` before assuming the right entry was touched.
 
 ## Tailored PDF
 

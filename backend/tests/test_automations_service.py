@@ -230,35 +230,31 @@ def test_apply_execution_technique_names_the_base_country_in_the_question():
     assert _BASE_COUNTRY_LINE in (skills / "agent-apply-execution" / "SKILL.md").read_text()
 
 
-def test_apply_execution_never_tailors_over_a_draft_on_another_base():
-    """A job has one application: tailoring with another base replaces its draft, so the apply technique
-    checks first, as tailor-run's step 3 does, and leaves that job for the user."""
+def test_apply_never_tailors_and_leaves_an_untailored_job_for_tailoring():
+    """The apply set has no tailoring tools (mcp_server/profiles.APPLY_TOOLS): apply works a job a Tailor run or
+    a tailor chat already tailored. An untailored accepted job keeps its status, because the Tailor run reads the
+    same accepted queue; report_failure would move it to needs_human, out of that queue."""
     skills = Path(__file__).resolve().parent.parent / "app" / "automations" / "skills"
     text = " ".join((skills / "agent-apply-execution" / "SKILL.md").read_text().split())
-    assert "Before any tailor, check `get_job(job_id)`" in text
-    assert "`customized_json` on another base" in text and "leave the job for the user" in text
-    # By status: needs_decision is reachable only from pending_review (services/proposals.ALLOWED); a batch run
-    # holds accepted proposals, where only needs_human (report_failure) is.
+    assert "Never tailor here." in text
+    assert "An `accepted` job keeps its status, so the next Tailor run finds it in the same queue" in text
+    assert 'list_proposals(status="accepted")' in (skills / "tailor-run" / "SKILL.md").read_text()
+    for card in ("apply-session", "apply-auto"):
+        assert "never tailor it here" in " ".join((skills / card / "SKILL.md").read_text().split()), card
+    # needs_decision has no needs_human edge (services/proposals.ALLOWED), and record_decision links only a
+    # tailored draft: another base waits in needs_decision with the answer as its reason.
     from app.services.proposals import ALLOWED
 
-    assert "needs_decision" in ALLOWED["pending_review"]
-    assert "needs_decision" not in ALLOWED["accepted"] and "needs_decision" not in ALLOWED["approved"]
-    assert {"needs_human"} <= ALLOWED["accepted"] & ALLOWED["approved"] & ALLOWED["pending_review"]
-    check = text[text.index("Before any tailor") :]
-    check = check[: check.index("2. Fill ordinary pages")]
-    assert "from `accepted` or `approved`, `report_failure(proposal_id, reason=...)`" in check
-    assert "from `pending_review`, `request_decision`" in check
-    assert "`fit.chosen_base` the user chose in `needs_decision`" in check
-    # The one case line 34 allows: after the needs_decision question named the draft, a tailor with the chosen
-    # base is the user's decision, so the pre-check cannot send the agent back to the user in a loop.
-    assert "after the question named the draft it replaces, is the user's own decision, not an overwrite" in check
-    assert "the question names it" in text
+    assert "needs_human" not in ALLOWED["needs_decision"]
+    assert "record the answer with `request_decision(proposal_id, reason=...)` (the job stays in `needs_decision`)" in text
+    assert "the question names its base" in text
     playbook = " ".join(
         (Path(__file__).resolve().parents[2] / "docs" / "playbooks" / "agent-apply.md").read_text().split()
     )
-    assert "from `pending_review` call `request_decision`, from `accepted` or `approved` call `report_failure(" in playbook
+    assert "Apply works on a job that is already tailored and never tailors" in playbook
+    assert "A job not tailored yet stays `accepted` for the next Tailor run" in playbook
     assert "`request_decision` is refused (409) from `accepted`" in playbook
-    assert "the question names it" in playbook and "is the user's own decision, not an overwrite" in playbook
+    assert "the question names its base" in playbook
 
 
 def _card_text(name, **meta):
@@ -386,3 +382,22 @@ def test_catalog_models_are_frozen():
     with pytest.raises(ValidationError):
         card.prompt = "changed"
 
+
+
+def test_every_tool_a_playbook_names_is_in_its_tool_set():
+    """A card copied into an agent connected to its set must never send it after a tool that
+    set lacks. Scans the card body with its included technique files."""
+    import re
+
+    from mcp_server.profiles import PROFILE_ALLOWLISTS
+    from mcp_server.server import list_registered_tool_names
+
+    tools = set(list_registered_tool_names("full"))
+    for full_automation in (False, True):
+        for card in automations.catalog(full_automation=full_automation).cards:
+            allow = PROFILE_ALLOWLISTS[card.toolset]
+            # A "Never call x" sentence forbids a tool, which matters on full; it sends no one to it.
+            body = re.sub(r"Never call[^.]*\.", "", " ".join(card.body.split()))
+            named = set(re.findall(r"[a-z_]+", body)) & tools
+            missing = named - set(allow) if allow is not None else set()
+            assert not missing, (card.id, card.toolset, sorted(missing))

@@ -117,27 +117,27 @@ declines are posting-scoped and permanent; there is no company cooldown.)
    `store_extracted_jd(..., source="agent")` so provenance is clean).
 2. **Fit:** run `score_ats(job_id)` to score all active bases.
    - When the top base beats the runner-up by at least `auto_pick_margin` and
-     scores at least `auto_pick_floor`, auto-pick it. Tailor the selected base
-     and create the application first. Then call `propose_application` with
-     `job_id`, `fit`, `application_id`, `plan={"summary": "<summary>"}`, and
-     optional `referral_id`. `fit` records `chosen_base`, all `scores`, and
-     `decided_by: "auto"`. Alternate safe order: propose unlinked first, tailor,
-     then call `propose_application` again with `application_id` — the second
-     call returns the same proposal and late-links (idempotent).
+     scores at least `auto_pick_floor`, auto-pick it: call `propose_application`
+     with `job_id`, `fit`, `plan={"summary": "<summary>"}`, and optional
+     `referral_id`. `fit` records `chosen_base`, all `scores`, and
+     `decided_by: "auto"`. Tailoring is its own step (a Tailor run, or a chat
+     with Maestro's tailor tool set): it calls `propose_application` again with
+     `application_id`, which returns the same proposal and late-links
+     (idempotent).
    - Otherwise, call `propose_application(job_id, fit, referral_id?)` without
      an `application_id`, then call
-     `request_decision(proposal_id, reason)`. This new MCP operation, delivered
-     by this implementation, is idempotent and transitions the unlinked
-     proposal to `needs_decision`. After the user chooses a base, tailor with
-     it: a job has one application, so tailoring reuses it (another base
-     replaces its draft) and a retry does not duplicate either artifact.
-     Then call `record_decision(proposal_id, fit, application_id?)`, or retry
-     `propose_application` with `application_id` to late-link while still in
-     an open status. `record_decision` may omit `application_id`; the backend
-     then links the job's application on `fit.chosen_base` when there is one,
-     else the job's one application, and sets `fit.chosen_base` to the linked
-     application's resume. It returns 409 only when the job has no application;
-     return to safe tailoring and retry rather than inventing a link.
+     `request_decision(proposal_id, reason)`. This MCP operation is idempotent
+     and transitions the unlinked proposal to `needs_decision`. When the user
+     chooses the base the job's tailored draft is already on, call
+     `record_decision(proposal_id, fit, application_id?)`. Any other choice
+     needs tailoring with that base first: record the answer with
+     `request_decision(proposal_id, reason=...)`, leave the job for tailoring,
+     and call `record_decision` once it is tailored. `record_decision` may omit
+     `application_id`; the backend then links the job's application on
+     `fit.chosen_base` when there is one, else the job's one application, and
+     sets `fit.chosen_base` to the linked application's resume. It returns 409
+     only when the job has no application: the job is not tailored yet, so
+     never invent a link.
 3. **Count and respect refusals:** increment the run counter only when
    `propose_application` creates a new proposal (HTTP 201). An existing open
    proposal returns 200 with the same ID — resume it, do not count again.
@@ -147,17 +147,12 @@ declines are posting-scoped and permanent; there is no company cooldown.)
    reported reason**, never a blind retry — declines are posting-scoped, so
    the same company's other roles remain proposable.
 4. **Prepare:** `pending_review` means preparation may proceed; it is not an
-   instruction to prompt the user immediately. Confirm the linked application
-   and tailored PDF are current, then stage and navigate the ordinary ATS
-   wizard before the single final review. Before any tailor, check
-   `get_job(job_id)`: a `customized_json` on another base than the one you
-   would tailor with is the user's draft (a job has one application, and
-   tailoring replaces it). Never overwrite it; from `pending_review` call
-   `request_decision`, from `accepted` or `approved` call
-   `report_failure(proposal_id, reason=...)` (to `needs_human`). A draft on the
-   `fit.chosen_base` the user chose in `needs_decision` is the base to tailor with,
-   and a tailor with that chosen base, after the question named the draft it
-   replaces, is the user's own decision, not an overwrite.
+   instruction to prompt the user immediately. Apply works on a job that is
+   already tailored and never tailors: confirm the linked application, then
+   stage and navigate the ordinary ATS wizard before the single final review.
+   A job not tailored yet is left for tailoring with the reason given: an
+   `accepted` job keeps its status, so the next Tailor run finds it in the
+   same queue, and the run's digest lists it as waiting for tailoring.
 
 ## Triage and the accepted queue (2026-08-01)
 
@@ -178,9 +173,9 @@ actually stated the decision or criteria. Rules:
 - **Dead posting discovered at fill time** (requisition closed, 404): decline
   it — `record_triage([id], "decline", reason="position closed")` — and move
   on. Posting-scoped; no company effect.
-- **Health-gate 409 on tailoring-session creation**: route the proposal to
-  `needs_human` via `report_failure` with the gate reason. Never waive a
-  health gate autonomously.
+- **Health-gate 409 when tailoring** (a Tailor run or the tailor tool set):
+  list the job and the gate reason for the user. Never waive a health gate
+  autonomously.
 - **Batch cadence:** when several accepted proposals reach the submit boundary
   in one session, present their final reviews together ("3 ready — approving
   each"), but consent stays per-proposal, same-turn, single-use.
@@ -197,16 +192,15 @@ identity.
 - `accepted`: the user queued it — prepare, stage, and take it to the final
   review without further triage prompting. Decline (with reason) if the
   posting is dead or the linked application turns out to be already applied.
-  If the job's draft is on another base than the one you would tailor with
-  (and not the user's `fit.chosen_base`), `report_failure(proposal_id,
-  reason=...)` and leave it for the user: `request_decision` is refused (409)
-  from `accepted`.
+  A job not tailored yet stays `accepted` for the next Tailor run; list it as
+  waiting for tailoring. `request_decision` is refused (409) from `accepted`.
 - `needs_decision`: if no durable `fit.chosen_base` exists, ask the user again;
-  when the job already has a draft on another base, the question names it
-  ("the job's draft is on A; choosing B replaces it"). Once the choice is durable, tailor with that base (a job has one application;
-  tailoring with another base resume replaces its draft, version history keeps
-  the old one), then retry `record_decision` with the updated `fit` and optional
-  `application_id`; resume from `pending_review`.
+  when the job already has a tailored draft, the question names its base
+  ("the job's draft is on A; choosing B means tailoring again"). When the
+  draft is on the chosen base, call `record_decision` with the updated `fit`
+  and optional `application_id`; resume from `pending_review`. Any other choice
+  needs tailoring with that base first: record the answer with
+  `request_decision(proposal_id, reason=...)` and leave the job for tailoring.
 - `needs_human`: call the target MCP operation
   `resume_proposal(proposal_id)` to return it to `pending_review`, then resume
   preparation. This is the only state accepted by `resume_proposal`. The
@@ -224,10 +218,13 @@ identity.
 
 ## Prepare (uninterrupted ordinary flow)
 
-1. Verify the proposal has its linked application and a current tailored PDF.
-   Tailor/render only when the linked application or PDF is absent or stale.
-   Never tailor twice, recreate the application, overwrite a current artifact,
-   or upload a base resume.
+1. Verify the proposal has its linked application. When it has none but
+   `get_job(job_id)` shows the job's tailored application (a
+   `customized_json`), link it with `propose_application(job_id,
+   application_id=...)`; otherwise the job is not tailored yet and is left for
+   tailoring. Never tailor here, recreate the application, overwrite a current
+   artifact, or upload a base resume. `prepare_application_pdf_upload` renders
+   the PDF when it has none yet.
 2. **Target PDF interface:** use the slim `get_rendered_pdf` response for
    metadata and page-image paths, with the returned stable `artifact_dir` as
    the canonical server artifact location (inspection only). Then call

@@ -22,7 +22,8 @@ Only work jobs whose `ownership.owned_here` is true.
    Work the queue the way the user has asked you to.
    Jobs in Needs you go back through the user's queue before a later automatic run.
    Stop when the daily cap in the brief is used up.
-2. **Prepare.** Tailor or render only when the linked application or its PDF is missing.
+2. **Prepare.** Work only jobs that are already tailored.
+   A job not tailored yet keeps its place in the queue for the next Tailor run: never tailor it here, and list it in the digest as waiting for tailoring.
 3. **Accounts.** When a site needs an account or sign-in, call `get_job_site_login(proposal_id)`.
 4. **Fill.** Answer from the user's profile, career history and saved answers.
    Record every completed page with `record_filled_answers`.
@@ -57,5 +58,5 @@ Only work jobs whose `ownership.owned_here` is true.
    Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.
 8. **Record the run.** Call `record_run` with automation `apply-session`.
    Report outcome `ok`, `partial` if a job failed, or `failed` if no job could be worked.
-   Include `counts` (`updated`: submitted; `needs_you`: parked for the user; `skipped`: declined), `digest`, and `job_ids` for the jobs worked.
+   Include `counts` (`updated`: submitted; `needs_you`: parked for the user; `skipped`: declined or left for tailoring), `digest`, and `job_ids` for the jobs worked.
    Count each job once, by where it ended.

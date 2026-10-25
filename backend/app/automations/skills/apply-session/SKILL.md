@@ -1,6 +1,6 @@
 ---
 name: apply-session
-description: Use to work through the user's accepted Maestro CS application queue with a browser — tailor where needed, fill each application, and submit once the user says yes. Autonomous apart from that yes.
+description: Use to work through the user's accepted Maestro CS application queue with a browser — fill each already-tailored application, and submit once the user says yes. Autonomous apart from that yes.
 metadata:
   title: Apply session
   summary: Works your queued jobs in a browser and fills each application.
@@ -27,9 +27,10 @@ Only work jobs whose `ownership.owned_here` is true.
 1. **Queue.** `list_proposals(status="accepted")` and work it in order, one
    application at a time, in this session. Results are paged: compare `items`
    to `total` and page with `offset`. Say which one you are starting.
-2. **Prepare.** Tailor or render only when the linked application or its PDF is
-   missing or stale — a current draft, including one the user tailored, stays
-   as is. Stage the PDF with `prepare_application_pdf_upload` and upload the
+2. **Prepare.** Work only jobs that are already tailored, and send the tailored
+   resume as it is. A job not tailored yet stays in the queue for a Tailor run or
+   a tailor chat: never tailor it here, and tell the user which jobs wait for
+   tailoring. Stage the PDF with `prepare_application_pdf_upload` and upload the
    path it returns.
 3. **Fill.** Answer from the user's profile, Career KB and saved Q&A
    (`get_autofill_profile`, `list_qa_entries`). Read back what each field saved.
@@ -62,11 +63,12 @@ Only work jobs whose `ownership.owned_here` is true.
    submit once, attach the confirmation as `submission_receipt`, and
    `mark_submitted`. If you can't tell whether it went through, say so and never
    click again.
-6. **Digest.** End with submitted / needs the user / declined / still queued.
+6. **Digest.** End with submitted / needs the user / declined / waiting for tailoring / still queued.
 7. **Record the run.** Call `record_run` with automation `apply-session`, the outcome
     (`ok`; `partial` if some work failed; `failed` if none could be done), and
     `report` with `counts` (`updated`: applications submitted; `needs_you`: jobs stopped
-    for the user via `report_failure` or left `needs_human`; `skipped`: declined),
+    for the user via `report_failure` or left `needs_human`; `skipped`: declined or
+    left for tailoring),
     `digest`, and `job_ids` for the jobs worked. Count each job once, by where it
     ended.
 
