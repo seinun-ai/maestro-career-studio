@@ -138,7 +138,7 @@ Each scoped URL lists exactly its allowlist and refuses tools outside it.
 | `profile` | "Set me up", "import my resume", "add a project": career history, base resumes, health check, form answers, preferences | 39 |
 | `hunt` | "Find me jobs": capture, score and propose | 22 |
 | `tailor` | "Tailor my resume for this job": gaps, tailored resume, PDF, health check, undo | 32 |
-| `apply` | "Apply to this job": cover letter and answers, form answers, consent, submit | 34 |
+| `apply` | "Apply to this job": cover letter and answers, form answers, consent, submit | 35 |
 | `track` | "Update my statuses", "how's my search going": statuses, referrals, charts | 18 |
 | `templates` | "Make a resume design" | 13 |
 

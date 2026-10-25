@@ -23,7 +23,7 @@ from mcp_server.profiles import allowed_tools, apply_profile_filter
 
 logger = logging.getLogger(__name__)
 
-# The stdio server is the full set; each HTTP set gets its own text (mcp_server.http).
+# The full set's text; a stdio set gets its own from apply_profile_filter, an HTTP set from mcp_server.http.
 mcp = FastMCP("maestro-career-studio", instructions=orientation.instructions_for("full"))
 _client = BackendClient()
 
@@ -645,10 +645,11 @@ def store_extracted_jd(
 @_guard
 def get_setup_status() -> Any:
     """Where this user's Maestro setup stands, for an agent starting fresh. Returns
-    ai_key (whether Maestro has its own AI key: with none, the generate_* tools and
-    kb_capture fail and their store_*/kb_add_points twins write the agent's own text),
-    demo_bases (slugs of the shipped demo resume, never the user's own), next_step (the
-    first setup step not done, {step, tool_set, says}; null when every step is done),
+    ai_key (whether Maestro has its own AI key: with none, the tools where Maestro writes
+    the text fail, and the agent writes it and saves it with the matching store or add
+    tool), demo_bases (slugs of the shipped demo resume, never the user's own), next_step
+    (the first setup step an agent can do that is not done, {step, tool_set, says}; null
+    when none is left),
     tool_sets (each set's name, use_when and holds, in journey order) and steps (the full
     setup status: each step's done and detail, form-answer readiness, suggested bases,
     PDF engines). The AI key and the default resume design are set by the user in the

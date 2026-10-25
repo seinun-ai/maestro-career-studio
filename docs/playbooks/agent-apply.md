@@ -194,13 +194,17 @@ identity.
   posting is dead or the linked application turns out to be already applied.
   A job not tailored yet stays `accepted` for the next Tailor run; list it as
   waiting for tailoring. `request_decision` is refused (409) from `accepted`.
-- `needs_decision`: if no durable `fit.chosen_base` exists, ask the user again;
-  when the job already has a tailored draft, the question names its base
-  ("the job's draft is on A; choosing B means tailoring again"). When the
-  draft is on the chosen base, call `record_decision` with the updated `fit`
-  and optional `application_id`; resume from `pending_review`. Any other choice
-  needs tailoring with that base first: record the answer with
-  `request_decision(proposal_id, reason=...)` and leave the job for tailoring.
+- `needs_decision`: read the proposal's `reason` first, where an earlier answer
+  may be recorded. Ask the user only when neither `fit.chosen_base` nor
+  `reason` holds their choice; when the job already has a tailored draft, the
+  question names its base ("the job's draft is on A; choosing B means
+  tailoring again"). When the draft is on the chosen base, call
+  `record_decision` with the updated `fit` and optional `application_id`;
+  resume from `pending_review`. Any other choice needs tailoring with that base
+  first, and a Tailor run never picks a job up from `needs_decision`: record
+  the answer, naming the base, with `request_decision(proposal_id, reason=...)`
+  and tell the user to tailor it with that base in the app or a chat with
+  Maestro's tailor tool set.
 - `needs_human`: call the target MCP operation
   `resume_proposal(proposal_id)` to return it to `pending_review`, then resume
   preparation. This is the only state accepted by `resume_proposal`. The

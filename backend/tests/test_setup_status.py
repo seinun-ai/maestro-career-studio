@@ -451,6 +451,14 @@ def test_the_shipped_demo_base_is_named_so_it_is_never_taken_for_the_users(clien
     db_session.commit()
     assert _status(client)["demo_bases"] == ["example"]
 
-    db_session.get(BaseResume, "example").archived_at = datetime.now(UTC)  # hidden: not offered
+    # Archived, it still counts in import_resumes' base_resumes (active_filter), so it stays named: an
+    # agent subtracts demo_bases from that count, and dropping it would read the demo as the user's.
+    db_session.get(BaseResume, "example").archived_at = datetime.now(UTC)
+    db_session.commit()
+    status = _status(client)
+    assert status["demo_bases"] == ["example"]
+    assert status["import_resumes"]["detail"]["base_resumes"] == 2
+
+    db_session.get(BaseResume, "example").deleted_at = datetime.now(UTC)
     db_session.commit()
     assert _status(client)["demo_bases"] == []

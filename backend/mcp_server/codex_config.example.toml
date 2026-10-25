@@ -28,7 +28,7 @@ enabled = false
 url = "http://localhost:8001/mcp/tailor"
 enabled = false
 
-# From the PDF to a submitted application: apply package, form answers, consent, submit (34 tools).
+# From the PDF to a submitted application: apply package, form answers, consent, submit (35 tools).
 [mcp_servers.maestro-career-studio-apply]
 url = "http://localhost:8001/mcp/apply"
 enabled = false

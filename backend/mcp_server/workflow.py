@@ -699,7 +699,8 @@ _SETUP_STEPS: tuple[tuple[str, str], ...] = (
     ("career_history", "Import the user's resume and any project write-ups into their career "
                        "history, and have the user approve the bullets."),
     ("base_resume", "Build a base resume from the approved career history for each role the "
-                    "user targets; the shipped demo resume does not count."),
+                    "user targets; the shipped demo resume does not count. Imported bullets start "
+                    "as drafts, and a base resume takes only the ones the user approved."),
     ("form_answers", "Save the answers application forms ask for: contact, address, and work "
                      "permits for each country the user applies in. The diversity answers are the "
                      "user's, in the app."),

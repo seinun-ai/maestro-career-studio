@@ -303,6 +303,9 @@ class Connector:
         if client is None:
             return self.list_clients()
         info = self._info(profile)
+        from mcp_server.profiles import PROFILE_ALIASES  # noqa: PLC0415
+
+        profile = PROFILE_ALIASES.get(profile, profile)  # a saved config outlives the old name
         if client == "claude-desktop":
             return self._claude_desktop(profile, print_only, now)
         if client in ("claude-code", "codex"):

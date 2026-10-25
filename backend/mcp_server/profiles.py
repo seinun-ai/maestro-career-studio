@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 
+from mcp_server import orientation
+
 # You, set up and kept current: career history (the only KB writes), base resumes with
 # their anchors, edits and undo, the health check, rendering, and every fact Setup asks
 # for. Onboarding finishes here without tailoring or job tools.
@@ -121,6 +123,7 @@ TAILOR_TOOLS = frozenset({
 APPLY_TOOLS = frozenset({
     "get_setup_status",
     "get_career_context",
+    "get_job_search_brief",  # the apply playbooks read full automation, the cap and sync from it
     "list_proposals",
     "get_proposal",
     "get_final_review",
@@ -233,8 +236,10 @@ def allowed_tools(profile: str | None = None) -> frozenset[str] | None:
 
 
 def apply_profile_filter(mcp, profile: str | None = None) -> str:
-    """Remove registered tools that are outside the active profile. Returns profile name."""
+    """Remove registered tools that are outside the active profile, and give the server that
+    set's instructions (stdio serves one set). Returns profile name."""
     active = get_profile(profile)
+    mcp._mcp_server.instructions = orientation.instructions_for(active)
     allow = PROFILE_ALLOWLISTS[active]
     if allow is None:
         return active

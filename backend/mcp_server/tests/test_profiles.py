@@ -61,6 +61,16 @@ def test_full_profile_filter_is_noop():
     assert {t.name for t in m._tool_manager.list_tools()} == {"explore_top_skills"}
 
 
+def test_a_stdio_set_says_what_it_holds_not_what_full_holds():
+    """A stdio process serves one set: its instructions must name no tool that set lacks
+    (templates has no get_setup_status), as each HTTP set's do."""
+    for name, active in (("templates", "templates"), ("career", "profile")):
+        m = FastMCP("profile-instructions", instructions=orientation.instructions_for("full"))
+        assert apply_profile_filter(m, name) == active
+        assert m.instructions == orientation.instructions_for(active)
+        assert ("get_setup_status" in m.instructions) == (active != "templates")
+
+
 def test_profile_allowlists_are_disjoint_from_unused_domains():
     assert {
         "explore_top_skills",
@@ -197,7 +207,7 @@ def test_tailor_application_lives_only_in_full():
 
 def test_set_sizes_stay_near_the_line():
     sizes = {n: len(a) for n, a in PROFILE_ALLOWLISTS.items() if a is not None}
-    assert sizes == {"profile": 39, "hunt": 22, "tailor": 32, "apply": 34, "track": 18, "templates": 13}
+    assert sizes == {"profile": 39, "hunt": 22, "tailor": 32, "apply": 35, "track": 18, "templates": 13}
 
 
 def test_every_allowlisted_tool_is_registered():

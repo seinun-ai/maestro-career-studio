@@ -123,7 +123,7 @@ and analytics across your saved jobs.
 ## Tool profiles
 
 The plugin loads the `full` set (all 101 tools). Smaller sets keep a chat focused,
-one job each: `profile` (39 tools), `hunt` (22), `tailor` (32), `apply` (34),
+one job each: `profile` (39 tools), `hunt` (22), `tailor` (32), `apply` (35),
 `track` (18), `templates` (13). Choose a tool set in **Connect an agent app**,
 or change the URL in your client's declaration to `/mcp/profile`, `/mcp/hunt`, `/mcp/tailor`, `/mcp/apply`,
 `/mcp/explore`, `/mcp/templates`, or `/mcp/career`. Enable one profile at a time.

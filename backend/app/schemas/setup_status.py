@@ -58,7 +58,8 @@ class SetupStatus(BaseModel):
     # `complete` (Typst is always shipped, so a PDF is always possible).
     engines: EnginesProbe
     suggested_bases: list[SuggestedBase]
-    # The shipped demo resume's slug while it is still offered: a starting point, never the
-    # user's own resume, so no agent or screen recommends tailoring it.
+    # The shipped demo resume's slug while import_resumes' base_resumes counts it (archived too,
+    # not deleted): a starting point, never the user's own resume, so no agent or screen
+    # recommends tailoring it, and count minus demo_bases is the user's own bases.
     demo_bases: list[str] = []
     complete: bool

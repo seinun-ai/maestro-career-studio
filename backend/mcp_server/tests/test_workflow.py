@@ -731,7 +731,7 @@ _ALL_TOOL_NAMES = frozenset().union(
     *(a for a in profiles.PROFILE_ALLOWLISTS.values() if a is not None)
 )
 
-_PROFILES = ["hunt", "apply", "explore", "templates", "career", "full"]
+_PROFILES = sorted(profiles.PROFILE_ALLOWLISTS)  # every set, so a new one is covered by default
 
 
 def _every_hint(allow):
@@ -904,6 +904,9 @@ def test_setup_next_step_starts_with_career_history():
 def test_setup_next_step_asks_for_a_base_before_form_answers_and_ignores_the_demo():
     step = workflow.setup_next_step(_setup(import_resumes=True, bases=1, demo_bases=["example"]))
     assert step["step"] == "base_resume"
+    # Setup counts career history done once it has an item, but an import's bullets are drafts and a
+    # base resume takes approved ones only, so this step names the approval.
+    assert "start as drafts" in step["says"]
     step = workflow.setup_next_step(_setup(import_resumes=True, bases=2, demo_bases=["example"]))
     assert step["step"] == "form_answers"
 

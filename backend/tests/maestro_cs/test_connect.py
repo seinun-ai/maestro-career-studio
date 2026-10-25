@@ -158,6 +158,14 @@ def test_a_profile_adds_the_profile_argument(tmp_path):
     assert entry["args"] == ["mcp", "--profile", "hunt"]
 
 
+def test_an_old_set_name_is_saved_as_its_new_name(tmp_path):
+    """`career` and `explore` work for one release; a saved config must outlive the alias."""
+    conn, _ = make_connector(tmp_path)
+    conn.connect("claude-desktop", profile="career")
+    entry = json.loads(desktop_config(conn).read_text())["mcpServers"]["maestro-career-studio"]
+    assert entry["args"] == ["mcp", "--profile", "profile"]
+
+
 def test_a_custom_maestro_home_is_pinned_in_the_desktop_entry(tmp_path):
     custom = tmp_path / "my maestro"
     conn, _ = make_connector(tmp_path, environ={"MAESTRO_HOME": str(custom)})

@@ -116,15 +116,11 @@ def _autofill_step(db: Session) -> AutofillStep:
     )
 
 
-def _demo_bases(db: Session) -> list[str]:
-    """The shipped demo base while it is still offered (not deleted, not archived)."""
+def _demo_bases(bases: list[BaseResume]) -> list[str]:
+    """The shipped demo among the bases base_resumes counts, so the count minus these is the user's."""
     from app.services.seeding import DEMO_SLUG  # noqa: PLC0415 (seeding imports the world)
 
-    return list(db.scalars(
-        select(BaseResume.slug).where(
-            base_resume_data.selectable_filter(), BaseResume.slug == DEMO_SLUG
-        )
-    ))
+    return [b.slug for b in bases if b.slug == DEMO_SLUG]
 
 
 def build_status(db: Session) -> SetupStatus:
@@ -233,7 +229,7 @@ def build_status(db: Session) -> SetupStatus:
         ),
         engines=EnginesProbe.model_validate(probed),
         suggested_bases=suggested,
-        demo_bases=_demo_bases(db),
+        demo_bases=_demo_bases(active_bases),
         complete=False,
     )
     steps.complete = all(

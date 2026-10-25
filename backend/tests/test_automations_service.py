@@ -248,6 +248,9 @@ def test_apply_never_tailors_and_leaves_an_untailored_job_for_tailoring():
     assert "needs_human" not in ALLOWED["needs_decision"]
     assert "record the answer with `request_decision(proposal_id, reason=...)` (the job stays in `needs_decision`)" in text
     assert "the question names its base" in text
+    # request_decision keeps only `reason` (services/proposals.request_decision), so that is where the answer
+    # lives, and a Tailor run reads the accepted queue only: the user tailors this one.
+    assert "read the proposal's `reason` first" in text and "tell the user to tailor it with that base" in text
     playbook = " ".join(
         (Path(__file__).resolve().parents[2] / "docs" / "playbooks" / "agent-apply.md").read_text().split()
     )
@@ -255,6 +258,7 @@ def test_apply_never_tailors_and_leaves_an_untailored_job_for_tailoring():
     assert "A job not tailored yet stays `accepted` for the next Tailor run" in playbook
     assert "`request_decision` is refused (409) from `accepted`" in playbook
     assert "the question names its base" in playbook
+    assert "read the proposal's `reason` first" in playbook and "tell the user to tailor it with that base" in playbook
 
 
 def _card_text(name, **meta):
@@ -399,5 +403,7 @@ def test_every_tool_a_playbook_names_is_in_its_tool_set():
             # A "Never call x" sentence forbids a tool, which matters on full; it sends no one to it.
             body = re.sub(r"Never call[^.]*\.", "", " ".join(card.body.split()))
             named = set(re.findall(r"[a-z_]+", body)) & tools
+            if re.search(r"\bthe brief\b", body):  # "on in the brief", "the brief's sync.enabled"
+                named.add("get_job_search_brief")
             missing = named - set(allow) if allow is not None else set()
             assert not missing, (card.id, card.toolset, sorted(missing))
