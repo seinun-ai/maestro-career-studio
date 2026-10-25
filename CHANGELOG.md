@@ -299,6 +299,15 @@ work-permit answers for each country you apply in.
 
 ### Fixed
 
+- **Your form answers can be finished without a LinkedIn, GitHub or website link.** Contact counted all
+  three links as required, so anyone without them, which is most people outside tech, never saw the form
+  answers as done, and an agent's setup next step stayed on them. The three links are now optional, like
+  Address line 2: Contact counts nine answers, and the Companion still fills any link you give.
+- **Your form answers can be finished without a state where addresses have none.** Contact asked everyone
+  for a State, so someone living in the UK, Ireland, Germany or the Netherlands had to type one before the
+  form answers read as done. The state now counts only where you live needs one in an address (the US,
+  Canada, Australia and India), it is called by that country's word (Province in Canada), and elsewhere it
+  is optional. With no country set, it counts as before.
 - **A connected agent can no longer reach routes its tools do not offer.** The MCP server put tool ids
   into web addresses unchecked, so a crafted id could read your saved form answers, diversity answers
   included, or send a delete to another route. Every id is now checked to be a plain id before any

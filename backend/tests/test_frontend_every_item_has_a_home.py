@@ -77,7 +77,7 @@ _PROFILE_FILES: dict[str, tuple[str, ...]] = {
 }
 _FIELD_TABLE = "lib/autofill-options.ts"
 
-_PERSONAL = 'fields={groupFields("personal")}'
+_PERSONAL = 'fields={groupFields("personal", home)}'
 _PREFERENCES = 'fields={groupFields("preferences")}'
 _EEO = 'fields={groupFields("eeo")}'
 _ELIGIBILITY = 'const fields = groupFields("eligibility");'
@@ -94,12 +94,12 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Contact", "Street address", ('{ key: "address", label: "Street address" }', _PERSONAL)),
     ("Contact", "Address line 2", ('{ key: "address_2", label: "Address line 2", optional: true }', _PERSONAL)),
     ("Contact", "City", ('{ key: "city", label: "City" }', _PERSONAL)),
-    ("Contact", "State", ('{ key: "state", label: "State" }', _PERSONAL)),
+    ("Contact", "State", ('{ key: "state", label: "State", byHome: true }', _PERSONAL)),
     ("Contact", "Postal code", ('{ key: "postal_code", label: "Postal code" }', _PERSONAL)),
     ("Contact", "Country", ('{ key: "country", label: "Country" }', _PERSONAL)),
-    ("Contact", "LinkedIn profile link", ('{ key: "linkedin", label: "LinkedIn profile link" }', _PERSONAL)),
-    ("Contact", "GitHub link", ('{ key: "github", label: "GitHub link" }', _PERSONAL)),
-    ("Contact", "Website", ('{ key: "website", label: "Website" }', _PERSONAL)),
+    ("Contact", "LinkedIn profile link", ('{ key: "linkedin", label: "LinkedIn profile link", optional: true }', _PERSONAL)),
+    ("Contact", "GitHub link", ('{ key: "github", label: "GitHub link", optional: true }', _PERSONAL)),
+    ("Contact", "Website", ('{ key: "website", label: "Website", optional: true }', _PERSONAL)),
     ("Contact", "Fill from career history", ('"Fill from career history"', "onClick={fillFromResume}")),
     ("Where you apply", "You live in", ("<Label htmlFor={homeId}>You live in</Label>",)),
     ("Where you apply", "You apply in", ("You apply in </span>", "onClick={() => toggleCountry(m.key)}")),

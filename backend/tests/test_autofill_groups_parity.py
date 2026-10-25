@@ -13,7 +13,9 @@ same shape. So the two lists stay, and this makes the drift loud instead.
 Parity rule: for each group, the backend's REQUIRED field list must equal the
 frontend's non-`optional` fields, in order. Readiness counts answerable
 fields, so a field the editor marks optional must not count against it, and a
-field the editor added must count. Work permits are asked once per country in
+field the editor added must count. The contact's state line is `byHome`: both
+sides count it only where the home market's `asks_state` is true (markets.yaml),
+so the personal group is compared once per market. Work permits are asked once per country in
 its own words (`WORK_PERMIT_QUESTIONS`, keyed by a market's `work_auth_vocab`):
 the `us_visa` set is `_US_VISA_CORE` (the visa status first), every other set
 is `_WORK_AUTH_CORE`.
@@ -28,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services import setup_status
+from app.services import markets, setup_status
 
 _AUTOFILL_TSX = (
     Path(__file__).resolve().parents[2]
@@ -36,7 +38,6 @@ _AUTOFILL_TSX = (
 )
 
 _EXPECTED = {
-    "personal": setup_status._PERSONAL,
     "eeo": setup_status._EEO,
     "preferences": setup_status._PREFERENCES,
 }
@@ -49,7 +50,9 @@ _PERMITS = {
 }
 
 
-def _frontend_required_fields() -> dict[str, list[str]]:
+def _frontend_required_fields(asks_state: bool = True) -> dict[str, list[str]]:
+    """Each group's required keys for a home whose `asks_state` is the one given: a `byHome` field
+    counts only where it is true, an `optional` one never."""
     source = _AUTOFILL_TSX.read_text()
     start = source.index("const GROUPS: GroupDef[] = [")
     block = source[start : source.index("\n];", start)]
@@ -70,8 +73,16 @@ def _frontend_required_fields() -> dict[str, list[str]]:
             field.group(1)
             for field in re.finditer(r'\{[^{}]*?key: "(\w+)".*?\}', fields, re.S)
             if "optional: true" not in field.group(0)
+            and (asks_state or "byHome: true" not in field.group(0))
         ]
     return groups
+
+
+def _frontend_by_home_fields() -> list[str]:
+    source = _AUTOFILL_TSX.read_text()
+    start = source.index("const GROUPS: GroupDef[] = [")
+    block = source[start : source.index("\n];", start)]
+    return re.findall(r'\{[^{}]*?key: "(\w+)"[^{}]*?byHome: true[^{}]*?\}', block)
 
 
 def test_the_parser_still_finds_the_groups():
@@ -82,11 +93,13 @@ def test_the_parser_still_finds_the_groups():
     the failure mode these source-parsing guards are most prone to.
     """
     found = _frontend_required_fields()
-    assert set(_EXPECTED) <= set(found), (
+    assert set(_EXPECTED) | {"personal"} <= set(found), (
         f"could not parse groups {sorted(set(_EXPECTED) - set(found))} out of "
         f"{_AUTOFILL_TSX.name} — the GROUPS shape changed; fix this parser."
     )
-    assert all(found[group] for group in _EXPECTED)
+    assert all(found[group] for group in [*_EXPECTED, "personal"])
+    # The one field a home decides, so the per-market comparison below is not between equal lists.
+    assert _frontend_by_home_fields() == ["state"]
 
 
 @pytest.mark.parametrize("group", sorted(_EXPECTED))
@@ -98,6 +111,22 @@ def test_backend_required_fields_match_the_editor(group: str):
         "computed from the backend list, so a mismatch either hides a question "
         "the user must answer or blocks setup on one the editor never shows."
     )
+
+
+@pytest.mark.parametrize("home", markets.keys())
+def test_the_contact_fields_counted_for_each_home_match_the_editor(home: str):
+    """The state line counts only where the home market's addresses need one, on both sides."""
+    asks_state = markets.get(home)["asks_state"]
+    frontend = _frontend_required_fields(asks_state)["personal"]
+    assert frontend == setup_status._personal_fields(home), (
+        f"contact readiness for a home in {home} (asks_state={asks_state}) has drifted: the editor "
+        f"requires {frontend}, setup_status counts {setup_status._personal_fields(home)}."
+    )
+
+
+def test_some_homes_ask_a_state_and_some_do_not():
+    """Without both kinds of market, the per-home comparison above would check one rule twice."""
+    assert {markets.get(home)["asks_state"] for home in markets.keys()} == {True, False}
 
 
 def _frontend_permit_keys() -> dict[str, list[str]]:

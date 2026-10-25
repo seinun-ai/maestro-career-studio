@@ -16,6 +16,7 @@ import {
   fieldValue,
   groupCount,
   groupValues,
+  homeMarket,
   missingAnswers,
   missingKey,
   permitCount,
@@ -60,7 +61,7 @@ export function NextUp({
   const controlId = useId();
 
   const markets = market.markets ?? [];
-  const missing = missingAnswers(profile, market.apply_in, markets);
+  const missing = missingAnswers(profile, market.apply_in, markets, market.home);
   const open = missing.filter((item) => !skipped.includes(missingKey(item)));
   const current = held ?? open[0] ?? null;
   const currentKey = current ? missingKey(current) : null;
@@ -138,7 +139,7 @@ export function NextUp({
   const count =
     current.kind === "permit"
       ? permitCount(profile, current.market, country?.work_auth_vocab)
-      : groupCount(profile, current.group);
+      : groupCount(profile, current.group, homeMarket(market));
   const raw =
     current.kind === "permit" ? permitEntry(profile, current.market)[field.key] : groupValues(profile, current.group)[field.key];
   const answer = (value: string | boolean | undefined) =>

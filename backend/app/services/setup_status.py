@@ -39,11 +39,14 @@ from app.services import (
     role_categories,
 )
 
-# Required (answerable) fields per group. address_2 / education / custom Q&A
-# never count against readiness.
+# Required (answerable) fields per group. address_2, the three links (linkedin,
+# github, website: many fields of work and many countries have none of them),
+# education and custom Q&A never count against readiness. `state` counts only
+# where the home market's addresses need one (`asks_state`, markets.yaml: the
+# frontend's `byHome` field); with no home set, home reads as the default US.
 _PERSONAL = [
     "first_name", "last_name", "email", "phone", "address", "city", "state",
-    "postal_code", "country", "linkedin", "github", "website",
+    "postal_code", "country",
 ]
 _EEO = ["veteran_status", "disability_status", "gender", "hispanic_latino"]
 _PREFERENCES = [
@@ -55,6 +58,13 @@ _PREFERENCES = [
 # `us_visa` asks it; every country asks the other three.
 _WORK_AUTH_CORE = ["authorized_now", "sponsorship_now", "sponsorship_future"]
 _US_VISA_CORE = ["status", *_WORK_AUTH_CORE]
+
+
+def _personal_fields(home: str) -> list[str]:
+    """The contact answers counted for someone who lives in `home` (a market key)."""
+    if markets.get(home)["asks_state"]:
+        return _PERSONAL
+    return [f for f in _PERSONAL if f != "state"]
 
 
 def _answered(value) -> bool:
@@ -87,9 +97,10 @@ def _work_permits(profile: dict, apply_in: list[str]) -> dict[str, GroupComplete
 
 def _autofill_step(db: Session) -> AutofillStep:
     profile = autofill_profile.peek_profile(db)
-    by_country = _work_permits(profile, market_settings.peek_market(db).apply_in)
+    market = market_settings.peek_market(db)
+    by_country = _work_permits(profile, market.apply_in)
     groups = {
-        "personal": _group(profile, "personal", _PERSONAL),
+        "personal": _group(profile, "personal", _personal_fields(market.home)),
         "work_auth": GroupCompleteness(
             answered=sum(g.answered for g in by_country.values()),
             answerable=sum(g.answerable for g in by_country.values()),

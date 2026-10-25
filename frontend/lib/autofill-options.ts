@@ -5,8 +5,8 @@
  *
  * `GROUPS` and `WORK_PERMIT_QUESTIONS` are a hand-mirror of `backend/app/services/setup_status.py`'s
  * required lists (`_PERSONAL`, `_EEO`, `_PREFERENCES`, `_WORK_AUTH_CORE`, `_US_VISA_CORE`): a field that
- * is not `optional` counts toward readiness. `backend/tests/test_autofill_groups_parity.py` fails when
- * the two drift.
+ * is not `optional` counts toward readiness, a `byHome` one only where you live asks it
+ * (`_personal_fields`). `backend/tests/test_autofill_groups_parity.py` fails when the two drift.
  */
 
 export type FieldDef = {
@@ -24,7 +24,13 @@ export type FieldDef = {
   /** Shown only while another field of the group holds this value: [key, value].
    *  Changing that field away deletes this one (`withField`). */
   when?: [string, string];
+  /** The address's state line: named by where you live (`state_label`) and counted only where an address
+   *  there needs one (`asks_state`), else optional. `groupFields` resolves it. */
+  byHome?: true;
 };
+
+/** Where you live, as the state line reads it (a `MarketOption` from `GET /api/settings/market`). */
+export type HomeMarket = { asks_state?: boolean; state_label?: string };
 
 export type GroupDef = { key: string; title: string; fields: FieldDef[] };
 
@@ -52,12 +58,13 @@ export const GROUPS: GroupDef[] = [
       { key: "address", label: "Street address" },
       { key: "address_2", label: "Address line 2", optional: true },
       { key: "city", label: "City" },
-      { key: "state", label: "State" },
+      { key: "state", label: "State", byHome: true },
       { key: "postal_code", label: "Postal code" },
       { key: "country", label: "Country" },
-      { key: "linkedin", label: "LinkedIn profile link" },
-      { key: "github", label: "GitHub link" },
-      { key: "website", label: "Website" },
+      // Optional for readiness: many fields of work and many countries use none of the three links.
+      { key: "linkedin", label: "LinkedIn profile link", optional: true },
+      { key: "github", label: "GitHub link", optional: true },
+      { key: "website", label: "Website", optional: true },
     ],
   },
   {
@@ -190,9 +197,23 @@ export const GROUPS: GroupDef[] = [
   },
 ];
 
-/** One group's fields, by key ("personal", "eeo", "eligibility", "preferences"). */
-export function groupFields(key: string): FieldDef[] {
-  return GROUPS.find((group) => group.key === key)?.fields ?? [];
+/** One group's fields, by key ("personal", "eeo", "eligibility", "preferences"), as asked of someone who lives
+ *  in `home`. With no home known, the state line reads as it always has: "State", counted. */
+export function groupFields(key: string, home?: HomeMarket): FieldDef[] {
+  const fields = GROUPS.find((group) => group.key === key)?.fields ?? [];
+  if (!home) return fields;
+  return fields.map((field) =>
+    field.byHome
+      ? { ...field, label: home.state_label || field.label, optional: home.asks_state === false }
+      : field,
+  );
+}
+
+/** The market you live in, out of the market list (undefined until both are known). */
+export function homeMarket<M extends { key: string }>(
+  market: { home: string; markets?: readonly M[] } | undefined,
+): M | undefined {
+  return market?.markets?.find((m) => m.key === market.home);
 }
 
 // ------------------------------------------------------------------ Work permits, per country
@@ -506,10 +527,10 @@ export function answered(field: FieldDef, value: unknown): boolean {
 
 export type Count = { answered: number; answerable: number };
 
-/** How many of a group's required answers are given: the fields setup readiness counts. */
-export function groupCount(profile: Profile, group: string): Count {
+/** How many of a group's required answers are given: the fields setup readiness counts, for where you live. */
+export function groupCount(profile: Profile, group: string, home?: HomeMarket): Count {
   const values = groupValues(profile, group);
-  const required = groupFields(group).filter((field) => !field.optional);
+  const required = groupFields(group, home).filter((field) => !field.optional);
   return {
     answered: required.filter((field) => answered(field, values[field.key])).length,
     answerable: required.length,
@@ -593,7 +614,7 @@ export type MissingAnswer =
   | { kind: "diversity" };
 
 /** One market as Next up reads it (a `MarketOption` from `GET /api/settings/market`). */
-type AskedIn = { key: string; work_auth_vocab?: string | null; offers_eeo: boolean };
+type AskedIn = HomeMarket & { key: string; work_auth_vocab?: string | null; offers_eeo: boolean };
 
 export function missingKey(item: MissingAnswer): string {
   if (item.kind === "permit") return `permit:${item.market}:${item.field.key}`;
@@ -605,10 +626,16 @@ export function missingKey(item: MissingAnswer): string {
  * Every required answer still missing, in the order Next up asks: each country's work permit first, in the
  * order you apply in (the knockout answers, never guessed), then contact, then start and pay, then the
  * diversity questions where a country you apply in has a checked set. The fields are the ones setup
- * readiness counts, so an empty list is a full ring.
+ * readiness counts for where you live (`home`, a market key), so an empty list is a full ring.
  */
-export function missingAnswers(profile: Profile, applyIn: readonly string[], markets: readonly AskedIn[]): MissingAnswer[] {
+export function missingAnswers(
+  profile: Profile,
+  applyIn: readonly string[],
+  markets: readonly AskedIn[],
+  home?: string,
+): MissingAnswer[] {
   const byKey = new Map(markets.map((m) => [m.key, m]));
+  const lives = home ? byKey.get(home) : undefined;
   const out: MissingAnswer[] = [];
   for (const market of applyIn) {
     const entry = permitEntry(profile, market);
@@ -618,7 +645,7 @@ export function missingAnswers(profile: Profile, applyIn: readonly string[], mar
   }
   for (const group of ["personal", "preferences"] as const) {
     const values = groupValues(profile, group);
-    for (const field of groupFields(group)) {
+    for (const field of groupFields(group, lives)) {
       if (!field.optional && !answered(field, values[field.key])) out.push({ kind: "field", group, field });
     }
   }

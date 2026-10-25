@@ -19,6 +19,14 @@
 #
 # A null `eeo_module` means the UI offers no EEO section for that market and
 # says so. That is an honest limit, not a gap to fill by inference.
+#
+# `asks_state` says whether an address where you live needs a state or province
+# line, so setup counts the Contact "State" answer only there. It follows the
+# address formats in Google's address data (the set Chrome autofill uses): the
+# US, Canada, Australia and India require one; the UK, Germany and the
+# Netherlands have no such line; Ireland writes a county but requires none (the
+# Eircode places the address). `state_label` is the country's own word for that
+# line, which the Contact field shows. Every market declares both.
 
 markets:
   - key: US
@@ -31,6 +39,8 @@ markets:
     # rescinded; re-check before treating this as stable.
     eeo_module: us_eeo1
     work_auth_vocab: us_visa
+    asks_state: true
+    state_label: State
 
   - key: UK
     label: United Kingdom
@@ -42,6 +52,8 @@ markets:
     # England & Wales only and must say so at the point of asking.
     eeo_module: uk_gss
     work_auth_vocab: uk
+    asks_state: false
+    state_label: County
 
   - key: CA
     label: Canada
@@ -49,6 +61,8 @@ markets:
     date_format: DMY
     eeo_module: null          # employment-equity categories not verified
     work_auth_vocab: generic
+    asks_state: true
+    state_label: Province
 
   - key: AU
     label: Australia
@@ -56,6 +70,8 @@ markets:
     date_format: DMY
     eeo_module: null          # not verified
     work_auth_vocab: generic
+    asks_state: true
+    state_label: State
 
   - key: IE
     label: Ireland
@@ -63,6 +79,8 @@ markets:
     date_format: DMY
     eeo_module: null          # not verified
     work_auth_vocab: generic
+    asks_state: false
+    state_label: County
 
   - key: IN
     label: India
@@ -73,6 +91,8 @@ markets:
     # are not ours to infer. No module until verified against a primary source.
     eeo_module: null
     work_auth_vocab: generic
+    asks_state: true
+    state_label: State
 
   - key: DE
     label: Germany
@@ -80,6 +100,8 @@ markets:
     date_format: DMY
     eeo_module: null          # not verified
     work_auth_vocab: generic
+    asks_state: false
+    state_label: State
 
   - key: NL
     label: Netherlands
@@ -87,3 +109,5 @@ markets:
     date_format: DMY
     eeo_module: null          # not verified
     work_auth_vocab: generic
+    asks_state: false
+    state_label: Province

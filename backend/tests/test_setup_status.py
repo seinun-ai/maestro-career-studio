@@ -1,3 +1,5 @@
+import pytest
+
 from app.models.base_resume import BaseResume
 from app.models.career_kb import KBEntity
 from app.models.setting import Setting
@@ -319,7 +321,7 @@ def test_authorized_now_is_required_for_work_auth_readiness(client, db_session):
     body = _status(client)["autofill"]
 
     assert body["groups"]["work_auth"] == {"answered": 3, "answerable": 4}
-    assert body["readiness"] == 0.96
+    assert body["readiness"] == 0.955
     assert body["blocking"] == ["work_auth"]
     assert body["done"] is False
 
@@ -330,7 +332,122 @@ def test_malformed_profile_group_degrades_to_unanswered(client, db_session):
     autofill_profile.set_profile({"personal": "garbage"}, db_session)
 
     body = _status(client)["autofill"]
-    assert body["groups"]["personal"] == {"answered": 0, "answerable": 12}
+    assert body["groups"]["personal"] == {"answered": 0, "answerable": 9}
+
+
+def test_contact_links_are_optional_so_a_profile_without_them_is_done(client, db_session):
+    """Most people outside tech have no GitHub or website, and many no LinkedIn: a contact block with
+    every other answer given is complete, and an agent's setup next step moves past the form answers."""
+    from app.services import autofill_profile
+
+    autofill_profile.set_profile(
+        {
+            "personal": {
+                "first_name": "Sam", "last_name": "Lee", "email": "sam@example.com",
+                "phone": "555 0100", "address": "1 Main St", "city": "Springfield",
+                "state": "IL", "postal_code": "62701", "country": "United States",
+            },
+            "work_auth": {
+                "status": "citizen", "authorized_now": True,
+                "sponsorship_now": False, "sponsorship_future": False,
+            },
+            "eeo": {
+                "veteran_status": "decline", "disability_status": "decline",
+                "gender": "decline", "hispanic_latino": "decline",
+            },
+            "preferences": {
+                "desired_salary": "60000", "notice_period": "2 weeks",
+                "earliest_start_date": "2026-11-01", "willing_to_relocate": "no",
+                "how_heard": "job board",
+            },
+        },
+        db_session,
+    )
+
+    body = _status(client)["autofill"]
+    assert body["groups"]["personal"] == {"answered": 9, "answerable": 9}
+    assert body["readiness"] == 1.0
+    assert body["done"] is True
+
+
+def _answers_but_state(home: str) -> dict:
+    """Every answer a form-answers step counts where `home` is where you live, except the state line."""
+    work_auth = {"authorized_now": True, "sponsorship_now": False, "sponsorship_future": False}
+    if home == "US":
+        work_auth["status"] = "citizen"
+    return {
+        "personal": {
+            "first_name": "Sam", "last_name": "Lee", "email": "sam@example.com",
+            "phone": "555 0100", "address": "1 Main St", "city": "Springfield",
+            "postal_code": "12345", "country": "Example",
+        },
+        "work_auth_by_country": {home: work_auth},
+        "eeo": {
+            "veteran_status": "decline", "disability_status": "decline",
+            "gender": "decline", "hispanic_latino": "decline",
+        },
+        "preferences": {
+            "desired_salary": "60000", "notice_period": "2 weeks",
+            "earliest_start_date": "2026-11-01", "willing_to_relocate": "no",
+            "how_heard": "job board",
+        },
+    }
+
+
+def test_a_home_whose_addresses_have_no_state_is_done_without_one(client, db_session, tmp_path, monkeypatch):
+    """Dutch addresses have no state line (`asks_state: false`): every other answer given is done."""
+    from app.schemas.market_settings import MarketSetting
+    from app.services import autofill_profile, market_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="NL", apply_in=["NL"]), db_session)
+    autofill_profile.set_profile(_answers_but_state("NL"), db_session)
+
+    body = _status(client)["autofill"]
+    assert body["groups"]["personal"] == {"answered": 8, "answerable": 8}
+    assert body["readiness"] == 1.0
+    assert body["done"] is True
+
+
+def test_a_us_home_with_no_state_is_not_done(client, db_session, tmp_path, monkeypatch):
+    """US forms ask the state, so a US contact block without one still has an answer to give."""
+    from app.schemas.market_settings import MarketSetting
+    from app.services import autofill_profile, market_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US"]), db_session)
+    autofill_profile.set_profile(_answers_but_state("US"), db_session)
+
+    body = _status(client)["autofill"]
+    assert body["groups"]["personal"] == {"answered": 8, "answerable": 9}
+    assert body["done"] is False
+
+
+def test_with_no_home_set_the_state_counts_as_it_always_has(client, db_session, tmp_path, monkeypatch):
+    from app.services import autofill_profile
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    autofill_profile.set_profile(_answers_but_state("US"), db_session)
+
+    body = _status(client)["autofill"]
+    assert body["groups"]["personal"] == {"answered": 8, "answerable": 9}
+    assert body["done"] is False
+
+
+@pytest.mark.parametrize(
+    "home,answerable",
+    [("US", 9), ("CA", 9), ("AU", 9), ("IN", 9), ("UK", 8), ("IE", 8), ("DE", 8), ("NL", 8)],
+)
+def test_the_state_counts_only_where_your_home_puts_one_in_addresses(
+    client, db_session, tmp_path, monkeypatch, home, answerable
+):
+    """A state or province where addresses require one; Ireland's county is written but not required."""
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home=home, apply_in=[home]), db_session)
+    assert _status(client)["autofill"]["groups"]["personal"] == {"answered": 0, "answerable": answerable}
 
 
 def test_status_reports_engines_and_default_engine_availability(

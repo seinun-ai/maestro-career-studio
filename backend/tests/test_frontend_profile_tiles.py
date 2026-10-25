@@ -112,6 +112,23 @@ def test_the_market_list_carries_each_markets_work_permit_vocabulary():
     assert '"work_auth_vocab": markets.get(k)["work_auth_vocab"],' in markets
 
 
+def test_contact_counts_and_names_the_state_line_by_where_you_live():
+    """Data again (markets.yaml `asks_state`, `state_label`): Contact's count, its editor and Next up read the
+    home market, so a Dutch home is done without a state and a Canadian one is asked its province."""
+    router = (_ROOT / "backend/app/routers/settings.py").read_text(encoding="utf-8")
+    markets = _between(router, '"markets": [', "for k in markets.keys()")
+    assert '"asks_state": markets.get(k)["asks_state"],' in markets
+    assert '"state_label": markets.get(k)["state_label"],' in markets
+    option = _between(_src("lib/types.ts"), "export interface MarketOption {", "\n}")
+    assert "asks_state: boolean;" in option and "state_label: string;" in option
+    contact = _src("components/profile/contact.tsx")
+    assert 'const count = groupCount(profile, "personal", home);' in contact
+    assert 'fields={groupFields("personal", home)}' in contact
+    assert contact.count("const home = homeMarket(useMarketQuery().data);") == 2
+    nxt = _src("components/profile/next-up.tsx")
+    assert ": groupCount(profile, current.group, homeMarket(market));" in nxt
+
+
 # ---------------------------------------------------------------------------- Saving
 
 def test_the_answers_save_as_you_go():
@@ -191,7 +208,7 @@ def test_the_header_counts_only_what_setup_status_says():
 
 def test_next_up_asks_the_first_missing_answer_in_place_and_never_guesses():
     nxt = _src("components/profile/next-up.tsx")
-    assert "const missing = missingAnswers(profile, market.apply_in, markets);" in nxt
+    assert "const missing = missingAnswers(profile, market.apply_in, markets, market.home);" in nxt
     assert "Never guessed for you" in nxt
     assert "Work-permit and diversity answers only ever come from you." in nxt
     # Diversity is answered in its fold, beside its consent (D10): Next up only opens it.

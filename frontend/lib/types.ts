@@ -2434,6 +2434,11 @@ export interface MarketOption {
   /** How its work-permit questions are worded: `us_visa` (with the US visa status), `uk` or `generic`
    *  (markets.yaml; lib/autofill-options.ts `permitQuestions` reads an unknown one as generic). */
   work_auth_vocab: string;
+  /** Whether an address there needs a state or province line: Contact counts the state only for a home
+   *  where this is true (lib/autofill-options.ts `groupFields`). */
+  asks_state: boolean;
+  /** The country's own word for that line ("State", "Province", "County"), the Contact field's label. */
+  state_label: string;
 }
 
 /** Where the user lives and applies (`GET/PUT /api/settings/market`). */

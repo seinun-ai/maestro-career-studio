@@ -8,6 +8,7 @@ import {
   declinedEeo,
   forSaving,
   groupCount,
+  groupFields,
   missingAnswers,
   missingKey,
   permitCount,
@@ -120,7 +121,7 @@ test("counts are the required answers only, per group and per country", () => {
     work_auth_by_country: { US: { status: "citizen", authorized_now: true }, UK: { authorized_now: "No" } },
   };
   const counts = (p: Parameters<typeof groupCount>[0]) => groupCount(p, "personal");
-  assert.deepEqual(counts(profile), { answered: 1, answerable: 12 }, "address line 2 is optional");
+  assert.deepEqual(counts(profile), { answered: 1, answerable: 9 }, "address line 2 and the three links are optional");
   assert.deepEqual(permitCount(profile, "US", "us_visa"), { answered: 2, answerable: 4 });
   assert.deepEqual(permitCount(profile, "UK", "uk"), { answered: 1, answerable: 3 });
   assert.deepEqual(permitCount(profile, "DE", "generic"), { answered: 0, answerable: 3 });
@@ -147,4 +148,43 @@ test("next up asks each country's permit first, then contact, then start and pay
   const some = { personal: { first_name: "Ada" }, work_auth_by_country: { DE: { authorized_now: true, sponsorship_now: false, sponsorship_future: false } } };
   assert.deepEqual(keysOf(some, ["DE"]).slice(0, 2), ["personal:last_name", "personal:email"]);
   assert.equal(keysOf(some, ["DE"]).includes("personal:address_2"), false, "an optional field is never next up");
+  for (const link of ["linkedin", "github", "website"]) {
+    assert.equal(keysOf(some, ["DE"]).includes(`personal:${link}`), false, `${link} is optional, never next up`);
+  }
+});
+
+// The state line, by where you live (markets.yaml `asks_state` and `state_label`, on each MarketOption).
+const US = { key: "US", work_auth_vocab: "us_visa", offers_eeo: true, asks_state: true, state_label: "State" };
+const CA = { key: "CA", work_auth_vocab: "generic", offers_eeo: false, asks_state: true, state_label: "Province" };
+const NL = { key: "NL", work_auth_vocab: "generic", offers_eeo: false, asks_state: false, state_label: "Province" };
+
+test("the state line takes your home country's word, and is optional where addresses have none", () => {
+  const state = (home?: typeof US) => groupFields("personal", home).find((f) => f.key === "state");
+  assert.deepEqual([state(CA)?.label, state(CA)?.optional], ["Province", false]);
+  assert.deepEqual([state(NL)?.label, state(NL)?.optional], ["Province", true]);
+  // With no home known, it reads as it always has.
+  assert.deepEqual([state()?.label, Boolean(state()?.optional)], ["State", false]);
+  // Nothing else in the group moves.
+  assert.deepEqual(
+    groupFields("personal", NL).map((f) => f.key),
+    groupFields("personal").map((f) => f.key),
+  );
+});
+
+test("contact counts the state only where your home's addresses need one", () => {
+  const profile = { personal: { first_name: "Sam" } };
+  assert.deepEqual(groupCount(profile, "personal", NL), { answered: 1, answerable: 8 });
+  assert.deepEqual(groupCount(profile, "personal", US), { answered: 1, answerable: 9 });
+  assert.deepEqual(groupCount(profile, "personal"), { answered: 1, answerable: 9 });
+});
+
+test("next up asks the state of a US home, never of a Dutch one", () => {
+  const markets = [US, CA, NL];
+  const missing = (home: string | undefined) =>
+    missingAnswers({ personal: { first_name: "Sam" } }, [home ?? "US"], markets, home).map(missingKey);
+  assert.equal(missing("NL").includes("personal:state"), false);
+  assert.equal(missing("US").includes("personal:state"), true);
+  assert.equal(missing(undefined).includes("personal:state"), true, "no home known: asked, as today");
+  const province = missingAnswers({}, ["CA"], markets, "CA").find((m) => missingKey(m) === "personal:state");
+  assert.equal(province?.kind === "field" && province.field.label, "Province");
 });

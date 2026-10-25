@@ -156,13 +156,13 @@ def _autofill_setup_status(*, ready):
     # AutofillStep {done, readiness, groups: {name: {answered, answerable}}, blocking}.
     if ready:
         groups = {
-            "personal": {"answered": 12, "answerable": 12},
+            "personal": {"answered": 9, "answerable": 9},
             "work_auth": {"answered": 4, "answerable": 4},
             "preferences": {"answered": 5, "answerable": 5},
         }
         return {"autofill": {"done": True, "readiness": 1.0, "groups": groups, "blocking": []}}
     groups = {
-        "personal": {"answered": 12, "answerable": 12},
+        "personal": {"answered": 9, "answerable": 9},
         "work_auth": {"answered": 0, "answerable": 4},
         "preferences": {"answered": 5, "answerable": 5},
     }
