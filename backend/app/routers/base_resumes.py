@@ -327,6 +327,7 @@ def update_base_resume(
     slug: str,
     payload: BaseResumeUpdate,
     db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
     hooks.require_profile_writable(db)
     row = db.get(BaseResume, slug)
@@ -334,6 +335,12 @@ def update_base_resume(
         raise HTTPException(status_code=404, detail="Base resume not found")
 
     data_dict = payload.data.model_dump(mode="json")
+    if write_origin.origin == "mcp":
+        # A connected agent's whole replace is its text: held to the voice rule like its ops.
+        try:
+            resume_ops.refuse_third_person(row.data_json or {}, data_dict)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
     row.data_json = data_dict
     if "display_name" in payload.model_fields_set:
         row.display_name = payload.display_name

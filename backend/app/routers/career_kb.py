@@ -590,12 +590,14 @@ def patch_point(
     if point is None:
         raise HTTPException(status_code=404, detail="Point not found")
     data = payload.model_dump(exclude_unset=True)
-    if data.get("text") is not None and write_origin.origin == "mcp":
+    if data.get("text") is not None and data["text"] != point.text and write_origin.origin == "mcp":
         # A connected agent's rewording is held to the rules its new bullets meet
-        # (kb_add_points): no en or em dash, implied first person.
+        # (kb_add_points): no en or em dash, implied first person, checked against the
+        # item the point ends up on.
         data["text"] = scrub_typographic_dashes(data["text"]).strip()
+        target = db.get(KBEntity, data["entity_id"]) if data.get("entity_id") else point.entity
         try:
-            kb_ingest.refuse_third_person_bullets(db, point.entity, [data["text"]])
+            kb_ingest.refuse_third_person_bullets(db, target or point.entity, [data["text"]])
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
     if data.get("entity_id") is not None:

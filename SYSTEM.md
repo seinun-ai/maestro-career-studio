@@ -880,7 +880,7 @@ the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 - **The query cache keeps old key order** (2026-09-22): structural sharing made a refetch's `JSON.stringify` differ from
   the PATCH response, so a studio's own Save read as foreign → compare `serverKey` (sorted keys); §11 item 26.
 - **PDFium is not thread-safe** (2026-09-23): parallel gallery previews segfaulted libpdfium → every PDFium use under
-  `app/` holds `services/pdfium_lock.PDFIUM_LOCK` (AST scan in `tests/test_pdfium_lock.py`).
+  `app/` and `mcp_server/` holds `services/pdfium_lock.PDFIUM_LOCK` (AST scan in `tests/test_pdfium_lock.py`).
 - **Worktree subagents** may edit the MAIN checkout: hand them absolute worktree paths, verify with `git -C <wt> status`.
 - **Ports 8000/8001 may be squatted**: `/openapi.json` `info.title` is "Maestro CS API".
 - **Check model capability in the ROUTER, never inside `run_turn`**: `run_turn` is a generator — anything it raises

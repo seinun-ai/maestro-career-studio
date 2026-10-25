@@ -388,7 +388,7 @@ class BackendError(Exception):
 # Every id a tool puts into a path is a slug, a UUID, a number, a gate id or a file
 # name. httpx resolves `..` and ends the path at `?` or `#`, so anything else could
 # send the request to another route (a DELETE, or the stored EEO answers).
-_PATH_SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~-]*")
+_PATH_SEGMENT = re.compile(r"[A-Za-z0-9_~-][A-Za-z0-9._~-]*")  # never a leading "."
 
 
 def _seg(value: Any) -> str:
@@ -397,7 +397,7 @@ def _seg(value: Any) -> str:
     if not _PATH_SEGMENT.fullmatch(segment):
         shown = segment if len(segment) <= 80 else segment[:80] + "..."
         raise BackendError(
-            f"Not a valid id: {shown!r}. An id holds only letters, digits, '-', '_' and '.', "
+            f"Not a valid id: {shown!r}. An id holds only letters, digits, '-', '_', '~' and '.', "
             "and does not start with '.'."
         )
     return segment
@@ -882,7 +882,9 @@ class BackendClient:
         if display_name is not None:
             payload["display_name"] = display_name
         return self._request(
-            "PUT", f"/api/base-resumes/{_seg(slug)}", json=payload, timeout=_RENDER_TIMEOUT
+            "PUT", f"/api/base-resumes/{_seg(slug)}", json=payload,
+            headers=_origin_headers(None),  # agent text: the backend applies the voice rule
+            timeout=_RENDER_TIMEOUT,
         )
 
     def set_base_resume_identity(self, slug: str, **fields: Any) -> Any:

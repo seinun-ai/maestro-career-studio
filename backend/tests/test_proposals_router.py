@@ -990,3 +990,15 @@ def test_final_review_eeo_flag_is_the_standing_consent_not_the_approval(db_sessi
 
     eeo_consent.set_consent(EeoConsent(enabled=True), db_session)
     assert client.get(f"/api/proposals/{pid}/final-review").json()["eeo"]["consent_recorded"] is True
+
+
+def test_reading_the_final_review_writes_no_eeo_setting(db_session):
+    """The flag is a peek: a GET never seeds the EEO consent row or its mirror."""
+    from app.models.setting import Setting
+
+    job = _mk_job(db_session, source="agent", company="PeekCo", title="Eng")
+    pid = client.post("/api/proposals", json={"job_id": str(job.id)}).json()["id"]
+    assert db_session.get(Setting, "eeo_consent") is None
+    assert client.get(f"/api/proposals/{pid}/final-review").status_code == 200
+    db_session.expire_all()
+    assert db_session.get(Setting, "eeo_consent") is None

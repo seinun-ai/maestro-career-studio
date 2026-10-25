@@ -294,3 +294,15 @@ def test_education_keeps_its_graduation_date_and_location(db_session, tmp_path, 
     ).json()
     assert body["data"]["education"][0]["graduation_date"] == "2019-05"
     assert body["data"]["education"][0]["location"] == "Boulder, CO"
+
+
+def test_a_number_in_an_education_detail_still_composes(db_session):
+    """`detail` is free-form (kb_create_entity, kb_edit_entity), so a year or a GPA
+    written as a number must not break every reader of the composed history."""
+    _profile(db_session)
+    edu = _entity(db_session, "education", "B.S.", "University of Colorado", approved=())
+    edu.detail_json = {"graduation_date": 2019, "gpa": 3.8, "location": "Boulder, CO", "field": "Analytics"}
+    db_session.commit()
+
+    entry = career_kb.compose_resume_data(db_session)["education"][0]
+    assert (entry["graduation_date"], entry["gpa"], entry["location"]) == ("2019", "3.8", "Boulder, CO")

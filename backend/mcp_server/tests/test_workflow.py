@@ -762,6 +762,8 @@ def _every_hint(allow):
         "bulk_partial": workflow.next_after_bulk_state(
             [ok, bad], requested_state="approved", **kw),
         "base_from_kb": workflow.next_after_base_from_kb({"slug": "ds"}, **kw),
+        "base_render_failed": workflow.next_after_base_from_kb(
+            {"slug": "ds", "render_error": "pdflatex failed"}, **kw),
         "base_from_kb_answers_open": workflow.next_after_base_from_kb(
             {"slug": "ds"}, setup_status=_autofill_setup_status(ready=False), **kw),
     }

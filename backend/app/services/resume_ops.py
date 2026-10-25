@@ -14,6 +14,7 @@ apply_edits onward lives here.
 """
 import json
 import logging
+from collections import Counter
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -32,8 +33,16 @@ logger = logging.getLogger(__name__)
 
 def refuse_third_person(before: dict, after: dict) -> None:
     """Agent or model text never stores a blocking third-person line (§6 inv-resume-voice):
-    what the edit wrote or changed is checked, the owner's untouched lines are not."""
-    problems = resume_voice.changed_hits(before, after, summary_always=False)
+    what the edit wrote or changed is checked, the owner's own lines are not. changed_hits
+    compares by position, so an owner line that a removal moved up a slot is excused: it
+    appears no more often than before. A copy of it into another bullet is not excused."""
+    held = Counter(text for _, text in resume_voice.slots(before))
+    now = Counter(text for _, text in resume_voice.slots(after))
+    problems = [
+        problem
+        for problem in resume_voice.changed_hits(before, after, summary_always=False)
+        if now[problem[1]] > held[problem[1]]
+    ]
     if problems:
         raise ValueError(resume_voice.ops_error(problems))
 

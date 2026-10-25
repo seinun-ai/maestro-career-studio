@@ -3,7 +3,8 @@
 PDFium is not thread-safe and pypdfium2 (5.x) takes no lock of its own, while
 FastAPI runs every sync endpoint on a threadpool: the /templates gallery
 fetching previews in parallel put two `FPDF_LoadPage` calls in flight and the
-backend segfaulted inside libpdfium. So every PDFium touch under `app/` —
+backend segfaulted inside libpdfium. So every PDFium touch under `app/` and
+`mcp_server/` (MCP tools run on worker threads in this process too) —
 opening a document, loading or rendering a page, closing it — happens inside
 `with PDFIUM_LOCK:`. Pinned by tests/test_pdfium_lock.py (an AST scan, so a
 new call site outside the lock fails the suite).

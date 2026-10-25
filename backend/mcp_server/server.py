@@ -1106,7 +1106,7 @@ def create_base_resume_from_kb(
     on the resulting base. The
     whole-career summary is dropped unless include_summary, or pass a reviewed
     summary. A selected job or project with no approved point is left out, and
-    a 422 "no resume content" means no selected entity has any.
+    a 422 "None of the items you picked has approved bullets." means none has any.
 
     Response is {base, next}. next is a hint (null when suppressed or when its
     settings read fails; the base is created either way, and repeating the call

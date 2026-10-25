@@ -293,9 +293,9 @@ work-permit answers for each country you apply in.
   the PDF library needs, and since MCP runs inside the app, two at once could take down the web app,
   MCP and the Companion together.
 - **An agent's resume and career-history edits are held to your voice.** `edit_application`,
-  `tailor_application`, `edit_base_resume`, `kb_edit_point` and the Assistant's edits stored lines like
-  "She led her team." They now refuse a third-person line with a 400 that names it, as tailoring
-  already did. Your own saves in the web app are unchanged.
+  `tailor_application`, `edit_base_resume`, `update_base_resume`, `kb_edit_point` and the Assistant's
+  edits stored lines like "She led her team." They now refuse a third-person line with a 400 that
+  names it, as tailoring already did. Your own saves in the web app are unchanged.
 - **A base resume built from your career history always renders.** A job or project with no approved
   bullet is left out instead of breaking the PDF of the base and of every application tailored from it,
   and education keeps its graduation date and place. If a base's PDF still fails, the agent is told why

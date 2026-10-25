@@ -326,11 +326,13 @@ def test_resume_writes_carry_the_agent_origin_so_the_voice_rule_applies():
         respx.patch(f"{BASE}/api/base-resumes/master/edits").mock(return_value=httpx.Response(200, json={})),
         respx.patch(f"{BASE}/api/applications/{app_id}/edits").mock(return_value=httpx.Response(200, json={})),
         respx.post(f"{BASE}/api/applications/from-base").mock(return_value=httpx.Response(200, json={})),
+        respx.put(f"{BASE}/api/base-resumes/master").mock(return_value=httpx.Response(200, json={})),
     ]
     client = BackendClient(BASE)
     ops = [{"kind": "replace_summary", "value": "Led the team."}]
     client.edit_base_resume("master", ops)
     client.edit_application(app_id, ops)
     client.tailor_application(job, "master", ops)
+    client.update_base_resume("master", {"contact": {"name": "R", "email": "r@example.com"}})
     for route in routes:
         assert route.calls.last.request.headers.get("X-Maestro-CS-Origin") == "mcp"

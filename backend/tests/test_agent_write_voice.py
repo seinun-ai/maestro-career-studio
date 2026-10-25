@@ -157,3 +157,41 @@ def test_the_assistant_edit_tool_refuses_a_third_person_line(db_session, monkeyp
         raise AssertionError("the Assistant stored a third-person line")
     db_session.expire_all()
     assert db_session.get(BaseResume, "analyst").data_json["summary"] == "Base summary."
+
+
+def test_an_agent_whole_replace_of_a_base_refuses_a_third_person_line(client, db_session, monkeypatch, tmp_path):
+    _stub_render(monkeypatch, tmp_path)
+    db_session.add(BaseResume(slug="analyst", display_name="Analyst", data_json=copy.deepcopy(BASE)))
+    db_session.commit()
+    replaced = {**copy.deepcopy(BASE), "summary": THIRD_PERSON}
+    refused = client.put("/api/base-resumes/analyst", json={"data": replaced}, headers=MCP)
+    assert refused.status_code == 400
+    assert REFUSED in refused.json()["detail"]
+    db_session.expire_all()
+    assert db_session.get(BaseResume, "analyst").data_json["summary"] == "Base summary."
+    saved = client.put("/api/base-resumes/analyst", json={"data": replaced})
+    assert saved.status_code == 200, saved.text
+
+
+def test_removing_a_bullet_never_blames_the_owner_line_that_moves_up(client, db_session, monkeypatch, tmp_path):
+    """changed_hits compares by position, so the owner's own line that moves up a
+    slot read as the agent's text and the agent could not delete the bullet above it."""
+    _stub_render(monkeypatch, tmp_path)
+    owner_line = "Riley rebuilt the pricing model for the team."
+    data = copy.deepcopy(BASE)
+    data["experience"][0]["bullets"] = ["Built the weekly carrier report.", owner_line]
+    db_session.add(BaseResume(slug="analyst", display_name="Analyst", data_json=data))
+    db_session.commit()
+    op = [{"kind": "remove_bullet", "section": "experience", "index": 0, "bullet_index": 0}]
+    removed = client.patch("/api/base-resumes/analyst/edits", json={"ops": op}, headers=MCP)
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["data"]["experience"][0]["bullets"] == [owner_line]
+
+
+def test_a_retag_that_resends_unchanged_text_is_not_refused(client, db_session):
+    point = _point(db_session, text=THIRD_PERSON)  # the owner's own words, saved from the web
+    retagged = client.patch(
+        f"/api/kb/points/{point.id}", json={"text": THIRD_PERSON, "tags": ["leadership"]}, headers=MCP
+    )
+    assert retagged.status_code == 200, retagged.text
+    assert retagged.json()["tags"] == ["leadership"]

@@ -43,6 +43,7 @@ from app.services import (
     prompt_assembly,
     resume_edit,
     resume_lint,
+    resume_ops,
     resume_versions,
     resume_voice,
 )
@@ -1482,9 +1483,7 @@ def tailor(
             # than store or silently rewrite it. Only what the caller wrote or
             # changed is refused; a base line it left alone is the owner's, and
             # is repaired below only where that is mechanical.
-            voice_problems = resume_voice.changed_hits(base, customized, summary_always=False)
-            if voice_problems:
-                raise ValueError(resume_voice.ops_error(voice_problems))
+            resume_ops.refuse_third_person(base, customized)
         else:
             actionable, skipped, already_applied = _resolution_bundle(
                 tailoring, already_applied

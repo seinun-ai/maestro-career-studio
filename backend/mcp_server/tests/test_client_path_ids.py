@@ -58,7 +58,10 @@ def test_every_value_in_a_rest_path_goes_through_seg():
     import mcp_server.client as client_module
 
     source = Path(client_module.__file__).read_text()
-    paths = re.findall(r'f"/api[^"]*"', source)
+    paths = re.findall(r'f"/api[^"]*"', source) + re.findall(r"f'/api[^']*'", source)
+    concatenated = re.findall(r'''["']/api[^"']*["']\s*\+''', source)
+    assert concatenated == [], "a REST path is built by concatenation: build it as an f-string with _seg"
+
     assert paths, "no REST path f-strings found: the scan needs updating"
     unchecked = [p for p in paths if re.search(r"\{(?!_seg\()", p)]
     assert unchecked == []
@@ -77,3 +80,13 @@ def test_plain_slugs_uuids_and_file_names_still_reach_their_routes():
     assert client.get_base_resume("supply_chain_analyst_2")["slug"] == "supply_chain_analyst_2"
     assert client.get_job(JOB)["id"] == JOB
     assert client.unwaive_health_gate("base", "master", "S1") == {"ok": True}
+
+
+@respx.mock
+def test_a_template_id_may_start_with_an_underscore_or_a_hyphen():
+    """validate_template_id allows ^[a-z0-9_-]+$; only a leading '.' is dangerous."""
+    respx.get(f"{BASE}/api/templates/_draft").mock(return_value=httpx.Response(200, json={"id": "_draft"}))
+    respx.get(f"{BASE}/api/templates/-draft").mock(return_value=httpx.Response(200, json={"id": "-draft"}))
+    client = BackendClient(BASE)
+    assert client.get_template("_draft")["id"] == "_draft"
+    assert client.get_template("-draft")["id"] == "-draft"

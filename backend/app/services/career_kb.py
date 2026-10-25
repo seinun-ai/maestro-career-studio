@@ -204,6 +204,13 @@ def compose_context(session: Session) -> str:
     return out
 
 
+def _detail_text(entity: KBEntity, key: str) -> str | None:
+    """A free-form detail value as resume text: `detail` is written by agents too
+    (kb_create_entity), so a year or a GPA may arrive as a number."""
+    value = (entity.detail_json or {}).get(key)
+    return None if value in (None, "") else str(value)
+
+
 def compose_resume_data(
     session: Session,
     *,
@@ -323,7 +330,7 @@ def compose_resume_data(
             {
                 "company": e.org or "",
                 "role": e.title,
-                "location": (e.detail_json or {}).get("location"),
+                "location": _detail_text(e, "location"),
                 "start_date": e.start_date or "",
                 "end_date": e.end_date,
                 "bullets": approved_bullets(e),
@@ -346,13 +353,13 @@ def compose_resume_data(
             {
                 "institution": e.org or "",
                 "degree": e.title,
-                "field": (e.detail_json or {}).get("field"),
-                "gpa": (e.detail_json or {}).get("gpa"),
+                "field": _detail_text(e, "field"),
+                "gpa": _detail_text(e, "gpa"),
                 "coursework": (e.detail_json or {}).get("coursework") or [],
-                "location": (e.detail_json or {}).get("location"),
+                "location": _detail_text(e, "location"),
                 "start_date": e.start_date,
                 "end_date": e.end_date,
-                "graduation_date": (e.detail_json or {}).get("graduation_date"),
+                "graduation_date": _detail_text(e, "graduation_date"),
                 "bullets": approved_bullets(e),
             }
             for e in entities
