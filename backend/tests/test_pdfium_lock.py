@@ -8,8 +8,9 @@ Python-level race rode along: two `ensure_page_images` calls on one PDF
 unlinked and rewrote each other's PNGs.
 
 The fix is ONE process-wide lock (`app.services.pdfium_lock.PDFIUM_LOCK`). The
-first test pins that every PDFium touch under `app/` sits lexically inside a
-`with PDFIUM_LOCK:` block; the second hammers the preview path from threads.
+first test pins that every PDFium touch under `app/` and `mcp_server/` sits
+lexically inside a `with PDFIUM_LOCK:` block (MCP tools run on worker threads in
+the backend process too); the second hammers the preview path from threads.
 """
 import ast
 import os
@@ -23,6 +24,7 @@ from app.services import pdf_preview
 from tests.pdf_fixtures import image_pages_pdf_bytes
 
 APP = Path(__file__).resolve().parents[1] / "app"
+MCP = APP.parent / "mcp_server"
 LOCK_NAME = "PDFIUM_LOCK"
 
 
@@ -75,7 +77,8 @@ def _pdfium_names(tree: ast.AST) -> set[str]:
 def _unlocked_pdfium_uses() -> tuple[list[str], int]:
     offenders: list[str] = []
     checked = 0
-    for path in sorted(APP.rglob("*.py")):
+    sources = [*APP.rglob("*.py"), *(p for p in MCP.rglob("*.py") if "tests" not in p.parts)]
+    for path in sorted(sources):
         source = path.read_text(encoding="utf-8")
         if "pypdfium2" not in source:
             continue
@@ -89,10 +92,20 @@ def _unlocked_pdfium_uses() -> tuple[list[str], int]:
     return offenders, checked
 
 
+def _mcp_checked() -> int:
+    """PDFium names the scan saw under mcp_server/ (so its coverage cannot silently lapse)."""
+    source = (MCP / "client.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    names = _pdfium_names(tree)
+    return sum(1 for node in ast.walk(tree) if isinstance(node, ast.Name) and node.id in names)
+
+
 def test_every_pdfium_use_holds_the_one_lock():
     offenders, checked = _unlocked_pdfium_uses()
-    # Non-vacuous: pdf_preview and attachment_extract both open documents.
+    # Non-vacuous: pdf_preview and attachment_extract both open documents, and so do
+    # the MCP client's two preview helpers.
     assert checked >= 4, checked
+    assert _mcp_checked() > 0, "the scan no longer reaches mcp_server/client.py"
     assert not offenders, (
         "PDFium used outside `with PDFIUM_LOCK:` (app/services/pdfium_lock.py) — "
         "it is not thread-safe and the threadpool WILL call it concurrently: "

@@ -15,6 +15,7 @@ import httpx
 
 from app.services.autofill_profile import canonical_identity_from_profile
 from app.services.http_client import new_client
+from app.services.pdfium_lock import PDFIUM_LOCK
 from app.write_origin import encode_detail
 
 DEFAULT_BASE_URL = "http://localhost:8000"
@@ -133,8 +134,8 @@ def _inspect_pdf(pdf_path: Path) -> dict[str, Any]:
     try:
         import pdfplumber
 
-        with pdfplumber.open(str(pdf_path)) as doc:
-            page_texts = [page.extract_text() or "" for page in doc.pages]
+        with pdfplumber.open(str(pdf_path)) as plumber_doc:
+            page_texts = [page.extract_text() or "" for page in plumber_doc.pages]
     except Exception:
         logger.debug("PDF inspection failed for %s; degrading", pdf_path, exc_info=True)
         return degraded
@@ -151,11 +152,8 @@ def _inspect_pdf(pdf_path: Path) -> dict[str, Any]:
     }
 
 
-# PDFium is not thread-safe (the backend serializes it behind
-# app.services.pdfium_lock.PDFIUM_LOCK). This process needs no lock today:
-# FastMCP calls sync tools directly on its event-loop thread, so these two
-# helpers never run concurrently. If a tool ever reaches them from a thread
-# (asyncio.to_thread, a threaded HTTP transport), take a lock here too.
+# PDFium is not thread-safe, and MCP tools run on worker threads inside the backend
+# process (mcp_server.http), so both helpers take the backend's one PDFIUM_LOCK.
 def _render_pdf_previews(pdf_path: Path, target_id: str) -> dict[str, Any]:
     """Render one PNG per page next to the PDF and scan for em dashes (U+2014).
 
@@ -178,17 +176,18 @@ def _render_pdf_previews(pdf_path: Path, target_id: str) -> dict[str, Any]:
         # {id}.pN.png can't be Read as if it belonged to the current render.
         for old in pdf_path.parent.glob(f"{target_id}.p*.png"):
             old.unlink()
-        doc = pdfium.PdfDocument(str(pdf_path))
-        try:
-            page_count = len(doc)
-            for i in range(page_count):
-                png_path = pdf_path.parent / f"{target_id}.p{i + 1}.png"
-                # One render at ~120 dpi keeps previews legible. Bytes stay on
-                # disk unless the explicit one-page MCP tool is called.
-                doc[i].render(scale=120 / 72).to_pil().save(png_path, format="PNG")
-                page_images.append(str(png_path))
-        finally:
-            doc.close()
+        with PDFIUM_LOCK:
+            doc = pdfium.PdfDocument(str(pdf_path))
+            try:
+                page_count = len(doc)
+                for i in range(page_count):
+                    png_path = pdf_path.parent / f"{target_id}.p{i + 1}.png"
+                    # One render at ~120 dpi keeps previews legible. Bytes stay on
+                    # disk unless the explicit one-page MCP tool is called.
+                    doc[i].render(scale=120 / 72).to_pil().save(png_path, format="PNG")
+                    page_images.append(str(png_path))
+            finally:
+                doc.close()
     except Exception:
         # Bad/corrupt PDF (pdfium raises PdfiumError) — degrade, don't raise.
         logger.debug("PDF preview failed for %s; degrading", pdf_path, exc_info=True)
@@ -214,14 +213,15 @@ def _render_pdf_page_at_cap(pdf_path: Path, page_number: int, max_dimension_px: 
     if max_dimension_px < 1:
         raise BackendError("max_dimension_px must be >= 1")
     try:
-        doc = pdfium.PdfDocument(str(pdf_path))
-        try:
-            page = doc[page_number - 1]
-            longest = max(page.get_width(), page.get_height())
-            scale = max_dimension_px / longest if longest else 1.0
-            image = page.render(scale=scale).to_pil()
-        finally:
-            doc.close()
+        with PDFIUM_LOCK:
+            doc = pdfium.PdfDocument(str(pdf_path))
+            try:
+                page = doc[page_number - 1]
+                longest = max(page.get_width(), page.get_height())
+                scale = max_dimension_px / longest if longest else 1.0
+                image = page.render(scale=scale).to_pil()
+            finally:
+                doc.close()
     except BackendError:
         raise
     except Exception as exc:
