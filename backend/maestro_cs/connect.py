@@ -294,7 +294,7 @@ class Connector:
             from mcp_server import profiles  # noqa: PLC0415
 
             raise ControlError(f"Unknown tool profile {profile!r}. Choose one of: "
-                               f"{', '.join(sorted(profiles.VALID_PROFILES))}.") from None
+                               f"{', '.join(profiles.PROFILE_ALLOWLISTS)}.") from None
 
     # --- entry point --------------------------------------------------------------------
 

@@ -65,13 +65,20 @@ def _rpc(c, path, sid, method, params=None, id_=2):
     return c.post(path, json=body, headers={**HDR, "Mcp-Session-Id": sid})
 
 
-@pytest.mark.parametrize("profile", ["full", "hunt", "apply", "explore", "templates", "career"])
+@pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
 def test_each_profile_lists_exactly_its_allowlist(client, profile):
     path = "/mcp" if profile == "full" else f"/mcp/{profile}"
     sid = _session(client, path)
     names = {t["name"] for t in _rpc(client, path, sid, "tools/list").json()["result"]["tools"]}
     allow = allowed_tools(profile)
     assert names == (set(srv.list_registered_tool_names("full")) if allow is None else set(allow))
+
+
+@pytest.mark.parametrize("old, new", [("career", "profile"), ("explore", "track")])
+def test_an_old_set_name_serves_its_new_set_for_one_release(client, old, new):
+    sid = _session(client, f"/mcp/{old}")
+    names = {t["name"] for t in _rpc(client, f"/mcp/{old}", sid, "tools/list").json()["result"]["tools"]}
+    assert names == set(allowed_tools(new))
 
 
 def test_a_hidden_tool_is_refused_with_todays_text(client):
@@ -92,7 +99,7 @@ def test_responses_are_json_and_stateful(client):
     assert r.headers.get("mcp-session-id")
 
 
-@pytest.mark.parametrize("profile", ["full", "hunt", "apply", "explore", "templates", "career"])
+@pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
 @pytest.mark.parametrize("app_version, expected", [("0.9.0", "0.9.0"), (None, "dev")])
 def test_initialize_reports_maestro_version_for_every_profile(
     monkeypatch, profile, app_version, expected

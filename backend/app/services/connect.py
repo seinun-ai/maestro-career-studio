@@ -17,6 +17,7 @@ def _profile_url(backend_url: str, profile: str) -> str:
 def build(profile: str = "full") -> ConnectInfo:
     if profile not in profiles.VALID_PROFILES:
         raise ValueError(f"Unknown MCP profile: {profile}")
+    profile = profiles.PROFILE_ALIASES.get(profile, profile)  # an old name gets its new set's URL
 
     backend_url = settings.maestro_cs_public_backend_url.rstrip("/")
     mcp_url = _profile_url(backend_url, profile)
@@ -46,7 +47,7 @@ def build(profile: str = "full") -> ConnectInfo:
         mcp_url=mcp_url,
         profiles=[
             ConnectProfile(name=p, url=_profile_url(backend_url, p))
-            for p in ["full", *sorted(profiles.VALID_PROFILES - {"full"})]
+            for p in ["full", *(name for name in profiles.PROFILE_ALLOWLISTS if name != "full")]
         ],
         bundle_available=settings.mcpb_bundle_path.is_file(),
         clients=[

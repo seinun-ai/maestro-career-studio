@@ -398,11 +398,11 @@ def test_quick_tailor_is_registered():
     assert "quick_tailor" in set(srv.list_registered_tool_names())
 
 
-def test_quick_tailor_is_apply_only_not_hunt():
-    from mcp_server.profiles import APPLY_TOOLS, HUNT_TOOLS
+def test_quick_tailor_lives_in_the_tailor_set_only():
+    from mcp_server.profiles import PROFILE_ALLOWLISTS
 
-    assert "quick_tailor" in APPLY_TOOLS
-    assert "quick_tailor" not in HUNT_TOOLS
+    holders = {name for name, allow in PROFILE_ALLOWLISTS.items() if allow and "quick_tailor" in allow}
+    assert holders == {"tailor"}
 
 
 def test_score_ats_skips_the_profile_fetch_when_hints_are_off(monkeypatch):

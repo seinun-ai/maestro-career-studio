@@ -1,11 +1,16 @@
 """Scoped MCP profile allowlists and filter behavior."""
 from mcp.server.fastmcp import FastMCP
 
+from mcp_server import orientation
 from mcp_server.profiles import (
     APPLY_TOOLS,
-    EXPLORE_TOOLS,
     HUNT_TOOLS,
+    PROFILE_ALIASES,
+    PROFILE_ALLOWLISTS,
+    PROFILE_TOOLS,
+    TAILOR_TOOLS,
     TEMPLATES_TOOLS,
+    TRACK_TOOLS,
     apply_profile_filter,
     get_profile,
 )
@@ -70,23 +75,18 @@ def test_profile_allowlists_are_disjoint_from_unused_domains():
     }.isdisjoint(HUNT_TOOLS)
     assert {"propose_application", "record_triage"} <= HUNT_TOOLS
     # Triage is a hunt-and-apply decision surface; still no submit power in hunt.
-    assert "get_career_export" not in EXPLORE_TOOLS
+    assert "get_career_export" not in TRACK_TOOLS
+    assert {"mark_submitted", "explore_top_skills", "kb_edit_point"}.isdisjoint(TAILOR_TOOLS)
     assert "validate_template" in TEMPLATES_TOOLS
     assert {"tailor_session", "get_career_export"}.isdisjoint(TEMPLATES_TOOLS)
 
 
-def test_career_profile_has_kb_writes_and_no_job_tools():
-    from mcp_server.profiles import CAREER_TOOLS
-
-    assert "kb_edit_point" in CAREER_TOOLS
-    assert "kb_edit_profile" in CAREER_TOOLS
-    assert "get_career_context" in CAREER_TOOLS
-    assert "list_jobs" not in CAREER_TOOLS
+def test_profile_set_has_kb_writes_and_no_job_tools():
+    assert {"kb_edit_point", "kb_edit_profile", "get_career_context"} <= PROFILE_TOOLS
+    assert "list_jobs" not in PROFILE_TOOLS
 
 
-def test_career_profile_registers_onboarding_tools_and_hunt_does_not():
-    from mcp_server.profiles import CAREER_TOOLS, HUNT_TOOLS
-
+def test_profile_set_registers_onboarding_tools_and_hunt_does_not():
     new_tools = {
         "kb_ingest_resume",
         "kb_approve_points",
@@ -97,18 +97,20 @@ def test_career_profile_registers_onboarding_tools_and_hunt_does_not():
         "kb_retire_points",
         "kb_add_points",
     }
-    assert new_tools <= CAREER_TOOLS
-    assert {"list_base_resumes", "get_base_resume"} <= CAREER_TOOLS
+    assert new_tools <= PROFILE_TOOLS
+    assert {"list_base_resumes", "get_base_resume"} <= PROFILE_TOOLS
     assert new_tools.isdisjoint(HUNT_TOOLS)
 
 
-def test_career_profile_can_finish_the_arc_it_starts():
-    """Onboarding ends with a PDF in hand — a profile that composes a base but
-    cannot render it dead-ends at a JSON blob. Scoring/tailoring stay out."""
-    from mcp_server.profiles import CAREER_TOOLS
-
-    assert {"render_pdf", "get_rendered_pdf"} <= CAREER_TOOLS
-    assert {"score_ats", "tailor_session", "create_tailoring_session"}.isdisjoint(CAREER_TOOLS)
+def test_profile_set_can_finish_onboarding_on_its_own():
+    """Onboarding ends with a checked base resume and the form answers: compose, set
+    its anchors, fix it, render it, judge it, and read what is saved before a write."""
+    assert {
+        "render_pdf", "get_rendered_pdf", "set_base_resume_identity", "edit_base_resume",
+        "run_health_check", "judge_health_bullets", "waive_health_gate",
+        "get_autofill_profile", "list_resume_versions", "restore_resume_version",
+    } <= PROFILE_TOOLS
+    assert {"score_ats", "tailor_session", "create_tailoring_session"}.isdisjoint(PROFILE_TOOLS)
 
 
 def test_apply_profile_can_store_an_apply_package_without_an_ai_key():
@@ -117,20 +119,18 @@ def test_apply_profile_can_store_an_apply_package_without_an_ai_key():
     assert {"store_cover_letter", "store_qa_answers", "list_qa_entries"} <= APPLY_TOOLS
 
 
-def test_profile_fact_writes_reach_apply_and_career_but_not_hunt():
-    """Career runs onboarding, so it writes every fact Setup asks for; apply saves a form
-    answer learned mid-application once; hunt reads the preferences and writes none."""
-    from mcp_server.profiles import CAREER_TOOLS
-
+def test_profile_fact_writes_reach_apply_and_profile_but_not_hunt():
+    """The profile set runs onboarding, so it writes every fact Setup asks for; apply saves a
+    form answer learned mid-application once; the others write none."""
     writes = {"set_autofill_profile", "set_job_preferences", "set_markets", "set_persona"}
-    assert writes <= CAREER_TOOLS
+    assert writes <= PROFILE_TOOLS
     assert APPLY_TOOLS & writes == {"set_autofill_profile"}
-    for allowlist in (HUNT_TOOLS, EXPLORE_TOOLS, TEMPLATES_TOOLS):
+    for allowlist in (HUNT_TOOLS, TAILOR_TOOLS, TRACK_TOOLS, TEMPLATES_TOOLS):
         assert writes.isdisjoint(allowlist)
 
 
 def test_scoped_profiles_stay_read_only_on_the_kb():
-    for allowlist in (HUNT_TOOLS, APPLY_TOOLS, EXPLORE_TOOLS, TEMPLATES_TOOLS):
+    for allowlist in (HUNT_TOOLS, TAILOR_TOOLS, APPLY_TOOLS, TRACK_TOOLS, TEMPLATES_TOOLS):
         assert not {tool for tool in allowlist if tool.startswith("kb_")}
 
 
@@ -167,3 +167,32 @@ def test_the_request_profile_wins_over_the_env_for_hints(monkeypatch):
     finally:
         srv.CURRENT_PROFILE.reset(token)
     assert srv._active_allowed_tools() == allowed_tools("full")
+
+
+def test_the_sets_follow_the_journey_and_every_one_is_served():
+    assert [s.name for s in orientation.SETS] == [
+        "profile", "hunt", "tailor", "apply", "track", "templates", "full"]
+    assert set(PROFILE_ALLOWLISTS) == {s.name for s in orientation.SETS}
+
+
+def test_old_names_still_resolve_for_one_release():
+    assert PROFILE_ALIASES == {"career": "profile", "explore": "track"}
+    assert get_profile("career") == "profile" and get_profile("explore") == "track"
+
+
+def test_tailor_application_lives_only_in_full():
+    """It rebuilds a draft without the session's checks, so no scoped set offers it."""
+    assert all("tailor_application" not in allow for allow in PROFILE_ALLOWLISTS.values() if allow)
+
+
+def test_set_sizes_stay_near_the_line():
+    sizes = {n: len(a) for n, a in PROFILE_ALLOWLISTS.items() if a is not None}
+    assert sizes == {"profile": 38, "hunt": 21, "tailor": 30, "apply": 33, "track": 17, "templates": 13}
+
+
+def test_every_allowlisted_tool_is_registered():
+    import mcp_server.server as srv
+
+    registered = set(srv.list_registered_tool_names("full"))
+    for name, allow in PROFILE_ALLOWLISTS.items():
+        assert not (set(allow or ()) - registered), name

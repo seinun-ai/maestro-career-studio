@@ -1,6 +1,6 @@
 """MCP over Streamable HTTP, inside the FastAPI app.
 
-One FastMCP (mcp_server.server.mcp) holds the 88 tool registrations. Each
+One FastMCP (mcp_server.server.mcp) holds every tool registration. Each
 profile gets a low-level MCP Server that filters that registry through the
 profile allowlist, with a fresh session manager on every lifespan run.
 
@@ -35,7 +35,7 @@ from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
 from mcp_server import server as tools_server
-from mcp_server.profiles import PROFILE_ALLOWLISTS
+from mcp_server.profiles import PROFILE_ALIASES, PROFILE_ALLOWLISTS
 
 # Separate from FastAPI's default 40-token limiter: a tool waiting on loopback
 # REST must never starve the endpoint it is waiting on.
@@ -157,6 +157,7 @@ class McpEndpoint:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         profile = scope.get("path_params", {}).get("profile", "full")
+        profile = PROFILE_ALIASES.get(profile, profile)  # an old name serves its set for one release
         manager = self.managers.get(profile)
         if manager is None:
             await JSONResponse({"detail": "Not Found"}, status_code=404)(scope, receive, send)

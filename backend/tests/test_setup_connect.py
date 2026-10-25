@@ -48,15 +48,21 @@ def test_connect_composes_every_client_for_the_full_profile(client, monkeypatch)
     assert by_id["other"]["label"] == "Any MCP agent"
     assert by_id["claude-desktop"]["kind"] == "download"
     assert by_id["claude-desktop"]["value"] == "/api/setup/connect/bundle"
-    assert {p["name"] for p in body["profiles"]} == {
-        "full", "hunt", "apply", "explore", "templates", "career",
-    }
+    assert [p["name"] for p in body["profiles"]] == [
+        "full", "profile", "hunt", "tailor", "apply", "track", "templates",
+    ]
     for profile in body["profiles"]:
         suffix = "" if profile["name"] == "full" else f"/{profile['name']}"
         assert profile["url"] == f"{url}{suffix}"
 
 
-@pytest.mark.parametrize("profile", ["hunt", "apply", "explore", "templates", "career"])
+@pytest.mark.parametrize("old, new", [("career", "profile"), ("explore", "track")])
+def test_an_old_set_name_gets_the_new_sets_url(client, old, new):
+    body = client.get("/api/setup/connect", params={"profile": old}).json()
+    assert body["mcp_url"].endswith(f"/mcp/{new}")
+
+
+@pytest.mark.parametrize("profile", ["profile", "hunt", "tailor", "apply", "track", "templates"])
 def test_a_profile_rewrites_every_value(client, profile):
     response = client.get("/api/setup/connect", params={"profile": profile})
     assert response.status_code == 200
