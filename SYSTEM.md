@@ -811,6 +811,9 @@ the refresh, the slop ratchet's stale pair, readers still on a job's country tex
 invariant has done its job: promote it (into Cross-cutting invariants or `.system_md_enforcement.json`) and delete
 the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 
+- **A faked compiler hid behind the probe cache** (2026-10-24): patching `pdf_render.subprocess.run` patches the shared module, so the
+  resolver's `pdflatex --version` probe hit the fake (500 `{"detail":""}` run alone) unless an earlier real render had cached the banner
+  (`engines._VERSION_CACHE`) → a test that fakes the compiler pins `engines.probe_pdflatex` too (`_stub_render_compilers`, `_with_tex`).
 - **Tests leaked state through `/app/settings`** (2026-10-21): the settings file mirrors default to that container-absolute folder, so a
   test that saved a setting unisolated left `market.json`, `eeo_consent.json` or a `secrets/sync-key` behind (order-dependent
   `test_eeo_consent` / `test_market_settings` failures; a stray sync key failed 17 sync tests) → isolate every mirror, check the folder.
