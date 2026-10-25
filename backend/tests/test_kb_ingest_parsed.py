@@ -285,12 +285,12 @@ def test_onboarding_round_trip_ingest_approve_compose(
         row = db_session.get(KBPoint, UUID(pid))
         assert row is not None and row.state == "draft"
 
-    # Drafts contribute NO bullets: the entries compose as bare headers.
+    # Drafts contribute NO bullets, and a job or project with none is left out (an
+    # empty bullet list breaks the PDF), so a drafts-only selection is the 422.
     probe = client.post("/api/base-resumes/from-kb", json={
         "entity_ids": entity_ids, "role_label": "Draft probe",
     })
-    assert probe.status_code == 200, probe.text
-    assert _bullets(probe.json()["data"]) == []
+    assert probe.status_code == 422, probe.text
 
     approve = client.post("/api/kb/points/bulk-state", json={
         "ids": point_ids, "state": "approved",
