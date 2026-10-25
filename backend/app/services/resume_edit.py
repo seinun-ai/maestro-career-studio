@@ -256,8 +256,12 @@ def _apply_add_skill_item(resume: dict[str, Any], op: AddSkillItem) -> dict[str,
     matches = [g for g in groups if str(g.get("category", "")).casefold() == target]
     if matches:
         items = matches[0].setdefault("items", [])
-        # A keyword the line already names, even inside parentheses, is not added again (issue #50).
-        if " ".join(op.item.split()).casefold() not in _skill_terms(items):
+        # A keyword the line already names, even inside parentheses, is not added again (issue #50), and neither is an
+        # item whose every term the line names: "AWS, SageMaker" beside "AWS (SageMaker, EKS, S3)" (#55).
+        terms = _skill_terms(items)
+        item = " ".join(op.item.split()).casefold()
+        parts = [part.strip() for part in _SKILL_TERM_SPLIT.split(item) if part.strip()]
+        if item not in terms and not (parts and all(part in terms for part in parts)):
             items.append(op.item)
         category = matches[0].get("category")
     else:

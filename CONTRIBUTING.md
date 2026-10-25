@@ -96,28 +96,26 @@ Ordered roughly by how self-contained they are.
 
 1. **Server-side tracker pagination** (`SYSTEM.md` §11 item 5). Contained,
    testable, and it fixes a real slowdown: the client caps at 500 rows.
-2. **URL canonicalization server-side.** Tracking-parameter stripping is
-   currently every caller's job, which means it is done inconsistently.
 
 **Bigger, and genuinely useful**
 
-3. **The "ready to apply" gate** (§11 item 2). High user value. The metadata
+2. **The "ready to apply" gate** (§11 item 2). High user value. The metadata
    path it needs already ships.
-4. **Extension coverage for more ATS platforms.** The most valuable
+3. **Extension coverage for more ATS platforms.** The most valuable
    contribution anyone could make, and the hardest to fake: it requires meeting
    a real form. The fixture corpus in `backend/tests/fixtures/autofill/` shows
    how to add a control shape **without** pasting captured DOM.
-5. **Token-cost visibility.** Show what a tailoring run cost. Makes the
+4. **Token-cost visibility.** Show what a tailoring run cost. Makes the
    local-model argument concrete at the moment it is felt.
-6. **The security hardening KNOWN_ISSUES lists as not yet done.** The
+5. **The security hardening KNOWN_ISSUES lists as not yet done.** The
    isolated render worker and the resource ceilings have the best
    effort-to-value ratio.
 
 **Wanted, but talk to us first**
 
-7. **Sanctioned job ingest** via an official API, so postings can arrive
+6. **Sanctioned job ingest** via an official API, so postings can arrive
    without anyone scraping.
-8. **Provider-aware model routing** — cheap or local models for mechanical
+7. **Provider-aware model routing** — cheap or local models for mechanical
    steps, a frontier model for tailoring.
 
 Before you start: read the relevant part of `SYSTEM.md` §6 (most review comments

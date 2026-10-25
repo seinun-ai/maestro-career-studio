@@ -245,6 +245,19 @@ def test_add_skill_item_stripped_item_dedupes_case_insensitively():
     assert langs["items"] == ["Python"]  # " python " -> "python" matches "Python" (ci) -> no dup
 
 
+def test_add_skill_item_skips_parenthesized_keywords_case_insensitively():
+    base = deepcopy(BASE)
+    base["skills"][1]["items"] = ["AWS (SageMaker, EKS, S3) …"]
+
+    result = apply_edits(
+        base,
+        _ops({"kind": "add_skill_item", "category": "cloud", "item": "aws, sagemaker"}),
+    )
+
+    cloud = [g for g in result["skills"] if g["category"] == "Cloud"][0]
+    assert cloud["items"] == ["AWS (SageMaker, EKS, S3) …"]
+
+
 def test_add_skill_item_creates_skills_list_when_key_absent():
     # a resume dict lacking a "skills" list at all still works: the op creates it.
     resume = {"contact": {"name": "Sample", "email": "a@example.com"}}

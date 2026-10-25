@@ -343,6 +343,9 @@ work-permit answers for each country you apply in.
   dollars. With no country it is your home currency, and either way the job notes the currency was
   assumed.
 - **The Score breakdown's arrow turns** as it opens and closes, instead of jumping.
+- **A skills line takes no item it already names.** Adding "AWS, SageMaker" to a line that read
+  "AWS (SageMaker, EKS, S3)" appended it as a new item. An item is now skipped when the line already names
+  every term in it. From @KeuqS's fix in #55.
 
 ## [0.11.1] — 2026-10-16
 
@@ -651,6 +654,7 @@ you. And the Companion's fill log is now off until you turn it on.
 - **A tailored skills line names a skill once.** A line that read "AWS (SageMaker, EKS, S3)" ended "…, AWS,
   SageMaker, MLOps" after tailoring: the gap step's **Different wording** fill added a keyword the line already had.
   A keyword the line already names, inside parentheses too and in any case, is no longer added again (#50).
+  @KeuqS sent the first fix, in #55.
 - **Base resume cards in a row line up.** When one card's Target pill wrapped, the card beside it showed a white strip
   under its coloured footer. Every footer now runs to the bottom of its card.
 - **Resume and gaps shows a finished gap analysis.** On a job tailored from its gap analysis, the step offered a fresh
