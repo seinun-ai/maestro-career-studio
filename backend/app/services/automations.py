@@ -28,6 +28,8 @@ ALTERNATES = {"apply-auto": "apply-session"}
 # agent can reach); `attended` and `custom` cards open with ATTENDED_WRAPPER (do it now).
 Kind = Literal["scheduled", "attended", "custom"]
 Need = Literal["maestro", "email", "browser", "web"]
+# The MCP tool set whose tools the card names (mcp_server/profiles.py); full = every tool.
+Toolset = Literal["profile", "hunt", "tailor", "apply", "track", "templates", "full"]
 
 
 class _Meta(BaseModel):
@@ -38,6 +40,7 @@ class _Meta(BaseModel):
     needs: list[Need]
     never: str | None = None
     include: list[str] = []
+    toolset: Toolset
 
 
 class AutomationCard(BaseModel):
@@ -48,6 +51,7 @@ class AutomationCard(BaseModel):
     kind: Kind
     needs: tuple[Need, ...]
     never: str | None
+    toolset: Toolset
     body: str
     prompt: str
 
@@ -72,10 +76,18 @@ ATTENDED_WRAPPER = (
 )
 
 
-def _prompt(kind: Kind, body: str) -> str:
-    """The text Copy puts on the clipboard: the kind's wrapper, then the skill."""
+def toolset_line(toolset: Toolset) -> str:
+    """The sentence a wrapper gains naming the tool set the job's tools are in."""
+    if toolset == "full":
+        return ""
+    return (f" It uses Maestro's {toolset} tool set (or the full set): if a tool it names is "
+            "missing, tell me to connect that set and stop.")
+
+
+def _prompt(kind: Kind, body: str, toolset: Toolset) -> str:
+    """The text Copy puts on the clipboard: the kind's wrapper and its tool set, then the skill."""
     wrapper = SCHEDULED_WRAPPER if kind == "scheduled" else ATTENDED_WRAPPER
-    return f"{wrapper}\n\n{body}"
+    return f"{wrapper}{toolset_line(toolset)}\n\n{body}"
 
 
 def _split(path: Path) -> tuple[dict, str]:
@@ -143,8 +155,8 @@ def _card(card_id: str, meta: _Meta, body: str) -> AutomationCard:
     """A card from its metadata and body, with the prompt Copy hands the agent."""
     return AutomationCard(
         id=card_id, title=meta.title, summary=meta.summary, kind=meta.kind,
-        needs=tuple(meta.needs), never=meta.never, body=body,
-        prompt=_prompt(meta.kind, body),
+        needs=tuple(meta.needs), never=meta.never, toolset=meta.toolset, body=body,
+        prompt=_prompt(meta.kind, body, meta.toolset),
     )
 
 
@@ -183,5 +195,6 @@ def catalog(full_automation: bool = False) -> AutomationCatalog:
             cards.append(_alternate("apply-auto"))
         else:
             kind = apply_kind()
-            cards.append(card.model_copy(update={"kind": kind, "prompt": _prompt(kind, card.body)}))
+            cards.append(card.model_copy(
+                update={"kind": kind, "prompt": _prompt(kind, card.body, card.toolset)}))
     return AutomationCatalog(cards=cards)

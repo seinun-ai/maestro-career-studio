@@ -6,6 +6,7 @@ metadata:
   summary: Reads your job email and moves each application to applied, interviewing, rejected or offered.
   kind: scheduled
   needs: [maestro, email]
+  toolset: track
   never: Never sends or replies to email, and never copies email text into Maestro.
 ---
 

@@ -6,6 +6,7 @@ metadata:
   summary: Works your queued jobs and submits the ones whose final review is clean.
   kind: scheduled
   needs: [maestro, browser]
+  toolset: apply
   never: Never submits a job whose final review shows anything to check.
   include: [agent-apply-execution]
 ---

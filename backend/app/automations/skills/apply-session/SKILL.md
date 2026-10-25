@@ -6,6 +6,7 @@ metadata:
   summary: Works your queued jobs in a browser and fills each application.
   kind: attended
   needs: [maestro, browser]
+  toolset: apply
   never: Never submits without your yes.
   include: [agent-apply-execution]
 ---

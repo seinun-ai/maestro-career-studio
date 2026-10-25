@@ -6,6 +6,7 @@ metadata:
   summary: Prepares a tailored resume for each queued job using only facts you've already given.
   kind: scheduled
   needs: [maestro]
+  toolset: tailor
   never: Never adds a fact you haven't given, and never applies.
 ---
 

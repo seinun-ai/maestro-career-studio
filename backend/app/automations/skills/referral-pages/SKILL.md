@@ -6,6 +6,7 @@ metadata:
   summary: Checks your referrals' careers pages for new roles that fit you and proposes them.
   kind: scheduled
   needs: [maestro, web]
+  toolset: hunt
   never: Never contacts a referral and never applies.
 ---
 

@@ -6,6 +6,7 @@ metadata:
   summary: Finds recent postings that fit your brief, saves and scores them, and proposes the best.
   kind: scheduled
   needs: [maestro, web]
+  toolset: hunt
   never: Never applies, submits or triages for you.
 ---
 

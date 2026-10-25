@@ -16,7 +16,7 @@ def test_catalog_endpoint_shape():
     data = r.json()
     assert set(data) == {"cards"}
     card = data["cards"][0]
-    assert set(card) == {"id", "title", "summary", "kind", "needs", "never", "body", "prompt"}
+    assert set(card) == {"id", "title", "summary", "kind", "needs", "never", "toolset", "body", "prompt"}
 
 
 def test_catalog_endpoint_serializes_needs_as_a_list():

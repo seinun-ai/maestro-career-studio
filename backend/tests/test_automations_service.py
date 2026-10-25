@@ -106,12 +106,28 @@ def test_the_user_yes_path_records_consent_before_submitting():
     assert positions == sorted(positions)
 
 
-def test_every_prompt_is_its_kinds_wrapper_then_its_body():
+def test_every_prompt_is_its_kinds_wrapper_its_set_then_its_body():
     for full_automation in (False, True):
         for card in automations.catalog(full_automation=full_automation).cards:
             wrapper = (automations.SCHEDULED_WRAPPER if card.kind == "scheduled"
                        else automations.ATTENDED_WRAPPER)
+            wrapper += automations.toolset_line(card.toolset)
             assert card.prompt == f"{wrapper}\n\n{card.body}", card.id
+
+
+TOOLSETS = {"mail-status": "track", "job-hunt": "hunt", "referral-pages": "hunt",
+            "tailor-run": "tailor", "apply-session": "apply", "customize-job-skills": "full"}
+
+
+def test_each_card_names_the_tool_set_it_needs():
+    assert {c.id: c.toolset for c in automations.catalog().cards} == TOOLSETS
+    assert automations.catalog(full_automation=True).cards[4].toolset == "apply"  # apply-auto
+
+
+def test_a_prompt_names_its_set_to_connect_and_full_needs_no_line():
+    cards = {c.id: c for c in automations.catalog().cards}
+    assert "Maestro's tailor tool set" in cards["tailor-run"].prompt
+    assert automations.toolset_line("full") == ""
 
 
 def test_the_scheduled_wrapper_asks_when_then_adapts():
@@ -246,7 +262,8 @@ def test_apply_execution_never_tailors_over_a_draft_on_another_base():
 
 
 def _card_text(name, **meta):
-    fields = {"title": "T", "summary": "S", "kind": "scheduled", "needs": "[maestro]", **meta}
+    fields = {"title": "T", "summary": "S", "kind": "scheduled", "needs": "[maestro]",
+              "toolset": "hunt", **meta}
     lines = "".join(f"  {k}: {v}\n" for k, v in fields.items() if v is not None)
     return f"---\nname: {name}\ndescription: x\nmetadata:\n{lines}---\nbody of {name}\n"
 
@@ -368,3 +385,4 @@ def test_catalog_models_are_frozen():
         card.title = "changed"
     with pytest.raises(ValidationError):
         card.prompt = "changed"
+

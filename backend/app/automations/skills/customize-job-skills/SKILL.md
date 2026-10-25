@@ -6,6 +6,7 @@ metadata:
   summary: Builds automations around you, or tunes any card above to your agent app and routine.
   kind: custom
   needs: [maestro]
+  toolset: full
 ---
 
 # Customize the job skills

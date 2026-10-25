@@ -2500,6 +2500,8 @@ export type AutomationCard = {
   kind: AutomationKind;
   needs: AutomationNeed[];
   never: string | null;
+  /** The MCP tool set the card's tools are in (backend `automations.Toolset`). */
+  toolset: "profile" | "hunt" | "tailor" | "apply" | "track" | "templates" | "full";
   body: string;
   prompt: string;
 };
