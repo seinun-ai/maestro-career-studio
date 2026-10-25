@@ -637,6 +637,7 @@ you. And the Companion's fill log is now off until you turn it on.
 - **A tailored skills line names a skill once.** A line that read "AWS (SageMaker, EKS, S3)" ended "…, AWS,
   SageMaker, MLOps" after tailoring: the gap step's **Different wording** fill added a keyword the line already had.
   A keyword the line already names, inside parentheses too and in any case, is no longer added again (#50).
+  @KeuqS sent the first fix, in #55.
 - **Base resume cards in a row line up.** When one card's Target pill wrapped, the card beside it showed a white strip
   under its coloured footer. Every footer now runs to the bottom of its card.
 - **Resume and gaps shows a finished gap analysis.** On a job tailored from its gap analysis, the step offered a fresh
