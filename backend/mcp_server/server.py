@@ -2399,7 +2399,8 @@ def resume_proposal(proposal_id: str) -> Any:
 @_guard
 def get_final_review(proposal_id: str) -> Any:
     """Compact final-review bundle: job summary, chosen base/match score delta, PDF readiness,
-    QA answers, EEO consent flag (no values), blocked/manual items, evidence manifest.
+    QA answers, blocked/manual items, evidence manifest. `approval_recorded` is the user's
+    yes on this proposal; `eeo.consent_recorded` is their standing EEO consent (no values).
     Requires an existing proposal — a 404 usually means propose_application was
     not called (it accepts application_id to late-link) or an application id
     was passed where a proposal id belongs. duplicate_submitted=true means a

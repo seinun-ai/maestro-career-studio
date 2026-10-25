@@ -17,7 +17,13 @@ from app.models.application import NEWEST_FIRST, Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.consent_event import ConsentEvent
 from app.models.job import Job
-from app.services import application_writes, auto_apply_settings, filled_answers, job_site_login
+from app.services import (
+    application_writes,
+    auto_apply_settings,
+    eeo_consent,
+    filled_answers,
+    job_site_login,
+)
 from app.services.sync import offers as sync_offers
 
 
@@ -565,12 +571,15 @@ def get_final_review(session: Session, prop: ApplicationProposal) -> dict:
     if app_row is not None and app_row.pdf_path:
         pdf = {"ready": True, "filename": Path(app_row.pdf_path).name}
 
-    consent_recorded = session.scalar(
+    approval_recorded = session.scalar(
         select(ConsentEvent.id).where(
             ConsentEvent.proposal_id == prop.id,
             ConsentEvent.action == "approved",
         ).limit(1)
     ) is not None
+    # The user's standing EEO consent (Profile), never this proposal's approval: an
+    # approved proposal once read here as EEO consent the user had not given.
+    eeo_consent_recorded = eeo_consent.peek_consent(session).enabled is True
 
     plan = prop.plan_json or {}
     intervention = prop.intervention_json or {}
@@ -637,7 +646,8 @@ def get_final_review(session: Session, prop: ApplicationProposal) -> dict:
             }
             for q in qa_rows
         ],
-        "eeo": {"consent_recorded": consent_recorded},
+        "approval_recorded": approval_recorded,
+        "eeo": {"consent_recorded": eeo_consent_recorded},
         "blocked_items": plan.get("blocked_items") or intervention.get("blocked_items") or [],
         "manual_items": plan.get("manual_items") or intervention.get("manual_items") or [],
         "intervention": intervention or None,

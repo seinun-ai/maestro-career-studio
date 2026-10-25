@@ -960,3 +960,33 @@ def test_a_proposals_job_carries_its_stage_in_the_list_and_the_detail(db_session
     assert listed[str(tailored.id)] == "tailored" and listed[str(saved.id)] == "saved"
     detail = client.get(f"/api/proposals/{ids[tailored.id]}").json()
     assert detail["job"]["stage"] == "tailored"
+
+
+def test_final_review_eeo_flag_is_the_standing_consent_not_the_approval(db_session):
+    """`eeo.consent_recorded` read the proposal's approval event, so an approved
+    proposal showed EEO consent while the user had given none. It is now the user's
+    standing EEO consent; the approval is `approval_recorded`."""
+    from app.schemas.eeo_consent import EeoConsent
+    from app.services import eeo_consent
+
+    job = _mk_job(db_session, source="agent", company="ConsentCo", title="Eng")
+    app_row = Application(job_id=job.id, base_resume="hybrid", source="agent", status="draft")
+    db_session.add(app_row)
+    db_session.commit()
+    pid = client.post(
+        "/api/proposals", json={"job_id": str(job.id), "application_id": str(app_row.id)}
+    ).json()["id"]
+    prop = db_session.get(ApplicationProposal, UUID(pid))
+    prop.evidence_json = _fr_evidence()
+    db_session.commit()
+
+    before = client.get(f"/api/proposals/{pid}/final-review").json()
+    assert (before["approval_recorded"], before["eeo"]["consent_recorded"]) == (False, False)
+
+    approved = client.patch(f"/api/proposals/{pid}", json={"status": "approved", "consent": {"channel": "chat"}})
+    assert approved.status_code == 200, approved.text
+    after = client.get(f"/api/proposals/{pid}/final-review").json()
+    assert (after["approval_recorded"], after["eeo"]["consent_recorded"]) == (True, False)
+
+    eeo_consent.set_consent(EeoConsent(enabled=True), db_session)
+    assert client.get(f"/api/proposals/{pid}/final-review").json()["eeo"]["consent_recorded"] is True
