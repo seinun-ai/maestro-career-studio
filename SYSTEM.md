@@ -310,7 +310,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   `docs/entities/others.md`,
   "Placement target details".
 - **MCP control invariants** `{#inv-mcp-controls}`: no tool name contains "delete"; no set-default-template tool; MCP writes five settings,
-  never `eeo` (`mcp_server/tests/test_server.py`, `test_profile_write_tools.py`).
+  never `eeo`; an id is one path segment, `client._seg` (`mcp_server/tests/test_server.py`, `test_profile_write_tools.py`,
+  `test_client_path_ids.py`).
 - **MCP lives inside the app.** `{#inv-mcp-inside-the-app}` `/mcp` and `/mcp/{profile}` are routed inside FastAPI behind REST's
   SyncPublicHost → Host → Origin → CORS stack; SDK DNS-rebinding protection is OFF so that stack stays the one definition; never a second port
   or `/api/sync` route. Pins: `tests/test_mcp_http_boundary.py`, `mcp_server/tests/test_http.py`.
@@ -338,8 +339,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   reads the web UI's `GET /api/jobs/{id}/filled-answers`). The Companion panel posts the receipt through the generic `api` door, never
   `telemetry`/`fill_trace`, so it works
   with telemetry off; it reads only frames that earn the data (inv-frame-earns-data), records no never-fill field even under standing consent,
-  and its values never reach the run-trace builders. Pinned by `tests/test_filled_answers_invariant.py`, `test_extension_panel_receipt.py`,
-  `test_filled_answers_api.py`, `test_filled_answers_agent.py` and `mcp_server/tests/test_client_filled_answers.py`.
+  and its values never reach the run-trace builders. Pins (invariant, panel receipt, API, agent and MCP client tests):
+  `.system_md_enforcement.json`.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at the sender, but `broadcastToFrames`
   targets every frame — a job page carries ad/analytics/chat iframes, and the ISOLATED world protects the message in transit, NOT the DOM
   written into: a frame owns its DOM, so a profile value in a third-party frame's input is readable by that frame's script. `agent.js` gates
@@ -472,8 +473,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **Resume text is the owner's own, in implied first person.** `{#inv-resume-voice}` Every rewrite prompt carries the VOICE rule (built in
   code, so a customised row keeps it); `services/resume_voice.py` finds the shapes about the owner. Model and caller text NEVER stores a
   blocking third-person hit (one retry, then repair, then drop); the owner's base lines get only mechanical repairs and are never dropped.
-  Ambiguous shapes are flagged, never rewritten. `tailor_session` ops and `kb_add_points` with a hit get a 400 (details:
-  `docs/entities/others.md`, "Voice check details"). Pinned by `tests/test_resume_voice.py`, `test_tailoring_voice.py`.
+  Ambiguous shapes are flagged, never rewritten. Agent and Assistant writes with a hit get a 400 (`docs/entities/others.md`,
+  "Voice check details"). Pins: `tests/test_resume_voice.py`, `test_tailoring_voice.py`, `test_agent_write_voice.py`.
 - **A Next the page rejects is not a move, and only a page the run filled is pressed.** `{#inv-rejected-next}` A press that leaves address
   and step heading while the page shows errors keeps `step` and `seen`; the driver reads `page_errors` (the page's own words, never a value),
   repairs ONLY the fields they name in at most `MAX_FIX_ROUNDS`, then presses again; what it cannot repair parks `page_errors` naming only

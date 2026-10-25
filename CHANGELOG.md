@@ -285,6 +285,24 @@ work-permit answers for each country you apply in.
 
 ### Fixed
 
+- **A connected agent can no longer reach routes its tools do not offer.** The MCP server put tool ids
+  into web addresses unchecked, so a crafted id could read your saved form answers, diversity answers
+  included, or send a delete to another route. Every id is now checked to be a plain id before any
+  request leaves the MCP server.
+- **PDF previews over MCP can no longer crash the app.** The MCP server's page previews skipped the lock
+  the PDF library needs, and since MCP runs inside the app, two at once could take down the web app,
+  MCP and the Companion together.
+- **An agent's resume and career-history edits are held to your voice.** `edit_application`,
+  `tailor_application`, `edit_base_resume`, `kb_edit_point` and the Assistant's edits stored lines like
+  "She led her team." They now refuse a third-person line with a 400 that names it, as tailoring
+  already did. Your own saves in the web app are unchanged.
+- **A base resume built from your career history always renders.** A job or project with no approved
+  bullet is left out instead of breaking the PDF of the base and of every application tailored from it,
+  and education keeps its graduation date and place. If a base's PDF still fails, the agent is told why
+  instead of hearing that the base is ready.
+- **The final review's EEO flag means your EEO consent.** `get_final_review` reported an approved
+  proposal as EEO consent you had not given. `eeo.consent_recorded` is now your standing consent, and
+  the approval is `approval_recorded`.
 - **A keyword you saved in a gap analysis reaches the tailored resume when your agent writes the
   edits.** Before, a saved "add Power BI to Analytics" was dropped if the agent's own edits left it out.
   Now any saved keyword missing after the edits goes into your skills list, in the category you chose
