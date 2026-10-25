@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 910,
-    "total_loc": 286026,
-    "src_loc": 77292,
-    "test_loc": 208734,
+    "modules": 912,
+    "total_loc": 286826,
+    "src_loc": 77456,
+    "test_loc": 209370,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -35,7 +35,7 @@
       },
       {
         "file": "app/services/proposals.py",
-        "line": 217,
+        "line": 223,
         "name": "transition",
         "complexity": 43,
         "params": 9,
@@ -83,7 +83,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 887,
+        "line": 896,
         "name": "_compose_extra_item_ops",
         "complexity": 39,
         "params": 5,
@@ -112,14 +112,6 @@
         "complexity": 37,
         "params": 4,
         "lines": 87
-      },
-      {
-        "file": "app/services/career_kb.py",
-        "line": 207,
-        "name": "compose_resume_data",
-        "complexity": 37,
-        "params": 2,
-        "lines": 160
       },
       {
         "file": "tests/test_frontend_jobs_honest_words.py",
@@ -170,6 +162,14 @@
         "lines": 111
       },
       {
+        "file": "app/services/career_kb.py",
+        "line": 214,
+        "name": "compose_resume_data",
+        "complexity": 34,
+        "params": 2,
+        "lines": 162
+      },
+      {
         "file": "app/services/kb_adapt.py",
         "line": 270,
         "name": "apply_adapted",
@@ -178,20 +178,20 @@
         "lines": 152
       },
       {
-        "file": "app/services/tailoring_session.py",
-        "line": 1402,
-        "name": "tailor",
-        "complexity": 32,
-        "params": 4,
-        "lines": 221
-      },
-      {
         "file": "tests/test_frontend_jobs_honest_words.py",
         "line": 847,
         "name": "test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions",
         "complexity": 31,
         "params": 0,
         "lines": 37
+      },
+      {
+        "file": "app/services/tailoring_session.py",
+        "line": 1403,
+        "name": "tailor",
+        "complexity": 31,
+        "params": 4,
+        "lines": 219
       },
       {
         "file": "app/services/chat_agent.py",
@@ -227,11 +227,11 @@
       },
       {
         "file": "app/services/proposals.py",
-        "line": 551,
+        "line": 557,
         "name": "get_final_review",
         "complexity": 29,
         "params": 2,
-        "lines": 95
+        "lines": 99
       },
       {
         "file": "app/services/health_gates.py",
@@ -267,7 +267,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1145,
+        "line": 1146,
         "name": "_live_text_fragments",
         "complexity": 28,
         "params": 1,
@@ -410,7 +410,7 @@
         "lines": 73
       }
     ],
-    "hotspot_count": 1059,
+    "hotspot_count": 1060,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -499,8 +499,8 @@
       }
     ],
     "error_masking_count": 17,
-    "internal_import_edges": 4142,
-    "imports_per_module": 4.55,
+    "internal_import_edges": 4165,
+    "imports_per_module": 4.57,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -649,7 +649,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "1059 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
+      "detail": "1060 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -662,16 +662,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 286026,
-    "src_loc": 77292,
-    "test_loc": 208734,
-    "modules": 910,
+    "total_loc": 286826,
+    "src_loc": 77456,
+    "test_loc": 209370,
+    "modules": 912,
     "orphan_loc": 0,
     "duplication_pct": 0.43,
     "duplicated_lines": 398,
     "clone_count": 46,
-    "complexity_hotspots": 1059,
+    "complexity_hotspots": 1060,
     "error_masking": 17,
-    "imports_per_module": 4.55
+    "imports_per_module": 4.57
   }
 }
