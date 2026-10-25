@@ -329,6 +329,9 @@ work-permit answers for each country you apply in.
   dollars. With no country it is your home currency, and either way the job notes the currency was
   assumed.
 - **The Score breakdown's arrow turns** as it opens and closes, instead of jumping.
+- **A skills line takes no item it already names.** Adding "AWS, SageMaker" to a line that read
+  "AWS (SageMaker, EKS, S3)" appended it as a new item. An item is now skipped when the line already names
+  every term in it. From @KeuqS's fix in #55.
 
 ## [0.11.1] — 2026-10-16
 
