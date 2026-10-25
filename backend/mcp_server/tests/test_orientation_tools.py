@@ -25,3 +25,23 @@ def test_setup_status_says_where_setup_stands_and_which_set_is_next(monkeypatch)
     assert out["next_step"]["tool_set"] == "profile"
     assert [s["name"] for s in out["tool_sets"]] == list(orientation.SET_NAMES)
     assert out["steps"] is _STATUS
+
+
+def test_tailoring_options_explain_each_preset_in_plain_words(monkeypatch):
+    from app.schemas.quick_tailor import QuickTailorProfile
+
+    stored = {"keywords_into_skills": False, "mirror_wording": True, "instruction": "Keep it short."}
+    monkeypatch.setattr(srv._client, "get_quick_tailor_profile", lambda: stored)
+    monkeypatch.setattr(srv._client, "get_persona", lambda: "Plain-spoken analyst.")
+    out = srv.get_tailoring_options()
+
+    switches = [k for k in QuickTailorProfile.model_fields if k != "instruction"]
+    assert [p["key"] for p in out["presets"]] == switches
+    by_key = {p["key"]: p for p in out["presets"]}
+    assert by_key["keywords_into_skills"]["on"] is False
+    assert by_key["summary_rename"]["on"] is False  # unset: the schema's default
+    for key in switches:  # one source: the schema's own description
+        assert by_key[key]["means"] == QuickTailorProfile.model_fields[key].description
+        assert by_key[key]["means"]
+    assert out["instruction"] == "Keep it short."
+    assert out["persona"] == "Plain-spoken analyst."

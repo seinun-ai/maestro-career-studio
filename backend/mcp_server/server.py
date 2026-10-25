@@ -14,6 +14,7 @@ from mcp.types import ToolAnnotations
 from pydantic import ConfigDict, Field, with_config
 
 from app.schemas.autofill_profile import WorkAuthStatus
+from app.schemas.quick_tailor import QuickTailorProfile
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
 from app.services import http_client, markets
 from mcp_server import orientation, workflow
@@ -660,6 +661,31 @@ def get_setup_status() -> Any:
             {"name": s.name, "use_when": s.use_when, "holds": s.holds} for s in orientation.SETS
         ],
         "steps": status,
+    }
+
+
+@mcp.tool(**_read("Get Tailoring Options"))
+@_guard
+def get_tailoring_options() -> Any:
+    """The user's Quick tailor presets, as data an agent can explain or work around.
+    Returns presets ([{key, on, means}]: each switch, whether it is on, and its plain
+    meaning), instruction (an extra instruction the user gave for every tailor, may be
+    empty) and persona (the user's own words on tone, may be empty). quick_tailor
+    follows these presets; a custom tailor walks the gaps with the user however the
+    agent talks with them and saves the decisions with resolve_gaps. Either way the
+    server keeps its rules: an unproven skill enters only a skills list, resume lines
+    stay in the owner's implied first person, and saved keywords land. The presets are
+    the user's, set in the app; no tool changes them."""
+    stored = _client.get_quick_tailor_profile() or {}
+    fields = QuickTailorProfile.model_fields
+    return {
+        "presets": [
+            {"key": key, "on": bool(stored.get(key, field.default)), "means": field.description}
+            for key, field in fields.items()
+            if key != "instruction"
+        ],
+        "instruction": str(stored.get("instruction") or ""),
+        "persona": _client.get_persona(),
     }
 
 

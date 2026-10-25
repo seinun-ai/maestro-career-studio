@@ -186,6 +186,10 @@ def test_every_scoped_set_but_templates_opens_with_setup_status():
             assert "get_setup_status" in allow, name
 
 
+def test_tailoring_options_sit_with_tailoring():
+    assert "get_tailoring_options" in TAILOR_TOOLS
+
+
 def test_tailor_application_lives_only_in_full():
     """It rebuilds a draft without the session's checks, so no scoped set offers it."""
     assert all("tailor_application" not in allow for allow in PROFILE_ALLOWLISTS.values() if allow)
@@ -193,7 +197,7 @@ def test_tailor_application_lives_only_in_full():
 
 def test_set_sizes_stay_near_the_line():
     sizes = {n: len(a) for n, a in PROFILE_ALLOWLISTS.items() if a is not None}
-    assert sizes == {"profile": 39, "hunt": 22, "tailor": 31, "apply": 34, "track": 18, "templates": 13}
+    assert sizes == {"profile": 39, "hunt": 22, "tailor": 32, "apply": 34, "track": 18, "templates": 13}
 
 
 def test_every_allowlisted_tool_is_registered():

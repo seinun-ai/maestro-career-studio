@@ -803,6 +803,9 @@ class BackendClient:
     def get_quick_tailor_profile(self) -> Any:
         return self._request("GET", "/api/settings/quick-tailor").get("value", {})
 
+    def get_persona(self) -> str:
+        return self._request("GET", "/api/settings/persona").get("value") or ""
+
     def get_mcp_workflow_settings(self) -> Any:
         return self._request("GET", "/api/settings/mcp-workflow").get("value", {})
 

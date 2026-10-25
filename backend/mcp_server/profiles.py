@@ -83,6 +83,7 @@ HUNT_TOOLS = frozenset({
 # undo. tailor_application is full-only: it skips the session's checks.
 TAILOR_TOOLS = frozenset({
     "get_setup_status",
+    "get_tailoring_options",
     "get_career_context",
     "list_base_resumes",
     "get_base_resume",
