@@ -22,7 +22,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   each set serves the automation playbooks whose `metadata.toolset` names it as MCP prompts (the Copy prompt's exact text, from
   `GET /api/automations`). Pins: `test_profiles.py`, `test_orientation.py`, `test_http.py`, `tests/test_automations_service.py`.
   **Orientation reads** (no writes): `get_setup_status` (every set but templates: `ai_key`, `demo_bases`, the first undone setup step and
-  its set from the pure `workflow.setup_next_step`, the set table) and `get_tailoring_options` (tailor and full: each Quick tailor switch
+  its set from the pure `workflow.setup_next_step`, which counts form answers done without the diversity answers an agent cannot
+  save, the set table) and `get_tailoring_options` (tailor and full: each Quick tailor switch
   with its plain meaning from `QuickTailorProfile`'s field descriptions, the instruction and persona; the presets stay the user's).
   Lifespans run fresh stateful JSON sessions; tools use `http.py`'s eight-worker limiter (§6 inv-tools-off-loop).
   Stdio filters `MAESTRO_CS_MCP_PROFILE` (default `full`; migration state: §13 `mcp-stdio-venv`).

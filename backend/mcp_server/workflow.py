@@ -701,7 +701,8 @@ _SETUP_STEPS: tuple[tuple[str, str], ...] = (
     ("base_resume", "Build a base resume from the approved career history for each role the "
                     "user targets; the shipped demo resume does not count."),
     ("form_answers", "Save the answers application forms ask for: contact, address, and work "
-                     "permits for each country the user applies in."),
+                     "permits for each country the user applies in. The diversity answers are the "
+                     "user's, in the app."),
     ("job_preferences", "Save the jobs the user wants: roles, places, work mode and minimum pay."),
     ("persona", "Save the user's persona: a few sentences in their own words that every "
                 "writing prompt reads for tone."),
@@ -710,6 +711,14 @@ _SETUP_STEPS: tuple[tuple[str, str], ...] = (
 
 def _step_done(status: dict[str, Any], key: str) -> bool:
     return bool((status.get(key) or {}).get("done"))
+
+
+def _answers_done(status: dict[str, Any]) -> bool:
+    """Every form-answer group an agent can save is complete. The diversity answers (`eeo`) count
+    toward the app's own done, but set_autofill_profile refuses them: only the user gives those."""
+    groups = ((status.get("autofill") or {}).get("groups") or {}).items()
+    open_groups = [g for k, g in groups if k != "eeo" and g.get("answered", 0) < g.get("answerable", 0)]
+    return _step_done(status, "autofill") or bool(groups) and not open_groups
 
 
 def setup_next_step(status: dict[str, Any]) -> dict[str, Any] | None:
@@ -721,7 +730,7 @@ def setup_next_step(status: dict[str, Any]) -> dict[str, Any] | None:
     done = {
         "career_history": _step_done(status, "import_resumes"),
         "base_resume": real_bases > 0,
-        "form_answers": _step_done(status, "autofill"),
+        "form_answers": _answers_done(status),
         "job_preferences": _step_done(status, "job_preferences"),
         "persona": _step_done(status, "persona"),
     }

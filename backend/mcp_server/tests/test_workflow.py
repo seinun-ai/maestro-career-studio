@@ -915,6 +915,20 @@ def test_setup_next_step_walks_preferences_then_persona_then_nothing():
     assert workflow.setup_next_step(_setup(**base, job_preferences=True, persona=True)) is None
 
 
+def test_setup_next_step_leaves_the_diversity_answers_to_the_user():
+    """set_autofill_profile refuses `eeo`: only the user gives those, in the app. Once every other
+    form answer is saved, an agent's next step moves on instead of waiting on what it cannot save."""
+    status = _setup(import_resumes=True, bases=1)
+    status["autofill"]["groups"] = {
+        "personal": {"answered": 12, "answerable": 12}, "work_auth": {"answered": 4, "answerable": 4},
+        "preferences": {"answered": 5, "answerable": 5}, "eeo": {"answered": 0, "answerable": 4}}
+    assert workflow.setup_next_step(status)["step"] == "job_preferences"
+    status["autofill"]["groups"]["personal"]["answered"] = 7
+    step = workflow.setup_next_step(status)
+    assert step["step"] == "form_answers"
+    assert "diversity answers are the user's" in step["says"]
+
+
 def test_setup_next_step_never_asks_an_agent_for_the_key_or_the_template():
     """Both are the user's, in the app: reported by get_setup_status, never a next step."""
     seen = set()
