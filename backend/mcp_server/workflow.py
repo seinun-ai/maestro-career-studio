@@ -708,6 +708,10 @@ _SETUP_STEPS: tuple[tuple[str, str], ...] = (
 )
 
 
+def _step_done(status: dict[str, Any], key: str) -> bool:
+    return bool((status.get(key) or {}).get("done"))
+
+
 def setup_next_step(status: dict[str, Any]) -> dict[str, Any] | None:
     """The first agent-doable setup step not done, from a GET /api/setup/status body."""
     imported = status.get("import_resumes") or {}
@@ -715,11 +719,11 @@ def setup_next_step(status: dict[str, Any]) -> dict[str, Any] | None:
         status.get("demo_bases") or []
     )
     done = {
-        "career_history": bool(imported.get("done")),
+        "career_history": _step_done(status, "import_resumes"),
         "base_resume": real_bases > 0,
-        "form_answers": bool((status.get("autofill") or {}).get("done")),
-        "job_preferences": bool((status.get("job_preferences") or {}).get("done")),
-        "persona": bool((status.get("persona") or {}).get("done")),
+        "form_answers": _step_done(status, "autofill"),
+        "job_preferences": _step_done(status, "job_preferences"),
+        "persona": _step_done(status, "persona"),
     }
     for step, says in _SETUP_STEPS:
         if not done[step]:

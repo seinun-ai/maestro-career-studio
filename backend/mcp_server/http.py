@@ -117,6 +117,11 @@ def build_profile_server(mcp: FastMCP, profile: str, allowed: frozenset[str] | N
         finally:
             tools_server.CURRENT_PROFILE.reset(token)
 
+    _register_prompts(server, profile)
+    return server
+
+
+def _register_prompts(server: Server, profile: str) -> None:
     async def _cards() -> list[dict[str, Any]]:
         # The automation playbooks, as the web's Copy prompt gives them, for this set
         # (full: all). A REST read like the tools, so it runs off the event loop too.
@@ -142,8 +147,6 @@ def build_profile_server(mcp: FastMCP, profile: str, allowed: frozenset[str] | N
             description=card.get("summary"),
             messages=[PromptMessage(role="user", content=TextContent(type="text", text=card["prompt"]))],
         )
-
-    return server
 
 
 class McpEndpoint:
