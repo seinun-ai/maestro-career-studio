@@ -875,3 +875,64 @@ def test_pending_gaps_question_states_the_decision_without_naming_tools():
     assert hint["ask_user"].startswith("1 gap(s)")
     assert hint["ask_user"].endswith("?")
     assert _named_tools({"q": hint["ask_user"]}) == set()
+
+
+# --- setup_next_step: the first setup step an agent can do --------------------
+
+def _setup(**done):
+    """A setup-status body; each step done only when named True."""
+    status = {
+        "model_key": {"done": done.get("model_key", False), "detail": {}},
+        "import_resumes": {"done": done.get("import_resumes", False),
+                           "detail": {"kb_entities": 0, "base_resumes": done.get("bases", 0)}},
+        "autofill": {"done": done.get("autofill", False), "readiness": 0.0, "groups": {},
+                     "blocking": []},
+        "job_preferences": {"done": done.get("job_preferences", False), "detail": {}},
+        "persona": {"done": done.get("persona", False), "detail": {}},
+        "template": {"done": False, "detail": {}},
+        "demo_bases": done.get("demo_bases", []),
+    }
+    return status
+
+
+def test_setup_next_step_starts_with_career_history():
+    step = workflow.setup_next_step(_setup())
+    assert (step["step"], step["tool_set"]) == ("career_history", "profile")
+
+
+def test_setup_next_step_asks_for_a_base_before_form_answers_and_ignores_the_demo():
+    step = workflow.setup_next_step(_setup(import_resumes=True, bases=1, demo_bases=["example"]))
+    assert step["step"] == "base_resume"
+    step = workflow.setup_next_step(_setup(import_resumes=True, bases=2, demo_bases=["example"]))
+    assert step["step"] == "form_answers"
+
+
+def test_setup_next_step_walks_preferences_then_persona_then_nothing():
+    base = {"import_resumes": True, "bases": 1, "autofill": True}
+    assert workflow.setup_next_step(_setup(**base))["step"] == "job_preferences"
+    assert workflow.setup_next_step(_setup(**base, job_preferences=True))["step"] == "persona"
+    assert workflow.setup_next_step(_setup(**base, job_preferences=True, persona=True)) is None
+
+
+def test_setup_next_step_never_asks_an_agent_for_the_key_or_the_template():
+    """Both are the user's, in the app: reported by get_setup_status, never a next step."""
+    seen = set()
+    for flags in ({}, {"import_resumes": True, "bases": 1}, {"import_resumes": True, "bases": 1,
+                  "autofill": True, "job_preferences": True, "persona": True}):
+        step = workflow.setup_next_step(_setup(**flags))
+        seen.add(step and step["step"])
+    assert not seen & {"model_key", "template"}
+
+
+def test_setup_next_step_names_no_tool():
+    """It is read from every set, so it describes the step and names only the set."""
+    import re
+
+    from mcp_server.server import list_registered_tool_names
+
+    tools = set(list_registered_tool_names("full"))
+    for flags in ({}, {"import_resumes": True}, {"import_resumes": True, "bases": 1},
+                  {"import_resumes": True, "bases": 1, "autofill": True},
+                  {"import_resumes": True, "bases": 1, "autofill": True, "job_preferences": True}):
+        says = workflow.setup_next_step(_setup(**flags))["says"]
+        assert not set(re.findall(r"[a-z_]+", says)) & tools, says

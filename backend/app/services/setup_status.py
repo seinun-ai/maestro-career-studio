@@ -116,6 +116,17 @@ def _autofill_step(db: Session) -> AutofillStep:
     )
 
 
+def _demo_bases(db: Session) -> list[str]:
+    """The shipped demo base while it is still offered (not deleted, not archived)."""
+    from app.services.seeding import DEMO_SLUG  # noqa: PLC0415 (seeding imports the world)
+
+    return list(db.scalars(
+        select(BaseResume.slug).where(
+            base_resume_data.selectable_filter(), BaseResume.slug == DEMO_SLUG
+        )
+    ))
+
+
 def build_status(db: Session) -> SetupStatus:
     kb_entities = db.scalar(select(func.count()).select_from(KBEntity)) or 0
 
@@ -222,6 +233,7 @@ def build_status(db: Session) -> SetupStatus:
         ),
         engines=EnginesProbe.model_validate(probed),
         suggested_bases=suggested,
+        demo_bases=_demo_bases(db),
         complete=False,
     )
     steps.complete = all(

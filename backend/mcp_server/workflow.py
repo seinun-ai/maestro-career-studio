@@ -688,3 +688,41 @@ def next_after_base_from_kb(
         "options": options,
         "call": None,
     }
+
+
+# --- Setup status: the first setup step an agent can do -----------------------
+
+# In order. The AI key and the default template are the user's, in the app: get_setup_status
+# reports them but they are never a next step. Read from every set, so each step names only
+# the set that does it and describes the work in plain words (no tool names).
+_SETUP_STEPS: tuple[tuple[str, str], ...] = (
+    ("career_history", "Import the user's resume and any project write-ups into their career "
+                       "history, and have the user approve the bullets."),
+    ("base_resume", "Build a base resume from the approved career history for each role the "
+                    "user targets; the shipped demo resume does not count."),
+    ("form_answers", "Save the answers application forms ask for: contact, address, and work "
+                     "permits for each country the user applies in."),
+    ("job_preferences", "Save the jobs the user wants: roles, places, work mode and minimum pay."),
+    ("persona", "Save the user's persona: a few sentences in their own words that every "
+                "writing prompt reads for tone."),
+)
+
+
+def setup_next_step(status: dict[str, Any]) -> dict[str, Any] | None:
+    """The first agent-doable setup step not done, from a GET /api/setup/status body."""
+    imported = status.get("import_resumes") or {}
+    real_bases = int((imported.get("detail") or {}).get("base_resumes") or 0) - len(
+        status.get("demo_bases") or []
+    )
+    done = {
+        "career_history": bool(imported.get("done")),
+        "base_resume": real_bases > 0,
+        "form_answers": bool((status.get("autofill") or {}).get("done")),
+        "job_preferences": bool((status.get("job_preferences") or {}).get("done")),
+        "persona": bool((status.get("persona") or {}).get("done")),
+    }
+    for step, says in _SETUP_STEPS:
+        if not done[step]:
+            return {"step": step, "tool_set": "profile", "says": says}
+    return None
+

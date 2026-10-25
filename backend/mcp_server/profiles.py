@@ -12,6 +12,7 @@ import os
 # their anchors, edits and undo, the health check, rendering, and every fact Setup asks
 # for. Onboarding finishes here without tailoring or job tools.
 PROFILE_TOOLS = frozenset({
+    "get_setup_status",
     "get_career_context",
     "get_career_export",
     "get_job_search_brief",
@@ -54,6 +55,7 @@ PROFILE_TOOLS = frozenset({
 
 # Finding jobs: the brief, capture, scoring and proposals; no tailoring, no submit power.
 HUNT_TOOLS = frozenset({
+    "get_setup_status",
     "get_job_search_brief",
     "sync_now",
     "list_referrals",
@@ -80,6 +82,7 @@ HUNT_TOOLS = frozenset({
 # From a saved job to its tailored resume and PDF: gaps, the tailor, the health check,
 # undo. tailor_application is full-only: it skips the session's checks.
 TAILOR_TOOLS = frozenset({
+    "get_setup_status",
     "get_career_context",
     "list_base_resumes",
     "get_base_resume",
@@ -115,6 +118,7 @@ TAILOR_TOOLS = frozenset({
 # From the finished PDF to a submitted application: the apply package, form answers,
 # the proposal ledger, evidence, the user's yes, submit, and the status that follows.
 APPLY_TOOLS = frozenset({
+    "get_setup_status",
     "get_career_context",
     "list_proposals",
     "get_proposal",
@@ -152,6 +156,7 @@ APPLY_TOOLS = frozenset({
 
 # After applying, and how the search is going: statuses, referrals, the charts.
 TRACK_TOOLS = frozenset({
+    "get_setup_status",
     "list_applications",
     "get_application",
     "update_application",

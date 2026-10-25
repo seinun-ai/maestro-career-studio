@@ -16,7 +16,7 @@ from pydantic import ConfigDict, Field, with_config
 from app.schemas.autofill_profile import WorkAuthStatus
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
 from app.services import http_client, markets
-from mcp_server import workflow
+from mcp_server import orientation, workflow
 from mcp_server.client import BackendClient, BackendError
 from mcp_server.profiles import allowed_tools, apply_profile_filter
 
@@ -636,6 +636,31 @@ def store_extracted_jd(
     open-proposal check for any non-agent source. Returns the stored job.
     """
     return _client.store_extracted_jd(extracted_json, raw_text=raw_text, source_url=source_url, source=source)
+
+
+# ---------- orientation ----------
+@mcp.tool(**_read("Get Setup Status"))
+@_guard
+def get_setup_status() -> Any:
+    """Where this user's Maestro setup stands, for an agent starting fresh. Returns
+    ai_key (whether Maestro has its own AI key: with none, the generate_* tools and
+    kb_capture fail and their store_*/kb_add_points twins write the agent's own text),
+    demo_bases (slugs of the shipped demo resume, never the user's own), next_step (the
+    first setup step not done, {step, tool_set, says}; null when every step is done),
+    tool_sets (each set's name, use_when and holds, in journey order) and steps (the full
+    setup status: each step's done and detail, form-answer readiness, suggested bases,
+    PDF engines). The AI key and the default resume design are set by the user in the
+    app and are never a next step."""
+    status = _client.get_setup_status()
+    return {
+        "ai_key": bool((status.get("model_key") or {}).get("done")),
+        "demo_bases": list(status.get("demo_bases") or []),
+        "next_step": workflow.setup_next_step(status),
+        "tool_sets": [
+            {"name": s.name, "use_when": s.use_when, "holds": s.holds} for s in orientation.SETS
+        ],
+        "steps": status,
+    }
 
 
 # ---------- agentic job search ----------

@@ -180,6 +180,12 @@ def test_old_names_still_resolve_for_one_release():
     assert get_profile("career") == "profile" and get_profile("explore") == "track"
 
 
+def test_every_scoped_set_but_templates_opens_with_setup_status():
+    for name, allow in PROFILE_ALLOWLISTS.items():
+        if allow is not None and name != "templates":
+            assert "get_setup_status" in allow, name
+
+
 def test_tailor_application_lives_only_in_full():
     """It rebuilds a draft without the session's checks, so no scoped set offers it."""
     assert all("tailor_application" not in allow for allow in PROFILE_ALLOWLISTS.values() if allow)
@@ -187,7 +193,7 @@ def test_tailor_application_lives_only_in_full():
 
 def test_set_sizes_stay_near_the_line():
     sizes = {n: len(a) for n, a in PROFILE_ALLOWLISTS.items() if a is not None}
-    assert sizes == {"profile": 38, "hunt": 21, "tailor": 30, "apply": 33, "track": 17, "templates": 13}
+    assert sizes == {"profile": 39, "hunt": 22, "tailor": 31, "apply": 34, "track": 18, "templates": 13}
 
 
 def test_every_allowlisted_tool_is_registered():

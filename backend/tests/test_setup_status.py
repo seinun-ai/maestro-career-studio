@@ -439,3 +439,18 @@ def test_a_diversity_set_only_for_countries_you_apply_in_that_have_one(client, d
 
     market_settings.set_market(MarketSetting(home="DE", apply_in=["DE", "US"]), db_session)
     assert _status(client)["autofill"]["groups"]["eeo"] == {"answered": 0, "answerable": 4}
+
+
+def test_the_shipped_demo_base_is_named_so_it_is_never_taken_for_the_users(client, db_session):
+    from datetime import UTC, datetime
+
+    contact = {"contact": {"name": "Sample", "email": "sample@example.com"}}
+    assert _status(client)["demo_bases"] == []
+    db_session.add(BaseResume(slug="example", display_name="Example", data_json=contact))
+    db_session.add(BaseResume(slug="mine", display_name="Mine", data_json=contact))
+    db_session.commit()
+    assert _status(client)["demo_bases"] == ["example"]
+
+    db_session.get(BaseResume, "example").archived_at = datetime.now(UTC)  # hidden: not offered
+    db_session.commit()
+    assert _status(client)["demo_bases"] == []
