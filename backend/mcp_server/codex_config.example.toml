@@ -8,32 +8,37 @@
 # Never publish port 8001 or proxy /mcp beyond this computer.
 # The client announces its name in clientInfo for Career KB timeline labels.
 
-# Every tool (99), including Career KB writes.
+# Every tool (101), including Career KB writes.
 [mcp_servers.maestro-career-studio]
 url = "http://localhost:8001/mcp"
 enabled = true
 
-# Career KB: ID-bearing reads and draft-gated writes (18 tools).
-[mcp_servers.maestro-career-studio-career]
-url = "http://localhost:8001/mcp/career"
+# You, set up and kept current: career history, base resumes, health check, form answers (39 tools).
+[mcp_servers.maestro-career-studio-profile]
+url = "http://localhost:8001/mcp/profile"
 enabled = false
 
-# Job search: capture, score and propose (21 tools).
+# Job search: capture, score and propose (22 tools).
 [mcp_servers.maestro-career-studio-hunt]
 url = "http://localhost:8001/mcp/hunt"
 enabled = false
 
-# Execute applications: tailor, PDF, autofill and submission ledger (50 tools).
+# From a saved job to its tailored resume and PDF (32 tools).
+[mcp_servers.maestro-career-studio-tailor]
+url = "http://localhost:8001/mcp/tailor"
+enabled = false
+
+# From the PDF to a submitted application: apply package, form answers, consent, submit (34 tools).
 [mcp_servers.maestro-career-studio-apply]
 url = "http://localhost:8001/mcp/apply"
 enabled = false
 
-# Read-only analytics over stored jobs and applications (11 tools).
-[mcp_servers.maestro-career-studio-explore]
-url = "http://localhost:8001/mcp/explore"
+# Statuses, referrals and the analytics charts (18 tools).
+[mcp_servers.maestro-career-studio-track]
+url = "http://localhost:8001/mcp/track"
 enabled = false
 
-# Template draft, validation and rendering (12 tools).
+# Template draft, validation and rendering (13 tools).
 [mcp_servers.maestro-career-studio-templates]
 url = "http://localhost:8001/mcp/templates"
 enabled = false

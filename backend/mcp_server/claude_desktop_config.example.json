@@ -20,6 +20,16 @@
         "MAESTRO_CS_MCP_PROFILE": "full"
       }
     },
+    "maestro-career-studio-profile": {
+      "command": "node",
+      "args": [
+        "<REPO>/mcpb/server/index.js"
+      ],
+      "env": {
+        "MAESTRO_CS_BACKEND_URL": "http://localhost:8001",
+        "MAESTRO_CS_MCP_PROFILE": "profile"
+      }
+    },
     "maestro-career-studio-hunt": {
       "command": "node",
       "args": [
@@ -28,6 +38,16 @@
       "env": {
         "MAESTRO_CS_BACKEND_URL": "http://localhost:8001",
         "MAESTRO_CS_MCP_PROFILE": "hunt"
+      }
+    },
+    "maestro-career-studio-tailor": {
+      "command": "node",
+      "args": [
+        "<REPO>/mcpb/server/index.js"
+      ],
+      "env": {
+        "MAESTRO_CS_BACKEND_URL": "http://localhost:8001",
+        "MAESTRO_CS_MCP_PROFILE": "tailor"
       }
     },
     "maestro-career-studio-apply": {
@@ -40,14 +60,14 @@
         "MAESTRO_CS_MCP_PROFILE": "apply"
       }
     },
-    "maestro-career-studio-explore": {
+    "maestro-career-studio-track": {
       "command": "node",
       "args": [
         "<REPO>/mcpb/server/index.js"
       ],
       "env": {
         "MAESTRO_CS_BACKEND_URL": "http://localhost:8001",
-        "MAESTRO_CS_MCP_PROFILE": "explore"
+        "MAESTRO_CS_MCP_PROFILE": "track"
       }
     },
     "maestro-career-studio-templates": {
@@ -58,16 +78,6 @@
       "env": {
         "MAESTRO_CS_BACKEND_URL": "http://localhost:8001",
         "MAESTRO_CS_MCP_PROFILE": "templates"
-      }
-    },
-    "maestro-career-studio-career": {
-      "command": "node",
-      "args": [
-        "<REPO>/mcpb/server/index.js"
-      ],
-      "env": {
-        "MAESTRO_CS_BACKEND_URL": "http://localhost:8001",
-        "MAESTRO_CS_MCP_PROFILE": "career"
       }
     },
     "playwright": {

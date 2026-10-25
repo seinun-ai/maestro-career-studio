@@ -573,7 +573,7 @@ export interface ConnectClient {
 }
 
 export interface ConnectProfile {
-  name: "full" | "hunt" | "apply" | "explore" | "templates" | "career";
+  name: "full" | "profile" | "hunt" | "tailor" | "apply" | "track" | "templates";
   url: string;
 }
 

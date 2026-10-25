@@ -120,7 +120,7 @@ jobs:
           cd backend
           # STDIO server: closed stdin is an immediate, clean shutdown. Any
           # import-time or registration-time failure shows up as a non-zero exit.
-          for profile in full hunt apply explore templates career; do
+          for profile in full profile hunt tailor apply track templates; do
             echo "--- profile: $profile"
             MAESTRO_CS_MCP_PROFILE="$profile" \
             BACKEND_URL="http://localhost:8001" \

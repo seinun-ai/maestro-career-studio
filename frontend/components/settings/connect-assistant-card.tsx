@@ -20,11 +20,12 @@ import type { ConnectClient, ConnectProfile } from "@/lib/types";
 
 const PROFILES = [
   { name: "full", label: "Full" },
+  { name: "profile", label: "Profile" },
   { name: "hunt", label: "Hunt" },
+  { name: "tailor", label: "Tailor" },
   { name: "apply", label: "Apply" },
-  { name: "explore", label: "Explore" },
+  { name: "track", label: "Track" },
   { name: "templates", label: "Templates" },
-  { name: "career", label: "Career" },
 ] as const satisfies readonly { name: ConnectProfile["name"]; label: string }[];
 
 export function ConnectAssistantCard() {

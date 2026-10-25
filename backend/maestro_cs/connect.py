@@ -551,6 +551,6 @@ class Connector:
         self.say("Add Maestro to an agent app with `maestro connect <app>`:")
         for client in CLIENT_IDS:
             self.say(f"  {client:<15} {LABELS[client]:<15} {statuses[client]}")
-        self.say("Add --profile hunt (or apply, explore, templates, career) for a smaller tool set, "
+        self.say("Add --profile profile (or hunt, tailor, apply, track, templates) for a smaller tool set, "
                  "and --print to see the command without running it.")
         return 0
