@@ -642,6 +642,21 @@ def test_base_from_kb_hint_offers_render_only():
     assert "score_ats" in hint["offer"]
 
 
+def test_base_from_kb_hint_names_a_failed_pdf_instead_of_calling_the_base_ready():
+    """A base created with a render_error is not "ready": the hint names the first
+    line of the error and offers no render that would fail the same way."""
+    hint = workflow.next_after_base_from_kb(
+        {"slug": "data_scientist", "render_error": "pdflatex failed\n! LaTeX Error: Something's wrong"},
+        allowed_tools=None, hints_enabled=True,
+    )
+    assert hint["state"] == "base_render_failed"
+    assert "is ready" not in hint["offer"]
+    assert "pdflatex failed" in hint["offer"]
+    assert "LaTeX Error" not in hint["offer"]
+    assert "render_pdf" not in _by_tool(hint)
+    assert "edit_base_resume" in hint["offer"]
+
+
 def test_base_from_kb_hint_keeps_render_under_the_career_profile():
     from mcp_server.profiles import CAREER_TOOLS
 

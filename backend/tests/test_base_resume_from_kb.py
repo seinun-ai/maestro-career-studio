@@ -235,3 +235,62 @@ def test_skills_arrive_in_full_and_that_is_documented(db_session, tmp_path, monk
         json={"slug": "skills_full", "entity_ids": [str(keep.id)]},
     ).json()
     assert body["data"]["skills"][0]["items"] == ["Python", "Airflow", "Figma"]
+
+
+# --- items with nothing approved, and education details -------------------
+
+def _drafts_only(db_session, kind, title, org=None):
+    """An item whose only bullet is still a draft: nothing approved to compose."""
+    ent = _entity(db_session, kind, title, org, approved=())
+    db_session.add(KBPoint(entity_id=ent.id, text="A draft bullet.", state="draft", origin="mcp"))
+    db_session.commit()
+    return ent
+
+
+def test_an_item_with_no_approved_bullets_is_left_out_of_a_base(db_session, tmp_path, monkeypatch):
+    """An empty job breaks the PDF (an empty bullet list) for the base and every
+    application tailored from it, so it never reaches the base."""
+    _stub_side_effects(monkeypatch, tmp_path)
+    _profile(db_session)
+    keep = _entity(db_session, "experience", "Data Engineer", "Acme")
+    empty_job = _drafts_only(db_session, "experience", "Intern", "Beta")
+    empty_project = _drafts_only(db_session, "project", "Side Project")
+
+    resp = _client(db_session).post(
+        "/api/base-resumes/from-kb",
+        json={"slug": "no_empties", "entity_ids": [str(keep.id), str(empty_job.id), str(empty_project.id)]},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert [e["role"] for e in data["experience"]] == ["Data Engineer"]
+    assert data["projects"] == []
+
+
+def test_a_selection_with_nothing_approved_is_a_422(db_session, tmp_path, monkeypatch):
+    _stub_side_effects(monkeypatch, tmp_path)
+    _profile(db_session)
+    empty_job = _drafts_only(db_session, "experience", "Intern", "Beta")
+
+    resp = _client(db_session).post(
+        "/api/base-resumes/from-kb",
+        json={"slug": "drafts_only", "entity_ids": [str(empty_job.id)]},
+    )
+    assert resp.status_code == 422
+    assert db_session.get(BaseResume, "drafts_only") is None
+
+
+def test_education_keeps_its_graduation_date_and_location(db_session, tmp_path, monkeypatch):
+    _stub_side_effects(monkeypatch, tmp_path)
+    _profile(db_session)
+    edu = _entity(db_session, "education", "B.S.", "University of Colorado", approved=())
+    edu.detail_json = {"field": "Business Analytics", "graduation_date": "2019-05", "location": "Boulder, CO"}
+    db_session.commit()
+
+    master = career_kb.compose_resume_data(db_session)["education"][0]
+    assert master["graduation_date"] == "2019-05" and master["location"] == "Boulder, CO"
+
+    body = _client(db_session).post(
+        "/api/base-resumes/from-kb", json={"slug": "with_edu", "entity_ids": [str(edu.id)]}
+    ).json()
+    assert body["data"]["education"][0]["graduation_date"] == "2019-05"
+    assert body["data"]["education"][0]["location"] == "Boulder, CO"

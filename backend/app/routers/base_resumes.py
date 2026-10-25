@@ -450,7 +450,8 @@ def create_from_kb(
     `skills` come from the KB profile and arrive in full, because the KB has no
     per-entity skill data to filter by — narrowing them would mean guessing.
     The summary is dropped unless `include_summary`, since a whole-career
-    summary on a role-targeted resume is usually wrong.
+    summary on a role-targeted resume is usually wrong. A picked job or project
+    with no approved bullet is left out (its PDF would not render).
     """
     hooks.require_profile_writable(db)
     slug = payload.slug
@@ -466,6 +467,10 @@ def create_from_kb(
         slug = _next_role_slug(role_category, db)
 
     composed = career_kb.compose_resume_data(db, entity_ids=payload.entity_ids)
+    # A job or project with no approved bullet adds an empty bullet list, which no
+    # PDF of this base, or of an application tailored from it, can render.
+    for section in ("experience", "projects"):
+        composed[section] = [entry for entry in composed.get(section) or [] if entry.get("bullets")]
 
     # ResumeData only requires `contact`, so a selection matching nothing would
     # otherwise mint a contact-only resume with no error at all.

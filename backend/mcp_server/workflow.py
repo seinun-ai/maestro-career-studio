@@ -639,6 +639,22 @@ def next_after_base_from_kb(
         # verbatim-callable option and no honest prose — say nothing, the way
         # next_after_scores does when nothing was scored.
         return None
+    render_error = str(base.get("render_error") or "").strip()
+    if render_error:
+        # The base exists but its PDF failed: calling it ready, or offering a
+        # render that fails the same way, sends the agent into a loop.
+        first_line = render_error.splitlines()[0][:200]
+        offer = f"Base {slug} was created, but its PDF could not be made: {first_line}."
+        if _registered("edit_base_resume", allowed_tools):
+            offer += " Fix the resume with edit_base_resume, then render it again."
+        return {
+            "state": "base_render_failed",
+            "blocking": False,
+            "offer": offer,
+            "ask_user": None,
+            "options": [],
+            "call": None,
+        }
     options = _visible(
         [
             {

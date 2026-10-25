@@ -349,8 +349,10 @@ def compose_resume_data(
                 "field": (e.detail_json or {}).get("field"),
                 "gpa": (e.detail_json or {}).get("gpa"),
                 "coursework": (e.detail_json or {}).get("coursework") or [],
+                "location": (e.detail_json or {}).get("location"),
                 "start_date": e.start_date,
                 "end_date": e.end_date,
+                "graduation_date": (e.detail_json or {}).get("graduation_date"),
                 "bullets": approved_bullets(e),
             }
             for e in entities
