@@ -7,7 +7,6 @@
       {"path": "backend/app/services/tailoring_session.py", "symbol": "_is_missing_skill"}
     ],
     "inv-tailor-vs-edit": [
-      {"path": "backend/mcp_server/tests/test_server.py", "symbol": "test_tailor_application_and_edit_application_docstrings_are_distinguishable"},
       {"path": "backend/mcp_server/tests/test_server.py", "symbol": "test_edit_application_docstring_describes_current_draft_behavior"},
       {"path": "backend/tests/test_resume_edit_service.py", "symbol": "test_replace_bullet_full_array_index_skips_disabled_and_echoes_applied"},
       {"path": "backend/mcp_server/server.py", "symbol": "0-based into the FULL array"}

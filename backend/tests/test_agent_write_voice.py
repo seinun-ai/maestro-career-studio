@@ -1,10 +1,11 @@
 """Agent and model text never stores a third-person line (§6 inv-resume-voice).
 
 The rule held for tailor_session ops and kb_add_points only. A connected agent's
-edit_application, tailor_application, edit_base_resume and kb_edit_point, and the
-Assistant's edit tool, stored lines like "She grew her team." A write carrying the
-MCP origin header is the agent's text, so it is refused with the lines named; the
-web studio's own saves send no origin and keep the owner's text as written.
+edit_application, rebuild from the base (POST /api/applications/from-base),
+edit_base_resume and kb_edit_point, and the Assistant's edit tool, stored lines
+like "She grew her team." A write carrying the MCP origin header is the agent's
+text, so it is refused with the lines named; the web studio's own saves send no
+origin and keep the owner's text as written.
 """
 
 import copy

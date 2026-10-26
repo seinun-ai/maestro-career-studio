@@ -1550,33 +1550,6 @@ def unarchive_base_resume(slug: str) -> Any:
 
 
 # ---------- tailor + render ----------
-@mcp.tool(**_write("Rebuild Tailored Resume", destructive=True, idempotent=False))
-@_guard
-def tailor_application(
-    job_id: str, base_resume: str, ops: EditOps, application_id: str | None = None
-) -> Any:
-    """REBUILD FROM SCRATCH: apply typed edit ops to the BASE resume and store the
-    result as customized_json, REPLACING whatever was there before wholesale.
-
-    `ops` carry only the changed fields (same op shapes as edit_base_resume; the
-    base is in get_base_resume) — the server starts from the stored base and
-    inherits every untouched field from IT, not from any prior tailored draft.
-    If an application already has tailored edits (from a previous tailor_application
-    or edit_application call), calling this again DESTROYS them — the new result is
-    computed fresh from the base, not layered on top. edit_application is the
-    in-place alternative that preserves the current tailored draft (refining
-    wording, swapping a bullet, retrying after a PDF preview).
-    Does NOT trigger AI suggestions. A job has one application: with no application_id,
-    the job's newest is updated in place and takes this base (still replaced wholesale);
-    pass application_id to target a specific application explicitly. `ops` accepts
-    the FULL vocabulary documented on edit_base_resume — every kind, not just
-    the bullet/summary ones: replace_entry is how you change an entry's dates, title,
-    company or tech list, and add/replace/remove/move_extra_section handle custom
-    sections, which are ATS-neutral.
-    """
-    return _client.tailor_application(job_id, base_resume, ops, application_id=application_id)
-
-
 @mcp.tool(**_write("Edit Tailored Resume", destructive=True, idempotent=False))
 @_guard
 def edit_application(application_id: str, ops: EditOps) -> Any:
@@ -1587,9 +1560,7 @@ def edit_application(application_id: str, ops: EditOps) -> Any:
     yet (nothing to preserve). Suited to refining or retrying a tailored resume
     after inspecting PDF previews — swap a bullet, tweak wording, fix one thing —
     without losing the rest of what's already been tailored and without creating
-    duplicate applications. tailor_application is the from-scratch alternative:
-    it recomputes customized_json off the BASE resume and discards any tailored
-    edits already on the application.
+    duplicate applications.
     Accepts the FULL op vocabulary documented on edit_base_resume — every
     kind. replace_entry changes an entry's dates, title, company, project name
     or tech list; add/replace/remove/move_extra_section handle the custom

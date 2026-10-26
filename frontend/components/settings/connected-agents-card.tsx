@@ -37,7 +37,7 @@ const LINKS = [
  *   the user said yes" is a docstring rule the agent is given, not a server check;
  *   kb_create_entity, kb_edit_entity and kb_edit_profile write at once.
  * - Resumes: create_base_resume, duplicate_base_resume, update_base_resume,
- *   edit_base_resume, tailor_application, tailor_session, quick_tailor.
+ *   edit_base_resume, create_tailoring_session, tailor_session, edit_application.
  * - Fill in and submit: list_proposals runs accepted proposals only;
  *   get_autofill_profile, generate_qa_answers (or store_qa_answers and
  *   store_cover_letter, for what the agent wrote), prepare_application_pdf_upload

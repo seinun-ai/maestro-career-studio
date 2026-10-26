@@ -86,20 +86,6 @@ def test_edit_base_resume():
 
 
 @respx.mock
-def test_tailor_application_posts_ops_to_from_base():
-    route = respx.post(f"{BASE}/api/applications/from-base").mock(
-        return_value=httpx.Response(200, json={"id": "a1", "customized_json": {"k": 1}})
-    )
-    client = BackendClient(BASE)
-    ops = [{"kind": "toggle_entry", "section": "projects", "index": 0, "enabled": False}]
-    out = client.tailor_application("job1", "data_scientist", ops)
-    assert out["customized_json"] == {"k": 1}
-    import json as _json
-    body = _json.loads(route.calls.last.request.read())
-    assert body == {"job_id": "job1", "base_resume": "data_scientist", "ops": ops}
-
-
-@respx.mock
 def test_render_base_resume():
     respx.post(f"{BASE}/api/base-resumes/master/render").mock(
         return_value=httpx.Response(200, json={"slug": "master", "pdf_path": "/p.pdf"})
@@ -116,20 +102,6 @@ def test_render_application():
     client = BackendClient(BASE)
     assert client.render_application("a1")["pdf_path"] == "/a.pdf"
     assert route.called
-
-
-@respx.mock
-def test_tailor_application_with_id_posts_to_from_base():
-    route = respx.post(f"{BASE}/api/applications/from-base").mock(
-        return_value=httpx.Response(200, json={"id": "a1", "customized_json": {"k": 2}})
-    )
-    client = BackendClient(BASE)
-    ops = [{"kind": "replace_summary", "value": "Updated"}]
-    out = client.tailor_application("job1", "data_scientist", ops, application_id="a1")
-    assert out["customized_json"] == {"k": 2}
-    import json as _json
-    body = _json.loads(route.calls.last.request.read())
-    assert body == {"job_id": "job1", "base_resume": "data_scientist", "ops": ops, "application_id": "a1"}
 
 
 @respx.mock
@@ -320,19 +292,16 @@ def test_ats_candidates_sends_include_other_countries_only_when_true():
 def test_resume_writes_carry_the_agent_origin_so_the_voice_rule_applies():
     """The backend refuses a third-person line only from a connected agent (the MCP
     origin header); without the header these writes would store it like a web save."""
-    job = "2c8b09e6-ce44-438e-9d5b-e2efaf26be04"
     app_id = "1a824847-f6ff-43d9-bca5-f536d978e3ca"
     routes = [
         respx.patch(f"{BASE}/api/base-resumes/master/edits").mock(return_value=httpx.Response(200, json={})),
         respx.patch(f"{BASE}/api/applications/{app_id}/edits").mock(return_value=httpx.Response(200, json={})),
-        respx.post(f"{BASE}/api/applications/from-base").mock(return_value=httpx.Response(200, json={})),
         respx.put(f"{BASE}/api/base-resumes/master").mock(return_value=httpx.Response(200, json={})),
     ]
     client = BackendClient(BASE)
     ops = [{"kind": "replace_summary", "value": "Led the team."}]
     client.edit_base_resume("master", ops)
     client.edit_application(app_id, ops)
-    client.tailor_application(job, "master", ops)
     client.update_base_resume("master", {"contact": {"name": "R", "email": "r@example.com"}})
     for route in routes:
         assert route.calls.last.request.headers.get("X-Maestro-CS-Origin") == "mcp"

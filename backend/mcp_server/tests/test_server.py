@@ -48,7 +48,6 @@ def test_all_tools_registered():
         "restore_resume_version",
         "archive_base_resume",
         "unarchive_base_resume",
-        "tailor_application",
         "render_pdf",
         "explore_top_skills",
         "explore_skill_heatmap",
@@ -1261,8 +1260,7 @@ async def test_edit_op_docstrings_advertise_extra_section_ops():
     ):
         assert kind in base_doc
     assert "section_key" in base_doc
-    # tailor_application + edit_application reference the same op family.
-    assert "extra_section" in (srv.tailor_application.__doc__ or "")
+    # edit_application references the same op family.
     assert "extra_section" in (srv.edit_application.__doc__ or "")
     # The ExtraSection discriminated-union shape must live on the ops param
     # schema — immune to the ~2048-char tool-description truncation that hid
@@ -1278,16 +1276,6 @@ async def test_edit_op_docstrings_advertise_extra_section_ops():
     assert "forbid" in ops_desc
 
 
-def test_tailor_application_and_edit_application_docstrings_are_distinguishable():
-    tailor_doc = (srv.tailor_application.__doc__ or "").lower()
-    # tailor_application must document that it replaces wholesale off the base
-    # and destroys prior tailored edits.
-    assert "base" in tailor_doc
-    assert "replac" in tailor_doc or "destroy" in tailor_doc
-    assert "destroy" in tailor_doc
-    assert "edit_application" in tailor_doc
-
-
 def test_edit_application_docstring_describes_current_draft_behavior():
     edit_doc = (srv.edit_application.__doc__ or "").lower()
     # edit_application must document that it edits the CURRENT customized_json
@@ -1295,7 +1283,8 @@ def test_edit_application_docstring_describes_current_draft_behavior():
     assert "current" in edit_doc
     assert "customized_json" in edit_doc
     assert "fall back" in edit_doc or "falls back" in edit_doc
-    assert "tailor_application" in edit_doc
+    # tailor_application left MCP: no contrast with a tool the agent cannot call.
+    assert "tailor_application" not in edit_doc
 
 
 def test_job_search_tools_registered_and_read_only_named():
@@ -1399,8 +1388,7 @@ def test_entry_field_edits_point_at_replace_entry_not_full_put():
     assert "dates" in doc
     # update_base_resume is named as the whole-resume alternative.
     assert "update_base_resume" in doc and "whole resume body" in doc
-    for name in ("tailor_application", "edit_application"):
-        assert "replace_entry" in getattr(srv, name).__doc__, name
+    assert "replace_entry" in srv.edit_application.__doc__
 
 
 async def test_ops_parameter_schema_names_every_op_kind():
@@ -1414,7 +1402,7 @@ async def test_ops_parameter_schema_names_every_op_kind():
     """
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     schema_kinds = _schema_op_kinds()
-    for name in ("edit_base_resume", "tailor_application", "edit_application"):
+    for name in ("edit_base_resume", "edit_application"):
         described = tools[name].inputSchema["properties"]["ops"].get("description", "")
         missing = {k for k in schema_kinds if k not in described}
         assert not missing, f"{name} ops schema omits: {sorted(missing)}"

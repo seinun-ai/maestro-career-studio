@@ -200,8 +200,12 @@ def test_tailoring_options_sit_with_tailoring():
     assert "get_tailoring_options" in TAILOR_TOOLS
 
 
-def test_tailor_application_lives_only_in_full():
-    """It rebuilds a draft without the session's checks, so no scoped set offers it."""
+def test_tailor_application_is_registered_nowhere():
+    """It rebuilt a draft without the session's checks; a tailoring session, or
+    edit_application on the draft, does that work now."""
+    import mcp_server.server as srv
+
+    assert "tailor_application" not in srv.list_registered_tool_names("full")
     assert all("tailor_application" not in allow for allow in PROFILE_ALLOWLISTS.values() if allow)
 
 

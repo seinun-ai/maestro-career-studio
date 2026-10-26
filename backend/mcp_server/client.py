@@ -953,16 +953,6 @@ class BackendClient:
     def unarchive_base_resume(self, slug: str) -> Any:
         return self._request("POST", f"/api/base-resumes/{_seg(slug)}/unarchive")
 
-    def tailor_application(
-        self, job_id: str, base_resume: str, ops: list[dict], application_id: str | None = None
-    ) -> Any:
-        payload: dict[str, Any] = {"job_id": job_id, "base_resume": base_resume, "ops": ops}
-        if application_id is not None:
-            payload["application_id"] = application_id
-        return self._request(
-            "POST", "/api/applications/from-base", json=payload, headers=_origin_headers(None)
-        )
-
     def edit_application(self, application_id: str, ops: list[dict]) -> Any:
         return self._request(
             "PATCH",

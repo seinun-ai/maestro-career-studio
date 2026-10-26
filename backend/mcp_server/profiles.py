@@ -82,7 +82,7 @@ HUNT_TOOLS = frozenset({
 })
 
 # From a saved job to its tailored resume and PDF: gaps, the tailor, the health check,
-# undo. tailor_application is full-only: it skips the session's checks.
+# undo.
 TAILOR_TOOLS = frozenset({
     "get_setup_status",
     "get_tailoring_options",
