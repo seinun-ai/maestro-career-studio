@@ -11,6 +11,11 @@ from app.models.health_gate_waiver import HealthGateWaiver
 from app.models.resume_lint_report import ResumeLintReport
 from app.routers import resume_lint as lint_router
 from app.services import bullet_classify, resume_versions
+from tests.agent_writer_fixtures import forbid_model, key_configured, model_replies, set_writer
+from tests.test_health_keyless import BULLETS as KEYLESS_BULLETS
+from tests.test_health_keyless import MCP_CLAUDE as KEYLESS_MCP_CLAUDE
+from tests.test_health_keyless import _entry as keyless_entry
+from tests.test_health_keyless import _resume as keyless_resume
 
 SAMPLE_DATA = {
     "contact": {"name": "Sample", "email": "a@example.com"},
@@ -964,3 +969,84 @@ def test_a_custom_section_bullet_is_disputable(db_session, monkeypatch):
     r = _client_call(db_session, "post", _DISPUTE_URL, json={
         "location": stale, "note": "You misread it.", "expected_content_hash": chash})
     assert r.status_code == 409
+
+
+# --------------------------------------------------------------------------- #
+# who writes (design 2026-10-26): with a key set, Maestro's model judges the web's health check
+# and an agent app judges its own while it writes. Maestro's model is stubbed at `_call_model`,
+# below the backstop (tests/agent_writer_fixtures.py).
+
+_OVERCLAIM = "Data analyst with 15 years of reporting for finance teams."  # C2: the verifier has work
+_JUDGED_TEXTS = [*KEYLESS_BULLETS, _OVERCLAIM]
+
+
+def _seed_for_judging(db_session, monkeypatch, tmp_path, client, writer):
+    from app.services import resume_lint
+
+    _seed(db_session, slug="judged", data_json={**keyless_resume(), "summary": _OVERCLAIM})
+    monkeypatch.setattr(resume_lint, "structure_gates", lambda db, tid, data: [
+        {"id": g, "tier": "fatal", "status": "pass", "label": g, "detail": ""}
+        for g in ("S1", "S2", "S4")])
+    key_configured(monkeypatch)
+    set_writer(client, monkeypatch, tmp_path, writer)
+
+
+def _evaluator_reply(prompt: str) -> str:
+    """The classifier's answer for every item it was sent; anything else (the verifier) gets an
+    empty object, which keeps each detection."""
+    import json
+
+    if "Items (JSON):" not in prompt:
+        return "{}"
+    items = json.JSONDecoder().raw_decode(prompt.split("Items (JSON):", 1)[1].lstrip())[0]
+    return json.dumps({"classifications": [keyless_entry(item["text"]) for item in items]})
+
+
+def test_an_agent_app_that_writes_judges_its_own_health_check_with_a_key_set(
+    db_session, monkeypatch, tmp_path, client
+):
+    _seed_for_judging(db_session, monkeypatch, tmp_path, client, "agent")
+    forbid_model(monkeypatch)
+
+    ran = client.post("/api/resume-lint/base/judged/run", headers=KEYLESS_MCP_CLAUDE)
+
+    assert ran.status_code == 200, ran.text
+    assert ran.json()["grade"] is None
+    assert len(ran.json()["judging"]["pending_ids"]) == len(_JUDGED_TEXTS)
+    assert db_session.scalars(select(BulletClassification)).all() == []
+    (report,) = db_session.scalars(select(ResumeLintReport)).all()
+    assert report.features_json["verifier"] == {}  # no verdict stored for the C2 detection
+
+    judged = client.post("/api/resume-lint/base/judged/judgments", headers=KEYLESS_MCP_CLAUDE,
+                         json={"classifications": [keyless_entry(t) for t in _JUDGED_TEXTS]})
+
+    assert judged.status_code == 200, judged.text
+    body = judged.json()
+    assert len(body["accepted"]) == len(_JUDGED_TEXTS) and body["rejected"] == []
+    assert isinstance(body["score"], int) and body["judging"] is None
+    assert body["judged"]["by"] == ["agent:claude-ai"]
+    db_session.expire_all()
+    assert all(r.features_json["verifier"] == {}
+               for r in db_session.scalars(select(ResumeLintReport)))
+
+
+@pytest.mark.parametrize(
+    ("writer", "headers"), [("agent", {}), ("maestro", KEYLESS_MCP_CLAUDE)],
+    ids=["the-web", "maestro-writes"],
+)
+def test_maestro_judges_the_health_check_for_the_web_and_in_maestro_mode(
+    db_session, monkeypatch, tmp_path, client, writer, headers
+):
+    _seed_for_judging(db_session, monkeypatch, tmp_path, client, writer)
+    prompts = model_replies(monkeypatch, tmp_path, _evaluator_reply)
+
+    ran = client.post("/api/resume-lint/base/judged/run", headers=headers)
+
+    assert ran.status_code == 200, ran.text
+    assert ran.json()["judging"] is None and ran.json()["judged"]["pending"] == 0
+    assert any("Items (JSON):" in p for p in prompts)  # the classifier
+    assert any("years_overclaim" in p for p in prompts)  # the verifier
+    refused = client.post("/api/resume-lint/base/judged/judgments", headers=headers,
+                          json={"classifications": [keyless_entry(_JUDGED_TEXTS[0])]})
+    assert refused.status_code == 409
+    assert "own model" in refused.json()["detail"]

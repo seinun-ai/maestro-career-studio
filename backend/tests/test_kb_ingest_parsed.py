@@ -9,6 +9,7 @@ from app.models.base_resume import BaseResume
 from app.models.career_kb import KBEntity, KBPoint
 from app.models.setting import Setting
 from app.services.kb_import import KB_SEEDED_FLAG
+from tests.agent_writer_fixtures import forbid_model, key_configured, set_writer
 
 MCP_HEADERS = {
     "X-Maestro-CS-Origin": "mcp",
@@ -172,6 +173,29 @@ def test_ingest_parsed_never_calls_openai(client, no_llm):
         )}],
     })
     assert r.status_code == 200, r.text
+
+
+@pytest.mark.parametrize("writer", ["agent", "maestro"])
+def test_ingest_parsed_never_reaches_the_model_with_a_key_set_in_either_mode(
+    client, db_session, monkeypatch, tmp_path, writer
+):
+    # kb_ingest_resume's route: the agent app read the resume, so Maestro matches it in code
+    # whoever writes (design 2026-10-26), with nothing to warn about.
+    key_configured(monkeypatch)
+    set_writer(client, monkeypatch, tmp_path, writer)
+    forbid_model(monkeypatch)
+    r = client.post("/api/kb/ingest-parsed", headers=MCP_HEADERS, json={
+        "sources": [{"key": "ds", "data": _resume(
+            experience=[{
+                "company": "Acme", "role": "Engineer", "start_date": "2021",
+                "bullets": ["Did a thing"],
+            }],
+        )}],
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["warnings"] == []
+    assert [(e["kind"], e["title"], e["created"]) for e in r.json()["entities"]] == [
+        ("experience", "Engineer", True)]
 
 
 @pytest.mark.parametrize("key", ["My Resume!", "_leading", "UPPER", ""])

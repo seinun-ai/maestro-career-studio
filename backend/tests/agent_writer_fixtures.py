@@ -16,6 +16,11 @@ def set_writer(client, monkeypatch, tmp_path, writer: str) -> None:
     assert response.status_code == 200, response.text
 
 
+def key_configured(monkeypatch) -> None:
+    """A model key is set: Maestro's model may run wherever Maestro's AI writes."""
+    monkeypatch.setattr(llm, "any_model_key_configured", lambda: True)
+
+
 def forbid_model(monkeypatch) -> None:
     """Maestro's model must not be reached: the provider call fails the test if it is."""
     def _reached(*_args, **_kwargs):

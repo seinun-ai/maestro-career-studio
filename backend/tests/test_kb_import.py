@@ -21,6 +21,9 @@ from app.models.career_kb import KBEntity, KBPoint, KBPortLog, KBProfile
 from app.models.resume_version import ResumeVersion
 from app.models.setting import Setting
 from app.services import kb_consolidation, kb_import, prompts, seeding
+from tests.agent_writer_fixtures import (
+    MCP, forbid_model, key_configured, model_replies, set_writer,
+)
 
 RESUME = {
     "contact": {"name": "Jordan Sample", "email": "jordan@example.com"},
@@ -428,6 +431,7 @@ def test_per_file_then_consolidate_matches_batched_kb_state(
     db_session, tmp_path, monkeypatch
 ):
     """The honest test of the split: delayed consolidate == the batched terminal pass."""
+    key_configured(monkeypatch)  # consolidate() asks the model only with a key set
     monkeypatch.setattr(kb_import.base_resume_data.settings, "base_resumes_dir", tmp_path)
     monkeypatch.setattr(kb_import.kb_consolidation, "prefetch_prompts", lambda s: None)
     monkeypatch.setattr(
@@ -502,3 +506,62 @@ def test_resume_batch_skips_decks_without_minting_a_base(db_session, tmp_path, m
     assert result.bases == []
     assert result.skipped[0].reason == 'Import PowerPoint decks as documents in Career history.'
     assert db_session.query(BaseResume).count() == 0
+
+
+# --- who writes (design 2026-10-26): consolidate() without Maestro's model --
+#
+# With no model for the request (no key, or an agent request while the agent app
+# writes), consolidate() takes its no-model fallback directly: one entity per
+# group, one approved point per bullet, and no "LLM failed" warning, since
+# nothing failed. Maestro's model is stubbed at `_call_model`, below the backstop
+# (tests/agent_writer_fixtures.py).
+
+
+def _import_one(db_session, tmp_path, monkeypatch, headers):
+    monkeypatch.setattr(kb_import.base_resume_data.settings, "base_resumes_dir", tmp_path)
+    monkeypatch.setattr(
+        kb_import.base_resume_render, "render_base_resume", lambda slug, db, **kw: None
+    )
+    return _client(db_session).post(
+        "/api/kb/import", files=[_json_upload("resume.json")], headers=headers
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "headers"), [(False, {}), (True, MCP)], ids=["no-key", "the-agent-app-writes"]
+)
+def test_import_without_a_model_for_the_request_consolidates_quietly(
+    db_session, tmp_path, monkeypatch, key, headers
+):
+    if key:
+        key_configured(monkeypatch)
+    set_writer(_client(db_session), monkeypatch, tmp_path, "agent")
+    forbid_model(monkeypatch)
+
+    r = _import_one(db_session, tmp_path, monkeypatch, headers)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["kb"]["warnings"] == []
+    from sqlalchemy import select
+
+    assert [(e.kind, e.title, e.org) for e in db_session.scalars(select(KBEntity))] == [
+        ("experience", "Senior Data Scientist", "Acme")]
+    assert [(p.text, p.state) for p in db_session.scalars(select(KBPoint))] == [
+        ("Built models.", "approved")]
+
+
+@pytest.mark.parametrize(
+    ("writer", "headers"), [("agent", {}), ("maestro", MCP)], ids=["the-web", "maestro-writes"]
+)
+def test_import_consolidates_with_maestros_model_for_the_web_and_in_maestro_mode(
+    db_session, tmp_path, monkeypatch, writer, headers
+):
+    key_configured(monkeypatch)
+    set_writer(_client(db_session), monkeypatch, tmp_path, writer)
+    prompts = model_replies(monkeypatch, tmp_path, '{"clusters": []}')
+
+    r = _import_one(db_session, tmp_path, monkeypatch, headers)
+
+    assert r.status_code == 200, r.text
+    assert ["group_indices" in p for p in prompts] == [True, False]  # match, then cluster
+    assert "bullet_indices" in prompts[1]

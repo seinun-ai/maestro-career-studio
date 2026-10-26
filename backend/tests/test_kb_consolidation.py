@@ -8,6 +8,14 @@ from app.services.career_kb import get_or_create_profile
 from app.services.kb_consolidation import (
     collect_entries, consolidate, group_by_identity, parse_resume_text,
 )
+from tests.agent_writer_fixtures import key_configured
+
+
+@pytest.fixture(autouse=True)
+def _a_key_is_set(monkeypatch):
+    # consolidate() asks Maestro's model only with a key set (agent_writer.model_available);
+    # these tests drive its stages through a call_openai stub, as an install with a key does.
+    key_configured(monkeypatch)
 
 
 def _resume(**sections):

@@ -294,9 +294,11 @@ def test_partial_judgments_leave_the_rest_in_the_brief(client, seeded):
 
 
 def test_judgments_are_refused_while_a_model_key_is_set(client, db_session, seeded, monkeypatch):
+    # The web's request: Maestro's model judges then. An agent app that writes judges its own
+    # even with a key set (test_resume_lint_router.py, "who writes").
     monkeypatch.setattr(llm, "any_model_key_configured", lambda: True)
     response = client.post(f"/api/resume-lint/base/{seeded}/judgments",
-                           json={"classifications": [_entry(CUT)]}, headers=MCP_CLAUDE)
+                           json={"classifications": [_entry(CUT)]})
     assert response.status_code == 409
-    assert "key" in response.json()["detail"]
+    assert "own model" in response.json()["detail"]
     assert db_session.get(BulletClassification, bc.content_hash(CUT)) is None

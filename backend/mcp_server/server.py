@@ -533,7 +533,8 @@ def run_health_check(kind: Literal["base", "application"], key: str) -> Any:
     alt_question, gain and evidence. Notes score zero: the evidence.no_numbers flag and
     language.* wording notes. Disputes and the word bank are web-only for now.
     `judged` is {done, pending, by}: bullets a judge has read, bullets waiting, and the
-    judges' model ids. With no model key set, no model is called: only stored judgments
+    judges' model ids. When Maestro's own model does not judge (no model key is set, or the
+    user's settings say the agent app writes), no model is called: only stored judgments
     count (any judge, current rubric version); score, grade and next_grade are null while
     a scored bullet is pending, and `judging` is {rubric_version, pending_ids, prompt},
     where prompt is the app's own evaluator prompt filled with the pending bullets;
@@ -562,19 +563,20 @@ def judge_health_bullets(
     classifications: list[dict[str, Any]],
     ctx: Context | None = None,
 ) -> Any:
-    """Stores evaluations of a resume's pending bullets while no model key is set, then
-    rebuilds its health report. `kind` is 'base' or 'application', `key` the slug or
-    application id. `classifications` is the `classifications` list in the output shape
-    that `judging.prompt` from run_health_check states, one entry per pending id. Each
+    """Stores evaluations of a resume's pending bullets while Maestro's own model does not
+    judge them (no model key is set, or the agent app writes), then rebuilds its health
+    report. `kind` is 'base' or 'application', `key` the slug or application id.
+    `classifications` is the `classifications` list in the output shape that
+    `judging.prompt` from run_health_check states, one entry per pending id. Each
     entry gets the checks a model's answer gets: `level` is one of direct, analogue,
     adjacent, implied, unaddressed; analogue and direct need a verbatim quote of three or
     more words from the bullet in `evidence`, else the level is stored as adjacent; a
     measure question survives only when its target is in the bullet's own words. An id
     that is not pending (already judged, or its text changed) is rejected. Judgments are
-    stored under this client's name and count while no model key is set. Returns the
-    rebuilt report (fields as in run_health_check) plus accepted [{id, level as stored}]
-    and rejected [{id, reason}]. 409 while a model key is set: the app's own model judges
-    then."""
+    stored under this client's name and count while Maestro's own model does not judge.
+    Returns the rebuilt report (fields as in run_health_check) plus accepted [{id, level as
+    stored}] and rejected [{id, reason}]. 409 while Maestro's own model judges: a model key
+    is set and Maestro's AI writes for agent apps."""
     return _client.judge_health_bullets(
         kind, key, classifications, origin_detail=_client_label(ctx))
 

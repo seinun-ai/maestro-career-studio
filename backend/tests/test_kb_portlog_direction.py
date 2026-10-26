@@ -6,6 +6,7 @@ from app.models.career_kb import KBEntity, KBPoint, KBPortLog
 from app.services import career_kb as kb_svc
 from app.services.kb_consolidation import consolidate, consolidate_deterministic
 from app.services import tailoring_session
+from tests.agent_writer_fixtures import key_configured
 from tests.test_kb_port import SAMPLE_DATA, _make_entity, _post_port, _seed, _stub_render
 from tests.test_tailoring_sessions_router import (
     _open_library_session,
@@ -86,6 +87,7 @@ def test_tailor_port_stamps_to_resume(db_session, tmp_path, monkeypatch):
 
 
 def test_consolidate_cluster_logs_stamp_from_source(db_session, monkeypatch):
+    key_configured(monkeypatch)  # consolidate() asks the model only with a key set
     monkeypatch.setattr(
         "app.services.llm.call_openai",
         _make_llm(

@@ -11,6 +11,14 @@ from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPortLog
 from app.services import kb_ingest
 from app.services.kb_consolidation import consolidate, consolidate_deterministic
 from app.services.tailoring_session import _write_back_elicited_points
+from tests.agent_writer_fixtures import key_configured
+
+
+@pytest.fixture(autouse=True)
+def _a_key_is_set(monkeypatch):
+    # consolidate() asks Maestro's model only with a key set (agent_writer.model_available);
+    # its creation sites here are driven through a call_openai stub, as with a key.
+    key_configured(monkeypatch)
 
 
 def _resume(**sections):

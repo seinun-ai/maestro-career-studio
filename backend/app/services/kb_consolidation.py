@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import agent_writer
 from app.models.career_kb import KBEntity, KBPoint, KBPortLog
 from app.schemas.career_kb import ConsolidationReport
 from app.services import llm, model_settings, prompts
@@ -825,13 +826,14 @@ def _match_or_create_identity(
 
 def _resolve_family(
     session: Session, family_groups: list[Group], section: str,
-    tmpl: str, smart_model: str, report: ConsolidationReport,
+    tmpl: str, smart_model: str, report: ConsolidationReport, *, use_model: bool,
 ) -> dict[int, KBEntity]:
     """Resolve one LLM family (experience or projects) into KBEntities.
 
     Returns id(group) -> KBEntity for every group. Never loses a group: unknown
     LLM indices are dropped (warned), omitted groups become singletons, and an
-    unusable response falls back to one-entity-per-group.
+    unusable response falls back to one-entity-per-group. Without ``use_model``
+    that fallback is taken directly, with no warning: no call failed.
 
     THIS PATH NEVER RENAMES an existing entity. Matching here is the LLM
     picking an ``existing_entity_id`` out of a list it was shown, which is a
@@ -856,13 +858,14 @@ def _resolve_family(
         .replace("$existing_entities", _render_existing_entities(existing))
     )
     clusters = None
-    try:
-        res = llm.call_openai(prompt=prompt, model=smart_model,
-                              response_format="json", trace_name="kb-entity-resolve")
-        if isinstance(res, dict):
-            clusters = res.get("clusters")
-    except Exception as exc:  # noqa: BLE001 — LLM failure must not lose groups
-        report.warnings.append(f"entity_resolve LLM failed for {kb_kind}: {exc}")
+    if use_model:
+        try:
+            res = llm.call_openai(prompt=prompt, model=smart_model,
+                                  response_format="json", trace_name="kb-entity-resolve")
+            if isinstance(res, dict):
+                clusters = res.get("clusters")
+        except Exception as exc:  # noqa: BLE001 — LLM failure must not lose groups
+            report.warnings.append(f"entity_resolve LLM failed for {kb_kind}: {exc}")
 
     def _new_singleton(g: Group) -> None:
         ent = _make_entity(section, {}, [g], origin="consolidated")
@@ -871,7 +874,8 @@ def _resolve_family(
         result[id(g)] = ent
 
     if not (isinstance(clusters, list) and clusters):
-        report.warnings.append(f"entity_resolve unusable for {kb_kind}; one entity per group")
+        if use_model:
+            report.warnings.append(f"entity_resolve unusable for {kb_kind}; one entity per group")
         for g in family_groups:
             _new_singleton(g)
         return result
@@ -952,13 +956,14 @@ def _cluster_candidates(source_bullets: list[dict]) -> tuple[list[dict], int]:
 
 def _cluster_points_for_entity(
     session: Session, entity: KBEntity, groups: list[Group],
-    tmpl: str, smart_model: str, report: ConsolidationReport,
+    tmpl: str, smart_model: str, report: ConsolidationReport, *, use_model: bool,
 ) -> None:
     """Cluster an entity's source bullets into KB points, then backfill port logs.
 
     Exact/normalized duplicates collapse in code before the LLM. Each candidate
     (distinct-norm bullet) maps to exactly one point; every source bullet gets a
     port-log row pointing at its candidate's point. No bullet is ever lost.
+    Without ``use_model`` each candidate is one approved point, with no warning.
     """
     source_bullets = _gather_source_bullets(groups)
     if not source_bullets:
@@ -974,13 +979,14 @@ def _cluster_points_for_entity(
         .replace("$existing_points", _render_existing_points(existing_points))
     )
     clusters = None
-    try:
-        res = llm.call_openai(prompt=prompt, model=smart_model,
-                              response_format="json", trace_name="kb-cluster-points")
-        if isinstance(res, dict):
-            clusters = res.get("clusters")
-    except Exception as exc:  # noqa: BLE001 — LLM failure must not lose bullets
-        report.warnings.append(f"cluster_points LLM failed for {entity.title!r}: {exc}")
+    if use_model:
+        try:
+            res = llm.call_openai(prompt=prompt, model=smart_model,
+                                  response_format="json", trace_name="kb-cluster-points")
+            if isinstance(res, dict):
+                clusters = res.get("clusters")
+        except Exception as exc:  # noqa: BLE001 — LLM failure must not lose bullets
+            report.warnings.append(f"cluster_points LLM failed for {entity.title!r}: {exc}")
 
     candidate_point: dict[int, KBPoint] = {}
     now = datetime.now(UTC)
@@ -994,7 +1000,9 @@ def _cluster_points_for_entity(
         candidate_point[idx] = p
 
     if not (isinstance(clusters, list) and clusters):
-        report.warnings.append(f"cluster_points unusable for {entity.title!r}; one approved point per candidate")
+        if use_model:
+            report.warnings.append(
+                f"cluster_points unusable for {entity.title!r}; one approved point per candidate")
         for i in range(len(candidates)):
             _new_approved(i)
     else:
@@ -1286,6 +1294,9 @@ def consolidate(
     entity_tmpl = prompts.get_prompt("kb_entity_resolve", session)
     cluster_tmpl = prompts.get_prompt("kb_cluster_points", session)
     smart_model = model_settings.get_smart_model(session)
+    # Asked once for the run: with no key, or for an agent request while the agent
+    # app writes, matching and clustering take their no-model fallback directly.
+    use_model = agent_writer.model_available()
 
     entity_groups: dict[KBEntity, list[Group]] = {}
 
@@ -1311,7 +1322,8 @@ def consolidate(
     # Stage B — experience + projects (kb_entity_resolve, one call per family)
     for section in ("experience", "projects"):
         fam = by_section[section]
-        mapping = _resolve_family(session, fam, section, entity_tmpl, smart_model, report)
+        mapping = _resolve_family(session, fam, section, entity_tmpl, smart_model, report,
+                                  use_model=use_model)
         for g in fam:
             _register(mapping[id(g)], g)
 
@@ -1321,7 +1333,8 @@ def consolidate(
     for ent, gs in list(entity_groups.items()):
         if ent.kind == "certification":
             continue
-        _cluster_points_for_entity(session, ent, gs, cluster_tmpl, smart_model, report)
+        _cluster_points_for_entity(session, ent, gs, cluster_tmpl, smart_model, report,
+                                   use_model=use_model)
 
     # Stage D — skills union
     _merge_skills(session, sources, report)

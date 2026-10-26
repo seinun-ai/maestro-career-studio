@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import agent_writer
 from app.db import get_db
 from app.models.application import Application
 from app.models.base_resume import BaseResume
@@ -19,7 +20,6 @@ from app.services import (
     health_guards,
     health_score,
     health_wording,
-    llm,
     resume_lint,
     resume_voice,
 )
@@ -282,14 +282,18 @@ def put_wording(body: WordingBody, db: Annotated[Session, Depends(get_db)]):
 
 
 def _judging(db: Session, resume: dict) -> dict | None:
-    """The brief a connected agent judges by: only while no model key is set."""
-    return None if llm.any_model_key_configured() else resume_lint.judging_brief(db, resume)
+    """The brief a connected agent judges by: whenever Maestro's own model doesn't judge this
+    request (no key is set, or the agent app writes)."""
+    return None if agent_writer.model_available() else resume_lint.judging_brief(db, resume)
 
 
 @router.post("/{kind}/{key}/run", response_model=LintReportRead)
 def run_lint(kind: Kind, key: str, db: Annotated[Session, Depends(get_db)]):
     resume, template_id = _load_resume(db, kind, key)
-    row = resume_lint.run_report(db, kind, key, resume, template_id=template_id)
+    # Never the default here: with a key set it would classify, verify and rewrite, and none of
+    # those may run for an agent request while the agent app writes.
+    row = resume_lint.run_report(db, kind, key, resume, template_id=template_id,
+                                 use_llm=agent_writer.model_available())
     return _read(row, judging=_judging(db, resume))
 
 
@@ -300,19 +304,20 @@ def record_judgments(
     write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
     """A connected agent's judgments of the pending texts, validated like a model's answer and
-    stored under `agent:<client>`; then the report is rebuilt. Refused while a key is set: the
-    app's own model judges then."""
-    if llm.any_model_key_configured():
+    stored under `agent:<client>`; then the report is rebuilt. Refused only while Maestro's own
+    model judges this request: a key is set and Maestro's AI writes for it."""
+    if agent_writer.model_available():
         raise HTTPException(
             status_code=409,
-            detail="A model key is set, so Maestro judges the bullets with its own model. "
+            detail="Maestro judges the bullets with its own model for this request. "
                    "Run the health check instead.",
         )
     resume, template_id = _load_resume(db, kind, key)
     judge = bullet_classify.agent_judge(
         write_origin.detail if write_origin.origin == "mcp" else None)
     accepted, rejected = resume_lint.record_judgments(db, resume, judge, body.classifications)
-    row = resume_lint.run_report(db, kind, key, resume, template_id=template_id)
+    # No model rebuilds it: the default would classify again whenever a key is set.
+    row = resume_lint.run_report(db, kind, key, resume, template_id=template_id, use_llm=False)
     report = _read(row, judging=resume_lint.judging_brief(db, resume))
     return JudgmentsRead(**report.model_dump(), accepted=accepted, rejected=rejected)
 
