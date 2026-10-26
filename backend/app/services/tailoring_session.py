@@ -1188,6 +1188,20 @@ def _live_text_fragments(document: dict[str, Any]) -> list[str]:
     return fragments
 
 
+def _keyword_wording(
+    item: dict[str, Any], gaps: dict[str, dict[str, Any]] | None
+) -> str | None:
+    """A saved add_keyword's word: its `wording`, else the gap's own `jd_skill`
+    (`gaps`, by gap_id), since an MCP caller may save one with only a place.
+    None when neither carries text."""
+    wording = (item.get("payload") or {}).get("wording")
+    if not isinstance(wording, str) or not wording.strip():
+        wording = (gaps or {}).get(item.get("gap_id"), {}).get("jd_skill")
+    if not isinstance(wording, str) or not wording.strip():
+        return None
+    return wording.strip()
+
+
 def _missing_keywords(
     customized: dict[str, Any],
     resolutions: list[dict[str, Any]],
@@ -1195,8 +1209,8 @@ def _missing_keywords(
 ) -> list[tuple[str, dict[str, Any]]]:
     """Return requested keyword placements absent from the tailored document.
 
-    The word is the saved `wording`, else the gap's own `jd_skill` (`gaps`, by
-    gap_id): an MCP caller may save an add_keyword with only a place.
+    The word is _keyword_wording's: a keyword saved with only a place reads as
+    its gap's skill.
 
     Containment is checked per LIVE fragment (see _live_text_fragments), never
     against a whole-document JSON dump: a dump counts disabled entries the
@@ -1212,22 +1226,61 @@ def _missing_keywords(
     for item in resolutions:
         if item.get("action") != "add_keyword":
             continue
-        payload = item.get("payload") or {}
-        wording = payload.get("wording")
-        if not isinstance(wording, str) or not wording.strip():
-            wording = (gaps or {}).get(item.get("gap_id"), {}).get("jd_skill")
-        if not isinstance(wording, str) or not wording.strip():
+        wording = _keyword_wording(item, gaps)
+        if wording is None:
             continue
         normalized_wording = normalize_term(wording)
         if normalized_wording and not any(
             term_in_text(normalized_wording, fragment)
             for fragment in normalized_fragments
         ):
-            placement = payload.get("placement_target")
+            placement = (item.get("payload") or {}).get("placement_target")
             missing.append(
-                (wording.strip(), placement if isinstance(placement, dict) else {})
+                (wording, placement if isinstance(placement, dict) else {})
             )
     return missing
+
+
+def _unbacked_skills(
+    customized: dict[str, Any], tailoring: TailoringSession
+) -> list[str]:
+    """Saved keywords for missing skills that sit on the tailored skills list with
+    nothing in career history behind them, in saved order, each once.
+
+    A provenance-carrying auto (the KB resolver's profile-skill add) is backed by
+    career history; an add the user or a preset chose for a missing skill is not.
+    """
+    missing_skill_gaps = {
+        gap["gap_id"]
+        for category in tailoring.gaps_json.get("categories", [])
+        if category.get("key") == "missing_skills"
+        for gap in category["gaps"]
+    }
+    gaps = _gap_index(tailoring.gaps_json)
+    skills = [
+        normalized
+        for group in customized.get("skills") or []
+        if isinstance(group, dict)
+        for item in group.get("items") or []
+        if isinstance(item, str) and (normalized := normalize_term(item))
+    ]
+    unbacked: list[str] = []
+    seen: set[str] = set()
+    for item in tailoring.resolutions_json:
+        if (
+            item.get("action") != "add_keyword"
+            or item.get("gap_id") not in missing_skill_gaps
+            or (item.get("payload") or {}).get("provenance")
+        ):
+            continue
+        wording = _keyword_wording(item, gaps)
+        normalized = normalize_term(wording) if wording else ""
+        if not normalized or normalized in seen:
+            continue
+        if any(term_in_text(normalized, skill) for skill in skills):
+            seen.add(normalized)
+            unbacked.append(wording)
+    return unbacked
 
 
 def _reject_stale_placements(tailoring: TailoringSession, base: dict[str, Any]) -> None:
@@ -1420,9 +1473,10 @@ def tailor(
         applies the caller's ops directly. Claude's judgment IS the tailor.
       - ``no_new_text``: nobody writes. The deterministic pre-ops (an enabled
         entry, a ported career-history bullet) are the whole edit, keyword
-        survival puts each saved keyword into the skills list, and no model is
-        called, whoever writes for the request. Answers that need wording are
-        named on the response; when nothing at all applies, it refuses.
+        survival puts each saved keyword the resume lacks into the skills list,
+        and no model is called, whoever writes for the request. Answers that
+        need wording are named on the response; when nothing at all applies,
+        it refuses.
     All three paths converge on the same apply -> application reuse-or-insert ->
     score tail below.
 
@@ -1539,6 +1593,7 @@ def tailor(
             if ops or no_new_text
             else []
         )
+        unbacked = _unbacked_skills(customized, tailoring)
 
         # A job has one application: tailoring REUSES the job's newest one, whatever
         # its base, rather than orphan it (the job page surfaces only the newest, so a
@@ -1634,6 +1689,7 @@ def tailor(
         tailoring.voice_repairs = [resume_voice.format_path(path) for path in repaired]
         tailoring.keywords_added = [wording for wording, _ in keywords_added]
         tailoring.answers_left_to_ops = left_to_ops
+        tailoring.unbacked_skills = unbacked
         artifacts.remove_files(stale)
         return tailoring
     finally:

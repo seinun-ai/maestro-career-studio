@@ -137,3 +137,6 @@ class TailorResponse(BaseModel):
     # Caller-ops and no_new_text paths only: user_input and attach_project
     # answers, which need wording the server did not write.
     answers_left_to_ops: list[AnswerLeftToOps] = Field(default_factory=list)
+    # Every path: saved keywords for missing skills now on the skills list with
+    # no career history behind them, so a skill the user never showed is named.
+    unbacked_skills: list[str] = Field(default_factory=list)

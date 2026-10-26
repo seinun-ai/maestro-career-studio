@@ -240,4 +240,5 @@ def tailor_session(
         "voice_repairs": getattr(row, "voice_repairs", []),
         "keywords_added": getattr(row, "keywords_added", []),
         "answers_left_to_ops": getattr(row, "answers_left_to_ops", []),
+        "unbacked_skills": getattr(row, "unbacked_skills", []),
     }
