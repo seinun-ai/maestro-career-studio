@@ -255,9 +255,16 @@ def next_after_session(
     hints_enabled: bool,
     brief: bool = False,
     instruction: str | None = None,
+    writer: str = "agent",
 ) -> dict[str, Any] | None:
     """Compose the hint that follows create_tailoring_session (with or without
     use_presets' fill) or resolve_gaps — each returns a session in this shape.
+
+    `writer` is the user's saved choice of who writes for agent apps ("agent",
+    the default, or "maestro"). It changes what the tailor option says, never
+    its args: with the agent app writing, tailor_session takes the agent's ops,
+    or no_new_text for only what needs no wording (Maestro's AI is refused
+    there); with Maestro's AI writing, ops omitted has it write the edits.
 
     The deterministic KB/wording autos (Task 1's hoist) mean resolutions_json
     can already be partly populated even on a fresh enrich=False session, and
@@ -302,20 +309,40 @@ def next_after_session(
     if instruction and not (session.get("user_prompt") or "").strip():
         tailor_args["user_prompt"] = instruction
 
+    saved = (
+        "resolutions_json holds the saved decisions (including any "
+        "system-planned provenance-carrying entries). "
+    )
+    writer = "maestro" if writer == "maestro" else "agent"
+    if writer == "maestro":
+        label = "Tailor from the saved resolutions; Maestro's AI writes the edits"
+        note = saved + (
+            "The user's writer setting is Maestro's AI: tailor_session with ops "
+            "omitted has it write the edits from the saved decisions, using the "
+            "user's key."
+        )
+    else:
+        label = (
+            "Tailor from the saved resolutions with edit ops the agent app writes, "
+            "or with no_new_text (no new wording)"
+        )
+        note = saved + (
+            "The user's writer setting is the agent app, so Maestro's AI writes no "
+            "edits here. tailor_session takes ops=[...] that implement the saved "
+            "decisions: the server itself applies enable_entry and port_kb_point, "
+            "and adds a saved add_keyword the ops leave out to the skills list; "
+            "user_input and attach_project reach the resume only through the ops. "
+            "Or no_new_text=true: no new wording, only the saved answers that need "
+            "none are applied, and answers_left_to_ops lists the rest."
+        )
     tailor_option = {
-        "label": "Tailor from the saved resolutions with caller-authored edit ops",
+        "label": label,
         "tool": "tailor_session",
         "args": tailor_args,
         "detail": {
+            "writer": writer,
             "resolutions_json": session.get("resolutions_json") or [],
-            "note": (
-                "resolutions_json holds the saved decisions (including any "
-                "system-planned provenance-carrying entries); tailor_session "
-                "takes ops=[...] that implement them. The server itself applies "
-                "enable_entry and port_kb_point, and adds a saved add_keyword the "
-                "ops leave out to the skills list; user_input and attach_project "
-                "reach the resume only through the ops."
-            ),
+            "note": note,
         },
     }
 

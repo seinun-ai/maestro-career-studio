@@ -248,6 +248,34 @@ def test_resolve_gaps_wraps_with_next_hint(monkeypatch):
     assert out["next"]["call"] == "tailor_session"
 
 
+def _settings_reads(monkeypatch, settings):
+    reads = []
+    monkeypatch.setattr(
+        srv._client, "get_mcp_workflow_settings", lambda: reads.append(1) or dict(settings)
+    )
+    return reads
+
+
+@pytest.mark.parametrize("settings, writer", [
+    ({"hints": True, "writer": "maestro"}, "maestro"),
+    ({"hints": True, "writer": "agent"}, "agent"),
+    ({"hints": True}, "agent"),
+])
+def test_session_hints_say_who_writes_from_one_settings_read(monkeypatch, settings, writer):
+    session = {"id": "s1", "gaps_json": {"categories": []}, "resolutions_json": []}
+    monkeypatch.setattr(srv._client, "resolve_gaps", lambda session_id, items: session)
+    monkeypatch.setattr(
+        srv._client, "create_tailoring_session", lambda job_id, base_resume, enrich=True: session
+    )
+
+    for call in (lambda: srv.resolve_gaps(tailoring_session_id="s1", resolutions=[]),
+                 lambda: srv.create_tailoring_session("job1", "hybrid")):
+        reads = _settings_reads(monkeypatch, settings)
+        out = call()
+        assert out["next"]["options"][0]["detail"]["writer"] == writer
+        assert len(reads) == 1
+
+
 # ---------- tailor_session ----------
 
 
@@ -458,6 +486,17 @@ def test_presets_thread_the_instruction_when_the_session_has_no_note(monkeypatch
 
     tailor_option = [o for o in out["next"]["options"] if o["tool"] == "tailor_session"][0]
     assert tailor_option["args"]["user_prompt"] == "Keep it punchy."
+
+
+def test_presets_hint_says_who_writes_from_one_settings_read(monkeypatch):
+    filled = {"id": "s1", "gaps_json": {"categories": []}, "resolutions_json": []}
+    _presets_session(monkeypatch, filled, profile={"instruction": ""})
+    reads = _settings_reads(monkeypatch, {"hints": True, "writer": "maestro"})
+
+    out = srv.create_tailoring_session("job1", "hybrid", use_presets=True)
+
+    assert out["next"]["options"][0]["detail"]["writer"] == "maestro"
+    assert len(reads) == 1
 
 
 def test_presets_do_not_override_the_sessions_own_note(monkeypatch):

@@ -323,6 +323,42 @@ def test_session_hint_with_no_instruction_carries_no_user_prompt_arg():
     assert "user_prompt" not in tailor_option["args"]
 
 
+def _tailor_option(*, writer=None, gap_ids=("g1",), resolved_ids=("g1",)):
+    kw = {} if writer is None else {"writer": writer}
+    hint = workflow.next_after_session(
+        _session(gap_ids=gap_ids, resolved_ids=resolved_ids),
+        allowed_tools=None, hints_enabled=True, **kw,
+    )
+    return next(o for o in hint["options"] if o["tool"] == "tailor_session")
+
+
+def test_session_hint_says_the_agent_app_writes_the_edits_by_default():
+    assert _tailor_option() == _tailor_option(writer="agent")
+    option = _tailor_option(writer="agent")
+    assert option["detail"]["writer"] == "agent"
+    assert "ops" in option["label"] and "no_new_text" in option["label"]
+    note = option["detail"]["note"]
+    assert "ops=[...]" in note and "no_new_text=true" in note
+    assert "answers_left_to_ops" in note
+    assert option["args"] == {"tailoring_session_id": "s1"}
+
+
+def test_session_hint_says_maestros_ai_writes_the_edits_when_it_is_the_writer():
+    option = _tailor_option(writer="maestro")
+    assert option["detail"]["writer"] == "maestro"
+    assert "Maestro's AI writes the edits" in option["label"]
+    note = option["detail"]["note"]
+    assert "ops omitted" in note and "user's key" in note
+    assert "no_new_text" not in json.dumps(option)
+    assert option["args"] == {"tailoring_session_id": "s1"}
+
+
+def test_session_hint_names_who_writes_while_gaps_remain_too():
+    for writer in ("agent", "maestro"):
+        option = _tailor_option(writer=writer, gap_ids=("g1", "g2"), resolved_ids=("g1",))
+        assert option["detail"]["writer"] == writer
+
+
 def test_session_hint_brief_and_switch_suppress():
     assert workflow.next_after_session(
         _session(), allowed_tools=None, hints_enabled=True, brief=True,
@@ -837,6 +873,10 @@ def _every_hint(allow):
             _session(gap_ids=["g1", "g2"], resolved_ids=["g1"]), **kw),
         "session_resolved": workflow.next_after_session(
             _session(gap_ids=["g1"], resolved_ids=["g1"]), **kw),
+        "session_pending_maestro": workflow.next_after_session(
+            _session(gap_ids=["g1", "g2"], resolved_ids=["g1"]), writer="maestro", **kw),
+        "session_resolved_maestro": workflow.next_after_session(
+            _session(gap_ids=["g1"], resolved_ids=["g1"]), writer="maestro", **kw),
         "tailor": workflow.next_after_tailor(application_id="a1", **kw),
         "tailor_left": workflow.next_after_tailor(
             application_id="a1", keywords_added=["Snowflake"],

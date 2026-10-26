@@ -475,15 +475,20 @@ def _session_hint(
 ) -> dict[str, Any] | None:
     """Shared by create_tailoring_session (with or without use_presets) and
     resolve_gaps — both return a session in the same shape, so the same hint
-    composer applies regardless of which call produced it."""
-    return _best_effort_hint(
-        lambda: workflow.next_after_session(
+    composer applies regardless of which call produced it. One settings read
+    gives both the hints switch and who writes, which the tailor option names."""
+
+    def compose() -> dict[str, Any] | None:
+        settings = _client.get_mcp_workflow_settings()
+        return workflow.next_after_session(
             session,
             allowed_tools=_active_allowed_tools(),
-            hints_enabled=_hints_enabled(),
+            hints_enabled=bool(settings.get("hints", True)),
             instruction=instruction,
+            writer=_writer(settings),
         )
-    )
+
+    return _best_effort_hint(compose)
 
 
 def _instruction_from_profile(profile: dict[str, Any]) -> str | None:
@@ -2182,7 +2187,8 @@ def create_tailoring_session(
         ) from exc
 
     def compose() -> dict[str, Any] | None:
-        if not _hints_enabled():
+        settings = _client.get_mcp_workflow_settings()
+        if not settings.get("hints", True):
             return None
         profile = _client.get_quick_tailor_profile()
         return workflow.next_after_session(
@@ -2190,6 +2196,7 @@ def create_tailoring_session(
             allowed_tools=_active_allowed_tools(),
             hints_enabled=True,
             instruction=_instruction_from_profile(profile),
+            writer=_writer(settings),
         )
 
     return {**filled, "next": _best_effort_hint(compose)}
