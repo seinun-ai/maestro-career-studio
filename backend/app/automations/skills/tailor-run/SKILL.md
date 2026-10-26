@@ -32,9 +32,9 @@ Only work jobs whose `ownership.owned_here` is true.
    `open` session or a `tailored` one for the chosen base. That work is the user's:
    never overwrite it, and list the job in the digest as needing the user. If the
    resume has no PDF, only `render_pdf` it.
-4. **Quick tailor.** `quick_tailor(job_id, base_resume)` decides every gap from the
-   user's own Quick tailor settings and saves undecided ones as `skip`. Accept its
-   decisions as they are.
+4. **Quick tailor.** `create_tailoring_session(job_id, base_resume, use_presets=true)`
+   decides every gap from the user's own Quick tailor settings and saves undecided
+   ones as `skip`. Accept its decisions as they are.
 5. **Nothing to apply?** If every resolution's `action` is `skip` or
    `cannot_confirm`, leave the job and list its skipped gaps (`gaps_json`) as
    questions in the digest. Never answer them yourself. On a job you did tailor,
@@ -43,7 +43,7 @@ Only work jobs whose `ownership.owned_here` is true.
    so an open session always means the user's own work.
 6. **Tailor.** `tailor_session(tailoring_session_id=...)` with no `ops`, so the
    app's own checked pass writes the resume. Pass `user_prompt` only when
-   quick_tailor's `next` hint carries one for `tailor_session`, copied exactly. If
+   step 4's `next` hint carries one for `tailor_session`, copied exactly. If
    it fails because the app has no AI key, close the session, stop the run and say so
    in the digest.
 7. **Render.** `tailor_session` renders the PDF; call `render_pdf` for the

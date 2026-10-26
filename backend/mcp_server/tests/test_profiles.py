@@ -207,7 +207,7 @@ def test_tailor_application_lives_only_in_full():
 
 def test_set_sizes_stay_near_the_line():
     sizes = {n: len(a) for n, a in PROFILE_ALLOWLISTS.items() if a is not None}
-    assert sizes == {"profile": 39, "hunt": 22, "tailor": 32, "apply": 35, "track": 18, "templates": 13}
+    assert sizes == {"profile": 39, "hunt": 22, "tailor": 31, "apply": 35, "track": 18, "templates": 13}
 
 
 def test_every_allowlisted_tool_is_registered():

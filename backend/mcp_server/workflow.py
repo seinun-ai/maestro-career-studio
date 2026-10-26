@@ -172,8 +172,9 @@ def _offer_from_options(
 
     A hand-written offer string drifts the moment a profile filters an option
     out, or a branch suppresses one — the hint then names a tool this session
-    does not have. None when nothing survived."""
-    parts = [phrases[o["tool"]] for o in options if o["tool"] in phrases]
+    does not have. Two options on one tool share its phrase, said once. None
+    when nothing survived."""
+    parts = list(dict.fromkeys(phrases[o["tool"]] for o in options if o["tool"] in phrases))
     if not parts:
         return None
     return " ".join(
@@ -197,9 +198,10 @@ def next_after_scores(
     So this is the one hint that never sets `ask_user` — only a non-blocking
     `offer` that lists what is available.
 
-    The quick-tailor option embeds the caller's resolved profile as `detail`
-    (D3 in the design doc) rather than making the agent round-trip for it —
-    a separate read the agent would likely skip, leaving the mode choice vague.
+    The presets option (create_tailoring_session with use_presets) embeds the
+    caller's resolved quick-tailor profile as `detail` (D3 in the design doc)
+    rather than making the agent round-trip for it — a separate read the agent
+    would likely skip, leaving the mode choice vague.
     """
     if _suppressed(hints_enabled, brief):
         return None
@@ -212,9 +214,9 @@ def next_after_scores(
     options = _visible(
         [
             {
-                "label": f"Quick-tailor {recommended} using the saved profile",
-                "tool": "quick_tailor",
-                "args": {"job_id": job_id, "base_resume": recommended},
+                "label": f"Tailor {recommended} with the saved presets",
+                "tool": "create_tailoring_session",
+                "args": {"job_id": job_id, "base_resume": recommended, "use_presets": True},
                 "detail": dict(quick_profile),
             },
             {
@@ -229,8 +231,10 @@ def next_after_scores(
     offer = _offer_from_options(
         options,
         {
-            "quick_tailor": "quick_tailor (applies the saved profile)",
-            "create_tailoring_session": "create_tailoring_session (gap walkthrough)",
+            "create_tailoring_session": (
+                "create_tailoring_session, with use_presets (fills the gaps from the saved "
+                "presets) or without it (gap walkthrough)"
+            ),
         },
         prefix=f"Top-ranked base for this job: {recommended}.",
     )
@@ -252,24 +256,25 @@ def next_after_session(
     brief: bool = False,
     instruction: str | None = None,
 ) -> dict[str, Any] | None:
-    """Compose the hint that follows create_tailoring_session, resolve_gaps, or
-    quick_tailor's profile fill — all three return a session in this shape.
+    """Compose the hint that follows create_tailoring_session (with or without
+    use_presets' fill) or resolve_gaps — each returns a session in this shape.
 
     The deterministic KB/wording autos (Task 1's hoist) mean resolutions_json
     can already be partly populated even on a fresh enrich=False session, and
-    quick_tailor's profile fill can resolve every gap outright. So the real
+    the use_presets fill can resolve every gap outright. So the real
     branch point is not "which call produced this session" but "are there
     still unresolved gaps" — computed here from gaps_json vs resolutions_json
     rather than trusted from a caller-supplied flag, so a caller can't get
     this wrong by mislabeling which path it came from.
 
-    `instruction` pays the standing-instruction debt quick_tailor's MCP path
+    `instruction` pays the standing-instruction debt the MCP presets fill
     owes: POST .../apply-profile deliberately discards the quick-tailor
     profile's standing instruction (fill_checkpoint_session's return value) —
     persisting it there would be wrong, the web path keeps it transient — so
     the one-shot and gap-page quick-tailor paths pass it into tailor() as
-    user_prompt but the MCP fill step has nowhere to put it. quick_tailor()
-    threads it through here instead, stamped onto the suggested tailor_session
+    user_prompt but the MCP fill step has nowhere to put it.
+    create_tailoring_session(use_presets=True) threads it through here
+    instead, stamped onto the suggested tailor_session
     call's args so the agent carries it forward on the next hop. Applied ONLY
     when the session carries no note of its own (session["user_prompt"]) —
     this mirrors app.services.quick_tailor._instruction_fallback's rule that

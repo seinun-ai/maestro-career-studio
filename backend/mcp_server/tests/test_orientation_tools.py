@@ -53,3 +53,9 @@ def test_tailoring_options_explain_each_preset_in_plain_words(monkeypatch):
     for preset in _tailoring_options(monkeypatch)["presets"]:  # one source: the schema's own description
         assert preset["means"] == QuickTailorProfile.model_fields[preset["key"]].description
         assert preset["means"]
+
+
+def test_tailoring_options_say_which_call_follows_the_presets():
+    doc = " ".join((srv.get_tailoring_options.__doc__ or "").split())
+    assert "create_tailoring_session" in doc and "use_presets" in doc
+    assert "quick_tailor" not in doc

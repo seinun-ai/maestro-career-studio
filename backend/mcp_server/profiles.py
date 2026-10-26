@@ -96,7 +96,6 @@ TAILOR_TOOLS = frozenset({
     "score_ats",
     "compare_ats",
     "create_tailoring_session",
-    "quick_tailor",
     "get_tailoring_session",
     "list_tailoring_sessions",
     "resolve_gaps",

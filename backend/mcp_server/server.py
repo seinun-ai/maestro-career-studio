@@ -124,6 +124,26 @@ _NO_NEW_TEXT_FIELD = Field(
 )
 NoNewText = Annotated[bool, _NO_NEW_TEXT_FIELD]
 
+# Immune to the ~2048-char tool-description truncation: lives on the param schema.
+_USE_PRESETS_FIELD = Field(
+    description=(
+        "True: once the session is created, fill it from the user's Quick tailor presets "
+        "(get_tailoring_options explains them) through resolve_gaps' honesty-gated save "
+        "path, deterministically and with no AI. The presets plan only mechanical, "
+        "evidence-respecting moves; the fill does not write resume text. The returned "
+        "resolutions_json may already resolve every gap, including system-planned entries "
+        "(payload.provenance); a gap the presets do not decide is saved as skip. A session "
+        "whose answers are all skip is not an error: the presets allowed nothing for it, "
+        "and resolve_gaps still saves answers on it. An unverified or absent skill enters "
+        "only a skills category (add_skill_item), never as an experience or project bullet; "
+        "the server does not gate edit ops the caller writes against fabricated skills, "
+        "experience, metrics or dates. A stale or no-longer-open session blocks the fill (409). "
+        "The `next` hint then carries the presets' standing instruction as tailor_session's "
+        "user_prompt when the session has no note of its own."
+    )
+)
+UsePresets = Annotated[bool, _USE_PRESETS_FIELD]
+
 
 class FilledFieldInput(TypedDict):
     """One form field as record_filled_answers stores it."""
@@ -423,7 +443,7 @@ def _client_label(ctx: Context | None) -> str | None:
 
 # ---------- next-step hints (mcp_server/workflow.py) ----------
 # The wrapped tools below (score_ats, create_tailoring_session, resolve_gaps,
-# tailor_session, render_pdf, quick_tailor) all need the same two facts to
+# tailor_session, render_pdf) all need the same two facts to
 # compose a hint: which tools THIS profile registered, and whether the user's
 # Settings switch allows hints at all. Centralized here so each tool reads as
 # "do the work, then ask for a hint" rather than re-deriving both facts inline.
@@ -445,9 +465,9 @@ def _hints_enabled() -> bool:
 def _session_hint(
     session: dict[str, Any], *, instruction: str | None = None
 ) -> dict[str, Any] | None:
-    """Shared by create_tailoring_session, resolve_gaps, and quick_tailor —
-    all three return a session in the same shape, so the same hint composer
-    applies regardless of which call produced it."""
+    """Shared by create_tailoring_session (with or without use_presets) and
+    resolve_gaps — both return a session in the same shape, so the same hint
+    composer applies regardless of which call produced it."""
     return _best_effort_hint(
         lambda: workflow.next_after_session(
             session,
@@ -690,12 +710,13 @@ def get_tailoring_options() -> Any:
     """The user's Quick tailor presets, as data an agent can explain or work around.
     Returns presets ([{key, on, means}]: each switch, whether it is on, and its plain
     meaning), instruction (an extra instruction the user gave for every tailor, may be
-    empty) and persona (the user's own words on tone, may be empty). quick_tailor
-    follows these presets; a custom tailor walks the gaps with the user however the
-    agent talks with them and saves the decisions with resolve_gaps. Either way the
-    server keeps its rules: an unproven skill enters only a skills list, resume lines
-    stay in the owner's implied first person, and saved keywords land. The presets are
-    the user's, set in the app; no tool changes them."""
+    empty) and persona (the user's own words on tone, may be empty).
+    create_tailoring_session with use_presets follows these presets; a custom tailor
+    walks the gaps with the user however the agent talks with them and saves the
+    decisions with resolve_gaps. Either way the server keeps its rules: an unproven
+    skill enters only a skills list, resume lines stay in the owner's implied first
+    person, and saved keywords land. The presets are the user's, set in the app; no
+    tool changes them."""
     stored = _client.get_quick_tailor_profile() or {}
     fields = QuickTailorProfile.model_fields
     return {
@@ -2064,8 +2085,8 @@ def score_ats(
     not scored for this job unless `include_other_countries` is true; the
     `countries` block ({job_country, fallback, skipped}) names them and is
     omitted when a target_id is given. `next` is an optional next-step
-    hint (null when suppressed or unavailable) naming quick_tailor / create_tailoring_session
-    against the recommended base.
+    hint (null when suppressed or unavailable) naming create_tailoring_session, with
+    and without use_presets, against the recommended base.
 
     brief=True suits scoring many jobs in a triage/mass-capture loop: it
     suppresses ONLY `next` (never `recommendation`) and is checked before any
@@ -2095,15 +2116,15 @@ def score_ats(
     if brief:
         return {"scores": scores, "recommendation": recommendation, **countries, "next": None}
     # Fetch the quick-tailor profile ONLY when it can actually be shown. It fills
-    # exactly one thing — the quick_tailor option's `detail` — so fetching it with
-    # hints off, or under a profile that never registers quick_tailor (hunt), is a
-    # round-trip whose result is discarded. As keyword ARGUMENTS both reads would
+    # exactly one thing — the presets option's `detail` — so fetching it with hints
+    # off, or under a profile that never registers create_tailoring_session (hunt),
+    # is a round-trip whose result is discarded. As keyword ARGUMENTS both reads would
     # be evaluated unconditionally, which is the trap this avoids: a twenty-posting
     # hunt loop would have paid 20 wasted calls even with hints switched off.
     def compose() -> dict[str, Any] | None:
         allowed = _active_allowed_tools()
         hints_enabled = _hints_enabled()
-        show_quick = hints_enabled and (allowed is None or "quick_tailor" in allowed)
+        show_quick = hints_enabled and (allowed is None or "create_tailoring_session" in allowed)
         return workflow.next_after_scores(
             recommendation,
             job_id=job_id,
@@ -2131,12 +2152,14 @@ def compare_ats(application_id: str) -> Any:
 
 @mcp.tool(**_write("Start Tailoring Session", destructive=True, idempotent=False, open_world=True))
 @_guard
-def create_tailoring_session(job_id: str, base_resume: str, enrich: bool = False) -> Any:
+def create_tailoring_session(
+    job_id: str, base_resume: str, enrich: bool = False, use_presets: UsePresets = False
+) -> Any:
     """Start the gap-analysis tailoring workflow for a job + base resume.
 
     Calling again for the same job+base SUPERSEDES the open session (saved
     resolutions become unreachable); list_tailoring_sessions shows existing
-    sessions.
+    sessions. A failing fatal health gate on the base is a 409.
 
     Scores the base (deterministic ATS engine, persisted as the 'before' score) and
     returns a session whose gaps_json.categories list every gap in fix-cost order:
@@ -2149,64 +2172,32 @@ def create_tailoring_session(job_id: str, base_resume: str, enrich: bool = False
     alternatives are a user_input resolution (the user's answer to
     enrichment.elicitation_question), attach_project, or skip.
 
-    enrich=True has Maestro's AI add display-only explanations to each gap
-    (enrichment.elicitation_question / suggested_wording / suggested_placement),
-    one fast-model call with the user's key; it never changes scores, which gaps
-    exist, or the career-history matches, which run without it. Refused (409)
-    when the user's writer setting (get_setup_status) says the agent app writes:
-    run it without enrich. The default, enrich=False, makes no model call.
+    use_presets=True also fills every gap the user's Quick tailor presets decide
+    (get_tailoring_options explains them), with no AI; undecided gaps are saved
+    as skip. When that fill fails, the error names the session it started.
 
-    Response is the session plus a `next` next-step hint (null when hints are off
-    or unavailable). `base_anchors` are the base's emphasis hints (countries,
-    role, company, focus), not evidence; the anchor company is the resume's own
-    target, not necessarily this job's employer."""
+    enrich=True has Maestro's AI add display-only explanations to each gap (one
+    fast-model call with the user's key; no score, gap or career-history match
+    changes). Refused (409) when the user's writer setting (get_setup_status) says
+    the agent app writes: run it without enrich, the default, which calls no model.
+
+    Response is the session (filled, with use_presets) plus a `next` hint (null
+    when hints are off or unavailable). `base_anchors` are the base's emphasis
+    hints (countries, role, company, focus), not evidence; the anchor company is
+    the resume's own target, not necessarily this job's employer."""
     session = _client.create_tailoring_session(job_id, base_resume, enrich=enrich)
-    return {**session, "next": _session_hint(session)}
-
-
-@mcp.tool(**_write("Quick Tailor", destructive=True, idempotent=False))
-@_guard
-def quick_tailor(job_id: str, base_resume: str) -> Any:
-    """Start Quick Tailor over MCP: the fast path that fills gaps from the
-    user's saved quick-tailor profile instead of walking them one by one.
-
-    Calling again for the same job+base SUPERSEDES the open session (saved
-    resolutions become unreachable); list_tailoring_sessions shows existing
-    sessions.
-
-    Composes create_tailoring_session(enrich=False) with the profile fill
-    (deterministic; resolve_gaps' honesty-gated save path).
-
-    This tool makes NO in-house LLM call: sessions rely on the calling agent's
-    own model. The saved profile only plans
-    mechanical, evidence-respecting moves — it does NOT write resume prose.
-    The returned resolutions_json may already resolve every gap, including
-    system-planned entries (payload.provenance). Resume text comes from
-    caller-authored typed edit ops passed to
-    tailor_session(tailoring_session_id=..., ops=[...]), which skips the backend
-    LLM pass.
-
-    Honesty: the server does not gate caller-authored ops against fabricated
-    skills, experience, metrics, or dates. An unverified or absent skill can only
-    enter a skills category (add_skill_item), never as an experience or project
-    bullet asserting the candidate did the work.
-
-    The tailor_session that follows writes the job's ONE application: it
-    rebuilds the draft and removes its PDF (version history keeps the old
-    draft).
-
-    A session whose resolutions_json contains no planned action beyond
-    "skip" means the profile was not ALLOWED to add anything to THIS
-    session — it is not an error; the gaps can then be resolved with
-    resolve_gaps.
-
-    Raises (409, message says which): a failing fatal health gate on the
-    base blocks session creation; a stale or no-longer-open session blocks
-    the profile fill. Response is the filled session plus a `next` hint
-    suggesting tailor_session (profile standing instruction as user_prompt
-    when the session has no note of its own)."""
-    session = _client.create_tailoring_session(job_id, base_resume, enrich=False)
-    filled = _client.apply_quick_tailor_profile(session["id"])
+    if not use_presets:
+        return {**session, "next": _session_hint(session)}
+    try:
+        filled = _client.apply_quick_tailor_profile(session["id"])
+    except BackendError as exc:
+        # The session exists now: name it, so a retry neither loses it nor
+        # supersedes it unknowingly (audit 6.6).
+        raise ToolError(
+            f"The gap analysis {session['id']} was started, but filling it from the presets "
+            f"failed: {exc}. Save answers on it with resolve_gaps, or call "
+            "create_tailoring_session again (it replaces it)."
+        ) from exc
 
     def compose() -> dict[str, Any] | None:
         if not _hints_enabled():

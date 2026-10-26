@@ -388,6 +388,20 @@ def test_catalog_models_are_frozen():
 
 
 
+def test_every_call_a_playbook_writes_out_is_a_registered_tool():
+    """A call spelled out in a card (`name(...)`) is one the agent makes; a removed tool
+    leaves the playbooks with it."""
+    import re
+
+    from mcp_server.server import list_registered_tool_names
+
+    tools = set(list_registered_tool_names("full"))
+    for full_automation in (False, True):
+        for card in automations.catalog(full_automation=full_automation).cards:
+            calls = set(re.findall(r"\b([a-z]+(?:_[a-z]+)+)\(", card.body))
+            assert calls <= tools, (card.id, sorted(calls - tools))
+
+
 def test_every_tool_a_playbook_names_is_in_its_tool_set():
     """A card copied into an agent connected to its set must never send it after a tool that
     set lacks. Scans the card body with its included technique files."""

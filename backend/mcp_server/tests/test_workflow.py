@@ -187,9 +187,25 @@ def test_scoring_hint_carries_the_quick_tailor_profile():
         quick_profile={"mirror_wording": True, "keywords_into_skills": False},
         allowed_tools=None, hints_enabled=True, brief=False,
     )
-    quick = [o for o in hint["options"] if o["tool"] == "quick_tailor"][0]
-    assert quick["detail"]["mirror_wording"] is True
-    assert quick["detail"]["keywords_into_skills"] is False
+    presets = [o for o in hint["options"] if o["args"].get("use_presets")][0]
+    assert presets["detail"]["mirror_wording"] is True
+    assert presets["detail"]["keywords_into_skills"] is False
+
+
+def test_scoring_hint_offers_the_presets_as_a_switch_on_create_tailoring_session():
+    hint = workflow.next_after_scores(
+        _ranking(), job_id="j1", quick_profile={},
+        allowed_tools=None, hints_enabled=True, brief=False,
+    )
+    presets, custom = hint["options"]
+    top = _ranking()["recommended"]
+    assert presets["tool"] == custom["tool"] == "create_tailoring_session"
+    assert presets["args"] == {"job_id": "j1", "base_resume": top, "use_presets": True}
+    assert presets["label"] == f"Tailor {top} with the saved presets"
+    assert custom["args"] == {"job_id": "j1", "base_resume": top, "enrich": False}
+    assert "quick_tailor" not in json.dumps(hint)
+    assert hint["offer"].count("create_tailoring_session") == 1
+    assert "use_presets" in hint["offer"]
 
 
 def test_hunt_profile_never_names_a_tool_it_does_not_register():
@@ -863,12 +879,12 @@ def test_career_base_from_kb_hint_does_not_mention_scoring():
 
 
 def test_scoring_hint_prose_follows_the_visible_options():
-    only_quick = workflow.next_after_scores(
+    no_tailoring = workflow.next_after_scores(
         _ranking(), job_id="j1", quick_profile={},
-        allowed_tools=frozenset({"quick_tailor"}), hints_enabled=True,
+        allowed_tools=frozenset({"score_ats"}), hints_enabled=True,
     )
-    assert "quick_tailor" in only_quick["offer"]
-    assert "create_tailoring_session" not in only_quick["offer"]
+    assert no_tailoring["options"] == []
+    assert no_tailoring["offer"] is None
 
 
 # Phrases that address the calling model or issue it a command. Hints describe

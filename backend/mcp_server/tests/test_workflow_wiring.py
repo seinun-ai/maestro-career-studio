@@ -44,8 +44,10 @@ def test_score_ats_wraps_scores_recommendation_and_hint(monkeypatch):
     assert [s["target_id"] for s in out["scores"]] == ["alpha", "beta"]
     assert out["recommendation"]["recommended"] == "alpha"
     assert out["next"]["state"] == "bases_scored"
-    quick = [o for o in out["next"]["options"] if o["tool"] == "quick_tailor"][0]
-    assert quick["args"] == {"job_id": "job1", "base_resume": "alpha"}
+    presets = [o for o in out["next"]["options"] if o["args"].get("use_presets")][0]
+    assert presets["tool"] == "create_tailoring_session"
+    assert presets["args"] == {"job_id": "job1", "base_resume": "alpha", "use_presets": True}
+    assert presets["detail"] == {"mirror_wording": True}
 
 
 def test_score_ats_reports_the_countries_block_between_recommendation_and_next(monkeypatch):
@@ -291,11 +293,12 @@ def test_tailor_session_next_is_null_without_an_application_id(monkeypatch):
     assert out["next"] is None
 
 
-# ---------- quick_tailor ----------
+# ---------- create_tailoring_session(use_presets=True) ----------
 
 
-def test_quick_tailor_creates_with_enrich_false_then_applies_profile(monkeypatch):
-    calls = []
+def _presets_session(monkeypatch, filled, *, hints=True, profile=None, calls=None):
+    """create_tailoring_session(use_presets=True): create, then fill from the presets."""
+    calls = [] if calls is None else calls
     monkeypatch.setattr(
         srv._client, "create_tailoring_session",
         lambda job_id, base_resume, enrich=True: (
@@ -304,125 +307,182 @@ def test_quick_tailor_creates_with_enrich_false_then_applies_profile(monkeypatch
     )
     monkeypatch.setattr(
         srv._client, "apply_quick_tailor_profile",
-        lambda session_id: (calls.append(("apply", session_id)), {"id": session_id, "gaps_json": {}, "resolutions_json": []})[1],
+        lambda session_id: (calls.append(("apply", session_id)), filled)[1],
     )
-    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": hints})
+    if profile is not None:
+        monkeypatch.setattr(srv._client, "get_quick_tailor_profile", lambda: profile)
 
-    out = srv.quick_tailor("job1", "hybrid")
+
+def test_presets_create_without_enrich_then_fill(monkeypatch):
+    calls = []
+    _presets_session(monkeypatch, {"id": "s1", "gaps_json": {}, "resolutions_json": []},
+                     hints=False, calls=calls)
+
+    out = srv.create_tailoring_session("job1", "hybrid", use_presets=True)
 
     assert calls == [("create", "job1", "hybrid", False), ("apply", "s1")]
     assert out["id"] == "s1"
 
 
-def test_quick_tailor_returns_the_filled_session_wrapped(monkeypatch):
-    monkeypatch.setattr(srv._client, "create_tailoring_session", lambda job_id, base_resume, enrich=True: {"id": "s1"})
-    filled = {"id": "s1", "gaps_json": {"categories": []}, "resolutions_json": []}
-    monkeypatch.setattr(srv._client, "apply_quick_tailor_profile", lambda session_id: filled)
-    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
-    monkeypatch.setattr(srv._client, "get_quick_tailor_profile", lambda: {"instruction": ""})
+def test_presets_keep_an_enrich_the_caller_asked_for(monkeypatch):
+    calls = []
+    _presets_session(monkeypatch, {"id": "s1", "gaps_json": {}, "resolutions_json": []},
+                     hints=False, calls=calls)
 
-    out = srv.quick_tailor("job1", "hybrid")
+    srv.create_tailoring_session("job1", "hybrid", enrich=True, use_presets=True)
+
+    assert calls == [("create", "job1", "hybrid", True), ("apply", "s1")]
+
+
+def test_without_presets_nothing_is_filled(monkeypatch):
+    calls = []
+    _presets_session(monkeypatch, {"id": "s1"}, hints=False, calls=calls)
+
+    srv.create_tailoring_session("job1", "hybrid")
+
+    assert calls == [("create", "job1", "hybrid", False)]
+
+
+def test_presets_return_the_filled_session_wrapped(monkeypatch):
+    filled = {"id": "s1", "gaps_json": {"categories": []}, "resolutions_json": []}
+    _presets_session(monkeypatch, filled, profile={"instruction": ""})
+
+    out = srv.create_tailoring_session("job1", "hybrid", use_presets=True)
 
     assert out["id"] == "s1"
     assert "next" in out
     assert out["next"]["call"] == "tailor_session"
 
 
-def test_quick_tailor_skips_profile_fetch_when_hints_disabled(monkeypatch):
-    monkeypatch.setattr(srv._client, "create_tailoring_session", lambda job_id, base_resume, enrich=True: {"id": "s1"})
-    monkeypatch.setattr(
-        srv._client, "apply_quick_tailor_profile",
-        lambda session_id: {"id": "s1", "gaps_json": {}, "resolutions_json": []},
-    )
-    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+def test_a_failed_presets_fill_names_the_session_it_started(monkeypatch):
+    """The session exists once creation returned; a retry that loses its id strands it."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from mcp_server.client import BackendError
+
+    def stale(session_id):
+        raise BackendError("Backend returned 409: This gap analysis is out of date.", status_code=409)
+
+    _presets_session(monkeypatch, {})
+    monkeypatch.setattr(srv._client, "apply_quick_tailor_profile", stale)
+
+    with pytest.raises(ToolError) as exc:
+        srv.create_tailoring_session("job1", "hybrid", use_presets=True)
+
+    message = str(exc.value)
+    assert "s1" in message
+    assert "This gap analysis is out of date." in message
+    assert "resolve_gaps" in message
+
+
+async def test_a_failed_presets_fill_reaches_the_agent_whole(monkeypatch):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from mcp_server.client import BackendError
+
+    def stale(session_id):
+        raise BackendError("Backend returned 409: This gap analysis is out of date.", status_code=409)
+
+    _presets_session(monkeypatch, {})
+    monkeypatch.setattr(srv._client, "apply_quick_tailor_profile", stale)
+
+    with pytest.raises(ToolError) as exc:
+        await srv.mcp.call_tool(
+            "create_tailoring_session", {"job_id": "job1", "base_resume": "hybrid", "use_presets": True}
+        )
+
+    assert "The gap analysis s1 was started" in str(exc.value)
+
+
+def test_presets_skip_the_profile_fetch_when_hints_are_off(monkeypatch):
+    _presets_session(monkeypatch, {"id": "s1", "gaps_json": {}, "resolutions_json": []}, hints=False)
 
     def _boom():
         raise AssertionError("get_quick_tailor_profile must not be called when hints are off")
 
     monkeypatch.setattr(srv._client, "get_quick_tailor_profile", _boom)
 
-    out = srv.quick_tailor("job1", "hybrid")
+    out = srv.create_tailoring_session("job1", "hybrid", use_presets=True)
 
     assert out["next"] is None
 
 
-def test_quick_tailor_threads_the_instruction_when_the_session_has_no_note(monkeypatch):
-    monkeypatch.setattr(srv._client, "create_tailoring_session", lambda job_id, base_resume, enrich=True: {"id": "s1"})
+def test_presets_thread_the_instruction_when_the_session_has_no_note(monkeypatch):
     filled = {
         "id": "s1",
         "gaps_json": {"categories": [{"name": "missing_skill", "gaps": [{"gap_id": "g1"}]}]},
         "resolutions_json": [{"gap_id": "g1", "action": "skip", "payload": {}}],
     }
-    monkeypatch.setattr(srv._client, "apply_quick_tailor_profile", lambda session_id: filled)
-    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
-    monkeypatch.setattr(srv._client, "get_quick_tailor_profile", lambda: {"instruction": "Keep it punchy."})
+    _presets_session(monkeypatch, filled, profile={"instruction": "Keep it punchy."})
 
-    out = srv.quick_tailor("job1", "hybrid")
+    out = srv.create_tailoring_session("job1", "hybrid", use_presets=True)
 
     tailor_option = [o for o in out["next"]["options"] if o["tool"] == "tailor_session"][0]
     assert tailor_option["args"]["user_prompt"] == "Keep it punchy."
 
 
-def test_quick_tailor_does_not_override_the_sessions_own_note(monkeypatch):
-    monkeypatch.setattr(srv._client, "create_tailoring_session", lambda job_id, base_resume, enrich=True: {"id": "s1"})
+def test_presets_do_not_override_the_sessions_own_note(monkeypatch):
     filled = {
         "id": "s1",
         "user_prompt": "Already told it what I want.",
         "gaps_json": {"categories": [{"name": "missing_skill", "gaps": [{"gap_id": "g1"}]}]},
         "resolutions_json": [{"gap_id": "g1", "action": "skip", "payload": {}}],
     }
-    monkeypatch.setattr(srv._client, "apply_quick_tailor_profile", lambda session_id: filled)
-    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
-    monkeypatch.setattr(srv._client, "get_quick_tailor_profile", lambda: {"instruction": "A different instruction."})
+    _presets_session(monkeypatch, filled, profile={"instruction": "A different instruction."})
 
-    out = srv.quick_tailor("job1", "hybrid")
+    out = srv.create_tailoring_session("job1", "hybrid", use_presets=True)
 
     tailor_option = [o for o in out["next"]["options"] if o["tool"] == "tailor_session"][0]
     assert "user_prompt" not in tailor_option["args"]
 
 
-def test_quick_tailor_docstring_states_no_in_house_llm_call():
-    doc = (srv.quick_tailor.__doc__ or "")
-    assert "NO in-house LLM call" in doc
-    assert "own model" in doc.lower()
+def _presets_text():
+    """The docstring plus the use_presets parameter's description, where the detail lives."""
+    from mcp_server.server import _USE_PRESETS_FIELD
+
+    return " ".join(((srv.create_tailoring_session.__doc__ or "") + " " + _USE_PRESETS_FIELD.description).split())
 
 
-def test_quick_tailor_docstring_carries_the_honesty_rule():
-    doc = (srv.quick_tailor.__doc__ or "").lower()
-    assert "fabricate" in doc
-    assert "skills category" in doc
-    assert "never as an experience or project" in doc
+def test_presets_text_states_no_ai_writes_and_no_prose():
+    text = _presets_text()
+    assert "no AI" in text
+    assert "does not write resume text" in text
 
 
-def test_quick_tailor_docstring_documents_the_409s():
-    doc = (srv.quick_tailor.__doc__ or "").lower()
-    assert "409" in doc
-    assert "stale" in doc
-    assert "fatal health gate" in doc
+def test_presets_text_carries_the_honesty_rule():
+    text = _presets_text().lower()
+    assert "fabricate" in text
+    assert "skills category" in text
+    assert "never as an experience or project" in text
 
 
-def test_quick_tailor_docstring_explains_zero_planned_resolutions():
-    doc = (srv.quick_tailor.__doc__ or "").lower()
-    assert "not an error" in doc
-    assert "resolve_gaps" in doc
+def test_presets_text_documents_the_409s():
+    text = _presets_text().lower()
+    assert "409" in text
+    assert "stale" in text
+    assert "fatal health gate" in text
+
+
+def test_presets_text_explains_zero_planned_resolutions():
+    text = _presets_text().lower()
+    assert "not an error" in text
+    assert "resolve_gaps" in text
 
 
 # ---------- profile registration ----------
 
 
-def test_quick_tailor_is_registered():
-    assert "quick_tailor" in set(srv.list_registered_tool_names())
-
-
-def test_quick_tailor_lives_in_the_tailor_set_only():
+def test_quick_tailor_is_registered_nowhere():
+    """Its work is create_tailoring_session(use_presets=True) now."""
     from mcp_server.profiles import PROFILE_ALLOWLISTS
 
-    holders = {name for name, allow in PROFILE_ALLOWLISTS.items() if allow and "quick_tailor" in allow}
-    assert holders == {"tailor"}
+    assert "quick_tailor" not in set(srv.list_registered_tool_names("full"))
+    assert all("quick_tailor" not in allow for allow in PROFILE_ALLOWLISTS.values() if allow)
 
 
 def test_score_ats_skips_the_profile_fetch_when_hints_are_off(monkeypatch):
-    """The quick-tailor profile fills the quick_tailor option's `detail` and
+    """The quick-tailor profile fills the presets option's `detail` and
     nothing else, so fetching it with hints off is a discarded round-trip.
     Passed as a keyword ARGUMENT it would be evaluated unconditionally — that
     is the trap this pins."""
@@ -442,8 +502,8 @@ def test_score_ats_skips_the_profile_fetch_when_hints_are_off(monkeypatch):
     assert calls == [], "fetched a quick-tailor profile it then discarded"
 
 
-def test_score_ats_skips_the_profile_fetch_when_quick_tailor_is_unregistered(monkeypatch):
-    """A hunt-profile triage loop never gets a quick_tailor option, so the
+def test_score_ats_skips_the_profile_fetch_when_tailoring_is_unregistered(monkeypatch):
+    """A hunt-profile triage loop never gets a presets option, so the
     profile behind it is pure waste — twenty postings, twenty discarded calls."""
     from mcp_server.profiles import HUNT_TOOLS
 

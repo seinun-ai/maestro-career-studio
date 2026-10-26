@@ -57,7 +57,6 @@ def test_all_tools_registered():
         "list_applications",
         "export_jobs",
         "create_tailoring_session",
-        "quick_tailor",
         "get_tailoring_session",
         "list_tailoring_sessions",
         "close_tailoring_session",
@@ -665,10 +664,9 @@ def test_audit_one_sentence_docstring_fixes():
     assert "kb_writeback_skips" in ts
     assert "placement_target" in ts
 
-    for fn in (srv.create_tailoring_session, srv.quick_tailor):
-        doc = fn.__doc__ or ""
-        assert "SUPERSEDE" in doc.upper()
-        assert "list_tailoring_sessions" in doc
+    doc = srv.create_tailoring_session.__doc__ or ""
+    assert "SUPERSEDE" in doc.upper()
+    assert "list_tailoring_sessions" in doc
 
     # A job has one application: any tailor (another base or the same one) rebuilds its draft; version history
     # keeps the old draft, not the PDF. tailor_session renders the new PDF itself (pdf_ready).
@@ -676,9 +674,6 @@ def test_audit_one_sentence_docstring_fixes():
     assert "the job's ONE application" in ts_doc
     assert "rebuilds the draft (version history keeps the old draft) and renders its PDF" in ts_doc
     assert "removes its PDF" not in ts_doc
-    qt_doc = " ".join((srv.quick_tailor.__doc__ or "").split())
-    assert "the job's ONE application" in qt_doc
-    assert "version history keeps them" not in qt_doc
 
     base = srv.create_base_resume_from_kb.__doc__ or ""
     assert '"other"' in base or "role_category \"other\"" in base
@@ -1709,7 +1704,7 @@ _SESSION = {"id": "s1", "gaps_json": {"categories": []}, "resolutions_json": []}
         "create_base_resume_from_kb",
         "create_tailoring_session",
         "resolve_gaps",
-        "quick_tailor",
+        "create_tailoring_session_with_presets",
         "tailor_session",
         "render_pdf",
         "score_ats",
@@ -1742,7 +1737,9 @@ def test_a_landed_write_is_not_reported_as_an_error_when_only_the_hint_fails(mon
         "create_base_resume_from_kb": lambda: srv.create_base_resume_from_kb(["e1"], role_label="x"),
         "create_tailoring_session": lambda: srv.create_tailoring_session("j1", "hybrid"),
         "resolve_gaps": lambda: srv.resolve_gaps("s1", []),
-        "quick_tailor": lambda: srv.quick_tailor("j1", "hybrid"),
+        "create_tailoring_session_with_presets": lambda: srv.create_tailoring_session(
+            "j1", "hybrid", use_presets=True
+        ),
         "tailor_session": lambda: srv.tailor_session("s1", ops=[]),
         "render_pdf": lambda: srv.render_pdf("application", "a1"),
         "score_ats": lambda: srv.score_ats("j1"),
