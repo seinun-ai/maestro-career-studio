@@ -357,19 +357,43 @@ def next_after_tailor(
     hints_enabled: bool,
     brief: bool = False,
     pdf_ready: bool = False,
+    setup_status: dict[str, Any] | None = None,
     keywords_added: list[str] | tuple[str, ...] = (),
     answers_left_to_ops: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
 ) -> dict[str, Any] | None:
-    """Compose the hint that follows tailor_session. tailor_session renders the
-    PDF itself, so render_pdf is offered only when that render failed
-    (`pdf_ready` false), and then it is the `call`: there is no choice to make.
-    Saved keywords the server added to the skills list ride on the render
-    option. Saved answers that need wording the server did not write add an
-    edit_application option, the blocking call's companion or, with the PDF
-    made, a non-blocking `offer`."""
+    """Compose the hint that follows tailor_session, which renders the PDF itself.
+
+    With the PDF made (`pdf_ready`) the arc is at its last step, so the hint is
+    next_after_render's: apply readiness and the handoff, from `setup_status`.
+    When that render failed, render_pdf is offered, and it is the `call` when
+    nothing else is pending. Saved keywords the server added to the skills list
+    ride on the render option.
+
+    Saved answers that need wording the server did not write come first, as an
+    edit_application option with an `ask_user`, and then nothing is the `call`:
+    writing them may need the user, and an edit clears the PDF, so following a
+    render first would make the PDF twice."""
     if _suppressed(hints_enabled, brief):
         return None
+    left = list(answers_left_to_ops)
     candidates: list[dict[str, Any]] = []
+    if left:
+        candidates.append(
+            {
+                "label": "Write the saved answers that need wording",
+                "tool": "edit_application",
+                "args": {"application_id": application_id},
+                "detail": {
+                    "answers_left_to_ops": left,
+                    "note": (
+                        "These saved answers need wording the server did not write: "
+                        "user_input and attach_project answers, and an add_keyword whose "
+                        "word needs a rewritten line. Each is on the resume only where "
+                        "edit ops wrote it."
+                    ),
+                },
+            }
+        )
     if not pdf_ready:
         render_option = {
             "label": "Render the tailored application to PDF",
@@ -383,34 +407,24 @@ def next_after_tailor(
                 "note": "No edit put these saved keywords on the resume; the server added them to the skills list.",
             }
         candidates.append(render_option)
-    if answers_left_to_ops:
-        candidates.append(
-            {
-                "label": "Write the saved answers that need wording",
-                "tool": "edit_application",
-                "args": {"application_id": application_id},
-                "detail": {
-                    "answers_left_to_ops": list(answers_left_to_ops),
-                    "note": (
-                        "These saved answers need wording the server did not write: "
-                        "user_input and attach_project answers, and an add_keyword whose "
-                        "word needs a rewritten line. Each is on the resume only where "
-                        "edit ops wrote it."
-                    ),
-                },
-            }
-        )
     options = _visible(candidates, allowed_tools)
-    render = any(o["tool"] == "render_pdf" for o in options)
+    if pdf_ready and setup_status is not None:
+        hint = next_after_render(
+            setup_status=setup_status, allowed_tools=allowed_tools, hints_enabled=True
+        )
+    else:
+        hint = {"state": "rendered" if pdf_ready else "tailored", "offer": None}
     return {
-        "state": "tailored",
-        "blocking": render,
-        "offer": None if render else _offer_from_options(
-            options, {"edit_application": "edit_application (writes the saved answers that need wording)"}
+        **hint,
+        "blocking": bool(options),
+        "ask_user": (
+            f"{len(left)} saved answer(s) need wording the server did not write. "
+            "Write them into the resume, or keep it as it is?"
+            if left and options
+            else None
         ),
-        "ask_user": None,
         "options": options,
-        "call": "render_pdf" if render else None,
+        "call": "render_pdf" if options and not left else None,
     }
 
 

@@ -344,30 +344,59 @@ def test_tailor_hint_names_render_pdf_with_the_application_id():
     assert option["args"] == {"target_type": "application", "target_id": "a1"}
 
 
-def test_tailor_hint_reports_added_keywords_and_answers_left_to_the_ops():
-    left = [{"gap_id": "coverage:0", "action": "user_input", "skill": "Build ML models"}]
+_LEFT = [
+    {"gap_id": "coverage:0", "action": "user_input", "skill": "Build ML models"},
+    {"gap_id": "wording:1", "action": "add_keyword", "skill": "forecasting"},
+]
+
+
+def test_tailor_hint_lists_the_answers_left_before_the_render_and_calls_neither():
+    """Writing the answers clears the PDF, so the render comes after them; writing them may
+    need the user, so nothing is the one call."""
     hint = workflow.next_after_tailor(
         application_id="a1", allowed_tools=None, hints_enabled=True,
-        keywords_added=["Snowflake"], answers_left_to_ops=left,
+        keywords_added=["Snowflake"], answers_left_to_ops=_LEFT,
     )
-    render, carry = hint["options"]
-    assert hint["call"] == "render_pdf"
-    assert render["detail"]["keywords_added"] == ["Snowflake"]
+    carry, render = hint["options"]
+    assert hint["call"] is None
+    assert hint["blocking"] is True
     assert carry["tool"] == "edit_application"
     assert carry["args"] == {"application_id": "a1"}
-    assert carry["detail"]["answers_left_to_ops"] == left
-    # A profile without edit_application hears only of the render.
+    assert carry["detail"]["answers_left_to_ops"] == _LEFT
+    assert render["tool"] == "render_pdf"
+    assert render["detail"]["keywords_added"] == ["Snowflake"]
+    # The decision is the user's; the question names no tool.
+    assert hint["ask_user"].startswith("2 saved answer(s)") and hint["ask_user"].endswith("?")
+    assert _named_tools({"q": hint["ask_user"]}) == set()
+    note = carry["detail"]["note"]
+    # True whether the tailor took the caller's ops or wrote no new text.
+    assert "ops are given" not in note
+    assert "add_keyword" in note and "rewritten" in note
+
+
+def test_tailor_hint_calls_nothing_when_only_the_answers_can_be_written():
+    hint = workflow.next_after_tailor(
+        application_id="a1", allowed_tools=frozenset({"edit_application"}), hints_enabled=True,
+        answers_left_to_ops=_LEFT,
+    )
+    assert [option["tool"] for option in hint["options"]] == ["edit_application"]
+    assert hint["call"] is None
+
+
+def test_tailor_hint_without_edit_application_offers_the_render_and_still_calls_nothing():
     hint = workflow.next_after_tailor(
         application_id="a1", allowed_tools=frozenset({"render_pdf"}), hints_enabled=True,
-        answers_left_to_ops=left,
+        answers_left_to_ops=_LEFT,
     )
     assert [option["tool"] for option in hint["options"]] == ["render_pdf"]
+    assert hint["call"] is None
 
 
 def test_tailor_hint_offers_render_pdf_only_when_the_tailor_made_no_pdf():
     """tailor_session renders the PDF itself; render_pdf is the step only when that failed."""
     made = workflow.next_after_tailor(
         application_id="a1", allowed_tools=None, hints_enabled=True, pdf_ready=True,
+        setup_status=_autofill_setup_status(ready=True),
     )
     assert "render_pdf" not in json.dumps(made)
     assert made["call"] is None and made["options"] == []
@@ -377,24 +406,36 @@ def test_tailor_hint_offers_render_pdf_only_when_the_tailor_made_no_pdf():
     )
     assert failed["call"] == "render_pdf"
     assert [option["tool"] for option in failed["options"]] == ["render_pdf"]
+    assert "readiness" not in failed
 
 
-def test_tailor_hint_with_the_pdf_made_offers_the_answers_left_without_a_call():
-    left = [
-        {"gap_id": "coverage:0", "action": "user_input", "skill": "Build ML models"},
-        {"gap_id": "wording:1", "action": "add_keyword", "skill": "forecasting"},
-    ]
+@pytest.mark.parametrize("ready", [True, False])
+@pytest.mark.parametrize("profile", ["full", "tailor"])
+def test_a_clean_tailor_with_its_pdf_made_ends_on_apply_readiness(ready, profile):
+    """The arc's last step: with the PDF made and nothing left, the hint is render_pdf's."""
+    allow = profiles.allowed_tools(profile)
+    status = _autofill_setup_status(ready=ready)
+    hint = workflow.next_after_tailor(
+        application_id="a1", allowed_tools=allow, hints_enabled=True,
+        pdf_ready=True, setup_status=status,
+    )
+    assert hint == workflow.next_after_render(setup_status=status, allowed_tools=allow, hints_enabled=True)
+    assert hint["readiness"]["autofill_ready"] is ready
+
+
+def test_a_tailor_with_its_pdf_made_and_answers_left_carries_both():
+    status = _autofill_setup_status(ready=False)
+    render = workflow.next_after_render(setup_status=status, allowed_tools=None, hints_enabled=True)
     hint = workflow.next_after_tailor(
         application_id="a1", allowed_tools=None, hints_enabled=True,
-        pdf_ready=True, answers_left_to_ops=left,
+        pdf_ready=True, setup_status=status, answers_left_to_ops=_LEFT,
     )
     assert [option["tool"] for option in hint["options"]] == ["edit_application"]
-    assert hint["call"] is None and hint["blocking"] is False
-    assert "edit_application" in hint["offer"]
-    note = hint["options"][0]["detail"]["note"]
-    # True whether the tailor took the caller's ops or wrote no new text.
-    assert "ops are given" not in note
-    assert "add_keyword" in note and "rewritten" in note
+    assert hint["call"] is None and hint["blocking"] is True
+    assert hint["ask_user"].endswith("?")
+    assert hint["readiness"] == render["readiness"]
+    assert hint["offer"] == render["offer"]
+    assert "render_pdf" not in json.dumps(hint)
 
 
 def test_tailor_hint_brief_and_switch_suppress():
@@ -800,8 +841,11 @@ def _every_hint(allow):
         "tailor_left": workflow.next_after_tailor(
             application_id="a1", keywords_added=["Snowflake"],
             answers_left_to_ops=[{"gap_id": "g1", "action": "user_input", "skill": "x"}], **kw),
-        "tailor_pdf_made_left": workflow.next_after_tailor(
+        "tailor_pdf_made": workflow.next_after_tailor(
             application_id="a1", pdf_ready=True,
+            setup_status=_autofill_setup_status(ready=False), **kw),
+        "tailor_pdf_made_left": workflow.next_after_tailor(
+            application_id="a1", pdf_ready=True, setup_status=_autofill_setup_status(ready=True),
             answers_left_to_ops=[{"gap_id": "g1", "action": "add_keyword", "skill": "x"}], **kw),
         "render_ready": workflow.next_after_render(
             setup_status=_autofill_setup_status(ready=True), **kw),
@@ -841,6 +885,14 @@ def _strings(node):
 def _named_tools(hint):
     text = json.dumps(hint)
     return {n for n in _ALL_TOOL_NAMES if re.search(rf"\b{re.escape(n)}\b", text)}
+
+
+@pytest.mark.parametrize("profile", _PROFILES)
+def test_no_hint_names_a_removed_tool(profile):
+    for name, hint in _every_hint(profiles.allowed_tools(profile)).items():
+        text = json.dumps(hint)
+        for removed in ("quick_tailor", "tailor_application"):
+            assert not re.search(rf"\b{removed}\b", text), (profile, name, removed)
 
 
 @pytest.mark.parametrize("profile", _PROFILES)

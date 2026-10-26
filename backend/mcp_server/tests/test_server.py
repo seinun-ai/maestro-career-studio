@@ -932,13 +932,16 @@ def test_tailor_session_hands_its_report_to_the_hint(monkeypatch):
     )
     monkeypatch.setattr(srv, "_hints_enabled", lambda: True)
     monkeypatch.setattr(srv, "_active_allowed_tools", lambda: None)
+    status = {"autofill": {"done": False}}
+    monkeypatch.setattr(srv._client, "get_setup_status", lambda: status)
     monkeypatch.setattr(
-        srv.workflow, "next_after_tailor", lambda **kw: seen.update(kw) or {"call": "render_pdf"}
+        srv.workflow, "next_after_tailor", lambda **kw: seen.update(kw) or {"call": None}
     )
     srv.tailor_session(tailoring_session_id="s1", ops=[])
     assert seen["keywords_added"] == ["Snowflake"]
     assert seen["answers_left_to_ops"] == [{"gap_id": "g", "action": "user_input", "skill": "x"}]
     assert seen["pdf_ready"] is True
+    assert seen["setup_status"] is status
 
 
 def test_tailor_session_tool_ops_default_none(monkeypatch):
@@ -973,19 +976,19 @@ def test_tailor_session_tool_forwards_no_new_text(monkeypatch):
 def test_tailor_session_docstring_names_the_three_ways_and_the_pdf_it_makes():
     doc = " ".join((srv.tailor_session.__doc__ or "").split())
     for term in ("no_new_text", "pdf_ready", "unbacked_skills", "answers_left_to_ops",
-                 "writer", "get_setup_status", "edit_application", "edit_base_resume"):
+                 "writer", "get_setup_status", "edit_application"):
         assert term in doc, term
-    assert "tailor_application" not in doc
     params = srv._TAILOR_OPS_FIELD.description + srv._NO_NEW_TEXT_FIELD.description
-    assert "tailor_application" not in params
+    # The op vocabulary is on edit_application's ops schema, in the tailor set.
+    assert "edit_application" in srv._TAILOR_OPS_FIELD.description
+    assert "edit_base_resume" not in doc + params
+    # An empty ops list counts as no ops.
+    assert "non-empty ops" in srv._NO_NEW_TEXT_FIELD.description
 
 
 def test_maestro_writing_tools_say_maestros_ai_writes_and_where_the_setting_is():
     """Refused for an agent request when the agent app writes; each names the tool
     that takes the agent's own text, and the setting's place."""
-    from mcp_server.profiles import PROFILE_ALLOWLISTS
-
-    registered = set(srv.list_registered_tool_names("full"))
     pairs = {
         "generate_cover_letter": "store_cover_letter",
         "generate_qa_answers": "store_qa_answers",
@@ -998,11 +1001,41 @@ def test_maestro_writing_tools_say_maestros_ai_writes_and_where_the_setting_is()
         assert "writer" in doc and "get_setup_status" in doc, tool
         assert "refused (409)" in doc.lower(), tool
         assert instead in doc, tool
-        # Every tool a description names is served beside it in each set.
-        named = set(re.findall(r"[a-z_]+", doc)) & registered
-        for name, allow in PROFILE_ALLOWLISTS.items():
-            if allow and tool in allow:
-                assert named <= allow, (tool, name, sorted(named - allow))
+
+
+def _schema_text(tool):
+    return " ".join([tool.description or "", *_schema_descriptions(tool.inputSchema)])
+
+
+async def test_tailoring_text_names_only_tools_served_beside_it():
+    """Each of these is served in sets that lack some tools: its description and parameter
+    descriptions name only tools every set holding it also holds."""
+    from mcp_server.profiles import PROFILE_ALLOWLISTS
+
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    for name in ("generate_cover_letter", "generate_qa_answers", "kb_capture",
+                 "create_tailoring_session", "tailor_session", "score_ats", "get_tailoring_options"):
+        named = set(re.findall(r"[a-z_]+", _schema_text(tools[name]))) & set(tools)
+        for set_name, allow in PROFILE_ALLOWLISTS.items():
+            if allow and name in allow:
+                assert named <= allow, (name, set_name, sorted(named - allow))
+
+
+async def test_removed_tools_are_named_nowhere_an_agent_reads():
+    """quick_tailor and tailor_application left MCP: no tool text, set instructions or
+    playbook (its "Never call" sentences included) names them."""
+    import pathlib
+
+    from mcp_server import orientation
+
+    removed = re.compile(r"\b(quick_tailor|tailor_application)\b")
+    texts = {f"tool {t.name}": _schema_text(t) for t in await srv.mcp.list_tools()}
+    texts |= {f"instructions {s}": orientation.instructions_for(s) for s in orientation.SET_NAMES}
+    skills = pathlib.Path(srv.__file__).resolve().parents[1] / "app" / "automations" / "skills"
+    texts |= {f"playbook {path.parent.name}": path.read_text() for path in skills.glob("*/SKILL.md")}
+    assert any(key.startswith("playbook ") for key in texts)
+    hits = {key: removed.findall(text) for key, text in texts.items() if removed.search(text)}
+    assert not hits, hits
 
 
 def test_health_check_tools_registered():

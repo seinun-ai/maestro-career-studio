@@ -264,20 +264,55 @@ def test_tailor_session_wraps_with_render_hint(monkeypatch):
     assert out["next"]["options"][0]["args"] == {"target_type": "application", "target_id": "app1"}
 
 
-def test_tailor_session_names_no_render_once_its_own_render_made_the_pdf(monkeypatch):
-    monkeypatch.setattr(
-        srv._client, "tailor_session",
-        lambda sid, user_prompt=None, ops=None, no_new_text=False: {
-            "session": {"id": sid, "application_id": "app1"}, "compare": None, "pdf_ready": True,
-        },
-    )
+_READY_STATUS = {"autofill": {"done": True, "readiness": 1.0, "groups": {}, "blocking": []}}
+
+
+def _tailored(pdf_ready, **extra):
+    return lambda sid, user_prompt=None, ops=None, no_new_text=False: {
+        "session": {"id": sid, "application_id": "app1"}, "compare": None,
+        "pdf_ready": pdf_ready, **extra,
+    }
+
+
+def test_tailor_session_with_its_pdf_made_ends_on_apply_readiness(monkeypatch):
+    monkeypatch.setattr(srv._client, "tailor_session", _tailored(True))
     monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
+    monkeypatch.setattr(srv._client, "get_setup_status", lambda: _READY_STATUS)
 
     out = srv.tailor_session(tailoring_session_id="s1", no_new_text=True)
 
     assert out["pdf_ready"] is True
     assert out["next"]["call"] is None
+    assert out["next"]["state"] == "rendered"
+    assert out["next"]["readiness"]["autofill_ready"] is True
     assert all(o["tool"] != "render_pdf" for o in out["next"]["options"])
+
+
+def test_tailor_session_with_its_pdf_made_keeps_the_answers_left(monkeypatch):
+    left = [{"gap_id": "g1", "action": "user_input", "skill": "Build ML models"}]
+    monkeypatch.setattr(srv._client, "tailor_session", _tailored(True, answers_left_to_ops=left))
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
+    monkeypatch.setattr(srv._client, "get_setup_status", lambda: _READY_STATUS)
+
+    out = srv.tailor_session(tailoring_session_id="s1", no_new_text=True)
+
+    assert [o["tool"] for o in out["next"]["options"]] == ["edit_application"]
+    assert out["next"]["readiness"]["autofill_ready"] is True
+
+
+def test_tailor_session_reads_setup_status_only_for_a_made_pdf_with_hints_on(monkeypatch):
+    """The readiness facts cost one more request: none when the hint cannot use them."""
+    def _boom():
+        raise AssertionError("get_setup_status read when no hint could use it")
+
+    monkeypatch.setattr(srv._client, "get_setup_status", _boom)
+    monkeypatch.setattr(srv._client, "tailor_session", _tailored(False))
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
+    assert srv.tailor_session(tailoring_session_id="s1")["next"]["call"] == "render_pdf"
+
+    monkeypatch.setattr(srv._client, "tailor_session", _tailored(True))
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+    assert srv.tailor_session(tailoring_session_id="s1")["next"] is None
 
 
 def test_tailor_session_next_is_null_without_an_application_id(monkeypatch):
@@ -372,8 +407,11 @@ def test_a_failed_presets_fill_names_the_session_it_started(monkeypatch):
 
     message = str(exc.value)
     assert "s1" in message
-    assert "This gap analysis is out of date." in message
-    assert "resolve_gaps" in message
+    assert "This gap analysis is out of date" in message
+    assert ".." not in message
+    assert "Call create_tailoring_session again (it replaces it)" in message
+    # resolve_gaps gets the same 409 on a stale or closed session: no use here.
+    assert "resolve_gaps" not in message
 
 
 async def test_a_failed_presets_fill_reaches_the_agent_whole(monkeypatch):

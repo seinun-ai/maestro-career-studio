@@ -97,8 +97,9 @@ GapResolutions = Annotated[list[GapResolution], _RESOLUTIONS_FIELD]
 # Immune to the ~2048-char tool-description truncation: lives on the param schema.
 _TAILOR_OPS_FIELD = Field(
     description=(
-        "Typed edit ops, the shapes edit_base_resume lists; omitted (and no_new_text "
-        "false), Maestro's AI writes them when the user's writer setting is Maestro's AI. "
+        "Typed edit ops, the shapes edit_application's ops parameter lists; omitted (and "
+        "no_new_text false), Maestro's AI writes them when the user's writer setting is "
+        "Maestro's AI. "
         "With ops the server itself applies only the saved enable_entry "
         "and port_kb_point answers: user_input and attach_project answers reach the "
         "resume only through these ops, and answers_left_to_ops lists them. On every "
@@ -118,8 +119,8 @@ _NO_NEW_TEXT_FIELD = Field(
         "list (keywords_added lists the words). An add_keyword placed anywhere else needs a "
         "rewritten line: its word lands in the skills list when the resume lacks it, and "
         "otherwise the answer is listed in answers_left_to_ops beside the user_input and "
-        "attach_project answers; nothing listed there reaches the resume. With ops it is a "
-        "422; when nothing can be applied without new wording it is a 400 that says so."
+        "attach_project answers; nothing listed there reaches the resume. With non-empty ops "
+        "it is a 422; when nothing can be applied without new wording it is a 400 that says so."
     )
 )
 NoNewText = Annotated[bool, _NO_NEW_TEXT_FIELD]
@@ -2056,8 +2057,9 @@ def score_ats(
     not scored for this job unless `include_other_countries` is true; the
     `countries` block ({job_country, fallback, skipped}) names them and is
     omitted when a target_id is given. `next` is an optional next-step
-    hint (null when suppressed or unavailable) naming create_tailoring_session, with
-    and without use_presets, against the recommended base.
+    hint (null when suppressed or unavailable): in a set with the tailoring tools,
+    a gap analysis of the recommended base, filled from the saved presets or
+    walked by hand.
 
     brief=True suits scoring many jobs in a triage/mass-capture loop: it
     suppresses ONLY `next` (never `recommendation`) and is checked before any
@@ -2095,11 +2097,11 @@ def score_ats(
     def compose() -> dict[str, Any] | None:
         allowed = _active_allowed_tools()
         hints_enabled = _hints_enabled()
-        show_quick = hints_enabled and (allowed is None or "create_tailoring_session" in allowed)
+        show_presets = hints_enabled and (allowed is None or "create_tailoring_session" in allowed)
         return workflow.next_after_scores(
             recommendation,
             job_id=job_id,
-            quick_profile=_client.get_quick_tailor_profile() if show_quick else {},
+            quick_profile=_client.get_quick_tailor_profile() if show_presets else {},
             allowed_tools=allowed,
             hints_enabled=hints_enabled,
         )
@@ -2166,8 +2168,7 @@ def create_tailoring_session(
         # supersedes it unknowingly (audit 6.6).
         raise ToolError(
             f"The gap analysis {session['id']} was started, but filling it from the presets "
-            f"failed: {exc}. Save answers on it with resolve_gaps, or call "
-            "create_tailoring_session again (it replaces it)."
+            f"failed: {str(exc).rstrip('.')}. Call create_tailoring_session again (it replaces it)."
         ) from exc
 
     def compose() -> dict[str, Any] | None:
@@ -2275,8 +2276,8 @@ def tailor_session(
     - ops omitted: Maestro's AI writes them, only when the user's writer setting
       (get_setup_status) is Maestro's AI; otherwise refused (409).
     - ops: the caller's own typed edit ops, the shapes edit_application takes
-      (edit_base_resume documents each kind), carrying only the changed fields;
-      no model call.
+      (its ops schema lists each kind), carrying only the changed fields; no
+      model call.
     - no_new_text=True: no new wording and no model call, under either setting.
     The ops and no_new_text parameters say which saved answers the server
     applies; answers_left_to_ops lists the ones that need wording.
@@ -2296,27 +2297,31 @@ def tailor_session(
     missing skills this tailor put on the resume that career history does not
     back. kb_writeback_skips derives from each user_input resolution's STORED
     placement_target from resolve_gaps, not from the ops, so ops that disagree
-    with the stored target produce a spurious wrong_section skip. `next` names
-    render_pdf only when pdf_ready is false (null when suppressed or
-    unavailable)."""
+    with the stored target produce a spurious wrong_section skip. `next` (null
+    when off or unavailable): the answers left first, then render_pdf when
+    pdf_ready is false, else apply readiness."""
     result = _client.tailor_session(
         tailoring_session_id, user_prompt=user_prompt, ops=ops, no_new_text=no_new_text
     )
     application_id = (result.get("session") or {}).get("application_id")
-    next_hint = (
-        _best_effort_hint(
-            lambda: workflow.next_after_tailor(
-                application_id=application_id,
-                allowed_tools=_active_allowed_tools(),
-                hints_enabled=_hints_enabled(),
-                pdf_ready=result.get("pdf_ready", False),
-                keywords_added=result.get("keywords_added") or [],
-                answers_left_to_ops=result.get("answers_left_to_ops") or [],
-            )
+    pdf_ready = bool(result.get("pdf_ready", False))
+
+    # With the PDF made the hint carries apply readiness, as render_pdf's does;
+    # setup status (one more request) is read only then, and only with hints on.
+    def compose() -> dict[str, Any] | None:
+        if not _hints_enabled():
+            return None
+        return workflow.next_after_tailor(
+            application_id=application_id,
+            allowed_tools=_active_allowed_tools(),
+            hints_enabled=True,
+            pdf_ready=pdf_ready,
+            setup_status=_client.get_setup_status() if pdf_ready else None,
+            keywords_added=result.get("keywords_added") or [],
+            answers_left_to_ops=result.get("answers_left_to_ops") or [],
         )
-        if application_id
-        else None
-    )
+
+    next_hint = _best_effort_hint(compose) if application_id else None
     return {**result, "next": next_hint}
 
 
