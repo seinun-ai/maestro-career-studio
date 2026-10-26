@@ -7,6 +7,10 @@ user narrating it; a user doing mass JD capture would otherwise get a
 tailoring prompt on every one of twenty postings, so this is the off switch.
 This is the USER's switch (Settings page). The per-call `brief` param the
 agent controls is a separate, narrower knob owned by later tasks.
+
+`writer` says who writes for a connected agent app (the agent app or Maestro's
+AI); it is read on every agent request, so that read goes through
+`peek_settings` and never seeds a row. No MCP tool writes it.
 """
 
 from sqlalchemy.orm import Session
@@ -23,6 +27,11 @@ MCP_WORKFLOW_FILE = MCP_WORKFLOW.filename
 
 def get_settings(session: Session | None = None) -> McpWorkflowSettings:
     return MCP_WORKFLOW.get(session)
+
+
+def peek_settings(session: Session | None = None) -> McpWorkflowSettings:
+    """Read without seeding a Setting row (the per-request writer check)."""
+    return MCP_WORKFLOW.peek(session)
 
 
 def set_settings(

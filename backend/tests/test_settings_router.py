@@ -398,7 +398,7 @@ def test_mcp_workflow_defaults_to_hints_on(db_session, tmp_path, monkeypatch, cl
     assert response.status_code == 200
     body = response.json()
     assert body["key"] == "mcp_workflow"
-    assert body["value"] == {"hints": True}
+    assert body["value"] == {"hints": True, "writer": "agent"}
 
 
 def test_mcp_workflow_put_roundtrips(db_session, tmp_path, monkeypatch, client):
@@ -435,7 +435,21 @@ def test_mcp_workflow_round_trip_merges_defaults(db_session, tmp_path, monkeypat
     assert value["hints"] is True  # default filled in — stored payload had no "hints" key
     assert "unknown_key" not in value  # dropped by the model, not carried through
     mirrored = json.loads((tmp_path / "mcp_workflow.json").read_text(encoding="utf-8"))
-    assert mirrored == {"hints": True}  # the validated model, not the raw payload
+    assert mirrored == {"hints": True, "writer": "agent"}  # the validated model, not the raw payload
+
+
+def test_mcp_workflow_writer_defaults_to_the_agent_app(db_session, tmp_path, monkeypatch, client):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    assert client.get("/api/settings/mcp-workflow").json()["value"] == {"hints": True, "writer": "agent"}
+
+
+def test_mcp_workflow_writer_round_trips_and_refuses_other_values(db_session, tmp_path, monkeypatch, client):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    assert client.put("/api/settings/mcp-workflow",
+                      json={"value": {"hints": True, "writer": "maestro"}}).status_code == 200
+    assert client.get("/api/settings/mcp-workflow").json()["value"]["writer"] == "maestro"
+    assert client.put("/api/settings/mcp-workflow",
+                      json={"value": {"hints": True, "writer": "someone"}}).status_code == 422
 
 
 def test_gemini_35_flash_lite_is_a_valid_fast_model(db_session, client):

@@ -350,8 +350,11 @@ export interface QuickTailorProfile {
 }
 export type QuickTailorSetting = SettingEnvelope<QuickTailorProfile>;
 
+/** GET/PUT /api/settings/mcp-workflow. `writer` says who writes for a connected agent app: the agent
+ *  app itself ("agent", the default) or Maestro's AI with the user's key ("maestro"). */
 export interface McpWorkflowSettings {
   hints: boolean;
+  writer: "agent" | "maestro";
 }
 export type McpWorkflowSetting = SettingEnvelope<McpWorkflowSettings>;
 
