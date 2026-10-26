@@ -89,10 +89,14 @@ def _skills(application) -> dict[str, list[str]]:
 
 
 def _bullets(application) -> list[str]:
+    return _bullets_of(application.customized_json)
+
+
+def _bullets_of(resume) -> list[str]:
     return [
         bullet
         for section in ("experience", "projects")
-        for entry in application.customized_json.get(section) or []
+        for entry in resume.get(section) or []
         for bullet in entry.get("bullets") or []
     ]
 
@@ -239,6 +243,33 @@ def test_no_new_text_lists_a_keyword_that_needs_a_rewritten_bullet(
     assert application.customized_json["experience"][0]["bullets"] == (
         SAMPLE_RESUME["experience"][0]["bullets"]
     )
+
+
+def test_no_new_text_puts_a_keyword_saved_into_skills_there_even_when_a_bullet_has_it(
+    db_session, tmp_path, monkeypatch, client
+):
+    """Tableau is in an old bullet, so survival alone would add nothing; saved into
+    Tools, it lands in Tools, since a skills item needs no wording. A place-only
+    keyword saved into skills reads as its gap's skill, as survival does."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    forbid_model(monkeypatch)
+    tableau_into_tools = {
+        "gap_id": "skill:tableau",
+        "action": "add_keyword",
+        "payload": {"placement_target": {"section": "skills", "index_or_category": "Tools"}},
+    }
+    created = _open_session(client, job, slug, resolutions=[tableau_into_tools])
+
+    response = _tailor(client, created["id"], body={"no_new_text": True})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["keywords_added"] == ["Tableau"]
+    assert body["answers_left_to_ops"] == []
+    application = db_session.get(Application, UUID(body["session"]["application_id"]))
+    assert _skills(application)["Tools"] == ["Git", "Jira", "Tableau"]
+    assert _bullets(application) == _bullets_of(SAMPLE_RESUME)
 
 
 def test_no_new_text_takes_no_ops(db_session, tmp_path, monkeypatch, client):

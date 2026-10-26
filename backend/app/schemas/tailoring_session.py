@@ -133,8 +133,9 @@ class TailorResponse(BaseModel):
     # in a bullet or the summary), as paths like "experience[0].bullets[1]", so a
     # change the model did not make is never silent.
     voice_repairs: list[str] = Field(default_factory=list)
-    # Saved add_keyword words the edit left out, which the server added to the
-    # skills list (never as a bullet), so a change nobody wrote is never silent.
+    # Saved add_keyword words the server added to the skills list itself (never
+    # as a bullet): ones the edit left out, and with no_new_text each one saved
+    # into the skills list that wasn't on it. A change nobody wrote is never silent.
     keywords_added: list[str] = Field(default_factory=list)
     # Caller-ops and no_new_text paths only: user_input and attach_project
     # answers, and with no_new_text an add_keyword that needs a rewritten line,

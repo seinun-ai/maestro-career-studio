@@ -1325,30 +1325,70 @@ def _reject_stale_placements(tailoring: TailoringSession, base: dict[str, Any]) 
         )
 
 
-def _keyword_fallback(
-    customized: dict[str, Any], missing: list[tuple[str, dict[str, Any]]]
+def _add_skill_items(
+    customized: dict[str, Any], keywords: list[tuple[str, dict[str, Any]]]
 ) -> dict[str, Any]:
-    """Add each still-missing required wording as a skills-list item, so a keyword
-    can never silently vanish (a dropped op, or a repaired third-person line)."""
-    fallback_ops: list[ResumeEdit] = []
-    for wording, placement in missing:
+    """Add each wording as a skills-list item, never a bullet (§6 inv-honesty):
+    in its saved skills category, else Additional Skills. Raises ValueError when
+    the editor rejects an item."""
+    ops: list[ResumeEdit] = []
+    for wording, placement in keywords:
         category = placement_targets.ADDITIONAL_SKILLS
         if placement.get("section") == "skills" and isinstance(
             placement.get("index_or_category"), str
         ):
             category = placement["index_or_category"]
-        fallback_ops.append(
-            AddSkillItem(kind="add_skill_item", category=category, item=wording)
-        )
+        ops.append(AddSkillItem(kind="add_skill_item", category=category, item=wording))
+    return resume_edit.apply_edits(customized, ops)
+
+
+def _keyword_fallback(
+    customized: dict[str, Any], missing: list[tuple[str, dict[str, Any]]]
+) -> dict[str, Any]:
+    """Add each still-missing required wording as a skills-list item, so a keyword
+    can never silently vanish (a dropped op, or a repaired third-person line)."""
     logger.warning(
         "keyword-survival fallback engaged: %s", [wording for wording, _ in missing]
     )
     try:
-        return resume_edit.apply_edits(customized, fallback_ops)
+        return _add_skill_items(customized, missing)
     except ValueError as exc:
         raise ValueError(
             f"Tailoring produced invalid keyword-survival fallback ops: {exc}"
         ) from exc
+
+
+def _off_the_skills_list(
+    customized: dict[str, Any],
+    resolutions: list[dict[str, Any]],
+    gaps: dict[str, dict[str, Any]],
+) -> list[tuple[str, dict[str, Any]]]:
+    """Saved keywords placed in the skills list whose word is not on that list yet,
+    even when it shows elsewhere (an old bullet), in saved order, each once. The
+    word is _keyword_wording's. no_new_text adds them, since a skills item takes
+    no wording; keyword survival alone would see the bullet and add nothing."""
+    skills = [
+        normalized
+        for group in customized.get("skills") or []
+        if isinstance(group, dict)
+        for item in group.get("items") or []
+        if isinstance(item, str) and (normalized := normalize_term(item))
+    ]
+    off: list[tuple[str, dict[str, Any]]] = []
+    for item in resolutions:
+        placement = (item.get("payload") or {}).get("placement_target")
+        if (
+            item.get("action") != "add_keyword"
+            or not isinstance(placement, dict)
+            or placement.get("section") != "skills"
+        ):
+            continue
+        wording = _keyword_wording(item, gaps)
+        normalized = normalize_term(wording) if wording else ""
+        if normalized and not any(term_in_text(normalized, skill) for skill in skills):
+            off.append((wording, placement))
+            skills.append(normalized)
+    return off
 
 
 def _answers_left_to_ops(
@@ -1490,11 +1530,11 @@ def tailor(
         actionable guard, the prompt build, and its own LLM call entirely, and
         applies the caller's ops directly. Claude's judgment IS the tailor.
       - ``no_new_text``: nobody writes. The deterministic pre-ops (an enabled
-        entry, a ported career-history bullet) are the whole edit, keyword
-        survival puts each saved keyword the resume lacks into the skills list,
-        and no model is called, whoever writes for the request. Answers that
-        need wording are named on the response; when nothing at all applies,
-        it refuses.
+        entry, a ported career-history bullet) and the saved keywords are the
+        whole edit: one saved into the skills list lands there when the list
+        lacks it, keyword survival adds any other the resume lacks, and no model
+        is called, whoever writes for the request. Answers that need wording
+        are named on the response; when nothing at all applies, it refuses.
     All three paths converge on the same apply -> application reuse-or-insert ->
     score tail below.
 
@@ -1532,6 +1572,7 @@ def tailor(
                 raise ValueError(
                     f"Tailoring produced invalid deterministic pre-ops: {exc}"
                 ) from exc
+        gaps = _gap_index(tailoring.gaps_json)
 
         # Every path but the caller's ops, which never consults resolutions to
         # build its ops (Claude's ops are authoritative), so a stale stored
@@ -1549,6 +1590,8 @@ def tailor(
             or None
         )
 
+        # Saved keywords no_new_text puts in the skills list itself (below).
+        placed: list[tuple[str, dict[str, Any]]] = []
         if ops:
             # Caller supplied its own already-validated typed ops: skip the
             # resolution bundle, the actionable guard, the prompt build, and the
@@ -1564,9 +1607,19 @@ def tailor(
             # is repaired below only where that is mechanical.
             resume_ops.refuse_third_person(base, customized)
         elif no_new_text:
-            # No model, no bundle: the pre-ops above are the only edits, and the
-            # keyword survival step below adds the saved keywords.
+            # No model, no bundle: besides the pre-ops above, the only edits are the
+            # saved keywords. One saved into the skills list goes there even when a
+            # bullet already has its word (a skills item takes no wording); keyword
+            # survival below adds the rest.
             customized = copy.deepcopy(base)
+            placed = _off_the_skills_list(customized, tailoring.resolutions_json, gaps)
+            if placed:
+                try:
+                    customized = _add_skill_items(customized, placed)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"Tailoring produced invalid saved-keyword ops: {exc}"
+                    ) from exc
         else:
             actionable, skipped, already_applied = _resolution_bundle(
                 tailoring, already_applied
@@ -1596,11 +1649,11 @@ def tailor(
         # Keyword survival, every path: a saved add_keyword whose word is not on
         # the resume (the model's ops or the caller's left it out, or the repair
         # took out its line) goes into the skills list, never a bullet (§6
-        # inv-honesty), and the response names it.
-        gaps = _gap_index(tailoring.gaps_json)
-        keywords_added = _missing_keywords(customized, tailoring.resolutions_json, gaps)
-        if keywords_added:
-            customized = _keyword_fallback(customized, keywords_added)
+        # inv-honesty), and the response names it, after what no_new_text placed.
+        missing = _missing_keywords(customized, tailoring.resolutions_json, gaps)
+        if missing:
+            customized = _keyword_fallback(customized, missing)
+        keywords_added = placed + missing
         # A keyword that needs a rewritten line applies nothing here, so it is
         # listed below and counts as needing text.
         if no_new_text and not pre_ops and not keywords_added:
