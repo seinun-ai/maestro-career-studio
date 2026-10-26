@@ -1014,7 +1014,8 @@ async def test_tailoring_text_names_only_tools_served_beside_it():
 
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     for name in ("generate_cover_letter", "generate_qa_answers", "kb_capture",
-                 "create_tailoring_session", "tailor_session", "score_ats", "get_tailoring_options"):
+                 "create_tailoring_session", "tailor_session", "score_ats", "get_tailoring_options",
+                 "get_setup_status"):
         named = set(re.findall(r"[a-z_]+", _schema_text(tools[name]))) & set(tools)
         for set_name, allow in PROFILE_ALLOWLISTS.items():
             if allow and name in allow:

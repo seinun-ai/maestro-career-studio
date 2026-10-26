@@ -463,6 +463,13 @@ def _hints_enabled() -> bool:
     return bool(_client.get_mcp_workflow_settings().get("hints", True))
 
 
+def _writer(settings: dict[str, Any]) -> str:
+    """Who writes for agent apps, from the saved mcp_workflow setting: "maestro" only
+    when the user picked Maestro's AI, else "agent" (the default, which a setting saved
+    before the choice existed also reads as)."""
+    return "maestro" if settings.get("writer") == "maestro" else "agent"
+
+
 def _session_hint(
     session: dict[str, Any], *, instruction: str | None = None
 ) -> dict[str, Any] | None:
@@ -684,18 +691,21 @@ def store_extracted_jd(
 @_guard
 def get_setup_status() -> Any:
     """Where this user's Maestro setup stands, for an agent starting fresh. Returns
-    ai_key (whether Maestro has its own AI key: with none, the tools where Maestro writes
-    the text fail, and the agent writes it and saves it with the matching store or add
-    tool), demo_bases (slugs of the shipped demo resume, never the user's own), next_step
-    (the first setup step an agent can do that is not done, {step, tool_set, says}; null
-    when none is left),
-    tool_sets (each set's name, use_when and holds, in journey order) and steps (the full
-    setup status: each step's done and detail, form-answer readiness, suggested bases,
-    PDF engines). The AI key and the default resume design are set by the user in the
-    app and are never a next step."""
+    ai_key (whether Maestro has its own AI key), writer (who writes for agent apps:
+    "agent", the default, means the agent app writes, so the tools where Maestro's own
+    AI writes the text refuse (409) and the agent writes it and saves it with the
+    matching store or add tool; "maestro" means Maestro's AI writes it with the user's
+    key, which needs ai_key), demo_bases (slugs of the shipped demo resume, never the
+    user's own), next_step (the first setup step an agent can do that is not done,
+    {step, tool_set, says}; null when none is left), tool_sets (each set's name,
+    use_when and holds, in journey order) and steps (the full setup status: each step's
+    done and detail, form-answer readiness, suggested bases, PDF engines). The AI key,
+    the writer and the default resume design are set by the user in the app and are
+    never a next step."""
     status = _client.get_setup_status()
     return {
         "ai_key": bool((status.get("model_key") or {}).get("done")),
+        "writer": _writer(_client.get_mcp_workflow_settings()),
         "demo_bases": list(status.get("demo_bases") or []),
         "next_step": workflow.setup_next_step(status),
         "tool_sets": [

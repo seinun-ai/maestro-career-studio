@@ -16,15 +16,39 @@ _STATUS = {
 }
 
 
-def test_setup_status_says_where_setup_stands_and_which_set_is_next(monkeypatch):
+def _setup_status(monkeypatch, settings=None):
     monkeypatch.setattr(srv._client, "get_setup_status", lambda: _STATUS)
-    out = srv.get_setup_status()
+    monkeypatch.setattr(
+        srv._client, "get_mcp_workflow_settings", lambda: {"hints": True} if settings is None else settings
+    )
+    return srv.get_setup_status()
+
+
+def test_setup_status_says_where_setup_stands_and_which_set_is_next(monkeypatch):
+    out = _setup_status(monkeypatch)
     assert out["ai_key"] is False
     assert out["demo_bases"] == ["example"]
     assert out["next_step"]["step"] == "base_resume"  # the one base is the demo
     assert out["next_step"]["tool_set"] == "profile"
     assert [s["name"] for s in out["tool_sets"]] == list(orientation.SET_NAMES)
     assert out["steps"] is _STATUS
+
+
+def test_setup_status_says_who_writes_for_agent_apps(monkeypatch):
+    assert _setup_status(monkeypatch, {"hints": True, "writer": "maestro"})["writer"] == "maestro"
+    assert _setup_status(monkeypatch, {"hints": False, "writer": "agent"})["writer"] == "agent"
+
+
+def test_setup_status_says_the_agent_app_writes_when_the_setting_has_no_writer(monkeypatch):
+    # A setting saved before `writer` existed reads as the default: the agent app writes.
+    assert _setup_status(monkeypatch, {"hints": True})["writer"] == "agent"
+    assert _setup_status(monkeypatch, {})["writer"] == "agent"
+
+
+def test_setup_status_docstring_says_what_each_writer_means():
+    doc = " ".join((srv.get_setup_status.__doc__ or "").split())
+    for term in ("writer", '"agent"', '"maestro"', "refuse", "ai_key", "user's key"):
+        assert term in doc, term
 
 
 def _tailoring_options(monkeypatch):

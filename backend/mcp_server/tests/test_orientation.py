@@ -35,6 +35,13 @@ def test_instructions_name_no_tool_the_set_lacks(profile):
     assert allow is None or named <= allow, named - set(allow or ())
 
 
+@pytest.mark.parametrize("profile", [p for p in orientation.SET_NAMES if p != "templates"])
+def test_instructions_say_setup_status_names_who_writes(profile):
+    text = orientation.instructions_for(profile)
+    assert "writer says who writes" in text
+    assert "agent app" in text and "Maestro's AI" in text
+
+
 def test_a_scoped_set_says_what_it_is_for():
     text = orientation.instructions_for("tailor")
     assert "This is the tailor set" in text

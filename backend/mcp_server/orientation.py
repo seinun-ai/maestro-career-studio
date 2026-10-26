@@ -51,7 +51,9 @@ _BY_NAME = {s.name: s for s in SETS}
 _INTRO = "Maestro Career Studio keeps one person's job search on their own computer."
 _START = (
     "Start with get_setup_status: it says where setup stands, whether Maestro has its own "
-    "AI key, which base resume is the shipped demo, and the next step."
+    "AI key, which base resume is the shipped demo, and the next step. Its writer says who "
+    "writes: your agent app (Maestro's own writing then refuses, so you write the text and save "
+    "it) or Maestro's AI (it writes with the user's key)."
 )
 _STYLE = (
     "Talk with the user however suits them. Maestro supplies their facts, presets and rules, "
