@@ -305,11 +305,14 @@ def record_judgments(
 ):
     """A connected agent's judgments of the pending texts, validated like a model's answer and
     stored under `agent:<client>`; then the report is rebuilt. Refused only while Maestro's own
-    model judges this request: a key is set and Maestro's AI writes for it."""
+    model judges: a key is set, and the caller is the web or an agent app Maestro's AI writes
+    for."""
     if agent_writer.model_available():
+        reason = ("Your settings chose Maestro's AI for agent apps and a model key is set"
+                  if agent_writer.is_agent_request() else "A model key is set")
         raise HTTPException(
             status_code=409,
-            detail="Maestro judges the bullets with its own model for this request. "
+            detail=f"{reason}, so Maestro judges the bullets with its own model. "
                    "Run the health check instead.",
         )
     resume, template_id = _load_resume(db, kind, key)

@@ -565,3 +565,41 @@ def test_import_consolidates_with_maestros_model_for_the_web_and_in_maestro_mode
     assert r.status_code == 200, r.text
     assert ["group_indices" in p for p in prompts] == [True, False]  # match, then cluster
     assert "bullet_indices" in prompts[1]
+
+
+def test_a_keyless_reimport_matches_by_identity_and_adds_the_rest_as_new(
+    db_session, tmp_path, monkeypatch
+):
+    """Pins the no-model fallback on a second web import over an existing KB: education
+    (identity key) lands on the entity already there, experience gets a new entity of its own,
+    since only the model matches experience in consolidate(). A pin of today, not a goal."""
+    forbid_model(monkeypatch)
+    from sqlalchemy import select
+
+    school = [{"institution": "State University", "degree": "BS", "start_date": "2014",
+               "end_date": "2018"}]
+    first = {**RESUME, "education": school}
+    again = {**first, "experience": [{**RESUME["experience"][0],
+                                      "bullets": ["Built models.", "Shipped the churn model."]}]}
+    for name, resume in (("first.json", first), ("again.json", again)):
+        monkeypatch.setattr(kb_import.base_resume_data.settings, "base_resumes_dir", tmp_path)
+        monkeypatch.setattr(
+            kb_import.base_resume_render, "render_base_resume", lambda slug, db, **kw: None
+        )
+        r = _client(db_session).post("/api/kb/import", files=[_json_upload(name, resume)])
+        assert r.status_code == 200, r.text
+        assert r.json()["kb"]["warnings"] == []
+
+    db_session.expire_all()
+    entities = db_session.scalars(select(KBEntity)).all()
+    assert sorted((e.kind, e.title, e.org or "") for e in entities) == [
+        ("education", "BS", "State University"),
+        ("experience", "Senior Data Scientist", "Acme"),
+        ("experience", "Senior Data Scientist", "Acme"),
+    ]
+    points = {e.id: sorted((p.text, p.state) for p in e.points) for e in entities}
+    assert sorted(points.values()) == [
+        [],
+        [("Built models.", "approved")],
+        [("Built models.", "approved"), ("Shipped the churn model.", "approved")],
+    ]

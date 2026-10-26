@@ -50,7 +50,6 @@ def run_qa(payload: QARequest, db: Annotated[Session, Depends(get_db)]):
             status_code=400,
             detail="questions or cover_letter is required",
         )
-    agent_writer.refuse_unless_maestro_writes(_write_it_yourself(payload))
 
     # Two shapes of "the caller named something unusable", mapped like
     # `regenerate_entry` below — ORDER IS THE CONTRACT (§12): the narrow
@@ -66,11 +65,25 @@ def run_qa(payload: QARequest, db: Annotated[Session, Depends(get_db)]):
     # missing extracted data"). That left this handler as an unexplained 500
     # while the sibling answered the same shape with a 404.
     try:
+        if not agent_writer.maestro_writes():
+            # An agent app is told an id is unknown (404) before it is told to write the text
+            # itself. The web's request goes straight on: _run_qa looks the target up anyway.
+            _require_target(payload, db)
+        agent_writer.refuse_unless_maestro_writes(_write_it_yourself(payload))
         return _run_qa(payload, db)
     except qa_service.BaseResumeUnavailable as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _require_target(payload: QARequest, db: Session) -> None:
+    """The lookup `_run_qa` starts with, by the same rule (an application when one is named,
+    else the job), raising what it raises."""
+    if payload.application_id is not None:
+        qa_service.application_context(db, payload.application_id)
+    else:
+        qa_service.context_from_job(db, payload.job_id, payload.base)
 
 
 def _write_it_yourself(payload: QARequest) -> str:

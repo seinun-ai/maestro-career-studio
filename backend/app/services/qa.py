@@ -44,7 +44,7 @@ class UnsupportedQAEntryKind(ValueError):
     operation just doesn't apply to it) while genuine not-found stays a 404."""
 
 
-def _application_context(
+def application_context(
     session: Session, application_id: UUID
 ) -> tuple[Application, Job, dict[str, Any]]:
     application = session.get(Application, application_id)
@@ -191,7 +191,7 @@ def answer_questions(
     owns_session = session is None
     session = session or SessionLocal()
     try:
-        application, job, resume_json = _application_context(session, application_id)
+        application, job, resume_json = application_context(session, application_id)
         prompt = prompt_assembly.build_qa_prompt(
             resume_json=resume_json,
             jd_json=job.extracted_json or {},
@@ -307,11 +307,11 @@ def draft_answers(
     history cannot answer it). `time_left`: a caller on a clock; asked AFTER the context is read, it returns the
     seconds the call may take (one request, no retries) or None when there are too few: nothing is asked then.
     `short`: ids the reasoning step asked for as a few words (the model is told so, and the draft is cut to
-    `SHORT_WORDS`). A draft with a link, email or phone number that is not the owner's is dropped. Raises what `_application_context`
+    `SHORT_WORDS`). A draft with a link, email or phone number that is not the owner's is dropped. Raises what `application_context`
     and the provider raise; the caller decides what a failure means."""
     if not questions:
         return {}
-    _application, job, resume_json = _application_context(session, application_id)
+    _application, job, resume_json = application_context(session, application_id)
     prompt = prompt_assembly.build_qa_draft_prompt(
         resume_json=resume_json,
         jd_json=job.extracted_json or {},
@@ -354,7 +354,7 @@ def generate_cover_letter(
     owns_session = session is None
     session = session or SessionLocal()
     try:
-        _application, job, resume_json = _application_context(session, application_id)
+        _application, job, resume_json = application_context(session, application_id)
         prompt = prompt_assembly.build_cover_letter_prompt(
             resume_json=resume_json,
             jd_json=job.extracted_json or {},
@@ -497,7 +497,7 @@ def regenerate_entry(
         if entry is None:
             raise ValueError(f"QA entry not found: {entry_id}")
 
-        application, job, resume_json = _application_context(session, entry.application_id)
+        application, job, resume_json = application_context(session, entry.application_id)
         if entry.kind == "cover_letter":
             prompt = prompt_assembly.build_cover_letter_prompt(
                 resume_json=resume_json,

@@ -154,11 +154,13 @@ def tailor_session(
     payload: TailorRequest | None = None,
 ):
     """Run the tailor pipeline: resolutions -> LLM edit ops -> application -> score."""
-    # No ops of the caller's own means Maestro's AI writes the edits. Only an agent request is
-    # refused: the web's one-call apply_profile path carries no MCP origin.
+    row = _get_or_404(db, session_id)
+    # After the 404, so an agent app is never told to write ops for a session that isn't there,
+    # and before the apply_profile fill, which commits. No ops of the caller's own means
+    # Maestro's AI writes the edits; only an agent request is refused (the web's one-call
+    # apply_profile path carries no MCP origin).
     if not (payload and payload.ops):
         agent_writer.refuse_unless_maestro_writes("Pass your own edits as ops, or no_new_text.")
-    row = _get_or_404(db, session_id)
     effective_prompt = payload.user_prompt if payload else None
 
     # "Quick tailor" on the gap page: quick_tailor.fill_checkpoint_session owns

@@ -1049,4 +1049,37 @@ def test_maestro_judges_the_health_check_for_the_web_and_in_maestro_mode(
     refused = client.post("/api/resume-lint/base/judged/judgments", headers=headers,
                           json={"classifications": [keyless_entry(_JUDGED_TEXTS[0])]})
     assert refused.status_code == 409
-    assert "own model" in refused.json()["detail"]
+    assert refused.json()["detail"] == _WHY_MAESTRO_JUDGES[writer]
+
+
+_WHY_MAESTRO_JUDGES = {
+    "agent": "A model key is set, so Maestro judges the bullets with its own model. "
+             "Run the health check instead.",  # the web: no agent app asked
+    "maestro": "Your settings chose Maestro's AI for agent apps and a model key is set, so "
+               "Maestro judges the bullets with its own model. Run the health check instead.",
+}
+
+
+def test_maestro_mode_without_a_key_hands_the_judging_to_the_agent_app(
+    db_session, monkeypatch, tmp_path, client
+):
+    # No key, so Maestro's model cannot judge whatever the setting says: a resume is never stuck
+    # ungraded (design 2026-10-26, "Maestro's AI mode").
+    _seed(db_session, slug="judged", data_json={**keyless_resume(), "summary": _OVERCLAIM})
+    from app.services import resume_lint
+
+    monkeypatch.setattr(resume_lint, "structure_gates", lambda db, tid, data: [
+        {"id": g, "tier": "fatal", "status": "pass", "label": g, "detail": ""}
+        for g in ("S1", "S2", "S4")])
+    set_writer(client, monkeypatch, tmp_path, "maestro")
+    forbid_model(monkeypatch)
+
+    ran = client.post("/api/resume-lint/base/judged/run", headers=KEYLESS_MCP_CLAUDE)
+    assert ran.status_code == 200, ran.text
+    assert len(ran.json()["judging"]["pending_ids"]) == len(_JUDGED_TEXTS)
+
+    judged = client.post("/api/resume-lint/base/judged/judgments", headers=KEYLESS_MCP_CLAUDE,
+                         json={"classifications": [keyless_entry(t) for t in _JUDGED_TEXTS]})
+    assert judged.status_code == 200, judged.text
+    assert len(judged.json()["accepted"]) == len(_JUDGED_TEXTS)
+    assert isinstance(judged.json()["score"], int)

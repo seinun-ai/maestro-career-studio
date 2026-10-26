@@ -300,5 +300,7 @@ def test_judgments_are_refused_while_a_model_key_is_set(client, db_session, seed
     response = client.post(f"/api/resume-lint/base/{seeded}/judgments",
                            json={"classifications": [_entry(CUT)]})
     assert response.status_code == 409
-    assert "own model" in response.json()["detail"]
+    assert response.json()["detail"] == (
+        "A model key is set, so Maestro judges the bullets with its own model. "
+        "Run the health check instead.")
     assert db_session.get(BulletClassification, bc.content_hash(CUT)) is None

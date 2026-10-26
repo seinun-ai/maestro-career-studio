@@ -511,7 +511,7 @@ def test_regenerate_qa_entry_unsupported_kind_returns_400(db_session, client):
     # Retired/unknown kinds (cold_message removed 2026-07-21) must fail as a
     # handled 4xx that names the kind — not a 500. Runs the real service so the
     # router's ValueError→400 mapping is exercised end to end; customized_json
-    # is set so _application_context skips the base-resume disk load.
+    # is set so application_context skips the base-resume disk load.
     job = Job(
         raw_text="Need analytics",
         raw_text_hash="qa-regen-badkind-hash",
@@ -726,3 +726,16 @@ def test_maestro_writes_the_letter_and_answers_for_the_web_and_in_maestro_mode(
     assert response.json()["cover_letter"]
     assert len(prompts) == 2
     assert sorted(_entries(application)) == ["cover_letter", "question"]
+
+
+@pytest.mark.parametrize("target", ["application_id", "job_id"])
+def test_an_unknown_target_is_a_404_before_an_agent_app_is_told_to_write(
+    db_session, tmp_path, monkeypatch, client, target
+):
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    forbid_model(monkeypatch)
+
+    response = client.post("/api/qa", json={target: str(uuid.uuid4()), "questions": ["Why?"]},
+                           headers=MCP)
+
+    assert response.status_code == 404, response.text

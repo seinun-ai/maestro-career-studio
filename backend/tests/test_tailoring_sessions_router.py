@@ -3579,8 +3579,9 @@ def test_a_tailor_without_ops_is_refused_for_an_agent_app_that_writes(
     refused = _tailor(client, created["id"], {}, headers=MCP)
 
     assert refused.status_code == 409, refused.text
-    assert refused.json()["detail"].startswith(agent_writer.AGENT_WRITES)
-    assert "ops" in refused.json()["detail"]
+    assert refused.json()["detail"] == (
+        f"{agent_writer.AGENT_WRITES} Pass your own edits as ops, or no_new_text."
+    )
     assert db_session.scalars(select(Application)).all() == []
     assert db_session.get(TailoringSession, UUID(created["id"])).status == "open"
     # The agent app's own edits need no writing from Maestro.
@@ -3607,3 +3608,15 @@ def test_maestro_tailors_for_the_web_and_in_maestro_mode(
     assert response.status_code == 200, response.text
     assert response.json()["session"]["status"] == "tailored"
     assert prompts  # Maestro's model wrote the edits
+
+
+@pytest.mark.parametrize("body", [{}, {"apply_profile": True}], ids=["no-ops", "quick-tailor"])
+def test_an_unknown_session_is_a_404_before_an_agent_app_is_told_to_write(
+    db_session, tmp_path, monkeypatch, client, body
+):
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    forbid_model(monkeypatch)
+
+    response = _tailor(client, uuid4(), body, headers=MCP)
+
+    assert response.status_code == 404, response.text
