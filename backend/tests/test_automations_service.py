@@ -90,13 +90,24 @@ def test_tailor_run_reads_who_writes_once_before_the_queue():
     assert body.index(start) < body.index("1. **Queue.**")
 
 
+def test_tailor_run_without_a_key_for_maestros_ai_stops_before_the_queue():
+    body = _tailor_run_body()
+    stop = ("When `writer` is `maestro` and `ai_key` is false, stop before the queue: create no "
+            "session, say so in the digest and record the run as `failed`")
+    assert stop in body
+    assert body.index(stop) < body.index("1. **Queue.**")
+
+
 def test_tailor_run_tailors_the_way_the_user_chose():
     body = _tailor_run_body()
     step = body[body.index("6. **Tailor"):body.index("7. **Render.**")]
     maestro = step[step.index("(`writer` is `maestro`)"):step.index("(`writer` is `agent`)")]
     agent = step[step.index("(`writer` is `agent`)"):]
     assert "`tailor_session(tailoring_session_id=...)` with no `ops`" in maestro
-    assert "`ai_key` is false" in maestro and "stop the run and say so in the digest" in maestro
+    # The key was checked at the start; this is the fallback for a key gone during the run.
+    assert "`ai_key`" not in maestro
+    assert "If the call fails because the app has no AI key" in maestro
+    assert "close the session, stop the run and say so in the digest" in maestro
     assert "no_new_text" not in maestro
     assert "`tailor_session(tailoring_session_id=..., no_new_text=true)`" in agent
     assert "`answers_left_to_ops`" in agent
@@ -270,6 +281,12 @@ _BASE_COUNTRY_LINE = (
 def test_guardrails_survive_rewording(card_id, sentence):
     cards = {c.id: c.body for c in automations.catalog().cards}
     assert " ".join(sentence.split()) in " ".join(cards[card_id].split())
+
+
+def test_make_your_own_batch_tailor_idea_leaves_the_pdfs_to_the_tailor():
+    custom = {c.id: c for c in automations.catalog().cards}["customize-job-skills"]
+    assert "- Batch-tailor every saved job above a score.\n" in custom.body
+    assert "render the PDFs" not in custom.body
 
 
 def test_make_your_own_names_no_client():

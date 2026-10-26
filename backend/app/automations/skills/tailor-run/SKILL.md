@@ -26,7 +26,8 @@ Only work jobs whose `ownership.owned_here` is true.
 
 Call `get_setup_status` once at the start and remember its `writer` (who writes:
 `agent` is your agent app, `maestro` is Maestro's AI) and `ai_key` (whether the app
-has its own AI key).
+has its own AI key). When `writer` is `maestro` and `ai_key` is false, stop before the
+queue: create no session, say so in the digest and record the run as `failed` (step 10).
 
 1. **Queue.** `list_proposals(status="accepted")`, paging with `offset` until you
    have `total`. Each item gives `job_id`, `application_id` and `fit_json`.
@@ -49,9 +50,9 @@ has its own AI key).
 6. **Tailor**, the way `writer` says:
    - Maestro's AI writes (`writer` is `maestro`):
      `tailor_session(tailoring_session_id=...)` with no `ops`, so the app's own
-     checked pass writes the resume. It needs the app's AI key: when `ai_key` is
-     false, or the call fails because the app has no AI key, close the session,
-     stop the run and say so in the digest.
+     checked pass writes the resume. If the call fails because the app has no AI
+     key (it was removed during the run), close the session, stop the run and say
+     so in the digest.
    - Your agent app writes (`writer` is `agent`):
      `tailor_session(tailoring_session_id=..., no_new_text=true)`. It writes no new
      wording and calls no AI: it applies only the saved answers that need none, and

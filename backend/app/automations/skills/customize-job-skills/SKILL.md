@@ -31,7 +31,7 @@ let them pick, tweak, or describe their own. Adapting any ready-made automation
 to this app and the user's routine is always an option. Ideas can be anything the
 tools support, for example:
 
-- Batch-tailor every saved job above a score, then render the PDFs.
+- Batch-tailor every saved job above a score.
 - Hunt only at referral companies, from their careers pages.
 - A weekly digest of pipeline status, match score trends and skill gaps (`explore_*`).
 - Draft cover letters and Q&A answers for the accepted queue.
