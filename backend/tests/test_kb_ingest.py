@@ -1,10 +1,14 @@
+import json
 import uuid
 
+import pytest
 import sqlalchemy as sa
 
-from app.models.career_kb import KBDocument, KBPoint
+from app import agent_writer
+from app.models.career_kb import KBDocument, KBEntity, KBPoint
 from app.models.setting import Setting
 from app.services import prompts
+from tests.agent_writer_fixtures import MCP, forbid_model, model_replies, set_writer
 
 
 def _fake_llm(payload):
@@ -334,3 +338,47 @@ def test_uploaded_document_is_committed_before_the_mint_call(
 
     assert r.status_code == 200
     assert seen_by_other_connection == [1]
+
+
+# --- who writes (design 2026-10-26): an agent app in agent mode writes its own bullets ---
+
+
+def _points(db_session) -> list[tuple[str, str]]:
+    db_session.expire_all()
+    return [(p.text, p.origin) for p in db_session.scalars(sa.select(KBPoint))]
+
+
+def test_capture_points_an_agent_app_that_writes_at_kb_add_points(
+    client, db_session, monkeypatch, tmp_path
+):
+    eid = client.post("/api/kb/entities", json={"kind": "project", "title": "Orbit"}).json()["id"]
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    forbid_model(monkeypatch)
+
+    r = client.post("/api/kb/capture", json={"text": "did retrieval on orbit"}, headers=MCP)
+
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"].startswith(agent_writer.AGENT_WRITES)
+    assert "kb_add_points" in r.json()["detail"]
+    assert _points(db_session) == []
+    assert [e.id for e in db_session.scalars(sa.select(KBEntity))] == [uuid.UUID(eid)]
+
+
+@pytest.mark.parametrize(
+    ("writer", "headers", "origin"),
+    [("agent", {}, "manual"), ("maestro", MCP, "mcp")],
+    ids=["the-web", "maestro-writes"],
+)
+def test_capture_runs_for_the_web_and_in_maestro_mode(
+    client, db_session, monkeypatch, tmp_path, writer, headers, origin
+):
+    eid = client.post("/api/kb/entities", json={"kind": "project", "title": "Orbit"}).json()["id"]
+    set_writer(client, monkeypatch, tmp_path, writer)
+    prompts = model_replies(monkeypatch, tmp_path, json.dumps(
+        {"entity_id": eid, "new_entity": None, "points": ["Added retrieval to Orbit"]}))
+
+    r = client.post("/api/kb/capture", json={"text": "did retrieval on orbit"}, headers=headers)
+
+    assert r.status_code == 200, r.text
+    assert len(prompts) == 1
+    assert _points(db_session) == [("Added retrieval to Orbit", origin)]

@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app import agent_writer
 from app.config import settings as app_settings
 from app.db import SessionLocal, get_db
 from app.main import app
@@ -13,6 +14,7 @@ from app.models.application import Application
 from app.models.job import Job
 from app.models.qa_entry import QAEntry
 from app.routers import qa
+from tests.agent_writer_fixtures import MCP, forbid_model, model_replies, set_writer
 from tests.test_render_fallback import _no_tex, _seed_rows
 
 
@@ -656,3 +658,71 @@ def test_render_cover_letter_without_tex_or_typst_is_400_and_allocates_nothing(
     assert not any(tmp_path.iterdir())
     db_session.refresh(application)
     assert application.artifact_dir is None
+
+
+# --------------------------------------------------------------------------- #
+# who writes (design 2026-10-26): an agent app in agent mode writes its own letter and answers.
+# Maestro's model is stubbed at `_call_model`, below the backstop (tests/agent_writer_fixtures.py).
+
+
+def _drafted_application(db_session):
+    application = _application(db_session)
+    application.customized_json = {"summary": "Analyst", "contact": {"name": "Sample"}}
+    db_session.commit()
+    return application
+
+
+def _entries(application) -> list[str]:
+    with SessionLocal() as observer:
+        return list(observer.scalars(
+            select(QAEntry.kind).where(QAEntry.application_id == application.id)))
+
+
+@pytest.mark.parametrize(
+    ("asked", "tools"),
+    [
+        ({"questions": ["Why this team?"]}, ["store_qa_answers"]),
+        ({"cover_letter": {"tone": "balanced"}}, ["store_cover_letter"]),
+        ({"questions": ["Why this team?"], "cover_letter": {"tone": "balanced"}},
+         ["store_qa_answers", "store_cover_letter"]),
+    ],
+    ids=["answers", "letter", "both"],
+)
+def test_an_agent_app_that_writes_is_pointed_at_its_own_tools(
+    db_session, tmp_path, monkeypatch, client, asked, tools
+):
+    application = _drafted_application(db_session)
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    forbid_model(monkeypatch)
+
+    response = client.post("/api/qa", json={"application_id": str(application.id), **asked},
+                           headers=MCP)
+
+    assert response.status_code == 409, response.text
+    detail = response.json()["detail"]
+    assert detail.startswith(agent_writer.AGENT_WRITES)
+    assert all(tool in detail for tool in tools)
+    assert _entries(application) == []
+
+
+@pytest.mark.parametrize(
+    ("writer", "headers"), [("agent", {}), ("maestro", MCP)], ids=["the-web", "maestro-writes"])
+def test_maestro_writes_the_letter_and_answers_for_the_web_and_in_maestro_mode(
+    db_session, tmp_path, monkeypatch, client, writer, headers
+):
+    application = _drafted_application(db_session)
+    set_writer(client, monkeypatch, tmp_path, writer)
+    prompts = model_replies(monkeypatch, tmp_path, "1. I built the weekly reporting.")
+
+    response = client.post(
+        "/api/qa",
+        json={"application_id": str(application.id), "questions": ["Why this team?"],
+              "cover_letter": {"tone": "balanced"}},
+        headers=headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["answers"] == ["I built the weekly reporting."]
+    assert response.json()["cover_letter"]
+    assert len(prompts) == 2
+    assert sorted(_entries(application)) == ["cover_letter", "question"]

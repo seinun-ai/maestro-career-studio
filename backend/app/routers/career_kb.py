@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
 
+from app import agent_writer
 from app.config import settings
 from app.db import get_db
 from app.models.base_resume import BaseResume
@@ -377,6 +378,9 @@ def capture_points(
     db: Annotated[Session, Depends(get_db)],
     write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
+    agent_writer.refuse_unless_maestro_writes(
+        "Write the bullets yourself and save them with kb_add_points."
+    )
     # The response model drops `skipped`: capture has none.
     return _land_drafts(
         db,

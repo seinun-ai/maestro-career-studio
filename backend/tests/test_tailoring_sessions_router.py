@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app import agent_writer
 from app.config import settings
 from app.db import get_db
 from app.main import app
@@ -30,6 +31,7 @@ from app.services import (
     tailoring_session,
 )
 from tests.ats.fixtures import SAMPLE_JD, SAMPLE_RESUME
+from tests.agent_writer_fixtures import MCP, forbid_model, model_replies, set_writer
 
 
 def _override_db(db_session):
@@ -1696,8 +1698,8 @@ def _open_session(client, job, slug, resolutions=None):
     return created
 
 
-def _tailor(client, session_id, body=None):
-    return client.post(f"/api/tailoring-sessions/{session_id}/tailor", json=body)
+def _tailor(client, session_id, body=None, headers=None):
+    return client.post(f"/api/tailoring-sessions/{session_id}/tailor", json=body, headers=headers)
 
 
 def test_tailor_request_apply_profile_defaults_false():
@@ -3509,3 +3511,99 @@ def test_write_back_skips_when_no_entity_matches(db_session, tmp_path, monkeypat
         db_session.scalar(select(KBPoint).where(KBPoint.origin == "gap_elicitation"))
         is None
     )
+
+
+# --- who writes (design 2026-10-26) ------------------------------------------
+#
+# An agent app in agent mode does its own writing: an enriched session and a tailor
+# with no ops are refused with what to do instead. Maestro's model is stubbed at
+# `_call_model`, below the backstop (tests/agent_writer_fixtures.py).
+
+
+def _create_with(client, job, slug, *, enrich, headers):
+    return client.post(
+        "/api/tailoring-sessions",
+        json={"job_id": str(job.id), "base_resume": slug, "enrich": enrich},
+        headers=headers,
+    )
+
+
+def test_an_enriched_session_is_refused_for_an_agent_app_that_writes(
+    db_session, tmp_path, monkeypatch, client
+):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _mock_prompt_files(monkeypatch)
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    forbid_model(monkeypatch)
+
+    refused = _create_with(client, job, slug, enrich=True, headers=MCP)
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"].startswith(agent_writer.AGENT_WRITES)
+    assert "without enrich" in refused.json()["detail"]
+    assert db_session.scalars(select(TailoringSession)).all() == []
+    assert db_session.scalars(select(AtsScore)).all() == []
+    # Without enrich Maestro's AI writes nothing, so the same agent app starts one.
+    assert _create_with(client, job, slug, enrich=False, headers=MCP).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("writer", "headers"), [("agent", {}), ("maestro", MCP)], ids=["the-web", "maestro-writes"]
+)
+def test_an_enriched_session_runs_for_the_web_and_in_maestro_mode(
+    db_session, tmp_path, monkeypatch, client, writer, headers
+):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _mock_prompt_files(monkeypatch)
+    set_writer(client, monkeypatch, tmp_path, writer)
+    prompts = model_replies(monkeypatch, tmp_path, '{"enrichments": []}')
+
+    response = _create_with(client, job, slug, enrich=True, headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert len(prompts) == 1  # enrichment swallows a failure, so count the call
+
+
+def test_a_tailor_without_ops_is_refused_for_an_agent_app_that_writes(
+    db_session, tmp_path, monkeypatch, client
+):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _mock_prompt_files(monkeypatch)
+    created = _open_session(client, job, slug, [SALESFORCE_RESOLUTION])
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    forbid_model(monkeypatch)
+
+    refused = _tailor(client, created["id"], {}, headers=MCP)
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"].startswith(agent_writer.AGENT_WRITES)
+    assert "ops" in refused.json()["detail"]
+    assert db_session.scalars(select(Application)).all() == []
+    assert db_session.get(TailoringSession, UUID(created["id"])).status == "open"
+    # The agent app's own edits need no writing from Maestro.
+    assert _tailor(client, created["id"], TAILOR_OPS, headers=MCP).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("writer", "headers", "body"),
+    [("agent", {}, {}), ("maestro", MCP, {}), ("agent", {}, {"apply_profile": True})],
+    ids=["the-web", "maestro-writes", "the-web-quick-tailor"],
+)
+def test_maestro_tailors_for_the_web_and_in_maestro_mode(
+    db_session, tmp_path, monkeypatch, client, writer, headers, body
+):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _mock_prompt_files(monkeypatch)
+    created = _open_session(client, job, slug, [SALESFORCE_RESOLUTION])
+    set_writer(client, monkeypatch, tmp_path, writer)
+    prompts = model_replies(monkeypatch, tmp_path, json.dumps(TAILOR_OPS))
+
+    response = _tailor(client, created["id"], body, headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["session"]["status"] == "tailored"
+    assert prompts  # Maestro's model wrote the edits

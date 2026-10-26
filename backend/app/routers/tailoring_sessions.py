@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import agent_writer
 from app.db import get_db
 from app.models.tailoring_session import TailoringSession
 from app.schemas.tailoring_session import (
@@ -33,6 +34,10 @@ def _get_or_404(db: Session, session_id: UUID) -> TailoringSession:
 def create_tailoring_session(
     payload: TailoringSessionCreate, db: Annotated[Session, Depends(get_db)]
 ):
+    # Before create_session: it scores and stages the session first, and it stores unenriched
+    # gaps when the enrichment call fails, so a refusal inside it would never reach the caller.
+    if payload.enrich:
+        agent_writer.refuse_unless_maestro_writes("Start the gap analysis without enrich.")
     try:
         return tailoring_session.create_session(
             payload.job_id, payload.base_resume, enrich=payload.enrich, session=db
@@ -149,6 +154,10 @@ def tailor_session(
     payload: TailorRequest | None = None,
 ):
     """Run the tailor pipeline: resolutions -> LLM edit ops -> application -> score."""
+    # No ops of the caller's own means Maestro's AI writes the edits. Only an agent request is
+    # refused: the web's one-call apply_profile path carries no MCP origin.
+    if not (payload and payload.ops):
+        agent_writer.refuse_unless_maestro_writes("Pass your own edits as ops, or no_new_text.")
     row = _get_or_404(db, session_id)
     effective_prompt = payload.user_prompt if payload else None
 

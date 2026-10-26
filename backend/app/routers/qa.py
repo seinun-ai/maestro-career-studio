@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import agent_writer
 from app.db import get_db
 from app.services.sync import hooks
 from app.models.application import Application
@@ -49,6 +50,7 @@ def run_qa(payload: QARequest, db: Annotated[Session, Depends(get_db)]):
             status_code=400,
             detail="questions or cover_letter is required",
         )
+    agent_writer.refuse_unless_maestro_writes(_write_it_yourself(payload))
 
     # Two shapes of "the caller named something unusable", mapped like
     # `regenerate_entry` below — ORDER IS THE CONTRACT (§12): the narrow
@@ -69,6 +71,16 @@ def run_qa(payload: QARequest, db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _write_it_yourself(payload: QARequest) -> str:
+    """The tools an agent app saves its own text with, for what this request asked for."""
+    if payload.questions and payload.cover_letter is not None:
+        return ("Write the answers and the letter yourself and save them with store_qa_answers "
+                "and store_cover_letter.")
+    if payload.questions:
+        return "Write the answers yourself and save them with store_qa_answers."
+    return "Write the letter yourself and save it with store_cover_letter."
 
 
 def _run_qa(payload: QARequest, db: Session) -> QAResponse:
