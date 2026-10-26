@@ -65,6 +65,61 @@ def test_tailor_run_works_only_jobs_owned_here():
     assert "Only work jobs whose `ownership.owned_here` is true." in cards["tailor-run"].body
 
 
+def _tailor_run_body():
+    return " ".join({c.id: c for c in automations.catalog().cards}["tailor-run"].body.split())
+
+
+@pytest.mark.parametrize("sentence", [
+    "`create_tailoring_session(job_id, base_resume, use_presets=true)`",
+    "Accept its decisions as they are.",
+    "Never pass `ops` to `tailor_session` in this run",
+    "Never call `resolve_gaps` or `edit_application`, and never waive a health gate",
+    "That work is the user's: never overwrite it",
+    "so an open session always means the user's own work",
+    "Pass `user_prompt` only when step 4's `next` hint carries one for `tailor_session`, copied exactly.",
+])
+def test_tailor_run_keeps_its_steps_and_guardrails(sentence):
+    assert sentence in _tailor_run_body()
+
+
+def test_tailor_run_reads_who_writes_once_before_the_queue():
+    body = _tailor_run_body()
+    start = "Call `get_setup_status` once at the start and remember its `writer`"
+    assert start in body and "and `ai_key`" in body
+    assert body.count("get_setup_status") == 1
+    assert body.index(start) < body.index("1. **Queue.**")
+
+
+def test_tailor_run_tailors_the_way_the_user_chose():
+    body = _tailor_run_body()
+    step = body[body.index("6. **Tailor"):body.index("7. **Render.**")]
+    maestro = step[step.index("(`writer` is `maestro`)"):step.index("(`writer` is `agent`)")]
+    agent = step[step.index("(`writer` is `agent`)"):]
+    assert "`tailor_session(tailoring_session_id=...)` with no `ops`" in maestro
+    assert "`ai_key` is false" in maestro and "stop the run and say so in the digest" in maestro
+    assert "no_new_text" not in maestro
+    assert "`tailor_session(tailoring_session_id=..., no_new_text=true)`" in agent
+    assert "`answers_left_to_ops`" in agent
+    assert "ai_key" not in agent
+
+
+def test_tailor_run_digest_names_unbacked_skills_and_the_answers_left():
+    body = _tailor_run_body()
+    digest = body[body.index("9. **Digest.**"):body.index("10. **Record the run.**")]
+    assert "`unbacked_skills`" in digest and "career history doesn't back" in digest
+    assert "`answers_left_to_ops` as questions for the user" in digest
+    assert "the jobs that need the user and their questions" in digest
+    assert "any failure" in digest
+
+
+def test_tailor_run_fails_only_when_maestros_ai_writes_without_a_key():
+    body = _tailor_run_body()
+    record = body[body.index("10. **Record the run.**"):]
+    assert "`failed` only when Maestro's AI writes and the app has no AI key" in record
+    for count in ("`tailored`", "`needs_you`", "`skipped`"):
+        assert count in record
+
+
 @pytest.mark.parametrize("sentence", [
     "Submit without asking only when `get_final_review` shows all of these:",
     "`record_consent` with channel `auto`",
