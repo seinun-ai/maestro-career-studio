@@ -1250,9 +1250,10 @@ def _unbacked_skills(
     customized: dict[str, Any],
     resolutions: list[dict[str, Any]],
     gaps: dict[str, dict[str, Any]],
+    loaded: dict[str, Any],
 ) -> list[str]:
-    """Missing skills now anywhere live on the tailored resume with nothing behind
-    them, in the analysis's order, each once. Named, never refused.
+    """Missing skills this tailor put live on the resume with nothing behind them,
+    in the analysis's order, each once. Named, never refused.
 
     A missing skill is the honesty rule's (_is_missing_skill). It is backed when
     career history shows it, read off the frozen gap and never off a caller's
@@ -1262,13 +1263,22 @@ def _unbacked_skills(
     keyword, a skip, or no answer at all) it is named once its word is live,
     whoever put it there: keyword survival, the model, or the caller's ops. The
     word is a saved keyword's (_keyword_wording), else the gap's own skill.
+
+    A word already live on the base as ``loaded`` (before the pre-ops) is the
+    owner's own and never named: the analysis reads no skills from the summary
+    and skips one- and two-letter skills in bullets, so a skill can be filed
+    missing while the base already says it.
     """
     saved = {item.get("gap_id"): item for item in resolutions}
-    fragments = [
-        normalized
-        for fragment in _live_text_fragments(customized)
-        if (normalized := normalize_term(fragment))
-    ]
+
+    def _live(document: dict[str, Any]) -> list[str]:
+        return [
+            normalized
+            for fragment in _live_text_fragments(document)
+            if (normalized := normalize_term(fragment))
+        ]
+
+    tailored, owners = _live(customized), _live(loaded)
     unbacked: list[str] = []
     seen: set[str] = set()
     for gap_id, gap in gaps.items():
@@ -1285,7 +1295,9 @@ def _unbacked_skills(
         normalized = normalize_term(wording) if wording else ""
         if not normalized or normalized in seen:
             continue
-        if any(term_in_text(normalized, fragment) for fragment in fragments):
+        on_tailored = any(term_in_text(normalized, fragment) for fragment in tailored)
+        on_base = any(term_in_text(normalized, fragment) for fragment in owners)
+        if on_tailored and not on_base:
             seen.add(normalized)
             unbacked.append(wording)
     return unbacked
@@ -1560,8 +1572,9 @@ def tailor(
             )
         _require_fresh(tailoring, session)
 
-        # Every path edits the base resume; load it once up front.
-        base = load_base_resume(tailoring.base_resume, session)
+        # Every path edits the base resume; load it once up front. `loaded` stays
+        # as the owner wrote it (apply_edits copies), for _unbacked_skills.
+        base = loaded = load_base_resume(tailoring.base_resume, session)
         pre_ops, handled_pre_ops, already_applied = _deterministic_pre_ops(
             tailoring.resolutions_json
         )
@@ -1671,7 +1684,7 @@ def tailor(
             left_to_ops = _answers_left_to_ops(tailoring.resolutions_json, gaps)
         else:
             left_to_ops = []
-        unbacked = _unbacked_skills(customized, tailoring.resolutions_json, gaps)
+        unbacked = _unbacked_skills(customized, tailoring.resolutions_json, gaps, loaded)
 
         # A job has one application: tailoring REUSES the job's newest one, whatever
         # its base, rather than orphan it (the job page surfaces only the newest, so a

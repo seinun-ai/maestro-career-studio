@@ -141,7 +141,8 @@ class TailorResponse(BaseModel):
     # answers, and with no_new_text an add_keyword that needs a rewritten line,
     # all of which need wording the server did not write.
     answers_left_to_ops: list[AnswerLeftToOps] = Field(default_factory=list)
-    # Every path: missing skills now anywhere live on the tailored resume that
-    # neither career history nor the saved answer shows, whoever put them there,
-    # so a skill the user never showed is named (never refused).
+    # Every path: missing skills this tailor put anywhere live on the resume (not
+    # already in the base's own text) that neither career history nor the saved
+    # answer shows, whoever put them there, so a skill the user never showed is
+    # named (never refused).
     unbacked_skills: list[str] = Field(default_factory=list)

@@ -436,6 +436,26 @@ def test_a_missing_skill_the_callers_ops_put_in_a_bullet_is_named(
     assert response.json()["unbacked_skills"] == ["Docker"]
 
 
+def test_a_missing_skill_the_base_already_says_is_not_named(
+    db_session, tmp_path, monkeypatch, client
+):
+    """The analysis reads no skills from the summary, so Docker is filed missing while
+    the owner's own summary says it: only words this tailor brought in are named."""
+    job = _seed_job(db_session)
+    resume = json.loads(json.dumps(SAMPLE_RESUME))
+    resume["summary"] = "Data scientist who ships Docker-based forecasting services."
+    slug = _seed_base(db_session, tmp_path, monkeypatch, resume_json=resume)
+    forbid_model(monkeypatch)
+    created = _open_session(client, job, slug, resolutions=[SNOWFLAKE_PLACE_ONLY])
+    assert _gap(created, "skill:docker")["diagnostic"]["fix_hint"] == "absent"
+
+    response = _tailor(client, created["id"], body={"no_new_text": True})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["keywords_added"] == ["Snowflake"]
+    assert response.json()["unbacked_skills"] == []
+
+
 @pytest.mark.parametrize(
     ("resolutions", "unbacked"),
     [
