@@ -275,6 +275,12 @@ def call_openai(
     """`timeout`: per request, no SDK retries (see `_call_model`); pair it with
     `max_retries=0` to bound the whole call. `schema`: a JSON Schema the reply must follow, enforced by Claude
     only (every other provider gets plain JSON mode); the caller validates the reply either way."""
+    from app import agent_writer  # agent_writer imports this module
+
+    if not agent_writer.maestro_writes():
+        # The backstop (design 2026-10-26): whichever route asked, an agent request never reaches
+        # Maestro's model while the agent app writes.
+        raise agent_writer.AgentWritesError(agent_writer.AGENT_WRITES)
     if response_format not in {"json", "text"}:
         raise ValueError("response_format must be 'json' or 'text'")
     if schema is not None and response_format != "json":

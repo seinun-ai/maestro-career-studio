@@ -1,4 +1,7 @@
 """Who writes for an agent request (design 2026-10-26): the request mark and the setting."""
+import contextlib
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -78,3 +81,55 @@ def test_the_mark_reaches_a_sync_route_on_the_threadpool():
     wrapped = TestClient(agent_writer.AgentRequestMiddleware(inner))
     assert wrapped.get("/probe", headers={"X-Maestro-CS-Origin": "mcp"}).json() == {"agent": True}
     assert wrapped.get("/probe").json() == {"agent": False}
+
+
+def _model_must_not_run(*_a, **_k):
+    raise AssertionError("model reached")
+
+
+def test_no_model_call_runs_for_an_agent_request_in_agent_mode(monkeypatch):
+    _writer(monkeypatch, "agent")
+    monkeypatch.setattr(llm, "_call_model", _model_must_not_run)
+    with agent_writer.agent_request():
+        with pytest.raises(agent_writer.AgentWritesError):
+            llm.call_openai(prompt="p", model="m")
+
+
+@pytest.mark.parametrize(("writer", "agent"), [("agent", False), ("maestro", True), ("maestro", False)])
+def test_the_model_is_reached_outside_agent_mode(tmp_path, monkeypatch, writer, agent):
+    _writer(monkeypatch, writer)
+    monkeypatch.setattr(llm.settings, "logs_dir", str(tmp_path))  # _log_call's record of the call
+    calls = []
+    monkeypatch.setattr(llm, "_call_model", lambda *a, **k: (calls.append(a), ('{"ok": true}', None))[1])
+    with agent_writer.agent_request() if agent else contextlib.nullcontext():
+        assert llm.call_openai(prompt="p", model="m") == {"ok": True}
+    assert len(calls) == 1
+
+
+def test_the_backstop_answers_an_agent_request_with_a_409(client, tmp_path, monkeypatch):
+    # Whichever route asked, the refusal reaches the caller as the sentence, not a 500. The real setting
+    # read, on the threadpool of a sync route: no saved row is the default, the agent app.
+    from app.main import app
+    from app.services import text_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    monkeypatch.setattr(llm.settings, "logs_dir", str(tmp_path))
+    calls = []
+    monkeypatch.setattr(llm, "_call_model", lambda *a, **k: (calls.append(a), ('{"ok": true}', None))[1])
+
+    @app.get("/api/_test/agent-writes-backstop")
+    def _asks_the_model():
+        return llm.call_openai(prompt="p", model="m")
+
+    mcp = {"X-Maestro-CS-Origin": "mcp"}
+    try:
+        refused = client.get("/api/_test/agent-writes-backstop", headers=mcp)
+        web = client.get("/api/_test/agent-writes-backstop")
+        client.put("/api/settings/mcp-workflow", json={"value": {"hints": True, "writer": "maestro"}})
+        maestro = client.get("/api/_test/agent-writes-backstop", headers=mcp)
+    finally:
+        app.router.routes.pop()
+    assert refused.status_code == 409
+    assert refused.json() == {"detail": agent_writer.AGENT_WRITES}
+    assert web.json() == maestro.json() == {"ok": True}
+    assert len(calls) == 2
