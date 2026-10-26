@@ -108,8 +108,10 @@ class AnswerLeftToOps(BaseModel):
     no_new_text path."""
 
     gap_id: str
-    action: Literal["user_input", "attach_project"]
-    # The gap's JD skill or requirement line.
+    # add_keyword only with no_new_text: placed outside the skills list, it needs
+    # a rewritten line, and keyword survival did not add its word.
+    action: Literal["user_input", "attach_project", "add_keyword"]
+    # The gap's JD skill or requirement line; for an add_keyword, its word.
     skill: str
 
 
@@ -135,8 +137,10 @@ class TailorResponse(BaseModel):
     # skills list (never as a bullet), so a change nobody wrote is never silent.
     keywords_added: list[str] = Field(default_factory=list)
     # Caller-ops and no_new_text paths only: user_input and attach_project
-    # answers, which need wording the server did not write.
+    # answers, and with no_new_text an add_keyword that needs a rewritten line,
+    # all of which need wording the server did not write.
     answers_left_to_ops: list[AnswerLeftToOps] = Field(default_factory=list)
-    # Every path: saved keywords for missing skills now on the skills list with
-    # no career history behind them, so a skill the user never showed is named.
+    # Every path: missing skills now anywhere live on the tailored resume that
+    # neither career history nor the saved answer shows, whoever put them there,
+    # so a skill the user never showed is named (never refused).
     unbacked_skills: list[str] = Field(default_factory=list)

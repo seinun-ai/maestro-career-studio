@@ -1241,43 +1241,51 @@ def _missing_keywords(
     return missing
 
 
-def _unbacked_skills(
-    customized: dict[str, Any], tailoring: TailoringSession
-) -> list[str]:
-    """Saved keywords for missing skills that sit on the tailored skills list with
-    nothing in career history behind them, in saved order, each once.
+# Saved answers that show a missing skill without Maestro's word for it: the
+# user's own text or project, or an entry or approved point the save checked.
+_ANSWERS_THAT_SHOW_THE_SKILL = ("user_input", "attach_project", "enable_entry", "port_kb_point")
 
-    A provenance-carrying auto (the KB resolver's profile-skill add) is backed by
-    career history; an add the user or a preset chose for a missing skill is not.
+
+def _unbacked_skills(
+    customized: dict[str, Any],
+    resolutions: list[dict[str, Any]],
+    gaps: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Missing skills now anywhere live on the tailored resume with nothing behind
+    them, in the analysis's order, each once. Named, never refused.
+
+    A missing skill is the honesty rule's (_is_missing_skill). It is backed when
+    career history shows it, read off the frozen gap and never off a caller's
+    payload: the KB resolver plans an automatic answer for the gap (a hidden
+    entry, an approved point or a profile skill shows it). It is also backed when
+    its saved answer shows it (_ANSWERS_THAT_SHOW_THE_SKILL). Otherwise (a saved
+    keyword, a skip, or no answer at all) it is named once its word is live,
+    whoever put it there: keyword survival, the model, or the caller's ops. The
+    word is a saved keyword's (_keyword_wording), else the gap's own skill.
     """
-    missing_skill_gaps = {
-        gap["gap_id"]
-        for category in tailoring.gaps_json.get("categories", [])
-        if category.get("key") == "missing_skills"
-        for gap in category["gaps"]
-    }
-    gaps = _gap_index(tailoring.gaps_json)
-    skills = [
+    saved = {item.get("gap_id"): item for item in resolutions}
+    fragments = [
         normalized
-        for group in customized.get("skills") or []
-        if isinstance(group, dict)
-        for item in group.get("items") or []
-        if isinstance(item, str) and (normalized := normalize_term(item))
+        for fragment in _live_text_fragments(customized)
+        if (normalized := normalize_term(fragment))
     ]
     unbacked: list[str] = []
     seen: set[str] = set()
-    for item in tailoring.resolutions_json:
+    for gap_id, gap in gaps.items():
+        answer = saved.get(gap_id) or {}
         if (
-            item.get("action") != "add_keyword"
-            or item.get("gap_id") not in missing_skill_gaps
-            or (item.get("payload") or {}).get("provenance")
+            not _is_missing_skill(gap)
+            or answer.get("action") in _ANSWERS_THAT_SHOW_THE_SKILL
+            or kb_resolver.auto_resolution_for_gap(gap) is not None
         ):
             continue
-        wording = _keyword_wording(item, gaps)
+        # Only a saved keyword words the skill its own way.
+        keyword = answer if answer.get("action") == "add_keyword" else {"gap_id": gap_id}
+        wording = _keyword_wording(keyword, gaps)
         normalized = normalize_term(wording) if wording else ""
         if not normalized or normalized in seen:
             continue
-        if any(term_in_text(normalized, skill) for skill in skills):
+        if any(term_in_text(normalized, fragment) for fragment in fragments):
             seen.add(normalized)
             unbacked.append(wording)
     return unbacked
@@ -1344,25 +1352,35 @@ def _keyword_fallback(
 
 
 def _answers_left_to_ops(
-    resolutions: list[dict[str, Any]], gaps: dict[str, dict[str, Any]]
+    resolutions: list[dict[str, Any]],
+    gaps: dict[str, dict[str, Any]],
+    keywords_added: list[str] | None = None,
 ) -> list[dict[str, str]]:
     """Saved answers the server cannot apply without writing new text
     (user_input, attach_project). On the caller-ops path they reach the resume
     only through the ops, and with no_new_text not at all, so the response
-    names them."""
-    return [
-        {
-            "gap_id": item["gap_id"],
-            "action": item["action"],
-            "skill": str(
-                gaps.get(item["gap_id"], {}).get("jd_skill")
-                or gaps.get(item["gap_id"], {}).get("detail")
-                or ""
-            ),
-        }
-        for item in resolutions
-        if item.get("action") in ("user_input", "attach_project")
-    ]
+    names them.
+
+    no_new_text also passes ``keywords_added`` (the words keyword survival put
+    in the skills list): an add_keyword placed outside the skills list needs a
+    rewritten line, so it is listed too unless survival added its word.
+    """
+    added = {normalize_term(word) for word in keywords_added or []}
+    left: list[dict[str, str]] = []
+    for item in resolutions:
+        action = item.get("action")
+        gap = gaps.get(item["gap_id"], {})
+        if action in ("user_input", "attach_project"):
+            skill = str(gap.get("jd_skill") or gap.get("detail") or "")
+        elif action == "add_keyword" and keywords_added is not None:
+            placement = (item.get("payload") or {}).get("placement_target") or {}
+            skill = _keyword_wording(item, gaps) or ""
+            if placement.get("section") == "skills" or not skill or normalize_term(skill) in added:
+                continue
+        else:
+            continue
+        left.append({"gap_id": item["gap_id"], "action": action, "skill": skill})
+    return left
 
 
 def _llm_customized(
@@ -1583,17 +1601,24 @@ def tailor(
         keywords_added = _missing_keywords(customized, tailoring.resolutions_json, gaps)
         if keywords_added:
             customized = _keyword_fallback(customized, keywords_added)
+        # A keyword that needs a rewritten line applies nothing here, so it is
+        # listed below and counts as needing text.
         if no_new_text and not pre_ops and not keywords_added:
             raise ValueError(
-                "There is nothing to apply without new wording: every saved answer "
-                "needs text written for it."
+                "Nothing can be applied without new wording: the saved answers need "
+                "text written for them, or are already on the resume."
             )
-        left_to_ops = (
-            _answers_left_to_ops(tailoring.resolutions_json, gaps)
-            if ops or no_new_text
-            else []
-        )
-        unbacked = _unbacked_skills(customized, tailoring)
+        if no_new_text:
+            left_to_ops = _answers_left_to_ops(
+                tailoring.resolutions_json,
+                gaps,
+                keywords_added=[wording for wording, _ in keywords_added],
+            )
+        elif ops:
+            left_to_ops = _answers_left_to_ops(tailoring.resolutions_json, gaps)
+        else:
+            left_to_ops = []
+        unbacked = _unbacked_skills(customized, tailoring.resolutions_json, gaps)
 
         # A job has one application: tailoring REUSES the job's newest one, whatever
         # its base, rather than orphan it (the job page surfaces only the newest, so a

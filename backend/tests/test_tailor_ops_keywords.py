@@ -14,13 +14,15 @@ in either writer mode. It applies only the answers that need none (an enabled
 entry, a ported career-history bullet, saved keywords into skills) and lists
 the rest the same way.
 
-Every tailor names its `unbacked_skills`: saved keywords for missing skills that
-sit on the skills list with no career history behind them.
+Every tailor names its `unbacked_skills`: missing skills now anywhere live on
+the resume that career history and the saved answers don't back, whoever put
+them there. "Backed" is read off the frozen gap, never off a caller's payload.
 """
 
 import json
 from uuid import UUID
 
+import pytest
 from sqlalchemy import select
 
 from app.models.application import Application
@@ -32,6 +34,7 @@ from tests.agent_writer_fixtures import (
     model_replies,
     set_writer,
 )
+from tests.ats.fixtures import SAMPLE_RESUME
 from tests.test_tailoring_sessions_router import (
     _forbid_llm,
     _mock_prompt_files,
@@ -68,6 +71,16 @@ DOCKER_PROJECT = {
     "gap_id": "skill:docker",
     "action": "attach_project",
     "payload": {"project_name": "RAG Search"},
+}
+# Tableau is a resurface gap: already in an old bullet, so moving it to the current
+# job means a rewritten bullet, which no_new_text does not write.
+TABLEAU_ON_CURRENT_JOB = {
+    "gap_id": "skill:tableau",
+    "action": "add_keyword",
+    "payload": {
+        "placement_target": {"section": "experience", "index_or_category": 0},
+        "wording": "Tableau",
+    },
 }
 
 
@@ -178,18 +191,54 @@ def test_no_new_text_applies_only_what_needs_no_wording(db_session, tmp_path, mo
 def test_no_new_text_lands_an_enabled_entry_and_a_career_history_bullet(
     db_session, tmp_path, monkeypatch, client
 ):
+    """Over MCP with the agent app writing: refused without no_new_text, applied with it."""
     tailoring = _open_library_session(db_session, tmp_path, monkeypatch)
     approved, _ = _seed_kb_points(db_session)
     _save_library_preops(tailoring, approved, db_session)
+    set_writer(client, monkeypatch, tmp_path, "agent")
     key_configured(monkeypatch)
     forbid_model(monkeypatch)
 
-    response = _tailor(client, str(tailoring.id), body={"no_new_text": True})
+    assert _tailor(client, str(tailoring.id), body={}, headers=MCP).status_code == 409
+    response = _tailor(client, str(tailoring.id), body={"no_new_text": True}, headers=MCP)
 
     assert response.status_code == 200, response.text
     application = db_session.get(Application, UUID(response.json()["session"]["application_id"]))
     assert application.customized_json["projects"][0]["enabled"] is True
     assert approved.text in application.customized_json["projects"][1]["bullets"]
+    # Both skills now on the resume come from checked evidence, so neither is unbacked.
+    assert response.json()["unbacked_skills"] == []
+
+
+def test_no_new_text_lists_a_keyword_that_needs_a_rewritten_bullet(
+    db_session, tmp_path, monkeypatch, client
+):
+    """Placed on a job: Tableau is already in an old bullet, so survival adds nothing and
+    the answer is listed; Snowflake is nowhere on the resume, so survival puts it in skills."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    forbid_model(monkeypatch)
+    snowflake_on_current_job = {
+        "gap_id": "skill:snowflake",
+        "action": "add_keyword",
+        "payload": {"placement_target": {"section": "experience", "index_or_category": 0}},
+    }
+    created = _open_session(
+        client, job, slug, resolutions=[TABLEAU_ON_CURRENT_JOB, snowflake_on_current_job]
+    )
+
+    response = _tailor(client, created["id"], body={"no_new_text": True})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["keywords_added"] == ["Snowflake"]
+    assert body["answers_left_to_ops"] == [
+        {"gap_id": "skill:tableau", "action": "add_keyword", "skill": "Tableau"},
+    ]
+    application = db_session.get(Application, UUID(body["session"]["application_id"]))
+    assert application.customized_json["experience"][0]["bullets"] == (
+        SAMPLE_RESUME["experience"][0]["bullets"]
+    )
 
 
 def test_no_new_text_takes_no_ops(db_session, tmp_path, monkeypatch, client):
@@ -219,14 +268,19 @@ def test_no_new_text_with_nothing_to_apply_says_so(db_session, tmp_path, monkeyp
     forbid_model(monkeypatch)
     created = _open_session(
         client, job, slug,
-        resolutions=[ML_MODELS_ANSWER, {"gap_id": "skill:docker", "action": "skip"}],
+        resolutions=[
+            ML_MODELS_ANSWER,
+            {"gap_id": "skill:docker", "action": "skip"},
+            TABLEAU_ON_CURRENT_JOB,  # needs a rewritten bullet, so it applies nothing either
+        ],
     )
 
     response = _tailor(client, created["id"], body={"no_new_text": True})
 
     assert response.status_code == 400, response.text
     assert response.json()["detail"] == (
-        "There is nothing to apply without new wording: every saved answer needs text written for it."
+        "Nothing can be applied without new wording: the saved answers need text written "
+        "for them, or are already on the resume."
     )
     assert db_session.get(TailoringSession, UUID(created["id"])).status == "open"
     assert db_session.scalars(select(Application)).all() == []
@@ -269,16 +323,6 @@ def test_no_new_text_after_the_presets_fill_needs_no_model(db_session, tmp_path,
     assert "Docker" in response.json()["unbacked_skills"]  # nothing in career history shows it
 
 
-def _missing_skill(created) -> dict:
-    """The first gap the analysis files under missing skills: one the resume never shows."""
-    return next(
-        gap
-        for category in created["gaps_json"]["categories"]
-        if category["key"] == "missing_skills"
-        for gap in category["gaps"]
-    )
-
-
 def _into_skills(gap_id, wording=None, provenance=None) -> dict:
     payload = {"placement_target": {"section": "skills", "index_or_category": "Tools"}}
     if wording is not None:
@@ -288,30 +332,43 @@ def _into_skills(gap_id, wording=None, provenance=None) -> dict:
     return {"gap_id": gap_id, "action": "add_keyword", "payload": payload}
 
 
+DOCKER_INTO_SKILLS = _into_skills("skill:docker", "Docker")
+DOCKER_BULLET = {
+    "kind": "add_bullet", "section": "experience", "index": 0,
+    "text": "Containerized the forecasting service with Docker.",
+}
+
+
+def _gap(created, gap_id) -> dict:
+    return next(
+        gap for category in created["gaps_json"]["categories"]
+        for gap in category["gaps"] if gap["gap_id"] == gap_id
+    )
+
+
 def test_a_tailor_names_the_missing_skills_it_put_in_skills(db_session, tmp_path, monkeypatch, client):
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch)
     forbid_model(monkeypatch)
-    created = _open_session(client, job, slug)
-    gap = _missing_skill(created)
-    skill = gap["jd_skill"]
-    saved = client.patch(
-        f"/api/tailoring-sessions/{created['id']}",
-        json={"resolutions": [_into_skills(gap["gap_id"], skill), SNOWFLAKE_PLACE_ONLY]},
-    )
-    assert saved.status_code == 200, saved.text
+    created = _open_session(client, job, slug, resolutions=[DOCKER_INTO_SKILLS, SNOWFLAKE_PLACE_ONLY])
+    # Docker is a missing skill nothing in career history shows.
+    assert _gap(created, "skill:docker")["diagnostic"]["fix_hint"] == "absent"
+    assert not _gap(created, "skill:docker").get("library_candidates")
 
     response = _tailor(client, created["id"], body={"no_new_text": True})
 
     assert response.status_code == 200, response.text
-    assert sorted(response.json()["keywords_added"]) == sorted([skill, "Snowflake"])
+    assert sorted(response.json()["keywords_added"]) == ["Docker", "Snowflake"]
     # Snowflake is adjacent: the resume shows a related skill, so it is not unbacked.
-    assert response.json()["unbacked_skills"] == [skill]
+    assert response.json()["unbacked_skills"] == ["Docker"]
 
 
-def test_a_keyword_career_history_backs_is_not_unbacked(db_session, tmp_path, monkeypatch, client):
-    """An auto the KB resolver stamped with provenance (a profile skill) is backed by
-    career history; the user's own add for another missing skill is not."""
+def test_backed_is_read_off_the_gap_not_the_callers_payload(
+    db_session, tmp_path, monkeypatch, client
+):
+    """A provenance a caller sends does not back Docker. Salesforce is backed: career
+    history shows it (a hidden entry says "Salesforce admin work."), so the analysis
+    plans an automatic answer for its gap."""
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch)
     forbid_model(monkeypatch)
@@ -322,22 +379,73 @@ def test_a_keyword_career_history_backs_is_not_unbacked(db_session, tmp_path, mo
             SALESFORCE_WORDED,
         ],
     )
+    assert _gap(created, "skill:salesforce")["library_candidates"][0]["auto"] is True
 
     response = _tailor(client, created["id"], body={"no_new_text": True})
 
     assert response.status_code == 200, response.text
-    assert response.json()["unbacked_skills"] == ["Salesforce"]
+    assert sorted(response.json()["keywords_added"]) == ["Docker", "Salesforce"]
+    assert response.json()["unbacked_skills"] == ["Docker"]
+
+
+def test_a_missing_skill_the_callers_ops_put_in_a_bullet_is_named(
+    db_session, tmp_path, monkeypatch, client
+):
+    """Saved into skills, written into a bullet by the caller: survival adds nothing,
+    and the skill is still named wherever it landed."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    forbid_model(monkeypatch)
+    created = _open_session(client, job, slug, resolutions=[DOCKER_INTO_SKILLS])
+
+    response = _tailor(client, created["id"], body={"ops": [DOCKER_BULLET]})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["keywords_added"] == []
+    assert response.json()["unbacked_skills"] == ["Docker"]
+
+
+@pytest.mark.parametrize(
+    ("resolutions", "unbacked"),
+    [
+        ([], ["Docker"]),
+        ([{"gap_id": "skill:docker", "action": "skip"}], ["Docker"]),
+        ([{"gap_id": "skill:docker", "action": "user_input",
+           "payload": {"text": "Ran the team's services in Docker for two years."}}], []),
+    ],
+    ids=["no-answer", "skipped", "the-user-said-so"],
+)
+def test_a_missing_skill_the_callers_ops_wrote_without_a_keyword_answer(
+    db_session, tmp_path, monkeypatch, client, resolutions, unbacked
+):
+    """No saved keyword: named when the caller's ops write it, unless the saved answer
+    shows the skill itself (the user's own words). Salesforce, written alongside, is
+    backed by career history."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    forbid_model(monkeypatch)
+    created = _open_session(client, job, slug, resolutions=resolutions)
+
+    response = _tailor(
+        client, created["id"],
+        body={"ops": [
+            DOCKER_BULLET,
+            {"kind": "add_skill_item", "category": "Tools", "item": "Salesforce"},
+        ]},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["unbacked_skills"] == unbacked
 
 
 def test_the_ops_path_names_unbacked_skills_saved_with_only_a_place(
     db_session, tmp_path, monkeypatch, client
 ):
-    """A place-only keyword's word is the gap's own skill, as keyword survival reads it;
-    one the caller's ops put in skills themselves is named too."""
+    """A place-only keyword's word is the gap's own skill, as keyword survival reads it."""
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch)
-    _forbid_llm(monkeypatch)
-    created = _open_session(client, job, slug, resolutions=[SALESFORCE_WORDED, _into_skills("skill:docker")])
+    forbid_model(monkeypatch)
+    created = _open_session(client, job, slug, resolutions=[_into_skills("skill:docker")])
 
     response = _tailor(
         client, created["id"],
@@ -346,21 +454,21 @@ def test_the_ops_path_names_unbacked_skills_saved_with_only_a_place(
 
     assert response.status_code == 200, response.text
     assert response.json()["keywords_added"] == ["Docker"]
-    assert response.json()["unbacked_skills"] == ["Salesforce", "Docker"]
+    assert response.json()["unbacked_skills"] == ["Docker"]
 
 
 def test_the_model_path_names_unbacked_skills(db_session, tmp_path, monkeypatch, client):
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch)
     _mock_prompt_files(monkeypatch)
-    created = _open_session(client, job, slug, resolutions=[SALESFORCE_WORDED])
+    created = _open_session(client, job, slug, resolutions=[DOCKER_INTO_SKILLS])
     model_replies(
         monkeypatch, tmp_path,
-        json.dumps({"ops": [{"kind": "add_skill_item", "category": "Tools", "item": "Salesforce"}]}),
+        json.dumps({"ops": [{"kind": "add_skill_item", "category": "Tools", "item": "Docker"}]}),
     )
 
     response = _tailor(client, created["id"])
 
     assert response.status_code == 200, response.text
     assert response.json()["keywords_added"] == []  # the model's own edit carried it
-    assert response.json()["unbacked_skills"] == ["Salesforce"]
+    assert response.json()["unbacked_skills"] == ["Docker"]
