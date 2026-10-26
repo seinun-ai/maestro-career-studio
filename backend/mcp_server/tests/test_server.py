@@ -396,6 +396,11 @@ async def test_tailoring_session_tools_expose_complete_input_schemas():
                     "default": None,
                     "description": srv._TAILOR_OPS_FIELD.description,
                 },
+                "no_new_text": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": srv._NO_NEW_TEXT_FIELD.description,
+                },
             },
             "required": ["tailoring_session_id"],
             "type": "object",
@@ -665,13 +670,15 @@ def test_audit_one_sentence_docstring_fixes():
         assert "SUPERSEDE" in doc.upper()
         assert "list_tailoring_sessions" in doc
 
-    # A job has one application: any tailor (another base or the same one) rebuilds its draft and removes the
-    # PDF; version history keeps the old draft, not the PDF.
-    for name, fn in (("tailor_session", srv.tailor_session), ("quick_tailor", srv.quick_tailor)):
-        doc = " ".join((fn.__doc__ or "").split())
-        assert "the job's ONE application" in doc, name
-        assert "rebuilds the draft and removes its PDF (version history keeps the old draft)" in doc, name
-        assert "version history keeps them" not in doc, name
+    # A job has one application: any tailor (another base or the same one) rebuilds its draft; version history
+    # keeps the old draft, not the PDF. tailor_session renders the new PDF itself (pdf_ready).
+    ts_doc = " ".join(ts.split())
+    assert "the job's ONE application" in ts_doc
+    assert "rebuilds the draft (version history keeps the old draft) and renders its PDF" in ts_doc
+    assert "removes its PDF" not in ts_doc
+    qt_doc = " ".join((srv.quick_tailor.__doc__ or "").split())
+    assert "the job's ONE application" in qt_doc
+    assert "version history keeps them" not in qt_doc
 
     base = srv.create_base_resume_from_kb.__doc__ or ""
     assert '"other"' in base or "role_category \"other\"" in base
@@ -839,15 +846,15 @@ def test_tailor_session_tool_forwards_ops(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "tailor_session",
-        lambda sid, user_prompt=None, ops=None: seen.update(
-            sid=sid, up=user_prompt, ops=ops
+        lambda sid, user_prompt=None, ops=None, no_new_text=False: seen.update(
+            sid=sid, up=user_prompt, ops=ops, no_new_text=no_new_text
         )
         or {"session": {"id": sid}},
     )
     ops = [{"kind": "add_skill_item", "category": "Languages", "item": "Salesforce"}]
     out = srv.tailor_session(tailoring_session_id="s1", ops=ops)
     assert out["session"]["id"] == "s1"
-    assert seen == {"sid": "s1", "up": None, "ops": ops}
+    assert seen == {"sid": "s1", "up": None, "ops": ops, "no_new_text": False}
 
 
 async def test_get_tailoring_session_accepts_cowork_style_kwargs(monkeypatch):
@@ -896,7 +903,7 @@ async def test_tailor_session_accepts_cowork_style_kwargs(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "tailor_session",
-        lambda session_id, user_prompt=None, ops=None: seen.update(
+        lambda session_id, user_prompt=None, ops=None, no_new_text=False: seen.update(
             session_id=session_id, user_prompt=user_prompt, ops=ops
         )
         or {"session": {"id": session_id}},
@@ -922,8 +929,9 @@ def test_tailor_session_hands_its_report_to_the_hint(monkeypatch):
     seen = {}
     monkeypatch.setattr(
         srv._client, "tailor_session",
-        lambda sid, user_prompt=None, ops=None: {
+        lambda sid, user_prompt=None, ops=None, no_new_text=False: {
             "session": {"application_id": "a1"},
+            "pdf_ready": True,
             "keywords_added": ["Snowflake"],
             "answers_left_to_ops": [{"gap_id": "g", "action": "user_input", "skill": "x"}],
         },
@@ -936,6 +944,7 @@ def test_tailor_session_hands_its_report_to_the_hint(monkeypatch):
     srv.tailor_session(tailoring_session_id="s1", ops=[])
     assert seen["keywords_added"] == ["Snowflake"]
     assert seen["answers_left_to_ops"] == [{"gap_id": "g", "action": "user_input", "skill": "x"}]
+    assert seen["pdf_ready"] is True
 
 
 def test_tailor_session_tool_ops_default_none(monkeypatch):
@@ -943,12 +952,63 @@ def test_tailor_session_tool_ops_default_none(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "tailor_session",
-        lambda sid, user_prompt=None, ops=None: seen.update(ops=ops)
+        lambda sid, user_prompt=None, ops=None, no_new_text=False: seen.update(
+            ops=ops, no_new_text=no_new_text
+        )
         or {"session": {"id": sid}},
     )
     srv.tailor_session(tailoring_session_id="s1")
     # ops defaults to None (the LLM path) when the caller supplies nothing
-    assert seen == {"ops": None}
+    assert seen == {"ops": None, "no_new_text": False}
+
+
+def test_tailor_session_tool_forwards_no_new_text(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client,
+        "tailor_session",
+        lambda sid, user_prompt=None, ops=None, no_new_text=False: seen.update(
+            ops=ops, no_new_text=no_new_text
+        )
+        or {"session": {"id": sid}},
+    )
+    srv.tailor_session(tailoring_session_id="s1", no_new_text=True)
+    assert seen == {"ops": None, "no_new_text": True}
+
+
+def test_tailor_session_docstring_names_the_three_ways_and_the_pdf_it_makes():
+    doc = " ".join((srv.tailor_session.__doc__ or "").split())
+    for term in ("no_new_text", "pdf_ready", "unbacked_skills", "answers_left_to_ops",
+                 "writer", "get_setup_status", "edit_application", "edit_base_resume"):
+        assert term in doc, term
+    assert "tailor_application" not in doc
+    params = srv._TAILOR_OPS_FIELD.description + srv._NO_NEW_TEXT_FIELD.description
+    assert "tailor_application" not in params
+
+
+def test_maestro_writing_tools_say_maestros_ai_writes_and_where_the_setting_is():
+    """Refused for an agent request when the agent app writes; each names the tool
+    that takes the agent's own text, and the setting's place."""
+    from mcp_server.profiles import PROFILE_ALLOWLISTS
+
+    registered = set(srv.list_registered_tool_names("full"))
+    pairs = {
+        "generate_cover_letter": "store_cover_letter",
+        "generate_qa_answers": "store_qa_answers",
+        "kb_capture": "kb_add_points",
+        "create_tailoring_session": "enrich",
+    }
+    for tool, instead in pairs.items():
+        doc = " ".join((getattr(srv, tool).__doc__ or "").split())
+        assert "Maestro's AI" in doc, tool
+        assert "writer" in doc and "get_setup_status" in doc, tool
+        assert "refused (409)" in doc.lower(), tool
+        assert instead in doc, tool
+        # Every tool a description names is served beside it in each set.
+        named = set(re.findall(r"[a-z_]+", doc)) & registered
+        for name, allow in PROFILE_ALLOWLISTS.items():
+            if allow and tool in allow:
+                assert named <= allow, (tool, name, sorted(named - allow))
 
 
 def test_health_check_tools_registered():

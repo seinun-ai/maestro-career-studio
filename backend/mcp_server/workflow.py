@@ -351,51 +351,61 @@ def next_after_tailor(
     allowed_tools: "frozenset[str] | None",
     hints_enabled: bool,
     brief: bool = False,
+    pdf_ready: bool = False,
     keywords_added: list[str] | tuple[str, ...] = (),
     answers_left_to_ops: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
 ) -> dict[str, Any] | None:
-    """Compose the hint that follows tailor_session. There is no choice to
-    present — the tailored application exists and has no PDF yet — so this is a
-    `call`, not an `ask_user`. Saved keywords the server added to the skills
-    list ride on the render option; saved user_input and attach_project answers
-    the server left to the caller's ops add an edit_application option."""
+    """Compose the hint that follows tailor_session. tailor_session renders the
+    PDF itself, so render_pdf is offered only when that render failed
+    (`pdf_ready` false), and then it is the `call`: there is no choice to make.
+    Saved keywords the server added to the skills list ride on the render
+    option. Saved answers that need wording the server did not write add an
+    edit_application option, the blocking call's companion or, with the PDF
+    made, a non-blocking `offer`."""
     if _suppressed(hints_enabled, brief):
         return None
-    render_option = {
-        "label": "Render the tailored application to PDF",
-        "tool": "render_pdf",
-        "args": {"target_type": "application", "target_id": application_id},
-        "detail": None,
-    }
-    if keywords_added:
-        render_option["detail"] = {
-            "keywords_added": list(keywords_added),
-            "note": "The edits left these saved keywords out; the server added them to the skills list.",
+    candidates: list[dict[str, Any]] = []
+    if not pdf_ready:
+        render_option = {
+            "label": "Render the tailored application to PDF",
+            "tool": "render_pdf",
+            "args": {"target_type": "application", "target_id": application_id},
+            "detail": None,
         }
-    candidates = [render_option]
+        if keywords_added:
+            render_option["detail"] = {
+                "keywords_added": list(keywords_added),
+                "note": "No edit put these saved keywords on the resume; the server added them to the skills list.",
+            }
+        candidates.append(render_option)
     if answers_left_to_ops:
         candidates.append(
             {
-                "label": "Write the saved answers the server left to the ops",
+                "label": "Write the saved answers that need wording",
                 "tool": "edit_application",
                 "args": {"application_id": application_id},
                 "detail": {
                     "answers_left_to_ops": list(answers_left_to_ops),
                     "note": (
-                        "The server applies no user_input or attach_project answer when "
-                        "ops are given; each is on the resume only if the ops wrote it."
+                        "These saved answers need wording the server did not write: "
+                        "user_input and attach_project answers, and an add_keyword whose "
+                        "word needs a rewritten line. Each is on the resume only where "
+                        "edit ops wrote it."
                     ),
                 },
             }
         )
     options = _visible(candidates, allowed_tools)
+    render = any(o["tool"] == "render_pdf" for o in options)
     return {
         "state": "tailored",
-        "blocking": True,
-        "offer": None,
+        "blocking": render,
+        "offer": None if render else _offer_from_options(
+            options, {"edit_application": "edit_application (writes the saved answers that need wording)"}
+        ),
         "ask_user": None,
         "options": options,
-        "call": "render_pdf" if options else None,
+        "call": "render_pdf" if render else None,
     }
 
 

@@ -97,16 +97,32 @@ GapResolutions = Annotated[list[GapResolution], _RESOLUTIONS_FIELD]
 # Immune to the ~2048-char tool-description truncation: lives on the param schema.
 _TAILOR_OPS_FIELD = Field(
     description=(
-        "Typed edit ops, the shapes edit_base_resume lists; omitted, the app's model "
-        "writes them. With ops the server itself applies only the saved enable_entry "
+        "Typed edit ops, the shapes edit_base_resume lists; omitted (and no_new_text "
+        "false), Maestro's AI writes them when the user's writer setting is Maestro's AI. "
+        "With ops the server itself applies only the saved enable_entry "
         "and port_kb_point answers: user_input and attach_project answers reach the "
-        "resume only through these ops, and answers_left_to_ops lists them. On both "
-        "paths a saved add_keyword whose word (its wording, else the gap's jd_skill) "
+        "resume only through these ops, and answers_left_to_ops lists them. On every "
+        "path a saved add_keyword whose word (its wording, else the gap's jd_skill) "
         "is not on the result is added to the skills list, in the category it chose, "
         "else Additional Skills, never as a bullet; keywords_added lists those words."
     )
 )
 TailorOps = Annotated[list[dict] | None, _TAILOR_OPS_FIELD]
+
+# Immune to the ~2048-char tool-description truncation: lives on the param schema.
+_NO_NEW_TEXT_FIELD = Field(
+    description=(
+        "True: Maestro writes no new wording and calls no model, whichever writer setting "
+        "the user chose. It applies only the saved answers that need none: enable_entry, "
+        "port_kb_point (an approved career-history bullet) and add_keyword into the skills "
+        "list (keywords_added lists the words). An add_keyword placed anywhere else needs a "
+        "rewritten line: its word lands in the skills list when the resume lacks it, and "
+        "otherwise the answer is listed in answers_left_to_ops beside the user_input and "
+        "attach_project answers; nothing listed there reaches the resume. With ops it is a "
+        "422; when nothing can be applied without new wording it is a 400 that says so."
+    )
+)
+NoNewText = Annotated[bool, _NO_NEW_TEXT_FIELD]
 
 
 class FilledFieldInput(TypedDict):
@@ -823,12 +839,13 @@ def kb_capture(
     entity_id: str | None = None,
     ctx: Context | None = None,
 ) -> Any:
-    """Capture free-text career news into DRAFT points. A model matches it to an
-    existing entity or proposes a new one (this call uses the configured LLM
-    provider; with no API key set it returns an error); pass entity_id to force
-    placement. Points land as drafts for the user to approve at /career. The
-    text is stored as the user's own words and facts; the server does not verify
-    it. kb_add_points stores bullets the caller already wrote, with no LLM call."""
+    """Capture free-text career news into DRAFT points. Maestro's AI matches it to
+    an existing entity or proposes a new one, with the user's API key (with none
+    set it returns an error); pass entity_id to force placement. Refused (409)
+    when the user's writer setting (get_setup_status) says the agent app writes;
+    kb_add_points stores bullets the caller already wrote, with no LLM call.
+    Points land as drafts for the user to approve at /career. The text is stored
+    as the user's own words and facts; the server does not verify it."""
     return _client.kb_capture(
         text,
         entity_id=entity_id,
@@ -1622,13 +1639,15 @@ def update_application(
 @mcp.tool(**_write("Generate Screening Answers", destructive=False, idempotent=False, open_world=True))
 @_guard
 def generate_qa_answers(application_id: str, questions: list[str]) -> Any:
-    """Generate a batch of screening-question answers for an application.
+    """Maestro's AI writes a batch of screening-question answers for an
+    application, with the user's API key (with none set it returns an error).
     `questions` is the complete list of questions to answer in this batch.
     Outreach/cold messages are asked as free-form questions here (e.g. "Write a
     short LinkedIn DM to the hiring manager") — answers are grounded in the
     resume and the application's linked referral contact when one exists.
-    This call uses the configured LLM provider (with no API key set it returns
-    an error); store_qa_answers stores answers the caller wrote, with no LLM call."""
+    Refused (409) when the user's writer setting (get_setup_status) says the
+    agent app writes; store_qa_answers stores answers the caller wrote, with no
+    LLM call."""
     return _client.generate_qa_answers(application_id, questions)
 
 
@@ -1660,9 +1679,10 @@ def store_qa_answers(
 @mcp.tool(**_write("Generate Cover Letter", destructive=True, idempotent=False, open_world=True))
 @_guard
 def generate_cover_letter(application_id: str, tone: str) -> Any:
-    """Generate a cover letter for an application in the requested tone. This
-    replaces the application's prior generated cover-letter entry. This call
-    uses the configured LLM provider (with no API key set it returns an error);
+    """Maestro's AI writes a cover letter for an application in the requested
+    tone, with the user's API key (with none set it returns an error). This
+    replaces the application's prior generated cover-letter entry. Refused (409)
+    when the user's writer setting (get_setup_status) says the agent app writes;
     store_cover_letter stores a letter the caller wrote, with no LLM call."""
     return _client.generate_cover_letter(application_id, tone)
 
@@ -2129,15 +2149,12 @@ def create_tailoring_session(job_id: str, base_resume: str, enrich: bool = False
     alternatives are a user_input resolution (the user's answer to
     enrichment.elicitation_question), attach_project, or skip.
 
-    enrich=False (default) skips the backend's fast-model enrichment pass — no
-    in-house LLM call — so gaps carry only their deterministic fields (no
-    enrichment.elicitation_question / suggested_wording / suggested_placement).
-    KB coverage detection does NOT depend on it: the deterministic self-nomination
-    and evidence-verification pass that used to sit downstream of the LLM call now
-    runs unconditionally, so KB autos still get stamped with enrich=False, and
-    even during a provider outage. enrich=True pays for one fast-model call
-    adding those display-only explanations and elicitation questions per gap —
-    it never changes scores or which gaps exist.
+    enrich=True has Maestro's AI add display-only explanations to each gap
+    (enrichment.elicitation_question / suggested_wording / suggested_placement),
+    one fast-model call with the user's key; it never changes scores, which gaps
+    exist, or the career-history matches, which run without it. Refused (409)
+    when the user's writer setting (get_setup_status) says the agent app writes:
+    run it without enrich. The default, enrich=False, makes no model call.
 
     Response is the session plus a `next` next-step hint (null when hints are off
     or unavailable). `base_anchors` are the base's emphasis hints (countries,
@@ -2287,39 +2304,42 @@ def tailor_session(
     tailoring_session_id: str,
     user_prompt: str | None = None,
     ops: TailorOps = None,
+    no_new_text: NoNewText = False,
 ) -> Any:
-    """Run the tailor pipeline for a session: resolutions -> edit ops ->
-    tailored application, auto-scored.
+    """Run the tailor pipeline for a session: saved resolutions -> edit ops ->
+    the job's tailored application, scored and rendered.
 
-    Two ways to produce the edit ops:
-    - Default (ops omitted): the backend builds the tailor prompt from the saved
-      resolutions and calls the LLM to generate the ops.
-    - Caller-supplied (ops given): the caller has already produced the typed edit
-      ops (same op shapes as tailor_application/edit_application). The backend
-      skips its own LLM pass and applies them directly — the caller's judgment
-      IS the tailor. `ops` carry only the changed fields (the base is in
-      get_base_resume).
+    Three ways to produce the edits:
+    - ops omitted: Maestro's AI writes them, only when the user's writer setting
+      (get_setup_status) is Maestro's AI; otherwise refused (409).
+    - ops: the caller's own typed edit ops, the shapes edit_application takes
+      (edit_base_resume documents each kind), carrying only the changed fields;
+      no model call.
+    - no_new_text=True: no new wording and no model call, under either setting.
+    The ops and no_new_text parameters say which saved answers the server
+    applies; answers_left_to_ops lists the ones that need wording.
 
     Caller-supplied ops are applied as authored: the server validates structure
     only, so nothing gates fabricated skills, experience, metrics, or dates. A
     skill the candidate cannot evidence goes only in the skills list
     (add_skill_item), not in a bullet; the compare view audits any edit beyond
-    the saved resolutions. `ops` says which saved answers the server applies.
-    Resume text is implied first person: an edited line where I/he/she opens a
-    clause, his/her/my opens one or follows its verb ("Grew his team"), or the
-    owner's name appears returns 400 naming the lines.
+    the saved resolutions. Resume text is implied first person: an edited line
+    in I/he/she voice or naming the owner is a 400 naming the lines.
 
     Optional user_prompt adds free-form tailoring guidance. Writes the job's ONE
-    application from the base plus the ops: it rebuilds the draft and removes its
-    PDF (version history keeps the old draft), scores it, and returns
-    {session, compare, compare_error, next}. compare (before/after match score
-    deltas) may be null with compare_error set: the tailor still succeeded, so do
-    not retry. `kb_writeback_skips` derives from each user_input
-    resolution's STORED placement_target from resolve_gaps, not from the ops, so
-    ops that disagree with the stored target produce a spurious wrong_section
-    skip. `next` is a next-step hint naming render_pdf for that application
-    (null when suppressed or unavailable)."""
-    result = _client.tailor_session(tailoring_session_id, user_prompt=user_prompt, ops=ops)
+    application from the base plus the edits: it rebuilds the draft (version
+    history keeps the old draft) and renders its PDF; pdf_ready is false when
+    that render failed. compare (before/after match score deltas) may be null
+    with compare_error set: the tailor still succeeded. unbacked_skills names
+    missing skills this tailor put on the resume that career history does not
+    back. kb_writeback_skips derives from each user_input resolution's STORED
+    placement_target from resolve_gaps, not from the ops, so ops that disagree
+    with the stored target produce a spurious wrong_section skip. `next` names
+    render_pdf only when pdf_ready is false (null when suppressed or
+    unavailable)."""
+    result = _client.tailor_session(
+        tailoring_session_id, user_prompt=user_prompt, ops=ops, no_new_text=no_new_text
+    )
     application_id = (result.get("session") or {}).get("application_id")
     next_hint = (
         _best_effort_hint(
@@ -2327,6 +2347,7 @@ def tailor_session(
                 application_id=application_id,
                 allowed_tools=_active_allowed_tools(),
                 hints_enabled=_hints_enabled(),
+                pdf_ready=result.get("pdf_ready", False),
                 keywords_added=result.get("keywords_added") or [],
                 answers_left_to_ops=result.get("answers_left_to_ops") or [],
             )

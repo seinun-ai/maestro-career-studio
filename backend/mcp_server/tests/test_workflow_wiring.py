@@ -252,7 +252,7 @@ def test_resolve_gaps_wraps_with_next_hint(monkeypatch):
 def test_tailor_session_wraps_with_render_hint(monkeypatch):
     monkeypatch.setattr(
         srv._client, "tailor_session",
-        lambda sid, user_prompt=None, ops=None: {"session": {"id": sid, "application_id": "app1"}, "compare": None},
+        lambda sid, user_prompt=None, ops=None, no_new_text=False: {"session": {"id": sid, "application_id": "app1"}, "compare": None},
     )
     monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
 
@@ -262,12 +262,28 @@ def test_tailor_session_wraps_with_render_hint(monkeypatch):
     assert out["next"]["options"][0]["args"] == {"target_type": "application", "target_id": "app1"}
 
 
+def test_tailor_session_names_no_render_once_its_own_render_made_the_pdf(monkeypatch):
+    monkeypatch.setattr(
+        srv._client, "tailor_session",
+        lambda sid, user_prompt=None, ops=None, no_new_text=False: {
+            "session": {"id": sid, "application_id": "app1"}, "compare": None, "pdf_ready": True,
+        },
+    )
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
+
+    out = srv.tailor_session(tailoring_session_id="s1", no_new_text=True)
+
+    assert out["pdf_ready"] is True
+    assert out["next"]["call"] is None
+    assert all(o["tool"] != "render_pdf" for o in out["next"]["options"])
+
+
 def test_tailor_session_next_is_null_without_an_application_id(monkeypatch):
     # If tailor() ever returns a session with no application_id, there is no
     # PDF to point render_pdf at — the hint must degrade to null, not crash.
     monkeypatch.setattr(
         srv._client, "tailor_session",
-        lambda sid, user_prompt=None, ops=None: {"session": {"id": sid}, "compare": None},
+        lambda sid, user_prompt=None, ops=None, no_new_text=False: {"session": {"id": sid}, "compare": None},
     )
 
     out = srv.tailor_session(tailoring_session_id="s1")

@@ -1,9 +1,10 @@
 import json
 
 import httpx
+import pytest
 import respx
 
-from mcp_server.client import BackendClient
+from mcp_server.client import BackendClient, BackendError
 
 BASE = "http://test-backend"
 
@@ -124,3 +125,34 @@ def test_tailor_session_omits_ops_when_absent():
     # no ops arg -> no "ops" key in the body (None is dropped, not sent as null)
     BackendClient(BASE).tailor_session("s1")
     assert "ops" not in json.loads(route.calls.last.request.read())
+
+
+@respx.mock
+def test_tailor_session_sends_no_new_text_only_when_set():
+    route = respx.post(f"{BASE}/api/tailoring-sessions/s1/tailor").mock(
+        return_value=httpx.Response(200, json={"session": {"id": "s1"}, "pdf_ready": True})
+    )
+    client = BackendClient(BASE)
+    client.tailor_session("s1", no_new_text=True)
+    assert json.loads(route.calls.last.request.read()) == {"no_new_text": True}
+    client.tailor_session("s1", no_new_text=False)
+    assert json.loads(route.calls.last.request.read()) == {}
+
+
+@respx.mock
+def test_a_refused_no_new_text_with_ops_reads_as_a_sentence():
+    """FastAPI's 422 detail is a list; the agent reads its message, not the list."""
+    body = {"detail": [{
+        "type": "value_error", "loc": ["body"],
+        "msg": "Value error, no_new_text writes nothing new, so it takes no ops",
+        "input": {"no_new_text": True, "ops": [{"kind": "replace_summary", "value": "x"}]},
+        "ctx": {"error": "no_new_text writes nothing new, so it takes no ops"},
+    }]}
+    respx.post(f"{BASE}/api/tailoring-sessions/s1/tailor").mock(
+        return_value=httpx.Response(422, json=body)
+    )
+    with pytest.raises(BackendError) as exc:
+        BackendClient(BASE).tailor_session("s1", ops=[{"kind": "replace_summary", "value": "x"}], no_new_text=True)
+    assert str(exc.value) == (
+        "Backend returned 422: body: Value error, no_new_text writes nothing new, so it takes no ops"
+    )

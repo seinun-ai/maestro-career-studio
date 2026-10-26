@@ -1372,15 +1372,20 @@ class BackendClient:
         session_id: str,
         user_prompt: str | None = None,
         ops: list[dict] | None = None,
+        no_new_text: bool = False,
     ) -> Any:
         # The tailor pipeline is an LLM call (resolutions -> edit ops); bump the
         # timeout well past the 60s default. When `ops` is supplied the backend
-        # applies them directly and skips its own LLM pass. Only non-None keys are
-        # sent (via _drop_none) so the no-ops body stays clean.
+        # applies them directly and skips its own LLM pass; no_new_text skips it
+        # too and writes no wording. Only non-None keys are sent (via _drop_none),
+        # and no_new_text only when true, so the plain body stays clean.
+        payload = _drop_none(user_prompt=user_prompt, ops=ops)
+        if no_new_text:
+            payload["no_new_text"] = True
         return self._request(
             "POST",
             f"/api/tailoring-sessions/{_seg(session_id)}/tailor",
-            json=_drop_none(user_prompt=user_prompt, ops=ops),
+            json=payload,
             timeout=_LLM_TIMEOUT,
         )
 
