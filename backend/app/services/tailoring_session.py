@@ -1295,7 +1295,8 @@ def _answers_left_to_ops(
 ) -> list[dict[str, str]]:
     """Saved answers the server cannot apply without writing new text
     (user_input, attach_project). On the caller-ops path they reach the resume
-    only through the ops, so the response names them."""
+    only through the ops, and with no_new_text not at all, so the response
+    names them."""
     return [
         {
             "gap_id": item["gap_id"],
@@ -1406,18 +1407,24 @@ def tailor(
     session: Session | None = None,
     user_prompt: str | None = None,
     ops: list[ResumeEdit] | None = None,
+    no_new_text: bool = False,
 ) -> TailoringSession:
     """Resolutions -> edit ops -> Application -> tailored ATS score, atomically.
 
-    Two ways to produce the edit ops, then a shared mechanical tail:
+    Three ways to produce the edit ops, then a shared mechanical tail:
       - Default (``ops=None``): the backend builds the tailor prompt from the
         session's actionable resolutions and calls the LLM to generate the ops.
       - Caller-supplied (``ops`` non-empty): Claude (via MCP) has already produced
         its own typed edit ops. The backend skips the resolution bundle, the
         actionable guard, the prompt build, and its own LLM call entirely, and
         applies the caller's ops directly. Claude's judgment IS the tailor.
-    Both paths converge on the same apply -> application reuse-or-insert -> score
-    tail below.
+      - ``no_new_text``: nobody writes. The deterministic pre-ops (an enabled
+        entry, a ported career-history bullet) are the whole edit, keyword
+        survival puts each saved keyword into the skills list, and no model is
+        called, whoever writes for the request. Answers that need wording are
+        named on the response; when nothing at all applies, it refuses.
+    All three paths converge on the same apply -> application reuse-or-insert ->
+    score tail below.
 
     Nothing is committed before this function's OWN commit at the end: the
     application is only flushed, the session-row mutations are staged, and
@@ -1441,7 +1448,7 @@ def tailor(
             )
         _require_fresh(tailoring, session)
 
-        # Both paths edit the base resume; load it once up front.
+        # Every path edits the base resume; load it once up front.
         base = load_base_resume(tailoring.base_resume, session)
         pre_ops, handled_pre_ops, already_applied = _deterministic_pre_ops(
             tailoring.resolutions_json
@@ -1454,7 +1461,7 @@ def tailor(
                     f"Tailoring produced invalid deterministic pre-ops: {exc}"
                 ) from exc
 
-        # LLM path only: the caller-ops path never consults resolutions to
+        # Every path but the caller's ops, which never consults resolutions to
         # build its ops (Claude's ops are authoritative), so a stale stored
         # resolution there is inert.
         if not ops:
@@ -1462,8 +1469,8 @@ def tailor(
 
         # Explicit request value wins; the note stored on the session is the
         # fallback (finding F#12), so a tailor with no request prompt still
-        # honors what the user typed on the gap page. Resolved for both paths so
-        # the application row records the effective prompt either way.
+        # honors what the user typed on the gap page. Resolved for every path so
+        # the application row always records the effective prompt.
         user_prompt = (
             (user_prompt or "").strip()
             or (tailoring.user_prompt or "").strip()
@@ -1484,6 +1491,10 @@ def tailor(
             # changed is refused; a base line it left alone is the owner's, and
             # is repaired below only where that is mechanical.
             resume_ops.refuse_third_person(base, customized)
+        elif no_new_text:
+            # No model, no bundle: the pre-ops above are the only edits, and the
+            # keyword survival step below adds the saved keywords.
+            customized = copy.deepcopy(base)
         else:
             actionable, skipped, already_applied = _resolution_bundle(
                 tailoring, already_applied
@@ -1518,7 +1529,16 @@ def tailor(
         keywords_added = _missing_keywords(customized, tailoring.resolutions_json, gaps)
         if keywords_added:
             customized = _keyword_fallback(customized, keywords_added)
-        left_to_ops = _answers_left_to_ops(tailoring.resolutions_json, gaps) if ops else []
+        if no_new_text and not pre_ops and not keywords_added:
+            raise ValueError(
+                "There is nothing to apply without new wording: every saved answer "
+                "needs text written for it."
+            )
+        left_to_ops = (
+            _answers_left_to_ops(tailoring.resolutions_json, gaps)
+            if ops or no_new_text
+            else []
+        )
 
         # A job has one application: tailoring REUSES the job's newest one, whatever
         # its base, rather than orphan it (the job page surfaces only the newest, so a

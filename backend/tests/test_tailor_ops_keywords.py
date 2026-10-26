@@ -8,17 +8,29 @@ word is not on the resume goes into the skills list, never a bullet (§6
 inv-honesty), and the response names it. A keyword saved with only a place
 falls back to the gap's own skill. user_input and attach_project answers need
 new text, so on the ops path the response lists them for the ops to carry.
+
+`no_new_text` is the third path: Maestro writes no wording and calls no model,
+in either writer mode. It applies only the answers that need none (an enabled
+entry, a ported career-history bullet, saved keywords into skills) and lists
+the rest the same way.
 """
 
 from uuid import UUID
 
+from sqlalchemy import select
+
 from app.models.application import Application
+from app.models.tailoring_session import TailoringSession
+from tests.agent_writer_fixtures import MCP, forbid_model, key_configured, set_writer
 from tests.test_tailoring_sessions_router import (
     _forbid_llm,
     _mock_tailor_llm,
+    _open_library_session,
     _open_session,
+    _save_library_preops,
     _seed_base,
     _seed_job,
+    _seed_kb_points,
     _tailor,
 )
 
@@ -126,3 +138,120 @@ def test_the_model_path_also_keeps_a_keyword_saved_with_only_a_place(
     assert body["answers_left_to_ops"] == []  # the model path reads every answer
     application = db_session.get(Application, UUID(body["session"]["application_id"]))
     assert "Snowflake" in _skills(application)["Cloud"]
+
+
+def test_no_new_text_applies_only_what_needs_no_wording(db_session, tmp_path, monkeypatch, client):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    key_configured(monkeypatch)  # with a key configured it still must not reach the model
+    forbid_model(monkeypatch)
+    created = _open_session(
+        client, job, slug,
+        resolutions=[SNOWFLAKE_PLACE_ONLY, SALESFORCE_WORDED, ML_MODELS_ANSWER, DOCKER_PROJECT],
+    )
+
+    response = _tailor(client, created["id"], body={"no_new_text": True})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert sorted(body["keywords_added"]) == ["Salesforce", "Snowflake"]
+    assert body["answers_left_to_ops"] == [
+        {"gap_id": "coverage:0", "action": "user_input", "skill": "Build ML models"},
+        {"gap_id": "skill:docker", "action": "attach_project", "skill": "Docker"},
+    ]
+    application = db_session.get(Application, UUID(body["session"]["application_id"]))
+    assert "Snowflake" in _skills(application)["Cloud"]
+    assert not any("churn" in b for b in _bullets(application))  # the typed answer needs wording
+
+
+def test_no_new_text_lands_an_enabled_entry_and_a_career_history_bullet(
+    db_session, tmp_path, monkeypatch, client
+):
+    tailoring = _open_library_session(db_session, tmp_path, monkeypatch)
+    approved, _ = _seed_kb_points(db_session)
+    _save_library_preops(tailoring, approved, db_session)
+    key_configured(monkeypatch)
+    forbid_model(monkeypatch)
+
+    response = _tailor(client, str(tailoring.id), body={"no_new_text": True})
+
+    assert response.status_code == 200, response.text
+    application = db_session.get(Application, UUID(response.json()["session"]["application_id"]))
+    assert application.customized_json["projects"][0]["enabled"] is True
+    assert approved.text in application.customized_json["projects"][1]["bullets"]
+
+
+def test_no_new_text_takes_no_ops(db_session, tmp_path, monkeypatch, client):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    forbid_model(monkeypatch)
+    created = _open_session(client, job, slug, resolutions=[SALESFORCE_WORDED])
+
+    response = _tailor(
+        client, created["id"],
+        body={
+            "no_new_text": True,
+            "ops": [{"kind": "add_skill_item", "category": "Tools", "item": "Salesforce"}],
+        },
+    )
+
+    assert response.status_code == 422, response.text
+    assert "no_new_text writes nothing new, so it takes no ops" in response.text
+    assert db_session.get(TailoringSession, UUID(created["id"])).status == "open"
+    assert db_session.scalars(select(Application)).all() == []
+
+
+def test_no_new_text_with_nothing_to_apply_says_so(db_session, tmp_path, monkeypatch, client):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    key_configured(monkeypatch)
+    forbid_model(monkeypatch)
+    created = _open_session(
+        client, job, slug,
+        resolutions=[ML_MODELS_ANSWER, {"gap_id": "skill:docker", "action": "skip"}],
+    )
+
+    response = _tailor(client, created["id"], body={"no_new_text": True})
+
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == (
+        "There is nothing to apply without new wording: every saved answer needs text written for it."
+    )
+    assert db_session.get(TailoringSession, UUID(created["id"])).status == "open"
+    assert db_session.scalars(select(Application)).all() == []
+
+
+def test_an_agent_app_that_writes_may_tailor_with_no_new_text(
+    db_session, tmp_path, monkeypatch, client
+):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    created = _open_session(client, job, slug, resolutions=[SALESFORCE_WORDED])
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    key_configured(monkeypatch)
+    forbid_model(monkeypatch)
+
+    # Without ops or no_new_text Maestro's AI would write, so the agent app is refused.
+    assert _tailor(client, created["id"], body={}, headers=MCP).status_code == 409
+    response = _tailor(client, created["id"], body={"no_new_text": True}, headers=MCP)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["keywords_added"] == ["Salesforce"]
+
+
+def test_no_new_text_after_the_presets_fill_needs_no_model(db_session, tmp_path, monkeypatch, client):
+    """apply_profile with no_new_text: the presets fill is deterministic too, so an
+    agent app that writes may run both in one call and Maestro still writes nothing."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    created = _open_session(client, job, slug)
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    key_configured(monkeypatch)
+    forbid_model(monkeypatch)
+
+    response = _tailor(
+        client, created["id"], body={"apply_profile": True, "no_new_text": True}, headers=MCP
+    )
+
+    assert response.status_code == 200, response.text
+    assert "Docker" in response.json()["keywords_added"]  # the presets' missing-skill add

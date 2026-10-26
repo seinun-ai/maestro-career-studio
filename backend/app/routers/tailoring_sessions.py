@@ -156,10 +156,10 @@ def tailor_session(
     """Run the tailor pipeline: resolutions -> LLM edit ops -> application -> score."""
     row = _get_or_404(db, session_id)
     # After the 404, so an agent app is never told to write ops for a session that isn't there,
-    # and before the apply_profile fill, which commits. No ops of the caller's own means
-    # Maestro's AI writes the edits; only an agent request is refused (the web's one-call
-    # apply_profile path carries no MCP origin).
-    if not (payload and payload.ops):
+    # and before the apply_profile fill, which commits. Neither ops of the caller's own nor
+    # no_new_text means Maestro's AI writes the edits; only an agent request is refused (the
+    # web's one-call apply_profile path carries no MCP origin).
+    if not (payload and (payload.ops or payload.no_new_text)):
         agent_writer.refuse_unless_maestro_writes("Pass your own edits as ops, or no_new_text.")
     effective_prompt = payload.user_prompt if payload else None
 
@@ -183,6 +183,7 @@ def tailor_session(
             session=db,
             user_prompt=effective_prompt,
             ops=payload.ops if payload else None,
+            no_new_text=payload.no_new_text if payload else False,
         )
     except tailoring_session.StaleSessionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

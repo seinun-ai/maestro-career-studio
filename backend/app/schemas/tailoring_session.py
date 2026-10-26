@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.ats_score import AtsCompareRead
 from app.schemas.resume_edit import ResumeEdit
@@ -78,6 +78,16 @@ class TailorRequest(BaseModel):
     # tailor(), because save_resolutions commits and tailor()'s transaction
     # boundary is score_target. Existing resolutions always win.
     apply_profile: bool = False
+    # Write no new wording and call no model, whoever writes: apply only the saved
+    # answers that need none (an enabled entry, a ported career-history bullet,
+    # saved keywords into the skills list) and name the rest on the response.
+    no_new_text: bool = False
+
+    @model_validator(mode="after")
+    def _no_new_text_takes_no_ops(self) -> "TailorRequest":
+        if self.no_new_text and self.ops:
+            raise ValueError("no_new_text writes nothing new, so it takes no ops")
+        return self
 
 
 class KBWritebackSkip(BaseModel):
@@ -94,7 +104,8 @@ class KBWritebackSkip(BaseModel):
 
 
 class AnswerLeftToOps(BaseModel):
-    """A saved gap answer the server does not apply on the caller-ops path."""
+    """A saved gap answer the server does not apply on the caller-ops or
+    no_new_text path."""
 
     gap_id: str
     action: Literal["user_input", "attach_project"]
@@ -123,6 +134,6 @@ class TailorResponse(BaseModel):
     # Saved add_keyword words the edit left out, which the server added to the
     # skills list (never as a bullet), so a change nobody wrote is never silent.
     keywords_added: list[str] = Field(default_factory=list)
-    # Caller-ops path only: user_input and attach_project answers, which reach
-    # the resume only through the caller's ops.
+    # Caller-ops and no_new_text paths only: user_input and attach_project
+    # answers, which need wording the server did not write.
     answers_left_to_ops: list[AnswerLeftToOps] = Field(default_factory=list)
