@@ -1,4 +1,4 @@
-"""MCP workflow knobs: the user-held master switch for next-step hints.
+"""MCP workflow knobs: the user-held next-step hints switch and who writes for a connected agent app.
 
 Separate from quick_tailor_profile on purpose — one saved setting must not come
 to mean two things (SYSTEM.md §4). The MCP tool layer adds next-step workflow

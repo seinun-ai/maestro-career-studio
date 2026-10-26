@@ -4,6 +4,11 @@ A request is an agent request when it carries the MCP origin header (app/write_o
 client sends it on every call. The mark is a ContextVar set by AgentRequestMiddleware, a pure ASGI
 middleware, so it reaches sync routes on the threadpool (contextvars are copied into worker threads).
 The web app and the Companion send no such header, so Maestro's AI always writes for them.
+
+Where the mark does not reach: it crosses `asyncio.to_thread` and anyio's worker threads, but not
+`loop.run_in_executor`, a `ThreadPoolExecutor` or a raw `threading.Thread`, so a model call made on such a
+thread would not see it. And the backstop guards `llm.call_openai` only: `chat_agent` (the Assistant) and
+`llm_capabilities` (the probe on a model save) call providers directly, and neither is reachable over MCP.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.services import llm, mcp_workflow
+from app.write_origin import LEGACY_ORIGIN_HEADER, ORIGIN_HEADER, origin_from
 
 _AGENT_REQUEST: ContextVar[bool] = ContextVar("maestro_agent_request", default=False)
 
@@ -62,13 +68,9 @@ def refuse_unless_maestro_writes(instead: str) -> None:
         raise HTTPException(status_code=409, detail=f"{AGENT_WRITES} {instead}")
 
 
-def _on_request() -> None:  # test seam: runs inside the marked context
-    return None
-
-
 class AgentRequestMiddleware:
-    """Sets the mark for one HTTP request from its origin header, read the way app/write_origin.py
-    reads it (either header name, any case). Raw ASGI, never BaseHTTPMiddleware, like the origin gate."""
+    """Sets the mark for one HTTP request from its origin header, by the rule app/write_origin.py's
+    reader uses (`origin_from`). Raw ASGI, never BaseHTTPMiddleware, like the origin gate."""
 
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -78,10 +80,9 @@ class AgentRequestMiddleware:
             await self.app(scope, receive, send)
             return
         headers = Headers(scope=scope)
-        origin = headers.get("x-maestro-cs-origin") or headers.get("x-career-studio-origin") or ""
-        token = _AGENT_REQUEST.set(origin.strip().lower() == "mcp")
+        origin = origin_from(headers.get(ORIGIN_HEADER), headers.get(LEGACY_ORIGIN_HEADER))
+        token = _AGENT_REQUEST.set(origin == "mcp")
         try:
-            _on_request()
             await self.app(scope, receive, send)
         finally:
             _AGENT_REQUEST.reset(token)
