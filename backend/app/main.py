@@ -11,6 +11,7 @@ from starlette.responses import Response
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from app.agent_writer import AgentRequestMiddleware, AgentWritesError
 from app.config import settings as app_settings
 from app.origin_guard import OriginGuardMiddleware
 from app.services.sync.seal import HEADER as SEAL_HEADER
@@ -168,6 +169,11 @@ ALLOWED_ORIGINS = [
     *app_settings.allowed_web_origins,
     *_extension_origins,
 ]
+
+# Added FIRST, so it is the innermost and runs after Host → Origin → CORS: it
+# refuses nothing, only marks an agent request (the MCP origin header) for the
+# code inside it. See app/agent_writer.py.
+app.add_middleware(AgentRequestMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -382,15 +388,23 @@ class SyncPublicHostMiddleware:
 # This is the DNS-rebinding defence — see config.allowed_hosts for why CORS
 # alone cannot provide it. While sync_public_host is set, every http /api/sync
 # path is that door whatever Host says. The wrapper reads it per request.
-# Starlette's add_middleware PREPENDS, so the order these three calls appear in
-# is the reverse of the order they run in; the order is pinned by
-# test_the_host_check_outranks_the_origin_check.
+# Starlette's add_middleware PREPENDS, so the order these calls appear in is
+# the reverse of the order they run in (Host → Origin → CORS → agent mark); the
+# order is pinned by test_the_host_check_outranks_the_origin_check and
+# test_the_agent_mark_is_the_innermost_middleware.
 app.add_middleware(SyncPublicHostMiddleware, allowed_hosts=app_settings.allowed_hosts)
 
 
 @app.exception_handler(NotOwnedHere)
 async def not_owned_here_handler(request: Request, exc: NotOwnedHere):
     return JSONResponse(status_code=409, content={"detail": str(exc), "owner": exc.owner})
+
+
+@app.exception_handler(AgentWritesError)
+async def agent_writes_handler(request: Request, exc: AgentWritesError):
+    """A model call for an agent request while the agent app writes (llm.call_openai's backstop):
+    409 with the sentence that says so, never a 500."""
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.exception_handler(LLMProviderError)
