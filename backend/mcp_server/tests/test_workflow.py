@@ -359,6 +359,15 @@ def test_session_hint_names_who_writes_while_gaps_remain_too():
         assert option["detail"]["writer"] == writer
 
 
+def test_session_hint_writer_takes_the_settings_two_values():
+    import typing
+
+    from app.schemas.mcp_workflow import Writer
+
+    assert typing.get_type_hints(workflow.next_after_session)["writer"] == workflow.Writer
+    assert typing.get_args(workflow.Writer) == typing.get_args(Writer) == ("agent", "maestro")
+
+
 def test_session_hint_brief_and_switch_suppress():
     assert workflow.next_after_session(
         _session(), allowed_tools=None, hints_enabled=True, brief=True,

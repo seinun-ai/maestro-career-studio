@@ -86,8 +86,23 @@ def test_tailor_run_reads_who_writes_once_before_the_queue():
     body = _tailor_run_body()
     start = "Call `get_setup_status` once at the start and remember its `writer`"
     assert start in body and "and `ai_key`" in body
-    assert body.count("get_setup_status") == 1
-    assert body.index(start) < body.index("1. **Queue.**")
+    # Every mention is in the start paragraph: it is read once, before any job.
+    assert body.rfind("get_setup_status") < body.index("1. **Queue.**")
+
+
+def test_tailor_run_never_guesses_the_writer():
+    body = _tailor_run_body()
+    stop = ("If `get_setup_status` fails, stop the run rather than guess the writer, say so in "
+            "the digest and record the run as `failed`")
+    assert stop in body
+    assert body.index(stop) < body.index("1. **Queue.**")
+
+
+def test_tailor_run_speaks_to_the_agent_app_as_you():
+    body = _tailor_run_body()
+    assert "`agent` is you, the agent app" in body
+    assert "You (the agent app) write (`writer` is `agent`)" in body
+    assert "your agent app" not in body.lower()
 
 
 def test_tailor_run_without_a_key_for_maestros_ai_stops_before_the_queue():
@@ -112,6 +127,9 @@ def test_tailor_run_tailors_the_way_the_user_chose():
     assert "`tailor_session(tailoring_session_id=..., no_new_text=true)`" in agent
     assert "`answers_left_to_ops`" in agent
     assert "ai_key" not in agent
+    assert ("If it refuses because nothing can be applied without new wording, close the "
+            "session: a job with skipped gaps is left as in step 5, and a job with none counts "
+            "as skipped.") in agent
 
 
 def test_tailor_run_digest_names_unbacked_skills_and_the_answers_left():
@@ -123,12 +141,16 @@ def test_tailor_run_digest_names_unbacked_skills_and_the_answers_left():
     assert "any failure" in digest
 
 
-def test_tailor_run_fails_only_when_maestros_ai_writes_without_a_key():
+def test_tailor_run_fails_only_without_the_setup_status_or_a_key_for_maestros_ai():
     body = _tailor_run_body()
     record = body[body.index("10. **Record the run.**"):]
-    assert "`failed` only when Maestro's AI writes and the app has no AI key" in record
+    assert ("`failed` only when the run could not read the setup status, or Maestro's AI "
+            "writes and the app has no AI key") in record
     for count in ("`tailored`", "`needs_you`", "`skipped`"):
         assert count in record
+    assert ("`skipped`: other jobs skipped, including a job `no_new_text` refused that had "
+            "no skipped gaps to ask about") in record
+    assert "Record even when the run stopped at the start or for a missing AI key." in record
 
 
 @pytest.mark.parametrize("sentence", [

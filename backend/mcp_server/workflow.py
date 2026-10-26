@@ -9,7 +9,11 @@ mcp_server/tests, which never opens a database.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
+
+# Who writes for agent apps: the saved setting's two values (app/schemas/mcp_workflow.py's
+# Writer; a test pins the pair). server._writer turns the stored setting into one of them.
+Writer = Literal["agent", "maestro"]
 
 # Below this composite gap the two bases are not meaningfully different, so the
 # agent must present a CHOICE rather than a verdict. Deliberately NOT
@@ -255,7 +259,7 @@ def next_after_session(
     hints_enabled: bool,
     brief: bool = False,
     instruction: str | None = None,
-    writer: str = "agent",
+    writer: Writer = "agent",
 ) -> dict[str, Any] | None:
     """Compose the hint that follows create_tailoring_session (with or without
     use_presets' fill) or resolve_gaps — each returns a session in this shape.
@@ -313,7 +317,6 @@ def next_after_session(
         "resolutions_json holds the saved decisions (including any "
         "system-planned provenance-carrying entries). "
     )
-    writer = "maestro" if writer == "maestro" else "agent"
     if writer == "maestro":
         label = "Tailor from the saved resolutions; Maestro's AI writes the edits"
         note = saved + (

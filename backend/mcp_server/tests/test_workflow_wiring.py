@@ -260,6 +260,7 @@ def _settings_reads(monkeypatch, settings):
     ({"hints": True, "writer": "maestro"}, "maestro"),
     ({"hints": True, "writer": "agent"}, "agent"),
     ({"hints": True}, "agent"),
+    ({"hints": True, "writer": "someone else"}, "agent"),  # _writer is the one normalisation point
 ])
 def test_session_hints_say_who_writes_from_one_settings_read(monkeypatch, settings, writer):
     session = {"id": "s1", "gaps_json": {"categories": []}, "resolutions_json": []}

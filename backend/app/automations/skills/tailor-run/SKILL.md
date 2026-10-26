@@ -25,9 +25,11 @@ list a 409 in the digest instead.
 Only work jobs whose `ownership.owned_here` is true.
 
 Call `get_setup_status` once at the start and remember its `writer` (who writes:
-`agent` is your agent app, `maestro` is Maestro's AI) and `ai_key` (whether the app
-has its own AI key). When `writer` is `maestro` and `ai_key` is false, stop before the
-queue: create no session, say so in the digest and record the run as `failed` (step 10).
+`agent` is you, the agent app; `maestro` is Maestro's AI) and `ai_key` (whether the app
+has its own AI key). If `get_setup_status` fails, stop the run rather than guess the
+writer, say so in the digest and record the run as `failed` (step 10). When `writer` is
+`maestro` and `ai_key` is false, stop before the queue: create no session, say so in
+the digest and record the run as `failed` (step 10).
 
 1. **Queue.** `list_proposals(status="accepted")`, paging with `offset` until you
    have `total`. Each item gives `job_id`, `application_id` and `fit_json`.
@@ -53,11 +55,12 @@ queue: create no session, say so in the digest and record the run as `failed` (s
      checked pass writes the resume. If the call fails because the app has no AI
      key (it was removed during the run), close the session, stop the run and say
      so in the digest.
-   - Your agent app writes (`writer` is `agent`):
+   - You (the agent app) write (`writer` is `agent`):
      `tailor_session(tailoring_session_id=..., no_new_text=true)`. It writes no new
      wording and calls no AI: it applies only the saved answers that need none, and
      lists the ones that need wording in `answers_left_to_ops`. If it refuses because
-     nothing can be applied without new wording, leave the job as in step 5.
+     nothing can be applied without new wording, close the session: a job with
+     skipped gaps is left as in step 5, and a job with none counts as skipped.
 
    Pass `user_prompt` only when step 4's `next` hint carries one for `tailor_session`,
    copied exactly.
@@ -71,9 +74,11 @@ queue: create no session, say so in the digest and record the run as `failed` (s
    `answers_left_to_ops` as questions for the user (the answers that need wording);
    then the jobs that need the user and their questions, and any failure.
 10. **Record the run.** Call `record_run` with automation `tailor-run`, the outcome
-    (`ok`; `partial` if a job failed; `failed` only when Maestro's AI writes and the
-    app has no AI key), and `report` with `counts` (`tailored`: jobs tailored;
-    `needs_you`: jobs left for the user's answers; `skipped`: other jobs skipped).
-    Count each job once; exclude jobs counted in `needs_you` from `skipped`. Include
-    `digest` and `job_ids` for jobs tailored or left for the user.
-    Record even when the run stopped for a missing AI key.
+    (`ok`; `partial` if a job failed; `failed` only when the run could not read the
+    setup status, or Maestro's AI writes and the app has no AI key), and `report` with
+    `counts` (`tailored`: jobs tailored; `needs_you`: jobs left for the user's
+    answers; `skipped`: other jobs skipped, including a job `no_new_text` refused that
+    had no skipped gaps to ask about). Count each job once; exclude jobs counted in
+    `needs_you` from `skipped`. Include `digest` and `job_ids` for jobs tailored or
+    left for the user.
+    Record even when the run stopped at the start or for a missing AI key.

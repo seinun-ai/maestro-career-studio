@@ -463,10 +463,11 @@ def _hints_enabled() -> bool:
     return bool(_client.get_mcp_workflow_settings().get("hints", True))
 
 
-def _writer(settings: dict[str, Any]) -> str:
+def _writer(settings: dict[str, Any]) -> workflow.Writer:
     """Who writes for agent apps, from the saved mcp_workflow setting: "maestro" only
     when the user picked Maestro's AI, else "agent" (the default, which a setting saved
-    before the choice existed also reads as)."""
+    before the choice existed also reads as). The one place the stored value is
+    normalised; workflow takes it as given."""
     return "maestro" if settings.get("writer") == "maestro" else "agent"
 
 

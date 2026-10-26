@@ -38,8 +38,9 @@ def test_instructions_name_no_tool_the_set_lacks(profile):
 @pytest.mark.parametrize("profile", [p for p in orientation.SET_NAMES if p != "templates"])
 def test_instructions_say_setup_status_names_who_writes(profile):
     text = orientation.instructions_for(profile)
-    assert "writer says who writes" in text
-    assert "agent app" in text and "Maestro's AI" in text
+    assert "writer says who writes: you, the agent app" in text
+    assert "Maestro's AI" in text
+    assert "your agent app" not in text.lower()  # the reader is the agent app
 
 
 def test_a_scoped_set_says_what_it_is_for():
