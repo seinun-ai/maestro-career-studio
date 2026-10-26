@@ -16,7 +16,7 @@ import httpx
 from app.services.autofill_profile import canonical_identity_from_profile
 from app.services.http_client import new_client
 from app.services.pdfium_lock import PDFIUM_LOCK
-from app.write_origin import encode_detail
+from app.write_origin import ORIGIN_HEADER, encode_detail
 
 DEFAULT_BASE_URL = "http://localhost:8000"
 
@@ -117,7 +117,7 @@ def _origin_headers(origin_detail: str | None) -> dict[str, str]:
     the detail names the client so the entity timeline (or the proposal's
     proposed_by) can say who. The name is percent-encoded (encode_detail), since
     a header value must be ASCII and a client may call itself "クロード"."""
-    headers = {"X-Maestro-CS-Origin": "mcp"}
+    headers = {ORIGIN_HEADER: "mcp"}
     detail = encode_detail(origin_detail)
     if detail:
         headers["X-Maestro-CS-Origin-Detail"] = detail
@@ -418,6 +418,10 @@ class BackendClient:
         """One HTTP round trip with the shared error mapping."""
         _check_path(path)
         url = f"{self.base_url}{path}"
+        # Every request is an agent request (app/agent_writer.py: who writes for it). The routes
+        # that record a write's origin already got this header from _origin_headers, so what
+        # they store is unchanged; a caller's own headers (the client's name) ride on top.
+        kwargs["headers"] = {ORIGIN_HEADER: "mcp", **(kwargs.get("headers") or {})}
         try:
             proxy_options = {"trust_env": False} if _is_loopback(self.base_url) else {}
             with new_client(timeout=self._timeout, **proxy_options) as client:
