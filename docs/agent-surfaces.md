@@ -105,6 +105,15 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   from each request's `_meta` clientInfo on 2026-07-28, else `MAESTRO_CS_MCP_CLIENT`, else nothing. Pins: `test_http.py`,
   `test_http_modern.py` (one test per answer, over both eras where both serve it), `tests/test_mcp_http_loopback.py` (legacy,
   2026-07-28 and auto against a real single-worker uvicorn).
+  **The golden record** (`mcp_server/tests/test_wire_golden.py` and `fixtures/wire_golden.json`; the cases in `_golden_cases.py`, which
+  `test_http_modern.py` replays on 2026-07-28): per set, the 2025 path's initialize (capabilities, `serverInfo` name), the tool names
+  in order (on `/mcp` with each tool's title, schemas and annotations), the prompt names and titles and two `prompts/get`, then one
+  `tools/call` per answer shape and per refusal kind, and the crash. Tool descriptions, set instructions and prompt texts stay out, so
+  a copy edit never trips it; other tests pin each to its source on the wire (the descriptions:
+  `test_each_tool_on_the_wire_carries_its_own_description`). The same calls pin the log (only the crash). CI installs the newest
+  `mcp<3`, so the record is the net for an SDK minor release. On a difference: a deliberate change of ours is regenerated
+  (`MAESTRO_WIRE_GOLDEN_WRITE=1`, then a rerun without it) in a commit of its own that says why; an SDK release that changes an answer
+  is a decision, to fix our code so agents read the same, or to accept it and regenerate the same way.
 
 - **Who writes** (`app/agent_writer.py`; SYSTEM.md §6 inv-agent-writer). The saved `mcp_workflow` setting (`McpWorkflowSettings`:
   `hints`, `writer: "agent" | "maestro"`, default `"agent"`) says who writes for an agent request. Only Settings › Agent apps' **Who

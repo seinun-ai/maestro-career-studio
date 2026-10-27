@@ -1,17 +1,22 @@
-"""The golden record: what every tool set answers over HTTP today, word for word.
+"""The golden record: what every tool set answers over HTTP on the 2025 path, in the parts an
+SDK release can change.
 
 Per set it holds the initialize result, the tool list (in full on /mcp, names in order on
-the others) and the prompts; then one tool call per answer shape and one per refusal kind.
-The SDK move (Phase 4) must keep every entry. An entry changed on purpose is listed in
-_golden_cases.EXPECTED_CHANGES under its full entry name, with the whole entry as the record
-holds it (normalised). With MAESTRO_WIRE_GOLDEN_WRITE=1 the test writes the fixture from this
-run, with the Python, mcp and pydantic versions that made it, instead of comparing.
+the others) and the prompts; then one tool call per answer shape, one per refusal kind and a
+crash. Our own copy stays out: tool descriptions, set instructions, and prompt descriptions
+and texts, each pinned to its source by another test (the descriptions below), so a copy edit
+never trips the record. CI installs the newest mcp<3, so the record is the net for an SDK
+minor release; HOW_TO_ACT says what to do with a difference. An entry changed on purpose
+before its regeneration can be listed in _golden_cases.EXPECTED_CHANGES under its full entry
+name, with the whole entry as the record holds it (normalised). With
+MAESTRO_WIRE_GOLDEN_WRITE=1 the test writes the fixture from this run, with the Python, mcp
+and pydantic versions that made it, instead of comparing.
 
 No call reaches a backend: each case patches the one client method its tool calls, and a
 request that still gets as far as the network fails the test instead of being recorded.
 
-The same calls also pin the server log: no refusal's words in it (1.x logged none), only the
-crash, with its traceback.
+The same calls also pin the server log: no refusal's words in it, only the crash, with its
+traceback.
 """
 
 import difflib
@@ -41,9 +46,10 @@ SET_PATHS = (
     "/mcp/templates",
 )
 HOW_TO_ACT = (
-    "A deliberate change on mcp 1.x: regenerate with MAESTRO_WIRE_GOLDEN_WRITE=1 in a commit "
-    "of its own. After the SDK 2.x bump: list the entry in _golden_cases.EXPECTED_CHANGES; "
-    "never regenerate."
+    "A deliberate change of ours: regenerate with MAESTRO_WIRE_GOLDEN_WRITE=1, rerun without "
+    "it, and commit the fixture on its own, saying why. An mcp release that changes an answer: "
+    "decide first, then either fix our code so agents read what they did, or accept the new "
+    "answer and regenerate the same way."
 )
 
 _HUNK_LINES = 40
@@ -66,9 +72,45 @@ class _Wire:
         return response.json()
 
 
+def _without(mapping: Any, *keys: str) -> Any:
+    if not isinstance(mapping, dict):
+        return mapping
+    return {k: v for k, v in mapping.items() if k not in keys}
+
+
+def _slim(response: dict[str, Any], key: str | None, *copy: str) -> dict[str, Any]:
+    """The response without our copy: `copy` keys left out of its result, or of each item in
+    the result's `key` list. A response without a result is kept whole, so it shows up as a
+    difference."""
+    result = response.get("result")
+    if not isinstance(result, dict):
+        return response
+    if key is None:
+        slim = _without(result, *copy)
+    elif isinstance(result.get(key), list):
+        slim = {**result, key: [_without(item, *copy) for item in result[key]]}
+    else:
+        slim = result
+    return {**response, "result": slim}
+
+
+def _without_prompt_text(response: dict[str, Any]) -> dict[str, Any]:
+    """A prompts/get answer keeping each message's role and content type, not the text."""
+    response = _slim(response, None, "description")
+    result = response.get("result")
+    if not isinstance(result, dict) or not isinstance(result.get("messages"), list):
+        return response
+    messages = [
+        {**m, "content": _without(m.get("content"), "text")} if isinstance(m, dict) else m
+        for m in result["messages"]
+    ]
+    return {**response, "result": {**result, "messages": messages}}
+
+
 def _set_entries(wire: _Wire, path: str) -> dict[str, Any]:
-    """One set's initialize, tool list (in full on /mcp, names in order elsewhere) and prompts.
-    A response without a result is kept whole, so it shows up as a difference."""
+    """One set's initialize, tool list (in full on /mcp, names in order elsewhere) and prompts,
+    without our copy. A response without a result is kept whole, so it shows up as a
+    difference."""
     response = wire.client.post(path, json=INIT, headers=HDR)
     assert response.status_code == 200, (path, response.text)
     init = response.json()
@@ -77,11 +119,13 @@ def _set_entries(wire: _Wire, path: str) -> dict[str, Any]:
     tools = wire.ask(path, "tools/list")
     listed = (tools.get("result") or {}).get("tools")
     return {
-        f"initialize {path}": init,
+        f"initialize {path}": _slim(init, None, "instructions"),
         f"tools/list {path}": (
-            tools if path == "/mcp" or listed is None else [t.get("name") for t in listed]
+            _slim(tools, "tools", "description")
+            if path == "/mcp" or listed is None
+            else [t.get("name") for t in listed]
         ),
-        f"prompts/list {path}": wire.ask(path, "prompts/list"),
+        f"prompts/list {path}": _slim(wire.ask(path, "prompts/list"), "prompts", "description"),
     }
 
 
@@ -102,8 +146,8 @@ def record(client: TestClient) -> dict[str, Any]:
         for path in SET_PATHS:
             entries.update(_set_entries(wire, path))
         for name in ("tailor-run", "job-hunt"):
-            entries[f"prompts/get {name} on /mcp/tailor"] = wire.ask(
-                "/mcp/tailor", "prompts/get", {"name": name}
+            entries[f"prompts/get {name} on /mcp/tailor"] = _without_prompt_text(
+                wire.ask("/mcp/tailor", "prompts/get", {"name": name})
             )
         for call in CALLS:
             entries[f"tools/call {call.entry}"] = call_case(wire, call)
@@ -203,6 +247,15 @@ def test_wire_answers_match_the_golden_record():
             ]),
             pytrace=False,
         )
+
+
+def test_each_tool_on_the_wire_carries_its_own_description():
+    """The record leaves descriptions out, so this is where an SDK release that changed what
+    tools/list sends as a tool's description fails."""
+    with TestClient(asgi_app(mcp_http.McpEndpoint())) as client:
+        listed = _Wire(client).ask("/mcp", "tools/list")["result"]["tools"]
+    own = {tool.name: tool.description for tool in srv.mcp._tool_manager.list_tools()}
+    assert {t["name"]: t.get("description") for t in listed} == own
 
 
 def test_only_an_empty_experimental_capability_is_left_out_of_the_comparison():

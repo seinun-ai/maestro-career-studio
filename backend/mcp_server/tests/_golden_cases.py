@@ -18,16 +18,8 @@ FIXTURE = Path(__file__).parent / "fixtures" / "wire_golden.json"
 VERSIONS = "_recorded_with"
 
 # Full entry name -> the whole entry as the record holds it (normalised) after a deliberate
-# change. Empty while nothing is meant to change.
-EXPECTED_CHANGES: dict[str, Any] = {
-    # The owner's call: on 2.x a crash's own text stays in the server log.
-    "tools/call get_base_resume crashes on a KeyError": {
-        "result": {
-            "content": [{"type": "text", "text": "Error executing tool get_base_resume"}],
-            "isError": True,
-        }
-    },
-}
+# change that waits on its regeneration. Empty while nothing is meant to change.
+EXPECTED_CHANGES: dict[str, Any] = {}
 
 _JOB = {
     "job": {

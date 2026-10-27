@@ -553,7 +553,7 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 
 | Surface | Section in `docs/agent-surfaces.md` | Scope |
 |---|---|---|
-| MCP server | [MCP server](docs/agent-surfaces.md#mcp-server) | transport and loopback, the server on SDK 2.x (sets, refusal words, both eras), docstring ratchets, scoped profiles, who writes (the refusals and their limits), plugin, Connect an agent app, the `.mcpb` bridge, what tools send and read (status sources, per-country answers, analytics rows) |
+| MCP server | [MCP server](docs/agent-surfaces.md#mcp-server) | transport and loopback, the server on SDK 2.x (sets, refusal words, both eras, the golden record), docstring ratchets, scoped profiles, who writes (the refusals and their limits), plugin, Connect an agent app, the `.mcpb` bridge, what tools send and read (status sources, per-country answers, analytics rows) |
 | Guided tailoring workflow | [Guided tailoring workflow](docs/agent-surfaces.md#guided-tailoring-workflow) | the `next` envelope, ranking vs narrating, `offer` vs `ask_user`, the two controls, the LLM-free arc, apply readiness |
 | Onboarding workflow | [Onboarding workflow](docs/agent-surfaces.md#onboarding-workflow) | ingest → approve → base → render with zero in-house LLM; hint rules |
 | Automations page | [Automations page](docs/agent-surfaces.md#automations-page) | copy-only prompts, `record_run`, status from reports |
