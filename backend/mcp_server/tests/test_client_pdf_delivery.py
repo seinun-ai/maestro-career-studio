@@ -404,3 +404,128 @@ def test_prepare_upload_path_unchanged_when_host_root_unset(tmp_path, monkeypatc
 
     assert out["upload_path"] == str(upload_root / "a1" / "Resume.pdf")
     assert Path(out["upload_path"]).read_bytes() == pdf
+
+
+# ---------- document="cover_letter": the stored letter, staged like the resume ----------
+
+_LETTER_NAME = "Riley_Quill_DataAnalyst_CoverLetter.pdf"
+
+
+def _mock_qa_entries(entries, application_id: str = "a1"):
+    return respx.get(f"{BASE}/api/qa", params={"application_id": application_id}).mock(
+        return_value=httpx.Response(200, json=entries)
+    )
+
+
+def _letter(entry_id: str = "e1", pdf_path: str | None = f"/apps/x/{_LETTER_NAME}", answer="Dear team,"):
+    return {"id": entry_id, "application_id": "a1", "kind": "cover_letter", "prompt": None,
+            "answer": answer, "model_used": "agent", "pdf_path": pdf_path,
+            "created_at": "2026-10-26T10:00:00Z"}
+
+
+def _answer_entry():
+    return {"id": "q1", "application_id": "a1", "kind": "answer", "prompt": "Why us?",
+            "answer": "Because.", "model_used": "agent", "pdf_path": None,
+            "created_at": "2026-10-26T11:00:00Z"}
+
+
+@respx.mock
+def test_prepare_upload_stages_the_stored_cover_letter_beside_the_resume(tmp_path, monkeypatch):
+    upload_root = tmp_path / "uploads"
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(upload_root))
+    resume = multipage_text_pdf_bytes(["Tailored resume"])
+    letter = multipage_text_pdf_bytes(["Dear team, a letter"])
+    respx.get(f"{BASE}/api/applications/a1/pdf").mock(return_value=_pdf_response(resume))
+    _mock_qa_entries([_answer_entry(), _letter()])
+    respx.get(f"{BASE}/api/qa/e1/pdf").mock(return_value=_pdf_response(letter, _LETTER_NAME))
+    _mock_assert_open_proposal()
+    client = BackendClient(BASE)
+
+    resume_out = client.prepare_application_pdf_upload("a1")
+    letter_out = client.prepare_application_pdf_upload("a1", document="cover_letter")
+
+    expected = upload_root / "a1" / _LETTER_NAME
+    assert letter_out == {
+        "application_id": "a1",
+        "canonical_filename": _LETTER_NAME,
+        "upload_path": str(expected),
+        "size_bytes": len(letter),
+        "sha256": hashlib.sha256(letter).hexdigest(),
+        "page_count": 1,
+        "em_dash_found": False,
+        "em_dash_pages": [],
+    }
+    assert expected.read_bytes() == letter
+    # Its own name in the same folder: the resume's staged copy is still there, untouched.
+    assert resume_out["canonical_filename"] != letter_out["canonical_filename"]
+    assert Path(resume_out["upload_path"]).read_bytes() == resume
+
+
+@respx.mock
+def test_prepare_upload_renders_a_cover_letter_without_a_pdf_and_retries_once(tmp_path, monkeypatch):
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(tmp_path / "uploads"))
+    letter = multipage_text_pdf_bytes(["Rendered on retry"])
+    _mock_qa_entries([_letter(pdf_path=None)])
+    pdf_route = respx.get(f"{BASE}/api/qa/e1/pdf").mock(side_effect=[
+        httpx.Response(404, json={"detail": "PDF not found"}),
+        _pdf_response(letter, _LETTER_NAME),
+    ])
+    render_route = respx.post(f"{BASE}/api/qa/e1/render").mock(
+        return_value=httpx.Response(200, json=_letter())
+    )
+    _mock_assert_open_proposal()
+
+    out = BackendClient(BASE).prepare_application_pdf_upload("a1", document="cover_letter")
+
+    assert Path(out["upload_path"]).read_bytes() == letter
+    assert pdf_route.call_count == 2
+    assert render_route.call_count == 1
+
+
+@respx.mock
+def test_prepare_upload_refuses_when_no_cover_letter_is_stored(tmp_path, monkeypatch):
+    upload_root = tmp_path / "uploads"
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(upload_root))
+    _mock_qa_entries([_answer_entry(), _letter(answer="  ")])
+    _mock_assert_open_proposal()
+
+    with pytest.raises(BackendError, match="no cover letter"):
+        BackendClient(BASE).prepare_application_pdf_upload("a1", document="cover_letter")
+
+    assert not upload_root.exists()  # nothing staged, no render asked for (unmocked routes raise)
+
+
+@respx.mock
+def test_prepare_upload_cover_letter_falls_back_to_its_own_name(tmp_path, monkeypatch):
+    upload_root = tmp_path / "uploads"
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(upload_root))
+    letter = multipage_text_pdf_bytes(["No disposition"])
+    _mock_qa_entries([_letter()])
+    respx.get(f"{BASE}/api/qa/e1/pdf").mock(
+        return_value=httpx.Response(200, content=letter, headers={"content-type": "application/pdf"})
+    )
+    _mock_assert_open_proposal()
+
+    out = BackendClient(BASE).prepare_application_pdf_upload("a1", document="cover_letter")
+
+    # Never the resume's fallback (a1.pdf), so one cannot overwrite the other.
+    assert out["canonical_filename"] == "a1_CoverLetter.pdf"
+    assert (upload_root / "a1" / "a1_CoverLetter.pdf").read_bytes() == letter
+
+
+@respx.mock
+def test_prepare_upload_cover_letter_keeps_the_open_proposal_gate(tmp_path, monkeypatch):
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(tmp_path / "uploads"))
+    respx.post(f"{BASE}/api/applications/a1/assert-open-proposal").mock(
+        return_value=httpx.Response(409, json={"detail": "No open proposal for this job."})
+    )
+
+    with pytest.raises(BackendError, match="No open proposal"):
+        BackendClient(BASE).prepare_application_pdf_upload("a1", document="cover_letter")
+
+
+def test_prepare_upload_refuses_an_unknown_document(tmp_path, monkeypatch):
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(tmp_path / "uploads"))
+
+    with pytest.raises(BackendError, match="document"):
+        BackendClient(BASE).prepare_application_pdf_upload("a1", document="portfolio")

@@ -515,3 +515,13 @@ def test_every_tool_a_playbook_names_is_in_its_tool_set():
                 named.add("get_job_search_brief")
             missing = named - set(allow) if allow is not None else set()
             assert not missing, (card.id, card.toolset, sorted(missing))
+
+
+def test_apply_technique_stages_a_cover_letter_like_the_resume():
+    """A form that asks for a cover letter gets the application's stored letter, staged by the same tool;
+    a letter is never uploaded from the application's own folder either."""
+    skills = Path(__file__).resolve().parent.parent / "app" / "automations" / "skills"
+    text = " ".join((skills / "agent-apply-execution" / "SKILL.md").read_text().split())
+    tailored_pdf = text[text.index("## Tailored PDF"):text.index("## Form and evidence discipline")]
+    assert 'prepare_application_pdf_upload(application_id, document="cover_letter")' in tailored_pdf
+    assert "the cover letter's too" in tailored_pdf  # the forbidden-sources rule covers the letter

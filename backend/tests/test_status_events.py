@@ -5,7 +5,7 @@ every path that changes a status goes through.
 """
 
 import ast
-from contextlib import closing, contextmanager
+from contextlib import closing
 from datetime import UTC, datetime
 import json
 from pathlib import Path
@@ -207,21 +207,6 @@ def draft(db_session):
 def _fake_ctx(name: str):
     return SimpleNamespace(session=SimpleNamespace(
         client_params=SimpleNamespace(clientInfo=SimpleNamespace(name=name))))
-
-
-@pytest.fixture
-def mcp_tools(client, monkeypatch):
-    """The MCP server's own tool functions, talking to this test's app in process."""
-    from mcp_server import client as mcp_client
-    from mcp_server import server as srv
-
-    @contextmanager
-    def in_process(**_):
-        yield client
-
-    monkeypatch.setattr(mcp_client, "new_client", in_process)
-    monkeypatch.setattr(srv, "_client", mcp_client.BackendClient("http://testserver"))
-    return srv
 
 
 def test_a_status_change_on_the_web_writes_one_event_said_by_you(client, db_session, draft):

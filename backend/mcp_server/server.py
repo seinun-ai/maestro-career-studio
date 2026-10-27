@@ -1922,11 +1922,26 @@ def get_rendered_pdf_page_image(
     )
 
 
+_DOCUMENT_FIELD = Field(
+    description=(
+        '"resume" (default): the tailored resume\'s PDF. "cover_letter": the PDF of the cover '
+        "letter stored for the application (store_cover_letter or generate_cover_letter), rendered "
+        "first when it has none, staged in the same folder under its own file name, so the two "
+        "copies sit side by side. With no cover letter stored the call is refused and nothing is "
+        "staged."
+    )
+)
+
+
 @mcp.tool(**_write("Stage PDF for Upload", destructive=False, idempotent=True))
 @_guard
-def prepare_application_pdf_upload(application_id: str) -> Any:
+def prepare_application_pdf_upload(
+    application_id: str,
+    document: Annotated[Literal["resume", "cover_letter"], _DOCUMENT_FIELD] = "resume",
+) -> Any:
     """Stage a disposable copy of an application's canonical rendered PDF for
-    direct Playwright upload. If the PDF has not been rendered, render it and
+    direct Playwright upload: its tailored resume by default, or its cover letter
+    (document). If the PDF has not been rendered, render it and
     retry once. Writes atomically under
     $MAESTRO_CS_UPLOAD_DIR/<application_id>/<canonical filename>, defaulting
     to the repository's .playwright-mcp/uploads directory (pair Playwright
@@ -1937,7 +1952,7 @@ def prepare_application_pdf_upload(application_id: str) -> Any:
     source. Also returns filename/path integrity and PDF
     lint metadata. This preparation tool does not authorize or submit an
     application."""
-    return _client.prepare_application_pdf_upload(application_id)
+    return _client.prepare_application_pdf_upload(application_id, document=document)
 
 
 # ---------- resume templates (latex | typst) ----------

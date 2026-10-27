@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from email.message import Message
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, NamedTuple
@@ -1209,7 +1210,7 @@ class BackendClient:
             "page_image_b64": encoded,
         }
 
-    def prepare_application_pdf_upload(self, application_id: str) -> Any:
+    def prepare_application_pdf_upload(self, application_id: str, document: str = "resume") -> Any:
         if (
             not application_id
             or application_id in {".", ".."}
@@ -1217,6 +1218,8 @@ class BackendClient:
             or "\\" in application_id
         ):
             raise BackendError("application_id must be a safe path component")
+        if document not in ("resume", "cover_letter"):
+            raise BackendError(f"document must be 'resume' or 'cover_letter', not {document!r}")
 
         # P1: agent-sourced jobs must have an open proposal before staging upload.
         self._request(
@@ -1225,20 +1228,18 @@ class BackendClient:
             json={"op": "prepare"},
         )
 
-        pdf_path = f"/api/applications/{_seg(application_id)}/pdf"
-        try:
-            response = self._request_raw_response("GET", pdf_path)
-        except BackendError as exc:
-            detail = exc.body.get("detail") if isinstance(exc.body, dict) else exc.body
-            if exc.status_code != 404 or str(detail).lower() != "pdf not found":
-                raise
-            self.render_application(application_id)
-            response = self._request_raw_response("GET", pdf_path)
+        if document == "cover_letter":
+            response = self._cover_letter_pdf(application_id)
+            fallback = f"{application_id}_CoverLetter.pdf"  # never the resume's, so neither replaces the other
+        else:
+            response = self._rendered_once(
+                f"/api/applications/{_seg(application_id)}/pdf",
+                lambda: self.render_application(application_id),
+            )
+            fallback = f"{application_id}.pdf"
 
         content = response.content
-        canonical_filename = _response_filename(
-            response, f"{application_id}.pdf"
-        )
+        canonical_filename = _response_filename(response, fallback)
         upload_root = _upload_root()
         upload_path = upload_root / application_id / canonical_filename
         _atomic_write_bytes(upload_path, content)
@@ -1251,6 +1252,34 @@ class BackendClient:
             "sha256": hashlib.sha256(content).hexdigest(),
             **inspection,
         }
+
+    def _rendered_once(self, pdf_path: str, render: Callable[[], Any]) -> httpx.Response:
+        """GET a rendered PDF; when it has not been rendered yet (the 404 "PDF not found"),
+        render it and GET once more. Any other refusal is raised as it came."""
+        try:
+            return self._request_raw_response("GET", pdf_path)
+        except BackendError as exc:
+            detail = exc.body.get("detail") if isinstance(exc.body, dict) else exc.body
+            if exc.status_code != 404 or str(detail).lower() != "pdf not found":
+                raise
+            render()
+            return self._request_raw_response("GET", pdf_path)
+
+    def _cover_letter_pdf(self, application_id: str) -> httpx.Response:
+        """The PDF of the application's stored cover letter (it holds one; the list is newest
+        first), rendered first when it has none. No letter, or an empty one, stages nothing."""
+        entries = self.list_qa_entries(application_id) or []
+        letter = next((e for e in entries if e.get("kind") == "cover_letter"), None)
+        if letter is None or not str(letter.get("answer") or "").strip():
+            raise BackendError(
+                f"Application {application_id} has no cover letter stored, so nothing was staged; "
+                "store_cover_letter or generate_cover_letter makes one."
+            )
+        entry_id = letter["id"]
+        return self._rendered_once(
+            f"/api/qa/{_seg(entry_id)}/pdf",
+            lambda: self._request("POST", f"/api/qa/{_seg(entry_id)}/render", timeout=_RENDER_TIMEOUT),
+        )
 
     # ---- profile coach ----
     def explore_trends(self, view: str, **params: Any) -> Any:

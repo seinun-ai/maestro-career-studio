@@ -690,10 +690,11 @@ def test_get_rendered_pdf_page_image_tool_forwards_all_args(monkeypatch):
 
 
 def test_prepare_application_pdf_upload_tool_forwards_application_id(monkeypatch):
+    seen = {}
     monkeypatch.setattr(
         srv._client,
         "prepare_application_pdf_upload",
-        lambda application_id: {
+        lambda application_id, document="resume": seen.update(document=document) or {
             "application_id": application_id,
             "upload_path": f"/uploads/{application_id}/Resume.pdf",
         },
@@ -705,6 +706,20 @@ def test_prepare_application_pdf_upload_tool_forwards_application_id(monkeypatch
         "application_id": "a1",
         "upload_path": "/uploads/a1/Resume.pdf",
     }
+    assert seen == {"document": "resume"}  # a call without document stages the resume, as before
+
+
+def test_prepare_application_pdf_upload_tool_forwards_the_cover_letter(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client,
+        "prepare_application_pdf_upload",
+        lambda application_id, document="resume": seen.update(
+            application_id=application_id, document=document) or {"upload_path": "/u/a1/L.pdf"},
+    )
+
+    assert srv.prepare_application_pdf_upload("a1", document="cover_letter") == {"upload_path": "/u/a1/L.pdf"}
+    assert seen == {"application_id": "a1", "document": "cover_letter"}
 
 
 async def test_pdf_delivery_tools_expose_expected_input_schemas():
@@ -724,9 +739,11 @@ async def test_pdf_delivery_tools_expose_expected_input_schemas():
     assert tools["prepare_application_pdf_upload"].inputSchema["required"] == [
         "application_id"
     ]
-    assert set(
-        tools["prepare_application_pdf_upload"].inputSchema["properties"]
-    ) == {"application_id"}
+    upload = tools["prepare_application_pdf_upload"].inputSchema["properties"]
+    assert set(upload) == {"application_id", "document"}
+    assert upload["document"]["enum"] == ["resume", "cover_letter"]
+    assert upload["document"]["default"] == "resume"
+    assert "no cover letter" in upload["document"]["description"].lower()
 
 
 async def test_store_extracted_jd_exposes_source_enum_and_requirement_levels():
@@ -1122,7 +1139,8 @@ async def test_tailoring_text_names_only_tools_served_beside_it():
     for name in ("generate_cover_letter", "generate_qa_answers", "kb_capture",
                  "create_tailoring_session", "tailor_session", "score_ats", "get_tailoring_options",
                  "get_setup_status", "explore_trends", "get_career_context", "attach_evidence",
-                 "kb_approve_points", "store_extracted_jd", "render_pdf", "list_base_resumes"):
+                 "kb_approve_points", "store_extracted_jd", "render_pdf", "list_base_resumes",
+                 "prepare_application_pdf_upload"):
         named = set(re.findall(r"[a-z_]+", _schema_text(tools[name]))) & set(tools)
         for set_name, allow in PROFILE_ALLOWLISTS.items():
             if allow and name in allow:

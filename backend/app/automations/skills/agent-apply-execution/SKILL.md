@@ -50,10 +50,19 @@ The user's Maestro CS profile is the source of truth; distrust values an applica
   is current. Pass the returned absolute `upload_path` straight into Playwright’s
   file chooser / upload API. That path already lives under the shared
   `.playwright-mcp/uploads` tree (paired with Playwright `--output-dir`).
+- A form that asks for a cover letter gets the application's stored one:
+  `prepare_application_pdf_upload(application_id, document="cover_letter")` stages
+  its PDF beside the resume's copy, under its own file name; upload that
+  `upload_path` the same way. With no letter stored it refuses: a required
+  cover-letter box then gets a letter written first, the way `get_setup_status`'s
+  writer says (`store_cover_letter` for one you write from the job and the career
+  context, `generate_cover_letter` when Maestro's AI writes), then staged, and the
+  final review names it; an optional box stays empty.
 - Forbidden: copying/moving PDFs with shell or Claude filesystem tools; inventing
-  paths under a screenshot dir; uploading from `artifact_dir` / `applications/`;
-  asking the user for a broad folder grant so you can re-stage. “I need to copy
-  into Playwright’s output dir” is false when `upload_path` is already there.
+  paths under a screenshot dir; uploading from `artifact_dir` / `applications/`
+  (the cover letter's too); asking the user for a broad folder grant so you can
+  re-stage. “I need to copy into Playwright’s output dir” is false when
+  `upload_path` is already there.
 - Slim `get_rendered_pdf` is for inspection metadata/page paths (`artifact_dir`
   when present). Avoid base64. If `artifact_dir` is absent, still use
   `prepare_application_pdf_upload` — do not invent an artifact directory.
@@ -107,7 +116,7 @@ Click submit once. On verified success, attach the receipt as `submission_receip
 
 - Screenshots: attach paths, never bytes/private-only.
 - Never assume artifact-directory naming or trust parsed resume values.
-- PDF upload: `prepare_application_pdf_upload` → use `upload_path` as-is; never manual copy.
+- PDF upload (resume or cover letter): `prepare_application_pdf_upload` → use `upload_path` as-is; never manual copy.
 - EEO: consent-gated from `get_autofill_profile`; exact match only; never paste-into-chat.
 - Approval: same-turn, single-use. Triage accept is not approval.
 - Post-click uncertainty: terminal, no retry; user-attested closure only.

@@ -250,3 +250,27 @@ def test_answers_for_no_application_are_a_404(db_session, client):
         },
     )
     assert response.status_code == 404
+
+
+def test_an_agent_stages_the_letter_it_stored_for_upload(db_session, tmp_path, renders, mcp_tools, monkeypatch):
+    """MCP prepare_application_pdf_upload(document="cover_letter") through the real routes: refused
+    while no letter is stored, then the PDF store_cover_letter made, staged in the application's
+    upload folder under the letter's own name."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    srv = mcp_tools
+    uploads = tmp_path / "uploads"
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(uploads))
+    application = _application(db_session)
+
+    with pytest.raises(ToolError, match="no cover letter"):
+        srv.prepare_application_pdf_upload(str(application.id), document="cover_letter")
+    assert not uploads.exists()
+
+    srv.store_cover_letter(str(application.id), "Dear team,\n\nJane")
+    out = srv.prepare_application_pdf_upload(str(application.id), document="cover_letter")
+
+    name = "Jane_Doe_DataAnalyst_CoverLetter.pdf"
+    assert out["canonical_filename"] == name
+    assert Path(out["upload_path"]) == uploads / str(application.id) / name
+    assert Path(out["upload_path"]).read_bytes() == b"%PDF test"

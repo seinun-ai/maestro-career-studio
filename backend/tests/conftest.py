@@ -251,3 +251,21 @@ def client(db_session):
         yield TestClient(app)
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture
+def mcp_tools(client, monkeypatch):
+    """The MCP server's own tool functions, talking to this test's app in process
+    (through `client`), so a tool is tested against the real routes."""
+    from contextlib import contextmanager
+
+    from mcp_server import client as mcp_client
+    from mcp_server import server as srv
+
+    @contextmanager
+    def in_process(**_):
+        yield client
+
+    monkeypatch.setattr(mcp_client, "new_client", in_process)
+    monkeypatch.setattr(srv, "_client", mcp_client.BackendClient("http://testserver"))
+    return srv
