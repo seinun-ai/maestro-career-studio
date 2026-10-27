@@ -80,24 +80,26 @@ def _same_id(a: Any, b: Any) -> bool:
     return not isinstance(a, (dict, list)) and isinstance(a, bool) == isinstance(b, bool) and a == b
 
 
-def refusal_for(request: Any, status: int, raw: bytes) -> dict[str, Any] | None:
+def _is_error_for(body: Any, id_: Any) -> bool:
+    """`body` is a JSON-RPC error answering `id_`."""
+    if not isinstance(body, dict) or "id" not in body:
+        return False
+    error = body.get("error")
+    return (body.get("jsonrpc") == "2.0" and _same_id(body["id"], id_) and isinstance(error, dict)
+            and _is_integer(error.get("code")) and isinstance(error.get("message"), str))
+
+
+def refusal_for(request: dict[str, Any], status: int, raw: bytes) -> dict[str, Any] | None:
     """That path refuses a request with its JSON-RPC error and a 400 or 404 (Method not found, an
     unsupported revision with the supported list); the client is owed that answer, not
     "HTTP 404"."""
-    if not 400 <= status < 500 or not isinstance(request, dict) or "id" not in request:
+    if not 400 <= status < 500 or "id" not in request:
         return None
     try:
         body = json.loads(raw)
     except (ValueError, RecursionError):
         return None
-    if not isinstance(body, dict):
-        return None
-    error = body.get("error")
-    if (body.get("jsonrpc") == "2.0" and "id" in body and _same_id(body["id"], request["id"])
-            and isinstance(error, dict) and _is_integer(error.get("code"))
-            and isinstance(error.get("message"), str)):
-        return body
-    return None
+    return body if _is_error_for(body, request["id"]) else None
 
 
 class BridgeError(Exception):
@@ -135,12 +137,14 @@ class Bridge:
         self.stdout.write(json.dumps(body, separators=(",", ":")).encode("utf-8") + b"\n")
         self.stdout.flush()
 
+    def session_header(self) -> dict[str, str]:
+        return {"Mcp-Session-Id": self.session_id} if self.session_id else {}
+
     def post(self, line: str, routing: dict[str, str] | None = None
              ) -> tuple[int, str | None, Any, bytes]:
+        # A routed (2026-07-28) message never carries the 2025 session.
         headers = {"Accept": "application/json, text/event-stream",
-                   "Content-Type": "application/json", **(routing or {})}
-        if self.session_id and not routing:
-            headers["Mcp-Session-Id"] = self.session_id
+                   "Content-Type": "application/json", **(routing or self.session_header())}
         # httpx's timeouts restart in every phase, so the total is checked here as each body chunk
         # arrives. The SDK sends a JSON response's headers and body together, so in practice the
         # limit is ~T; the worst case (a slow connect, then a slow first byte) is ~2*T. There is no
@@ -180,6 +184,20 @@ class Bridge:
             raise BridgeError(f"Maestro Career Studio returned HTTP {result[0]}.")
         return result
 
+    def send_routed(self, request: dict[str, Any], line: str, routing: dict[str, str]) -> None:
+        """No session to send, adopt or replay: a 404 here is the server's answer, not a lost
+        session. subscriptions/listen would hold this one-at-a-time loop for its whole stream if a
+        set ever offered it; today every set refuses it at once."""
+        try:
+            result = self.post(line, routing)
+            refusal = refusal_for(request, result[0], result[3])
+            if refusal is not None:
+                self.write(refusal)
+            elif self.accepted(result)[0] == 200:
+                self.write(result[2])
+        except BridgeError as exc:
+            self.fail(request, str(exc))
+
     def fail(self, request: Any, message: str) -> None:
         items = request if isinstance(request, list) else [request]
         errors = [{"jsonrpc": "2.0", "id": item["id"], "error": {"code": -32000, "message": message}}
@@ -200,18 +218,7 @@ class Bridge:
             return
         routing = routing_headers(request)
         if routing:
-            # No session to send, adopt or replay: a 404 here is the server's answer, not a lost
-            # session. subscriptions/listen would hold this one-at-a-time loop for its whole stream
-            # if a set ever offered it; today every set refuses it at once.
-            try:
-                result = self.post(line, routing)
-                refusal = refusal_for(request, result[0], result[3])
-                if refusal is not None:
-                    self.write(refusal)
-                elif self.accepted(result)[0] == 200:
-                    self.write(result[2])
-            except BridgeError as exc:
-                self.fail(request, str(exc))
+            self.send_routed(request, line, routing)
             return
         method = request.get("method") if isinstance(request, dict) else None
         if method == "initialize":

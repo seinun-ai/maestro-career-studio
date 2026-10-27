@@ -401,32 +401,28 @@ def sentence(id_, status=400):
             "error": {"code": -32000, "message": f"Maestro Career Studio returned HTTP {status}."}}
 
 
-def test_a_2026_07_28_request_carries_its_version_method_and_name_as_headers():
-    messages = [
-        modern({"jsonrpc": "2.0", "id": "discover", "method": "server/discover"}),
-        modern({**LIST, "id": "list"}),
-        modern({"jsonrpc": "2.0", "id": "call", "method": "tools/call",
-                "params": {"name": "list_jobs", "arguments": {"limit": 5}}}),
-        modern({"jsonrpc": "2.0", "id": "prompt", "method": "prompts/get",
-                "params": {"name": "start_here"}}),
-        modern({"jsonrpc": "2.0", "id": "read", "method": "resources/read",
-                "params": {"uri": "notes://setup"}}),
-    ]
-    result = run_messages(messages, answer_by_id)
-    assert result.messages() == [{"jsonrpc": "2.0", "id": m["id"], "result": {}} for m in messages]
+@pytest.mark.parametrize(("message", "headers"), [
+    ({"jsonrpc": "2.0", "id": "discover", "method": "server/discover"},
+     {"mcp-method": "server/discover"}),
+    ({**LIST, "id": "list"}, {"mcp-method": "tools/list"}),
+    ({"jsonrpc": "2.0", "id": "call", "method": "tools/call",
+      "params": {"name": "list_jobs", "arguments": {"limit": 5}}},
+     {"mcp-method": "tools/call", "mcp-name": "list_jobs"}),
+    ({"jsonrpc": "2.0", "id": "prompt", "method": "prompts/get", "params": {"name": "start_here"}},
+     {"mcp-method": "prompts/get", "mcp-name": "start_here"}),
+    ({"jsonrpc": "2.0", "id": "read", "method": "resources/read", "params": {"uri": "notes://setup"}},
+     {"mcp-method": "resources/read", "mcp-name": "notes://setup"}),
+], ids=["server-discover", "tools-list", "tools-call", "prompts-get", "resources-read"])
+def test_a_2026_07_28_request_carries_its_version_method_and_name_as_headers(message, headers):
+    message = modern(message)
+    result = run_messages([message], answer_by_id)
+    assert result.messages() == [{"jsonrpc": "2.0", "id": message["id"], "result": {}}]
     assert result.err == ""
-    version = {"mcp-protocol-version": MODERN_VERSION}
-    assert [routing(seen) for seen in result.requests] == [
-        {**version, "mcp-method": "server/discover"},
-        {**version, "mcp-method": "tools/list"},
-        {**version, "mcp-method": "tools/call", "mcp-name": "list_jobs"},
-        {**version, "mcp-method": "prompts/get", "mcp-name": "start_here"},
-        {**version, "mcp-method": "resources/read", "mcp-name": "notes://setup"},
-    ]
-    for seen, message in zip(result.requests, messages, strict=True):
-        assert seen.line == compact(message), "the body is forwarded untouched"
-        assert seen.session is None
-        assert seen.headers["accept"] == "application/json, text/event-stream"
+    [seen] = result.requests
+    assert routing(seen) == {"mcp-protocol-version": MODERN_VERSION, **headers}
+    assert seen.line == compact(message), "the body is forwarded untouched"
+    assert seen.session is None
+    assert seen.headers["accept"] == "application/json, text/event-stream"
 
 
 def test_a_name_outside_plain_printable_ascii_travels_in_the_sdks_base64_form():
@@ -505,79 +501,65 @@ def test_a_404_to_a_2026_07_28_request_is_not_a_lost_session_so_nothing_is_repla
         "jsonrpc": "2.0", "id": "listen", "error": {"code": -32601, "message": "Method not found"}}
 
 
-def test_a_2026_07_28_refusal_reaches_the_client_as_the_servers_json_rpc_error():
-    refusals = {
-        "unknown": (404, {"code": -32601, "message": "Method not found"}),
-        "version": (400, {"code": -32022, "message": "Unsupported protocol version",
-                          "data": {"supported": [MODERN_VERSION], "requested": "2099-01-01"}}),
-    }
-    # Each of these is not this request's JSON-RPC refusal, so it gets the -32000 sentence.
-    fallbacks = {
-        "other-id": (400, {"jsonrpc": "2.0", "id": "someone-else",
-                           "error": {"code": -32602, "message": "No"}}),
-        "no-id": (400, {"jsonrpc": "2.0", "error": {"code": -32602, "message": "No"}}),
-        "string-code": (400, {"jsonrpc": "2.0", "id": "string-code",
-                              "error": {"code": "-32602", "message": "No"}}),
-        "fraction-code": (400, {"jsonrpc": "2.0", "id": "fraction-code",
-                                "error": {"code": -32602.5, "message": "No"}}),
-        "no-jsonrpc": (400, {"id": "no-jsonrpc", "error": {"code": -32602, "message": "No"}}),
-        "no-message": (400, {"jsonrpc": "2.0", "id": "no-message", "error": {"code": -32602}}),
-        "server-error": (500, {"jsonrpc": "2.0", "id": "server-error",
-                               "error": {"code": -32603, "message": "Internal error"}}),
-        # A notification is owed no answer, so its fallback writes nothing.
-        "notification": (400, {"jsonrpc": "2.0", "id": None,
-                               "error": {"code": -32022, "message": "Unsupported protocol version"}}),
-    }
-
-    def respond(seen):
-        id_ = seen.body.get("id", "notification")
-        if id_ in refusals:
-            status, error = refusals[id_]
-            return reply({"jsonrpc": "2.0", "id": id_, "error": error}, status)
-        if id_ in fallbacks:
-            return reply(fallbacks[id_][1], fallbacks[id_][0])
-        return httpx.Response(400, text="null" if id_ == "null-body" else "<html>Bad request</html>")
-
-    asked = [id_ for id_ in fallbacks if id_ != "notification"]
-    result = run_messages([
-        modern({"jsonrpc": "2.0", "id": "unknown", "method": "nope/method"}),
-        modern({**LIST, "id": "version"}),
-        *(modern({**LIST, "id": id_}) for id_ in asked),
-        modern({**LIST, "id": "html"}),
-        modern({**LIST, "id": "null-body"}),
-        modern({"jsonrpc": "2.0", "method": "notifications/cancelled",
-                "params": {"requestId": "unknown"}}),
-    ], respond)
-    assert result.messages() == [
-        {"jsonrpc": "2.0", "id": "unknown", "error": refusals["unknown"][1]},
-        {"jsonrpc": "2.0", "id": "version", "error": refusals["version"][1]},
-        *(sentence(id_, fallbacks[id_][0]) for id_ in asked),
-        sentence("html"),
-        sentence("null-body"),
-    ]
-    assert result.requests[-1].body["method"] == "notifications/cancelled"
+@pytest.mark.parametrize(("method", "status", "error"), [
+    ("nope/method", 404, {"code": -32601, "message": "Method not found"}),
+    ("tools/list", 400, {"code": -32022, "message": "Unsupported protocol version",
+                         "data": {"supported": [MODERN_VERSION], "requested": "2099-01-01"}}),
+    # Number.isInteger, which the Node twin checks, takes a whole float.
+    ("nope/method", 404, {"code": -32601.0, "message": "Method not found"}),
+], ids=["unknown-method", "unsupported-version", "whole-float-code"])
+def test_a_2026_07_28_refusal_reaches_the_client_as_the_servers_json_rpc_error(method, status, error):
+    result = run_messages(
+        [modern({"jsonrpc": "2.0", "id": "refused", "method": method})],
+        lambda seen: reply({"jsonrpc": "2.0", "id": seen.body["id"], "error": error}, status))
+    assert result.messages() == [{"jsonrpc": "2.0", "id": "refused", "error": error}]
     assert result.err == ""
 
 
-def test_a_refusal_is_matched_the_way_the_node_twin_matches_it_not_by_pythons_equality():
-    # JavaScript's === tells true from 1 and a missing id from null, and Number.isInteger takes 5.0
-    # but not true; Python's == and isinstance(…, int) say otherwise unless the twin checks.
-    replies = {
-        1: (400, {"jsonrpc": "2.0", "id": True, "error": {"code": -32602, "message": "No"}}),
-        None: (400, {"jsonrpc": "2.0", "error": {"code": -32602, "message": "No"}}),
-        "bool-code": (400, {"jsonrpc": "2.0", "id": "bool-code",
-                            "error": {"code": True, "message": "No"}}),
-        "whole-float": (404, {"jsonrpc": "2.0", "id": "whole-float",
-                              "error": {"code": -32601.0, "message": "Method not found"}}),
-    }
+NO = {"code": -32602, "message": "No"}
 
-    def respond(seen):
-        status, body = replies[seen.body["id"]]
-        return reply(body, status)
 
-    result = run_messages([modern({**LIST, "id": id_}) for id_ in replies], respond)
-    assert result.messages() == [
-        sentence(1), sentence(None), sentence("bool-code"), replies["whole-float"][1]]
+# Each answer is not this request's JSON-RPC refusal, so the request gets the -32000 sentence.
+@pytest.mark.parametrize(("id_", "status", "answer"), [
+    ("other-id", 400, {"jsonrpc": "2.0", "id": "someone-else", "error": NO}),
+    ("no-id", 400, {"jsonrpc": "2.0", "error": NO}),
+    ("string-code", 400, {"jsonrpc": "2.0", "id": "string-code",
+                          "error": {"code": "-32602", "message": "No"}}),
+    ("fraction-code", 400, {"jsonrpc": "2.0", "id": "fraction-code",
+                            "error": {"code": -32602.5, "message": "No"}}),
+    ("no-jsonrpc", 400, {"id": "no-jsonrpc", "error": NO}),
+    ("no-message", 400, {"jsonrpc": "2.0", "id": "no-message", "error": {"code": -32602}}),
+    ("server-error", 500, {"jsonrpc": "2.0", "id": "server-error",
+                           "error": {"code": -32603, "message": "Internal error"}}),
+    ("html", 400, "<html>Bad request</html>"),
+    ("null-body", 400, "null"),
+    # JavaScript's === and Number.isInteger, as the Node twin compares, tell true from 1, a
+    # missing id from null, and true from an integer; Python's == and isinstance(…, int) do not.
+    (1, 400, {"jsonrpc": "2.0", "id": True, "error": NO}),
+    (None, 400, {"jsonrpc": "2.0", "error": NO}),
+    ("bool-code", 400, {"jsonrpc": "2.0", "id": "bool-code",
+                        "error": {"code": True, "message": "No"}}),
+], ids=["other-id", "no-id", "string-code", "fraction-code", "no-jsonrpc", "no-message",
+        "server-error", "html", "null-body", "true-is-not-1", "missing-id-is-not-null",
+        "bool-code"])
+def test_any_other_answer_to_a_2026_07_28_request_keeps_the_http_sentence(id_, status, answer):
+    text = answer if isinstance(answer, str) else json.dumps(answer)
+    result = run_messages([modern({**LIST, "id": id_})],
+                          lambda _seen: httpx.Response(status, text=text))
+    assert result.messages() == [sentence(id_, status)]
+    assert result.err == ""
+
+
+def test_a_2026_07_28_notification_refused_with_a_json_rpc_error_writes_nothing():
+    # A notification is owed no answer, so its fallback writes nothing.
+    refusal = {"jsonrpc": "2.0", "id": None,
+               "error": {"code": -32022, "message": "Unsupported protocol version"}}
+    result = run_messages([modern({"jsonrpc": "2.0", "method": "notifications/cancelled",
+                                   "params": {"requestId": "unknown"}})],
+                          lambda _seen: reply(refusal, 400))
+    assert result.out == b""
+    assert result.err == ""
+    assert [seen.body["method"] for seen in result.requests] == ["notifications/cancelled"]
 
 
 def test_a_2026_07_28_notification_carries_version_and_method_responses_and_batches_go_as_before():
@@ -593,20 +575,24 @@ def test_a_2026_07_28_notification_carries_version_and_method_responses_and_batc
     ]
 
 
-def test_the_header_codec_and_the_revision_lists_match_the_sdk():
-    # The bridge copies these rather than import `mcp`, which would add ~200 ms to every start.
-    from mcp.shared.inbound import NAME_BEARING_METHODS, decode_header_value, encode_header_value
+# The bridge copies the codec and the lists below rather than import `mcp`, which would add
+# ~200 ms to every start; these two tests hold them to the SDK's own.
+@pytest.mark.parametrize("value", [
+    *(name for name, _header in ENCODED_NAMES), "list_jobs", "notes://setup", MODERN_VERSION,
+    "", " ", "end\n", "del\x7f", "nbsp\xa0", "\U0001f3af target", "=?base64??=", "=?base64?x",
+    "~!@#$%^&*()"])
+def test_the_header_codec_matches_the_sdks(value):
+    from mcp.shared.inbound import decode_header_value, encode_header_value
+
+    assert bridge.header_value(value) == encode_header_value(value)
+    assert decode_header_value(bridge.header_value(value)) == value
+
+
+def test_the_revision_lists_and_the_name_bearing_methods_match_the_sdks():
+    from mcp.shared.inbound import NAME_BEARING_METHODS
     from mcp_types import PROTOCOL_VERSION_META_KEY
     from mcp_types.version import HANDSHAKE_PROTOCOL_VERSIONS
 
-    values = [name for name, _header in ENCODED_NAMES] + [
-        "list_jobs", "notes://setup", MODERN_VERSION, "", " ", "end\n", "del\x7f", "nbsp\xa0",
-        "\U0001f3af target", "=?base64??=", "=?base64?x", "~!@#$%^&*()"]
-    for value in values:
-        assert bridge.header_value(value) == encode_header_value(value), value
-        assert decode_header_value(bridge.header_value(value)) == value
-    assert [bridge.header_value(name) for name, _header in ENCODED_NAMES] == [
-        header for _name, header in ENCODED_NAMES]
     assert bridge.HANDSHAKE_VERSIONS == frozenset(HANDSHAKE_PROTOCOL_VERSIONS)
     assert bridge.HANDSHAKE_VERSIONS == frozenset(HANDSHAKE_VERSIONS)
     assert bridge.NAME_PARAMS == dict(NAME_BEARING_METHODS)
