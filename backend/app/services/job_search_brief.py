@@ -93,9 +93,10 @@ def _brief_work_auth(typed: WorkAuth) -> dict[str, str | None]:
 
 
 def _work_auth_warnings(work_auth: dict[str, Any], country: str | None = None) -> list[str]:
-    """What is wrong with one country's answers; `country` (a label) names it unless the user
-    lives and applies in that one country."""
-    answers = "Your work authorization answers" + (f" for {country}" if country else "")
+    """What is wrong with one country's answers; `country` (a label) leads each warning unless the
+    user lives and applies in that one country ("Netherlands: your work authorization answers…",
+    which needs no article for "the United States")."""
+    answers = f"{country}: your work authorization answers" if country else "Your work authorization answers"
     authorized = (_str_or_none(work_auth.get("authorized_to_work")) or "").lower()
     sponsorship = (_str_or_none(work_auth.get("requires_sponsorship")) or "").lower()
     if not authorized or not sponsorship:

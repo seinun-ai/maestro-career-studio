@@ -447,8 +447,8 @@ def test_each_country_applied_in_is_warned_about_by_name(db_session, tmp_path, m
     warnings = body["warnings"]
     assert len(warnings) == 2
     netherlands, canada = warnings
-    assert "for Netherlands" in netherlands and "contradictory" in netherlands
-    assert "for Canada" in canada and "incomplete" in canada
+    assert netherlands.startswith("Netherlands: your work authorization answers are contradictory")
+    assert canada.startswith("Canada: your work authorization answers are incomplete")
     assert not [w for w in warnings if "Germany" in w or "India" in w]
     _assert_points_to_work_permits(warnings)
 
@@ -466,7 +466,7 @@ def test_the_home_set_is_one_of_the_countries_when_the_user_applies_at_home(
     assert body["profile"]["work_auth_market"] == "UK"
     assert body["profile"]["work_auth_by_country"]["UK"] == body["profile"]["work_auth"]
     assert [w for w in body["warnings"] if "incomplete" in w] == [
-        "Your work authorization answers for Ireland are incomplete. Fix them in Profile › "
+        "Ireland: your work authorization answers are incomplete. Fix them in Profile › "
         "Work permits before filtering jobs on them. The brief never guesses."
     ]
 
