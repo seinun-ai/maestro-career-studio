@@ -776,6 +776,19 @@ def test_a_shared_head_noun_is_no_likeness(text):
     assert role_categories.closest(text, roles=True) == []
 
 
+@pytest.mark.parametrize("roles", [False, True])
+def test_a_spelling_with_no_head_noun_is_not_alike_by_its_first_word(roles):
+    """`product_ds` and `product_owner` end in no head noun, so their last word still says what kind
+    of job: "product" alone, shared with a product designer or a product manager, is no likeness."""
+    assert role_categories.closest("product designer", roles=roles) == []
+    for text in ("product_mgr", "product managr"):
+        near = role_categories.closest(text, roles=roles)
+        assert near[0] == "product_manager", text
+        assert not {"data_scientist", "product_data_scientist"} & set(near), text
+    lead = role_categories.closest("product lead", roles=roles)
+    assert not {"data_scientist", "product_data_scientist", "business_analyst", "product_analyst"} & set(lead)
+
+
 @pytest.mark.parametrize("text, expected", [("BA", ["business_analyst"]), ("DE", ["data_engineer"])])
 def test_a_short_alias_answers_exactly_and_never_by_likeness(text, expected):
     # "BA" is a declared alias; "dba" and "sde" are three letters from it, and three letters are no

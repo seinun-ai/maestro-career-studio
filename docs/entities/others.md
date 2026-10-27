@@ -568,7 +568,8 @@
   (create and `from-kb`, `role_label` the way out; plan-from-kb, `other`), whose 422 then lists every valid key. `closest` gives at most three keys, nearest first, never `other` or `unknown`: `match_free_text`'s own answer (an alias or a
   rank-stripped title) leads, then the catalog spellings alike in the words that tell jobs apart. A head noun that ends two or more
   spellings ("engineer", "analyst", "manager", read from the catalog, a near misspelling included) is set aside, two different head
-  nouns never match, and a spelling of three letters or fewer matches exactly or not at all, so a civil engineer is not offered a CV
+  nouns never match, a side with none is compared whole (and when neither has one the last words must match too: a product
+  designer is not `product_ds`), and a spelling of three letters or fewer matches exactly or not at all, so a civil engineer is not offered a CV
   engineer and a field the catalog lacks is offered nothing. Job preferences also offer specific roles (`roles=True`). It words a
   refusal only: nothing is stored from it and `match_free_text` stays the mapping. Pins: `tests/test_role_categories.py`,
   `test_job_preferences.py`, `test_base_resume_role_category.py`, `test_settings_agent_patch.py`.

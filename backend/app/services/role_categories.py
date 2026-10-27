@@ -493,6 +493,10 @@ def _split(slug: str, heads: frozenset[str]) -> tuple[str, str | None]:
     return ("_".join(words[:-1]), head) if head else (slug, None)
 
 
+def _last(slug: str) -> str:
+    return slug.rsplit("_", 1)[-1]
+
+
 def _alike(ours: str, theirs: str) -> bool:
     """Whether two distinguishing parts name the same thing: equal, or both longer than `_SHORT`
     and `_CLOSE_RATIO` alike in spelling."""
@@ -512,10 +516,13 @@ def closest(text: str | None, limit: int = 3, *, roles: bool = False) -> list[st
     spellings alike in the words that tell jobs apart: a shared head noun
     ("_engineer", "_manager") says what kind of job, not which, so it is set
     aside and the rest must match (`_alike`), and two different head nouns never
-    match. "data_enginer" finds data_engineer; a civil engineer is not a CV
+    match. When only one side has a head noun the whole spellings must match;
+    when neither has, the last word ("ds", "owner", "mgr") still says what kind
+    of job, so it must match too: a product designer is not `product_ds`.
+    "data_enginer" finds data_engineer; a civil engineer is not a CV
     engineer, an HR manager not an engineering manager, and a job from a field
     the catalog lacks is named nothing, the honest answer. Spellings of
-    `_SHORT` letters or fewer match exactly or not at all. Ranked by the same
+    `_SHORT` letters or fewer match exactly or not at all. Ranked by a shared
     head noun first, then whole-spelling likeness. Categories only, as a
     `role_category` takes; with `roles`, specific roles too (`FavoredRole.role`
     takes either). Never `other`/`unknown`: storage sentinels, not suggestions.
@@ -536,10 +543,14 @@ def closest(text: str | None, limit: int = 3, *, roles: bool = False) -> list[st
         if len(spelling) <= _SHORT:
             continue
         their_words, their_head = _split(spelling, heads)
-        if head and their_head and head != their_head:
-            continue
-        if _alike(words, their_words):
-            near.append((head == their_head, _ratio(slug, spelling), spelling, key))
+        if head and their_head:
+            alike = head == their_head and _alike(words, their_words)
+        elif head or their_head:
+            alike = _alike(slug, spelling)
+        else:
+            alike = _alike(slug, spelling) and _alike(_last(slug), _last(spelling))
+        if alike:
+            near.append((bool(head) and head == their_head, _ratio(slug, spelling), spelling, key))
     near.sort(key=lambda n: (not n[0], -n[1], n[2]))
     found += [key for *_, key in near]
     keys = [key for key in dict.fromkeys(found) if key and key not in RESERVED]
