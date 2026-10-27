@@ -8,12 +8,12 @@
 # Never publish port 8001 or proxy /mcp beyond this computer.
 # The client announces its name in clientInfo for Career KB timeline labels.
 
-# Every tool (99), including Career KB writes.
+# Every tool (92), including Career KB writes.
 [mcp_servers.maestro-career-studio]
 url = "http://localhost:8001/mcp"
 enabled = true
 
-# You, set up and kept current: career history, base resumes, health check, form answers (39 tools).
+# You, set up and kept current: career history, base resumes, health check, form answers (38 tools).
 [mcp_servers.maestro-career-studio-profile]
 url = "http://localhost:8001/mcp/profile"
 enabled = false
@@ -28,12 +28,12 @@ enabled = false
 url = "http://localhost:8001/mcp/tailor"
 enabled = false
 
-# From the PDF to a submitted application: apply package, form answers, consent, submit (35 tools).
+# From the PDF to a submitted application: apply package, form answers, consent, submit (34 tools).
 [mcp_servers.maestro-career-studio-apply]
 url = "http://localhost:8001/mcp/apply"
 enabled = false
 
-# Statuses, referrals and the analytics charts (18 tools).
+# Statuses, referrals and the analytics charts (13 tools).
 [mcp_servers.maestro-career-studio-track]
 url = "http://localhost:8001/mcp/track"
 enabled = false

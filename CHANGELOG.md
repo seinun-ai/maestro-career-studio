@@ -45,7 +45,7 @@ work-permit answers for each country you apply in.
   history, base resumes and their anchors, the health check, form answers and preferences), `hunt`,
   `tailor` (new: from a saved job to its tailored resume and PDF), `apply` (now from the finished PDF to
   a submitted application; tailoring moved to `tailor`), `track` (was `explore`: statuses, referrals and
-  the charts) and `templates`; `full` has all 99 tools. `/mcp/career` and `/mcp/explore` keep working
+  the charts) and `templates`; `full` has all 92 tools. `/mcp/career` and `/mcp/explore` keep working
   for one release. The Apply session and Apply automatically
   playbooks no longer tailor: a queued job that isn't tailored yet stays queued for the next Tailor run,
   and the run's digest says so.
@@ -61,7 +61,25 @@ work-permit answers for each country you apply in.
   tailor presets in one call. If the fill fails, the error names the session it started.
 - **`tailor_application` is gone from MCP.** It rebuilt a draft without the tailoring session's checks.
   Tailor through a session (`create_tailoring_session`, then `tailor_session`), or change a draft in
-  place with `edit_application`. The web app's route stays. MCP now has 99 tools, 31 in `tailor`.
+  place with `edit_application`. The web app's route stays.
+- **Eight MCP tools are folded into three.** Each answer is the same as before; only the call changes.
+  - `explore_top_skills`, `explore_skill_heatmap`, `explore_role_mix_over_time`,
+    `explore_fit_distribution`, `explore_ats_over_time` and `explore_tailoring_lift` are now
+    `explore_trends(view=...)`, with `view` one of `top_skills`, `heatmap`, `role_mix`,
+    `fit_distribution`, `ats_over_time` or `tailoring_lift`. A filter or `limit` a view doesn't take
+    is refused rather than ignored. `explore_gap_frequency` stays as it was.
+  - `get_career_export` is now `get_career_context(format="markdown")`, the same `career.md` text.
+  - `attach_evidence_file` is now `attach_evidence(..., file_path=...)`, with the same file rules.
+    `attach_evidence` takes exactly one of `image_base64` or `file_path`.
+
+  MCP now has 92 tools: `profile` 38, `hunt` 22, `tailor` 31, `apply` 34, `track` 13, `templates` 13.
+- **`kb_approve_points` only approves.** It no longer takes `state`; `kb_retire_points` retires. A
+  call that still passes a `state` other than "approved" is refused with "kb_approve_points only
+  approves; kb_retire_points retires points." and changes nothing, so an old prompt can't approve the
+  points it meant to retire.
+- **A removed tool says what replaced it.** A call to any tool this release removes, `quick_tailor`
+  and `tailor_application` included, answers with what replaced it instead of "Unknown tool", on every
+  tool set: for example, `explore_top_skills was replaced by explore_trends(view="top_skills").`
 - **Two steps for agent apps.** If a scheduled job runs a Tailor run prompt you copied before this
   release, copy it again from **Automations**: the old copy calls `quick_tailor`, which is gone, and
   `tailor_session` without `ops`, which the new default refuses. If you relied on Maestro's AI writing
@@ -183,7 +201,7 @@ work-permit answers for each country you apply in.
   opens or ends a line no longer takes the line break with it, for written letters too), answers as plain
   text, and career bullets in your own voice. REST: `POST /api/qa/cover-letter`, `POST /api/qa/answers`,
   `POST /api/kb/entities/{id}/drafts`.
-- **Four MCP tools save what Setup asks for** (99 MCP tools in all now), so an agent with no web page and no AI
+- **Four MCP tools save what Setup asks for**, so an agent with no web page and no AI
   key in Maestro can finish setup: `set_autofill_profile` (form answers, with work permits for each
   country; `apply`, `career` and `full`), `set_job_preferences`, `set_markets` (where you live, where
   you apply, the currency pay reads in) and `set_persona` (`career` and `full`). Each changes only

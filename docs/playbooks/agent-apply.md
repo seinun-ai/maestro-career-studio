@@ -324,7 +324,8 @@ or human-only controls always require direct handoff.
 
 The target manifest defines exactly three evidence kinds:
 `step`, `final_review`, and `submission_receipt`.
-`attach_evidence_file` requires a `kind` from this enum. Approval requires at
+`attach_evidence` requires a `kind` from this enum; pass the screenshot's saved
+`file_path` rather than its bytes. Approval requires at
 least one `final_review` item; `mark_submitted` requires a
 `submission_receipt`.
 
@@ -348,7 +349,7 @@ to decline (`reason="duplicate"`).
 When `get_final_review`'s `base_country.eligible` is false, name the resume and the job's country in the Submit-now question.
 
 Capture the completed final-review state and silently attach its file path with
-`attach_evidence_file(..., kind="final_review")` before asking for consent.
+`attach_evidence(..., file_path=..., kind="final_review")` before asking for consent.
 This final-review evidence is required in addition to the per-page answer
 records.
 
@@ -370,7 +371,7 @@ does not authorize submission.
 
 Immediately after successful approval, click submit once. Verify the ATS
 success state, capture the receipt or confirmation, and attach its file path
-with `attach_evidence_file(..., kind="submission_receipt")`; only then call
+with `attach_evidence(..., file_path=..., kind="submission_receipt")`; only then call
 `mark_submitted`, which requires that receipt and remains the post-success
 ledger stamp that changes the application to `applied` and stamps `applied_at`.
 

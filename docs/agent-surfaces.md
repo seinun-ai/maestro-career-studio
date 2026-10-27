@@ -15,7 +15,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   Coverage: [docs/entities/others.md](docs/entities/others.md), "MCP tool coverage".
   **Tool sets**: `profiles.py` owns the allowlists and `orientation.py` the ordered table of what each holds: `profile` (onboarding:
   career history, base resumes and anchors, health check, versions, form answers, preferences), `hunt`, `tailor` (saved job to tailored
-  PDF; 31 tools), `apply` (PDF to submitted), `track` (statuses, referrals, charts), `templates`, and `full` (99 tools); `/mcp` = `full`,
+  PDF; 31 tools), `apply` (PDF to submitted), `track` (statuses, referrals, charts), `templates`, and `full` (92 tools); `/mcp` = `full`,
   `/mcp/{set}` = its allowlist, and `career`/`explore` still serve `profile`/`track` for one release (`PROFILE_ALIASES`).
   Each set's server instructions (`orientation.instructions_for`, under Claude Code's 4,096-character
   cut) say what it holds, the other sets and that the rules hold however the agent talks with the user; every set but templates
@@ -32,9 +32,16 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   Stdio filters `MAESTRO_CS_MCP_PROFILE` (default `full`; migration state: §13 `mcp-stdio-venv`).
   Hints use request `CURRENT_PROFILE`, else env (pins: `mcp_server/tests/test_profiles.py`, `test_server.py`, `test_http.py`).
   **KB grooming tools** (`profile` and `full`): `kb_groom_entity` (read-only similar-bullet report per entity, zero LLM calls),
-  `kb_combine_points` (fold points into one keeper; the others become its wordings) and `kb_retire_points` (the retire twin of
-  `kb_approve_points`); the two writes share `kb_approve_points`' convention gate and are `destructive=False` because `/career`
+  `kb_combine_points` (fold points into one keeper; the others become its wordings) and `kb_retire_points` (the one way to retire;
+  `kb_approve_points` only approves); the two writes share `kb_approve_points`' convention gate and are `destructive=False` because `/career`
   reverses them. `kb_sync_base` keeps a rephrasing as a wording (0.80+) and returns `compared_wording` (docs/entities/others.md, Career KB).
+  **Removed names** (`replaced.py`): a call to a tool a change removed (`REPLACED_TOOLS`: the six old analytics tools,
+  `get_career_export`, `attach_evidence_file`, `quick_tailor`, `tailor_application`) answers "<name> was replaced by <replacement>.",
+  e.g. `explore_top_skills was replaced by explore_trends(view="top_skills").`, not "Unknown tool", on stdio and every HTTP set
+  (`server._ServedMCP.call_tool` for stdio and `full`, `http`'s `_call_tool` for a scoped set). A removed argument is refused the same
+  way and never acted on: FastMCP drops an undeclared argument, so `kb_approve_points` with a `state` other than "approved" answers
+  "kb_approve_points only approves; kb_retire_points retires points." rather than approving drafts the user rejected. Pins:
+  `test_replaced.py`, `test_http.py`.
   **Caller-authored twins.** The tools where Maestro's AI writes have caller-authored twins (all but `run_health_check`, which hands the
   judging over instead), so the agent app does the writing when the user's `writer` says so, or with no key in Maestro, and the server
   validates and stores it: `store_extracted_jd` (extraction), `tailor_session(ops=…)`
@@ -87,8 +94,15 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   without one), every country's answers under `work_auth_by_country` (market keys, "UK") and `work_auth_market` naming whose set
   `work_auth` is (§6 inv-work-permit-per-country). `store_extracted_jd` stores `work_mode` and `level` as keys (`on_site`, `senior`)
   and reads a bare "$" as no currency, so the job's country's applies (`salary_currency_assumed`; docs/entities/job.md).
-  `explore_skill_heatmap` rows carry `count` and `of` beside `pct_jobs`, and `explore_role_mix_over_time` returns every week from
-  the first to the last for every role, 0 where it had none. No tool reads Today or the search summary; `set_markets` is the one
+  `explore_trends(view)` reads each view from the REST route its old tool called (`client.EXPLORE_VIEWS`): `top_skills`, `heatmap`,
+  `role_mix`, `fit_distribution`, `ats_over_time`, `tailoring_lift`. The job filters (`role_category`, `level`, `employment_type`) go
+  only to `top_skills`, `ats_over_time` and `tailoring_lift`, `limit` (1–100) only to `top_skills` and `heatmap`; a filter or limit
+  the view does not take is refused ("role_mix takes no filters") before any request. `heatmap` rows carry `count` and `of` beside `pct_jobs`, and `role_mix`
+  returns every week from the first to the last for every role, 0 where it had none; `explore_gap_frequency` stays its own tool.
+  `get_career_context` returns the structured context (`GET /api/kb/context`) or, with `format="markdown"`, the exact career.md text
+  (`GET /api/exports/career`). `attach_evidence` takes exactly one of `image_base64` or `file_path` (PNG/JPEG by magic bytes, 5 MB,
+  a host `.playwright-mcp/` path read from the container's mount; the bytes never enter the model context), and refuses both or
+  neither before an upload. No tool reads Today or the search summary; `set_markets` is the one
   door to the market and money settings, and the explore tools take no period or source.
 
 - **The health check when Maestro's model does not judge.** No model key is set, or the request is an agent request while the agent

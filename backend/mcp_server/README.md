@@ -19,7 +19,7 @@ same URL, and its `maestro connect` command does the setup below from the termin
 ## Install
 
 Open Settings › Agent apps › **Connect an agent app** and choose a
-**Tool set**. Every route defaults to `full` (all 99 tools); see
+**Tool set**. Every route defaults to `full` (all 92 tools); see
 [Profiles](#profiles) to narrow it. Enable one connection per client.
 
 ### Claude Desktop
@@ -143,12 +143,12 @@ Each scoped URL lists exactly its allowlist and refuses tools outside it.
 
 | Set | Use it when you say | Tools |
 | --- | --- | --- |
-| `full` | Anything (default) | all 99 |
-| `profile` | "Set me up", "import my resume", "add a project": career history, base resumes, health check, form answers, preferences | 39 |
+| `full` | Anything (default) | all 92 |
+| `profile` | "Set me up", "import my resume", "add a project": career history, base resumes, health check, form answers, preferences | 38 |
 | `hunt` | "Find me jobs": capture, score and propose | 22 |
 | `tailor` | "Tailor my resume for this job": gaps, tailored resume, PDF, health check, undo | 31 |
-| `apply` | "Apply to this job": cover letter and answers, form answers, consent, submit | 35 |
-| `track` | "Update my statuses", "how's my search going": statuses, referrals, charts | 18 |
+| `apply` | "Apply to this job": cover letter and answers, form answers, consent, submit | 34 |
+| `track` | "Update my statuses", "how's my search going": statuses, referrals, charts | 13 |
 | `templates` | "Make a resume design" | 13 |
 
 The sets follow a job search: profile, hunt, tailor, apply, track. Each set's server
@@ -216,6 +216,8 @@ asks when to run it.
 ## The tools
 
 Each tool's own description (which your assistant sees) has the full details.
+An old prompt that calls a tool a release removed gets back the tool that does
+that job now, for example `explore_top_skills was replaced by explore_trends(view="top_skills").`
 
 **Jobs and search**
 - `get_job_search_brief`: your profile, constraints, resume summaries, sync status (`enabled`, `role`) and an `applying` block (`answer_level`: your Screening answers setting, `facts`, `history` or `queued`); call first in a job-search chat.
@@ -290,15 +292,15 @@ Diversity answers and their consent, full automation, the job-site login and eve
 - `record_consent`: record your approve/reject after you answer, or the agent's automatic approval with channel `auto` while full automation is On. Auto approval requires a Queued proposal, final-review evidence, a company off the skip list and a daily-cap slot.
 - `get_job_site_login`: the saved job-site email and password, only while full automation is On, for a Queued or approved proposal off the skip list. Each hand-off is audited without the value; the login passes through your agent's AI provider. Use it only for job-site accounts.
 - `record_run`: record one finished automation run; it appears under Recent runs on the Automations page.
-- `attach_evidence`, `attach_evidence_file`: attach the final-review screenshot and, when using receipt evidence, the submission confirmation.
+- `attach_evidence`: attach the final-review screenshot and, when using receipt evidence, the submission confirmation, either as the image itself or as the path of a screenshot saved on this computer (PNG or JPEG, up to 5 MB), so its bytes never pass through the chat.
 - `mark_submitted`: mark an approved proposal as submitted with receipt evidence or the user's attestation. While full automation is On, channel `auto` records the agent's word with a note naming what confirmed submission (at least one letter or digit); a receipt is optional. It can also confirm `submission_uncertain`, without another submit click.
 
 **Career KB**
-- `get_career_context`, `get_career_export`: your full career record, as structured data or as `career.md`.
+- `get_career_context`: your full career record, as structured data or, with `format="markdown"`, as `career.md`.
 - `kb_list_entities`, `kb_get_entity`, `kb_list_points`: browse entries and points, with their IDs.
 - `kb_capture`, `kb_add_points`, `kb_ingest_resume`, `kb_sync_base`: add new material as draft points for you to approve. `kb_add_points` takes bullets your assistant already wrote for an entry, with no AI call; `kb_capture` has Maestro's AI write them, only when you chose it (see [Who writes](#who-writes)). `kb_sync_base` keeps a rephrased bullet as a wording of the one it rewrites instead of a new draft.
 - `kb_edit_point`, `kb_create_entity`, `kb_edit_entity`, `kb_edit_profile`: correct or add entries.
-- `kb_approve_points`: approve or retire points, only after you have approved them.
+- `kb_approve_points`: mark draft points approved, only after you have approved them. It never retires; that is `kb_retire_points`.
 - `kb_groom_entity`: find similar bullets on one entry, grouped, with one proposed to keep. Reads only, no AI call.
 - `kb_combine_points`, `kb_retire_points`: fold similar points into the one you keep, or stop using a stale one, only after you said yes. Resumes keep their text, and `/career` undoes both.
 - `create_base_resume_from_kb`: build a new base resume from approved entries.
@@ -308,8 +310,8 @@ Diversity answers and their consent, full automation, the job-site login and eve
 - `create_template_draft`, `update_template_draft`, `validate_template`: create, edit and test-compile a template.
 
 **Insights**
-- `explore_top_skills`, `explore_skill_heatmap`, `explore_gap_frequency`: which skills your saved jobs ask for, and which keep showing up as gaps.
-- `explore_role_mix_over_time`, `explore_fit_distribution`, `explore_ats_over_time`, `explore_tailoring_lift`: trends in roles, scores and how much tailoring helps.
+- `explore_trends`: one chart's rows per call, by `view`: `top_skills` and `heatmap` (which skills your saved jobs ask for), `role_mix` (roles per week), `fit_distribution` (how each base resume's match scores spread), `ats_over_time` (match score per week) and `tailoring_lift` (how much tailoring helps). `top_skills`, `ats_over_time` and `tailoring_lift` take the role, level and employment-type filters; `top_skills` and `heatmap` take a `limit`.
+- `explore_gap_frequency`: which skills keep showing up as gaps across your saved jobs.
 
 ## Example prompts
 

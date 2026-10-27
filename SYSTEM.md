@@ -135,7 +135,7 @@ scripts/               setup-mcp.sh (deprecated stdio, §13), update.sh (Docker 
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (99 tools)
+ extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (92 tools)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼ ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
                     ▼ TailoringSession (frozen gaps → resolutions → LLM tailor ops)
@@ -529,7 +529,8 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 - **MCP server** (`backend/mcp_server/`; on screen **connected agents**): thin wrappers over REST via httpx (`@_guard` → `ToolError`),
   served at `/mcp` and `/mcp/{profile}` inside FastAPI (§6 inv-mcp-inside-the-app, inv-tools-off-loop); **the docstring is the API** —
   behavior, records and requirements, never instructions. Tool sets in journey order (profile, hunt, tailor, apply, track, templates;
-  `/mcp` = `full`, 99 tools), each with its own instructions and playbook prompts; enable ONE per chat. **Who writes** for its
+  `/mcp` = `full`, 92 tools), each with its own instructions and playbook prompts; enable ONE per chat; a removed tool's name
+  answers with what replaced it (`replaced.py`). **Who writes** for its
   requests is the user's choice, the agent app by default (Settings › Agent apps; §6 inv-agent-writer): Maestro's writing routes then
   refuse and name the agent's own tool, and `tailor_session(no_new_text=True)` tailors with no new wording and no model.
   `workflow.py` (the guided tailoring and onboarding workflows) is PURE — a **deliberate exception to the thin-wrapper rule** — and its
@@ -762,6 +763,10 @@ exception, so ingest lands drafts and consent-gated `kb_approve_points` is the o
 - 2026-10-26 — Who writes over MCP is one setting for every feature, the agent app by default (§6 inv-agent-writer), and
   `quick_tailor` and `tailor_application` left MCP; superseded agent requests using Maestro's key whenever one was set, because a user
   must know before connecting who writes and who pays.
+- 2026-10-26 — Near-duplicate MCP tools merge (99 → 92): `explore_trends(view)` for six chart tools, `get_career_context(format)`,
+  `attach_evidence(image_base64 | file_path)`, approve-only `kb_approve_points`, and a removed name answers with its replacement;
+  superseded one tool per view, format and input because each near-duplicate was a guess for the agent and the merge loses no
+  capability. `list_jobs`/`export_jobs` and the pairs whose filters or payloads differ stay apart.
 
 ## 11. Known deferred items (priority order)
 
@@ -969,7 +974,8 @@ survives as fallback/backup) · `blocked` (trigger cannot be evaluated until a n
 
 **Not migrations — do not re-file these here** (each was proposed as a row and rejected): the 4-way
 application-status vocabulary and the 3-way `quick_tailor_profile` shape are hand-synced by design; the
-`/api/explore` prefix and 7 MCP tool names are a deliberately frozen public surface after the UI rename;
+`/api/explore` prefix and the `explore_` names of the MCP analytics tools (`explore_trends`, `explore_gap_frequency`) are a
+deliberately frozen public surface after the UI rename;
 the typed-op vocabulary lives in `schemas/resume_edit.py` (item 1 tracks only the extras-payload
 residual) and is not a migration. Cross-boundary duplication (a Python enum and its TypeScript mirror)
 is never a ledger row — it needs a contract test, not a deletion. The two seniority lists are NOT a

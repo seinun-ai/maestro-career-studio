@@ -54,7 +54,7 @@ Connect Claude, Codex or the ChatGPT desktop app and your assistant gets your ca
 | **Apply** | "Tailor this one, walk me through the gaps, then make the PDF." | It asks about each gap instead of inventing, keeps every change as a diff you can undo and renders the PDF. |
 | **Apply** | "Fill the applications I queued. Show me each one before it goes." | Nothing is submitted without your yes, unless you turn on full automation. |
 
-That is 99 tools and ready-made skills for a daily hunt, an apply run and email status: see the [MCP guide](backend/mcp_server/README.md).
+That is 92 tools and ready-made skills for a daily hunt, an apply run and email status: see the [MCP guide](backend/mcp_server/README.md).
 
 **Free and open source.** Your career history lives on your laptop, not in someone else's cloud, and there is no account. Bring an OpenAI, Gemini or Claude key (scoring, PDFs and tracking work without one), get real LaTeX and Typst PDFs, and take everything with you in one `career.md` file.
 
@@ -158,7 +158,7 @@ Then open **http://localhost:3000** and add your AI key in **Settings › Basics
 
 ### Driving it from Claude, Codex, or ChatGPT (MCP)
 
-**MCP** is the connector that lets an AI assistant use the app for you: read a posting, score it, work the gaps, make the PDF, all in conversation, on your computer against your data. All 99 tools are on by default, and smaller tool sets (`profile`, `hunt`, `tailor`, `apply`, `track`, `templates`) keep a chat focused. Your assistant writes the text with its own AI unless you pick Maestro's AI in Settings › Agent apps › **Who writes for connected agents**. On a uv install, run `maestro connect`; otherwise open Settings › Agent apps › **Connect an agent app**. Setup, example prompts, tool sets and the ready-made skills are in [Using Maestro CS](docs/USING_MAESTRO.md#driving-it-from-claude-codex-or-chatgpt-mcp) and the [MCP guide](backend/mcp_server/README.md). An [always-on bot](docs/always-on-bot.md) can work your search while your laptop is off.
+**MCP** is the connector that lets an AI assistant use the app for you: read a posting, score it, work the gaps, make the PDF, all in conversation, on your computer against your data. All 92 tools are on by default, and smaller tool sets (`profile`, `hunt`, `tailor`, `apply`, `track`, `templates`) keep a chat focused. Your assistant writes the text with its own AI unless you pick Maestro's AI in Settings › Agent apps › **Who writes for connected agents**. On a uv install, run `maestro connect`; otherwise open Settings › Agent apps › **Connect an agent app**. Setup, example prompts, tool sets and the ready-made skills are in [Using Maestro CS](docs/USING_MAESTRO.md#driving-it-from-claude-codex-or-chatgpt-mcp) and the [MCP guide](backend/mcp_server/README.md). An [always-on bot](docs/always-on-bot.md) can work your search while your laptop is off.
 
 ### Going all the way: agent applications
 

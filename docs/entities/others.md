@@ -6,7 +6,8 @@
   `get_job_search_brief` with verbatim work-auth, typed `job_preferences` and the `auto_apply` guardrail block;
   `find_job_by_url` posting-equality lookup; `store_extracted_jd` takes `source="agent"`; playbook in
   docs/agentic-job-search.md, capture-and-score only), the proposal-ledger family (consent-gated
-  propose/decide/triage/resume/final-review/evidence/mark_submitted/report_failure; `record_filled_answers` records
+  propose/decide/triage/resume/final-review/evidence/mark_submitted/report_failure; `attach_evidence` takes an inline
+  `image_base64` or a `file_path` on this machine, exactly one; `record_filled_answers` records
   each form page's answers and `get_final_review` names their `flags` (inv-filled-answers-local); `record_consent` stores the user's
   yes/no, or the agent's automatic yes with channel `auto` while full automation is On; `mark_submitted(auto)` records the agent's confirmation note;
   `get_job_site_login` hands the login to a Queued/approved job's agent (§6); filer and create-lock rules: "MCP proposal filer" below), base resumes
@@ -27,21 +28,23 @@
   renders its PDF, `POST /api/qa/answers` replaces an answer to the same question, case and spacing ignored; `model_used` names the
   agent),
   templates (draft/validate only; Typst constraints in `create_template_draft`'s
-  docstring, `fmt.*` knobs on `get_template`), explore analytics, `get_autofill_profile` (`profile.eeo` consent-gated),
+  docstring, `fmt.*` knobs on `get_template`), explore analytics (`explore_trends(view)`, six chart views, and
+  `explore_gap_frequency`), `get_autofill_profile` (`profile.eeo` consent-gated),
   the profile writes `set_autofill_profile` (no `eeo`), `set_job_preferences`, `set_markets` and `set_persona` (patches over the
   settings PUTs; Settings switches, consent and the job-site login have no tool: docs/agent-surfaces.md, "Profile writes"),
-  and `get_career_context` (read-only; anti-fabrication framing in the docstring). The Career KB is writable via MCP:
+  and `get_career_context` (read-only, JSON or the `career.md` text; anti-fabrication framing in the docstring). The Career
+  KB is writable via MCP:
   reads carry IDs the context prose does not; entity/profile writes land directly, but POINTS go through the user's
   gate — ingest lands drafts, `kb_sync_base` drafts only new base-resume bullets and keeps a rephrasing as a wording
   (no LLM, no auto-approve; it returns `compared_wording`), `kb_add_points` drafts the agent's own bullets on an existing entity
   (`POST /api/kb/entities/{id}/drafts`; no LLM, a bullet already on the entity is skipped, a voice hit is a 400 that stores
-  nothing), and `kb_approve_points` is the ONE approval path
-  (`approved|retired`). `kb_retire_points` (its retire twin) and `kb_combine_points` (fold points into a keeper) write
-  state under the same gate; `kb_groom_entity` reads the similar-bullet report. The gate is a convention the
+  nothing), and `kb_approve_points` is the ONE approval path and only approves (an old call's `state` other than
+  "approved" is refused, never acted on). `kb_retire_points` (the one way to retire) and `kb_combine_points` (fold points
+  into a keeper) write state under the same gate; `kb_groom_entity` reads the similar-bullet report. The gate is a convention the
   docstrings state (the value is the user's decision), not server enforcement (`record_consent` precedent).
   `kb_edit_point` has no `state` param; a text change forces `state="draft"`. `kb_list_points` omits `wordings`
   (`kb_get_entity` carries them). No delete tool; "Not the same", split and adoption stay web-only; document upload
-  stays web-only.
+  stays web-only. A removed tool's name answers with what replaced it (docs/agent-surfaces.md, "Removed names").
 
 - **BaseResume**: DB row + `base_resumes/<slug>.json` on disk; soft-deleted
   rows still serve on GET-by-slug but are excluded from lists. Renders like
@@ -668,8 +671,9 @@
   on failure (callers build their response off that same session).
   `compose_context` is a prompt block whose `##` entity headers are demoted one
   level on splice, so "Beyond the Resume" nests instead of flattening the
-  outline. MCP: read-only `get_career_export()` in the full profile;
-  `get_career_context()` remains structured grounding. Out of scope: Autofill,
+  outline. MCP: read-only `get_career_context(format="markdown")` returns the
+  exact `career.md` text (`profile`, `tailor`, `apply` and `full`); its default
+  `format="json"` is the structured grounding. Out of scope: Autofill,
   EEO, analytics, re-importing `career.md`, backend tailoring prompt
   consumption.   **Write provenance**: `KBPoint.origin` is a closed set including `mcp` and
   `base_sync`; `kb_points` and `kb_entities` carry a nullable `origin_detail`
