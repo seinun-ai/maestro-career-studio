@@ -69,6 +69,18 @@ function routingHeaders(message) {
   return headers;
 }
 
+// That path refuses a request with its JSON-RPC error and a 400 or 404 (Method not found, an
+// unsupported revision with the supported list); the client is owed that answer, not "HTTP 404".
+function refusalFor(request, response) {
+  if (response.status < 400 || response.status >= 500 || !Object.hasOwn(request, "id")) return undefined;
+  let body;
+  try { body = JSON.parse(response.text); } catch { return undefined; }
+  if (!body || typeof body !== "object") return undefined;
+  const { error } = body;
+  return body.jsonrpc === "2.0" && body.id === request.id && error && typeof error === "object"
+    && Number.isInteger(error.code) && typeof error.message === "string" ? body : undefined;
+}
+
 // Unfilled user_config values can arrive as literal placeholders.
 const setting = (name) => {
   const raw = (process.env[name] || "").trim();
@@ -125,7 +137,7 @@ async function main() {
       try { body = JSON.parse(response.text); }
       catch { throw new Error("Maestro Career Studio returned an invalid JSON response."); }
     }
-    return { status: response.status, sessionId: response.sessionId, body };
+    return { status: response.status, sessionId: response.sessionId, body, text: response.text };
   }
 
   function accepted(response) {
@@ -153,8 +165,10 @@ async function main() {
     if (routing) {
       // No session to send, adopt or replay: a 404 here is the server's answer, not a lost session.
       try {
-        const response = accepted(await post(line, routing));
-        if (response.status === 200) write(response.body);
+        const response = await post(line, routing);
+        const refusal = refusalFor(request, response);
+        if (refusal) write(refusal);
+        else if (accepted(response).status === 200) write(response.body);
       } catch (error) {
         fail(request, error.message);
       }

@@ -493,10 +493,48 @@ test("a 404 to a 2026-07-28 request is not a lost session, so nothing is replaye
   assert.deepEqual(server.requests.map(({ body }) => body.method), [
     "initialize", "notifications/initialized", "subscriptions/listen",
   ]);
-  const messages = stdoutMessages(result);
-  assert.equal(messages.length, 2);
-  assert.equal(messages[1].id, "listen");
-  assert.ok(messages[1].error);
+  assert.deepEqual(stdoutMessages(result)[1], {
+    jsonrpc: "2.0", id: "listen", error: { code: -32601, message: "Method not found" },
+  });
+});
+
+test("a 2026-07-28 refusal reaches the client as the server's JSON-RPC error", async (t) => {
+  const refusals = {
+    unknown: [404, { code: -32601, message: "Method not found" }],
+    version: [400, {
+      code: -32022, message: "Unsupported protocol version",
+      data: { supported: [MODERN_VERSION], requested: "2099-01-01" },
+    }],
+  };
+  const server = await fakeServer(t, ({ body }, res) => {
+    if (Object.hasOwn(refusals, body.id)) {
+      const [status, error] = refusals[body.id];
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, error }));
+    } else if (body.id === "other-id") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: "someone-else", error: { code: -32602, message: "No" } }));
+    } else {
+      res.writeHead(400);
+      res.end(body.id === "null-body" ? "null" : "<html>Bad request</html>");
+    }
+  });
+  const result = await runBridge(t, server.url, [
+    modern({ jsonrpc: "2.0", id: "unknown", method: "nope/method" }),
+    modern({ ...LIST, id: "version" }),
+    modern({ ...LIST, id: "other-id" }),
+    modern({ ...LIST, id: "html" }),
+    modern({ ...LIST, id: "null-body" }),
+    modern({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: "unknown" } }),
+  ]);
+  assert.deepEqual(stdoutMessages(result), [
+    { jsonrpc: "2.0", id: "unknown", error: refusals.unknown[1] },
+    { jsonrpc: "2.0", id: "version", error: refusals.version[1] },
+    { jsonrpc: "2.0", id: "other-id", error: { code: -32000, message: "Maestro Career Studio returned HTTP 400." } },
+    { jsonrpc: "2.0", id: "html", error: { code: -32000, message: "Maestro Career Studio returned HTTP 400." } },
+    { jsonrpc: "2.0", id: "null-body", error: { code: -32000, message: "Maestro Career Studio returned HTTP 400." } },
+  ]);
+  assert.equal(result.stderr, "");
 });
 
 test("a 2026-07-28 notification carries its version and method; responses and batches go as before", async (t) => {
