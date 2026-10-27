@@ -46,12 +46,19 @@ function postBody(url, headers, line, timeoutMs) {
 }
 
 // A 2026-07-28 message has no initialize or session: it names its revision in params._meta, and the
-// SDK routes on MCP-Protocol-Version, then checks Mcp-Method and Mcp-Name against the body.
+// SDK routes on MCP-Protocol-Version, then checks Mcp-Method and Mcp-Name against the body. A header
+// naming a handshake revision (the SDK's HANDSHAKE_PROTOCOL_VERSIONS) goes down the 2025 path, which
+// needs the session, so a message naming one is 2025 traffic.
+// No Mcp-Param-* headers: no Maestro tool declares x-mcp-header, and one that did would be refused
+// through the bridge until it mirrored that tool's arguments too.
 const PROTOCOL_VERSION_KEY = "io.modelcontextprotocol/protocolVersion";
+const HANDSHAKE_VERSIONS = new Set(["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"]);
 const NAME_PARAMS = new Map([["tools/call", "name"], ["prompts/get", "name"], ["resources/read", "uri"]]);
 
 // The SDK's header codec (encode_header_value): printable ASCII without edge spaces goes as is,
-// anything else as =?base64?<UTF-8>?=, so no value is one Node refuses or the server misreads.
+// anything else as =?base64?<UTF-8>?=. The SDK encodes only Mcp-Name and compares the version and
+// method raw; encoding those too is harmless, since any value the codec changes is refused either
+// way, and it keeps Node from throwing ERR_INVALID_CHAR before the request is sent.
 const headerValue = (value) => (
   /^[\x20-\x7E]*$/.test(value) && value === value.trim() && !/^=\?base64\?.*\?=$/.test(value)
     ? value : `=?base64?${Buffer.from(value, "utf8").toString("base64")}?=`
@@ -61,7 +68,7 @@ function routingHeaders(message) {
   const params = Array.isArray(message) ? undefined : message.params;
   const meta = params && typeof params === "object" ? params._meta : undefined;
   const version = meta && typeof meta === "object" ? meta[PROTOCOL_VERSION_KEY] : undefined;
-  if (typeof version !== "string") return undefined;
+  if (typeof version !== "string" || HANDSHAKE_VERSIONS.has(version)) return undefined;
   const headers = { "MCP-Protocol-Version": headerValue(version) };
   if (typeof message.method === "string") headers["Mcp-Method"] = headerValue(message.method);
   const nameKey = NAME_PARAMS.get(message.method);
@@ -164,6 +171,8 @@ async function main() {
     const routing = routingHeaders(request);
     if (routing) {
       // No session to send, adopt or replay: a 404 here is the server's answer, not a lost session.
+      // subscriptions/listen would hold this one-at-a-time loop for its whole stream if a set ever
+      // offered it; today every set refuses it at once.
       try {
         const response = await post(line, routing);
         const refusal = refusalFor(request, response);

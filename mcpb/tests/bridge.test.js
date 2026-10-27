@@ -458,12 +458,34 @@ test("2025 traffic carries none of the routing headers and keeps its session", a
   ]);
 });
 
-test("a 2026-07-28 request neither sends, adopts nor clears the 2025 session", async (t) => {
+test("a 2025 revision named in _meta stays on its session with no routing headers", async (t) => {
   const server = await fakeServer(t, (request, res) => {
     if (request.body.method === "initialize") {
       json(res, { jsonrpc: "2.0", id: 1, result: {} }, { "mcp-session-id": "session-1" });
     } else {
       answerById(request, res);
+    }
+  });
+  // The SDK sends a header naming a handshake revision down the 2025 path, which needs the session.
+  const versions = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
+  const result = await runBridge(t, server.url, [INITIALIZE, ...versions.map((version, id) => ({
+    jsonrpc: "2.0", id, method: "tools/call",
+    params: { name: "list_jobs", arguments: {}, _meta: { ...ENVELOPE, "io.modelcontextprotocol/protocolVersion": version } },
+  }))]);
+  assert.equal(stdoutMessages(result).length, 1 + versions.length);
+  assert.deepEqual(server.requests.slice(1).map(routingHeaders), versions.map(() => ({})));
+  assert.deepEqual(server.requests.slice(1).map(({ headers }) => headers["mcp-session-id"]),
+    versions.map(() => "session-1"));
+});
+
+test("a 2026-07-28 request neither sends, adopts nor clears the 2025 session", async (t) => {
+  const server = await fakeServer(t, ({ body }, res) => {
+    if (body.method === "initialize") {
+      json(res, { jsonrpc: "2.0", id: 1, result: {} }, { "mcp-session-id": "session-1" });
+    } else if (body.id === "modern") {
+      json(res, { jsonrpc: "2.0", id: body.id, result: {} }, { "mcp-session-id": "rogue" });
+    } else {
+      json(res, { jsonrpc: "2.0", id: body.id, result: {} });
     }
   });
   await runBridge(t, server.url, [INITIALIZE, modern({ ...LIST, id: "modern" }), LIST]);
@@ -506,14 +528,26 @@ test("a 2026-07-28 refusal reaches the client as the server's JSON-RPC error", a
       data: { supported: [MODERN_VERSION], requested: "2099-01-01" },
     }],
   };
+  // Each of these is not this request's JSON-RPC refusal, so it gets the -32000 sentence.
+  const fallbacks = {
+    "other-id": [400, { jsonrpc: "2.0", id: "someone-else", error: { code: -32602, message: "No" } }],
+    "no-id": [400, { jsonrpc: "2.0", error: { code: -32602, message: "No" } }],
+    "string-code": [400, { jsonrpc: "2.0", id: "string-code", error: { code: "-32602", message: "No" } }],
+    "fraction-code": [400, { jsonrpc: "2.0", id: "fraction-code", error: { code: -32602.5, message: "No" } }],
+    "no-jsonrpc": [400, { id: "no-jsonrpc", error: { code: -32602, message: "No" } }],
+    "server-error": [500, { jsonrpc: "2.0", id: "server-error", error: { code: -32603, message: "Internal error" } }],
+    // A notification is owed no answer, so its fallback writes nothing.
+    notification: [400, { jsonrpc: "2.0", id: null, error: { code: -32022, message: "Unsupported protocol version" } }],
+  };
   const server = await fakeServer(t, ({ body }, res) => {
     if (Object.hasOwn(refusals, body.id)) {
       const [status, error] = refusals[body.id];
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, error }));
-    } else if (body.id === "other-id") {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ jsonrpc: "2.0", id: "someone-else", error: { code: -32602, message: "No" } }));
+    } else if (Object.hasOwn(fallbacks, body.id ?? "notification")) {
+      const [status, reply] = fallbacks[body.id ?? "notification"];
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(reply));
     } else {
       res.writeHead(400);
       res.end(body.id === "null-body" ? "null" : "<html>Bad request</html>");
@@ -522,18 +556,23 @@ test("a 2026-07-28 refusal reaches the client as the server's JSON-RPC error", a
   const result = await runBridge(t, server.url, [
     modern({ jsonrpc: "2.0", id: "unknown", method: "nope/method" }),
     modern({ ...LIST, id: "version" }),
-    modern({ ...LIST, id: "other-id" }),
+    ...Object.keys(fallbacks).filter((id) => id !== "notification").map((id) => modern({ ...LIST, id })),
     modern({ ...LIST, id: "html" }),
     modern({ ...LIST, id: "null-body" }),
     modern({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: "unknown" } }),
   ]);
+  const sentence = (id, status = 400) => ({
+    jsonrpc: "2.0", id, error: { code: -32000, message: `Maestro Career Studio returned HTTP ${status}.` },
+  });
   assert.deepEqual(stdoutMessages(result), [
     { jsonrpc: "2.0", id: "unknown", error: refusals.unknown[1] },
     { jsonrpc: "2.0", id: "version", error: refusals.version[1] },
-    { jsonrpc: "2.0", id: "other-id", error: { code: -32000, message: "Maestro Career Studio returned HTTP 400." } },
-    { jsonrpc: "2.0", id: "html", error: { code: -32000, message: "Maestro Career Studio returned HTTP 400." } },
-    { jsonrpc: "2.0", id: "null-body", error: { code: -32000, message: "Maestro Career Studio returned HTTP 400." } },
+    ...Object.entries(fallbacks).filter(([id]) => id !== "notification")
+      .map(([id, [status]]) => sentence(id, status)),
+    sentence("html"),
+    sentence("null-body"),
   ]);
+  assert.equal(server.requests.at(-1).body.method, "notifications/cancelled");
   assert.equal(result.stderr, "");
 });
 

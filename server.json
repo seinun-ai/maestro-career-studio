@@ -14,7 +14,7 @@
       "registryType": "mcpb",
       "identifier": "https://github.com/seinun-ai/maestro-career-studio/releases/download/v0.11.1/maestro-career-studio.mcpb",
       "version": "0.11.1",
-      "fileSha256": "f61940b61c634da6013ea48f685b93ec7b26e85cfe47a82138f9f299da5022cc",
+      "fileSha256": "5bb3f6bc3fd5372100b8d488570c6a1289adba142fb4c0fa96411f32043e7fd9",
       "transport": {
         "type": "stdio"
       }
