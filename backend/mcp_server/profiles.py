@@ -16,7 +16,6 @@ from mcp_server import orientation
 PROFILE_TOOLS = frozenset({
     "get_setup_status",
     "get_career_context",
-    "get_career_export",
     "get_job_search_brief",
     "kb_ingest_resume",
     "kb_add_points",

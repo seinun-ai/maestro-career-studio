@@ -258,7 +258,7 @@ def test_read_timeout_does_not_claim_a_write():
 def test_raw_response_path_reports_timeouts_the_same_way():
     respx.get(f"{BASE}/api/exports/career").mock(side_effect=httpx.ReadTimeout("slow"))
     with pytest.raises(BackendError) as exc:
-        BackendClient(BASE).get_career_export()
+        BackendClient(BASE).get_career_context(format="markdown")
     assert "timed out" in str(exc.value)
 
 
@@ -328,7 +328,7 @@ def test_the_raw_response_path_formats_errors_the_same_way():
         return_value=httpx.Response(404, json={"detail": "no export"})
     )
     with pytest.raises(BackendError) as exc:
-        BackendClient(BASE).get_career_export()
+        BackendClient(BASE).get_career_context(format="markdown")
     assert str(exc.value) == "Backend returned 404: no export"
 
 
@@ -350,7 +350,7 @@ def test_connect_error_names_the_real_backend_url_not_a_hardcoded_port():
 def test_connect_error_on_the_raw_path_has_no_hardcoded_port_either():
     respx.get(f"{BASE}/api/exports/career").mock(side_effect=httpx.ConnectError("refused"))
     with pytest.raises(BackendError) as exc:
-        BackendClient(BASE).get_career_export()
+        BackendClient(BASE).get_career_context(format="markdown")
     assert ":8000" not in str(exc.value)
     assert BASE in str(exc.value)
 

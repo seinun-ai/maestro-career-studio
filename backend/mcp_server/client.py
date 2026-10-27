@@ -528,11 +528,11 @@ class BackendClient:
                 return "This is your laptop's copy; your bot runs the sync."
             raise
 
-    def get_career_context(self) -> Any:
+    def get_career_context(self, format: str = "json") -> Any:
+        """The composed career context, or with format="markdown" the exact career.md text."""
+        if format == "markdown":
+            return self._request_raw_response("GET", "/api/exports/career").text
         return self._request("GET", "/api/kb/context")
-
-    def get_career_export(self) -> str:
-        return self._request_raw_response("GET", "/api/exports/career").text
 
     # ---- Career KB reads (ID-bearing; get_career_context returns prose only) ----
     def list_kb_entities(self, kind: str | None = None, status: str | None = None) -> Any:

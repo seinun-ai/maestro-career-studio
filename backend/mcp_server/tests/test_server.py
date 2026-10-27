@@ -36,7 +36,6 @@ def test_all_tools_registered():
         "sync_now",
         "find_job_by_url",
         "get_career_context",
-        "get_career_export",
         "update_base_resume",
         "set_base_resume_identity",
         "edit_base_resume",
@@ -1017,7 +1016,7 @@ async def test_tailoring_text_names_only_tools_served_beside_it():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     for name in ("generate_cover_letter", "generate_qa_answers", "kb_capture",
                  "create_tailoring_session", "tailor_session", "score_ats", "get_tailoring_options",
-                 "get_setup_status"):
+                 "get_setup_status", "explore_trends", "get_career_context"):
         named = set(re.findall(r"[a-z_]+", _schema_text(tools[name]))) & set(tools)
         for set_name, allow in PROFILE_ALLOWLISTS.items():
             if allow and name in allow:
@@ -1540,7 +1539,7 @@ _PINNED_HINTS = {
     "compare_ats": (True, False, True, False),
     "get_rendered_pdf": (True, False, True, False),
     "get_rendered_pdf_page_image": (True, False, True, False),
-    "get_career_export": (True, False, True, False),
+    "get_career_context": (True, False, True, False),
     # A reversible flag; nothing is removed.
     "archive_base_resume": (False, False, True, False),
     "unarchive_base_resume": (False, False, True, False),

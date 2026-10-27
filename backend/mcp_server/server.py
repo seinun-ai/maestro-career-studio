@@ -780,31 +780,25 @@ def sync_now() -> Any:
 
 @mcp.tool(**_read("Get Career Context"))
 @_guard
-def get_career_context() -> Any:
-    """Read the full composed career context from the Career KB: `resume` (the
-    approved-points resume view assembled from profile + non-archived entities)
-    and `memory` (the beyond-the-resume string: identity facts and entity notes
-    that don't belong on a resume). Intended as grounding for writing about the
-    user's career (LinkedIn posts, outreach drafts), optionally with
-    get_base_resume for a specific resume's voice. `resume` carries approved
-    points only; `memory` also includes the profile summary and notes and the
-    non-archived entities' notes. It never invents facts, metrics, employers,
-    or dates; anything absent from it (and from a fetched base resume) is not
-    part of the user's recorded career. It carries no IDs: kb_list_entities / kb_get_entity / kb_list_points
-    return the IDs needed to correct anything."""
-    return _client.get_career_context()
+def get_career_context(format: Literal["json", "markdown"] = "json") -> Any:
+    """Read the user's career record from the Career KB, as format="json" (the default)
+    or format="markdown".
 
+    json: `resume`, the approved-points resume view assembled from the profile and the
+    non-archived entities, and `memory`, the beyond-the-resume string: identity facts and
+    entity notes that don't belong on a resume. `resume` carries approved points only;
+    `memory` also includes the profile summary and notes and the non-archived entities'
+    notes.
 
-@mcp.tool(**_read("Get Career Export"))
-@_guard
-def get_career_export() -> str:
-    """Read the exact portable career.md generated from the current Career KB.
+    markdown: the exact portable career.md generated from the current Career KB, as
+    deterministic Markdown text, the file the web's career export downloads.
 
-    Returns deterministic Markdown for copy-out, download-equivalent use, or
-    Markdown-oriented grounding. For structured resume and memory fields, use
-    get_career_context. Read-only; this does not alter tailoring behavior.
-    """
-    return _client.get_career_export()
+    Intended as grounding for writing about the user's career (LinkedIn posts, outreach
+    drafts), optionally beside a base resume for its voice. It never invents facts,
+    metrics, employers, or dates; anything absent from it (and from a fetched base resume)
+    is not part of the user's recorded career. Neither format carries IDs; the profile
+    set's career history tools return the IDs needed to correct anything. Read-only."""
+    return _client.get_career_context(format=format)
 
 
 # ---------- Career KB: read with IDs ----------
