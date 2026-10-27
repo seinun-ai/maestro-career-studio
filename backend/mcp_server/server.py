@@ -2869,17 +2869,16 @@ def report_failure(proposal_id: str, reason: str) -> Any:
     return _client.report_failure(proposal_id, reason=reason)
 
 
-def _set_tools(profile: str | None = None, registry: FastMCP | None = None) -> list[Tool]:
-    """The registry's Tool objects a client of `profile` (default: the env profile) can see, in
-    registration order. `registry` defaults to `mcp`; a test passes its own."""
+def _set_tools(profile: str | None, registry: FastMCP) -> list[Tool]:
+    """The registry's Tool objects a client of `profile` (None: the env profile) can see, in
+    registration order."""
     allow = allowed_tools(profile)
-    tools = (mcp if registry is None else registry)._tool_manager.list_tools()
-    return [t for t in tools if allow is None or t.name in allow]
+    return [t for t in registry._tool_manager.list_tools() if allow is None or t.name in allow]
 
 
 def list_registered_tool_names(profile: str | None = None) -> list[str]:
     """Tool names a client of `profile` (default: the env profile) can see."""
-    return [t.name for t in _set_tools(profile)]
+    return [t.name for t in _set_tools(profile, mcp)]
 
 
 def build_set(
@@ -2889,7 +2888,8 @@ def build_set(
 ) -> _ServedMCP:
     """A server holding `profile`'s tools (default: the env profile) and instructions. The set is
     a snapshot of the registry (default `mcp`) at build time and holds the registry's own Tool
-    objects, so a set must never change a shared Tool in place."""
+    objects. Only the registry's owner changes a shared Tool in place, for every set at once
+    (`http.offload_tools`); a set itself never does."""
     registry = mcp if registry is None else registry
     active = get_profile(profile)
     tools = _set_tools(active, registry)

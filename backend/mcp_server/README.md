@@ -153,9 +153,9 @@ Each scoped URL lists exactly its allowlist and refuses tools outside it.
 
 The sets follow a job search: profile, hunt, tailor, apply, track. Each set's server
 instructions say what it holds and which set has the rest, every set but templates starts
-with `get_setup_status`, and each serves the automation playbooks that use it as MCP prompts
-(in Claude Code, `/maestro-career-studio:<name>`). `/mcp/career` and `/mcp/explore` still
-serve `profile` and `track` for one release.
+with `get_setup_status`, and over HTTP each serves the automation playbooks that use it as
+MCP prompts (in Claude Code, `/maestro-career-studio:<name>`; a stdio set serves none).
+`/mcp/career` and `/mcp/explore` still serve `profile` and `track` for one release.
 
 **Enable one profile per chat.** The scoped profiles are subsets of `full`, so
 running `full` beside one lists every shared tool twice and the model has to

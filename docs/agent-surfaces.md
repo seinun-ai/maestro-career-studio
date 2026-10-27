@@ -21,7 +21,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   Each set's server instructions (`orientation.instructions_for`, under Claude Code's 4,096-character
   cut) say what it holds, the other sets and that the rules hold however the agent talks with the user; every set but templates
   (which has no `get_setup_status`) also says "start with `get_setup_status`" and what its `writer` means, addressing the agent as
-  "you, the agent app"; each set serves the automation playbooks whose `metadata.toolset` names it as MCP prompts (the Copy
+  "you, the agent app"; each HTTP set serves the automation playbooks whose `metadata.toolset` names it as MCP prompts (the Copy
   prompt's exact text, from `GET /api/automations`). Pins: `test_profiles.py`, `test_orientation.py`, `test_http.py`,
   `tests/test_automations_service.py`.
   **Orientation reads** (no writes): `get_setup_status` (every set but templates: `ai_key`, `writer` ("Who writes" below),

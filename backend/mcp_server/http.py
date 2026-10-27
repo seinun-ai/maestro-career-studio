@@ -2,8 +2,9 @@
 
 One FastMCP (mcp_server.server.mcp) holds every tool registration. Each set in
 PROFILE_ALLOWLISTS is its own server (server.build_set): the registry's Tool
-objects for that set, the set's instructions, and the automation playbooks that
-use it as prompts. Every lifespan run gives each set a fresh session manager.
+objects for that set and the set's instructions. As a _ServedSet it also offers
+the automation playbooks that use it as prompts. Every lifespan run gives each
+set a fresh session manager.
 
 Registered sync tools run on worker threads with a dedicated capacity limiter:
 they call the backend's REST API over loopback, which would deadlock a
@@ -127,11 +128,13 @@ class McpEndpoint:
     not a bound method, to preserve the true path without a 307 redirect.
     """
 
-    def __init__(self, mcp: FastMCP | None = None) -> None:
-        mcp = mcp or tools_server.mcp
-        offload_tools(mcp)  # first: every set holds the registry's own Tool objects
+    def __init__(self, registry: FastMCP | None = None) -> None:
+        registry = registry or tools_server.mcp
+        # The sets hold these same Tool objects, so wrapping the registry's covers every set.
+        offload_tools(registry)
         self.servers = {
-            p: tools_server.build_set(p, cls=_ServedSet, registry=mcp) for p in PROFILE_ALLOWLISTS
+            p: tools_server.build_set(p, cls=_ServedSet, registry=registry)
+            for p in PROFILE_ALLOWLISTS
         }
         self.security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
         self.managers: dict[str, StreamableHTTPSessionManager] = {}

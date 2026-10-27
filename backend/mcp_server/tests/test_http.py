@@ -103,6 +103,28 @@ def test_a_removed_name_says_which_set_holds_its_replacement_only_when_this_one_
     )
 
 
+def test_a_plain_registry_still_answers_a_removed_name():
+    """Every set is a _ServedSet whatever registry it is built from, so even a plain FastMCP's
+    full set answers a removed name with its replacement."""
+    from mcp_server import replaced
+
+    plain = FastMCP("plain")
+
+    @plain.tool()
+    def scratch_tool() -> str:
+        return "ok"
+
+    with TestClient(asgi_app(mcp_http.McpEndpoint(plain))) as c:
+        sid = session(c)
+        res = rpc(
+            c, "/mcp", sid, "tools/call", {"name": "quick_tailor", "arguments": {}}
+        ).json()["result"]
+    assert res["isError"] is True
+    assert res["content"][0]["text"] == replaced.replaced_message(
+        "quick_tailor", served={"scratch_tool"}
+    )
+
+
 @pytest.mark.parametrize("path", ["/mcp", "/mcp/track"])
 def test_a_name_never_served_keeps_the_plain_error(client, path):
     sid = session(client, path)

@@ -530,7 +530,7 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 - **MCP server** (`backend/mcp_server/`; on screen **connected agents**): thin wrappers over REST via httpx (`@_guard` → `ToolError`),
   served at `/mcp` and `/mcp/{profile}` inside FastAPI (§6 inv-mcp-inside-the-app, inv-tools-off-loop); **the docstring is the API** —
   behavior, records and requirements, never instructions. Tool sets in journey order (profile, hunt, tailor, apply, track, templates;
-  `/mcp` = `full`, 94 tools), each with its own instructions and playbook prompts; enable ONE per chat; a removed tool's name
+  `/mcp` = `full`, 94 tools), each with its own instructions and, over HTTP, playbook prompts; enable ONE per chat; a removed tool's name
   answers with what replaced it (`replaced.py`). **Who writes** for its
   requests is the user's choice, the agent app by default (Settings › Agent apps; §6 inv-agent-writer): Maestro's writing routes then
   refuse and name the agent's own tool, and `tailor_session(no_new_text=True)` tailors with no new wording and no model.
