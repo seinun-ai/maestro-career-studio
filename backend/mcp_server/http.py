@@ -35,7 +35,7 @@ from mcp.types import Tool as MCPTool
 from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
-from mcp_server import orientation
+from mcp_server import orientation, replaced
 from mcp_server import server as tools_server
 from mcp_server.profiles import PROFILE_ALIASES, PROFILE_ALLOWLISTS
 
@@ -108,7 +108,9 @@ def build_profile_server(mcp: FastMCP, profile: str, allowed: frozenset[str] | N
     @server.call_tool(validate_input=False)  # FastMCP validates the Tool's own model.
     async def _call_tool(name: str, arguments: dict[str, Any]) -> Any:
         if allowed is not None and name not in allowed:
-            raise ToolError(f"Unknown tool: {name}")
+            # A tool a change removed names its replacement; the full set's answer is
+            # mcp_server.server._ServedMCP's, which mcp.call_tool reaches.
+            raise ToolError(replaced.replaced_message(name) or f"Unknown tool: {name}")
         token = tools_server.CURRENT_PROFILE.set(profile)
         try:
             # FastMCP.get_context() reads the SDK's shared request ContextVar,

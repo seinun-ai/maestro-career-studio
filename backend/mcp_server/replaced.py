@@ -1,13 +1,39 @@
-"""What a merge took off the MCP surface, and what does that job now.
+"""What changes took off the MCP surface, and what does that job now.
 
-A call that still uses a removed argument is answered with a plain sentence naming the tool
-that does that job, never acted on: FastMCP drops an argument a tool does not declare, so
-kb_approve_points(state="retired") from an old prompt would otherwise approve the drafts the
-user rejected. Pure: no httpx, no app imports.
+A call to a removed tool, from an agent or an old saved prompt, is answered with a plain
+sentence naming its replacement, not a bare "Unknown tool", on stdio and on every HTTP set
+(mcp_server.server._ServedMCP, mcp_server.http). A call that still uses a removed argument
+gets the same kind of sentence and is never acted on: FastMCP drops an argument a tool does
+not declare, so kb_approve_points(state="retired") from an old prompt would otherwise approve
+the drafts the user rejected. Pure: no httpx, no app imports.
 """
 from __future__ import annotations
 
 from typing import Any
+
+# Each removed tool and what replaced it, as a call where one call does the job. A test keeps
+# it honest: no key is registered in any set, and every tool a replacement names is.
+REPLACED_TOOLS: dict[str, str] = {
+    "explore_top_skills": 'explore_trends(view="top_skills")',
+    "explore_skill_heatmap": 'explore_trends(view="heatmap")',
+    "explore_role_mix_over_time": 'explore_trends(view="role_mix")',
+    "explore_fit_distribution": 'explore_trends(view="fit_distribution")',
+    "explore_ats_over_time": 'explore_trends(view="ats_over_time")',
+    "explore_tailoring_lift": 'explore_trends(view="tailoring_lift")',
+    "get_career_export": 'get_career_context(format="markdown")',
+    "attach_evidence_file": "attach_evidence(file_path=...)",
+    "quick_tailor": "create_tailoring_session(use_presets=true)",
+    "tailor_application": (
+        "a tailoring session (create_tailoring_session, then tailor_session), or "
+        "edit_application for the current draft"
+    ),
+}
+
+
+def replaced_message(name: str) -> str | None:
+    """The answer to a call to `name` when a change removed it, or None."""
+    replacement = REPLACED_TOOLS.get(name)
+    return f"{name} was replaced by {replacement}." if replacement else None
 
 
 def refused_argument(name: str, arguments: dict[str, Any]) -> str | None:

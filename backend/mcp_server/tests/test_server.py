@@ -1025,13 +1025,13 @@ async def test_tailoring_text_names_only_tools_served_beside_it():
 
 
 async def test_removed_tools_are_named_nowhere_an_agent_reads():
-    """quick_tailor and tailor_application left MCP: no tool text, set instructions or
-    playbook (its "Never call" sentences included) names them."""
+    """Every tool a change removed (mcp_server.replaced's map) left MCP: no tool text, set
+    instructions or playbook (its "Never call" sentences included) names one."""
     import pathlib
 
-    from mcp_server import orientation
+    from mcp_server import orientation, replaced
 
-    removed = re.compile(r"\b(quick_tailor|tailor_application)\b")
+    removed = re.compile(r"\b(" + "|".join(map(re.escape, replaced.REPLACED_TOOLS)) + r")\b")
     texts = {f"tool {t.name}": _schema_text(t) for t in await srv.mcp.list_tools()}
     texts |= {f"instructions {s}": orientation.instructions_for(s) for s in orientation.SET_NAMES}
     skills = pathlib.Path(srv.__file__).resolve().parents[1] / "app" / "automations" / "skills"

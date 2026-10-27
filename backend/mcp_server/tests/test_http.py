@@ -110,6 +110,30 @@ def test_kb_approve_points_refuses_an_old_retire_state_over_http(client, monkeyp
     assert calls == []
 
 
+@pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
+def test_a_removed_name_answers_with_its_replacement_on_every_set(client, profile):
+    from mcp_server import replaced
+
+    path = "/mcp" if profile == "full" else f"/mcp/{profile}"
+    sid = _session(client, path)
+    for id_, name in enumerate(sorted(replaced.REPLACED_TOOLS), start=2):
+        res = _rpc(
+            client, path, sid, "tools/call", {"name": name, "arguments": {}}, id_
+        ).json()["result"]
+        assert res["isError"] is True, (profile, name)
+        assert res["content"][0]["text"] == replaced.replaced_message(name), (profile, name)
+
+
+@pytest.mark.parametrize("path", ["/mcp", "/mcp/track"])
+def test_a_name_never_served_keeps_the_plain_error(client, path):
+    sid = _session(client, path)
+    res = _rpc(
+        client, path, sid, "tools/call", {"name": "no_such_tool", "arguments": {}}
+    ).json()["result"]
+    assert res["isError"] is True
+    assert res["content"][0]["text"] == "Unknown tool: no_such_tool"
+
+
 def test_responses_are_json_and_stateful(client):
     r = client.post("/mcp", json=INIT, headers=HDR)
     assert r.status_code == 200, r.text

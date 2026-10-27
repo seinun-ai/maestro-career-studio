@@ -30,7 +30,10 @@ class _ServedMCP(FastMCP):
     gets mcp_server.replaced's sentence on either transport."""
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
-        refusal = replaced.refused_argument(name, arguments)
+        if self._tool_manager.get_tool(name) is None:
+            refusal = replaced.replaced_message(name)
+        else:
+            refusal = replaced.refused_argument(name, arguments)
         if refusal:
             raise ToolError(refusal)
         return await super().call_tool(name, arguments)

@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from mcp_server import profiles, workflow
+from mcp_server import profiles, replaced, workflow
 
 
 def _score(slug, composite, subscores=None, coverage=None):
@@ -1015,7 +1015,7 @@ def _named_tools(hint):
 def test_no_hint_names_a_removed_tool(profile):
     for name, hint in _every_hint(profiles.allowed_tools(profile)).items():
         text = json.dumps(hint)
-        for removed in ("quick_tailor", "tailor_application"):
+        for removed in replaced.REPLACED_TOOLS:
             assert not re.search(rf"\b{removed}\b", text), (profile, name, removed)
 
 
