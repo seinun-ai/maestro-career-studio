@@ -11,6 +11,10 @@
     "prompts": {
      "listChanged": false
     },
+    "resources": {
+     "listChanged": false,
+     "subscribe": false
+    },
     "tools": {
      "listChanged": false
     }
@@ -28,6 +32,10 @@
     "experimental": {},
     "prompts": {
      "listChanged": false
+    },
+    "resources": {
+     "listChanged": false,
+     "subscribe": false
     },
     "tools": {
      "listChanged": false
@@ -47,6 +55,10 @@
     "prompts": {
      "listChanged": false
     },
+    "resources": {
+     "listChanged": false,
+     "subscribe": false
+    },
     "tools": {
      "listChanged": false
     }
@@ -64,6 +76,10 @@
     "experimental": {},
     "prompts": {
      "listChanged": false
+    },
+    "resources": {
+     "listChanged": false,
+     "subscribe": false
     },
     "tools": {
      "listChanged": false
@@ -83,6 +99,10 @@
     "prompts": {
      "listChanged": false
     },
+    "resources": {
+     "listChanged": false,
+     "subscribe": false
+    },
     "tools": {
      "listChanged": false
     }
@@ -101,6 +121,10 @@
     "prompts": {
      "listChanged": false
     },
+    "resources": {
+     "listChanged": false,
+     "subscribe": false
+    },
     "tools": {
      "listChanged": false
     }
@@ -118,6 +142,10 @@
     "experimental": {},
     "prompts": {
      "listChanged": false
+    },
+    "resources": {
+     "listChanged": false,
+     "subscribe": false
     },
     "tools": {
      "listChanged": false
