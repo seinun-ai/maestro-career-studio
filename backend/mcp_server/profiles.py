@@ -134,7 +134,6 @@ APPLY_TOOLS = frozenset({
     "record_consent",
     "mark_submitted",
     "attach_evidence",
-    "attach_evidence_file",
     "record_filled_answers",
     "get_job_site_login",
     "get_autofill_profile",

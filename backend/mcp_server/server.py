@@ -2522,45 +2522,46 @@ def get_job_site_login(proposal_id: str, ctx: Context | None = None) -> Any:
     return _client.get_job_site_login(proposal_id, origin_detail=_client_label(ctx))
 
 
-@mcp.tool(**_write("Attach Evidence Image", destructive=False, idempotent=False))
+# Immune to the ~2048-char tool-description truncation: lives on the param schema.
+_EVIDENCE_FILE_FIELD = Field(
+    description=(
+        "An absolute path to an existing PNG or JPEG on this machine, typically as a browser "
+        "tool reports it (Playwright MCP saves to its --output-dir; with the standard setup "
+        "that is under the repo's .playwright-mcp/ tree, e.g. "
+        "/Users/<user>/Projects/maestro-career-studio/.playwright-mcp/<name>.png); a relative "
+        "or ~ path is resolved against this server's working directory. When this server runs "
+        "inside the backend container, a host path with a `.playwright-mcp/` segment is read "
+        "from the container's mount of that tree (paths that leave the tree are refused). "
+        "PNG/JPEG only, 5 MB max."
+    )
+)
+
+
+@mcp.tool(**_write("Attach Evidence", destructive=False, idempotent=False))
 @_guard
 def attach_evidence(
     proposal_id: str,
     step: int,
     label: str,
-    image_base64: str,
     kind: Literal["step", "final_review", "submission_receipt"] = "step",
+    image_base64: str | None = None,
+    file_path: Annotated[str | None, _EVIDENCE_FILE_FIELD] = None,
 ) -> Any:
-    """Attach step evidence image (base64) to a proposal. The image is supplied
-    inline in the call; when the screenshot already exists as a file on this
-    machine, attach_evidence_file uploads it by path without passing image bytes
-    through the model context.
-    kind must be step | final_review | submission_receipt."""
+    """Attach an evidence image to a proposal, from exactly one of image_base64 (the image,
+    base64, supplied inline in the call) or file_path (an image file already on this
+    machine's disk, e.g. a browser tool's saved screenshot; its bytes are read and uploaded
+    server-side, so they never enter the model context). Both or neither is refused, and
+    nothing is uploaded. kind must be step | final_review | submission_receipt."""
+    given = [name for name, value in (("image_base64", image_base64), ("file_path", file_path))
+             if value]
+    if len(given) != 1:
+        raise ToolError(
+            "attach_evidence takes exactly one of image_base64 or file_path, and got "
+            + ("both." if given else "neither.")
+        )
+    if file_path:
+        return _client.attach_evidence_file(proposal_id, step, label, file_path, kind=kind)
     return _client.attach_evidence(proposal_id, step, label, image_base64, kind=kind)
-
-
-@mcp.tool(**_write("Attach Evidence File", destructive=False, idempotent=False))
-@_guard
-def attach_evidence_file(
-    proposal_id: str,
-    step: int,
-    label: str,
-    file_path: str,
-    kind: Literal["step", "final_review", "submission_receipt"] = "step",
-) -> Any:
-    """Attach evidence from an image file already on this machine's disk
-    (e.g. a browser tool's saved screenshot — Playwright MCP saves to its
-    --output-dir and reports the path). `file_path` is an absolute path to an
-    existing image, typically as reported by the browser tool — with the
-    standard setup that is under the repo's .playwright-mcp/ tree (e.g.
-    /Users/<user>/Projects/maestro-career-studio/.playwright-mcp/<name>.png);
-    a relative or ~ path is resolved against this server's working directory.
-    When this server runs inside the backend
-    container, a host path with a `.playwright-mcp/` segment is read from the
-    container's mount of that tree (paths that leave the tree are refused). The
-    bytes are read and uploaded server-side so they never enter the model context.
-    PNG/JPEG only, 5 MB max. kind must be step | final_review | submission_receipt."""
-    return _client.attach_evidence_file(proposal_id, step, label, file_path, kind=kind)
 
 
 @mcp.tool(**_write("Mark Application Submitted", destructive=True, idempotent=False))

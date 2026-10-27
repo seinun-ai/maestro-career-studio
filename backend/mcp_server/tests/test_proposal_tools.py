@@ -14,7 +14,6 @@ def test_proposal_tools_registered():
         "record_decision",
         "record_consent",
         "attach_evidence",
-        "attach_evidence_file",
         "mark_submitted",
         "report_failure",
         "request_decision",
@@ -222,32 +221,93 @@ def test_get_final_review_tool_calls_client(monkeypatch):
     assert seen == {"pid": "p1"}
 
 
-def test_attach_evidence_file_reads_and_uploads(monkeypatch, tmp_path):
-    png = tmp_path / "step-01.png"
-    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
+_PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+
+
+def _capture_upload(monkeypatch):
     seen = {}
 
     def fake_request(method, path, files=None, data=None, **kw):
         seen.update(method=method, path=path, name=files["file"][0],
-                    mime=files["file"][2], step=data["step"], kind=data.get("kind"))
+                    mime=files["file"][2], body=files["file"][1], step=data["step"],
+                    label=data["label"], kind=data.get("kind"))
         return {"ok": True}
 
     monkeypatch.setattr(srv._client, "_request", fake_request)
-    res = srv.attach_evidence_file("p1", 1, "My Information", str(png), kind="step")
-    assert res == {"ok": True}
-    assert seen == {"method": "POST", "path": "/api/proposals/p1/evidence",
-                    "name": "step-01.png", "mime": "image/png", "step": "1", "kind": "step"}
+    return seen
 
 
-def test_attach_evidence_file_rejects_non_image(monkeypatch, tmp_path):
-    bad = tmp_path / "notes.txt"
-    bad.write_bytes(b"ssh-rsa AAAA fake key material")
+def _no_upload(monkeypatch):
     monkeypatch.setattr(srv._client, "_request",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not upload")))
-    import pytest as _pytest
+
+
+def test_attach_evidence_uploads_an_inline_image(monkeypatch):
+    import base64
+
+    seen = _capture_upload(monkeypatch)
+    res = srv.attach_evidence("p1", 3, "Review", kind="final_review",
+                              image_base64=base64.b64encode(_PNG).decode())
+    assert res == {"ok": True}
+    assert seen == {"method": "POST", "path": "/api/proposals/p1/evidence", "name": "evidence.png",
+                    "mime": "image/png", "body": _PNG, "step": "3", "label": "Review",
+                    "kind": "final_review"}
+
+
+def test_attach_evidence_reads_and_uploads_a_file(monkeypatch, tmp_path):
+    png = tmp_path / "step-01.png"
+    png.write_bytes(_PNG)
+    seen = _capture_upload(monkeypatch)
+    res = srv.attach_evidence("p1", 1, "My Information", file_path=str(png), kind="step")
+    assert res == {"ok": True}
+    assert seen == {"method": "POST", "path": "/api/proposals/p1/evidence", "name": "step-01.png",
+                    "mime": "image/png", "body": _PNG, "step": "1", "label": "My Information",
+                    "kind": "step"}
+
+
+def test_attach_evidence_refuses_a_file_that_is_not_an_image(monkeypatch, tmp_path):
+    import pytest
     from mcp.server.fastmcp.exceptions import ToolError
-    with _pytest.raises(ToolError):
-        srv.attach_evidence_file("p1", 1, "x", str(bad), kind="step")
+
+    bad = tmp_path / "notes.txt"
+    bad.write_bytes(b"ssh-rsa AAAA fake key material")
+    _no_upload(monkeypatch)
+    with pytest.raises(ToolError, match="not a PNG or JPEG"):
+        srv.attach_evidence("p1", 1, "x", file_path=str(bad), kind="step")
+
+
+def test_attach_evidence_takes_exactly_one_input(monkeypatch, tmp_path):
+    import base64
+
+    import pytest
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    png = tmp_path / "shot.png"
+    png.write_bytes(_PNG)
+    _no_upload(monkeypatch)
+    with pytest.raises(ToolError, match="exactly one of image_base64 or file_path.*neither"):
+        srv.attach_evidence("p1", 1, "x")
+    with pytest.raises(ToolError, match="exactly one of image_base64 or file_path.*both"):
+        srv.attach_evidence("p1", 1, "x", image_base64=base64.b64encode(_PNG).decode(),
+                            file_path=str(png))
+
+
+async def test_attach_evidence_schema_takes_either_input_and_the_file_tool_is_gone():
+    from mcp_server.profiles import APPLY_TOOLS, PROFILE_ALLOWLISTS
+
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    schema = tools["attach_evidence"].inputSchema
+    assert set(schema["required"]) == {"proposal_id", "step", "label"}
+    props = schema["properties"]
+    assert {"image_base64", "file_path"} <= set(props)
+    assert props["kind"]["enum"] == ["step", "final_review", "submission_receipt"]
+    assert props["kind"]["default"] == "step"
+    file_text = props["file_path"]["description"]
+    for fact in (".playwright-mcp", "5 MB", "PNG", "JPEG"):
+        assert fact in file_text, fact
+    assert "attach_evidence" in APPLY_TOOLS
+    assert "attach_evidence_file" not in tools
+    assert all("attach_evidence_file" not in allow for allow in PROFILE_ALLOWLISTS.values() if allow)
 
 
 async def test_automatic_consent_channels_are_exposed_in_tool_schemas():
