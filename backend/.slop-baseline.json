@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 912,
-    "total_loc": 286826,
-    "src_loc": 77456,
-    "test_loc": 209370,
+    "modules": 919,
+    "total_loc": 289721,
+    "src_loc": 78228,
+    "test_loc": 211493,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -27,11 +27,11 @@
       },
       {
         "file": "mcp_server/tests/test_server.py",
-        "line": 653,
+        "line": 656,
         "name": "test_audit_one_sentence_docstring_fixes",
-        "complexity": 47,
+        "complexity": 44,
         "params": 0,
-        "lines": 59
+        "lines": 57
       },
       {
         "file": "app/services/proposals.py",
@@ -90,6 +90,14 @@
         "lines": 144
       },
       {
+        "file": "app/services/tailoring_session.py",
+        "line": 1527,
+        "name": "tailor",
+        "complexity": 39,
+        "params": 5,
+        "lines": 262
+      },
+      {
         "file": "app/services/resume_lint.py",
         "line": 1003,
         "name": "_advisories",
@@ -114,6 +122,14 @@
         "lines": 87
       },
       {
+        "file": "app/services/kb_consolidation.py",
+        "line": 957,
+        "name": "_cluster_points_for_entity",
+        "complexity": 37,
+        "params": 7,
+        "lines": 118
+      },
+      {
         "file": "tests/test_frontend_jobs_honest_words.py",
         "line": 964,
         "name": "test_step_three_change_rows_read_and_revert_one_by_one",
@@ -128,14 +144,6 @@
         "complexity": 35,
         "params": 1,
         "lines": 53
-      },
-      {
-        "file": "app/services/kb_consolidation.py",
-        "line": 953,
-        "name": "_cluster_points_for_entity",
-        "complexity": 35,
-        "params": 6,
-        "lines": 114
       },
       {
         "file": "app/services/autofill_map.py",
@@ -184,14 +192,6 @@
         "complexity": 31,
         "params": 0,
         "lines": 37
-      },
-      {
-        "file": "app/services/tailoring_session.py",
-        "line": 1403,
-        "name": "tailor",
-        "complexity": 31,
-        "params": 4,
-        "lines": 219
       },
       {
         "file": "app/services/chat_agent.py",
@@ -379,7 +379,15 @@
       },
       {
         "file": "app/services/kb_consolidation.py",
-        "line": 1072,
+        "line": 827,
+        "name": "_resolve_family",
+        "complexity": 25,
+        "params": 7,
+        "lines": 95
+      },
+      {
+        "file": "app/services/kb_consolidation.py",
+        "line": 1080,
         "name": "_merge_skills",
         "complexity": 25,
         "params": 3,
@@ -400,17 +408,9 @@
         "complexity": 24,
         "params": 3,
         "lines": 55
-      },
-      {
-        "file": "tests/test_extension_panel.py",
-        "line": 690,
-        "name": "test_the_panel_document_is_self_contained_and_joins_the_namespace",
-        "complexity": 24,
-        "params": 0,
-        "lines": 73
       }
     ],
-    "hotspot_count": 1060,
+    "hotspot_count": 1075,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -499,8 +499,8 @@
       }
     ],
     "error_masking_count": 17,
-    "internal_import_edges": 4165,
-    "imports_per_module": 4.57,
+    "internal_import_edges": 4238,
+    "imports_per_module": 4.61,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -530,7 +530,7 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.43,
+    "percentage": 0.42,
     "duplicated_lines": 398,
     "clones": 46,
     "allowlisted_clones": 0,
@@ -649,7 +649,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "1060 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
+      "detail": "1075 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -662,16 +662,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 286826,
-    "src_loc": 77456,
-    "test_loc": 209370,
-    "modules": 912,
+    "total_loc": 289721,
+    "src_loc": 78228,
+    "test_loc": 211493,
+    "modules": 919,
     "orphan_loc": 0,
-    "duplication_pct": 0.43,
+    "duplication_pct": 0.42,
     "duplicated_lines": 398,
     "clone_count": 46,
-    "complexity_hotspots": 1060,
+    "complexity_hotspots": 1075,
     "error_masking": 17,
-    "imports_per_module": 4.57
+    "imports_per_module": 4.61
   }
 }
