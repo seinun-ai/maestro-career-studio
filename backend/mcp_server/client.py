@@ -659,6 +659,12 @@ class BackendClient:
             "POST", "/api/kb/points/combine", json={"keeper_id": keeper_id, "point_ids": point_ids}
         )
 
+    def kb_merge_entities(self, keep_id: str, merge_id: str) -> Any:
+        """The route folds the item in its path into `target_id`: merge_id goes, keep_id stays."""
+        return self._request(
+            "POST", f"/api/kb/entities/{_seg(merge_id)}/merge", json={"target_id": keep_id}
+        )
+
     def create_base_resume_from_kb(
         self,
         entity_ids: list[str],

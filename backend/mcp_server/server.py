@@ -1202,6 +1202,30 @@ def kb_combine_points(keeper_id: str, point_ids: list[str]) -> Any:
     return _client.kb_combine_points(keeper_id, point_ids)
 
 
+@mcp.tool(**_write("Merge Career Items", destructive=True, idempotent=True))
+@_guard
+def kb_merge_entities(keep_id: str, merge_id: str) -> Any:
+    """Fold one Career KB item into another of the same kind, the cure for a duplicate an import
+    split off: merge_id goes, keep_id stays. Everything on merge_id moves to keep_id: its
+    bullets in every state (approved, drafts, retired, and the wordings folded into a bullet),
+    its evidence documents, and its record of which resumes its bullets were copied into.
+
+    keep_id keeps its own title, dates, status and notes. A field keep_id has blank (org,
+    start or end date, notes) is filled from merge_id, except the end date of an ongoing item,
+    and a detail key keep_id lacks is taken from merge_id. Lost: merge_id's title, its status,
+    its creation record, and each value of it where keep_id already holds a different one.
+    Bullets are not de-duplicated: one both items carried is there twice afterwards
+    (kb_combine_points folds them into one). Resumes are not edited. There is no unmerge.
+    The merge written is the user's decision about the two items; the server does not check
+    that the user agreed (a convention, not enforcement).
+
+    Refused: the same id twice, items of different kinds, `extra` items from different
+    sections, and an archived keep_id (400; an archived merge_id is fine), an unknown id
+    (404), and a merge of the same item running at once (409). Returns keep_id's detail,
+    kb_get_entity's shape."""
+    return _client.kb_merge_entities(keep_id, merge_id)
+
+
 @mcp.tool(**_write("Retire Career Points", destructive=False, idempotent=True))
 @_guard
 def kb_retire_points(point_ids: list[str]) -> Any:

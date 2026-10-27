@@ -98,6 +98,7 @@ def test_profile_set_registers_onboarding_tools_and_hunt_does_not():
         "kb_combine_points",
         "kb_retire_points",
         "kb_add_points",
+        "kb_merge_entities",
     }
     assert new_tools <= PROFILE_TOOLS
     assert {"list_base_resumes", "get_base_resume"} <= PROFILE_TOOLS
@@ -203,7 +204,7 @@ def test_tailor_application_is_registered_nowhere():
 
 def test_set_sizes_stay_near_the_line():
     sizes = {n: len(a) for n, a in PROFILE_ALLOWLISTS.items() if a is not None}
-    assert sizes == {"profile": 38, "hunt": 23, "tailor": 31, "apply": 35, "track": 14, "templates": 13}
+    assert sizes == {"profile": 39, "hunt": 23, "tailor": 31, "apply": 35, "track": 14, "templates": 13}
 
 
 def test_every_allowlisted_tool_is_registered():

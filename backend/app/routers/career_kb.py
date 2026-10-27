@@ -280,7 +280,7 @@ def merge_entity(
 ):
     """Fold `entity_id` into `target_id` and return the surviving target's detail.
 
-    Web-only: the MCP surface deliberately gains no destructive merge tool.
+    The web's merge dialog and MCP `kb_merge_entities(keep_id=target_id, merge_id=entity_id)`.
     """
     try:
         target = svc.merge_entities(db, entity_id, payload.target_id)

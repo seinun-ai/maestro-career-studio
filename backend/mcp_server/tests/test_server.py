@@ -20,6 +20,7 @@ KB_TOOL_NAMES = {
     "kb_combine_points",
     "kb_retire_points",
     "kb_add_points",
+    "kb_merge_entities",
 }
 
 
@@ -256,6 +257,33 @@ def test_kb_combine_points_states_the_gate_and_forwards_ids(monkeypatch):
     doc = srv.kb_combine_points.__doc__ or ""
     assert "user's decision" in doc and "reversible" in doc.lower()
     assert "never" in doc.lower() and "resume" in doc.lower()  # retiring/combining never edits a resume
+
+
+def test_kb_merge_entities_forwards_which_item_stays_and_which_goes(monkeypatch):
+    seen = {}
+
+    def merge(keep_id, merge_id):
+        seen.update(keep_id=keep_id, merge_id=merge_id)
+        return {"id": keep_id}
+
+    monkeypatch.setattr(srv._client, "kb_merge_entities", merge)
+    assert srv.kb_merge_entities(keep_id="k1", merge_id="m1") == {"id": "k1"}
+    assert seen == {"keep_id": "k1", "merge_id": "m1"}
+
+
+def test_kb_merge_entities_says_what_moves_what_is_lost_and_that_it_cannot_be_undone():
+    doc = " ".join((srv.kb_merge_entities.__doc__ or "").split())
+    for words in ("merge_id goes", "keep_id stays", "drafts", "wordings", "documents",
+                  "resumes its bullets were copied into", "title", "not de-duplicated",
+                  "no unmerge", "kb_combine_points", "the same kind", "archived"):
+        assert words in doc, words
+
+
+def test_kb_merge_entities_is_served_in_profile_alone():
+    from mcp_server.profiles import PROFILE_ALLOWLISTS
+
+    holding = {name for name, allow in PROFILE_ALLOWLISTS.items() if allow and "kb_merge_entities" in allow}
+    assert holding == {"profile"}
 
 
 def test_kb_retire_points_is_the_consent_gated_retire_twin(monkeypatch):
@@ -1142,7 +1170,7 @@ async def test_tailoring_text_names_only_tools_served_beside_it():
                  "get_setup_status", "explore_trends", "get_career_context", "attach_evidence",
                  "kb_approve_points", "store_extracted_jd", "render_pdf", "list_base_resumes",
                  "prepare_application_pdf_upload", "update_application", "save_referral",
-                 "get_job_search_brief"):
+                 "get_job_search_brief", "kb_merge_entities"):
         named = set(re.findall(r"[a-z_]+", _schema_text(tools[name]))) & set(tools)
         for set_name, allow in PROFILE_ALLOWLISTS.items():
             if allow and name in allow:
@@ -1777,6 +1805,9 @@ _PINNED_HINTS = {
     # Reversible from /career (unmerge / Use again), so not destructive; the same ids twice is a no-op.
     "kb_combine_points": (False, False, True, False),
     "kb_retire_points": (False, False, True, False),
+    # The merged item's row goes with no unmerge, and what the kept one already held of it is
+    # lost; a repeat finds the item gone and changes nothing.
+    "kb_merge_entities": (False, True, True, False),
     # Approve-only: a draft's approval is withdrawn at /career, and retiring is its own tool.
     "kb_approve_points": (False, False, True, False),
     "record_consent": (False, True, False, False),

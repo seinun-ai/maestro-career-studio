@@ -483,8 +483,8 @@ class KBEntityCreateResponse(KBEntityDetail):
 
 
 class KBEntityMergeRequest(BaseModel):
-    """Fold the path entity into `target_id`. Web-only on purpose — the MCP
-    surface gains no destructive tools, so there is no `kb_merge_entities`."""
+    """Fold the path entity into `target_id`, the one that stays (MCP `kb_merge_entities`
+    sends its `merge_id` in the path and its `keep_id` here)."""
 
     target_id: UUID
 

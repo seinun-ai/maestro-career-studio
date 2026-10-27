@@ -23,6 +23,7 @@ PROFILE_TOOLS = frozenset({
     "kb_approve_points",
     "kb_retire_points",
     "kb_combine_points",
+    "kb_merge_entities",
     "kb_groom_entity",
     "kb_create_entity",
     "kb_edit_entity",

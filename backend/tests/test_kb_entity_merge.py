@@ -1,11 +1,13 @@
 """Manual entity merge: POST /api/kb/entities/{id}/merge.
 
 The CURE for wording-variant duplicates ("Data Analyst" vs "Data Analyst,
-British Airways Account"). Web-only by design — no MCP tool.
+British Airways Account"). The web's merge dialog and MCP `kb_merge_entities` (the last tests here)
+both call it.
 """
 
 import uuid
 
+import pytest
 
 from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPortLog
 
@@ -289,3 +291,32 @@ def test_merge_returns_target_detail(client, db_session):
     assert merged["points"] == fetched["points"]
     assert merged["documents"] == fetched["documents"]
     assert merged["point_count"] == 1 and merged["document_count"] == 1
+
+
+def test_the_mcp_tool_folds_merge_id_into_keep_id(mcp_tools, db_session):
+    """kb_merge_entities(keep_id, merge_id) over the real route: merge_id's bullets in every state
+    move, merge_id goes, keep_id keeps its title."""
+    keep = _entity(db_session, title="Line cook")
+    merge = _entity(db_session, title="Line cook, weekend brunch", org="Example bistro")
+    approved = _point(db_session, merge.id, "Ran the brunch line for 120 covers")
+    draft = _point(db_session, merge.id, "Trained two new cooks", state="draft")
+    keep_id, merge_id, ids = keep.id, merge.id, (approved.id, draft.id)
+
+    out = mcp_tools.kb_merge_entities(keep_id=str(keep_id), merge_id=str(merge_id))
+    assert out["id"] == str(keep_id) and out["title"] == "Line cook" and out["org"] == "Example bistro"
+
+    db_session.expire_all()
+    assert db_session.get(KBEntity, merge_id) is None
+    assert {db_session.get(KBPoint, i).entity_id for i in ids} == {keep_id}
+
+
+def test_the_mcp_tool_refuses_an_archived_keep_id_and_moves_nothing(mcp_tools, db_session):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    keep = _entity(db_session, title="Line cook", status="archived")
+    merge = _entity(db_session, title="Line cook, weekend brunch")
+    point = _point(db_session, merge.id, "Ran the brunch line")
+    with pytest.raises(ToolError, match="archived"):
+        mcp_tools.kb_merge_entities(keep_id=str(keep.id), merge_id=str(merge.id))
+    db_session.expire_all()
+    assert db_session.get(KBPoint, point.id).entity_id == merge.id

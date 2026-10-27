@@ -85,3 +85,16 @@ def test_kb_reads_need_no_origin_header():
     respx.get(f"{BASE}/api/kb/entities").mock(return_value=httpx.Response(200, json=[]))
     client = BackendClient(BASE)
     assert client.list_kb_entities() == []
+
+
+@respx.mock
+def test_kb_merge_entities_folds_the_merged_item_into_the_kept_one():
+    """The route folds the PATH item into `target_id`: the path is the item that goes."""
+    route = respx.post(f"{BASE}/api/kb/entities/m1/merge").mock(
+        return_value=httpx.Response(200, json={"id": "k1", "points": []})
+    )
+    out = BackendClient(BASE).kb_merge_entities(keep_id="k1", merge_id="m1")
+    request = route.calls.last.request
+    assert json.loads(request.read()) == {"target_id": "k1"}
+    assert request.headers["X-Maestro-CS-Origin"] == "mcp"
+    assert out == {"id": "k1", "points": []}
