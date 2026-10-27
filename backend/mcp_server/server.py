@@ -2316,8 +2316,8 @@ def tailor_session(
     back. kb_writeback_skips derives from each user_input resolution's STORED
     placement_target from resolve_gaps, not from the ops, so ops that disagree
     with the stored target produce a spurious wrong_section skip. `next` (null
-    when off or unavailable): the answers left first, then render_pdf when
-    pdf_ready is false, else apply readiness."""
+    when off or unavailable): render_pdf if pdf_ready is false, else apply
+    readiness; no_new_text's answers left come first."""
     result = _client.tailor_session(
         tailoring_session_id, user_prompt=user_prompt, ops=ops, no_new_text=no_new_text
     )
@@ -2337,6 +2337,7 @@ def tailor_session(
             setup_status=_client.get_setup_status() if pdf_ready else None,
             keywords_added=result.get("keywords_added") or [],
             answers_left_to_ops=result.get("answers_left_to_ops") or [],
+            no_new_text=no_new_text,
         )
 
     next_hint = _best_effort_hint(compose) if application_id else None

@@ -395,11 +395,11 @@ _LEFT = [
 ]
 
 
-def test_tailor_hint_lists_the_answers_left_before_the_render_and_calls_neither():
-    """Writing the answers clears the PDF, so the render comes after them; writing them may
-    need the user, so nothing is the one call."""
+def test_tailor_hint_lists_the_answers_no_new_text_left_before_the_render_and_calls_neither():
+    """With no_new_text the list is what was left: writing those answers clears the PDF, so
+    the render comes after them; writing them may need the user, so nothing is the one call."""
     hint = workflow.next_after_tailor(
-        application_id="a1", allowed_tools=None, hints_enabled=True,
+        application_id="a1", allowed_tools=None, hints_enabled=True, no_new_text=True,
         keywords_added=["Snowflake"], answers_left_to_ops=_LEFT,
     )
     carry, render = hint["options"]
@@ -414,15 +414,52 @@ def test_tailor_hint_lists_the_answers_left_before_the_render_and_calls_neither(
     assert hint["ask_user"].startswith("2 saved answer(s)") and hint["ask_user"].endswith("?")
     assert _named_tools({"q": hint["ask_user"]}) == set()
     note = carry["detail"]["note"]
-    # True whether the tailor took the caller's ops or wrote no new text.
-    assert "ops are given" not in note
+    assert "need wording" in note
     assert "add_keyword" in note and "rewritten" in note
+
+
+_OPS_LEFT = [{"gap_id": "coverage:0", "action": "user_input", "skill": "Build ML models"}]
+
+
+def test_tailor_hint_after_the_callers_ops_calls_the_render_and_asks_nothing():
+    """With ops the list is every user_input/attach_project answer, written by the ops or
+    not, so the edit is a conditional option: no question, and the render is the call."""
+    hint = workflow.next_after_tailor(
+        application_id="a1", allowed_tools=None, hints_enabled=True,
+        keywords_added=["Snowflake"], answers_left_to_ops=_OPS_LEFT,
+    )
+    assert hint["call"] == "render_pdf"
+    assert hint["blocking"] is True
+    assert hint["ask_user"] is None
+    assert {option["tool"] for option in hint["options"]} == {"edit_application", "render_pdf"}
+    carry = next(o for o in hint["options"] if o["tool"] == "edit_application")
+    assert carry["detail"]["answers_left_to_ops"] == _OPS_LEFT
+    note = carry["detail"]["note"]
+    assert "need wording" not in note
+    assert "ops are given" in note and "where the ops wrote it" in note
+    render = next(o for o in hint["options"] if o["tool"] == "render_pdf")
+    assert render["detail"]["keywords_added"] == ["Snowflake"]
+
+
+def test_tailor_hint_after_the_callers_ops_with_its_pdf_made_ends_on_apply_readiness():
+    status = _autofill_setup_status(ready=True)
+    render = workflow.next_after_render(setup_status=status, allowed_tools=None, hints_enabled=True)
+    hint = workflow.next_after_tailor(
+        application_id="a1", allowed_tools=None, hints_enabled=True,
+        pdf_ready=True, setup_status=status, answers_left_to_ops=_OPS_LEFT,
+    )
+    assert [option["tool"] for option in hint["options"]] == ["edit_application"]
+    assert hint["call"] is None and hint["blocking"] is False and hint["ask_user"] is None
+    assert hint["state"] == "rendered"
+    assert hint["readiness"] == render["readiness"]
+    assert hint["offer"] == render["offer"]
+    assert "render_pdf" not in json.dumps(hint)
 
 
 def test_tailor_hint_calls_nothing_when_only_the_answers_can_be_written():
     hint = workflow.next_after_tailor(
         application_id="a1", allowed_tools=frozenset({"edit_application"}), hints_enabled=True,
-        answers_left_to_ops=_LEFT,
+        no_new_text=True, answers_left_to_ops=_LEFT,
     )
     assert [option["tool"] for option in hint["options"]] == ["edit_application"]
     assert hint["call"] is None
@@ -431,7 +468,7 @@ def test_tailor_hint_calls_nothing_when_only_the_answers_can_be_written():
 def test_tailor_hint_without_edit_application_offers_the_render_and_still_calls_nothing():
     hint = workflow.next_after_tailor(
         application_id="a1", allowed_tools=frozenset({"render_pdf"}), hints_enabled=True,
-        answers_left_to_ops=_LEFT,
+        no_new_text=True, answers_left_to_ops=_LEFT,
     )
     assert [option["tool"] for option in hint["options"]] == ["render_pdf"]
     assert hint["call"] is None
@@ -456,23 +493,24 @@ def test_tailor_hint_offers_render_pdf_only_when_the_tailor_made_no_pdf():
 
 @pytest.mark.parametrize("ready", [True, False])
 @pytest.mark.parametrize("profile", ["full", "tailor"])
-def test_a_clean_tailor_with_its_pdf_made_ends_on_apply_readiness(ready, profile):
+@pytest.mark.parametrize("no_new_text", [True, False])
+def test_a_clean_tailor_with_its_pdf_made_ends_on_apply_readiness(ready, profile, no_new_text):
     """The arc's last step: with the PDF made and nothing left, the hint is render_pdf's."""
     allow = profiles.allowed_tools(profile)
     status = _autofill_setup_status(ready=ready)
     hint = workflow.next_after_tailor(
         application_id="a1", allowed_tools=allow, hints_enabled=True,
-        pdf_ready=True, setup_status=status,
+        pdf_ready=True, setup_status=status, no_new_text=no_new_text,
     )
     assert hint == workflow.next_after_render(setup_status=status, allowed_tools=allow, hints_enabled=True)
     assert hint["readiness"]["autofill_ready"] is ready
 
 
-def test_a_tailor_with_its_pdf_made_and_answers_left_carries_both():
+def test_a_no_new_text_tailor_with_its_pdf_made_and_answers_left_carries_both():
     status = _autofill_setup_status(ready=False)
     render = workflow.next_after_render(setup_status=status, allowed_tools=None, hints_enabled=True)
     hint = workflow.next_after_tailor(
-        application_id="a1", allowed_tools=None, hints_enabled=True,
+        application_id="a1", allowed_tools=None, hints_enabled=True, no_new_text=True,
         pdf_ready=True, setup_status=status, answers_left_to_ops=_LEFT,
     )
     assert [option["tool"] for option in hint["options"]] == ["edit_application"]
@@ -888,6 +926,9 @@ def _every_hint(allow):
             _session(gap_ids=["g1"], resolved_ids=["g1"]), writer="maestro", **kw),
         "tailor": workflow.next_after_tailor(application_id="a1", **kw),
         "tailor_left": workflow.next_after_tailor(
+            application_id="a1", keywords_added=["Snowflake"], no_new_text=True,
+            answers_left_to_ops=[{"gap_id": "g1", "action": "user_input", "skill": "x"}], **kw),
+        "tailor_ops_left": workflow.next_after_tailor(
             application_id="a1", keywords_added=["Snowflake"],
             answers_left_to_ops=[{"gap_id": "g1", "action": "user_input", "skill": "x"}], **kw),
         "tailor_pdf_made": workflow.next_after_tailor(
@@ -895,7 +936,11 @@ def _every_hint(allow):
             setup_status=_autofill_setup_status(ready=False), **kw),
         "tailor_pdf_made_left": workflow.next_after_tailor(
             application_id="a1", pdf_ready=True, setup_status=_autofill_setup_status(ready=True),
+            no_new_text=True,
             answers_left_to_ops=[{"gap_id": "g1", "action": "add_keyword", "skill": "x"}], **kw),
+        "tailor_pdf_made_ops_left": workflow.next_after_tailor(
+            application_id="a1", pdf_ready=True, setup_status=_autofill_setup_status(ready=True),
+            answers_left_to_ops=[{"gap_id": "g1", "action": "attach_project", "skill": "x"}], **kw),
         "render_ready": workflow.next_after_render(
             setup_status=_autofill_setup_status(ready=True), **kw),
         "render_blocked": workflow.next_after_render(

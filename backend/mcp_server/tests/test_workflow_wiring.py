@@ -327,6 +327,29 @@ def test_tailor_session_with_its_pdf_made_keeps_the_answers_left(monkeypatch):
 
     assert [o["tool"] for o in out["next"]["options"]] == ["edit_application"]
     assert out["next"]["readiness"]["autofill_ready"] is True
+    assert out["next"]["ask_user"] and out["next"]["blocking"] is True
+
+
+@pytest.mark.parametrize("pdf_ready", [True, False])
+def test_tailor_session_with_the_callers_ops_asks_no_question_about_the_answers(
+    monkeypatch, pdf_ready
+):
+    """The ops may have written every listed answer, so the edit is an option, never a question."""
+    left = [{"gap_id": "g1", "action": "user_input", "skill": "Build ML models"}]
+    monkeypatch.setattr(srv._client, "tailor_session", _tailored(pdf_ready, answers_left_to_ops=left))
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
+    monkeypatch.setattr(srv._client, "get_setup_status", lambda: _READY_STATUS)
+    ops = [{"op": "replace_summary", "text": "Builds forecasting models."}]
+
+    out = srv.tailor_session(tailoring_session_id="s1", ops=ops)
+
+    assert out["next"]["ask_user"] is None
+    assert "edit_application" in [o["tool"] for o in out["next"]["options"]]
+    if pdf_ready:
+        assert out["next"]["call"] is None and out["next"]["blocking"] is False
+        assert out["next"]["readiness"]["autofill_ready"] is True
+    else:
+        assert out["next"]["call"] == "render_pdf"
 
 
 def test_tailor_session_reads_setup_status_only_for_a_made_pdf_with_hints_on(monkeypatch):

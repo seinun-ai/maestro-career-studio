@@ -942,6 +942,10 @@ def test_tailor_session_hands_its_report_to_the_hint(monkeypatch):
     assert seen["answers_left_to_ops"] == [{"gap_id": "g", "action": "user_input", "skill": "x"}]
     assert seen["pdf_ready"] is True
     assert seen["setup_status"] is status
+    # Whether the list is what no_new_text left, or every answer the ops may have written.
+    assert seen["no_new_text"] is False
+    srv.tailor_session(tailoring_session_id="s1", no_new_text=True)
+    assert seen["no_new_text"] is True
 
 
 def test_tailor_session_tool_ops_default_none(monkeypatch):

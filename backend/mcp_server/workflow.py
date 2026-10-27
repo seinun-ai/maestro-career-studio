@@ -390,6 +390,7 @@ def next_after_tailor(
     setup_status: dict[str, Any] | None = None,
     keywords_added: list[str] | tuple[str, ...] = (),
     answers_left_to_ops: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
+    no_new_text: bool = False,
 ) -> dict[str, Any] | None:
     """Compose the hint that follows tailor_session, which renders the PDF itself.
 
@@ -399,29 +400,39 @@ def next_after_tailor(
     nothing else is pending. Saved keywords the server added to the skills list
     ride on the render option.
 
-    Saved answers that need wording the server did not write come first, as an
-    edit_application option with an `ask_user`, and then nothing is the `call`:
-    writing them may need the user, and an edit clears the PDF, so following a
-    render first would make the PDF twice."""
+    What `answers_left_to_ops` means depends on how the tailor ran. With
+    `no_new_text` it is what was left: those answers need wording, so they come
+    first, as an edit_application option with an `ask_user`, and then nothing
+    is the `call` (writing them may need the user, and an edit clears the PDF,
+    so following a render first would make the PDF twice). With the caller's
+    ops it is every user_input and attach_project answer, which the ops may
+    already have written, so the edit is a conditional option that asks
+    nothing and blocks nothing."""
     if _suppressed(hints_enabled, brief):
         return None
     left = list(answers_left_to_ops)
     candidates: list[dict[str, Any]] = []
     if left:
+        if no_new_text:
+            label = "Write the saved answers that need wording"
+            note = (
+                "These saved answers need wording the server did not write: "
+                "user_input and attach_project answers, and an add_keyword whose "
+                "word needs a rewritten line. Each is on the resume only where "
+                "edit ops wrote it."
+            )
+        else:
+            label = "Write any saved answer the ops left out"
+            note = (
+                "The server applies no user_input or attach_project answer when ops "
+                "are given: each is on the resume where the ops wrote it."
+            )
         candidates.append(
             {
-                "label": "Write the saved answers that need wording",
+                "label": label,
                 "tool": "edit_application",
                 "args": {"application_id": application_id},
-                "detail": {
-                    "answers_left_to_ops": left,
-                    "note": (
-                        "These saved answers need wording the server did not write: "
-                        "user_input and attach_project answers, and an add_keyword whose "
-                        "word needs a rewritten line. Each is on the resume only where "
-                        "edit ops wrote it."
-                    ),
-                },
+                "detail": {"answers_left_to_ops": left, "note": note},
             }
         )
     if not pdf_ready:
@@ -444,17 +455,19 @@ def next_after_tailor(
         )
     else:
         hint = {"state": "rendered" if pdf_ready else "tailored", "offer": None}
+    render = any(o["tool"] == "render_pdf" for o in options)
+    ask = bool(left and no_new_text and options)
     return {
         **hint,
-        "blocking": bool(options),
+        "blocking": render or ask,
         "ask_user": (
             f"{len(left)} saved answer(s) need wording the server did not write. "
             "Write them into the resume, or keep it as it is?"
-            if left and options
+            if ask
             else None
         ),
         "options": options,
-        "call": "render_pdf" if options and not left else None,
+        "call": "render_pdf" if render and not ask else None,
     }
 
 

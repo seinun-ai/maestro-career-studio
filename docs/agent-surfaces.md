@@ -147,9 +147,10 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
     list, never a bullet: `keywords_added`). `user_input`/`attach_project` answers reach the resume only through the ops, and
     with `no_new_text` not at all: `answers_left_to_ops` names them (with `no_new_text`, also an `add_keyword` whose word needs a
     rewritten bullet). Every tailor returns `unbacked_skills`: missing skills it put on the resume that career history does not back
-    (docs/entities/tailoring-session.md). `tailor_session` renders the PDF and reports `pdf_ready`; its hint offers the answers
-    left first (an `edit_application` option with an `ask_user`, and no `call`), else `render_pdf` while `pdf_ready` is false,
-    else apply readiness (the render hint's readiness and handoff). The server-side evidence gates (`save_resolutions` re-running
+    (docs/entities/tailoring-session.md). `tailor_session` renders the PDF and reports `pdf_ready`; its hint: `render_pdf` while
+    `pdf_ready` is false, else apply readiness (the render hint's readiness and handoff). After `no_new_text` the answers left
+    come first (an `edit_application` option with an `ask_user`, and no `call`); after the caller's ops the list may be answers the
+    ops wrote, so the same option is conditional and neither asks nor blocks. The server-side evidence gates (`save_resolutions` re-running
     `enable_entry`/`port_kb_point`) still hold.
   - **Apply readiness** reads `setup/status`'s `autofill` block; the server cannot see whether the client holds
     browser tools, so the render offer says the handoff needs them rather than asserting the capability.
