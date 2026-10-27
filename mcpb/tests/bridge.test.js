@@ -380,6 +380,144 @@ test("requests wait for preceding responses and batch JSON passes through as an 
   ]);
 });
 
+// 2026-07-28 clients send no initialize: each message names its revision in params._meta.
+const MODERN_VERSION = "2026-07-28";
+const ENVELOPE = {
+  "io.modelcontextprotocol/protocolVersion": MODERN_VERSION,
+  "io.modelcontextprotocol/clientInfo": { name: "bridge-test-client", version: "1" },
+  "io.modelcontextprotocol/clientCapabilities": {},
+};
+const modern = (message) => ({ ...message, params: { ...message.params, _meta: ENVELOPE } });
+const ROUTING_HEADERS = ["mcp-protocol-version", "mcp-method", "mcp-name"];
+const routingHeaders = ({ headers }) => Object.fromEntries(
+  ROUTING_HEADERS.filter((name) => Object.hasOwn(headers, name)).map((name) => [name, headers[name]]),
+);
+const answerById = ({ body }, res) => {
+  if (Object.hasOwn(body, "id")) json(res, { jsonrpc: "2.0", id: body.id, result: {} });
+  else { res.writeHead(202); res.end(); }
+};
+
+test("a 2026-07-28 request carries its version, method and name as headers", async (t) => {
+  const server = await fakeServer(t, answerById);
+  const messages = [
+    modern({ jsonrpc: "2.0", id: "discover", method: "server/discover" }),
+    modern({ ...LIST, id: "list" }),
+    modern({ jsonrpc: "2.0", id: "call", method: "tools/call", params: { name: "list_jobs", arguments: { limit: 5 } } }),
+    modern({ jsonrpc: "2.0", id: "prompt", method: "prompts/get", params: { name: "start_here" } }),
+    modern({ jsonrpc: "2.0", id: "read", method: "resources/read", params: { uri: "notes://setup" } }),
+  ];
+  const result = await runBridge(t, server.url, messages);
+  assert.deepEqual(stdoutMessages(result), messages.map(({ id }) => ({ jsonrpc: "2.0", id, result: {} })));
+  assert.equal(result.stderr, "");
+  const version = { "mcp-protocol-version": MODERN_VERSION };
+  assert.deepEqual(server.requests.map(routingHeaders), [
+    { ...version, "mcp-method": "server/discover" },
+    { ...version, "mcp-method": "tools/list" },
+    { ...version, "mcp-method": "tools/call", "mcp-name": "list_jobs" },
+    { ...version, "mcp-method": "prompts/get", "mcp-name": "start_here" },
+    { ...version, "mcp-method": "resources/read", "mcp-name": "notes://setup" },
+  ]);
+  for (const [index, request] of server.requests.entries()) {
+    assert.equal(request.line, JSON.stringify(messages[index]), "the body is forwarded untouched");
+    assert.equal(request.headers["mcp-session-id"], undefined);
+    assert.equal(request.headers.accept, "application/json, text/event-stream");
+  }
+});
+
+test("a name outside plain printable ASCII travels in the SDK's base64 form", async (t) => {
+  const server = await fakeServer(t, answerById);
+  // Expected values are the SDK's own encode_header_value output for each name.
+  const names = [
+    ["notes://café/résumé ✓", "=?base64?bm90ZXM6Ly9jYWbDqS9yw6lzdW3DqSDinJM=?="],
+    [" padded ", "=?base64?IHBhZGRlZCA=?="],
+    ["tab\there", "=?base64?dGFiCWhlcmU=?="],
+    ["=?base64?bGlzdA==?=", "=?base64?PT9iYXNlNjQ/YkdsemRBPT0/PQ==?="],
+  ];
+  await runBridge(t, server.url, names.map(([uri], id) => modern({
+    jsonrpc: "2.0", id, method: "resources/read", params: { uri },
+  })));
+  assert.deepEqual(server.requests.map(({ headers }) => headers["mcp-name"]), names.map(([, header]) => header));
+});
+
+test("2025 traffic carries none of the routing headers and keeps its session", async (t) => {
+  const server = await fakeServer(t, (request, res) => {
+    if (request.body.method === "initialize") {
+      json(res, { jsonrpc: "2.0", id: 1, result: {} }, { "mcp-session-id": "session-1" });
+    } else {
+      answerById(request, res);
+    }
+  });
+  await runBridge(t, server.url, [
+    INITIALIZE, INITIALIZED, LIST,
+    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_jobs", arguments: {} } },
+    { ...LIST, id: 4, params: { _meta: { progressToken: "progress-1" } } },
+  ]);
+  assert.deepEqual(server.requests.map(routingHeaders), [{}, {}, {}, {}, {}]);
+  assert.deepEqual(server.requests.map(({ headers }) => headers["mcp-session-id"]), [
+    undefined, "session-1", "session-1", "session-1", "session-1",
+  ]);
+});
+
+test("a 2026-07-28 request neither sends, adopts nor clears the 2025 session", async (t) => {
+  const server = await fakeServer(t, (request, res) => {
+    if (request.body.method === "initialize") {
+      json(res, { jsonrpc: "2.0", id: 1, result: {} }, { "mcp-session-id": "session-1" });
+    } else {
+      answerById(request, res);
+    }
+  });
+  await runBridge(t, server.url, [INITIALIZE, modern({ ...LIST, id: "modern" }), LIST]);
+  assert.deepEqual(server.requests.map(({ headers }) => headers["mcp-session-id"]), [
+    undefined, undefined, "session-1",
+  ]);
+  assert.deepEqual(server.requests.map(({ headers }) => headers["mcp-protocol-version"]), [
+    undefined, MODERN_VERSION, undefined,
+  ]);
+});
+
+test("a 404 to a 2026-07-28 request is not a lost session, so nothing is replayed", async (t) => {
+  const server = await fakeServer(t, ({ body }, res) => {
+    if (body.method === "initialize") {
+      json(res, { jsonrpc: "2.0", id: 1, result: {} }, { "mcp-session-id": "session-1" });
+    } else if (body.method === "notifications/initialized") {
+      res.writeHead(202);
+      res.end();
+    } else {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, error: { code: -32601, message: "Method not found" } }));
+    }
+  });
+  const result = await runBridge(t, server.url, [
+    INITIALIZE, INITIALIZED, modern({ jsonrpc: "2.0", id: "listen", method: "subscriptions/listen" }),
+  ]);
+  assert.deepEqual(server.requests.map(({ body }) => body.method), [
+    "initialize", "notifications/initialized", "subscriptions/listen",
+  ]);
+  const messages = stdoutMessages(result);
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1].id, "listen");
+  assert.ok(messages[1].error);
+});
+
+test("a 2026-07-28 notification carries its version and method; responses and batches go as before", async (t) => {
+  const server = await fakeServer(t, (_req, res) => {
+    res.writeHead(202);
+    res.end();
+  });
+  const notification = modern({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: "call" } });
+  const result = await runBridge(t, server.url, [
+    notification,
+    { jsonrpc: "2.0", id: "server-request", result: { _meta: ENVELOPE } },
+    [modern({ ...LIST, id: "batch" })],
+  ]);
+  assert.equal(result.stdout, "");
+  assert.deepEqual(server.requests.map(routingHeaders), [
+    { "mcp-protocol-version": MODERN_VERSION, "mcp-method": "notifications/cancelled" },
+    {},
+    {},
+  ]);
+});
+
 test("empty stdin exits successfully", async (t) => {
   const result = await runBridge(t, "http://127.0.0.1:1", []);
   assert.equal(result.stdout, "");

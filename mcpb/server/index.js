@@ -45,6 +45,30 @@ function postBody(url, headers, line, timeoutMs) {
   });
 }
 
+// A 2026-07-28 message has no initialize or session: it names its revision in params._meta, and the
+// SDK routes on MCP-Protocol-Version, then checks Mcp-Method and Mcp-Name against the body.
+const PROTOCOL_VERSION_KEY = "io.modelcontextprotocol/protocolVersion";
+const NAME_PARAMS = new Map([["tools/call", "name"], ["prompts/get", "name"], ["resources/read", "uri"]]);
+
+// The SDK's header codec (encode_header_value): printable ASCII without edge spaces goes as is,
+// anything else as =?base64?<UTF-8>?=, so no value is one Node refuses or the server misreads.
+const headerValue = (value) => (
+  /^[\x20-\x7E]*$/.test(value) && value === value.trim() && !/^=\?base64\?.*\?=$/.test(value)
+    ? value : `=?base64?${Buffer.from(value, "utf8").toString("base64")}?=`
+);
+
+function routingHeaders(message) {
+  const params = Array.isArray(message) ? undefined : message.params;
+  const meta = params && typeof params === "object" ? params._meta : undefined;
+  const version = meta && typeof meta === "object" ? meta[PROTOCOL_VERSION_KEY] : undefined;
+  if (typeof version !== "string") return undefined;
+  const headers = { "MCP-Protocol-Version": headerValue(version) };
+  if (typeof message.method === "string") headers["Mcp-Method"] = headerValue(message.method);
+  const nameKey = NAME_PARAMS.get(message.method);
+  if (nameKey && typeof params[nameKey] === "string") headers["Mcp-Name"] = headerValue(params[nameKey]);
+  return headers;
+}
+
 // Unfilled user_config values can arrive as literal placeholders.
 const setting = (name) => {
   const raw = (process.env[name] || "").trim();
@@ -78,12 +102,13 @@ async function main() {
     if (errors.length) write(Array.isArray(request) ? errors : errors[0]);
   };
 
-  async function post(line) {
+  async function post(line, routing) {
     const headers = {
       Accept: "application/json, text/event-stream",
       "Content-Type": "application/json",
+      ...routing,
     };
-    if (sessionId) headers["Mcp-Session-Id"] = sessionId;
+    if (sessionId && !routing) headers["Mcp-Session-Id"] = sessionId;
     let response;
     try {
       response = await postBody(url, headers, line, timeoutMs);
@@ -122,6 +147,17 @@ async function main() {
     }
     if (request === null || typeof request !== "object") {
       process.stderr.write("The MCP message must be a JSON object or array.\n");
+      continue;
+    }
+    const routing = routingHeaders(request);
+    if (routing) {
+      // No session to send, adopt or replay: a 404 here is the server's answer, not a lost session.
+      try {
+        const response = accepted(await post(line, routing));
+        if (response.status === 200) write(response.body);
+      } catch (error) {
+        fail(request, error.message);
+      }
       continue;
     }
     if (request.method === "initialize") initializeLine = line;
