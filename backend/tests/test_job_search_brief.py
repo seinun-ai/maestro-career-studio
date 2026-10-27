@@ -136,6 +136,11 @@ def test_search_brief_aggregation_shape(db_session, tmp_path, monkeypatch):
         "country": "United States",
         "willing_to_relocate": "yes",
         "work_auth": {"authorized_to_work": "yes", "requires_sponsorship": "yes"},
+        # No market chosen: the default market is home and the one country applied in.
+        "work_auth_market": "US",
+        "work_auth_by_country": {
+            "US": {"authorized_to_work": "yes", "requires_sponsorship": "yes"},
+        },
     }
     assert body["persona"] == "Analytics engineer who ships."
     assert body["warnings"] == []  # yes/yes is a valid combo (OPT now, sponsorship later)
@@ -388,3 +393,124 @@ def test_the_brief_carries_the_answer_level(db_session, tmp_path, monkeypatch, l
 def test_the_brief_answer_level_defaults_to_history(db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
     assert _get_brief(db_session).json()["applying"] == {"answer_level": "history"}
+
+
+# --- per-country permits, last runs and the role list (Phase 3c) -----------------------------------
+
+_YES_NO_CITIZEN = {"authorized_to_work": "yes", "requires_sponsorship": "no"}
+
+
+def _live_in_and_apply(db_session, home, apply_in, permits):
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+
+    market_settings.set_market(MarketSetting(home=home, apply_in=apply_in), db_session)
+    autofill_profile.set_profile({"work_auth_by_country": permits}, db_session)
+
+
+def test_the_brief_carries_the_permits_of_every_country_applied_in(db_session, tmp_path, monkeypatch):
+    """Someone living in India and applying in Germany and the Netherlands: each country's answers,
+    keyed as the market setting keys them, in the brief's yes/no shape."""
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    _live_in_and_apply(db_session, "IN", ["DE", "NL"], {
+        "IN": {"status": "citizen", "authorized_now": True, "sponsorship_future": False},
+        "DE": {"authorized_now": True, "sponsorship_future": False},
+        "NL": {"authorized_now": False, "sponsorship_now": True, "sponsorship_future": True},
+    })
+
+    body = _get_brief(db_session).json()
+
+    assert body["profile"]["work_auth_by_country"] == {
+        "DE": _YES_NO_CITIZEN,
+        "NL": {"authorized_to_work": "no", "requires_sponsorship": "yes"},
+    }
+    # The one set from before stays for a release, and says whose it is: where the user lives.
+    assert body["profile"]["work_auth"] == _YES_NO_CITIZEN
+    assert body["profile"]["work_auth_market"] == "IN"
+    assert body["warnings"] == []
+
+
+def test_each_country_applied_in_is_warned_about_by_name(db_session, tmp_path, monkeypatch):
+    """Answers missing for one country and contradictory for another are each named; the home, where
+    the user does not apply, is not judged."""
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    _live_in_and_apply(db_session, "IN", ["DE", "NL", "CA"], {
+        "DE": {"authorized_now": True, "sponsorship_future": False},
+        "NL": {"authorized_now": False, "sponsorship_future": False},
+    })
+
+    body = _get_brief(db_session).json()
+
+    assert body["profile"]["work_auth_by_country"]["CA"] == {
+        "authorized_to_work": None, "requires_sponsorship": None,
+    }
+    warnings = body["warnings"]
+    assert len(warnings) == 2
+    netherlands, canada = warnings
+    assert "for Netherlands" in netherlands and "contradictory" in netherlands
+    assert "for Canada" in canada and "incomplete" in canada
+    assert not [w for w in warnings if "Germany" in w or "India" in w]
+    _assert_points_to_work_permits(warnings)
+
+
+def test_the_home_set_is_one_of_the_countries_when_the_user_applies_at_home(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    _live_in_and_apply(db_session, "UK", ["UK", "IE"], {
+        "UK": {"authorized_now": True, "sponsorship_future": False},
+    })
+
+    body = _get_brief(db_session).json()
+
+    assert body["profile"]["work_auth_market"] == "UK"
+    assert body["profile"]["work_auth_by_country"]["UK"] == body["profile"]["work_auth"]
+    assert [w for w in body["warnings"] if "incomplete" in w] == [
+        "Your work authorization answers for Ireland are incomplete. Fix them in Profile › "
+        "Work permits before filtering jobs on them. The brief never guesses."
+    ]
+
+
+def test_one_country_reads_as_before(db_session, tmp_path, monkeypatch):
+    """Living and applying in one country: the warnings name no country, word for word as before."""
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    body = _get_brief(db_session).json()
+
+    assert body["profile"]["work_auth_market"] == "US"  # the default market
+    assert body["profile"]["work_auth_by_country"] == {
+        "US": {"authorized_to_work": None, "requires_sponsorship": None},
+    }
+    assert body["warnings"] == [
+        "Your work authorization answers are incomplete. Fix them in Profile › Work permits "
+        "before filtering jobs on them. The brief never guesses."
+    ]
+
+
+def test_the_brief_says_when_each_automation_last_ran(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    from app.schemas.agent_runs import AgentRunCreate
+    from app.services import agent_runs
+
+    assert _get_brief(db_session).json()["last_runs"] == {}
+
+    agent_runs.record(db_session, AgentRunCreate(automation="job-hunt", outcome="ok"), "agent")
+    mail = agent_runs.record(db_session, AgentRunCreate(automation="mail-status", outcome="ok"), "agent")
+    newest_hunt = agent_runs.record(
+        db_session, AgentRunCreate(automation="job-hunt", outcome="partial"), "agent")
+
+    last_runs = _get_brief(db_session).json()["last_runs"]
+
+    assert set(last_runs) == {"job-hunt", "mail-status"}
+    assert datetime.fromisoformat(last_runs["job-hunt"]) == newest_hunt.finished_at
+    assert datetime.fromisoformat(last_runs["mail-status"]) == mail.finished_at
+    assert datetime.fromisoformat(last_runs["job-hunt"]).utcoffset() == timedelta(0)
+
+
+def test_the_brief_lists_the_role_catalog(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    from app.services import role_categories
+
+    roles = _get_brief(db_session).json()["roles"]
+
+    assert roles == [{"key": k, "label": v} for k, v in role_categories.labels().items()]
+    assert {"key": "data_scientist", "label": "Data Scientist"} in roles

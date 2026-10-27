@@ -1141,7 +1141,8 @@ async def test_tailoring_text_names_only_tools_served_beside_it():
                  "create_tailoring_session", "tailor_session", "score_ats", "get_tailoring_options",
                  "get_setup_status", "explore_trends", "get_career_context", "attach_evidence",
                  "kb_approve_points", "store_extracted_jd", "render_pdf", "list_base_resumes",
-                 "prepare_application_pdf_upload", "update_application", "save_referral"):
+                 "prepare_application_pdf_upload", "update_application", "save_referral",
+                 "get_job_search_brief"):
         named = set(re.findall(r"[a-z_]+", _schema_text(tools[name]))) & set(tools)
         for set_name, allow in PROFILE_ALLOWLISTS.items():
             if allow and name in allow:
@@ -1571,6 +1572,13 @@ async def test_explore_trends_is_one_read_only_tool_for_six_views():
 def test_gap_docstrings_name_category_label():
     assert "category_label" in (srv.explore_gap_frequency.__doc__ or "")
     assert "category_label" in (srv.get_job_search_brief.__doc__ or "")
+
+
+def test_the_brief_describes_permits_by_country_last_runs_and_roles():
+    doc = " ".join((srv.get_job_search_brief.__doc__ or "").split())
+    assert "work_auth_by_country" in doc and "work_auth_market" in doc
+    assert "kept for one release" in doc
+    assert "last_runs" in doc and "roles" in doc
 
 
 def test_job_search_docstrings_state_capture_only():

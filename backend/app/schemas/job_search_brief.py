@@ -9,11 +9,17 @@ class BriefWorkAuth(BaseModel):
 
 
 class BriefProfile(BaseModel):
+    """`work_auth_by_country` holds each apply-in market's answers, keyed by market ("UK", not
+    "GB"). `work_auth` is the home market's set from before, kept for one release, and
+    `work_auth_market` names that market, as the autofill profile names it."""
+
     city: str | None = None
     state: str | None = None
     country: str | None = None
     willing_to_relocate: str | None = None
     work_auth: BriefWorkAuth
+    work_auth_market: str
+    work_auth_by_country: dict[str, BriefWorkAuth]
 
 
 class BriefReferral(BaseModel):
@@ -28,6 +34,13 @@ class BriefJob(BaseModel):
     company: str | None = None
     years_experience_min: int | None = None
     years_experience_max: int | None = None
+
+
+class BriefRole(BaseModel):
+    """One role category the catalog knows (services/role_categories), with its display label."""
+
+    key: str
+    label: str
 
 
 class RoleCategoryCount(BaseModel):
@@ -101,4 +114,8 @@ class JobSearchBriefResponse(BaseModel):
     referrals: list[BriefReferral]
     captured_last_30_days: list[RoleCategoryCount]
     windows: BriefWindows
+    # automation -> when its newest reported run finished (timezone-aware UTC ISO); an
+    # automation with no reported run is absent.
+    last_runs: dict[str, str]
+    roles: list[BriefRole]
     warnings: list[str]

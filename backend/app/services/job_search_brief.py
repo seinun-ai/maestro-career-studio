@@ -6,6 +6,11 @@ the brief NEVER guesses or corrects), persona text, base-resume targets, market
 aggregations (role mix, top required skills, build areas), referral crawl
 targets, and a 30-day capture ledger so the agent knows what is already
 well-covered. Playbook: docs/agentic-job-search.md.
+
+Work permits are per country (SYSTEM.md §6 inv-work-permit-per-country): the
+brief carries each apply-in market's answers (`work_auth_by_country`), and the
+one set from before (`work_auth`, the home market's, named by
+`work_auth_market` as the autofill profile names it) stays for one release.
 """
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -15,12 +20,17 @@ from sqlalchemy.orm import Session
 
 from app.models.job import Job
 from app.models.referral import Referral
+from app.schemas.autofill_profile import WorkAuth
 from app.services import (
+    agent_runs,
     auto_apply_settings,
     autofill_profile,
     job_preferences,
+    market_settings,
+    markets,
     model_settings,
     persona,
+    role_categories,
 )
 from app.services import proposals as proposals_svc
 from app.services.explore_base_summaries import base_summaries
@@ -71,21 +81,67 @@ def _yes_no(value: bool | None) -> str | None:
     return "yes" if value else "no"
 
 
-def _work_auth_warnings(work_auth: dict[str, Any]) -> list[str]:
+def _brief_work_auth(typed: WorkAuth) -> dict[str, str | None]:
+    """One country's answers in the brief's established public yes/no keys.
+
+    Current sponsorship and status are deliberately irrelevant: neither can
+    answer the future sponsorship question without guessing."""
+    return {
+        "authorized_to_work": _yes_no(typed.authorized_now),
+        "requires_sponsorship": _yes_no(typed.sponsorship_future),
+    }
+
+
+def _work_auth_warnings(work_auth: dict[str, Any], country: str | None = None) -> list[str]:
+    """What is wrong with one country's answers; `country` (a label) names it unless the user
+    lives and applies in that one country."""
+    answers = "Your work authorization answers" + (f" for {country}" if country else "")
     authorized = (_str_or_none(work_auth.get("authorized_to_work")) or "").lower()
     sponsorship = (_str_or_none(work_auth.get("requires_sponsorship")) or "").lower()
     if not authorized or not sponsorship:
         return [
-            "Your work authorization answers are incomplete. Fix them in "
+            f"{answers} are incomplete. Fix them in "
             "Profile › Work permits before filtering jobs on them. The brief never guesses."
         ]
     if authorized == "no" and sponsorship == "no":
         return [
-            "Your work authorization answers are contradictory: not authorized to "
+            f"{answers} are contradictory: not authorized to "
             "work, and no sponsorship needed. The brief passes them on unchanged. "
             "Correct them in Profile › Work permits before relying on them."
         ]
     return []
+
+
+def _work_permits(db: Session, profile: dict[str, Any]) -> dict[str, Any]:
+    """The home market's answers (`work_auth`, kept for one release, named by `work_auth_market`),
+    each apply-in market's (`work_auth_by_country`, keyed by market: "UK", not "GB"), and the
+    warnings for the markets applied in. Living and applying in one country words them as before;
+    otherwise each warning names its country. The home is judged only when applied in."""
+    place = market_settings.peek_market(db)
+    stored = profile.get(autofill_profile.BY_COUNTRY) or {}
+    by_country = {
+        market: _brief_work_auth(autofill_profile.typed_work_auth(stored.get(market)))
+        for market in place.apply_in
+    }
+    one_country = place.apply_in == [place.home]
+    warnings = [
+        warning
+        for market, answers in by_country.items()
+        for warning in _work_auth_warnings(
+            answers, None if one_country else markets.get(market)["label"]
+        )
+    ]
+    return {
+        "work_auth": _brief_work_auth(autofill_profile.work_auth_from_profile(profile)),
+        "work_auth_market": place.home,
+        "work_auth_by_country": by_country,
+        "warnings": warnings,
+    }
+
+
+def _last_runs(db: Session) -> dict[str, str]:
+    """When each automation's newest reported run finished (the Automations page's Last ran)."""
+    return {run["automation"]: run["finished_at"].isoformat() for run in agent_runs.latest(db)}
 
 
 def _auto_apply_block(db: Session) -> dict[str, Any]:
@@ -114,14 +170,7 @@ def build_brief(db: Session) -> dict[str, Any]:
     profile = autofill_profile.get_profile(db)
     personal = profile.get("personal") or {}
     preferences = profile.get("preferences") or {}
-    typed_work_auth = autofill_profile.get_work_auth(db)
-    # Keep the established public response keys while sourcing them from the
-    # typed reader. Current sponsorship and status are deliberately irrelevant:
-    # neither can answer the future sponsorship question without guessing.
-    work_auth = {
-        "authorized_to_work": _yes_no(typed_work_auth.authorized_now),
-        "requires_sponsorship": _yes_no(typed_work_auth.sponsorship_future),
-    }
+    permits = _work_permits(db, profile)
 
     overview = build_overview(db)
 
@@ -185,7 +234,9 @@ def build_brief(db: Session) -> dict[str, Any]:
             "willing_to_relocate": _yes_no_or_text(
                 preferences.get("willing_to_relocate")
             ),
-            "work_auth": work_auth,
+            "work_auth": permits["work_auth"],
+            "work_auth_market": permits["work_auth_market"],
+            "work_auth_by_country": permits["work_auth_by_country"],
         },
         "persona": persona.get_persona(db),
         # G1 (2026-08-01): the typed search preferences, verbatim — same
@@ -212,5 +263,7 @@ def build_brief(db: Session) -> dict[str, Any]:
             "build_areas": "all_time",
             "captured_last_30_days": f"last_{LEDGER_DAYS}_days",
         },
-        "warnings": _work_auth_warnings(work_auth),
+        "last_runs": _last_runs(db),
+        "roles": [{"key": key, "label": label} for key, label in role_categories.labels().items()],
+        "warnings": permits["warnings"],
     }

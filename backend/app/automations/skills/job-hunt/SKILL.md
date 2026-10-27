@@ -17,11 +17,12 @@ captures, scores and proposes — it never applies, submits, or triages; triage 
 the user's, in the app.
 
 1. **Brief.** Call `get_job_search_brief` first. It is the search criteria: role
-   categories, location, work authorization (use it verbatim), blocklist, and the
-   per-run proposal ceiling.
+   categories, location, the work permits of each country the user applies in
+   (`work_auth_by_country`: read a posting against its own country's answers,
+   verbatim, never another country's), blocklist, and the per-run proposal ceiling.
 2. **Source.** Pull postings from at least the time since this automation last
-   ran (its schedule's interval), or roughly the last week on a first run or when
-   you can't tell, from whatever job sources you can reach — job-board tools,
+   ran (the brief's `last_runs["job-hunt"]`), or roughly the last week when it has
+   no entry there, from whatever job sources you can reach — job-board tools,
    scrapers, the brief's referral careers pages, or plain browsing. Spread across
    the brief's role categories. Prefer the employer's own posting URL over a board
    listing.

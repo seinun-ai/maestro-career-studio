@@ -548,3 +548,25 @@ def test_apply_technique_writes_a_missing_letter_by_the_writer_setting():
         assert "store_cover_letter" not in clause, clause
     for clause in store:
         assert "writer is the agent app" in clause and "Maestro's AI" not in clause, clause
+
+
+@pytest.mark.parametrize("card_id", ["job-hunt", "mail-status"])
+def test_a_scheduled_window_starts_from_the_briefs_last_run(card_id):
+    """When the automation last ran is in the brief (`last_runs`, keyed by the name the card's own
+    record_run uses), so the window is read, not guessed; no entry there is a first run."""
+    body = " ".join({c.id: c.body for c in automations.catalog().cards}[card_id].split())
+    window = body[body.index("at least the time since this automation last ran"):]
+    window = window[:window.index("**", 1) if "**" in window else len(window)]
+    assert "`get_job_search_brief`" in body or "the brief" in window
+    assert f'`last_runs["{card_id}"]`' in window
+    assert f"Call `record_run` with automation `{card_id}`" in body
+
+
+def test_the_hunt_reads_each_countrys_permits_verbatim():
+    """A posting is read against the permits of its own country (inv-work-permit-per-country), not
+    against the one home set the brief kept for a release."""
+    body = " ".join({c.id: c.body for c in automations.catalog().cards}["job-hunt"].split())
+    brief = body[body.index("**Brief.**"):body.index("**Source.**")]
+    assert "`work_auth_by_country`" in brief and "verbatim" in brief
+    assert "its own country" in brief
+    assert "`work_auth`" not in brief.replace("`work_auth_by_country`", "")
