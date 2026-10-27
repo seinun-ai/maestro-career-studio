@@ -4,7 +4,9 @@ the golden record's answer, or the 2025 path's own."""
 
 import json
 
+import anyio
 import pytest
+from mcp import Client, MCPError
 from mcp.types import SERVER_INFO_META_KEY
 from starlette.testclient import TestClient
 
@@ -15,8 +17,8 @@ from mcp_server.client import BackendError
 from mcp_server.profiles import PROFILE_ALLOWLISTS, allowed_tools
 from mcp_server.tests import test_wire_golden as golden
 from mcp_server.tests._wire import (
-    MODERN, asgi_app, context_registry, modern_rpc, normalise_record, normalise_response, rpc,
-    serve_catalog, session,
+    HDR, INIT, MODERN, asgi_app, context_registry, modern_rpc, normalise_record,
+    normalise_response, rpc, serve_catalog, session,
 )
 
 PROFILES = list(PROFILE_ALLOWLISTS)
@@ -69,6 +71,32 @@ def test_discover_gives_the_sets_instructions_and_maestro_version(
     assert result["_meta"][SERVER_INFO_META_KEY] == {
         "name": "maestro-career-studio", "version": expected,
     }
+
+
+@pytest.mark.parametrize("profile", PROFILES)
+def test_discover_offers_no_list_subscriptions_as_initialize_does(client, profile):
+    """The owner's call: no subscriptions/listen. On 2026-07-28 the SDK derives listChanged and
+    subscribe from whether that method is served."""
+    path = _path(profile)
+    discovered = _modern(client, path, "server/discover")["result"]["capabilities"]
+    initialized = client.post(path, json=INIT, headers=HDR).json()["result"]["capabilities"]
+    assert normalise_response(discovered) == normalise_response(initialized)
+    flags = (
+        discovered["tools"]["listChanged"], discovered["prompts"]["listChanged"],
+        discovered["resources"]["listChanged"], discovered["resources"]["subscribe"],
+    )
+    assert flags == (False, False, False, False)
+
+
+@pytest.mark.parametrize("profile", [None, *PROFILES])
+async def test_no_server_opens_a_listen_stream(profile):
+    """Every set and the registry (None) refuse subscriptions/listen. In process, so a server
+    that did serve it fails within the bound instead of streaming forever."""
+    served = srv.mcp if profile is None else srv.build_set(profile, cls=mcp_http._ServedSet)
+    async with Client(served, mode=MODERN) as client:
+        with anyio.fail_after(5), pytest.raises(MCPError):
+            async with client.listen(tools_list_changed=True):
+                pass
 
 
 @pytest.mark.parametrize("profile", PROFILES)

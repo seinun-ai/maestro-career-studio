@@ -62,10 +62,12 @@ class _ServedMCP(MCPServer):
     sentence on stdio and HTTP alike. A backend refusal reads word for word; any other exception
     reads "Error executing tool <name>", its traceback in the server log. No inbound message
     opens a span on any server, the registry included (an outbound request would; Maestro sends
-    none), and no client may cache an answer."""
+    none), no client may cache an answer, and none may subscribe to a list's changes."""
 
     def __init__(self, *args: Any, profile: str | None = None, **kwargs: Any) -> None:
-        super().__init__(*args, cache_hints=_NO_CACHING, **kwargs)
+        # No subscriptions/listen (the owner's call), so 2026-07-28 discovery offers no list
+        # change notifications, as 1.30's initialize never did.
+        super().__init__(*args, cache_hints=_NO_CACHING, subscriptions=False, **kwargs)
         # A configured Langfuse is OpenTelemetry-based and must keep seeing only model calls,
         # not a span per MCP message (tool names, crash text). The SDK's other middleware stays.
         self.middleware[:] = [m for m in self.middleware if not _is_sdk_tracing(m)]
