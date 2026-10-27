@@ -10,6 +10,7 @@ from pathlib import Path
 
 import anyio
 import httpx
+import httpx2
 import pytest
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
@@ -85,9 +86,9 @@ def loopback_backend(tmp_path):
 async def test_single_worker_mcp_loopback_tools_and_client_label(loopback_backend):
     # The process owns the sessions: avoid a DELETE waiting on a deadlocked server
     # during failure cleanup. The fixture always kills and reaps that process.
-    timeout = httpx.Timeout(30, read=300)
+    timeout = httpx2.Timeout(30, read=300)  # the SDK's transport takes an httpx2 client
     async with (
-        httpx.AsyncClient(trust_env=False, timeout=timeout) as http_client,
+        httpx2.AsyncClient(trust_env=False, timeout=timeout) as http_client,
         streamable_http_client(
             f"{loopback_backend}/mcp", http_client=http_client, terminate_on_close=False
         ) as streams,
@@ -104,14 +105,14 @@ async def test_single_worker_mcp_loopback_tools_and_client_label(loopback_backen
             # event loop while waiting for GET /api/jobs on the very same loop.
             with anyio.fail_after(10):
                 jobs = await session.call_tool("list_jobs", {})
-            assert not jobs.isError, jobs.content
+            assert not jobs.is_error, jobs.content
 
             # Entity creation is LLM-free and persists ctx's initialize label.
             with anyio.fail_after(10):
                 created = await session.call_tool(
                     "kb_create_entity", {"kind": "project", "title": "Loopback test project"}
                 )
-            assert not created.isError, created.content
+            assert not created.is_error, created.content
             entity_id = json.loads(created.content[0].text)["id"]
             async with httpx.AsyncClient(
                 base_url=loopback_backend, timeout=5, trust_env=False
@@ -126,7 +127,7 @@ async def test_single_worker_mcp_loopback_tools_and_client_label(loopback_backen
             ]
 
     async with (
-        httpx.AsyncClient(trust_env=False, timeout=timeout) as http_client,
+        httpx2.AsyncClient(trust_env=False, timeout=timeout) as http_client,
         streamable_http_client(
             f"{loopback_backend}/mcp/hunt", http_client=http_client, terminate_on_close=False
         ) as streams,

@@ -118,7 +118,7 @@ def test_update_of_an_unknown_referral_is_404(db_session, client):
 def test_an_agent_adds_and_edits_a_referral_through_mcp(db_session, client, mcp_tools):
     """MCP save_referral against the real routes: a new referral, then an edit that keeps every
     field it was not given, then an unknown id refused."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     created = mcp_tools.save_referral(
         "Northwind Labs", careers_url="https://northwind.example/jobs", contact_name="Amara Okafor",

@@ -7,7 +7,7 @@ import traceback
 import httpx
 import pytest
 import respx
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp import Client
 from mcp.types import Implementation
 
 import mcp_server.server as srv
@@ -54,11 +54,11 @@ async def test_the_mcp_session_hands_over_the_login_and_attributes_it_without_lo
     with respx.mock:
         route = respx.post(URL).mock(return_value=httpx.Response(200, json=LOGIN))
         with caplog.at_level(logging.DEBUG):
-            async with create_connected_server_and_client_session(
-                srv.mcp, client_info=Implementation(name="Café Agent", version="0.1.0")
-            ) as session:
-                result = await session.call_tool("get_job_site_login", {"proposal_id": "p1"})
-    assert not result.isError, result.content
+            async with Client(
+                srv.mcp, client_info=Implementation(name="Café Agent", version="0.1.0"), mode="legacy"
+            ) as client:
+                result = await client.call_tool("get_job_site_login", {"proposal_id": "p1"})
+    assert not result.is_error, result.content
     assert json.loads(result.content[0].text) == LOGIN
     assert decode_detail(route.calls.last.request.headers["X-Maestro-CS-Origin-Detail"]) == (
         "Café Agent"
@@ -121,9 +121,9 @@ async def test_guard_errors_never_log_the_password_from_an_error_response(
     with respx.mock:
         route = respx.post(URL).mock(return_value=response)
         with caplog.at_level(logging.DEBUG):
-            async with create_connected_server_and_client_session(srv.mcp) as session:
-                result = await session.call_tool("get_job_site_login", {"proposal_id": "p1"})
-    assert result.isError
+            async with Client(srv.mcp) as client:
+                result = await client.call_tool("get_job_site_login", {"proposal_id": "p1"})
+    assert result.is_error
     assert route.call_count == 1
     assert SECRET not in repr(result.content)
     assert SECRET not in caplog.text
@@ -144,9 +144,9 @@ def test_transport_errors_cannot_expose_a_password_in_their_message(error_type, 
 
 async def test_login_tool_has_a_proposal_argument_and_write_hints():
     tool = next(tool for tool in await srv.mcp.list_tools() if tool.name == "get_job_site_login")
-    assert tool.inputSchema["required"] == ["proposal_id"]
-    assert "ctx" not in tool.inputSchema["properties"]
+    assert tool.input_schema["required"] == ["proposal_id"]
+    assert "ctx" not in tool.input_schema["properties"]
     ann = tool.annotations
-    assert (ann.readOnlyHint, ann.destructiveHint, ann.idempotentHint, ann.openWorldHint) == (
+    assert (ann.read_only_hint, ann.destructive_hint, ann.idempotent_hint, ann.open_world_hint) == (
         False, False, True, False,
     )

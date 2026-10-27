@@ -47,9 +47,9 @@ async def test_get_career_context_format_is_json_or_markdown_and_export_is_gone(
     from mcp_server.profiles import PROFILE_ALLOWLISTS
 
     tools = {t.name: t for t in await srv.mcp.list_tools()}
-    fmt = tools["get_career_context"].inputSchema["properties"]["format"]
+    fmt = tools["get_career_context"].input_schema["properties"]["format"]
     assert fmt["enum"] == ["json", "markdown"] and fmt["default"] == "json"
-    assert tools["get_career_context"].annotations.readOnlyHint is True
+    assert tools["get_career_context"].annotations.read_only_hint is True
     assert "get_career_export" not in tools
     assert all("get_career_export" not in allow for allow in PROFILE_ALLOWLISTS.values() if allow)
 

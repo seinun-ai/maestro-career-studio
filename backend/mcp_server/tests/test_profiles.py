@@ -1,7 +1,6 @@
 """Scoped MCP profile allowlists, and the served set each one builds."""
 import pytest
-from mcp import ClientSession
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp import Client
 
 import mcp_server.server as srv
 from mcp_server import orientation
@@ -94,17 +93,8 @@ async def test_a_set_reports_maestro_version_on_stdio(monkeypatch, profile, app_
         monkeypatch.delenv("APP_VERSION", raising=False)
     else:
         monkeypatch.setenv("APP_VERSION", app_version)
-    results = []
-    initialize = ClientSession.initialize
-
-    async def keep_result(session):
-        results.append(await initialize(session))
-        return results[-1]
-
-    monkeypatch.setattr(ClientSession, "initialize", keep_result)
-    async with create_connected_server_and_client_session(srv.build_set(profile)):
-        pass
-    assert [r.serverInfo.version for r in results] == [expected]
+    async with Client(srv.build_set(profile), mode="legacy") as client:  # stdio's handshake
+        assert client.server_info.version == expected
 
 
 def test_profile_allowlists_are_disjoint_from_unused_domains():

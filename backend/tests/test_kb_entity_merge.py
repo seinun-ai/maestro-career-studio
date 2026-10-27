@@ -313,7 +313,7 @@ def test_the_mcp_tool_folds_merge_id_into_keep_id(mcp_tools, db_session):
 
 
 def test_the_mcp_tool_refuses_an_archived_keep_id_and_moves_nothing(mcp_tools, db_session):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     keep = _entity(db_session, title="Line cook", status="archived")
     merge = _entity(db_session, title="Line cook, weekend brunch")

@@ -256,7 +256,7 @@ def test_an_agent_stages_the_letter_it_stored_for_upload(db_session, tmp_path, r
     """MCP prepare_application_pdf_upload(document="cover_letter") through the real routes: refused
     while no letter is stored, then the PDF store_cover_letter made, staged in the application's
     upload folder under the letter's own name."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     srv = mcp_tools
     uploads = tmp_path / "uploads"

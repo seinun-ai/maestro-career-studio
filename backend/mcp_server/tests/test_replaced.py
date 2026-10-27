@@ -3,7 +3,7 @@
 import re
 
 import pytest
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp import Client
 
 import mcp_server.server as srv
 from mcp_server import replaced
@@ -91,31 +91,31 @@ def test_every_replacement_is_served_whole_by_some_scoped_set():
 
 @pytest.mark.parametrize("name", sorted(_REMOVED))
 async def test_stdio_answers_a_removed_name_with_its_replacement(name):
-    async with create_connected_server_and_client_session(srv.build_set("full")) as session:
-        result = await session.call_tool(name, {})
-    assert result.isError
+    async with Client(srv.build_set("full")) as client:
+        result = await client.call_tool(name, {})
+    assert result.is_error
     assert result.content[0].text == replaced.replaced_message(name)
 
 
 async def test_stdio_keeps_the_plain_error_for_a_name_never_served():
-    async with create_connected_server_and_client_session(srv.build_set("full")) as session:
-        result = await session.call_tool("no_such_tool", {})
-    assert result.isError
+    async with Client(srv.build_set("full")) as client:
+        result = await client.call_tool("no_such_tool", {})
+    assert result.is_error
     assert result.content[0].text == "Unknown tool: no_such_tool"
 
 
 async def test_a_stdio_set_answers_a_removed_name_and_keeps_the_plain_error_for_the_rest(monkeypatch):
     monkeypatch.setattr(srv._client, "list_jobs", lambda **_: [])
 
-    async with create_connected_server_and_client_session(srv.build_set("track")) as session:
-        removed = await session.call_tool("explore_top_skills", {"limit": 5})
-        hidden = await session.call_tool("create_template_draft", {})
-        served = await session.call_tool("list_jobs", {})
-    assert removed.isError
+    async with Client(srv.build_set("track")) as client:
+        removed = await client.call_tool("explore_top_skills", {"limit": 5})
+        hidden = await client.call_tool("create_template_draft", {})
+        served = await client.call_tool("list_jobs", {})
+    assert removed.is_error
     assert removed.content[0].text == replaced.replaced_message("explore_top_skills")
-    assert hidden.isError and hidden.content[0].text == "Unknown tool: create_template_draft"
-    assert not served.isError, served.content
+    assert hidden.is_error and hidden.content[0].text == "Unknown tool: create_template_draft"
+    assert not served.is_error, served.content
 
-    async with create_connected_server_and_client_session(srv.build_set("hunt")) as session:
-        elsewhere = await session.call_tool("explore_top_skills", {})
+    async with Client(srv.build_set("hunt")) as client:
+        elsewhere = await client.call_tool("explore_top_skills", {})
     assert elsewhere.content[0].text.endswith('explore_trends(view="top_skills"), in the track set.')

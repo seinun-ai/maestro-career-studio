@@ -1,6 +1,6 @@
 """MCP over Streamable HTTP, inside the FastAPI app.
 
-One FastMCP (mcp_server.server.mcp) holds every tool registration. Each set in
+One MCPServer (mcp_server.server.mcp) holds every tool registration. Each set in
 PROFILE_ALLOWLISTS is its own server (server.build_set): the registry's Tool
 objects for that set and the set's instructions. As a _ServedSet it also offers
 the automation playbooks that use it as prompts. Every lifespan run gives each
@@ -26,7 +26,7 @@ from typing import Any
 
 import anyio
 import anyio.to_thread
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import GetPromptResult, Prompt, PromptMessage, TextContent
@@ -75,7 +75,7 @@ def _offloaded(original: Callable[..., Any]) -> Callable[..., Any]:
     return run_off_loop
 
 
-def offload_tools(mcp: FastMCP) -> int:
+def offload_tools(mcp: MCPServer) -> int:
     """Wrap registered sync Tool.fn functions to run on worker threads.
 
     Argument validation, schemas and Context injection stay on the Tool.
@@ -110,7 +110,7 @@ class _ServedSet(tools_server._ServedMCP):
         ]
 
     async def get_prompt(
-        self, name: str, arguments: dict[str, Any] | None = None
+        self, name: str, arguments: dict[str, Any] | None = None, context: Context | None = None
     ) -> GetPromptResult:
         card = next((c for c in await self._cards() if c["id"] == name), None)
         if card is None:
@@ -128,7 +128,7 @@ class McpEndpoint:
     not a bound method, to preserve the true path without a 307 redirect.
     """
 
-    def __init__(self, registry: FastMCP | None = None) -> None:
+    def __init__(self, registry: MCPServer | None = None) -> None:
         registry = registry or tools_server.mcp
         # The sets hold these same Tool objects, so wrapping the registry's covers every set.
         offload_tools(registry)

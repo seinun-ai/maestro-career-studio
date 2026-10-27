@@ -452,7 +452,7 @@ def test_presets_return_the_filled_session_wrapped(monkeypatch):
 
 def test_a_failed_presets_fill_names_the_session_it_started(monkeypatch):
     """The session exists once creation returned; a retry that loses its id strands it."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from mcp_server.client import BackendError
 
@@ -475,7 +475,7 @@ def test_a_failed_presets_fill_names_the_session_it_started(monkeypatch):
 
 
 async def test_a_failed_presets_fill_reaches_the_agent_whole(monkeypatch):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from mcp_server.client import BackendError
 

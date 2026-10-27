@@ -206,7 +206,7 @@ def draft(db_session):
 
 def _fake_ctx(name: str):
     return SimpleNamespace(session=SimpleNamespace(
-        client_params=SimpleNamespace(clientInfo=SimpleNamespace(name=name))))
+        client_params=SimpleNamespace(client_info=SimpleNamespace(name=name))))
 
 
 def test_a_status_change_on_the_web_writes_one_event_said_by_you(client, db_session, draft):

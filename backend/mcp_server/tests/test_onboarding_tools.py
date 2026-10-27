@@ -5,8 +5,8 @@ client stub here CAPTURES what the tool passed and the test asserts on it.
 """
 
 import pytest
-from mcp.server.fastmcp.exceptions import ToolError
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp import Client
 
 import mcp_server.server as srv
 from mcp_server.client import BackendError
@@ -113,10 +113,10 @@ def test_kb_approve_points_only_approves(monkeypatch, hints_on):
 async def test_kb_approve_points_takes_no_state_and_is_not_destructive():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     tool = tools["kb_approve_points"]
-    assert set(tool.inputSchema["properties"]) == {"point_ids"}
+    assert set(tool.input_schema["properties"]) == {"point_ids"}
     assert tool.title == "Approve Career Points"
-    assert tool.annotations.destructiveHint is False
-    assert tools["kb_retire_points"].annotations.destructiveHint is False
+    assert tool.annotations.destructive_hint is False
+    assert tools["kb_retire_points"].annotations.destructive_hint is False
     assert "kb_retire_points" in " ".join((srv.kb_approve_points.__doc__ or "").split())
 
 
@@ -124,14 +124,14 @@ async def test_kb_approve_points_takes_no_state_and_is_not_destructive():
 async def test_an_old_state_argument_is_refused_not_dropped_and_approved(
     monkeypatch, hints_on, state
 ):
-    """FastMCP drops an argument a tool does not declare, so an old call asking to retire
+    """MCPServer drops an argument a tool does not declare, so an old call asking to retire
     would approve: any state but approved is refused, and nothing is written."""
     capture = _stub(monkeypatch, "kb_approve_points", {"results": []})
-    async with create_connected_server_and_client_session(srv.mcp) as session:
-        result = await session.call_tool(
+    async with Client(srv.mcp) as client:
+        result = await client.call_tool(
             "kb_approve_points", {"point_ids": ["p1"], "state": state}
         )
-    assert result.isError
+    assert result.is_error
     assert result.content[0].text == (
         "kb_approve_points only approves; kb_retire_points retires points."
     )
@@ -143,11 +143,11 @@ async def test_an_old_explicit_approved_state_still_approves(monkeypatch, hints_
         monkeypatch, "kb_approve_points",
         {"results": [{"id": "p1", "ok": True, "state": "approved", "detail": None}]},
     )
-    async with create_connected_server_and_client_session(srv.mcp) as session:
-        result = await session.call_tool(
+    async with Client(srv.mcp) as client:
+        result = await client.call_tool(
             "kb_approve_points", {"point_ids": ["p1"], "state": "approved"}
         )
-    assert not result.isError, result.content
+    assert not result.is_error, result.content
     assert capture.last == ((["p1"],), {"state": "approved"})
 
 

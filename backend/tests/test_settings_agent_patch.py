@@ -441,7 +441,7 @@ def test_set_job_preferences_changes_one_field(client, mcp_tools):
 
 
 def test_set_markets_with_a_bad_currency_moves_nothing(client, mcp_tools):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     _seed_place(client)
     before = _place(client)

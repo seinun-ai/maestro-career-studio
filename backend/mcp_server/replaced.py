@@ -4,7 +4,7 @@ A call to a removed tool, from an agent or an old saved prompt, is answered with
 sentence naming its replacement, not a bare "Unknown tool", on stdio and on every HTTP set
 (mcp_server.server._ServedMCP.call_tool, which every set runs on both transports). A call
 that still uses a removed argument gets the same kind of sentence and is never acted on:
-FastMCP drops an argument a tool does not declare, so kb_approve_points(state="retired")
+MCPServer drops an argument a tool does not declare, so kb_approve_points(state="retired")
 from an old prompt would otherwise approve the drafts the user rejected. Pure: no httpx, no
 app imports.
 """

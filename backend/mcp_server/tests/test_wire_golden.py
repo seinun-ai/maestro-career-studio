@@ -26,7 +26,9 @@ from app.services import automations
 from mcp_server import http as mcp_http
 from mcp_server import server as srv
 from mcp_server.client import BackendError
-from mcp_server.tests._wire import HDR, INIT, asgi_app, normalise_record, rpc, session
+from mcp_server.tests._wire import (
+    HDR, INIT, asgi_app, normalise_record, normalise_response, rpc, session,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "wire_golden.json"
 SET_PATHS = (
@@ -42,7 +44,15 @@ HOW_TO_ACT = (
 
 # Full entry name -> the whole entry as the record holds it (normalised) after a deliberate
 # change. Empty while nothing is meant to change.
-EXPECTED_CHANGES: dict[str, Any] = {}
+EXPECTED_CHANGES: dict[str, Any] = {
+    # The owner's call: on 2.x a crash's own text stays in the server log.
+    "tools/call get_base_resume crashes on a KeyError": {
+        "result": {
+            "content": [{"type": "text", "text": "Error executing tool get_base_resume"}],
+            "isError": True,
+        }
+    },
+}
 
 _JOB = {
     "job": {
@@ -278,3 +288,13 @@ def test_wire_answers_match_the_golden_record():
             ]),
             pytrace=False,
         )
+
+
+def test_only_an_empty_experimental_capability_is_left_out_of_the_comparison():
+    def caps(experimental):
+        return {"result": {"capabilities": {"experimental": experimental, "tools": {}}}}
+
+    assert normalise_response(caps({})) == {"result": {"capabilities": {"tools": {}}}}
+    assert normalise_response(caps({"x": {}})) == {
+        "result": {"capabilities": {"experimental": {"x": {}}, "tools": {}}}
+    }

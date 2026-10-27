@@ -577,7 +577,7 @@ def test_patch_application_clears_notes_with_null(db_session, client):
 def test_an_agent_clears_notes_and_referral_through_mcp(db_session, client, mcp_tools):
     """MCP update_application(clear=[...]) against the real PATCH: both fields emptied, a field
     both set and cleared refused with nothing written, and a call without clear unchanged."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from app.models.referral import Referral
 

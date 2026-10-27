@@ -9,7 +9,7 @@ import re
 import httpx
 import pytest
 import respx
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 import mcp_server.server as srv
 from app.services import markets
@@ -27,13 +27,13 @@ async def test_the_four_writes_are_registered_as_local_writes():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     for name in TOOLS:
         ann = tools[name].annotations
-        assert ann.readOnlyHint is False, name
-        assert ann.openWorldHint is False, name
-        assert ann.idempotentHint is True, name
+        assert ann.read_only_hint is False, name
+        assert ann.open_world_hint is False, name
+        assert ann.idempotent_hint is True, name
 
 
 async def test_the_autofill_write_has_no_eeo_field_and_refuses_unknown_keys():
-    schema = (await _tool("set_autofill_profile")).inputSchema
+    schema = (await _tool("set_autofill_profile")).input_schema
     assert "eeo" not in schema["properties"]
     assert set(schema["properties"]) == {
         "personal", "eligibility", "preferences", "work_auth_by_country",
@@ -56,10 +56,10 @@ async def test_the_autofill_write_says_saved_answers_are_added_or_replaced_never
 
 
 async def test_work_permit_keys_are_the_market_list():
-    schema = (await _tool("set_autofill_profile")).inputSchema
+    schema = (await _tool("set_autofill_profile")).input_schema
     assert json.dumps(markets.keys()) in json.dumps(schema)
     for name in ("home", "apply_in"):
-        assert json.dumps(markets.keys()) in json.dumps((await _tool("set_markets")).inputSchema), name
+        assert json.dumps(markets.keys()) in json.dumps((await _tool("set_markets")).input_schema), name
 
 
 @pytest.mark.parametrize("args", [
@@ -79,7 +79,7 @@ async def test_a_bad_shape_writes_nothing(monkeypatch, args):
 
 
 async def test_diversity_answers_alone_are_refused_and_nothing_is_written(monkeypatch):
-    # FastMCP drops an argument the tool does not declare, so `eeo` arrives as no change
+    # MCPServer drops an argument the tool does not declare, so `eeo` arrives as no change
     # at all; a write with nothing to save is refused rather than sent back unchanged.
     monkeypatch.setattr(srv, "_client", BackendClient(BASE))
     with respx.mock:

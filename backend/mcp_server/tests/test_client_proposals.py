@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 import respx
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp import Client
 from mcp.types import Implementation
 
 import mcp_server.server as srv
@@ -68,11 +68,11 @@ async def test_any_client_name_can_file_a_proposal(monkeypatch, declared, filed_
         route = mock.post(url__regex=r".*/api/proposals$").mock(
             return_value=httpx.Response(201, json={"id": "p1"})
         )
-        async with create_connected_server_and_client_session(
-            srv.mcp, client_info=Implementation(name=declared, version="0.1.0")
-        ) as session:
-            result = await session.call_tool("propose_application", {"job_id": "j1"})
-    assert not result.isError, result.content
+        async with Client(
+            srv.mcp, client_info=Implementation(name=declared, version="0.1.0"), mode="legacy"
+        ) as client:
+            result = await client.call_tool("propose_application", {"job_id": "j1"})
+    assert not result.is_error, result.content
     sent = route.calls.last.request.headers["X-Maestro-CS-Origin-Detail"]
     assert sent.isascii() and sent.isprintable() and len(sent) <= 120 * 9
     assert decode_detail(sent) == filed_as

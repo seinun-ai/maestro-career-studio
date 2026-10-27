@@ -132,10 +132,10 @@ async def test_sync_now_is_an_annotated_hunt_and_apply_tool():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     tool = tools["sync_now"]
     assert tool.title == "Sync Now"
-    assert tool.annotations.readOnlyHint is False
-    assert tool.annotations.destructiveHint is False
-    assert tool.annotations.idempotentHint is True
-    assert tool.annotations.openWorldHint is True
+    assert tool.annotations.read_only_hint is False
+    assert tool.annotations.destructive_hint is False
+    assert tool.annotations.idempotent_hint is True
+    assert tool.annotations.open_world_hint is True
     assert "sync_now" in HUNT_TOOLS & APPLY_TOOLS
 
 
@@ -422,7 +422,7 @@ async def test_tailoring_session_tools_expose_complete_input_schemas():
     }
 
     actual_schemas = {
-        name: without_generated_titles(tools[name].inputSchema)
+        name: without_generated_titles(tools[name].input_schema)
         for name in expected_schemas
     }
     assert actual_schemas == expected_schemas
@@ -442,9 +442,9 @@ async def test_resolve_gaps_contract_lists_every_backend_action():
     }
 
     assert all(action in tool.description for action in actions)
-    action_schema = tool.inputSchema["$defs"]["GapResolution"]["properties"]["action"]
+    action_schema = tool.input_schema["$defs"]["GapResolution"]["properties"]["action"]
     assert set(action_schema["enum"]) == actions
-    resolutions_desc = tool.inputSchema["properties"]["resolutions"].get("description", "")
+    resolutions_desc = tool.input_schema["properties"]["resolutions"].get("description", "")
     assert "ONE unit" in resolutions_desc
     assert "NOTHING" in resolutions_desc
     for action in actions:
@@ -453,7 +453,7 @@ async def test_resolve_gaps_contract_lists_every_backend_action():
 
 async def test_kb_ingest_resume_data_field_states_atomicity():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
-    desc = tools["kb_ingest_resume"].inputSchema["properties"]["data"].get(
+    desc = tools["kb_ingest_resume"].input_schema["properties"]["data"].get(
         "description", ""
     )
     assert "atomic" in desc.lower()
@@ -667,7 +667,7 @@ async def test_render_pdf_describes_keep_and_every_look_setting():
     from app.schemas.formatting import ResumeFormatting
 
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
-    schema = tools["render_pdf"].inputSchema["properties"]
+    schema = tools["render_pdf"].input_schema["properties"]
     assert {"formatting", "keep"} <= set(schema)
     look = schema["formatting"].get("description", "")
     missing = [name for name in ResumeFormatting.model_fields if name not in look]
@@ -744,21 +744,21 @@ def test_prepare_application_pdf_upload_tool_forwards_the_cover_letter(monkeypat
 async def test_pdf_delivery_tools_expose_expected_input_schemas():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
 
-    assert tools["get_rendered_pdf_page_image"].inputSchema["required"] == [
+    assert tools["get_rendered_pdf_page_image"].input_schema["required"] == [
         "target_type",
         "target_id",
         "page_number",
     ]
-    assert tools["get_rendered_pdf_page_image"].inputSchema["properties"][
+    assert tools["get_rendered_pdf_page_image"].input_schema["properties"][
         "page_number"
     ]["type"] == "integer"
-    assert tools["get_rendered_pdf_page_image"].inputSchema["properties"][
+    assert tools["get_rendered_pdf_page_image"].input_schema["properties"][
         "max_dimension_px"
     ]["default"] == 1024
-    assert tools["prepare_application_pdf_upload"].inputSchema["required"] == [
+    assert tools["prepare_application_pdf_upload"].input_schema["required"] == [
         "application_id"
     ]
-    upload = tools["prepare_application_pdf_upload"].inputSchema["properties"]
+    upload = tools["prepare_application_pdf_upload"].input_schema["properties"]
     assert set(upload) == {"application_id", "document"}
     assert upload["document"]["enum"] == ["resume", "cover_letter"]
     assert upload["document"]["default"] == "resume"
@@ -768,8 +768,8 @@ async def test_pdf_delivery_tools_expose_expected_input_schemas():
 async def test_store_extracted_jd_exposes_source_enum_and_requirement_levels():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     tool = tools["store_extracted_jd"]
-    source = tool.inputSchema["properties"]["source"]
-    # FastMCP may emit enum on the property or via anyOf.
+    source = tool.input_schema["properties"]["source"]
+    # MCPServer may emit enum on the property or via anyOf.
     enum_vals = source.get("enum")
     if enum_vals is None and "anyOf" in source:
         enum_vals = next(
@@ -1146,7 +1146,7 @@ def test_maestro_writing_tools_say_maestros_ai_writes_and_where_the_setting_is()
 
 
 def _schema_text(tool):
-    return " ".join([tool.description or "", *_schema_descriptions(tool.inputSchema)])
+    return " ".join([tool.description or "", *_schema_descriptions(tool.input_schema)])
 
 
 async def test_tailoring_text_names_only_tools_served_beside_it():
@@ -1342,7 +1342,7 @@ async def test_update_application_clear_names_notes_and_referral_id(monkeypatch)
     assert seen == {"app_id": "a1", "clear": ["notes", "referral_id"]}
 
     tool = next(t for t in await srv.mcp.list_tools() if t.name == "update_application")
-    clear = tool.inputSchema["properties"]["clear"]
+    clear = tool.input_schema["properties"]["clear"]
     array = next(branch for branch in clear["anyOf"] if branch.get("type") == "array")
     assert array["items"]["enum"] == ["notes", "referral_id"]
     assert clear["default"] is None  # no mutable default
@@ -1353,7 +1353,7 @@ async def test_update_application_refuses_a_bare_string_clear_in_words(monkeypat
     """clear="notes" over MCP is answered with a plain sentence and sends nothing."""
     import httpx
     import respx
-    from mcp.shared.memory import create_connected_server_and_client_session
+    from mcp import Client
 
     from mcp_server.client import BackendClient
 
@@ -1361,10 +1361,10 @@ async def test_update_application_refuses_a_bare_string_clear_in_words(monkeypat
     with respx.mock(assert_all_called=False) as mock:
         route = mock.patch("http://test-backend/api/applications/a1").mock(
             return_value=httpx.Response(200, json={"id": "a1"}))
-        async with create_connected_server_and_client_session(srv.mcp) as session:
-            result = await session.call_tool(
+        async with Client(srv.mcp) as client:
+            result = await client.call_tool(
                 "update_application", {"application_id": "a1", "clear": "notes"})
-    assert result.isError
+    assert result.is_error
     assert 'a single name goes in a list too' in result.content[0].text
     assert not route.called
 
@@ -1382,7 +1382,7 @@ def test_update_application_tool_forwards_all_args(monkeypatch):
         or {"id": app_id},
     )
     ctx = SimpleNamespace(session=SimpleNamespace(
-        client_params=SimpleNamespace(clientInfo=SimpleNamespace(name="claude-ai"))))
+        client_params=SimpleNamespace(client_info=SimpleNamespace(name="claude-ai"))))
     srv.update_application(
         "a1", status="rejected", applied_at="2026-07-01T00:00:00Z", notes="no fit", referral_id="r1",
         from_email=True, ctx=ctx,
@@ -1405,7 +1405,7 @@ async def test_update_application_names_its_client_and_mail_for_the_status_log(m
 
     import httpx
     import respx
-    from mcp.shared.memory import create_connected_server_and_client_session
+    from mcp import Client
     from mcp.types import Implementation
 
     from mcp_server.client import BackendClient
@@ -1414,18 +1414,19 @@ async def test_update_application_names_its_client_and_mail_for_the_status_log(m
     with respx.mock() as mock:
         route = mock.patch("http://test-backend/api/applications/a1").mock(
             return_value=httpx.Response(200, json={"id": "a1", "status": "rejected"}))
-        async with create_connected_server_and_client_session(
-                srv.mcp, client_info=Implementation(name="claude-ai", version="1")) as session:
-            result = await session.call_tool("update_application", {
+        async with Client(
+                srv.mcp, client_info=Implementation(name="claude-ai", version="1"),
+                mode="legacy") as client:
+            result = await client.call_tool("update_application", {
                 "application_id": "a1", "status": "rejected", "from_email": True})
-    assert not result.isError, result.content
+    assert not result.is_error, result.content
     request = route.calls.last.request
     assert json.loads(request.read()) == {"status": "rejected", "status_source": "mail"}
     assert request.headers["X-Maestro-CS-Origin"] == "mcp"
     assert request.headers["X-Maestro-CS-Origin-Detail"] == "claude-ai"
     tool = next(tool for tool in await srv.mcp.list_tools() if tool.name == "update_application")
-    assert "ctx" not in tool.inputSchema["properties"]
-    assert tool.inputSchema["properties"]["from_email"]["default"] is False
+    assert "ctx" not in tool.input_schema["properties"]
+    assert tool.input_schema["properties"]["from_email"]["default"] is False
 
 
 def test_update_application_docstring_documents_statuses_and_limitation():
@@ -1484,7 +1485,7 @@ async def test_edit_op_docstrings_advertise_extra_section_ops():
     # schema — immune to the ~2048-char tool-description truncation that hid
     # it in the live audit.
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
-    ops_desc = tools["edit_base_resume"].inputSchema["properties"]["ops"].get(
+    ops_desc = tools["edit_base_resume"].input_schema["properties"]["ops"].get(
         "description", ""
     )
     assert "add_extra_section" in ops_desc
@@ -1536,8 +1537,8 @@ async def test_store_extracted_jd_says_a_repeat_capture_is_unchanged_unless_upda
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     text = " ".join(_schema_text(tools["store_extracted_jd"]).split())
     assert "already_existed" in text and "unchanged" in text
-    assert "update" in tools["store_extracted_jd"].inputSchema["properties"]
-    assert "apply_url" in tools["store_extracted_jd"].inputSchema["properties"]
+    assert "update" in tools["store_extracted_jd"].input_schema["properties"]
+    assert "apply_url" in tools["store_extracted_jd"].input_schema["properties"]
     for fact in ("correction", "scores_cleared", "tailored_applications", "open_sessions", "score_ats",
                  "find_job_by_url", "rescored", "rescore_failed", "proposals_fit_stale",
                  # sessions read as out of date and lose their link to a deleted score
@@ -1569,8 +1570,8 @@ async def test_explore_trends_is_one_read_only_tool_for_six_views():
 
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     tool = tools["explore_trends"]
-    assert tool.annotations.readOnlyHint is True
-    props = tool.inputSchema["properties"]
+    assert tool.annotations.read_only_hint is True
+    props = tool.input_schema["properties"]
     views = ["top_skills", "heatmap", "role_mix", "fit_distribution", "ats_over_time",
              "tailoring_lift"]
     assert _enum_of(props["view"]) == views
@@ -1627,12 +1628,12 @@ async def test_no_kb_write_tool_exposes_state():
     ]
     assert len(writes) == 3
     for tool in writes:
-        assert "state" not in tool.inputSchema.get("properties", {}), tool.name
+        assert "state" not in tool.input_schema.get("properties", {}), tool.name
 
 
 async def test_kb_edit_entity_cannot_change_kind():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
-    assert "kind" not in tools["kb_edit_entity"].inputSchema.get("properties", {})
+    assert "kind" not in tools["kb_edit_entity"].input_schema.get("properties", {})
 
 
 def _schema_op_kinds() -> set[str]:
@@ -1690,7 +1691,7 @@ async def test_ops_parameter_schema_names_every_op_kind():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     schema_kinds = _schema_op_kinds()
     for name in ("edit_base_resume", "edit_application"):
-        described = tools[name].inputSchema["properties"]["ops"].get("description", "")
+        described = tools[name].input_schema["properties"]["ops"].get("description", "")
         missing = {k for k in schema_kinds if k not in described}
         assert not missing, f"{name} ops schema omits: {sorted(missing)}"
         assert "replace_entry" in described, name
@@ -1745,10 +1746,10 @@ async def test_every_tool_carries_a_title_and_explicit_hints():
         ann = tool.annotations
         assert ann is not None, tool.name
         assert ann.title == tool.title, tool.name
-        for hint in ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"):
+        for hint in ("read_only_hint", "destructive_hint", "idempotent_hint", "open_world_hint"):
             assert isinstance(getattr(ann, hint), bool), (tool.name, hint)
-        if ann.readOnlyHint:
-            assert ann.destructiveHint is False, tool.name
+        if ann.read_only_hint:
+            assert ann.destructive_hint is False, tool.name
         assert len(tool.name) <= 64, tool.name
 
 
@@ -1813,13 +1814,13 @@ async def test_pinned_annotation_decisions():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     for name, expected in _PINNED_HINTS.items():
         ann = tools[name].annotations
-        got = (ann.readOnlyHint, ann.destructiveHint, ann.idempotentHint, ann.openWorldHint)
+        got = (ann.read_only_hint, ann.destructive_hint, ann.idempotent_hint, ann.open_world_hint)
         assert got == expected, name
 
 
 async def test_only_llm_and_sync_tools_are_open_world():
     tools = await srv.mcp.list_tools()
-    open_world = {t.name for t in tools if t.annotations.openWorldHint}
+    open_world = {t.name for t in tools if t.annotations.open_world_hint}
     assert open_world == {
         "sync_now",
         "run_health_check",
@@ -1863,7 +1864,7 @@ def _schema_descriptions(node):
 async def test_tool_text_describes_instead_of_instructing():
     offenders = {}
     for tool in await srv.mcp.list_tools():
-        texts = [tool.description or "", *_schema_descriptions(tool.inputSchema)]
+        texts = [tool.description or "", *_schema_descriptions(tool.input_schema)]
         hits = {
             m.group(0)
             for text in texts
@@ -1885,7 +1886,7 @@ def test_update_application_docstring_states_the_proposal_side_effect():
 
 
 async def _tool_schemas():
-    return {t.name: t.inputSchema for t in await srv.mcp.list_tools()}
+    return {t.name: t.input_schema for t in await srv.mcp.list_tools()}
 
 
 def _enum_of(prop: dict) -> list[str]:
@@ -2034,7 +2035,7 @@ def test_a_landed_write_is_not_reported_as_an_error_when_only_the_hint_fails(mon
 
 def test_a_failing_write_is_still_an_error(monkeypatch):
     """Only the HINT is best-effort; the write's own failure must still raise."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from mcp_server.client import BackendError
 
@@ -2114,7 +2115,7 @@ def test_record_run_attributes_the_run_to_the_mcp_client(monkeypatch):
             report=report, origin_detail=origin_detail) or {"id": "r1"},
     )
     ctx = SimpleNamespace(session=SimpleNamespace(
-        client_params=SimpleNamespace(clientInfo=SimpleNamespace(name="codex"))
+        client_params=SimpleNamespace(client_info=SimpleNamespace(name="codex"))
     ))
     assert srv.record_run("job-hunt", "failed", ctx=ctx) == {"id": "r1"}
     assert seen == {"report": None, "origin_detail": "codex"}
@@ -2129,20 +2130,20 @@ def test_record_run_is_available_in_the_automation_profiles(profile):
 
 async def test_record_run_exposes_its_signature_and_write_hints():
     tool = next(tool for tool in await srv.mcp.list_tools() if tool.name == "record_run")
-    schema = tool.inputSchema
+    schema = tool.input_schema
     assert schema["required"] == ["automation", "outcome"]
     assert schema["properties"]["outcome"]["enum"] == ["ok", "partial", "failed"]
     assert schema["properties"]["report"]["default"] is None
     assert "ctx" not in schema["properties"]
     ann = tool.annotations
-    assert (ann.readOnlyHint, ann.destructiveHint, ann.idempotentHint, ann.openWorldHint) == (
+    assert (ann.read_only_hint, ann.destructive_hint, ann.idempotent_hint, ann.open_world_hint) == (
         False, False, False, False
     )
 
 
 async def test_record_run_exposes_optional_report_shapes():
     tool = next(tool for tool in await srv.mcp.list_tools() if tool.name == "record_run")
-    schema = tool.inputSchema
+    schema = tool.input_schema
     assert set(schema["$defs"]["RunReport"]["properties"]) == {"counts", "digest", "job_ids"}
     assert set(schema["$defs"]["RunCounts"]["properties"]) == {
         "found", "proposed", "skipped", "tailored", "updated", "needs_you"
@@ -2160,7 +2161,7 @@ async def test_record_run_refuses_unknown_report_or_count_keys(monkeypatch, repo
 
     import httpx
     import respx
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
     from mcp_server.client import BackendClient
 
     def backend_response(request):
@@ -2219,7 +2220,7 @@ def test_save_referral_tool_forwards_its_fields(monkeypatch):
 
 async def test_save_referral_requires_nothing_but_takes_company_for_an_add():
     tool = next(t for t in await srv.mcp.list_tools() if t.name == "save_referral")
-    assert "required" not in tool.inputSchema or tool.inputSchema["required"] == []
+    assert "required" not in tool.input_schema or tool.input_schema["required"] == []
 
 
 def test_save_referral_is_served_wherever_referrals_are_listed():

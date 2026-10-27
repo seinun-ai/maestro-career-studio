@@ -3,14 +3,18 @@
 import asyncio
 import inspect
 import json
+import logging
 import threading
 
+import anyio.from_thread
 import pytest
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from starlette.testclient import TestClient
 
 from mcp_server import http as mcp_http
 from mcp_server import server as srv
+from mcp_server.client import BackendError
 from mcp_server.profiles import allowed_tools
 from mcp_server.tests._wire import HDR, INIT, asgi_app, rpc, session
 
@@ -104,11 +108,11 @@ def test_a_removed_name_says_which_set_holds_its_replacement_only_when_this_one_
 
 
 def test_a_plain_registry_still_answers_a_removed_name():
-    """Every set is a _ServedSet whatever registry it is built from, so even a plain FastMCP's
+    """Every set is a _ServedSet whatever registry it is built from, so even a plain MCPServer's
     full set answers a removed name with its replacement."""
     from mcp_server import replaced
 
-    plain = FastMCP("plain")
+    plain = MCPServer("plain")
 
     @plain.tool()
     def scratch_tool() -> str:
@@ -228,7 +232,7 @@ def test_request_body_larger_than_sdk_default_is_accepted(client):
 
 
 def test_offloading_is_idempotent_and_preserves_async_tools():
-    scratch = FastMCP("idempotent-test")
+    scratch = MCPServer("idempotent-test")
 
     @scratch.tool()
     def sync_tool() -> str:
@@ -292,18 +296,58 @@ def test_lifespan_can_restart_and_forgets_old_sessions():
         assert rpc(c, "/mcp", sid, "tools/list").status_code == 200
 
 
-def test_offloaded_tool_errors_keep_todays_text():
+def _scratch_answer(raised: Exception, name: str = "refused") -> dict:
+    """What an agent reads when a scratch tool raises `raised` on /mcp."""
     scratch = srv._ServedMCP("error-test")
 
-    @scratch.tool()
-    def broken() -> str:
-        raise ValueError("broken input")
+    def tool() -> str:
+        raise raised
 
+    scratch.add_tool(tool, name=name)
     with TestClient(asgi_app(mcp_http.McpEndpoint(scratch))) as c:
         sid = session(c)
-        res = rpc(c, "/mcp", sid, "tools/call", {"name": "broken"}).json()["result"]
+        return rpc(c, "/mcp", sid, "tools/call", {"name": name}).json()["result"]
+
+
+def test_a_backend_refusal_reaches_the_agent_word_for_word():
+    """Not every tool runs under _guard; a BackendError is still meant for the agent."""
+    res = _scratch_answer(BackendError("Maestro writes for this app; use store_cover_letter."))
     assert res["isError"] is True
-    assert res["content"][0]["text"] == "Error executing tool broken: broken input"
+    assert res["content"][0]["text"] == (
+        "Error executing tool refused: Maestro writes for this app; use store_cover_letter."
+    )
+
+
+def test_a_deliberate_tool_error_reads_word_for_word():
+    res = _scratch_answer(ToolError("bad input"))
+    assert res["isError"] is True
+    assert res["content"][0]["text"] == "Error executing tool refused: bad input"
+
+
+def test_a_crash_reads_the_generic_text_and_keeps_its_traceback_in_the_log(caplog):
+    with caplog.at_level(logging.ERROR):
+        res = _scratch_answer(ValueError("broken input"), name="broken")
+    assert res["isError"] is True
+    assert res["content"][0]["text"] == "Error executing tool broken"
+    assert "ValueError: broken input" in caplog.text
+
+
+def test_set_tools_run_on_the_dedicated_limiter():
+    """2.x runs sync tools on threads itself, on anyio's default limiter (FastAPI's sync
+    endpoints draw on it too); a set's tools take a token from Maestro's own."""
+    scratch = srv._ServedMCP("limiter-test")
+
+    @scratch.tool()
+    def list_templates() -> dict:
+        return {"borrowed": anyio.from_thread.run_sync(
+            lambda: mcp_http._LIMITER.get().borrowed_tokens
+        )}
+
+    with TestClient(asgi_app(mcp_http.McpEndpoint(scratch))) as c:
+        sid = session(c, "/mcp/templates")
+        res = rpc(c, "/mcp/templates", sid, "tools/call", {"name": "list_templates"}).json()
+    assert not res["result"]["isError"], res
+    assert json.loads(res["result"]["content"][0]["text"]) == {"borrowed": 1}
 
 
 @pytest.mark.parametrize("profile", ["full", "profile", "tailor", "templates"])

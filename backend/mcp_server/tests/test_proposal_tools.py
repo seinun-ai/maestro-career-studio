@@ -1,5 +1,5 @@
 
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp import Client
 from mcp.types import Implementation
 
 import mcp_server.server as srv
@@ -55,7 +55,7 @@ def test_propose_application_passes_the_client_label(monkeypatch):
 
 async def test_propose_application_keeps_ctx_out_of_its_schema():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
-    assert "ctx" not in tools["propose_application"].inputSchema["properties"]
+    assert "ctx" not in tools["propose_application"].input_schema["properties"]
 
 
 async def test_propose_application_names_the_client_its_session_declared(monkeypatch):
@@ -67,11 +67,11 @@ async def test_propose_application_names_the_client_its_session_declared(monkeyp
     monkeypatch.setattr(
         srv._client, "propose_application", lambda job_id, **kw: seen.update(kw) or {"id": "p1"}
     )
-    async with create_connected_server_and_client_session(
-        srv.mcp, client_info=Implementation(name="claude-ai", version="0.1.0")
-    ) as session:
-        result = await session.call_tool("propose_application", {"job_id": "j1"})
-    assert not result.isError, result.content
+    async with Client(
+        srv.mcp, client_info=Implementation(name="claude-ai", version="0.1.0"), mode="legacy"
+    ) as client:
+        result = await client.call_tool("propose_application", {"job_id": "j1"})
+    assert not result.is_error, result.content
     assert seen["origin_detail"] == "claude-ai"
 
 
@@ -131,7 +131,7 @@ def test_mark_submitted_attested_passes_consent(monkeypatch):
         ) or {"id": proposal_id, "status": status},
     )
     ctx = SimpleNamespace(session=SimpleNamespace(
-        client_params=SimpleNamespace(clientInfo=SimpleNamespace(name="claude-ai"))))
+        client_params=SimpleNamespace(client_info=SimpleNamespace(name="claude-ai"))))
     res = srv.mark_submitted("p1", user_attested=True, channel="chat", note="user said submitted",
                              ctx=ctx)
     assert res["status"] == "submitted"
@@ -267,7 +267,7 @@ def test_attach_evidence_reads_and_uploads_a_file(monkeypatch, tmp_path):
 
 def test_attach_evidence_refuses_a_file_that_is_not_an_image(monkeypatch, tmp_path):
     import pytest
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     bad = tmp_path / "notes.txt"
     bad.write_bytes(b"ssh-rsa AAAA fake key material")
@@ -280,7 +280,7 @@ def test_attach_evidence_takes_exactly_one_input(monkeypatch, tmp_path):
     import base64
 
     import pytest
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     png = tmp_path / "shot.png"
     png.write_bytes(_PNG)
@@ -299,7 +299,7 @@ async def test_attach_evidence_schema_takes_either_input_and_the_file_tool_is_go
     from mcp_server.profiles import APPLY_TOOLS, PROFILE_ALLOWLISTS
 
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
-    schema = tools["attach_evidence"].inputSchema
+    schema = tools["attach_evidence"].input_schema
     assert set(schema["required"]) == {"proposal_id", "step", "label"}
     props = schema["properties"]
     assert {"image_base64", "file_path"} <= set(props)
@@ -316,7 +316,7 @@ async def test_attach_evidence_schema_takes_either_input_and_the_file_tool_is_go
 async def test_automatic_consent_channels_are_exposed_in_tool_schemas():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     for name in ("record_consent", "mark_submitted"):
-        assert tools[name].inputSchema["properties"]["channel"]["enum"] == [
+        assert tools[name].input_schema["properties"]["channel"]["enum"] == [
             "chat", "slack", "mcp", "auto",
         ]
 
@@ -349,11 +349,11 @@ async def test_record_consent_accepts_auto_through_an_mcp_session(monkeypatch):
     with respx.mock(assert_all_called=False) as mock:
         route = mock.patch("http://test-backend/api/proposals/p1").mock(
             return_value=httpx.Response(200, json={"id": "p1", "status": "approved"}))
-        async with create_connected_server_and_client_session(srv.mcp) as session:
-            result = await session.call_tool("record_consent", {
+        async with Client(srv.mcp) as client:
+            result = await client.call_tool("record_consent", {
                 "proposal_id": "p1", "action": "approved", "channel": "auto", "note": "clean review",
             })
-    assert not result.isError, result.content
+    assert not result.is_error, result.content
     assert json.loads(route.calls.last.request.read()) == {
         "status": "approved", "consent": {"channel": "auto", "note": "clean review"},
     }

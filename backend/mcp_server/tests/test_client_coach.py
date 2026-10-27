@@ -1,7 +1,7 @@
 import httpx
 import pytest
 import respx
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from mcp_server import server as srv
 from mcp_server.client import BackendClient

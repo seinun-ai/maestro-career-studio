@@ -8,10 +8,10 @@ from collections.abc import Callable
 from contextvars import ContextVar
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
-from mcp.server.fastmcp import Context, FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
-from mcp.server.fastmcp.tools import Tool
 from mcp.server.lowlevel import Server
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
+from mcp.server.mcpserver.tools import Tool
 from mcp.types import ToolAnnotations
 from pydantic import BeforeValidator, ConfigDict, Field, with_config
 
@@ -26,22 +26,25 @@ from mcp_server.profiles import allowed_tools, get_profile
 logger = logging.getLogger(__name__)
 
 
-def _lowlevel(server: FastMCP) -> Server:
-    """The SDK's low-level server: the one private attribute whose name changes in 2.x
-    (1.x `_mcp_server`, 2.x `_lowlevel_server`)."""
-    return server._mcp_server
+def _lowlevel(server: MCPServer) -> Server:
+    """The SDK's low-level server, which the HTTP session managers serve (1.x named the
+    attribute `_mcp_server`)."""
+    return server._lowlevel_server
 
 
-class _ServedMCP(FastMCP):
+class _ServedMCP(MCPServer):
     """One served set. The registry (`mcp`, profile None) holds every tool; build_set makes a
     set from it. A call to a removed tool, or with a removed argument, gets mcp_server.replaced's
-    sentence on stdio and HTTP alike."""
+    sentence on stdio and HTTP alike. A backend refusal reads word for word; any other crash
+    reads "Error executing tool <name>", its traceback in the server log."""
 
     def __init__(self, *args: Any, profile: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.profile = profile  # None: the registry; hints follow MAESTRO_CS_MCP_PROFILE
 
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+    async def call_tool(
+        self, name: str, arguments: dict[str, Any], context: Context | None = None
+    ) -> Any:
         if self._tool_manager.get_tool(name) is None:
             # A set holds only its own tools, so the answer can say where the new one is.
             served = {tool.name for tool in self._tool_manager.list_tools()}
@@ -54,7 +57,12 @@ class _ServedMCP(FastMCP):
         # alone; every served set has one.
         token = CURRENT_PROFILE.set(self.profile) if self.profile is not None else None
         try:
-            return await super().call_tool(name, arguments)
+            return await super().call_tool(name, arguments, context)
+        except UnexpectedToolError as exc:
+            # 2.x keeps a crash's text on the server; a backend refusal is meant for the agent.
+            if isinstance(exc.__cause__, BackendError):
+                raise ToolError(f"Error executing tool {name}: {exc.__cause__}") from exc.__cause__
+            raise
         finally:
             if token is not None:
                 CURRENT_PROFILE.reset(token)
@@ -472,7 +480,7 @@ def _client_label(ctx: Context | None) -> str | None:
     """
     session = getattr(ctx, "session", None)
     params = getattr(session, "client_params", None)
-    info = getattr(params, "clientInfo", None)
+    info = getattr(params, "client_info", None)
     name = str(getattr(info, "name", "") or "").strip()
     if name:
         return name
@@ -1397,7 +1405,7 @@ def _setup_autofill() -> dict[str, Any] | None:
 
 def _given(*, refusal: str, **fields: Any) -> dict[str, Any]:
     """The fields a patch write was passed. None of them is refused, not sent back unchanged:
-    FastMCP drops an argument a tool does not declare, so a call naming only those (`eeo`)
+    MCPServer drops an argument a tool does not declare, so a call naming only those (`eeo`)
     reaches here as no change at all."""
     given = {key: value for key, value in fields.items() if value is not None}
     if not given:
@@ -1561,7 +1569,7 @@ def set_base_resume_identity(
 # The docstring IS the agent's API reference, so its op block is RENDERED from
 # the schema-side registry (a hand-copied block once listed 8 of 16 kinds).
 # Set via __doc__ before decoration: _guard's functools.wraps propagates it to
-# what FastMCP registers; an f-string literal would not be a docstring at all.
+# what MCPServer registers; an f-string literal would not be a docstring at all.
 _EDIT_BASE_RESUME_DOC = f"""Apply typed edit ops to a base resume. replace_entry changes a field on one
     entry (dates, title, company, project name, link, tech) given that entry's
     index and the full edited entry; update_base_resume instead replaces the
@@ -2869,7 +2877,7 @@ def report_failure(proposal_id: str, reason: str) -> Any:
     return _client.report_failure(proposal_id, reason=reason)
 
 
-def _set_tools(profile: str | None, registry: FastMCP) -> list[Tool]:
+def _set_tools(profile: str | None, registry: MCPServer) -> list[Tool]:
     """The registry's Tool objects a client of `profile` (None: the env profile) can see, in
     registration order."""
     allow = allowed_tools(profile)
@@ -2884,7 +2892,7 @@ def list_registered_tool_names(profile: str | None = None) -> list[str]:
 def build_set(
     profile: str | None = None,
     cls: type[_ServedMCP] = _ServedMCP,
-    registry: FastMCP | None = None,
+    registry: MCPServer | None = None,
 ) -> _ServedMCP:
     """A server holding `profile`'s tools (default: the env profile) and instructions. The set is
     a snapshot of the registry (default `mcp`) at build time and holds the registry's own Tool
@@ -2894,9 +2902,10 @@ def build_set(
     active = get_profile(profile)
     tools = _set_tools(active, registry)
     instructions = orientation.instructions_for(active)
-    served = cls(registry.name, instructions=instructions, tools=tools, profile=active)
-    _lowlevel(served).version = os.environ.get("APP_VERSION", "dev")
-    return served
+    version = os.environ.get("APP_VERSION", "dev")
+    return cls(
+        registry.name, instructions=instructions, version=version, tools=tools, profile=active
+    )
 
 
 def main() -> None:
