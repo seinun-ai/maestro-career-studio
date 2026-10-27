@@ -31,7 +31,9 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   with its plain meaning from `QuickTailorProfile`'s field descriptions, the instruction and persona; the presets stay the user's).
   Lifespans run fresh stateful JSON sessions; tools use `http.py`'s eight-worker limiter (§6 inv-tools-off-loop: a same-backend REST
   call made on the event loop blocks single-worker uvicorn; `http.offload_tools`).
-  Stdio serves the set `MAESTRO_CS_MCP_PROFILE` names (`server.build_set`; default `full`; migration state: §13 `mcp-stdio-venv`).
+  Each set is its own server built from the one registry (`server.build_set`, holding the registry's `Tool` objects): stdio serves
+  the set `MAESTRO_CS_MCP_PROFILE` names (default `full`; migration state: §13 `mcp-stdio-venv`), HTTP every set as an
+  `http._ServedSet`, which adds the prompts and drops FastMCP's empty resource handlers, so an HTTP set advertises no resources.
   Hints use request `CURRENT_PROFILE`, else env (pins: `mcp_server/tests/test_profiles.py`, `test_server.py`, `test_http.py`).
   **KB grooming tools** (`profile` and `full`): `kb_groom_entity` (read-only similar-bullet report per entity, zero LLM calls),
   `kb_combine_points` (fold points into one keeper; the others become its wordings) and `kb_retire_points` (the one way to retire;
@@ -45,8 +47,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   **Removed names** (`replaced.py`): a call to a tool a change removed (`REPLACED_TOOLS`: the six old analytics tools,
   `get_career_export`, `attach_evidence_file`, `quick_tailor`, `tailor_application`) answers "<name> was replaced by <replacement>.",
   e.g. `explore_top_skills was replaced by explore_trends(view="top_skills").`, not "Unknown tool", on stdio and every HTTP set
-  (`server._ServedMCP.call_tool` for stdio and `full`, `http`'s `_call_tool` for a scoped set); a set that lacks the replacement adds
-  the sets that hold it (`…, in the track set.`). `McpEndpoint` takes only a `_ServedMCP`, so `full` cannot lose these answers. A removed argument is refused the same
+  (`server._ServedMCP.call_tool`, which every set's server runs, `full` included); a set that lacks the replacement adds
+  the sets that hold it (`…, in the track set.`). A removed argument is refused the same
   way and never acted on: FastMCP drops an undeclared argument, so `kb_approve_points` with a `state` other than "approved" answers
   "kb_approve_points only approves; kb_retire_points retires points." rather than approving drafts the user rejected. Pins:
   `test_replaced.py`, `test_http.py`.

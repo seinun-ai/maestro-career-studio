@@ -50,8 +50,8 @@ class _ServedMCP(FastMCP):
             refusal = replaced.refused_argument(name, arguments)
         if refusal:
             raise ToolError(refusal)
-        # A profile of None (the registry) leaves the caller's value alone: HTTP sets it, then
-        # calls the registry.
+        # A profile of None (the registry, called directly in tests) leaves the caller's value
+        # alone; every served set has one.
         token = CURRENT_PROFILE.set(self.profile) if self.profile is not None else None
         try:
             return await super().call_tool(name, arguments)
@@ -60,7 +60,7 @@ class _ServedMCP(FastMCP):
                 CURRENT_PROFILE.reset(token)
 
 
-# The full set's text; a stdio set gets its own from build_set, an HTTP set from mcp_server.http.
+# The full set's text; every served set, stdio or HTTP, gets its own from build_set.
 mcp = _ServedMCP("maestro-career-studio", instructions=orientation.instructions_for("full"))
 _client = BackendClient()
 
@@ -2869,11 +2869,12 @@ def report_failure(proposal_id: str, reason: str) -> Any:
     return _client.report_failure(proposal_id, reason=reason)
 
 
-def _set_tools(profile: str | None = None) -> list[Tool]:
+def _set_tools(profile: str | None = None, registry: _ServedMCP | None = None) -> list[Tool]:
     """The registry's Tool objects a client of `profile` (default: the env profile) can see, in
-    registration order."""
+    registration order. `registry` defaults to `mcp`; a test passes its own."""
     allow = allowed_tools(profile)
-    return [t for t in mcp._tool_manager.list_tools() if allow is None or t.name in allow]
+    tools = (mcp if registry is None else registry)._tool_manager.list_tools()
+    return [t for t in tools if allow is None or t.name in allow]
 
 
 def list_registered_tool_names(profile: str | None = None) -> list[str]:
@@ -2881,13 +2882,19 @@ def list_registered_tool_names(profile: str | None = None) -> list[str]:
     return [t.name for t in _set_tools(profile)]
 
 
-def build_set(profile: str | None = None, cls: type[_ServedMCP] = _ServedMCP) -> _ServedMCP:
+def build_set(
+    profile: str | None = None,
+    cls: type[_ServedMCP] = _ServedMCP,
+    registry: _ServedMCP | None = None,
+) -> _ServedMCP:
     """A server holding `profile`'s tools (default: the env profile) and instructions. The set is
-    a snapshot of the registry at build time and holds the registry's own Tool objects, so a set
-    must never change a shared Tool in place."""
+    a snapshot of the registry (default `mcp`) at build time and holds the registry's own Tool
+    objects, so a set must never change a shared Tool in place."""
+    registry = mcp if registry is None else registry
     active = get_profile(profile)
+    tools = _set_tools(active, registry)
     instructions = orientation.instructions_for(active)
-    served = cls(mcp.name, instructions=instructions, tools=_set_tools(active), profile=active)
+    served = cls(registry.name, instructions=instructions, tools=tools, profile=active)
     _lowlevel(served).version = os.environ.get("APP_VERSION", "dev")
     return served
 

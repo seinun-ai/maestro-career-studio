@@ -30,6 +30,12 @@ def test_each_profile_lists_exactly_its_allowlist(client, profile):
     assert names == (set(srv.list_registered_tool_names("full")) if allow is None else set(allow))
 
 
+def test_each_set_is_its_own_server_holding_only_its_tools():
+    served = mcp_http.McpEndpoint().servers["hunt"]
+    assert isinstance(served, mcp_http._ServedSet)
+    assert {t.name for t in served._tool_manager.list_tools()} == set(allowed_tools("hunt"))
+
+
 @pytest.mark.parametrize("old, new", [("career", "profile"), ("explore", "track")])
 def test_an_old_set_name_serves_its_new_set_for_one_release(client, old, new):
     sid = session(client, f"/mcp/{old}")
@@ -135,6 +141,13 @@ def test_initialize_reports_maestro_version_for_every_profile(
         response = c.post(path, json=INIT, headers=HDR)
         assert response.status_code == 200, response.text
         assert response.json()["result"]["serverInfo"]["version"] == expected
+
+
+def test_a_set_offers_tools_and_prompts_but_no_resources(client):
+    result = client.post("/mcp/hunt", json=INIT, headers=HDR).json()["result"]
+    assert set(result["capabilities"]) == {"experimental", "prompts", "tools"}
+    sid = session(client, "/mcp/hunt")
+    assert rpc(client, "/mcp/hunt", sid, "resources/list").json()["error"]["code"] == -32601
 
 
 def test_an_unknown_profile_is_404(client):

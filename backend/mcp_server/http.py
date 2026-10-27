@@ -1,8 +1,9 @@
 """MCP over Streamable HTTP, inside the FastAPI app.
 
-One FastMCP (mcp_server.server.mcp) holds every tool registration. Each
-profile gets a low-level MCP Server that filters that registry through the
-profile allowlist, with a fresh session manager on every lifespan run.
+One FastMCP (mcp_server.server.mcp) holds every tool registration. Each set in
+PROFILE_ALLOWLISTS is its own server (server.build_set): the registry's Tool
+objects for that set, the set's instructions, and the automation playbooks that
+use it as prompts. Every lifespan run gives each set a fresh session manager.
 
 Registered sync tools run on worker threads with a dedicated capacity limiter:
 they call the backend's REST API over loopback, which would deadlock a
@@ -19,23 +20,26 @@ from __future__ import annotations
 import contextlib
 import functools
 import logging
-import os
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import anyio
 import anyio.to_thread
 from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
-from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import GetPromptResult, Prompt, PromptMessage, TextContent
-from mcp.types import Tool as MCPTool
+from mcp.types import (
+    GetPromptResult,
+    ListResourcesRequest,
+    ListResourceTemplatesRequest,
+    Prompt,
+    PromptMessage,
+    ReadResourceRequest,
+    TextContent,
+)
 from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
-from mcp_server import orientation, replaced
 from mcp_server import server as tools_server
 from mcp_server.profiles import PROFILE_ALIASES, PROFILE_ALLOWLISTS
 
@@ -93,58 +97,37 @@ def offload_tools(mcp: FastMCP) -> int:
     return n
 
 
-def build_profile_server(mcp: FastMCP, profile: str, allowed: frozenset[str] | None) -> Server:
-    server: Server = Server(
-        mcp.name,
-        version=os.environ.get("APP_VERSION", "dev"),
-        instructions=orientation.instructions_for(profile),  # each set says what it holds
-    )
+class _ServedSet(tools_server._ServedMCP):
+    """One HTTP set: build_set's server, offering as prompts the automation playbooks that
+    use the set (full: all)."""
 
-    @server.list_tools()
-    async def _list_tools() -> list[MCPTool]:
-        tools = await mcp.list_tools()  # Preserve titles, annotations and outputSchema.
-        return [t for t in tools if allowed is None or t.name in allowed]
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # FastMCP answers resources/* (with nothing) and so advertises resources at initialize;
+        # an HTTP set never has, and agents see what they saw (resources/list: Method not found).
+        handlers = tools_server._lowlevel(self).request_handlers
+        for request in (ListResourcesRequest, ReadResourceRequest, ListResourceTemplatesRequest):
+            del handlers[request]
 
-    @server.call_tool(validate_input=False)  # FastMCP validates the Tool's own model.
-    async def _call_tool(name: str, arguments: dict[str, Any]) -> Any:
-        if allowed is not None and name not in allowed:
-            # A tool a change removed names its replacement; the full set's answer is
-            # mcp_server.server._ServedMCP's, which mcp.call_tool reaches.
-            raise ToolError(
-                replaced.replaced_message(name, served=allowed) or f"Unknown tool: {name}"
-            )
-        token = tools_server.CURRENT_PROFILE.set(profile)
-        try:
-            # FastMCP.get_context() reads the SDK's shared request ContextVar,
-            # set by this low-level server, so clientInfo belongs to this caller.
-            return await mcp.call_tool(name, arguments)
-        finally:
-            tools_server.CURRENT_PROFILE.reset(token)
-
-    _register_prompts(server, profile)
-    return server
-
-
-def _register_prompts(server: Server, profile: str) -> None:
-    async def _cards() -> list[dict[str, Any]]:
-        # The automation playbooks, as the web's Copy prompt gives them, for this set
-        # (full: all). A REST read like the tools, so it runs off the event loop too.
+    async def _cards(self) -> list[dict[str, Any]]:
+        # The playbooks as the web's Copy prompt gives them. A REST read like the tools, so it
+        # runs off the event loop too.
         catalog = await anyio.to_thread.run_sync(
             tools_server._client.get_automations, limiter=_LIMITER.get()
         )
         cards = (catalog or {}).get("cards") or []
-        return [c for c in cards if profile == "full" or c.get("toolset") == profile]
+        return [c for c in cards if self.profile == "full" or c.get("toolset") == self.profile]
 
-    @server.list_prompts()
-    async def _list_prompts() -> list[Prompt]:
+    async def list_prompts(self) -> list[Prompt]:
         return [
             Prompt(name=c["id"], title=c.get("title"), description=c.get("summary"))
-            for c in await _cards()
+            for c in await self._cards()
         ]
 
-    @server.get_prompt()
-    async def _get_prompt(name: str, arguments: dict[str, str] | None) -> GetPromptResult:
-        card = next((c for c in await _cards() if c["id"] == name), None)
+    async def get_prompt(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> GetPromptResult:
+        card = next((c for c in await self._cards() if c["id"] == name), None)
         if card is None:
             raise ValueError(f"Unknown prompt: {name}")
         return GetPromptResult(
@@ -168,9 +151,9 @@ class McpEndpoint:
                 "McpEndpoint serves a _ServedMCP; a plain FastMCP would drop the full set's "
                 "removed-tool answers and argument refusals"
             )
-        offload_tools(mcp)
+        offload_tools(mcp)  # first: every set holds the registry's own Tool objects
         self.servers = {
-            p: build_profile_server(mcp, p, allow) for p, allow in PROFILE_ALLOWLISTS.items()
+            p: tools_server.build_set(p, cls=_ServedSet, registry=mcp) for p in PROFILE_ALLOWLISTS
         }
         self.security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
         self.managers: dict[str, StreamableHTTPSessionManager] = {}
@@ -180,7 +163,7 @@ class McpEndpoint:
         _LIMITER.reset()
         managers = {
             p: StreamableHTTPSessionManager(
-                app=server,
+                app=tools_server._lowlevel(server),
                 json_response=True,
                 stateless=False,
                 security_settings=self.security,

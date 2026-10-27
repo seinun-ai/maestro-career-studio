@@ -116,7 +116,7 @@ backend/
                        source of the Automations page; indexed by docs/skills/README.md
     templates/         six seeded resume designs + both cover-letter sources (licenses: THIRD_PARTY_NOTICES.md)
     tools/             operator tools, `python -m app.tools.<name>`: backup_db
-  mcp_server/          FastMCP registry + http.py per-profile ASGI endpoint; client.py httpx → REST
+  mcp_server/          FastMCP registry → a server per tool set (build_set), on stdio or http.py's ASGI endpoint; client.py httpx → REST
   maestro_cs/          the `maestro` command (uv install, §9): CLI, supervisor, home layout, update, connect, stdio bridge
   migrations/          alembic: the SQLite chain, baseline 871d0425b64c + revisions (ids: §9; §12 has the revision-id gotcha)
   tests/               pytest on a throwaway SQLite file, no service; mcp_server/tests/ uses respx (no DB)
