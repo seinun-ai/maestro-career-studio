@@ -147,9 +147,10 @@ def test_the_connected_agents_card_explains_before_the_limits():
 _CAN = (
     "Find jobs and file them in your {AGENT_INBOX} for you to queue or skip.",
     "Read your career history and job preferences.",
+    # kb_merge_entities: an item can go only by merging into another, which keeps every bullet.
     "Add to and change your career history. New or reworded bullets arrive as drafts for you"
-    " to approve. Other changes, such as an item&apos;s dates or your summary, skills and contact"
-    " details, apply at once.",
+    " to approve. Other changes, such as an item&apos;s dates, merging two items into one, or your"
+    " summary, skills and contact details, apply at once.",
     # kb_approve_points: its "only after the user said yes" is a docstring rule, not a server check.
     "Approve bullets, or mark them Not used, in your career history. They&apos;re told to do this only"
     " after you say yes. That&apos;s a rule they&apos;re given, not a lock.",
@@ -159,7 +160,7 @@ _CAN = (
 )
 _CANT = (
     "Go past the daily limit below.",
-    "Delete an item or a bullet from your career history.",
+    "Delete a bullet from your career history.",
     "Connect from claude.ai or chatgpt.com in a browser.",
 )
 _AGENT_INBOX = '<Link href="/proposals" className="text-primary underline underline-offset-4"> Agent inbox </Link>'
