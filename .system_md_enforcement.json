@@ -63,7 +63,12 @@
     "inv-mcp-controls": [
       {"path": "backend/mcp_server/tests/test_server.py", "symbol": "def test_"},
       {"path": "backend/mcp_server/tests/test_profile_write_tools.py", "symbol": "def test_mcp_writes_only_the_settings_setup_and_profile_ask_for"},
-      {"path": "backend/mcp_server/tests/test_client_path_ids.py", "symbol": "def test_every_value_in_a_rest_path_goes_through_seg"}
+      {"path": "backend/mcp_server/tests/test_client_path_ids.py", "symbol": "def test_every_value_in_a_rest_path_goes_through_seg"},
+      {"path": "backend/app/services/text_settings.py", "symbol": "def one_commit"},
+      {"path": "backend/tests/test_settings_agent_patch.py", "symbol": "def test_another_save_cannot_land_between_a_patchs_read_and_its_write"},
+      {"path": "backend/tests/test_settings_agent_patch.py", "symbol": "def test_a_companion_learn_between_an_agents_read_and_write_is_kept"},
+      {"path": "backend/tests/test_settings_agent_patch.py", "symbol": "def test_market_and_money_are_one_transaction"},
+      {"path": "backend/mcp_server/tests/test_client_profile_writes.py", "symbol": "def test_set_autofill_profile_sends_only_the_changes_in_one_patch"}
     ],
     "inv-mcp-inside-the-app": [
       {"path": "backend/tests/test_mcp_http_boundary.py", "symbol": "test_a_forged_host_is_refused_on_mcp"},

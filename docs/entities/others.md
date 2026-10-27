@@ -3,16 +3,19 @@
 > Reference tier, extracted from [SYSTEM.md](../../SYSTEM.md) (§4 Core entities). The header contract there governs this file too: integrate don't append, present tense, no dates outside the ledgers, update in the same change that alters the behaviour described.
 
 - **MCP tool coverage:** jobs (ingest/list/get/export;
-  `get_job_search_brief` with verbatim work-auth, typed `job_preferences` and the `auto_apply` guardrail block;
-  `find_job_by_url` posting-equality lookup; `store_extracted_jd` takes `source="agent"`; playbook in
-  docs/agentic-job-search.md, capture-and-score only), the proposal-ledger family (consent-gated
+  `get_job_search_brief` with verbatim work permits per apply-in market (`work_auth_by_country`, and the home `work_auth` for one
+  release), typed `job_preferences`, the `auto_apply` guardrail block, `last_runs` (docs/entities/agent-runs.md) and `roles`
+  (the catalog's 27 keys as `{key, label}`, `other` and `unknown` included);
+  `find_job_by_url` posting-equality lookup; `store_extracted_jd` takes `source="agent"`, `apply_url` and `update` (a correction:
+  docs/entities/job.md, "Correcting a saved job"); playbook in docs/agentic-job-search.md, capture-and-score only), the proposal-ledger family (consent-gated
   propose/decide/triage/resume/final-review/evidence/mark_submitted/report_failure; `attach_evidence` takes an inline
   `image_base64` or a `file_path` on this machine, exactly one; `record_filled_answers` records
   each form page's answers and `get_final_review` names their `flags` (inv-filled-answers-local); `record_consent` stores the user's
   yes/no, or the agent's automatic yes with channel `auto` while full automation is On; `mark_submitted(auto)` records the agent's confirmation note;
   `get_job_site_login` hands the login to a Queued/approved job's agent (§6); filer and create-lock rules: "MCP proposal filer" below), base resumes
   (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind is REST `base`|`application`, details carry the parent diff, a restore
-  is a new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting; those
+  is a new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting, and
+  `list_base_resumes(include_archived=True)` lists them with `archived_at`; those
   five and `set_base_resume_identity` (a base's only anchor writer and, after create, its only colour writer; `""`/`[]` clear) are in the
   `profile` and `full` sets; `list_resume_versions`/`restore_resume_version` are in `tailor` too), health
   (run/get + waivers; a finding carries its bullet's own `question`, `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`, a report `next_grade`; disputes and the word bank
@@ -21,8 +24,9 @@
   `create_tailoring_session(use_presets=True)` is the presets-driven fast path; `tailor_session` takes the agent's `ops` or
   `no_new_text` and returns `unbacked_skills`; no tool rebuilds a draft from a base outside a session (§6 inv-edit-in-place);
   `score_ats(include_other_countries)` returns a `countries` block
-  naming bases skipped for the job's country), render + PDF inspection/upload ("PDF tools" below), application
-  tracking, `record_run` (finished automation reports; `docs/entities/agent-runs.md`), the apply package (`generate_*` through the
+  naming bases skipped for the job's country), render (`render_pdf(keep=True)` keeps the design first) + PDF inspection/upload
+  ("PDF tools" below), application tracking (`update_application(clear=["notes", "referral_id"])` empties either; `save_referral`
+  adds a referral or edits the fields given, in `hunt`, `apply` and `track`), `record_run` (finished automation reports; `docs/entities/agent-runs.md`), the apply package (`generate_*` through the
   model, refused while the agent app writes (docs/agent-surfaces.md, "Who writes"), or `store_cover_letter`/`store_qa_answers` storing
   what the agent wrote: `POST /api/qa/cover-letter` replaces the letter and
   renders its PDF, `POST /api/qa/answers` replaces an answer to the same question, case and spacing ignored; `model_used` names the
@@ -30,8 +34,9 @@
   templates (draft/validate only; Typst constraints in `create_template_draft`'s
   docstring, `fmt.*` knobs on `get_template`), explore analytics (`explore_trends(view)`, six chart views, and
   `explore_gap_frequency`), `get_autofill_profile` (`profile.eeo` consent-gated),
-  the profile writes `set_autofill_profile` (no `eeo`), `set_job_preferences`, `set_markets` and `set_persona` (patches over the
-  settings PUTs; Settings switches, consent and the job-site login have no tool: docs/agent-surfaces.md, "Profile writes"),
+  the profile writes `set_autofill_profile` (no `eeo`), `set_job_preferences`, `set_markets` and `set_persona` (the first three
+  through the agent PATCH routes, merged on the server in one transaction: "MCP control details" below; Settings switches, consent
+  and the job-site login have no tool: docs/agent-surfaces.md, "Profile writes"),
   and `get_career_context` (read-only, JSON or the `career.md` text; anti-fabrication framing in the docstring). The Career
   KB is writable via MCP:
   reads carry IDs the context prose does not; entity/profile writes land directly, but POINTS go through the user's
@@ -40,10 +45,12 @@
   (`POST /api/kb/entities/{id}/drafts`; no LLM, a bullet already on the entity is skipped, a voice hit is a 400 that stores
   nothing), and `kb_approve_points` is the ONE approval path and only approves (an old call's `state` other than
   "approved" is refused, never acted on). `kb_retire_points` (the one way to retire) and `kb_combine_points` (fold points
-  into a keeper) write state under the same gate; `kb_groom_entity` reads the similar-bullet report. The gate is a convention the
+  into a keeper) write state under the same gate, and so does `kb_merge_entities` (the manual merge, "Career KB" below; annotated
+  destructive, since nothing unmerges); `kb_groom_entity` reads the similar-bullet report. The gate is a convention the
   docstrings state (the value is the user's decision), not server enforcement (`record_consent` precedent).
   `kb_edit_point` has no `state` param; a text change forces `state="draft"`. `kb_list_points` omits `wordings`
-  (`kb_get_entity` carries them). No delete tool; "Not the same", split and adoption stay web-only; document upload
+  (`kb_get_entity` carries them). No delete tool (a merge removes the merged item only after moving everything on it to the one
+  kept); "Not the same", split and adoption stay web-only; document upload
   stays web-only. A removed tool's name answers with what replaced it (docs/agent-surfaces.md, "Removed names").
 
 - **BaseResume**: DB row + `base_resumes/<slug>.json` on disk; soft-deleted
@@ -76,7 +83,8 @@
   (still the visible "Role not set" state). Catalog text typed verbatim
   collapses to the pick; coverage matches free-text tags to free-text favored
   roles by casefolded label with an alias bridge. Insert sites: REST create
-  (**422** on invalid or contradicting explicit values), duplicate (**inherits
+  (**422** on invalid or contradicting explicit values, an unknown `role_category`
+  worded as in "Role refusals" below), duplicate (**inherits
   the pair**), seeding (a slug that IS a category key), `POST /import` (one
   uploaded file → the KB import's parse half, `extract_text` →
   `kb_consolidation.parse_resume_text`, JSON validated as-is → the SAME create
@@ -98,7 +106,13 @@
   API, so a REST-only validator would not hold. `PATCH
   /api/base-resumes/{slug}/identity` sets role/display_name, the anchors and the colour below WITHOUT rewriting
   `data_json`, recording a version, rewriting the disk file, or recompiling the
-  PDF — unlike the full PUT. Artifact filenames resolve their role label from
+  PDF — unlike the full PUT. `PATCH /api/base-resumes/{slug}/design` (`BaseResumeDesign`; MCP
+  `render_pdf(keep=True)`) is the same kind of narrow write for the design every later render uses:
+  only `template_id` and `formatting_json`, under the PUT's rules (an omitted field unchanged, a null
+  `template_id` back to the default, a null `formatting` cleared, the same formatting write gate, so a
+  refused look keeps nothing), with no version, disk rewrite or render, 404 for a deleted base and
+  refused on the always-on copy (a profile row). An application keeps its design through its own
+  `PATCH /api/applications/{id}`. Artifact filenames resolve their role label from
   this column (`base_resume_data.declared_role` →
   `role_titles.generic_role_title`), never from the slug. No slug is reserved
   (the pre-KB `master` profile is gone): every base resume is listable,
@@ -330,7 +344,8 @@
   a marker that is null or unknown names none, and a save with no marker (a client from before it) is the home's only while no other
   market has answers. So a client served under the old home and saving after a move writes the old home's entry, and no save puts one
   country's answers over another's (`autofill_profile._as_stored`, pinned by `tests/test_autofill_work_auth_markets.py`); a stale save
-  for the same country still overwrites, since the PUT has no version check (`docs/deferred.md` item 57). **Which set.** `countries.mentioned_in` reads the question: English names and aliases as whole words, without accents, in any case;
+  for the same country still overwrites, since the PUT has no version check (`docs/deferred.md` item 57); an agent's PATCH merges inside
+  each market it names, key by key, as stored at write time ("MCP control details"). **Which set.** `countries.mentioned_in` reads the question: English names and aliases as whole words, without accents, in any case;
   a code only as "US" or "UK" in capitals ("CA", "DE" and "IN" are US states as often); "New Mexico", "Latin America" and "Georgia" name
   nothing; the longer name wins ("Northern Ireland" is the UK). One named country gives its market's answers; one with no market or no
   answers, or two countries ("the United States or Canada"), gives none; none named gives the job's (`markets.for_country(country_code)`);
@@ -339,7 +354,11 @@
   group their fields by the set each question gets and decide each group on its own catalog (a second model call only when a question
   names a country whose answers differ from the job's); `/step` takes its question's set; `/sections` and `/reason` the job's; run-trace
   redaction every country's; the answer flags (`filled_answers.flag_context`) the job's. The knock-out scan screens with the job's
-  country's set, and a job with no country with the home set (an advisory check, not an answer given). Setup status counts each apply-in
+  country's set, and a job with no country with the home set (an advisory check, not an answer given). `get_job_search_brief` serves each
+  apply-in market's set in the brief's yes/no keys, its warnings led by the country's name unless the user lives and applies in one
+  country, and the home set for one release (`job_search_brief._work_permits`; SYSTEM.md §13 `brief-work-auth-home`); the job-hunt and
+  referral-pages prompts judge a posting by its own country's set and leave one from an unknown or not-applied-in country unfiltered on
+  permits, saying so in its proposal. Setup status counts each apply-in
   country (`work_auth_by_country` on the autofill step), the US visa status only where `work_auth_vocab` is `us_visa`. **Known limits.**
   The Companion's deterministic rule pass reads the resolved `work_auth` and cannot see which country a label names, so on a German job a
   question about the UK gets the German set there (`docs/deferred.md` item 52); the answer flags compare with the job's set whatever
@@ -528,7 +547,8 @@
   and first interviews by local day for the last 7 days; local days follow `tz` when this server's zone database
   has it, else `utc_offset_minutes` (a Windows install has no zone database), else UTC (`time_zone` says which).
 - **`job_preferences` setting**: fully typed, file-mirrored at
-  `settings/job_preferences.json` (`GET/PUT /api/settings/job-preferences`):
+  `settings/job_preferences.json` (`GET/PUT /api/settings/job-preferences`; `PATCH`, an agent's save,
+  replaces each field named and refuses `role_categories`, which follows `favored_roles`: "MCP control details"):
   `favored_roles` (a catalog key, coarse OR specific, or free text),
   `years_experience` (one number, comparable to extracted JD year bounds),
   employment types, locations, remote, notes, and `min_salary` (`{amount, currency, text}`: a yearly
@@ -541,8 +561,21 @@
   text (or skip it when no usable label exists), preserving every other valid
   preference field. Setup status uses it for missing-role suggestions (an
   unmapped custom role drives none); persona drafting uses it as a goals signal.
+- **Role refusals** (`role_categories.unknown_role_message`, `closest`): every refusal of a role the catalog does not know words one
+  sentence: the refusal, then the closest entries when any is close ("closest: data_engineer (Data Engineer)", or "closest to x: …"
+  for each of several values), then the way out, the caller's own field for a role outside the catalog. Callers: job preferences
+  (`FavoredRole.role` or `.category`, a favored role's `label` the way out, and `role_categories`) and base resumes' `_validated_role`
+  (create and `from-kb`, `role_label` the way out; plan-from-kb, `other`), whose 422 then lists every valid key. `closest` gives at most three keys, nearest first, never `other` or `unknown`: `match_free_text`'s own answer (an alias or a
+  rank-stripped title) leads, then the catalog spellings alike in the words that tell jobs apart. A head noun that ends two or more
+  spellings ("engineer", "analyst", "manager", read from the catalog, a near misspelling included) is set aside, two different head
+  nouns never match, and a spelling of three letters or fewer matches exactly or not at all, so a civil engineer is not offered a CV
+  engineer and a field the catalog lacks is offered nothing. Job preferences also offer specific roles (`roles=True`). It words a
+  refusal only: nothing is stored from it and `match_free_text` stays the mapping. Pins: `tests/test_role_categories.py`,
+  `test_job_preferences.py`, `test_base_resume_role_category.py`, `test_settings_agent_patch.py`.
 - **`market` setting** (`schemas/market_settings.py`, `services/market_settings.py`; file-mirrored at
-  `settings/market.json`; `GET/PUT /api/settings/market`): `home`, the one market the user lives in (the
+  `settings/market.json`; `GET/PUT /api/settings/market`, and `PATCH` for an agent's save of `home`, `apply_in` and the money
+  setting's `home_currency` in one transaction, answering the GET's body plus the resolved `home_currency`: "MCP control details"):
+  `home`, the one market the user lives in (the
   home currency and date format), and `apply_in`, every market they apply in (each once, in the order
   chosen; empty reads as `[home]`; home need not be in it). Markets are the keys of `data/markets.yaml`
   ("UK", not ISO "GB"; `markets.country_code` / `for_country` bridge to the ISO codes jobs and base
@@ -765,11 +798,13 @@
   strictly richer incoming one (`upgrade_experience_title`); the LLM
   `consolidate` path applies near-identity to certs only, because experience
   goes through `_resolve_family`, which never renames. **Manual merge** (`POST
-  /api/kb/entities/{id}/merge` `{target_id}`, web-only — no MCP tool, per the
-  MCP no-destructive-surface rule): re-points points/documents/port-logs onto
+  /api/kb/entities/{id}/merge` `{target_id}`: the web's merge dialog and MCP
+  `kb_merge_entities(keep_id=target_id, merge_id=id)`, annotated destructive and
+  acting on the user's yes by convention): re-points points/documents/port-logs onto
   the target, absorbs only fields the target left empty, deletes the source.
   Guards: same kind, same extra-section key, no archived target, an ongoing
-  target keeps its open end date, 409 on a concurrent race.
+  target keeps its open end date, 409 on a concurrent race; an unknown id is a 404,
+  "The item to merge wasn't found." or "The item to keep wasn't found.".
   `entity_timeline` emits `point_captured` **only** for `mcp`/`chat` points (a
   hand-typed KB grows no timeline entry per bullet). `patch_point` clears
   `approved_at` when a point leaves `approved`.
@@ -1123,13 +1158,18 @@
 
   **PDF tools:** render + slim PDF inspection (`get_rendered_pdf` has **no** `page_images_b64`;
   `get_rendered_pdf_page_image` is the opt-in one-page visual, `max_dimension_px` default 1024 with a ~1MB encoded cap;
-  `prepare_application_pdf_upload` stages a disposable Playwright copy under `.playwright-mcp/uploads/`).
+  `prepare_application_pdf_upload` stages a disposable Playwright copy under `.playwright-mcp/uploads/`; `render_pdf(keep=True)`
+  saves the `template_id` and/or `formatting` on the base or application before rendering, "BaseResume" above).
   **PDF upload staging:** Playwright upload constraint: a folder
   grant on `applications/` does **not** expand `browser_file_upload` — stage a
   disposable copy via MCP `prepare_application_pdf_upload` under
-  `.playwright-mcp/uploads/` (or `$MAESTRO_CS_UPLOAD_DIR`), pair Playwright
+  `.playwright-mcp/uploads/<application_id>/` (or `$MAESTRO_CS_UPLOAD_DIR`), pair Playwright
   `--output-dir` with the parent `.playwright-mcp` tree, and pass the returned `upload_path` to the file chooser —
-  never copy/move with shell or filesystem tools. Details: `docs/playbooks/agent-apply.md`, `backend/mcp_server/README.md`.
+  never copy/move with shell or filesystem tools. It stages the tailored resume's PDF (`document="resume"`, the default, rendered
+  first when it has none) or the cover letter's (`document="cover_letter"`: the application's newest stored `cover_letter` entry in
+  `list_qa_entries`, rendered first when it has none via `POST /api/qa/{id}/render`, named by the response else
+  `<application_id>_CoverLetter.pdf`, so neither copy replaces the other; no letter, or an empty one, is refused and nothing is
+  staged), both behind the same open-proposal gate. Details: `docs/playbooks/agent-apply.md`, `backend/mcp_server/README.md`.
   **Attended executor:** Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can
   autofill/attach; direct MCP + browser fill/upload is the supported fallback. The agent calls
   `record_filled_answers` per page, which replaces per-page screenshots; `final_review` and `submission_receipt`
@@ -1343,6 +1383,16 @@
     forward the Langfuse vars.
   - **Placement target details** (inv-placement-validation-twins): extra targets require `section="extra"`, a stable `section_key`, and either
     an enabled entry's original index or, for a flat bullets section, the same stable key as `index_or_category`.
+  - **MCP control details** (inv-mcp-controls): the five settings are the form answers, job preferences, market, money's
+    `home_currency` and the persona; the four routes are `PATCH /api/settings/autofill`, `/job-preferences` and `/market` (the market
+    and `home_currency` in one save) and `PUT /api/settings/persona` (`test_mcp_writes_only_the_settings_setup_and_profile_ask_for`
+    reads `client.py` for them). Each PATCH (`routers/settings._agent_save`) runs its service's merge (`autofill_profile.patch_profile`,
+    `job_preferences.patch_preferences`, `market_settings.patch_place`) inside `text_settings.one_commit`: `begin_write` takes SQLite's
+    write lock before the read, every `set_text` in the block flushes instead of committing, the block commits once and writes the file
+    mirrors after that commit, a block in which anything committed is refused (`RuntimeError`, no mirrors written) and blocks do not
+    nest; reads inside use the `peek_*` readers, since a seeding `get_text` commits. A field the route does not write, or a value the
+    setting's own schema refuses, is a 422 that saves nothing. The merge rules and what stays human-only: docs/agent-surfaces.md,
+    "Profile writes". The web's and the Companion's PUTs are unchanged.
   - **Em-dash backstop** (inv-em-dash): the MCP client's slim `get_rendered_pdf` scan returns metadata + page paths and no `page_images_b64`
     — use `get_rendered_pdf_page_image` for one page.
   - **Autofill telemetry details** (inv-autofill-telemetry-no-values): a reasoning step's `reasoning` rounds hold the model, note, actions as
@@ -1369,8 +1419,8 @@
   - **Label-pattern table details** (inv-one-label-pattern-table): `profile-fields.js` throws at load if `shared/policy.js` has not run (it
     borrows `salaryExpectationRe`), and `autofill.js`'s `pf()` throws on an unknown id — an undefined pattern does not error, it just never
     matches.
-  - **EEO consent details** (inv-eeo-standing-consent): the server's stamp is `acknowledged_at` + `policy_version`, and `consent_forms` turns
-    on only on its own yes carrying the current policy (`agreed_policy`). The outward readers' model providers — OpenAI, Gemini, Claude,
+  - **EEO consent details** (inv-eeo-standing-consent): the server owns the stamp, `acknowledged_at` + `policy_version`, and `consent_forms`
+    turns on only on its own yes carrying the current policy (`agreed_policy`; `test_eeo_consent.py`). The outward readers' model providers — OpenAI, Gemini, Claude,
     OpenRouter, Jev — are recipients too. Never solicit pasted demographic answers in chat when consented values are in Profile. The callers
     `consent_forms` lifts label refusals for are the fill loop, a model included, never the old collector/pause rows; `derived.agrees_to_terms`
     is added only as served (lapsed or unreadable: absent).

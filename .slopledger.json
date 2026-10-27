@@ -73,7 +73,7 @@
           ]
         }
       ],
-      "hand_check": "job_search_brief's identically named response fields are a frozen outward projection, NOT a legacy reader \u2014 deliberately outside the trigger paths. The four storage readers are all inside them: autofill_profile.typed_work_auth's legacy branch, the extension's dual-read (extension/content/autofill.js), the panel's workAuthForWrite (extension/panel/actions/pause.js) and Profile's legacy-on-edit bridge (frontend/lib/autofill-options.ts typedEntry, whose test file in frontend/lib goes with it). Also requires GET /api/settings/autofill clean. Trigger paths are DIRECTORIES, not files: extension/content/ was widened 2026-08-02 after the phase-2 split moved the dual-read out of agent.js, extension/panel/ was added after the panel's workAuthForWrite turned out to promote the legacy pair before the first typed pause-row write while the content-only path read green, and frontend/lib/ holds the Profile bridge since the 2026-10 Profile rebuild. A file-pinned path goes green on the next rename without the reader dying."
+      "hand_check": "job_search_brief's identically named response fields (its home set and every per-country entry) are a frozen outward projection, NOT a legacy reader \u2014 deliberately outside the trigger paths. The four storage readers are all inside them: autofill_profile.typed_work_auth's legacy branch, the extension's dual-read (extension/content/autofill.js), the panel's workAuthForWrite (extension/panel/actions/pause.js) and Profile's legacy-on-edit bridge (frontend/lib/autofill-options.ts typedEntry, whose test file in frontend/lib goes with it). Also requires GET /api/settings/autofill clean. Trigger paths are DIRECTORIES, not files: extension/content/ was widened 2026-08-02 after the phase-2 split moved the dual-read out of agent.js, extension/panel/ was added after the panel's workAuthForWrite turned out to promote the legacy pair before the first typed pause-row write while the content-only path read green, and frontend/lib/ holds the Profile bridge since the 2026-10 Profile rebuild. A file-pinned path goes green on the next rename without the reader dying."
     },
     {
       "id": "autofill-work-auth-by-country",
@@ -96,6 +96,22 @@
         }
       ],
       "hand_check": "No current client writes one top-level work_auth set: the panel's pause row learns into work_auth_by_country[<the market /context names for its question>] (extension/panel/actions/pause.js), and Profile and Setup write work_auth_by_country and send no work_auth (frontend/lib/autofill-options.ts forSaving); Companion builds from before still write work_auth. extension/content reading the resolved profile.work_auth from /context is the design, deliberately outside the trigger paths. Then the release after has shipped; keep the legacy read in autofill_profile.work_auth_entries until no stored autofill profile holds a top-level work_auth (check settings/autofill.json and the autofill_profile Setting row)."
+    },
+    {
+      "id": "brief-work-auth-home",
+      "status": "new-is-default",
+      "triggers": [
+        {
+          "kind": "absent",
+          "pattern": "\\bwork_auth\\b",
+          "paths": [
+            "backend/app/automations/skills",
+            "docs/agentic-job-search.md",
+            "docs/playbooks"
+          ]
+        }
+      ],
+      "hand_check": "get_job_search_brief serves profile.work_auth_by_country (each apply-in market's yes/no set, keyed by market) beside the one home set (profile.work_auth, named by work_auth_market), kept for one release (BriefProfile, job_search_brief._work_permits, the tool's docstring). The machine predicate: no shipped playbook, nor the job-search and apply docs, names a bare work_auth (they read work_auth_by_country). By hand: the release after this one has shipped; then delete work_auth and work_auth_market from BriefProfile (schemas/job_search_brief.py), the home projection in _work_permits and the docstring's sentence on them."
     },
     {
       "id": "job-location-raw",

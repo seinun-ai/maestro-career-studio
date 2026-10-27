@@ -14,8 +14,9 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `_best_effort_hint` returns `next: null` on a failed lookup after a landed write.
   Coverage: [docs/entities/others.md](docs/entities/others.md), "MCP tool coverage".
   **Tool sets**: `profiles.py` owns the allowlists and `orientation.py` the ordered table of what each holds: `profile` (onboarding:
-  career history, base resumes and anchors, health check, versions, form answers, preferences), `hunt`, `tailor` (saved job to tailored
-  PDF; 31 tools), `apply` (PDF to submitted), `track` (statuses, referrals, charts), `templates`, and `full` (92 tools); `/mcp` = `full`,
+  career history, base resumes and anchors, health check, versions, form answers, preferences), `hunt` (the brief, saving, scoring and
+  proposing jobs, referral contacts), `tailor` (saved job to tailored PDF; 31 tools), `apply` (PDF to submitted), `track` (statuses,
+  referrals, charts), `templates`, and `full` (94 tools); `/mcp` = `full`,
   `/mcp/{set}` = its allowlist, and `career`/`explore` still serve `profile`/`track` for one release (`PROFILE_ALIASES`).
   Each set's server instructions (`orientation.instructions_for`, under Claude Code's 4,096-character
   cut) say what it holds, the other sets and that the rules hold however the agent talks with the user; every set but templates
@@ -28,13 +29,19 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   without the diversity answers an agent cannot
   save, the set table) and `get_tailoring_options` (tailor and full: each Quick tailor switch
   with its plain meaning from `QuickTailorProfile`'s field descriptions, the instruction and persona; the presets stay the user's).
-  Lifespans run fresh stateful JSON sessions; tools use `http.py`'s eight-worker limiter (§6 inv-tools-off-loop).
+  Lifespans run fresh stateful JSON sessions; tools use `http.py`'s eight-worker limiter (§6 inv-tools-off-loop: a same-backend REST
+  call made on the event loop blocks single-worker uvicorn; `http.offload_tools`).
   Stdio filters `MAESTRO_CS_MCP_PROFILE` (default `full`; migration state: §13 `mcp-stdio-venv`).
   Hints use request `CURRENT_PROFILE`, else env (pins: `mcp_server/tests/test_profiles.py`, `test_server.py`, `test_http.py`).
   **KB grooming tools** (`profile` and `full`): `kb_groom_entity` (read-only similar-bullet report per entity, zero LLM calls),
   `kb_combine_points` (fold points into one keeper; the others become its wordings) and `kb_retire_points` (the one way to retire;
   `kb_approve_points` only approves); the two writes share `kb_approve_points`' convention gate and are `destructive=False` because `/career`
-  reverses them. `kb_sync_base` keeps a rephrasing as a wording (0.80+) and returns `compared_wording` (docs/entities/others.md, Career KB).
+  reverses them. `kb_merge_entities(keep_id, merge_id)` is the web's manual merge (`POST /api/kb/entities/{merge_id}/merge`
+  `{target_id: keep_id}`; docs/entities/others.md, Career KB), under the same convention gate but `destructive=True`, since nothing
+  unmerges; its description names what moves (every bullet state, the wordings, documents and port records), what keep_id absorbs (blank
+  fields, missing detail keys) and what is lost (merge_id's title, status, creation record and each value keep_id already holds
+  differently). An unknown id is a 404, "The item to merge wasn't found." or "The item to keep wasn't found.".
+  `kb_sync_base` keeps a rephrasing as a wording (0.80+) and returns `compared_wording` (docs/entities/others.md, Career KB).
   **Removed names** (`replaced.py`): a call to a tool a change removed (`REPLACED_TOOLS`: the six old analytics tools,
   `get_career_export`, `attach_evidence_file`, `quick_tailor`, `tailor_application`) answers "<name> was replaced by <replacement>.",
   e.g. `explore_top_skills was replaced by explore_trends(view="top_skills").`, not "Unknown tool", on stdio and every HTTP set
@@ -51,7 +58,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   existing entity). The store rules: the dash scrub (§6 inv-em-dash) and answers as plain form text, as for generated ones, and the
   voice rule for KB bullets (inv-resume-voice), which `kb_capture` does not apply; a letter and its answers are the owner's first person.
   Enable ONE profile per chat (`full` carries KB writes); `MAESTRO_CS_*` has no legacy fallback. **Apply executor:** headed Chrome (`docs/entities/others.md`, "Attended executor"; apply playbook, "Unattended (full automation)").
-  **Plugin:** `plugins/maestro-career-studio/`: Claude Code's `.mcp.json` and Codex's `.codex-mcp.json` connect by URL; Codex prompts for durable decisions, login/upload, health-gate waivers, restores, KB approve/combine/retire and sync. Claude installs use a tagged local checkout; Codex uses a release-tag Git ref and sparse paths `.agents/plugins` + `plugins`; policy `PRIVACY.md`.
+  **Plugin:** `plugins/maestro-career-studio/`: Claude Code's `.mcp.json` and Codex's `.codex-mcp.json` connect by URL; Codex prompts for durable decisions, login/upload, health-gate waivers, restores, KB approve/combine/merge/retire and sync. Claude installs use a tagged local checkout; Codex uses a release-tag Git ref and sparse paths `.agents/plugins` + `plugins`; policy `PRIVACY.md`.
   Settings › Agent apps' **Connect an agent app** (`connect-assistant`) selects a tool set and copies commands/URLs, opens install links or downloads the Claude Desktop bundle.
   `GET /api/setup/connect?profile=full` composes values from `MAESTRO_CS_PUBLIC_BACKEND_URL` (default localhost:8000; compose host port unless overridden); `/api/setup/connect/bundle` serves `MCPB_BUNDLE_PATH` (compose read-only mount; `tests/test_setup_connect.py`).
   The dependency-free Node ≥18 `.mcpb` bridges stdio↔HTTP with no assistant-side Docker/Python: `MAESTRO_CS_BACKEND_URL`
@@ -105,6 +112,22 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   a host `.playwright-mcp/` path read from the container's mount; the bytes never enter the model context), and refuses both or
   neither before an upload. No tool reads Today or the search summary; `set_markets` is the one
   door to the market and money settings, and the explore tools take no period or source.
+  **Corrections and kept choices.** `store_extracted_jd(update=True)` corrects a saved posting in place and its `apply_url` records the
+  application address (docs/entities/job.md, "Correcting a saved job"). `render_pdf(keep=True)` saves the `template_id` and/or
+  `formatting` given on the base (`PATCH /api/base-resumes/{slug}/design`) or the application (`PATCH /api/applications/{id}`) before
+  rendering, and the response adds `kept`; `formatting` without `keep` is refused, and only a ready template is kept (a not-ready one
+  would fall back to the default on every later render). `list_base_resumes(include_archived=True)` adds the archived bases with
+  `archived_at`. `prepare_application_pdf_upload(document="cover_letter")` stages the stored letter's PDF (rendered first when it has
+  none) beside the resume's copy under its own file name; with no letter stored it is refused and nothing is staged.
+  `update_application(clear=[...])` empties `notes` or unlinks `referral_id` (an explicit null); a field given a value and cleared in one
+  call is refused. `save_referral` (hunt, apply, track) POSTs a new referral (company and careers_url required) or PUTs only the
+  fields given onto `referral_id`'s; it is `destructive=True`, since an edit keeps no earlier value.
+  **The brief** (`get_job_search_brief`) carries `profile.work_auth_by_country` (each apply-in market's yes/no answers, keyed by market),
+  the home set `profile.work_auth` named by `work_auth_market` for one release (SYSTEM.md §13 `brief-work-auth-home`), warnings each led
+  by its country's name unless the user lives and applies in one country, `last_runs` (each automation's newest run that did not fail,
+  by finish time, `agent_runs.last_finished`) and `roles` (the catalog as `{key, label}`). A role the catalog does not know
+  (`set_job_preferences`, `create_base_resume_from_kb`'s `role_category`) is refused naming up to three closest roles and the way out
+  (docs/entities/others.md, "Role refusals").
 
 - **The health check when Maestro's model does not judge.** No model key is set, or the request is an agent request while the agent
   app writes (even with a key): `run_health_check` then calls no model and returns a report that counts only stored
@@ -116,11 +139,19 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
 
 - **Profile writes** (`set_autofill_profile`, `set_job_preferences`, `set_markets`, `set_persona`; `profile` and `full`, and
   `set_autofill_profile` in `apply` too): an agent writes the facts Setup and Profile ask for, except the AI key and the diversity
-  answers. Each PUT replaces its whole setting, so the client reads it, merges in only the fields passed (answers key by key, a null
-  removes one; work permits per market, keyed from `markets.keys()`; education, languages and custom whole) and writes it back;
-  there is no PATCH route. `set_autofill_profile` has no `eeo` field, the client refuses any other section, the stored `eeo` is
-  written back as it was and never returned, and a call with nothing to save is refused (FastMCP drops undeclared arguments). The
-  writes return setup's form readiness. Human-only, with no tool: full automation and auto-apply (§6 inv-auto-consent-gated), EEO
+  answers. The first three send only the fields passed, in one PATCH (`PATCH /api/settings/autofill`, `/job-preferences`, `/market`),
+  and the server reads, merges and writes the setting in one transaction (`text_settings.one_commit`: SQLite's write lock, file mirrors
+  written after the commit, a commit inside the block refused), so a save another writer made before the call (a Companion learn, a web
+  edit) is kept and none lands between the read and the write (SYSTEM.md §6 inv-mcp-controls). The merge
+  (`autofill_profile.patch_profile`, `job_preferences.patch_preferences`, `market_settings.patch_place`): answers key by key, a null
+  removing one; work permits per market, keyed from `markets.keys()`; education and languages replace the stored list whole; `custom`,
+  the Companion's learn store, upserts by question (case and spacing ignored, same `only_for` and `only_for_kind`) and never removes a
+  saved answer, which stays the user's, in Profile; each preference named replaces the stored one (`role_categories` follows
+  `favored_roles`); `set_markets` writes the market and money's `home_currency` as one save, both validated before either lands.
+  `set_persona` PUTs its text. The web's and the Companion's PUTs still replace the whole setting, and every agent route is a profile
+  write, refused on the always-on copy. `set_autofill_profile` has no `eeo` field, the client and the server each refuse any other
+  section, the stored `eeo` stays as it was and is never returned, and a call with nothing to save is refused (FastMCP drops undeclared
+  arguments). The writes return setup's form readiness. Human-only, with no tool: full automation and auto-apply (§6 inv-auto-consent-gated), EEO
   consent and answers (inv-eeo-standing-consent), the job-site login (inv-job-site-password-local), the Screening answers dial, the
   hints switch, who writes, model keys, prompts and quick tailor (§6 inv-mcp-controls). After `create_base_resume_from_kb` the hint names
   `set_autofill_profile` while setup status reads the form answers as not done.
@@ -188,7 +219,9 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   from those reports (`GET /api/agent-runs?limit=200`): an automation that reported in the last 14 days is a Reporting card
   (a `DayStrip`, the newest report's outcome and one line, one tonal Copy prompt, one link to the result), the rest are
   short rows, and Recent runs and What each one never does are folds. Never a schedule, a connection state, an app's name
-  on a button or a logo; the connect note shows until a first run reports. Catalog, wrappers and startup rules:
+  on a button or a logo; the connect note shows until a first run reports. The job-hunt and mail-status prompts read from an hour
+  before their entry in the brief's `last_runs`, so a posting or mail that came while the last run worked is read too (job-hunt's
+  dedup drops what is already saved); with no entry, from their first-run window. Catalog, wrappers and startup rules:
   [docs/entities/others.md](docs/entities/others.md), "Automations page"; the run log: docs/entities/agent-runs.md.
 
 ## In-app chat (the Assistant)

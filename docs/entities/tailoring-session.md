@@ -5,7 +5,14 @@
 Status machine: `open → tailored` (successful tailor) | `superseded` (a newer
 session for the same job+base was created — e.g. "Start over") | `abandoned`
 (`POST /tailoring-sessions/{id}/close` — e.g. after "use base as-is").
-`gaps_json` is FROZEN at creation; resolutions accumulate against it.
+`gaps_json` is FROZEN at creation; resolutions accumulate against it. The
+session keeps hashes of its base and of the job's extraction; when either differs,
+`staleness_reason` says why ("the base resume was edited", "the job details were
+refreshed"), GET carries it as `stale_reason`, and saving resolutions, a presets fill
+and tailoring are a 409 asking for a new gap analysis. Refresh details and an agent's correction of the job
+(`store_extracted_jd(update=True)`, docs/entities/job.md) make an open session read
+out of date this way; a correction also names it in `open_sessions`, never closes or
+rewrites it, and its deleted base score clears `base_ats_score_id`.
 
 **KB-grounded auto-resolution.** At creation, `gap_enrichment.stamp_library_candidates`
 receives a structured Career-KB snapshot + the base's disabled entries;

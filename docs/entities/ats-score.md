@@ -14,6 +14,15 @@ jobs router's save path, `_score_new_job`; `tailor()` and `create_session`
 ride their own single commit). `compare` commits its backfill;
 never call it with staged caller state.
 
+**A job correction deletes, then rescores** (docs/entities/job.md, "Correcting a saved job"). An ingest
+with `update` that changes a field scoring reads (anything but `apply_url`) deletes every row of the job,
+both phases (`_clear_scores`, a Core write that touches the job for sync), in the correction's own commit,
+so no base and tailored pair reads different job text. After that commit `_rescore` scores the bases as a
+new capture does (`_score_new_job`: all or none) and then each tailored application
+(`score_target(phase="tailored")`), each in its own commit; a failure rolls back only that score and is
+named in `rescore_failed` for `score_ats` to compute later. Deleting a base row clears an open session's
+`base_ats_score_id` (ON DELETE SET NULL). A correction that changes nothing scoring reads keeps the rows.
+
 **"LLM-free" describes the ENGINE, not the pipeline.** `score_resume` is a
 pure function of (resume_json, extracted_json, config), but `extracted_json`
 is LLM output (`services/jd_extraction.py` → `prompts/extract_jd.txt`) frozen

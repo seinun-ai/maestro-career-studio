@@ -135,7 +135,7 @@ scripts/               setup-mcp.sh (deprecated stdio, §13), update.sh (Docker 
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (92 tools)
+ extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (94 tools)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼ ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
                     ▼ TailoringSession (frozen gaps → resolutions → LLM tailor ops)
@@ -190,7 +190,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
    job's page on step 2 (`?tab=fit`; the toast says "This job is already saved." on dedup). Or Companion/MCP `store_extracted_jd` → `POST
    /api/jobs/ingest` (pre-extracted; the client agent is the extractor by design). Both save paths score a new job against every
    selectable base after its commit (`_persist_job` → `score_all_bases`, inline); a failure rolls back only the scores, and a
-   dedup hit is not re-scored.
+   dedup hit is not re-scored, unless an ingest with `update` corrects it: a change in what scoring reads deletes both phases'
+   scores, then rescores the job (docs/entities/job.md, "Correcting a saved job").
 2. **Jobs** — `/applications` (the URL, `?status=`/`?source=`/`?stage=` and `cs-tracker-*` keep their names): the tracker. Columns
    Role, Match, Status (dated when it began from the status log, Applied by its date), **Next step** and a slot for where the job
    is (only when it is not on this copy), under a header of title, count and search. Five chips (All active, the default; Ready to
@@ -309,9 +310,10 @@ import and profile endpoints and store no progress of their own; frontend-conven
   placement-target contract, and the frontend's `buildPlacementTargets` hand-mirrors its targets shape. What an extra target requires:
   `docs/entities/others.md`,
   "Placement target details".
-- **MCP control invariants** `{#inv-mcp-controls}`: no tool name contains "delete"; no set-default-template tool; MCP writes five settings,
-  never `eeo`; an id is one path segment, `client._seg` (`mcp_server/tests/test_server.py`, `test_profile_write_tools.py`,
-  `test_client_path_ids.py`).
+- **MCP control invariants** `{#inv-mcp-controls}`: no tool name contains "delete"; no set-default-template tool; MCP writes five settings
+  through four routes, never `eeo`, and the form answers, job preferences and market (money rides on it) go through agent PATCH routes
+  that read, merge and write in one transaction (`text_settings.one_commit`), never a client read-then-PUT; an id is one path segment,
+  `client._seg` (`mcp_server/tests/test_server.py`, `test_profile_write_tools.py`, `test_client_path_ids.py`, `tests/test_settings_agent_patch.py`).
 - **MCP lives inside the app.** `{#inv-mcp-inside-the-app}` `/mcp` and `/mcp/{profile}` are routed inside FastAPI behind REST's
   SyncPublicHost → Host → Origin → CORS stack; SDK DNS-rebinding protection is OFF so that stack stays the one definition; never a second port
   or `/api/sync` route. Pins: `tests/test_mcp_http_boundary.py`, `mcp_server/tests/test_http.py`.
@@ -357,10 +359,10 @@ import and profile endpoints and store no progress of their own; frontend-conven
   permission (inv-eeo-standing-consent) both lists and the salary rule refuse; WITH it `isPolicyBlocked(label, {consentForms: true})` refuses
   NO label (the user's application, recorded revocable consent). Submit stays the user's at every setting; Next is clicked only by
   `page_advance` in a run the user started with Apply, full automation On (§7). The flag DEFAULTS to false and only a literal `true` counts;
-  only `fillFormFromProfile` and the fill loop's inventory pass it. FOUR consumers across THREE surfaces (`fillFormFromProfile`,
-  `collectOpenQuestions`, and the panel's pause-row PAIR), each ahead of the step it guards; the salary rule and what each consumer guards:
-  `docs/entities/others.md`, "Policy deny-list details". `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one
-  declaration of EACH list; only the commit ladder stays a deliberate, pinned-identical twin (`…commit_ladder_stay_identical`).
+  only `fillFormFromProfile` and the fill loop's inventory pass it. FOUR consumers across THREE surfaces, each ahead of the step it guards;
+  which they are, the salary rule and what each guards: `docs/entities/others.md`, "Policy deny-list details".
+  `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one declaration of EACH list; only the commit ladder stays a
+  deliberate, pinned-identical twin (`…commit_ladder_stay_identical`).
 - **One label-pattern table, two readers** `{#inv-one-label-pattern-table}` (`extension/shared/profile-fields.js`). The eleven patterns
   naming a TYPED home in the autofill profile (`eligibility.*`, `work_auth.*`, `preferences.*`) are read by `content/autofill.js`'s rule
   table, which FILLS those fields, and by the panel's `saveTargetFor`, which decides where a pause-row answer is LEARNED. They must be one
@@ -375,15 +377,14 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record (`settings/eeo_consent.json`,
   `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`), TWO permissions kept apart on purpose: `enabled` authorizes disclosing
   protected characteristics; `consent_forms` lifts the label policy (inv-policy-deny-list-single-source), only if agreed under policy ≥ 2 (an
-  older yes is served off, `consent_forms_lapsed`); one flag for both would make an EEO yes agree to terms. The server owns the stamp, and
-  `consent_forms` turns on only on its own yes carrying the current policy (`test_eeo_consent.py`). ONE gate, `eeo_consent.withhold_unconsented`,
+  older yes is served off, `consent_forms_lapsed`); one flag for both would make an EEO yes agree to terms. ONE gate, `eeo_consent.withhold_unconsented`,
   strips `profile.eeo` unless `enabled` for every outward reader —
   `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's slot catalog — and fails CLOSED
   when consent cannot be computed; the MCP client keeps its OWN strip (two gates, not a relocated one). Which path asks never decides whether
   protected-class data is served. Pins (router, `/choose`, Jev): `.system_md_enforcement.json`. No inference or invented EEO answers. Human-only
   at ANY setting is Submit and nothing wider (Next belongs to the run, per inv-policy-deny-list-single-source); `consent_forms` lifts every
-  label refusal for the callers that pass it, and only it, as served, adds `derived.agrees_to_terms`. Which callers, the chat rule and the
-  provider list: `docs/entities/others.md`, "EEO consent details".
+  label refusal for the callers that pass it, and only it, as served, adds `derived.agrees_to_terms`. The stamp, which callers, the chat rule
+  and the provider list: `docs/entities/others.md`, "EEO consent details".
 - **Provider data** `{#inv-provider-tagged-meta}`: opaque blocks (`ProviderMeta`: Claude thinking signatures, Gemini thought signatures)
   carry their provider and reach only that provider; `replay.for_provider` strips them for any other, so a model switch mid-chat never leaks
   one vendor's blocks to another. Pinned by `tests/test_replay.py`.
@@ -415,8 +416,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   On, a Queued/approved proposal and a company off the skip list, each recording `ConsentEvent(action="login_shared")`, never the value. POST
   `/api/proposals/{id}/job-site-login` requires NO `Origin` (MCP origin; channel `mcp`, note = client name) and the login passes through the
   agent's AI provider. POST `/api/companion/job-site-login` (`{proposal_id}`; channel `companion`) is admitted only for the Companion
-  extension's origin, which types it once, in the top frame of a known ATS host, to sign in or to create an account, and the password never
-  reaches a model, run record, card, receipt, trace, telemetry or error (the file, frame, host, park and box rules: `docs/entities/others.md`,
+  extension's origin, which types it once (top frame, known ATS host) to sign in or create an account, and the password never reaches a
+  model, run record, card, receipt, trace, telemetry or error (the file, frame, host, park and box rules: `docs/entities/others.md`,
   "Job-site login file details"). Pins:
   `tests/test_job_site_login*.py`, `test_companion_job_site_login.py`, `mcp_server/tests/test_client_job_site_login.py` (symbols in
   `.system_md_enforcement.json`).
@@ -529,7 +530,7 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 - **MCP server** (`backend/mcp_server/`; on screen **connected agents**): thin wrappers over REST via httpx (`@_guard` → `ToolError`),
   served at `/mcp` and `/mcp/{profile}` inside FastAPI (§6 inv-mcp-inside-the-app, inv-tools-off-loop); **the docstring is the API** —
   behavior, records and requirements, never instructions. Tool sets in journey order (profile, hunt, tailor, apply, track, templates;
-  `/mcp` = `full`, 92 tools), each with its own instructions and playbook prompts; enable ONE per chat; a removed tool's name
+  `/mcp` = `full`, 94 tools), each with its own instructions and playbook prompts; enable ONE per chat; a removed tool's name
   answers with what replaced it (`replaced.py`). **Who writes** for its
   requests is the user's choice, the agent app by default (Settings › Agent apps; §6 inv-agent-writer): Maestro's writing routes then
   refuse and name the agent's own tool, and `tailor_session(no_new_text=True)` tailors with no new wording and no model.
@@ -767,6 +768,9 @@ exception, so ingest lands drafts and consent-gated `kb_approve_points` is the o
   `attach_evidence(image_base64 | file_path)`, approve-only `kb_approve_points`, and a removed name answers with its replacement;
   superseded one tool per view, format and input because each near-duplicate was a guess for the agent and the merge loses no
   capability. `list_jobs`/`export_jobs` and the pairs whose filters or payloads differ stay apart.
+- 2026-10-26 — MCP's coverage holes close with parameters plus `save_referral` and `kb_merge_entities` (92 → 94), and agent profile
+  saves merge on the server in one transaction; superseded the client's read-then-PUT, which lost a Companion answer saved in between,
+  and a web-only KB merge, out of an MCP-only user's reach for an import's split duplicate.
 
 ## 11. Known deferred items (priority order)
 
@@ -844,12 +848,8 @@ the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 - **Playwright makes every tab visible** (2026-10-11 spike): launch or `connect_over_cdp`, `document.hidden` stays false, so
   background-tab behaviour can't be measured attached → run Chromium unattached over the DevTools HTTP endpoints
   (`scripts/spike_background_fill.py`); macOS also hides every tab of a covered window.
-- **Sync MCP tools deadlock on the event loop** (2026-10-10 spike): a same-backend REST call blocks single-worker
-  uvicorn → `http.offload_tools` uses its own worker limiter; pinned by `tests/test_mcp_http_loopback.py`.
 - **Owned-session prompt reads never seed** (2026-10-10): a lazy INSERT waited out `busy_timeout` behind a caller's
   write and hid a mocked outage → only caller-supplied sessions seed; startup seeds the rest (`tests/test_prompts_service.py`).
-- **Guard files before commit** (2026-10-06): refusal still deleted documents/changed previews → check before disk I/O, including helpers
-  (`tests/sync/test_guard.py`).
 - **Retry keys must identify controls** (2026-09-25): rule attempts use composite labels, collection clean questions, so
   `country | field-12` never reaches the `country` retry → use element identity; a model upgrade cannot repair fields collection never sends (§11 item 40).
 - **Same page is not same URL** (2026-09-23): the leave guard stopped every same-pathname popstate, so Back between `?tab=`
@@ -886,8 +886,8 @@ the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 - **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the same PK in one flush both INSERT (no
   dedup) → IntegrityError. Dedupe in Python first (see `_insert_skills`).
 - **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch it FIRST or 422s become 400s.
-- **Transient response attrs**: `already_existed` (Job), `health_warning` (TailoringSession) are instance attrs set after
-  refresh; `base_anchors` (TailoringSession) is a model property. None is a column — don't "fix" them into the ORM.
+- **Transient response attrs**: `already_existed` and `correction` (Job), `health_warning` (TailoringSession) are instance attrs set
+  after refresh; `base_anchors` (TailoringSession) is a model property. None is a column — don't "fix" them into the ORM.
 - **score_target(result=...)**: passes a precomputed engine result to persist, replacing a double run (audit finding C18); don't re-add a second.
 - **The query cache keeps old key order** (2026-09-22): structural sharing made a refetch's `JSON.stringify` differ from
   the PATCH response, so a studio's own Save read as foreign → compare `serverKey` (sorted keys); §11 item 26.
@@ -948,8 +948,9 @@ survives as fallback/backup) · `blocked` (trigger cannot be evaluated until a n
 | `texlive-layer` | minimal TeX Live layer (`backend/Dockerfile`) → `typst==0.15.0` in-process | blocked | Layer is already slim (install-tl `scheme-basic` + 18 tlmgr packages) and XCharter is vendored at `backend/app/assets/fonts/xcharter/` (keep the Bitstream Charter notice alongside; `settings.typst_font_paths` defaults there, so typst no longer reaches into texlive). The remaining FULL cut requires only: `grep -rn pdflatex backend/app` returns only comments. Blocked on `latex-render-path`. | medium |
 | `chat-selection-kind` | untagged resume chips → `ChatSelection.kind` (`resume`\|`kb_entity`) | both-live | All three scope-picker constructors emit `kind:"resume"`, THEN zero `chat_messages.meta_json->'selections'` elements lack a `kind` key. | small |
 | `autofill-education-shape` | single-object `education`, coerced in 2 clients → list (the server returns the stored JSON as is) | both-live | `GET /api/settings/autofill` returns `education` absent or an array for a pre-normalization profile. Cut the frontend coercion first, the extension one release later. | small |
-| `autofill-work-auth-shape` | `work_auth.authorized_to_work` + `requires_sponsorship` (two timeless booleans, stored "yes"/"no") → typed `WorkAuth` (`schemas/autofill_profile.py`: `status`, `authorized_now`, `sponsorship_now`, `sponsorship_future`, `authorization_expires_on`, `countries_authorized`) | both-live | Delete when no raw-profile reader uses either legacy key. Today's storage readers are FOUR: `services/autofill_profile.py`'s legacy branch, Profile's legacy-on-edit bridge (`lib/autofill-options.ts` `typedEntry`, per country), the fill engine's dual-read (`content/autofill.js`, the `w` binding in the profile normalizer; moved from agent.js at the phase-2 split), and the panel's `workAuthForWrite` (`panel/actions/pause.js`), which promotes the legacy pair before the first typed pause-row write. All four sit under `.slopledger.json`'s trigger paths, which are directories (`extension/content`, `extension/panel`, `frontend/lib`), so a reader that moves stays covered; a new reader elsewhere needs its directory added. `job_search_brief`'s identically named response fields are a frozen outward compatibility projection from typed `authorized_now` / `sponsorship_future`, not a legacy reader, and do not block removal. ALSO `GET /api/settings/autofill` must return no `work_auth` or `work_auth_by_country` entry carrying either legacy key. Then delete the legacy branch of BOTH `autofill_profile.typed_work_auth` and the extension's `w` binding. Per `autofill-education-shape`: cut the frontend first, the extension one release later. | small |
+| `autofill-work-auth-shape` | `work_auth.authorized_to_work` + `requires_sponsorship` (two timeless booleans, stored "yes"/"no") → typed `WorkAuth` (`schemas/autofill_profile.py`: `status`, `authorized_now`, `sponsorship_now`, `sponsorship_future`, `authorization_expires_on`, `countries_authorized`) | both-live | Delete when no raw-profile reader uses either legacy key. Today's storage readers are FOUR: `services/autofill_profile.py`'s legacy branch, Profile's legacy-on-edit bridge (`lib/autofill-options.ts` `typedEntry`, per country), the fill engine's dual-read (`content/autofill.js`, the `w` binding in the profile normalizer; moved from agent.js at the phase-2 split), and the panel's `workAuthForWrite` (`panel/actions/pause.js`), which promotes the legacy pair before the first typed pause-row write. All four sit under `.slopledger.json`'s trigger paths, which are directories (`extension/content`, `extension/panel`, `frontend/lib`), so a reader that moves stays covered; a new reader elsewhere needs its directory added. `job_search_brief`'s identically named response fields (the home `work_auth` and every `work_auth_by_country` entry) are one frozen outward yes/no projection from typed `authorized_now` / `sponsorship_future` (`_brief_work_auth`), not a legacy reader, and do not block removal. ALSO `GET /api/settings/autofill` must return no `work_auth` or `work_auth_by_country` entry carrying either legacy key. Then delete the legacy branch of BOTH `autofill_profile.typed_work_auth` and the extension's `w` binding. Per `autofill-education-shape`: cut the frontend first, the extension one release later. | small |
 | `autofill-work-auth-by-country` | one top-level `work_auth` (the one market's answers) → `work_auth_by_country` keyed by market (`services/autofill_country`, inv-work-permit-per-country) | new-is-default | A stored `work_auth` reads as the home market's entry (mapped when read, folded into the map on the next save, pinned to that home before a move: `autofill_profile.pin_legacy_work_auth`), and a read still serves `work_auth` as the home set, named by `work_auth_market` (a save folds it into the market it names, never the home it finds), for clients that still write one set: Companion builds from before the pause row learned into `work_auth_by_country[<the market /context names>]` (`panel/actions/pause.js`); Profile and Setup write the map and send no `work_auth` (`lib/autofill-options.ts` `forSaving`). No current client writes `work_auth`: cut the projection and the one-set fold (`autofill_profile._with_work_auth_by_country`, the `work_auth` branch of `_as_stored`) once the release after this one has shipped; keep the legacy read until no stored profile holds a top-level `work_auth`. `content/autofill.js` reading the resolved `profile.work_auth` from /context is the design, not a legacy reader. | small |
+| `brief-work-auth-home` | the brief's home set, `profile.work_auth` + `work_auth_market` → `profile.work_auth_by_country` | new-is-default | No shipped playbook reads it (`.slopledger.json`). Once the release after this one has shipped, delete both fields from `BriefProfile`, the home projection in `job_search_brief._work_permits` and the docstring's sentence. | small |
 | `job-location-raw` | `jobs.location` (dual-written) → `location_raw` + city/state/country | both-live | Stage 1 (schema shim + `.location` property) already met. Stage 2: no reader of `jobs.location` remains, then `op.drop_column`. | small |
 | `health-rewrite-cache` | unattended rewrite always-LLM → `bullet_rewrites` (NULL text = tried-ask) + ephemeral ask answers → `health_ask_answers` | new-is-default | Migration `85a1bb628e28` (pre-SQLite chain, removed in v0.5.0; the tables are in the SQLite baseline). The LLM miss path is the intended fallback, not a second product — cut this row when a follow-up deletes either table or the GET `/api/resume-lint/{kind}/{key}/answers` rehydrate. | small |
 | `chat-message-parts` | `chat_messages.tool_calls` / `tool_call_id` columns → neutral versioned `parts` (+ `provider`, `model`; migration `cf0804d00ae2` backfills) | new-is-default | The release after this one ships: drop both columns, `transcript.from_legacy` and the `ChatMessageRead` legacy fields in one migration. Readers: `transcript.from_legacy` fallback, `ChatMessageRead`. | small |
@@ -967,8 +968,8 @@ survives as fallback/backup) · `blocked` (trigger cannot be evaluated until a n
 - `autofill-work-auth-shape`: three traps. (0) The reader count is FOUR, across three surfaces; the trigger
   paths are directories so a renamed file stays covered — see the row. (1) `sponsorship_now` has NO legacy source and stays `None` on purpose —
   defaulting it from `requires_sponsorship` answers the OPT case wrong (no sponsorship NOW, needed later);
-  unknown must stay unknown. (2) `job_search_brief`'s public legacy-named response fields are a frozen
-  projection of the typed reader, not a storage-migration blocker.
+  unknown must stay unknown. (2) `job_search_brief`'s public legacy-named response fields, per-country entries
+  included, are a frozen projection of the typed reader, not a storage-migration blocker.
 - `job-location-raw`: `JobSummary` exposes ONLY the old field (no `location_raw`), so the list endpoint is
   the hardest blocker to dropping the column.
 

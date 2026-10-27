@@ -45,7 +45,7 @@ work-permit answers for each country you apply in.
   history, base resumes and their anchors, the health check, form answers and preferences), `hunt`,
   `tailor` (new: from a saved job to its tailored resume and PDF), `apply` (now from the finished PDF to
   a submitted application; tailoring moved to `tailor`), `track` (was `explore`: statuses, referrals and
-  the charts) and `templates`; `full` has all 92 tools. `/mcp/career` and `/mcp/explore` keep working
+  the charts) and `templates`; `full` has all 94 tools. `/mcp/career` and `/mcp/explore` keep working
   for one release. The Apply session and Apply automatically
   playbooks no longer tailor: a queued job that isn't tailored yet stays queued for the next Tailor run,
   and the run's digest says so.
@@ -73,7 +73,7 @@ work-permit answers for each country you apply in.
   - `attach_evidence_file` is now `attach_evidence(..., file_path=...)`, with the same file rules.
     `attach_evidence` takes exactly one of `image_base64` or `file_path`.
 
-  MCP now has 92 tools: `profile` 38, `hunt` 22, `tailor` 31, `apply` 34, `track` 13, `templates` 13.
+  MCP now has 94 tools: `profile` 39, `hunt` 23, `tailor` 31, `apply` 35, `track` 14, `templates` 13.
 - **`kb_approve_points` only approves.** It no longer takes `state`; `kb_retire_points` retires. A
   call that still passes a `state` other than "approved" is refused with "kb_approve_points only
   approves; kb_retire_points retires points." and changes nothing, so an old prompt can't approve the
@@ -228,6 +228,47 @@ work-permit answers for each country you apply in.
   with no new wording, and its digest names the skills it added that your career history doesn't back
   and the answers left for you. With Maestro's AI picked and no key, it stops before the queue and
   says so.
+- **A connected agent can correct a job it saved.** `store_extracted_jd(update=true)` replaces a saved
+  job's details with a new reading of the same posting (found by its saved text, or by its link when no
+  text is sent) instead of returning it unchanged. The job keeps its status, applications and proposals,
+  and the reply's `correction` names what changed. When something the match score reads changed, the
+  job's scores are deleted and scored again, tailored resumes included. A tailored resume or an open gap
+  analysis is named, never rewritten, and the gap analysis reads as out of date. A correction can't be
+  undone, and a job your other copy owns is refused. `store_extracted_jd` also takes `apply_url`, the
+  application address when it differs from the posting's, and `find_job_by_url` finds the job by it.
+- **Keep a chosen design.** `render_pdf(..., keep=true)` saves the template and the look settings
+  (`formatting`) on the base resume or tailored resume before it renders, so later renders and edits
+  use them. Without `keep` a template is a one-off, as before, and `formatting` is refused. Only a ready
+  template is kept. REST: `PATCH /api/base-resumes/{slug}/design`.
+- **`list_base_resumes(include_archived=true)`** lists your archived base resumes too.
+- **A connected agent can upload your cover letter.** `prepare_application_pdf_upload(...,
+  document="cover_letter")` stages the stored letter's PDF beside the resume's, making the PDF first
+  when needed. The apply prompt uploads it into a file box and pastes the letter's text into a text box.
+  When a form requires a letter and none is stored, one is written first, by whoever writes for your
+  agent; an optional box stays empty.
+- **`update_application(clear=["notes", "referral_id"])`** empties the notes or unlinks the referral
+  contact, which used to need the web app.
+- **`save_referral`** adds a referral (a company and its careers page) or changes only the fields you
+  pass on one, in the `hunt`, `apply` and `track` sets.
+- **The search brief knows more.** `get_job_search_brief` holds your work-permit answers for each
+  country you apply in (`work_auth_by_country`), and each warning names its country; the one home-country
+  `work_auth` stays for one release. It says when each automation last finished a run that didn't fail
+  (`last_runs`): Job hunt and Mail status start an hour before that, so nothing that arrived while the
+  last run worked is missed. It also lists the roles Maestro knows (`roles`). The Job hunt and Referral
+  pages prompts read each posting against its own country's work permits, and a posting from a country
+  you don't apply in isn't filtered on them; its proposal says so.
+- **An unknown role names the closest ones.** `set_job_preferences` and a new base resume's
+  `role_category` refuse a role Maestro doesn't know with up to three close ones, and say where a role
+  outside the list goes instead.
+  Only roles alike in the words that tell jobs apart count, so a civil engineer isn't offered CV
+  engineer.
+- **`kb_merge_entities`** folds a duplicate career-history item, such as one an import split off, into
+  the one you keep: its bullets, documents and resume links move over, and the duplicate goes. It acts
+  only on your yes and can't be undone, and the Codex plugin asks before it. Settings › Agent apps lists
+  it among what connected agents can do.
+- REST: `PATCH /api/settings/autofill`, `PATCH /api/settings/job-preferences` and
+  `PATCH /api/settings/market` take only what changed and merge it on the server in one step; the MCP
+  profile tools use them. The web app's and the Companion's saves are unchanged.
 
 ### Changed
 
@@ -414,6 +455,15 @@ work-permit answers for each country you apply in.
 - **Importing a resume without an AI key no longer warns that the AI failed.** With no key, the
   import added "LLM failed" warnings to an import that had worked. It now skips its AI steps quietly
   and keeps the same entries and bullets.
+- **An agent's profile save no longer erases a Companion answer saved at the same moment.**
+  `set_autofill_profile`, `set_job_preferences` and `set_markets` read your answers, changed them and
+  wrote them back as two steps, so an answer the Companion learned in between was lost. The server now
+  merges each save into what is stored at that moment, in one step, for every section. Your own
+  questions are added or updated by question, and an agent can no longer remove one: that stays yours,
+  in Profile.
+- **`set_markets` no longer half-lands.** Where you live and the currency pay reads in were two saves,
+  so a refused currency could leave the country changed. They are one save now: if any part is refused,
+  nothing changes.
 
 ## [0.11.1] — 2026-10-16
 

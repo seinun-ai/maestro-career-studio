@@ -19,7 +19,7 @@ same URL, and its `maestro connect` command does the setup below from the termin
 ## Install
 
 Open Settings › Agent apps › **Connect an agent app** and choose a
-**Tool set**. Every route defaults to `full` (all 92 tools); see
+**Tool set**. Every route defaults to `full` (all 94 tools); see
 [Profiles](#profiles) to narrow it. Enable one connection per client.
 
 ### Claude Desktop
@@ -143,12 +143,12 @@ Each scoped URL lists exactly its allowlist and refuses tools outside it.
 
 | Set | Use it when you say | Tools |
 | --- | --- | --- |
-| `full` | Anything (default) | all 92 |
-| `profile` | "Set me up", "import my resume", "add a project": career history, base resumes, health check, form answers, preferences | 38 |
-| `hunt` | "Find me jobs": capture, score and propose | 22 |
+| `full` | Anything (default) | all 94 |
+| `profile` | "Set me up", "import my resume", "add a project": career history, base resumes, health check, form answers, preferences | 39 |
+| `hunt` | "Find me jobs": capture, score and propose, referral contacts | 23 |
 | `tailor` | "Tailor my resume for this job": gaps, tailored resume, PDF, health check, undo | 31 |
-| `apply` | "Apply to this job": cover letter and answers, form answers, consent, submit | 34 |
-| `track` | "Update my statuses", "how's my search going": statuses, referrals, charts | 13 |
+| `apply` | "Apply to this job": cover letter and answers, form answers, consent, submit | 35 |
+| `track` | "Update my statuses", "how's my search going": statuses, referrals, charts | 14 |
 | `templates` | "Make a resume design" | 13 |
 
 The sets follow a job search: profile, hunt, tailor, apply, track. Each set's server
@@ -222,20 +222,20 @@ On a tool set that doesn't hold the new tool, the answer also names the set that
 (`…, in the track set.`).
 
 **Jobs and search**
-- `get_job_search_brief`: your profile, constraints, resume summaries, sync status (`enabled`, `role`) and an `applying` block (`answer_level`: your Screening answers setting, `facts`, `history` or `queued`); call first in a job-search chat.
+- `get_job_search_brief`: your profile, constraints, resume summaries, sync status (`enabled`, `role`) and an `applying` block (`answer_level`: your Screening answers setting, `facts`, `history` or `queued`); call first in a job-search chat. It holds your work-permit answers for each country you apply in (`work_auth_by_country`; the one home set, `work_auth`, stays for one release), when each automation last finished a run that didn't fail (`last_runs`, where the job hunt and mail status start, an hour earlier), and the role list (`roles`).
 - `sync_now`: ask the always-on copy to sync now; returns the round's outcome and per-step counts. On your laptop, it explains that your bot runs the sync; with sync off, it says "Sync isn't set up."
 - `find_job_by_url`: check whether a posting is already saved.
-- `store_extracted_jd`: save a job. Your assistant fills in the job's details in the format the tool describes. Saving scores the job against every base resume you can pick for it.
+- `store_extracted_jd`: save a job. Your assistant fills in the job's details in the format the tool describes. Saving scores the job against every base resume you can pick for it. `apply_url` records the application address when it differs from the posting's. Saving a job that's already saved returns it unchanged, unless `update=true`: then the new details correct it in place (same job, status and applications), the reply's `correction` says what changed, and when something scoring reads changed the job's match scores are replaced with fresh ones. A correction can't be undone.
 - `list_jobs`, `get_job`: saved jobs (a short paginated list, then one job in full), with ownership to identify jobs owned here and replicas. Each job carries its `stage`: `saved`, `scored`, `gaps`, `tailored`, `pdf_ready`, `applied` or `closed`.
-- `list_referrals`: referral contacts.
+- `list_referrals`, `save_referral`: referral contacts; `save_referral` adds one (company and careers page) or, given its `referral_id`, changes only the fields you pass (also in `apply` and `track`).
 
 **Tracking**
 - `list_applications`, `get_application`: your applications (a short paginated list, then one in full).
-- `update_application`: set status, applied date, notes or referral.
+- `update_application`: set status, applied date, notes or referral; `clear=["notes"]` or `["referral_id"]` empties them.
 - `export_jobs`: export filtered job rows for analysis.
 
 **Resumes**
-- `list_base_resumes`, `get_base_resume`: your base resumes.
+- `list_base_resumes`, `get_base_resume`: your base resumes; `include_archived=true` lists the archived ones too.
 - `edit_base_resume`: change parts of a base resume and re-render its PDF. The tool's own description lists the edit types.
 - `update_base_resume`, `create_base_resume`: replace or create a whole base resume.
 - `duplicate_base_resume`, `archive_base_resume`, `unarchive_base_resume`: copy, hide or restore one (archiving deletes nothing).
@@ -262,10 +262,10 @@ questions per gap with `enrich=true`, which Maestro's AI writes, so only when yo
 chose it; that text is only for display and never changes the score.
 
 **PDFs**
-- `render_pdf`: render a base resume or an application.
+- `render_pdf`: render a base resume or an application. A `template_id` alone is a one-off; with `keep=true` the template and look settings (`formatting`) are saved on that resume first, so later renders and edits keep them. Only a ready template is kept.
 - `get_rendered_pdf`: save the PDF locally with one PNG per page, and report any em dashes.
 - `get_rendered_pdf_page_image`: fetch one page image, for clients that can't open local files.
-- `prepare_application_pdf_upload`: save a copy of the application PDF where the browser tool can upload it. It does not submit anything.
+- `prepare_application_pdf_upload`: save a copy of the application PDF where the browser tool can upload it; `document="cover_letter"` stages the stored cover letter's PDF beside it (made first when needed; refused when no letter is stored). It does not submit anything.
 
 A rendered resume should contain **no em dash** (—); an en dash (–) is fine for
 date and number ranges. If `em_dash_found` is true, fix the text and re-render.
@@ -278,9 +278,9 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 - `list_qa_entries`: the answers and cover letters saved so far.
 
 **Your setup answers** (`profile` and `full`; `set_autofill_profile` is in `apply` too)
-- `set_autofill_profile`: save the form answers you give: contact and address, work permits for each country you apply in, start and pay, education, languages and your own questions. Only what it is given changes.
-- `set_markets`: where you live, where you apply, and the currency pay reads in.
-- `set_job_preferences`: the roles, places, work mode and lowest pay you want.
+- `set_autofill_profile`: save the form answers you give: contact and address, work permits for each country you apply in, start and pay, education, languages and your own questions. Only what it is given changes, merged into your saved answers at the moment it saves, so an answer the Companion learned meanwhile stays. Your own questions are added or updated by question, never removed (removing one is yours, in Profile).
+- `set_markets`: where you live, where you apply, and the currency pay reads in, as one save: if one part is refused, nothing changes.
+- `set_job_preferences`: the roles, places, work mode and lowest pay you want. A role the list doesn't know is refused with the closest ones it has.
 - `set_persona`: a few sentences on your direction and strengths, in your words; writing prompts read it for tone.
 
 Diversity answers and their consent, full automation, the job-site login and every Settings switch have no tool: they stay yours, in the app.
@@ -305,6 +305,7 @@ Diversity answers and their consent, full automation, the job-site login and eve
 - `kb_approve_points`: mark draft points approved, only after you have approved them. It never retires; that is `kb_retire_points`.
 - `kb_groom_entity`: find similar bullets on one entry, grouped, with one proposed to keep. Reads only, no AI call.
 - `kb_combine_points`, `kb_retire_points`: fold similar points into the one you keep, or stop using a stale one, only after you said yes. Resumes keep their text, and `/career` undoes both.
+- `kb_merge_entities`: fold a duplicate entry (one an import split off) into the one you keep, only after you said yes: its bullets, documents and resume links move over and the duplicate goes. A merge can't be undone.
 - `create_base_resume_from_kb`: build a new base resume from approved entries.
 
 **Templates**

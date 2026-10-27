@@ -44,6 +44,11 @@ The model is `backend/app/models/agent_run.py`; the SQLite revision is `7d3c1a9e
   Both return `{items: [...]}`. `title` is resolved at read time from the catalog, or falls
   back to the custom name. Reads return `jobs` with id/title/company rather than `job_ids`;
   a job deleted since recording is omitted. There is no MCP read tool for the run log.
+- **Last runs** (`agent_runs.last_finished`, read by `get_job_search_brief` as `last_runs`): per automation, the
+  `finished_at` of its newest run whose outcome is not `failed`, as a UTC ISO time; an automation whose runs all
+  failed, or that has none, is absent. A failed run read nothing, so it never moves the next run's window forward;
+  the job-hunt and mail-status prompts start an hour before this time, so what came in while the last run worked
+  is read too. `GET /api/agent-runs/latest` is unchanged and still shows the newest run, failed or not.
 - **Recent runs** (a fold on the Automations page; its summary counts the lines and the ones not done,
   "3 · 1 failed"): one expandable line per automation shows its title, relative finish time,
   agent label, outcome and counts; expanding shows the digest and job links. Outcomes read

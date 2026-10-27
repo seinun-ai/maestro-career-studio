@@ -12,7 +12,9 @@ are the ECB's daily reference rates; missing pay is never estimated. A job's *po
   (`market_settings.home_market_currency`: the home market's currency once a market is chosen, else the deployment's
   `HOME_CURRENCY`, default USD). Left unpicked, it follows a move of `home`.
 - **The `money` setting** (`schemas/money.py` `MoneySettings`; file-mirrored at `settings/money.json`, a profile setting
-  that syncs like the others; `GET/PUT /api/settings/money` answers `{key, value, home_currency}`, the last resolved):
+  that syncs like the others; `GET/PUT /api/settings/money` answers `{key, value, home_currency}`, the last resolved; an
+  agent's `set_markets` writes `home_currency` alone through `PATCH /api/settings/market`, with the market in one transaction,
+  every other money field kept):
   `home_currency` (an ISO 4217 code the country data names, or null for "where I live"; an unknown code 422s),
   `period` (`year`|`month`|`hour`, how pay is shown), `show_posted` (the posted amount under a converted one, default
   on) and `hours_per_year` (default 2080, 1 to 8784; Settings › Advanced).

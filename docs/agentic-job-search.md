@@ -37,6 +37,12 @@ referral careers pages, plain browsing — within these limits:
   is unknown or not one the user applies in has no answers, so it is not
   filtered on permits, and its proposal says so. Relay any `warnings[]` to the
   user before searching; fixing them is the user's job.
+- **Since the last run, with an hour of overlap.** The brief's `last_runs`
+  maps each automation to when its newest run that did not fail finished (a
+  failed run read nothing, so it never moves the window). A hunt pulls postings
+  from an hour before `last_runs["job-hunt"]`, so what appeared while that run
+  worked is covered and an already-saved posting is dropped at capture, or from
+  roughly the last week when there is no entry.
 - **The hunt captures, scores and proposes.** It never applies, submits or
   triages; accepting or declining a proposal is the user's decision, in the app.
   Propose at most the brief's per-run ceiling (`max_proposals_per_run`).

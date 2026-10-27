@@ -36,9 +36,10 @@ has no application: no draft time to read).
   only when the model left pay out) needs a currency mark or a pay word beside the amount and a
   per-hour unit, so "40 hours per week" is never pay.
 - **Extraction→columns mapping** lives in ONE place: `_apply_extraction`
-  (routers/jobs.py) — used by create and re-extract. Keep it that way; a drifted
-  second mapper once wrote only 12 of 22 fields, so never reintroduce a
-  parallel copy.
+  (routers/jobs.py) — used by create, and by re-extract and a correction through
+  `_replace_extraction` (the columns, `touch_job`, the skill rows deleted and
+  written again by `_insert_skills`). Keep it that way; a drifted second mapper once
+  wrote only 12 of 22 fields, so never reintroduce a parallel copy.
 - **One spelling per value** (migration `2d3de2d60a4c`). `country_code` is the job's country as one
   ISO 3166-1 alpha-2 code beside `country`, which keeps what the posting said: `services/countries.for_job`
   reads the country field, else the one country the location line names (`named_in`: names and aliases
@@ -78,7 +79,8 @@ has no application: no draft time to read).
   only the page the user is viewing is read, nothing is fetched). It is written only through `HttpUrlStr` (http/https with a host, at most
   2048 characters; `javascript:`, `data:`, scheme-relative and empty values are a 422 on create, ingest and `PATCH /api/jobs/{id}`).
   A job saved again gains the link it lacked (`_fill_apply_url`, on the hash, `source_url` and requisition-twin dedup paths) but a stored
-  link is never replaced by a save, and a replica or an offered job is left alone for its owner to record (a PATCH of one is a 409). The
+  link is never replaced by a save, only by a correction that sends one (next bullet), and a replica or an offered job is left alone for
+  its owner to record (a PATCH of one is a 409). The
   Companion's run opens `apply_url` when present, else `source_url`; `queued` answers and `GET /api/jobs/match` match the page against
   either (`is_same_posting`). A job the user picked by hand for a page gets that page as its `apply_url` (the Companion PATCHes only when it has none and the page
   names a posting; the PATCH itself replaces whatever is stored), so the next visit matches. `/api/jobs/match` trusts an apply link only
@@ -111,6 +113,21 @@ has no application: no draft time to read).
 - **Dedup response**: create/ingest return `already_existed: true` (transient
   attr → `JobRead`) on a dedup hit; the capture UI must not claim a fresh
   extraction.
+- **Correcting a saved job** (`_correct_job`; `POST /api/jobs/ingest` with `update: true`, MCP `store_extracted_jd(update=True)`):
+  when the ingest's dedup finds a saved posting (the same raw text's hash; with no raw text, the posting at `source_url`; or the
+  requisition twin), the new extraction replaces its columns and skill rows through `_replace_extraction`, and a given `apply_url`
+  replaces the stored one. The job keeps its id, status, applications, proposals, `source`, `raw_text` and `raw_text_hash`, so a
+  correction finds it by resending the saved raw text or by `source_url` alone (new text misses the hash and saves a new job, as an
+  `update` for a posting not yet saved does). A job another copy owns is refused (`require_owned`, 409) before any write, while a
+  plain repeat capture of it still answers `already_existed`. The reply carries `already_existed` and the transient `correction`
+  (`JobCorrection`, never stored): `changed` (the columns whose value changed, then the extraction's own lists such as
+  responsibilities and qualifications, then `skills` when the skill rows changed), `scores_cleared`, `rescored`, `rescore_failed`
+  (`"bases"` or an application id, which `score_ats` computes later), `tailored_applications`, `open_sessions` and
+  `proposals_fit_stale`. When anything but `apply_url` changed, the job's match scores of both phases are deleted in the correction's
+  commit and then scored again ([ats-score](ats-score.md)); a failed rescore never undoes the correction. A tailored resume, an open
+  gap analysis (out of date once the extraction differs: [tailoring-session](tailoring-session.md)) and a proposal's stored fit
+  (named only when scores were replaced) are named, never rewritten. A correction overwrites the stored extraction and nothing undoes
+  it; the tool's annotation stays non-destructive. Pins: `tests/test_jobs_ingest_update.py`, `tests/sync/test_job_correction_sync.py`.
 - **Re-extract guard**: 400s when `raw_text` is blank (capture-path job)
   instead of sending an empty prompt to the LLM.
 - **Knock-out pre-scan** (`services/knockout.scan_for`, embedded in `GET /api/jobs/{id}/detail`,

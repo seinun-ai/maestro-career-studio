@@ -239,6 +239,19 @@ identity.
    context. Do **not** copy/move the PDF with shell or Claude filesystem tools,
    invent a screenshot-dir path, upload from `applications/` / `artifact_dir`,
    or ask for a broad folder grant to re-stage.
+   **Cover letter:** a form that asks for one gets the application's stored
+   letter. As a file: `prepare_application_pdf_upload(application_id,
+   document="cover_letter")` stages its PDF (rendered first when it has none)
+   beside the resume's copy under its own file name; upload that `upload_path`
+   the same way, never the letter from `applications/` / `artifact_dir`. As
+   text (a box to type or paste into): paste the stored letter, the `answer` of
+   its `cover_letter` entry in `list_qa_entries`, and upload nothing. With no
+   letter stored (the staging call refuses and `list_qa_entries` holds none), a
+   required cover-letter field gets one written first, by the writer
+   `get_setup_status` names: the agent app writes it from the job and the
+   career context and saves it with `store_cover_letter`, or Maestro's AI
+   writes it with `generate_cover_letter`. Then stage or paste it, and the
+   final review names it. An optional cover-letter field stays empty.
 3. This target path is rollout-gated for `artifact_dir` inspection. Use slim
    `get_rendered_pdf` + `artifact_dir` when both tools are advertised **and**
    the response contains a non-empty server-returned `artifact_dir`. A response

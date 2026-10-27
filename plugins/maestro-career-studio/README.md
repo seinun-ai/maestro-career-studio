@@ -77,9 +77,10 @@ The Codex plugin asks for approval before these tools:
 `mark_submitted`, `record_consent`, `record_decision`, `get_job_site_login`,
 `prepare_application_pdf_upload`, `report_failure`, `waive_health_gate`,
 `restore_resume_version`, `record_triage`, `kb_approve_points`,
-`kb_combine_points`, `kb_retire_points`, and `sync_now`.
+`kb_combine_points`, `kb_merge_entities`, `kb_retire_points`, and `sync_now`.
 These can record a durable decision, waive a health gate, share a login,
-stage an upload, replace resume content, or sync data to your paired copy.
+stage an upload, replace resume content, merge two career-history entries,
+or sync data to your paired copy.
 The client prompts are
 **in addition to Maestro's own consent gates**. Other tools have no per-tool
 client prompt in this configuration.
@@ -126,9 +127,9 @@ and analytics across your saved jobs.
 
 ## Tool profiles
 
-The plugin loads the `full` set (all 92 tools). Smaller sets keep a chat focused,
-one job each: `profile` (38 tools), `hunt` (22), `tailor` (31), `apply` (34),
-`track` (13), `templates` (13). Choose a tool set in **Connect an agent app**,
+The plugin loads the `full` set (all 94 tools). Smaller sets keep a chat focused,
+one job each: `profile` (39 tools), `hunt` (23), `tailor` (31), `apply` (35),
+`track` (14), `templates` (13). Choose a tool set in **Connect an agent app**,
 or change the URL in your client's declaration to `/mcp/profile`, `/mcp/hunt`, `/mcp/tailor`, `/mcp/apply`,
 `/mcp/track` or `/mcp/templates` (`/mcp/career` and `/mcp/explore` still serve `profile` and `track` for one
 release). Enable one profile at a time.

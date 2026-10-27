@@ -318,7 +318,7 @@ clients connect to the backend on this computer; claude.ai and chatgpt.com web
 connectors are outside this setup.
 
 Open Settings › Agent apps › **Connect an agent app**. Its **Tool set**
-selector defaults to `full` (all 92 tools). Choose one set per chat. Your
+selector defaults to `full` (all 94 tools). Choose one set per chat. Your
 assistant writes the text with its own AI; to have Maestro's AI write it with
 your API key instead, pick **Maestro's AI** in Settings › Agent apps › **Who
 writes for connected agents**.
