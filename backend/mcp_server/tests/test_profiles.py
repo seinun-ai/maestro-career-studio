@@ -38,7 +38,7 @@ def test_apply_profile_filter_keeps_apply_drops_explore():
         return "ok"
 
     @m.tool()
-    def explore_top_skills() -> str:
+    def explore_trends() -> str:
         return "nope"
 
     @m.tool()
@@ -54,11 +54,11 @@ def test_full_profile_filter_is_noop():
     m = FastMCP("profile-full")
 
     @m.tool()
-    def explore_top_skills() -> str:
+    def explore_trends() -> str:
         return "ok"
 
     apply_profile_filter(m, "full")
-    assert {t.name for t in m._tool_manager.list_tools()} == {"explore_top_skills"}
+    assert {t.name for t in m._tool_manager.list_tools()} == {"explore_trends"}
 
 
 def test_a_stdio_set_says_what_it_holds_not_what_full_holds():
@@ -73,20 +73,20 @@ def test_a_stdio_set_says_what_it_holds_not_what_full_holds():
 
 def test_profile_allowlists_are_disjoint_from_unused_domains():
     assert {
-        "explore_top_skills",
+        "explore_trends",
         "create_template_draft",
         "get_career_export",
     }.isdisjoint(APPLY_TOOLS)
     assert {"mark_submitted", "propose_application", "record_triage"} <= APPLY_TOOLS
     assert {
-        "explore_top_skills",
+        "explore_trends",
         "mark_submitted",
         "get_career_export",
     }.isdisjoint(HUNT_TOOLS)
     assert {"propose_application", "record_triage"} <= HUNT_TOOLS
     # Triage is a hunt-and-apply decision surface; still no submit power in hunt.
     assert "get_career_export" not in TRACK_TOOLS
-    assert {"mark_submitted", "explore_top_skills", "kb_edit_point"}.isdisjoint(TAILOR_TOOLS)
+    assert {"mark_submitted", "explore_trends", "kb_edit_point"}.isdisjoint(TAILOR_TOOLS)
     assert "validate_template" in TEMPLATES_TOOLS
     assert {"tailor_session", "get_career_export"}.isdisjoint(TEMPLATES_TOOLS)
 
@@ -211,7 +211,7 @@ def test_tailor_application_is_registered_nowhere():
 
 def test_set_sizes_stay_near_the_line():
     sizes = {n: len(a) for n, a in PROFILE_ALLOWLISTS.items() if a is not None}
-    assert sizes == {"profile": 39, "hunt": 22, "tailor": 31, "apply": 35, "track": 18, "templates": 13}
+    assert sizes == {"profile": 39, "hunt": 22, "tailor": 31, "apply": 35, "track": 13, "templates": 13}
 
 
 def test_every_allowlisted_tool_is_registered():

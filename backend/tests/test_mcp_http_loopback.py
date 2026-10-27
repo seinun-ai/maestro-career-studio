@@ -97,7 +97,7 @@ async def test_single_worker_mcp_loopback_tools_and_client_label(loopback_backen
                 await session.initialize()
                 tools = await session.list_tools()
             names = [tool.name for tool in tools.tools]
-            assert len(names) == 99
+            assert len(names) == 94
             assert set(names) == set(srv.list_registered_tool_names("full"))
 
             # Without offload_tools, sync list_jobs blocks this sole uvicorn

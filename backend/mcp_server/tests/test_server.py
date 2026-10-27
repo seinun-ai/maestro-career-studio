@@ -49,10 +49,8 @@ def test_all_tools_registered():
         "archive_base_resume",
         "unarchive_base_resume",
         "render_pdf",
-        "explore_top_skills",
-        "explore_skill_heatmap",
-        "explore_role_mix_over_time",
-        "explore_fit_distribution",
+        "explore_trends",
+        "explore_gap_frequency",
         "list_applications",
         "export_jobs",
         "create_tailoring_session",
@@ -1350,6 +1348,35 @@ def test_find_job_by_url_tool_calls_client(monkeypatch):
     )
     assert srv.find_job_by_url("https://x.test/jobs/1") == {"found": False}
     assert seen == {"url": "https://x.test/jobs/1"}
+
+
+_OLD_EXPLORE_TOOLS = (
+    "explore_top_skills", "explore_skill_heatmap", "explore_role_mix_over_time",
+    "explore_fit_distribution", "explore_ats_over_time", "explore_tailoring_lift",
+)
+
+
+async def test_explore_trends_is_one_read_only_tool_for_six_views():
+    from mcp_server.profiles import PROFILE_ALLOWLISTS, TRACK_TOOLS
+
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    tool = tools["explore_trends"]
+    assert tool.annotations.readOnlyHint is True
+    props = tool.inputSchema["properties"]
+    views = ["top_skills", "heatmap", "role_mix", "fit_distribution", "ats_over_time",
+             "tailoring_lift"]
+    assert _enum_of(props["view"]) == views
+    view_text = " ".join(_schema_descriptions(props["view"]))
+    for view in views:
+        assert f"{view}:" in view_text, view
+    limit = props["limit"]
+    branches = [limit, *limit.get("anyOf", [])]
+    assert {b.get("minimum") for b in branches} - {None} == {1}
+    assert {b.get("maximum") for b in branches} - {None} == {100}
+    assert {"explore_trends", "explore_gap_frequency"} <= TRACK_TOOLS
+    for old in _OLD_EXPLORE_TOOLS:
+        assert old not in tools, old
+        assert all(old not in allow for allow in PROFILE_ALLOWLISTS.values() if allow), old
 
 
 def test_gap_docstrings_name_category_label():

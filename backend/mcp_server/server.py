@@ -18,7 +18,7 @@ from app.schemas.quick_tailor import QuickTailorProfile
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
 from app.services import http_client, markets
 from mcp_server import orientation, workflow
-from mcp_server.client import BackendClient, BackendError
+from mcp_server.client import EXPLORE_VIEWS, BackendClient, BackendError
 from mcp_server.profiles import allowed_tools, apply_profile_filter
 
 logger = logging.getLogger(__name__)
@@ -1931,42 +1931,49 @@ def validate_template(template_id: str) -> Any:
 
 
 # ---------- profile coach ----------
-@mcp.tool(**_read("Top In-Demand Skills"))
+# Immune to the ~2048-char tool-description truncation: lives on the param schema.
+_EXPLORE_VIEW_FIELD = Field(
+    description=(
+        "top_skills: the most in-demand skills across the stored JDs, as {meta, top, rest}; "
+        "meta.total_jobs counts the jobs read. heatmap: skill demand by role category, one row "
+        "per skill and role with pct_jobs, the share of that role's jobs, and count of `of`, "
+        "the role's jobs. role_mix: jobs by role category per week; every week from the first "
+        "to the last has a row for every role, with count 0 where the role had no jobs. "
+        "fit_distribution: how each base resume's match scores (deterministic engine) spread "
+        "across jobs in five buckets; display_name is the resume's own name (null for a slug "
+        "with no row), and the slug is an internal identifier. ats_over_time: the average match "
+        "score per week, split by phase (base vs tailored) and role category. tailoring_lift: "
+        "how much tailoring lifts the match score (base to tailored), averaged per role "
+        "category, plus an overall row."
+    )
+)
+ExploreViewName = Literal[tuple(EXPLORE_VIEWS)]
+
+
+@mcp.tool(**_read("Search Trends"))
 @_guard
-def explore_top_skills(
+def explore_trends(
+    view: Annotated[ExploreViewName, _EXPLORE_VIEW_FIELD],
     role_category: str | None = None,
     level: str | None = None,
     employment_type: str | None = None,
-    limit: int | None = None,
+    limit: Annotated[int | None, Field(ge=1, le=100)] = None,
 ) -> Any:
-    """Most in-demand skills across stored JDs, optionally filtered by role/level/type."""
-    return _client.explore_top_skills(
-        role_category=role_category, level=level, employment_type=employment_type, limit=limit
+    """The saved jobs and their match scores as one chart's rows, one view per call: top_skills,
+    heatmap, role_mix, fit_distribution, ats_over_time or tailoring_lift (what each returns is on
+    `view`). role_category, level and employment_type filter the jobs for top_skills,
+    ats_over_time and tailoring_lift; limit (1-100) caps the skills top_skills and heatmap
+    return. A filter or limit the view does not take is refused, and nothing is read.
+    Skills that recur as gaps are explore_gap_frequency."""
+    takes = EXPLORE_VIEWS[view]
+    if not takes.filters and any(v is not None for v in (role_category, level, employment_type)):
+        raise ToolError(f"{view} takes no filters")
+    if not takes.limit and limit is not None:
+        raise ToolError(f"{view} takes no limit")
+    return _client.explore_trends(
+        view, role_category=role_category, level=level, employment_type=employment_type,
+        limit=limit,
     )
-
-
-@mcp.tool(**_read("Skill Demand Heatmap"))
-@_guard
-def explore_skill_heatmap(limit: int | None = None) -> Any:
-    """Skill demand by role category (pct of jobs per skill x role)."""
-    return _client.explore_skill_heatmap(limit=limit)
-
-
-@mcp.tool(**_read("Role Mix Over Time"))
-@_guard
-def explore_role_mix_over_time() -> Any:
-    """Counts of jobs by role category per week. Every week from the first to the
-    last has a row for every role, with count 0 where the role had no jobs."""
-    return _client.explore_role_mix_over_time()
-
-
-@mcp.tool(**_read("Resume Fit Distribution"))
-@_guard
-def explore_fit_distribution() -> Any:
-    """How each base resume's match scores (deterministic engine) are
-    distributed across jobs. Each row's `display_name` is the resume's own name
-    (null for a slug with no row); the slug is an internal identifier."""
-    return _client.explore_fit_distribution()
 
 
 @mcp.tool(**_read("Recurring Skill Gaps"))
@@ -1999,34 +2006,6 @@ def explore_gap_frequency(
         level=level,
         employment_type=employment_type,
         limit=limit,
-    )
-
-
-@mcp.tool(**_read("Match Score Trend"))
-@_guard
-def explore_ats_over_time(
-    role_category: str | None = None,
-    level: str | None = None,
-    employment_type: str | None = None,
-) -> Any:
-    """Average match score over time (weekly), split by phase (base vs tailored)
-    and role category. Optionally filtered by role/level/type."""
-    return _client.explore_ats_over_time(
-        role_category=role_category, level=level, employment_type=employment_type
-    )
-
-
-@mcp.tool(**_read("Tailoring Score Lift"))
-@_guard
-def explore_tailoring_lift(
-    role_category: str | None = None,
-    level: str | None = None,
-    employment_type: str | None = None,
-) -> Any:
-    """How much tailoring lifts the match score (base->tailored), averaged per role
-    category, plus an overall row. Optionally filtered by role/level/type."""
-    return _client.explore_tailoring_lift(
-        role_category=role_category, level=level, employment_type=employment_type
     )
 
 

@@ -9,7 +9,7 @@ import re
 import tempfile
 from email.message import Message
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any
+from typing import Any, NamedTuple
 
 import httpx
 
@@ -67,6 +67,24 @@ def _without_eeo_values(review: Any) -> Any:
         if isinstance(flag, dict) and flag.get("eeo"):
             flag.pop("answer", None)
     return review
+
+
+class ExploreView(NamedTuple):
+    """One explore_trends view: the REST route its old tool read and what that route takes."""
+
+    route: str
+    filters: bool  # role_category, level and employment_type
+    limit: bool
+
+
+EXPLORE_VIEWS: dict[str, ExploreView] = {
+    "top_skills": ExploreView("/api/explore/top-skills", filters=True, limit=True),
+    "heatmap": ExploreView("/api/explore/heatmap", filters=False, limit=True),
+    "role_mix": ExploreView("/api/explore/role-mix-over-time", filters=False, limit=False),
+    "fit_distribution": ExploreView("/api/explore/fit-distribution", filters=False, limit=False),
+    "ats_over_time": ExploreView("/api/explore/ats-over-time", filters=True, limit=False),
+    "tailoring_lift": ExploreView("/api/explore/tailoring-lift", filters=True, limit=False),
+}
 
 
 # The autofill profile's sections an agent writes (`set_autofill_profile`). `eeo` is not one: a
@@ -1212,29 +1230,10 @@ class BackendClient:
         }
 
     # ---- profile coach ----
-    def explore_top_skills(
-        self,
-        role_category: str | None = None,
-        level: str | None = None,
-        employment_type: str | None = None,
-        limit: int | None = None,
-    ) -> Any:
-        params = _drop_none(
-            role_category=role_category,
-            level=level,
-            employment_type=employment_type,
-            limit=limit,
-        )
-        return self._request("GET", "/api/explore/top-skills", params=params)
-
-    def explore_skill_heatmap(self, limit: int | None = None) -> Any:
-        return self._request("GET", "/api/explore/heatmap", params=_drop_none(limit=limit))
-
-    def explore_role_mix_over_time(self) -> Any:
-        return self._request("GET", "/api/explore/role-mix-over-time")
-
-    def explore_fit_distribution(self) -> Any:
-        return self._request("GET", "/api/explore/fit-distribution")
+    def explore_trends(self, view: str, **params: Any) -> Any:
+        """GET one view's route with the parameters given (None dropped); the tool decides
+        which parameters a view takes."""
+        return self._request("GET", EXPLORE_VIEWS[view].route, params=_drop_none(**params))
 
     def explore_gap_frequency(
         self,
@@ -1250,28 +1249,6 @@ class BackendClient:
             limit=limit,
         )
         return self._request("GET", "/api/explore/gap-frequency", params=params)
-
-    def explore_ats_over_time(
-        self,
-        role_category: str | None = None,
-        level: str | None = None,
-        employment_type: str | None = None,
-    ) -> Any:
-        params = _drop_none(
-            role_category=role_category, level=level, employment_type=employment_type
-        )
-        return self._request("GET", "/api/explore/ats-over-time", params=params)
-
-    def explore_tailoring_lift(
-        self,
-        role_category: str | None = None,
-        level: str | None = None,
-        employment_type: str | None = None,
-    ) -> Any:
-        params = _drop_none(
-            role_category=role_category, level=level, employment_type=employment_type
-        )
-        return self._request("GET", "/api/explore/tailoring-lift", params=params)
 
     def list_applications(
         self,

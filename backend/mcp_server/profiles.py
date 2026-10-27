@@ -169,13 +169,8 @@ TRACK_TOOLS = frozenset({
     "list_proposals",
     "list_referrals",
     "get_job_search_brief",
-    "explore_top_skills",
-    "explore_skill_heatmap",
-    "explore_role_mix_over_time",
-    "explore_fit_distribution",
+    "explore_trends",
     "explore_gap_frequency",
-    "explore_ats_over_time",
-    "explore_tailoring_lift",
     "record_run",
 })
 
