@@ -40,7 +40,7 @@ if sys.version_info < (3, 12):
     raise SystemExit("smoke_uv_install.py needs Python 3.12 or newer (this is %d.%d)." % sys.version_info[:2])
 
 WINDOWS = sys.platform == "win32"
-EXPECTED_TOOLS = 88  # backend/tests/test_mcp_http_loopback.py pins the same number
+EXPECTED_TOOLS = 94  # the full set; backend/tests/test_wheel_scripts.py pins it to the registry
 LOG_TAIL = 40
 FORGED_HOST = "evil.example"
 FOREIGN_ORIGIN = "http://evil.example"

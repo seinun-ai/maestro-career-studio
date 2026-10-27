@@ -176,30 +176,32 @@ jobs:
           import asyncio
           import os
 
-          import httpx
-          from mcp import ClientSession
+          import httpx2
+          from mcp import Client
           from mcp.client.streamable_http import streamable_http_client
 
           from mcp_server.profiles import HUNT_TOOLS
           from mcp_server.server import list_registered_tool_names
 
-          async def tool_names(path):
-              async with httpx.AsyncClient(trust_env=False) as http_client:
-                  async with streamable_http_client(
+          async def tool_names(path, mode):
+              # The SDK's transport takes an httpx2 client; this one ignores proxy env.
+              async with httpx2.AsyncClient(trust_env=False) as http_client:
+                  transport = streamable_http_client(
                       os.environ["BACKEND_URL"] + path, http_client=http_client
-                  ) as (read, write, _):
-                      async with ClientSession(read, write) as session:
-                          await session.initialize()
-                          result = await session.list_tools()
-                          return [tool.name for tool in result.tools]
+                  )
+                  async with Client(transport, mode=mode) as client:
+                      result = await client.list_tools()
+                      return [tool.name for tool in result.tools]
 
           async def smoke():
-              full = await tool_names("/mcp")
-              assert len(full) == len(list_registered_tool_names()), full
-              hunt = await tool_names("/mcp/hunt")
-              assert len(hunt) == len(HUNT_TOOLS), hunt
-              assert set(hunt) == HUNT_TOOLS, hunt
-              print(f"HTTP MCP: {len(full)} full tools; {len(hunt)} hunt tools")
+              # legacy: the 2025 handshake; auto: server/discover, then 2026-07-28.
+              for mode in ("legacy", "auto"):
+                  full = await tool_names("/mcp", mode)
+                  assert len(full) == len(list_registered_tool_names()), full
+                  hunt = await tool_names("/mcp/hunt", mode)
+                  assert len(hunt) == len(HUNT_TOOLS), hunt
+                  assert set(hunt) == HUNT_TOOLS, hunt
+                  print(f"HTTP MCP ({mode}): {len(full)} full tools; {len(hunt)} hunt tools")
 
           async def main():
               await asyncio.wait_for(smoke(), timeout=30)

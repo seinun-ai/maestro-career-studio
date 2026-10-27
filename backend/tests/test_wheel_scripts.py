@@ -262,6 +262,13 @@ def test_a_file_that_is_not_a_zip_is_a_problem_with_its_type(tmp_path):
 # --- smoke_uv_install --------------------------------------------------------------------
 
 
+def test_the_smoke_expects_the_tools_the_full_set_serves():
+    # The smoke is stdlib only, so it can't import the registry; this keeps its count true.
+    from mcp_server.server import list_registered_tool_names
+
+    assert smoke.EXPECTED_TOOLS == len(list_registered_tool_names("full"))
+
+
 @pytest.mark.parametrize("demo, pdf, message", [
     ({"slug": "example", "pdf_rendered_at": None, "render_error": "no ready template"},
      b"%PDF", "no ready template"),
