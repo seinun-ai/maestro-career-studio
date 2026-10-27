@@ -232,7 +232,7 @@ work-permit answers for each country you apply in.
   job's details with a new reading of the same posting (found by its saved text, or by its link when no
   text is sent) instead of returning it unchanged. The job keeps its status, applications and proposals,
   and the reply's `correction` names what changed. When something the match score reads changed, the
-  job's scores are deleted and scored again, tailored resumes included. A tailored resume or an open gap
+  job's scores are deleted and scored again, every base it was scored against and tailored resumes included. A tailored resume or an open gap
   analysis is named, never rewritten, and the gap analysis reads as out of date. A correction can't be
   undone, and a job your other copy owns is refused. `store_extracted_jd` also takes `apply_url`, the
   application address when it differs from the posting's, and `find_job_by_url` finds the job by it.

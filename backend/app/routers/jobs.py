@@ -339,13 +339,36 @@ def _left_alone(db: Session, job_id: UUID) -> dict[str, list[UUID]]:
     }
 
 
-def _rescore(db: Session, job: Job, tailored: list[UUID]) -> list[str]:
+def _scored_bases(db: Session, job_id: UUID) -> list[str]:
+    """The bases the job holds a match score for, read before a correction deletes them."""
+    return list(db.scalars(
+        select(AtsScore.target_id)
+        .where(AtsScore.job_id == job_id, AtsScore.target_type == "base_resume", AtsScore.phase == "base")
+        .order_by(AtsScore.target_id)
+    ))
+
+
+def _rescore(db: Session, job: Job, scored: list[str], tailored: list[UUID]) -> list[str]:
     """Score a corrected job again after its commit: the bases as a new capture scores them, then
-    each tailored resume, each in a commit of its own. Deterministic, no AI. A failure rolls back
-    only that score and is named ("bases" or the application id) for score_ats to compute later."""
+    every other base in `scored` that is still there (archived, or marked for another country since:
+    an application on it keeps its Match), then each tailored resume, each in a commit of its own.
+    Deterministic, no AI. A failure rolls back only that score and is named ("bases" or the
+    application id) for score_ats to compute later."""
     failed = [] if _score_new_job(db, job) else ["bases"]
     if not (job.extracted_json or {}).get("skills"):
         return failed  # nothing to score against, as for the bases (`_scorable_now`)
+    offered = set(base_eligibility.candidates(db, job).slugs)
+    present = set(base_resume_data.active_base_resume_slugs(db))
+    for slug in scored:
+        if slug in offered or slug not in present or not base_resume_data.base_resume_path(slug).exists():
+            continue
+        try:
+            ats_score.score_target(job.id, "base_resume", slug, phase="base", session=db)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.warning("Rescoring base %s after a job correction failed", slug, exc_info=True)
+            failed += [] if "bases" in failed else ["bases"]
     for application_id in tailored:
         try:
             ats_score.score_target(job.id, "application", str(application_id), phase="tailored", session=db)
@@ -368,8 +391,8 @@ def _correct_job(
 
     When `changed` names anything scoring reads (every field but the apply link), the job's match
     scores of both phases are deleted, since a base and a tailored score must read the same job
-    text, and after the commit `_rescore` scores the bases and each tailored resume again; a
-    failed rescore never undoes the correction. Deleting a base score clears an open gap
+    text, and after the commit `_rescore` scores the bases (every one scored before and still
+    there) and each tailored resume again; a failed rescore never undoes the correction. Deleting a base score clears an open gap
     analysis's link to it (ON DELETE SET NULL) and leaves the analysis to read as out of date. A
     tailored resume, an open gap analysis and a proposal's stored fit are named in `correction`,
     never rewritten."""
@@ -393,12 +416,13 @@ def _correct_job(
     if set(_skill_keys(extraction)) != old_skills:
         changed.append("skills")
     rescore = any(field != "apply_url" for field in changed)  # scoring never reads the apply link
+    scored = _scored_bases(db, job.id) if rescore else []
     cleared = _clear_scores(db, job.id) if rescore else 0
     named = _left_alone(db, job.id)
     if not rescore:
         named["proposals_fit_stale"] = []
     db.commit()
-    failed = _rescore(db, job, named["tailored_applications"]) if rescore else []
+    failed = _rescore(db, job, scored, named["tailored_applications"]) if rescore else []
     db.refresh(job)
     job.already_existed = True
     job.correction = JobCorrection(

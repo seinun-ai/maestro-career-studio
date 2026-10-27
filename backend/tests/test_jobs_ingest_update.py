@@ -11,6 +11,7 @@ stored fit are named, never rewritten. No LLM: the ingest route takes the caller
 import copy
 import json
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 
@@ -204,8 +205,53 @@ def test_a_correction_rescores_the_bases_and_the_tailored_resume(db_session, tmp
     assert (left.status, left.base_ats_score_id) == ("open", None)  # its link to the deleted score cleared
 
 
+@pytest.mark.parametrize("left_out", ["archived", "another country"])
+def test_a_correction_rescores_a_scored_base_a_new_capture_would_skip(
+    db_session, tmp_path, monkeypatch, client, left_out
+):
+    """An application on a base no longer offered for the job (archived, or marked for another
+    country after scoring) keeps its Match: every base scored before the correction and still there
+    is scored again, not only the bases a new capture would pick."""
+    _seed_bases(db_session, tmp_path, monkeypatch)
+    saved = client.post("/api/jobs/ingest", json={"extracted_json": SAMPLE_JD, "raw_text": "ds role"}).json()
+    job_id = uuid.UUID(saved["id"])
+    application = Application(job_id=job_id, base_resume="b", status="applied")
+    db_session.add(application)
+    gone = BaseResume(slug="c", data_json=SAMPLE_RESUME)
+    (tmp_path / "c.json").write_text(json.dumps(SAMPLE_RESUME))
+    db_session.add(gone)
+    db_session.commit()
+    ats_score.score_target(job_id, "base_resume", "c", phase="base", session=db_session)
+    db_session.commit()
+    gone.deleted_at = datetime.now(UTC)  # scored, then deleted: not scored again
+    base_b = db_session.get(BaseResume, "b")
+    if left_out == "archived":
+        base_b.archived_at = datetime.now(UTC)
+    else:
+        db_session.get(BaseResume, "a").countries = ["US"]
+        base_b.countries = ["DE"]
+    db_session.commit()
+
+    fixed = client.post(
+        "/api/jobs/ingest",
+        json={"extracted_json": {**_kubernetes_jd(), "country": "United States"}, "raw_text": "ds role",
+              "update": True},
+    ).json()
+
+    correction = fixed["correction"]
+    assert (correction["scores_cleared"], correction["rescored"], correction["rescore_failed"]) == (3, True, [])
+    rows = _scores(db_session, saved["id"])
+    assert sorted((row.phase, row.target_id) for row in rows) == [("base", "a"), ("base", "b")]
+    for row in rows:
+        assert "kubernetes" in _skills_in(row)
+    listed = next(row for row in client.get("/api/applications").json() if row["id"] == str(application.id))
+    assert listed["ats_score"] is not None
+
+
 def test_a_failed_rescore_keeps_the_correction_and_names_what_failed(db_session, tmp_path, monkeypatch, client):
     saved, tailored, _, _ = _scored_job_with_a_tailored_resume(db_session, client, tmp_path, monkeypatch)
+    db_session.get(BaseResume, "b").archived_at = datetime.now(UTC)  # rescored on its own: one "bases"
+    db_session.commit()
 
     def scorer_down(*args, **kwargs):
         raise RuntimeError("scorer down")

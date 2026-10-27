@@ -124,10 +124,11 @@ has no application: no draft time to read).
   responsibilities and qualifications, then `skills` when the skill rows changed), `scores_cleared`, `rescored`, `rescore_failed`
   (`"bases"` or an application id, which `score_ats` computes later), `tailored_applications`, `open_sessions` and
   `proposals_fit_stale`. When anything but `apply_url` changed, the job's match scores of both phases are deleted in the correction's
-  commit and then scored again ([ats-score](ats-score.md)); a failed rescore never undoes the correction. A tailored resume, an open
-  gap analysis (out of date once the extraction differs: [tailoring-session](tailoring-session.md)) and a proposal's stored fit
-  (named only when scores were replaced) are named, never rewritten. A correction overwrites the stored extraction and nothing undoes
-  it; the tool's annotation stays non-destructive. Pins: `tests/test_jobs_ingest_update.py`, `tests/sync/test_job_correction_sync.py`.
+  commit and then scored again, every base that had a score and is still there included, archived or not
+  ([ats-score](ats-score.md)); a failed rescore never undoes the correction. A tailored resume, an open gap analysis (out of date
+  once the extraction differs: [tailoring-session](tailoring-session.md)) and a proposal's stored fit (named only when scores were
+  replaced) are named, never rewritten. A correction overwrites the stored extraction and nothing undoes it; the tool's annotation
+  stays non-destructive. Pins: `tests/test_jobs_ingest_update.py`, `tests/sync/test_job_correction_sync.py`.
 - **Re-extract guard**: 400s when `raw_text` is blank (capture-path job)
   instead of sending an empty prompt to the LLM.
 - **Knock-out pre-scan** (`services/knockout.scan_for`, embedded in `GET /api/jobs/{id}/detail`,
