@@ -160,3 +160,20 @@ def test_latest_and_recent_use_newest_first_with_uuid_tie_break(db_session):
 def test_an_empty_run_log_reads_as_empty(db_session):
     assert agent_runs.recent(db_session) == []
     assert agent_runs.latest(db_session) == []
+
+
+def test_last_finished_skips_failed_runs_and_latest_does_not(db_session):
+    def run(automation, outcome):
+        return agent_runs.record(db_session, AgentRunCreate(automation=automation, outcome=outcome), "x")
+
+    ok = run("job-hunt", "ok")
+    run("job-hunt", "failed")
+    run("mail-status", "failed")
+    partial = run("tailor-run", "partial")
+
+    assert agent_runs.last_finished(db_session) == {
+        "job-hunt": ok.finished_at, "tailor-run": partial.finished_at,
+    }
+    assert {r["automation"]: r["outcome"] for r in agent_runs.latest(db_session)} == {
+        "job-hunt": "failed", "mail-status": "failed", "tailor-run": "partial",
+    }

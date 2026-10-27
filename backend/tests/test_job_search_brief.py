@@ -514,3 +514,32 @@ def test_the_brief_lists_the_role_catalog(db_session, tmp_path, monkeypatch):
 
     assert roles == [{"key": k, "label": v} for k, v in role_categories.labels().items()]
     assert {"key": "data_scientist", "label": "Data Scientist"} in roles
+
+
+def test_a_failed_run_does_not_move_the_window(db_session, tmp_path, monkeypatch):
+    """A failed run read nothing, so the next one starts from the last run that did not fail: ok then
+    failed reads the ok run's time, only failed runs read as no run yet, and partial counts."""
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    from app.schemas.agent_runs import AgentRunCreate
+    from app.services import agent_runs
+
+    def run(automation, outcome):
+        return agent_runs.record(db_session, AgentRunCreate(automation=automation, outcome=outcome), "agent")
+
+    hunt_ok = run("job-hunt", "ok")
+    run("job-hunt", "failed")
+    run("mail-status", "failed")
+    run("mail-status", "failed")
+    partial = run("referral-pages", "partial")
+    run("referral-pages", "failed")
+
+    last_runs = _get_brief(db_session).json()["last_runs"]
+
+    assert datetime.fromisoformat(last_runs["job-hunt"]) == hunt_ok.finished_at
+    assert "mail-status" not in last_runs
+    assert datetime.fromisoformat(last_runs["referral-pages"]) == partial.finished_at
+    # The Automations page still shows the newest run of each, failed or not.
+    latest = TestClient(app).get("/api/agent-runs/latest").json()["items"]
+    assert {row["automation"]: row["outcome"] for row in latest} == {
+        "job-hunt": "failed", "mail-status": "failed", "referral-pages": "failed",
+    }

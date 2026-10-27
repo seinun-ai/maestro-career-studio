@@ -141,8 +141,9 @@ def _work_permits(db: Session, profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def _last_runs(db: Session) -> dict[str, str]:
-    """When each automation's newest reported run finished (the Automations page's Last ran)."""
-    return {run["automation"]: run["finished_at"].isoformat() for run in agent_runs.latest(db)}
+    """When each automation's newest run that did not fail finished: a failed run read nothing, so
+    it never moves the next run's window forward."""
+    return {automation: at.isoformat() for automation, at in agent_runs.last_finished(db).items()}
 
 
 def _auto_apply_block(db: Session) -> dict[str, Any]:

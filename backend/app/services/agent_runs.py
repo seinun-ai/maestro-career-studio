@@ -6,10 +6,11 @@ Maestro runs no scheduler and cannot tell a late run from a skipped one, so noth
 (docs/entities/agent-runs.md).
 """
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.agent_run import AgentRun
@@ -34,7 +35,7 @@ _SAFE_REQUEST_REASONS = frozenset({
     proposals.COMPANY_BLOCKED,
     *(proposals.not_allowed_message(status) for status in proposals.STATUS_CHIP_WORDS),
 })
-__all__ = ["MAX_DIGEST", "MAX_RUNS", "latest", "recent", "record", "read_one"]
+__all__ = ["MAX_DIGEST", "MAX_RUNS", "last_finished", "latest", "recent", "record", "read_one"]
 
 
 def _known(session: Session, ids: list[UUID]) -> set[UUID]:
@@ -116,6 +117,19 @@ def latest(session: Session) -> list[dict[str, Any]]:
     for run in _newest(session, MAX_RUNS):
         seen.setdefault(run.automation, run)
     return _read(list(seen.values()), session)
+
+
+def last_finished(session: Session) -> dict[str, datetime]:
+    """automation -> when its newest run that did not fail (ok or partial) finished, for the
+    job-search brief's `last_runs`: a failed run read nothing, so the next run's window starts
+    before it. An automation whose runs all failed is absent. `latest` (the Automations page)
+    still shows the newest run, failed or not."""
+    rows = session.execute(
+        select(AgentRun.automation, func.max(AgentRun.finished_at))
+        .where(AgentRun.outcome != "failed")
+        .group_by(AgentRun.automation)
+    )
+    return {automation: finished for automation, finished in rows}
 
 
 def read_one(session: Session, run: AgentRun) -> dict[str, Any]:

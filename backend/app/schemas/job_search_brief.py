@@ -114,8 +114,9 @@ class JobSearchBriefResponse(BaseModel):
     referrals: list[BriefReferral]
     captured_last_30_days: list[RoleCategoryCount]
     windows: BriefWindows
-    # automation -> when its newest reported run finished (timezone-aware UTC ISO); an
-    # automation with no reported run is absent.
+    # automation -> when its newest run that did not fail (ok or partial) finished
+    # (timezone-aware UTC ISO). A failed run does not count, so it never moves the next
+    # run's window forward; an automation with no such run is absent.
     last_runs: dict[str, str]
     roles: list[BriefRole]
     warnings: list[str]

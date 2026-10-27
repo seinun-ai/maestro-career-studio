@@ -1579,6 +1579,7 @@ def test_the_brief_describes_permits_by_country_last_runs_and_roles():
     assert "work_auth_by_country" in doc and "work_auth_market" in doc
     assert "kept for one release" in doc
     assert "last_runs" in doc and "roles" in doc
+    assert "a failed run does not count" in doc
 
 
 @pytest.mark.parametrize("tool", ["set_job_preferences", "create_base_resume_from_kb"])

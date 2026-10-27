@@ -824,7 +824,8 @@ def get_job_search_brief() -> Any:
     market ("UK", not "GB"); profile.work_auth is the home market's set, named by
     work_auth_market and kept for one release; unless the user lives and applies
     in one country, each warning names its country. last_runs maps each automation to
-    when its newest reported run finished (UTC ISO; absent before a first run).
+    when its newest run that did not fail finished (UTC ISO; a failed run does not
+    count; absent when none has).
     roles is the role catalog as {key, label}. It is the entry point of the
     agentic job-search workflow (playbook: docs/agentic-job-search.md), which
     covers capture, scoring and proposals; applying is outside its scope.
