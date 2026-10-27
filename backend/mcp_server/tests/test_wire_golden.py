@@ -2,9 +2,10 @@
 
 Per set it holds the initialize result, the tool list (in full on /mcp, names in order on
 the others) and the prompts; then one tool call per answer shape and one per refusal kind.
-The SDK move (Phase 4) must keep every entry; an entry changed on purpose is named in
-EXPECTED_CHANGES with what it reads after the change. With MAESTRO_WIRE_GOLDEN_WRITE=1 the
-test writes the fixture from this run instead of comparing.
+The SDK move (Phase 4) must keep every entry. An entry changed on purpose is listed in
+EXPECTED_CHANGES under its full entry name, with the whole entry as the record holds it
+(normalised). With MAESTRO_WIRE_GOLDEN_WRITE=1 the test writes the fixture from this run,
+with the Python, mcp and pydantic versions that made it, instead of comparing.
 
 No call reaches a backend: each case patches the one client method its tool calls, and a
 request that still gets as far as the network fails the test instead of being recorded.
@@ -13,9 +14,10 @@ request that still gets as far as the network fails the test instead of being re
 import difflib
 import json
 import os
-import re
+import platform
+from importlib import metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 from starlette.testclient import TestClient
@@ -24,15 +26,22 @@ from app.services import automations
 from mcp_server import http as mcp_http
 from mcp_server import server as srv
 from mcp_server.client import BackendError
-from mcp_server.tests._wire import HDR, INIT, app, rpc, session
+from mcp_server.tests._wire import HDR, INIT, asgi_app, normalise_record, rpc, session
 
 FIXTURE = Path(__file__).parent / "fixtures" / "wire_golden.json"
 SET_PATHS = (
     "/mcp", "/mcp/profile", "/mcp/hunt", "/mcp/tailor", "/mcp/apply", "/mcp/track",
     "/mcp/templates",
 )
+# The fixture's one key that is not an entry: the versions that wrote it, never compared.
+VERSIONS = "_recorded_with"
+HOW_TO_ACT = (
+    "A deliberate change on mcp 1.x: regenerate with MAESTRO_WIRE_GOLDEN_WRITE=1 in a commit "
+    "of its own. After the SDK 2.x bump: list the entry in EXPECTED_CHANGES; never regenerate."
+)
 
-# Entry name -> what it reads after a deliberate change (empty while nothing is meant to).
+# Full entry name -> the whole entry as the record holds it (normalised) after a deliberate
+# change. Empty while nothing is meant to change.
 EXPECTED_CHANGES: dict[str, Any] = {}
 
 _JOB = {
@@ -56,70 +65,46 @@ _AGENT_WRITES_409 = (
     "save it with store_cover_letter."
 )
 
-# (entry, path, tool, arguments, the client method the tool calls, what that method returns
-# or raises). None: the call is refused before the tool body runs, so a refusal that stopped
-# refusing reaches the network and fails the test.
-CALLS: list[tuple[str, str, str, dict[str, Any], str | None, Any]] = [
-    ("get_job answers a dict", "/mcp", "get_job", {"job_id": "job-1"}, "get_job", _JOB),
-    ("list_referrals answers a list", "/mcp", "list_referrals", {}, "list_referrals", _REFERRALS),
-    ("list_templates answers an empty list", "/mcp", "list_templates", {}, "list_templates", []),
-    (
-        "get_career_context answers a string", "/mcp", "get_career_context",
-        {"format": "markdown"}, "get_career_context", _CAREER_MD,
-    ),
-    ("quick_tailor is a removed tool", "/mcp", "quick_tailor", {}, None, None),
-    (
-        "explore_top_skills is a removed tool, its replacement in another set", "/mcp/hunt",
-        "explore_top_skills", {}, None, None,
-    ),
-    (
-        "kb_approve_points refuses the removed state argument", "/mcp/profile",
-        "kb_approve_points", {"point_ids": ["p1"], "state": "retired"}, None, None,
-    ),
-    ("render_pdf is outside the hunt set", "/mcp/hunt", "render_pdf", {}, None, None),
-    ("no_such_tool is never served", "/mcp", "no_such_tool", {}, None, None),
-    ("get_job without job_id fails the schema", "/mcp/hunt", "get_job", {}, None, None),
-    (
-        "generate_cover_letter carries the backend's refusal", "/mcp/apply",
-        "generate_cover_letter", {"application_id": "app-1", "tone": "warm"},
-        "generate_cover_letter", BackendError(_AGENT_WRITES_409, status_code=409),
-    ),
-    (
-        "update_application refuses a bare clear string", "/mcp/track", "update_application",
-        {"application_id": "app-1", "clear": "notes"}, None, None,
-    ),
-    (
-        "get_base_resume crashes on a KeyError", "/mcp", "get_base_resume", {"slug": "main"},
-        "get_base_resume", KeyError("slug"),
-    ),
+
+class Call(NamedTuple):
+    """One tools/call case, recorded as `tools/call <entry>`."""
+
+    entry: str
+    path: str
+    tool: str
+    arguments: dict[str, Any]
+    client_method: str | None = None  # the one client call the tool body makes, patched
+    answer: Any = None  # what client_method returns, or the exception it raises
+
+
+# A case without client_method is refused before the tool body runs. A refusal that stopped
+# refusing changes its text or reaches the network; both fail the test.
+CALLS = [
+    Call("get_job answers a dict", "/mcp", "get_job", {"job_id": "job-1"}, "get_job", _JOB),
+    Call("list_referrals answers a list", "/mcp", "list_referrals", {}, "list_referrals",
+         _REFERRALS),
+    Call("list_templates answers an empty list", "/mcp", "list_templates", {}, "list_templates",
+         []),
+    Call("get_career_context answers a string", "/mcp", "get_career_context",
+         {"format": "markdown"}, "get_career_context", _CAREER_MD),
+    Call("quick_tailor is a removed tool", "/mcp", "quick_tailor", {}),
+    Call("explore_top_skills is a removed tool, its replacement in another set", "/mcp/hunt",
+         "explore_top_skills", {}),
+    Call("kb_approve_points refuses the removed state argument", "/mcp/profile",
+         "kb_approve_points", {"point_ids": ["p1"], "state": "retired"}),
+    Call("render_pdf is outside the hunt set", "/mcp/hunt", "render_pdf", {}),
+    Call("no_such_tool is never served", "/mcp", "no_such_tool", {}),
+    Call("get_job without job_id fails the schema", "/mcp/hunt", "get_job", {}),
+    Call("generate_cover_letter carries the backend's refusal", "/mcp/apply",
+         "generate_cover_letter", {"application_id": "app-1", "tone": "warm"},
+         "generate_cover_letter", BackendError(_AGENT_WRITES_409, status_code=409)),
+    Call("update_application refuses a bare clear string", "/mcp/track", "update_application",
+         {"application_id": "app-1", "clear": "notes"}),
+    Call("get_base_resume crashes on a KeyError", "/mcp", "get_base_resume", {"slug": "main"},
+         "get_base_resume", KeyError("slug")),
 ]
 
-_REVISION_KEYS = frozenset({"resultType", "ttlMs", "cacheScope", "_meta"})
-# pydantic links each validation error to its docs for the installed minor version, and CI
-# installs the newest one, so the version in that link is not part of what is recorded.
-_PYDANTIC_DOCS = re.compile(r"errors\.pydantic\.dev/[0-9.]+/")
-
-
-def _strip(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {k: _strip(v) for k, v in value.items() if k not in _REVISION_KEYS}
-    if isinstance(value, list):
-        return [_strip(v) for v in value]
-    if isinstance(value, str):
-        return _PYDANTIC_DOCS.sub("errors.pydantic.dev/<version>/", value)
-    return value
-
-
-def normalise(entries: dict[str, Any]) -> dict[str, Any]:
-    """Each entry without its JSON-RPC envelope's jsonrpc and id, and without, at any depth,
-    the keys the 2026-07-28 revision adds (absent on 1.30): what an agent reads, either side."""
-    return {
-        name: _strip(
-            {k: v for k, v in entry.items() if k not in ("jsonrpc", "id")}
-            if isinstance(entry, dict) else entry
-        )
-        for name, entry in entries.items()
-    }
+_HUNK_LINES = 40
 
 
 def _answering(value: Any):
@@ -149,27 +134,29 @@ class _Wire:
 
 
 def _set_entries(wire: _Wire, path: str) -> dict[str, Any]:
-    """One set's initialize, tool list (in full on /mcp, names in order elsewhere) and prompts."""
+    """One set's initialize, tool list (in full on /mcp, names in order elsewhere) and prompts.
+    A response without a result is kept whole, so it shows up as a difference."""
     response = wire.client.post(path, json=INIT, headers=HDR)
     assert response.status_code == 200, (path, response.text)
     init = response.json()
-    init["result"]["serverInfo"].pop("version")  # the app version, not the wire's
+    server_info = (init.get("result") or {}).get("serverInfo") or {}
+    server_info.pop("version", None)  # the app version, not the wire's
     tools = wire.ask(path, "tools/list")
+    listed = (tools.get("result") or {}).get("tools")
     return {
         f"initialize {path}": init,
         f"tools/list {path}": (
-            tools if path == "/mcp" else [t["name"] for t in tools["result"]["tools"]]
+            tools if path == "/mcp" or listed is None else [t.get("name") for t in listed]
         ),
         f"prompts/list {path}": wire.ask(path, "prompts/list"),
     }
 
 
-def _called(wire: _Wire, call: tuple[str, str, dict[str, Any], str | None, Any]) -> dict[str, Any]:
-    path, tool, arguments, method, answer = call
-    with pytest.MonkeyPatch.context() as case:
-        if method is not None:
-            case.setattr(srv._client, method, _answering(answer))
-        return wire.ask(path, "tools/call", {"name": tool, "arguments": arguments})
+def _called(wire: _Wire, call: Call) -> dict[str, Any]:
+    with pytest.MonkeyPatch.context() as mp:
+        if call.client_method is not None:
+            mp.setattr(srv._client, call.client_method, _answering(call.answer))
+        return wire.ask(call.path, "tools/call", {"name": call.tool, "arguments": call.arguments})
 
 
 def record(client: TestClient) -> dict[str, Any]:
@@ -192,8 +179,8 @@ def record(client: TestClient) -> dict[str, Any]:
             entries[f"prompts/get {name} on /mcp/tailor"] = wire.ask(
                 "/mcp/tailor", "prompts/get", {"name": name}
             )
-        for entry, *call in CALLS:
-            entries[f"tools/call {entry}"] = _called(wire, tuple(call))
+        for call in CALLS:
+            entries[f"tools/call {call.entry}"] = _called(wire, call)
     assert not reached, (
         "these requests reached the network (a case's client call is unpatched, or a refusal "
         f"no longer refuses): {reached}"
@@ -201,18 +188,39 @@ def record(client: TestClient) -> dict[str, Any]:
     return entries
 
 
+def _versions() -> dict[str, str]:
+    return {
+        "python": platform.python_version(),
+        "mcp": metadata.version("mcp"),
+        "pydantic": metadata.version("pydantic"),
+    }
+
+
+def _said(versions: dict[str, str]) -> str:
+    return ", ".join(f"{name} {versions.get(name, '?')}" for name in ("python", "mcp", "pydantic"))
+
+
 def _dump(value: Any) -> str:
     return json.dumps(value, sort_keys=True, indent=1, ensure_ascii=False)
 
 
+def _diff(before: list[str], after: list[str], label: str) -> list[str]:
+    """A unified diff, cut after _HUNK_LINES lines of hunks with a marker saying how many more."""
+    lines = list(difflib.unified_diff(before, after, label, "now", n=1, lineterm=""))
+    cut = 2 + _HUNK_LINES  # the two file-label lines, then the hunks
+    if len(lines) > cut:
+        lines = [*lines[:cut], f"… {len(lines) - cut} more lines"]
+    return lines
+
+
 def _tools_by_name(entry: Any) -> dict[str, Any]:
-    tools = entry.get("result", {}).get("tools") if isinstance(entry, dict) else None
-    return {t["name"]: t for t in tools or []}
+    result = entry.get("result") if isinstance(entry, dict) else None
+    return {t.get("name"): t for t in (result or {}).get("tools") or []}
 
 
-def _changed_tools(want: Any, got: Any) -> list[str]:
-    """For the full tool list, each changed tool by name with the keys that changed: the
-    hunks after it are capped, and a change to every description would fill them."""
+def _changed_tools(want: Any, got: Any, label: str) -> list[str]:
+    """For the full tool list, each changed tool by name with the keys that changed, then the
+    names' own diff when they or their order moved: the JSON hunks after it are capped."""
     before, after = _tools_by_name(want), _tools_by_name(got)
     lines = []
     for name in sorted(before.keys() & after.keys()):
@@ -221,36 +229,52 @@ def _changed_tools(want: Any, got: Any) -> list[str]:
         if changed:
             lines.append(f"  {name}: {', '.join(changed)}")
     if list(before) != list(after):
-        lines.append(f"  names or order: recorded {list(before)}, now {list(after)}")
+        lines.append("  names or order:")
+        lines.extend(_diff(list(before), list(after), label))
     return lines
 
 
-def _differences(want: dict[str, Any], got: dict[str, Any]) -> str:
+def _entry_lines(name: str, want: Any, got: Any, label: str) -> list[str]:
+    return [
+        f"== {name}",
+        *_changed_tools(want, got, label),
+        *_diff(_dump(want).splitlines(), _dump(got).splitlines(), label),
+    ]
+
+
+def _differences(want: dict[str, Any], got: dict[str, Any]) -> list[str]:
     lines = []
     for name in sorted(want.keys() | got.keys()):
         if name not in got:
-            lines.append(f"--- {name}: in the record, not answered now")
+            lines.append(f"== {name}: in the record, not answered now")
         elif name not in want:
-            lines.append(f"--- {name}: answered now, not in the record")
+            lines.append(f"== {name}: answered now, not in the record")
         elif want[name] != got[name]:
-            diff = difflib.unified_diff(
-                _dump(want[name]).splitlines(), _dump(got[name]).splitlines(),
-                "recorded", "now", n=1, lineterm="",
-            )
-            lines.append(f"--- {name}:")
-            lines.extend(_changed_tools(want[name], got[name]))
-            lines.extend(list(diff)[2:42])  # the hunks, capped
-    return "\n".join(lines)
+            label = "expected" if name in EXPECTED_CHANGES else "recorded"
+            lines.extend(_entry_lines(name, want[name], got[name], label))
+    return lines
 
 
 def test_wire_answers_match_the_golden_record():
-    with TestClient(app(mcp_http.McpEndpoint())) as client:
-        got = normalise(record(client))
+    with TestClient(asgi_app(mcp_http.McpEndpoint())) as client:
+        got = normalise_record(record(client))
     if os.environ.get("MAESTRO_WIRE_GOLDEN_WRITE") == "1":
         FIXTURE.parent.mkdir(exist_ok=True)
-        FIXTURE.write_text(_dump(got) + "\n", encoding="utf-8")
-        pytest.fail("fixture written; rerun without the variable")
-    recorded = normalise(json.loads(FIXTURE.read_text(encoding="utf-8")))
-    want = {**recorded, **normalise(EXPECTED_CHANGES)}
-    differing = _differences(want, got)
-    assert not differing, "these entries differ from the golden record:\n" + differing
+        FIXTURE.write_text(_dump({VERSIONS: _versions(), **got}) + "\n", encoding="utf-8")
+        pytest.fail("fixture written; rerun without the variable", pytrace=False)
+    recorded = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    made_with = recorded.pop(VERSIONS, {})
+    unknown = sorted(EXPECTED_CHANGES.keys() - recorded.keys())
+    if unknown:
+        pytest.fail(f"EXPECTED_CHANGES names entries the record lacks: {unknown}", pytrace=False)
+    differing = _differences(normalise_record({**recorded, **EXPECTED_CHANGES}), got)
+    if differing:
+        pytest.fail(
+            "\n".join([
+                f"recorded with {_said(made_with)}; running {_said(_versions())}",
+                HOW_TO_ACT,
+                "these entries differ from the golden record:",
+                *differing,
+            ]),
+            pytrace=False,
+        )

@@ -12,12 +12,12 @@ from starlette.testclient import TestClient
 from mcp_server import http as mcp_http
 from mcp_server import server as srv
 from mcp_server.profiles import allowed_tools
-from mcp_server.tests._wire import HDR, INIT, app, rpc, session
+from mcp_server.tests._wire import HDR, INIT, asgi_app, rpc, session
 
 
 @pytest.fixture
 def client():
-    with TestClient(app(mcp_http.McpEndpoint())) as c:
+    with TestClient(asgi_app(mcp_http.McpEndpoint())) as c:
         yield c
 
 
@@ -131,7 +131,7 @@ def test_initialize_reports_maestro_version_for_every_profile(
     else:
         monkeypatch.setenv("APP_VERSION", app_version)
     path = "/mcp" if profile == "full" else f"/mcp/{profile}"
-    with TestClient(app(mcp_http.McpEndpoint())) as c:
+    with TestClient(asgi_app(mcp_http.McpEndpoint())) as c:
         response = c.post(path, json=INIT, headers=HDR)
         assert response.status_code == 200, response.text
         assert response.json()["result"]["serverInfo"]["version"] == expected
@@ -166,7 +166,7 @@ def test_registered_tools_run_off_the_event_loop_but_module_functions_stay_sync(
         seen["loop"] = threading.get_ident()
         return {"items": []}
 
-    with TestClient(app(mcp_http.McpEndpoint(scratch))) as c:
+    with TestClient(asgi_app(mcp_http.McpEndpoint(scratch))) as c:
         sid = session(c)
         for id_, name in enumerate(("worker_thread", "loop_thread"), start=2):
             res = rpc(c, "/mcp", sid, "tools/call", {"name": name}, id_).json()["result"]
@@ -193,7 +193,7 @@ def test_real_registered_tool_runs_without_an_event_loop(monkeypatch):
     tool = srv.mcp._tool_manager.get_tool("list_templates")
     monkeypatch.setattr(tool, "fn", srv.list_templates)
     monkeypatch.setattr(tool, "is_async", False)
-    with TestClient(app(mcp_http.McpEndpoint())) as c:
+    with TestClient(asgi_app(mcp_http.McpEndpoint())) as c:
         sid = session(c)
         res = rpc(c, "/mcp", sid, "tools/call", {"name": "list_templates"}).json()["result"]
         assert not res["isError"], res
@@ -238,7 +238,7 @@ def test_worker_receives_request_profile_and_client_info(monkeypatch):
             "client": srv._client_label(ctx),
         }
 
-    with TestClient(app(mcp_http.McpEndpoint(scratch))) as c:
+    with TestClient(asgi_app(mcp_http.McpEndpoint(scratch))) as c:
         for id_, profile in enumerate(("templates", "full"), start=2):
             path = f"/mcp/{profile}"
             sid = session(c, path)
@@ -261,7 +261,7 @@ def test_sessions_cannot_cross_profiles(client):
 
 
 def test_lifespan_can_restart_and_forgets_old_sessions():
-    asgi = app(mcp_http.McpEndpoint())
+    asgi = asgi_app(mcp_http.McpEndpoint())
     with TestClient(asgi) as c:
         old_sid = session(c)
         assert rpc(c, "/mcp", old_sid, "tools/list").status_code == 200
@@ -278,7 +278,7 @@ def test_offloaded_tool_errors_keep_todays_text():
     def broken() -> str:
         raise ValueError("broken input")
 
-    with TestClient(app(mcp_http.McpEndpoint(scratch))) as c:
+    with TestClient(asgi_app(mcp_http.McpEndpoint(scratch))) as c:
         sid = session(c)
         res = rpc(c, "/mcp", sid, "tools/call", {"name": "broken"}).json()["result"]
     assert res["isError"] is True

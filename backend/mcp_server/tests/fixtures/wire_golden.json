@@ -1,4 +1,9 @@
 {
+ "_recorded_with": {
+  "mcp": "1.30.0",
+  "pydantic": "2.13.5",
+  "python": "3.12.12"
+ },
  "initialize /mcp": {
   "result": {
    "capabilities": {
