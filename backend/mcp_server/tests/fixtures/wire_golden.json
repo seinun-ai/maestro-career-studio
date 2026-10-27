@@ -144,6 +144,13 @@
    }
   }
  },
+ "no/such /mcp": {
+  "error": {
+   "code": -32601,
+   "data": "no/such",
+   "message": "Method not found"
+  }
+ },
  "prompts/get job-hunt on /mcp/tailor": {
   "error": {
    "code": 0,
@@ -244,6 +251,16 @@
      "title": "Mail status"
     }
    ]
+  }
+ },
+ "resources/list /mcp": {
+  "result": {
+   "resources": []
+  }
+ },
+ "resources/templates/list /mcp": {
+  "result": {
+   "resourceTemplates": []
   }
  },
  "tools/call explore_top_skills is a removed tool, its replacement in another set": {
