@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import binascii
 import hashlib
 import json
 import logging
@@ -287,7 +286,10 @@ def _mounted_playwright_path(file_path: str) -> Path | None:
     mount = _upload_root().parent.resolve()
     if mount.name != _PLAYWRIGHT_DIR:
         return None
-    candidate = mount.joinpath(*suffix).resolve()
+    try:
+        candidate = mount.joinpath(*suffix).resolve()
+    except (OSError, RuntimeError):  # the caller's path loops or cannot resolve: no file there
+        return None
     return candidate if candidate.is_relative_to(mount) else None
 
 
@@ -344,7 +346,36 @@ def _reason(exc: BaseException) -> str:
 
 def _unwritable(what: str, folder: Path, setting: str, exc: OSError) -> BackendError:
     """A folder this server writes into refused the write: which one, why, and its setting."""
-    return BackendError(f"{what} {folder} ({_reason(exc)}); {setting} sets this folder.")
+    reason = "it is a file, not a folder" if folder.is_file() else _reason(exc)
+    return BackendError(f"{what} {folder} ({reason}); {setting} sets this folder.")
+
+
+def _unreadable_evidence(file_path: str, exc: OSError | RuntimeError) -> BackendError:
+    return BackendError(f"evidence file could not be read: {file_path} ({_reason(exc)})")
+
+
+_EVIDENCE_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _check_json_body(body: Any) -> None:
+    """Refuse, in words, a value an agent sent that JSON cannot carry; nothing is sent. An
+    agent's arguments arrive as parsed JSON, so only these two can come from one: anything
+    else that fails to encode is our own bug and raises as it is."""
+    try:
+        text = json.dumps(body, ensure_ascii=False, allow_nan=False)
+    except ValueError as exc:
+        json.dumps(body, ensure_ascii=False)  # anything but NaN or Infinity raises again here
+        raise BackendError(
+            "a number in the arguments is NaN or Infinity, which JSON can't carry; send a "
+            "finite number or null."
+        ) from exc
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise BackendError(
+            "a text in the arguments holds half of a character (an unpaired surrogate such as "
+            "\\ud800), which JSON can't carry; send the text without it."
+        ) from exc
 
 
 def _atomic_write_bytes(destination: Path, content: bytes) -> None:
@@ -416,6 +447,8 @@ class BackendClient:
         # that record a write's origin already got this header from _origin_headers, so what
         # they store is unchanged; a caller's own headers (the client's name) ride on top.
         kwargs["headers"] = {ORIGIN_HEADER: "mcp", **(kwargs.get("headers") or {})}
+        if kwargs.get("json") is not None:
+            _check_json_body(kwargs["json"])
         try:
             proxy_options = {"trust_env": False} if _is_loopback(self.base_url) else {}
             with new_client(timeout=self._timeout, **proxy_options) as client:
@@ -439,10 +472,6 @@ class BackendClient:
             raise BackendError(message) from exc
         except httpx.HTTPError as exc:
             raise BackendError(f"HTTP error talking to backend: {exc}") from exc
-        except (TypeError, ValueError) as exc:
-            # httpx encodes the body itself and refuses what JSON cannot carry, NaN and
-            # Infinity included (allow_nan=False): the request was never sent.
-            raise BackendError(f"the arguments could not be sent as JSON: {exc}") from exc
 
         if response.status_code >= 400:
             try:
@@ -1557,7 +1586,7 @@ class BackendClient:
     ) -> Any:
         try:
             data_bytes = base64.b64decode(image_base64)
-        except binascii.Error as exc:
+        except ValueError as exc:  # binascii.Error, or text that is not ASCII at all
             raise BackendError(
                 "image_base64 is not valid base64; send the raw base64 text, without a data: "
                 "URL prefix."
@@ -1582,23 +1611,28 @@ class BackendClient:
             raise BackendError("evidence file path contains a NUL byte")
         try:
             p = Path(file_path).expanduser().resolve()
-            if not p.is_file():
-                # Under `docker exec` the browser's HOST path does not exist here;
-                # the same file is in this process's mount of the .playwright-mcp tree.
-                mapped = _mounted_playwright_path(file_path)
-                if mapped is None or not mapped.is_file():
-                    raise BackendError(
-                        f"evidence file not found: {p}"
-                        + (f" (also tried {mapped})" if mapped is not None else "")
-                    )
-                p = mapped
-            if p.stat().st_size > 5 * 1024 * 1024:  # before reading, so a huge file never is
-                raise BackendError("evidence file exceeds 5 MB")
-            data_bytes = p.read_bytes()
+            found = p.is_file()
         except (OSError, RuntimeError) as exc:  # RuntimeError: a symlink loop (Python 3.12)
-            raise BackendError(
-                f"evidence file could not be read: {file_path} ({_reason(exc)})"
-            ) from exc
+            raise _unreadable_evidence(file_path, exc) from exc
+        if not found:
+            # Under `docker exec` the browser's HOST path does not exist here;
+            # the same file is in this process's mount of the .playwright-mcp tree.
+            mapped = _mounted_playwright_path(file_path)
+            if mapped is None or not mapped.is_file():
+                raise BackendError(
+                    f"evidence file not found: {p}"
+                    + (f" (also tried {mapped})" if mapped is not None else "")
+                )
+            p = mapped
+        try:
+            if p.stat().st_size > _EVIDENCE_MAX_BYTES:  # before reading, so a huge file never is
+                raise BackendError("evidence file exceeds 5 MB")
+            with p.open("rb") as handle:  # bounded: the file may have grown since
+                data_bytes = handle.read(_EVIDENCE_MAX_BYTES + 1)
+        except OSError as exc:
+            raise _unreadable_evidence(file_path, exc) from exc
+        if len(data_bytes) > _EVIDENCE_MAX_BYTES:
+            raise BackendError("evidence file exceeds 5 MB")
         if data_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
             mime = "image/png"
         elif data_bytes.startswith(b"\xff\xd8\xff"):

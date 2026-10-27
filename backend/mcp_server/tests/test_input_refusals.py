@@ -1,11 +1,14 @@
 """An agent's own input that the server cannot use reads as a refusal naming what to change,
 never as SDK 2.x's bare "Error executing tool <name>" (the text a crash gets)."""
 
+import logging
 import os
+from pathlib import Path
 
 import httpx
 import pytest
 import respx
+from mcp import Client
 from mcp.server.mcpserver.exceptions import ToolError
 
 import mcp_server.server as srv
@@ -36,9 +39,11 @@ def _evidence(**source) -> dict:
     return {"proposal_id": "p1", "step": 1, "label": "Review", **source}
 
 
-async def test_invalid_base64_is_refused_in_words(backend):
+# One stray character; a string an LLM shortened with an ellipsis (not ASCII at all).
+@pytest.mark.parametrize("image_base64", ["a", "iVBORw0KGgo…"])
+async def test_invalid_base64_is_refused_in_words(backend, image_base64):
     upload = backend.post(f"{BASE}/api/proposals/p1/evidence")
-    assert await _answer("attach_evidence", _evidence(image_base64="a")) == (
+    assert await _answer("attach_evidence", _evidence(image_base64=image_base64)) == (
         "Error executing tool attach_evidence: image_base64 is not valid base64; send the raw "
         "base64 text, without a data: URL prefix."
     )
@@ -71,6 +76,36 @@ async def test_an_evidence_path_that_cannot_be_resolved_is_refused_in_words(back
     assert str(loop) in text
 
 
+async def test_a_loop_inside_the_playwright_mount_is_not_found(backend, tmp_path, monkeypatch):
+    mount = tmp_path / "app" / ".playwright-mcp"
+    (mount / "uploads").mkdir(parents=True)
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(mount / "uploads"))
+    (mount / "loop.png").symlink_to(mount / "loop.png")
+    text = await _answer(
+        "attach_evidence", _evidence(file_path="/Users/u/repo/.playwright-mcp/loop.png")
+    )
+    assert text.startswith("Error executing tool attach_evidence: evidence file not found: "), text
+
+
+async def test_a_file_that_grew_past_the_limit_after_its_size_was_checked_is_refused(
+    backend, tmp_path, monkeypatch
+):
+    big = tmp_path / "grew.png"
+    with big.open("wb") as handle:
+        handle.write(_PNG)
+        handle.truncate(5 * 1024 * 1024 + 1)
+    real_stat = Path.stat
+
+    def as_it_was(self, *args, **kwargs):  # the size it had when it was checked
+        result = real_stat(self, *args, **kwargs)
+        return os.stat_result((*result[:6], len(_PNG), *result[7:10])) if self == big else result
+
+    monkeypatch.setattr(type(big), "stat", as_it_was)
+    assert await _answer("attach_evidence", _evidence(file_path=str(big))) == (
+        "Error executing tool attach_evidence: evidence file exceeds 5 MB"
+    )
+
+
 async def test_an_evidence_file_over_the_limit_is_refused_before_it_is_read(
     backend, tmp_path, monkeypatch
 ):
@@ -79,23 +114,53 @@ async def test_an_evidence_file_over_the_limit_is_refused_before_it_is_read(
         handle.write(_PNG)
         handle.truncate(5 * 1024 * 1024 + 1)
 
-    def never(_path):
+    def never(*_args, **_kwargs):
         raise AssertionError("read a file over the limit")
 
     monkeypatch.setattr(type(big), "read_bytes", never)
+    monkeypatch.setattr(type(big), "open", never)
     assert await _answer("attach_evidence", _evidence(file_path=str(big))) == (
         "Error executing tool attach_evidence: evidence file exceeds 5 MB"
     )
 
 
-async def test_arguments_that_are_not_json_are_refused_in_words(backend):
+@pytest.mark.parametrize("number", [float("nan"), float("inf")])
+async def test_a_number_json_cannot_carry_is_refused_in_words(backend, number):
     transition = backend.patch(f"{BASE}/api/proposals/p1")
-    text = await _answer("record_decision", {"proposal_id": "p1", "fit": {"score": float("nan")}})
-    assert text.startswith(
-        "Error executing tool record_decision: the arguments could not be sent as JSON: "
-    ), text
-    assert "nan" in text
+    assert await _answer("record_decision", {"proposal_id": "p1", "fit": {"score": number}}) == (
+        "Error executing tool record_decision: a number in the arguments is NaN or Infinity, "
+        "which JSON can't carry; send a finite number or null."
+    )
     assert not transition.called
+
+
+async def test_a_lone_surrogate_is_refused_in_words(backend):
+    transition = backend.patch(f"{BASE}/api/proposals/p1")
+    fit = {"note": "ok \ud800"}
+    assert await _answer("record_decision", {"proposal_id": "p1", "fit": fit}) == (
+        "Error executing tool record_decision: a text in the arguments holds half of a character "
+        "(an unpaired surrogate such as \\ud800), which JSON can't carry; send the text without it."
+    )
+    assert not transition.called
+
+
+async def test_a_bug_in_the_request_path_stays_a_crash_with_its_traceback(
+    backend, monkeypatch, caplog
+):
+    """Only the agent's own input becomes a refusal; our mistake keeps the generic text."""
+
+    def misspelt(*_args, **_kwargs):
+        raise TypeError("request() got an unexpected keyword argument 'jsn'")
+
+    monkeypatch.setattr(httpx.Client, "request", misspelt)
+    with caplog.at_level(logging.ERROR):
+        async with Client(srv.mcp, mode="legacy") as client:
+            result = await client.call_tool(
+                "record_decision", {"proposal_id": "p1", "fit": {"score": 1}}
+            )
+    assert result.is_error
+    assert result.content[0].text == "Error executing tool record_decision"
+    assert "unexpected keyword argument 'jsn'" in caplog.text
 
 
 async def test_a_pdf_folder_that_cannot_be_written_names_its_setting(backend, tmp_path, monkeypatch):
@@ -106,10 +171,10 @@ async def test_a_pdf_folder_that_cannot_be_written_names_its_setting(backend, tm
         return_value=httpx.Response(200, content=multipage_text_pdf_bytes(["Page one"]))
     )
     text = await _answer("get_rendered_pdf", {"target_type": "base_resume", "target_id": "main"})
-    assert text.startswith(
-        f"Error executing tool get_rendered_pdf: could not write the PDF to {not_a_folder} ("
-    ), text
-    assert text.endswith("); MAESTRO_CS_PDF_DIR sets this folder."), text
+    assert text == (
+        f"Error executing tool get_rendered_pdf: could not write the PDF to {not_a_folder} "
+        "(it is a file, not a folder); MAESTRO_CS_PDF_DIR sets this folder."
+    )
 
 
 async def test_an_upload_folder_that_cannot_be_written_names_its_setting(
@@ -125,8 +190,7 @@ async def test_an_upload_folder_that_cannot_be_written_names_its_setting(
         return_value=httpx.Response(200, content=multipage_text_pdf_bytes(["Page one"]))
     )
     text = await _answer("prepare_application_pdf_upload", {"application_id": "a1"})
-    assert text.startswith(
+    assert text == (
         "Error executing tool prepare_application_pdf_upload: could not stage the PDF in "
-        f"{not_a_folder} ("
-    ), text
-    assert text.endswith("); MAESTRO_CS_UPLOAD_DIR sets this folder."), text
+        f"{not_a_folder} (it is a file, not a folder); MAESTRO_CS_UPLOAD_DIR sets this folder."
+    )
