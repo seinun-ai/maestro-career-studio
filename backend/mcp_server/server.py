@@ -1647,6 +1647,15 @@ def edit_application(application_id: str, ops: EditOps) -> Any:
     return _client.edit_application(application_id, ops)
 
 
+_CLEAR_FIELD = Field(
+    description=(
+        'Fields to empty: "notes" removes the notes, "referral_id" unlinks the referral contact '
+        "(the referral itself is kept). A field given a value in the same call is refused, and "
+        "nothing is written."
+    )
+)
+
+
 @mcp.tool(**_write("Update Application Tracking", destructive=True, idempotent=True))
 @_guard
 def update_application(
@@ -1655,17 +1664,16 @@ def update_application(
     applied_at: str | None = None,
     notes: str | None = None,
     referral_id: str | None = None,
+    clear: Annotated[list[Literal["notes", "referral_id"]], _CLEAR_FIELD] = [],
     from_email: bool = False,
     ctx: Context | None = None,
 ) -> Any:
     """Update an application's tracking fields (status, applied_at, notes, referral_id).
 
     Only the arguments passed are sent to the backend — the PATCH endpoint is
-    driven by which fields were actually set on the request, so omitting an
-    argument leaves that field untouched. This tool cannot clear a field back to
-    null/empty (e.g. remove notes or unlink a referral): omitting an arg skips it
-    entirely rather than sending an explicit null, and clearing a field requires
-    the web UI.
+    driven by which fields were actually set on the request, so an argument left
+    out leaves that field untouched. `clear` empties notes or unlinks the
+    referral (an explicit null on the request).
 
     Allowed statuses: draft, applied, interviewing, offered, accepted, rejected,
     withdrawn (anything else is rejected). Setting status to applied,
@@ -1690,6 +1698,7 @@ def update_application(
         applied_at=applied_at,
         notes=notes,
         referral_id=referral_id,
+        clear=clear,
         from_email=from_email,
         origin_detail=_client_label(ctx),
     )

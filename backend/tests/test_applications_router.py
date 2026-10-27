@@ -559,6 +559,51 @@ def test_patch_application_clears_referral_id(db_session, client):
     assert response.json()["referral_id"] is None
 
 
+def test_patch_application_clears_notes_with_null(db_session, client):
+    job = _job(db_session, role_category="data_engineer")
+    application = Application(
+        job_id=job.id, base_resume="data_engineer", status="draft", notes="Met the team lead"
+    )
+    db_session.add(application)
+    db_session.commit()
+    db_session.refresh(application)
+
+    response = client.patch(f"/api/applications/{application.id}", json={"notes": None})
+
+    assert response.status_code == 200
+    assert response.json()["notes"] is None
+
+
+def test_an_agent_clears_notes_and_referral_through_mcp(db_session, client, mcp_tools):
+    """MCP update_application(clear=[...]) against the real PATCH: both fields emptied, a field
+    both set and cleared refused with nothing written, and a call without clear unchanged."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from app.models.referral import Referral
+
+    job = _job(db_session, role_category="data_engineer")
+    referral = Referral(company="Acme", careers_url="https://acme.example/careers")
+    db_session.add(referral)
+    db_session.commit()
+    application = Application(
+        job_id=job.id, base_resume="data_engineer", status="draft", notes="Met the team lead",
+        referral_id=referral.id,
+    )
+    db_session.add(application)
+    db_session.commit()
+    app_id = str(application.id)
+
+    with pytest.raises(ToolError, match="notes"):
+        mcp_tools.update_application(app_id, notes="Second call", clear=["notes"])
+    mcp_tools.update_application(app_id, status="applied")
+    kept = client.get(f"/api/applications/{app_id}").json()
+    assert (kept["notes"], kept["referral_id"]) == ("Met the team lead", str(referral.id))
+
+    out = mcp_tools.update_application(app_id, clear=["notes", "referral_id"])
+
+    assert (out["notes"], out["referral_id"], out["status"]) == (None, None, "applied")
+
+
 def test_materialize_resume_sets_customized_without_pdf(db_session, monkeypatch, client):
     job = _job(db_session)
     application = Application(

@@ -161,6 +161,41 @@ def test_update_application_omits_none_args():
 
 
 @respx.mock
+def test_update_application_clear_sends_explicit_nulls():
+    route = respx.patch(f"{BASE}/api/applications/a1").mock(
+        return_value=httpx.Response(200, json={"id": "a1"})
+    )
+    BackendClient(BASE).update_application("a1", status="withdrawn", clear=["notes", "referral_id"])
+    import json as _json
+    assert _json.loads(route.calls.last.request.read()) == {
+        "status": "withdrawn", "notes": None, "referral_id": None,
+    }
+
+
+@respx.mock(assert_all_called=False)
+def test_update_application_refuses_a_field_both_set_and_cleared():
+    import pytest
+
+    from mcp_server.client import BackendError
+
+    route = respx.patch(f"{BASE}/api/applications/a1").mock(
+        return_value=httpx.Response(200, json={"id": "a1"})
+    )
+    with pytest.raises(BackendError, match="referral_id"):
+        BackendClient(BASE).update_application("a1", referral_id="r1", clear=["referral_id"])
+    assert not route.called
+
+
+def test_update_application_clears_only_notes_and_referral_id():
+    import pytest
+
+    from mcp_server.client import BackendError
+
+    with pytest.raises(BackendError, match="status"):
+        BackendClient(BASE).update_application("a1", clear=["status"])
+
+
+@respx.mock
 def test_update_application_sends_all_fields_when_given():
     route = respx.patch(f"{BASE}/api/applications/a1").mock(
         return_value=httpx.Response(200, json={"id": "a1"})

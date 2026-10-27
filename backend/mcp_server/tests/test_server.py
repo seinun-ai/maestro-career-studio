@@ -1140,7 +1140,7 @@ async def test_tailoring_text_names_only_tools_served_beside_it():
                  "create_tailoring_session", "tailor_session", "score_ats", "get_tailoring_options",
                  "get_setup_status", "explore_trends", "get_career_context", "attach_evidence",
                  "kb_approve_points", "store_extracted_jd", "render_pdf", "list_base_resumes",
-                 "prepare_application_pdf_upload"):
+                 "prepare_application_pdf_upload", "update_application"):
         named = set(re.findall(r"[a-z_]+", _schema_text(tools[name]))) & set(tools)
         for set_name, allow in PROFILE_ALLOWLISTS.items():
             if allow and name in allow:
@@ -1292,10 +1292,10 @@ def test_update_application_tool_calls_client(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "update_application",
-        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None,
+        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None, clear=(),
         from_email=False, origin_detail=None: seen.update(
             app_id=app_id, status=status, applied_at=applied_at, notes=notes, referral_id=referral_id,
-            from_email=from_email,
+            clear=list(clear), from_email=from_email,
         )
         or {"id": app_id, "status": status},
     )
@@ -1307,8 +1307,25 @@ def test_update_application_tool_calls_client(monkeypatch):
         "applied_at": None,
         "notes": None,
         "referral_id": None,
+        "clear": [],
         "from_email": False,
     }
+
+
+async def test_update_application_clear_names_notes_and_referral_id(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "update_application",
+        lambda app_id, clear=(), **kwargs: seen.update(app_id=app_id, clear=list(clear)) or {"id": app_id},
+    )
+    srv.update_application("a1", clear=["notes", "referral_id"])
+    assert seen == {"app_id": "a1", "clear": ["notes", "referral_id"]}
+
+    tool = next(t for t in await srv.mcp.list_tools() if t.name == "update_application")
+    clear = tool.inputSchema["properties"]["clear"]
+    assert clear["items"]["enum"] == ["notes", "referral_id"]
+    assert clear["default"] == []
+    assert "refused" in clear["description"]
 
 
 def test_update_application_tool_forwards_all_args(monkeypatch):
@@ -1316,7 +1333,7 @@ def test_update_application_tool_forwards_all_args(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "update_application",
-        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None,
+        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None, clear=(),
         from_email=False, origin_detail=None: seen.update(
             app_id=app_id, status=status, applied_at=applied_at, notes=notes, referral_id=referral_id,
             from_email=from_email, origin_detail=origin_detail,
@@ -1371,13 +1388,14 @@ async def test_update_application_names_its_client_and_mail_for_the_status_log(m
 
 
 def test_update_application_docstring_documents_statuses_and_limitation():
-    doc = (srv.update_application.__doc__ or "").lower()
+    doc = " ".join((srv.update_application.__doc__ or "").lower().split())
     for status in (
         "draft", "applied", "interviewing", "offered", "accepted", "rejected", "withdrawn",
     ):
         assert status in doc
-    # the fields_set limitation must be spelled out (clearing requires the web UI)
-    assert "web ui" in doc
+    # an argument left out is untouched; clearing is the clear argument, no longer the web UI only
+    assert "left out" in doc and "clear" in doc
+    assert "web ui" not in doc
     assert "applied_at" in doc
 
 

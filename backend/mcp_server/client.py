@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from email.message import Message
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, NamedTuple
@@ -996,12 +996,24 @@ class BackendClient:
         applied_at: str | None = None,
         notes: str | None = None,
         referral_id: str | None = None,
+        clear: Collection[str] = (),
         from_email: bool = False,
         origin_detail: str | None = None,
     ) -> Any:
         payload = _drop_none(
             status=status, applied_at=applied_at, notes=notes, referral_id=referral_id
         )
+        # An explicit null is how the PATCH empties a field (it reads which fields were sent).
+        unknown = sorted(set(clear) - {"notes", "referral_id"})
+        if unknown:
+            raise BackendError(f"clear takes notes and referral_id only, not {', '.join(unknown)}.")
+        both = sorted(set(clear) & set(payload))
+        if both:
+            verb = "is" if len(both) == 1 else "are"
+            raise BackendError(
+                f"{' and '.join(both)} {verb} both given a value and cleared; nothing was written."
+            )
+        payload.update(dict.fromkeys(clear))
         if from_email:
             payload["status_source"] = "mail"
         return self._request(
