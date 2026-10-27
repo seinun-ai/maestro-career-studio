@@ -895,13 +895,20 @@ class BackendClient:
         raw_text: str | None = None,
         source_url: str | None = None,
         source: str = "user",
+        apply_url: str | None = None,
+        update: bool = False,
     ) -> Any:
-        payload = {
+        payload: dict[str, Any] = {
             "extracted_json": extracted_json,
             "raw_text": raw_text,
             "source_url": source_url,
             "source": source,
         }
+        # Sent only when used, so a call without them is the request it always was.
+        if apply_url is not None:
+            payload["apply_url"] = apply_url
+        if update:
+            payload["update"] = True
         return self._request("POST", "/api/jobs/ingest", json=payload)
 
     def update_base_resume(

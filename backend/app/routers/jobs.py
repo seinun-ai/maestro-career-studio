@@ -10,15 +10,19 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import exists, func, or_, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.companion_origin import is_companion
 from app.db import begin_write, get_db
 from app.models.application import Application
+from app.models.ats_score import AtsScore
 from app.models.job import Job
 from app.models.job_skill import JobSkill
+from app.models.tailoring_session import TailoringSession
 from app.schemas.application import ApplicationRead, ApplicationSummary
 from app.schemas.job import (
+    JobCorrection,
     JobCreate,
     JobExportRow,
     JobIngest,
@@ -31,6 +35,7 @@ from app.schemas.job import (
     QuickTailorResponse,
 )
 from app.schemas.job_detail import JobDetail
+from app.schemas.job_extraction import JobExtraction
 from app.schemas.job_match import JobMatchResult
 from app.schemas.job_search_brief import JobSearchBriefResponse
 from app.services import (
@@ -237,21 +242,26 @@ def _find_existing(
     return None
 
 
-def _insert_skills(session: Session, job_id: UUID, extraction: dict[str, Any]) -> None:
+def _skill_keys(extraction: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """The extraction's skill rows as canonical (name, category, level) keys, deduplicated."""
     # Dedupe by the canonical composite PK before merging. Under this app's
     # autoflush=False sessions (app/db.py, tests/conftest.py), session.merge does
     # NOT collapse two transient instances that canonicalize to the same PK in one
     # flush -- the second merge's existence check runs without flushing the first
     # pending row, so both become INSERTs and trip job_skills_pkey. Verified
     # empirically: with autoflush=False two same-PK merges raise IntegrityError.
-    seen: set[tuple[str, str, str]] = set()
-    for skill in extraction.get("skills", []):
-        name = canonicalize_skill_name(skill["skill_name"])
-        category = coerce_skill_category(skill.get("skill_category"))
-        level = skill.get("requirement_level") or "mentioned"
-        if (name, category, level) in seen:
-            continue
-        seen.add((name, category, level))
+    return list(dict.fromkeys(
+        (
+            canonicalize_skill_name(skill["skill_name"]),
+            coerce_skill_category(skill.get("skill_category")),
+            skill.get("requirement_level") or "mentioned",
+        )
+        for skill in extraction.get("skills", [])
+    ))
+
+
+def _insert_skills(session: Session, job_id: UUID, extraction: dict[str, Any]) -> None:
+    for name, category, level in _skill_keys(extraction):
         session.merge(
             JobSkill(
                 job_id=job_id,
@@ -260,6 +270,103 @@ def _insert_skills(session: Session, job_id: UUID, extraction: dict[str, Any]) -
                 requirement_level=level,
             )
         )
+
+
+def _replace_extraction(db: Session, job: Job, extraction: dict[str, Any]) -> None:
+    """A saved job takes a new extraction: the promoted columns and the skill rows a new capture
+    writes. Refresh details (re-extract) and a corrected capture share it; the caller commits."""
+    _apply_extraction(job, extraction, db)
+    sync_hooks.touch_job(db, job.id)
+    db.execute(sa_delete(JobSkill).where(JobSkill.job_id == job.id))
+    _insert_skills(db, job.id, extraction)
+
+
+# Read back, never compared: the extraction itself (its parts are compared) and when it was read.
+_UNCOMPARED = frozenset({"extracted_json", "extracted_at"})
+
+
+def _stored_fields(job: Job) -> dict[str, Any]:
+    return {
+        attr.key: getattr(job, attr.key)
+        for attr in sa_inspect(Job).column_attrs
+        if attr.key not in _UNCOMPARED
+    }
+
+
+def _changed_lists(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
+    """The extraction's own fields with no column (responsibilities, qualifications) that changed;
+    an empty list and a missing one are the same."""
+    columns = {attr.key for attr in sa_inspect(Job).column_attrs}
+    return [
+        key
+        for key in JobExtraction.model_fields
+        if key not in columns and key != "skills" and (old.get(key) or None) != (new.get(key) or None)
+    ]
+
+
+def _clear_scores(db: Session, job_id: UUID) -> int:
+    """Delete the job's saved match scores (a Core write, so the job is touched for sync)."""
+    sync_hooks.touch_job(db, job_id)
+    return db.execute(sa_delete(AtsScore).where(AtsScore.job_id == job_id)).rowcount
+
+
+def _left_alone(db: Session, job_id: UUID) -> tuple[list[UUID], list[UUID]]:
+    """The job's applications holding a tailored resume, and its open gap analyses."""
+    applications = db.execute(
+        select(Application.id, Application.customized_json)
+        .where(Application.job_id == job_id)
+        .order_by(Application.created_at)
+    ).all()
+    sessions = db.scalars(
+        select(TailoringSession.id)
+        .where(TailoringSession.job_id == job_id, TailoringSession.status == "open")
+        .order_by(TailoringSession.created_at)
+    )
+    # Truthiness, not IS NOT NULL: a cleared draft is stored as JSON null (services/stage.py reads it so).
+    return [app_id for app_id, draft in applications if draft], list(sessions)
+
+
+def _correct_job(
+    db: Session, job: Job, raw_text: str, extraction: dict[str, Any], apply_url: str | None
+) -> Job:
+    """`update` on a saved posting: this extraction replaces the job's fields and skill rows through
+    the mapping a capture uses, and a given apply link replaces the stored one; the id, status,
+    applications, proposals, source and raw text stay. Match scores are computed from the
+    extraction alone, so when it changed the job's saved scores are deleted and the next scoring
+    recomputes them (no score row records which extraction it read; a missing row is what every
+    reader already treats as "not scored yet"). A tailored resume or an open gap analysis is left
+    as it is and named in `correction`. A job another copy owns is refused before any write."""
+    sync_hooks.require_owned(db, job.id)
+    extraction = jd_extraction.apply_work_auth_backstop(raw_text or job.raw_text, dict(extraction))
+    old_extraction = job.extracted_json or {}
+    old_skills = {
+        tuple(row)
+        for row in db.execute(
+            select(JobSkill.skill_name, JobSkill.skill_category, JobSkill.requirement_level)
+            .where(JobSkill.job_id == job.id)
+        )
+    }
+    before = _stored_fields(job)
+    _replace_extraction(db, job, extraction)
+    if apply_url:
+        job.apply_url = apply_url
+    after = _stored_fields(job)
+    changed = [key for key in before if before[key] != after[key]]
+    changed += _changed_lists(old_extraction, extraction)
+    if set(_skill_keys(extraction)) != old_skills:
+        changed.append("skills")
+    cleared = _clear_scores(db, job.id) if extraction != old_extraction else 0
+    tailored, open_sessions = _left_alone(db, job.id)
+    db.commit()
+    db.refresh(job)
+    job.already_existed = True
+    job.correction = JobCorrection(
+        changed=changed,
+        scores_cleared=cleared,
+        tailored_applications=tailored,
+        open_sessions=open_sessions,
+    )
+    return _with_newest_proposal(db, job)
 
 
 def _fill_apply_url(db: Session, job: Job, apply_url: str | None) -> None:
@@ -282,12 +389,15 @@ def _persist_job(
     session: Session | None = None,
     apply_url: str | None = None,
     referrer_board: str | None = None,
+    update: bool = False,
 ) -> Job:
-    """Save a job, or return the tracked row on a dedup hit. Only a NEW job is scored,
-    after its own commit."""
+    """Save a job, or return the tracked row on a dedup hit (with `update`, corrected by this
+    extraction: `_correct_job`). Only a NEW job is scored, after its own commit."""
     existing = _find_existing(
         db, source_url, raw_text_hash, url_fallback=not raw_text.strip()
     )
+    if existing is not None and update:
+        return _correct_job(db, existing, raw_text, extraction, apply_url)
     if existing is not None:
         _fill_apply_url(db, existing, apply_url)
         # Transient flag read by JobRead: the caller gets the tracked row back,
@@ -311,6 +421,8 @@ def _persist_job(
             .order_by(Job.created_at.desc())
             .limit(1)
         )
+        if twin is not None and update:
+            return _correct_job(db, twin, raw_text, extraction, apply_url)
         if twin is not None:
             _fill_apply_url(db, twin, apply_url)
             twin.already_existed = True
@@ -482,7 +594,7 @@ def ingest_job(payload: JobIngest, db: Annotated[Session, Depends(get_db)]):
     raw_text_hash = _hash_text(raw_text) if raw_text else _hash_extraction(extraction)
     return _persist_job(
         db, raw_text, payload.source_url, raw_text_hash, extraction, source=payload.source,
-        apply_url=payload.apply_url,
+        apply_url=payload.apply_url, update=payload.update,
     )
 
 
@@ -733,13 +845,7 @@ def re_extract_job(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
 
     extraction = jd_extraction.extract_jd(job.raw_text, db)
     extraction = jd_extraction.apply_work_auth_backstop(job.raw_text, dict(extraction))
-    _apply_extraction(job, extraction, db)
-
-    from app.services.sync import hooks
-
-    hooks.touch_job(db, job_id)
-    db.execute(sa_delete(JobSkill).where(JobSkill.job_id == job_id))
-    _insert_skills(db, job_id, extraction)
+    _replace_extraction(db, job, extraction)
     db.commit()
     db.refresh(job)
     return _with_newest_proposal(db, job)

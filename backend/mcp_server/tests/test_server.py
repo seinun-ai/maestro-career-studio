@@ -1017,7 +1017,7 @@ async def test_tailoring_text_names_only_tools_served_beside_it():
     for name in ("generate_cover_letter", "generate_qa_answers", "kb_capture",
                  "create_tailoring_session", "tailor_session", "score_ats", "get_tailoring_options",
                  "get_setup_status", "explore_trends", "get_career_context", "attach_evidence",
-                 "kb_approve_points"):
+                 "kb_approve_points", "store_extracted_jd", "render_pdf", "list_base_resumes"):
         named = set(re.findall(r"[a-z_]+", _schema_text(tools[name]))) & set(tools)
         for set_name, allow in PROFILE_ALLOWLISTS.items():
             if allow and name in allow:
@@ -1337,6 +1337,28 @@ def test_get_job_search_brief_tool_calls_client(monkeypatch):
         srv._client, "get_job_search_brief", lambda: {"persona": "", "warnings": ["w"]}
     )
     assert srv.get_job_search_brief() == {"persona": "", "warnings": ["w"]}
+
+
+def test_store_extracted_jd_forwards_the_apply_link_and_update(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(srv._client, "store_extracted_jd", lambda extracted, **kw: seen.update(kw) or {"id": "j1"})
+    srv.store_extracted_jd({"company": "Kestrel Logistics"}, raw_text="jd",
+                           apply_url="https://apply.kestrel.example/requisitions/77", update=True)
+    assert seen == {"raw_text": "jd", "source_url": None, "source": "user",
+                    "apply_url": "https://apply.kestrel.example/requisitions/77", "update": True}
+    srv.store_extracted_jd({"company": "Kestrel Logistics"})
+    assert (seen["apply_url"], seen["update"]) == (None, False)
+
+
+async def test_store_extracted_jd_says_a_repeat_capture_is_unchanged_unless_update():
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    text = " ".join(_schema_text(tools["store_extracted_jd"]).split())
+    assert "already_existed" in text and "unchanged" in text
+    assert "update" in tools["store_extracted_jd"].inputSchema["properties"]
+    assert "apply_url" in tools["store_extracted_jd"].inputSchema["properties"]
+    for fact in ("correction", "scores_cleared", "tailored_applications", "open_sessions", "score_ats",
+                 "find_job_by_url"):
+        assert fact in text, fact
 
 
 def test_find_job_by_url_tool_calls_client(monkeypatch):

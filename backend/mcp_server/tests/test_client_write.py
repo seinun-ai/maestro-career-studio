@@ -19,6 +19,26 @@ def test_store_extracted_jd():
     )
 
 
+@respx.mock
+def test_store_extracted_jd_sends_the_apply_link_and_update_only_when_given():
+    """A call without them sends exactly what it always did (the test above)."""
+    import json
+
+    route = respx.post(f"{BASE}/api/jobs/ingest").mock(
+        return_value=httpx.Response(200, json={"id": "j1"})
+    )
+    client = BackendClient(BASE)
+    client.store_extracted_jd(
+        {"company": "Kestrel Logistics"}, raw_text="jd",
+        apply_url="https://apply.kestrel.example/requisitions/77", update=True,
+    )
+    body = json.loads(route.calls.last.request.read())
+    assert body["apply_url"] == "https://apply.kestrel.example/requisitions/77"
+    assert body["update"] is True
+    client.store_extracted_jd({"company": "Kestrel Logistics"}, raw_text="jd", update=False)
+    assert "update" not in json.loads(route.calls.last.request.read())
+
+
 # Note: the {"name": "X"} data blobs below are request-shape stand-ins, not
 # schema-valid ResumeData (real ResumeData requires a contact object). respx
 # mocks the response, so these tests only verify the CLIENT REQUEST SHAPE.

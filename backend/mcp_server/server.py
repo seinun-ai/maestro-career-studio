@@ -677,6 +677,30 @@ def unwaive_health_gate(
 
 
 # ---------- JD ingest ----------
+# Immune to the ~2048-char tool-description truncation: lives on the param schema.
+_APPLY_URL_FIELD = Field(
+    description=(
+        "The posting's application address when it differs from source_url (http or https). "
+        "Stored with the job; find_job_by_url then finds the job by it when the address names "
+        "the posting (an id in its path or query). Without update, a saved job takes it only "
+        "when it has none; with update it replaces the stored one."
+    )
+)
+_UPDATE_FIELD = Field(
+    description=(
+        "True: when the posting is already saved, this extraction replaces that job's fields and "
+        "skills through the same mapping a new capture uses; the job keeps its id, status, "
+        "applications, proposals, source and raw_text. The response's correction is {changed: "
+        "the fields whose value changed, \"skills\" when the skill list did; scores_cleared: the "
+        "job's saved match scores deleted because its extraction changed (score_ats computes "
+        "them again); tailored_applications and open_sessions: the job's tailored resumes and "
+        "open gap analyses, left as they are (an open one reads as out of date once the "
+        "extraction changed)}. A job another copy of Maestro owns is refused (409). False "
+        "(default): a repeat capture returns the saved job unchanged."
+    )
+)
+
+
 @mcp.tool(**_write("Save Extracted Job", destructive=False, idempotent=True))
 @_guard
 def store_extracted_jd(
@@ -684,6 +708,8 @@ def store_extracted_jd(
     raw_text: str | None = None,
     source_url: str | None = None,
     source: Literal["user", "agent"] = "user",
+    apply_url: Annotated[str | None, _APPLY_URL_FIELD] = None,
+    update: Annotated[bool, _UPDATE_FIELD] = False,
 ) -> Any:
     """Store a job description the caller already extracted into JSON (the backend
     makes no LLM call).
@@ -706,8 +732,17 @@ def store_extracted_jd(
     which need an open proposal before the apply helpers act on them. A job
     stored with source="user" is not proposal-gated: the server skips the
     open-proposal check for any non-agent source. Returns the stored job.
+
+    A posting already saved is returned unchanged with already_existed=true,
+    unless update=true: then this extraction corrects it and the job carries
+    correction. Already saved means the same raw_text (with none, the same
+    extraction or the same posting at source_url) or the same company and
+    requisition_id.
     """
-    return _client.store_extracted_jd(extracted_json, raw_text=raw_text, source_url=source_url, source=source)
+    return _client.store_extracted_jd(
+        extracted_json, raw_text=raw_text, source_url=source_url, source=source,
+        apply_url=apply_url, update=update,
+    )
 
 
 # ---------- orientation ----------

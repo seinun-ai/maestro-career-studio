@@ -49,6 +49,23 @@ class JobIngest(BaseModel):
     source_url: str | None = None
     apply_url: HttpUrlStr | None = None
     source: Literal["user", "agent"] = "user"
+    # True: a posting already saved (the same dedup a capture runs) takes this extraction in place
+    # of its own (`_correct_job`). False keeps a repeat capture returning the saved job unchanged.
+    update: bool = False
+
+
+class JobCorrection(BaseModel):
+    """What an ingest with `update` changed on the saved posting it found (transient, never stored)."""
+
+    # Stored fields whose value changed, in column order, then the extraction's own lists
+    # (responsibilities, qualifications), then "skills" when the skill rows changed.
+    changed: list[str]
+    # The job's saved match scores deleted because its extraction changed; scoring recomputes them.
+    scores_cleared: int
+    # Left exactly as they are: this job's applications holding a tailored resume, and its open gap
+    # analyses (which read as out of date once the extraction changed).
+    tailored_applications: list[UUID]
+    open_sessions: list[UUID]
 
 
 class JobOwnership(BaseModel):
@@ -115,6 +132,8 @@ class JobRead(BaseModel):
     # existing row, so the UI can say "already tracked" instead of pretending a
     # fresh extraction happened.
     already_existed: bool = False
+    # Transient, like already_existed: set only when an ingest with `update` corrected this job.
+    correction: JobCorrection | None = None
 
     model_config = {"from_attributes": True}
 

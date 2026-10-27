@@ -429,7 +429,8 @@ def _check_lazy_defaults(db_session):
 
 # Audited Core sites must explicitly touch the affected subtree in that function.
 CORE_ALLOWLIST = {
-    ("routers/jobs.py", "re_extract_job", "JobSkill"): "touch_job",
+    ("routers/jobs.py", "_replace_extraction", "JobSkill"): "touch_job",
+    ("routers/jobs.py", "_clear_scores", "AtsScore"): "touch_job",
     ("services/tailoring_session.py", "create_session", "TailoringSession"): "touch_job",
     ("services/template_registry.py", "set_default", "Template"): "touch_profile",
     ("services/career_kb.py", "merge_entities", "KBPoint"): "touch_profile",
