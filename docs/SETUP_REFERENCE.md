@@ -150,7 +150,8 @@ record keys, and record your prompts only if you turn that on.
 **No key, but you use Claude or Codex?** Connect them over MCP and your
 assistant does the AI work itself: it reads the posting and writes the tailoring
 edits, and the app applies them with the same honesty checks — no AI key
-needed.
+needed. That is the default even with a key: Settings › Agent apps › **Who
+writes for connected agents** switches the writing to Maestro's AI.
 
 **No key at all?** Scoring, gap diagnostics, health reports, manual editing, PDF
 creation, application tracking and analytics all work without one. Features that

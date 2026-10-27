@@ -92,12 +92,16 @@ client prompt in this configuration.
   and saved answers. They are then handled under your assistant provider's
   privacy policy. Voluntary EEO answers are returned only after you turn on the
   standing EEO consent in the app.
-- **AI features call the model provider you configured in the app.** Tools that
-  generate text (tailoring, cover letters, screening answers, building your
-  career history, health checks) make the backend send resume and job content
-  to OpenAI or an OpenAI-compatible endpoint, Google Gemini, or, for the
-  Companion's form filling, OpenRouter. With no key at all, the backend calls
-  no AI service. A model running on your own computer can be configured but is
+- **Your assistant writes, unless you choose Maestro's AI.** By default your
+  assistant writes the text over MCP with its own AI, and Maestro's backend
+  calls no AI service for its requests. If you pick Maestro's AI in Settings ›
+  Agent apps › **Who writes for connected agents**, tools that generate text
+  (tailoring, cover letters, screening answers, building your career history,
+  health checks) make the backend send resume and job content to the model
+  provider you configured in the app (OpenAI or an OpenAI-compatible endpoint,
+  Claude, Google Gemini or OpenRouter). The web app and the Companion use that
+  provider whatever you pick. With no key at all, the backend calls no AI
+  service. A model running on your own computer can be configured but is
   untested. Scoring, PDF rendering and application tracking never call an AI
   service.
 
@@ -122,8 +126,8 @@ and analytics across your saved jobs.
 
 ## Tool profiles
 
-The plugin loads the `full` set (all 101 tools). Smaller sets keep a chat focused,
-one job each: `profile` (39 tools), `hunt` (22), `tailor` (32), `apply` (35),
+The plugin loads the `full` set (all 99 tools). Smaller sets keep a chat focused,
+one job each: `profile` (39 tools), `hunt` (22), `tailor` (31), `apply` (35),
 `track` (18), `templates` (13). Choose a tool set in **Connect an agent app**,
 or change the URL in your client's declaration to `/mcp/profile`, `/mcp/hunt`, `/mcp/tailor`, `/mcp/apply`,
 `/mcp/explore`, `/mcp/templates`, or `/mcp/career`. Enable one profile at a time.

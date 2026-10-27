@@ -135,7 +135,7 @@ scripts/               setup-mcp.sh (deprecated stdio, §13), update.sh (Docker 
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (101 tools)
+ extension ─┼→ jobs router → Job row  ├─ MCP /mcp inside FastAPI (99 tools)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼ ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
                     ▼ TailoringSession (frozen gaps → resolutions → LLM tailor ops)
@@ -278,8 +278,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   `SandboxedEnvironment`. (5) **The compiler can neither execute, read siblings nor download:** `-no-shell-escape` unconditional, kpathsea
   paranoid mode, a fresh temp folder per run, Typst proxies pointed at a dead address. (6) **A template id is a slug, enforced in the
   REGISTRY** (`validate_template_id`). All six pinned in `tests/test_security_boundaries.py`,
-  `test_frontend_host_guard.py`, `test_template_id_containment.py`. Why each exists, the middleware order, the bounds and the related controls
-  (base-URL scheme, non-root, logs): `docs/entities/others.md`, "Browser boundary details".
+  `test_frontend_host_guard.py`, `test_template_id_containment.py`. Why each exists, the middleware order and the related controls:
+  `docs/entities/others.md`, "Browser boundary details".
 - **An empty environment variable means UNSET.** `{#inv-empty-env-unset}` `config.scrub_empty_env()` deletes every empty or whitespace env var
   at import, before any SDK client is constructed (`config.SCRUBBED_ENV` records what went), because `docker-compose.yml` writes `VAR: ${VAR:-}`
   for optional settings — an EMPTY STRING, not an omission — and third-party SDKs read `os.environ` directly. App-level `or None` guards cannot
@@ -317,18 +317,24 @@ import and profile endpoints and store no progress of their own; frontend-conven
   or `/api/sync` route. Pins: `tests/test_mcp_http_boundary.py`, `mcp_server/tests/test_http.py`.
 - **MCP tools run off the event loop.** `{#inv-tools-off-loop}` Every registered MCP tool runs on a worker thread through `mcp_server.http`'s
   own limiter; module functions stay sync (`tests/test_mcp_http_loopback.py`, `mcp_server/tests/test_http.py`).
-- **`tailor_application` vs `edit_application`** `{#inv-tailor-vs-edit}` (MCP): the former REPLACES `customized_json` wholesale from the BASE
-  resume; the latter applies ops to the CURRENT draft — docstrings lead with this; keep them unmistakable. Edit indices are **0-based into the
-  full JSON array**, including `enabled: false` rows omitted from PDF; PATCH `/edits` echoes `applied[]`. Pinned by
-  `mcp_server/tests/test_server.py` and `tests/test_resume_edit_service.py`.
+- **`edit_application` edits the current draft in place.** `{#inv-edit-in-place}` (MCP): its ops apply to the CURRENT `customized_json`,
+  keeping every earlier edit (the base only with no draft yet); no MCP tool rebuilds a draft from the base outside a tailoring session
+  (REST `from-base` stays for the web). Edit indices are **0-based into the full JSON array**, including `enabled: false` rows omitted
+  from PDF; PATCH `/edits` echoes `applied[]`. Pinned by `mcp_server/tests/test_server.py`, `test_profiles.py` and
+  `tests/test_resume_edit_service.py`.
+- **An agent request never reaches Maestro's model while the agent app writes.** `{#inv-agent-writer}` A request with
+  `X-Maestro-CS-Origin: mcp` (every MCP call) is an agent request; `mcp_workflow.writer` (default `"agent"`, set only in Settings ›
+  Agent apps) says who writes for it. `app/agent_writer.py` marks and decides; each writing route refuses with a 409 naming the agent's
+  own tool, `llm.call_openai`'s first statement is the backstop (`AgentWritesError`), and the health check and resume import take their
+  no-model path. The header rule, the refusals and where the mark does not reach: `docs/agent-surfaces.md`, "Who writes". Pins:
+  `tests/test_agent_writer.py` and the routes' refusal tests (`.system_md_enforcement.json`).
 - **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry` stores label,
   kind, rule id, option texts, outcome, host — never what was typed, was there before, or any AI answer: no value column, `extra="forbid"`, sw
   re-filters to six keys. `POST /runs` stores one strict, value-free `RunTrace` (newest 50 kept), any label or section holding a value the
   run saw blanked. `sw.js` `scrubTrace` whitelists against the schema; nothing posts unless `telemetryEnabled` is `true` (default off; Options
   › Keep a fill log), which `DELETE /telemetry` never clears. The **known-gaps table** (`autofill_widget_gap`) and the **gesture report**
-  behind the recipe book (`content/recipes.js`) are value-free too. What each record holds, the blanking, the option texts kept, the
-  reasoning rounds, `TRACE_SENTINELS`, the stats fold, the time columns, what `DELETE` clears, the off answer and `scripts/fill_trace.py`:
-  `docs/entities/others.md`, "Autofill telemetry details".
+  behind the recipe book (`content/recipes.js`) are value-free too. What each record holds, the blanking, what `DELETE` clears and
+  `scripts/fill_trace.py`: `docs/entities/others.md`, "Autofill telemetry details".
 - **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an agent filled into an application
   form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`) lives only in the local `filled_answers` table
   (`services/filled_answers.py`; `docs/entities/filled-answers.md`): one row per page run, linked to the job's application (by base on a legacy
@@ -336,11 +342,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   never enters telemetry, run traces, Langfuse or exports. An EEO value is stored only under recorded EEO consent (the fill's own gate,
   `eeo_consent.withhold_unconsented`, asked at write; the read is gated again as a second guard); withdrawing consent clears stored EEO answers;
   no agent read returns an EEO value, marked or not (the server classifies by question words too, the MCP client strips again, and no MCP path
-  reads the web UI's `GET /api/jobs/{id}/filled-answers`). The Companion panel posts the receipt through the generic `api` door, never
-  `telemetry`/`fill_trace`, so it works
-  with telemetry off; it reads only frames that earn the data (inv-frame-earns-data), records no never-fill field even under standing consent,
-  and its values never reach the run-trace builders. Pins (invariant, panel receipt, API, agent and MCP client tests):
-  `.system_md_enforcement.json`.
+  reads the web UI's `GET /api/jobs/{id}/filled-answers`). How the Companion panel posts it (never through telemetry, only from frames that
+  earn the data): that file. Pins (invariant, panel receipt, API, agent and MCP client tests): `.system_md_enforcement.json`.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at the sender, but `broadcastToFrames`
   targets every frame — a job page carries ad/analytics/chat iframes, and the ISOLATED world protects the message in transit, NOT the DOM
   written into: a frame owns its DOM, so a profile value in a third-party frame's input is readable by that frame's script. `agent.js` gates
@@ -375,7 +378,7 @@ import and profile endpoints and store no progress of their own; frontend-conven
   older yes is served off, `consent_forms_lapsed`); one flag for both would make an EEO yes agree to terms. The server owns the stamp, and
   `consent_forms` turns on only on its own yes carrying the current policy (`test_eeo_consent.py`). ONE gate, `eeo_consent.withhold_unconsented`,
   strips `profile.eeo` unless `enabled` for every outward reader —
-  `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's slot catalog (model providers are recipients too) — and fails CLOSED
+  `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's slot catalog — and fails CLOSED
   when consent cannot be computed; the MCP client keeps its OWN strip (two gates, not a relocated one). Which path asks never decides whether
   protected-class data is served. Pins (router, `/choose`, Jev): `.system_md_enforcement.json`. No inference or invented EEO answers. Human-only
   at ANY setting is Submit and nothing wider (Next belongs to the run, per inv-policy-deny-list-single-source); `consent_forms` lifts every
@@ -422,11 +425,9 @@ import and profile endpoints and store no progress of their own; frontend-conven
   requires `final_review` evidence, re-checks the company blocklist, and keeps the daily-cap/already-applied gates; an auto-attested submit,
   including from `submission_uncertain`, needs a note with at least one letter or digit; both auto paths require full automation On; a
   company blocked after approval still has its submit recorded. Eligibility is the agent's `apply-auto` prompt, not a server-side review
-  judgment. Channel `companion` is the Companion's own and only its exact extension origin may name it: PATCH uses it for the user's Apply
-  (Queued only); `POST /api/proposals` moves an `accepted` proposal to a newer draft of its job only for that origin and only under the
-  relink conditions; the user's real
-  Submit, seen as a confirmation page, is recorded only by `POST /api/proposals/{id}/companion-submitted`, which clicks nothing. The relink
-  conditions and what the submit record holds: `docs/entities/others.md`, "Proposal relink from the Companion" and "The Companion's run". A skipped
+  judgment. Only the Companion's exact extension origin may name channel `companion` (the user's Apply, a relink of an `accepted`
+  proposal); the user's real Submit is recorded only by `POST /api/proposals/{id}/companion-submitted`, which clicks nothing (the queue
+  and relink rules and the submit record: `docs/entities/others.md`, "Proposal relink from the Companion" and "The Companion's run"). A skipped
   (rejected) proposal blocks queuing its job again, except an
   "applied manually" one, which blocks only while an application of the job is still applied. Pins: `tests/test_full_automation_setting.py`,
   `test_proposal_state_machine.py`, `test_companion_submitted.py`, `test_proposals_router.py` (symbols in `.system_md_enforcement.json`).
@@ -434,9 +435,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   machine (`jobs.owner_machine`, NULL = this one) and the other copy holds a read-only replica; the laptop owns the whole profile, which the
   always-on copy replaces on every round and never merges. A queue, skip, status or note change on the other copy's job is a `sync_requests`
   row ("Sent at the next sync") the OWNER applies under the normal rules (state machine, forward-only statuses, daily cap); anything else on
-  it is refused. Only a handover moves ownership: `offered` (laptop to bot, when a job is queued with full automation on; **Keep it here** or
-  switching full automation off cancels it) or `returning` (bot to laptop on **Work on it here**, refused while the job is `approved` or
-  `submission_uncertain`); the handover columns and the offers route: `docs/entities/job.md`, "Ownership under sync". The same JD text on
+  it is refused. Only a handover moves ownership, `offered` (laptop to bot) or `returning` (bot to laptop); what starts, cancels or refuses
+  each, the columns and the offers route: `docs/entities/job.md`, "Ownership under sync". The same JD text on
   both copies keeps the laptop's job (`duplicates.py`). Without a key every job is owned here and every `/api/sync/*` route is a 404. Pinned
   by `tests/sync/test_guard.py` and `tests/sync/test_home_endpoints.py`.
 - **The flush guard is the ownership check, and it runs before disk.** `{#inv-flush-guard}` One SQLAlchemy `before_flush` hook
@@ -453,11 +453,9 @@ import and profile endpoints and store no progress of their own; frontend-conven
   key file every `/api/sync/*` route is that 404 and the always-on copy serves no home routes. Only `/api/sync` may be published (Tailscale
   Funnel); while `SYNC_PUBLIC_HOST` is set every response on it is sealed or the bare 404, whatever Host says, and the public name stays
   refused off that tree. The profile, the AI key and the job-site login ride only this channel, and no key, pairing code, seal plaintext,
-  bundle value or local path reaches a log or an error (fixed sentences). The round and setup routes, the post-seal checks (protocol, one request at a
-  time, body cap, chunk
-  timeout), replay refusal, path rules, the proxy rule for `SYNC_REMOTE_URL`, artifact-folder containment and the pairing code's life:
-  `docs/entities/others.md`, "Sync channel details". Pinned by `tests/sync/test_seal.py`, `test_sealed_home.py`, `test_public_host.py`,
-  `test_pairing.py` and `test_two_machines.py`.
+  bundle value or local path reaches a log or an error (fixed sentences). The routes, the post-seal checks, replay refusal, path and proxy
+  rules, folder containment and the pairing code's life: `docs/entities/others.md`, "Sync channel details". Pinned by
+  `tests/sync/test_seal.py`, `test_sealed_home.py`, `test_public_host.py`, `test_pairing.py` and `test_two_machines.py`.
 - **One data folder per user; nothing writes into the install.** `{#inv-one-home}` A uv install's `MAESTRO_HOME` defaults to the
   platform's per-user application-data folder (the three paths: `docs/entities/others.md`, "Home folder paths"), the folder the future
   desktop app uses, so its data needs no import. `home.backend_env`
@@ -531,7 +529,9 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 - **MCP server** (`backend/mcp_server/`; on screen **connected agents**): thin wrappers over REST via httpx (`@_guard` → `ToolError`),
   served at `/mcp` and `/mcp/{profile}` inside FastAPI (§6 inv-mcp-inside-the-app, inv-tools-off-loop); **the docstring is the API** —
   behavior, records and requirements, never instructions. Tool sets in journey order (profile, hunt, tailor, apply, track, templates;
-  `/mcp` = `full`, 101 tools), each with its own instructions and playbook prompts; enable ONE per chat.
+  `/mcp` = `full`, 99 tools), each with its own instructions and playbook prompts; enable ONE per chat. **Who writes** for its
+  requests is the user's choice, the agent app by default (Settings › Agent apps; §6 inv-agent-writer): Maestro's writing routes then
+  refuse and name the agent's own tool, and `tailor_session(no_new_text=True)` tailors with no new wording and no model.
   `workflow.py` (the guided tailoring and onboarding workflows) is PURE — a **deliberate exception to the thin-wrapper rule** — and its
   `next` envelopes walk §5's arc unnarrated: the server ranks, the agent narrates; `offer` ≠ `ask_user`; **a hint never names a tool the
   active profile did not register**.
@@ -549,7 +549,7 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 
 | Surface | Section in `docs/agent-surfaces.md` | Scope |
 |---|---|---|
-| MCP server | [MCP server](docs/agent-surfaces.md#mcp-server) | transport and loopback, docstring ratchets, scoped profiles, plugin, Connect an agent app, the `.mcpb` bridge, what tools send and read (status sources, per-country answers, analytics rows) |
+| MCP server | [MCP server](docs/agent-surfaces.md#mcp-server) | transport and loopback, docstring ratchets, scoped profiles, who writes (the refusals and their limits), plugin, Connect an agent app, the `.mcpb` bridge, what tools send and read (status sources, per-country answers, analytics rows) |
 | Guided tailoring workflow | [Guided tailoring workflow](docs/agent-surfaces.md#guided-tailoring-workflow) | the `next` envelope, ranking vs narrating, `offer` vs `ask_user`, the two controls, the LLM-free arc, apply readiness |
 | Onboarding workflow | [Onboarding workflow](docs/agent-surfaces.md#onboarding-workflow) | ingest → approve → base → render with zero in-house LLM; hint rules |
 | Automations page | [Automations page](docs/agent-surfaces.md#automations-page) | copy-only prompts, `record_run`, status from reports |
@@ -759,6 +759,9 @@ exception, so ingest lands drafts and consent-gated `kb_approve_points` is the o
   schedules nothing.
 - 2026-10-20 — Profile holds facts about you, Settings how the app behaves in four tabs, and a four-step Setup runs first (D10,
   D11); superseded tabs by area because a new user needs one short path and each of the 156 items still needs a home.
+- 2026-10-26 — Who writes over MCP is one setting for every feature, the agent app by default (§6 inv-agent-writer), and
+  `quick_tailor` and `tailor_application` left MCP; superseded agent requests using Maestro's key whenever one was set, because a user
+  must know before connecting who writes and who pays.
 
 ## 11. Known deferred items (priority order)
 

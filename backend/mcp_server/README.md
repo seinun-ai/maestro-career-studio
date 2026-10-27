@@ -19,7 +19,7 @@ same URL, and its `maestro connect` command does the setup below from the termin
 ## Install
 
 Open Settings › Agent apps › **Connect an agent app** and choose a
-**Tool set**. Every route defaults to `full` (all 101 tools); see
+**Tool set**. Every route defaults to `full` (all 99 tools); see
 [Profiles](#profiles) to narrow it. Enable one connection per client.
 
 ### Claude Desktop
@@ -126,6 +126,15 @@ It lives inside the FastAPI app behind the same Host → Origin → CORS checks 
 REST, with no second port or security definition. Never publish port 8001 or
 proxy `/mcp` beyond this computer. See [SECURITY.md](../../SECURITY.md).
 
+## Who writes
+
+When an assistant is connected, one setting decides who writes the text over MCP: tailored resume wording, cover letters, screening answers, career notes and the health check's judgments. Pick it in Settings › Agent apps › **Who writes for connected agents**:
+
+- **Your agent app** (the default): your assistant writes with its own AI, and Maestro doesn't use your API key for its requests. The tools where Maestro's AI would write refuse and name the tool that saves your assistant's own text: `store_cover_letter`, `store_qa_answers`, `kb_add_points`, and `tailor_session` with `ops` or `no_new_text`. `create_tailoring_session` runs without `enrich`, and the health check hands the judging to your assistant.
+- **Maestro's AI**: Maestro writes with your API key, and your assistant steers. Without a key those tools return an error.
+
+Your assistant can read the choice (`get_setup_status` returns `writer`) but can't change it. The web app and the Companion always use your API key. Whoever writes, Maestro's rules hold: resume lines in your own implied first person, a skill you haven't shown only in the skills list, and saved keywords always land.
+
 ## Profiles
 
 The **Tool set** selector picks a profile URL (`/mcp` for `full`, or
@@ -134,10 +143,10 @@ Each scoped URL lists exactly its allowlist and refuses tools outside it.
 
 | Set | Use it when you say | Tools |
 | --- | --- | --- |
-| `full` | Anything (default) | all 101 |
+| `full` | Anything (default) | all 99 |
 | `profile` | "Set me up", "import my resume", "add a project": career history, base resumes, health check, form answers, preferences | 39 |
 | `hunt` | "Find me jobs": capture, score and propose | 22 |
-| `tailor` | "Tailor my resume for this job": gaps, tailored resume, PDF, health check, undo | 32 |
+| `tailor` | "Tailor my resume for this job": gaps, tailored resume, PDF, health check, undo | 31 |
 | `apply` | "Apply to this job": cover letter and answers, form answers, consent, submit | 35 |
 | `track` | "Update my statuses", "how's my search going": statuses, referrals, charts | 18 |
 | `templates` | "Make a resume design" | 13 |
@@ -231,24 +240,22 @@ Each tool's own description (which your assistant sees) has the full details.
 
 **Health check** (run before tailoring)
 - `run_health_check`, `get_health_report`: score a resume on its own, without a job, and list what to fix.
-- `judge_health_bullets`: with no model key in the app, store your assistant's judgment of each bullet, by the app's own rubric, so the check can grade.
+- `judge_health_bullets`: store your assistant's judgment of each bullet, by the app's own rubric, so the check can grade. It is used when Maestro's own AI doesn't judge: with no model key in the app, or when your assistant writes (see [Who writes](#who-writes)), even with a key.
 - `waive_health_gate`, `unwaive_health_gate`: skip a failing check only when you say so, or undo that.
 
 **Scoring and tailoring**
 - `score_ats`: score one resume, or all your base resumes set for the job's country, against a job.
 - `compare_ats`: before/after scores for a tailored application.
-- `create_tailoring_session`, `list_tailoring_sessions`, `get_tailoring_session`, `close_tailoring_session`: start, find, resume or abandon a gap walkthrough. These are the same sessions as the web app's gap page, so you can start in one and finish in the other.
+- `create_tailoring_session`, `list_tailoring_sessions`, `get_tailoring_session`, `close_tailoring_session`: start, find, resume or abandon a gap walkthrough. These are the same sessions as the web app's gap page, so you can start in one and finish in the other. With `use_presets=true`, `create_tailoring_session` also fills the gaps from your saved Quick tailor presets instead of walking them one by one.
 - `resolve_gaps`: save your answer for each gap (add a keyword, describe real experience, attach a project, skip, or "can't confirm" so it's never asked again).
-- `tailor_session`: turn your answers into a tailored application and show the before/after score. Edits your assistant writes itself must read in first person ("Built X"); a third-person line is refused with an error naming it.
-- `quick_tailor`: fill the gaps from your saved quick-tailor profile instead of walking them one by one.
-- `tailor_application`: tailor the job's one application from a base resume with the edits your assistant chose. It replaces the draft and takes the new base; status, notes and answers stay, and the old PDF is removed.
+- `tailor_session`: turn your answers into a tailored application, make its PDF and show the before/after score. Your assistant passes its own edits (`ops`), or `no_new_text=true` to apply only the answers that need no new wording (a hidden entry, an approved career-history bullet, saved keywords into Skills), with no AI at all; Maestro's AI writes the edits only when you chose it (see [Who writes](#who-writes)). Edits your assistant writes itself must read in first person ("Built X"); a third-person line is refused with an error naming it. The reply names `unbacked_skills`, skills it put on your resume that your career history doesn't back, and `answers_left_to_ops`, answers still waiting for wording.
 - `edit_application`: make a further fix to a tailored application, keeping earlier edits.
 
 Scoring compares your resume with the job using fixed rules plus a small model
 that runs on your computer; the same inputs always give the same score. It is
 not an employer's score. `create_tailoring_session` can add helper text and
-questions per gap with `enrich=true`; that text is only for display and never
-changes the score.
+questions per gap with `enrich=true`, which Maestro's AI writes, so only when you
+chose it; that text is only for display and never changes the score.
 
 **PDFs**
 - `render_pdf`: render a base resume or an application.
@@ -261,8 +268,8 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 
 **Application answers**
 - `get_autofill_profile`: your stored form-fill details (contact, work authorization, consented EEO answers).
-- `generate_qa_answers`: answers to an application's screening questions.
-- `generate_cover_letter`: a cover letter in the tone you ask for.
+- `generate_qa_answers`: Maestro's AI writes answers to an application's screening questions, only when you chose Maestro's AI to write (see [Who writes](#who-writes)).
+- `generate_cover_letter`: Maestro's AI writes a cover letter in the tone you ask for, under the same setting.
 - `store_qa_answers`, `store_cover_letter`: keep answers or a cover letter your assistant wrote itself, with no AI key in Maestro. The letter replaces the saved one and gets its PDF; both show on the job's Apply step.
 - `list_qa_entries`: the answers and cover letters saved so far.
 
@@ -289,7 +296,7 @@ Diversity answers and their consent, full automation, the job-site login and eve
 **Career KB**
 - `get_career_context`, `get_career_export`: your full career record, as structured data or as `career.md`.
 - `kb_list_entities`, `kb_get_entity`, `kb_list_points`: browse entries and points, with their IDs.
-- `kb_capture`, `kb_add_points`, `kb_ingest_resume`, `kb_sync_base`: add new material as draft points for you to approve. `kb_add_points` takes bullets your assistant already wrote for an entry, with no AI call. `kb_sync_base` keeps a rephrased bullet as a wording of the one it rewrites instead of a new draft.
+- `kb_capture`, `kb_add_points`, `kb_ingest_resume`, `kb_sync_base`: add new material as draft points for you to approve. `kb_add_points` takes bullets your assistant already wrote for an entry, with no AI call; `kb_capture` has Maestro's AI write them, only when you chose it (see [Who writes](#who-writes)). `kb_sync_base` keeps a rephrased bullet as a wording of the one it rewrites instead of a new draft.
 - `kb_edit_point`, `kb_create_entity`, `kb_edit_entity`, `kb_edit_profile`: correct or add entries.
 - `kb_approve_points`: approve or retire points, only after you have approved them.
 - `kb_groom_entity`: find similar bullets on one entry, grouped, with one proposed to keep. Reads only, no AI call.

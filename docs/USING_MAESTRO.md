@@ -67,7 +67,7 @@ gone stale):
 | See what the AI changed | No history | No | **Every change shown, undoable** |
 | PDF output | House web templates | HTML → PDF | **LaTeX and Typst, bring your own template** |
 | Career record | None (per document) | Plain markdown/YAML files | **Organized, versioned — exports to one `career.md`** |
-| Works with AI assistants | No | Command-line skill files | **101 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
+| Works with AI assistants | No | Command-line skill files | **99 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
 | Submits applications for you | N/A | Never (stated) | **Only with your yes per application, or with Full automation you turn on** |
 | Cost | $15–75/month | Free + AI usage | **Free (Apache 2.0) + your own AI usage — [about $0.01 per application](SETUP_REFERENCE.md#do-you-need-an-api-key)** |
 
@@ -293,11 +293,21 @@ removed in v0.10.0; see the [MCP guide](../backend/mcp_server/README.md#legacy-s
   reply."
 - "Across the jobs I've saved, which skills keep showing up as gaps?"
 
-**Tool sets.** All 101 tools are on by default (`full`). Smaller sets, one job each
+**Tool sets.** All 99 tools are on by default (`full`). Smaller sets, one job each
 (`profile`, `hunt`, `tailor`, `apply`, `track`, `templates`), keep a chat focused; pick one in the
 card's **Tool set** selector or the Claude Desktop bundle's **Tool profile**
 setting. Scoped URLs end in `/mcp/profile`, `/mcp/hunt`, `/mcp/tailor`, `/mcp/apply`,
 `/mcp/track` or `/mcp/templates`. Use one set at a time.
+
+**Who writes.** When an agent app is connected, one setting decides who writes
+the tailored resume wording, cover letters, screening answers, career notes and
+the health check's judgments: Settings › Agent apps › **Who writes for connected
+agents**. **Your agent app** (the default) writes with its own AI, and Maestro
+doesn't use your API key for it. **Maestro's AI** writes with your API key while
+your agent app steers; it needs a key. Either way Maestro's rules hold: resume
+lines stay in your own voice ("Built X", never "He built X"), a skill you
+haven't shown goes only in your skills list, and keywords you saved always land.
+The Maestro app and the Companion always use your API key.
 
 **Skills.** [`docs/skills/`](skills/) has ready-made skills for a daily job
 hunt, an apply run that asks you only for what the app doesn't know (plus one

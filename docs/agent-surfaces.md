@@ -15,14 +15,17 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   Coverage: [docs/entities/others.md](docs/entities/others.md), "MCP tool coverage".
   **Tool sets**: `profiles.py` owns the allowlists and `orientation.py` the ordered table of what each holds: `profile` (onboarding:
   career history, base resumes and anchors, health check, versions, form answers, preferences), `hunt`, `tailor` (saved job to tailored
-  PDF), `apply` (PDF to submitted), `track` (statuses, referrals, charts), `templates`, and `full` (101 tools); `/mcp` = `full`,
+  PDF; 31 tools), `apply` (PDF to submitted), `track` (statuses, referrals, charts), `templates`, and `full` (99 tools); `/mcp` = `full`,
   `/mcp/{set}` = its allowlist, and `career`/`explore` still serve `profile`/`track` for one release (`PROFILE_ALIASES`).
-  `tailor_application` is full-only. Each set's server instructions (`orientation.instructions_for`, under Claude Code's 4,096-character
-  cut) say what it holds, the other sets, "start with `get_setup_status`" and that the rules hold however the agent talks with the user;
-  each set serves the automation playbooks whose `metadata.toolset` names it as MCP prompts (the Copy prompt's exact text, from
-  `GET /api/automations`). Pins: `test_profiles.py`, `test_orientation.py`, `test_http.py`, `tests/test_automations_service.py`.
-  **Orientation reads** (no writes): `get_setup_status` (every set but templates: `ai_key`, `demo_bases`, the first undone setup step and
-  its set from the pure `workflow.setup_next_step`, which counts form answers done without the diversity answers an agent cannot
+  Each set's server instructions (`orientation.instructions_for`, under Claude Code's 4,096-character
+  cut) say what it holds, the other sets and that the rules hold however the agent talks with the user; every set but templates
+  (which has no `get_setup_status`) also says "start with `get_setup_status`" and what its `writer` means, addressing the agent as
+  "you, the agent app"; each set serves the automation playbooks whose `metadata.toolset` names it as MCP prompts (the Copy
+  prompt's exact text, from `GET /api/automations`). Pins: `test_profiles.py`, `test_orientation.py`, `test_http.py`,
+  `tests/test_automations_service.py`.
+  **Orientation reads** (no writes): `get_setup_status` (every set but templates: `ai_key`, `writer` ("Who writes" below),
+  `demo_bases`, the first undone setup step and its set from the pure `workflow.setup_next_step`, which counts form answers done
+  without the diversity answers an agent cannot
   save, the set table) and `get_tailoring_options` (tailor and full: each Quick tailor switch
   with its plain meaning from `QuickTailorProfile`'s field descriptions, the instruction and persona; the presets stay the user's).
   Lifespans run fresh stateful JSON sessions; tools use `http.py`'s eight-worker limiter (§6 inv-tools-off-loop).
@@ -32,8 +35,9 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `kb_combine_points` (fold points into one keeper; the others become its wordings) and `kb_retire_points` (the retire twin of
   `kb_approve_points`); the two writes share `kb_approve_points`' convention gate and are `destructive=False` because `/career`
   reverses them. `kb_sync_base` keeps a rephrasing as a wording (0.80+) and returns `compared_wording` (docs/entities/others.md, Career KB).
-  **No AI key needed.** The tools that call the app's model have caller-authored twins (all but `run_health_check`), so a
-  connected agent with no key in Maestro does the writing and the server validates and stores it: `store_extracted_jd` (extraction), `tailor_session(ops=…)`
+  **Caller-authored twins.** The tools where Maestro's AI writes have caller-authored twins (all but `run_health_check`, which hands the
+  judging over instead), so the agent app does the writing when the user's `writer` says so, or with no key in Maestro, and the server
+  validates and stores it: `store_extracted_jd` (extraction), `tailor_session(ops=…)`
   (tailoring), `store_cover_letter` (replaces the application's letter, then renders its PDF; a failed render returns `render_error`
   with the letter kept), `store_qa_answers` (replaces the answer to the same question) and `kb_add_points` (DRAFT bullets on an
   existing entity). The store rules: the dash scrub (§6 inv-em-dash) and answers as plain form text, as for generated ones, and the
@@ -47,6 +51,34 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   Requests are ordered; stale sessions replay initialize + initialized before one retry, preserving `clientInfo`
   (`mcpb/tests/bridge.test.js`). HTTP `serverInfo.version` reads `APP_VERSION`, else `dev` (`mcp_server/tests/test_http.py`).
 
+- **Who writes** (`app/agent_writer.py`; SYSTEM.md §6 inv-agent-writer). The saved `mcp_workflow` setting (`McpWorkflowSettings`:
+  `hints`, `writer: "agent" | "maestro"`, default `"agent"`) says who writes for an agent request. Only Settings › Agent apps' **Who
+  writes for connected agents** card (`agent-writer`) sets it; no tool writes it, and `get_setup_status` reads it back. An **agent
+  request** carries `X-Maestro-CS-Origin: mcp`, which the MCP client sends on every call (`write_origin.origin_from` is the one rule
+  for that header and its legacy alias); the web app and the Companion send none, so Maestro's AI always writes for them.
+  `AgentRequestMiddleware` (raw ASGI, the innermost middleware, pinned) sets a ContextVar mark for the request; `maestro_writes()` is
+  true outside an agent request and, inside one, only while `writer` is `"maestro"` (a missing setting reads as the agent app;
+  `peek_settings` never seeds a row); `model_available()` also needs a key. While the agent app writes, each writing route refuses an
+  agent request with a 409 whose sentence names the agent's own tool, after the route's 404 for an unknown target:
+
+  | Tool | While the agent app writes |
+  |---|---|
+  | `generate_cover_letter`, `generate_qa_answers` | 409: write it and save it with `store_cover_letter` / `store_qa_answers` |
+  | `kb_capture` | 409: write the bullets and save them with `kb_add_points` |
+  | `create_tailoring_session(enrich=True)` | 409: run it without `enrich` (refused before the session is created) |
+  | `tailor_session` with neither `ops` nor `no_new_text` | 409: pass your own `ops`, or `no_new_text` |
+  | `run_health_check` | no refusal: the agent always judges (`judging`, `judge_health_bullets`), even with a key |
+  | resume import | no refusal: `kb_ingest_resume` (`/api/kb/ingest-parsed`) never calls a model; consolidation (`/api/kb/import`, seeding) asks `model_available()` and without it skips its model calls with no warning |
+
+  The backstop is `llm.call_openai`'s first statement: `AgentWritesError`, which `main.py` answers with a 409, never a 500. **Where the
+  mark does not reach:** it crosses `asyncio.to_thread` and anyio's worker threads, not `loop.run_in_executor`, a `ThreadPoolExecutor`
+  or a raw `threading.Thread`; and `chat_agent` (the Assistant) and `llm_capabilities` (the probe on a model save) call providers
+  outside `call_openai`, neither reachable over MCP. Tool lists are the same under both settings (clients cache them when they connect,
+  so the refusal is the source of truth); each writing tool's description says Maestro's AI writes it and names the agent's own tool.
+  With `writer` `"maestro"` the routes write with the key as they do for the web, and without a key they return the no-key error (the
+  health check hands the judging over instead). Pins: `tests/test_agent_writer.py`, the refusal tests in `test_qa_router.py`, `test_kb_ingest.py`,
+  `test_tailoring_sessions_router.py`, `test_resume_lint_router.py` and `test_kb_import.py`, `mcp_server/tests/test_client_origin.py`.
+
 - **What tools send and read.** A status change through MCP (`update_application`, `mark_submitted`) carries the client's name
   (`X-Maestro-CS-Origin: mcp` with `X-Maestro-CS-Origin-Detail`), which becomes the status event's source, "mcp" when the client
   gave none (docs/entities/application.md); `update_application(from_email=True)` sends `status_source: "mail"` for a change the
@@ -58,11 +90,13 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   the first to the last for every role, 0 where it had none. No tool reads Today or the search summary; `set_markets` is the one
   door to the market and money settings, and the explore tools take no period or source.
 
-- **The health check without a model key.** `run_health_check` then calls no model and returns a report that counts only stored
+- **The health check when Maestro's model does not judge.** No model key is set, or the request is an agent request while the agent
+  app writes (even with a key): `run_health_check` then calls no model and returns a report that counts only stored
   judgments (`judged`, null `score`/`grade` while a scored bullet waits) plus `judging`: the app's own evaluator prompt filled with
   the waiting bullets. `judge_health_bullets` (`apply`, `templates`, `full`) sends the agent's answers in that prompt's output
-  shape under the client's name; each passes `_validate` and the rebuilt report comes back with `accepted`/`rejected`. With a key
-  the write is a 409 and the app's model judges (docs/entities/others.md, "The keyless check").
+  shape under the client's name; each passes `_validate`, and the report, rebuilt with no model, comes back with `accepted`/`rejected`.
+  The write is a 409 only while Maestro's model judges: a key is set and the caller is the web app, or an agent app whose user
+  chose Maestro's AI (docs/entities/others.md, "The keyless check").
 
 - **Profile writes** (`set_autofill_profile`, `set_job_preferences`, `set_markets`, `set_persona`; `profile` and `full`, and
   `set_autofill_profile` in `apply` too): an agent writes the facts Setup and Profile ask for, except the AI key and the diversity
@@ -72,14 +106,15 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   written back as it was and never returned, and a call with nothing to save is refused (FastMCP drops undeclared arguments). The
   writes return setup's form readiness. Human-only, with no tool: full automation and auto-apply (§6 inv-auto-consent-gated), EEO
   consent and answers (inv-eeo-standing-consent), the job-site login (inv-job-site-password-local), the Screening answers dial, the
-  hints switch, model keys, prompts and quick tailor (§6 inv-mcp-controls). After `create_base_resume_from_kb` the hint names
+  hints switch, who writes, model keys, prompts and quick tailor (§6 inv-mcp-controls). After `create_base_resume_from_kb` the hint names
   `set_autofill_profile` while setup status reads the form answers as not done.
 
 ## Guided tailoring workflow
 
 - **Guided tailoring workflow** (`mcp_server/workflow.py`): wrapped tools carry a `next` envelope
   (`state`/`blocking`/`offer`/`ask_user`/`options`/`call`) that walks §5's arc — score all bases → recommend →
-  quick|custom → tailor → render → apply readiness — unnarrated. `workflow.py` is PURE (no httpx/DB/LLM), a
+  presets|custom → tailor (which renders the PDF) → render again only when `pdf_ready` is false → apply readiness — unnarrated.
+  `workflow.py` is PURE (no httpx/DB/LLM), a
   **deliberate exception to the thin-wrapper rule**: the sequence must live somewhere and FastMCP
   `instructions=` is surfaced inconsistently across clients; purity is what keeps it testable under DB-free
   `mcp_server/tests`.
@@ -93,21 +128,29 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
     postings in a loop and a question on each would derail it; `ask_user` appears only mid-arc, after the user
     commits. **A hint never names a tool the active profile did not register** (`hunt` has no tailoring tools):
     options AND prose filter via `_active_allowed_tools()`; prose states facts, never commands (`test_workflow.py`).
-  - **Two controls.** `mcp_workflow` `{hints: bool}` (`GET/PUT /api/settings/mcp-workflow` + its card in
-    Settings › Agent apps) is the USER's master switch; `brief=true` on `score_ats` is the AGENT's, for
+  - **Two controls.** `mcp_workflow`'s `hints` (`GET/PUT /api/settings/mcp-workflow` + its card in
+    Settings › Agent apps; the same record holds `writer`, MCP server, "Who writes") is the USER's master switch;
+    `brief=true` on `score_ats` is the AGENT's, for
     triage loops, checked FIRST so a loop pays no settings read. Tools **always wrap** (`next: null` when
     suppressed) — one tool must not return two shapes per runtime flag.
-  - **LLM-free arc.** MCP `create_tailoring_session` defaults `enrich=False`; `quick_tailor` = create + `POST
-    .../apply-profile` (deterministic fill) → agent authors ops → `tailor_session(ops=…)` skips the backend
-    LLM pass. Filling precedes authoring so saved resolutions and applied ops cannot disagree (§11 item 13).
-    `apply-profile` discards `fill_checkpoint_session`'s standing-instruction return (persisting it would
-    break the web path's transience), so the hint carries it as the `tailor_session` option's `user_prompt`,
-    ONLY when the session has no note of its own — else quick tailor over MCP ignores a setting the web obeys.
+  - **LLM-free arc.** MCP `create_tailoring_session` defaults `enrich=False`; `use_presets=True` = create + `POST
+    .../apply-profile` (deterministic fill from the Quick tailor presets; when the fill fails, the error names the session it
+    created, so a retry never loses it) → the agent authors ops → `tailor_session(ops=…)`, or `tailor_session(no_new_text=True)`,
+    which writes no new wording; neither calls the backend LLM. Filling precedes authoring so saved resolutions and applied ops
+    cannot disagree (§11 item 13). `apply-profile` discards `fill_checkpoint_session`'s standing-instruction return (persisting it
+    would break the web path's transience), so the hint carries it as the `tailor_session` option's `user_prompt`, ONLY when the
+    session has no note of its own — else the presets over MCP ignore a setting the web obeys. The session hint says who writes the
+    edits (`detail.writer`, one settings read): the agent app's ops or `no_new_text` by default, ops omitted when the user chose
+    Maestro's AI; its args are the same either way.
     **The caller-ops honesty rule is enforced by DOCSTRING, not the server**: `apply_edits` has no honesty
-    gate. Keyword survival runs on both paths (a saved `add_keyword` the ops leave out lands in the skills
-    list, never a bullet: `keywords_added`), and `user_input`/`attach_project` answers reach the resume only
-    through the ops (`answers_left_to_ops`; the `next` hint then offers `edit_application`). The server-side
-    evidence gates (`save_resolutions` re-running `enable_entry`/`port_kb_point`) still hold.
+    gate. Keyword survival runs on every path (a saved `add_keyword` the edits leave out lands in the skills
+    list, never a bullet: `keywords_added`). `user_input`/`attach_project` answers reach the resume only through the ops, and
+    with `no_new_text` not at all: `answers_left_to_ops` names them (with `no_new_text`, also an `add_keyword` whose word needs a
+    rewritten bullet). Every tailor returns `unbacked_skills`: missing skills it put on the resume that career history does not back
+    (docs/entities/tailoring-session.md). `tailor_session` renders the PDF and reports `pdf_ready`; its hint offers the answers
+    left first (an `edit_application` option with an `ask_user`, and no `call`), else `render_pdf` while `pdf_ready` is false,
+    else apply readiness (the render hint's readiness and handoff). The server-side evidence gates (`save_resolutions` re-running
+    `enable_entry`/`port_kb_point`) still hold.
   - **Apply readiness** reads `setup/status`'s `autofill` block; the server cannot see whether the client holds
     browser tools, so the render offer says the handoff needs them rather than asserting the capability.
 

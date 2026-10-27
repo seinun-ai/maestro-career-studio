@@ -97,9 +97,10 @@ has no application: no draft time to read).
   from a local clock: any write to the job or a row attached to it bumps it (`services/sync/hooks.py`,
   a `before_flush` hook), and a round sends only jobs past the last acknowledged revision. `handover` is
   `offered` (the laptop will give the job to the always-on copy at the next round; **Keep it here** clears
-  it, and it is set when a job is queued with full automation on, `offers.mark_when_queued`; `GET /api/sync/handover/offers`
-  lists them and is empty while full automation is off) or
-  `returning` (the always-on copy is giving it back after **Work on it here**), else NULL. A job in either
+  it, and so does switching full automation off, `offers.withdrawing`; it is set when a job is queued with full automation on,
+  `offers.mark_when_queued`; `GET /api/sync/handover/offers` lists them and is empty while full automation is off) or
+  `returning` (the always-on copy is giving it back after **Work on it here**, refused while the job's proposal is `approved` or
+  `submission_uncertain`), else NULL. A job in either
   state is not writable on the side that holds it. Without a sync key every job counts as owned here.
   The same JD text on both copies keeps the laptop's job; when both have progressed, the replica keeps a
   hash derived from its id (`services/sync/duplicates.py`), so `raw_text_hash` stays unique.

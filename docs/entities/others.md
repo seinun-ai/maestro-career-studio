@@ -17,10 +17,13 @@
   (run/get + waivers; a finding carries its bullet's own `question`, `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`, a report `next_grade`; disputes and the word bank
   are web-only; the bank uses GET/PUT), the full tailoring workflow (session tools take **`tailoring_session_id`** — breaking rename, no
   legacy alias — and carry `base_anchors`; `resolve_gaps`' evidence-carrying actions are gated server-side — §4;
-  `quick_tailor` is the profile-driven fast path; `score_ats(include_other_countries)` returns a `countries` block
+  `create_tailoring_session(use_presets=True)` is the presets-driven fast path; `tailor_session` takes the agent's `ops` or
+  `no_new_text` and returns `unbacked_skills`; no tool rebuilds a draft from a base outside a session (§6 inv-edit-in-place);
+  `score_ats(include_other_countries)` returns a `countries` block
   naming bases skipped for the job's country), render + PDF inspection/upload ("PDF tools" below), application
   tracking, `record_run` (finished automation reports; `docs/entities/agent-runs.md`), the apply package (`generate_*` through the
-  model, or `store_cover_letter`/`store_qa_answers` storing what the agent wrote: `POST /api/qa/cover-letter` replaces the letter and
+  model, refused while the agent app writes (docs/agent-surfaces.md, "Who writes"), or `store_cover_letter`/`store_qa_answers` storing
+  what the agent wrote: `POST /api/qa/cover-letter` replaces the letter and
   renders its PDF, `POST /api/qa/answers` replaces an answer to the same question, case and spacing ignored; `model_used` names the
   agent),
   templates (draft/validate only; Typst constraints in `create_template_draft`'s
@@ -801,8 +804,10 @@
   rated it) and the question itself, which also reaches every rewrite of that bullet as context
   (`guarded_rewrite(question=)`). `evaluate_uncached` never touches the cache: disputes and
   `scripts/health_golden.py` (the rubric's pilot gate, run by hand) rely on that.
-- **The keyless check** (owner decision 2026-10-23: both paths, the key wins): `run_report` judges with
-  a model only when `llm.any_model_key_configured()`. Without one it calls no model:
+- **The keyless check** (owner decision 2026-10-23: both paths, the key wins, except for an agent app that writes): `run_report`
+  judges with a model only when its `use_llm` says so: the run route passes `agent_writer.model_available()` (a key is set, and the
+  request is the web's or an agent app's whose user chose Maestro's AI), so an agent request while the agent app writes takes the
+  keyless path even with a key (docs/agent-surfaces.md, "Who writes"). Without a model it calls none:
   `bullet_classify.stored_judgments` returns what is stored at the current `RUBRIC_VERSION` from ANY
   judge (same precedence; overrides and disputes included) and the rest as pending; no verifier, no
   rewrites (fix candidates become asks); the stored row's `model` is the single judge or null. The
@@ -812,8 +817,9 @@
   `judge_health_bullets`) stores a connected agent's answers: each entry names a pending id and passes
   `_validate`, is stored with `model = "agent:<clientInfo.name>"` (`"agent"` unnamed, from the write
   origin headers), then the report is rebuilt and returned with `accepted [{id, level as stored}]`,
-  `rejected [{id, reason}]` and `judging` while texts remain. 409 while a key is set: the app's model
-  judges then, and its next run re-judges what an agent judged (cache rows key on the smart model).
+  `rejected [{id, reason}]` and `judging` while texts remain; that rebuild calls no model. 409 only while Maestro's model judges
+  (`model_available()`: a key is set and the caller is the web app, or an agent app whose user chose Maestro's AI); its next
+  run re-judges what an agent judged (cache rows key on the smart model).
 - **Health disputes** (`health_disputes.py`; `POST /{kind}/{key}/dispute`, `GET /{kind}/{key}/disputes`,
   `DELETE /disputes/{content_hash}`) are the **Not right?** control: the evaluator re-run uncached on
   one bullet with the user's note (≤1000 chars). The note changes how the text is READ; the level
@@ -1388,7 +1394,8 @@
   - **Voice check details** (inv-resume-voice): an ambiguous shape is the health advisory `voice.third_person`; the tailor response lists
     repaired paths as `voice_repairs`. Every resume or KB write from a connected agent (the `X-Maestro-CS-Origin: mcp` header) and
     the Assistant's edit tool refuse a hit with a 400 naming the lines: `tailor_session(ops=…)`, `edit_application`,
-    `tailor_application`, `edit_base_resume` and `update_base_resume` (`resume_ops.refuse_third_person`: what the write added or
+    `edit_base_resume`, `update_base_resume` and REST `POST /api/applications/from-base` given that header (no MCP tool calls that route)
+    (`resume_ops.refuse_third_person`: what the write added or
     changed; an owner line a removal moved is excused, a copy of one is not), `kb_add_points` and
     `kb_edit_point` (`kb_ingest.refuse_third_person_bullets`: against the KB profile's name and the entity's title and org; both scrub
     dashes; a retag resending unchanged text is not checked). `create_base_resume` is exempt: like `kb_ingest_resume`, it transcribes

@@ -6,10 +6,26 @@
       {"path": "backend/tests/test_tailoring_sessions_router.py", "symbol": "test_patch_absent_add_keyword_extra_target_rejected_by_honesty"},
       {"path": "backend/app/services/tailoring_session.py", "symbol": "_is_missing_skill"}
     ],
-    "inv-tailor-vs-edit": [
+    "inv-edit-in-place": [
       {"path": "backend/mcp_server/tests/test_server.py", "symbol": "test_edit_application_docstring_describes_current_draft_behavior"},
+      {"path": "backend/mcp_server/tests/test_profiles.py", "symbol": "test_tailor_application_is_registered_nowhere"},
       {"path": "backend/tests/test_resume_edit_service.py", "symbol": "test_replace_bullet_full_array_index_skips_disabled_and_echoes_applied"},
       {"path": "backend/mcp_server/server.py", "symbol": "0-based into the FULL array"}
+    ],
+    "inv-agent-writer": [
+      {"path": "backend/tests/test_agent_writer.py", "symbol": "test_no_model_call_runs_for_an_agent_request_in_agent_mode"},
+      {"path": "backend/tests/test_agent_writer.py", "symbol": "test_the_backstop_answers_an_agent_request_with_a_409"},
+      {"path": "backend/tests/test_agent_writer.py", "symbol": "test_the_agent_mark_is_the_innermost_middleware"},
+      {"path": "backend/tests/test_agent_writer.py", "symbol": "test_a_missing_setting_means_the_agent_app_writes"},
+      {"path": "backend/tests/test_qa_router.py", "symbol": "test_an_agent_app_that_writes_is_pointed_at_its_own_tools"},
+      {"path": "backend/tests/test_kb_ingest.py", "symbol": "test_capture_points_an_agent_app_that_writes_at_kb_add_points"},
+      {"path": "backend/tests/test_tailoring_sessions_router.py", "symbol": "test_a_tailor_without_ops_is_refused_for_an_agent_app_that_writes"},
+      {"path": "backend/tests/test_tailoring_sessions_router.py", "symbol": "test_an_enriched_session_is_refused_for_an_agent_app_that_writes"},
+      {"path": "backend/tests/test_resume_lint_router.py", "symbol": "test_an_agent_app_that_writes_judges_its_own_health_check_with_a_key_set"},
+      {"path": "backend/tests/test_kb_import.py", "symbol": "test_import_without_a_model_for_the_request_consolidates_quietly"},
+      {"path": "backend/mcp_server/tests/test_client_origin.py", "symbol": "test_every_request_says_it_came_from_an_agent_app"},
+      {"path": "backend/app/services/llm.py", "symbol": "AgentWritesError"},
+      {"path": "backend/app/agent_writer.py", "symbol": "class AgentRequestMiddleware"}
     ],
     "inv-pdf-word-spacing": [
       {"path": "backend/tests/test_pdf_render.py", "symbol": "test_compile_pdf_preserves_word_spacing_for_strict_extractor"},

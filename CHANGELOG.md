@@ -45,10 +45,23 @@ work-permit answers for each country you apply in.
   history, base resumes and their anchors, the health check, form answers and preferences), `hunt`,
   `tailor` (new: from a saved job to its tailored resume and PDF), `apply` (now from the finished PDF to
   a submitted application; tailoring moved to `tailor`), `track` (was `explore`: statuses, referrals and
-  the charts) and `templates`; `full` has all 101 tools. `/mcp/career` and `/mcp/explore` keep working
-  for one release. `tailor_application` is in `full` only. The Apply session and Apply automatically
+  the charts) and `templates`; `full` has all 99 tools. `/mcp/career` and `/mcp/explore` keep working
+  for one release. The Apply session and Apply automatically
   playbooks no longer tailor: a queued job that isn't tailored yet stays queued for the next Tailor run,
   and the run's digest says so.
+- **Your agent app writes by default.** Over MCP, Maestro's AI no longer writes for a connected agent
+  app unless you pick **Maestro's AI** in Settings › Agent apps › **Who writes for connected agents**.
+  With the default, `generate_cover_letter`, `generate_qa_answers`, `kb_capture`,
+  `create_tailoring_session(enrich=true)` and `tailor_session` without `ops` refuse, and the message
+  names the tool that saves the agent's own text instead: `store_cover_letter`, `store_qa_answers`,
+  `kb_add_points`, or `tailor_session` with `ops` or `no_new_text`. The health check hands the judging
+  to the agent even when you have a key. The web app and the Companion still use your key.
+- **`quick_tailor` is now a switch on `create_tailoring_session`.** Call
+  `create_tailoring_session(..., use_presets=true)` to start a gap analysis and fill it from your Quick
+  tailor presets in one call. If the fill fails, the error names the session it started.
+- **`tailor_application` is gone from MCP.** It rebuilt a draft without the tailoring session's checks.
+  Tailor through a session (`create_tailoring_session`, then `tailor_session`), or change a draft in
+  place with `edit_application`. The web app's route stays. MCP now has 99 tools, 31 in `tailor`.
 - No step to take by hand. Migrations add a column (`kb_points.merged_into_point_id`), two tables
   (`kb_point_kept_pairs`, and `application_status_events`, filled with one undated row for each
   application that already has a status) and two job columns (`country_code`,
@@ -157,7 +170,7 @@ work-permit answers for each country you apply in.
   connected agent can judge them: `run_health_check` hands it Maestro's own rubric and the waiting
   lines, and the new `judge_health_bullets` tool stores its answers after the same checks a model's
   answers get. The report then says which agent judged. With a key, Maestro's own model judges, as
-  before.
+  before, unless your agent app writes for you (the default over MCP).
 - **A connected agent can finish an application with no AI key in Maestro.** Three MCP tools store what
   the agent wrote itself: `store_cover_letter` replaces the application's cover letter and
   makes its PDF, `store_qa_answers` keeps screening answers (an answer to the same question is replaced),
@@ -172,6 +185,22 @@ work-permit answers for each country you apply in.
   you apply, the currency pay reads in) and `set_persona` (`career` and `full`). Each changes only
   what it is given. Diversity answers and their consent, full automation, the job-site login and every
   Settings switch stay yours, in the app.
+- **Choose who writes for connected agents.** Settings › Agent apps › **Who writes for connected
+  agents** has two answers: **Your agent app** writes with its own AI, and your API key isn't used for
+  it; **Maestro's AI** writes with your API key while your agent app steers. With Maestro's AI picked
+  and no key, the card says it needs one. No agent tool can change it, and `get_setup_status` tells
+  the agent which one you chose; every tool set's instructions say what each means.
+- **Tailoring with no AI at all.** `tailor_session(no_new_text=true)` writes no new wording and calls
+  no AI, whoever writes: it applies a hidden entry you turned on, an approved career-history bullet and
+  the keywords you saved into Skills, and lists the answers that still need wording. Every tailor now
+  names the skills it put on your resume that your career history doesn't back (`unbacked_skills`).
+  `tailor_session` makes the PDF itself, so its next step offers `render_pdf` only when that failed.
+  REST: `POST /api/tailoring-sessions/{id}/tailor` takes `no_new_text`, and its reply carries
+  `unbacked_skills`.
+- **A Tailor run works without an AI key.** When your agent app writes, the run tailors each queued job
+  with no new wording, and its digest names the skills it added that your career history doesn't back
+  and the answers left for you. With Maestro's AI picked and no key, it stops before the queue and
+  says so.
 
 ### Changed
 
@@ -316,7 +345,7 @@ work-permit answers for each country you apply in.
   the PDF library needs, and since MCP runs inside the app, two at once could take down the web app,
   MCP and the Companion together.
 - **An agent's resume and career-history edits are held to your voice.** `edit_application`,
-  `tailor_application`, `edit_base_resume`, `update_base_resume`, `kb_edit_point` and the Assistant's
+  `edit_base_resume`, `update_base_resume`, `kb_edit_point` and the Assistant's
   edits stored lines like "She led her team." They now refuse a third-person line with a 400 that
   names it, as tailoring already did. Your own saves in the web app are unchanged.
 - **A base resume built from your career history always renders.** A job or project with no approved
@@ -355,6 +384,9 @@ work-permit answers for each country you apply in.
 - **A skills line takes no item it already names.** Adding "AWS, SageMaker" to a line that read
   "AWS (SageMaker, EKS, S3)" appended it as a new item. An item is now skipped when the line already names
   every term in it. From @KeuqS's fix in #55.
+- **Importing a resume without an AI key no longer warns that the AI failed.** With no key, the
+  import added "LLM failed" warnings to an import that had worked. It now skips its AI steps quietly
+  and keeps the same entries and bullets.
 
 ## [0.11.1] — 2026-10-16
 

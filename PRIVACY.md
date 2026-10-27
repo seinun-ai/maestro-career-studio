@@ -230,7 +230,11 @@ But an MCP tool exists to hand information to the assistant that called it. Your
 career history, job data, resume text, and saved answers can be returned to the
 assistant you connected (Claude, Codex, ChatGPT desktop, and so on). From there
 the data is processed under **that assistant's provider's privacy policy**
-(for Claude, Anthropic's), not this one. Voluntary EEO answers are returned only
+(for Claude, Anthropic's), not this one. By default the assistant also does the
+writing, so Maestro sends nothing to an AI service for its requests. If you pick
+Maestro's AI in Settings › Agent apps › Who writes for connected agents, Maestro
+sends what those requests need to the provider you configured, as it does for the
+web app. Voluntary EEO answers are returned only
 with your standing consent. If you use the agent-driven apply lane, the browser
 tool your assistant uses is separate software, and an employer receives what
 you submit.

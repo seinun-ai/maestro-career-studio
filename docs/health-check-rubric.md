@@ -116,16 +116,18 @@ approved evaluator contract. Code validates the model response and computes scor
 - **Rewrites** [weak]: never invent numbers, drop protected entities or introduce placeholders.
   All appliable rewrites pass `health_guards`; a rejected suggestion is copy-only or absent.
   Source: `health_guards.py` and the product truthfulness requirement.
-- **No model key** [weak]: the check then calls no model. A stored judgment at the current rubric
-  version counts whoever made it, and every other line waits. While a scored bullet waits the report
+- **No model key, or an agent app that writes** [weak]: the check calls no model when no key is set, or when a connected agent
+  app runs it and the user's setting says the agent app writes (Settings › Agent apps), even with a key. A stored judgment at
+  the current rubric version counts whoever made it, and every other line waits. While a scored bullet waits the report
   has no score or grade and says how many lines wait; gates and rule notes still run, the hot-zone
   check (C1) waits for every hot line, and there are no rewrites or detector vetoes. A score over
-  half the bullets would read as a verdict on all of them. Source: owner decision 2026-10-23,
-  `resume_lint.run_report`.
-- **Agent judgments** [weak]: with no key, a connected agent judges by this same evaluator prompt,
-  filled with the waiting lines, and every answer passes the same `_validate` checks as a model's;
-  it is cached under the agent's name. With a key the app's own model judges and agent answers are
-  refused. An agent is another model, not a validated judge: the golden set has not measured one.
+  half the bullets would read as a verdict on all of them. Source: owner decisions 2026-10-23 and 2026-10-26,
+  `resume_lint.run_report`, `agent_writer.model_available`.
+- **Agent judgments** [weak]: whenever the app's model does not judge (above), a connected agent judges by this same
+  evaluator prompt, filled with the waiting lines, and every answer passes the same `_validate` checks as a model's;
+  it is cached under the agent's name. While the app's own model judges (a key is set and the caller is the web app, or an
+  agent app whose user chose Maestro's AI) agent answers are refused. An agent is another model, not a validated judge: the
+  golden set has not measured one.
   Source: owner decision 2026-10-23, `bullet_classify.record_judgments`.
 - **Repeatability** [weak]: cache by text, rubric version and model, with user overrides preserved;
   a change to what the prompt judges bumps the rubric version. Source: evaluator cache contract.

@@ -1737,14 +1737,15 @@
   the page's footer), **Companion** (what it may fill: agreements and
   signatures and the screening answers; how it applies; the form-filling
   engine), **Agent apps** (Connect an agent app, the folded explainer, the
-  limits, then the job-site login, next-step hints and the second copy) and
+  limits, then the job-site login, who writes for connected agents, next-step
+  hints and the second copy) and
   **Advanced** (model per job, more models, the custom AI server, AI
   instructions, Quick tailor, Hours per year, and Diagnostics with the Autofill
   coverage card, D6). Each tab's `anchors` are its card ids, in order: Basics
   `api-keys`, `money`, `resumes-folder`, `appearance`, `about`; Companion
   `companion-fill`, `companion-apply`, `form-filling`; Agent apps
   `connect-assistant`, `connected-agents`, `full-automation`, `auto-apply`,
-  `job-site-login`, `agent-hints`, `second-copy`; Advanced `models`,
+  `job-site-login`, `agent-writer`, `agent-hints`, `second-copy`; Advanced `models`,
   `model-catalog`, `custom-endpoint`, `prompts`, `quick-tailor`,
   `hours-per-year`, `diagnostics`. `/profile` is who the
   CANDIDATE is, one page with no tabs ("Profile" below). A permission over
@@ -1830,7 +1831,15 @@
   lands, both status lines move focus with `focusIfDropped` (only from
   `<body>`), and a failed retry disarms the move, so a later save never pulls
   focus out of a field mid-typing. An explicit Save that lands while the user
-  kept typing (Persona) keeps the form dirty and the later text.
+  kept typing (Persona) keeps the form dirty and the later text. Two cards
+  that save halves of one record (Agent apps' **Who writes for connected
+  agents**, a two-way radio group, and the next-step hints switch, both
+  `mcp_workflow`) share one save, `hooks/use-save-mcp-workflow.ts`: each save
+  waits its turn (`inOrder`, never a mutation `scope`, which sits paused in a
+  hidden tab) and merges its one field into the latest cached value, so a
+  quick second save never sends the first card's old value back
+  (`test_frontend_settings_cards.py`, and the writer card's node suite
+  `agent-writer-section.test.mjs`, which CI runs).
 - Settings shows four curated user-voice prompts (cover_letter, qa,
   gap_tailor, chat_system) in its AI instructions card; the other internal
   prompts sit behind a "More instructions" disclosure, each titled in words
@@ -1850,7 +1859,9 @@
   base resume. `["setup-status"]` is read by the Profile header, Getting
   started, `/new` and Setup, each `refetchOnMount: "always"` to bypass the
   30-second stale window, and shared by Today (the first-run redirect and its
-  setup card) and the Jobs page (its no-key notice); every Profile and Setup
+  setup card), the Jobs page (its no-key notice) and the Agent apps writer
+  card (its "Needs an API key" line, read only while Maestro's AI is picked;
+  a failed read says nothing); every Profile and Setup
   save AND the Settings model/key save invalidate it. `/new` names a missing key BEFORE the paste: an amber notice
   with Add API key, and a disabled Save job whose `aria-describedby` points at
   it, since a disabled button says nothing about why. A failed status fetch

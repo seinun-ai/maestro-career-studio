@@ -80,15 +80,28 @@ runs: a saved `add_keyword` whose word (its `wording`, else the gap's `jd_skill`
 is added with `add_skill_item` to the skills category it chose, else Additional Skills, never as a
 bullet (SYSTEM.md §6 `inv-honesty`), and the response lists it as `keywords_added`. With caller ops
 the server applies only the pre-ops itself: `user_input` and `attach_project` answers reach the
-resume through the ops alone, listed as `answers_left_to_ops`. The application is reused or inserted, a version row is written, and substantive
+resume through the ops alone, listed as `answers_left_to_ops`. **`no_new_text`** (REST `no_new_text: true`,
+MCP `tailor_session(no_new_text=True)`) writes no new wording and calls no model, whoever writes for the
+request: the pre-ops, then each saved keyword placed in the skills list whose word that list lacks (added there
+even when a bullet already has the word, since a skills item takes no wording), then keyword survival for the
+rest. Its `answers_left_to_ops` names every `user_input` and `attach_project` answer and each `add_keyword`
+placed outside the skills list whose word survival did not add (it needs a rewritten bullet). It takes no ops
+(422), and when no pre-op and no keyword applies it is a 400, "Nothing can be applied without new wording: …".
+**`unbacked_skills`**, on every path, names each missing skill (the honesty rule's `_is_missing_skill`) whose
+word this tailor put live anywhere on the resume when the base's own text did not already say it and career
+history does not back it. Backed means read off the frozen gap and the saved answer, never off the caller's
+payload: the KB resolver plans its own automatic answer for the gap, or the saved answer is `user_input`,
+`attach_project`, `enable_entry` or `port_kb_point`. A saved keyword's word is its `wording`, else the gap's
+skill; a skill is named, never refused. The application is reused or inserted, a version row is written, and substantive
 `user_input` answers are written back as draft KBPoints (`origin=gap_elicitation`). Every skipped
 write-back returns on the response as `kb_writeback_skips` with a reason (`too_short`,
 `wrong_section`, `no_entity_match`, `duplicate`, or `profile_owned_elsewhere`: on the always-on
 copy tailoring skips draft career-history points), and the gap page toasts a quiet note, so
 flywheel drops are never silent. The session goes `tailored` and the tailored score is staged, all
 in ONE transaction: `tailor()` commits once at its end and `score_target` stages on the same
-session. A pre-op-only session tailors with zero LLM calls; MCP can pass caller ops to skip the
-backend LLM. After a tailor the web UI lands in review mode (`?review=1`): a provenance-labeled
+session. A pre-op-only session tailors with zero LLM calls; MCP can pass caller ops, or `no_new_text`,
+to skip the backend LLM. The route refuses an agent request that passes neither while the agent app writes
+(409, after the session's 404; SYSTEM.md §6 `inv-agent-writer`). After a tailor the web UI lands in review mode (`?review=1`): a provenance-labeled
 structural diff (`GET /applications/{id}/resume-diff`, hunks attributed `kb_auto`/`user`/`llm`, plus the
 application's `updated_at` it was computed against), revert per hunk through the normal edit path (the job
 page's step 3 sends that `updated_at` back as the PATCH's `expected_updated_at`: a row that has moved since
@@ -120,7 +133,8 @@ health-gate check first (cheap, 409 via `HealthGateBlockedError`), then ONE
 engine run whose result both builds the gaps and stages the "before" score
 (`score_target(..., result=...)`), then prior open sessions for the
 (job, base) are marked superseded, then optional LLM gap enrichment (failure
-swallowed → unenriched gaps), then ONE commit covering score row + supersede +
+swallowed → unenriched gaps; the router refuses `enrich` for an agent request while
+the agent app writes, before any of this, `inv-agent-writer`), then ONE commit covering score row + supersede +
 session row — a failure anywhere before it leaves no committed trace. A sub-55 health score sets a
 transient `health_warning` on the create response (a toast in the web UI).
 - **Quick tailor** (`POST /api/jobs/{job_id}/quick-tailor`): one-shot
