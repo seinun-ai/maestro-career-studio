@@ -70,8 +70,9 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   is, else `=?base64?…?=`); it sends and adopts no session, a 404 is the server's answer and is never replayed, and a 4xx carrying
   a JSON-RPC error for its id reaches the client as the server wrote it. Any other non-2xx reads -32000 "Maestro Career Studio
   returned HTTP n." (`mcpb/tests/bridge.test.js`). A re-pack moves `server.json`'s `fileSha256`. `maestro mcp`
-  (`maestro_cs/bridge.py`, the uv install's Python twin) carries 2025 traffic only. Each set's `serverInfo.version`, on stdio and
-  HTTP, reads `APP_VERSION`, else `dev` (`mcp_server/tests/test_http_modern.py`, `test_profiles.py`).
+  (`maestro_cs/bridge.py`, the uv install's Python twin) follows the same rules; it copies the codec and the revision lists
+  rather than import `mcp` (~200 ms a start), and `tests/maestro_cs/test_bridge.py` pins them to the SDK's. Each set's
+  `serverInfo.version`, on stdio and HTTP, reads `APP_VERSION`, else `dev` (`mcp_server/tests/test_http_modern.py`, `test_profiles.py`).
 
 - **The server on SDK 2.x** (`mcp>=2.3,<3`; `mcp_server/server.py`, `http.py`). `server.mcp`, the one registry, is a `_ServedMCP`
   (the SDK's `MCPServer`); `build_set` makes each set a `_ServedMCP` of its own, and `http.McpEndpoint(registry)` takes any registry

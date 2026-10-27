@@ -354,6 +354,265 @@ def test_requests_wait_for_preceding_responses_and_batch_json_passes_through_as_
     ]
 
 
+# --- 2026-07-28 clients send no initialize: each message names its revision in params._meta ----
+
+MODERN_VERSION = "2026-07-28"
+ENVELOPE = {
+    "io.modelcontextprotocol/protocolVersion": MODERN_VERSION,
+    "io.modelcontextprotocol/clientInfo": {"name": "bridge-test-client", "version": "1"},
+    "io.modelcontextprotocol/clientCapabilities": {},
+}
+ROUTING_HEADERS = ("mcp-protocol-version", "mcp-method", "mcp-name")
+HANDSHAKE_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"]
+# Expected values are the SDK's own encode_header_value output for each name.
+ENCODED_NAMES = [
+    ("notes://café/résumé ✓", "=?base64?bm90ZXM6Ly9jYWbDqS9yw6lzdW3DqSDinJM=?="),
+    (" padded ", "=?base64?IHBhZGRlZCA=?="),
+    ("tab\there", "=?base64?dGFiCWhlcmU=?="),
+    ("=?base64?bGlzdA==?=", "=?base64?PT9iYXNlNjQ/YkdsemRBPT0/PQ==?="),
+]
+
+
+def modern(message):
+    return {**message, "params": {**message.get("params", {}), "_meta": ENVELOPE}}
+
+
+def routing(seen):
+    return {name: seen.headers[name] for name in ROUTING_HEADERS if name in seen.headers}
+
+
+def answer_by_id(seen):
+    if isinstance(seen.body, dict) and "id" in seen.body:
+        return reply({"jsonrpc": "2.0", "id": seen.body["id"], "result": {}})
+    return httpx.Response(202)
+
+
+def session_then(respond):
+    """initialize gets session-1; everything else goes to `respond`."""
+    def handler(seen):
+        if isinstance(seen.body, dict) and seen.body.get("method") == "initialize":
+            return reply({"jsonrpc": "2.0", "id": 1, "result": {}}, **{"mcp-session-id": "session-1"})
+        return respond(seen)
+    return handler
+
+
+def sentence(id_, status=400):
+    return {"jsonrpc": "2.0", "id": id_,
+            "error": {"code": -32000, "message": f"Maestro Career Studio returned HTTP {status}."}}
+
+
+def test_a_2026_07_28_request_carries_its_version_method_and_name_as_headers():
+    messages = [
+        modern({"jsonrpc": "2.0", "id": "discover", "method": "server/discover"}),
+        modern({**LIST, "id": "list"}),
+        modern({"jsonrpc": "2.0", "id": "call", "method": "tools/call",
+                "params": {"name": "list_jobs", "arguments": {"limit": 5}}}),
+        modern({"jsonrpc": "2.0", "id": "prompt", "method": "prompts/get",
+                "params": {"name": "start_here"}}),
+        modern({"jsonrpc": "2.0", "id": "read", "method": "resources/read",
+                "params": {"uri": "notes://setup"}}),
+    ]
+    result = run_messages(messages, answer_by_id)
+    assert result.messages() == [{"jsonrpc": "2.0", "id": m["id"], "result": {}} for m in messages]
+    assert result.err == ""
+    version = {"mcp-protocol-version": MODERN_VERSION}
+    assert [routing(seen) for seen in result.requests] == [
+        {**version, "mcp-method": "server/discover"},
+        {**version, "mcp-method": "tools/list"},
+        {**version, "mcp-method": "tools/call", "mcp-name": "list_jobs"},
+        {**version, "mcp-method": "prompts/get", "mcp-name": "start_here"},
+        {**version, "mcp-method": "resources/read", "mcp-name": "notes://setup"},
+    ]
+    for seen, message in zip(result.requests, messages, strict=True):
+        assert seen.line == compact(message), "the body is forwarded untouched"
+        assert seen.session is None
+        assert seen.headers["accept"] == "application/json, text/event-stream"
+
+
+def test_a_name_outside_plain_printable_ascii_travels_in_the_sdks_base64_form():
+    result = run_messages([modern({"jsonrpc": "2.0", "id": id_, "method": "resources/read",
+                                   "params": {"uri": uri}})
+                           for id_, (uri, _header) in enumerate(ENCODED_NAMES)], answer_by_id)
+    assert [seen.headers["mcp-name"] for seen in result.requests] == [
+        header for _uri, header in ENCODED_NAMES]
+
+
+def test_a_name_or_method_that_is_not_a_string_sends_no_header_for_it():
+    result = run_messages([
+        modern({"jsonrpc": "2.0", "id": "number", "method": "tools/call", "params": {"name": 7}}),
+        modern({"jsonrpc": "2.0", "id": "missing", "method": "resources/read"}),
+        modern({"jsonrpc": "2.0", "id": "list", "method": ["tools/call"],
+                "params": {"name": "list_jobs"}}),
+    ], answer_by_id)
+    version = {"mcp-protocol-version": MODERN_VERSION}
+    assert [routing(seen) for seen in result.requests] == [
+        {**version, "mcp-method": "tools/call"},
+        {**version, "mcp-method": "resources/read"},
+        version,
+    ]
+    assert [m["id"] for m in result.messages()] == ["number", "missing", "list"]
+
+
+def test_2025_traffic_carries_none_of_the_routing_headers_and_keeps_its_session():
+    result = run_messages([
+        INITIALIZE, INITIALIZED, LIST,
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+         "params": {"name": "list_jobs", "arguments": {}}},
+        {**LIST, "id": 4, "params": {"_meta": {"progressToken": "progress-1"}}},
+    ], session_then(answer_by_id))
+    assert [routing(seen) for seen in result.requests] == [{}] * 5
+    assert [seen.session for seen in result.requests] == [None] + ["session-1"] * 4
+
+
+def test_a_2025_revision_named_in_meta_stays_on_its_session_with_no_routing_headers():
+    # The SDK sends a header naming a handshake revision down the 2025 path, which needs the session.
+    result = run_messages([INITIALIZE, *({
+        "jsonrpc": "2.0", "id": id_, "method": "tools/call",
+        "params": {"name": "list_jobs", "arguments": {},
+                   "_meta": {**ENVELOPE, "io.modelcontextprotocol/protocolVersion": version}},
+    } for id_, version in enumerate(HANDSHAKE_VERSIONS))], session_then(answer_by_id))
+    assert len(result.messages()) == 1 + len(HANDSHAKE_VERSIONS)
+    assert [routing(seen) for seen in result.requests[1:]] == [{}] * len(HANDSHAKE_VERSIONS)
+    assert [seen.session for seen in result.requests[1:]] == ["session-1"] * len(HANDSHAKE_VERSIONS)
+
+
+def test_a_2026_07_28_request_neither_sends_adopts_nor_clears_the_2025_session():
+    def respond(seen):
+        headers = {"mcp-session-id": "rogue"} if seen.body["id"] == "modern" else {}
+        return reply({"jsonrpc": "2.0", "id": seen.body["id"], "result": {}}, **headers)
+
+    result = run_messages([INITIALIZE, modern({**LIST, "id": "modern"}), LIST],
+                          session_then(respond))
+    assert [seen.session for seen in result.requests] == [None, None, "session-1"]
+    assert [seen.headers.get("mcp-protocol-version") for seen in result.requests] == [
+        None, MODERN_VERSION, None]
+
+
+def test_a_404_to_a_2026_07_28_request_is_not_a_lost_session_so_nothing_is_replayed():
+    def respond(seen):
+        if seen.body["method"] == "notifications/initialized":
+            return httpx.Response(202)
+        return reply({"jsonrpc": "2.0", "id": seen.body["id"],
+                      "error": {"code": -32601, "message": "Method not found"}}, 404)
+
+    result = run_messages([
+        INITIALIZE, INITIALIZED,
+        modern({"jsonrpc": "2.0", "id": "listen", "method": "subscriptions/listen"}),
+    ], session_then(respond))
+    assert [seen.body["method"] for seen in result.requests] == [
+        "initialize", "notifications/initialized", "subscriptions/listen"]
+    assert result.messages()[1] == {
+        "jsonrpc": "2.0", "id": "listen", "error": {"code": -32601, "message": "Method not found"}}
+
+
+def test_a_2026_07_28_refusal_reaches_the_client_as_the_servers_json_rpc_error():
+    refusals = {
+        "unknown": (404, {"code": -32601, "message": "Method not found"}),
+        "version": (400, {"code": -32022, "message": "Unsupported protocol version",
+                          "data": {"supported": [MODERN_VERSION], "requested": "2099-01-01"}}),
+    }
+    # Each of these is not this request's JSON-RPC refusal, so it gets the -32000 sentence.
+    fallbacks = {
+        "other-id": (400, {"jsonrpc": "2.0", "id": "someone-else",
+                           "error": {"code": -32602, "message": "No"}}),
+        "no-id": (400, {"jsonrpc": "2.0", "error": {"code": -32602, "message": "No"}}),
+        "string-code": (400, {"jsonrpc": "2.0", "id": "string-code",
+                              "error": {"code": "-32602", "message": "No"}}),
+        "fraction-code": (400, {"jsonrpc": "2.0", "id": "fraction-code",
+                                "error": {"code": -32602.5, "message": "No"}}),
+        "no-jsonrpc": (400, {"id": "no-jsonrpc", "error": {"code": -32602, "message": "No"}}),
+        "no-message": (400, {"jsonrpc": "2.0", "id": "no-message", "error": {"code": -32602}}),
+        "server-error": (500, {"jsonrpc": "2.0", "id": "server-error",
+                               "error": {"code": -32603, "message": "Internal error"}}),
+        # A notification is owed no answer, so its fallback writes nothing.
+        "notification": (400, {"jsonrpc": "2.0", "id": None,
+                               "error": {"code": -32022, "message": "Unsupported protocol version"}}),
+    }
+
+    def respond(seen):
+        id_ = seen.body.get("id", "notification")
+        if id_ in refusals:
+            status, error = refusals[id_]
+            return reply({"jsonrpc": "2.0", "id": id_, "error": error}, status)
+        if id_ in fallbacks:
+            return reply(fallbacks[id_][1], fallbacks[id_][0])
+        return httpx.Response(400, text="null" if id_ == "null-body" else "<html>Bad request</html>")
+
+    asked = [id_ for id_ in fallbacks if id_ != "notification"]
+    result = run_messages([
+        modern({"jsonrpc": "2.0", "id": "unknown", "method": "nope/method"}),
+        modern({**LIST, "id": "version"}),
+        *(modern({**LIST, "id": id_}) for id_ in asked),
+        modern({**LIST, "id": "html"}),
+        modern({**LIST, "id": "null-body"}),
+        modern({"jsonrpc": "2.0", "method": "notifications/cancelled",
+                "params": {"requestId": "unknown"}}),
+    ], respond)
+    assert result.messages() == [
+        {"jsonrpc": "2.0", "id": "unknown", "error": refusals["unknown"][1]},
+        {"jsonrpc": "2.0", "id": "version", "error": refusals["version"][1]},
+        *(sentence(id_, fallbacks[id_][0]) for id_ in asked),
+        sentence("html"),
+        sentence("null-body"),
+    ]
+    assert result.requests[-1].body["method"] == "notifications/cancelled"
+    assert result.err == ""
+
+
+def test_a_refusal_is_matched_the_way_the_node_twin_matches_it_not_by_pythons_equality():
+    # JavaScript's === tells true from 1 and a missing id from null, and Number.isInteger takes 5.0
+    # but not true; Python's == and isinstance(…, int) say otherwise unless the twin checks.
+    replies = {
+        1: (400, {"jsonrpc": "2.0", "id": True, "error": {"code": -32602, "message": "No"}}),
+        None: (400, {"jsonrpc": "2.0", "error": {"code": -32602, "message": "No"}}),
+        "bool-code": (400, {"jsonrpc": "2.0", "id": "bool-code",
+                            "error": {"code": True, "message": "No"}}),
+        "whole-float": (404, {"jsonrpc": "2.0", "id": "whole-float",
+                              "error": {"code": -32601.0, "message": "Method not found"}}),
+    }
+
+    def respond(seen):
+        status, body = replies[seen.body["id"]]
+        return reply(body, status)
+
+    result = run_messages([modern({**LIST, "id": id_}) for id_ in replies], respond)
+    assert result.messages() == [
+        sentence(1), sentence(None), sentence("bool-code"), replies["whole-float"][1]]
+
+
+def test_a_2026_07_28_notification_carries_version_and_method_responses_and_batches_go_as_before():
+    result = run_messages([
+        modern({"jsonrpc": "2.0", "method": "notifications/cancelled",
+                "params": {"requestId": "call"}}),
+        {"jsonrpc": "2.0", "id": "server-request", "result": {"_meta": ENVELOPE}},
+        [modern({**LIST, "id": "batch"})],
+    ], lambda _seen: httpx.Response(202))
+    assert result.out == b""
+    assert [routing(seen) for seen in result.requests] == [
+        {"mcp-protocol-version": MODERN_VERSION, "mcp-method": "notifications/cancelled"}, {}, {},
+    ]
+
+
+def test_the_header_codec_and_the_revision_lists_match_the_sdk():
+    # The bridge copies these rather than import `mcp`, which would add ~200 ms to every start.
+    from mcp.shared.inbound import NAME_BEARING_METHODS, decode_header_value, encode_header_value
+    from mcp_types import PROTOCOL_VERSION_META_KEY
+    from mcp_types.version import HANDSHAKE_PROTOCOL_VERSIONS
+
+    values = [name for name, _header in ENCODED_NAMES] + [
+        "list_jobs", "notes://setup", MODERN_VERSION, "", " ", "end\n", "del\x7f", "nbsp\xa0",
+        "\U0001f3af target", "=?base64??=", "=?base64?x", "~!@#$%^&*()"]
+    for value in values:
+        assert bridge.header_value(value) == encode_header_value(value), value
+        assert decode_header_value(bridge.header_value(value)) == value
+    assert [bridge.header_value(name) for name, _header in ENCODED_NAMES] == [
+        header for _name, header in ENCODED_NAMES]
+    assert bridge.HANDSHAKE_VERSIONS == frozenset(HANDSHAKE_PROTOCOL_VERSIONS)
+    assert bridge.HANDSHAKE_VERSIONS == frozenset(HANDSHAKE_VERSIONS)
+    assert bridge.NAME_PARAMS == dict(NAME_BEARING_METHODS)
+    assert bridge.PROTOCOL_VERSION_KEY == PROTOCOL_VERSION_META_KEY
+
+
 def test_empty_stdin_exits_successfully():
     result = run_lines([], url="http://127.0.0.1:1")
     assert result.out == b""

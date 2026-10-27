@@ -5,9 +5,11 @@ comes from the process environment, then the install's `maestro.env`, then the d
 """
 from __future__ import annotations
 
+import base64
 import contextlib
 import json
 import os
+import re
 import signal
 import sys
 import time
@@ -22,6 +24,80 @@ TIMEOUT_MESSAGE = ("Maestro Career Studio did not answer within 10 minutes. "
                    "The request may still finish in the app.")
 FAILED_MESSAGE = ("Maestro Career Studio could not complete the request. "
                   "The request may still finish in the app.")
+
+# A 2026-07-28 message has no initialize or session: it names its revision in params._meta, and the
+# SDK routes on MCP-Protocol-Version, then checks Mcp-Method and Mcp-Name against the body. A header
+# naming a handshake revision (the SDK's HANDSHAKE_PROTOCOL_VERSIONS) goes down the 2025 path, which
+# needs the session, so a message naming one is 2025 traffic.
+# No Mcp-Param-* headers: no Maestro tool declares x-mcp-header, and one that did would be refused
+# through the bridge until it mirrored that tool's arguments too.
+# Copied, not imported: importing `mcp` adds about 200 ms to every start. test_bridge.py pins these
+# and header_value to the SDK's own.
+PROTOCOL_VERSION_KEY = "io.modelcontextprotocol/protocolVersion"
+HANDSHAKE_VERSIONS = frozenset({"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"})
+NAME_PARAMS = {"tools/call": "name", "prompts/get": "name", "resources/read": "uri"}
+_HEADER_SAFE = re.compile(r"[\x20-\x7E]*")
+_BASE64_FORM = re.compile(r"=\?base64\?.*\?=")
+
+
+def header_value(value: str) -> str:
+    """The SDK's header codec (encode_header_value): printable ASCII without edge spaces goes as is,
+    anything else as =?base64?<UTF-8>?=. The SDK encodes only Mcp-Name and compares the version and
+    method raw; encoding those too is harmless, since any value the codec changes is refused either
+    way, and it keeps httpx from raising UnicodeEncodeError on a non-ASCII value."""
+    if (_HEADER_SAFE.fullmatch(value) and value == value.strip()
+            and not _BASE64_FORM.fullmatch(value)):
+        return value
+    return f"=?base64?{base64.b64encode(value.encode('utf-8')).decode('ascii')}?="
+
+
+def routing_headers(message: Any) -> dict[str, str] | None:
+    params = message.get("params") if isinstance(message, dict) else None
+    meta = params.get("_meta") if isinstance(params, dict) else None
+    version = meta.get(PROTOCOL_VERSION_KEY) if isinstance(meta, dict) else None
+    if not isinstance(version, str) or version in HANDSHAKE_VERSIONS:
+        return None
+    headers = {"MCP-Protocol-Version": header_value(version)}
+    method = message.get("method")
+    if isinstance(method, str):
+        headers["Mcp-Method"] = header_value(method)
+        name = params.get(NAME_PARAMS[method]) if method in NAME_PARAMS else None
+        if isinstance(name, str):
+            headers["Mcp-Name"] = header_value(name)
+    return headers
+
+
+def _is_integer(value: Any) -> bool:
+    # JavaScript's Number.isInteger on a parsed JSON value, as the Node twin checks: 5.0 is one,
+    # true is not.
+    if isinstance(value, bool):
+        return False
+    return isinstance(value, int) or (isinstance(value, float) and value.is_integer())
+
+
+def _same_id(a: Any, b: Any) -> bool:
+    # JavaScript's === on two parsed JSON ids: true is not 1, and no object or array equals another.
+    return not isinstance(a, (dict, list)) and isinstance(a, bool) == isinstance(b, bool) and a == b
+
+
+def refusal_for(request: Any, status: int, raw: bytes) -> dict[str, Any] | None:
+    """That path refuses a request with its JSON-RPC error and a 400 or 404 (Method not found, an
+    unsupported revision with the supported list); the client is owed that answer, not
+    "HTTP 404"."""
+    if not 400 <= status < 500 or not isinstance(request, dict) or "id" not in request:
+        return None
+    try:
+        body = json.loads(raw)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    if (body.get("jsonrpc") == "2.0" and "id" in body and _same_id(body["id"], request["id"])
+            and isinstance(error, dict) and _is_integer(error.get("code"))
+            and isinstance(error.get("message"), str)):
+        return body
+    return None
 
 
 class BridgeError(Exception):
@@ -59,10 +135,11 @@ class Bridge:
         self.stdout.write(json.dumps(body, separators=(",", ":")).encode("utf-8") + b"\n")
         self.stdout.flush()
 
-    def post(self, line: str) -> tuple[int, str | None, Any]:
+    def post(self, line: str, routing: dict[str, str] | None = None
+             ) -> tuple[int, str | None, Any, bytes]:
         headers = {"Accept": "application/json, text/event-stream",
-                   "Content-Type": "application/json"}
-        if self.session_id:
+                   "Content-Type": "application/json", **(routing or {})}
+        if self.session_id and not routing:
             headers["Mcp-Session-Id"] = self.session_id
         # httpx's timeouts restart in every phase, so the total is checked here as each body chunk
         # arrives. The SDK sends a JSON response's headers and body together, so in practice the
@@ -86,19 +163,19 @@ class Bridge:
         except httpx.HTTPError:
             message = FAILED_MESSAGE
         else:
-            body = None
+            body, raw = None, b"".join(chunks)
             if status == 200:
                 try:
-                    body = json.loads(b"".join(chunks))
+                    body = json.loads(raw)
                 except (ValueError, RecursionError):
                     raise BridgeError(
                         "Maestro Career Studio returned an invalid JSON response.") from None
-            return status, session, body
+            return status, session, body, raw
         self.note(message)
         raise BridgeError(message)
 
     @staticmethod
-    def accepted(result: tuple[int, str | None, Any]) -> tuple[int, str | None, Any]:
+    def accepted(result: tuple[int, str | None, Any, bytes]) -> tuple[int, str | None, Any, bytes]:
         if result[0] not in (200, 202):
             raise BridgeError(f"Maestro Career Studio returned HTTP {result[0]}.")
         return result
@@ -120,6 +197,21 @@ class Bridge:
             return
         if not isinstance(request, (dict, list)):
             self.note("The MCP message must be a JSON object or array.")
+            return
+        routing = routing_headers(request)
+        if routing:
+            # No session to send, adopt or replay: a 404 here is the server's answer, not a lost
+            # session. subscriptions/listen would hold this one-at-a-time loop for its whole stream
+            # if a set ever offered it; today every set refuses it at once.
+            try:
+                result = self.post(line, routing)
+                refusal = refusal_for(request, result[0], result[3])
+                if refusal is not None:
+                    self.write(refusal)
+                elif self.accepted(result)[0] == 200:
+                    self.write(result[2])
+            except BridgeError as exc:
+                self.fail(request, str(exc))
             return
         method = request.get("method") if isinstance(request, dict) else None
         if method == "initialize":

@@ -338,7 +338,7 @@ and itself in each request's `_meta`. Career KB timeline rows keep the agent's
 name either way: the client's `clientInfo` comes from `initialize` (which the
 bundle's bridge replays when a session goes stale) or from each request's
 `_meta` (which it passes through with the routing headers that revision needs).
-`maestro mcp` carries 2025-era traffic only.
+`maestro mcp` does both the same way.
 
 A refusal reads as the app wrote it. A tool that crashes reads
 "Error executing tool <name>", and the details stay in the backend's log.
