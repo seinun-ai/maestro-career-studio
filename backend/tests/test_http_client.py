@@ -204,9 +204,8 @@ def test_the_mcp_server_repairs_the_env_before_it_runs(monkeypatch):
     from mcp_server import server
 
     monkeypatch.delenv("MAESTRO_CS_MCP_PROFILE", raising=False)
-    monkeypatch.setattr(server, "apply_profile_filter", lambda _mcp: None)
     calls = []
     monkeypatch.setattr(http_client, "repair_proxy_env", lambda: calls.append("repair"))
-    monkeypatch.setattr(server.mcp, "run", lambda: calls.append("run"))
+    monkeypatch.setattr(server._ServedMCP, "run", lambda _self: calls.append("run"))
     server.main()
     assert calls == ["repair", "run"]

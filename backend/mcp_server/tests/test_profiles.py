@@ -1,6 +1,5 @@
-"""Scoped MCP profile allowlists and filter behavior."""
-from mcp.server.fastmcp import FastMCP
-
+"""Scoped MCP profile allowlists, and the served set each one builds."""
+import mcp_server.server as srv
 from mcp_server import orientation
 from mcp_server.profiles import (
     APPLY_TOOLS,
@@ -11,7 +10,7 @@ from mcp_server.profiles import (
     TAILOR_TOOLS,
     TEMPLATES_TOOLS,
     TRACK_TOOLS,
-    apply_profile_filter,
+    allowed_tools,
     get_profile,
 )
 
@@ -30,45 +29,52 @@ def test_unknown_profile_raises(monkeypatch):
         assert "Unknown MAESTRO_CS_MCP_PROFILE" in str(exc)
 
 
-def test_apply_profile_filter_keeps_apply_drops_explore():
-    m = FastMCP("profile-test")
-
-    @m.tool()
-    def propose_application() -> str:
-        return "ok"
-
-    @m.tool()
-    def explore_trends() -> str:
-        return "nope"
-
-    @m.tool()
-    def create_template_draft() -> str:
-        return "nope"
-
-    assert apply_profile_filter(m, "apply") == "apply"
-    names = {t.name for t in m._tool_manager.list_tools()}
-    assert names == {"propose_application"}
+def test_a_set_holds_the_registrys_own_tools_in_registration_order():
+    """HTTP wraps the registry's tools to run off the event loop; a set holding copies
+    would run them on it."""
+    served = srv.build_set("track")
+    tools = served._tool_manager.list_tools()
+    assert [t.name for t in tools] == srv.list_registered_tool_names("track")
+    assert {t.name for t in tools} == allowed_tools("track")
+    assert all(t is srv.mcp._tool_manager.get_tool(t.name) for t in tools)
 
 
-def test_full_profile_filter_is_noop():
-    m = FastMCP("profile-full")
-
-    @m.tool()
-    def explore_trends() -> str:
-        return "ok"
-
-    apply_profile_filter(m, "full")
-    assert {t.name for t in m._tool_manager.list_tools()} == {"explore_trends"}
-
-
-def test_a_stdio_set_says_what_it_holds_not_what_full_holds():
-    """A stdio process serves one set: its instructions must name no tool that set lacks
-    (templates has no get_setup_status), as each HTTP set's do."""
+def test_a_set_says_what_it_holds_not_what_full_holds():
+    """A set's instructions name no tool it lacks (templates has no get_setup_status); an old
+    name builds the set it maps to."""
     for name, active in (("templates", "templates"), ("career", "profile")):
-        m = FastMCP("profile-instructions", instructions=orientation.instructions_for("full"))
-        assert apply_profile_filter(m, name) == active
-        assert m.instructions == orientation.instructions_for(active)
-        assert ("get_setup_status" in m.instructions) == (active != "templates")
+        served = srv.build_set(name)
+        assert served.profile == active
+        assert served.instructions == orientation.instructions_for(active)
+        assert ("get_setup_status" in served.instructions) == (active != "templates")
+        assert [t.name for t in served._tool_manager.list_tools()] == (
+            srv.list_registered_tool_names(active))
+
+
+def test_building_every_set_leaves_the_registry_whole():
+    registered = srv.list_registered_tool_names("full")
+    for name in (*PROFILE_ALLOWLISTS, *PROFILE_ALIASES):
+        srv.build_set(name)
+    assert srv.list_registered_tool_names("full") == registered and len(registered) == 94
+    assert srv.mcp.profile is None
+    assert srv.mcp.instructions == orientation.instructions_for("full")
+
+
+async def test_a_set_names_itself_for_the_hints_of_each_call(monkeypatch):
+    """Hints name only the set's tools, whatever the env says; the profile is reset after."""
+    monkeypatch.setenv("MAESTRO_CS_MCP_PROFILE", "full")
+    served = srv.build_set("hunt")
+    seen = []
+
+    @served.tool()
+    def probe() -> str:
+        seen.append((srv.CURRENT_PROFILE.get(), srv._active_allowed_tools()))
+        return "ok"
+
+    await served.call_tool("probe", {})
+    assert seen == [("hunt", HUNT_TOOLS)]
+    assert srv.CURRENT_PROFILE.get() is None
+    assert srv.mcp._tool_manager.get_tool("probe") is None
 
 
 def test_profile_allowlists_are_disjoint_from_unused_domains():
@@ -137,8 +143,8 @@ def test_scoped_profiles_stay_read_only_on_the_kb():
         assert not {tool for tool in allowlist if tool.startswith("kb_")}
 
 
-def test_importing_the_server_never_deletes_tools():
-    """A stdio profile env var must not shrink the shared HTTP tool registry.
+def test_the_env_set_is_built_and_the_registry_keeps_every_tool():
+    """A stdio profile env var picks the set; it must not shrink the shared HTTP tool registry.
 
     Use a subprocess because HTTP consumers hold the registry by reference.
     """
@@ -147,22 +153,20 @@ def test_importing_the_server_never_deletes_tools():
     import sys
     from pathlib import Path
 
-    import mcp_server.server as srv
-
     out = subprocess.run(
         [sys.executable, "-c",
-         "import mcp_server.server as s; print(len(s.mcp._tool_manager.list_tools()))"],
+         "import mcp_server.server as s; from mcp_server.profiles import get_profile; "
+         "print(len(s.mcp._tool_manager.list_tools()), "
+         "len(s.build_set(get_profile())._tool_manager.list_tools()))"],
         env={**os.environ, "MAESTRO_CS_MCP_PROFILE": "hunt"},
         cwd=Path(__file__).resolve().parents[2],
         capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    assert int(out) == len(srv.list_registered_tool_names("full"))
+    ).stdout.split()
+    assert [int(n) for n in out] == [
+        len(srv.list_registered_tool_names("full")), len(HUNT_TOOLS)]
 
 
 def test_the_request_profile_wins_over_the_env_for_hints(monkeypatch):
-    import mcp_server.server as srv
-    from mcp_server.profiles import allowed_tools
-
     monkeypatch.setenv("MAESTRO_CS_MCP_PROFILE", "full")
     token = srv.CURRENT_PROFILE.set("hunt")
     try:
@@ -196,8 +200,6 @@ def test_tailoring_options_sit_with_tailoring():
 def test_tailor_application_is_registered_nowhere():
     """It rebuilt a draft without the session's checks; a tailoring session, or
     edit_application on the draft, does that work now."""
-    import mcp_server.server as srv
-
     assert "tailor_application" not in srv.list_registered_tool_names("full")
     assert all("tailor_application" not in allow for allow in PROFILE_ALLOWLISTS.values() if allow)
 
@@ -208,8 +210,6 @@ def test_set_sizes_stay_near_the_line():
 
 
 def test_every_allowlisted_tool_is_registered():
-    import mcp_server.server as srv
-
     registered = set(srv.list_registered_tool_names("full"))
     for name, allow in PROFILE_ALLOWLISTS.items():
         assert not (set(allow or ()) - registered), name

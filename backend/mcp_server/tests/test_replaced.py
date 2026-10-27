@@ -7,7 +7,7 @@ from mcp.shared.memory import create_connected_server_and_client_session
 
 import mcp_server.server as srv
 from mcp_server import replaced
-from mcp_server.profiles import PROFILE_ALLOWLISTS, apply_profile_filter
+from mcp_server.profiles import PROFILE_ALLOWLISTS
 
 _REMOVED = {
     "explore_top_skills", "explore_skill_heatmap", "explore_role_mix_over_time",
@@ -104,26 +104,10 @@ async def test_stdio_keeps_the_plain_error_for_a_name_never_served():
     assert result.content[0].text == "Unknown tool: no_such_tool"
 
 
-async def test_a_stdio_set_answers_a_removed_name_and_keeps_the_plain_error_for_the_rest():
-    def stdio_set(name):
-        stdio = srv._ServedMCP(f"stdio-{name}")
+async def test_a_stdio_set_answers_a_removed_name_and_keeps_the_plain_error_for_the_rest(monkeypatch):
+    monkeypatch.setattr(srv._client, "list_jobs", lambda **_: [])
 
-        @stdio.tool()
-        def list_jobs() -> str:
-            return "jobs"
-
-        @stdio.tool()
-        def explore_trends() -> str:
-            return "trends"
-
-        @stdio.tool()
-        def create_template_draft() -> str:
-            return "draft"
-
-        apply_profile_filter(stdio, name)
-        return stdio
-
-    async with create_connected_server_and_client_session(stdio_set("track")) as session:
+    async with create_connected_server_and_client_session(srv.build_set("track")) as session:
         removed = await session.call_tool("explore_top_skills", {"limit": 5})
         hidden = await session.call_tool("create_template_draft", {})
         served = await session.call_tool("list_jobs", {})
@@ -132,6 +116,6 @@ async def test_a_stdio_set_answers_a_removed_name_and_keeps_the_plain_error_for_
     assert hidden.isError and hidden.content[0].text == "Unknown tool: create_template_draft"
     assert not served.isError, served.content
 
-    async with create_connected_server_and_client_session(stdio_set("hunt")) as session:
+    async with create_connected_server_and_client_session(srv.build_set("hunt")) as session:
         elsewhere = await session.call_tool("explore_top_skills", {})
     assert elsewhere.content[0].text.endswith('explore_trends(view="top_skills"), in the track set.')

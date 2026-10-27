@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import os
 
-from mcp_server import orientation
-
 # You, set up and kept current: career history (the only KB writes), base resumes with
 # their anchors, edits and undo, the health check, rendering, and every fact Setup asks
 # for. Onboarding finishes here without tailoring or job tools.
@@ -229,18 +227,3 @@ def get_profile(name: str | None = None) -> str:
 def allowed_tools(profile: str | None = None) -> frozenset[str] | None:
     """Return the allowlist for ``profile``, or None when every tool is allowed."""
     return PROFILE_ALLOWLISTS[get_profile(profile)]
-
-
-def apply_profile_filter(mcp, profile: str | None = None) -> str:
-    """Remove registered tools that are outside the active profile, and give the server that
-    set's instructions (stdio serves one set). Returns profile name."""
-    active = get_profile(profile)
-    mcp._mcp_server.instructions = orientation.instructions_for(active)
-    allow = PROFILE_ALLOWLISTS[active]
-    if allow is None:
-        return active
-    manager = mcp._tool_manager
-    for name in list(manager._tools):
-        if name not in allow:
-            del manager._tools[name]
-    return active

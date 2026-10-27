@@ -110,30 +110,20 @@ def test_listing_without_a_profile_uses_the_env(monkeypatch):
     assert set(srv.list_registered_tool_names()) == HUNT_TOOLS
 
 
-def test_stdio_main_filters_before_serving(monkeypatch):
-    from mcp.server.fastmcp import FastMCP
-
-    stdio = FastMCP("stdio-profile-test")
-
-    @stdio.tool()
-    def list_jobs() -> str:
-        return "jobs"
-
-    @stdio.tool()
-    def create_template_draft() -> str:
-        return "template"
-
+def test_stdio_main_serves_the_env_set_and_leaves_the_registry_whole(monkeypatch):
     events = []
+    registered = srv.list_registered_tool_names("full")
     monkeypatch.setenv("MAESTRO_CS_MCP_PROFILE", "hunt")
-    monkeypatch.setattr(srv, "mcp", stdio)
     monkeypatch.setattr(srv.http_client, "repair_proxy_env", lambda: events.append("repair"))
 
-    def run():
-        events.append({tool.name for tool in stdio._tool_manager.list_tools()})
+    def run(served):
+        assert served is not srv.mcp
+        events.append((served.profile, [tool.name for tool in served._tool_manager.list_tools()]))
 
-    monkeypatch.setattr(stdio, "run", run)
+    monkeypatch.setattr(srv._ServedMCP, "run", run)
     srv.main()
-    assert events == ["repair", {"list_jobs"}]
+    assert events == ["repair", ("hunt", srv.list_registered_tool_names("hunt"))]
+    assert srv.list_registered_tool_names("full") == registered
 
 
 async def test_sync_now_is_an_annotated_hunt_and_apply_tool():

@@ -19,34 +19,49 @@ from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
 from app.services import http_client, markets
 from mcp_server import orientation, replaced, workflow
 from mcp_server.client import CLEAR_TAKES_A_LIST, EXPLORE_VIEWS, BackendClient, BackendError
-from mcp_server.profiles import allowed_tools, apply_profile_filter
+from mcp_server.profiles import PROFILE_ALLOWLISTS, allowed_tools, get_profile
 
 logger = logging.getLogger(__name__)
 
 
+def _lowlevel(server: FastMCP):
+    """The SDK's low-level server: the one private attribute we touch (1.x _mcp_server, 2.x _lowlevel_server)."""
+    return server._mcp_server
+
+
 class _ServedMCP(FastMCP):
-    """The one registry. FastMCP registers this class's call_tool as the stdio handler, and
-    every HTTP set calls it too (mcp_server.http), so a call to a removed tool, or with a
-    removed argument, gets mcp_server.replaced's sentence on either transport."""
+    """One served set. The registry (`mcp`, profile None) holds every tool; build_set makes a
+    set from it. A call to a removed tool, or with a removed argument, gets mcp_server.replaced's
+    sentence on stdio and HTTP alike."""
+
+    def __init__(self, *args: Any, profile: str | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.profile = profile  # None: the registry; hints follow MAESTRO_CS_MCP_PROFILE
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
         if self._tool_manager.get_tool(name) is None:
-            # A stdio set holds only its own tools, so the answer can say where the new one is.
+            # A set holds only its own tools, so the answer can say where the new one is.
             served = {tool.name for tool in self._tool_manager.list_tools()}
             refusal = replaced.replaced_message(name, served=served)
         else:
             refusal = replaced.refused_argument(name, arguments)
         if refusal:
             raise ToolError(refusal)
-        return await super().call_tool(name, arguments)
+        if self.profile is None:
+            return await super().call_tool(name, arguments)
+        token = CURRENT_PROFILE.set(self.profile)
+        try:
+            return await super().call_tool(name, arguments)
+        finally:
+            CURRENT_PROFILE.reset(token)
 
 
-# The full set's text; a stdio set gets its own from apply_profile_filter, an HTTP set from mcp_server.http.
+# The full set's text; a stdio set gets its own from build_set, an HTTP set from mcp_server.http.
 mcp = _ServedMCP("maestro-career-studio", instructions=orientation.instructions_for("full"))
 _client = BackendClient()
 
-# HTTP sets this per request; stdio leaves it unset and uses the env profile.
-# Workflow hints must only name tools the caller's profile can see.
+# Each served set sets this for its calls; the registry leaves it unset, so a direct call's
+# hints follow the env profile. Workflow hints must only name tools the caller's profile can see.
 CURRENT_PROFILE: ContextVar[str | None] = ContextVar("maestro_mcp_profile", default=None)
 
 # The op vocabulary belongs in the SCHEMA, not only in a tool's prose. `ops` is
@@ -2856,10 +2871,19 @@ def list_registered_tool_names(profile: str | None = None) -> list[str]:
     return [t.name for t in mcp._tool_manager.list_tools() if allow is None or t.name in allow]
 
 
+def build_set(profile: str, cls: type[_ServedMCP] = _ServedMCP) -> _ServedMCP:
+    """A server holding `profile`'s tools (the registry's own Tool objects) and instructions."""
+    active = get_profile(profile)
+    allow = PROFILE_ALLOWLISTS[active]
+    tools = [t for t in mcp._tool_manager.list_tools() if allow is None or t.name in allow]
+    served = cls(mcp.name, instructions=orientation.instructions_for(active), tools=tools, profile=active)
+    _lowlevel(served).version = os.environ.get("APP_VERSION", "dev")
+    return served
+
+
 def main() -> None:
     http_client.repair_proxy_env()
-    apply_profile_filter(mcp)  # stdio only: this process serves one profile
-    mcp.run()
+    build_set(get_profile()).run()  # stdio: this process serves one set
 
 
 if __name__ == "__main__":
