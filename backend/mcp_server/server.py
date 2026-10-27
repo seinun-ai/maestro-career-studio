@@ -1402,7 +1402,9 @@ def set_autofill_profile(
     eligibility, preferences and each country's work-permit answers only the keys passed
     change, and a null removes one; education and languages replace the stored list whole
     (get_autofill_profile returns them). Each custom answer replaces the saved one with the
-    same question (case and spacing ignored, same only_for) or is added; a saved answer is
+    same question (case and spacing ignored) and the same only_for and only_for_kind, or is
+    added: for an answer held for one company or city, send its only_for and only_for_kind
+    as get_autofill_profile shows them, or a second scoped answer is added. A saved answer is
     never removed here, so one the Companion learned meanwhile stays (removing one is the
     user's, in Profile). A work-permit answer is per
     country and a form question without one is asked on that form, never defaulted; setup

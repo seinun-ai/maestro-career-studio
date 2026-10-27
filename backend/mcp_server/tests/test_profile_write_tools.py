@@ -49,6 +49,9 @@ async def test_the_autofill_write_says_saved_answers_are_added_or_replaced_never
     for words in ("same question", "case and spacing ignored", "only_for", "is added",
                   "never removed", "Companion learned"):
         assert words in doc, words
+    # The key is the question with both halves of its scope (`only_for`, `only_for_kind`).
+    assert "the same only_for and only_for_kind" in doc
+    assert "as get_autofill_profile shows them" in doc
     assert "custom replace" not in doc
 
 
