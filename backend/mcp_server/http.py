@@ -83,7 +83,7 @@ def offload_tools(mcp: MCPServer) -> int:
     Already-async tools are unchanged, so repeated calls are idempotent.
     """
     n = 0
-    for tool in mcp._tool_manager.list_tools():
+    for tool in tools_server._registered_tools(mcp):
         if tool.is_async:
             continue
         tool.fn, tool.is_async = _offloaded(tool.fn), True
@@ -149,20 +149,24 @@ class McpEndpoint:
         self.security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
         self.managers: dict[str, StreamableHTTPSessionManager] = {}
 
+    def _fresh_manager(self, server: MCPServer) -> StreamableHTTPSessionManager:
+        """A session manager runs once, so each lifespan run asks the SDK for a new one per set:
+        streamable_http_app makes it and session_manager hands it out (the seam the SDK keeps for
+        mounting several servers in one app). The Starlette app it also returns is not mounted;
+        the app routes /mcp to this endpoint."""
+        server.streamable_http_app(
+            json_response=True,
+            stateless_http=False,
+            transport_security=self.security,
+            session_idle_timeout=SESSION_IDLE_SECONDS,
+            max_request_body_size=MAX_REQUEST_BYTES,
+        )
+        return server.session_manager
+
     @contextlib.asynccontextmanager
     async def run(self) -> AsyncIterator[None]:
         _LIMITER.reset()
-        managers = {
-            p: StreamableHTTPSessionManager(
-                app=tools_server._lowlevel(server),
-                json_response=True,
-                stateless=False,
-                security_settings=self.security,
-                session_idle_timeout=SESSION_IDLE_SECONDS,
-                max_request_body_size=MAX_REQUEST_BYTES,
-            )
-            for p, server in self.servers.items()
-        }
+        managers = {p: self._fresh_manager(server) for p, server in self.servers.items()}
         async with contextlib.AsyncExitStack() as stack:
             for manager in managers.values():
                 await stack.enter_async_context(manager.run())

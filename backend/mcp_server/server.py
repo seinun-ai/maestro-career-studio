@@ -10,7 +10,6 @@ from types import MappingProxyType
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from mcp.server.caching import CACHEABLE_METHODS, CacheHint
-from mcp.server.lowlevel import Server
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.server.mcpserver.tools import Tool
@@ -50,10 +49,14 @@ def _is_sdk_tracing(middleware: object) -> bool:
     return type(middleware).__name__ == "OpenTelemetryMiddleware"
 
 
-def _lowlevel(server: MCPServer) -> Server:
-    """The SDK's low-level server, which the HTTP session managers serve (1.x named the
-    attribute `_mcp_server`)."""
-    return server._lowlevel_server
+def _registered_tools(server: MCPServer) -> list[Tool]:
+    """`server`'s Tool objects in registration order."""
+    # MCPServer has no public name for them; production reads the private `_tool_manager` only here.
+    return server._tool_manager.list_tools()
+
+
+def _find_tool(server: MCPServer, name: str) -> Tool | None:
+    return next((tool for tool in _registered_tools(server) if tool.name == name), None)
 
 
 class _ServedMCP(MCPServer):
@@ -76,9 +79,9 @@ class _ServedMCP(MCPServer):
     async def call_tool(
         self, name: str, arguments: dict[str, Any], context: Context | None = None
     ) -> Any:
-        if self._tool_manager.get_tool(name) is None:
+        if _find_tool(self, name) is None:
             # A set holds only its own tools, so the answer can say where the new one is.
-            served = {tool.name for tool in self._tool_manager.list_tools()}
+            served = {tool.name for tool in _registered_tools(self)}
             refusal = replaced.replaced_message(name, served=served)
         else:
             refusal = replaced.refused_argument(name, arguments)
@@ -2915,7 +2918,7 @@ def _set_tools(profile: str | None, registry: MCPServer) -> list[Tool]:
     """The registry's Tool objects a client of `profile` (None: the env profile) can see, in
     registration order."""
     allow = allowed_tools(profile)
-    return [t for t in registry._tool_manager.list_tools() if allow is None or t.name in allow]
+    return [t for t in _registered_tools(registry) if allow is None or t.name in allow]
 
 
 def list_registered_tool_names(profile: str | None = None) -> list[str]:

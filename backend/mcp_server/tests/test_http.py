@@ -70,7 +70,7 @@ def test_every_server_traces_nothing_and_lets_no_client_cache_an_answer():
     sets = mcp_http.McpEndpoint().servers.values()
     for served in (srv.mcp, *sets, *(srv.build_set(p) for p in PROFILE_ALLOWLISTS)):
         assert _kinds(served) == kept
-        assert srv._lowlevel(served).cache_hints == no_caching
+        assert served._lowlevel_server.cache_hints == no_caching
 
 
 def test_the_app_starts_and_drops_tracing_by_name_once_the_sdk_moves_its_class():
@@ -292,6 +292,31 @@ def test_offloading_is_idempotent_and_preserves_async_tools():
     assert mcp_http.offload_tools(scratch) == 0
     assert scratch._tool_manager.get_tool("sync_tool").fn is wrapped
     assert scratch._tool_manager.get_tool("async_tool").fn is async_fn
+
+
+def _lifespan_runs(endpoint, count=2):
+    """Each lifespan run's managers, by set."""
+    runs = []
+    for _ in range(count):
+        with TestClient(asgi_app(endpoint)):
+            runs.append(dict(endpoint.managers))
+    return runs
+
+
+def _settings_by_set(managers):
+    return {p: (m.app, m.json_response, m.stateless,
+                m.security_settings.enable_dns_rebinding_protection,
+                m.session_idle_timeout, m.max_request_body_size) for p, m in managers.items()}
+
+
+def test_each_lifespan_run_gives_every_set_a_fresh_manager_with_the_same_settings():
+    endpoint = mcp_http.McpEndpoint()
+    first, second = _lifespan_runs(endpoint)
+    # JSON answers, the stateful 2025 path, the app's own Host check, a 6-hour idle, 16 MiB bodies.
+    expected = {p: (served._lowlevel_server, True, False, False, 6 * 60 * 60, 16 * 1024 * 1024)
+                for p, served in endpoint.servers.items()}
+    assert _settings_by_set(first) == expected == _settings_by_set(second)
+    assert not set(map(id, first.values())) & set(map(id, second.values()))
 
 
 def test_sessions_cannot_cross_profiles(client):

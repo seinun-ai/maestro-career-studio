@@ -76,8 +76,10 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
 
 - **The server on SDK 2.x** (`mcp>=2.3,<3`; `mcp_server/server.py`, `http.py`). `server.mcp`, the one registry, is a `_ServedMCP`
   (the SDK's `MCPServer`); `build_set` makes each set a `_ServedMCP` of its own, and `http.McpEndpoint(registry)` takes any registry
-  (tests pass a scratch one) and gives each set a fresh `StreamableHTTPSessionManager` per lifespan run (JSON responses, stateful
-  2025 path, 6-hour idle, 16 MiB bodies, SDK DNS-rebinding protection off: §6 inv-mcp-inside-the-app).
+  (tests pass a scratch one) and gives each set a fresh session manager per lifespan run (JSON responses, stateful
+  2025 path, 6-hour idle, 16 MiB bodies, SDK DNS-rebinding protection off: §6 inv-mcp-inside-the-app) through the SDK's public
+  seam: `streamable_http_app`, whose Starlette app is not mounted, then `session_manager`. The SDK has no public name for a
+  server's `Tool` objects: `server._registered_tools` is production's one read of the private `_tool_manager`.
   **Every server, the registry included:** the SDK's OpenTelemetry middleware is dropped (the private `mcp.server._otel` import is
   fail-safe and the class is matched by name if it moves, so the app still starts), so a configured Langfuse sees only model calls;
   cache hints say TTL 0, private, for every cacheable method; `subscriptions=False` serves no `subscriptions/listen`, so discovery's
