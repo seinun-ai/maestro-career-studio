@@ -218,6 +218,8 @@ asks when to run it.
 Each tool's own description (which your assistant sees) has the full details.
 An old prompt that calls a tool a release removed gets back the tool that does
 that job now, for example `explore_top_skills was replaced by explore_trends(view="top_skills").`
+On a tool set that doesn't hold the new tool, the answer also names the set that does
+(`…, in the track set.`).
 
 **Jobs and search**
 - `get_job_search_brief`: your profile, constraints, resume summaries, sync status (`enabled`, `role`) and an `applying` block (`answer_level`: your Screening answers setting, `facts`, `history` or `queued`); call first in a job-search chat.
@@ -310,7 +312,7 @@ Diversity answers and their consent, full automation, the job-site login and eve
 - `create_template_draft`, `update_template_draft`, `validate_template`: create, edit and test-compile a template.
 
 **Insights**
-- `explore_trends`: one chart's rows per call, by `view`: `top_skills` and `heatmap` (which skills your saved jobs ask for), `role_mix` (roles per week), `fit_distribution` (how each base resume's match scores spread), `ats_over_time` (match score per week) and `tailoring_lift` (how much tailoring helps). `top_skills`, `ats_over_time` and `tailoring_lift` take the role, level and employment-type filters; `top_skills` and `heatmap` take a `limit`.
+- `explore_trends`: one chart's rows per call, by `view`: `top_skills` and `heatmap` (which skills your saved jobs ask for), `role_mix` (roles per week), `fit_distribution` (how each base resume's match scores spread), `ats_over_time` (match score per week) and `tailoring_lift` (how much tailoring helps). Every view but `fit_distribution` takes the role, level and employment-type filters; `top_skills` and `heatmap` take a `limit`.
 - `explore_gap_frequency`: which skills keep showing up as gaps across your saved jobs.
 
 ## Example prompts

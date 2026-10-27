@@ -9,7 +9,11 @@ the drafts the user rejected. Pure: no httpx, no app imports.
 """
 from __future__ import annotations
 
+import re
+from collections.abc import Collection
 from typing import Any
+
+from mcp_server.profiles import PROFILE_ALLOWLISTS
 
 # Each removed tool and what replaced it, as a call where one call does the job. A test keeps
 # it honest: no key is registered in any set, and every tool a replacement names is.
@@ -30,10 +34,29 @@ REPLACED_TOOLS: dict[str, str] = {
 }
 
 
-def replaced_message(name: str) -> str | None:
-    """The answer to a call to `name` when a change removed it, or None."""
+def _named_tools(replacement: str) -> frozenset[str]:
+    """The tools a replacement names: identifiers with an underscore, neither an argument
+    name (before "=") nor a quoted argument value."""
+    unquoted = re.sub(r'"[^"]*"', "", replacement)
+    return frozenset(re.findall(r"\b[a-z]+(?:_[a-z]+)+\b(?!=)", unquoted))
+
+
+def _listed(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def replaced_message(name: str, served: Collection[str] | None = None) -> str | None:
+    """The answer to a call to `name` when a change removed it, or None. `served` is what the
+    set the call came to serves (None: every tool); when it lacks a tool the replacement names,
+    the answer adds the scoped sets that serve all of them, in journey order."""
     replacement = REPLACED_TOOLS.get(name)
-    return f"{name} was replaced by {replacement}." if replacement else None
+    if not replacement:
+        return None
+    needed = _named_tools(replacement)
+    if served is None or needed <= set(served):
+        return f"{name} was replaced by {replacement}."
+    sets = [s for s, allow in PROFILE_ALLOWLISTS.items() if allow and needed <= allow] or ["full"]
+    return f"{name} was replaced by {replacement}, in the {_listed(sets)} set{'s' * (len(sets) > 1)}."
 
 
 def refused_argument(name: str, arguments: dict[str, Any]) -> str | None:

@@ -290,6 +290,9 @@ def test_attach_evidence_takes_exactly_one_input(monkeypatch, tmp_path):
     with pytest.raises(ToolError, match="exactly one of image_base64 or file_path.*both"):
         srv.attach_evidence("p1", 1, "x", image_base64=base64.b64encode(_PNG).decode(),
                             file_path=str(png))
+    # An empty string is still given: the rule is about which arguments were sent.
+    with pytest.raises(ToolError, match="exactly one of image_base64 or file_path.*both"):
+        srv.attach_evidence("p1", 1, "x", image_base64="", file_path=str(png))
 
 
 async def test_attach_evidence_schema_takes_either_input_and_the_file_tool_is_gone():

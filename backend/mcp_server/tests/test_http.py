@@ -121,7 +121,31 @@ def test_a_removed_name_answers_with_its_replacement_on_every_set(client, profil
             client, path, sid, "tools/call", {"name": name, "arguments": {}}, id_
         ).json()["result"]
         assert res["isError"] is True, (profile, name)
-        assert res["content"][0]["text"] == replaced.replaced_message(name), (profile, name)
+        expected = replaced.replaced_message(name, served=allowed_tools(profile))
+        assert res["content"][0]["text"] == expected, (profile, name)
+
+
+@pytest.mark.parametrize(
+    "path, suffix",
+    [("/mcp/track", ""), ("/mcp", ""), ("/mcp/hunt", ", in the track set")],
+)
+def test_a_removed_name_says_which_set_holds_its_replacement_only_when_this_one_lacks_it(
+    client, path, suffix
+):
+    sid = _session(client, path)
+    res = _rpc(
+        client, path, sid, "tools/call", {"name": "explore_top_skills", "arguments": {}}
+    ).json()["result"]
+    assert res["content"][0]["text"] == (
+        f'explore_top_skills was replaced by explore_trends(view="top_skills"){suffix}.'
+    )
+
+
+def test_the_endpoint_refuses_a_registry_without_the_replaced_answers():
+    """A plain FastMCP would serve the full set without the removed-name answers and the
+    kb_approve_points guard, with nothing failing."""
+    with pytest.raises(TypeError, match="_ServedMCP"):
+        mcp_http.McpEndpoint(FastMCP("plain"))
 
 
 @pytest.mark.parametrize("path", ["/mcp", "/mcp/track"])
@@ -173,7 +197,7 @@ def test_sdk_dns_rebinding_protection_is_off():
 
 
 def test_registered_tools_run_off_the_event_loop_but_module_functions_stay_sync():
-    scratch = FastMCP("offload-test")
+    scratch = srv._ServedMCP("offload-test")
     seen = {}
 
     @scratch.tool()
@@ -246,7 +270,7 @@ def test_offloading_is_idempotent_and_preserves_async_tools():
 
 
 def test_worker_receives_request_profile_and_client_info(monkeypatch):
-    scratch = FastMCP("context-test")
+    scratch = srv._ServedMCP("context-test")
     monkeypatch.setenv("MAESTRO_CS_MCP_PROFILE", "hunt")
 
     @scratch.tool()
@@ -292,7 +316,7 @@ def test_lifespan_can_restart_and_forgets_old_sessions():
 
 
 def test_offloaded_tool_errors_keep_todays_text():
-    scratch = FastMCP("error-test")
+    scratch = srv._ServedMCP("error-test")
 
     @scratch.tool()
     def broken() -> str:

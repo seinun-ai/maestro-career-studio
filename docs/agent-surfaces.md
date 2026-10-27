@@ -38,7 +38,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   **Removed names** (`replaced.py`): a call to a tool a change removed (`REPLACED_TOOLS`: the six old analytics tools,
   `get_career_export`, `attach_evidence_file`, `quick_tailor`, `tailor_application`) answers "<name> was replaced by <replacement>.",
   e.g. `explore_top_skills was replaced by explore_trends(view="top_skills").`, not "Unknown tool", on stdio and every HTTP set
-  (`server._ServedMCP.call_tool` for stdio and `full`, `http`'s `_call_tool` for a scoped set). A removed argument is refused the same
+  (`server._ServedMCP.call_tool` for stdio and `full`, `http`'s `_call_tool` for a scoped set); a set that lacks the replacement adds
+  the sets that hold it (`…, in the track set.`). `McpEndpoint` takes only a `_ServedMCP`, so `full` cannot lose these answers. A removed argument is refused the same
   way and never acted on: FastMCP drops an undeclared argument, so `kb_approve_points` with a `state` other than "approved" answers
   "kb_approve_points only approves; kb_retire_points retires points." rather than approving drafts the user rejected. Pins:
   `test_replaced.py`, `test_http.py`.
@@ -96,8 +97,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   and reads a bare "$" as no currency, so the job's country's applies (`salary_currency_assumed`; docs/entities/job.md).
   `explore_trends(view)` reads each view from the REST route its old tool called (`client.EXPLORE_VIEWS`): `top_skills`, `heatmap`,
   `role_mix`, `fit_distribution`, `ats_over_time`, `tailoring_lift`. The job filters (`role_category`, `level`, `employment_type`) go
-  only to `top_skills`, `ats_over_time` and `tailoring_lift`, `limit` (1–100) only to `top_skills` and `heatmap`; a filter or limit
-  the view does not take is refused ("role_mix takes no filters") before any request. `heatmap` rows carry `count` and `of` beside `pct_jobs`, and `role_mix`
+  to every view but `fit_distribution` (its route takes none), `limit` (1–100) only to `top_skills` and `heatmap`; a filter or limit
+  the view does not take is refused ("fit_distribution takes no filters") before any request. `heatmap` rows carry `count` and `of` beside `pct_jobs`, and `role_mix`
   returns every week from the first to the last for every role, 0 where it had none; `explore_gap_frequency` stays its own tool.
   `get_career_context` returns the structured context (`GET /api/kb/context`) or, with `format="markdown"`, the exact career.md text
   (`GET /api/exports/career`). `attach_evidence` takes exactly one of `image_base64` or `file_path` (PNG/JPEG by magic bytes, 5 MB,

@@ -110,7 +110,9 @@ def build_profile_server(mcp: FastMCP, profile: str, allowed: frozenset[str] | N
         if allowed is not None and name not in allowed:
             # A tool a change removed names its replacement; the full set's answer is
             # mcp_server.server._ServedMCP's, which mcp.call_tool reaches.
-            raise ToolError(replaced.replaced_message(name) or f"Unknown tool: {name}")
+            raise ToolError(
+                replaced.replaced_message(name, served=allowed) or f"Unknown tool: {name}"
+            )
         token = tools_server.CURRENT_PROFILE.set(profile)
         try:
             # FastMCP.get_context() reads the SDK's shared request ContextVar,
@@ -158,8 +160,14 @@ class McpEndpoint:
     not a bound method, to preserve the true path without a 307 redirect.
     """
 
-    def __init__(self, mcp: FastMCP | None = None) -> None:
+    def __init__(self, mcp: tools_server._ServedMCP | None = None) -> None:
         mcp = mcp or tools_server.mcp
+        if not isinstance(mcp, tools_server._ServedMCP):
+            # The full set's removed-tool answers and argument refusals live in its call_tool.
+            raise TypeError(
+                "McpEndpoint serves a _ServedMCP; a plain FastMCP would drop the full set's "
+                "removed-tool answers and argument refusals"
+            )
         offload_tools(mcp)
         self.servers = {
             p: build_profile_server(mcp, p, allow) for p, allow in PROFILE_ALLOWLISTS.items()

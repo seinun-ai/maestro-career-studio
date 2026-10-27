@@ -31,7 +31,9 @@ class _ServedMCP(FastMCP):
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
         if self._tool_manager.get_tool(name) is None:
-            refusal = replaced.replaced_message(name)
+            # A stdio set holds only its own tools, so the answer can say where the new one is.
+            served = {tool.name for tool in self._tool_manager.list_tools()}
+            refusal = replaced.replaced_message(name, served=served)
         else:
             refusal = replaced.refused_argument(name, arguments)
         if refusal:
@@ -1967,9 +1969,8 @@ def explore_trends(
 ) -> Any:
     """The saved jobs and their match scores as one chart's rows, one view per call: top_skills,
     heatmap, role_mix, fit_distribution, ats_over_time or tailoring_lift (what each returns is on
-    `view`). role_category, level and employment_type filter the jobs for top_skills,
-    ats_over_time and tailoring_lift; limit (1-100) caps the skills top_skills and heatmap
-    return. A filter or limit the view does not take is refused, and nothing is read.
+    `view`). role_category, level and employment_type filter the jobs for every view but
+    fit_distribution; limit (1-100) caps the skills top_skills and heatmap return. A filter or limit the view does not take is refused, and nothing is read.
     Skills that recur as gaps are explore_gap_frequency."""
     takes = EXPLORE_VIEWS[view]
     if not takes.filters and any(v is not None for v in (role_category, level, employment_type)):
@@ -2565,13 +2566,13 @@ def attach_evidence(
     server-side, so they never enter the model context). Both or neither is refused, and
     nothing is uploaded. kind must be step | final_review | submission_receipt."""
     given = [name for name, value in (("image_base64", image_base64), ("file_path", file_path))
-             if value]
+             if value is not None]
     if len(given) != 1:
         raise ToolError(
             "attach_evidence takes exactly one of image_base64 or file_path, and got "
             + ("both." if given else "neither.")
         )
-    if file_path:
+    if file_path is not None:
         return _client.attach_evidence_file(proposal_id, step, label, file_path, kind=kind)
     return _client.attach_evidence(proposal_id, step, label, image_base64, kind=kind)
 

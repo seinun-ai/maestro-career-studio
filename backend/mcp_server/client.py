@@ -79,8 +79,8 @@ class ExploreView(NamedTuple):
 
 EXPLORE_VIEWS: dict[str, ExploreView] = {
     "top_skills": ExploreView("/api/explore/top-skills", filters=True, limit=True),
-    "heatmap": ExploreView("/api/explore/heatmap", filters=False, limit=True),
-    "role_mix": ExploreView("/api/explore/role-mix-over-time", filters=False, limit=False),
+    "heatmap": ExploreView("/api/explore/heatmap", filters=True, limit=True),
+    "role_mix": ExploreView("/api/explore/role-mix-over-time", filters=True, limit=False),
     "fit_distribution": ExploreView("/api/explore/fit-distribution", filters=False, limit=False),
     "ats_over_time": ExploreView("/api/explore/ats-over-time", filters=True, limit=False),
     "tailoring_lift": ExploreView("/api/explore/tailoring-lift", filters=True, limit=False),

@@ -67,7 +67,8 @@ work-permit answers for each country you apply in.
     `explore_fit_distribution`, `explore_ats_over_time` and `explore_tailoring_lift` are now
     `explore_trends(view=...)`, with `view` one of `top_skills`, `heatmap`, `role_mix`,
     `fit_distribution`, `ats_over_time` or `tailoring_lift`. A filter or `limit` a view doesn't take
-    is refused rather than ignored. `explore_gap_frequency` stays as it was.
+    is refused rather than ignored. `heatmap` and `role_mix` now take the role, level and
+    employment-type filters too. `explore_gap_frequency` stays as it was.
   - `get_career_export` is now `get_career_context(format="markdown")`, the same `career.md` text.
   - `attach_evidence_file` is now `attach_evidence(..., file_path=...)`, with the same file rules.
     `attach_evidence` takes exactly one of `image_base64` or `file_path`.
@@ -79,7 +80,8 @@ work-permit answers for each country you apply in.
   points it meant to retire.
 - **A removed tool says what replaced it.** A call to any tool this release removes, `quick_tailor`
   and `tailor_application` included, answers with what replaced it instead of "Unknown tool", on every
-  tool set: for example, `explore_top_skills was replaced by explore_trends(view="top_skills").`
+  tool set: for example, `explore_top_skills was replaced by explore_trends(view="top_skills").` On a
+  tool set without the new tool, it also names the set that has it (`…, in the track set.`).
 - **Two steps for agent apps.** If a scheduled job runs a Tailor run prompt you copied before this
   release, copy it again from **Automations**: the old copy calls `quick_tailor`, which is gone, and
   `tailor_session` without `ops`, which the new default refuses. If you relied on Maestro's AI writing
