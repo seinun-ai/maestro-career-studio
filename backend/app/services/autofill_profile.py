@@ -300,8 +300,9 @@ def merged_profile(stored: dict[str, Any], changes: dict[str, Any]) -> dict[str,
     """The whole profile an agent's save stores: `stored` (as a read serves it) with the sections
     `changes` names merged in. Answer sections merge key by key, saved answers (`custom`) upsert by
     question (`_upserted_custom`), education and languages replace the stored list, and work permits
-    go per country (a None country is passed on as None, which `set_profile` takes as removing its
-    answers; a country left out keeps its stored answers there). The read view's one-set projection
+    go per country, each market key read as `set_profile` stores it (a None country is passed on as
+    None, which `set_profile` takes as removing its answers; a country left out keeps its stored
+    answers there). The read view's one-set projection
     is never sent back, so no answer is folded into another country's."""
     profile = {k: v for k, v in stored.items() if k not in (WORK_AUTH, WORK_AUTH_MARKET)}
     stored_permits = stored.get(BY_COUNTRY) if isinstance(stored.get(BY_COUNTRY), dict) else {}
@@ -313,9 +314,9 @@ def merged_profile(stored: dict[str, Any], changes: dict[str, Any]) -> dict[str,
         elif section in LIST_SECTIONS:
             profile[section] = list(given)
         elif section == BY_COUNTRY:
-            profile[BY_COUNTRY] = {
+            profile[BY_COUNTRY] = {  # keyed as stored ("uk " is "UK"), so a market's answers are found
                 market: None if answers is None else _merged_answers(stored_permits.get(market), answers)
-                for market, answers in given.items()
+                for market, answers in _sent_entries(given).items()
             }
     return profile
 

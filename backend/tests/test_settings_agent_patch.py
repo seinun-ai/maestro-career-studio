@@ -73,6 +73,16 @@ def test_work_permits_merge_by_market_and_by_answer(client, settings_dir):
     }
 
 
+@pytest.mark.parametrize("market", ["us", " Us "])
+def test_a_market_key_in_another_case_merges_into_that_markets_stored_answers(client, settings_dir, market):
+    # The store keys a market as "US" ("uk " is "UK"); the merge reads the stored answers by that key too.
+    client.put("/api/settings/autofill", json={"value": PROFILE})
+    _patch(client, "autofill", {"work_auth_by_country": {market: {"sponsorship_future": False}}})
+    assert _stored_profile(settings_dir)["work_auth_by_country"] == {
+        "US": {"status": "citizen", "authorized_now": True, "sponsorship_future": False},
+    }
+
+
 def test_a_null_market_loses_its_answers_and_a_market_left_out_keeps_them(client, settings_dir):
     client.put("/api/settings/autofill", json={"value": {
         **PROFILE, "work_auth_by_country": {**PROFILE["work_auth_by_country"], "CA": {"authorized_now": False}},
