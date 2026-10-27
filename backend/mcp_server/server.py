@@ -506,10 +506,11 @@ def _best_effort_hint(compose: Callable[[], dict[str, Any] | None]) -> dict[str,
 def _client_label(ctx: Context | None) -> str | None:
     """Name the MCP client for the KB timeline and a proposal's filer.
 
-    clientInfo is what the peer declared at initialize, so it is a label, not an
-    authenticated identity — good enough for "which session added this", not for
-    anything security-bearing. Falls back to an env override, then to nothing
-    (the backend still records origin='mcp').
+    The name is what the peer declares: at initialize (2025 era), or in each
+    request's `_meta` (2026-07-28, which the SDK presents as the same
+    client_params). So it is a label, not an authenticated identity — good enough
+    for "which client added this", not for anything security-bearing. Falls back
+    to an env override, then to nothing (the backend still records origin='mcp').
     """
     session = getattr(ctx, "session", None)
     params = getattr(session, "client_params", None)

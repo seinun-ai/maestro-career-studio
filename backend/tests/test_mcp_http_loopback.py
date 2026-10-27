@@ -25,6 +25,7 @@ from mcp_server.profiles import HUNT_TOOLS
 
 BACKEND = Path(__file__).resolve().parents[1]
 CLIENT_INFO = Implementation(name="loopback-test", version="1")
+MODERN = "2026-07-28"
 
 
 def _backend_env(root: Path, url: str) -> dict[str, str]:
@@ -109,10 +110,14 @@ async def _connected(url: str, mode: str, sessions: list[str | None]) -> AsyncIt
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("mode", ["legacy", "2026-07-28"])
+@pytest.mark.parametrize("mode", ["legacy", MODERN, "auto"])
 async def test_single_worker_mcp_loopback_tools_and_client_label(loopback_backend, mode):
+    """Legacy, 2026-07-28, and auto, which probes server/discover and, with this server
+    answering it, speaks 2026-07-28."""
+    modern = mode != "legacy"
     sessions: list[str | None] = []
     async with _connected(f"{loopback_backend}/mcp", mode, sessions) as client:
+        assert (client.session.protocol_version == MODERN) is modern
         with anyio.fail_after(10):
             tools = await client.list_tools()
         names = [tool.name for tool in tools.tools]
@@ -153,5 +158,7 @@ async def test_single_worker_mcp_loopback_tools_and_client_label(loopback_backen
         assert len(names) == len(HUNT_TOOLS)
         assert set(names) == HUNT_TOOLS
 
-    # Each era took its own path: a legacy client holds a session, a 2026-07-28 one never gets one.
-    assert any(sessions) is (mode == "legacy"), sessions
+    # Each era took its own path: a legacy client holds a session, a 2026-07-28 one never gets
+    # one. The hook saw every response, so an empty list can't pass for the latter.
+    assert sessions, "the response hook saw no response"
+    assert any(sessions) is not modern, sessions

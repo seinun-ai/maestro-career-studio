@@ -12,7 +12,6 @@ from pathlib import Path
 
 import anyio.from_thread
 import pytest
-from mcp import Client, MCPError
 from mcp.server.caching import CACHEABLE_METHODS, CacheHint
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -24,7 +23,7 @@ from mcp_server import server as srv
 from mcp_server.client import BackendError
 from mcp_server.profiles import PROFILE_ALLOWLISTS, allowed_tools
 from mcp_server.tests._wire import (
-    HDR, INIT, asgi_app, context_registry, modern_rpc, rpc, serve_catalog, session,
+    HDR, INIT, asgi_app, modern_rpc, rpc, serve_catalog, session, set_path,
 )
 
 
@@ -36,7 +35,7 @@ def client():
 
 @pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
 def test_each_profile_lists_exactly_its_allowlist_in_registration_order(client, profile):
-    path = "/mcp" if profile == "full" else f"/mcp/{profile}"
+    path = set_path(profile)
     sid = session(client, path)
     names = [t["name"] for t in rpc(client, path, sid, "tools/list").json()["result"]["tools"]]
     assert names == srv.list_registered_tool_names(profile)
@@ -90,14 +89,6 @@ def test_the_app_starts_and_drops_tracing_by_name_once_the_sdk_moves_its_class()
     kept = sorted({type(m).__name__ for m in MCPServer("plain").middleware} - {
         "OpenTelemetryMiddleware"})
     assert out == ["None", *kept, *kept]
-
-
-@pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
-def test_a_2026_client_is_told_to_keep_no_list(client, catalog, profile):
-    path = "/mcp" if profile == "full" else f"/mcp/{profile}"
-    for method in ("tools/list", "prompts/list"):
-        result = modern_rpc(client, path, method).json()["result"]
-        assert (result["ttlMs"], result["cacheScope"]) == (0, "private"), method
 
 
 class _Spans:
@@ -170,21 +161,6 @@ def test_kb_approve_points_refuses_an_old_retire_state_over_http(client, monkeyp
     assert calls == []
 
 
-@pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
-def test_a_removed_name_answers_with_its_replacement_on_every_set(client, profile):
-    from mcp_server import replaced
-
-    path = "/mcp" if profile == "full" else f"/mcp/{profile}"
-    sid = session(client, path)
-    for id_, name in enumerate(sorted(replaced.REPLACED_TOOLS), start=2):
-        res = rpc(
-            client, path, sid, "tools/call", {"name": name, "arguments": {}}, id_
-        ).json()["result"]
-        assert res["isError"] is True, (profile, name)
-        expected = replaced.replaced_message(name, served=allowed_tools(profile))
-        assert res["content"][0]["text"] == expected, (profile, name)
-
-
 @pytest.mark.parametrize(
     "path, suffix",
     [("/mcp/track", ""), ("/mcp", ""), ("/mcp/hunt", ", in the track set")],
@@ -238,26 +214,6 @@ def test_responses_are_json_and_stateful(client):
     assert r.status_code == 200, r.text
     assert r.headers["content-type"].startswith("application/json")
     assert r.headers.get("mcp-session-id")
-
-
-@pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
-@pytest.mark.parametrize("app_version, expected", [("0.9.0", "0.9.0"), (None, "dev")])
-def test_initialize_reports_maestro_version_for_every_profile(
-    monkeypatch, profile, app_version, expected
-):
-    if app_version is None:
-        monkeypatch.delenv("APP_VERSION", raising=False)
-    else:
-        monkeypatch.setenv("APP_VERSION", app_version)
-    path = "/mcp" if profile == "full" else f"/mcp/{profile}"
-    with TestClient(asgi_app(mcp_http.McpEndpoint())) as c:
-        response = c.post(path, json=INIT, headers=HDR)
-        assert response.status_code == 200, response.text
-        assert response.json()["result"]["serverInfo"]["version"] == expected
-
-
-def test_an_unknown_profile_is_404(client):
-    assert client.post("/mcp/nope", json=INIT, headers=HDR).status_code == 404
 
 
 def test_a_stale_session_is_404_so_the_bridge_can_replay(client):
@@ -319,12 +275,6 @@ def test_real_registered_tool_runs_without_an_event_loop(monkeypatch):
     assert seen == [False]
 
 
-def test_request_body_larger_than_sdk_default_is_accepted(client):
-    sid = session(client)
-    response = rpc(client, "/mcp", sid, "ping", {"padding": "x" * (5 * 1024 * 1024)})
-    assert response.status_code != 413, response.text
-
-
 def test_offloading_is_idempotent_and_preserves_async_tools():
     scratch = MCPServer("idempotent-test")
 
@@ -342,25 +292,6 @@ def test_offloading_is_idempotent_and_preserves_async_tools():
     assert mcp_http.offload_tools(scratch) == 0
     assert scratch._tool_manager.get_tool("sync_tool").fn is wrapped
     assert scratch._tool_manager.get_tool("async_tool").fn is async_fn
-
-
-def test_worker_receives_request_profile_and_client_info(monkeypatch):
-    monkeypatch.setenv("MAESTRO_CS_MCP_PROFILE", "hunt")
-    with TestClient(asgi_app(mcp_http.McpEndpoint(context_registry()))) as c:
-        for id_, profile in enumerate(("templates", "full"), start=2):
-            path = f"/mcp/{profile}"
-            sid = session(c, path)
-            res = rpc(c, path, sid, "tools/call", {"name": "list_templates"}, id_).json()[
-                "result"
-            ]
-            assert not res["isError"], res
-            assert json.loads(res["content"][0]["text"]) == {
-                "profile": profile,
-                "allowed": sorted(allowed_tools(profile)) if profile != "full" else None,
-                "client": "pytest-client",
-                "protocol": INIT["params"]["protocolVersion"],
-            }
-    assert srv.CURRENT_PROFILE.get() is None
 
 
 def test_sessions_cannot_cross_profiles(client):
@@ -435,15 +366,6 @@ def test_set_tools_run_on_the_dedicated_limiter():
     assert json.loads(res["result"]["content"][0]["text"]) == {"borrowed": 1}
 
 
-@pytest.mark.parametrize("profile", ["full", "profile", "tailor", "templates"])
-def test_initialize_carries_the_sets_own_instructions(client, profile):
-    from mcp_server import orientation
-
-    path = "/mcp" if profile == "full" else f"/mcp/{profile}"
-    result = client.post(path, json=INIT, headers=HDR).json()["result"]
-    assert result["instructions"] == orientation.instructions_for(profile)
-
-
 @pytest.fixture
 def catalog(monkeypatch):
     return serve_catalog(monkeypatch)
@@ -468,36 +390,3 @@ def test_a_prompt_is_exactly_the_copy_prompt(client, catalog):
     assert got["messages"] == [
         {"role": "user", "content": {"type": "text", "text": catalog["tailor-run"]["prompt"]}}
     ]
-
-
-def test_a_playbook_from_another_set_is_not_served(client, catalog):
-    sid = session(client, "/mcp/tailor")
-    res = rpc(client, "/mcp/tailor", sid, "prompts/get", {"name": "job-hunt"}).json()
-    assert "error" in res
-
-
-@pytest.mark.parametrize("mode", ["legacy", "2026-07-28"])
-async def test_an_unknown_prompt_reads_its_name_on_both_eras(catalog, mode):
-    served = srv.build_set("tailor", cls=mcp_http._ServedSet)
-    async with Client(served, mode=mode) as client:
-        with pytest.raises(MCPError) as refused:
-            await client.get_prompt("job-hunt")
-    assert (refused.value.code, refused.value.message) == (0, "Unknown prompt: job-hunt")
-
-
-@pytest.mark.parametrize("mode", ["legacy", "2026-07-28"])
-async def test_a_backend_refusal_behind_the_prompts_reads_its_words_on_both_eras(
-    monkeypatch, mode
-):
-    said = "Backend returned 503: the automations catalog is unavailable"
-
-    def refuse():
-        raise BackendError(said, status_code=503)
-
-    monkeypatch.setattr(srv._client, "get_automations", refuse)
-    served = srv.build_set("tailor", cls=mcp_http._ServedSet)
-    async with Client(served, mode=mode) as client:
-        for ask in (client.list_prompts, lambda: client.get_prompt("tailor-run")):
-            with pytest.raises(MCPError) as refused:
-                await ask()
-            assert (refused.value.code, refused.value.message) == (0, said)

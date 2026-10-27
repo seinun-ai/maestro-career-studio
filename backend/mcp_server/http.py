@@ -6,11 +6,13 @@ objects for that set and the set's instructions. As a _ServedSet it also offers
 the automation playbooks that use it as prompts. Every lifespan run gives each
 set a fresh session manager.
 
-Registered sync tools run on worker threads with a dedicated capacity limiter:
-they call the backend's REST API over loopback, which would deadlock a
-single-worker uvicorn if called on its event loop. Module-level functions stay
-sync and directly callable. Tools only read ctx.session.client_params; worker
-threads must not await Context methods such as log or report_progress.
+Registered sync tools run on worker threads (2.x already keeps them off the
+event loop) drawn from a dedicated capacity limiter: they call the backend's
+REST API over loopback, and on anyio's default limiter, which FastAPI's sync
+endpoints also draw on, tools waiting on REST could starve the endpoints they
+wait on. Module-level functions stay sync and directly callable. Tools only read
+ctx.session.client_params; worker threads must not await Context methods such as
+log or report_progress.
 
 SDK DNS-rebinding protection is off on purpose: the app's Host -> Origin -> CORS
 middleware is the one definition (SYSTEM.md §6 inv-mcp-inside-the-app).

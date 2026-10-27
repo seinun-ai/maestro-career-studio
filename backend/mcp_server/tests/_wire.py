@@ -1,8 +1,7 @@
 """In-process Streamable HTTP for the MCP tests: the endpoint on a bare Starlette app, a
 2025-era session (initialize, then initialized), one JSON-RPC request on it, one request on
 the 2026-07-28 revision, and the normalisation that compares responses on what an agent reads.
-Also what tests on both eras serve: the automation cards, and a registry that reports what a
-tool call sees.
+Also each set's path, and the automation cards served with no backend.
 
 Shared here, not in a conftest: pytest loads a conftest before tests/conftest.py points app.db
 at the test database, and mcp_server.server imports the app."""
@@ -11,7 +10,6 @@ import contextlib
 import re
 from typing import Any
 
-from mcp.server.mcpserver import Context
 from mcp.shared.inbound import NAME_BEARING_METHODS
 from starlette.applications import Starlette
 from starlette.routing import Route
@@ -29,6 +27,11 @@ INIT = {
         "clientInfo": {"name": "pytest-client", "version": "1"},
     },
 }
+
+
+def set_path(profile: str) -> str:
+    """Where a set is served: the full set at /mcp, every other at /mcp/<set>."""
+    return "/mcp" if profile == "full" else f"/mcp/{profile}"
 
 
 def asgi_app(endpoint):
@@ -93,24 +96,6 @@ def serve_catalog(monkeypatch) -> dict[str, dict[str, Any]]:
     body = automations.catalog().model_dump(mode="json")
     monkeypatch.setattr(srv._client, "get_automations", lambda: body)
     return {c["id"]: c for c in body["cards"]}
-
-
-def context_registry() -> srv._ServedMCP:
-    """A registry whose one tool, list_templates (the templates and full sets serve it), answers
-    what its call sees: the set, that set's tools, the client's label and the protocol version."""
-    scratch = srv._ServedMCP("context-test")
-
-    @scratch.tool()
-    def list_templates(ctx: Context) -> dict:
-        allow = srv._active_allowed_tools()
-        return {
-            "profile": srv.CURRENT_PROFILE.get(),
-            "allowed": sorted(allow) if allow is not None else None,
-            "client": srv._client_label(ctx),
-            "protocol": ctx.protocol_version,
-        }
-
-    return scratch
 
 
 # Added by the 2026-07-28 revision; absent on 1.30.
