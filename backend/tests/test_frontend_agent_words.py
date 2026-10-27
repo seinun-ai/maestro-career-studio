@@ -147,13 +147,15 @@ def test_the_connected_agents_card_explains_before_the_limits():
 _CAN = (
     "Find jobs and file them in your {AGENT_INBOX} for you to queue or skip.",
     "Read your career history and job preferences.",
-    # kb_merge_entities: an item can go only by merging into another, which keeps every bullet.
     "Add to and change your career history. New or reworded bullets arrive as drafts for you"
-    " to approve. Other changes, such as an item&apos;s dates, merging two items into one, or your"
-    " summary, skills and contact details, apply at once.",
-    # kb_approve_points: its "only after the user said yes" is a docstring rule, not a server check.
-    "Approve bullets, or mark them Not used, in your career history. They&apos;re told to do this only"
-    " after you say yes. That&apos;s a rule they&apos;re given, not a lock.",
+    " to approve. Other changes, such as an item&apos;s dates or your summary, skills and contact"
+    " details, apply at once.",
+    # kb_approve_points, kb_retire_points and kb_merge_entities: their "only after the user said yes"
+    # is a docstring rule, not a server check. A merge has no unmerge; an item goes only that way,
+    # with every bullet moved to the item kept.
+    "Approve bullets, mark them Not used, or merge two items into one in your career history. A"
+    " merge can&apos;t be undone. They&apos;re told to do this only after you say yes. That&apos;s a"
+    " rule they&apos;re given, not a lock.",
     "Create, edit and tailor your resumes.",
     "Fill in and submit applications you queued, after your yes, or on their own in full"
     " automation mode.",

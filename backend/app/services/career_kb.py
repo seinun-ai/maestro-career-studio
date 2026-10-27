@@ -728,10 +728,10 @@ def merge_entities(session: Session, source_id: uuid.UUID, target_id: uuid.UUID)
         raise ValueError("Pick a different item to merge with.")
     source = session.get(KBEntity, source_id)
     if source is None:
-        raise LookupError("Source entity not found")
+        raise LookupError("The item to merge wasn't found.")
     target = session.get(KBEntity, target_id)
     if target is None:
-        raise LookupError("Target entity not found")
+        raise LookupError("The item to keep wasn't found.")
     if source.kind != target.kind:
         raise ValueError("You can only merge items of the same type.")
     if source.kind == "extra" and _section_key(source) != _section_key(target):

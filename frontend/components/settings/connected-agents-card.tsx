@@ -33,10 +33,10 @@ const LINKS = [
  * - Read: get_career_context, kb_list_entities, kb_get_entity, kb_list_points,
  *   get_job_search_brief (location, work authorization, persona).
  * - Add to and change: kb_capture, kb_add_points, kb_ingest_resume and kb_edit_point leave
- *   bullets in draft; kb_approve_points approves them and kb_retire_points marks them Not
- *   used, and their "only after the user said yes" is a docstring rule the agent is given,
- *   not a server check;
- *   kb_create_entity, kb_edit_entity, kb_edit_profile and kb_merge_entities write at once.
+ *   bullets in draft; kb_approve_points approves them, kb_retire_points marks them Not used
+ *   and kb_merge_entities folds one item into another (no unmerge), and their "only after
+ *   the user said yes" is a docstring rule the agent is given, not a server check;
+ *   kb_create_entity, kb_edit_entity and kb_edit_profile write at once.
  * - Resumes: create_base_resume, duplicate_base_resume, update_base_resume,
  *   edit_base_resume, create_tailoring_session, tailor_session, edit_application.
  * - Fill in and submit: list_proposals runs accepted proposals only;
@@ -80,12 +80,13 @@ export function ConnectedAgentsCard() {
                 <li>Read your career history and job preferences.</li>
                 <li>
                   Add to and change your career history. New or reworded bullets arrive as drafts
-                  for you to approve. Other changes, such as an item&apos;s dates, merging two items
-                  into one, or your summary, skills and contact details, apply at once.
+                  for you to approve. Other changes, such as an item&apos;s dates or your summary,
+                  skills and contact details, apply at once.
                 </li>
                 <li>
-                  Approve bullets, or mark them Not used, in your career history. They&apos;re told to do
-                  this only after you say yes. That&apos;s a rule they&apos;re given, not a lock.
+                  Approve bullets, mark them Not used, or merge two items into one in your career
+                  history. A merge can&apos;t be undone. They&apos;re told to do this only after you
+                  say yes. That&apos;s a rule they&apos;re given, not a lock.
                 </li>
                 <li>Create, edit and tailor your resumes.</li>
                 <li>

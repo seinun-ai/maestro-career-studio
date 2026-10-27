@@ -234,11 +234,13 @@ def test_merge_unknown_ids_are_404(client, db_session):
 
     unknown_source = client.post(f"/api/kb/entities/{missing}/merge", json={"target_id": str(live.id)})
     assert unknown_source.status_code == 404
-    assert "Source" in unknown_source.json()["detail"]
+    # Plain words for both callers: the web's dialog merges the open item into the one picked, and
+    # kb_merge_entities names the same two as merge_id and keep_id.
+    assert unknown_source.json()["detail"] == "The item to merge wasn't found."
 
     unknown_target = client.post(f"/api/kb/entities/{live.id}/merge", json={"target_id": missing})
     assert unknown_target.status_code == 404
-    assert "Target" in unknown_target.json()["detail"]
+    assert unknown_target.json()["detail"] == "The item to keep wasn't found."
 
 
 def test_merge_into_archived_target_is_400_but_archived_source_is_allowed(client, db_session):

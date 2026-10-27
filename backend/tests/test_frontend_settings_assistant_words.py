@@ -471,8 +471,9 @@ def test_profile_and_agent_limits_speak_plainly():
 def test_the_connected_agents_card_is_exact_about_bullets_and_yeses():
     card = _flat(_read("components/settings/connected-agents-card.tsx"))
     assert (
-        "<li> Approve bullets, or mark them Not used, in your career history. They&apos;re told to do "
-        "this only after you say yes. That&apos;s a rule they&apos;re given, not a lock. </li>"
+        "<li> Approve bullets, mark them Not used, or merge two items into one in your career history. "
+        "A merge can&apos;t be undone. They&apos;re told to do this only after you say yes. That&apos;s a "
+        "rule they&apos;re given, not a lock. </li>"
     ) in card
     assert "The app records each yes but can&apos;t stop an agent, so stay with it while it applies." in card
     assert "audit trail" not in card
