@@ -103,13 +103,6 @@ def test_a_removed_name_says_which_set_holds_its_replacement_only_when_this_one_
     )
 
 
-def test_the_endpoint_refuses_a_registry_without_the_replaced_answers():
-    """A plain FastMCP would serve the full set without the removed-name answers and the
-    kb_approve_points guard, with nothing failing."""
-    with pytest.raises(TypeError, match="_ServedMCP"):
-        mcp_http.McpEndpoint(FastMCP("plain"))
-
-
 @pytest.mark.parametrize("path", ["/mcp", "/mcp/track"])
 def test_a_name_never_served_keeps_the_plain_error(client, path):
     sid = session(client, path)
@@ -141,13 +134,6 @@ def test_initialize_reports_maestro_version_for_every_profile(
         response = c.post(path, json=INIT, headers=HDR)
         assert response.status_code == 200, response.text
         assert response.json()["result"]["serverInfo"]["version"] == expected
-
-
-def test_a_set_offers_tools_and_prompts_but_no_resources(client):
-    result = client.post("/mcp/hunt", json=INIT, headers=HDR).json()["result"]
-    assert set(result["capabilities"]) == {"experimental", "prompts", "tools"}
-    sid = session(client, "/mcp/hunt")
-    assert rpc(client, "/mcp/hunt", sid, "resources/list").json()["error"]["code"] == -32601
 
 
 def test_an_unknown_profile_is_404(client):

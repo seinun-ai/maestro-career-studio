@@ -28,15 +28,7 @@ import anyio.to_thread
 from mcp.server.fastmcp import FastMCP
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import (
-    GetPromptResult,
-    ListResourcesRequest,
-    ListResourceTemplatesRequest,
-    Prompt,
-    PromptMessage,
-    ReadResourceRequest,
-    TextContent,
-)
+from mcp.types import GetPromptResult, Prompt, PromptMessage, TextContent
 from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
@@ -101,14 +93,6 @@ class _ServedSet(tools_server._ServedMCP):
     """One HTTP set: build_set's server, offering as prompts the automation playbooks that
     use the set (full: all)."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        # FastMCP answers resources/* (with nothing) and so advertises resources at initialize;
-        # an HTTP set never has, and agents see what they saw (resources/list: Method not found).
-        handlers = tools_server._lowlevel(self).request_handlers
-        for request in (ListResourcesRequest, ReadResourceRequest, ListResourceTemplatesRequest):
-            del handlers[request]
-
     async def _cards(self) -> list[dict[str, Any]]:
         # The playbooks as the web's Copy prompt gives them. A REST read like the tools, so it
         # runs off the event loop too.
@@ -143,14 +127,8 @@ class McpEndpoint:
     not a bound method, to preserve the true path without a 307 redirect.
     """
 
-    def __init__(self, mcp: tools_server._ServedMCP | None = None) -> None:
+    def __init__(self, mcp: FastMCP | None = None) -> None:
         mcp = mcp or tools_server.mcp
-        if not isinstance(mcp, tools_server._ServedMCP):
-            # The full set's removed-tool answers and argument refusals live in its call_tool.
-            raise TypeError(
-                "McpEndpoint serves a _ServedMCP; a plain FastMCP would drop the full set's "
-                "removed-tool answers and argument refusals"
-            )
         offload_tools(mcp)  # first: every set holds the registry's own Tool objects
         self.servers = {
             p: tools_server.build_set(p, cls=_ServedSet, registry=mcp) for p in PROFILE_ALLOWLISTS

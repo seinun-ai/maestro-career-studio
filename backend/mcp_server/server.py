@@ -2869,7 +2869,7 @@ def report_failure(proposal_id: str, reason: str) -> Any:
     return _client.report_failure(proposal_id, reason=reason)
 
 
-def _set_tools(profile: str | None = None, registry: _ServedMCP | None = None) -> list[Tool]:
+def _set_tools(profile: str | None = None, registry: FastMCP | None = None) -> list[Tool]:
     """The registry's Tool objects a client of `profile` (default: the env profile) can see, in
     registration order. `registry` defaults to `mcp`; a test passes its own."""
     allow = allowed_tools(profile)
@@ -2885,7 +2885,7 @@ def list_registered_tool_names(profile: str | None = None) -> list[str]:
 def build_set(
     profile: str | None = None,
     cls: type[_ServedMCP] = _ServedMCP,
-    registry: _ServedMCP | None = None,
+    registry: FastMCP | None = None,
 ) -> _ServedMCP:
     """A server holding `profile`'s tools (default: the env profile) and instructions. The set is
     a snapshot of the registry (default `mcp`) at build time and holds the registry's own Tool

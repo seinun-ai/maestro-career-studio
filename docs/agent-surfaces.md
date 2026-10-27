@@ -33,7 +33,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   call made on the event loop blocks single-worker uvicorn; `http.offload_tools`).
   Each set is its own server built from the one registry (`server.build_set`, holding the registry's `Tool` objects): stdio serves
   the set `MAESTRO_CS_MCP_PROFILE` names (default `full`; migration state: §13 `mcp-stdio-venv`), HTTP every set as an
-  `http._ServedSet`, which adds the prompts and drops FastMCP's empty resource handlers, so an HTTP set advertises no resources.
+  `http._ServedSet`, which adds the prompts; every set, on either transport, advertises FastMCP's empty resources.
   Hints use request `CURRENT_PROFILE`, else env (pins: `mcp_server/tests/test_profiles.py`, `test_server.py`, `test_http.py`).
   **KB grooming tools** (`profile` and `full`): `kb_groom_entity` (read-only similar-bullet report per entity, zero LLM calls),
   `kb_combine_points` (fold points into one keeper; the others become its wordings) and `kb_retire_points` (the one way to retire;
