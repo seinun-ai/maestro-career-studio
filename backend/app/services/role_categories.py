@@ -20,6 +20,7 @@ the code. Adding a category for another domain requires no code change.
 
 from __future__ import annotations
 
+import difflib
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -454,6 +455,48 @@ def match_free_text(text: str) -> RoleMatch:
                 "label": cleaned, "confidence": "alias",
             }
     return {"role": None, "category": None, "label": cleaned, "confidence": "none"}
+
+
+_CLOSE_RATIO = 0.75
+
+
+def closest(text: str | None, limit: int = 3, *, roles: bool = False) -> list[str]:
+    """Up to `limit` catalog keys nearest a value the catalog does not know, nearest first.
+
+    For a REFUSAL to name, never for storing: `match_free_text` stays the timid
+    mapping, and a value refused with these suggestions is still refused. Its
+    own answer leads (a declared alias or a rank-stripped title), then the
+    entries whose key, label or alias is closest in spelling (`difflib`, ratio
+    `_CLOSE_RATIO` and up). That bound keeps misspellings and near forms
+    ("data_enginer", "Sofware Engineer" score 0.96+) and leaves an unrelated job
+    unanswered rather than named after a lookalike ("teacher" is 0.71 from
+    "researcher"): the catalog does not cover every field, and an empty list is
+    the honest answer for one it lacks. Categories only, as a `role_category`
+    takes; with `roles`, specific roles too (`FavoredRole.role` takes either).
+    Never `other`/`unknown`: storage sentinels, not suggestions.
+    """
+    slug = _slug(text or "")
+    if not slug:
+        return []
+    loaded = _load()
+    # slug -> the key it spells: every category spelling, and a role's spellings
+    # under its parent, unless roles are suggestions in their own right.
+    spellings = {**loaded["aliases"], **(loaded["role_aliases"] if roles else {})}
+    match = match_free_text(str(text))
+    found = [(match["role"] or match["category"]) if roles else match["category"]]
+    found += [
+        spellings[near]
+        for near in difflib.get_close_matches(
+            slug, list(spellings), n=len(spellings), cutoff=_CLOSE_RATIO
+        )
+    ]
+    keys = [key for key in dict.fromkeys(found) if key and key not in RESERVED]
+    return keys[:limit]
+
+
+def name_closest(text: str | None, *, roles: bool = False) -> str:
+    """`closest` as a refusal words it, `key (Label)` joined by commas; "" when none is close."""
+    return ", ".join(f"{key} ({label_for(key)})" for key in closest(text, roles=roles))
 
 
 def prompt_options() -> str:

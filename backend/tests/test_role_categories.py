@@ -736,3 +736,40 @@ def test_a_trailing_rank_word_that_is_the_job_survives():
     # Pass 2 before pass 3: "Senior Associate" keeps `associate` rather than
     # reducing to nothing.
     assert role_categories._strip_rank_markers("senior_associate") == "associate"
+
+
+# --- an unknown role names the closest (refusals only; nothing is stored from this) ---------------
+
+def test_a_misspelt_key_names_its_category_first():
+    assert role_categories.closest("data_scientistt")[0] == "data_scientist"
+    assert role_categories.closest("Sofware Engineer")[0] == "software_engineer"
+
+
+def test_the_timid_matchs_own_answer_leads():
+    # A rank-stripped alias hit: match_free_text already knows this one, so it is named first.
+    assert role_categories.closest("Senior Data Scientist")[0] == "data_scientist"
+
+
+def test_a_specific_role_is_named_only_where_one_is_valid():
+    # FavoredRole.role takes a specific role; a role_category column takes categories only.
+    assert role_categories.closest("product data scientst", roles=True)[0] == "product_data_scientist"
+    assert role_categories.closest("product data scientst")[0] == "data_scientist"
+
+
+def test_at_most_three_and_never_a_storage_sentinel():
+    near = role_categories.closest("engineer")
+    assert 1 <= len(near) <= 3
+    assert len(set(near)) == len(near)
+    assert not set(near) & set(role_categories.RESERVED)
+    assert not set(role_categories.closest("othr")) & set(role_categories.RESERVED)
+
+
+def test_nothing_close_names_nothing():
+    assert role_categories.closest("zzzz qqqq") == []
+    assert role_categories.closest("") == []
+    assert role_categories.closest(None) == []
+
+
+def test_the_closest_are_named_with_their_labels():
+    assert role_categories.name_closest("data_scientistt").startswith("data_scientist (Data Scientist)")
+    assert role_categories.name_closest("zzzz qqqq") == ""

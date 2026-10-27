@@ -1581,6 +1581,12 @@ def test_the_brief_describes_permits_by_country_last_runs_and_roles():
     assert "last_runs" in doc and "roles" in doc
 
 
+@pytest.mark.parametrize("tool", ["set_job_preferences", "create_base_resume_from_kb"])
+def test_an_unknown_role_refusal_is_described_as_naming_the_closest(tool):
+    doc = " ".join((getattr(srv, tool).__doc__ or "").split())
+    assert "422" in doc and "closest" in doc
+
+
 def test_job_search_docstrings_state_capture_only():
     # The brief is the entry point of the agentic search playbook; its contract
     # (capture + score only, no auto-apply) must be discoverable on the tool.

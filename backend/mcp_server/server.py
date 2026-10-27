@@ -1262,10 +1262,11 @@ def create_base_resume_from_kb(
     entity_ids is REQUIRED. An empty list composes nothing and 422s — that is
     deliberate; omitting the argument is not allowed because it would have to
     mean "the whole KB". A role_label or role_category is required (no slug
-    argument). role_category is strict: an unknown value 422s, no
-    normalization. An unmatched role_label maps to role_category "other" and
-    slug `other`/`other_2`…; display_name never affects the slug, which is
-    `base.slug` in the response. Only APPROVED points under the selected entities compose —
+    argument). role_category is strict: an unknown value 422s naming the
+    closest categories, no normalization. An unmatched role_label maps to
+    role_category "other" and slug `other`/`other_2`…; display_name never
+    affects the slug, which is `base.slug` in the response. Only APPROVED
+    points under the selected entities compose —
     points from kb_ingest_resume are DRAFTS and contribute nothing until
     kb_approve_points (or the user, at /career) approves them.
     skills and contact arrive in full from the KB profile regardless of entity
@@ -1408,9 +1409,9 @@ def set_job_preferences(
     """Save the jobs the user wants, which get_job_search_brief reads and setup counts as
     done once any is set. Only the fields passed change; [] clears a list and "" clears
     notes. favored_roles holds at most 25 roles, duplicates dropped. A role the catalog
-    does not know, a currency that is not ISO 4217 or more than 25 roles is a 422 that
-    saves nothing. Returns the stored preferences, with role_categories derived from
-    favored_roles."""
+    does not know (the refusal names the closest), a currency that is not ISO 4217 or
+    more than 25 roles is a 422 that saves nothing. Returns the stored preferences, with
+    role_categories derived from favored_roles."""
     return _client.set_job_preferences(_given(
         refusal="Nothing to save: no field was passed.",
         favored_roles=favored_roles, years_experience=years_experience,

@@ -321,3 +321,45 @@ def test_a_minimum_salary_with_no_currency_reads_in_your_home_currency(db_sessio
     # Kept as written until you save: the stored text is the old one.
     assert '"70000"' in text_settings.peek_text(job_preferences.JOB_PREFERENCES_KEY,
                                                job_preferences.JOB_PREFERENCES_FILE, db_session)
+
+
+# --- an unknown role names the closest, and stays a 422 ---------------------------------------------
+
+def _first_msg(response) -> str:
+    assert response.status_code == 422
+    return response.json()["detail"][0]["msg"]
+
+
+def test_an_unknown_role_category_names_the_closest(client):
+    msg = _first_msg(client.put(
+        "/api/settings/job-preferences",
+        json={"value": {"role_categories": ["data_scientistt", "data_analyst"]}},
+    ))
+    assert "unknown role categories: data_scientistt" in msg
+    assert "closest to data_scientistt: data_scientist (Data Scientist)" in msg
+
+
+def test_an_unknown_favored_role_names_the_closest_roles(client):
+    msg = _first_msg(client.put(
+        "/api/settings/job-preferences",
+        json={"value": {"favored_roles": [{"role": "product_data_scientst"}]}},
+    ))
+    assert "unknown role: product_data_scientst; closest: product_data_scientist (Product Data Scientist)" in msg
+
+
+def test_an_unknown_favored_role_category_names_the_closest_categories(client):
+    msg = _first_msg(client.put(
+        "/api/settings/job-preferences",
+        json={"value": {"favored_roles": [{"label": "Pricing analyst", "category": "data_analystt"}]}},
+    ))
+    assert "unknown role category: data_analystt; closest: data_analyst (Data Analyst)" in msg
+
+
+def test_nothing_close_leaves_the_refusal_as_it_was():
+    with pytest.raises(ValidationError) as caught:
+        JobPreferences(role_categories=["zzzz_qqqq"])
+    assert "unknown role categories: zzzz_qqqq" in str(caught.value)
+    assert "closest" not in str(caught.value)
+    with pytest.raises(ValidationError) as caught:
+        FavoredRole(role="zzzz_qqqq")
+    assert "unknown role: zzzz_qqqq" in str(caught.value) and "closest" not in str(caught.value)

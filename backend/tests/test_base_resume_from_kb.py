@@ -222,6 +222,22 @@ def test_from_kb_auto_slug_requires_role_category(db_session, tmp_path, monkeypa
     )
 
 
+def test_from_kb_unknown_role_category_names_the_closest(db_session, tmp_path, monkeypatch):
+    """MCP's create_base_resume_from_kb lands here: a misspelt role stays a 422 that names the nearest."""
+    _stub_side_effects(monkeypatch, tmp_path)
+    _profile(db_session)
+    keep = _entity(db_session, "experience", "Data Engineer", "Acme")
+
+    response = _client(db_session).post(
+        "/api/base-resumes/from-kb",
+        json={"role_category": "data_enginer", "entity_ids": [str(keep.id)]},
+    )
+
+    assert response.status_code == 422
+    assert "closest: data_engineer (Data Engineer)" in response.json()["detail"]
+    assert db_session.query(BaseResume).count() == 0
+
+
 def test_skills_arrive_in_full_and_that_is_documented(db_session, tmp_path, monkeypatch):
     """Scope limit, pinned: skills live on KBProfile with no per-entity data to
     filter by, so a narrowed compose still carries the whole union. Narrowing

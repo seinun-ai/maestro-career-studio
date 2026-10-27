@@ -321,6 +321,30 @@ def test_explicit_bad_role_is_422_not_silently_other(db_session):
     assert role_categories.normalize("data_scientistt") == "other"  # the contrast
 
 
+def test_an_unknown_role_names_the_closest_before_the_full_list(db_session):
+    """Same status, same validator for the web and MCP: only the words gain the nearest entries,
+    ahead of the whole list so a capped error line keeps them."""
+    resp = _client(db_session).post(
+        "/api/base-resumes",
+        json={"slug": "typo_near", "data": SAMPLE, "role_category": "data_scientistt"},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail.startswith("Unknown role_category 'data_scientistt'; closest: data_scientist (Data Scientist)")
+    assert detail.endswith(f"Valid values: {', '.join(role_categories.all_keys())}")
+
+
+def test_nothing_close_leaves_the_role_refusal_as_it_was(db_session):
+    resp = _client(db_session).post(
+        "/api/base-resumes",
+        json={"slug": "typo_far", "data": SAMPLE, "role_category": "zzzz_qqqq"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == (
+        f"Unknown role_category 'zzzz_qqqq'. Valid values: {', '.join(role_categories.all_keys())}"
+    )
+
+
 # --- PATCH /identity ------------------------------------------------------
 
 def test_patch_identity_sets_role_without_touching_the_document(db_session):

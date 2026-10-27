@@ -91,10 +91,14 @@ def _validated_role(value: str | None) -> str:
     if value is None:
         return role_categories.UNKNOWN
     if value not in role_categories.all_keys():
+        # The nearest entries go first, so an error line capped downstream (the MCP client's)
+        # still carries them.
+        near = role_categories.name_closest(value)
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Unknown role_category {value!r}. Valid values: "
+                f"Unknown role_category {value!r}"
+                f"{f'; closest: {near}' if near else ''}. Valid values: "
                 f"{', '.join(role_categories.all_keys())}"
             ),
         )
