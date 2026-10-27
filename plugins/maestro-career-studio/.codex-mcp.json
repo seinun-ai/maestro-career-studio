@@ -15,6 +15,7 @@
         "record_triage": {"approval_mode": "prompt"},
         "kb_approve_points": {"approval_mode": "prompt"},
         "kb_combine_points": {"approval_mode": "prompt"},
+        "kb_merge_entities": {"approval_mode": "prompt"},
         "kb_retire_points": {"approval_mode": "prompt"},
         "sync_now": {"approval_mode": "prompt"}
       }
