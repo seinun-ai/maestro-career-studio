@@ -180,7 +180,7 @@ work-permit answers for each country you apply in.
   to keep (approved, then the most recently edited, then the longest). Each group is its own
   decision: **Combine into one**, **Stop using** one of them, or **Not the same**, which is
   remembered. Every action has an Undo, and nothing changes on your resumes. No AI call is made.
-- **Three MCP tools** in the `career` and `full` profiles: `kb_groom_entity` reads the
+- **Three MCP tools** in the `profile` and `full` profiles: `kb_groom_entity` reads the
   similar-bullet report, `kb_combine_points` folds points into a keeper and `kb_retire_points`
   retires points. The two writes act only on your yes, like `kb_approve_points`, and the Codex
   plugin asks before both.
@@ -205,8 +205,8 @@ work-permit answers for each country you apply in.
   `POST /api/kb/entities/{id}/drafts`.
 - **Four MCP tools save what Setup asks for**, so an agent with no web page and no AI
   key in Maestro can finish setup: `set_autofill_profile` (form answers, with work permits for each
-  country; `apply`, `career` and `full`), `set_job_preferences`, `set_markets` (where you live, where
-  you apply, the currency pay reads in) and `set_persona` (`career` and `full`). Each changes only
+  country; `apply`, `profile` and `full`), `set_job_preferences`, `set_markets` (where you live, where
+  you apply, the currency pay reads in) and `set_persona` (`profile` and `full`). Each changes only
   what it is given. Diversity answers and their consent, full automation, the job-site login and every
   Settings switch stay yours, in the app.
 - **Choose who writes for connected agents.** Settings › Agent apps › **Who writes for connected
