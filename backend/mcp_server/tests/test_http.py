@@ -1,92 +1,48 @@
 """Streamable HTTP contract, using only in-process ASGI requests."""
 
 import asyncio
-import contextlib
 import inspect
 import json
 import threading
 
 import pytest
 from mcp.server.fastmcp import Context, FastMCP
-from starlette.applications import Starlette
-from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from mcp_server import http as mcp_http
 from mcp_server import server as srv
 from mcp_server.profiles import allowed_tools
-
-HDR = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
-INIT = {
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "initialize",
-    "params": {
-        "protocolVersion": "2025-06-18",
-        "capabilities": {},
-        "clientInfo": {"name": "pytest-client", "version": "1"},
-    },
-}
-
-
-def _app(endpoint):
-    @contextlib.asynccontextmanager
-    async def lifespan(app):
-        async with endpoint.run():
-            yield
-
-    return Starlette(
-        routes=[Route("/mcp", endpoint=endpoint), Route("/mcp/{profile}", endpoint=endpoint)],
-        lifespan=lifespan,
-    )
+from mcp_server.tests._wire import HDR, INIT, app, rpc, session
 
 
 @pytest.fixture
 def client():
-    with TestClient(_app(mcp_http.McpEndpoint())) as c:
+    with TestClient(app(mcp_http.McpEndpoint())) as c:
         yield c
-
-
-def _session(c, path="/mcp"):
-    r = c.post(path, json=INIT, headers=HDR)
-    assert r.status_code == 200, r.text
-    sid = r.headers["mcp-session-id"]
-    initialized = c.post(
-        path,
-        json={"jsonrpc": "2.0", "method": "notifications/initialized"},
-        headers={**HDR, "Mcp-Session-Id": sid},
-    )
-    assert initialized.status_code == 202, initialized.text
-    return sid
-
-
-def _rpc(c, path, sid, method, params=None, id_=2):
-    body = {"jsonrpc": "2.0", "id": id_, "method": method, "params": params or {}}
-    return c.post(path, json=body, headers={**HDR, "Mcp-Session-Id": sid})
 
 
 @pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
 def test_each_profile_lists_exactly_its_allowlist(client, profile):
     path = "/mcp" if profile == "full" else f"/mcp/{profile}"
-    sid = _session(client, path)
-    names = {t["name"] for t in _rpc(client, path, sid, "tools/list").json()["result"]["tools"]}
+    sid = session(client, path)
+    names = {t["name"] for t in rpc(client, path, sid, "tools/list").json()["result"]["tools"]}
     allow = allowed_tools(profile)
     assert names == (set(srv.list_registered_tool_names("full")) if allow is None else set(allow))
 
 
 @pytest.mark.parametrize("old, new", [("career", "profile"), ("explore", "track")])
 def test_an_old_set_name_serves_its_new_set_for_one_release(client, old, new):
-    sid = _session(client, f"/mcp/{old}")
-    names = {t["name"] for t in _rpc(client, f"/mcp/{old}", sid, "tools/list").json()["result"]["tools"]}
+    sid = session(client, f"/mcp/{old}")
+    names = {t["name"] for t in rpc(client, f"/mcp/{old}", sid, "tools/list").json()["result"]["tools"]}
     assert names == set(allowed_tools(new))
 
 
 def test_a_hidden_tool_is_refused_with_todays_text(client):
-    sid = _session(client, "/mcp/hunt")
+    sid = session(client, "/mcp/hunt")
     hidden = next(
         n for n in srv.list_registered_tool_names("full") if n not in allowed_tools("hunt")
     )
-    res = _rpc(
+    res = rpc(
         client, "/mcp/hunt", sid, "tools/call", {"name": hidden, "arguments": {}}
     ).json()["result"]
     assert res["isError"] is True and f"Unknown tool: {hidden}" in res["content"][0]["text"]
@@ -98,9 +54,9 @@ def test_kb_approve_points_refuses_an_old_retire_state_over_http(client, monkeyp
     monkeypatch.setattr(
         srv._client, "kb_approve_points", lambda *a, **k: calls.append((a, k)) or {"results": []}
     )
-    sid = _session(client, path)
+    sid = session(client, path)
     args = {"point_ids": ["p1"], "state": "retired"}
-    res = _rpc(
+    res = rpc(
         client, path, sid, "tools/call", {"name": "kb_approve_points", "arguments": args}
     ).json()["result"]
     assert res["isError"] is True
@@ -115,9 +71,9 @@ def test_a_removed_name_answers_with_its_replacement_on_every_set(client, profil
     from mcp_server import replaced
 
     path = "/mcp" if profile == "full" else f"/mcp/{profile}"
-    sid = _session(client, path)
+    sid = session(client, path)
     for id_, name in enumerate(sorted(replaced.REPLACED_TOOLS), start=2):
-        res = _rpc(
+        res = rpc(
             client, path, sid, "tools/call", {"name": name, "arguments": {}}, id_
         ).json()["result"]
         assert res["isError"] is True, (profile, name)
@@ -132,8 +88,8 @@ def test_a_removed_name_answers_with_its_replacement_on_every_set(client, profil
 def test_a_removed_name_says_which_set_holds_its_replacement_only_when_this_one_lacks_it(
     client, path, suffix
 ):
-    sid = _session(client, path)
-    res = _rpc(
+    sid = session(client, path)
+    res = rpc(
         client, path, sid, "tools/call", {"name": "explore_top_skills", "arguments": {}}
     ).json()["result"]
     assert res["content"][0]["text"] == (
@@ -150,8 +106,8 @@ def test_the_endpoint_refuses_a_registry_without_the_replaced_answers():
 
 @pytest.mark.parametrize("path", ["/mcp", "/mcp/track"])
 def test_a_name_never_served_keeps_the_plain_error(client, path):
-    sid = _session(client, path)
-    res = _rpc(
+    sid = session(client, path)
+    res = rpc(
         client, path, sid, "tools/call", {"name": "no_such_tool", "arguments": {}}
     ).json()["result"]
     assert res["isError"] is True
@@ -175,7 +131,7 @@ def test_initialize_reports_maestro_version_for_every_profile(
     else:
         monkeypatch.setenv("APP_VERSION", app_version)
     path = "/mcp" if profile == "full" else f"/mcp/{profile}"
-    with TestClient(_app(mcp_http.McpEndpoint())) as c:
+    with TestClient(app(mcp_http.McpEndpoint())) as c:
         response = c.post(path, json=INIT, headers=HDR)
         assert response.status_code == 200, response.text
         assert response.json()["result"]["serverInfo"]["version"] == expected
@@ -186,7 +142,7 @@ def test_an_unknown_profile_is_404(client):
 
 
 def test_a_stale_session_is_404_so_the_bridge_can_replay(client):
-    r = _rpc(client, "/mcp", "deadbeef", "tools/list")
+    r = rpc(client, "/mcp", "deadbeef", "tools/list")
     assert r.status_code == 404
 
 
@@ -210,10 +166,10 @@ def test_registered_tools_run_off_the_event_loop_but_module_functions_stay_sync(
         seen["loop"] = threading.get_ident()
         return {"items": []}
 
-    with TestClient(_app(mcp_http.McpEndpoint(scratch))) as c:
-        sid = _session(c)
+    with TestClient(app(mcp_http.McpEndpoint(scratch))) as c:
+        sid = session(c)
         for id_, name in enumerate(("worker_thread", "loop_thread"), start=2):
-            res = _rpc(c, "/mcp", sid, "tools/call", {"name": name}, id_).json()["result"]
+            res = rpc(c, "/mcp", sid, "tools/call", {"name": name}, id_).json()["result"]
             assert not res["isError"], res
     assert seen["worker"] != seen["loop"]
     assert callable(srv.list_templates) and not inspect.iscoroutinefunction(srv.list_templates)
@@ -237,16 +193,16 @@ def test_real_registered_tool_runs_without_an_event_loop(monkeypatch):
     tool = srv.mcp._tool_manager.get_tool("list_templates")
     monkeypatch.setattr(tool, "fn", srv.list_templates)
     monkeypatch.setattr(tool, "is_async", False)
-    with TestClient(_app(mcp_http.McpEndpoint())) as c:
-        sid = _session(c)
-        res = _rpc(c, "/mcp", sid, "tools/call", {"name": "list_templates"}).json()["result"]
+    with TestClient(app(mcp_http.McpEndpoint())) as c:
+        sid = session(c)
+        res = rpc(c, "/mcp", sid, "tools/call", {"name": "list_templates"}).json()["result"]
         assert not res["isError"], res
     assert seen == [False]
 
 
 def test_request_body_larger_than_sdk_default_is_accepted(client):
-    sid = _session(client)
-    response = _rpc(client, "/mcp", sid, "ping", {"padding": "x" * (5 * 1024 * 1024)})
+    sid = session(client)
+    response = rpc(client, "/mcp", sid, "ping", {"padding": "x" * (5 * 1024 * 1024)})
     assert response.status_code != 413, response.text
 
 
@@ -282,11 +238,11 @@ def test_worker_receives_request_profile_and_client_info(monkeypatch):
             "client": srv._client_label(ctx),
         }
 
-    with TestClient(_app(mcp_http.McpEndpoint(scratch))) as c:
+    with TestClient(app(mcp_http.McpEndpoint(scratch))) as c:
         for id_, profile in enumerate(("templates", "full"), start=2):
             path = f"/mcp/{profile}"
-            sid = _session(c, path)
-            res = _rpc(c, path, sid, "tools/call", {"name": "list_templates"}, id_).json()[
+            sid = session(c, path)
+            res = rpc(c, path, sid, "tools/call", {"name": "list_templates"}, id_).json()[
                 "result"
             ]
             assert not res["isError"], res
@@ -299,20 +255,20 @@ def test_worker_receives_request_profile_and_client_info(monkeypatch):
 
 
 def test_sessions_cannot_cross_profiles(client):
-    sid = _session(client, "/mcp/hunt")
-    assert _rpc(client, "/mcp/apply", sid, "tools/list").status_code == 404
-    assert _rpc(client, "/mcp/hunt", sid, "tools/list").status_code == 200
+    sid = session(client, "/mcp/hunt")
+    assert rpc(client, "/mcp/apply", sid, "tools/list").status_code == 404
+    assert rpc(client, "/mcp/hunt", sid, "tools/list").status_code == 200
 
 
 def test_lifespan_can_restart_and_forgets_old_sessions():
-    app = _app(mcp_http.McpEndpoint())
-    with TestClient(app) as c:
-        old_sid = _session(c)
-        assert _rpc(c, "/mcp", old_sid, "tools/list").status_code == 200
-    with TestClient(app) as c:
-        assert _rpc(c, "/mcp", old_sid, "tools/list").status_code == 404
-        sid = _session(c)
-        assert _rpc(c, "/mcp", sid, "tools/list").status_code == 200
+    asgi = app(mcp_http.McpEndpoint())
+    with TestClient(asgi) as c:
+        old_sid = session(c)
+        assert rpc(c, "/mcp", old_sid, "tools/list").status_code == 200
+    with TestClient(asgi) as c:
+        assert rpc(c, "/mcp", old_sid, "tools/list").status_code == 404
+        sid = session(c)
+        assert rpc(c, "/mcp", sid, "tools/list").status_code == 200
 
 
 def test_offloaded_tool_errors_keep_todays_text():
@@ -322,9 +278,9 @@ def test_offloaded_tool_errors_keep_todays_text():
     def broken() -> str:
         raise ValueError("broken input")
 
-    with TestClient(_app(mcp_http.McpEndpoint(scratch))) as c:
-        sid = _session(c)
-        res = _rpc(c, "/mcp", sid, "tools/call", {"name": "broken"}).json()["result"]
+    with TestClient(app(mcp_http.McpEndpoint(scratch))) as c:
+        sid = session(c)
+        res = rpc(c, "/mcp", sid, "tools/call", {"name": "broken"}).json()["result"]
     assert res["isError"] is True
     assert res["content"][0]["text"] == "Error executing tool broken: broken input"
 
@@ -349,27 +305,27 @@ def catalog(monkeypatch):
 
 
 def test_a_set_offers_the_playbooks_that_use_it_as_prompts(client, catalog):
-    sid = _session(client, "/mcp/tailor")
-    prompts = _rpc(client, "/mcp/tailor", sid, "prompts/list").json()["result"]["prompts"]
+    sid = session(client, "/mcp/tailor")
+    prompts = rpc(client, "/mcp/tailor", sid, "prompts/list").json()["result"]["prompts"]
     assert [p["name"] for p in prompts] == ["tailor-run"]
     assert prompts[0]["description"] == catalog["tailor-run"]["summary"]
 
 
 def test_the_full_set_offers_every_playbook(client, catalog):
-    sid = _session(client, "/mcp")
-    prompts = _rpc(client, "/mcp", sid, "prompts/list").json()["result"]["prompts"]
+    sid = session(client, "/mcp")
+    prompts = rpc(client, "/mcp", sid, "prompts/list").json()["result"]["prompts"]
     assert [p["name"] for p in prompts] == list(catalog)
 
 
 def test_a_prompt_is_exactly_the_copy_prompt(client, catalog):
-    sid = _session(client, "/mcp/tailor")
-    got = _rpc(client, "/mcp/tailor", sid, "prompts/get", {"name": "tailor-run"}).json()["result"]
+    sid = session(client, "/mcp/tailor")
+    got = rpc(client, "/mcp/tailor", sid, "prompts/get", {"name": "tailor-run"}).json()["result"]
     assert got["messages"] == [
         {"role": "user", "content": {"type": "text", "text": catalog["tailor-run"]["prompt"]}}
     ]
 
 
 def test_a_playbook_from_another_set_is_not_served(client, catalog):
-    sid = _session(client, "/mcp/tailor")
-    res = _rpc(client, "/mcp/tailor", sid, "prompts/get", {"name": "job-hunt"}).json()
+    sid = session(client, "/mcp/tailor")
+    res = rpc(client, "/mcp/tailor", sid, "prompts/get", {"name": "job-hunt"}).json()
     assert "error" in res
