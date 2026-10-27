@@ -1,15 +1,14 @@
 "use client";
 
 import { useId } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { SwitchRow } from "@/components/settings/setting-layout";
 import { Switch } from "@/components/ui/switch";
+import { MCP_WORKFLOW_KEY, useSaveMcpWorkflow } from "@/hooks/use-save-mcp-workflow";
 import { apiFetch } from "@/lib/api";
-import { couldnt } from "@/lib/error-text";
 import type { McpWorkflowSetting } from "@/lib/types";
 
 /**
@@ -25,29 +24,19 @@ import type { McpWorkflowSetting } from "@/lib/types";
  * flip it mid-use is what makes the two behaviours comparable in practice.
  */
 export function McpWorkflowSection() {
-  const qc = useQueryClient();
   const id = useId();
 
   const setting = useQuery({
-    queryKey: ["settings", "mcp-workflow"],
+    queryKey: MCP_WORKFLOW_KEY,
     queryFn: () => apiFetch<McpWorkflowSetting>("/api/settings/mcp-workflow"),
   });
 
   // A single boolean saves on toggle rather than behind a Save button: there is
   // no partial state worth staging. It used to do so SILENTLY, which is the
   // half of the rule that was missing — with no Save button and no indicator,
-  // "nothing happened" and "saved instantly" look identical.
-  const save = useMutation({
-    mutationFn: (hints: boolean) =>
-      apiFetch<McpWorkflowSetting>("/api/settings/mcp-workflow", {
-        method: "PUT",
-        body: JSON.stringify({ value: { ...setting.data?.value, hints } }),
-      }),
-    onSuccess: (result) => {
-      qc.setQueryData(["settings", "mcp-workflow"], result);
-    },
-    onError: (error: Error) => toast.error(couldnt("save this setting", error)),
-  });
+  // "nothing happened" and "saved instantly" look identical. The record also holds who writes
+  // (AgentWriterSection), so the save is the shared one, which keeps that half.
+  const save = useSaveMcpWorkflow();
 
   return (
     <SettingCard
@@ -68,7 +57,7 @@ export function McpWorkflowSection() {
               id={id}
               checked={data.value.hints}
               onCheckedChange={(checked) => {
-                if (!save.isPending) save.mutate(checked);
+                if (!save.isPending) save.mutate({ hints: checked });
               }}
             />
           </SwitchRow>

@@ -632,41 +632,53 @@ def test_saved_answers_past_the_limit_are_flagged():
 
 
 # --- Who writes for connected agents ---------------------------------------------------
+# What the card and the shared save DO (both answers, the key line, two saves made together) is the node
+# suite's (components/settings/agent-writer-section.test.mjs, run below and by the frontend CI job); these
+# pin the wiring it cannot see.
 
-_WRITER = _read("components/settings/agent-writer-section.tsx")
 
-
-def test_the_writer_choice_shares_the_hints_record_and_keeps_its_other_half():
-    """One saved setting (`mcp_workflow`) holds the hints switch and the writer, under one query key,
-    so each card's PUT sends the whole value back and its result refreshes both cards."""
+def test_both_mcp_workflow_cards_save_through_one_queued_merge():
+    """One saved setting (`mcp_workflow`) holds the hints switch and the writer. Each card sends only the
+    field it changes; the shared save, queued, merges it into the latest cached value and caches the
+    result BEFORE the next queued save reads it (TanStack's onSuccess runs too late to order), so neither
+    card can put back the other's old value."""
+    save = _read("hooks/use-save-mcp-workflow.ts")
+    queued = _slice(save, 'inOrder("mcp-workflow", async () => {', "\n      }),")
+    assert "qc.getQueryData<McpWorkflowSetting>(MCP_WORKFLOW_KEY)?.value" in queued
+    assert "body: JSON.stringify({ value: { ...saved, ...change } })" in queued
+    assert queued.index("qc.setQueryData(MCP_WORKFLOW_KEY, result);") < queued.index("return result;")
+    assert "onSuccess:" not in save and "scope:" not in save  # never a mutation scope (SYSTEM.md section 12)
+    assert 'toast.error(couldnt("save this setting", error))' in save
     hints = _read("components/settings/mcp-workflow-section.tsx")
-    for src in (_WRITER, hints):
-        assert 'queryKey: ["settings", "mcp-workflow"]' in src
-        assert 'qc.setQueryData(["settings", "mcp-workflow"], result);' in src
-    assert "body: JSON.stringify({ value: { ...setting.data?.value, hints } })" in hints
-    assert "onValueChange={(writer) => save.mutate({ ...data.value, writer })}" in _WRITER
-    assert "body: JSON.stringify({ value })" in _WRITER
-    assert 'toast.error(couldnt("save this setting", error))' in _WRITER
-    # Ordered like the Screening answers dial, never a mutation scope (SYSTEM.md section 12).
-    assert 'inOrder("mcp-workflow"' in _WRITER and "scope:" not in _WRITER
+    writer = _read("components/settings/agent-writer-section.tsx")
+    for src in (hints, writer):
+        assert "const save = useSaveMcpWorkflow();" in src
+        assert "useMutation" not in src and 'method: "PUT"' not in src
+        assert "queryKey: MCP_WORKFLOW_KEY" in src
+    assert "if (!save.isPending) save.mutate({ hints: checked });" in hints
+    assert "onValueChange={(writer) => save.mutate({ writer })}" in writer
 
 
-def test_the_writer_key_line_needs_a_confirmed_missing_key():
-    """The setup-status read every reader shares (a key saved in Basics invalidates it); a failed or
-    pending read claims nothing."""
-    assert 'queryKey: ["setup-status"]' in _WRITER
-    assert "const needsKey = setup.data?.model_key.done === false;" in _WRITER
-    assert 'const keyLine = shown === "maestro" && needsKey;' in _WRITER
-    assert 'href={anchorHref("/settings", "api-keys")}' in _WRITER
+def test_the_writer_key_line_asks_only_while_maestros_ai_is_shown():
+    """Setup status is read only while Maestro's AI is the shown choice; the line needs a confirmed missing
+    key, sits in a polite region that stays mounted (so it is announced as it appears) and links to the
+    key in Basics."""
+    writer = _read("components/settings/agent-writer-section.tsx")
+    assert 'queryKey: ["setup-status"]' in writer
+    assert 'enabled: shown === "maestro",' in writer
+    assert 'const keyLine = shown === "maestro" && setup.data?.model_key.done === false;' in writer
+    assert '<div id={keyLineId} aria-live="polite" className="empty:absolute">' in writer
+    assert 'href={anchorHref("/settings", "api-keys")}' in writer
 
 
 def test_the_writer_card_node_suite():
     """Renders the real card, so it needs the web app's installed packages (the second-copy card's rule,
-    tests/sync/test_pairing.py): skipped where they are not installed, as in the backend CI job."""
+    tests/sync/test_pairing.py). The backend CI job has none, so there the frontend CI job runs this file
+    (`.github/workflows/ci.yml`); a missing node still fails in CI through `_node_with_typescript`."""
     from tests.node_ts import FRONTEND, _node_with_typescript, run_node_test
 
     if not (FRONTEND / "node_modules" / "typescript").is_dir():
         _node_with_typescript()  # fails in CI when node itself is absent; only then skip
-        pytest.skip("frontend packages are not installed")
+        pytest.skip("frontend packages are not installed; the frontend CI job runs this file")
     result = run_node_test("components/settings/agent-writer-section.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr

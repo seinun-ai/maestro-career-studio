@@ -321,6 +321,12 @@ jobs:
       - name: Render the second-copy card
         run: cd frontend && node --test components/settings/second-copy-section.test.mjs
 
+      # Renders the who-writes card and runs the save it shares with the hints
+      # card. Same rule: the backend job skips its copy
+      # (backend/tests/test_frontend_settings_cards.py).
+      - name: Render the who-writes card
+        run: cd frontend && node --test components/settings/agent-writer-section.test.mjs
+
       - name: Build Next.js production bundle
         run: cd frontend && npm run build
 
