@@ -157,7 +157,8 @@ def test_agent_apps_keeps_its_order():
     agents = _panels(_read("app/settings/page.tsx"), list(_tab_table("SETTINGS_TABS")))["agents"]
     order = [
         "<ConnectAssistantCard />", "<ConnectedAgentsCard />", "<FullAutomationSection />",
-        "<AutoApplySection />", "<JobSiteLoginCard />", "<McpWorkflowSection />", "<SecondCopySection />",
+        "<AutoApplySection />", "<JobSiteLoginCard />", "<AgentWriterSection />", "<McpWorkflowSection />",
+        "<SecondCopySection />",
     ]
     for tag in order:
         assert agents.count(tag) == 1, tag

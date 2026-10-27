@@ -17,6 +17,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 from app.services.autofill_catalog import MAX_CUSTOM
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
@@ -627,3 +629,44 @@ def test_saved_answers_past_the_limit_are_flagged():
         "Only the first {CUSTOM_IN_USE} are used when filling for now. Remove the ones you no longer need."
         in flat
     )
+
+
+# --- Who writes for connected agents ---------------------------------------------------
+
+_WRITER = _read("components/settings/agent-writer-section.tsx")
+
+
+def test_the_writer_choice_shares_the_hints_record_and_keeps_its_other_half():
+    """One saved setting (`mcp_workflow`) holds the hints switch and the writer, under one query key,
+    so each card's PUT sends the whole value back and its result refreshes both cards."""
+    hints = _read("components/settings/mcp-workflow-section.tsx")
+    for src in (_WRITER, hints):
+        assert 'queryKey: ["settings", "mcp-workflow"]' in src
+        assert 'qc.setQueryData(["settings", "mcp-workflow"], result);' in src
+    assert "body: JSON.stringify({ value: { ...setting.data?.value, hints } })" in hints
+    assert "onValueChange={(writer) => save.mutate({ ...data.value, writer })}" in _WRITER
+    assert "body: JSON.stringify({ value })" in _WRITER
+    assert 'toast.error(couldnt("save this setting", error))' in _WRITER
+    # Ordered like the Screening answers dial, never a mutation scope (SYSTEM.md section 12).
+    assert 'inOrder("mcp-workflow"' in _WRITER and "scope:" not in _WRITER
+
+
+def test_the_writer_key_line_needs_a_confirmed_missing_key():
+    """The setup-status read every reader shares (a key saved in Basics invalidates it); a failed or
+    pending read claims nothing."""
+    assert 'queryKey: ["setup-status"]' in _WRITER
+    assert "const needsKey = setup.data?.model_key.done === false;" in _WRITER
+    assert 'const keyLine = shown === "maestro" && needsKey;' in _WRITER
+    assert 'href={anchorHref("/settings", "api-keys")}' in _WRITER
+
+
+def test_the_writer_card_node_suite():
+    """Renders the real card, so it needs the web app's installed packages (the second-copy card's rule,
+    tests/sync/test_pairing.py): skipped where they are not installed, as in the backend CI job."""
+    from tests.node_ts import FRONTEND, _node_with_typescript, run_node_test
+
+    if not (FRONTEND / "node_modules" / "typescript").is_dir():
+        _node_with_typescript()  # fails in CI when node itself is absent; only then skip
+        pytest.skip("frontend packages are not installed")
+    result = run_node_test("components/settings/agent-writer-section.test.mjs")
+    assert result.returncode == 0, result.stdout + result.stderr

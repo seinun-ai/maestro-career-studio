@@ -3,6 +3,7 @@
 import { use } from "react";
 
 import { AboutSection } from "@/components/settings/about-section";
+import { AgentWriterSection } from "@/components/settings/agent-writer-section";
 import { AiModelSection } from "@/components/settings/ai-model-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { AutoApplySection } from "@/components/settings/auto-apply-section";
@@ -73,6 +74,7 @@ export default function SettingsPage({
               <FullAutomationSection />
               <AutoApplySection />
               <JobSiteLoginCard />
+              <AgentWriterSection />
               <McpWorkflowSection />
               <SecondCopySection />
             </>

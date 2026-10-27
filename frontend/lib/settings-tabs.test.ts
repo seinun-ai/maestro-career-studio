@@ -58,6 +58,7 @@ test("every card an old tab held still opens a tab", () => {
 test("a card id resolves to its tab", () => {
   assert.equal(tabForAnchor("settings", "api-keys"), "basics");
   assert.equal(tabForAnchor("settings", "agent-hints"), "agents");
+  assert.equal(tabForAnchor("settings", "agent-writer"), "agents");
   assert.equal(tabForAnchor("settings", "connected-agents"), "agents");
   assert.equal(tabForAnchor("settings", "main-content"), null);
   assert.equal(tabForAnchor("settings", ""), null);

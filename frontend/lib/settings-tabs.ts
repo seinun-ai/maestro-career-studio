@@ -33,6 +33,7 @@ export const SETTINGS_TABS = [
       "full-automation",
       "auto-apply",
       "job-site-login",
+      "agent-writer",
       "agent-hints",
       "second-copy",
     ],

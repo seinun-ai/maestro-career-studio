@@ -39,6 +39,7 @@ _AUTOSAVE_CARDS = (
 )
 _SERVER_VALUE_CARDS = (
     "components/settings/mcp-workflow-section.tsx",
+    "components/settings/agent-writer-section.tsx",
 )
 
 

@@ -123,6 +123,7 @@ def test_query_surface_error_branch_precedes_empty_state(relpath: str, empty_mar
 # purpose: it fetches nothing, so it has no failure to render.
 _SETTINGS_CARDS = [
     "about-section.tsx",
+    "agent-writer-section.tsx",
     "auto-apply-section.tsx",
     "full-automation-section.tsx",
     "llm-endpoint.tsx",

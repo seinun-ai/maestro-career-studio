@@ -158,6 +158,8 @@ _EXTRA: list[tuple[str, str, tuple[str, ...]]] = [
     ("companion", "Save the Jev key", ("saveOnce({ api_key: key?.trim() || null })",)),
     ("agents", "Submit clean applications without asking", ('label="Submit clean applications without asking"',)),
     ("agents", "Suggest the next step to connected agents", ('label="Suggest the next step to connected agents"',)),
+    ("agents", "Who writes for connected agents: your agent app or Maestro's AI",
+     ('title="Who writes for connected agents"', 'label: "Your agent app"', 'label: "Maestro\'s AI"')),
     ("agents", "Copy pairing code", ('label="Copy pairing code"',)),
     ("agents", "Download for Claude Desktop", ("Download for Claude Desktop",)),
     ("agents", "Save auto-apply limits", ("onClick={() => draft && saveOnce(draft)}",)),
