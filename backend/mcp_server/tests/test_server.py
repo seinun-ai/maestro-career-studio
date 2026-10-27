@@ -442,8 +442,14 @@ async def test_kb_ingest_resume_data_field_states_atomicity():
 
 
 def test_list_base_resumes_tool_calls_client(monkeypatch):
-    monkeypatch.setattr(srv._client, "list_base_resumes", lambda: [{"slug": "master"}])
+    seen = []
+    monkeypatch.setattr(srv._client, "list_base_resumes",
+                        lambda include_archived=False: seen.append(include_archived) or [{"slug": "master"}])
     assert srv.list_base_resumes() == [{"slug": "master"}]
+    srv.list_base_resumes(include_archived=True)
+    assert seen == [False, True]
+    doc = " ".join((srv.list_base_resumes.__doc__ or "").split())
+    assert "include_archived" in doc and "archived_at" in doc
 
 
 def test_list_referrals_tool_calls_client(monkeypatch):

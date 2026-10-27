@@ -17,6 +17,16 @@ def test_list_base_resumes():
 
 
 @respx.mock
+def test_list_base_resumes_asks_for_archived_ones_only_when_told():
+    route = respx.get(f"{BASE}/api/base-resumes").mock(return_value=httpx.Response(200, json=[]))
+    client = BackendClient(BASE)
+    client.list_base_resumes()
+    assert "include_archived" not in route.calls.last.request.url.params
+    client.list_base_resumes(include_archived=True)
+    assert route.calls.last.request.url.params["include_archived"] == "true"
+
+
+@respx.mock
 def test_list_referrals():
     respx.get(f"{BASE}/api/referrals").mock(
         return_value=httpx.Response(

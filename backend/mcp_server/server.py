@@ -522,9 +522,12 @@ def _instruction_from_profile(profile: dict[str, Any]) -> str | None:
 # ---------- read ----------
 @mcp.tool(**_read("List Base Resumes"))
 @_guard
-def list_base_resumes() -> Any:
-    """List all base resumes (slug, display name, summary)."""
-    return _client.list_base_resumes()
+def list_base_resumes(include_archived: bool = False) -> Any:
+    """List base resumes (slug, display name, summary). By default only the ones
+    that can be picked; include_archived=true adds the archived ones, each with
+    its archived_at date (archiving hides a resume from scoring and the pickers
+    without deleting it)."""
+    return _client.list_base_resumes(include_archived=include_archived)
 
 
 @mcp.tool(**_read("Get Base Resume"))

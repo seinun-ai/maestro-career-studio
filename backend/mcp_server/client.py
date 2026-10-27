@@ -488,8 +488,9 @@ class BackendClient:
         return self._send(method, path, **kwargs)
 
     # ---- read ----
-    def list_base_resumes(self) -> Any:
-        return self._request("GET", "/api/base-resumes")
+    def list_base_resumes(self, include_archived: bool = False) -> Any:
+        params = {"include_archived": "true"} if include_archived else {}  # sent only when asked
+        return self._request("GET", "/api/base-resumes", params=params)
 
     def get_base_resume(self, slug: str) -> Any:
         return self._request("GET", f"/api/base-resumes/{_seg(slug)}")
