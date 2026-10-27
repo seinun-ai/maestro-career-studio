@@ -1055,6 +1055,21 @@ class BackendClient:
             "POST", f"/api/base-resumes/{_seg(slug)}/render", params=params, timeout=_RENDER_TIMEOUT
         )
 
+    def keep_design(
+        self,
+        target_type: str,
+        target_id: str,
+        template_id: str | None = None,
+        formatting: dict | None = None,
+    ) -> Any:
+        """Save the template and/or look settings a resume renders in from now on: a base resume's
+        through its design route (nothing else is written), an application's through its PATCH.
+        Only what was given is sent, so the other one stays as it is."""
+        body = _drop_none(template_id=template_id, formatting=formatting)
+        if target_type == "base_resume":
+            return self._request("PATCH", f"/api/base-resumes/{_seg(target_id)}/design", json=body)
+        return self._request("PATCH", f"/api/applications/{_seg(target_id)}", json=body)
+
     def render_application(self, application_id: str, template_id: str | None = None) -> Any:
         params = {"template_id": template_id} if template_id else {}
         return self._request(

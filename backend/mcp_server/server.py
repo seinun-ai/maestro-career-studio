@@ -1762,10 +1762,41 @@ def store_cover_letter(application_id: str, text: str, ctx: Context | None = Non
     return _client.store_cover_letter(application_id, text, origin_detail=_client_label(ctx))
 
 
+# Immune to the ~2048-char tool-description truncation: lives on the param schema.
+_FORMATTING_FIELD = Field(
+    description=(
+        "Look settings to keep (keep=true), one object of the template knobs: font_size "
+        "(10|11|12), side_margins and top_bottom_margin (0.3-1.0 inches), line_spacing (0.9-1.4), "
+        "section_spacing (0-14 pt), entry_spacing (0-10 pt), justify and hide_divider (true|false), "
+        'bullet_icon ("bullet"|"dash"), header_align ("left"|"center"|"right"), date_format '
+        '("verbatim"|"short_month"|"long_month"|"numeric"), education_order ("degree_first"|'
+        '"institution_first"), skills_layout ("inline"|"bulleted"), section_order (a list of '
+        "summary, experience, projects, extra_sections, skills, education, certifications; the "
+        "rest follow in the template's order). It replaces the resume's saved look settings: a "
+        "knob left out takes the template's default (on a tailored resume, its base resume's "
+        "setting first), and {} clears them. An unknown knob or a value out of range is a 400 and "
+        "nothing is kept. get_base_resume returns a base resume's saved formatting and template_id."
+    )
+)
+_KEEP_FIELD = Field(
+    description=(
+        "True: before rendering, the template_id and/or formatting given are saved on this base "
+        "resume or tailored resume, so its later renders use them, after an edit too; template_id "
+        "must name a ready template. False (default): template_id is a one-off for this render, "
+        "the saved design is unchanged, and formatting is refused."
+    )
+)
+
+
 @mcp.tool(**_write("Render Resume PDF", destructive=False, idempotent=True))
 @_guard
-def render_pdf(target_type: Literal["base_resume", "application"], target_id: str,
-               template_id: str | None = None) -> Any:
+def render_pdf(
+    target_type: Literal["base_resume", "application"],
+    target_id: str,
+    template_id: str | None = None,
+    formatting: Annotated[dict | None, _FORMATTING_FIELD] = None,
+    keep: Annotated[bool, _KEEP_FIELD] = False,
+) -> Any:
     """Render a PDF. target_type is 'base_resume' (target_id=slug) or 'application'
     (target_id=application id). Optional template_id selects a template (either
     engine; must be 'ready'; omit for the default). Response reports
@@ -1780,27 +1811,66 @@ def render_pdf(target_type: Literal["base_resume", "application"], target_id: st
     apply-readiness hint (autofill_ready, incomplete/blocking groups, a conditional
     browser-handoff offer); for a 'base_resume' render it is always null — a
     base-resume preview isn't part of the score->tailor->render arc, so there is
-    nothing to offer."""
-    if target_type == "base_resume":
-        result = _client.render_base_resume(target_id, template_id=template_id)
-        return {**result, "next": None}
-    if target_type == "application":
-        result = _client.render_application(target_id, template_id=template_id)
-        # Only fetch setup status (an extra HTTP call) when a hint could
-        # actually use it — the same no-wasted-round-trip rule score_ats's
-        # `brief` applies, just without a separate agent-facing switch since
-        # there is no batch-rendering loop analogous to triage scoring.
-        def compose() -> dict[str, Any] | None:
-            if not _hints_enabled():
-                return None
-            return workflow.next_after_render(
-                setup_status=_client.get_setup_status(),
-                allowed_tools=_active_allowed_tools(),
-                hints_enabled=True,
-            )
+    nothing to offer.
 
-        return {**result, "next": _best_effort_hint(compose)}
-    raise ToolError("target_type must be 'base_resume' or 'application'")
+    Without keep, template_id is a one-off and the saved design is unchanged.
+    With keep=true the template_id and/or formatting are saved on the resume
+    first, its later renders use them, and the response adds kept
+    {template_id, formatting}: what the resume now keeps."""
+    if target_type not in ("base_resume", "application"):
+        raise ToolError("target_type must be 'base_resume' or 'application'")
+    with_kept = _kept_design(target_type, target_id, template_id, formatting, keep)
+    render = _client.render_base_resume if target_type == "base_resume" else _client.render_application
+    try:
+        result = render(target_id, template_id=template_id)
+    except BackendError as exc:
+        if not with_kept:
+            raise
+        # The save landed first: a failed render must not read as "nothing happened".
+        raise ToolError(f"{exc} The design was kept before this render: {with_kept['kept']}.") from exc
+    if target_type == "base_resume":
+        return {**result, "next": None, **with_kept}
+
+    # Only fetch setup status (an extra HTTP call) when a hint could
+    # actually use it — the same no-wasted-round-trip rule score_ats's
+    # `brief` applies, just without a separate agent-facing switch since
+    # there is no batch-rendering loop analogous to triage scoring.
+    def compose() -> dict[str, Any] | None:
+        if not _hints_enabled():
+            return None
+        return workflow.next_after_render(
+            setup_status=_client.get_setup_status(),
+            allowed_tools=_active_allowed_tools(),
+            hints_enabled=True,
+        )
+
+    return {**result, "next": _best_effort_hint(compose), **with_kept}
+
+
+def _kept_design(
+    target_type: str, target_id: str, template_id: str | None, formatting: dict | None, keep: bool
+) -> dict[str, Any]:
+    """render_pdf's keep, before it renders: {} without keep (where formatting is refused), else the
+    design saved and {"kept": what the resume now keeps}. A template that is not ready is refused
+    here: the render would quietly fall back to the default template, and every later render
+    with it."""
+    if not keep:
+        if formatting is not None:
+            raise ToolError(
+                "formatting is saved on the resume, so it takes keep=true; a one-off render takes "
+                "template_id only."
+            )
+        return {}
+    if template_id is None and formatting is None:
+        raise ToolError("keep=true keeps a template_id, formatting or both; neither was given.")
+    if template_id is not None:
+        status = (_client.get_template(template_id) or {}).get("status")
+        if status != "ready":
+            raise ToolError(
+                f"Template {template_id!r} is {status or 'not ready'}; only a ready template is kept."
+            )
+    saved = _client.keep_design(target_type, target_id, template_id=template_id, formatting=formatting)
+    return {"kept": {"template_id": saved.get("template_id"), "formatting": saved.get("formatting")}}
 
 
 @mcp.tool(**_read("Get Rendered PDF"))

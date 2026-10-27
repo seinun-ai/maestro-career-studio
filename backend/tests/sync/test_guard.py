@@ -527,6 +527,8 @@ PROFILE_PATHS = [
     # The Target dialog's save: anchors are profile metadata, refused on the always-on copy.
     ("PATCH", "/api/base-resumes/guard_base/identity", {"countries": ["GB"]}),
     ("PATCH", "/api/base-resumes/guard_base/identity", {"company": "Example employer", "focus": "payments"}),
+    # A kept design (MCP render_pdf keep=true) is profile metadata too.
+    ("PATCH", "/api/base-resumes/guard_base/design", {"template_id": "default", "formatting": {"font_size": 10}}),
 ]
 
 

@@ -552,6 +552,105 @@ def test_render_pdf_application_template_id(monkeypatch):
     assert seen == {"a": "a1", "t": "modern"}
 
 
+def _keep_fakes(monkeypatch, calls, status="ready"):
+    monkeypatch.setattr(srv._client, "get_template",
+                        lambda tid: calls.append(("template", tid)) or {"id": tid, "status": status})
+    monkeypatch.setattr(srv._client, "keep_design", lambda tt, tid, **kw: calls.append(("keep", tt, tid, kw))
+                        or {"template_id": kw.get("template_id") or "kept_before", "formatting": kw.get("formatting"),
+                            "data": {"summary": "not echoed"}})
+    monkeypatch.setattr(srv._client, "render_base_resume",
+                        lambda slug, template_id=None: calls.append(("render", slug, template_id)) or {"ok": "base"})
+    monkeypatch.setattr(srv._client, "render_application",
+                        lambda app_id, template_id=None: calls.append(("render", app_id, template_id)) or {"ok": "app"})
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+
+
+def test_render_pdf_keep_saves_the_design_then_renders_in_it(monkeypatch):
+    calls = []
+    _keep_fakes(monkeypatch, calls)
+
+    out = srv.render_pdf("base_resume", "field_tech", template_id="modern",
+                         formatting={"font_size": 10}, keep=True)
+
+    assert calls == [
+        ("template", "modern"),
+        ("keep", "base_resume", "field_tech", {"template_id": "modern", "formatting": {"font_size": 10}}),
+        ("render", "field_tech", "modern"),
+    ]
+    assert out == {"ok": "base", "next": None,
+                   "kept": {"template_id": "modern", "formatting": {"font_size": 10}}}
+
+
+def test_render_pdf_keep_on_a_tailored_resume_keeps_the_look_alone(monkeypatch):
+    calls = []
+    _keep_fakes(monkeypatch, calls)
+
+    out = srv.render_pdf("application", "a1", formatting={"header_align": "left"}, keep=True)
+
+    assert calls == [
+        ("keep", "application", "a1", {"template_id": None, "formatting": {"header_align": "left"}}),
+        ("render", "a1", None),
+    ]
+    assert out["kept"] == {"template_id": "kept_before", "formatting": {"header_align": "left"}}
+
+
+def test_render_pdf_without_keep_saves_nothing(monkeypatch):
+    calls = []
+    _keep_fakes(monkeypatch, calls)
+
+    out = srv.render_pdf("base_resume", "field_tech", template_id="modern")
+
+    assert calls == [("render", "field_tech", "modern")]
+    assert out == {"ok": "base", "next": None}
+
+
+@pytest.mark.parametrize("kwargs, words", [
+    ({"formatting": {"font_size": 10}}, "keep=true"),
+    ({"keep": True}, "template_id"),
+    ({"template_id": "draft_one", "keep": True}, "ready"),
+], ids=["formatting-without-keep", "keep-with-nothing", "keep-a-draft-template"])
+def test_render_pdf_refuses_a_keep_it_cannot_honour_before_any_write(monkeypatch, kwargs, words):
+    calls = []
+    _keep_fakes(monkeypatch, calls, status="draft")
+
+    with pytest.raises(Exception) as exc:
+        srv.render_pdf("base_resume", "field_tech", **kwargs)
+
+    assert words in str(exc.value)
+    assert not [c for c in calls if c[0] in ("keep", "render")]
+
+
+def test_a_render_that_fails_after_a_keep_says_the_design_was_kept(monkeypatch):
+    from mcp_server.client import BackendError
+
+    calls = []
+    _keep_fakes(monkeypatch, calls)
+
+    def failing_render(slug, template_id=None):
+        raise BackendError("Backend returned 400: this template can't show custom sections", status_code=400)
+
+    monkeypatch.setattr(srv._client, "render_base_resume", failing_render)
+
+    with pytest.raises(Exception) as exc:
+        srv.render_pdf("base_resume", "field_tech", template_id="modern", keep=True)
+
+    assert "custom sections" in str(exc.value) and "was kept" in str(exc.value)
+    assert [c[0] for c in calls] == ["template", "keep"]
+
+
+async def test_render_pdf_describes_keep_and_every_look_setting():
+    from app.schemas.formatting import ResumeFormatting
+
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    schema = tools["render_pdf"].inputSchema["properties"]
+    assert {"formatting", "keep"} <= set(schema)
+    look = schema["formatting"].get("description", "")
+    missing = [name for name in ResumeFormatting.model_fields if name not in look]
+    assert not missing, missing
+    doc = " ".join((srv.render_pdf.__doc__ or "").split())
+    assert "keep=true" in doc and "one-off" in doc and "kept" in doc
+
+
 def test_get_rendered_pdf_tool(monkeypatch):
     monkeypatch.setattr(srv._client, "get_rendered_pdf",
                         lambda tt, tid: {"filename": f"{tid}.pdf", "mime_type": "application/pdf"})

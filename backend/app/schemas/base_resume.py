@@ -94,6 +94,15 @@ class BaseResumeUpdate(BaseModel):
     formatting: dict | None = None
 
 
+class BaseResumeDesign(BaseModel):
+    """The design a base resume keeps: PATCH /{slug}/design. As in the PUT, an omitted field is
+    unchanged, a null template_id resets to the default template and a null formatting clears the
+    look settings."""
+
+    template_id: str | None = None
+    formatting: dict | None = None
+
+
 class BaseResumeDuplicate(BaseModel):
     new_slug: str
     new_display_name: str | None = None

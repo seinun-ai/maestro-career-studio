@@ -86,6 +86,25 @@ def test_render_application_passes_template_id():
 
 
 @respx.mock
+def test_keep_design_saves_a_base_resumes_template_and_look_only():
+    route = respx.patch(f"{BASE}/api/base-resumes/field_tech/design").mock(
+        return_value=httpx.Response(200, json={"slug": "field_tech", "template_id": "modern"}))
+    BackendClient(BASE).keep_design("base_resume", "field_tech", template_id="modern",
+                                    formatting={"font_size": 10})
+    assert _json.loads(route.calls.last.request.read()) == {
+        "template_id": "modern", "formatting": {"font_size": 10}}
+
+
+@respx.mock
+def test_keep_design_patches_an_application_with_only_what_was_given():
+    route = respx.patch(f"{BASE}/api/applications/a1").mock(
+        return_value=httpx.Response(200, json={"id": "a1", "formatting": {}}))
+    BackendClient(BASE).keep_design("application", "a1", formatting={})
+    assert _json.loads(route.calls.last.request.read()) == {"formatting": {}}
+    assert route.calls.last.request.headers["x-maestro-cs-origin"] == "mcp"
+
+
+@respx.mock
 def test_get_rendered_pdf_base_resume_writes_file(tmp_path, monkeypatch):
     monkeypatch.setenv("MAESTRO_CS_PDF_DIR", str(tmp_path))
     pdf = b"%PDF-1.4 fake-bytes"

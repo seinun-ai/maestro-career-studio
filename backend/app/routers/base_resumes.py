@@ -16,6 +16,7 @@ from app.models.base_resume import BaseResume
 from app.schemas.base_resume import (
     BaseFromKBPlanRead,
     BaseFromKBPlanRequest,
+    BaseResumeDesign,
     BaseResumeFromKB,
     BaseResumeIdentity,
     BaseResumeCreate,
@@ -689,6 +690,37 @@ def update_base_resume_identity(
     for column, value in anchor_updates.items():
         setattr(row, column, value)
 
+    db.commit()
+    db.refresh(row)
+    return _detail(row)
+
+
+@router.patch("/{slug}/design", response_model=BaseResumeDetail)
+def update_base_resume_design(
+    slug: str,
+    payload: BaseResumeDesign,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Keep a design on a base resume: its template and look settings, which every later render
+    of it uses (MCP render_pdf with keep). The PUT's rules for both fields and the same formatting
+    write gate; a refused formatting keeps nothing.
+
+    Deliberately NOT the full PUT, which needs the whole resume: a keep built on it would read the
+    data and write it back, erasing an edit saved in between, and would record a version and
+    recompile. This writes the two fields only and renders nothing.
+    """
+    hooks.require_profile_writable(db)
+    row = db.get(BaseResume, slug)
+    if row is None or row.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Base resume not found")
+    fields = payload.model_fields_set
+    if "formatting" in fields:
+        try:
+            row.formatting_json = validate_formatting(payload.formatting)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+    if "template_id" in fields:
+        row.template_id = payload.template_id
     db.commit()
     db.refresh(row)
     return _detail(row)
