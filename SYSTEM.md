@@ -317,8 +317,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **MCP lives inside the app.** `{#inv-mcp-inside-the-app}` `/mcp` and `/mcp/{profile}` are routed inside FastAPI behind REST's
   SyncPublicHost → Host → Origin → CORS stack; SDK DNS-rebinding protection is OFF so that stack stays the one definition; never a second port
   or `/api/sync` route. Pins: `tests/test_mcp_http_boundary.py`, `mcp_server/tests/test_http.py`.
-- **MCP tools run on their own limiter.** `{#inv-tools-off-loop}` Each tool takes a thread from `mcp_server.http`'s own limiter, so tools
-  waiting on loopback REST never starve REST's sync routes; module functions stay sync (`mcp_server/tests/test_http.py`).
+- **MCP tools run on their own limiter.** `{#inv-tools-off-loop}` Over HTTP, tools take threads from `mcp_server.http`'s own limiter, so those
+  awaiting loopback REST never starve its sync routes; module functions stay sync (`mcp_server/tests/test_http.py`).
 - **`edit_application` edits the current draft in place.** `{#inv-edit-in-place}` (MCP): its ops apply to the CURRENT `customized_json`,
   keeping every earlier edit (the base only with no draft yet); no MCP tool rebuilds a draft from the base outside a tailoring session
   (REST `from-base` stays for the web). Edit indices are **0-based into the full JSON array**, including `enabled: false` rows omitted

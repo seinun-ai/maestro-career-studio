@@ -65,14 +65,16 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   defaults to localhost:8001; `MAESTRO_CS_MCP_PROFILE` selects `/mcp` or `/mcp/{profile}` (no trailing slash).
   Requests are ordered. 2025 traffic (no revision in `params._meta`, or a handshake one: 2024-11-05 to 2025-11-25) holds the
   session, and a stale one (404) replays initialize + initialized before one retry, preserving the initialize's `clientInfo`. A
-  message whose `_meta` names a newer revision, such as 2026-07-28, carries `MCP-Protocol-Version`, `Mcp-Method` and, for `tools/call`,
-  `prompts/get` and `resources/read`, `Mcp-Name` (`params.name` or `uri`), each through the SDK's header codec (printable ASCII as
-  is, else `=?base64?…?=`; a lone surrogate, which matches no header, is the server's -32020 on both bridges); it sends and adopts no session, a 404 is the server's answer and is never replayed, and a 4xx carrying
-  a JSON-RPC error for its id reaches the client as the server wrote it. Any other non-2xx reads -32000 "Maestro Career Studio
-  returned HTTP n." (`mcpb/tests/bridge.test.js`). A re-pack moves `server.json`'s `fileSha256`. `maestro mcp`
-  (`maestro_cs/bridge.py`, the uv install's Python twin) follows the same rules; it copies the codec and the revision lists
-  rather than import `mcp` (~200 ms a start), and `tests/maestro_cs/test_bridge.py` pins them to the SDK's. Each set's
-  `serverInfo.version`, on stdio and HTTP, reads `APP_VERSION`, else `dev` (`mcp_server/tests/test_http_modern.py`, `test_profiles.py`).
+  message whose `_meta` names any other revision string, such as 2026-07-28 or one the server refuses with its supported list, carries
+  `MCP-Protocol-Version`, `Mcp-Method` and, for `tools/call`, `prompts/get` and `resources/read`, `Mcp-Name` (`params.name` or
+  `uri`), each through the SDK's header codec (printable ASCII as is, else `=?base64?…?=`; a lone surrogate, which matches no
+  header, is the server's -32020 on both bridges); it sends and adopts no session, a 404 is the server's answer and is never
+  replayed, and a 4xx carrying a JSON-RPC error for its id reaches the client as the server wrote it. Any other non-2xx reads
+  -32000 "Maestro Career Studio returned HTTP n." (`mcpb/tests/bridge.test.js`). A re-pack moves `server.json`'s `fileSha256`.
+  `maestro mcp` (`maestro_cs/bridge.py`, the uv install's Python twin) follows the same rules; it copies the codec and the
+  revision lists rather than import `mcp` (~200 ms a start), and `tests/maestro_cs/test_bridge.py` pins them to the SDK's. Each
+  set's `serverInfo.version`, on stdio and HTTP, reads `APP_VERSION`, else `dev` (`mcp_server/tests/test_http_modern.py`,
+  `test_profiles.py`).
 
 - **The server on SDK 2.x** (`mcp>=2.3,<3`; `mcp_server/server.py`, `http.py`). `server.mcp`, the one registry, is a `_ServedMCP`
   (the SDK's `MCPServer`); `build_set` makes each set a `_ServedMCP` of its own, and `http.McpEndpoint(registry)` takes any registry
@@ -110,9 +112,10 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   2026-07-28 and auto against a real single-worker uvicorn).
   **The golden record** (`mcp_server/tests/test_wire_golden.py` and `fixtures/wire_golden.json`; the cases in `_golden_cases.py`, which
   `test_http_modern.py` replays on 2026-07-28): per set, the 2025 path's initialize (capabilities, `serverInfo` name), the tool names
-  in order (on `/mcp` with each tool's title, schemas and annotations), the prompt names and titles and two `prompts/get`, then one
-  `tools/call` per answer shape and per refusal kind, and the crash. Tool descriptions, set instructions and prompt texts stay out, so
-  a copy edit never trips it; other tests pin each to its source on the wire (the descriptions:
+  in order (on `/mcp` with each tool's title, schemas and annotations), the prompt names and titles and two `prompts/get`, then the
+  resources lists and an unknown method on `/mcp` (the two answers the move changed), one `tools/call` per answer shape and per
+  refusal kind, and the crash. Tool descriptions, set instructions and prompt texts stay out, so a copy edit never trips it; other
+  tests pin each to its source on the wire (the descriptions, against each tool function's docstring as Python holds it:
   `test_each_tool_on_the_wire_carries_its_own_description`). The same calls pin the log (only the crash). CI installs the newest
   `mcp<3`, so the record is the net for an SDK minor release. On a difference: a deliberate change of ours is regenerated
   (`MAESTRO_WIRE_GOLDEN_WRITE=1`, then a rerun without it) in a commit of its own that says why; an SDK release that changes an answer

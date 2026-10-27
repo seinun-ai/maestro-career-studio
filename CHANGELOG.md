@@ -398,9 +398,11 @@ work-permit answers for each country you apply in.
 - **Save is a light button on Settings**, in How you come across and under a cover letter you edit, so
   the one solid blue button on a page is its next step.
 - **The MCP server runs on version 2 of the `mcp` Python SDK.** Connected agents see the same tools,
-  schemas, answers and refusals as before, with two differences: every tool set now offers an empty
-  resources list, as the stdio server always did, and a request for a protocol method the server
-  doesn't have answers with the standard "Method not found". Clients on the 2026-07-28 MCP revision,
+  schemas, answers and refusals as before, with three differences: every tool set now offers an empty
+  resources list, as the stdio server always did; a request for a protocol method the server
+  doesn't have answers with the standard "Method not found"; and an error the HTTP layer answers on
+  the 2025 path (a missing or unknown session, a body that isn't JSON) carries `"id": null` rather
+  than `"server-error"`, with a parse error in the SDK's own words. Clients on the 2026-07-28 MCP revision,
   which sends no handshake and keeps no session, are served at the same addresses. A tool that
   crashes reads "Error executing tool <name>", and the details stay in the app's log. A mistake in
   an agent's own input, for example an image that isn't valid base64, reads as a plain refusal that

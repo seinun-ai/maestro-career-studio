@@ -16,7 +16,7 @@ from mcp_server import orientation, replaced
 from mcp_server import server as srv
 from mcp_server.client import BackendError
 from mcp_server.profiles import PROFILE_ALLOWLISTS, allowed_tools
-from mcp_server.tests._golden_cases import CALLS, call_case, expected_record
+from mcp_server.tests._golden_cases import CALLS, REQUESTS, call_case, expected_record
 from mcp_server.tests._wire import (
     HDR, INIT, MODERN, asgi_app, modern_rpc, normalise_response, rpc, serve_catalog, session,
     set_path,
@@ -146,6 +146,15 @@ class _ModernWire:
 
     def ask(self, path, method, params=None):
         return _modern(self.client, path, method, params)
+
+
+@pytest.mark.parametrize("asked", REQUESTS, ids=lambda asked: asked.method)
+def test_a_golden_request_reads_its_recorded_answer(client, golden_record, asked):
+    """The resources lists and an unknown method: the record's 2025 answer, with Method not
+    found as a 404 on this path."""
+    response = modern_rpc(client, asked.path, asked.method)
+    assert response.status_code == asked.modern_status, response.text
+    assert normalise_response(response.json()) == golden_record[f"{asked.method} {asked.path}"]
 
 
 @pytest.mark.parametrize("call", CALLS, ids=lambda call: call.entry)

@@ -1,7 +1,7 @@
 """The golden record's cases, shared by the tests that replay them: the fixture, the entries
-changed on purpose since it was written, and the tools/call cases with the one client call each
-case's tool body makes. test_wire_golden records and compares every entry; test_http_modern
-replays the calls on the 2026-07-28 revision."""
+changed on purpose since it was written, the requests no tool answers, and the tools/call cases
+with the one client call each case's tool body makes. test_wire_golden records and compares every
+entry; test_http_modern replays the requests and the calls on the 2026-07-28 revision."""
 
 import json
 from pathlib import Path
@@ -41,6 +41,23 @@ _AGENT_WRITES_409 = (
     "write for agent apps (Settings › Agent apps changes it). Write the letter yourself and "
     "save it with store_cover_letter."
 )
+
+
+class Request(NamedTuple):
+    """One request no tool answers, recorded as `<method> <path>`."""
+
+    path: str
+    method: str
+    modern_status: int = 200  # its HTTP status on the 2026-07-28 path (the 2025 path's is 200)
+
+
+# The two answers the move to SDK 2.x changed for a 2025 client: every set offers the resources
+# lists, empty, and a method no server has is the standard -32601 "Method not found".
+REQUESTS = [
+    Request("/mcp", "resources/list"),
+    Request("/mcp", "resources/templates/list"),
+    Request("/mcp", "no/such", modern_status=404),
+]
 
 
 class Call(NamedTuple):

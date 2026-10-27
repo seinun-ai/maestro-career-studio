@@ -103,6 +103,13 @@ def test_listing_a_profile_preserves_the_shared_registry(monkeypatch, profile):
     assert {tool.name for tool in srv.mcp._tool_manager.list_tools()} == registered
 
 
+def test_every_registered_tool_sits_on_guard():
+    """_ServedMCP.call_tool's backstop relies on it: a tool's BackendError reads as its words."""
+    guarded = srv._guard(lambda: None).__code__  # every _guard wrapper runs this one code object
+    assert [n for n in srv.list_registered_tool_names("full")
+            if getattr(srv, n).__code__ is not guarded] == []
+
+
 def test_listing_without_a_profile_uses_the_env(monkeypatch):
     from mcp_server.profiles import HUNT_TOOLS
 

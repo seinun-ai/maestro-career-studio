@@ -2,8 +2,8 @@
 SDK release can change.
 
 Per set it holds the initialize result, the tool list (in full on /mcp, names in order on
-the others) and the prompts; then one tool call per answer shape, one per refusal kind and a
-crash. Our own copy stays out: tool descriptions, set instructions, and prompt descriptions
+the others) and the prompts; then the resources lists and an unknown method on /mcp, and one
+tool call per answer shape, one per refusal kind and a crash. Our own copy stays out: tool descriptions, set instructions, and prompt descriptions
 and texts, each pinned to its source by another test (the descriptions below), so a copy edit
 never trips the record. CI installs the newest mcp<3, so the record is the net for an SDK
 minor release; HOW_TO_ACT says what to do with a difference. An entry changed on purpose
@@ -35,7 +35,7 @@ from app.services import automations
 from mcp_server import http as mcp_http
 from mcp_server import server as srv
 from mcp_server.tests._golden_cases import (
-    CALLS, EXPECTED_CHANGES, FIXTURE, VERSIONS, call_case, expected_record, recorded,
+    CALLS, EXPECTED_CHANGES, FIXTURE, REQUESTS, VERSIONS, call_case, expected_record, recorded,
 )
 from mcp_server.tests._wire import (
     HDR, INIT, asgi_app, normalise_record, normalise_response, rpc, session,
@@ -149,6 +149,8 @@ def record(client: TestClient) -> dict[str, Any]:
             entries[f"prompts/get {name} on /mcp/tailor"] = _without_prompt_text(
                 wire.ask("/mcp/tailor", "prompts/get", {"name": name})
             )
+        for asked in REQUESTS:
+            entries[f"{asked.method} {asked.path}"] = wire.ask(asked.path, asked.method)
         for call in CALLS:
             entries[f"tools/call {call.entry}"] = call_case(wire, call)
     assert not reached, (
@@ -251,11 +253,13 @@ def test_wire_answers_match_the_golden_record():
 
 def test_each_tool_on_the_wire_carries_its_own_description():
     """The record leaves descriptions out, so this is where an SDK release that changed what
-    tools/list sends as a tool's description fails."""
+    tools/list sends as a tool's description fails. 2.3 sends the tool function's docstring
+    exactly as Python holds it, neither cleaned nor dedented."""
     with TestClient(asgi_app(mcp_http.McpEndpoint())) as client:
         listed = _Wire(client).ask("/mcp", "tools/list")["result"]["tools"]
-    own = {tool.name: tool.description for tool in srv.mcp._tool_manager.list_tools()}
-    assert {t["name"]: t.get("description") for t in listed} == own
+    assert {t["name"]: t.get("description") for t in listed} == {
+        t["name"]: getattr(srv, t["name"]).__doc__ for t in listed
+    }
 
 
 def test_only_an_empty_experimental_capability_is_left_out_of_the_comparison():

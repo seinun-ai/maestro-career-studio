@@ -139,7 +139,7 @@ class McpEndpoint:
     """
 
     def __init__(self, registry: MCPServer | None = None) -> None:
-        registry = registry or tools_server.mcp
+        registry = registry if registry is not None else tools_server.mcp
         # The sets hold these same Tool objects, so wrapping the registry's covers every set.
         offload_tools(registry)
         self.servers = {
