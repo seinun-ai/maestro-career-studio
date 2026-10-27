@@ -83,12 +83,16 @@ work-permit answers for each country you apply in.
   tool set: for example, `explore_top_skills was replaced by explore_trends(view="top_skills").` On a
   tool set without the new tool, it also names the set that has it (`…, in the track set.`).
 - **Three steps for agent apps.** If a scheduled job runs an automation prompt you copied before
-  this release (Tailor run, Apply session or Apply automatically), copy it again from **Automations**:
-  old copies call tools that are gone (`quick_tailor`, `attach_evidence_file`) and `tailor_session`
-  without `ops`, which the new default refuses. If your agent app allows or approves Maestro's tools
-  by name, add the new names (`explore_trends`, `attach_evidence`, `get_career_context`) where the
-  removed ones were listed. If you relied on Maestro's AI writing over MCP, pick **Maestro's AI** in
-  Settings › Agent apps › **Who writes for connected agents**.
+  this release (Tailor run, Apply session, Apply automatically, Job hunt, Mail status or Referral
+  pages), copy it again from **Automations**. Old copies of the first three call tools that are gone
+  (`quick_tailor`, `attach_evidence_file`) and `tailor_session` without `ops`, which the new default
+  refuses. Old copies of the other three keep working but miss what's new: Job hunt and Mail status
+  guess their window from the schedule instead of starting an hour before the last run (`last_runs`),
+  and Job hunt and Referral pages don't read each country's own work permits. New Apply session and
+  Apply automatically copies also stage the cover letter for upload. If your agent app allows or
+  approves Maestro's tools by name, add the new names (`explore_trends`, `attach_evidence`,
+  `get_career_context`) where the removed ones were listed. If you relied on Maestro's AI writing over
+  MCP, pick **Maestro's AI** in Settings › Agent apps › **Who writes for connected agents**.
 - No step to take by hand for the app itself. Migrations add a column (`kb_points.merged_into_point_id`), two tables
   (`kb_point_kept_pairs`, and `application_status_events`, filled with one undated row for each
   application that already has a status) and two job columns (`country_code`,
