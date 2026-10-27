@@ -373,8 +373,8 @@ def patch_job_preferences(
 @router.patch("/market")
 def patch_market(payload: SettingValueIn[dict[str, Any]], db: Annotated[Session, Depends(get_db)]):
     """Where you live and apply, and the currency pay reads in, as one save
-    (`market_settings.patch_place`: `home`, `apply_in`, `home_currency`). The market body, plus
-    `home_currency`, the currency pay reads in now."""
+    (`market_settings.patch_place`: `home`, `apply_in`, `home_currency`). Returns the market body
+    plus the resolved `home_currency`."""
     setting = _agent_save(market_settings.patch_place, payload.value, db)
     return {**_market_body(setting), "home_currency": money_settings.home_currency(db)}
 

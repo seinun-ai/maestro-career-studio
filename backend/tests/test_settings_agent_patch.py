@@ -81,17 +81,78 @@ def test_a_null_market_loses_its_answers_and_a_market_left_out_keeps_them(client
     assert _stored_profile(settings_dir)["work_auth_by_country"] == {"CA": {"authorized_now": False}}
 
 
-def test_lists_replace_the_stored_list_whole(client, settings_dir):
-    client.put("/api/settings/autofill", json={"value": PROFILE})
-    _patch(client, "autofill", {
-        "custom": [{"question": "Q2", "answer": "A2"}],
-        "languages": [{"language": "French", "native": True}],
-        "education": [],
-    })
+def test_education_and_languages_replace_the_stored_list_whole(client, settings_dir):
+    client.put("/api/settings/autofill", json={"value": {
+        **PROFILE, "languages": [{"language": "Portuguese", "fluent": True}],
+        "education": [{"school": "Example college"}],
+    }})
+    _patch(client, "autofill", {"languages": [{"language": "French", "native": True}], "education": []})
     stored = _stored_profile(settings_dir)
-    assert stored["custom"] == [{"question": "Q2", "answer": "A2"}]
     assert stored["languages"] == [{"language": "French", "native": True}]
     assert stored["education"] == []
+
+
+# `custom` is the Companion's learn store ("pause once, learn forever"), so an agent's save adds or
+# replaces saved answers by question and never drops one it did not name: a whole-list replace built
+# from a read taken before a learn would erase the learned answer. Deleting one stays the user's.
+_NOTICE = {"question": "Notice period?", "answer": "2 weeks"}
+
+
+def _custom_after(client, settings_dir, stored, sent):
+    client.put("/api/settings/autofill", json={"value": {**PROFILE, "custom": stored}})
+    saved = _patch(client, "autofill", {"custom": sent})
+    assert saved.status_code == 200, saved.text
+    return _stored_profile(settings_dir)["custom"]
+
+
+def test_a_saved_answer_to_the_same_question_is_replaced_in_place(client, settings_dir):
+    """The question key is the Companion's (`ns.normLabel`: case and runs of spaces ignored)."""
+    sent = {"question": "  notice   PERIOD? ", "answer": "1 month"}
+    assert _custom_after(client, settings_dir, [_NOTICE, {"question": "Q", "answer": "A"}], [sent]) == [
+        sent, {"question": "Q", "answer": "A"},
+    ]
+
+
+def test_a_new_question_is_added_and_every_other_saved_answer_stays(client, settings_dir):
+    sent = [{"question": "Q2", "answer": "A2"}]
+    assert _custom_after(client, settings_dir, [_NOTICE], sent) == [_NOTICE, *sent]
+
+
+def test_an_empty_list_removes_nothing(client, settings_dir):
+    assert _custom_after(client, settings_dir, [_NOTICE], []) == [_NOTICE]
+
+
+def test_an_answer_held_for_one_company_or_city_is_its_own_entry(client, settings_dir):
+    """The Companion keeps an answer that names this job's company or city apart from the general
+    one (`only_for`, `only_for_kind`); the key carries that scope."""
+    porto = {"question": "Willing to relocate to Porto?", "answer": "Yes",
+             "only_for": "Porto", "only_for_kind": "city"}
+    general = {"question": "Willing to relocate to Porto?", "answer": "No"}
+    assert _custom_after(client, settings_dir, [porto], [general]) == [porto, general]
+    again = {**porto, "answer": "Only with support"}
+    assert _custom_after(client, settings_dir, [porto, general], [again]) == [again, general]
+
+
+def test_an_entry_without_a_question_is_added(client, settings_dir):
+    sent = [{"answer": "An answer with no question"}, {"question": "  ", "answer": "Blank"}]
+    assert _custom_after(client, settings_dir, [_NOTICE], sent) == [_NOTICE, *sent]
+
+
+def test_a_companion_learn_between_an_agents_read_and_its_custom_save_is_kept(client, settings_dir):
+    """The agent reads custom = [A], the Companion learns B, the agent sends [A, C]: B stays."""
+    a, c = {"question": "Q", "answer": "A"}, {"question": "Q3", "answer": "C"}
+    client.put("/api/settings/autofill", json={"value": {**PROFILE, "custom": [a]}})
+    agents_read = client.get("/api/settings/autofill").json()["value"]
+
+    current = client.get("/api/settings/autofill").json()["value"]
+    learned = {"question": "Notice period at your current job?", "answer": "One month"}
+    client.put("/api/settings/autofill", json={"value": {**current, "custom": [*current["custom"], learned]}})
+
+    # The old flow PUT its stale read with the list replaced whole: the learn is gone.
+    assert learned not in {**agents_read, "custom": [a, c]}["custom"]
+
+    assert _patch(client, "autofill", {"custom": [a, c]}).status_code == 200
+    assert _stored_profile(settings_dir)["custom"] == [a, learned, c]
 
 
 @pytest.mark.parametrize("changes", [
@@ -338,6 +399,16 @@ def test_a_home_move_still_pins_a_one_set_permit_answer_to_the_old_home(client, 
 
 
 # ---------- through the MCP tools, against these routes ----------
+
+
+def test_set_autofill_profile_adds_saved_answers_beside_a_companion_learn(client, mcp_tools, settings_dir):
+    client.put("/api/settings/autofill", json={"value": PROFILE})
+    current = client.get("/api/settings/autofill").json()["value"]
+    learned = {"question": "Notice period at your current job?", "answer": "One month"}
+    client.put("/api/settings/autofill", json={"value": {**current, "custom": [*current["custom"], learned]}})
+
+    mcp_tools.set_autofill_profile(custom=[{"question": "q", "answer": "A, edited"}])
+    assert _stored_profile(settings_dir)["custom"] == [{"question": "q", "answer": "A, edited"}, learned]
 
 
 def test_set_autofill_profile_keeps_a_companion_learn_and_never_returns_eeo(client, mcp_tools, settings_dir):

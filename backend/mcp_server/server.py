@@ -1400,8 +1400,11 @@ def set_autofill_profile(
     """Save the user's application-form answers: the profile get_autofill_profile reads and
     the Companion fills forms from. Only the sections passed change. Inside personal,
     eligibility, preferences and each country's work-permit answers only the keys passed
-    change, and a null removes one; education, languages and custom replace the stored list
-    whole (get_autofill_profile returns the current lists). A work-permit answer is per
+    change, and a null removes one; education and languages replace the stored list whole
+    (get_autofill_profile returns them). Each custom answer replaces the saved one with the
+    same question (case and spacing ignored, same only_for) or is added; a saved answer is
+    never removed here, so one the Companion learned meanwhile stays (removing one is the
+    user's, in Profile). A work-permit answer is per
     country and a form question without one is asked on that form, never defaulted; setup
     counts the answers of each country in apply_in (set_markets). Diversity (EEO) answers
     have no field here: they and their consent are the user's, in Profile. An unknown

@@ -43,6 +43,15 @@ async def test_the_autofill_write_has_no_eeo_field_and_refuses_unknown_keys():
         assert schema["$defs"][shape]["additionalProperties"] is False, shape
 
 
+async def test_the_autofill_write_says_saved_answers_are_added_or_replaced_never_removed():
+    doc = " ".join(((await _tool("set_autofill_profile")).description or "").split())
+    assert "education and languages replace the stored list whole" in doc
+    for words in ("same question", "case and spacing ignored", "only_for", "is added",
+                  "never removed", "Companion learned"):
+        assert words in doc, words
+    assert "custom replace" not in doc
+
+
 async def test_work_permit_keys_are_the_market_list():
     schema = (await _tool("set_autofill_profile")).inputSchema
     assert json.dumps(markets.keys()) in json.dumps(schema)

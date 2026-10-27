@@ -255,6 +255,34 @@ def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict
 ANSWER_SECTIONS = ("personal", "eligibility", "preferences")
 LIST_SECTIONS = ("education", "languages", "custom")
 AGENT_SECTIONS = frozenset({*ANSWER_SECTIONS, *LIST_SECTIONS, BY_COUNTRY})
+# The Companion's learn store (SYSTEM.md {#inv-one-label-pattern-table}): an agent's save upserts it.
+CUSTOM = "custom"
+
+
+def _question_key(entry: Any) -> tuple[str, Any, Any] | None:
+    """Which saved answer `entry` is, as the Companion tells them apart (`panel/actions/pause.js`
+    `customRowAt`/`scopeKey`): its question under `ns.normLabel` (lower case, runs of spaces as one,
+    trimmed; `shared/profile-fields.js`), with the company or city it is held for. None when it has
+    no question to key on."""
+    question = entry.get("question") if isinstance(entry, dict) else None
+    words = " ".join(question.lower().split()) if isinstance(question, str) else ""
+    return (words, entry.get("only_for"), entry.get("only_for_kind")) if words else None
+
+
+def _upserted_custom(stored: Any, given: list[Any]) -> list[Any]:
+    """The saved answers with `given` laid over them: an entry whose question (and scope) matches a
+    stored one replaces it in place, any other is added at the end, and a stored answer `given` does
+    not name stays. So an answer the Companion learned after the agent's read is never erased, and
+    an agent cannot remove a saved answer (that stays the user's, in Profile)."""
+    rows = list(stored) if isinstance(stored, list) else []
+    for entry in given:
+        key = _question_key(entry)
+        at = next((i for i, row in enumerate(rows) if key is not None and _question_key(row) == key), None)
+        if at is None:
+            rows.append(entry)
+        else:
+            rows[at] = entry
+    return rows
 
 
 def _merged_answers(stored: Any, given: dict[str, Any]) -> dict[str, Any]:
@@ -270,15 +298,18 @@ def _merged_answers(stored: Any, given: dict[str, Any]) -> dict[str, Any]:
 
 def merged_profile(stored: dict[str, Any], changes: dict[str, Any]) -> dict[str, Any]:
     """The whole profile an agent's save stores: `stored` (as a read serves it) with the sections
-    `changes` names merged in. Answer sections merge key by key, a list replaces the stored list,
-    and work permits go per country (a None country is passed on as None, which `set_profile` takes
-    as removing its answers; a country left out keeps its stored answers there). The read view's
-    one-set projection is never sent back, so no answer is folded into another country's."""
+    `changes` names merged in. Answer sections merge key by key, saved answers (`custom`) upsert by
+    question (`_upserted_custom`), education and languages replace the stored list, and work permits
+    go per country (a None country is passed on as None, which `set_profile` takes as removing its
+    answers; a country left out keeps its stored answers there). The read view's one-set projection
+    is never sent back, so no answer is folded into another country's."""
     profile = {k: v for k, v in stored.items() if k not in (WORK_AUTH, WORK_AUTH_MARKET)}
     stored_permits = stored.get(BY_COUNTRY) if isinstance(stored.get(BY_COUNTRY), dict) else {}
     for section, given in changes.items():
         if section in ANSWER_SECTIONS:
             profile[section] = _merged_answers(profile.get(section), given)
+        elif section == CUSTOM:
+            profile[CUSTOM] = _upserted_custom(profile.get(CUSTOM), given)
         elif section in LIST_SECTIONS:
             profile[section] = list(given)
         elif section == BY_COUNTRY:

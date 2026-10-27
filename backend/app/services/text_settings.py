@@ -121,15 +121,23 @@ def one_commit(session: Session) -> Iterator[None]:
     lands between its reads and its writes, every `set_text` in it flushes instead of committing,
     the block commits once at the end, and a failure anywhere rolls every write in it back. The
     file mirrors are written only after the commit. Reads inside use the `peek_*` readers: a first
-    read that seeds a row (`get_text`) commits, which would end the transaction early."""
+    read that seeds a row (`get_text`) commits, which would end the transaction early, and a block
+    in which anything committed is refused (RuntimeError, no mirrors written) rather than passed
+    off as one transaction."""
     if _PENDING_MIRRORS in session.info:
         raise RuntimeError("one_commit blocks do not nest")
     begin_write(session)
     session.expire_all()
+    transaction = session.get_transaction()
     mirrors: list[tuple[str, str]] = []
     session.info[_PENDING_MIRRORS] = mirrors
     try:
         yield
+        if session.get_transaction() is not transaction:
+            raise RuntimeError(
+                "Something committed inside a one_commit block, releasing the write lock early; "
+                "read with the peek_* readers and leave the commit to the block."
+            )
         session.commit()
     except BaseException:
         session.rollback()
