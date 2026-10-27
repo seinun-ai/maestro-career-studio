@@ -268,7 +268,8 @@ def next_after_session(
     the default, or "maestro"). It changes what the tailor option says, never
     its args: with the agent app writing, tailor_session takes the agent's ops,
     or no_new_text for only what needs no wording (Maestro's AI is refused
-    there); with Maestro's AI writing, ops omitted has it write the edits.
+    there), so the option is never the `call`; with Maestro's AI writing, ops
+    omitted has it write the edits, and with every gap resolved it is.
 
     The deterministic KB/wording autos (Task 1's hoist) mean resolutions_json
     can already be partly populated even on a fresh enrich=False session, and
@@ -351,13 +352,15 @@ def next_after_session(
 
     if not unresolved:
         options = _visible([tailor_option], allowed_tools)
+        # The args carry neither ops nor no_new_text, which the server refuses from an agent
+        # app that writes, so only Maestro's AI makes the tailor the one call.
         return {
             "state": "gaps_resolved",
             "blocking": True,
             "offer": None,
             "ask_user": None,
             "options": options,
-            "call": "tailor_session" if options else None,
+            "call": "tailor_session" if options and writer == "maestro" else None,
         }
 
     resolve_option = {

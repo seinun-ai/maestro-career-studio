@@ -244,8 +244,16 @@ def test_resolve_gaps_wraps_with_next_hint(monkeypatch):
     out = srv.resolve_gaps(tailoring_session_id="s1", resolutions=[])
 
     assert out["id"] == "s1"
-    # no gaps at all -> straight to tailor, per workflow.next_after_session
-    assert out["next"]["call"] == "tailor_session"
+    # no gaps at all -> the tailor; the agent app writes by default, so it is offered, not called
+    assert [o["tool"] for o in out["next"]["options"]] == ["tailor_session"]
+    assert out["next"]["call"] is None
+
+    monkeypatch.setattr(
+        srv._client, "get_mcp_workflow_settings", lambda: {"hints": True, "writer": "maestro"}
+    )
+    assert srv.resolve_gaps(tailoring_session_id="s1", resolutions=[])["next"]["call"] == (
+        "tailor_session"
+    )
 
 
 def _settings_reads(monkeypatch, settings):
@@ -439,7 +447,7 @@ def test_presets_return_the_filled_session_wrapped(monkeypatch):
 
     assert out["id"] == "s1"
     assert "next" in out
-    assert out["next"]["call"] == "tailor_session"
+    assert [o["tool"] for o in out["next"]["options"]] == ["tailor_session"]
 
 
 def test_a_failed_presets_fill_names_the_session_it_started(monkeypatch):

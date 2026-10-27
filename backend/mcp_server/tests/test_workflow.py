@@ -260,19 +260,36 @@ def test_session_hint_asks_when_gaps_remain():
     assert tools == {"resolve_gaps", "tailor_session"}
 
 
-def test_session_hint_calls_tailor_when_nothing_is_left_unresolved():
+def test_session_hint_calls_tailor_when_nothing_is_left_unresolved_and_maestro_writes():
     hint = workflow.next_after_session(
         _session(gap_ids=["g1", "g2"], resolved_ids=["g1", "g2"]),
-        allowed_tools=None, hints_enabled=True,
+        allowed_tools=None, hints_enabled=True, writer="maestro",
     )
     assert hint["state"] == "gaps_resolved"
     assert hint["ask_user"] is None
     assert hint["call"] == "tailor_session"
 
 
-def test_session_hint_with_no_gaps_at_all_goes_straight_to_tailor():
+@pytest.mark.parametrize("gap_ids", [["g1", "g2"], []], ids=["all-resolved", "no-gaps"])
+def test_session_hint_calls_nothing_when_the_agent_app_writes(gap_ids):
+    """The option's args carry neither ops nor no_new_text, which the server refuses from an
+    agent app that writes, so it is offered, never the one call."""
+    hint = workflow.next_after_session(
+        _session(gap_ids=gap_ids, resolved_ids=gap_ids), allowed_tools=None, hints_enabled=True,
+    )
+    assert hint["state"] == "gaps_resolved"
+    assert hint["ask_user"] is None
+    assert hint["call"] is None
+    option, = hint["options"]
+    assert option["tool"] == "tailor_session"
+    assert "ops" not in option["args"] and "no_new_text" not in option["args"]
+    assert "ops" in option["label"] and "no_new_text" in option["label"]
+
+
+def test_session_hint_with_no_gaps_at_all_goes_straight_to_tailor_when_maestro_writes():
     hint = workflow.next_after_session(
         _session(gap_ids=[], resolved_ids=[]), allowed_tools=None, hints_enabled=True,
+        writer="maestro",
     )
     assert hint["call"] == "tailor_session"
 

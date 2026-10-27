@@ -142,7 +142,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
     would break the web path's transience), so the hint carries it as the `tailor_session` option's `user_prompt`, ONLY when the
     session has no note of its own — else the presets over MCP ignore a setting the web obeys. The session hint says who writes the
     edits (`detail.writer`, one settings read): the agent app's ops or `no_new_text` by default, ops omitted when the user chose
-    Maestro's AI; its args are the same either way.
+    Maestro's AI; its args are the same either way, so with every gap resolved it is the `call` only when Maestro's AI writes.
     **The caller-ops honesty rule is enforced by DOCSTRING, not the server**: `apply_edits` has no honesty
     gate. Keyword survival runs on every path (a saved `add_keyword` the edits leave out lands in the skills
     list, never a bullet: `keywords_added`). `user_input`/`attach_project` answers reach the resume only through the ops, and
