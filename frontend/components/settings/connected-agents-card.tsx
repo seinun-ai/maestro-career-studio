@@ -33,8 +33,9 @@ const LINKS = [
  * - Read: get_career_context, kb_list_entities, kb_get_entity, kb_list_points,
  *   get_job_search_brief (location, work authorization, persona).
  * - Add to and change: kb_capture, kb_add_points, kb_ingest_resume and kb_edit_point leave
- *   bullets in draft; kb_approve_points approves or retires them, and its "only after
- *   the user said yes" is a docstring rule the agent is given, not a server check;
+ *   bullets in draft; kb_approve_points approves them and kb_retire_points marks them Not
+ *   used, and their "only after the user said yes" is a docstring rule the agent is given,
+ *   not a server check;
  *   kb_create_entity, kb_edit_entity and kb_edit_profile write at once.
  * - Resumes: create_base_resume, duplicate_base_resume, update_base_resume,
  *   edit_base_resume, create_tailoring_session, tailor_session, edit_application.

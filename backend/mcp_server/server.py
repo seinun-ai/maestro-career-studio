@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 class _ServedMCP(FastMCP):
     """The one registry. FastMCP registers this class's call_tool as the stdio handler, and
-    every HTTP set calls it too (mcp_server.http), so a call using something a merge removed
-    gets mcp_server.replaced's sentence on either transport."""
+    every HTTP set calls it too (mcp_server.http), so a call to a removed tool, or with a
+    removed argument, gets mcp_server.replaced's sentence on either transport."""
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
         if self._tool_manager.get_tool(name) is None:
@@ -1111,8 +1111,7 @@ def kb_approve_points(point_ids: list[str]) -> Any:
 
     1-500 ids; repeats collapse to one result row. Per-id results are honest: unknown ids
     return ok=false detail="not found" and the rest still proceed; a failed id fails the
-    same way until corrected (kb_list_points returns the current ids). A state argument
-    other than "approved" is refused, and nothing is written.
+    same way until corrected (kb_list_points returns the current ids).
 
     Response is {results: [{id, ok, state, detail}], next}. next is a hint
     (null when suppressed or unavailable).
