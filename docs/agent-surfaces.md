@@ -69,7 +69,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   | `create_tailoring_session(enrich=True)` | 409: run it without `enrich` (refused before the session is created) |
   | `tailor_session` with neither `ops` nor `no_new_text` | 409: pass your own `ops`, or `no_new_text` |
   | `run_health_check` | no refusal: the agent always judges (`judging`, `judge_health_bullets`), even with a key |
-  | resume import | no refusal: `kb_ingest_resume` (`/api/kb/ingest-parsed`) never calls a model; consolidation (`/api/kb/import`, seeding) asks `model_available()` and without it skips its model calls with no warning |
+  | resume import | no refusal: `kb_ingest_resume` (`/api/kb/ingest-parsed`) never calls a model; consolidation (`/api/kb/import`, seeding), which no MCP tool reaches, asks `model_available()`, so its no-model path (no warning) serves only the web or seeding with no key |
 
   The backstop is `llm.call_openai`'s first statement: `AgentWritesError`, which `main.py` answers with a 409, never a 500. **Where the
   mark does not reach:** it crosses `asyncio.to_thread` and anyio's worker threads, not `loop.run_in_executor`, a `ThreadPoolExecutor`

@@ -325,9 +325,9 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **An agent request never reaches Maestro's model while the agent app writes.** `{#inv-agent-writer}` A request with
   `X-Maestro-CS-Origin: mcp` (every MCP call) is an agent request; `mcp_workflow.writer` (default `"agent"`, set only in Settings ›
   Agent apps) says who writes for it. `app/agent_writer.py` marks and decides; each writing route refuses with a 409 naming the agent's
-  own tool, `llm.call_openai`'s first statement is the backstop (`AgentWritesError`), and the health check and resume import take their
-  no-model path. The header rule, the refusals and where the mark does not reach: `docs/agent-surfaces.md`, "Who writes". Pins:
-  `tests/test_agent_writer.py` and the routes' refusal tests (`.system_md_enforcement.json`).
+  own tool, `llm.call_openai`'s first statement is the backstop (`AgentWritesError`), and the health check hands the judging to the
+  agent; MCP's resume import never calls a model. The header rule, the refusals and where the mark does not reach:
+  `docs/agent-surfaces.md`, "Who writes". Pins: `tests/test_agent_writer.py` and the routes' refusal tests (`.system_md_enforcement.json`).
 - **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry` stores label,
   kind, rule id, option texts, outcome, host — never what was typed, was there before, or any AI answer: no value column, `extra="forbid"`, sw
   re-filters to six keys. `POST /runs` stores one strict, value-free `RunTrace` (newest 50 kept), any label or section holding a value the
