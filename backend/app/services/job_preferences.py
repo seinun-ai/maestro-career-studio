@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.schemas.job_preferences import FavoredRole, JobPreferences
+from app.services import text_settings
 from app.services.json_settings import JsonSetting
 
 
@@ -78,3 +79,28 @@ def set_preferences(prefs: JobPreferences, session: Session | None = None) -> Jo
 
 def is_set(prefs: JobPreferences) -> bool:
     return JOB_PREFERENCES.is_set(prefs)
+
+
+# The fields an agent's save changes (`PATCH /api/settings/job-preferences`, MCP `set_job_preferences`):
+# every preference but `role_categories`, which is derived from `favored_roles` (sent back beside an
+# emptied `favored_roles`, it would be read as a legacy list and refill it).
+AGENT_FIELDS = frozenset(JobPreferences.model_fields) - {"role_categories"}
+
+
+def patch_preferences(changes: dict[str, Any], session: Session) -> JobPreferences:
+    """An agent's save: the preferences stored now (as a read serves them) with each field `changes`
+    names replaced whole, read, validated and written as one transaction (`text_settings.one_commit`),
+    so a preference another writer saved before this call is kept. ValueError names a field that is
+    not a preference before anything is read; the setting's own ValidationError (an unknown role,
+    naming the closest; a currency that is not ISO 4217; more than 25 roles) saves nothing."""
+    refused = sorted(set(changes) - AGENT_FIELDS)
+    if refused:
+        raise ValueError(
+            f"Not a job preference an agent's save writes: {', '.join(refused)}. The fields are "
+            f"{', '.join(sorted(AGENT_FIELDS))}; role_categories follows favored_roles."
+        )
+    with text_settings.one_commit(session):
+        stored = peek_preferences(session).model_dump()
+        value = {k: v for k, v in {**stored, **changes}.items() if k != "role_categories"}
+        saved = set_preferences(JobPreferences.model_validate(value), session)
+    return saved

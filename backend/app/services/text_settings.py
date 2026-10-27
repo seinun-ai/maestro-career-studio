@@ -5,20 +5,29 @@ Each setting is one row in the `settings` table plus a markdown mirror under
 row is the source of truth once it exists; the file lazily seeds it and is
 rewritten on every set. Mirror I/O failures (e.g. running host-side while
 `settings_dir` is a container path) degrade to DB-only with a warning.
+
+`one_commit` holds several reads and writes to one transaction under SQLite's
+write lock: an agent's merge (`PATCH /api/settings/*`) reads, merges and writes
+with no other writer able to land in between.
 """
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db import SessionLocal
+from app.db import SessionLocal, begin_write
 from app.models.setting import Setting
 from app.services.sync import hooks
 
 logger = logging.getLogger(__name__)
+
+# `session.info` key: the mirrors a `one_commit` block writes once it has committed.
+_PENDING_MIRRORS = "text_settings_pending_mirrors"
 
 
 def _file_path(filename: str) -> Path:
@@ -74,6 +83,15 @@ def peek_text(key: str, filename: str, session: Session | None = None) -> str:
             session.close()
 
 
+def _write_mirror(filename: str, text: str) -> None:
+    path = _file_path(filename)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Text-setting mirror not written at %s: %s", path, exc)
+
+
 def set_text(key: str, filename: str, text: str, session: Session | None = None) -> str:
     owns_session = session is None
     session = session or SessionLocal()
@@ -83,18 +101,43 @@ def set_text(key: str, filename: str, text: str, session: Session | None = None)
             session.add(Setting(key=key, value=text))
         else:
             existing.value = text
+        pending = session.info.get(_PENDING_MIRRORS)
+        if pending is not None:
+            # Inside `one_commit`: flushed so a later read in the block sees it, committed with the rest.
+            session.flush()
+            pending.append((filename, text))
+            return text
         session.commit()
-
-        path = _file_path(filename)
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
-        except OSError as exc:
-            logger.warning("Text-setting mirror not written at %s: %s", path, exc)
+        _write_mirror(filename, text)
         return text
     finally:
         if owns_session:
             session.close()
+
+
+@contextmanager
+def one_commit(session: Session) -> Iterator[None]:
+    """Run the block as ONE transaction under SQLite's write lock (`begin_write`): no other writer
+    lands between its reads and its writes, every `set_text` in it flushes instead of committing,
+    the block commits once at the end, and a failure anywhere rolls every write in it back. The
+    file mirrors are written only after the commit. Reads inside use the `peek_*` readers: a first
+    read that seeds a row (`get_text`) commits, which would end the transaction early."""
+    if _PENDING_MIRRORS in session.info:
+        raise RuntimeError("one_commit blocks do not nest")
+    begin_write(session)
+    session.expire_all()
+    mirrors: list[tuple[str, str]] = []
+    session.info[_PENDING_MIRRORS] = mirrors
+    try:
+        yield
+        session.commit()
+    except BaseException:
+        session.rollback()
+        raise
+    finally:
+        session.info.pop(_PENDING_MIRRORS, None)
+    for filename, text in mirrors:
+        _write_mirror(filename, text)
 
 
 def ensure_text(session: Session, key: str, filename: str) -> str:

@@ -529,6 +529,11 @@ PROFILE_PATHS = [
     ("PATCH", "/api/base-resumes/guard_base/identity", {"company": "Example employer", "focus": "payments"}),
     # A kept design (MCP render_pdf keep=true) is profile metadata too.
     ("PATCH", "/api/base-resumes/guard_base/design", {"template_id": "default", "formatting": {"font_size": 10}}),
+    # An agent's profile saves merge on the server and are refused as the web's PUTs are.
+    ("PUT", "/api/settings/autofill", {"value": {"personal": {"city": "Example city"}}}),
+    ("PATCH", "/api/settings/autofill", {"value": {"personal": {"city": "Example city"}}}),
+    ("PATCH", "/api/settings/job-preferences", {"value": {"notes": "Example note"}}),
+    ("PATCH", "/api/settings/market", {"value": {"home": "UK", "home_currency": "EUR"}}),
 ]
 
 

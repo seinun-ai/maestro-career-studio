@@ -1433,7 +1433,8 @@ def set_markets(
     is every market the user applies in, each asking its own work-permit answers; [] reads
     as home alone, and a market dropped from it keeps its stored answers. home alone leaves
     apply_in as stored. home_currency is ISO 4217; "" follows home again. Only the fields
-    passed change, and no field passed reads the current values. Returns {home, apply_in,
+    passed change, all in one save: a refused field (an unknown currency) writes none of
+    them. No field passed reads the current values. Returns {home, apply_in,
     home_currency (the resolved one), setup}: setup is setup status's form-answer readiness,
     null when that read fails."""
     place = _client.set_markets(home=home, apply_in=apply_in, home_currency=home_currency)

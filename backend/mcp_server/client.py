@@ -14,7 +14,7 @@ from typing import Any, NamedTuple
 
 import httpx
 
-from app.services.autofill_profile import canonical_identity_from_profile
+from app.services.autofill_profile import AGENT_SECTIONS, canonical_identity_from_profile
 from app.services.http_client import new_client
 from app.services.pdfium_lock import PDFIUM_LOCK
 from app.write_origin import ORIGIN_HEADER, encode_detail
@@ -86,49 +86,6 @@ EXPLORE_VIEWS: dict[str, ExploreView] = {
     "ats_over_time": ExploreView("/api/explore/ats-over-time", filters=True, limit=False),
     "tailoring_lift": ExploreView("/api/explore/tailoring-lift", filters=True, limit=False),
 }
-
-
-# The autofill profile's sections an agent writes (`set_autofill_profile`). `eeo` is not one: a
-# diversity answer is the user's own, given in Profile (SYSTEM.md {#inv-eeo-standing-consent}); the
-# tool has no field for it and this list refuses it again (two gates).
-_ANSWER_SECTIONS = ("personal", "eligibility", "preferences")
-_LIST_SECTIONS = ("education", "languages", "custom")
-_PERMITS = "work_auth_by_country"
-AUTOFILL_SECTIONS = frozenset({*_ANSWER_SECTIONS, *_LIST_SECTIONS, _PERMITS})
-# A read's projection of one country's set (services/autofill_profile): never sent back, so a
-# save carries the per-country map alone and no answer is folded into another country's.
-_AUTOFILL_READ_VIEW = ("work_auth", "work_auth_market")
-
-
-def _merged_answers(stored: Any, given: dict[str, Any]) -> dict[str, Any]:
-    """`stored` with `given` laid over it key by key; a None removes that key."""
-    merged = dict(stored) if isinstance(stored, dict) else {}
-    for key, value in given.items():
-        if value is None:
-            merged.pop(key, None)
-        else:
-            merged[key] = value
-    return merged
-
-
-def _merged_autofill(stored: dict[str, Any], changes: dict[str, Any]) -> dict[str, Any]:
-    """The whole profile a save sends (PUT replaces it): the stored one with the sections
-    `changes` names merged in. Answer sections merge key by key, a list replaces the stored
-    list, and work permits go per country (a None country is sent as None, which the server
-    takes as removing its answers; a country left out keeps its stored answers there)."""
-    profile = {k: v for k, v in stored.items() if k not in _AUTOFILL_READ_VIEW}
-    stored_permits = stored.get(_PERMITS) if isinstance(stored.get(_PERMITS), dict) else {}
-    for section, given in changes.items():
-        if section in _ANSWER_SECTIONS:
-            profile[section] = _merged_answers(profile.get(section), given)
-        elif section in _LIST_SECTIONS:
-            profile[section] = list(given)
-        elif section == _PERMITS:
-            profile[_PERMITS] = {
-                market: None if answers is None else _merged_answers(stored_permits.get(market), answers)
-                for market, answers in given.items()
-            }
-    return profile
 
 
 def _origin_headers(origin_detail: str | None) -> dict[str, str]:
@@ -872,29 +829,25 @@ class BackendClient:
         return self._request("GET", "/api/setup/status")
 
     # ---- profile facts: what Setup and Profile ask for, never Settings' switches ----
-    # Each PUT replaces its whole setting, so each write reads it first and sends it back
-    # with only the given fields changed.
+    # Each write sends only what changed, in one PATCH; the server merges it into the setting as
+    # stored at write time, in one transaction, so a save another writer made meanwhile (a
+    # Companion learn, a web edit) is kept. The merge rules live there (autofill_profile,
+    # job_preferences, market_settings), not here.
     def set_autofill_profile(self, changes: dict[str, Any]) -> Any:
-        refused = sorted(set(changes) - AUTOFILL_SECTIONS)
+        # `eeo` is refused here and again by the server (two gates): diversity answers are the user's.
+        refused = sorted(set(changes) - AGENT_SECTIONS)
         if refused:
             raise BackendError(
                 f"Not written over MCP: {', '.join(refused)}. The writable sections are "
-                f"{', '.join(sorted(AUTOFILL_SECTIONS))}; diversity (eeo) answers are the user's, in Profile."
+                f"{', '.join(sorted(AGENT_SECTIONS))}; diversity (eeo) answers are the user's, in Profile."
             )
-        stored = self._request("GET", "/api/settings/autofill").get("value") or {}
-        saved = self._request(
-            "PUT", "/api/settings/autofill", json={"value": _merged_autofill(stored, changes)}
-        )
+        saved = self._request("PATCH", "/api/settings/autofill", json={"value": changes})
         profile = dict((saved or {}).get("value") or {})
         profile.pop("eeo", None)
         return profile
 
     def set_job_preferences(self, changes: dict[str, Any]) -> Any:
-        stored = self._request("GET", "/api/settings/job-preferences").get("value") or {}
-        # `role_categories` is derived from `favored_roles` on the server; sent back beside an
-        # emptied `favored_roles`, it would be read as a legacy list and refill it.
-        value = {k: v for k, v in {**stored, **changes}.items() if k != "role_categories"}
-        return self._request("PUT", "/api/settings/job-preferences", json={"value": value}).get("value")
+        return self._request("PATCH", "/api/settings/job-preferences", json={"value": changes}).get("value")
 
     def set_markets(
         self,
@@ -902,20 +855,14 @@ class BackendClient:
         apply_in: list[str] | None = None,
         home_currency: str | None = None,
     ) -> Any:
-        place = self._request("GET", "/api/settings/market")
-        if home is not None or apply_in is not None:
-            place = self._request("PUT", "/api/settings/market", json={"value": {
-                "home": place.get("home") if home is None else home,
-                "apply_in": place.get("apply_in") if apply_in is None else apply_in,
-            }})
-        money = self._request("GET", "/api/settings/money")
-        if home_currency is not None:
-            value = {**(money.get("value") or {}), "home_currency": home_currency or None}
-            money = self._request("PUT", "/api/settings/money", json={"value": value})
+        """One save of the market and the money setting's currency; no field reads the current values."""
+        place = self._request("PATCH", "/api/settings/market", json={
+            "value": _drop_none(home=home, apply_in=apply_in, home_currency=home_currency),
+        })
         return {
             "home": place.get("home"),
             "apply_in": place.get("apply_in"),
-            "home_currency": money.get("home_currency"),
+            "home_currency": place.get("home_currency"),
         }
 
     def set_persona(self, text: str) -> Any:

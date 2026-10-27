@@ -59,13 +59,11 @@ async def test_work_permit_keys_are_the_market_list():
 async def test_a_bad_shape_writes_nothing(monkeypatch, args):
     monkeypatch.setattr(srv, "_client", BackendClient(BASE))
     with respx.mock:
-        respx.get(f"{BASE}/api/settings/autofill").mock(
-            return_value=httpx.Response(200, json={"key": "autofill_profile", "value": {}}))
-        put = respx.put(f"{BASE}/api/settings/autofill").mock(
+        patch = respx.patch(f"{BASE}/api/settings/autofill").mock(
             return_value=httpx.Response(200, json={"key": "autofill_profile", "value": {}}))
         with pytest.raises(ToolError, match="validation error"):
             await srv.mcp.call_tool("set_autofill_profile", args)
-    assert not put.called
+    assert not patch.called
 
 
 async def test_diversity_answers_alone_are_refused_and_nothing_is_written(monkeypatch):
@@ -73,14 +71,11 @@ async def test_diversity_answers_alone_are_refused_and_nothing_is_written(monkey
     # at all; a write with nothing to save is refused rather than sent back unchanged.
     monkeypatch.setattr(srv, "_client", BackendClient(BASE))
     with respx.mock:
-        get = respx.get(f"{BASE}/api/settings/autofill").mock(
-            return_value=httpx.Response(200, json={"key": "autofill_profile", "value": {}}))
-        put = respx.put(f"{BASE}/api/settings/autofill").mock(
+        patch = respx.patch(f"{BASE}/api/settings/autofill").mock(
             return_value=httpx.Response(200, json={"key": "autofill_profile", "value": {}}))
         with pytest.raises(ToolError, match="Diversity"):
             await srv.mcp.call_tool("set_autofill_profile", {"eeo": {"gender": "male"}})
-    assert not get.called
-    assert not put.called
+    assert not patch.called
 
 
 def test_an_empty_preferences_write_is_refused(monkeypatch):
@@ -144,10 +139,12 @@ def test_set_persona_forwards_the_text(monkeypatch):
 
 
 # The human-only boundary, pinned where it would break: the client is the only way an MCP
-# tool reaches the backend, so the settings it can write are exactly these five. A sixth
-# (full automation, auto-apply, EEO consent, the job-site login, the Screening answers dial,
-# the hints switch, model keys and picks, prompts, quick tailor) is a deliberate change here.
-_MCP_WRITABLE_SETTINGS = {"autofill", "job-preferences", "market", "money", "persona"}
+# tool reaches the backend, so the settings it can write are exactly these four. The money
+# setting's currency rides on the market save (`PATCH /api/settings/market` takes `home_currency`
+# and no other money field). Another (full automation, auto-apply, EEO consent, the job-site
+# login, the Screening answers dial, the hints switch, model keys and picks, prompts, quick
+# tailor) is a deliberate change here.
+_MCP_WRITABLE_SETTINGS = {"autofill", "job-preferences", "market", "persona"}
 
 
 def test_mcp_writes_only_the_settings_setup_and_profile_ask_for():

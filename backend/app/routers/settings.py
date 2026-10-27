@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from pydantic import StrictBool
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy.orm import Session
 
 from app.config import settings as app_settings
@@ -330,6 +330,53 @@ def put_autofill(payload: AutofillProfilePayload, db: Annotated[Session, Depends
         "key": "autofill_profile",
         "value": autofill_profile.set_profile(payload.value, db),
     }
+
+
+# ---- an agent's save: the changes merged on the server ----
+# MCP's profile writes (set_autofill_profile, set_job_preferences, set_markets) send only what changed;
+# each route reads the setting, merges and writes it in one transaction (`text_settings.one_commit`),
+# so a save another writer made before the call (a Companion learn, a web edit) is kept and none can
+# land between the read and the write. The web's and the Companion's saves stay the PUTs above and
+# below, which replace the whole setting. A profile row like any: refused on the always-on copy.
+def _agent_save(save, changes: dict[str, Any], db: Session):
+    """A refused field, or a value the setting's own schema refuses, is a 422 that saves nothing."""
+    try:
+        return save(changes, db)
+    except ValidationError as exc:  # ahead of ValueError, which pydantic's subclasses
+        # include_context=False: a validator's ValueError lands in ctx and is not JSON-serializable.
+        raise HTTPException(status_code=422, detail=exc.errors(include_context=False)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.patch("/autofill", response_model=SettingEnvelope[dict[str, Any]])
+def patch_autofill(payload: SettingValueIn[dict[str, Any]], db: Annotated[Session, Depends(get_db)]):
+    """Merge sections into the form answers (`autofill_profile.patch_profile`): answers key by key, a
+    null removing one; work permits per market; education, languages and custom whole. No `eeo`."""
+    return {
+        "key": "autofill_profile",
+        "value": _agent_save(autofill_profile.patch_profile, payload.value, db),
+    }
+
+
+@router.patch("/job-preferences", response_model=SettingEnvelope[JobPreferences])
+def patch_job_preferences(
+    payload: SettingValueIn[dict[str, Any]], db: Annotated[Session, Depends(get_db)]
+):
+    """Replace only the preferences named (`job_preferences.patch_preferences`)."""
+    return {
+        "key": "job_preferences",
+        "value": _agent_save(job_preferences.patch_preferences, payload.value, db),
+    }
+
+
+@router.patch("/market")
+def patch_market(payload: SettingValueIn[dict[str, Any]], db: Annotated[Session, Depends(get_db)]):
+    """Where you live and apply, and the currency pay reads in, as one save
+    (`market_settings.patch_place`: `home`, `apply_in`, `home_currency`). The market body, plus
+    `home_currency`, the currency pay reads in now."""
+    setting = _agent_save(market_settings.patch_place, payload.value, db)
+    return {**_market_body(setting), "home_currency": money_settings.home_currency(db)}
 
 
 @router.get("/quick-tailor", response_model=SettingEnvelope[dict[str, Any]])

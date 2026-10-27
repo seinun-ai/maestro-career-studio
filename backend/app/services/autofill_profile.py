@@ -249,6 +249,81 @@ def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict
     return _with_work_auth_by_country(profile, home)
 
 
+# The sections an agent's save writes (`PATCH /api/settings/autofill`, MCP `set_autofill_profile`). `eeo`
+# is not one: a diversity answer is the user's own, given in Profile (SYSTEM.md
+# {#inv-eeo-standing-consent}); the MCP tool has no field for it, its client refuses it, and so does this.
+ANSWER_SECTIONS = ("personal", "eligibility", "preferences")
+LIST_SECTIONS = ("education", "languages", "custom")
+AGENT_SECTIONS = frozenset({*ANSWER_SECTIONS, *LIST_SECTIONS, BY_COUNTRY})
+
+
+def _merged_answers(stored: Any, given: dict[str, Any]) -> dict[str, Any]:
+    """`stored` with `given` laid over it key by key; a None removes that key."""
+    merged = dict(stored) if isinstance(stored, dict) else {}
+    for key, value in given.items():
+        if value is None:
+            merged.pop(key, None)
+        else:
+            merged[key] = value
+    return merged
+
+
+def merged_profile(stored: dict[str, Any], changes: dict[str, Any]) -> dict[str, Any]:
+    """The whole profile an agent's save stores: `stored` (as a read serves it) with the sections
+    `changes` names merged in. Answer sections merge key by key, a list replaces the stored list,
+    and work permits go per country (a None country is passed on as None, which `set_profile` takes
+    as removing its answers; a country left out keeps its stored answers there). The read view's
+    one-set projection is never sent back, so no answer is folded into another country's."""
+    profile = {k: v for k, v in stored.items() if k not in (WORK_AUTH, WORK_AUTH_MARKET)}
+    stored_permits = stored.get(BY_COUNTRY) if isinstance(stored.get(BY_COUNTRY), dict) else {}
+    for section, given in changes.items():
+        if section in ANSWER_SECTIONS:
+            profile[section] = _merged_answers(profile.get(section), given)
+        elif section in LIST_SECTIONS:
+            profile[section] = list(given)
+        elif section == BY_COUNTRY:
+            profile[BY_COUNTRY] = {
+                market: None if answers is None else _merged_answers(stored_permits.get(market), answers)
+                for market, answers in given.items()
+            }
+    return profile
+
+
+def _refusal(changes: dict[str, Any]) -> str | None:
+    """Why an agent's save is refused before anything is read, or None: a section it does not write,
+    or one of the wrong shape (the merge would otherwise fail halfway or store a non-answer)."""
+    refused = sorted(set(changes) - AGENT_SECTIONS)
+    if refused:
+        return (
+            f"Not written by an agent's save: {', '.join(refused)}. The writable sections are "
+            f"{', '.join(sorted(AGENT_SECTIONS))}; diversity (eeo) answers are the user's, in Profile."
+        )
+    for section, given in changes.items():
+        if section in ANSWER_SECTIONS and not isinstance(given, dict):
+            return f"{section} takes an object of answers."
+        if section in LIST_SECTIONS and not isinstance(given, list):
+            return f"{section} takes a list."
+        if section == BY_COUNTRY and not (
+            isinstance(given, dict) and all(a is None or isinstance(a, dict) for a in given.values())
+        ):
+            return f"{BY_COUNTRY} takes an object of answers (or null) per market."
+    return None
+
+
+def patch_profile(changes: dict[str, Any], session: Session) -> dict[str, Any]:
+    """An agent's save: the profile stored now with `changes` merged in (`merged_profile`), read,
+    merged and written as one transaction (`text_settings.one_commit`), so an answer another writer
+    saved before this call (a Companion learn, a web edit) is kept, and none can land between the
+    read and the write. Returns the profile as a read serves it. ValueError names a refused section
+    before anything is read."""
+    refusal = _refusal(changes)
+    if refusal:
+        raise ValueError(refusal)
+    with text_settings.one_commit(session):
+        saved = set_profile(merged_profile(peek_profile(session), changes), session)
+    return saved
+
+
 def _usable_answers_only(values: dict[str, Any]) -> WorkAuth:
     """Validate field by field so one unusable answer cannot blank the others.
 
