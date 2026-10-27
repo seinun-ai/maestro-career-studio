@@ -65,8 +65,9 @@ class Bridge:
         if self.session_id:
             headers["Mcp-Session-Id"] = self.session_id
         # httpx's timeouts restart in every phase, so the total is checked here as each body chunk
-        # arrives. FastMCP sends headers and body together, so in practice the limit is ~T; the
-        # worst case (a slow connect, then a slow first byte) is ~2*T. There is no hard wall clock.
+        # arrives. The SDK sends a JSON response's headers and body together, so in practice the
+        # limit is ~T; the worst case (a slow connect, then a slow first byte) is ~2*T. There is no
+        # hard wall clock.
         deadline = time.monotonic() + self.timeout
         try:
             with self.client.stream("POST", self.url, content=line.encode("utf-8"),

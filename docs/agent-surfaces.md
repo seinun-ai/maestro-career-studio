@@ -23,17 +23,15 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   (which has no `get_setup_status`) also says "start with `get_setup_status`" and what its `writer` means, addressing the agent as
   "you, the agent app"; each HTTP set serves the automation playbooks whose `metadata.toolset` names it as MCP prompts (the Copy
   prompt's exact text, from `GET /api/automations`). Pins: `test_profiles.py`, `test_orientation.py`, `test_http.py`,
-  `tests/test_automations_service.py`.
+  `test_http_modern.py`, `tests/test_automations_service.py`.
   **Orientation reads** (no writes): `get_setup_status` (every set but templates: `ai_key`, `writer` ("Who writes" below),
   `demo_bases`, the first undone setup step and its set from the pure `workflow.setup_next_step`, which counts form answers done
   without the diversity answers an agent cannot
   save, the set table) and `get_tailoring_options` (tailor and full: each Quick tailor switch
   with its plain meaning from `QuickTailorProfile`'s field descriptions, the instruction and persona; the presets stay the user's).
-  Lifespans run fresh stateful JSON sessions; tools use `http.py`'s eight-worker limiter (§6 inv-tools-off-loop: a same-backend REST
-  call made on the event loop blocks single-worker uvicorn; `http.offload_tools`).
   Each set is its own server built from the one registry (`server.build_set`, holding the registry's `Tool` objects): stdio serves
   the set `MAESTRO_CS_MCP_PROFILE` names (default `full`; migration state: §13 `mcp-stdio-venv`), HTTP every set as an
-  `http._ServedSet`, which adds the prompts; every set, on either transport, advertises FastMCP's empty resources.
+  `http._ServedSet`, which adds the prompts ("The server on SDK 2.x" below).
   Hints use request `CURRENT_PROFILE`, else env (pins: `mcp_server/tests/test_profiles.py`, `test_server.py`, `test_http.py`).
   **KB grooming tools** (`profile` and `full`): `kb_groom_entity` (read-only similar-bullet report per entity, zero LLM calls),
   `kb_combine_points` (fold points into one keeper; the others become its wordings) and `kb_retire_points` (the one way to retire;
@@ -49,7 +47,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   e.g. `explore_top_skills was replaced by explore_trends(view="top_skills").`, not "Unknown tool", on stdio and every HTTP set
   (`server._ServedMCP.call_tool`, which every set's server runs, `full` included); a set that lacks the replacement adds
   the sets that hold it (`…, in the track set.`). A removed argument is refused the same
-  way and never acted on: FastMCP drops an undeclared argument, so `kb_approve_points` with a `state` other than "approved" answers
+  way and never acted on: MCPServer drops an undeclared argument, so `kb_approve_points` with a `state` other than "approved" answers
   "kb_approve_points only approves; kb_retire_points retires points." rather than approving drafts the user rejected. Pins:
   `test_replaced.py`, `test_http.py`.
   **Caller-authored twins.** The tools where Maestro's AI writes have caller-authored twins (all but `run_health_check`, which hands the
@@ -65,9 +63,48 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `GET /api/setup/connect?profile=full` composes values from `MAESTRO_CS_PUBLIC_BACKEND_URL` (default localhost:8000; compose host port unless overridden); `/api/setup/connect/bundle` serves `MCPB_BUNDLE_PATH` (compose read-only mount; `tests/test_setup_connect.py`).
   The dependency-free Node ≥18 `.mcpb` bridges stdio↔HTTP with no assistant-side Docker/Python: `MAESTRO_CS_BACKEND_URL`
   defaults to localhost:8001; `MAESTRO_CS_MCP_PROFILE` selects `/mcp` or `/mcp/{profile}` (no trailing slash).
-  Requests are ordered; stale sessions replay initialize + initialized before one retry, preserving `clientInfo`
-  (`mcpb/tests/bridge.test.js`). Each set's `serverInfo.version`, on stdio and HTTP, reads `APP_VERSION`, else `dev`
-  (`mcp_server/tests/test_http.py`, `test_profiles.py`).
+  Requests are ordered. 2025 traffic (no revision in `params._meta`, or a handshake one: 2024-11-05 to 2025-11-25) holds the
+  session, and a stale one (404) replays initialize + initialized before one retry, preserving the initialize's `clientInfo`. A
+  message whose `_meta` names a newer revision, such as 2026-07-28, carries `MCP-Protocol-Version`, `Mcp-Method` and, for `tools/call`,
+  `prompts/get` and `resources/read`, `Mcp-Name` (`params.name` or `uri`), each through the SDK's header codec (printable ASCII as
+  is, else `=?base64?…?=`); it sends and adopts no session, a 404 is the server's answer and is never replayed, and a 4xx carrying
+  a JSON-RPC error for its id reaches the client as the server wrote it. Any other non-2xx reads -32000 "Maestro Career Studio
+  returned HTTP n." (`mcpb/tests/bridge.test.js`). A re-pack moves `server.json`'s `fileSha256`. `maestro mcp`
+  (`maestro_cs/bridge.py`, the uv install's Python twin) carries 2025 traffic only. Each set's `serverInfo.version`, on stdio and
+  HTTP, reads `APP_VERSION`, else `dev` (`mcp_server/tests/test_http_modern.py`, `test_profiles.py`).
+
+- **The server on SDK 2.x** (`mcp>=2.3,<3`; `mcp_server/server.py`, `http.py`). `server.mcp`, the one registry, is a `_ServedMCP`
+  (the SDK's `MCPServer`); `build_set` makes each set a `_ServedMCP` of its own, and `http.McpEndpoint(registry)` takes any registry
+  (tests pass a scratch one) and gives each set a fresh `StreamableHTTPSessionManager` per lifespan run (JSON responses, stateful
+  2025 path, 6-hour idle, 16 MiB bodies, SDK DNS-rebinding protection off: §6 inv-mcp-inside-the-app).
+  **Every server, the registry included:** the SDK's OpenTelemetry middleware is dropped (the private `mcp.server._otel` import is
+  fail-safe and the class is matched by name if it moves, so the app still starts), so a configured Langfuse sees only model calls;
+  cache hints say TTL 0, private, for every cacheable method; `subscriptions=False` serves no `subscriptions/listen`, so discovery's
+  `listChanged`/`subscribe` flags are false, as in the 2025 initialize; the `mcp.server.mcpserver.server` logger runs at WARNING (at
+  INFO it logs each refusal's words); and each set advertises the SDK's empty resources capability, as stdio always did, with
+  `resources/list` answering an empty list.
+  **Threads:** the SDK runs sync tools on worker threads from anyio's default limiter, which FastAPI's sync endpoints share; over
+  HTTP, `http.offload_tools` wraps the registry's `Tool`s (every set holds the same objects) onto `http._LIMITER`'s 8 tokens, reset
+  per lifespan, so tool threads waiting on loopback REST never starve REST (§6 inv-tools-off-loop, pinned by `test_http.py`'s
+  `test_set_tools_run_on_the_dedicated_limiter`; the single-worker loopback passes either way). Tools read only
+  `ctx.session.client_params`; a worker thread never awaits a `Context` method.
+  **Refusal words:** each tool's `_guard` turns a `BackendError` into a `ToolError`, read word for word; `_ServedMCP.call_tool`
+  translates one raised outside `_guard` ("Error executing tool <name>: <reason>"). Any other exception is a crash: the agent reads
+  "Error executing tool <name>" and the log keeps the traceback at ERROR (the owner's call). Input the agent can correct is a
+  `BackendError` sentence, never a crash: `image_base64` that isn't base64, an evidence file that can't be resolved or read (or grew
+  past 5 MB), NaN, Infinity or a lone surrogate in a request body (checked before anything is sent), and a PDF or upload folder that
+  refuses the write, named with `MAESTRO_CS_PDF_DIR` or `MAESTRO_CS_UPLOAD_DIR` (`test_input_refusals.py`). A prompt refusal (an
+  unknown playbook, the catalog read failing) is `MCPError(code=0, …)`: code 0 and the same words on both eras.
+  **Both protocol eras, one endpoint per set:** the session manager routes on `MCP-Protocol-Version`. None, or a handshake revision,
+  takes the 2025 path (initialize, `Mcp-Session-Id`, a 404 for a stale session); a newer one takes the 2026-07-28 path, with no
+  handshake or session: each request names its revision, client and capabilities in `params._meta`, `Mcp-Method` and `Mcp-Name` must
+  match the body, `server/discover` gives the instructions and capabilities, and `serverInfo` rides in each result's `_meta`. On that
+  path `ping` and `subscriptions/listen` answer Method not found, and a protocol error carries HTTP 404 (Method not found) or 400 (a
+  bad envelope, or an unsupported revision with the supported list), while tool and prompt refusals stay inside a 200. An unknown
+  method answers -32601 "Method not found" on both. `_client_label` reads `client_params.client_info.name`: from initialize on 2025,
+  from each request's `_meta` clientInfo on 2026-07-28, else `MAESTRO_CS_MCP_CLIENT`, else nothing. Pins: `test_http.py`,
+  `test_http_modern.py` (one test per answer, over both eras where both serve it), `tests/test_mcp_http_loopback.py` (legacy,
+  2026-07-28 and auto against a real single-worker uvicorn).
 
 - **Who writes** (`app/agent_writer.py`; SYSTEM.md §6 inv-agent-writer). The saved `mcp_workflow` setting (`McpWorkflowSettings`:
   `hints`, `writer: "agent" | "maestro"`, default `"agent"`) says who writes for an agent request. Only Settings › Agent apps' **Who
@@ -153,7 +190,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `favored_roles`); `set_markets` writes the market and money's `home_currency` as one save, both validated before either lands.
   `set_persona` PUTs its text. The web's and the Companion's PUTs still replace the whole setting, and every agent route is a profile
   write, refused on the always-on copy. `set_autofill_profile` has no `eeo` field, the client and the server each refuse any other
-  section, the stored `eeo` stays as it was and is never returned, and a call with nothing to save is refused (FastMCP drops undeclared
+  section, the stored `eeo` stays as it was and is never returned, and a call with nothing to save is refused (MCPServer drops undeclared
   arguments). The writes return setup's form readiness. Human-only, with no tool: full automation and auto-apply (§6 inv-auto-consent-gated), EEO
   consent and answers (inv-eeo-standing-consent), the job-site login (inv-job-site-password-local), the Screening answers dial, the
   hints switch, who writes, model keys, prompts and quick tailor (§6 inv-mcp-controls). After `create_base_resume_from_kb` the hint names
@@ -165,8 +202,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   (`state`/`blocking`/`offer`/`ask_user`/`options`/`call`) that walks §5's arc — score all bases → recommend →
   presets|custom → tailor (which renders the PDF) → render again only when `pdf_ready` is false → apply readiness — unnarrated.
   `workflow.py` is PURE (no httpx/DB/LLM), a
-  **deliberate exception to the thin-wrapper rule**: the sequence must live somewhere and FastMCP
-  `instructions=` is surfaced inconsistently across clients; purity is what keeps it testable under DB-free
+  **deliberate exception to the thin-wrapper rule**: the sequence must live somewhere and a server's
+  `instructions` are surfaced inconsistently across clients; purity is what keeps it testable under DB-free
   `mcp_server/tests`.
   - **Server ranks, agent narrates.** `rank_bases` is deterministic (composite desc, slug tie-break), so
     identical scores always yield the same pick and only prose differs. `close_call` (< `CLOSE_CALL_MARGIN`

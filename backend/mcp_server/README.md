@@ -325,10 +325,23 @@ Diversity answers and their consent, full automation, the job-site login and eve
 
 ## How it works
 
-HTTP MCP runs inside Maestro's FastAPI backend. Sync tool functions execute on
-worker threads and call REST on that same backend, which stores your data and
-renders PDFs. Profiles share one registry. The bridge preserves the caller's
-`clientInfo`, so Career KB timeline rows keep the agent's name.
+HTTP MCP runs inside Maestro's FastAPI backend, on the `mcp` Python SDK 2.x
+(2.3 or later, below 3). Every tool is registered once; each profile is its own
+server holding that profile's tools and instructions, so stdio serves the one
+`MAESTRO_CS_MCP_PROFILE` names and HTTP serves each at its own path. Sync tool
+functions execute on worker threads of their own and call REST on that same
+backend, which stores your data and renders PDFs.
+
+One endpoint serves both MCP protocol eras: a 2025 client opens a session with
+`initialize`, and a 2026-07-28 client sends no handshake and names its revision
+and itself in each request's `_meta`. Career KB timeline rows keep the agent's
+name either way: the client's `clientInfo` comes from `initialize` (which the
+bundle's bridge replays when a session goes stale) or from each request's
+`_meta` (which it passes through with the routing headers that revision needs).
+`maestro mcp` carries 2025-era traffic only.
+
+A refusal reads as the app wrote it. A tool that crashes reads
+"Error executing tool <name>", and the details stay in the backend's log.
 
 ```
 URL client --------------------HTTP--> /mcp inside FastAPI --> REST --> data + LaTeX/Typst

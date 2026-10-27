@@ -78,7 +78,7 @@
       {"path": "backend/mcp_server/tests/test_http.py", "symbol": "test_sdk_dns_rebinding_protection_is_off"}
     ],
     "inv-tools-off-loop": [
-      {"path": "backend/tests/test_mcp_http_loopback.py", "symbol": "def test_single_worker_mcp_loopback_tools_and_client_label"},
+      {"path": "backend/mcp_server/tests/test_http.py", "symbol": "def test_set_tools_run_on_the_dedicated_limiter"},
       {"path": "backend/mcp_server/tests/test_http.py", "symbol": "def test_registered_tools_run_off_the_event_loop_but_module_functions_stay_sync"}
     ],
     "inv-frame-earns-data": [

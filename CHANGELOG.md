@@ -397,6 +397,18 @@ work-permit answers for each country you apply in.
   questions".
 - **Save is a light button on Settings**, in How you come across and under a cover letter you edit, so
   the one solid blue button on a page is its next step.
+- **The MCP server runs on version 2 of the `mcp` Python SDK.** Connected agents see the same tools,
+  schemas, answers and refusals as before, with two differences: every tool set now offers an empty
+  resources list, as the stdio server always did, and a request for a protocol method the server
+  doesn't have answers with the standard "Method not found". Clients on the 2026-07-28 MCP revision,
+  which sends no handshake and keeps no session, are served at the same addresses. A tool that
+  crashes reads "Error executing tool <name>", and the details stay in the app's log. A mistake in
+  an agent's own input, for example an image that isn't valid base64, reads as a plain refusal that
+  says what to fix.
+- **The Claude Desktop bundle is re-packed** and passes through a newer Claude Desktop's requests on
+  the 2026-07-28 revision.
+- The MCP server needs `mcp` 2.3 or later, below 3 (it was 1.30 or later, below 2). The Docker lock
+  moves to `mcp` 2.3.0, adds `mcp-types` and drops `httpx-sse`.
 
 ### Fixed
 

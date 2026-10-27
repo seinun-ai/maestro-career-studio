@@ -116,7 +116,7 @@ backend/
                        source of the Automations page; indexed by docs/skills/README.md
     templates/         six seeded resume designs + both cover-letter sources (licenses: THIRD_PARTY_NOTICES.md)
     tools/             operator tools, `python -m app.tools.<name>`: backup_db
-  mcp_server/          FastMCP registry → a server per tool set (build_set), on stdio or http.py's ASGI endpoint; client.py httpx → REST
+  mcp_server/          SDK 2.x MCPServer registry → a server per tool set (build_set), on stdio or http.py's ASGI endpoint; client.py httpx → REST
   maestro_cs/          the `maestro` command (uv install, §9): CLI, supervisor, home layout, update, connect, stdio bridge
   migrations/          alembic: the SQLite chain, baseline 871d0425b64c + revisions (ids: §9; §12 has the revision-id gotcha)
   tests/               pytest on a throwaway SQLite file, no service; mcp_server/tests/ uses respx (no DB)
@@ -317,8 +317,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **MCP lives inside the app.** `{#inv-mcp-inside-the-app}` `/mcp` and `/mcp/{profile}` are routed inside FastAPI behind REST's
   SyncPublicHost → Host → Origin → CORS stack; SDK DNS-rebinding protection is OFF so that stack stays the one definition; never a second port
   or `/api/sync` route. Pins: `tests/test_mcp_http_boundary.py`, `mcp_server/tests/test_http.py`.
-- **MCP tools run off the event loop.** `{#inv-tools-off-loop}` Every registered MCP tool runs on a worker thread through `mcp_server.http`'s
-  own limiter; module functions stay sync (`tests/test_mcp_http_loopback.py`, `mcp_server/tests/test_http.py`).
+- **MCP tools run on their own limiter.** `{#inv-tools-off-loop}` Each tool takes a thread from `mcp_server.http`'s own limiter, so tools
+  waiting on loopback REST never starve REST's sync routes; module functions stay sync (`mcp_server/tests/test_http.py`).
 - **`edit_application` edits the current draft in place.** `{#inv-edit-in-place}` (MCP): its ops apply to the CURRENT `customized_json`,
   keeping every earlier edit (the base only with no draft yet); no MCP tool rebuilds a draft from the base outside a tailoring session
   (REST `from-base` stays for the web). Edit indices are **0-based into the full JSON array**, including `enabled: false` rows omitted
@@ -528,7 +528,9 @@ workflow envelopes; the Assistant's toolset; the Companion's panel, Guided fill,
 Code citing "§7" lands here; the table says which section to open. What orientation needs of each surface:
 
 - **MCP server** (`backend/mcp_server/`; on screen **connected agents**): thin wrappers over REST via httpx (`@_guard` → `ToolError`),
-  served at `/mcp` and `/mcp/{profile}` inside FastAPI (§6 inv-mcp-inside-the-app, inv-tools-off-loop); **the docstring is the API** —
+  served at `/mcp` and `/mcp/{profile}` inside FastAPI (§6 inv-mcp-inside-the-app, inv-tools-off-loop); on SDK 2.x each set is its own
+  server built from one registry, and one endpoint serves both protocol eras (2025 handshake, 2026-07-28); the rest is in
+  `docs/agent-surfaces.md`, "The server on SDK 2.x". **The docstring is the API** —
   behavior, records and requirements, never instructions. Tool sets in journey order (profile, hunt, tailor, apply, track, templates;
   `/mcp` = `full`, 94 tools), each with its own instructions and, over HTTP, playbook prompts; enable ONE per chat; a removed tool's name
   answers with what replaced it (`replaced.py`). **Who writes** for its
@@ -551,7 +553,7 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 
 | Surface | Section in `docs/agent-surfaces.md` | Scope |
 |---|---|---|
-| MCP server | [MCP server](docs/agent-surfaces.md#mcp-server) | transport and loopback, docstring ratchets, scoped profiles, who writes (the refusals and their limits), plugin, Connect an agent app, the `.mcpb` bridge, what tools send and read (status sources, per-country answers, analytics rows) |
+| MCP server | [MCP server](docs/agent-surfaces.md#mcp-server) | transport and loopback, the server on SDK 2.x (sets, refusal words, both eras), docstring ratchets, scoped profiles, who writes (the refusals and their limits), plugin, Connect an agent app, the `.mcpb` bridge, what tools send and read (status sources, per-country answers, analytics rows) |
 | Guided tailoring workflow | [Guided tailoring workflow](docs/agent-surfaces.md#guided-tailoring-workflow) | the `next` envelope, ranking vs narrating, `offer` vs `ask_user`, the two controls, the LLM-free arc, apply readiness |
 | Onboarding workflow | [Onboarding workflow](docs/agent-surfaces.md#onboarding-workflow) | ingest → approve → base → render with zero in-house LLM; hint rules |
 | Automations page | [Automations page](docs/agent-surfaces.md#automations-page) | copy-only prompts, `record_run`, status from reports |
