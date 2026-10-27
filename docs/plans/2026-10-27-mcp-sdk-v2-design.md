@@ -65,7 +65,7 @@ Agents see exactly what they see today: the same tools per set, the same schemas
 ## 6. Docs
 
 - SYSTEM.md is at its 90% line: SDK detail goes to `docs/agent-surfaces.md`; SYSTEM.md keeps the invariant in one line.
-- `mcp_server/README.md`, the pyproject comment, CHANGELOG Unreleased ("agents see no change; clients on the 2026-07-28 revision are served").
+- `mcp_server/README.md`, the pyproject comment, CHANGELOG Unreleased ("agents see no change; clients on the 2026-07-28 revision are served"; every set now offers an empty resources list, as stdio always did).
 
 ## Out of scope
 
