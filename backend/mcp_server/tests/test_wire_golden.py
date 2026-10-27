@@ -9,10 +9,14 @@ with the Python, mcp and pydantic versions that made it, instead of comparing.
 
 No call reaches a backend: each case patches the one client method its tool calls, and a
 request that still gets as far as the network fails the test instead of being recorded.
+
+The same calls also pin the server log: no refusal's words in it (1.x logged none), only the
+crash, with its traceback.
 """
 
 import difflib
 import json
+import logging
 import os
 import platform
 from importlib import metadata
@@ -301,3 +305,23 @@ def test_only_an_empty_experimental_capability_is_left_out_of_the_comparison():
     # Outside capabilities, an `experimental` key is an answer's own data, compared as it is.
     answer = {"result": {"structuredContent": {"experimental": {}}}}
     assert normalise_response(answer) == answer
+
+
+_CLIENT_LOGGERS = frozenset({"httpx", "httpx2"})  # the test client's own request lines
+# Sessions opened and closed, at INFO; 1.x logged the same lines.
+_SESSION_LOGGERS = frozenset({"mcp.server.streamable_http", "mcp.server.streamable_http_manager"})
+
+
+def _about_the_calls(r: logging.LogRecord) -> bool:
+    lifecycle = r.name in _SESSION_LOGGERS and r.levelno == logging.INFO
+    return r.name not in _CLIENT_LOGGERS and not lifecycle
+
+
+def test_the_golden_calls_log_only_the_crash(caplog):
+    """The app's log runs at INFO (the SDK's own logging setup). A refusal is the agent's to
+    read, not the log's; a crash's traceback is the log's (the owner's call)."""
+    with caplog.at_level(logging.INFO), TestClient(asgi_app(mcp_http.McpEndpoint())) as client:
+        record(client)
+    logged = [(r.name, r.levelname) for r in caplog.records if _about_the_calls(r)]
+    assert logged == [("mcp.server.mcpserver.server", "ERROR")], caplog.text
+    assert "KeyError: 'slug'" in caplog.text

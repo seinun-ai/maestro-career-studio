@@ -1,6 +1,6 @@
 """In-process Streamable HTTP for the MCP tests: the endpoint on a bare Starlette app, a
-2025-era session (initialize, then initialized), one JSON-RPC request on it, and the
-normalisation that compares responses on what an agent reads."""
+2025-era session (initialize, then initialized), one JSON-RPC request on it, one request on
+the 2026-07-28 revision, and the normalisation that compares responses on what an agent reads."""
 
 import contextlib
 import re
@@ -50,6 +50,28 @@ def session(c, path="/mcp"):
 def rpc(c, path, sid, method, params=None, id_=2):
     body = {"jsonrpc": "2.0", "id": id_, "method": method, "params": params or {}}
     return c.post(path, json=body, headers={**HDR, "Mcp-Session-Id": sid})
+
+
+MODERN = "2026-07-28"
+
+
+def modern_rpc(c, path, method, params=None, client_info=INIT["params"]["clientInfo"]):
+    """One request on the 2026-07-28 revision: no handshake and no session; the version, the
+    client and its capabilities ride in `_meta`, the method and name in headers too. With
+    client_info None the request names no client."""
+    params = dict(params or {})
+    meta = {
+        "io.modelcontextprotocol/protocolVersion": MODERN,
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+    if client_info is not None:
+        meta["io.modelcontextprotocol/clientInfo"] = client_info
+    params["_meta"] = meta
+    headers = {**HDR, "MCP-Protocol-Version": MODERN, "Mcp-Method": method}
+    if method in ("tools/call", "prompts/get"):
+        headers["Mcp-Name"] = params["name"]
+    body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    return c.post(path, json=body, headers=headers)
 
 
 # Added by the 2026-07-28 revision; absent on 1.30.

@@ -1,6 +1,7 @@
 """Streamable HTTP contract, using only in-process ASGI requests."""
 
 import asyncio
+import contextlib
 import inspect
 import json
 import logging
@@ -9,15 +10,17 @@ import threading
 import anyio.from_thread
 import pytest
 from mcp import Client, MCPError
+from mcp.server.caching import CACHEABLE_METHODS, CacheHint
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from opentelemetry.trace import INVALID_SPAN
 from starlette.testclient import TestClient
 
 from mcp_server import http as mcp_http
 from mcp_server import server as srv
 from mcp_server.client import BackendError
-from mcp_server.profiles import allowed_tools
-from mcp_server.tests._wire import HDR, INIT, asgi_app, rpc, session
+from mcp_server.profiles import PROFILE_ALLOWLISTS, allowed_tools
+from mcp_server.tests._wire import HDR, INIT, asgi_app, modern_rpc, rpc, session
 
 
 @pytest.fixture
@@ -27,18 +30,73 @@ def client():
 
 
 @pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
-def test_each_profile_lists_exactly_its_allowlist(client, profile):
+def test_each_profile_lists_exactly_its_allowlist_in_registration_order(client, profile):
     path = "/mcp" if profile == "full" else f"/mcp/{profile}"
     sid = session(client, path)
-    names = {t["name"] for t in rpc(client, path, sid, "tools/list").json()["result"]["tools"]}
+    names = [t["name"] for t in rpc(client, path, sid, "tools/list").json()["result"]["tools"]]
+    assert names == srv.list_registered_tool_names(profile)
     allow = allowed_tools(profile)
-    assert names == (set(srv.list_registered_tool_names("full")) if allow is None else set(allow))
+    assert set(names) == (
+        set(srv.list_registered_tool_names("full")) if allow is None else set(allow))
 
 
 def test_each_set_is_its_own_server_holding_only_its_tools():
     served = mcp_http.McpEndpoint().servers["hunt"]
     assert isinstance(served, mcp_http._ServedSet)
     assert {t.name for t in served._tool_manager.list_tools()} == set(allowed_tools("hunt"))
+
+
+def _kinds(server: MCPServer) -> list[type]:
+    return [type(m) for m in server.middleware]
+
+
+def test_every_server_traces_nothing_and_lets_no_client_cache_an_answer():
+    """A configured Langfuse is OpenTelemetry-based: it sees model calls, never the SDK's span
+    per MCP message (tool names, crash text). Only tracing goes; the SDK's other middleware stays.
+    The registry is served directly in tests, so it is configured the same way."""
+    tracing = srv.OpenTelemetryMiddleware
+    sdk = _kinds(MCPServer("plain"))
+    assert tracing in sdk  # what the SDK installs on its own
+    kept = [k for k in sdk if k is not tracing]
+    no_caching = {m: CacheHint(ttl_ms=0, scope="private") for m in CACHEABLE_METHODS}
+    sets = mcp_http.McpEndpoint().servers.values()
+    for served in (srv.mcp, *sets, *(srv.build_set(p) for p in PROFILE_ALLOWLISTS)):
+        assert _kinds(served) == kept
+        assert srv._lowlevel(served).cache_hints == no_caching
+
+
+@pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
+def test_a_2026_client_is_told_to_keep_no_list(client, catalog, profile):
+    path = "/mcp" if profile == "full" else f"/mcp/{profile}"
+    for method in ("tools/list", "prompts/list"):
+        result = modern_rpc(client, path, method).json()["result"]
+        assert (result["ttlMs"], result["cacheScope"]) == (0, "private"), method
+
+
+class _Spans:
+    """Stands in for the SDK's tracer: records each span it is asked to open."""
+
+    def __init__(self) -> None:
+        self.names: list[str] = []
+
+    @contextlib.contextmanager
+    def start_as_current_span(self, name, **_kwargs):
+        self.names.append(name)
+        yield INVALID_SPAN
+
+
+def test_no_mcp_message_opens_a_span_on_either_era(monkeypatch, catalog):
+    from mcp.shared import _otel  # where the SDK opens each of its spans
+
+    spans = _Spans()
+    monkeypatch.setattr(_otel, "_tracer", spans)
+    removed = {"name": "explore_top_skills", "arguments": {}}
+    with TestClient(asgi_app(mcp_http.McpEndpoint())) as c:
+        sid = session(c, "/mcp/hunt")
+        for method, params in (("tools/list", {}), ("prompts/list", {}), ("tools/call", removed)):
+            assert rpc(c, "/mcp/hunt", sid, method, params).status_code == 200
+            assert modern_rpc(c, "/mcp/hunt", method, params).status_code == 200
+    assert spans.names == []
 
 
 @pytest.mark.parametrize("old, new", [("career", "profile"), ("explore", "track")])

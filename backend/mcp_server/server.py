@@ -8,6 +8,8 @@ from collections.abc import Callable
 from contextvars import ContextVar
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
+from mcp.server._otel import OpenTelemetryMiddleware  # 2.3 has no public name for it
+from mcp.server.caching import CACHEABLE_METHODS, CacheHint
 from mcp.server.lowlevel import Server
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
@@ -24,6 +26,13 @@ from mcp_server.client import CLEAR_TAKES_A_LIST, EXPLORE_VIEWS, BackendClient, 
 from mcp_server.profiles import allowed_tools, get_profile
 
 logger = logging.getLogger(__name__)
+# 2.x logs each refused call at INFO with its words (the agent's own input, the backend's
+# reason), and the app's log runs at INFO; 1.x logged none of them. A crash's traceback is
+# logged at ERROR and stays.
+logging.getLogger("mcp.server.mcpserver.server").setLevel(logging.WARNING)
+
+# No client keeps an answer, so every list it reads is current (2026-07-28 lets servers allow it).
+_NO_CACHING = {method: CacheHint(ttl_ms=0, scope="private") for method in CACHEABLE_METHODS}
 
 
 def _lowlevel(server: MCPServer) -> Server:
@@ -36,10 +45,16 @@ class _ServedMCP(MCPServer):
     """One served set. The registry (`mcp`, profile None) holds every tool; build_set makes a
     set from it. A call to a removed tool, or with a removed argument, gets mcp_server.replaced's
     sentence on stdio and HTTP alike. A backend refusal reads word for word; any other exception
-    reads "Error executing tool <name>", its traceback in the server log."""
+    reads "Error executing tool <name>", its traceback in the server log. No server, the
+    registry included, opens a span or lets a client cache an answer."""
 
     def __init__(self, *args: Any, profile: str | None = None, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, cache_hints=_NO_CACHING, **kwargs)
+        # A configured Langfuse is OpenTelemetry-based and must keep seeing only model calls,
+        # not a span per MCP message (tool names, crash text). The SDK's other middleware stays.
+        self.middleware[:] = [
+            m for m in self.middleware if not isinstance(m, OpenTelemetryMiddleware)
+        ]
         self.profile = profile  # None: the registry; hints follow MAESTRO_CS_MCP_PROFILE
 
     async def call_tool(

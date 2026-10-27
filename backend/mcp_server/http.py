@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import contextlib
 import functools
-import logging
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -44,8 +43,6 @@ TOOL_THREADS = 8
 SESSION_IDLE_SECONDS = 6 * 60 * 60
 # A 10 MB evidence upload inflates by 4/3 when base64-encoded in tool arguments.
 MAX_REQUEST_BYTES = 16 * 1024 * 1024
-
-logging.getLogger("mcp.server.lowlevel.server").setLevel(logging.WARNING)
 
 
 class _Limiter:
