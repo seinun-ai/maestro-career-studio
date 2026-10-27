@@ -80,27 +80,31 @@ def _truncate_detail(text: str, limit: int = 12000) -> str:
     return text[:limit] + "\n...(truncated)"
 
 
-def _validated_role(value: str | None) -> str:
+_ROLE_LABEL_WAY_OUT = (
+    "For a role the catalog lacks, send its name as role_label and leave role_category out."
+)
+
+
+def _validated_role(value: str | None, way_out: str = _ROLE_LABEL_WAY_OUT) -> str:
     """Validate a HUMAN-supplied role, or default to "unknown".
 
     Deliberately not `role_categories.normalize()`: that maps anything
     unrecognized to "other", which is correct for LLM job extraction but would
     turn a typo like "data_scientistt" into a silent, plausible "Other" here.
-    A person supplying a value gets a 422 instead.
+    A person supplying a value gets a 422 instead, naming the closest entries
+    and `way_out` (where a role outside the catalog goes on this route).
     """
     if value is None:
         return role_categories.UNKNOWN
     if value not in role_categories.all_keys():
-        # The nearest entries go first, so an error line capped downstream (the MCP client's)
-        # still carries them.
-        near = role_categories.name_closest(value)
+        # The closest entries and the way out go first, so an error line capped downstream (the
+        # MCP client's) still carries them.
+        refusal = role_categories.unknown_role_message(
+            f"Unknown role_category {value!r}", [value], way_out
+        )
         raise HTTPException(
             status_code=422,
-            detail=(
-                f"Unknown role_category {value!r}"
-                f"{f'; closest: {near}' if near else ''}. Valid values: "
-                f"{', '.join(role_categories.all_keys())}"
-            ),
+            detail=f"{refusal} Valid values: {', '.join(role_categories.all_keys())}",
         )
     return value
 
@@ -429,7 +433,11 @@ def plan_from_kb(
     touched here: approved points compose verbatim, and proposing rewrites is
     `kb_adapt`'s job, where every change carries provenance and needs approval.
     """
-    role = _validated_role(payload.role_category)
+    # The plan takes no role_label, so its way out is the catalog's own "other".
+    role = _validated_role(
+        payload.role_category,
+        way_out="For a role the catalog lacks, plan with role_category other.",
+    )
     try:
         result = base_from_kb_plan.plan(db, role, payload.instruction)
     except ValueError as e:

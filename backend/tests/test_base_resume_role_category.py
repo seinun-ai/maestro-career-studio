@@ -330,19 +330,30 @@ def test_an_unknown_role_names_the_closest_before_the_full_list(db_session):
     )
     assert resp.status_code == 422
     detail = resp.json()["detail"]
-    assert detail.startswith("Unknown role_category 'data_scientistt'; closest: data_scientist (Data Scientist)")
+    assert detail.startswith(
+        "Unknown role_category 'data_scientistt'; closest: data_scientist (Data Scientist). "
+        "For a role the catalog lacks, send its name as role_label and leave role_category out."
+    )
     assert detail.endswith(f"Valid values: {', '.join(role_categories.all_keys())}")
 
 
-def test_nothing_close_leaves_the_role_refusal_as_it_was(db_session):
-    resp = _client(db_session).post(
+def test_nothing_close_names_only_the_way_out(client):
+    resp = client.post(
         "/api/base-resumes",
-        json={"slug": "typo_far", "data": SAMPLE, "role_category": "zzzz_qqqq"},
+        json={"slug": "typo_far", "data": SAMPLE, "role_category": "civil_engineer"},
     )
     assert resp.status_code == 422
     assert resp.json()["detail"] == (
-        f"Unknown role_category 'zzzz_qqqq'. Valid values: {', '.join(role_categories.all_keys())}"
+        "Unknown role_category 'civil_engineer'. For a role the catalog lacks, send its name as "
+        f"role_label and leave role_category out. Valid values: {', '.join(role_categories.all_keys())}"
     )
+    # ...and the way out works.
+    made = client.post(
+        "/api/base-resumes",
+        json={"slug": "way_out", "data": SAMPLE, "role_label": "Civil Engineer"},
+    )
+    assert made.status_code in (200, 201), made.text
+    assert (made.json()["role_label"], made.json()["role_category"]) == ("Civil Engineer", "other")
 
 
 # --- PATCH /identity ------------------------------------------------------

@@ -335,8 +335,23 @@ def test_an_unknown_role_category_names_the_closest(client):
         "/api/settings/job-preferences",
         json={"value": {"role_categories": ["data_scientistt", "data_analyst"]}},
     ))
-    assert "unknown role categories: data_scientistt" in msg
-    assert "closest to data_scientistt: data_scientist (Data Scientist)" in msg
+    assert msg.endswith(
+        "unknown role categories: data_scientistt; closest: data_scientist (Data Scientist). "
+        "A role the catalog lacks goes in favored_roles as a label."
+    )
+
+
+def test_several_unknown_role_categories_each_name_their_closest(client):
+    msg = _first_msg(client.put(
+        "/api/settings/job-preferences",
+        json={"value": {"role_categories": ["data_scientistt", "data_analyst", "bi_developr"]}},
+    ))
+    assert msg.endswith(
+        "unknown role categories: data_scientistt, bi_developr; "
+        "closest to data_scientistt: data_scientist (Data Scientist); "
+        "closest to bi_developr: bi_developer (BI Developer). "
+        "A role the catalog lacks goes in favored_roles as a label."
+    )
 
 
 def test_an_unknown_favored_role_names_the_closest_roles(client):
@@ -345,6 +360,7 @@ def test_an_unknown_favored_role_names_the_closest_roles(client):
         json={"value": {"favored_roles": [{"role": "product_data_scientst"}]}},
     ))
     assert "unknown role: product_data_scientst; closest: product_data_scientist (Product Data Scientist)" in msg
+    assert msg.endswith("A role the catalog lacks goes in label, with no role.")
 
 
 def test_an_unknown_favored_role_category_names_the_closest_categories(client):
@@ -353,13 +369,20 @@ def test_an_unknown_favored_role_category_names_the_closest_categories(client):
         json={"value": {"favored_roles": [{"label": "Pricing analyst", "category": "data_analystt"}]}},
     ))
     assert "unknown role category: data_analystt; closest: data_analyst (Data Analyst)" in msg
+    assert msg.endswith("A role the catalog lacks keeps its label with no category.")
 
 
-def test_nothing_close_leaves_the_refusal_as_it_was():
+def test_nothing_close_names_only_the_way_out():
+    """A civil engineer is outside the catalog: no lookalike is offered, only where such a role goes."""
     with pytest.raises(ValidationError) as caught:
-        JobPreferences(role_categories=["zzzz_qqqq"])
-    assert "unknown role categories: zzzz_qqqq" in str(caught.value)
-    assert "closest" not in str(caught.value)
+        JobPreferences(role_categories=["civil_engineer"])
+    text = str(caught.value)
+    assert "unknown role categories: civil_engineer. A role the catalog lacks goes in favored_roles as a label." in text
+    assert "closest" not in text
     with pytest.raises(ValidationError) as caught:
-        FavoredRole(role="zzzz_qqqq")
-    assert "unknown role: zzzz_qqqq" in str(caught.value) and "closest" not in str(caught.value)
+        FavoredRole(role="civil_engineer")
+    text = str(caught.value)
+    assert "unknown role: civil_engineer. A role the catalog lacks goes in label, with no role." in text
+    assert "closest" not in text
+    # ...and the way out works: the same words as a label save, unmapped.
+    assert FavoredRole(label="Civil Engineer").category is None

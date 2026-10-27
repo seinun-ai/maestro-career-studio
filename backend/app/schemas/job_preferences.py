@@ -23,13 +23,6 @@ MAX_FAVORED_ROLES = 25
 MAX_LABEL_CHARS = 80
 
 
-def _unknown(message: str, value: str, *, roles: bool = False) -> str:
-    """A refusal of `value`, naming the closest catalog entries when any is close (the web's picker
-    and an agent's set_job_preferences share it)."""
-    near = role_categories.name_closest(value, roles=roles)
-    return f"{message}; closest: {near}" if near else message
-
-
 class FavoredRole(BaseModel):
     """One role the user is targeting.
 
@@ -48,7 +41,10 @@ class FavoredRole(BaseModel):
     @model_validator(mode="after")
     def _resolve(self) -> "FavoredRole":
         if self.category is not None and self.category not in role_categories.all_keys():
-            raise ValueError(_unknown(f"unknown role category: {self.category}", self.category))
+            raise ValueError(role_categories.unknown_role_message(
+                f"unknown role category: {self.category}", [self.category],
+                "A role the catalog lacks keeps its label with no category.",
+            ))
 
         if self.role is None:
             # Custom free text is the user's own words, so it is only tidied,
@@ -63,7 +59,10 @@ class FavoredRole(BaseModel):
 
         parent = role_categories.parent_of(self.role)
         if parent is None:
-            raise ValueError(_unknown(f"unknown role: {self.role}", self.role, roles=True))
+            raise ValueError(role_categories.unknown_role_message(
+                f"unknown role: {self.role}", [self.role],
+                "A role the catalog lacks goes in label, with no role.", roles=True,
+            ))
         if self.category is None:
             # Completion of a derived field, not coercion of a human's answer —
             # unlike the contradiction below, nobody asserted anything here.
@@ -143,11 +142,10 @@ class JobPreferences(BaseModel):
         valid = set(role_categories.all_keys())
         unknown = [key for key in value if key not in valid]
         if unknown:
-            near = [(key, role_categories.name_closest(key)) for key in unknown]
-            raise ValueError("; ".join([
-                f"unknown role categories: {', '.join(unknown)}",
-                *(f"closest to {key}: {names}" for key, names in near if names),
-            ]))
+            raise ValueError(role_categories.unknown_role_message(
+                f"unknown role categories: {', '.join(unknown)}", unknown,
+                "A role the catalog lacks goes in favored_roles as a label.",
+            ))
         return value
 
     @model_validator(mode="after")

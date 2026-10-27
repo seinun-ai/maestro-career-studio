@@ -281,6 +281,18 @@ def test_plan_endpoint_422s_on_an_empty_kb(client):
     assert r.status_code == 422
 
 
+def test_plan_endpoint_names_its_own_way_out_for_an_unknown_role(client):
+    # The plan takes a role_category only, so its way out is the catalog's own "other".
+    r = client.post(
+        "/api/base-resumes/from-kb/plan",
+        json={"role_category": "data_scientistt", "instruction": ""},
+    )
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert "closest: data_scientist (Data Scientist). For a role the catalog lacks, plan with role_category other." in detail
+    assert "role_label" not in detail
+
+
 def test_plan_endpoint_502s_when_the_provider_is_down(client, db_session, monkeypatch):
     _entity(db_session, "experience", "Data Scientist")
     db_session.commit()

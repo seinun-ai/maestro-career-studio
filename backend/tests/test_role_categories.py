@@ -756,12 +756,31 @@ def test_a_specific_role_is_named_only_where_one_is_valid():
     assert role_categories.closest("product data scientst")[0] == "data_scientist"
 
 
-def test_at_most_three_and_never_a_storage_sentinel():
-    near = role_categories.closest("engineer")
-    assert 1 <= len(near) <= 3
-    assert len(set(near)) == len(near)
-    assert not set(near) & set(role_categories.RESERVED)
-    assert not set(role_categories.closest("othr")) & set(role_categories.RESERVED)
+def test_at_most_the_limit_and_never_a_storage_sentinel():
+    assert role_categories.closest("data_scientistt", limit=1) == ["data_scientist"]
+    for text in ("data_enginer", "Sofware Engineer", "othr", "unknwn"):
+        near = role_categories.closest(text, roles=True)
+        assert len(near) <= 3 and len(set(near)) == len(near), text
+        assert not set(near) & set(role_categories.RESERVED), text
+
+
+@pytest.mark.parametrize("text", [
+    "civil_engineer", "electrical_engineer", "chemical_engineer", "Civil Engineer",
+    "hr_manager", "sales_manager", "web_developer", "engineer", "manager",
+])
+def test_a_shared_head_noun_is_no_likeness(text):
+    """"_engineer", "_manager", "_developer" alone never make two jobs alike: a civil engineer is
+    not a CV engineer, an HR manager not an engineering manager. Only the words that tell jobs
+    apart are compared, so a job from a field the catalog lacks is named nothing."""
+    assert role_categories.closest(text) == []
+    assert role_categories.closest(text, roles=True) == []
+
+
+@pytest.mark.parametrize("text, expected", [("BA", ["business_analyst"]), ("DE", ["data_engineer"])])
+def test_a_short_alias_answers_exactly_and_never_by_likeness(text, expected):
+    # "BA" is a declared alias; "dba" and "sde" are three letters from it, and three letters are no
+    # likeness at all.
+    assert role_categories.closest(text) == expected
 
 
 def test_nothing_close_names_nothing():

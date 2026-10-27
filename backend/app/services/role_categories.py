@@ -458,6 +458,49 @@ def match_free_text(text: str) -> RoleMatch:
 
 
 _CLOSE_RATIO = 0.75
+# A spelling this short ("ba", "dba", "sde") is matched exactly or not at all: a letter or two
+# apart is no likeness.
+_SHORT = 3
+# A last word this close to a head noun is that noun misspelt ("enginer", "scientst").
+_HEAD_RATIO = 0.8
+
+
+def _ratio(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _head_nouns(spellings: dict[str, str]) -> frozenset[str]:
+    """The words that end two or more catalog spellings ("engineer", "analyst", "manager"): they
+    say what kind of job it is, not which one. Read from the catalog, so a new family's head
+    noun counts without a list to keep."""
+    ends: dict[str, int] = {}
+    for spelling in spellings:
+        if "_" in spelling:
+            word = spelling.rsplit("_", 1)[1]
+            ends[word] = ends.get(word, 0) + 1
+    return frozenset(word for word, count in ends.items() if count >= 2)
+
+
+def _split(slug: str, heads: frozenset[str]) -> tuple[str, str | None]:
+    """(the words that tell jobs apart, the head noun or None): "civil_engineer" is
+    ("civil", "engineer"), "data_scientistt" ("data", "scientist"), a bare "engineer" ("", ...)."""
+    words = slug.split("_")
+    last = words[-1]
+    head = last if last in heads else None
+    if head is None and len(last) > _SHORT and heads:
+        nearest = max(sorted(heads), key=lambda noun: _ratio(last, noun))
+        head = nearest if _ratio(last, nearest) >= _HEAD_RATIO else None
+    return ("_".join(words[:-1]), head) if head else (slug, None)
+
+
+def _alike(ours: str, theirs: str) -> bool:
+    """Whether two distinguishing parts name the same thing: equal, or both longer than `_SHORT`
+    and `_CLOSE_RATIO` alike in spelling."""
+    if not ours or not theirs:
+        return False
+    if min(len(ours), len(theirs)) <= _SHORT:
+        return ours == theirs
+    return _ratio(ours, theirs) >= _CLOSE_RATIO
 
 
 def closest(text: str | None, limit: int = 3, *, roles: bool = False) -> list[str]:
@@ -465,15 +508,17 @@ def closest(text: str | None, limit: int = 3, *, roles: bool = False) -> list[st
 
     For a REFUSAL to name, never for storing: `match_free_text` stays the timid
     mapping, and a value refused with these suggestions is still refused. Its
-    own answer leads (a declared alias or a rank-stripped title), then the
-    entries whose key, label or alias is closest in spelling (`difflib`, ratio
-    `_CLOSE_RATIO` and up). That bound keeps misspellings and near forms
-    ("data_enginer", "Sofware Engineer" score 0.96+) and leaves an unrelated job
-    unanswered rather than named after a lookalike ("teacher" is 0.71 from
-    "researcher"): the catalog does not cover every field, and an empty list is
-    the honest answer for one it lacks. Categories only, as a `role_category`
-    takes; with `roles`, specific roles too (`FavoredRole.role` takes either).
-    Never `other`/`unknown`: storage sentinels, not suggestions.
+    own answer leads (a declared alias or a rank-stripped title). Then come the
+    spellings alike in the words that tell jobs apart: a shared head noun
+    ("_engineer", "_manager") says what kind of job, not which, so it is set
+    aside and the rest must match (`_alike`), and two different head nouns never
+    match. "data_enginer" finds data_engineer; a civil engineer is not a CV
+    engineer, an HR manager not an engineering manager, and a job from a field
+    the catalog lacks is named nothing, the honest answer. Spellings of
+    `_SHORT` letters or fewer match exactly or not at all. Ranked by the same
+    head noun first, then whole-spelling likeness. Categories only, as a
+    `role_category` takes; with `roles`, specific roles too (`FavoredRole.role`
+    takes either). Never `other`/`unknown`: storage sentinels, not suggestions.
     """
     slug = _slug(text or "")
     if not slug:
@@ -482,14 +527,21 @@ def closest(text: str | None, limit: int = 3, *, roles: bool = False) -> list[st
     # slug -> the key it spells: every category spelling, and a role's spellings
     # under its parent, unless roles are suggestions in their own right.
     spellings = {**loaded["aliases"], **(loaded["role_aliases"] if roles else {})}
+    heads = _head_nouns(spellings)
     match = match_free_text(str(text))
     found = [(match["role"] or match["category"]) if roles else match["category"]]
-    found += [
-        spellings[near]
-        for near in difflib.get_close_matches(
-            slug, list(spellings), n=len(spellings), cutoff=_CLOSE_RATIO
-        )
-    ]
+    words, head = _split(slug, heads)
+    near: list[tuple[bool, float, str, str]] = []
+    for spelling, key in spellings.items():
+        if len(spelling) <= _SHORT:
+            continue
+        their_words, their_head = _split(spelling, heads)
+        if head and their_head and head != their_head:
+            continue
+        if _alike(words, their_words):
+            near.append((head == their_head, _ratio(slug, spelling), spelling, key))
+    near.sort(key=lambda n: (not n[0], -n[1], n[2]))
+    found += [key for *_, key in near]
     keys = [key for key in dict.fromkeys(found) if key and key not in RESERVED]
     return keys[:limit]
 
@@ -497,6 +549,22 @@ def closest(text: str | None, limit: int = 3, *, roles: bool = False) -> list[st
 def name_closest(text: str | None, *, roles: bool = False) -> str:
     """`closest` as a refusal words it, `key (Label)` joined by commas; "" when none is close."""
     return ", ".join(f"{key} ({label_for(key)})" for key in closest(text, roles=roles))
+
+
+def unknown_role_message(
+    message: str, values: list[str], way_out: str, *, roles: bool = False
+) -> str:
+    """One wording for every refusal of a role the catalog does not know (job preferences, base
+    resumes): `message`, the closest entries when any is close ("closest: …" for one value,
+    "closest to x: …" for each of several), then `way_out`, which names the caller's own field a
+    role outside the catalog goes in."""
+    named = [(value, name_closest(value, roles=roles)) for value in values]
+    near = [
+        f"closest: {names}" if len(values) == 1 else f"closest to {value}: {names}"
+        for value, names in named
+        if names
+    ]
+    return "; ".join([message, *near]) + f". {way_out}"
 
 
 def prompt_options() -> str:
