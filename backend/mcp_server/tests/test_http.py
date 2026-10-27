@@ -14,7 +14,7 @@ import anyio.from_thread
 import pytest
 from mcp import Client, MCPError
 from mcp.server.caching import CACHEABLE_METHODS, CacheHint
-from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from opentelemetry.trace import INVALID_SPAN
 from starlette.testclient import TestClient
@@ -23,7 +23,9 @@ from mcp_server import http as mcp_http
 from mcp_server import server as srv
 from mcp_server.client import BackendError
 from mcp_server.profiles import PROFILE_ALLOWLISTS, allowed_tools
-from mcp_server.tests._wire import HDR, INIT, asgi_app, modern_rpc, rpc, session
+from mcp_server.tests._wire import (
+    HDR, INIT, asgi_app, context_registry, modern_rpc, rpc, serve_catalog, session,
+)
 
 
 @pytest.fixture
@@ -343,19 +345,8 @@ def test_offloading_is_idempotent_and_preserves_async_tools():
 
 
 def test_worker_receives_request_profile_and_client_info(monkeypatch):
-    scratch = srv._ServedMCP("context-test")
     monkeypatch.setenv("MAESTRO_CS_MCP_PROFILE", "hunt")
-
-    @scratch.tool()
-    def list_templates(ctx: Context) -> dict:
-        allow = srv._active_allowed_tools()
-        return {
-            "profile": srv.CURRENT_PROFILE.get(),
-            "allowed": sorted(allow) if allow is not None else None,
-            "client": srv._client_label(ctx),
-        }
-
-    with TestClient(asgi_app(mcp_http.McpEndpoint(scratch))) as c:
+    with TestClient(asgi_app(mcp_http.McpEndpoint(context_registry()))) as c:
         for id_, profile in enumerate(("templates", "full"), start=2):
             path = f"/mcp/{profile}"
             sid = session(c, path)
@@ -367,6 +358,7 @@ def test_worker_receives_request_profile_and_client_info(monkeypatch):
                 "profile": profile,
                 "allowed": sorted(allowed_tools(profile)) if profile != "full" else None,
                 "client": "pytest-client",
+                "protocol": INIT["params"]["protocolVersion"],
             }
     assert srv.CURRENT_PROFILE.get() is None
 
@@ -454,12 +446,7 @@ def test_initialize_carries_the_sets_own_instructions(client, profile):
 
 @pytest.fixture
 def catalog(monkeypatch):
-    """The automation cards as GET /api/automations serves them (no backend in these tests)."""
-    from app.services import automations
-
-    body = automations.catalog().model_dump(mode="json")
-    monkeypatch.setattr(srv._client, "get_automations", lambda: body)
-    return {c["id"]: c for c in body["cards"]}
+    return serve_catalog(monkeypatch)
 
 
 def test_a_set_offers_the_playbooks_that_use_it_as_prompts(client, catalog):
