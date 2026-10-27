@@ -64,7 +64,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   The dependency-free Node ≥18 `.mcpb` bridges stdio↔HTTP with no assistant-side Docker/Python: `MAESTRO_CS_BACKEND_URL`
   defaults to localhost:8001; `MAESTRO_CS_MCP_PROFILE` selects `/mcp` or `/mcp/{profile}` (no trailing slash).
   Requests are ordered; stale sessions replay initialize + initialized before one retry, preserving `clientInfo`
-  (`mcpb/tests/bridge.test.js`). HTTP `serverInfo.version` reads `APP_VERSION`, else `dev` (`mcp_server/tests/test_http.py`).
+  (`mcpb/tests/bridge.test.js`). Each set's `serverInfo.version`, on stdio and HTTP, reads `APP_VERSION`, else `dev`
+  (`mcp_server/tests/test_http.py`, `test_profiles.py`).
 
 - **Who writes** (`app/agent_writer.py`; SYSTEM.md §6 inv-agent-writer). The saved `mcp_workflow` setting (`McpWorkflowSettings`:
   `hints`, `writer: "agent" | "maestro"`, default `"agent"`) says who writes for an agent request. Only Settings › Agent apps' **Who

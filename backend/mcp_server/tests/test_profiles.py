@@ -1,4 +1,8 @@
 """Scoped MCP profile allowlists, and the served set each one builds."""
+import pytest
+from mcp import ClientSession
+from mcp.shared.memory import create_connected_server_and_client_session
+
 import mcp_server.server as srv
 from mcp_server import orientation
 from mcp_server.profiles import (
@@ -29,13 +33,15 @@ def test_unknown_profile_raises(monkeypatch):
         assert "Unknown MAESTRO_CS_MCP_PROFILE" in str(exc)
 
 
-def test_a_set_holds_the_registrys_own_tools_in_registration_order():
+@pytest.mark.parametrize("profile", ["track", "full"])
+def test_a_set_holds_the_registrys_own_tools_in_registration_order(profile):
     """HTTP wraps the registry's tools to run off the event loop; a set holding copies
-    would run them on it."""
-    served = srv.build_set("track")
+    would run them on it. full is what stdio serves by default."""
+    served = srv.build_set(profile)
     tools = served._tool_manager.list_tools()
-    assert [t.name for t in tools] == srv.list_registered_tool_names("track")
-    assert {t.name for t in tools} == allowed_tools("track")
+    assert [t.name for t in tools] == srv.list_registered_tool_names(profile)
+    assert {t.name for t in tools} == (
+        allowed_tools(profile) or {t.name for t in srv.mcp._tool_manager.list_tools()})
     assert all(t is srv.mcp._tool_manager.get_tool(t.name) for t in tools)
 
 
@@ -51,11 +57,15 @@ def test_a_set_says_what_it_holds_not_what_full_holds():
             srv.list_registered_tool_names(active))
 
 
+def test_the_registry_holds_94_tools():
+    assert len(srv.list_registered_tool_names("full")) == 94
+
+
 def test_building_every_set_leaves_the_registry_whole():
     registered = srv.list_registered_tool_names("full")
     for name in (*PROFILE_ALLOWLISTS, *PROFILE_ALIASES):
         srv.build_set(name)
-    assert srv.list_registered_tool_names("full") == registered and len(registered) == 94
+    assert srv.list_registered_tool_names("full") == registered
     assert srv.mcp.profile is None
     assert srv.mcp.instructions == orientation.instructions_for("full")
 
@@ -75,6 +85,26 @@ async def test_a_set_names_itself_for_the_hints_of_each_call(monkeypatch):
     assert seen == [("hunt", HUNT_TOOLS)]
     assert srv.CURRENT_PROFILE.get() is None
     assert srv.mcp._tool_manager.get_tool("probe") is None
+
+
+@pytest.mark.parametrize("profile", list(PROFILE_ALLOWLISTS))
+@pytest.mark.parametrize("app_version, expected", [("0.9.0", "0.9.0"), (None, "dev")])
+async def test_a_set_reports_maestro_version_on_stdio(monkeypatch, profile, app_version, expected):
+    if app_version is None:
+        monkeypatch.delenv("APP_VERSION", raising=False)
+    else:
+        monkeypatch.setenv("APP_VERSION", app_version)
+    results = []
+    initialize = ClientSession.initialize
+
+    async def keep_result(session):
+        results.append(await initialize(session))
+        return results[-1]
+
+    monkeypatch.setattr(ClientSession, "initialize", keep_result)
+    async with create_connected_server_and_client_session(srv.build_set(profile)):
+        pass
+    assert [r.serverInfo.version for r in results] == [expected]
 
 
 def test_profile_allowlists_are_disjoint_from_unused_domains():
@@ -155,9 +185,8 @@ def test_the_env_set_is_built_and_the_registry_keeps_every_tool():
 
     out = subprocess.run(
         [sys.executable, "-c",
-         "import mcp_server.server as s; from mcp_server.profiles import get_profile; "
-         "print(len(s.mcp._tool_manager.list_tools()), "
-         "len(s.build_set(get_profile())._tool_manager.list_tools()))"],
+         "import mcp_server.server as s; "
+         "print(len(s.mcp._tool_manager.list_tools()), len(s.build_set()._tool_manager.list_tools()))"],
         env={**os.environ, "MAESTRO_CS_MCP_PROFILE": "hunt"},
         cwd=Path(__file__).resolve().parents[2],
         capture_output=True, text=True, check=True,

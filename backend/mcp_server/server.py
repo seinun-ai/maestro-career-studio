@@ -10,6 +10,8 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.fastmcp.tools import Tool
+from mcp.server.lowlevel import Server
 from mcp.types import ToolAnnotations
 from pydantic import BeforeValidator, ConfigDict, Field, with_config
 
@@ -19,13 +21,14 @@ from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
 from app.services import http_client, markets
 from mcp_server import orientation, replaced, workflow
 from mcp_server.client import CLEAR_TAKES_A_LIST, EXPLORE_VIEWS, BackendClient, BackendError
-from mcp_server.profiles import PROFILE_ALLOWLISTS, allowed_tools, get_profile
+from mcp_server.profiles import allowed_tools, get_profile
 
 logger = logging.getLogger(__name__)
 
 
-def _lowlevel(server: FastMCP):
-    """The SDK's low-level server: the one private attribute we touch (1.x _mcp_server, 2.x _lowlevel_server)."""
+def _lowlevel(server: FastMCP) -> Server:
+    """The SDK's low-level server: the one private attribute whose name changes in 2.x
+    (1.x `_mcp_server`, 2.x `_lowlevel_server`)."""
     return server._mcp_server
 
 
@@ -47,13 +50,14 @@ class _ServedMCP(FastMCP):
             refusal = replaced.refused_argument(name, arguments)
         if refusal:
             raise ToolError(refusal)
-        if self.profile is None:
-            return await super().call_tool(name, arguments)
-        token = CURRENT_PROFILE.set(self.profile)
+        # A profile of None (the registry) leaves the caller's value alone: HTTP sets it, then
+        # calls the registry.
+        token = CURRENT_PROFILE.set(self.profile) if self.profile is not None else None
         try:
             return await super().call_tool(name, arguments)
         finally:
-            CURRENT_PROFILE.reset(token)
+            if token is not None:
+                CURRENT_PROFILE.reset(token)
 
 
 # The full set's text; a stdio set gets its own from build_set, an HTTP set from mcp_server.http.
@@ -484,7 +488,7 @@ def _client_label(ctx: Context | None) -> str | None:
 
 
 def _active_allowed_tools() -> frozenset[str] | None:
-    """The request profile's allowlist, falling back to the env for stdio hints."""
+    """The request profile's allowlist, falling back to the env for calls made outside a served set."""
     return allowed_tools(CURRENT_PROFILE.get())
 
 
@@ -2865,25 +2869,32 @@ def report_failure(proposal_id: str, reason: str) -> Any:
     return _client.report_failure(proposal_id, reason=reason)
 
 
+def _set_tools(profile: str | None = None) -> list[Tool]:
+    """The registry's Tool objects a client of `profile` (default: the env profile) can see, in
+    registration order."""
+    allow = allowed_tools(profile)
+    return [t for t in mcp._tool_manager.list_tools() if allow is None or t.name in allow]
+
+
 def list_registered_tool_names(profile: str | None = None) -> list[str]:
     """Tool names a client of `profile` (default: the env profile) can see."""
-    allow = allowed_tools(profile)
-    return [t.name for t in mcp._tool_manager.list_tools() if allow is None or t.name in allow]
+    return [t.name for t in _set_tools(profile)]
 
 
-def build_set(profile: str, cls: type[_ServedMCP] = _ServedMCP) -> _ServedMCP:
-    """A server holding `profile`'s tools (the registry's own Tool objects) and instructions."""
+def build_set(profile: str | None = None, cls: type[_ServedMCP] = _ServedMCP) -> _ServedMCP:
+    """A server holding `profile`'s tools (default: the env profile) and instructions. The set is
+    a snapshot of the registry at build time and holds the registry's own Tool objects, so a set
+    must never change a shared Tool in place."""
     active = get_profile(profile)
-    allow = PROFILE_ALLOWLISTS[active]
-    tools = [t for t in mcp._tool_manager.list_tools() if allow is None or t.name in allow]
-    served = cls(mcp.name, instructions=orientation.instructions_for(active), tools=tools, profile=active)
+    instructions = orientation.instructions_for(active)
+    served = cls(mcp.name, instructions=instructions, tools=_set_tools(active), profile=active)
     _lowlevel(served).version = os.environ.get("APP_VERSION", "dev")
     return served
 
 
 def main() -> None:
     http_client.repair_proxy_env()
-    build_set(get_profile()).run()  # stdio: this process serves one set
+    build_set().run()  # stdio: this process serves one set
 
 
 if __name__ == "__main__":

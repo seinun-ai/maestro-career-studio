@@ -91,14 +91,14 @@ def test_every_replacement_is_served_whole_by_some_scoped_set():
 
 @pytest.mark.parametrize("name", sorted(_REMOVED))
 async def test_stdio_answers_a_removed_name_with_its_replacement(name):
-    async with create_connected_server_and_client_session(srv.mcp) as session:
+    async with create_connected_server_and_client_session(srv.build_set("full")) as session:
         result = await session.call_tool(name, {})
     assert result.isError
     assert result.content[0].text == replaced.replaced_message(name)
 
 
 async def test_stdio_keeps_the_plain_error_for_a_name_never_served():
-    async with create_connected_server_and_client_session(srv.mcp) as session:
+    async with create_connected_server_and_client_session(srv.build_set("full")) as session:
         result = await session.call_tool("no_such_tool", {})
     assert result.isError
     assert result.content[0].text == "Unknown tool: no_such_tool"
