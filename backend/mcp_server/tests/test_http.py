@@ -8,6 +8,7 @@ import threading
 
 import anyio.from_thread
 import pytest
+from mcp import Client, MCPError
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from starlette.testclient import TestClient
@@ -310,7 +311,8 @@ def _scratch_answer(raised: Exception, name: str = "refused") -> dict:
 
 
 def test_a_backend_refusal_reaches_the_agent_word_for_word():
-    """Not every tool runs under _guard; a BackendError is still meant for the agent."""
+    """The backstop for a BackendError raised outside _guard (every registered tool has one):
+    the agent still reads the backend's words."""
     res = _scratch_answer(BackendError("Maestro writes for this app; use store_cover_letter."))
     assert res["isError"] is True
     assert res["content"][0]["text"] == (
@@ -394,3 +396,30 @@ def test_a_playbook_from_another_set_is_not_served(client, catalog):
     sid = session(client, "/mcp/tailor")
     res = rpc(client, "/mcp/tailor", sid, "prompts/get", {"name": "job-hunt"}).json()
     assert "error" in res
+
+
+@pytest.mark.parametrize("mode", ["legacy", "2026-07-28"])
+async def test_an_unknown_prompt_reads_its_name_on_both_eras(catalog, mode):
+    served = srv.build_set("tailor", cls=mcp_http._ServedSet)
+    async with Client(served, mode=mode) as client:
+        with pytest.raises(MCPError) as refused:
+            await client.get_prompt("job-hunt")
+    assert (refused.value.code, refused.value.message) == (0, "Unknown prompt: job-hunt")
+
+
+@pytest.mark.parametrize("mode", ["legacy", "2026-07-28"])
+async def test_a_backend_refusal_behind_the_prompts_reads_its_words_on_both_eras(
+    monkeypatch, mode
+):
+    said = "Backend returned 503: the automations catalog is unavailable"
+
+    def refuse():
+        raise BackendError(said, status_code=503)
+
+    monkeypatch.setattr(srv._client, "get_automations", refuse)
+    served = srv.build_set("tailor", cls=mcp_http._ServedSet)
+    async with Client(served, mode=mode) as client:
+        for ask in (client.list_prompts, lambda: client.get_prompt("tailor-run")):
+            with pytest.raises(MCPError) as refused:
+                await ask()
+            assert (refused.value.code, refused.value.message) == (0, said)

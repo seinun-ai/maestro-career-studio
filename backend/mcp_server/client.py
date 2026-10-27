@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -336,6 +337,16 @@ def _format_error_body(body: Any) -> str:
     return text
 
 
+def _reason(exc: BaseException) -> str:
+    """An OS error's own words (no errno, no repeated path), else the exception's text."""
+    return getattr(exc, "strerror", None) or str(exc)
+
+
+def _unwritable(what: str, folder: Path, setting: str, exc: OSError) -> BackendError:
+    """A folder this server writes into refused the write: which one, why, and its setting."""
+    return BackendError(f"{what} {folder} ({_reason(exc)}); {setting} sets this folder.")
+
+
 def _atomic_write_bytes(destination: Path, content: bytes) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(
@@ -428,6 +439,10 @@ class BackendClient:
             raise BackendError(message) from exc
         except httpx.HTTPError as exc:
             raise BackendError(f"HTTP error talking to backend: {exc}") from exc
+        except (TypeError, ValueError) as exc:
+            # httpx encodes the body itself and refuses what JSON cannot carry, NaN and
+            # Infinity included (allow_nan=False): the request was never sent.
+            raise BackendError(f"the arguments could not be sent as JSON: {exc}") from exc
 
         if response.status_code >= 400:
             try:
@@ -1150,10 +1165,13 @@ class BackendClient:
             os.environ.get("MAESTRO_CS_PDF_DIR")
             or (Path(tempfile.gettempdir()) / "maestro-cs-pdfs")
         )
-        out_dir.mkdir(parents=True, exist_ok=True)
         local_filename = _safe_filename(f"{target_id}.pdf", "rendered.pdf")
         out_path = out_dir / local_filename
-        out_path.write_bytes(content)
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path.write_bytes(content)
+        except OSError as exc:
+            raise _unwritable("could not write the PDF to", out_dir, "MAESTRO_CS_PDF_DIR", exc) from exc
         result = {
             "filename": _response_filename(response, local_filename),
             "path": str(out_path),
@@ -1241,7 +1259,12 @@ class BackendClient:
         canonical_filename = _response_filename(response, fallback)
         upload_root = _upload_root()
         upload_path = upload_root / application_id / canonical_filename
-        _atomic_write_bytes(upload_path, content)
+        try:
+            _atomic_write_bytes(upload_path, content)
+        except OSError as exc:
+            raise _unwritable(
+                "could not stage the PDF in", upload_root, "MAESTRO_CS_UPLOAD_DIR", exc
+            ) from exc
         inspection = _inspect_pdf(upload_path)
         return {
             "application_id": application_id,
@@ -1532,7 +1555,13 @@ class BackendClient:
         image_base64: str,
         kind: str = "step",
     ) -> Any:
-        data_bytes = base64.b64decode(image_base64)
+        try:
+            data_bytes = base64.b64decode(image_base64)
+        except binascii.Error as exc:
+            raise BackendError(
+                "image_base64 is not valid base64; send the raw base64 text, without a data: "
+                "URL prefix."
+            ) from exc
         files = {"file": ("evidence.png", data_bytes, "image/png")}
         data = {"step": str(step), "label": label, "kind": kind}
         return self._request("POST", f"/api/proposals/{_seg(proposal_id)}/evidence", files=files, data=data)
@@ -1551,20 +1580,25 @@ class BackendClient:
         # off the host to actual PNG/JPEG images.
         if "\x00" in file_path:
             raise BackendError("evidence file path contains a NUL byte")
-        p = Path(file_path).expanduser().resolve()
-        if not p.is_file():
-            # Under `docker exec` the browser's HOST path does not exist here;
-            # the same file is in this process's mount of the .playwright-mcp tree.
-            mapped = _mounted_playwright_path(file_path)
-            if mapped is None or not mapped.is_file():
-                raise BackendError(
-                    f"evidence file not found: {p}"
-                    + (f" (also tried {mapped})" if mapped is not None else "")
-                )
-            p = mapped
-        data_bytes = p.read_bytes()
-        if len(data_bytes) > 5 * 1024 * 1024:
-            raise BackendError("evidence file exceeds 5 MB")
+        try:
+            p = Path(file_path).expanduser().resolve()
+            if not p.is_file():
+                # Under `docker exec` the browser's HOST path does not exist here;
+                # the same file is in this process's mount of the .playwright-mcp tree.
+                mapped = _mounted_playwright_path(file_path)
+                if mapped is None or not mapped.is_file():
+                    raise BackendError(
+                        f"evidence file not found: {p}"
+                        + (f" (also tried {mapped})" if mapped is not None else "")
+                    )
+                p = mapped
+            if p.stat().st_size > 5 * 1024 * 1024:  # before reading, so a huge file never is
+                raise BackendError("evidence file exceeds 5 MB")
+            data_bytes = p.read_bytes()
+        except (OSError, RuntimeError) as exc:  # RuntimeError: a symlink loop (Python 3.12)
+            raise BackendError(
+                f"evidence file could not be read: {file_path} ({_reason(exc)})"
+            ) from exc
         if data_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
             mime = "image/png"
         elif data_bytes.startswith(b"\xff\xd8\xff"):

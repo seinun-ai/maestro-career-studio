@@ -35,7 +35,7 @@ def _lowlevel(server: MCPServer) -> Server:
 class _ServedMCP(MCPServer):
     """One served set. The registry (`mcp`, profile None) holds every tool; build_set makes a
     set from it. A call to a removed tool, or with a removed argument, gets mcp_server.replaced's
-    sentence on stdio and HTTP alike. A backend refusal reads word for word; any other crash
+    sentence on stdio and HTTP alike. A backend refusal reads word for word; any other exception
     reads "Error executing tool <name>", its traceback in the server log."""
 
     def __init__(self, *args: Any, profile: str | None = None, **kwargs: Any) -> None:
@@ -59,9 +59,11 @@ class _ServedMCP(MCPServer):
         try:
             return await super().call_tool(name, arguments, context)
         except UnexpectedToolError as exc:
-            # 2.x keeps a crash's text on the server; a backend refusal is meant for the agent.
+            # Backstop: every registered tool's _guard already turns a BackendError into a
+            # ToolError. One raised outside it (a tool added without _guard, an argument
+            # validator) would otherwise read only 2.x's generic crash text.
             if isinstance(exc.__cause__, BackendError):
-                raise ToolError(f"Error executing tool {name}: {exc.__cause__}") from exc.__cause__
+                raise ToolError(f"{exc}: {exc.__cause__}") from exc.__cause__
             raise
         finally:
             if token is not None:
@@ -422,10 +424,10 @@ def _read(title: str) -> dict[str, Any]:
         "title": title,
         "annotations": ToolAnnotations(
             title=title,
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=False,
+            read_only_hint=True,
+            destructive_hint=False,
+            idempotent_hint=True,
+            open_world_hint=False,
         ),
     }
 
@@ -437,10 +439,10 @@ def _write(
         "title": title,
         "annotations": ToolAnnotations(
             title=title,
-            readOnlyHint=False,
-            destructiveHint=destructive,
-            idempotentHint=idempotent,
-            openWorldHint=open_world,
+            read_only_hint=False,
+            destructive_hint=destructive,
+            idempotent_hint=idempotent,
+            open_world_hint=open_world,
         ),
     }
 

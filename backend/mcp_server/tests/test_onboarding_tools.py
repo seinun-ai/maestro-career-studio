@@ -5,8 +5,8 @@ client stub here CAPTURES what the tool passed and the test asserts on it.
 """
 
 import pytest
-from mcp.server.mcpserver.exceptions import ToolError
 from mcp import Client
+from mcp.server.mcpserver.exceptions import ToolError
 
 import mcp_server.server as srv
 from mcp_server.client import BackendError
@@ -253,7 +253,7 @@ def test_create_base_resume_from_kb_keeps_its_hint_when_setup_status_fails(monke
     ],
 )
 def test_backend_errors_surface_as_tool_errors(monkeypatch, tool, client_method, call):
-    """Without @_guard the agent gets a raw BackendError traceback."""
+    """A direct caller gets _guard's ToolError carrying the backend's words."""
     def _raise(*_a, **_k):
         raise BackendError("backend said 422")
 

@@ -89,25 +89,35 @@ def test_every_replacement_is_served_whole_by_some_scoped_set():
                 assert message.endswith(".") and ", in the full set" not in message, (name, set_name)
 
 
+# "legacy" drives the stream loop stdio runs (the 2025 handshake); "2026-07-28" the per-request
+# path the same server takes for a client on the new revision.
+_ERAS = ("legacy", "2026-07-28")
+
+
+@pytest.mark.parametrize("mode", _ERAS)
 @pytest.mark.parametrize("name", sorted(_REMOVED))
-async def test_stdio_answers_a_removed_name_with_its_replacement(name):
-    async with Client(srv.build_set("full")) as client:
+async def test_stdio_answers_a_removed_name_with_its_replacement(name, mode):
+    async with Client(srv.build_set("full"), mode=mode) as client:
         result = await client.call_tool(name, {})
     assert result.is_error
     assert result.content[0].text == replaced.replaced_message(name)
 
 
-async def test_stdio_keeps_the_plain_error_for_a_name_never_served():
-    async with Client(srv.build_set("full")) as client:
+@pytest.mark.parametrize("mode", _ERAS)
+async def test_stdio_keeps_the_plain_error_for_a_name_never_served(mode):
+    async with Client(srv.build_set("full"), mode=mode) as client:
         result = await client.call_tool("no_such_tool", {})
     assert result.is_error
     assert result.content[0].text == "Unknown tool: no_such_tool"
 
 
-async def test_a_stdio_set_answers_a_removed_name_and_keeps_the_plain_error_for_the_rest(monkeypatch):
+@pytest.mark.parametrize("mode", _ERAS)
+async def test_a_stdio_set_answers_a_removed_name_and_keeps_the_plain_error_for_the_rest(
+    monkeypatch, mode
+):
     monkeypatch.setattr(srv._client, "list_jobs", lambda **_: [])
 
-    async with Client(srv.build_set("track")) as client:
+    async with Client(srv.build_set("track"), mode=mode) as client:
         removed = await client.call_tool("explore_top_skills", {"limit": 5})
         hidden = await client.call_tool("create_template_draft", {})
         served = await client.call_tool("list_jobs", {})
@@ -116,6 +126,6 @@ async def test_a_stdio_set_answers_a_removed_name_and_keeps_the_plain_error_for_
     assert hidden.is_error and hidden.content[0].text == "Unknown tool: create_template_draft"
     assert not served.is_error, served.content
 
-    async with Client(srv.build_set("hunt")) as client:
+    async with Client(srv.build_set("hunt"), mode=mode) as client:
         elsewhere = await client.call_tool("explore_top_skills", {})
     assert elsewhere.content[0].text.endswith('explore_trends(view="top_skills"), in the track set.')

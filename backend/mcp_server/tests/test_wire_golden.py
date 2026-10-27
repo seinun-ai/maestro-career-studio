@@ -298,3 +298,6 @@ def test_only_an_empty_experimental_capability_is_left_out_of_the_comparison():
     assert normalise_response(caps({"x": {}})) == {
         "result": {"capabilities": {"experimental": {"x": {}}, "tools": {}}}
     }
+    # Outside capabilities, an `experimental` key is an answer's own data, compared as it is.
+    answer = {"result": {"structuredContent": {"experimental": {}}}}
+    assert normalise_response(answer) == answer

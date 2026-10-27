@@ -61,12 +61,12 @@ _PYDANTIC_DOCS = re.compile(r"errors\.pydantic\.dev/[0-9.]+/")
 
 def _strip(value: Any) -> Any:
     if isinstance(value, dict):
-        return {
-            k: _strip(v)
-            for k, v in value.items()
+        kept = {k: _strip(v) for k, v in value.items() if k not in _REVISION_KEYS}
+        capabilities = kept.get("capabilities")
+        if isinstance(capabilities, dict) and capabilities.get("experimental") == {}:
             # 1.30 sent an empty experimental capability, 2.x omits it: both say there are none.
-            if k not in _REVISION_KEYS and not (k == "experimental" and v == {})
-        }
+            kept["capabilities"] = {k: v for k, v in capabilities.items() if k != "experimental"}
+        return kept
     if isinstance(value, list):
         return [_strip(v) for v in value]
     if isinstance(value, str):

@@ -26,6 +26,7 @@ from typing import Any
 
 import anyio
 import anyio.to_thread
+from mcp import MCPError
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
@@ -34,6 +35,7 @@ from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
 from mcp_server import server as tools_server
+from mcp_server.client import BackendError
 from mcp_server.profiles import PROFILE_ALIASES, PROFILE_ALLOWLISTS
 
 # Separate from FastAPI's default 40-token limiter: a tool waiting on loopback
@@ -90,6 +92,12 @@ def offload_tools(mcp: MCPServer) -> int:
     return n
 
 
+def _prompt_refusal(message: str) -> MCPError:
+    """A prompt request refused in words. Code 0 with the text is what the 2025 path has always
+    answered; as an MCPError the 2026-07-28 path answers the same, not "Internal server error"."""
+    return MCPError(code=0, message=message)
+
+
 class _ServedSet(tools_server._ServedMCP):
     """One HTTP set: build_set's server, offering as prompts the automation playbooks that
     use the set (full: all)."""
@@ -97,9 +105,12 @@ class _ServedSet(tools_server._ServedMCP):
     async def _cards(self) -> list[dict[str, Any]]:
         # The playbooks as the web's Copy prompt gives them. A REST read like the tools, so it
         # runs off the event loop too.
-        catalog = await anyio.to_thread.run_sync(
-            tools_server._client.get_automations, limiter=_LIMITER.get()
-        )
+        try:
+            catalog = await anyio.to_thread.run_sync(
+                tools_server._client.get_automations, limiter=_LIMITER.get()
+            )
+        except BackendError as exc:
+            raise _prompt_refusal(str(exc)) from exc
         cards = (catalog or {}).get("cards") or []
         return [c for c in cards if self.profile == "full" or c.get("toolset") == self.profile]
 
@@ -114,7 +125,7 @@ class _ServedSet(tools_server._ServedMCP):
     ) -> GetPromptResult:
         card = next((c for c in await self._cards() if c["id"] == name), None)
         if card is None:
-            raise ValueError(f"Unknown prompt: {name}")
+            raise _prompt_refusal(f"Unknown prompt: {name}")
         return GetPromptResult(
             description=card.get("summary"),
             messages=[PromptMessage(role="user", content=TextContent(type="text", text=card["prompt"]))],
