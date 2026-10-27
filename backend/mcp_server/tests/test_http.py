@@ -5,7 +5,10 @@ import contextlib
 import inspect
 import json
 import logging
+import subprocess
+import sys
 import threading
+from pathlib import Path
 
 import anyio.from_thread
 import pytest
@@ -54,7 +57,11 @@ def test_every_server_traces_nothing_and_lets_no_client_cache_an_answer():
     """A configured Langfuse is OpenTelemetry-based: it sees model calls, never the SDK's span
     per MCP message (tool names, crash text). Only tracing goes; the SDK's other middleware stays.
     The registry is served directly in tests, so it is configured the same way."""
-    tracing = srv.OpenTelemetryMiddleware
+    # Imported here, not taken from server.py: if the SDK moves it, this fails in CI while the
+    # app (server._SdkTracing None, dropped by name) still starts.
+    from mcp.server._otel import OpenTelemetryMiddleware as tracing
+
+    assert srv._SdkTracing is tracing
     sdk = _kinds(MCPServer("plain"))
     assert tracing in sdk  # what the SDK installs on its own
     kept = [k for k in sdk if k is not tracing]
@@ -63,6 +70,24 @@ def test_every_server_traces_nothing_and_lets_no_client_cache_an_answer():
     for served in (srv.mcp, *sets, *(srv.build_set(p) for p in PROFILE_ALLOWLISTS)):
         assert _kinds(served) == kept
         assert srv._lowlevel(served).cache_hints == no_caching
+
+
+def test_the_app_starts_and_drops_tracing_by_name_once_the_sdk_moves_its_class():
+    """A later 2.x without mcp.server._otel.OpenTelemetryMiddleware: server.py still imports and
+    every server still drops the SDK's tracing, matched by its class name."""
+    script = (
+        "import mcp.server._otel as otel; del otel.OpenTelemetryMiddleware\n"
+        "import mcp_server.http as h, mcp_server.server as s\n"
+        "print(s._SdkTracing, *sorted({type(m).__name__ for m in s.mcp.middleware}),"
+        " *sorted({type(m).__name__ for m in h.McpEndpoint().servers['hunt'].middleware}))"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", script], cwd=Path(__file__).resolve().parents[2],
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
+    kept = sorted({type(m).__name__ for m in MCPServer("plain").middleware} - {
+        "OpenTelemetryMiddleware"})
+    assert out == ["None", *kept, *kept]
 
 
 @pytest.mark.parametrize("profile", ["full", "profile", "hunt", "tailor", "apply", "track", "templates"])
@@ -86,17 +111,25 @@ class _Spans:
 
 
 def test_no_mcp_message_opens_a_span_on_either_era(monkeypatch, catalog):
+    from mcp.server._otel import OpenTelemetryMiddleware
     from mcp.shared import _otel  # where the SDK opens each of its spans
 
     spans = _Spans()
     monkeypatch.setattr(_otel, "_tracer", spans)
+    endpoint = mcp_http.McpEndpoint()
+    # The control: tracing put back on one set shows the recorder sees the SDK's spans, so an
+    # SDK that opened them elsewhere could not pass this test by recording nothing.
+    endpoint.servers["track"].middleware.insert(0, OpenTelemetryMiddleware())
     removed = {"name": "explore_top_skills", "arguments": {}}
-    with TestClient(asgi_app(mcp_http.McpEndpoint())) as c:
-        sid = session(c, "/mcp/hunt")
-        for method, params in (("tools/list", {}), ("prompts/list", {}), ("tools/call", removed)):
-            assert rpc(c, "/mcp/hunt", sid, method, params).status_code == 200
-            assert modern_rpc(c, "/mcp/hunt", method, params).status_code == 200
-    assert spans.names == []
+    with TestClient(asgi_app(endpoint)) as c:
+        for path in ("/mcp/hunt", "/mcp/track"):
+            assert spans.names == []
+            sid = session(c, path)
+            for method, params in (("tools/list", {}), ("prompts/list", {}), ("tools/call", removed)):
+                assert rpc(c, path, sid, method, params).status_code == 200
+                assert modern_rpc(c, path, method, params).status_code == 200
+    assert spans.names.count("tools/call explore_top_skills") == 2  # the control, once per era
+    assert "initialize" in spans.names
 
 
 @pytest.mark.parametrize("old, new", [("career", "profile"), ("explore", "track")])

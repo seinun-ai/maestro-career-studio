@@ -6,9 +6,9 @@ import logging
 import os
 from collections.abc import Callable
 from contextvars import ContextVar
+from types import MappingProxyType
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
-from mcp.server._otel import OpenTelemetryMiddleware  # 2.3 has no public name for it
 from mcp.server.caching import CACHEABLE_METHODS, CacheHint
 from mcp.server.lowlevel import Server
 from mcp.server.mcpserver import Context, MCPServer
@@ -31,8 +31,23 @@ logger = logging.getLogger(__name__)
 # logged at ERROR and stays.
 logging.getLogger("mcp.server.mcpserver.server").setLevel(logging.WARNING)
 
+# The app imports this module at startup and fresh installs take the newest mcp<3, so a private
+# SDK name must not decide whether the app starts.
+try:
+    from mcp.server._otel import OpenTelemetryMiddleware as _SdkTracing  # no public name in 2.3
+except ImportError:  # moved in a later 2.x: test_http fails in CI, the app still starts
+    _SdkTracing = None
+
 # No client keeps an answer, so every list it reads is current (2026-07-28 lets servers allow it).
-_NO_CACHING = {method: CacheHint(ttl_ms=0, scope="private") for method in CACHEABLE_METHODS}
+_NO_CACHING = MappingProxyType(
+    {method: CacheHint(ttl_ms=0, scope="private") for method in CACHEABLE_METHODS}
+)
+
+
+def _is_sdk_tracing(middleware: object) -> bool:
+    if _SdkTracing is not None:
+        return isinstance(middleware, _SdkTracing)
+    return type(middleware).__name__ == "OpenTelemetryMiddleware"
 
 
 def _lowlevel(server: MCPServer) -> Server:
@@ -45,16 +60,15 @@ class _ServedMCP(MCPServer):
     """One served set. The registry (`mcp`, profile None) holds every tool; build_set makes a
     set from it. A call to a removed tool, or with a removed argument, gets mcp_server.replaced's
     sentence on stdio and HTTP alike. A backend refusal reads word for word; any other exception
-    reads "Error executing tool <name>", its traceback in the server log. No server, the
-    registry included, opens a span or lets a client cache an answer."""
+    reads "Error executing tool <name>", its traceback in the server log. No inbound message
+    opens a span on any server, the registry included (an outbound request would; Maestro sends
+    none), and no client may cache an answer."""
 
     def __init__(self, *args: Any, profile: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, cache_hints=_NO_CACHING, **kwargs)
         # A configured Langfuse is OpenTelemetry-based and must keep seeing only model calls,
         # not a span per MCP message (tool names, crash text). The SDK's other middleware stays.
-        self.middleware[:] = [
-            m for m in self.middleware if not isinstance(m, OpenTelemetryMiddleware)
-        ]
+        self.middleware[:] = [m for m in self.middleware if not _is_sdk_tracing(m)]
         self.profile = profile  # None: the registry; hints follow MAESTRO_CS_MCP_PROFILE
 
     async def call_tool(

@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import platform
+import re
 from importlib import metadata
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -308,13 +309,21 @@ def test_only_an_empty_experimental_capability_is_left_out_of_the_comparison():
 
 
 _CLIENT_LOGGERS = frozenset({"httpx", "httpx2"})  # the test client's own request lines
-# Sessions opened and closed, at INFO; 1.x logged the same lines.
-_SESSION_LOGGERS = frozenset({"mcp.server.streamable_http", "mcp.server.streamable_http_manager"})
+# Session managers and sessions starting and stopping, at INFO; 1.x logged the same lines.
+_LIFECYCLE = {
+    "mcp.server.streamable_http_manager": re.compile(
+        r"StreamableHTTP session manager (started|shutting down)"
+        r"|Created new transport with session ID: [0-9a-f]+"
+    ),
+    "mcp.server.streamable_http": re.compile(r"Terminating session: [0-9a-f]+"),
+}
 
 
 def _about_the_calls(r: logging.LogRecord) -> bool:
-    lifecycle = r.name in _SESSION_LOGGERS and r.levelno == logging.INFO
-    return r.name not in _CLIENT_LOGGERS and not lifecycle
+    lifecycle = _LIFECYCLE.get(r.name)
+    if r.levelno == logging.INFO and lifecycle and lifecycle.fullmatch(r.getMessage()):
+        return False
+    return r.name not in _CLIENT_LOGGERS
 
 
 def test_the_golden_calls_log_only_the_crash(caplog):

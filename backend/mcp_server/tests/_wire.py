@@ -6,6 +6,7 @@ import contextlib
 import re
 from typing import Any
 
+from mcp.shared.inbound import NAME_BEARING_METHODS
 from starlette.applications import Starlette
 from starlette.routing import Route
 
@@ -57,8 +58,9 @@ MODERN = "2026-07-28"
 
 def modern_rpc(c, path, method, params=None, client_info=INIT["params"]["clientInfo"]):
     """One request on the 2026-07-28 revision: no handshake and no session; the version, the
-    client and its capabilities ride in `_meta`, the method and name in headers too. With
-    client_info None the request names no client."""
+    client and its capabilities ride in `_meta` (keys the caller's own `_meta` sets win), the
+    method and, when the body names one, the name or uri in headers too. With client_info None
+    the request names no client."""
     params = dict(params or {})
     meta = {
         "io.modelcontextprotocol/protocolVersion": MODERN,
@@ -66,10 +68,11 @@ def modern_rpc(c, path, method, params=None, client_info=INIT["params"]["clientI
     }
     if client_info is not None:
         meta["io.modelcontextprotocol/clientInfo"] = client_info
-    params["_meta"] = meta
+    params["_meta"] = {**meta, **(params.get("_meta") or {})}
     headers = {**HDR, "MCP-Protocol-Version": MODERN, "Mcp-Method": method}
-    if method in ("tools/call", "prompts/get"):
-        headers["Mcp-Name"] = params["name"]
+    key = NAME_BEARING_METHODS.get(method)
+    if key is not None and params.get(key) is not None:
+        headers["Mcp-Name"] = params[key]
     body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
     return c.post(path, json=body, headers=headers)
 
