@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 919,
-    "total_loc": 289910,
-    "src_loc": 78268,
-    "test_loc": 211642,
+    "modules": 920,
+    "total_loc": 290285,
+    "src_loc": 78306,
+    "test_loc": 211979,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -27,7 +27,7 @@
       },
       {
         "file": "mcp_server/tests/test_server.py",
-        "line": 656,
+        "line": 653,
         "name": "test_audit_one_sentence_docstring_fixes",
         "complexity": 44,
         "params": 0,
@@ -410,7 +410,7 @@
         "lines": 55
       }
     ],
-    "hotspot_count": 1078,
+    "hotspot_count": 1082,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -499,8 +499,8 @@
       }
     ],
     "error_masking_count": 17,
-    "internal_import_edges": 4239,
-    "imports_per_module": 4.61,
+    "internal_import_edges": 4250,
+    "imports_per_module": 4.62,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -530,9 +530,9 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.42,
-    "duplicated_lines": 398,
-    "clones": 46,
+    "percentage": 0.39,
+    "duplicated_lines": 374,
+    "clones": 44,
     "allowlisted_clones": 0,
     "worst_files": [
       [
@@ -549,10 +549,6 @@
       ],
       [
         "app/services/kb_consolidation.py",
-        5
-      ],
-      [
-        "mcp_server/client.py",
         5
       ],
       [
@@ -593,6 +589,10 @@
       ],
       [
         "app/routers/jobs.py",
+        2
+      ],
+      [
+        "app/routers/tailoring_sessions.py",
         2
       ]
     ]
@@ -649,7 +649,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "1078 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
+      "detail": "1082 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -662,16 +662,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 289910,
-    "src_loc": 78268,
-    "test_loc": 211642,
-    "modules": 919,
+    "total_loc": 290285,
+    "src_loc": 78306,
+    "test_loc": 211979,
+    "modules": 920,
     "orphan_loc": 0,
-    "duplication_pct": 0.42,
-    "duplicated_lines": 398,
-    "clone_count": 46,
-    "complexity_hotspots": 1078,
+    "duplication_pct": 0.39,
+    "duplicated_lines": 374,
+    "clone_count": 44,
+    "complexity_hotspots": 1082,
     "error_masking": 17,
-    "imports_per_module": 4.61
+    "imports_per_module": 4.62
   }
 }
