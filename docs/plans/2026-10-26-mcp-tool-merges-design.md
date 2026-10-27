@@ -52,3 +52,10 @@ TDD per change: each view's route, filters and refusals; `format` both ways; `at
 ## Docs
 
 The apply technique (`agent-apply-execution/SKILL.md`) and `docs/playbooks/agent-apply.md` (`attach_evidence_file`), SYSTEM.md (§3/§7 counts), `docs/agent-surfaces.md`, `docs/entities/others.md`, the MCP and plugin READMEs, the example configs and manifest counts, README/USING_MAESTRO/GETTING_STARTED/KNOWN_ISSUES counts, CHANGELOG (breaking: the removed names and their replacements).
+
+## Changed during review (2026-10-26)
+
+- `heatmap` and `role_mix` take the role_category, level and employment_type filters too: their REST routes accept them and the web uses them. Only `fit_distribution` refuses filters ("fit_distribution takes no filters").
+- A replaced-by answer names the set that serves the replacement when the caller's set doesn't ("…, in the track set.").
+- `kb_approve_points` refuses an old `state` other than "approved": FastMCP drops undeclared arguments, so an old retire call would otherwise approve.
+- `McpEndpoint` takes only the server's FastMCP subclass, which holds the replaced-by answer and that guard for every transport.

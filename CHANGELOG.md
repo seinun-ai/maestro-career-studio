@@ -82,10 +82,13 @@ work-permit answers for each country you apply in.
   and `tailor_application` included, answers with what replaced it instead of "Unknown tool", on every
   tool set: for example, `explore_top_skills was replaced by explore_trends(view="top_skills").` On a
   tool set without the new tool, it also names the set that has it (`…, in the track set.`).
-- **Two steps for agent apps.** If a scheduled job runs a Tailor run prompt you copied before this
-  release, copy it again from **Automations**: the old copy calls `quick_tailor`, which is gone, and
-  `tailor_session` without `ops`, which the new default refuses. If you relied on Maestro's AI writing
-  over MCP, pick **Maestro's AI** in Settings › Agent apps › **Who writes for connected agents**.
+- **Three steps for agent apps.** If a scheduled job runs an automation prompt you copied before
+  this release (Tailor run, Apply session or Apply automatically), copy it again from **Automations**:
+  old copies call tools that are gone (`quick_tailor`, `attach_evidence_file`) and `tailor_session`
+  without `ops`, which the new default refuses. If your agent app allows or approves Maestro's tools
+  by name, add the new names (`explore_trends`, `attach_evidence`, `get_career_context`) where the
+  removed ones were listed. If you relied on Maestro's AI writing over MCP, pick **Maestro's AI** in
+  Settings › Agent apps › **Who writes for connected agents**.
 - No step to take by hand for the app itself. Migrations add a column (`kb_points.merged_into_point_id`), two tables
   (`kb_point_kept_pairs`, and `application_status_events`, filled with one undated row for each
   application that already has a status) and two job columns (`country_code`,
