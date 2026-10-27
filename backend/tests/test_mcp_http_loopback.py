@@ -1,18 +1,21 @@
-"""A single-worker backend must serve sync MCP tools that call its REST API."""
+"""A single-worker backend must serve sync MCP tools that call its REST API, to clients of
+both protocol eras."""
 
+import contextlib
 import json
 import os
 import socket
 import subprocess
 import sys
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import anyio
 import httpx
 import httpx2
 import pytest
-from mcp import ClientSession
+from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import Implementation
 
@@ -82,60 +85,73 @@ def loopback_backend(tmp_path):
             process.wait(timeout=10)
 
 
+@contextlib.asynccontextmanager
+async def _connected(url: str, mode: str, sessions: list[str | None]) -> AsyncIterator[Client]:
+    """A client of `mode`'s era on `url`, over an HTTP client that ignores proxy env (the SDK's
+    transport takes an httpx2 client). Every response's Mcp-Session-Id, or None, goes in
+    `sessions`."""
+
+    async def note_session(response: httpx2.Response) -> None:
+        sessions.append(response.headers.get("mcp-session-id"))
+
+    timeout = httpx2.Timeout(30, read=300)
+    async with contextlib.AsyncExitStack() as stack:
+        http_client = await stack.enter_async_context(httpx2.AsyncClient(
+            trust_env=False, timeout=timeout, event_hooks={"response": [note_session]}
+        ))
+        # The process owns the sessions: avoid a DELETE waiting on a deadlocked server
+        # during failure cleanup. The fixture always kills and reaps that process.
+        transport = streamable_http_client(url, http_client=http_client, terminate_on_close=False)
+        # A legacy client's initialize runs inside Client's entry, which a cancel scope can't
+        # wrap: the read timeout bounds it, and every later request too.
+        client = Client(transport, mode=mode, client_info=CLIENT_INFO, read_timeout_seconds=10)
+        yield await stack.enter_async_context(client)
+
+
 @pytest.mark.integration
-async def test_single_worker_mcp_loopback_tools_and_client_label(loopback_backend):
-    # The process owns the sessions: avoid a DELETE waiting on a deadlocked server
-    # during failure cleanup. The fixture always kills and reaps that process.
-    timeout = httpx2.Timeout(30, read=300)  # the SDK's transport takes an httpx2 client
-    async with (
-        httpx2.AsyncClient(trust_env=False, timeout=timeout) as http_client,
-        streamable_http_client(
-            f"{loopback_backend}/mcp", http_client=http_client, terminate_on_close=False
-        ) as streams,
-    ):
-        async with ClientSession(streams[0], streams[1], client_info=CLIENT_INFO) as session:
-            with anyio.fail_after(10):
-                await session.initialize()
-                tools = await session.list_tools()
-            names = [tool.name for tool in tools.tools]
-            assert len(names) == 94
-            assert set(names) == set(srv.list_registered_tool_names("full"))
+@pytest.mark.parametrize("mode", ["legacy", "2026-07-28"])
+async def test_single_worker_mcp_loopback_tools_and_client_label(loopback_backend, mode):
+    sessions: list[str | None] = []
+    async with _connected(f"{loopback_backend}/mcp", mode, sessions) as client:
+        with anyio.fail_after(10):
+            tools = await client.list_tools()
+        names = [tool.name for tool in tools.tools]
+        assert len(names) == 94
+        assert set(names) == set(srv.list_registered_tool_names("full"))
 
-            # Without offload_tools, sync list_jobs blocks this sole uvicorn
-            # event loop while waiting for GET /api/jobs on the very same loop.
-            with anyio.fail_after(10):
-                jobs = await session.call_tool("list_jobs", {})
-            assert not jobs.is_error, jobs.content
+        # Run on this sole uvicorn event loop, sync list_jobs would block it while waiting
+        # for GET /api/jobs on that very loop. 2.x runs sync tools on threads itself;
+        # mcp_server/tests/test_http.py pins that ours take the dedicated limiter's.
+        with anyio.fail_after(10):
+            jobs = await client.call_tool("list_jobs", {})
+        assert not jobs.is_error, jobs.content
 
-            # Entity creation is LLM-free and persists ctx's initialize label.
-            with anyio.fail_after(10):
-                created = await session.call_tool(
-                    "kb_create_entity", {"kind": "project", "title": "Loopback test project"}
-                )
-            assert not created.is_error, created.content
-            entity_id = json.loads(created.content[0].text)["id"]
-            async with httpx.AsyncClient(
-                base_url=loopback_backend, timeout=5, trust_env=False
-            ) as http:
-                response = await http.get(f"/api/kb/entities/{entity_id}")
-            response.raise_for_status()
-            entity = response.json()
-            assert entity["origin"] == "mcp"
-            assert entity["origin_detail"] == "loopback-test"
-            assert [event["label"] for event in entity["timeline"] if event["type"] == "created"] == [
-                "Item created by Loopback Test"
-            ]
+        # Entity creation is LLM-free and persists the label the client gave: at initialize
+        # (legacy), or in each request's _meta (2026-07-28).
+        with anyio.fail_after(10):
+            created = await client.call_tool(
+                "kb_create_entity", {"kind": "project", "title": "Loopback test project"}
+            )
+        assert not created.is_error, created.content
+        entity_id = json.loads(created.content[0].text)["id"]
+        async with httpx.AsyncClient(
+            base_url=loopback_backend, timeout=5, trust_env=False
+        ) as http:
+            response = await http.get(f"/api/kb/entities/{entity_id}")
+        response.raise_for_status()
+        entity = response.json()
+        assert entity["origin"] == "mcp"
+        assert entity["origin_detail"] == "loopback-test"
+        assert [event["label"] for event in entity["timeline"] if event["type"] == "created"] == [
+            "Item created by Loopback Test"
+        ]
 
-    async with (
-        httpx2.AsyncClient(trust_env=False, timeout=timeout) as http_client,
-        streamable_http_client(
-            f"{loopback_backend}/mcp/hunt", http_client=http_client, terminate_on_close=False
-        ) as streams,
-    ):
-        async with ClientSession(streams[0], streams[1], client_info=CLIENT_INFO) as session:
-            with anyio.fail_after(10):
-                await session.initialize()
-                tools = await session.list_tools()
-            names = [tool.name for tool in tools.tools]
-            assert len(names) == len(HUNT_TOOLS)
-            assert set(names) == HUNT_TOOLS
+    async with _connected(f"{loopback_backend}/mcp/hunt", mode, sessions) as client:
+        with anyio.fail_after(10):
+            tools = await client.list_tools()
+        names = [tool.name for tool in tools.tools]
+        assert len(names) == len(HUNT_TOOLS)
+        assert set(names) == HUNT_TOOLS
+
+    # Each era took its own path: a legacy client holds a session, a 2026-07-28 one never gets one.
+    assert any(sessions) is (mode == "legacy"), sessions
