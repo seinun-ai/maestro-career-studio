@@ -44,11 +44,13 @@ def header_value(value: str) -> str:
     """The SDK's header codec (encode_header_value): printable ASCII without edge spaces goes as is,
     anything else as =?base64?<UTF-8>?=. The SDK encodes only Mcp-Name and compares the version and
     method raw; encoding those too is harmless, since any value the codec changes is refused either
-    way, and it keeps httpx from raising UnicodeEncodeError on a non-ASCII value."""
+    way, and it keeps httpx from raising UnicodeEncodeError on a non-ASCII value. A lone surrogate,
+    which the SDK's encoder can't take, keeps its bytes (surrogatepass): they decode to no name, so
+    the server refuses the message, as it does the Node twin's U+FFFD."""
     if (_HEADER_SAFE.fullmatch(value) and value == value.strip()
             and not _BASE64_FORM.fullmatch(value)):
         return value
-    return f"=?base64?{base64.b64encode(value.encode('utf-8')).decode('ascii')}?="
+    return f"=?base64?{base64.b64encode(value.encode('utf-8', 'surrogatepass')).decode('ascii')}?="
 
 
 def routing_headers(message: Any) -> dict[str, str] | None:

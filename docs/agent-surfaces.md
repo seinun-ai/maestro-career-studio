@@ -67,7 +67,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   session, and a stale one (404) replays initialize + initialized before one retry, preserving the initialize's `clientInfo`. A
   message whose `_meta` names a newer revision, such as 2026-07-28, carries `MCP-Protocol-Version`, `Mcp-Method` and, for `tools/call`,
   `prompts/get` and `resources/read`, `Mcp-Name` (`params.name` or `uri`), each through the SDK's header codec (printable ASCII as
-  is, else `=?base64?…?=`); it sends and adopts no session, a 404 is the server's answer and is never replayed, and a 4xx carrying
+  is, else `=?base64?…?=`; a lone surrogate, which matches no header, is the server's -32020 on both bridges); it sends and adopts no session, a 404 is the server's answer and is never replayed, and a 4xx carrying
   a JSON-RPC error for its id reaches the client as the server wrote it. Any other non-2xx reads -32000 "Maestro Career Studio
   returned HTTP n." (`mcpb/tests/bridge.test.js`). A re-pack moves `server.json`'s `fileSha256`. `maestro mcp`
   (`maestro_cs/bridge.py`, the uv install's Python twin) follows the same rules; it copies the codec and the revision lists

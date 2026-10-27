@@ -439,6 +439,34 @@ test("a name outside plain printable ASCII travels in the SDK's base64 form", as
   assert.deepEqual(server.requests.map(({ headers }) => headers["mcp-name"]), names.map(([, header]) => header));
 });
 
+test("a name or method that is not a string sends no header for it", async (t) => {
+  const server = await fakeServer(t, answerById);
+  const result = await runBridge(t, server.url, [
+    modern({ jsonrpc: "2.0", id: "number", method: "tools/call", params: { name: 7 } }),
+    modern({ jsonrpc: "2.0", id: "missing", method: "resources/read" }),
+    modern({ jsonrpc: "2.0", id: "list", method: ["tools/call"], params: { name: "list_jobs" } }),
+  ]);
+  const version = { "mcp-protocol-version": MODERN_VERSION };
+  assert.deepEqual(server.requests.map(routingHeaders), [
+    { ...version, "mcp-method": "tools/call" },
+    { ...version, "mcp-method": "resources/read" },
+    version,
+  ]);
+  assert.deepEqual(stdoutMessages(result).map(({ id }) => id), ["number", "missing", "list"]);
+});
+
+test("a lone surrogate in a name travels as U+FFFD and the next message is served", async (t) => {
+  // The server refuses it (-32020), as it does maestro mcp's surrogate bytes: neither decodes to
+  // the body's name (backend/tests/maestro_cs/test_bridge.py runs that against the real endpoint).
+  const server = await fakeServer(t, answerById);
+  const result = await runBridge(t, server.url, [
+    modern({ jsonrpc: "2.0", id: "lone", method: "tools/call", params: { name: "\ud800x" } }),
+    modern({ ...LIST, id: "next" }),
+  ]);
+  assert.equal(server.requests[0].headers["mcp-name"], "=?base64?77+9eA==?=");
+  assert.deepEqual(stdoutMessages(result).map(({ id }) => id), ["lone", "next"]);
+});
+
 test("2025 traffic carries none of the routing headers and keeps its session", async (t) => {
   const server = await fakeServer(t, (request, res) => {
     if (request.body.method === "initialize") {
@@ -574,6 +602,24 @@ test("a 2026-07-28 refusal reaches the client as the server's JSON-RPC error", a
   ]);
   assert.equal(server.requests.at(-1).body.method, "notifications/cancelled");
   assert.equal(result.stderr, "");
+});
+
+test("a refusal must match the request's id and code exactly, as === and Number.isInteger tell", async (t) => {
+  const no = { code: -32602, message: "No" };
+  // Each answer is not this request's JSON-RPC refusal, so the request gets the -32000 sentence.
+  const answers = new Map([
+    [1, { jsonrpc: "2.0", id: true, error: no }],
+    [null, { jsonrpc: "2.0", error: no }],
+    ["bool-code", { jsonrpc: "2.0", id: "bool-code", error: { code: true, message: "No" } }],
+  ]);
+  const server = await fakeServer(t, ({ body }, res) => {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(answers.get(body.id)));
+  });
+  const result = await runBridge(t, server.url, [...answers.keys()].map((id) => modern({ ...LIST, id })));
+  assert.deepEqual(stdoutMessages(result), [...answers.keys()].map((id) => ({
+    jsonrpc: "2.0", id, error: { code: -32000, message: "Maestro Career Studio returned HTTP 400." },
+  })));
 });
 
 test("a 2026-07-28 notification carries its version and method; responses and batches go as before", async (t) => {

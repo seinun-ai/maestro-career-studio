@@ -575,6 +575,26 @@ def test_a_2026_07_28_notification_carries_version_and_method_responses_and_batc
     ]
 
 
+def test_a_lone_surrogate_in_a_routed_name_reads_as_the_servers_refusal_and_the_next_is_served():
+    # Against the real endpoint. The Node twin's Buffer sends U+FFFD for the lone surrogate and this
+    # bridge keeps its bytes; neither header decodes to the body's name, so the server's header
+    # check refuses both alike.
+    from starlette.testclient import TestClient
+
+    from mcp_server import http as mcp_http
+    from mcp_server.tests._wire import asgi_app
+
+    call = {"jsonrpc": "2.0", "id": "lone", "method": "tools/call",
+            "params": {"name": "\ud800x", "arguments": {}}}
+    with TestClient(asgi_app(mcp_http.McpEndpoint())) as client:
+        result = run_messages([modern(call), modern({**LIST, "id": "next"})], client=client)
+    refused, listed = result.messages()
+    assert refused == {"jsonrpc": "2.0", "id": "lone", "error": {
+        "code": -32020, "message": "mcp-name header does not match the request body's 'name' parameter"}}
+    assert listed["id"] == "next" and listed["result"]["tools"]
+    assert result.err == ""
+
+
 # The bridge copies the codec and the lists below rather than import `mcp`, which would add
 # ~200 ms to every start; these two tests hold them to the SDK's own.
 @pytest.mark.parametrize("value", [
