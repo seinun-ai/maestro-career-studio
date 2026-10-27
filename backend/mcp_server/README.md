@@ -133,7 +133,7 @@ When an assistant is connected, one setting decides who writes the text over MCP
 - **Your agent app** (the default): your assistant writes with its own AI, and Maestro doesn't use your API key for its requests. The tools where Maestro's AI would write refuse and name the tool that saves your assistant's own text: `store_cover_letter`, `store_qa_answers`, `kb_add_points`, and `tailor_session` with `ops` or `no_new_text`. `create_tailoring_session` runs without `enrich`, and the health check hands the judging to your assistant.
 - **Maestro's AI**: Maestro writes with your API key, and your assistant steers. Without a key those tools return an error.
 
-Your assistant can read the choice (`get_setup_status` returns `writer`) but can't change it. The web app and the Companion always use your API key. Whoever writes, Maestro's rules hold: resume lines in your own implied first person, a skill you haven't shown only in the skills list, and saved keywords always land.
+Your assistant can read the choice (`get_setup_status` returns `writer`) but can't change it. The web app and the Companion always use your API key. Whoever writes, resume lines stay in your own implied first person and saved keywords always land. Maestro's AI and `no_new_text` put a skill you haven't shown only in the skills list; when your assistant writes its own edits it's asked to do the same, and a tailor names any such skill it finds (`unbacked_skills`).
 
 ## Profiles
 

@@ -57,7 +57,7 @@ _START = (
 )
 _STYLE = (
     "Talk with the user however suits them. Maestro supplies their facts, presets and rules, "
-    "not a script. However you work, Maestro keeps its rules: a skill the user has not shown "
+    "not a script. However you work, Maestro's rules apply: a skill the user has not shown "
     "goes only into a skills list, resume lines stay in the owner's implied first person, and "
     "saved keywords land."
 )

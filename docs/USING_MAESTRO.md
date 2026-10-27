@@ -304,10 +304,12 @@ the tailored resume wording, cover letters, screening answers, career notes and
 the health check's judgments: Settings › Agent apps › **Who writes for connected
 agents**. **Your agent app** (the default) writes with its own AI, and Maestro
 doesn't use your API key for it. **Maestro's AI** writes with your API key while
-your agent app steers; it needs a key. Either way Maestro's rules hold: resume
-lines stay in your own voice ("Built X", never "He built X"), a skill you
-haven't shown goes only in your skills list, and keywords you saved always land.
-The Maestro app and the Companion always use your API key.
+your agent app steers; it needs a key. Either way, resume lines stay in your own
+voice ("Built X", never "He built X") and keywords you saved always land. A
+skill you haven't shown goes only in your skills list when Maestro's AI writes,
+or when a tailor adds no new wording. When your agent app writes its own edits,
+it's asked to do the same, and the tailor names any such skill it finds on your
+resume. The Maestro app and the Companion always use your API key.
 
 **Skills.** [`docs/skills/`](skills/) has ready-made skills for a daily job
 hunt, an apply run that asks you only for what the app doesn't know (plus one
