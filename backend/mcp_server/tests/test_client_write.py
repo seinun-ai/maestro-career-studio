@@ -360,3 +360,63 @@ def test_resume_writes_carry_the_agent_origin_so_the_voice_rule_applies():
     client.update_base_resume("master", {"contact": {"name": "R", "email": "r@example.com"}})
     for route in routes:
         assert route.calls.last.request.headers.get("X-Maestro-CS-Origin") == "mcp"
+
+
+# ---------- save_referral: POST to add, PUT (a partial update) to edit ----------
+
+
+@respx.mock
+def test_save_referral_adds_one_with_only_the_fields_given():
+    route = respx.post(f"{BASE}/api/referrals").mock(
+        return_value=httpx.Response(200, json={"id": "r1", "company": "Northwind Labs"})
+    )
+    out = BackendClient(BASE).save_referral("Northwind Labs", careers_url="https://northwind.example/jobs")
+    assert out["id"] == "r1"
+    import json as _json
+    assert _json.loads(route.calls.last.request.read()) == {
+        "company": "Northwind Labs", "careers_url": "https://northwind.example/jobs",
+    }
+
+
+@respx.mock
+def test_save_referral_edits_by_id_and_sends_only_what_it_was_given():
+    route = respx.put(f"{BASE}/api/referrals/r1").mock(
+        return_value=httpx.Response(200, json={"id": "r1"})
+    )
+    BackendClient(BASE).save_referral("Northwind Labs", notes="Intro sent", referral_id="r1")
+    import json as _json
+    assert _json.loads(route.calls.last.request.read()) == {
+        "company": "Northwind Labs", "notes": "Intro sent",
+    }
+
+
+def test_save_referral_needs_a_careers_page_to_add_one():
+    import pytest
+
+    from mcp_server.client import BackendError
+
+    with pytest.raises(BackendError, match="careers_url"):
+        BackendClient(BASE).save_referral("Northwind Labs", contact_name="Amara Okafor")
+
+
+def test_save_referral_refuses_a_blank_company():
+    import pytest
+
+    from mcp_server.client import BackendError
+
+    with pytest.raises(BackendError, match="company"):
+        BackendClient(BASE).save_referral("  ", careers_url="https://northwind.example/jobs")
+
+
+@respx.mock
+def test_save_referral_unknown_id_is_the_backends_404():
+    import pytest
+
+    from mcp_server.client import BackendError
+
+    respx.put(f"{BASE}/api/referrals/r404").mock(
+        return_value=httpx.Response(404, json={"detail": "Referral not found"})
+    )
+    with pytest.raises(BackendError, match="Referral not found") as exc:
+        BackendClient(BASE).save_referral("Northwind Labs", referral_id="r404")
+    assert exc.value.status_code == 404

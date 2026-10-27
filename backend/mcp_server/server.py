@@ -1704,6 +1704,33 @@ def update_application(
     )
 
 
+@mcp.tool(**_write("Save Referral Contact", destructive=False, idempotent=False))
+@_guard
+def save_referral(
+    company: str,
+    careers_url: str | None = None,
+    contact_name: str | None = None,
+    notes: str | None = None,
+    referral_id: str | None = None,
+) -> Any:
+    """Add a referral contact, or edit one when referral_id is given (list_referrals
+    has the ids). A referral is a company the user can apply to with someone's
+    referral: its careers page, the contact's name and notes. A new referral needs
+    company and careers_url (an http or https address); contact_name and notes are
+    optional, and each call without referral_id adds another referral. An edit
+    saves company and every other field passed; a field left out keeps its saved
+    value. An unknown referral_id is a 404 and nothing is written. Returns the saved
+    referral {id, company, careers_url, contact_name, notes, applications_count,
+    created_at, updated_at}."""
+    return _client.save_referral(
+        company,
+        careers_url=careers_url,
+        contact_name=contact_name,
+        notes=notes,
+        referral_id=referral_id,
+    )
+
+
 # ---------- apply package ----------
 @mcp.tool(**_write("Generate Screening Answers", destructive=False, idempotent=False, open_world=True))
 @_guard

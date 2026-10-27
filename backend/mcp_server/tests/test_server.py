@@ -31,6 +31,7 @@ def test_all_tools_registered():
         "list_jobs",
         "get_job",
         "list_referrals",
+        "save_referral",
         "store_extracted_jd",
         "get_job_search_brief",
         "sync_now",
@@ -1140,7 +1141,7 @@ async def test_tailoring_text_names_only_tools_served_beside_it():
                  "create_tailoring_session", "tailor_session", "score_ats", "get_tailoring_options",
                  "get_setup_status", "explore_trends", "get_career_context", "attach_evidence",
                  "kb_approve_points", "store_extracted_jd", "render_pdf", "list_base_resumes",
-                 "prepare_application_pdf_upload", "update_application"):
+                 "prepare_application_pdf_upload", "update_application", "save_referral"):
         named = set(re.findall(r"[a-z_]+", _schema_text(tools[name]))) & set(tools)
         for set_name, allow in PROFILE_ALLOWLISTS.items():
             if allow and name in allow:
@@ -1742,6 +1743,8 @@ _PINNED_HINTS = {
     "kb_approve_points": (False, False, True, False),
     "record_consent": (False, True, False, False),
     "mark_submitted": (False, True, False, False),
+    # Adds a referral (twice adds two) or edits the fields given; deletes nothing.
+    "save_referral": (False, False, False, False),
     # Purely additive.
     "record_filled_answers": (False, False, False, False),
     "kb_create_entity": (False, False, False, False),
@@ -2140,3 +2143,31 @@ async def test_record_run_omits_null_report_fields_before_posting(monkeypatch):
 
     request = route.calls.last.request
     assert json.loads(request.read()) == {"automation": "job-hunt", "outcome": "failed"}
+
+
+def test_save_referral_tool_forwards_its_fields(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "save_referral",
+        lambda company, careers_url=None, contact_name=None, notes=None, referral_id=None: seen.update(
+            company=company, careers_url=careers_url, contact_name=contact_name, notes=notes,
+            referral_id=referral_id,
+        ) or {"id": referral_id or "new"},
+    )
+
+    assert srv.save_referral("Northwind Labs", notes="Intro sent", referral_id="r1") == {"id": "r1"}
+    assert seen == {"company": "Northwind Labs", "careers_url": None, "contact_name": None,
+                    "notes": "Intro sent", "referral_id": "r1"}
+
+
+def test_save_referral_is_served_wherever_referrals_are_listed():
+    from mcp_server.profiles import PROFILE_ALLOWLISTS
+
+    for name, allow in PROFILE_ALLOWLISTS.items():
+        if allow is not None:
+            assert ("save_referral" in allow) == ("list_referrals" in allow), name
+
+
+def test_save_referral_docstring_says_what_an_edit_keeps():
+    doc = " ".join((srv.save_referral.__doc__ or "").split())
+    assert "careers_url" in doc and "left out keeps" in doc and "404" in doc

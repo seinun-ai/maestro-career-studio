@@ -788,6 +788,27 @@ class BackendClient:
     def list_referrals(self) -> Any:
         return self._request("GET", "/api/referrals")
 
+    def save_referral(
+        self,
+        company: str,
+        careers_url: str | None = None,
+        contact_name: str | None = None,
+        notes: str | None = None,
+        referral_id: str | None = None,
+    ) -> Any:
+        """POST a new referral, or PUT the fields given onto one: the PUT is a partial update in
+        one transaction, so a field not sent keeps its saved value."""
+        if not company.strip():
+            raise BackendError("company is empty; a referral names its company.")
+        payload = _drop_none(
+            company=company, careers_url=careers_url, contact_name=contact_name, notes=notes
+        )
+        if referral_id is not None:
+            return self._request("PUT", f"/api/referrals/{_seg(referral_id)}", json=payload)
+        if careers_url is None:
+            raise BackendError("A new referral needs careers_url, the company's careers page.")
+        return self._request("POST", "/api/referrals", json=payload)
+
     def list_qa_entries(self, application_id: str) -> Any:
         return self._request("GET", "/api/qa", params={"application_id": application_id})
 

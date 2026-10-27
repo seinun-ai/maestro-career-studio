@@ -60,6 +60,7 @@ HUNT_TOOLS = frozenset({
     "get_job_search_brief",
     "sync_now",
     "list_referrals",
+    "save_referral",
     "find_job_by_url",
     "store_extracted_jd",
     "list_jobs",
@@ -151,6 +152,7 @@ APPLY_TOOLS = frozenset({
     "update_application",
     "get_job",
     "list_referrals",
+    "save_referral",
     "record_run",
     "sync_now",
 })
@@ -166,6 +168,7 @@ TRACK_TOOLS = frozenset({
     "export_jobs",
     "list_proposals",
     "list_referrals",
+    "save_referral",
     "get_job_search_brief",
     "explore_trends",
     "explore_gap_frequency",
