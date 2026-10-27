@@ -6,6 +6,7 @@ client stub here CAPTURES what the tool passed and the test asserts on it.
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
+from mcp.shared.memory import create_connected_server_and_client_session
 
 import mcp_server.server as srv
 from mcp_server.client import BackendError
@@ -93,33 +94,61 @@ def test_kb_ingest_resume_wraps_even_when_hints_are_off(monkeypatch):
 # ---- kb_approve_points ------------------------------------------------------
 
 
-@pytest.mark.parametrize("state", ["approved", "retired"])
-def test_kb_approve_points_passes_the_requested_state_through(monkeypatch, hints_on, state):
-    """A hardcoded state="approved" here would APPROVE points the user asked
-    to RETIRE — the one mutation this tool must never survive."""
+def test_kb_approve_points_only_approves(monkeypatch, hints_on):
+    """Retiring is kb_retire_points: this tool sends state="approved" and nothing else."""
     capture = _stub(
         monkeypatch, "kb_approve_points",
-        {"results": [{"id": "p1", "ok": True, "state": state, "detail": None}]},
+        {"results": [{"id": "p1", "ok": True, "state": "approved", "detail": None}]},
     )
 
-    out = srv.kb_approve_points(["p1"], state=state)
+    out = srv.kb_approve_points(["p1"])
 
     args, kwargs = capture.last
     assert args == (["p1"],)
-    assert kwargs == {"state": state}
-    assert out["results"][0]["state"] == state
-
-
-def test_kb_approve_points_hint_reflects_the_requested_state(monkeypatch, hints_on):
-    _stub(monkeypatch, "kb_approve_points",
-          {"results": [{"id": "p1", "ok": True, "state": "approved", "detail": None}]})
-    out = srv.kb_approve_points(["p1"])
+    assert kwargs == {"state": "approved"}
+    assert out["results"][0]["state"] == "approved"
     assert any(o["tool"] == "create_base_resume_from_kb" for o in out["next"]["options"])
 
-    _stub(monkeypatch, "kb_approve_points",
-          {"results": [{"id": "p1", "ok": True, "state": "retired", "detail": None}]})
-    out = srv.kb_approve_points(["p1"], state="retired")
-    assert out["next"]["options"] == []
+
+async def test_kb_approve_points_takes_no_state_and_is_not_destructive():
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    tool = tools["kb_approve_points"]
+    assert set(tool.inputSchema["properties"]) == {"point_ids"}
+    assert tool.title == "Approve Career Points"
+    assert tool.annotations.destructiveHint is False
+    assert tools["kb_retire_points"].annotations.destructiveHint is False
+    assert "kb_retire_points" in " ".join((srv.kb_approve_points.__doc__ or "").split())
+
+
+@pytest.mark.parametrize("state", ["retired", "draft"])
+async def test_an_old_state_argument_is_refused_not_dropped_and_approved(
+    monkeypatch, hints_on, state
+):
+    """FastMCP drops an argument a tool does not declare, so an old call asking to retire
+    would approve: any state but approved is refused, and nothing is written."""
+    capture = _stub(monkeypatch, "kb_approve_points", {"results": []})
+    async with create_connected_server_and_client_session(srv.mcp) as session:
+        result = await session.call_tool(
+            "kb_approve_points", {"point_ids": ["p1"], "state": state}
+        )
+    assert result.isError
+    assert result.content[0].text == (
+        "kb_approve_points only approves; kb_retire_points retires points."
+    )
+    assert capture.calls == []
+
+
+async def test_an_old_explicit_approved_state_still_approves(monkeypatch, hints_on):
+    capture = _stub(
+        monkeypatch, "kb_approve_points",
+        {"results": [{"id": "p1", "ok": True, "state": "approved", "detail": None}]},
+    )
+    async with create_connected_server_and_client_session(srv.mcp) as session:
+        result = await session.call_tool(
+            "kb_approve_points", {"point_ids": ["p1"], "state": "approved"}
+        )
+    assert not result.isError, result.content
+    assert capture.last == ((["p1"],), {"state": "approved"})
 
 
 def test_kb_approve_points_survives_a_non_dict_body(monkeypatch, hints_on):

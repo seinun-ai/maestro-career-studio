@@ -570,8 +570,12 @@ def next_after_kb_ingest(
             "args": {"point_ids": point_ids},
             "detail": (
                 "Points from this report are drafts; the user's approval is "
-                "what puts them on composed resumes. state='retired' discards "
-                "drafts the user rejects."
+                "what puts them on composed resumes."
+                + (
+                    " kb_retire_points retires drafts the user rejects."
+                    if _registered("kb_retire_points", allowed_tools)
+                    else ""
+                )
             ),
         })
     options.extend([

@@ -702,6 +702,19 @@ def test_ingest_hint_leads_with_approval_carrying_the_new_point_ids():
     assert "approve" in hint["offer"]
 
 
+def test_ingest_hint_names_retiring_for_rejected_drafts_not_a_state_argument():
+    """kb_approve_points only approves: a rejected draft is kb_retire_points' job, named
+    only where that tool is registered."""
+    hint = workflow.next_after_kb_ingest(_INGEST_REPORT, allowed_tools=None, hints_enabled=True)
+    assert "state=" not in json.dumps(hint)
+    assert "kb_retire_points" in hint["options"][0]["detail"]
+    approve_only = workflow.next_after_kb_ingest(
+        _INGEST_REPORT, allowed_tools=frozenset({"kb_approve_points"}), hints_enabled=True,
+    )
+    assert approve_only["options"][0]["tool"] == "kb_approve_points"
+    assert "kb_retire_points" not in json.dumps(approve_only)
+
+
 def test_ingest_hint_omits_approval_when_no_points_landed():
     rerun = {**_INGEST_REPORT, "points": [], "points_created": 0,
              "entities_created": 0, "entities_matched": 2}

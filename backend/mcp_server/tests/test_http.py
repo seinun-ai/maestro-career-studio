@@ -92,6 +92,24 @@ def test_a_hidden_tool_is_refused_with_todays_text(client):
     assert res["isError"] is True and f"Unknown tool: {hidden}" in res["content"][0]["text"]
 
 
+@pytest.mark.parametrize("path", ["/mcp", "/mcp/profile"])
+def test_kb_approve_points_refuses_an_old_retire_state_over_http(client, monkeypatch, path):
+    calls = []
+    monkeypatch.setattr(
+        srv._client, "kb_approve_points", lambda *a, **k: calls.append((a, k)) or {"results": []}
+    )
+    sid = _session(client, path)
+    args = {"point_ids": ["p1"], "state": "retired"}
+    res = _rpc(
+        client, path, sid, "tools/call", {"name": "kb_approve_points", "arguments": args}
+    ).json()["result"]
+    assert res["isError"] is True
+    assert res["content"][0]["text"] == (
+        "kb_approve_points only approves; kb_retire_points retires points."
+    )
+    assert calls == []
+
+
 def test_responses_are_json_and_stateful(client):
     r = client.post("/mcp", json=INIT, headers=HDR)
     assert r.status_code == 200, r.text

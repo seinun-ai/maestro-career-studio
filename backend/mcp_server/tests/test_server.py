@@ -1016,7 +1016,8 @@ async def test_tailoring_text_names_only_tools_served_beside_it():
     tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
     for name in ("generate_cover_letter", "generate_qa_answers", "kb_capture",
                  "create_tailoring_session", "tailor_session", "score_ats", "get_tailoring_options",
-                 "get_setup_status", "explore_trends", "get_career_context", "attach_evidence"):
+                 "get_setup_status", "explore_trends", "get_career_context", "attach_evidence",
+                 "kb_approve_points"):
         named = set(re.findall(r"[a-z_]+", _schema_text(tools[name]))) & set(tools)
         for set_name, allow in PROFILE_ALLOWLISTS.items():
             if allow and name in allow:
@@ -1559,7 +1560,6 @@ _PINNED_HINTS = {
     # Each call appends a version row, so repeating it is not a no-op.
     "restore_resume_version": (False, True, False, False),
     "kb_edit_profile": (False, True, True, False),
-    "kb_approve_points": (False, True, True, False),
     # Read-only report; proposes, writes nothing.
     "kb_groom_entity": (True, False, True, False),
     # Caller-authored apply package: replaces the saved letter or an answer to
@@ -1571,6 +1571,8 @@ _PINNED_HINTS = {
     # Reversible from /career (unmerge / Use again), so not destructive; the same ids twice is a no-op.
     "kb_combine_points": (False, False, True, False),
     "kb_retire_points": (False, False, True, False),
+    # Approve-only: a draft's approval is withdrawn at /career, and retiring is its own tool.
+    "kb_approve_points": (False, False, True, False),
     "record_consent": (False, True, False, False),
     "mark_submitted": (False, True, False, False),
     # Purely additive.

@@ -17,14 +17,27 @@ from app.schemas.autofill_profile import WorkAuthStatus
 from app.schemas.quick_tailor import QuickTailorProfile
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
 from app.services import http_client, markets
-from mcp_server import orientation, workflow
+from mcp_server import orientation, replaced, workflow
 from mcp_server.client import EXPLORE_VIEWS, BackendClient, BackendError
 from mcp_server.profiles import allowed_tools, apply_profile_filter
 
 logger = logging.getLogger(__name__)
 
+
+class _ServedMCP(FastMCP):
+    """The one registry. FastMCP registers this class's call_tool as the stdio handler, and
+    every HTTP set calls it too (mcp_server.http), so a call using something a merge removed
+    gets mcp_server.replaced's sentence on either transport."""
+
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+        refusal = replaced.refused_argument(name, arguments)
+        if refusal:
+            raise ToolError(refusal)
+        return await super().call_tool(name, arguments)
+
+
 # The full set's text; a stdio set gets its own from apply_profile_filter, an HTTP set from mcp_server.http.
-mcp = FastMCP("maestro-career-studio", instructions=orientation.instructions_for("full"))
+mcp = _ServedMCP("maestro-career-studio", instructions=orientation.instructions_for("full"))
 _client = BackendClient()
 
 # HTTP sets this per request; stdio leaves it unset and uses the env profile.
@@ -1084,34 +1097,31 @@ def kb_ingest_resume(
     }
 
 
-@mcp.tool(**_write("Approve or Retire Career Points", destructive=True, idempotent=True))
+@mcp.tool(**_write("Approve Career Points", destructive=False, idempotent=True))
 @_guard
-def kb_approve_points(
-    point_ids: list[str],
-    state: Literal["approved", "retired"] = "approved",
-) -> Any:
-    """Batch-set Career KB point state to approved or retired. Approved points are
-    the only ones that appear on composed resumes and the career export; this is
-    the single approval path available over MCP. The state written is the
-    user's decision about the listed points; the server does not check that the
-    user reviewed them (a convention, not enforcement, as with record_consent).
+def kb_approve_points(point_ids: list[str]) -> Any:
+    """Batch-approve Career KB points. Approved points are the only ones that appear on
+    composed resumes and the career export; this is the single approval path available over
+    MCP, and kb_retire_points retires points. The approval written is the user's decision
+    about the listed points; the server does not check that the user reviewed them (a
+    convention, not enforcement).
 
-    state is approved|retired only; bulk-to-draft is impossible. 1-500 ids;
-    repeats collapse to one result row. Per-id results are honest: unknown ids
-    return ok=false detail="not found" and the rest still proceed; a failed id
-    fails the same way until corrected (kb_list_points returns the current ids).
+    1-500 ids; repeats collapse to one result row. Per-id results are honest: unknown ids
+    return ok=false detail="not found" and the rest still proceed; a failed id fails the
+    same way until corrected (kb_list_points returns the current ids). A state argument
+    other than "approved" is refused, and nothing is written.
 
     Response is {results: [{id, ok, state, detail}], next}. next is a hint
     (null when suppressed or unavailable).
     """
-    body = _client.kb_approve_points(point_ids, state=state)
+    body = _client.kb_approve_points(point_ids, state="approved")
     results = body.get("results") or [] if isinstance(body, dict) else []
     return {
         "results": results,
         "next": _best_effort_hint(
             lambda: workflow.next_after_bulk_state(
                 results,
-                requested_state=state,
+                requested_state="approved",
                 allowed_tools=_active_allowed_tools(),
                 hints_enabled=_hints_enabled(),
             )
