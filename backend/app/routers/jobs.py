@@ -348,37 +348,42 @@ def _scored_bases(db: Session, job_id: UUID) -> list[str]:
     ))
 
 
-def _rescore(db: Session, job: Job, scored: list[str], tailored: list[UUID]) -> list[str]:
-    """Score a corrected job again after its commit: the bases as a new capture scores them, then
-    every other base in `scored` that is still there (archived, or marked for another country since:
-    an application on it keeps its Match), then each tailored resume, each in a commit of its own.
-    Deterministic, no AI. A failure rolls back only that score and is named ("bases" or the
-    application id) for score_ats to compute later."""
-    failed = [] if _score_new_job(db, job) else ["bases"]
-    if not (job.extracted_json or {}).get("skills"):
-        return failed  # nothing to score against, as for the bases (`_scorable_now`)
+def _left_out_bases(db: Session, job: Job, scored: list[str]) -> list[str]:
+    """The bases in `scored` a new capture would not score but that are still there: archived, or
+    marked for another country since. An application on one keeps its Match only if it is scored."""
     offered = set(base_eligibility.candidates(db, job).slugs)
     present = set(base_resume_data.active_base_resume_slugs(db))
-    for slug in scored:
-        if slug in offered or slug not in present or not base_resume_data.base_resume_path(slug).exists():
-            continue
-        try:
-            ats_score.score_target(job.id, "base_resume", slug, phase="base", session=db)
-            db.commit()
-        except Exception:
-            db.rollback()
-            logger.warning("Rescoring base %s after a job correction failed", slug, exc_info=True)
-            failed += [] if "bases" in failed else ["bases"]
-    for application_id in tailored:
-        try:
-            ats_score.score_target(job.id, "application", str(application_id), phase="tailored", session=db)
-            db.commit()
-        except Exception:
-            db.rollback()
-            logger.warning("Rescoring application %s after a job correction failed", application_id,
-                           exc_info=True)
-            failed.append(str(application_id))
-    return failed
+    return [
+        slug for slug in scored
+        if slug not in offered and slug in present and base_resume_data.base_resume_path(slug).exists()
+    ]
+
+
+def _scored_again(db: Session, job: Job, target_type: str, target_id: str, phase: str) -> bool:
+    """One score of a corrected job in a commit of its own; a failure rolls back only that score."""
+    try:
+        ats_score.score_target(job.id, target_type, target_id, phase=phase, session=db)
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        logger.warning("Rescoring %s %s after a job correction failed", target_type, target_id, exc_info=True)
+        return False
+
+
+def _rescore(db: Session, job: Job, scored: list[str], tailored: list[UUID]) -> list[str]:
+    """Score a corrected job again after its commit: the bases as a new capture scores them, then
+    every other base in `scored` that is still there (`_left_out_bases`), then each tailored resume,
+    each in a commit of its own. Deterministic, no AI. A failure rolls back only that score and is
+    named ("bases" or the application id) for score_ats to compute later."""
+    bases_ok = _score_new_job(db, job)
+    if not (job.extracted_json or {}).get("skills"):
+        return [] if bases_ok else ["bases"]  # nothing to score against, as for the bases (`_scorable_now`)
+    rest = [_scored_again(db, job, "base_resume", slug, "base") for slug in _left_out_bases(db, job, scored)]
+    failed = [] if bases_ok and all(rest) else ["bases"]
+    return failed + [
+        str(app_id) for app_id in tailored if not _scored_again(db, job, "application", str(app_id), "tailored")
+    ]
 
 
 def _correct_job(
