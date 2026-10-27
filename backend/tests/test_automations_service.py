@@ -558,15 +558,43 @@ def test_a_scheduled_window_starts_from_the_briefs_last_run(card_id):
     window = body[body.index("at least the time since this automation last ran"):]
     window = window[:window.index("**", 1) if "**" in window else len(window)]
     assert "`get_job_search_brief`" in body or "the brief" in window
-    assert f'`last_runs["{card_id}"]`' in window
+    # last_runs is when the last run FINISHED (record_run, at its end; runs store no start), so
+    # what arrived while it ran is covered by starting an hour earlier; a repeat is dropped.
+    assert f'an hour before `last_runs["{card_id}"]`' in window
     assert f"Call `record_run` with automation `{card_id}`" in body
 
 
-def test_the_hunt_reads_each_countrys_permits_verbatim():
-    """A posting is read against the permits of its own country (inv-work-permit-per-country), not
-    against the one home set the brief kept for a release."""
-    body = " ".join({c.id: c.body for c in automations.catalog().cards}["job-hunt"].split())
-    brief = body[body.index("**Brief.**"):body.index("**Source.**")]
-    assert "`work_auth_by_country`" in brief and "verbatim" in brief
-    assert "its own country" in brief
-    assert "`work_auth`" not in brief.replace("`work_auth_by_country`", "")
+def test_agent_runs_store_no_start_time():
+    """The playbooks' hour of overlap stands in for a start time; if runs ever record one,
+    last_runs should read it instead and the overlap can go."""
+    from app.models.agent_run import AgentRun
+    from app.schemas.agent_runs import AgentRunCreate
+
+    assert "started_at" not in AgentRun.__table__.columns
+    assert "started_at" not in AgentRunCreate.model_fields
+
+
+_PERMITS_RULE = (
+    "the work permits of each country the user applies in (`work_auth_by_country`): read a "
+    "posting against its own country's answers, verbatim, never another country's. A posting "
+    "whose country is unknown or not among them has no answers: don't filter it on permits, and "
+    "say so in its proposal."
+)
+
+
+@pytest.mark.parametrize("card_id", ["job-hunt", "referral-pages"])
+def test_a_hunt_reads_each_countrys_permits_verbatim(card_id):
+    """A posting is read against the permits of its own country (inv-work-permit-per-country),
+    never the home set the brief kept for a release, and a posting with no country's answers is not
+    filtered on permits."""
+    body = " ".join({c.id: c.body for c in automations.catalog().cards}[card_id].split())
+    brief = body[body.index("**Brief.**"):body.index("2. **")]
+    assert _PERMITS_RULE in brief
+    assert "`work_auth`" not in brief and "use it verbatim" not in brief
+
+
+def test_the_search_constraints_doc_reads_permits_per_country():
+    doc = " ".join((Path(__file__).resolve().parents[2] / "docs" / "agentic-job-search.md").read_text().split())
+    assert "Work authorization is used verbatim" not in doc
+    assert "`work_auth_by_country`" in doc and "its own country's answers" in doc
+    assert "not filtered on permits" in doc

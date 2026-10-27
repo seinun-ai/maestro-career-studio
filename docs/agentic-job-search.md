@@ -30,9 +30,13 @@ referral careers pages, plain browsing — within these limits:
 ## Hard rules
 
 - **Brief first.** Call `get_job_search_brief` before searching. Its job
-  preferences are the filtering criteria. Work authorization is used verbatim —
-  never guessed, corrected or interpreted. Relay any `warnings[]` to the user
-  before searching; fixing them is the user's job.
+  preferences are the filtering criteria. Work permits are kept per country
+  (`work_auth_by_country`, one set for each country the user applies in): a
+  posting is read against its own country's answers, verbatim — never guessed,
+  corrected, interpreted or taken from another country. A posting whose country
+  is unknown or not one the user applies in has no answers, so it is not
+  filtered on permits, and its proposal says so. Relay any `warnings[]` to the
+  user before searching; fixing them is the user's job.
 - **The hunt captures, scores and proposes.** It never applies, submits or
   triages; accepting or declining a proposal is the user's decision, in the app.
   Propose at most the brief's per-run ceiling (`max_proposals_per_run`).
