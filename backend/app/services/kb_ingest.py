@@ -355,6 +355,15 @@ def _entity_list_lines(entities: list[KBEntity]) -> str:
     return "\n".join(f"{e.id} | {e.kind} | {e.title} | {e.org or ''}" for e in entities) or "(none)"
 
 
+def require_entity(session: Session, entity_id) -> KBEntity:
+    """The entity `capture` and `add_draft_points` write to; LookupError when there is none
+    (router -> 404)."""
+    entity = session.get(KBEntity, entity_id)
+    if entity is None:
+        raise LookupError(f"entity {entity_id} not found")
+    return entity
+
+
 def capture(
     session: Session,
     text: str,
@@ -370,9 +379,7 @@ def capture(
     ValueError for bad LLM output (router -> 400).
     """
     if entity_id is not None:
-        hinted = session.get(KBEntity, entity_id)
-        if hinted is None:
-            raise LookupError(f"entity {entity_id} not found")  # router -> 404
+        hinted = require_entity(session, entity_id)
         candidates = [hinted]
     else:
         candidates = list(
@@ -501,9 +508,7 @@ def add_draft_points(
     Returns (entity, new points, skipped texts). Raises LookupError for an
     unknown entity (router -> 404). Flushes; the caller commits.
     """
-    entity = session.get(KBEntity, entity_id)
-    if entity is None:
-        raise LookupError(f"entity {entity_id} not found")
+    entity = require_entity(session, entity_id)
     held = {
         point_text_key(text)
         for text in session.scalars(select(KBPoint.text).where(KBPoint.entity_id == entity.id))

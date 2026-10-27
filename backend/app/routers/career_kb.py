@@ -378,20 +378,24 @@ def capture_points(
     db: Annotated[Session, Depends(get_db)],
     write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
-    agent_writer.refuse_unless_maestro_writes(
-        "Write the bullets yourself and save them with kb_add_points."
-    )
-    # The response model drops `skipped`: capture has none.
-    return _land_drafts(
-        db,
-        lambda: kb_ingest.capture(
+    def write():
+        if payload.entity_id is not None and not agent_writer.maestro_writes():
+            # An agent app is told the entity is unknown (404) before it is told to write the
+            # bullets itself. The web's request goes straight on: capture looks it up anyway.
+            kb_ingest.require_entity(db, payload.entity_id)
+        agent_writer.refuse_unless_maestro_writes(
+            "Write the bullets yourself and save them with kb_add_points."
+        )
+        return kb_ingest.capture(
             db,
             payload.text,
             entity_id=payload.entity_id,
             origin=write_origin.origin or "manual",
             origin_detail=write_origin.detail,
-        ),
-    )
+        )
+
+    # The response model drops `skipped`: capture has none.
+    return _land_drafts(db, write)
 
 
 def _land_drafts(db: Session, write: Callable[[], tuple]) -> KBDraftPointsResponse:

@@ -364,6 +364,19 @@ def test_capture_points_an_agent_app_that_writes_at_kb_add_points(
     assert [e.id for e in db_session.scalars(sa.select(KBEntity))] == [uuid.UUID(eid)]
 
 
+def test_capture_an_unknown_entity_is_a_404_before_an_agent_app_is_told_to_write(
+    client, monkeypatch, tmp_path
+):
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    forbid_model(monkeypatch)
+    missing = str(uuid.uuid4())
+
+    r = client.post("/api/kb/capture", json={"text": "dump", "entity_id": missing}, headers=MCP)
+
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == f"entity {missing} not found"
+
+
 @pytest.mark.parametrize(
     ("writer", "headers", "origin"),
     [("agent", {}, "manual"), ("maestro", MCP, "mcp")],

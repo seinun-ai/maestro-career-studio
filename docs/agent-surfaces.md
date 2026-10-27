@@ -59,7 +59,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `AgentRequestMiddleware` (raw ASGI, the innermost middleware, pinned) sets a ContextVar mark for the request; `maestro_writes()` is
   true outside an agent request and, inside one, only while `writer` is `"maestro"` (a missing setting reads as the agent app;
   `peek_settings` never seeds a row); `model_available()` also needs a key. While the agent app writes, each writing route refuses an
-  agent request with a 409 whose sentence names the agent's own tool, after the route's 404 for an unknown target:
+  agent request with a 409 whose sentence names the agent's own tool, after the error the web gets for an unknown target (a
+  404; a 422 for `create_tailoring_session`'s job or base) and, on `tailor_session`, a closed session's own 409:
 
   | Tool | While the agent app writes |
   |---|---|

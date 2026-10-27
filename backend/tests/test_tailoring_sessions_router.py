@@ -3620,3 +3620,42 @@ def test_an_unknown_session_is_a_404_before_an_agent_app_is_told_to_write(
     response = _tailor(client, uuid4(), body, headers=MCP)
 
     assert response.status_code == 404, response.text
+
+
+@pytest.mark.parametrize("unknown", ["job", "base"])
+def test_an_unknown_job_or_base_is_answered_before_an_agent_app_is_told_to_drop_enrich(
+    db_session, tmp_path, monkeypatch, client, unknown
+):
+    """The status the web gets for an unknown job or base (422), not the refusal."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    forbid_model(monkeypatch)
+    body = {"job_id": str(job.id), "base_resume": slug, "enrich": True}
+    body.update({"job_id": str(uuid4())} if unknown == "job" else {"base_resume": "no_such_slug"})
+
+    web = client.post("/api/tailoring-sessions", json={**body, "enrich": False})
+    agent = client.post("/api/tailoring-sessions", json=body, headers=MCP)
+
+    assert web.status_code == 422, web.text
+    assert agent.status_code == 422, agent.text
+    assert agent.json()["detail"] == web.json()["detail"]
+    assert db_session.scalars(select(TailoringSession)).all() == []
+
+
+@pytest.mark.parametrize("body", [{}, {"apply_profile": True}], ids=["no-ops", "quick-tailor"])
+def test_a_closed_session_says_so_before_an_agent_app_is_told_to_write(
+    db_session, tmp_path, monkeypatch, client, body
+):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _mock_prompt_files(monkeypatch)
+    created = _open_session(client, job, slug, [SALESFORCE_RESOLUTION])
+    assert client.post(f"/api/tailoring-sessions/{created['id']}/close").status_code == 200
+    set_writer(client, monkeypatch, tmp_path, "agent")
+    forbid_model(monkeypatch)
+
+    response = _tailor(client, created["id"], body, headers=MCP)
+
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"] == "This gap analysis is closed. Start a new one."

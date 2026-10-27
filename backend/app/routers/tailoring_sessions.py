@@ -17,6 +17,7 @@ from app.schemas.tailoring_session import (
     TailorResponse,
 )
 from app.services import application_render, ats_score, quick_tailor, tailoring_session
+from app.services.base_resume_data import load_base_resume
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +35,17 @@ def _get_or_404(db: Session, session_id: UUID) -> TailoringSession:
 def create_tailoring_session(
     payload: TailoringSessionCreate, db: Annotated[Session, Depends(get_db)]
 ):
-    # Before create_session: it scores and stages the session first, and it stores unenriched
-    # gaps when the enrichment call fails, so a refusal inside it would never reach the caller.
-    if payload.enrich:
-        agent_writer.refuse_unless_maestro_writes("Start the gap analysis without enrich.")
     try:
+        # Before create_session: it scores and stages the session first, and it stores
+        # unenriched gaps when the enrichment call fails, so a refusal inside it would never
+        # reach the caller.
+        if payload.enrich:
+            if not agent_writer.maestro_writes():
+                # An agent app is told a job or base is unknown (422, as the web is) before it
+                # is told to drop enrich. The web's request goes straight on: create_session
+                # looks both up anyway.
+                _require_targets(payload, db)
+            agent_writer.refuse_unless_maestro_writes("Start the gap analysis without enrich.")
         return tailoring_session.create_session(
             payload.job_id, payload.base_resume, enrich=payload.enrich, session=db
         )
@@ -48,6 +55,12 @@ def create_tailoring_session(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _require_targets(payload: TailoringSessionCreate, db: Session) -> None:
+    """The job and base lookups `create_session` makes, raising what they raise (ValueError)."""
+    ats_score.get_scorable_job(db, payload.job_id)
+    load_base_resume(payload.base_resume, db)
 
 
 @router.get("", response_model=list[TailoringSessionRead])
@@ -158,8 +171,9 @@ def tailor_session(
     # After the 404, so an agent app is never told to write ops for a session that isn't there,
     # and before the apply_profile fill, which commits. Neither ops of the caller's own nor
     # no_new_text means Maestro's AI writes the edits; only an agent request is refused (the
-    # web's one-call apply_profile path carries no MCP origin).
-    if not (payload and (payload.ops or payload.no_new_text)):
+    # web's one-call apply_profile path carries no MCP origin). A session that is no longer
+    # open is answered by the service's own "closed" error instead.
+    if row.status == "open" and not (payload and (payload.ops or payload.no_new_text)):
         agent_writer.refuse_unless_maestro_writes("Pass your own edits as ops, or no_new_text.")
     effective_prompt = payload.user_prompt if payload else None
 
