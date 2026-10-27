@@ -125,14 +125,12 @@ def test_an_agent_adds_and_edits_a_referral_through_mcp(db_session, client, mcp_
     )
     assert created["applications_count"] == 0
 
-    edited = mcp_tools.save_referral(
-        "Northwind Labs", notes="Asked for an intro on Monday", referral_id=created["id"]
-    )
+    edited = mcp_tools.save_referral(notes="Asked for an intro on Monday", referral_id=created["id"])
 
     assert edited["id"] == created["id"]
-    assert (edited["careers_url"], edited["contact_name"], edited["notes"]) == (
-        "https://northwind.example/jobs", "Amara Okafor", "Asked for an intro on Monday",
+    assert (edited["company"], edited["careers_url"], edited["contact_name"], edited["notes"]) == (
+        "Northwind Labs", "https://northwind.example/jobs", "Amara Okafor", "Asked for an intro on Monday",
     )
     assert [r["id"] for r in client.get("/api/referrals").json()] == [created["id"]]
     with pytest.raises(ToolError, match="404"):
-        mcp_tools.save_referral("Northwind Labs", referral_id="00000000-0000-4000-8000-000000000000")
+        mcp_tools.save_referral(notes="x", referral_id="00000000-0000-4000-8000-000000000000")

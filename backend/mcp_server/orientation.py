@@ -22,7 +22,11 @@ SETS: tuple[ToolSet, ...] = (
         "career history, base resumes and their anchors, the health check, versions, "
         "form answers, job preferences, markets and persona",
     ),
-    ToolSet("hunt", "find me jobs", "the search brief, saving jobs, scoring them and proposing them"),
+    ToolSet(
+        "hunt",
+        "find me jobs",
+        "the search brief, saving jobs, scoring and proposing them, and the referral contacts",
+    ),
     ToolSet(
         "tailor",
         "tailor my resume for this job",

@@ -397,6 +397,13 @@ def _atomic_write_bytes(destination: Path, content: bytes) -> None:
         temp_path.unlink(missing_ok=True)
 
 
+# update_application's clear: a bare string would otherwise be read letter by letter.
+CLEAR_TAKES_A_LIST = (
+    'clear takes a list of field names, such as ["notes"] or ["notes", "referral_id"]; '
+    "a single name goes in a list too."
+)
+
+
 class BackendError(Exception):
     def __init__(self, message: str, status_code: int | None = None, body: Any = None):
         super().__init__(message)
@@ -790,23 +797,26 @@ class BackendClient:
 
     def save_referral(
         self,
-        company: str,
+        company: str | None = None,
         careers_url: str | None = None,
         contact_name: str | None = None,
         notes: str | None = None,
         referral_id: str | None = None,
     ) -> Any:
         """POST a new referral, or PUT the fields given onto one: the PUT is a partial update in
-        one transaction, so a field not sent keeps its saved value."""
-        if not company.strip():
+        one transaction, so a field not sent (company too) keeps its saved value."""
+        if company is not None and not company.strip():
             raise BackendError("company is empty; a referral names its company.")
         payload = _drop_none(
             company=company, careers_url=careers_url, contact_name=contact_name, notes=notes
         )
         if referral_id is not None:
             return self._request("PUT", f"/api/referrals/{_seg(referral_id)}", json=payload)
-        if careers_url is None:
-            raise BackendError("A new referral needs careers_url, the company's careers page.")
+        missing = [name for name in ("company", "careers_url") if name not in payload]
+        if missing:
+            raise BackendError(
+                f"A new referral needs company and careers_url; {' and '.join(missing)} not given."
+            )
         return self._request("POST", "/api/referrals", json=payload)
 
     def list_qa_entries(self, application_id: str) -> Any:
@@ -1017,13 +1027,16 @@ class BackendClient:
         applied_at: str | None = None,
         notes: str | None = None,
         referral_id: str | None = None,
-        clear: Collection[str] = (),
+        clear: Collection[str] | None = None,
         from_email: bool = False,
         origin_detail: str | None = None,
     ) -> Any:
         payload = _drop_none(
             status=status, applied_at=applied_at, notes=notes, referral_id=referral_id
         )
+        if isinstance(clear, str):
+            raise BackendError(CLEAR_TAKES_A_LIST)
+        clear = clear or ()
         # An explicit null is how the PATCH empties a field (it reads which fields were sent).
         unknown = sorted(set(clear) - {"notes", "referral_id"})
         if unknown:

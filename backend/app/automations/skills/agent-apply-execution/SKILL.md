@@ -50,14 +50,19 @@ The user's Maestro CS profile is the source of truth; distrust values an applica
   is current. Pass the returned absolute `upload_path` straight into Playwright’s
   file chooser / upload API. That path already lives under the shared
   `.playwright-mcp/uploads` tree (paired with Playwright `--output-dir`).
-- A form that asks for a cover letter gets the application's stored one:
-  `prepare_application_pdf_upload(application_id, document="cover_letter")` stages
-  its PDF beside the resume's copy, under its own file name; upload that
-  `upload_path` the same way. With no letter stored it refuses: a required
-  cover-letter box then gets a letter written first, the way `get_setup_status`'s
-  writer says (`store_cover_letter` for one you write from the job and the career
-  context, `generate_cover_letter` when Maestro's AI writes), then staged, and the
-  final review names it; an optional box stays empty.
+- A form that asks for a cover letter gets the application's stored one. As a
+  file: `prepare_application_pdf_upload(application_id, document="cover_letter")`
+  stages its PDF beside the resume's copy, under its own file name; upload that
+  `upload_path` the same way. As text (a box to type or paste into): paste the
+  stored letter's text, the `answer` of its `cover_letter` entry in
+  `list_qa_entries`, and upload nothing.
+- No letter stored (the staging call refuses, `list_qa_entries` holds none): a
+  required cover-letter field gets one written first, by the writer
+  `get_setup_status` names. When the writer is the agent app, write it yourself
+  from the job and the career context and save it with `store_cover_letter`;
+  when the writer is Maestro's AI, it writes one with `generate_cover_letter`.
+  Then stage or paste it, and the final review names it. An optional field stays
+  empty.
 - Forbidden: copying/moving PDFs with shell or Claude filesystem tools; inventing
   paths under a screenshot dir; uploading from `artifact_dir` / `applications/`
   (the cover letter's too); asking the user for a broad folder grant so you can

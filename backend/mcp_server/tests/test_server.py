@@ -1293,10 +1293,10 @@ def test_update_application_tool_calls_client(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "update_application",
-        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None, clear=(),
+        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None, clear=None,
         from_email=False, origin_detail=None: seen.update(
             app_id=app_id, status=status, applied_at=applied_at, notes=notes, referral_id=referral_id,
-            clear=list(clear), from_email=from_email,
+            clear=clear, from_email=from_email,
         )
         or {"id": app_id, "status": status},
     )
@@ -1308,7 +1308,7 @@ def test_update_application_tool_calls_client(monkeypatch):
         "applied_at": None,
         "notes": None,
         "referral_id": None,
-        "clear": [],
+        "clear": None,
         "from_email": False,
     }
 
@@ -1317,16 +1317,37 @@ async def test_update_application_clear_names_notes_and_referral_id(monkeypatch)
     seen = {}
     monkeypatch.setattr(
         srv._client, "update_application",
-        lambda app_id, clear=(), **kwargs: seen.update(app_id=app_id, clear=list(clear)) or {"id": app_id},
+        lambda app_id, clear=None, **kwargs: seen.update(app_id=app_id, clear=clear) or {"id": app_id},
     )
     srv.update_application("a1", clear=["notes", "referral_id"])
     assert seen == {"app_id": "a1", "clear": ["notes", "referral_id"]}
 
     tool = next(t for t in await srv.mcp.list_tools() if t.name == "update_application")
     clear = tool.inputSchema["properties"]["clear"]
-    assert clear["items"]["enum"] == ["notes", "referral_id"]
-    assert clear["default"] == []
+    array = next(branch for branch in clear["anyOf"] if branch.get("type") == "array")
+    assert array["items"]["enum"] == ["notes", "referral_id"]
+    assert clear["default"] is None  # no mutable default
     assert "refused" in clear["description"]
+
+
+async def test_update_application_refuses_a_bare_string_clear_in_words(monkeypatch):
+    """clear="notes" over MCP is answered with a plain sentence and sends nothing."""
+    import httpx
+    import respx
+    from mcp.shared.memory import create_connected_server_and_client_session
+
+    from mcp_server.client import BackendClient
+
+    monkeypatch.setattr(srv, "_client", BackendClient("http://test-backend"))
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.patch("http://test-backend/api/applications/a1").mock(
+            return_value=httpx.Response(200, json={"id": "a1"}))
+        async with create_connected_server_and_client_session(srv.mcp) as session:
+            result = await session.call_tool(
+                "update_application", {"application_id": "a1", "clear": "notes"})
+    assert result.isError
+    assert 'a single name goes in a list too' in result.content[0].text
+    assert not route.called
 
 
 def test_update_application_tool_forwards_all_args(monkeypatch):
@@ -1334,7 +1355,7 @@ def test_update_application_tool_forwards_all_args(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "update_application",
-        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None, clear=(),
+        lambda app_id, status=None, applied_at=None, notes=None, referral_id=None, clear=None,
         from_email=False, origin_detail=None: seen.update(
             app_id=app_id, status=status, applied_at=applied_at, notes=notes, referral_id=referral_id,
             from_email=from_email, origin_detail=origin_detail,
@@ -1725,6 +1746,8 @@ _PINNED_HINTS = {
     "tailor_session": (False, True, False, True),
     # Overwrite user-authored or user-decided state.
     "update_base_resume": (False, True, True, False),
+    # An edit overwrites what the user wrote (referrals keep no history); each add makes a new row.
+    "save_referral": (False, True, False, False),
     # Each call appends a version row, so repeating it is not a no-op.
     "restore_resume_version": (False, True, False, False),
     "kb_edit_profile": (False, True, True, False),
@@ -1743,8 +1766,6 @@ _PINNED_HINTS = {
     "kb_approve_points": (False, False, True, False),
     "record_consent": (False, True, False, False),
     "mark_submitted": (False, True, False, False),
-    # Adds a referral (twice adds two) or edits the fields given; deletes nothing.
-    "save_referral": (False, False, False, False),
     # Purely additive.
     "record_filled_answers": (False, False, False, False),
     "kb_create_entity": (False, False, False, False),
@@ -2149,15 +2170,20 @@ def test_save_referral_tool_forwards_its_fields(monkeypatch):
     seen = {}
     monkeypatch.setattr(
         srv._client, "save_referral",
-        lambda company, careers_url=None, contact_name=None, notes=None, referral_id=None: seen.update(
+        lambda company=None, careers_url=None, contact_name=None, notes=None, referral_id=None: seen.update(
             company=company, careers_url=careers_url, contact_name=contact_name, notes=notes,
             referral_id=referral_id,
         ) or {"id": referral_id or "new"},
     )
 
-    assert srv.save_referral("Northwind Labs", notes="Intro sent", referral_id="r1") == {"id": "r1"}
-    assert seen == {"company": "Northwind Labs", "careers_url": None, "contact_name": None,
+    assert srv.save_referral(notes="Intro sent", referral_id="r1") == {"id": "r1"}
+    assert seen == {"company": None, "careers_url": None, "contact_name": None,
                     "notes": "Intro sent", "referral_id": "r1"}
+
+
+async def test_save_referral_requires_nothing_but_takes_company_for_an_add():
+    tool = next(t for t in await srv.mcp.list_tools() if t.name == "save_referral")
+    assert "required" not in tool.inputSchema or tool.inputSchema["required"] == []
 
 
 def test_save_referral_is_served_wherever_referrals_are_listed():
@@ -2171,3 +2197,5 @@ def test_save_referral_is_served_wherever_referrals_are_listed():
 def test_save_referral_docstring_says_what_an_edit_keeps():
     doc = " ".join((srv.save_referral.__doc__ or "").split())
     assert "careers_url" in doc and "left out keeps" in doc and "404" in doc
+    assert "A new referral needs company and careers_url" in doc
+    assert "company is optional" in doc and "no history" in doc

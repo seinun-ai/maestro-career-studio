@@ -11,14 +11,14 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import ConfigDict, Field, with_config
+from pydantic import BeforeValidator, ConfigDict, Field, with_config
 
 from app.schemas.autofill_profile import WorkAuthStatus
 from app.schemas.quick_tailor import QuickTailorProfile
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
 from app.services import http_client, markets
 from mcp_server import orientation, replaced, workflow
-from mcp_server.client import EXPLORE_VIEWS, BackendClient, BackendError
+from mcp_server.client import CLEAR_TAKES_A_LIST, EXPLORE_VIEWS, BackendClient, BackendError
 from mcp_server.profiles import allowed_tools, apply_profile_filter
 
 logger = logging.getLogger(__name__)
@@ -1656,6 +1656,13 @@ _CLEAR_FIELD = Field(
 )
 
 
+def _clear_is_a_list(value: Any) -> Any:
+    """A bare string ("notes") gets a sentence, not pydantic's list_type error."""
+    if isinstance(value, str):
+        raise ValueError(CLEAR_TAKES_A_LIST)
+    return value
+
+
 @mcp.tool(**_write("Update Application Tracking", destructive=True, idempotent=True))
 @_guard
 def update_application(
@@ -1664,7 +1671,9 @@ def update_application(
     applied_at: str | None = None,
     notes: str | None = None,
     referral_id: str | None = None,
-    clear: Annotated[list[Literal["notes", "referral_id"]], _CLEAR_FIELD] = [],
+    clear: Annotated[
+        list[Literal["notes", "referral_id"]] | None, BeforeValidator(_clear_is_a_list), _CLEAR_FIELD
+    ] = None,
     from_email: bool = False,
     ctx: Context | None = None,
 ) -> Any:
@@ -1704,10 +1713,10 @@ def update_application(
     )
 
 
-@mcp.tool(**_write("Save Referral Contact", destructive=False, idempotent=False))
+@mcp.tool(**_write("Save Referral Contact", destructive=True, idempotent=False))
 @_guard
 def save_referral(
-    company: str,
+    company: str | None = None,
     careers_url: str | None = None,
     contact_name: str | None = None,
     notes: str | None = None,
@@ -1718,10 +1727,11 @@ def save_referral(
     referral: its careers page, the contact's name and notes. A new referral needs
     company and careers_url (an http or https address); contact_name and notes are
     optional, and each call without referral_id adds another referral. An edit
-    saves company and every other field passed; a field left out keeps its saved
-    value. An unknown referral_id is a 404 and nothing is written. Returns the saved
-    referral {id, company, careers_url, contact_name, notes, applications_count,
-    created_at, updated_at}."""
+    changes only the fields passed, and company is optional there: a field left
+    out keeps its saved value, and a field passed replaces it (referrals keep no
+    history of earlier values). An unknown referral_id is a 404 and nothing is
+    written. Returns the saved referral {id, company, careers_url, contact_name,
+    notes, applications_count, created_at, updated_at}."""
     return _client.save_referral(
         company,
         careers_url=careers_url,

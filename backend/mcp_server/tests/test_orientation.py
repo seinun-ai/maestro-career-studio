@@ -47,3 +47,9 @@ def test_a_scoped_set_says_what_it_is_for():
     text = orientation.instructions_for("tailor")
     assert "This is the tailor set" in text
     assert "tailor my resume for this job" in text
+
+
+def test_hunt_says_it_holds_the_referrals_it_lists_and_saves():
+    hunt = next(s for s in orientation.SETS if s.name == "hunt")
+    assert "referral" in hunt.holds
+    assert {"list_referrals", "save_referral"} <= PROFILE_ALLOWLISTS["hunt"]

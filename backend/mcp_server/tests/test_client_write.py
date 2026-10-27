@@ -186,6 +186,20 @@ def test_update_application_refuses_a_field_both_set_and_cleared():
     assert not route.called
 
 
+@respx.mock(assert_all_called=False)
+def test_update_application_refuses_a_bare_string_clear():
+    import pytest
+
+    from mcp_server.client import BackendError
+
+    route = respx.patch(f"{BASE}/api/applications/a1").mock(
+        return_value=httpx.Response(200, json={"id": "a1"})
+    )
+    with pytest.raises(BackendError, match="a single name goes in a list too"):
+        BackendClient(BASE).update_application("a1", clear="notes")
+    assert not route.called
+
+
 def test_update_application_clears_only_notes_and_referral_id():
     import pytest
 
@@ -383,20 +397,21 @@ def test_save_referral_edits_by_id_and_sends_only_what_it_was_given():
     route = respx.put(f"{BASE}/api/referrals/r1").mock(
         return_value=httpx.Response(200, json={"id": "r1"})
     )
-    BackendClient(BASE).save_referral("Northwind Labs", notes="Intro sent", referral_id="r1")
+    BackendClient(BASE).save_referral(notes="Intro sent", referral_id="r1")
     import json as _json
-    assert _json.loads(route.calls.last.request.read()) == {
-        "company": "Northwind Labs", "notes": "Intro sent",
-    }
+    # No company: an edit never renames the referral unless it is asked to.
+    assert _json.loads(route.calls.last.request.read()) == {"notes": "Intro sent"}
 
 
-def test_save_referral_needs_a_careers_page_to_add_one():
+def test_save_referral_needs_a_company_and_a_careers_page_to_add_one():
     import pytest
 
     from mcp_server.client import BackendError
 
     with pytest.raises(BackendError, match="careers_url"):
         BackendClient(BASE).save_referral("Northwind Labs", contact_name="Amara Okafor")
+    with pytest.raises(BackendError, match="company"):
+        BackendClient(BASE).save_referral(careers_url="https://northwind.example/jobs")
 
 
 def test_save_referral_refuses_a_blank_company():
@@ -406,6 +421,8 @@ def test_save_referral_refuses_a_blank_company():
 
     with pytest.raises(BackendError, match="company"):
         BackendClient(BASE).save_referral("  ", careers_url="https://northwind.example/jobs")
+    with pytest.raises(BackendError, match="company"):
+        BackendClient(BASE).save_referral(" ", referral_id="r1")
 
 
 @respx.mock
@@ -418,5 +435,5 @@ def test_save_referral_unknown_id_is_the_backends_404():
         return_value=httpx.Response(404, json={"detail": "Referral not found"})
     )
     with pytest.raises(BackendError, match="Referral not found") as exc:
-        BackendClient(BASE).save_referral("Northwind Labs", referral_id="r404")
+        BackendClient(BASE).save_referral(notes="x", referral_id="r404")
     assert exc.value.status_code == 404

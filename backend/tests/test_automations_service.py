@@ -525,3 +525,26 @@ def test_apply_technique_stages_a_cover_letter_like_the_resume():
     tailored_pdf = text[text.index("## Tailored PDF"):text.index("## Form and evidence discipline")]
     assert 'prepare_application_pdf_upload(application_id, document="cover_letter")' in tailored_pdf
     assert "the cover letter's too" in tailored_pdf  # the forbidden-sources rule covers the letter
+    # A letter asked for as text is pasted from the stored entry, not uploaded.
+    assert "As text" in tailored_pdf and "`list_qa_entries`" in tailored_pdf
+
+
+def test_apply_technique_writes_a_missing_letter_by_the_writer_setting():
+    """With no letter stored, who writes it follows get_setup_status's writer: an agent-app run writes it
+    and stores it (Maestro's own writing refuses then); only a Maestro's-AI run generates one. Each clause
+    naming a letter tool names exactly one writer, so a rule sending an agent-mode run to
+    generate_cover_letter fails here."""
+    import re
+
+    skills = Path(__file__).resolve().parent.parent / "app" / "automations" / "skills"
+    text = " ".join((skills / "agent-apply-execution" / "SKILL.md").read_text().split())
+    tailored_pdf = text[text.index("## Tailored PDF"):text.index("## Form and evidence discipline")]
+    clauses = re.split(r"(?<=[;.])\s", tailored_pdf)
+    generate = [c for c in clauses if "generate_cover_letter" in c]
+    store = [c for c in clauses if "store_cover_letter" in c]
+    assert generate and store
+    for clause in generate:
+        assert "writer is Maestro's AI" in clause and "agent app" not in clause, clause
+        assert "store_cover_letter" not in clause, clause
+    for clause in store:
+        assert "writer is the agent app" in clause and "Maestro's AI" not in clause, clause
