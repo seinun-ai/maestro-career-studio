@@ -62,7 +62,11 @@ work-permit answers for each country you apply in.
 - **`tailor_application` is gone from MCP.** It rebuilt a draft without the tailoring session's checks.
   Tailor through a session (`create_tailoring_session`, then `tailor_session`), or change a draft in
   place with `edit_application`. The web app's route stays. MCP now has 99 tools, 31 in `tailor`.
-- No step to take by hand. Migrations add a column (`kb_points.merged_into_point_id`), two tables
+- **Two steps for agent apps.** If a scheduled job runs a Tailor run prompt you copied before this
+  release, copy it again from **Automations**: the old copy calls `quick_tailor`, which is gone, and
+  `tailor_session` without `ops`, which the new default refuses. If you relied on Maestro's AI writing
+  over MCP, pick **Maestro's AI** in Settings › Agent apps › **Who writes for connected agents**.
+- No step to take by hand for the app itself. Migrations add a column (`kb_points.merged_into_point_id`), two tables
   (`kb_point_kept_pairs`, and `application_status_events`, filled with one undated row for each
   application that already has a status) and two job columns (`country_code`,
   `salary_currency_assumed`), and run by themselves at startup. Existing API fields and MCP tools keep
