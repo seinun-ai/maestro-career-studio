@@ -2,14 +2,17 @@
 
 Without `update` a repeat capture returns the saved job unchanged, as it always has. With
 `update=true` the new extraction replaces the saved job's fields and skills through the same
-mapping a new capture uses, keeps its id, status, applications, proposals and provenance,
-deletes its saved match scores (they are computed from the extraction alone, so the next
-scoring recomputes them) and names, without touching, a tailored resume or an open gap
-analysis. No LLM: the ingest route takes the caller's extraction."""
+mapping a new capture uses and keeps its id, status, applications, proposals and provenance.
+When that changed anything scoring reads, its match scores are replaced: the old ones are
+deleted, then the bases are scored as a new capture scores them and each tailored resume is
+scored again (deterministic, no AI). A tailored resume, an open gap analysis and a proposal's
+stored fit are named, never rewritten. No LLM: the ingest route takes the caller's extraction."""
 
 import copy
 import json
 import uuid
+
+import pytest
 
 from app.config import settings
 from app.models.application import Application
@@ -19,6 +22,8 @@ from app.models.base_resume import BaseResume
 from app.models.job import Job
 from app.models.job_skill import JobSkill
 from app.models.tailoring_session import TailoringSession
+from app.routers import jobs
+from app.services import ats_score
 from tests.ats.fixtures import SAMPLE_JD, SAMPLE_RESUME
 
 TEXT = "Logistics Coordinator, Harbourline Freight. Plan inbound shipments and customs paperwork."
@@ -140,43 +145,105 @@ def test_update_keeps_id_status_applications_proposals_and_provenance(db_session
     assert db_session.query(ApplicationProposal).filter(ApplicationProposal.job_id == job_id).count() == 1
 
 
-def test_update_deletes_the_jobs_saved_scores_and_scoring_recomputes_them(
-    db_session, tmp_path, monkeypatch, client
-):
-    _seed_bases(db_session, tmp_path, monkeypatch)
-    saved = client.post("/api/jobs/ingest", json={"extracted_json": SAMPLE_JD, "raw_text": "ds role"}).json()
-    other = client.post("/api/jobs/ingest", json={"extracted_json": SAMPLE_JD, "raw_text": "ds role two"}).json()
-    assert len(_scores(db_session, saved["id"])) == 2
+def _kubernetes_jd():
     corrected = copy.deepcopy(SAMPLE_JD)
     corrected["skills"] = [
         {"skill_name": "Python", "skill_category": "Programming Language", "requirement_level": "required"},
         {"skill_name": "Kubernetes", "skill_category": "DevOps", "requirement_level": "required"},
     ]
-
-    fixed = client.post(
-        "/api/jobs/ingest", json={"extracted_json": corrected, "raw_text": "ds role", "update": True}
-    ).json()
-
-    assert fixed["correction"]["scores_cleared"] == 2
-    assert _scores(db_session, saved["id"]) == []
-    assert len(_scores(db_session, other["id"])) == 2  # another job's scores stay
-    rescored = client.post("/api/ats-scores", json={"job_id": saved["id"]})
-    assert rescored.status_code == 200
-    skills_scored = {row["jd_skill"].lower() for row in rescored.json()[0]["skill_table_json"]}
-    assert "kubernetes" in skills_scored and "snowflake" not in skills_scored
+    return corrected
 
 
-def test_an_update_that_changes_nothing_keeps_the_scores(db_session, tmp_path, monkeypatch, client):
+def _scored_job_with_a_tailored_resume(db_session, client, tmp_path, monkeypatch):
+    """A job scored against bases a and b at save, with a tailored resume and its score, an open gap
+    analysis linked to base a's score, and a proposal holding a stored fit."""
     _seed_bases(db_session, tmp_path, monkeypatch)
     saved = client.post("/api/jobs/ingest", json={"extracted_json": SAMPLE_JD, "raw_text": "ds role"}).json()
+    job_id = uuid.UUID(saved["id"])
+    tailored = Application(job_id=job_id, base_resume="a", status="draft", customized_json=SAMPLE_RESUME)
+    db_session.add(tailored)
+    db_session.commit()
+    ats_score.score_target(job_id, "application", str(tailored.id), phase="tailored", session=db_session)
+    base_a = next(row for row in _scores(db_session, saved["id"]) if row.target_id == "a")
+    session = TailoringSession(job_id=job_id, base_resume="a", status="open", gaps_json={"categories": []},
+                               resolutions_json=[], base_ats_score_id=base_a.id)
+    proposal = ApplicationProposal(job_id=job_id, status="pending_review",
+                                   fit_json={"chosen_base": "a", "scores": {"a": 61.0}})
+    db_session.add_all([session, proposal])
+    db_session.commit()
+    return saved, tailored, session, proposal
 
-    same = client.post(
-        "/api/jobs/ingest", json={"extracted_json": SAMPLE_JD, "raw_text": "ds role", "update": True}
+
+def _skills_in(row):
+    return {entry["jd_skill"].lower() for entry in row.skill_table_json}
+
+
+def test_a_correction_rescores_the_bases_and_the_tailored_resume(db_session, tmp_path, monkeypatch, client):
+    saved, tailored, session, proposal = _scored_job_with_a_tailored_resume(
+        db_session, client, tmp_path, monkeypatch)
+    other = client.post("/api/jobs/ingest", json={"extracted_json": SAMPLE_JD, "raw_text": "ds role two"}).json()
+
+    fixed = client.post(
+        "/api/jobs/ingest", json={"extracted_json": _kubernetes_jd(), "raw_text": "ds role", "update": True}
     ).json()
 
-    assert same["correction"]["changed"] == []
-    assert same["correction"]["scores_cleared"] == 0
-    assert len(_scores(db_session, saved["id"])) == 2
+    correction = fixed["correction"]
+    assert correction["scores_cleared"] == 3
+    assert (correction["rescored"], correction["rescore_failed"]) == (True, [])
+    assert correction["proposals_fit_stale"] == [str(proposal.id)]
+    assert correction["open_sessions"] == [str(session.id)]
+    rows = _scores(db_session, saved["id"])
+    assert sorted((row.phase, row.target_id) for row in rows) == [
+        ("base", "a"), ("base", "b"), ("tailored", str(tailored.id))]
+    for row in rows:
+        assert "kubernetes" in _skills_in(row) and "snowflake" not in _skills_in(row)
+    assert len(_scores(db_session, other["id"])) == 2  # another job's scores stay
+    listed = next(row for row in client.get("/api/jobs").json() if row["id"] == saved["id"])
+    assert listed["best_ats_score"] is not None
+    left = db_session.get(TailoringSession, session.id)
+    assert (left.status, left.base_ats_score_id) == ("open", None)  # its link to the deleted score cleared
+
+
+def test_a_failed_rescore_keeps_the_correction_and_names_what_failed(db_session, tmp_path, monkeypatch, client):
+    saved, tailored, _, _ = _scored_job_with_a_tailored_resume(db_session, client, tmp_path, monkeypatch)
+
+    def scorer_down(*args, **kwargs):
+        raise RuntimeError("scorer down")
+
+    monkeypatch.setattr(jobs.ats_score, "score_target", scorer_down)
+
+    response = client.post(
+        "/api/jobs/ingest", json={"extracted_json": _kubernetes_jd(), "raw_text": "ds role", "update": True})
+
+    assert response.status_code == 200, response.text
+    correction = response.json()["correction"]
+    assert (correction["rescored"], correction["rescore_failed"]) == (False, ["bases", str(tailored.id)])
+    assert ("kubernetes", "required") in _skills(db_session, saved["id"])
+    assert _scores(db_session, saved["id"]) == []
+
+
+@pytest.mark.parametrize("case", ["same extraction", "role spelled another way", "apply link only"])
+def test_a_correction_that_changes_nothing_scoring_reads_keeps_the_scores(
+    db_session, tmp_path, monkeypatch, client, case
+):
+    _seed_bases(db_session, tmp_path, monkeypatch)
+    saved = client.post("/api/jobs/ingest", json={"extracted_json": SAMPLE_JD, "raw_text": "ds role"}).json()
+    db_session.add(ApplicationProposal(job_id=uuid.UUID(saved["id"]), fit_json={"chosen_base": "a"}))
+    db_session.commit()
+    kept = {row.id for row in _scores(db_session, saved["id"])}
+    body = {"extracted_json": SAMPLE_JD, "raw_text": "ds role", "update": True}
+    if case == "role spelled another way":  # the raw extraction differs; every stored field is the same
+        body["extracted_json"] = {**SAMPLE_JD, "role_category": "Data Scientist"}
+    if case == "apply link only":  # scoring never reads the apply link
+        body["apply_url"] = "https://apply.example.org/requisitions/5521"
+
+    same = client.post("/api/jobs/ingest", json=body).json()
+
+    correction = same["correction"]
+    assert correction["changed"] == (["apply_url"] if case == "apply link only" else [])
+    assert (correction["scores_cleared"], correction["rescored"], correction["proposals_fit_stale"]) == (
+        0, False, [])
+    assert {row.id for row in _scores(db_session, saved["id"])} == kept
 
 
 def test_update_names_a_tailored_resume_and_an_open_gap_analysis_and_leaves_them(db_session, client):

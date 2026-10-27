@@ -693,13 +693,18 @@ _UPDATE_FIELD = Field(
     description=(
         "True: when the posting is already saved, this extraction replaces that job's fields and "
         "skills through the same mapping a new capture uses; the job keeps its id, status, "
-        "applications, proposals, source and raw_text. The response's correction is {changed: "
-        "the fields whose value changed, \"skills\" when the skill list did; scores_cleared: the "
-        "job's saved match scores deleted because its extraction changed (score_ats computes "
-        "them again); tailored_applications and open_sessions: the job's tailored resumes and "
-        "open gap analyses, left as they are (an open one reads as out of date once the "
-        "extraction changed)}. A job another copy of Maestro owns is refused (409). False "
-        "(default): a repeat capture returns the saved job unchanged."
+        "applications, proposals, source and raw_text. It overwrites the stored extraction, which "
+        "the web app can't undo. The saved job is found the way a capture finds it: resend the "
+        "saved raw_text, or omit raw_text and pass its source_url (new raw_text misses the text "
+        "match and creates a new job). The response's correction is {changed: the fields whose "
+        "value changed, \"skills\" when the skill list did; scores_cleared: the job's match "
+        "scores deleted because a field scoring reads changed, after which the job is scored "
+        "again; rescored: true when that succeeded; rescore_failed: \"bases\" or the application "
+        "ids it could not score, which score_ats computes later; tailored_applications: tailored "
+        "resumes, left as written; open_sessions: open gap analyses, left to read as out of date, "
+        "with their score link cleared; proposals_fit_stale: proposals whose stored fit predates "
+        "the correction}. A job another copy of Maestro owns is refused (409). False (default): "
+        "a repeat capture returns the saved job unchanged."
     )
 )
 

@@ -60,12 +60,18 @@ class JobCorrection(BaseModel):
     # Stored fields whose value changed, in column order, then the extraction's own lists
     # (responsibilities, qualifications), then "skills" when the skill rows changed.
     changed: list[str]
-    # The job's saved match scores deleted because its extraction changed; scoring recomputes them.
+    # Match scores deleted (both phases) because a field scoring reads changed; then the job is scored
+    # again: rescored is true when that all succeeded, rescore_failed names what did not ("bases" or
+    # an application id), never undoing the correction.
     scores_cleared: int
-    # Left exactly as they are: this job's applications holding a tailored resume, and its open gap
-    # analyses (which read as out of date once the extraction changed).
+    rescored: bool
+    rescore_failed: list[str]
+    # Named, never rewritten: this job's applications holding a tailored resume; its open gap analyses
+    # (they read as out of date, and a deleted base score clears their link to it); and, when scores
+    # were replaced, its proposals whose stored fit predates the correction (Today reads it).
     tailored_applications: list[UUID]
     open_sessions: list[UUID]
+    proposals_fit_stale: list[UUID]
 
 
 class JobOwnership(BaseModel):

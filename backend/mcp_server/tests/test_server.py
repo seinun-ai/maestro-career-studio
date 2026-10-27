@@ -1462,7 +1462,11 @@ async def test_store_extracted_jd_says_a_repeat_capture_is_unchanged_unless_upda
     assert "update" in tools["store_extracted_jd"].inputSchema["properties"]
     assert "apply_url" in tools["store_extracted_jd"].inputSchema["properties"]
     for fact in ("correction", "scores_cleared", "tailored_applications", "open_sessions", "score_ats",
-                 "find_job_by_url"):
+                 "find_job_by_url", "rescored", "rescore_failed", "proposals_fit_stale",
+                 # sessions read as out of date and lose their link to a deleted score
+                 "out of date", "score link",
+                 # how a correction finds the saved job, and that it overwrites for good
+                 "saved raw_text", "creates a new job", "overwrites", "can't undo"):
         assert fact in text, fact
 
 

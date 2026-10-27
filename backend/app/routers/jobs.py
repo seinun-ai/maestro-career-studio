@@ -310,8 +310,11 @@ def _clear_scores(db: Session, job_id: UUID) -> int:
     return db.execute(sa_delete(AtsScore).where(AtsScore.job_id == job_id)).rowcount
 
 
-def _left_alone(db: Session, job_id: UUID) -> tuple[list[UUID], list[UUID]]:
-    """The job's applications holding a tailored resume, and its open gap analyses."""
+def _left_alone(db: Session, job_id: UUID) -> dict[str, list[UUID]]:
+    """What a correction names and never rewrites: the job's applications holding a tailored
+    resume, its open gap analyses and its proposals holding a stored fit."""
+    from app.models.application_proposal import ApplicationProposal
+
     applications = db.execute(
         select(Application.id, Application.customized_json)
         .where(Application.job_id == job_id)
@@ -322,8 +325,37 @@ def _left_alone(db: Session, job_id: UUID) -> tuple[list[UUID], list[UUID]]:
         .where(TailoringSession.job_id == job_id, TailoringSession.status == "open")
         .order_by(TailoringSession.created_at)
     )
-    # Truthiness, not IS NOT NULL: a cleared draft is stored as JSON null (services/stage.py reads it so).
-    return [app_id for app_id, draft in applications if draft], list(sessions)
+    proposals = db.execute(
+        select(ApplicationProposal.id, ApplicationProposal.fit_json)
+        .where(ApplicationProposal.job_id == job_id)
+        .order_by(ApplicationProposal.created_at)
+    ).all()
+    # Truthiness, not IS NOT NULL: a cleared JSON column is stored as JSON null (services/stage.py
+    # reads a draft so).
+    return {
+        "tailored_applications": [app_id for app_id, draft in applications if draft],
+        "open_sessions": list(sessions),
+        "proposals_fit_stale": [proposal_id for proposal_id, fit in proposals if fit],
+    }
+
+
+def _rescore(db: Session, job: Job, tailored: list[UUID]) -> list[str]:
+    """Score a corrected job again after its commit: the bases as a new capture scores them, then
+    each tailored resume, each in a commit of its own. Deterministic, no AI. A failure rolls back
+    only that score and is named ("bases" or the application id) for score_ats to compute later."""
+    failed = [] if _score_new_job(db, job) else ["bases"]
+    if not (job.extracted_json or {}).get("skills"):
+        return failed  # nothing to score against, as for the bases (`_scorable_now`)
+    for application_id in tailored:
+        try:
+            ats_score.score_target(job.id, "application", str(application_id), phase="tailored", session=db)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.warning("Rescoring application %s after a job correction failed", application_id,
+                           exc_info=True)
+            failed.append(str(application_id))
+    return failed
 
 
 def _correct_job(
@@ -331,11 +363,16 @@ def _correct_job(
 ) -> Job:
     """`update` on a saved posting: this extraction replaces the job's fields and skill rows through
     the mapping a capture uses, and a given apply link replaces the stored one; the id, status,
-    applications, proposals, source and raw text stay. Match scores are computed from the
-    extraction alone, so when it changed the job's saved scores are deleted and the next scoring
-    recomputes them (no score row records which extraction it read; a missing row is what every
-    reader already treats as "not scored yet"). A tailored resume or an open gap analysis is left
-    as it is and named in `correction`. A job another copy owns is refused before any write."""
+    applications, proposals, source and raw text stay. A job another copy owns is refused before
+    any write.
+
+    When `changed` names anything scoring reads (every field but the apply link), the job's match
+    scores of both phases are deleted, since a base and a tailored score must read the same job
+    text, and after the commit `_rescore` scores the bases and each tailored resume again; a
+    failed rescore never undoes the correction. Deleting a base score clears an open gap
+    analysis's link to it (ON DELETE SET NULL) and leaves the analysis to read as out of date. A
+    tailored resume, an open gap analysis and a proposal's stored fit are named in `correction`,
+    never rewritten."""
     sync_hooks.require_owned(db, job.id)
     extraction = jd_extraction.apply_work_auth_backstop(raw_text or job.raw_text, dict(extraction))
     old_extraction = job.extracted_json or {}
@@ -355,16 +392,21 @@ def _correct_job(
     changed += _changed_lists(old_extraction, extraction)
     if set(_skill_keys(extraction)) != old_skills:
         changed.append("skills")
-    cleared = _clear_scores(db, job.id) if extraction != old_extraction else 0
-    tailored, open_sessions = _left_alone(db, job.id)
+    rescore = any(field != "apply_url" for field in changed)  # scoring never reads the apply link
+    cleared = _clear_scores(db, job.id) if rescore else 0
+    named = _left_alone(db, job.id)
+    if not rescore:
+        named["proposals_fit_stale"] = []
     db.commit()
+    failed = _rescore(db, job, named["tailored_applications"]) if rescore else []
     db.refresh(job)
     job.already_existed = True
     job.correction = JobCorrection(
         changed=changed,
         scores_cleared=cleared,
-        tailored_applications=tailored,
-        open_sessions=open_sessions,
+        rescored=rescore and not failed,
+        rescore_failed=failed,
+        **named,
     )
     return _with_newest_proposal(db, job)
 
@@ -452,20 +494,24 @@ def _scorable_now(db: Session, job: Job) -> bool:
     return True
 
 
-def _score_new_job(db: Session, job: Job) -> None:
-    """Score a just-saved job against every selectable base, inline, so the Jobs list's
-    Match column is filled from the save on. All bases or none: a real fault (a corrupt base
-    file) rolls back only the scores, never the already-committed job, and logs a warning."""
+def _score_new_job(db: Session, job: Job) -> bool:
+    """Score a just-saved (or just-corrected) job against every selectable base, inline, so the
+    Jobs list's Match column is filled from the save on. All bases or none: a real fault (a
+    corrupt base file) rolls back only the scores, never the already-committed job, logs a
+    warning and returns False; the expected no-score cases return True."""
     if not _scorable_now(db, job):
-        return
+        return True
+    scored = True
     try:
         ats_score.score_all_bases(job.id, session=db)
         db.commit()
     except Exception:
         db.rollback()
+        scored = False
         logger.warning("Scoring job %s at save failed; it saves unscored", job.id, exc_info=True)
     # Both commit and rollback expire the job the response serializes.
     db.refresh(job)
+    return scored
 
 
 @router.post("", response_model=JobRead)
