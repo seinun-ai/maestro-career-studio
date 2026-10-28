@@ -19,6 +19,7 @@ import { IconButton } from "@/components/icon-button";
 import { PdfFileLine } from "@/components/pdf-file-line";
 import { ResumesFolderNote } from "@/components/resumes-folder-actions";
 import { ProvenanceChip, revertHunk, sideText } from "@/components/resume-editor/diff-review";
+import { HunkDiff } from "@/components/resume-editor/hunk-diff";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { Button } from "@/components/ui/button";
 import { LeadCard, type LeadAction } from "@/components/ui/lead-card";
@@ -466,22 +467,7 @@ function ChangesList({
                       </span>
                       <ProvenanceChip value={hunk.provenance} tinted />
                     </div>
-                    {before ? (
-                      <p className="text-muted-foreground text-body-small">
-                        <del>
-                          <span className="sr-only">Before: </span>
-                          {before}
-                        </del>
-                      </p>
-                    ) : null}
-                    {after ? (
-                      <p className="text-body-medium">
-                        <ins className="no-underline">
-                          <span className="sr-only">Now: </span>
-                          {after}
-                        </ins>
-                      </p>
-                    ) : null}
+                    <HunkDiff before={before} after={after} className="text-body-medium" />
                   </div>
                   <IconButton
                     data-revert=""

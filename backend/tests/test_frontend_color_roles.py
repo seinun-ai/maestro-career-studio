@@ -888,6 +888,32 @@ def test_a_done_setup_step_says_done_in_words():
     assert ">Done<" in src
 
 
+_HUNK_DIFF = _read("components/resume-editor/hunk-diff.tsx")
+
+
+def _diff_classes(table: str, kind: str) -> str:
+    block = _HUNK_DIFF[_HUNK_DIFF.index(f"export const {table} = {{") :]
+    return re.search(rf'{kind}: "([^"]+)"', block[: block.index("}")]).group(1)
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+@pytest.mark.parametrize("kind", ["removed", "added"])
+def test_review_changes_diff_meets_aa(kind, mode):
+    """Review changes (HunkDiff): a line's text on its faint wash over the card or the page, and a changed
+    word's on-container text on the full container. Roles only: no palette shade, no destructive alpha."""
+    t = _MODES[mode]
+    wash = re.fullmatch(r"bg-((?:error|success)-container)/(\d+) text-([\w-]+)", _diff_classes("DIFF_LINE", kind))
+    assert wash, _diff_classes("DIFF_LINE", kind)
+    container, alpha, text = wash.group(1), int(wash.group(2)) / 100, wash.group(3)
+    for surface in ("card", "background"):
+        ratio = _contrast(_rgb(t, text), _over(_rgb(t, container), _rgb(t, surface), alpha))
+        assert ratio >= 4.5, f"{mode}: {kind} line on --{surface} is {ratio:.2f}:1"
+    word = _diff_classes("DIFF_WORD", kind)
+    assert word.startswith(f"bg-{container} text-on-{container}"), word
+    ratio = _contrast(_rgb(t, f"on-{container}"), _rgb(t, container))
+    assert ratio >= 4.5, f"{mode}: {kind} word is {ratio:.2f}:1"
+
+
 _ALPHA_FILL = re.compile(r"(?<![:\w-])(bg|border|ring)-(primary|destructive)/[\d\[]")
 # A ratchet, not a sweep (visual-language plan, Task 4): the count can only go down.
 _ALPHA_FILL_CEILING = 39

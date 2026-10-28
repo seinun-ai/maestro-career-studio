@@ -3,6 +3,7 @@
 import { SpellCheck, Undo2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { HunkDiff } from "@/components/resume-editor/hunk-diff";
 import { Button } from "@/components/ui/button";
 import { ActorChip } from "@/components/visual";
 import { resumeDataSchema } from "@/lib/resume-schema";
@@ -400,10 +401,7 @@ function HunkRow({
             </span>
           )}
         </div>
-        {before && (
-          <p className="text-muted-foreground text-body-small line-through">{before}</p>
-        )}
-        {after && <p className="text-foreground/90 text-body-small">{after}</p>}
+        <HunkDiff before={before} after={after} className="text-body-small" />
       </div>
       <Button
         variant="ghost"

@@ -273,6 +273,10 @@ work-permit answers for each country you apply in.
 - REST: `PATCH /api/settings/autofill`, `PATCH /api/settings/job-preferences` and
   `PATCH /api/settings/market` take only what changed and merge it on the server in one step; the MCP
   profile tools use them. The web app's and the Companion's saves are unchanged.
+- **Skip on Today.** Next up has a **Skip** beside its button, for a resume that is ready to send and
+  for an agent's question about a job. A skipped job gets the new **Skipped** status: it closes like
+  Rejected and Withdrawn, closes the agent's open proposals for it, and **Undo** in the toast puts it
+  back in Draft. Jobs' Closed chip counts it, and the Agent inbox's own Skipped filter stays apart.
 
 ### Changed
 
@@ -301,6 +305,9 @@ work-permit answers for each country you apply in.
   job's dates and details fold away below it. The header reads "Company · Place · Mode · pay"; pay in
   another currency shows the posted amount under it, and pay whose post named no currency says how it
   was read ("Pay read as Canadian dollars, job is in Canada").
+- **Review changes reads as a diff.** In the resume studio and on a job's Tailored resume step, each
+  change shows its old line on a light red and its new line on a light green, and marks only the words
+  that changed: struck through on the old line, highlighted on the new. Both readable in light and dark.
 - **Calmer chart colours.** Charts use six series near one lightness (blue, orange, teal, violet,
   ochre, slate) with no red or green, so no series reads as good or bad, and each stays readable on its
   card in light and dark.

@@ -973,8 +973,8 @@ def test_step_three_change_rows_read_and_revert_one_by_one():
     assert "Check wording" not in src and "runCoherenceCheck" not in src
     # Each row: where it sits (first, with an id the Revert button points at), the chip, what it was and is now.
     assert fold.index("{hunkPlace(hunk, draft)}") < fold.index("<ProvenanceChip value={hunk.provenance} tinted />")
-    assert '<span className="sr-only">Before: </span>' in fold and "<del>" in fold
-    assert '<span className="sr-only">Now: </span>' in fold and "<ins" in fold
+    # The old and new text as the studio's diff (HunkDiff: <del>/<ins>, "Before:"/"Now:", red and green).
+    assert '<HunkDiff before={before} after={after} className="text-body-medium" />' in fold
     revert = open_tag(fold, "IconButton")
     assert 'label="Revert this change"' in revert and "aria-describedby={placeId}" in revert
     assert 'data-revert=""' in revert and "focusableWhenDisabled" in revert

@@ -1402,8 +1402,10 @@
   `["resume-diff", id, updated_at]`, shared with the studio; the previous list stands in while a new draft's
   loads, and Revert and Apply wait for the real one). The header tallies each provenance as the studio's chip (`ProvenanceChip tinted`: **From your
   career history**, **You**; an unattributed change has none, since the server cannot tell an AI rewrite from a
-  hand edit) and a count badge. Each row: where it sits (`lib/resume-diff` `hunkPlace`), the chip, the old text
-  in `<del>` and the new in `<ins>` with "Before:" and "Now:" for screen readers, and a **Revert this change**
+  hand edit) and a count badge. Each row: where it sits (`lib/resume-diff` `hunkPlace`), the chip, the old and new
+  text as a diff (`HunkDiff`, the studio's review rows too: the old line on a faint `error-container` wash, the new on
+  a faint `success-container`, the words that changed on the full container and struck on the old line, from
+  `lib/word-diff` `lineDiff`; `<del>`/`<ins>` with "Before:" and "Now:" for screen readers), and a **Revert this change**
   icon button described by the row's place. Rows are keyed without their position (`hunkIds`), so after a revert
   focus moves to a neighbour and a polite live region says "Change reverted". A revert goes only against the draft the diff names (the diff's `updated_at` equals the application's, else
   "The changes were out of date and have been refreshed. Try again." and both reload), sends it as
