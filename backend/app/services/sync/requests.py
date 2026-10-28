@@ -20,7 +20,7 @@ from app.models.job import Job
 from app.models.sync import SyncRequest
 from app.models.types import utcnow
 from app.schemas.proposal import ProposalBulkTransition, ProposalTransition
-from app.services.sync import hooks, status
+from app.services.sync import hooks, status, wire
 
 QUEUED_DETAIL = "Sent at the next sync."
 # What a request may carry. Anything outside these is not forwarded, never a secret.
@@ -87,6 +87,26 @@ def settle_take_overs(db: Session, job_id: uuid.UUID) -> None:
             SyncRequest.job_id == job_id, SyncRequest.kind == "take_over",
             SyncRequest.origin == "local", SyncRequest.status.in_(("pending", "sent")))):
         row.status, row.answered_at = "applied", utcnow()
+
+
+def on_their_way(db: Session) -> tuple[set[uuid.UUID], set[uuid.UUID]]:
+    """The applications whose status change and the proposals whose decision this copy sent to the
+    other copy and has no answer for yet. An answered request, applied or refused, names nothing."""
+    applications: set[uuid.UUID] = set()
+    decided: set[uuid.UUID] = set()
+    for row in db.scalars(select(SyncRequest).where(
+            SyncRequest.origin == "local", SyncRequest.status.in_(("pending", "sent")),
+            SyncRequest.kind.in_(("application_patch", "proposal_transition")))):
+        payload = row.payload_json
+        if row.kind == "proposal_transition":
+            target, into = wire.uuid_of(payload.get("proposal_id")), decided
+        elif "status" in (payload.get("fields") or {}):
+            target, into = wire.uuid_of(payload.get("application_id")), applications
+        else:
+            continue
+        if target is not None:
+            into.add(target)
+    return applications, decided
 
 
 def queued_response() -> JSONResponse:

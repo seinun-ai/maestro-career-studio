@@ -197,7 +197,7 @@ function patchStatus(id: string, status: ApplicationStatus) {
  * Next up's Skip, the quiet control beside its button. A ready PDF's application turns Skipped, and the toast's
  * Undo puts it back to Draft; an agent's job waiting on you takes the job page's Skip (the reason dialog, the
  * proposal Skipped). An offer has none: it needs an answer, not a skip. Today refetches and the next job takes
- * the card. On a job the other copy owns, the change waits for the next sync.
+ * the card. On a job the other copy owns, the change waits for the next sync; the server passes over it meanwhile.
  */
 function SkipControl({ item, onSkipped }: { item: TodayNextUp; onSkipped: () => void }) {
   const qc = useQueryClient();

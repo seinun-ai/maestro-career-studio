@@ -277,6 +277,8 @@ work-permit answers for each country you apply in.
   for an agent's question about a job. A skipped job gets the new **Skipped** status: it closes like
   Rejected and Withdrawn, closes the agent's open proposals for it, and **Undo** in the toast puts it
   back in Draft. Jobs' Closed chip counts it, and the Agent inbox's own Skipped filter stays apart.
+  Skipping a job your bot holds is sent at the next sync, and Next up moves on to the next job
+  meanwhile; if the bot refuses the change, the job comes back.
 
 ### Changed
 

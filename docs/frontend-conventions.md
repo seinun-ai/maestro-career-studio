@@ -1150,7 +1150,8 @@
   toast "Job skipped" offers Undo (back to Draft); an agent's job takes the job page's Skip (the
   reason dialog, the proposal Skipped); an offer has none, since it needs an answer. Today refetches
   and the next job takes the card; a Skip that leaves nothing next moves focus to the line that
-  replaces it, and one on the other copy's job says "Sent at the next sync". It carries the base resume's
+  replaces it, and one on the other copy's job says "Sent at the next sync" and moves on too (the server
+  passes over a change on its way). It carries the base resume's
   square (D2), pay through `formatPay` with the posted amount under a converted figure (D8), and
   "Where this job is": only the steps the server dates, then the move the button makes. Also today
   is up to three cards with `NumberRoll` counts, each a link to its list (a list that holds more than
