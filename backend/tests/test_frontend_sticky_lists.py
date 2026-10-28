@@ -307,7 +307,20 @@ def test_a_filter_change_keeps_the_scroll_position():
 
 
 def test_referrals_header_sticks():
-    assert '<Table minWidth="48rem" stickyHeader className="table-fixed">' in _REFERRALS
+    assert '<Table minWidth="44rem" stickyHeader className="table-fixed">' in _REFERRALS
+
+
+def test_referrals_fit_the_narrowest_frame():
+    """At 1024 the main column's frame is 718px. At 48rem the table scrolled sideways there, which hid the row
+    actions and unstuck the header, and five equal columns cut "Northwind Labs" short. At 44rem it fits: the
+    company and contact get their share, the count and the two row actions their own width."""
+    for head in (
+        '<TableHead className="w-[27%]">Company</TableHead>',
+        '<TableHead className="w-[16%]">Contact</TableHead>',
+        '<TableHead className="w-[7.5rem] text-right">Applications</TableHead>',
+        '<TableHead className="w-24" />',
+    ):
+        assert head in _REFERRALS, head
 
 
 def test_the_tracker_search_is_the_shared_list_search():

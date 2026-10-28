@@ -20,10 +20,10 @@ import { cn } from "@/lib/utils"
  * names from source: the three strings of an entry must agree (pinned).
  */
 const MIN_WIDTH = {
-  "48rem": {
-    table: "min-w-[48rem]",
-    fits: "@min-[48rem]/table:overflow-x-clip",
-    head: "@min-[48rem]/table:tall:sticky",
+  "44rem": {
+    table: "min-w-[44rem]",
+    fits: "@min-[44rem]/table:overflow-x-clip",
+    head: "@min-[44rem]/table:tall:sticky",
   },
   "57rem": {
     table: "min-w-[57rem]",

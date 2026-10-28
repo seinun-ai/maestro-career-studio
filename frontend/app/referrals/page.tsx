@@ -317,15 +317,17 @@ function ReferralsTable({ rows }: { rows: Referral[] }) {
   return (
     <div ref={rootRef} tabIndex={-1} className="outline-none">
       <TableFrame>
-        <Table minWidth="48rem" stickyHeader className="table-fixed">
+        <Table minWidth="44rem" stickyHeader className="table-fixed">
           <TableHeader>
             <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
-              <TableHead>Company</TableHead>
+              {/* 44rem fits the main column at 1024 (718px). Company and Contact take a share, the count and the
+                  two row actions their own width; the careers page and notes split the rest and truncate. */}
+              <TableHead className="w-[27%]">Company</TableHead>
               <TableHead>Careers page</TableHead>
-              <TableHead>Contact</TableHead>
+              <TableHead className="w-[16%]">Contact</TableHead>
               <TableHead>Notes</TableHead>
-              <TableHead className="text-right">Applications</TableHead>
-              <TableHead className="w-20" />
+              <TableHead className="w-[7.5rem] text-right">Applications</TableHead>
+              <TableHead className="w-24" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -413,7 +415,7 @@ function ReferralViewRow({
           {referral.careers_url}
         </a>
       </TableCell>
-      <TableCell className="text-muted-foreground">
+      <TableCell className="text-muted-foreground truncate" title={referral.contact_name || undefined}>
         {referral.contact_name || "—"}
       </TableCell>
       <TableCell
