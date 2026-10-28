@@ -326,7 +326,7 @@ Diversity answers and their consent, full automation, the job-site login and eve
 ## How it works
 
 HTTP MCP runs inside Maestro's FastAPI backend, on the `mcp` Python SDK 2.x
-(2.3 or later, below 3). Every tool is registered once; each profile is its own
+(2.3 or later, below 2.4). Every tool is registered once; each profile is its own
 server holding that profile's tools and instructions, so stdio serves the one
 `MAESTRO_CS_MCP_PROFILE` names and HTTP serves each at its own path. Sync tool
 functions execute on worker threads of their own and call REST on that same

@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 # logged at ERROR and stays.
 logging.getLogger("mcp.server.mcpserver.server").setLevel(logging.WARNING)
 
-# The app imports this module at startup and fresh installs take the newest mcp<3, so a private
-# SDK name must not decide whether the app starts.
+# The app imports this module at startup and fresh installs take the newest mcp the pin allows, so
+# a private SDK name must not decide whether the app starts.
 try:
     from mcp.server._otel import OpenTelemetryMiddleware as _SdkTracing  # no public name in 2.3
 except ImportError:  # moved in a later 2.x: test_http fails in CI, the app still starts

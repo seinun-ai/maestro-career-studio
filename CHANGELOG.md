@@ -410,8 +410,9 @@ work-permit answers for each country you apply in.
 - **Both ways Claude Desktop reaches Maestro pass a newer Claude Desktop's requests through** on the
   2026-07-28 revision: the `.mcpb` bundle, which is re-packed, and `maestro mcp`, the command a uv
   install points Claude Desktop at.
-- The MCP server needs `mcp` 2.3 or later, below 3 (it was 1.30 or later, below 2). The Docker lock
-  moves to `mcp` 2.3.0, adds `mcp-types` and drops `httpx-sse`.
+- The MCP server needs `mcp` 2.3 or later, below 2.4 (it was 1.30 or later, below 2). Later SDK
+  releases are taken one minor at a time, after a test run. The Docker lock moves to `mcp`
+  2.3.0, adds `mcp-types` and drops `httpx-sse`.
 
 ### Fixed
 

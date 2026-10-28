@@ -76,7 +76,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   set's `serverInfo.version`, on stdio and HTTP, reads `APP_VERSION`, else `dev` (`mcp_server/tests/test_http_modern.py`,
   `test_profiles.py`).
 
-- **The server on SDK 2.x** (`mcp>=2.3,<3`; `mcp_server/server.py`, `http.py`). `server.mcp`, the one registry, is a `_ServedMCP`
+- **The server on SDK 2.x** (`mcp>=2.3,<2.4`, lifted one minor at a time with a run: the pyproject comment says why; `mcp_server/server.py`, `http.py`). `server.mcp`, the one registry, is a `_ServedMCP`
   (the SDK's `MCPServer`); `build_set` makes each set a `_ServedMCP` of its own, and `http.McpEndpoint(registry)` takes any registry
   (tests pass a scratch one) and gives each set a fresh session manager per lifespan run (JSON responses, stateful
   2025 path, 6-hour idle, 16 MiB bodies, SDK DNS-rebinding protection off: §6 inv-mcp-inside-the-app) through the SDK's public
@@ -117,7 +117,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   refusal kind, and the crash. Tool descriptions, set instructions and prompt texts stay out, so a copy edit never trips it; other
   tests pin each to its source on the wire (the descriptions, against each tool function's docstring as Python holds it:
   `test_each_tool_on_the_wire_carries_its_own_description`). The same calls pin the log (only the crash). CI installs the newest
-  `mcp<3`, so the record is the net for an SDK minor release. On a difference: a deliberate change of ours is regenerated
+  2.3.x the pin allows, and lifting the pin to a new minor release needs a run of the record. On a difference: a deliberate change of ours is regenerated
   (`MAESTRO_WIRE_GOLDEN_WRITE=1`, then a rerun without it) in a commit of its own that says why; an SDK release that changes an answer
   is a decision, to fix our code so agents read the same, or to accept it and regenerate the same way.
 

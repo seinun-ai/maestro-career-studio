@@ -41,13 +41,17 @@ dependencies = [
     "python-multipart>=0.0.9",
     "httpx>=0.27",
     "cryptography>=43",
-    # The upper bound is deliberate. 2.x moved FastMCP to
-    # `mcp.server.mcpserver.MCPServer` (Context and ToolError live under it too)
-    # and renamed fields, so an unbounded pin broke `mcp_server.server` at its first
-    # import on every fresh install when 2.0 shipped. A major release will do the
-    # same: lift the bound deliberately, with a run. 2.3 serves both protocol eras
-    # (2025 handshake and 2026-07-28) from one Streamable HTTP endpoint.
-    "mcp>=2.3,<3",
+    # The upper bound is deliberate, and sits below the next minor release. 2.x
+    # moved FastMCP to `mcp.server.mcpserver.MCPServer` (Context and ToolError live
+    # under it too) and renamed fields, so an unbounded pin broke `mcp_server.server`
+    # at its first import on every fresh install when 2.0 shipped. Within 2.x,
+    # `mcp_server` still reads two SDK names with no public form (`_tool_manager`,
+    # `mcp.server._otel`) that any minor release may move, and CI runs only on push
+    # and pull request, so a breaking minor would reach fresh installs before any run
+    # noticed. Lift the bound one minor at a time, with a run (the golden record,
+    # mcp_server/tests/test_wire_golden.py, is the check). 2.3 serves both protocol
+    # eras (2025 handshake and 2026-07-28) from one Streamable HTTP endpoint.
+    "mcp>=2.3,<2.4",
     # The `maestro` command (maestro_cs): process identity and tree kill on every OS,
     # and the install's maestro.env read in-process.
     "psutil>=7",

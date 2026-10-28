@@ -5,8 +5,8 @@ Per set it holds the initialize result, the tool list (in full on /mcp, names in
 the others) and the prompts; then the resources lists and an unknown method on /mcp, and one
 tool call per answer shape, one per refusal kind and a crash. Our own copy stays out: tool descriptions, set instructions, and prompt descriptions
 and texts, each pinned to its source by another test (the descriptions below), so a copy edit
-never trips the record. CI installs the newest mcp<3, so the record is the net for an SDK
-minor release; HOW_TO_ACT says what to do with a difference. An entry changed on purpose
+never trips the record. CI installs the newest mcp the pin allows (a 2.3.x patch), and lifting
+the pin to a new minor release needs a run of it; HOW_TO_ACT says what to do with a difference. An entry changed on purpose
 before its regeneration can be listed in _golden_cases.EXPECTED_CHANGES under its full entry
 name, with the whole entry as the record holds it (normalised). With
 MAESTRO_WIRE_GOLDEN_WRITE=1 the test writes the fixture from this run, with the Python, mcp
