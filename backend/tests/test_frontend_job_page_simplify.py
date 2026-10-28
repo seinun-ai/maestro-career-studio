@@ -241,14 +241,9 @@ def test_the_real_components_render_without_a_browser():
     the frontend CI job runs it (`node --test components/inbox-simplify.test.mjs`) and the backend job
     skips its copy.
     """
-    import pytest
+    from tests.node_ts import run_node_render_test
 
-    from tests.node_ts import FRONTEND, _node_with_typescript, run_node_test
-
-    if not (FRONTEND / "node_modules" / "typescript").is_dir():
-        _node_with_typescript()
-        pytest.skip("frontend packages are not installed; the frontend CI job runs this file")
-    done = run_node_test("components/inbox-simplify.test.mjs")
+    done = run_node_render_test("components/inbox-simplify.test.mjs")
     assert done.returncode == 0, done.stdout + done.stderr
 
 
@@ -291,14 +286,15 @@ def test_the_fixed_plan_summaries_match_what_the_two_clients_file():
     assert sorted(summaries) == sorted({web, companion})
 
 
-def test_ci_runs_every_frontend_lib_test_and_the_inbox_render_test():
+def test_ci_runs_every_frontend_lib_test_and_every_render_test():
     ci = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     assert "run: cd frontend && node --test lib/*.test.ts" in ci
-    assert "run: cd frontend && node --test components/inbox-simplify.test.mjs" in ci
-    # Each step's comment sits directly above it.
-    second = ci.index("- name: Render the second-copy card")
-    assert "second-copy card under node" in ci[second - 400 : second]
-    assert "job page and Agent inbox pieces" not in ci[ci.index("# Renders the second-copy card") : second]
+    # Quoted, so node expands `**` itself: bash without globstar would skip the top-level files
+    # (components/inbox-simplify.test.mjs, components/job-ownership.test.mjs).
+    assert 'run: cd frontend && node --test "components/**/*.test.mjs"' in ci
+    # The step's comment sits directly above it.
+    render = ci.index("- name: Render the components")
+    assert "skips its copies (run_node_render_test" in ci[render - 400 : render]
 
 
 # ── Re-review: a Draft is not applied, and the line waits for a skip's reason ──────────────────────────

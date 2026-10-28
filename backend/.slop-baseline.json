@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 925,
-    "total_loc": 293421,
-    "src_loc": 79290,
-    "test_loc": 214131,
+    "modules": 930,
+    "total_loc": 295241,
+    "src_loc": 79558,
+    "test_loc": 215683,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -27,7 +27,7 @@
       },
       {
         "file": "mcp_server/tests/test_server.py",
-        "line": 804,
+        "line": 801,
         "name": "test_audit_one_sentence_docstring_fixes",
         "complexity": 44,
         "params": 0,
@@ -410,7 +410,7 @@
         "lines": 55
       }
     ],
-    "hotspot_count": 1095,
+    "hotspot_count": 1097,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -499,8 +499,8 @@
       }
     ],
     "error_masking_count": 17,
-    "internal_import_edges": 4305,
-    "imports_per_module": 4.65,
+    "internal_import_edges": 4332,
+    "imports_per_module": 4.66,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -649,7 +649,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "1095 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
+      "detail": "1097 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -662,16 +662,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 293421,
-    "src_loc": 79290,
-    "test_loc": 214131,
-    "modules": 925,
+    "total_loc": 295241,
+    "src_loc": 79558,
+    "test_loc": 215683,
+    "modules": 930,
     "orphan_loc": 0,
     "duplication_pct": 0.39,
     "duplicated_lines": 373,
     "clone_count": 44,
-    "complexity_hotspots": 1095,
+    "complexity_hotspots": 1097,
     "error_masking": 17,
-    "imports_per_module": 4.65
+    "imports_per_module": 4.66
   }
 }

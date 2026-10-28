@@ -608,6 +608,8 @@ anchors, Jobs, Agent inbox, job steps, Analytics); the tiers (one `LeadCard`, th
   never under `data/` or with `-n`) and blanks the four provider keys (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`):
   a worker's `load_dotenv()` finds the
   nearest `.env`, so unstubbed tests made billed calls. Parity tests (`tests/node_ts.py`) need node 24: skip locally, FAIL in `CI`.
+  Render tests (`components/**/*.test.mjs`) also need the web app's packages: call them through `run_node_render_test`, which
+  skips without `frontend/node_modules` (the backend job); the frontend job runs every one by glob after `npm ci`.
 - **Deploying a local change = rebuilding BOTH images** (MAINTAINER path, MAIN checkout): `docker build -t maestro-career-studio-backend
   backend/` AND `…-frontend frontend/`, then `docker compose up -d --no-build --force-recreate backend frontend`. A frontend-only change
   still needs the frontend image rebuilt — a stale image once made fixed UI look broken for a whole review.
@@ -647,7 +649,9 @@ anchors, Jobs, Agent inbox, job steps, Analytics); the tiers (one `LeadCard`, th
 - **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors for editable/dev installs
   (`pip install -e ".[dev,mcp]"`, also CI); the container installs hash-pinned `backend/requirements.lock`.
   Regenerate that lock with **`mcp` + `tracing` only, on Linux/Python 3.12** (command in `backend/Dockerfile`;
-  macOS/3.13 gives wrong pins). CI's `dependency-audit` (`pip-audit` on the lock) failing on a new advisory is intended.
+  macOS/3.13 gives wrong pins). Without Docker: pip-compile on macOS/3.12 with `--upgrade-package` per mover, then
+  `uv pip compile --python-platform x86_64-manylinux_2_28 --python-version 3.12 -c <the lock's pins>` must list the same set.
+  CI's `dependency-audit` (`pip-audit` on the lock, `npm audit --omit=dev`) failing on a new advisory is intended.
 - **No Langfuse stack ships here** (the bundled compose file had fixed default secrets).
   The SDK is the `tracing` extra (included in Docker and native; uv and the desktop build omit it); `services/tracing.py` requires
   all three `LANGFUSE_*` settings. Tracing points at the user's host; `langfuse_host` defaults to empty.

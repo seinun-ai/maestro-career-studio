@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from tests.node_ts import run_node_test
+from tests.node_ts import run_node_render_test, run_node_test
 
 _CSS = (Path(__file__).resolve().parents[2] / "frontend/app/globals.css").read_text()
 _UTILITIES = _CSS.split("@layer utilities", 1)[1].split("@media (prefers-reduced-motion", 1)[0]
@@ -116,7 +116,7 @@ def test_number_roll_and_working_dots_stay_in_budget_and_respect_reduced_motion(
 def test_visual_primitives_node_suite():
     """The day strip's ends name its oldest dot's day, and the working dots' region mounts empty
     (components/visual/visual.test.mjs)."""
-    result = run_node_test("components/visual/visual.test.mjs")
+    result = run_node_render_test("components/visual/visual.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr
 
 

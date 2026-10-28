@@ -300,34 +300,17 @@ jobs:
       - name: Verify TypeScript types
         run: cd frontend && npx tsc --noEmit
 
-      # Renders the real ownership components under node's test runner. It needs
-      # the installed packages, so it runs here; the backend job has none and
-      # skips its copy (backend/tests/sync/test_frontend_ownership.py).
-      - name: Render the ownership components
-        run: cd frontend && node --test components/job-ownership.test.mjs
-
       # The frontend's pure logic (lib/*.test.ts) under node's own type stripping: no packages
       # needed, but the backend job only runs the few the Python tests name.
       - name: Test the frontend's pure logic
         run: cd frontend && node --test lib/*.test.ts
 
-      # Renders the job page and Agent inbox pieces (summary line, run line, daily limit, knock-out
-      # line, proposal card) for real. Like the two steps below it needs the installed packages, so it
-      # runs here; the backend job skips its copy (backend/tests/test_frontend_job_page_simplify.py).
-      - name: Render the job page and Agent inbox pieces
-        run: cd frontend && node --test components/inbox-simplify.test.mjs
-
-      # Renders the second-copy card under node's test runner. It needs the
-      # installed packages, so it runs here; the backend job has none and
-      # skips its copy (backend/tests/sync/test_pairing.py).
-      - name: Render the second-copy card
-        run: cd frontend && node --test components/settings/second-copy-section.test.mjs
-
-      # Renders the who-writes card and runs the save it shares with the hints
-      # card. Same rule: the backend job skips its copy
-      # (backend/tests/test_frontend_settings_cards.py).
-      - name: Render the who-writes card
-        run: cd frontend && node --test components/settings/agent-writer-section.test.mjs
+      # Every render test (components/**/*.test.mjs) renders real components under node's test
+      # runner, so it needs the installed packages and runs here; the backend job has none and
+      # skips its copies (run_node_render_test, backend/tests/node_ts.py). Node expands the quoted
+      # glob itself, `**` included, so a new render test runs here without a step of its own.
+      - name: Render the components
+        run: cd frontend && node --test "components/**/*.test.mjs"
 
       - name: Build Next.js production bundle
         run: cd frontend && npm run build

@@ -840,14 +840,11 @@ def test_web_card_contract_and_rendering():
     node_modules, so there it is the frontend job that runs this file
     (`node --test components/settings/second-copy-section.test.mjs` after
     `npm ci`); here it runs wherever the packages are installed, and a missing
-    node still fails in CI through `_node_with_typescript`.
+    node still fails in CI through `run_node_render_test`.
     """
-    from tests.node_ts import FRONTEND, _node_with_typescript, run_node_test
+    from tests.node_ts import run_node_render_test
 
-    if not (FRONTEND / "node_modules" / "typescript").is_dir():
-        _node_with_typescript()  # fails in CI when node itself is absent; only then skip
-        pytest.skip("frontend packages are not installed; the frontend CI job runs this file")
-    result = run_node_test("components/settings/second-copy-section.test.mjs")
+    result = run_node_render_test("components/settings/second-copy-section.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr
 
 

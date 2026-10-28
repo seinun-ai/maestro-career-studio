@@ -17,8 +17,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 from app.services.autofill_catalog import MAX_CUSTOM
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
@@ -674,11 +672,8 @@ def test_the_writer_key_line_asks_only_while_maestros_ai_is_shown():
 def test_the_writer_card_node_suite():
     """Renders the real card, so it needs the web app's installed packages (the second-copy card's rule,
     tests/sync/test_pairing.py). The backend CI job has none, so there the frontend CI job runs this file
-    (`.github/workflows/ci.yml`); a missing node still fails in CI through `_node_with_typescript`."""
-    from tests.node_ts import FRONTEND, _node_with_typescript, run_node_test
+    (`.github/workflows/ci.yml`); a missing node still fails in CI through `run_node_render_test`."""
+    from tests.node_ts import run_node_render_test
 
-    if not (FRONTEND / "node_modules" / "typescript").is_dir():
-        _node_with_typescript()  # fails in CI when node itself is absent; only then skip
-        pytest.skip("frontend packages are not installed; the frontend CI job runs this file")
-    result = run_node_test("components/settings/agent-writer-section.test.mjs")
+    result = run_node_render_test("components/settings/agent-writer-section.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr

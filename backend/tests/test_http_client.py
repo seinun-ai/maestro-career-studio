@@ -164,16 +164,20 @@ def test_repair_proxy_env_leaves_a_clean_env_alone(monkeypatch, caplog):
 
 
 def test_after_the_repair_the_openai_sdk_and_a_child_process_build_their_clients():
+    # The premise is plain httpx, which rejects the entry: the locked OpenAI SDK (2.x) builds on it, and
+    # so do the embedding model's download and any child process. openai 3.x builds on httpx2, which
+    # accepts the entry since 2.14, so the SDK itself is only checked after the repair.
     code = (
         "import subprocess, sys\n"
+        "import httpx\n"
         "from openai import OpenAI\n"
         "from app.services import http_client\n"
         "try:\n"
-        "    OpenAI(api_key='x')\n"
+        "    httpx.Client()\n"
         "except Exception as exc:\n"
         "    assert type(exc).__name__ == 'InvalidURL', exc\n"
         "else:\n"
-        "    raise SystemExit('the premise failed: the SDK accepted the bad entry')\n"
+        "    raise SystemExit('the premise failed: httpx accepted the bad entry')\n"
         "http_client.repair_proxy_env()\n"
         "OpenAI(api_key='x')\n"
         "subprocess.run([sys.executable, '-c', 'import httpx; httpx.Client()'], check=True)\n")

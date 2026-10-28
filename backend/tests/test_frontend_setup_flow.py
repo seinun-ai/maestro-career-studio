@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from tests.node_ts import run_node_test
+from tests.node_ts import run_node_render_test, run_node_test
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -231,7 +231,7 @@ def test_setup_words_node_suite():
 
 def test_setup_flow_node_suite():
     """The flow rendered with seeded reads: each step as the first one open, the rail, the done screen."""
-    result = run_node_test("components/setup/setup-flow.test.mjs")
+    result = run_node_render_test("components/setup/setup-flow.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr
 
 

@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 from tests._jsx_pins import open_tag
-from tests.node_ts import run_node_test
+from tests.node_ts import run_node_render_test, run_node_test
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -183,5 +183,5 @@ def test_today_words_node_suite():
 
 def test_today_page_node_suite():
     """The page rendered with seeded reads: each next-up kind, the counts, the week, the empty and failed states."""
-    result = run_node_test("components/today/today-page.test.mjs")
+    result = run_node_render_test("components/today/today-page.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr

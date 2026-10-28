@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.node_ts import run_node_test
+from tests.node_ts import run_node_render_test, run_node_test
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -202,5 +202,5 @@ def test_the_day_strip_is_round_status_dots_with_a_sentence_and_a_legend():
 
 def test_automations_page_node_suite():
     """The page rendered with seeded runs: Reporting cards, compact rows, the folds (Task 4.4)."""
-    result = run_node_test("components/automations/automations-page.test.mjs")
+    result = run_node_render_test("components/automations/automations-page.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr
