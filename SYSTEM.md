@@ -647,7 +647,9 @@ anchors, Jobs, Agent inbox, job steps, Analytics); the tiers (one `LeadCard`, th
 - **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors for editable/dev installs
   (`pip install -e ".[dev,mcp]"`, also CI); the container installs hash-pinned `backend/requirements.lock`.
   Regenerate that lock with **`mcp` + `tracing` only, on Linux/Python 3.12** (command in `backend/Dockerfile`;
-  macOS/3.13 gives wrong pins). CI's `dependency-audit` (`pip-audit` on the lock) failing on a new advisory is intended.
+  macOS/3.13 gives wrong pins). Without Docker: pip-compile on macOS/3.12 with `--upgrade-package` per mover, then
+  `uv pip compile --python-platform x86_64-manylinux_2_28 --python-version 3.12 -c <the lock's pins>` must list the same set.
+  CI's `dependency-audit` (`pip-audit` on the lock, `npm audit --omit=dev`) failing on a new advisory is intended.
 - **No Langfuse stack ships here** (the bundled compose file had fixed default secrets).
   The SDK is the `tracing` extra (included in Docker and native; uv and the desktop build omit it); `services/tracing.py` requires
   all three `LANGFUSE_*` settings. Tracing points at the user's host; `langfuse_host` defaults to empty.
