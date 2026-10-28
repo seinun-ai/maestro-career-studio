@@ -535,7 +535,9 @@
   proposal past `expires_at` is left out via `proposals.past_expiry`, not expired). Like the Jobs list it reads the
   other copy's replicas too. `next_up` is the first that exists in `NEXT_UP_ORDER`: an application at `offered`
   (waited longest first), the `pdf_ready` rung (`services/stage.py`) with the best tracker score, a Needs you proposal
-  (newest, the lane's order); null when none. It carries `kind`, the job, application and proposal ids, title,
+  (newest, the lane's order); null when none. Each passes over an application whose status change, or a proposal
+  whose decision, is on its way to the other copy (`sync/requests.on_their_way`: a local request pending or sent),
+  so a Skip "Sent at the next sync" moves the card on; a refused request brings the job back. It carries `kind`, the job, application and proposal ids, title,
   company, location, `pay` as posted, `base_resume` (slug, name, colour hue), `score`, `status`, `proposed_by`,
   `reason` and `steps`, the ladder's dated steps only (saved, gaps_closed, tailored, applied, interviewing, offered,
   proposed; a backfilled event has no date). `also` and `more` hold only non-zero counts with an `href`: to approve

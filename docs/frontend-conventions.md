@@ -1150,7 +1150,8 @@
   toast "Job skipped" offers Undo (back to Draft); an agent's job takes the job page's Skip (the
   reason dialog, the proposal Skipped); an offer has none, since it needs an answer. Today refetches
   and the next job takes the card; a Skip that leaves nothing next moves focus to the line that
-  replaces it, and one on the other copy's job says "Sent at the next sync". It carries the base resume's
+  replaces it, and one on the other copy's job says "Sent at the next sync" and moves on too (the server
+  passes over a change on its way). It carries the base resume's
   square (D2), pay through `formatPay` with the posted amount under a converted figure (D8), and
   "Where this job is": only the steps the server dates, then the move the button makes. Also today
   is up to three cards with `NumberRoll` counts, each a link to its list (a list that holds more than
@@ -1402,8 +1403,10 @@
   `["resume-diff", id, updated_at]`, shared with the studio; the previous list stands in while a new draft's
   loads, and Revert and Apply wait for the real one). The header tallies each provenance as the studio's chip (`ProvenanceChip tinted`: **From your
   career history**, **You**; an unattributed change has none, since the server cannot tell an AI rewrite from a
-  hand edit) and a count badge. Each row: where it sits (`lib/resume-diff` `hunkPlace`), the chip, the old text
-  in `<del>` and the new in `<ins>` with "Before:" and "Now:" for screen readers, and a **Revert this change**
+  hand edit) and a count badge. Each row: where it sits (`lib/resume-diff` `hunkPlace`), the chip, the old and new
+  text as a diff (`HunkDiff`, the studio's review rows too: the old line on a faint `error-container` wash, the new on
+  a faint `success-container`, the words that changed on the full container and struck on the old line, from
+  `lib/word-diff` `lineDiff`; `<del>`/`<ins>` with "Before:" and "Now:" for screen readers), and a **Revert this change**
   icon button described by the row's place. Rows are keyed without their position (`hunkIds`), so after a revert
   focus moves to a neighbour and a polite live region says "Change reverted". A revert goes only against the draft the diff names (the diff's `updated_at` equals the application's, else
   "The changes were out of date and have been refreshed. Try again." and both reload), sends it as

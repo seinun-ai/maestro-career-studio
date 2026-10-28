@@ -6,6 +6,7 @@ Judged text is the resume wording a check is rating; it is shown exactly as writ
 - A clamped quote shows a visible Show all / Show less toggle with `aria-expanded`.
 - The row around it: metadata in `body-small` `muted-foreground`, the bullet's question in `body-medium`, one text-style action and a "more" button. The row's edge is a plain `border`.
 - In a diff, removed words are `error-container` / `on-error-container` struck through, added words are `success-container` / `on-success-container`.
+- A resume change in Review changes (`HunkDiff`) is two lines: the old on a faint `error-container` wash (40%) in `muted-foreground`, the new on a faint `success-container` wash in `foreground`, and only the words that changed on the full containers above. A word keeps its punctuation apart, so items added to a skills list leave the last old item unmarked.
 - An edit is described, never printed raw.
 
-Source: `frontend/components/resume-health/judged-text.tsx`, `finding-cards.tsx`. Changed from source: diff tints become role containers; the row edge loses its violet tint.
+Source: `frontend/components/resume-health/judged-text.tsx`, `finding-cards.tsx`, `frontend/components/resume-editor/hunk-diff.tsx`. Changed from source: diff tints become role containers; the row edge loses its violet tint.

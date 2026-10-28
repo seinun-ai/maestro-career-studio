@@ -144,8 +144,9 @@ rules. Your agent does the writing.
 - **Skip on Today.** Next up has a quiet **Skip** beside its button. A ready resume turns **Skipped**,
   with Undo; an agent's question opens the job page's reason dialog; an offer has no Skip. Skipped
   closes the job like Rejected and Withdrawn, closes the job's open agent proposals so a queued agent
-  never applies to it, and **Draft** takes it back. `update_application` takes it over MCP, and the
-  Companion shows it.
+  never applies to it, and **Draft** takes it back. Jobs' Closed chip counts it. Skipping a job your
+  bot holds is sent at the next sync, and Next up moves on to the next job meanwhile; if the bot refuses
+  the change, the job comes back. `update_application` takes it over MCP, and the Companion shows it.
 - **A four-step first run.** A new install opens **Setup**: pick the AI that does the writing (Claude,
   OpenAI, Gemini, OpenRouter or your own server), paste its key and press Test to see what it can do;
   drop your resume and see what it found; say where you live, where you apply, the roles you want and
@@ -318,6 +319,9 @@ rules. Your agent does the writing.
   another currency shows the posted amount under it, and pay whose post named no currency says how it
   was read when the job is in another country than where you live ("Pay read as Canadian dollars, job
   is in Canada").
+- **Review changes reads as a diff.** In the resume studio and on a job's Tailored resume step, each
+  change shows its old line on a light red and its new line on a light green, and marks only the words
+  that changed: struck through on the old line, highlighted on the new. Both readable in light and dark.
 - **Calmer chart colours.** Charts use six series near one lightness (blue, orange, teal, violet,
   ochre, plum) with no red or green, so no series reads as good or bad. Each stays readable on its
   card in light and dark, and neighbouring series stay apart for colour-blind readers.

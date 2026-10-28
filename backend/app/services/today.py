@@ -5,7 +5,9 @@ stage ladder, the tracker score, the Agent inbox's lanes, the status-event log t
 counts rather than expired (the Agent inbox's own read does that, so its lists never hold one).
 
 Like the Jobs list, it reads every job, the other copy's replicas included: an action on one becomes
-a request for the next sync (docs/entities/job.md, "Ownership under sync").
+a request for the next sync (docs/entities/job.md, "Ownership under sync"). Next up passes over an
+application whose status change, or a proposal whose decision, is on its way there, so a Skip that was
+"Sent at the next sync" moves the card on now; a refused request brings it back.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from app.services import (
     stage,
 )
 from app.services.search_summary import INTERVIEW_STATUSES, REPLY_STATUSES
+from app.services.sync import requests as sync_requests
 
 # Next up is the first of these that exists, in this order: an offer waits on your answer to an
 # employer, a ready PDF is one click from applying (the best match first), and a proposal's question
@@ -160,9 +163,10 @@ def _draft_steps(db: Session, application: Application) -> list[tuple[str, datet
     return [("gaps_closed", closed), ("tailored", tailored)]
 
 
-def _offer(db: Session) -> dict[str, Any] | None:
+def _offer(db: Session, waiting: set) -> dict[str, Any] | None:
     """An offer awaiting your response: status offered. The one that has waited longest first."""
-    offers = db.scalars(select(Application).where(Application.status == "offered")).all()
+    offers = [a for a in db.scalars(select(Application).where(Application.status == "offered"))
+              if a.id not in waiting]
     if not offers:
         return None
     since = dict(
@@ -198,9 +202,9 @@ def _unsent(db: Session) -> list[Application]:
     ))
 
 
-def _pdf_ready(db: Session, unsent: list[Application], rungs: dict) -> dict[str, Any] | None:
+def _pdf_ready(db: Session, unsent: list[Application], rungs: dict, waiting: set) -> dict[str, Any] | None:
     """A draft with its PDF ready (the `pdf_ready` rung) and the best match score (the tracker's)."""
-    ready = [a for a in unsent if rungs[a.id].rung == "pdf_ready"]
+    ready = [a for a in unsent if rungs[a.id].rung == "pdf_ready" and a.id not in waiting]
     if not ready:
         return None
     scores = ats_score.tracker_scores(db, ready)
@@ -211,13 +215,13 @@ def _pdf_ready(db: Session, unsent: list[Application], rungs: dict) -> dict[str,
                  score=scores.get(application.id), status=application.status, steps=steps)
 
 
-def _needs_you(db: Session, now: datetime) -> dict[str, Any] | None:
+def _needs_you(db: Session, now: datetime, decided: set) -> dict[str, Any] | None:
     """A proposal waiting on your answer (the Agent inbox's Needs you lane), newest first as the lane
     lists it; one past its expiry is not waiting any more."""
     proposal = db.scalars(
         select(ApplicationProposal)
         .where(ApplicationProposal.status.in_(inbox_readiness.NEEDS_YOU),
-               not_(proposals.past_expiry(now)))
+               not_(proposals.past_expiry(now)), ApplicationProposal.id.not_in(decided))
         .order_by(ApplicationProposal.created_at.desc(), ApplicationProposal.id.desc())
         .limit(1)
     ).first()
@@ -318,10 +322,11 @@ def build(db: Session, *, zone: tzinfo = UTC, zone_label: str = "UTC",
     now = now or datetime.now(UTC)
     unsent = _unsent(db)
     rungs = stage.for_applications(db, unsent)
+    waiting, decided = sync_requests.on_their_way(db)
     pickers: dict[str, Callable[[], dict[str, Any] | None]] = {
-        "offer": lambda: _offer(db),
-        "pdf_ready": lambda: _pdf_ready(db, unsent, rungs),
-        "needs_you": lambda: _needs_you(db, now),
+        "offer": lambda: _offer(db, waiting),
+        "pdf_ready": lambda: _pdf_ready(db, unsent, rungs, waiting),
+        "needs_you": lambda: _needs_you(db, now, decided),
     }
     next_up = next((item for kind in NEXT_UP_ORDER if (item := pickers[kind]()) is not None), None)
 
