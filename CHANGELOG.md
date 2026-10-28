@@ -39,6 +39,13 @@ starts with a four-step **Setup**. Every page leads with one card and folds the 
 only once there are 20 to count from, pay reads in your home currency, and your profile keeps
 work-permit answers for each country you apply in.
 
+Your agent app can now do the work too. Over MCP, Claude, Codex or another agent app can take a job
+from the posting to a finished application with the web app closed and no AI key in Maestro. It
+writes the cover letter, the answers and the tailored lines, and judges your resume's health check.
+One setting picks who writes (your agent app, unless you choose Maestro's AI), and the tools come in
+sets that follow a job search, so an agent knows where to start. Maestro keeps the record and the
+rules. Your agent does the writing.
+
 ### Breaking changes
 
 - **MCP tool sets follow a job search.** The smaller sets are now `profile` (was `career`: career
@@ -113,6 +120,10 @@ work-permit answers for each country you apply in.
   (`?tab=basics|companion|agents|advanced`), Profile has no tabs (`/profile#<card>`), and Jobs opens on
   All active (`?status=all` lists every job). A link or bookmark to an old tab opens the tab and card
   it moved to.
+- **A new application status, `skipped`** (Skipped: you decided not to apply). The Jobs list's Agent
+  inbox lane, until now `?status=skipped`, is `?status=agent_skipped` (still labelled Skipped), and
+  `?status=skipped` lists the new status. With sync on, skipping a job the other copy owns needs that
+  copy on this release too: an older copy refuses the change.
 
 ### Added
 
@@ -130,6 +141,11 @@ work-permit answers for each country you apply in.
   interviews. Pay reads in your home currency. A new user without an API key or a resume sees the two
   setup steps there instead. The sidebar leads with Today, which now carries the Needs you count, and
   folds Automations, Referrals, Templates and the Assistant under **More tools**.
+- **Skip on Today.** Next up has a quiet **Skip** beside its button. A ready resume turns **Skipped**,
+  with Undo; an agent's question opens the job page's reason dialog; an offer has no Skip. Skipped
+  closes the job like Rejected and Withdrawn, closes the job's open agent proposals so a queued agent
+  never applies to it, and **Draft** takes it back. `update_application` takes it over MCP, and the
+  Companion shows it.
 - **A four-step first run.** A new install opens **Setup**: pick the AI that does the writing (Claude,
   OpenAI, Gemini, OpenRouter or your own server), paste its key and press Test to see what it can do;
   drop your resume and see what it found; say where you live, where you apply, the roles you want and
