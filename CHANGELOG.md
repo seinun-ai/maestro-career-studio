@@ -28,6 +28,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-10-28
+
 Edit a bullet on a base resume, click Add, and career history used to keep both: the old bullet and
 the new one, side by side, one more pair for every rewrite. Now a rewrite stays with the bullet it
 rewrites, as one of its wordings, and only a genuinely new bullet asks for your review. For the pairs
