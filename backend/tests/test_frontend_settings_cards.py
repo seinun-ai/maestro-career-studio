@@ -304,14 +304,17 @@ def test_autofill_removes_are_named_and_hand_focus_to_add():
     # "Remove education entry" on every row named none of them; a removed row took focus with it.
     assert "removeLabel={(i) => `Remove school ${i + 1}`}" in education
     assert "removeLabel={(i) => `Remove custom question ${i + 1}`}" in questions
+    for src in (education, questions):
+        assert "<AnswerList" in src and "useFocusOnNextCommit" not in src
+
+
+def test_one_answer_list_hands_a_removed_rows_focus_to_its_own_add():
     # One list renders each tile's rows (answer-list.tsx), so each tile's ref is on its own Add: swapped, a
     # removed school focused Add question.
     shell = _read("components/profile/answer-list.tsx")
     assert "const armFocus = useFocusOnNextCommit();" in shell and "armFocus(addRef);" in shell
     assert "label={removeLabel(i)}" in shell
     assert "ref={addRef}" in _button_at(shell, "onClick={() => setEntries([...entries, newEntry()])}")
-    for src in (education, questions):
-        assert "<AnswerList" in src and "useFocusOnNextCommit" not in src
 
 
 def test_languages_are_edited_like_education_and_saved_in_the_same_body():
@@ -482,7 +485,6 @@ def test_a_save_that_disables_itself_keeps_focus():
         ("settings/auto-apply-section.tsx", "onClick={() => draft && saveOnce(draft)}"),
         ("settings/prompts-section.tsx", "onClick={() => saveOnce()}"),
         ("settings/prompts-section.tsx", "onClick={() => resetOnce()}"),
-        ("profile/how-you-come-across.tsx", "onClick={() => saveOnce(value)}"),
         ("settings/llm-endpoint.tsx", "onSave({ base_url: draft?.trim() || null })"),
         ("profile/contact.tsx", '{isFillingFromResume ? "Filling…" : "Fill from career history"}'),
     ]
@@ -493,11 +495,11 @@ def test_a_save_that_disables_itself_keeps_focus():
 
 
 def test_a_row_that_unmounts_on_save_or_discard_hands_focus_on():
-    # Persona's Save row and Auto-apply's Discard leave with the edit; focus went with them.
+    # Persona's draft row and Auto-apply's Discard leave with the edit; focus went with them.
     persona = _read("components/profile/how-you-come-across.tsx")
-    success = persona[persona.index("onSuccess: (result) => {") : persona.index("const draft = useMutation(")]
-    discard = _button_at(persona, "setValue(saved);")
-    assert "focusNext(textareaRef);" in success and "focusNext(textareaRef);" in discard
+    use = _button_at(persona, ">\n            Use this draft\n")
+    discard = _button_at(persona, ">\n            Discard\n")
+    assert "focusNext(textareaRef);" in use and "focusNext(textareaRef);" in discard
     assert "ref={textareaRef}" in persona
     auto = _read("components/settings/auto-apply-section.tsx")
     assert "focusNext(saveRef);" in auto and "ref={saveRef}" in auto

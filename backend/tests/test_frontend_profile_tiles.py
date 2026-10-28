@@ -182,17 +182,26 @@ def test_an_open_page_reads_the_answers_again_when_you_come_back():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_every_profile_editor_stays_mounted_and_the_persona_keeps_its_save():
+def test_every_profile_editor_stays_mounted_and_saves_as_you_go():
     """One open tile at a time, each editor kept mounted while closed (typed drafts and leave guards survive).
-    The persona keeps Save and Discard: a drafted persona is read before it is saved (inv-drafted-answers)."""
+    Every Profile editor saves as you go, the persona too (owner, 2026-10-22)."""
     view = _src("components/profile/profile-view.tsx")
     assert "hidden={sections.tile !== tile.id}" in view
     assert "{tiles[tile.id].panel}" in view
-    persona = _src("components/profile/how-you-come-across.tsx")
-    assert "onClick={() => saveOnce(value)}" in persona and "Discard" in persona
-    others = [p for p in (_FRONTEND / "components/profile").glob("*.tsx") if p.name != "how-you-come-across.tsx"]
-    for path in others:
+    for path in (_FRONTEND / "components/profile").glob("*.tsx"):
         assert "saveOnce(" not in path.read_text(encoding="utf-8"), path.name
+
+
+def test_only_a_drafted_persona_waits_for_a_click():
+    """A drafted persona is read before it is kept (inv-drafted-answers): it waits for Use this draft or Discard,
+    and the status says nothing then."""
+    persona = _src("components/profile/how-you-come-across.tsx")
+    assert "useAutosave(initial, (next) => save.mutateAsync(next))" in persona
+    assert "<AutosaveStatus pending={pending} failed={failed} idle={review === null} onRetry={retry} />" in persona
+    # The draft lands in `review`, never in the autosaved value; only Use this draft hands it over.
+    landed = persona[persona.index("const draft = useMutation(") : persona.index("// One request per gesture")]
+    assert "setReview(result.draft);" in landed and "update(" not in landed
+    assert "Use this draft" in persona and "Discard" in persona
 
 
 # ------------------------------------------------------------------------- Header and Next up

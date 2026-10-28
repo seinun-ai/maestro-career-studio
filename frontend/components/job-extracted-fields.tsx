@@ -12,6 +12,7 @@ import { useMoney } from "@/hooks/use-money";
 import type { Job } from "@/lib/types";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { formatShortDate } from "@/lib/format-date";
+import { showsOptLine } from "@/lib/job-meta";
 import { formatPay, payLine, periodWords, type FormattedPay } from "@/lib/money";
 
 const JobFactsIcon = CONCEPT_ICONS.jobFacts;
@@ -328,11 +329,13 @@ export function JobExtractedFields({
               label="Work authorization"
               value={workAuthLine}
             />
-            <StatLine
-              icon={<StudentPermitIcon />}
-              label="OPT (US student work permit) accepted"
-              value={optLine}
-            />
+            {showsOptLine(job.opt_accepted, job.country_code) ? (
+              <StatLine
+                icon={<StudentPermitIcon />}
+                label="OPT (US student work permit) accepted"
+                value={optLine}
+              />
+            ) : null}
           </dl>
 
           {skills.length > 0 && (

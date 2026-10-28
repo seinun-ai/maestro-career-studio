@@ -90,6 +90,20 @@ def test_tracked_is_exactly_the_old_all_set():
     assert '(r) => r.kind === "saved" || r.app.source === source,' in _TRACKER
 
 
+def test_the_job_page_reads_its_list_sequence_after_hydration():
+    """sessionStorage is the browser's, so the hydration render reads no sequence, as the server did; reading it then
+    drew the rails the server had not, and React logged "Hydration failed" (0.12.0 screenshot run)."""
+    page = _read("app/jobs/[id]/page.tsx")
+    assert "const hydrated = useSyncExternalStore(subscribeNoop, () => true, () => false);" in page
+    assert 'hydrated ? readSequence(fromProposals ? "cs-proposals-seq" : "cs-tracker-seq") : []' in page
+
+
+def test_the_job_header_never_breaks_inside_the_pay():
+    """The facts line wraps, but "$165K–" and "$195K a year" on two lines read as two figures."""
+    page = _read("app/jobs/[id]/page.tsx")
+    assert '<span className="whitespace-nowrap">{salary}</span>' in page
+
+
 def test_links_and_session_memory_keep_their_names():
     filters = _read("lib/tracker-filters.ts")
     for key in ('"cs-tracker-filter"', '"cs-tracker-source"'):

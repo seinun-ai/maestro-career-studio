@@ -43,15 +43,16 @@ export type Step = {
 };
 
 /**
- * The current step from the stage: saved/scored/gaps → fit; tailored/pdf_ready → output; applied/closed → qa.
- * Never "job": the job exists once saved, so step 1 is always done and step 2 is never next. A rung that
- * would make the job step current is a deliberate change here.
+ * The current step from the stage: saved/scored/gaps → fit; tailored → output; pdf_ready/applied/closed → qa.
+ * A made PDF is step 3 done, so a job with one opens on Apply (owner, 2026-10-22). Never "job": the job exists
+ * once saved, so step 1 is always done and step 2 is never next. A rung that would make the job step current is
+ * a deliberate change here.
  */
 export function currentStep(stage: Rung): Exclude<StepKey, "job"> {
   switch (stage) {
     case "tailored":
-    case "pdf_ready":
       return "output";
+    case "pdf_ready":
     case "applied":
     case "closed":
       return "qa";
@@ -125,8 +126,8 @@ function progressOf(key: StepKey, state: StepState, i: JobStepsInput, gaps: Clos
   if (state === "next") return 0;
   if (key === "fit") return gaps && gaps.total > 0 ? gaps.closed / gaps.total : null;
   if (key === "output") return i.pdf ? 1 : null;
-  // Step 4 is current only once the job is applied or closed (currentStep).
-  if (key === "qa") return 1;
+  // Step 4 is current from the PDF on (currentStep): full once the job is applied or closed, no share before.
+  if (key === "qa") return i.stage === "applied" || i.stage === "closed" ? 1 : null;
   return null;
 }
 

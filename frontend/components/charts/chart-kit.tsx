@@ -44,11 +44,11 @@ export function weekRows<Row extends { week_start: string }>(
  */
 export const CHART_COLORS = [
   "var(--chart-1, oklch(0.55 0.14 259))",
-  "var(--chart-2, oklch(0.62 0.13 50))",
-  "var(--chart-3, oklch(0.55 0.1 175))",
+  "var(--chart-2, oklch(0.61 0.15 54))",
+  "var(--chart-3, oklch(0.57 0.11 171))",
   "var(--chart-4, oklch(0.55 0.14 310))",
   "var(--chart-5, oklch(0.6 0.11 95))",
-  "var(--chart-6, oklch(0.5 0.03 259))",
+  "var(--chart-6, oklch(0.55 0.12 350))",
 ];
 
 /** Theme-aware styles for recharts' default <Tooltip />. */

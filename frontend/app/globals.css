@@ -230,11 +230,11 @@
      good or bad. Each step holds 3:1 on --card (a graphical object); pinned
      with the hue rule by backend/tests/test_frontend_color_roles.py. */
   --chart-1: oklch(0.55 0.14 259);
-  --chart-2: oklch(0.62 0.13 50);
-  --chart-3: oklch(0.55 0.1 175);
+  --chart-2: oklch(0.61 0.15 54);
+  --chart-3: oklch(0.57 0.11 171);
   --chart-4: oklch(0.55 0.14 310);
   --chart-5: oklch(0.6 0.11 95);
-  --chart-6: oklch(0.5 0.03 259);
+  --chart-6: oklch(0.55 0.12 350);
   /* Status roles: M3 "custom colours". Each is a tonal palette cut from the
      hue the app already used for that meaning (emerald, amber, orange,
      violet), at M3's three slots: the role itself (text and dots on a
@@ -323,12 +323,12 @@
   --ring: oklch(0.62 0.09 259);
   /* Chart series on dark: the same hues and chroma at lightness 0.72
      (the slate at 0.68), 3:1 or more on the dark --card. */
-  --chart-1: oklch(0.72 0.14 259);
-  --chart-2: oklch(0.72 0.13 50);
-  --chart-3: oklch(0.72 0.1 175);
-  --chart-4: oklch(0.72 0.14 310);
-  --chart-5: oklch(0.72 0.11 95);
-  --chart-6: oklch(0.68 0.03 259);
+  --chart-1: oklch(0.66 0.14 259);
+  --chart-2: oklch(0.66 0.13 54);
+  --chart-3: oklch(0.66 0.11 171);
+  --chart-4: oklch(0.66 0.14 310);
+  --chart-5: oklch(0.66 0.11 95);
+  --chart-6: oklch(0.66 0.13 350);
   /* Status roles on dark: role near tone 80, container near tone 30, text
      on it near tone 90. */
   --success: oklch(0.83 0.11 163);

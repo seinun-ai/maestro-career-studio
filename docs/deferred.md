@@ -135,14 +135,6 @@
     before another save overwrites that save's answers for the same country (`work_auth_market` protects only other countries'
     answers). It needs an `expected_updated_at` with a 409 when the profile moved, as the resume draft has. Do when a lost
     same-country edit is reported, or the autofill PUT is next changed.
-58. The chart palette fails the dataviz skill's validator: chart-3's chroma sits at its 0.10 floor, chart-2 and chart-3 are ΔE 7.3
-    apart for protanopia in light, and the dark steps (L 0.72) sit outside its lightness band. The six tokens hold 3:1 on `card` and
-    are pinned (`test_frontend_color_roles.py`), so they stay as they are. Do when a chart draws chart-2 and chart-3 as neighbours a
-    reader must tell apart, or the palette is next revised (rerun the validator and move the pins with it).
-59. A picture from before the refresh: `docs/assets/connected-agents.png` (USING_MAESTRO's Agent apps section) shows the
-    old Settings tab; its alt text is current. The design-system previews are listed under "Not synced" in
-    `docs/design-system/README.md`. Do when the screenshots are next retaken, or that section of USING_MAESTRO is next
-    changed.
 60. `frontend/.slopconfig.json` (`allowed_clones`) and `frontend/.slop-baseline.json` still name
     `components/settings/autofill-section.tsx`, which the Profile rebuild split into `components/profile/*`, so the slop ratchet
     (maintainer-run, SYSTEM.md §9) reads a pair that no longer exists. Do when the frontend slop ratchet is next run: drop the pair
@@ -156,3 +148,10 @@
     bullets wait for a judge, so an ungraded resume drops off Today once checked; **Not right?** disputes still need a model key; and
     the first keyed run re-judges every bullet an agent judged (cache rows key on the smart model). Do when a keyless user loses an
     ungraded resume from Today, or asks to dispute a rating without a key.
+64. The health report's change line after Check again compares the two reports' findings, never the two versions
+    (`lib/health-report.explainScoreDelta`), so five reworded bullets read only as what their findings show ("1 bullet in
+    Northwind Analytics now needs work"), and a reword of a strong bullet is invisible. The fuller line: `resume_lint.run_report`
+    already holds the prior report, so it can diff the checked version against the current one (`resume_diff.diff_resume`) and
+    store added, edited and removed bullet counts per entry on the report (an additive field, passed through by
+    `run_health_check` and `get_health_report`), and the line says "5 bullets reworded. 1 in Northwind Analytics now needs
+    work." Do when the health report is next changed, or a change line is reported as missing what was edited.

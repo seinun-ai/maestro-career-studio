@@ -40,8 +40,8 @@ test("object prototype keys and an empty tab are not steps", () => {
 test("the current step follows the stage", () => {
   const want: Record<Rung, string> = {
     saved: "fit", scored: "fit", gaps: "fit",
-    tailored: "output", pdf_ready: "output",
-    applied: "qa", closed: "qa",
+    tailored: "output",
+    pdf_ready: "qa", applied: "qa", closed: "qa",
   };
   for (const [stage, step] of Object.entries(want)) assert.equal(currentStep(stage as Rung), step, stage);
 });
@@ -56,7 +56,8 @@ test("steps before the current one are done, the rest next", () => {
   assert.deepEqual(states("saved"), ["done", "current", "next", "next"]);
   assert.deepEqual(states("gaps"), ["done", "current", "next", "next"]);
   assert.deepEqual(states("tailored"), ["done", "done", "current", "next"]);
-  assert.deepEqual(states("pdf_ready"), ["done", "done", "current", "next"]);
+  // A made PDF is step 3 done: the job opens on Apply (owner, 2026-10-22).
+  assert.deepEqual(states("pdf_ready"), ["done", "done", "done", "current"]);
   assert.deepEqual(states("applied"), ["done", "done", "done", "current"]);
   assert.deepEqual(states("closed"), ["done", "done", "done", "current"]);
 });
@@ -104,17 +105,19 @@ test("step 3: the base resume's score and the tailored one, or the tailored one 
   assert.equal(metric({ stage: "tailored", draft: { score: null, base: 72 } }, 3), null);
   // The draft from before a re-analysis still says what it scored.
   assert.equal(metric({ stage: "gaps", draft: { score: 84, base: 70 } }, 3), "70.0 → 84.0");
-  // Current: full once the PDF exists, else no share.
+  // Current: no share before the PDF; done (full) once it exists.
   assert.equal(progress({ stage: "tailored", draft: { score: 84, base: 70 } }, 3), null);
   assert.equal(progress({ stage: "pdf_ready", draft: { score: 84, base: 70 }, pdf: true }, 3), 1);
 });
 
-test("step 4 has no number; current only once applied or closed, so its bar is full", () => {
+test("step 4 has no number; full once applied or closed, no share while you apply", () => {
   for (const stage of ["saved", "gaps", "tailored", "pdf_ready", "applied", "closed"] as Rung[]) {
     assert.equal(metric({ stage, hasApplication: true, pdf: true }, 4), null, stage);
   }
   assert.equal(progress({ stage: "applied", hasApplication: true }, 4), 1);
-  assert.equal(progress({ stage: "pdf_ready", hasApplication: true }, 4), 0);
+  assert.equal(progress({ stage: "closed", hasApplication: true }, 4), 1);
+  assert.equal(progress({ stage: "pdf_ready", hasApplication: true, pdf: true }, 4), null);
+  assert.equal(progress({ stage: "tailored", hasApplication: true }, 4), 0);
 });
 
 const reach = (over: Partial<JobStepsInput>) => jobSteps(input(over)).map((s) => s.reachable);

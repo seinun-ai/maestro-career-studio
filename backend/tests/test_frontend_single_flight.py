@@ -46,8 +46,8 @@ _SITES = [
     ("components/settings/prompts-section.tsx", "save"),
     ("components/settings/prompts-section.tsx", "reset"),
     ("components/settings/auto-apply-section.tsx", "save"),
-    # Persona moved to Profile's How you come across tile (design refresh Task 7.2), its Save kept.
-    ("components/profile/how-you-come-across.tsx", "save"),
+    # Persona moved to Profile's How you come across tile (design refresh Task 7.2). It saves as you type since
+    # 2026-10-22 (useAutosave sends one write at a time), so its one gesture left is Draft.
     ("components/profile/how-you-come-across.tsx", "draft"),
     ("components/settings/llm-endpoint.tsx", "save"),
     ("components/settings/model-catalog-panel.tsx", "add"),

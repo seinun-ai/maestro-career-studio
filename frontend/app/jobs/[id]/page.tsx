@@ -1,6 +1,6 @@
 "use client";
 
-import { type MouseEvent, type ReactNode, use, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, use, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
@@ -63,6 +63,7 @@ import { ScoreBar } from "@/components/visual/score-bar";
 import { useBaseResumeColor } from "@/hooks/use-base-resume-label";
 import { useCachedJobHeading } from "@/hooks/use-cached-job-heading";
 import { useJobSteps } from "@/hooks/use-job-steps";
+import { useHomeCountry } from "@/hooks/use-market";
 import { useMoney } from "@/hooks/use-money";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
@@ -71,7 +72,7 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { headerProposalPill, historyStatusOf, proposalHasContent } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
-import { assumedCurrencyLine, jobMetaLine } from "@/lib/job-meta";
+import { assumedCurrencyLine, jobMetaLine, showsAssumedCurrency, workModeUnlessSaid } from "@/lib/job-meta";
 import { answersSummary } from "@/lib/filled-answers";
 import { formatShortDate } from "@/lib/format-date";
 import { formatPay, payLine, periodWords } from "@/lib/money";
@@ -154,6 +155,11 @@ function JobHeadingLead({
       </div>
     </>
   );
+}
+
+// Nothing to subscribe to: `useSyncExternalStore` here only tells the hydration render from the ones after it.
+function subscribeNoop() {
+  return () => {};
 }
 
 function readSequence(key: string): string[] {
@@ -249,6 +255,7 @@ export default function JobDetailPage({
   const { proposalQuery, baseName, scoreShown, standing, steps, jobLine, draft } = useJobSteps(id, data);
   const colorOf = useBaseResumeColor();
   const money = useMoney();
+  const homeCountry = useHomeCountry();
   const scoreResume = scoreShown?.tailored ? application?.base_resume ?? "" : scoreShown?.targetId ?? "";
   const proposalId = data?.job.proposal_id ?? null;
   // The receipt's query, shared with What was submitted's own: its fold counts the answers once they are in.
@@ -316,10 +323,13 @@ export default function JobDetailPage({
 
   // Prev/next: proposals list writes cs-proposals-seq; Jobs (/applications) writes
   // cs-tracker-seq. ?from=proposals selects which queue and back target.
+  // sessionStorage is the browser's: the server renders no sequence, so the hydration render reads none either (it
+  // drew the rails the server had not, and React logged "Hydration failed"); the render after it reads the list.
+  const hydrated = useSyncExternalStore(subscribeNoop, () => true, () => false);
   const sequence = useMemo<string[]>(
     () =>
-      readSequence(fromProposals ? "cs-proposals-seq" : "cs-tracker-seq"),
-    [fromProposals],
+      hydrated ? readSequence(fromProposals ? "cs-proposals-seq" : "cs-tracker-seq") : [],
+    [hydrated, fromProposals],
   );
   const seqPos = sequence.indexOf(id);
   const prevJobId = seqPos > 0 ? sequence[seqPos - 1] : null;
@@ -399,11 +409,11 @@ export default function JobDetailPage({
   // "Company · Place · Mode · pay": the level is in the Job description fold.
   const pay = formatPay(jobPay(job), money);
   const salary = pay ? payLine(pay) : null;
+  // The pay is its own span below, so the line can wrap between its facts but never inside "$165K–$195K a year".
   const metaLine = jobMetaLine([
     job.company ?? "Unknown company",
     job.location,
-    humanizeEnum(job.work_mode),
-    salary,
+    workModeUnlessSaid(job.location, humanizeEnum(job.work_mode)),
   ]);
   // Under a converted figure, what the post said (D8). A currency the post did not state says what it was read as.
   const postedPay =
@@ -411,8 +421,9 @@ export default function JobDetailPage({
       ? `${pay.posted}${periodWords(pay.postedPeriod) ? ` ${periodWords(pay.postedPeriod)}` : ""} as posted`
       : null;
   const assumedPay =
-    pay && job.salary_currency_assumed && job.salary_currency
-      ? assumedCurrencyLine(job.salary_currency, job.country_code ? countryName(job.country_code) : null)
+    pay && job.salary_currency_assumed && job.salary_currency && job.country_code
+    && showsAssumedCurrency(job.country_code, homeCountry)
+      ? assumedCurrencyLine(job.salary_currency, countryName(job.country_code))
       : null;
 
   const proposalStatus = job.proposal_status ?? null;
@@ -517,13 +528,21 @@ export default function JobDetailPage({
             unmorphed={unmorphed}
             onBack={backClick}
           >
-            <p className="text-muted-foreground truncate text-body-medium" title={metaLine}>
+            {/* Both lines wrap, like the title: beside a wide Resume match pill the block is narrow, and a
+                truncated line lost the pay at its end. */}
+            <p className="text-muted-foreground text-body-medium break-words">
               {metaLine}
+              {salary ? (
+                <>
+                  {metaLine ? " · " : null}
+                  <span className="whitespace-nowrap">{salary}</span>
+                </>
+              ) : null}
             </p>
             {postedPay || assumedPay ? (
-              <p className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-body-small">
-                {assumedPay ? <WarningIcon aria-hidden="true" className="size-3.5 shrink-0 text-warning" /> : null}
-                <span className="truncate">{[postedPay, assumedPay].filter(Boolean).join(" · ")}</span>
+              <p className="text-muted-foreground flex min-w-0 items-start gap-1.5 text-body-small">
+                {assumedPay ? <WarningIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" /> : null}
+                <span className="min-w-0 break-words">{[postedPay, assumedPay].filter(Boolean).join(" · ")}</span>
               </p>
             ) : null}
             {ownership.mark ? <div className="mt-2"><JobOwnershipMark jobId={id} ownership={job.ownership} /></div> : null}

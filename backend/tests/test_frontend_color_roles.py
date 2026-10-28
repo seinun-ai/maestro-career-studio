@@ -671,6 +671,51 @@ def test_chart_series_hold_3_to_1_on_a_card(mode):
         assert ratio >= 3, f"{mode}: --{name} on --card is {ratio:.2f}:1"
 
 
+# The dataviz skill's checks (its validate_palette.js): OKLCH lightness inside the mode's band, chroma at least 0.10
+# so no series reads as grey, and every neighbour pair apart in OKLab ΔE×100: 8 under protanopia and deuteranopia
+# (Machado-Oliveira-Fernandes 2009, severity 1.0, the model its thresholds are calibrated to) and 15 for full-colour
+# readers. Series are drawn in order, so only neighbours touch (stacked bars, a legend's swatches).
+_BAND = {"light": (0.43, 0.77), "dark": (0.48, 0.67)}
+_MACHADO = {
+    "protan": ((0.152286, 1.052583, -0.204868), (0.114503, 0.786281, 0.099216), (-0.003882, -0.048116, 1.051998)),
+    "deutan": ((0.367322, 0.860646, -0.227968), (0.280085, 0.672501, 0.047413), (-0.011820, 0.042940, 0.968881)),
+}
+
+
+def _lab_of(rgb, cvd: str | None = None):
+    lin = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+    if cvd:
+        lin = [min(1.0, max(0.0, sum(m * c for m, c in zip(row, lin)))) for row in _MACHADO[cvd]]
+    r, g, b = lin
+    l_ = math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+    m_ = math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+    s_ = math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+    return (
+        0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+        1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+        0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_,
+    )
+
+
+def _delta_e(x, y, cvd: str | None = None) -> float:
+    return 100 * math.dist(_lab_of(x, cvd), _lab_of(y, cvd))
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_chart_series_pass_the_dataviz_checks(mode):
+    t = _MODES[mode]
+    low, high = _BAND[mode]
+    rgbs = [_rgb(t, name) for name in _CHART_SERIES]
+    for name, rgb in zip(_CHART_SERIES, rgbs):
+        lightness, a, b = _lab_of(rgb)
+        assert low <= lightness <= high, f"{mode}: --{name} L {lightness:.3f} is outside {low}–{high}"
+        assert math.hypot(a, b) >= 0.10, f"{mode}: --{name} reads as grey (C {math.hypot(a, b):.3f})"
+    for (first, x), (second, y) in zip(zip(_CHART_SERIES, rgbs), zip(_CHART_SERIES[1:], rgbs[1:])):
+        cvd = min(_delta_e(x, y, "protan"), _delta_e(x, y, "deutan"))
+        assert cvd >= 8, f"{mode}: --{first} and --{second} are ΔE {cvd:.1f} apart for colour-blind readers"
+        assert _delta_e(x, y) >= 15, f"{mode}: --{first} and --{second} are ΔE {_delta_e(x, y):.1f} apart"
+
+
 def test_chart_kit_fallbacks_are_the_light_series():
     kit = _read("components/charts/chart-kit.tsx")
     fallbacks = re.findall(r'"var\(--(chart-\d), (oklch\([^)]*\))\)"', kit)

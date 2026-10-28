@@ -717,9 +717,13 @@ type DeltaFinding = {
   level?: number | null;
 };
 
-function findingIdentity(finding: DeltaFinding): string {
+function findingPosition(finding: DeltaFinding): string {
   const { section, index, bullet_index } = finding.location;
-  return `${finding.content_hash ?? ""}|${section}|${index ?? ""}|${bullet_index ?? ""}`;
+  return `${section}|${index ?? ""}|${bullet_index ?? ""}`;
+}
+
+function findingIdentity(finding: DeltaFinding): string {
+  return `${finding.content_hash ?? ""}|${findingPosition(finding)}`;
 }
 
 function isScoreableFinding(finding: DeltaFinding): boolean {
@@ -732,7 +736,12 @@ function isScoreableFinding(finding: DeltaFinding): boolean {
   );
 }
 
-/** One sentence attributing a score change, or null when the diff is empty/ambiguous. */
+/**
+ * One sentence attributing a score change, or null when the diff is empty/ambiguous. It compares the two reports'
+ * findings, never the two versions, so it says only what they show: a bullet that now needs work (it may be new or
+ * reworded; never called "new"), one still flagged after a reword (a finding left and another came at the same
+ * place), an issue fixed, a rating changed.
+ */
 export function explainScoreDelta(
   prior: DeltaFinding[],
   next: DeltaFinding[],
@@ -765,11 +774,17 @@ export function explainScoreDelta(
       if (old) resolved.push(old);
     }
   }
+  // A finding that left and one that came at the same place is one bullet reworded and still flagged.
+  const leftAt = new Set(resolved.map(findingPosition));
+  const reworded = entered.filter((finding) => leftAt.has(findingPosition(finding)));
+  const rewordedAt = new Set(reworded.map(findingPosition));
+  const appeared = entered.filter((finding) => !rewordedAt.has(findingPosition(finding)));
+  const fixed = resolved.filter((finding) => !rewordedAt.has(findingPosition(finding)));
 
   const clauses: string[] = [];
-  if (entered.length > 0) {
+  if (appeared.length > 0) {
     const byGroup = new Map<string, DeltaFinding[]>();
-    for (const finding of entered) {
+    for (const finding of appeared) {
       const key = groupKey(finding);
       const list = byGroup.get(key) ?? [];
       list.push(finding);
@@ -779,12 +794,16 @@ export function explainScoreDelta(
     for (const [key, list] of byGroup) {
       // The rating a bullet entered at is the scorer's key: never printed.
       const n = list.length;
-      clauses.push(`${n} new ${n === 1 ? "bullet" : "bullets"} in ${titleFor(key)}`);
+      clauses.push(`${n} ${n === 1 ? "bullet" : "bullets"} in ${titleFor(key)} now ${n === 1 ? "needs" : "need"} work`);
     }
   }
-  if (resolved.length > 0) {
+  if (reworded.length > 0) {
+    const n = reworded.length;
+    clauses.push(`${n} reworded ${n === 1 ? "bullet still needs" : "bullets still need"} work`);
+  }
+  if (fixed.length > 0) {
     clauses.push(
-      `${resolved.length} ${resolved.length === 1 ? "issue" : "issues"} fixed`,
+      `${fixed.length} ${fixed.length === 1 ? "issue" : "issues"} fixed`,
     );
   }
   if (reclass > 0) {

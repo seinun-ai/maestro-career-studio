@@ -212,8 +212,8 @@ Ordered by how much the answer changes. Items with a deferred-ledger number are 
 
 **Pages**
 7. Jobs opens on All active (closed jobs hidden; All is `?status=all`). Right?
-8. A `pdf_ready` job opens on step 3 (Tailored resume) with Continue to Apply; the board shows Apply current. Should
-   `pdf_ready` open Apply?
+8. ~~A `pdf_ready` job opens on step 3 (Tailored resume) with Continue to Apply; the board shows Apply current. Should
+   `pdf_ready` open Apply?~~ Decided 2026-10-22: yes, a job with its PDF opens on Apply (`lib/job-steps.currentStep`).
 9. Today's sidebar badge counts every Needs-you proposal while the page shows one as Next up. Keep?
 10. The bulk Change status offers every status. Limit it to the closed ones?
 11. Sort labels differ: "Best score first" (Agent inbox) and "Best match first" (Jobs). Unify?
@@ -224,11 +224,13 @@ Ordered by how much the answer changes. Items with a deferred-ledger number are 
 13. Recommended models: Claude's Assistant is Haiku 5.5; Gemini uses 3.7 Flash for all four roles; OpenRouter has no
     set until the catalog lists OpenRouter models. All are data in `recommended_models.yaml`.
 14. The ECB retry rule: one hour after a failure, or strictly once a day?
-15. Should the persona autosave too?
+15. ~~Should the persona autosave too?~~ Decided 2026-10-22: yes. Typing saves as you go; a drafted persona waits for
+    Use this draft or Discard (inv-drafted-answers).
 
 **Analytics**
-16. The chart palette fails the dataviz validator (chart-3 at its chroma floor; chart-2 and chart-3 close for
-    protan viewers in light; dark steps outside the band) (item 58). Retune the tokens?
+16. ~~The chart palette fails the dataviz validator (chart-3 at its chroma floor; chart-2 and chart-3 close for
+    protan viewers in light; dark steps outside the band) (item 58). Retune the tokens?~~ Decided 2026-10-22: yes.
+    Orange and teal re-stepped, slate became plum, dark steps at L 0.66; both modes pass and a pin holds it.
 17. Market shares at 20 and over (skills, work mode, Skills by role cells) show plain percentages without a Wilson
     range. Does D7's range apply to shares of saved jobs, or only to the funnel's rates?
 

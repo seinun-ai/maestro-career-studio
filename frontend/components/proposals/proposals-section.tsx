@@ -80,7 +80,7 @@ import {
   selectedAmong,
 } from "@/lib/inbox-lanes";
 import { historyLabel, historyStatusOf, isNew, readyFirst } from "@/lib/inbox-readiness";
-import { jobMetaLine } from "@/lib/job-meta";
+import { jobMetaLine, workModeUnlessSaid } from "@/lib/job-meta";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
@@ -1017,7 +1017,7 @@ function ProposalRow({
             {/* One line: the job's facts, then who filed it and when (the whole sentence on hover). */}
             <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-body-small" title={meta}>
               <span className="min-w-0 truncate">
-                {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
+                {jobMetaLine([job.company, job.location, workModeUnlessSaid(job.location, humanizeEnum(job.work_mode))])}
               </span>
               {byLine ? (
                 <>

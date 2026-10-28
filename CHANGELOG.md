@@ -295,15 +295,16 @@ work-permit answers for each country you apply in.
   table's Where column.
 - **The job page leads with one card.** Each of the four steps is a bar with one number from your
   data (18 skills, 6 of 6 closed, 72.3 → 84.0) in place of a sentence. The step you are on is one card
-  with its one blue button. On Apply it shows your resume's first page in its colour, its match score
+  with its one blue button, and a job whose PDF is made opens on Apply. On Apply it shows your resume's first page in its colour, its match score
   and the gain over your base resume, **Open the job post**, **Mark applied**, and two rows that open
   the cover letter and the application questions. The job description, what was submitted and the
   job's dates and details fold away below it. The header reads "Company · Place · Mode · pay"; pay in
   another currency shows the posted amount under it, and pay whose post named no currency says how it
-  was read ("Pay read as Canadian dollars, job is in Canada").
+  was read when the job is in another country than where you live ("Pay read as Canadian dollars, job
+  is in Canada").
 - **Calmer chart colours.** Charts use six series near one lightness (blue, orange, teal, violet,
-  ochre, slate) with no red or green, so no series reads as good or bad, and each stays readable on its
-  card in light and dark.
+  ochre, plum) with no red or green, so no series reads as good or bad. Each stays readable on its
+  card in light and dark, and neighbouring series stay apart for colour-blind readers.
 - **Company initials are neutral.** A company's monogram is its initial on one grey fill, so a base
   resume's square is the only colour in a row and a status chip the only colour that means a state.
 - **Motion where something happens.** A status you change fades into its new name, then the chip
@@ -382,8 +383,9 @@ work-permit answers for each country you apply in.
   Diversity questions and Eligibility are folded under them. Work permits are asked for each country
   you apply in, in that country's words, and only the United States asks your visa status. Where you
   apply says **You live in** and **You apply in**, and a country shows the square of a base resume
-  made for it. Your answers save as you go: the Save answers button is gone, and each answer you change
-  says Saved only once it has saved. Coming back to Profile or Setup reads your answers again, so one
+  made for it. Your answers save as you go, your persona too: the Save buttons are gone, and each answer
+  you change says Saved only once it has saved. A persona drafted from your career history waits for
+  **Use this draft** or **Discard**, so you read it before it is kept. Coming back to Profile or Setup reads your answers again, so one
   the Companion learned in the meantime is kept. The diversity permission stays beside the diversity
   answers, and Decline the rest now declines the veteran question too. While the Companion may not use
   them, the Diversity questions fold says it won't fill them. The tabs and the setup strip are gone,
@@ -463,11 +465,21 @@ work-permit answers for each country you apply in.
 - **Job market counts each value once.** "Hybrid" and "hybrid ", or "USA" and "United States", are
   one bar, the Country filter lists each country once, and a job that names no country reads "Not
   stated".
+- **"AWS SageMaker" is not added to a line that already says "AWS (SageMaker, EKS, S3)".** The fix for
+  #50 caught "AWS" and "SageMaker" on their own; the job's joined wording now counts as named too.
+- **The health report no longer calls a reworded bullet new.** After Check again, a bullet that now has a
+  problem reads "now needs work", and a reworded bullet that still has one is not counted as one new
+  bullet and one fixed issue.
+- **The job header shows its pay again.** Beside a long resume name the header's line of facts was cut
+  short and lost the pay at its end; it now wraps, and a work mode the location already names ("Remote
+  (United States) · Remote") shows once, in the header and the Agent inbox.
+- **OPT shows only where it applies.** The US student work permit line shows for a job in the United
+  States, or when a posting says something about it, not as "Not stated" on a London job.
 - **Working hours are not pay.** "40 hours per week" no longer reads as an hourly rate of 40: an
   hourly figure needs a currency mark or a word such as pay or rate beside it.
 - **A bare "$" takes the job's country.** A Toronto job's "$80,000" is Canadian dollars, not US
-  dollars. With no country it is your home currency, and either way the job notes the currency was
-  assumed.
+  dollars. With no country it is your home currency. A job in another country than where you live
+  says what its pay was read as.
 - **The Score breakdown's arrow turns** as it opens and closes, instead of jumping.
 - **A skills line takes no item it already names.** Adding "AWS, SageMaker" to a line that read
   "AWS (SageMaker, EKS, S3)" appended it as a new item. An item is now skipped when the line already names

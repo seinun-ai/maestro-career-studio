@@ -1,7 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-
 import { ApplyInField, LiveInField, useCountriesAutosave } from "@/components/profile/country-fields";
 import { TileCard, type TileView } from "@/components/profile/tile";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
@@ -9,20 +7,13 @@ import { SettingCardAction } from "@/components/settings/setting-card";
 import { ResumeSwatch } from "@/components/visual";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
-import { apiFetch } from "@/lib/api";
+import { useMarketQuery } from "@/hooks/use-market";
 import {
   baseResumeLabel,
   type BaseResumeSummary,
   type MarketOption,
   type MarketSettingResponse,
 } from "@/lib/types";
-
-export function useMarketQuery() {
-  return useQuery({
-    queryKey: ["settings", "market"],
-    queryFn: () => apiFetch<MarketSettingResponse>("/api/settings/market"),
-  });
-}
 
 /** The base resumes that store a market's country (`countries` holds ISO codes; the market's `country_code`). */
 function resumesFor(market: MarketOption | undefined, resumes: readonly BaseResumeSummary[]): BaseResumeSummary[] {
