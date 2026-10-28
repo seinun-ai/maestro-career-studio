@@ -33,10 +33,13 @@ const KNOWN: Record<string, string> = {
   "machine learning": "Machine learning",
 };
 
+// Every field's, not only software's: a supply chain, finance, HR, healthcare or engineering skill reads as its
+// people write it ("SAP", "GAAP", "HRIS", "EHR", "CAD").
 const ACRONYMS = new Set([
-  "a/b", "ai", "api", "apis", "aws", "bi", "ci/cd", "crm", "css", "cuda", "erp", "etl", "gcp", "gpu",
-  "html", "json", "kpi", "kpis", "llm", "llms", "ml", "mlops", "nlp", "ocr", "qa", "r", "rest", "saas",
-  "sas", "spss", "sql", "ui", "ux",
+  "3pl", "a/b", "ai", "api", "apis", "aws", "b2b", "b2c", "bi", "cad", "ci/cd", "cpa", "crm", "css", "cuda",
+  "ehr", "emr", "erp", "etl", "gaap", "gcp", "gpu", "hipaa", "hr", "hris", "html", "ifrs", "iso", "json", "kpi",
+  "kpis", "llm", "llms", "ml", "mlops", "mrp", "nlp", "ocr", "osha", "plc", "ppc", "qa", "r", "rest", "s&op",
+  "s/4hana", "saas", "sap", "sas", "scada", "sem", "seo", "sku", "sla", "spss", "sql", "tms", "ui", "ux", "wms",
 ]);
 
 export function skillName(name: string): string {

@@ -21,3 +21,15 @@ test("a name someone already cased keeps its casing", () => {
   assert.equal(skillName("Causal inference"), "Causal inference");
   assert.equal(skillName("Snowflake"), "Snowflake");
 });
+
+test("acronyms from fields beyond tech go upper case too", () => {
+  assert.equal(skillName("sap"), "SAP");
+  assert.equal(skillName("sap s/4hana"), "SAP S/4HANA");
+  assert.equal(skillName("hr analytics"), "HR analytics");
+  assert.equal(skillName("gaap"), "GAAP");
+  assert.equal(skillName("seo"), "SEO");
+  assert.equal(skillName("hipaa compliance"), "HIPAA compliance");
+  assert.equal(skillName("ehr systems"), "EHR systems");
+  assert.equal(skillName("cad"), "CAD");
+  assert.equal(skillName("s&op"), "S&OP");
+});
