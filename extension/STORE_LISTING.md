@@ -1,8 +1,10 @@
 # Chrome Web Store listing notes
 
 The owner submits this listing using the checklist in
-[RELEASING.md](../docs/RELEASING.md#chrome-web-store). Store distribution starts
-unlisted; these notes do not mean the extension is published yet.
+[RELEASING.md](../docs/RELEASING.md#chrome-web-store). The listing is published
+unlisted (reachable only by its link,
+<https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl>);
+it is not public yet.
 
 ## Single purpose
 

@@ -63,8 +63,8 @@ README) until its last line says `finished`, then run `maestro status`.
 `maestro update --source PATH/TO/file.whl` installs a wheel file you already have
 instead of the newest release. It makes no network request.
 
-After an update, do the same two manual steps as on Docker:
-[reload the extension and restart your assistant](#after-updating).
+After an update, the same two steps as on Docker apply:
+[the Companion and your assistant](#after-updating).
 
 ## Rolling back a uv install
 
@@ -175,7 +175,7 @@ flags. The script needs bash — on Windows, run it under WSL or follow
 [Updating by hand](#updating-by-hand).
 
 **Why the folder and the app move together.** Your install *is* the cloned
-folder: the browser extension loads from `extension/`, and a hand-configured MCP
+folder: a browser extension loaded unpacked runs from `extension/`, and a hand-configured MCP
 server runs from `backend/`. A bare `docker compose pull` updates the app but
 leaves those behind, running code your app no longer matches. That's why the
 script moves the folder to a release and downloads that same release.
@@ -284,11 +284,13 @@ the v0.4.0 copy of this page covers that.)
 
 Neither Docker nor `maestro update` can update these two:
 
-1. **Reload the browser extension** — `chrome://extensions` → **Reload** on the
-   Maestro CS card, then reload any job tab that was already open (otherwise it
-   shows "No job description found on this page" over a visible posting). If
-   your install predates the extension's fixed ID, press **Remove** and **Load
-   unpacked** again instead ([details](../extension/README.md)).
+1. **The Companion** — the Chrome Web Store build updates itself once the new
+   version is published there. One loaded unpacked needs `chrome://extensions` →
+   **Reload** on the Maestro CS card; if that install predates the extension's
+   fixed ID, press **Remove** and install again instead
+   ([details](../extension/README.md)). Either way, reload any job tab that was
+   already open (otherwise it shows "No job description found on this page"
+   over a visible posting).
 2. **Restart your AI assistant** (Claude, Codex, ChatGPT desktop) so it sees new
    tools. If you still use the legacy stdio setup, re-run `./scripts/setup-mcp.sh`
    to pick up dependencies. URL connections need no setup changes. Reinstall

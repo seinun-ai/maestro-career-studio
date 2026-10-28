@@ -2403,9 +2403,11 @@ comma-separated.
 
 The default also holds the Chrome Web Store build's id,
 **`bppkeipififkepldkogmfpkkhoakgndl`**, which Google assigned at the first
-upload (from 0.11.1). The store strips the pinned `key` at that upload, so the
-two builds have different ids until the store's public key replaces the pinned
-one (docs/RELEASING.md, Chrome Web Store step 2).
+upload (admitted from 0.11.1). Store uploads are packed without the pinned
+`key` (`scripts/pack_extension.py --first-upload`), and the manifest keeps the
+unpacked key rather than the store's, so the two builds keep different ids and
+the backend admits both (docs/RELEASING.md, "Chrome Web Store"). A store
+install updates itself; only an unpacked one needs Reload.
 
 - The pinned key is a **public** key and identifies the extension; it is not a
   secret and is meant to be committed. The matching private key is not in this

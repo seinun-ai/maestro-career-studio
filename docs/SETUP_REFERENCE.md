@@ -98,7 +98,7 @@ time:
 | **1. The app** | one `docker compose up -d` (below) — runs on your own computer only |
 | **2. An AI key** | **Settings › Basics** in the app; OpenAI, Gemini *or* Claude, [any one alone is enough](USING_MAESTRO.md#5-choose-your-models-deliberately) |
 | **3. Your AI assistant** | **optional.** Claude: install the `.mcpb` extension from Settings → Extensions. Codex / ChatGPT desktop: add the plugin from Settings → Plugins. [Details](USING_MAESTRO.md#driving-it-from-claude-codex-or-chatgpt-mcp) |
-| **4. The Companion (browser extension)** | **optional.** `chrome://extensions` → Developer mode → **Load unpacked** → the repo's `extension/` folder. Nothing to configure — [full steps](../extension/README.md) |
+| **4. The Companion (browser extension)** | **optional.** **Add to Chrome** from its [Chrome Web Store page](https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl) (unlisted: use the link). From a source checkout: `chrome://extensions` → Developer mode → **Load unpacked** → the repo's `extension/` folder. Nothing to configure — [full steps](../extension/README.md) |
 
 ```bash
 # 1. Download the project and create your settings file

@@ -184,45 +184,53 @@ listing text is the `description` in `server.json` (100 characters at most).
 
 ### Chrome Web Store
 
-The owner publishes the Companion separately from the GitHub release. Create
-a Chrome Web Store developer account and complete its registration before
-the first upload. Use [the listing notes](../extension/STORE_LISTING.md) for
-the single purpose, permission explanations, privacy disclosures and five
-1280 x 800 screenshots. Link the public `PRIVACY.md` as the privacy policy.
+The owner publishes the Companion to the Chrome Web Store separately from the
+GitHub release. The listing is **Maestro CS Companion**, published
+**unlisted**: it is reachable only by its link,
+<https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl>.
+The store ID is `bppkeipififkepldkogmfpkkhoakgndl`; the first upload was 0.11.1.
+[The listing notes](../extension/STORE_LISTING.md) hold the single purpose,
+permission explanations and privacy disclosures the dashboard asks for.
 
-1. Confirm `extension/manifest.json` and `backend/pyproject.toml` have the same
-   version. For the **first upload only**, run from the repository root:
+**Two builds, two IDs, both admitted.** `extension/manifest.json` keeps the
+repository's own `key`, so a Load unpacked install is
+`pjmfonfapjdabkoicnelpflpjojdjgan` on every machine. The store's public key is
+not copied into the manifest, so the store build keeps the store-assigned ID.
+The `maestro_cs_extension_ids` default in `backend/app/config.py` and the
+`MAESTRO_CS_EXTENSION_IDS` example in `.env.example` list both IDs, and
+`backend/tests/test_extension_manifest.py` fails if either leaves the default.
+A user who sets `MAESTRO_CS_EXTENSION_IDS` must list the store ID to use the
+store build. No ID swap is planned, so there is no `extension-id-swap` row in
+`SYSTEM.md` §13.
+
+Each upload, at a release:
+
+1. Bump `extension/manifest.json`'s `version` together with
+   `backend/pyproject.toml` (step 2 of the checklist); the pack script refuses
+   a mismatch.
+2. Pack the archive from the repository root:
 
    ```bash
    python3 scripts/pack_extension.py --first-upload
    ```
 
-   Upload `dist/maestro-cs-companion-X.Y.Z.zip`. This flag removes `key` from
-   the manifest inside the zip; the repository's unpacked-install key stays
-   intact until the next step. Developer notes, tests and dotfiles stay out
-   of every upload archive.
-2. Copy the store's public key into `extension/manifest.json`'s `key` and
-   append the store extension ID to both the `maestro_cs_extension_ids`
-   default in `backend/app/config.py` and `MAESTRO_CS_EXTENSION_IDS` in
-   `.env.example`. Keep the existing unpacked ID allowed for one release;
-   users with an explicit environment override must add the store ID too.
-   Verify the key-derived ID and both allowlist entries before release.
-3. **At that key change**, create the `extension-id-swap` row in `SYSTEM.md`
-   §13: old unpacked ID to store ID, with the removal trigger being the
-   release after the store ID ships. Mirror an executable trigger in
-   `.slopledger.json`. The row does not exist before the store assigns an ID.
-   Update the Companion installation docs to explain the new fixed ID and
-   the reload or reinstall steps.
-4. Publish **unlisted first**. Install that store build and test capture,
-   filling and Test connection against a freshly started backend allowing
-   its exact ID. Confirm that an unrelated extension ID remains refused.
-   Submit for public listing only after these checks and owner review.
-5. Update `PRIVACY.md`'s Companion section when the listing goes live.
+   Despite its name, every store upload uses `--first-upload`: it removes
+   `key` from the manifest inside the zip, and the repository's copy keeps it.
+   The store item was created from a zip without a key, and the repository's
+   key is the unpacked one, not the store's. Developer notes, tests and
+   dotfiles stay out of every archive. `dist/` is gitignored; upload the zip
+   rather than committing it.
+3. In the developer dashboard, upload `dist/maestro-cs-companion-X.Y.Z.zip` to
+   the existing item and submit it for review. After approval, Chrome updates
+   store installs on its own.
 
-For later uploads, bump the extension and backend versions together and run
-`python3 scripts/pack_extension.py` without `--first-upload`. The archive
-retains the store public key. `dist/` is gitignored; upload the zip rather
-than committing it.
+Left before the listing goes public:
+
+4. Install the store build and test capture, filling and Test connection
+   against a freshly started backend allowing its exact ID. Confirm that an
+   unrelated extension ID remains refused. Submit for public listing only
+   after these checks and owner review.
+5. Update `PRIVACY.md`'s Companion section when the listing goes public.
 
 ### 7. Package visibility, and an unauthenticated pull
 

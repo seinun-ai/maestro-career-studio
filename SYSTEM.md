@@ -775,6 +775,9 @@ exception, so ingest lands drafts and consent-gated `kb_approve_points` is the o
 - 2026-10-26 — MCP's coverage holes close with parameters plus `save_referral` and `kb_merge_entities` (92 → 94), and agent profile
   saves merge on the server in one transaction; superseded the client's read-then-PUT, which lost a Companion answer saved in between,
   and a web-only KB merge, out of an MCP-only user's reach for an import's split duplicate.
+- 2026-10-28 — The Companion installs from its unlisted Chrome Web Store listing first, Load unpacked for a source checkout; the manifest
+  keeps the unpacked `key` and the backend admits both ids (docs/RELEASING.md, "Chrome Web Store"); superseded the planned
+  `extension-id-swap` (store key into the manifest), which would have left unpacked installs to Remove and reinstall.
 
 ## 11. Known deferred items (priority order)
 

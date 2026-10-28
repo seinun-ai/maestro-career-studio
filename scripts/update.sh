@@ -2,7 +2,7 @@
 #
 # Update an installed Maestro CS to the newest v* release.
 #
-# Why this exists: an install IS a git checkout. The unpacked extension loads
+# Why this exists: an install IS a git checkout. An unpacked extension loads
 # from extension/ and a legacy stdio MCP venv sits over backend/, so checkout and images
 # must move together. `docker compose pull` alone updates two surfaces of four.
 # This also snapshots the SQLite database (data/maestro_cs.sqlite3) before the
@@ -459,8 +459,9 @@ do_update() {
   note "Release notes: https://github.com/${CANONICAL}/releases"
   printf '\n'
   note "Two surfaces Docker cannot update:"
-  note "  1. Reload the unpacked extension at chrome://extensions."
-  note "     Upgrading from a version before the pinned key: Remove the extension and Load unpacked again — reloading is not enough (see extension/README.md)."
+  note "  1. The Companion: the Chrome Web Store build updates itself; one loaded unpacked needs Reload at chrome://extensions."
+  note "     Unpacked from a version before the pinned key: Remove it and install again — reloading is not enough (see extension/README.md)."
+  note "     Either way, reload job tabs that were already open."
   note "  2. Restart the MCP client so it picks up new tools."
   note "     If you still use the legacy stdio setup, re-run ./scripts/setup-mcp.sh to pick up dependencies."
   note "     URL connections need no setup changes. Reinstall the Claude Desktop bundle once if yours is the older Docker-based one."

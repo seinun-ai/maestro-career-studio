@@ -149,25 +149,35 @@ icon works from Chrome 114).
 ## Install
 
 1. Start the app — `maestro start` (uv install) or `docker compose up` (Docker): backend on `:8001`, app on `:3000`.
-2. Open `chrome://extensions` and turn on **Developer mode**.
-3. Click **Load unpacked** and choose the repo's `extension/` folder.
-4. Pin the extension, then click its icon on a job posting or application form.
+2. Open [Maestro CS Companion on the Chrome Web Store](https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl)
+   and click **Add to Chrome**. The listing is unlisted, so search won't find
+   it; use this link.
+3. Pin the extension, then click its icon on a job posting or application form.
 
-With the default ports there is nothing to configure. The extension has a fixed
-id, **`pjmfonfapjdabkoicnelpflpjojdjgan`**, and the backend already allows that
-id, so there is no id to copy and no backend restart. From 0.11.1 the backend
-also allows the Chrome Web Store build's id, **`bppkeipififkepldkogmfpkkhoakgndl`**.
+**From a source checkout** (development, or to run Companion changes not yet in
+the store), load the folder instead of step 2: open `chrome://extensions`, turn
+on **Developer mode**, click **Load unpacked** and choose the repo's
+`extension/` folder. Keep one of the two installed, not both: each adds its own
+icon and panel.
 
-**After an update**, press **Reload** on the extension's card at
-`chrome://extensions`, then reload any job tabs that were already open. A tab
-opened before the reload shows "No job description found on this page" even
-when the description is plainly visible, until you reload that tab. A run that
-cannot read such a tab stops with **Reload the page**; reload the tab, then press Resume.
+With the default ports there is nothing to configure. Each build has a fixed
+id and the backend allows both: the store build is
+**`bppkeipififkepldkogmfpkkhoakgndl`** (allowed from 0.11.1), the unpacked one
+**`pjmfonfapjdabkoicnelpflpjojdjgan`**. There is no id to copy and no backend
+restart.
 
-**Installed before the fixed id existed?** Reloading is not enough. On
-`chrome://extensions` press **Remove**, then **Load unpacked** on the
-`extension/` folder again, and check that the id shown matches the one above.
-Otherwise the backend refuses the old id and the panel cannot reach it.
+**After an update**, the store build updates itself. An unpacked one needs
+**Reload** on its card at `chrome://extensions`. Either way, reload any job tabs
+that were already open. A tab opened before the update shows "No job
+description found on this page" even when the description is plainly visible,
+until you reload that tab. A run that cannot read such a tab stops with
+**Reload the page**; reload the tab, then press Resume.
+
+**Loaded unpacked before the fixed id existed?** Reloading is not enough. On
+`chrome://extensions` press **Remove**, then add the store build or **Load
+unpacked** on the `extension/` folder again, and check that the id shown
+matches one above. Otherwise the backend refuses the old id and the panel
+cannot reach it.
 
 ## What it never does
 
@@ -282,7 +292,7 @@ settings message as the panel.
   Companion can't read this page".** Reload the tab. This happens to tabs that
   were open when the extension was installed or reloaded.
 - **The panel cannot reach the backend.** Check the app is running. If your
-  install predates the fixed id, Remove and Load unpacked again (see Install).
+  unpacked install predates the fixed id, Remove it and install again (see Install).
   If you changed ports, see Different ports.
 - **Education or work-history sections are missing entries.** The extension
   cannot click "Add another". Add the blocks on the form first, then fill.

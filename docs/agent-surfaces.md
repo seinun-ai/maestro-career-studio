@@ -317,7 +317,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   is ONE table in two languages** — `job_url_match.posting_id` ↔ `decisions.postingId` (LinkedIn `currentJobId` / `/jobs/view/<id>`, Indeed
   `jk`/`vjk`, embedded Greenhouse `gh_jid`), pinned by `test_extension_posting_identity.py`; add a key to BOTH. Options (`options.html`,
   `options.js`) read `read_settings`, save `backendUrl`/`appUrl` in `storage.sync` and test `/health`. `scripts/pack_extension.py` gates
-  matching versions; store upload and key handoff: `docs/RELEASING.md`. Rest: `extension/INTERNALS.md`.
+  matching versions; store upload and the two admitted ids: `docs/RELEASING.md`. Rest: `extension/INTERNALS.md`.
 
 ## Guided fill
 

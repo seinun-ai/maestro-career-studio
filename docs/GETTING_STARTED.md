@@ -220,8 +220,8 @@ Docker route.
   separate copies with separate data, and both use ports 8001 and 3000. Coming
   from Docker? `maestro import-docker` moves your data over once
   ([steps](UPDATING.md#move-from-docker-to-the-uv-install)).
-- **The Companion needs no changes**: it expects the same ports. Load it from
-  the repository's `extension` folder ([step 4](#4-the-companion-browser-extension-optional)).
+- **The Companion needs no changes**: it expects the same ports. Add it from
+  the Chrome Web Store ([step 4](#4-the-companion-browser-extension-optional)).
 - **PDFs** render with the Typst engine that ships inside. LaTeX templates need
   TeX on your computer; without it Maestro builds them through Typst and says so.
   TeX Live 2025 needs its pdfTeX update (1.40.28 or later): on 1.40.27 a
@@ -281,23 +281,29 @@ mark it applied — without leaving the tab. The app must be running. With **Ful
 (Settings › Agent apps), its **Apply** button fills each page, presses Next and stops on the
 review page. Submit is always yours.
 
+1. Open [Maestro CS Companion on the Chrome Web Store](https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl)
+   and click **Add to Chrome**. The listing is unlisted, so search won't
+   find it; use this link.
+2. Pin the icon, then click it on any job page to open the panel.
+
+This works the same on a uv install and on Docker, and Chrome keeps it updated.
+
+**From a source checkout** (development, or to run Companion changes not yet
+in the store), load the folder instead:
+
 1. Open `chrome://extensions` and switch on **Developer mode** (top right).
 2. Click **Load unpacked** and select the `extension` folder inside
    `maestro-career-studio`.
 3. Pin the icon, then click it on any job page to open the panel.
 
-**On Windows with WSL**, type
+Keep one of the two installed, not both: each adds its own icon and panel.
+
+**Loading unpacked on Windows with WSL**, type
 `\\wsl.localhost\Ubuntu\home\<your-user>\maestro-career-studio\extension` in the
 folder picker's address bar. If Chrome won't load it from there, copy the
 folder to your `C:` drive from the Ubuntu window and load the copy instead:
 `cp -r extension /mnt/c/Users/<your-windows-user>/maestro-extension`. The copy
 doesn't update itself, so repeat that command after every update.
-
-On a uv install there is no project folder, because the package does not carry the
-extension: run `maestro --version`, then on GitHub open Releases › that version
-(`vX.Y.Z`) › **Source code** and download it. Unpack it and load its `extension`
-folder, so the Companion matches the Maestro you run. It then works unchanged
-against Maestro on the default ports.
 
 There is nothing to set up if you kept the default ports. If you changed the
 ports in `.env`, open `chrome://extensions` → **Details** on the Maestro CS
@@ -496,9 +502,10 @@ there is anything new, run `./scripts/update.sh --check` — it changes nothing.
 - **Your resumes, applications and settings are not touched.**
 - **The first start after an update takes longer**, because the database is
   upgraded. The script tells you it is waiting.
-- **Two things are manual:** reload the extension at `chrome://extensions`
-  (and reload any job tab that was already open), and restart your AI
-  assistant app. If you still use the legacy stdio setup, re-run
+- **Two things are manual:** the Companion and your AI assistant app. The
+  Chrome Web Store Companion updates itself; one loaded unpacked needs
+  **Reload** at `chrome://extensions`. Either way, reload any job tab that was
+  already open. Then restart your AI assistant app. If you still use the legacy stdio setup, re-run
   `./scripts/setup-mcp.sh`; URL connections need no setup changes. Reinstall the
   Claude Desktop bundle once if yours is the older Docker-based one. The script
   reminds you of these steps.
