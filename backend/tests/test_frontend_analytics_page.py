@@ -165,6 +165,14 @@ def test_quick_wins_left_and_gaps_are_one_card():
     assert 'row.tier !== "wording"' in saved
 
 
+def test_a_gap_rows_tag_wraps_under_its_name_rather_than_cutting_it():
+    # At 1024 the card is narrow, and a tag that never shrinks cut "Demand forecasting" to "D…". The name and tag
+    # now share a wrapping line: side by side when they fit, the tag below when they don't.
+    saved = _read(_SAVED)
+    assert '<span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">' in saved
+    assert '<span className="max-w-full truncate" title={name}>' in saved
+
+
 def test_jobs_you_saved_reads_pay_in_your_currency():
     saved = _read(_SAVED)
     assert "homePay(r.avg_min, r.avg_max, pay.currency, r.converted_count > 0)" in saved

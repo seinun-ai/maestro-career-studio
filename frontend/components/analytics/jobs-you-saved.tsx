@@ -159,8 +159,9 @@ function WorkModeCard({ overview, className }: { overview: ExploreOverview; clas
 function CountRow({ name, n, max, tag }: { name: string; n: number; max: number; tag?: string }) {
   return (
     <li className="col-span-3 grid grid-cols-subgrid items-center">
-      <span className="flex min-w-0 items-center gap-2">
-        <span className="truncate" title={name}>{name}</span>
+      {/* Wraps: the tag goes under the name when both don't fit, so the tag never cuts the name short. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <span className="max-w-full truncate" title={name}>{name}</span>
         {tag ? (
           <span className="shrink-0 rounded-full bg-surface-container px-2 text-label-medium text-muted-foreground">{tag}</span>
         ) : null}
