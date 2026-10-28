@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from app.services import template_validation
-from tests.node_ts import run_node_test
+from tests.node_ts import run_node_render_test
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -392,7 +392,7 @@ def test_review_changes_read_as_a_diff():
 
 def test_review_changes_diff_node_suite():
     """Only the changed words are marked, each line keeps its spaces, and a one-sided change is one mark."""
-    result = run_node_test("components/resume-editor/hunk-diff.test.mjs")
+    result = run_node_render_test("components/resume-editor/hunk-diff.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr
 
 
