@@ -7,10 +7,10 @@ import { toast } from "sonner";
 import { useAutofillProfile } from "@/components/profile/autofill-profile";
 import { FieldGrid } from "@/components/profile/field-control";
 import { TileCard, type TileView } from "@/components/profile/tile";
-import { useMarketQuery } from "@/components/profile/where-you-apply";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCardAction } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
+import { useMarketQuery } from "@/hooks/use-market";
 import { apiFetch } from "@/lib/api";
 import {
   groupCount,
