@@ -255,3 +255,10 @@ def test_setup_says_where_to_get_each_key_in_settings_words():
     assert "{KEY_FIELDS[card.id as Provider].hint}" in model
     assert "source={info[KEY_FIELDS[card.id as Provider].source]}" in model
     assert "const SOURCE" not in model
+
+
+def test_a_wrapped_autosave_status_stays_at_the_right():
+    """At 1024 the step header wraps the status under the heading. Its box keeps a min width with its words at the
+    right end, so at the left it read as indented: `ml-auto` keeps it at the right, as on one line."""
+    assert "<AutosaveStatus\n          className=\"ml-auto\"" in _read("components/setup/setup-where-step.tsx")
+    assert '<AutosaveStatus className="ml-auto" pending={answers.pending}' in _read("components/setup/setup-answers-step.tsx")

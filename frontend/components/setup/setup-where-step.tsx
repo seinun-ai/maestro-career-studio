@@ -88,6 +88,7 @@ export function SetupWhereStep({
           </p>
         </div>
         <AutosaveStatus
+          className="ml-auto"
           pending={place.pending || wants.pending}
           failed={place.failed || wants.failed}
           onRetry={() => {

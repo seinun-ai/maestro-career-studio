@@ -144,7 +144,7 @@ export function SetupAnswersStep({
             Give them once. The Companion fills them in for you.
           </p>
         </div>
-        <AutosaveStatus pending={answers.pending} failed={answers.failed} onRetry={answers.retry} />
+        <AutosaveStatus className="ml-auto" pending={answers.pending} failed={answers.failed} onRetry={answers.retry} />
       </div>
 
       <ContactFromHistory profile={answers.value} update={answers.update} />
