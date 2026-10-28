@@ -115,6 +115,7 @@ export const APPLICATION_STATUSES = [
   "accepted",
   "rejected",
   "withdrawn",
+  "skipped",
 ] as const;
 
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];

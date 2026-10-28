@@ -757,9 +757,9 @@ _CHIPS = [(rel, cls) for rel in _CHIP_SOURCES for cls in _CHIP_CLASS.findall(_re
 
 def test_every_tinted_chip_is_found():
     found = {rel: sum(1 for r, _ in _CHIPS if r == rel) for rel in _CHIP_SOURCES}
-    # 7 application statuses + Needs you + 7 proposal entries; ongoing and archived (a completed item has no chip) + fallback.
+    # 8 application statuses + Needs you + 7 proposal entries; ongoing and archived (a completed item has no chip) + fallback.
     assert found == {
-        "components/status-chip.tsx": 15,
+        "components/status-chip.tsx": 16,
         "components/career/entity-card.tsx": 3,
     }, found
 

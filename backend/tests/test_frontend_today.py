@@ -122,13 +122,34 @@ def test_the_page_sends_the_zone_name_and_the_offset():
 def test_next_up_is_one_lead_card_with_one_action():
     assert _PAGE.count("<LeadCard") == 1
     assert open_tag(_PAGE, "LeadCard").count("action=") == 1
-    # Its button is the view's one filled button: the page draws no other button.
-    assert "<Button" not in _PAGE and "buttonVariants(" not in _PAGE
+    # Its button is the view's one filled button: the page's other buttons are Next up's quiet Skip, outline.
+    buttons = re.findall(r"<Button\b[^>]*>", _PAGE)
+    assert len(buttons) == 2 and all('variant="outline"' in b for b in buttons), buttons
+    assert "buttonVariants(" not in _PAGE
+    assert "secondary={<SkipControl item={item} onSkipped={onSkipped} />}" in _PAGE
     # Setup's entry card stands in the same place and holds the same one button.
     assert _SETUP.count("<LeadCard") == 1
     assert open_tag(_SETUP, "LeadCard").count("action=") == 1
     assert "<Button" not in _SETUP
 
+
+def test_skip_writes_skipped_with_undo_and_an_agents_job_takes_the_job_pages_skip():
+    """A ready PDF's Skip sets the application Skipped and Undo puts it back to Draft; an agent's question
+    takes the reason dialog and the proposal's own Skip; an offer has none."""
+    assert 'mutationFn: (id: string) => patchStatus(id, "skipped"),' in _PAGE
+    assert 'patchStatus(id, "draft")' in _PAGE and 'label: "Undo",' in _PAGE
+    assert 'if (item.kind === "pdf_ready" && item.application_id) {' in _PAGE
+    assert 'if (item.kind === "needs_you" && item.proposal_id) {' in _PAGE
+    assert 'proposalActions.transition({ id, status: "rejected", reason })' in _PAGE
+    assert '"offer"' not in _PAGE.split("function SkipControl", 1)[1].split("\n}\n", 1)[0]
+    # A skip on the other copy's job is a request, worded as every other one is.
+    assert 'if (isSyncQueued(data)) {\n        toast.success("Sent at the next sync");' in _PAGE
+    # A Skip anywhere in the Agent inbox refreshes Today too.
+    triage = _read("components/proposals/triage-actions.tsx")
+    assert 'void qc.invalidateQueries({ queryKey: ["today"] });' in triage
+    # A Skip that leaves nothing next hands focus to what replaces the card: the lead slot holds every branch.
+    assert "if (!data.next_up) lead.current?.focus();" in _PAGE
+    assert '<div ref={lead} tabIndex={-1} className="outline-none">' in _PAGE
 
 def test_a_failed_load_is_its_own_state():
     assert "isLoadFailure(today) ? (" in _PAGE

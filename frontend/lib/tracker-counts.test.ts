@@ -47,7 +47,7 @@ test("the group values stand for their keys", () => {
     assert.equal(matchesFilter("active", key), true, key);
     assert.equal(matchesFilter("closed", key), false, key);
   }
-  for (const key of ["rejected", "withdrawn", "skipped"]) {
+  for (const key of ["rejected", "withdrawn", "skipped", "agent_skipped"]) {
     assert.equal(matchesFilter("active", key), false, key);
     assert.equal(matchesFilter("closed", key), true, key);
   }
@@ -66,11 +66,15 @@ test("a list chip counts its preset of both axes", () => {
     { filterKey: "applied", stage: "applied" },
     { filterKey: "interviewing", stage: "applied" },
     { filterKey: "rejected", stage: "closed" },
-    { filterKey: "skipped", stage: "scored" },
+    { filterKey: "agent_skipped", stage: "scored" },
+    { filterKey: "skipped", stage: "closed" },
   ];
   assert.equal(chipCount(list, { filter: "active", stage: null }, {}), 3);
   assert.equal(chipCount(list, { filter: "active", stage: "pdf_ready" }, {}), 1);
   assert.equal(chipCount(list, { filter: "applied", stage: null }, {}), 1);
   assert.equal(chipCount(list, { filter: "interviews", stage: null }, {}), 1);
-  assert.equal(chipCount(list, { filter: "closed", stage: null }, {}), 2);
+  // Rejected, the agent's job you skipped and your own skipped draft.
+  assert.equal(chipCount(list, { filter: "closed", stage: null }, {}), 3);
+  assert.equal(chipCount(list, { filter: "skipped", stage: null }, {}), 1);
+  assert.equal(chipCount(list, { filter: "agent_skipped", stage: null }, {}), 1);
 });

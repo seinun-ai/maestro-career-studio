@@ -78,6 +78,7 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
     void qc.invalidateQueries({ queryKey: ["job-detail"] });
     void qc.invalidateQueries({ queryKey: ["proposal"] });
     void qc.invalidateQueries({ queryKey: ["jobs"] });
+    void qc.invalidateQueries({ queryKey: ["today"] });
   };
 
   // A row that is leaving is still in the lists until the refetch, so a caller with an exit asks for a pause.

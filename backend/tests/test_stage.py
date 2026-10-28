@@ -254,6 +254,14 @@ def test_a_withdrawn_application_that_was_applied_is_closed(db_session):
     assert _rung_of_app(db_session, app) == "closed"
 
 
+
+def test_a_skipped_draft_with_a_pdf_is_closed(db_session):
+    job = make_job(db_session)
+    app = make_application(
+        db_session, job, status="skipped", customized_json=SAMPLE_RESUME, pdf_path="/x/r.pdf"
+    )
+    assert _rung_of_app(db_session, app) == "closed"
+
 def test_a_pdf_makes_pdf_ready(db_session):
     job = make_job(db_session)
     app = make_application(

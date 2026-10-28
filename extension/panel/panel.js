@@ -2860,8 +2860,8 @@
 
   /** The two statuses this panel WRITES, which is not the two it can read.
    *
-   * `ALLOWED_STATUSES` (backend/app/schemas/application.py) has seven —
-   * interviewing, offered, accepted, rejected, withdrawn follow these two — and
+   * `ALLOWED_STATUSES` (backend/app/schemas/application.py) has eight —
+   * interviewing, offered, accepted, rejected, withdrawn, skipped follow these two — and
    * the tracker in the web app is where that vocabulary belongs: it is a list
    * with filters and a history, and a 400px rail is not. What the panel owns is
    * the one transition it is standing next to: the user has just filled a form,
@@ -2896,7 +2896,7 @@
    *   and pressing Draft would silently walk the record backwards past three
    *   states. The identity chip still names it ("Interviewing")
    *   and the Track body's own sentence says where to change it, so nothing is
-   *   hidden; what is withheld is a two-value control over a seven-value field.
+   *   hidden; what is withheld is a two-value control over an eight-value field.
    */
   function statusSegment() {
     const status = card.application?.status ?? null;

@@ -1787,15 +1787,16 @@ def update_application(
     referral (an explicit null on the request).
 
     Allowed statuses: draft, applied, interviewing, offered, accepted, rejected,
-    withdrawn (anything else is rejected). Setting status to applied,
-    interviewing, offered or accepted also closes any open proposal on the job,
-    recorded as a declined "applied manually" consent event.
+    withdrawn, skipped (anything else is rejected). `skipped` is the user's own
+    "not applying to this one". Setting status to applied, interviewing, offered
+    or accepted also closes any open proposal on the job, recorded as a declined
+    "applied manually" consent event; skipped closes it as a plain skip.
 
     applied_at sync rule: if you change `status` without also passing `applied_at`,
     the backend keeps applied_at in sync automatically — entering "applied" stamps
     it with the current time (only if not already set), moving back to "draft"
-    clears it, and every later stage (interviewing/offered/accepted/rejected/
-    withdrawn) preserves whatever applied_at already holds. An explicit
+    clears it, and every other status (interviewing/offered/accepted/rejected/
+    withdrawn/skipped) preserves whatever applied_at already holds. An explicit
     `applied_at` overrides that sync and must carry a UTC offset
     (e.g. `2026-08-18T14:32:11+00:00`) — a naive value is a 422.
 

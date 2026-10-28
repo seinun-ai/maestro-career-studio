@@ -1145,7 +1145,12 @@
   `lib/today.ts` holds the URL and the words (node-tested). The Lead is Next up, a `LeadCard` whose one
   button is the view's one filled button: **Apply** (a ready PDF) and **Review the offer** open the
   job's Apply step (`?tab=qa`); **Answer** (or **See what it needs** for a stopped agent) opens the
-  job from the Agent inbox (`?from=proposals`), on the agent's card. It carries the base resume's
+  job from the Agent inbox (`?from=proposals`), on the agent's card. Beside it sits **Skip**
+  (`SkipControl`, outline, the card's `secondary`): a ready PDF's application turns Skipped and the
+  toast "Job skipped" offers Undo (back to Draft); an agent's job takes the job page's Skip (the
+  reason dialog, the proposal Skipped); an offer has none, since it needs an answer. Today refetches
+  and the next job takes the card; a Skip that leaves nothing next moves focus to the line that
+  replaces it, and one on the other copy's job says "Sent at the next sync". It carries the base resume's
   square (D2), pay through `formatPay` with the posted amount under a converted figure (D8), and
   "Where this job is": only the steps the server dates, then the move the button makes. Also today
   is up to three cards with `NumberRoll` counts, each a link to its list (a list that holds more than
@@ -1231,14 +1236,15 @@
   preset of the Status filter and the stage (`VIEW_FILTERS` in `lib/tracker-filters.ts`): **All
   active** (Status `active`, the default), **Ready to apply** (active and stage `pdf_ready`), **Waiting
   to hear** (`applied`), **Interviews** (`interviews`: interviewing and offered) and **Closed**
-  (`closed`: rejected, withdrawn and skipped agent jobs). Pressing the chip that is on shows All. The
+  (`closed`: rejected, withdrawn, skipped and skipped agent jobs). Pressing the chip that is on shows All. The
   group values are `matchesFilter` in `lib/tracker-counts.ts`. A chip counts the rows pressing it
   shows in the toggle's source (`chipCount`), "…" while the other source loads. Everything else sits behind one **Filters**
   button (`FiltersButton`, `aria-expanded`, "Filters · N" while N of its filters are on that no chip
   names) that opens a row in the toolbar: the grouped Status `Select` (All, the three groups, Saved,
-  Your applications (`APPLICATION_STATUSES`) and Agent inbox (`proposed`/`queued`/`needs_you`/
-  `skipped`, from the newest `proposal_status` via `rowFilterKey`; `skipped` absorbs proposal
-  `rejected` AND `expired`, while the row chip still says Expired)), the stage `Select` (Ready to
+  Your applications (`APPLICATION_STATUSES`, its own Skipped among them) and Agent inbox (`proposed`/
+  `queued`/`needs_you`/`agent_skipped`, from the newest `proposal_status` via `rowFilterKey`;
+  `agent_skipped`, worded Skipped, absorbs proposal `rejected` AND `expired`, while the row chip still
+  says Expired; the key is not `skipped`, which is the application status)), the stage `Select` (Ready to
   apply, Tailored, review, Gaps open: the server's stage, `?stage=`, ANDed with Status) and the source
   toggle. `FILTERS` derives from the Status groups, so a key can never filter rows yet never appear
   as an option. **Empty buckets are hidden**: an option renders iff `count > 0 || f === "all" || f

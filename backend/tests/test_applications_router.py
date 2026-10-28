@@ -1711,6 +1711,38 @@ def test_non_applied_status_changes_leave_proposals_open(db_session, client):
     assert prop.status == "pending_review"
 
 
+
+def test_skipping_a_draft_closes_its_jobs_open_proposals_and_keeps_applied_at(db_session, client):
+    # Skipped means you are not pursuing the job: a queued agent must not apply to it either.
+    from app.models.consent_event import ConsentEvent
+    from app.services import proposals as svc
+
+    job = _job(db_session)
+    job.source = "agent"
+    app_row = Application(job_id=job.id, base_resume="hybrid", source="agent", status="draft")
+    db_session.add(app_row)
+    db_session.commit()
+    prop = svc.create_proposal(
+        db_session, job_id=job.id, application_id=app_row.id,
+        fit={"chosen_base": "hybrid"}, plan={},
+    )
+    svc.transition(db_session, prop, "accepted", consent={"channel": "frontend"})
+
+    resp = client.patch(f"/api/applications/{app_row.id}", json={"status": "skipped"})
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "skipped"
+    assert resp.json()["applied_at"] is None
+    db_session.refresh(prop)
+    assert prop.status == "rejected"
+    assert prop.reason is None  # a plain skip, not "applied manually"
+    assert db_session.query(ConsentEvent).filter_by(
+        proposal_id=prop.id, action="rejected").count() == 1
+
+    # Undo: back to Draft. The proposal stays skipped; the job is yours again.
+    resp = client.patch(f"/api/applications/{app_row.id}", json={"status": "draft"})
+    assert resp.status_code == 200 and resp.json()["status"] == "draft"
+
 def test_list_applications_summary_includes_source(db_session, client):
     job = _job(db_session)
     app_row = Application(job_id=job.id, base_resume="hybrid", source="agent")

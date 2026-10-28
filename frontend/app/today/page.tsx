@@ -1,14 +1,18 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { CompanyMonogram } from "@/components/company-monogram";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { LoadErrorState } from "@/components/load-error-state";
 import { PageHeader, PageShell } from "@/components/page-shell";
+import { DeclineDialog, useProposalActions } from "@/components/proposals/triage-actions";
 import { SetupEntryCard, needsSetup } from "@/components/setup/setup-entry-card";
 import { useOpenSetupOnFirstLaunch } from "@/components/setup/use-first-run";
+import { Button } from "@/components/ui/button";
 import { Fold } from "@/components/ui/fold";
 import { LeadCard } from "@/components/ui/lead-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,10 +20,11 @@ import { NextStep, NumberRoll, ResumeTag, ScoreBar } from "@/components/visual";
 import { useMoney } from "@/hooks/use-money";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
-import { loadErrorDetail } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { formatShortDate } from "@/lib/format-date";
 import { needsYouLine } from "@/lib/inbox-lanes";
 import { jobMetaLine } from "@/lib/job-meta";
+import { isSyncQueued } from "@/lib/job-ownership";
 import { formatPay, payLine, periodWords } from "@/lib/money";
 import { isLoadFailure } from "@/lib/query-state";
 import {
@@ -37,7 +42,14 @@ import {
   weekLine,
   type BrowserZone,
 } from "@/lib/today";
-import { baseResumeLabel, type SetupStatus, type TodayCount, type TodayNextUp, type TodayResponse } from "@/lib/types";
+import {
+  baseResumeLabel,
+  type ApplicationStatus,
+  type SetupStatus,
+  type TodayCount,
+  type TodayNextUp,
+  type TodayResponse,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** Each count's icon, from the register (lib/concept-icons.ts). */
@@ -77,6 +89,15 @@ export default function TodayPage() {
   // A brand-new install (no key, no resume) goes to Setup, once (components/setup/use-first-run.ts).
   useOpenSetupOnFirstLaunch(setup.data);
   const data = today.data;
+  // A Skip that leaves nothing next takes its button away: focus goes to what takes the card's place (the
+  // empty line, or Setup's card on a new install).
+  const skipped = useRef(false);
+  const lead = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!skipped.current || !data) return;
+    skipped.current = false;
+    if (!data.next_up) lead.current?.focus();
+  }, [data]);
 
   return (
     <PageShell>
@@ -102,20 +123,22 @@ export default function TodayPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-7">
-          {data.next_up ? (
-            <NextUp item={data.next_up} />
-          ) : setup.isPending && setup.failureCount === 0 ? (
-            // Setup's card or the empty line: whichever it is, not one and then the other. A failed setup
-            // read stops the wait: Today's own read already says nothing is waiting.
-            <Skeleton className="h-40 w-full rounded-corner-lg" />
-          ) : setup.data && needsSetup(setup.data) ? (
-            <SetupEntryCard status={setup.data} />
-          ) : (
-            <section aria-label="Next up" className="flex items-center gap-3 rounded-corner-lg bg-card p-7">
-              <CONCEPT_ICONS.done aria-hidden="true" className="size-5 shrink-0 text-success" />
-              <p className="text-title-medium">Nothing waiting on you.</p>
-            </section>
-          )}
+          <div ref={lead} tabIndex={-1} className="outline-none">
+            {data.next_up ? (
+              <NextUp item={data.next_up} onSkipped={() => (skipped.current = true)} />
+            ) : setup.isPending && setup.failureCount === 0 ? (
+              // Setup's card or the empty line: whichever it is, not one and then the other. A failed setup
+              // read stops the wait: Today's own read already says nothing is waiting.
+              <Skeleton className="h-40 w-full rounded-corner-lg" />
+            ) : setup.data && needsSetup(setup.data) ? (
+              <SetupEntryCard status={setup.data} />
+            ) : (
+              <section aria-label="Next up" className="flex items-center gap-3 rounded-corner-lg bg-card p-7">
+                <CONCEPT_ICONS.done aria-hidden="true" className="size-5 shrink-0 text-success" />
+                <p className="text-title-medium">Nothing waiting on you.</p>
+              </section>
+            )}
+          </div>
           {data.also.length > 0 ? <AlsoToday counts={data.also} /> : null}
           {data.more.length > 0 ? <More counts={data.more} /> : null}
           <ThisWeek week={data.week} />
@@ -125,7 +148,7 @@ export default function TodayPage() {
   );
 }
 
-function NextUp({ item }: { item: TodayNextUp }) {
+function NextUp({ item, onSkipped }: { item: TodayNextUp; onSkipped: () => void }) {
   const money = useMoney();
   const pay = item.pay ? formatPay(item.pay, money) : null;
   // D8: a converted figure keeps the posted amount under it.
@@ -140,6 +163,7 @@ function NextUp({ item }: { item: TodayNextUp }) {
     <LeadCard
       eyebrow="Next up"
       action={{ label: action.label, href: action.href }}
+      secondary={<SkipControl item={item} onSkipped={onSkipped} />}
       aside={item.steps.length > 0 ? <WhereItIs item={item} now={action.label} /> : undefined}
     >
       <div className="flex min-w-0 items-center gap-3.5">
@@ -163,6 +187,87 @@ function NextUp({ item }: { item: TodayNextUp }) {
       {asks ? <p className="max-w-[65ch] text-body-medium">{asks}</p> : null}
     </LeadCard>
   );
+}
+
+function patchStatus(id: string, status: ApplicationStatus) {
+  return apiFetch<unknown>(`/api/applications/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+}
+
+/**
+ * Next up's Skip, the quiet control beside its button. A ready PDF's application turns Skipped, and the toast's
+ * Undo puts it back to Draft; an agent's job waiting on you takes the job page's Skip (the reason dialog, the
+ * proposal Skipped). An offer has none: it needs an answer, not a skip. Today refetches and the next job takes
+ * the card. On a job the other copy owns, the change waits for the next sync.
+ */
+function SkipControl({ item, onSkipped }: { item: TodayNextUp; onSkipped: () => void }) {
+  const qc = useQueryClient();
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["today"] });
+    void qc.invalidateQueries({ queryKey: ["applications"] });
+    void qc.invalidateQueries({ queryKey: ["jobs"] });
+    void qc.invalidateQueries({ queryKey: ["job-detail", item.job_id] });
+  };
+  const skipDraft = useMutation({
+    mutationFn: (id: string) => patchStatus(id, "skipped"),
+    onSuccess: (data, id) => {
+      onSkipped();
+      refresh();
+      if (isSyncQueued(data)) {
+        toast.success("Sent at the next sync");
+        return;
+      }
+      toast.success("Job skipped", {
+        action: {
+          label: "Undo",
+          onClick: () =>
+            patchStatus(id, "draft")
+              .then(refresh)
+              .catch((err: Error) => toast.error(couldnt("undo the skip", err))),
+        },
+      });
+    },
+    onError: (err: Error) => toast.error(couldnt("skip the job", err)),
+  });
+  const proposalActions = useProposalActions({
+    onDone: () => {
+      onSkipped();
+      setDeclineOpen(false);
+    },
+    onQueued: () => setDeclineOpen(false),
+  });
+
+  if (item.kind === "pdf_ready" && item.application_id) {
+    const id = item.application_id;
+    return (
+      <Button variant="outline" size="lg" pending={skipDraft.isPending} onClick={() => skipDraft.mutate(id)}>
+        Skip
+      </Button>
+    );
+  }
+  if (item.kind === "needs_you" && item.proposal_id) {
+    const id = item.proposal_id;
+    return (
+      <>
+        <Button
+          variant="outline"
+          size="lg"
+          disabled={proposalActions.pending}
+          focusableWhenDisabled
+          onClick={() => setDeclineOpen(true)}
+        >
+          Skip
+        </Button>
+        <DeclineDialog
+          open={declineOpen}
+          onOpenChange={setDeclineOpen}
+          pending={proposalActions.pending}
+          onConfirm={(reason) => proposalActions.transition({ id, status: "rejected", reason })}
+        />
+      </>
+    );
+  }
+  return null;
 }
 
 /** "Where this job is": the steps the server dates, done, then the move this card's button makes. */

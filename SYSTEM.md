@@ -182,7 +182,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 ## 5. The application workflow, end to end (web)
 
 The app opens on **Today** (`/today`; `/` redirects there): one read, `GET /api/today`, names the one move that matters most
-(an offer, the best ready PDF, a proposal's question) with counts that link into the steps below; frontend-conventions, "Today".
+(an offer, the best ready PDF, a proposal's question) with counts that link into the steps below, and a Skip beside its button
+for all but an offer (your draft turns Skipped; an agent's job takes its own Skip); frontend-conventions, "Today".
 A brand-new install (no key, no resume) opens **Setup** (`/setup`) once: four steps that write through the existing settings,
 import and profile endpoints and store no progress of their own; frontend-conventions, "Setup".
 
@@ -200,7 +201,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
    read the server's stage, one ladder per job (saved → scored → gaps → tailored → pdf_ready → applied | closed;
    `services/stage.py`, docs/entities/job.md), sent on both list shapes and the detail. "Saved" = job with no application;
    agent-captured jobs stay out unless the toggle is `Agents`, so the default reads Tracked, not All. Status groups: All/All
-   active/Interviews/Closed/Saved, **Your applications** and **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`).
+   active/Interviews/Closed/Saved, **Your applications** (Skipped among them: you decided not to apply) and **Agent inbox**
+   (`proposed`/`queued`/`needs_you`/`agent_skipped`).
    **Select** is the Agent inbox's Select mode; its bar changes status, queues or deletes one row at a time through the rows' own
    endpoints. Rows, options and the Agent inbox page (`/proposals`): frontend-conventions, "Jobs row" and "Tracker filter".
 3. **The job page** — `/jobs/[id]`: identity header (monogram, "Company · Place · Mode · pay" with the posted amount under a

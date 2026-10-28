@@ -12,6 +12,7 @@ StatusChip is the only place an application's or a proposal's state is named and
 | `accepted` | Offer accepted | `success-container` / `on-success-container` |
 | `rejected` | Rejected | `error-container` / `on-error-container` |
 | `withdrawn` | Withdrawn | `muted`, struck through |
+| `skipped` | Skipped | `muted` (you decided not to apply; nothing was sent) |
 
 | Proposal status | Label | Role |
 | --- | --- | --- |

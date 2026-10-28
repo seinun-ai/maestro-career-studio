@@ -33,8 +33,11 @@ change into the current status, and the Jobs row then shows the applied date it 
 
 - **Status vocabulary is backend-owned**: `ALLOWED_STATUSES` in
   `schemas/application.py` = draft, applied, interviewing, offered, accepted,
-  rejected, withdrawn. PATCH 422s on anything else. The frontend mirrors it as
-  `APPLICATION_STATUSES` in `lib/types.ts` (kept in sync by hand — update both).
+  rejected, withdrawn, skipped. PATCH 422s on anything else. The frontend mirrors it as
+  `APPLICATION_STATUSES` in `lib/types.ts` (kept in sync by hand — update both), and the
+  Companion names each in `extension/shared/status-roles.js`. **Skipped** is your own "not
+  applying to this one" (Today's Skip, or the status chip): the job is closed (`services/stage.py`
+  reads rejected, withdrawn and skipped as `closed`), and Draft takes it back.
 - **Status-event log** (`models/application_status_event.py`, `application_status_events`): one row
   per change of `status`, with `from_status` (null for the first), `to_status`, `at`, `source` (who
   said so) and `backfilled`. The migration that made the table wrote one `backfilled` row per
@@ -55,7 +58,7 @@ change into the current status, and the Jobs row then shows the applied date it 
 - **applied_at sync rule** (PATCH handler): entering applied/interviewing/
   offered/accepted stamps `applied_at` if unset (jumping straight to
   interviewing implies you applied); moving to draft clears it;
-  rejected/withdrawn preserve whatever is there. An explicit `applied_at` in
+  rejected/withdrawn/skipped preserve whatever is there. An explicit `applied_at` in
   the same PATCH always wins.
 - **Reuse policy** (both `POST /applications/from-base` and `tailor()`,
   `application_writes.newest_for_job`): with no explicit `application_id`, the

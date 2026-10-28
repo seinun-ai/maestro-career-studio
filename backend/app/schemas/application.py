@@ -19,6 +19,7 @@ ALLOWED_STATUSES = (
     "accepted",
     "rejected",
     "withdrawn",
+    "skipped",  # you decided not to apply; closes the job like rejected and withdrawn
 )
 
 

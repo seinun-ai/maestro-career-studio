@@ -1030,8 +1030,10 @@
   auto-close**: the application PATCH route, on a status entering applied+,
   transitions every OPEN proposal on that job to `rejected` (reason `applied
   manually`, channel frontend) — clears the triage/queued lanes, releases any
-  cap reservation, and the declined-job guard then stops the hunt re-proposing;
-  application rejected/withdrawn deliberately close nothing. **DELETE
+  cap reservation, and the declined-job guard then stops the hunt re-proposing.
+  A status entering `skipped` closes them the same way with no reason (a plain
+  skip, `apply_status_effects`): a queued agent never applies to a job you passed
+  on. Application rejected/withdrawn deliberately close nothing. **DELETE
   `/api/proposals/{id}`** (web-only; MCP keeps the no-delete invariant): 409
   for submitted/submission_uncertain (they ARE the machine-submission audit
   trail); otherwise staged-removal deletes row + consent events, then evidence

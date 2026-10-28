@@ -18,5 +18,6 @@
     accepted: { label: "Offer accepted", role: "success" },
     rejected: { label: "Rejected", role: "error" },
     withdrawn: { label: "Withdrawn", role: "muted" },
+    skipped: { label: "Skipped", role: "muted" },
   };
 })();

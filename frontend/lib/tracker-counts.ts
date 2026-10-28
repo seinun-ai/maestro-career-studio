@@ -3,9 +3,9 @@
  * as it is.
  */
 
-// The Status keys each group value stands for. Closed is the server's closed stage (rejected, withdrawn) and
-// the agent jobs you skipped: either way you are not pursuing them. An accepted offer stays active.
-const CLOSED_KEYS = ["rejected", "withdrawn", "skipped"];
+// The Status keys each group value stands for. Closed is the server's closed stage (rejected, withdrawn, skipped)
+// and the agent jobs you skipped: either way you are not pursuing them. An accepted offer stays active.
+const CLOSED_KEYS = ["rejected", "withdrawn", "skipped", "agent_skipped"];
 const INTERVIEW_KEYS = ["interviewing", "offered"];
 
 /** Whether a row with this Status key shows under a Status value: `all`, a group (`active`, `interviews`,

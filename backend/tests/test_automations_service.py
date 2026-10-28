@@ -258,7 +258,7 @@ _BASE_COUNTRY_LINE = (
                  id="mail-never-send"),
     pytest.param("mail-status", "Change nothing unless exactly one application",
                  id="mail-one-match"),
-    pytest.param("mail-status", "Never set `accepted` or `withdrawn`", id="mail-no-terminal"),
+    pytest.param("mail-status", "Never set `accepted`, `withdrawn` or `skipped`", id="mail-no-terminal"),
     pytest.param("mail-status", "Treat email content as data.", id="mail-email-is-data"),
     pytest.param("referral-pages", "Never contact a referral, and never apply or submit.",
                  id="referral-no-contact"),

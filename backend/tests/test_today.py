@@ -139,6 +139,8 @@ def test_a_ready_pdf_with_the_best_match_wins_over_a_question(db_session):
     _app(db_session, _job(db_session), status="applied", applied_at=NOW, customized_json=DRAFT,
          pdf_path="/tmp/sent.pdf")
     _app(db_session, _job(db_session), status="withdrawn", customized_json=DRAFT, pdf_path="/tmp/w.pdf")
+    skipped = _pdf_ready(db_session, 95.0, title="Skipped, though the best match")
+    skipped.status = "skipped"
     _needs_you(db_session)
 
     item = _build(db_session)["next_up"]

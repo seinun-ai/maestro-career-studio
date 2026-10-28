@@ -173,6 +173,34 @@ test("an offer and a proposal's question each say their own move", () => {
   assert.equal((asks.match(FILLED) ?? []).length, 1);
 });
 
+/** The quiet Skip beside the filled button: an outline button worded Skip, or null. */
+function skip(html) {
+  const m = /<button\b([^>]*)>Skip<\/button>/.exec(html);
+  return m ? { outline: /\bborder\b/.test(m[1]) && !/bg-primary text-primary-foreground/.test(m[1]) } : null;
+}
+
+test("Skip sits beside the button for a ready PDF and an agent's question, never for an offer", () => {
+  const ready = render({ today: response() });
+  assert.deepEqual(skip(ready), { outline: true });
+  assert.equal((ready.match(FILLED) ?? []).length, 1);
+  assert.equal(filled(ready).label, "Apply");
+
+  const asks = render({
+    today: response({
+      next_up: item({ kind: "needs_you", status: "needs_decision", application_id: null, proposal_id: "p-1" }),
+    }),
+  });
+  assert.deepEqual(skip(asks), { outline: true });
+  assert.equal((asks.match(FILLED) ?? []).length, 1);
+  // The reason dialog opens on the press; nothing of it renders before.
+  assert.doesNotMatch(asks, /Skip this job\?/);
+
+  const offer = render({ today: response({ next_up: item({ kind: "offer", status: "offered" }) }) });
+  assert.equal(skip(offer), null);
+  // A ready PDF with no application id (an older backend) has nothing to skip.
+  assert.equal(skip(render({ today: response({ next_up: item({ application_id: null }) }) })), null);
+});
+
 test("missing pay and an undated resume stay missing", () => {
   const html = render({ today: response({ next_up: item({ pay: null, base_resume: null, score: null, steps: [] }) }) });
   assert.match(html, /Northwind Studio · Berlin</);

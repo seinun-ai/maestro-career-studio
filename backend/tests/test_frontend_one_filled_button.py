@@ -322,7 +322,7 @@ def _body(view: str, key: tuple[str, str]) -> str:
 def test_today_leads_with_next_up_or_setup_never_both():
     # One ternary chain: Next up, else a skeleton while Setup's status loads, else Setup's card, else a quiet line.
     page = _body("Today", ("app/today/page.tsx", "TodayPage"))
-    lead = "{data.next_up ? ( <NextUp item={data.next_up} /> ) : setup.isPending"
+    lead = "{data.next_up ? ( <NextUp item={data.next_up} onSkipped={() => (skipped.current = true)} /> ) : setup.isPending"
     setup = ") : setup.data && needsSetup(setup.data) ? ( <SetupEntryCard status={setup.data} /> ) : ("
     assert page.count("<NextUp") == page.count("<SetupEntryCard") == 1
     assert lead in page and setup in page and page.index(lead) < page.index(setup)

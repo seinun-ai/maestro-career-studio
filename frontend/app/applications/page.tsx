@@ -95,15 +95,16 @@ const MoreIcon = CONCEPT_ICONS.more;
 // started on) — one name everywhere, not aspiring/not-applied/jobs.
 // Agent-lane filters cover proposal_status on saved jobs. Keys stay distinct
 // from APPLICATION_STATUSES — proposal "accepted" (Queued) must not collide
-// with application "accepted" (Offer), and proposal "rejected" (you passed on
-// the agent's proposal) must not read like application "rejected" (they passed
-// on you), hence "skipped". It absorbs expired proposals too: either way you
-// are not pursuing that job. The row chip still says Expired for that state.
+// with application "accepted" (Offer), proposal "rejected" (you passed on the
+// agent's proposal) must not read like application "rejected" (they passed on
+// you), and the application's own "skipped" is your draft, hence
+// "agent_skipped", worded Skipped like it. It absorbs expired proposals too:
+// either way you are not pursuing that job. The row chip still says Expired.
 const AGENT_LANE_FILTERS = [
   "proposed",
   "queued",
   "needs_you",
-  "skipped",
+  "agent_skipped",
 ] as const;
 // The three dropdown groups, in render order — FILTERS is derived from them so
 // a new key can never type-check and filter rows yet never appear as an option.
@@ -122,7 +123,7 @@ const AGENT_LANE_LABELS: Record<AgentLaneFilter, string> = {
   proposed: "To review",
   queued: "Queued",
   needs_you: "Needs you",
-  skipped: "Skipped",
+  agent_skipped: "Skipped",
 };
 
 // The list's chips, each a preset of the Status filter and the stage (lib/tracker-filters.ts `VIEW_FILTERS`).
@@ -199,7 +200,7 @@ function rowFilterKey(r: Row): Exclude<Filter, "all"> {
   const ps = r.job.proposal_status;
   if (ps === "pending_review") return "proposed";
   if (ps === "accepted") return "queued";
-  if (ps === "rejected" || ps === "expired") return "skipped";
+  if (ps === "rejected" || ps === "expired") return "agent_skipped";
   if (ps === "needs_decision" || ps === "needs_human") return "needs_you";
   return "saved";
 }
@@ -214,7 +215,7 @@ const AGENT_LANE_DOT_STATUS: Record<AgentLaneFilter, string> = {
   proposed: "pending_review",
   queued: "accepted",
   needs_you: "needs_decision",
-  skipped: "rejected",
+  agent_skipped: "rejected",
 };
 
 /** A filter's own dot: a status dot, a lane dot, or none for All and Saved. */

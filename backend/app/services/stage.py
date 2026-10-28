@@ -19,7 +19,7 @@ from app.services import ats_score
 from app.services.application_status import SUBMITTED_STAGES
 
 # An application in one of these is over without being applied to: nothing to do next.
-_CLOSED_STATUSES = ("rejected", "withdrawn")
+_CLOSED_STATUSES = ("rejected", "withdrawn", "skipped")
 
 
 @dataclass(frozen=True)

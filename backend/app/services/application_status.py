@@ -104,8 +104,8 @@ def status_since(session: Session, applications: list[Application]) -> dict[uuid
 def _stamp_applied_at(application: Application, fields: set[str]) -> None:
     """Keep applied_at in sync with the status transition, unless the caller set it in this
     same change (their value wins). Any submitted stage stamps the date once if unset; dropping
-    back to "draft" clears it; rejected/withdrawn keep whatever is there (they don't imply an
-    application happened)."""
+    back to "draft" clears it; rejected/withdrawn/skipped keep whatever is there (they don't imply
+    an application happened)."""
     if "status" not in fields or "applied_at" in fields:
         return
     if application.status in SUBMITTED_STAGES:
@@ -115,13 +115,15 @@ def _stamp_applied_at(application: Application, fields: set[str]) -> None:
         application.applied_at = None
 
 
-def _close_open_proposals(db: Session, application: Application) -> None:
+def _close_open_proposals(db: Session, application: Application, *, reason: str | None,
+                          note: str) -> None:
     """User override (2026-08-01): marking the application applied+ means they completed it
     themselves, so resolve any open proposal on the JOB (linked or not; one open proposal per
     job) instead of leaving it squatting in the triage/queued lanes. Closed as a posting-scoped
     decline with an honest consent event; this also releases an approved proposal's cap slot
     and, via the declined-job guard, stops the hunt re-proposing a posting already applied to.
-    Rejected/withdrawn applications deliberately do NOT close proposals."""
+    Skipping the application closes them too (no reason: a plain skip), so a queued agent never
+    applies to a job you passed on. Rejected/withdrawn applications deliberately do NOT."""
     open_props = db.scalars(
         select(ApplicationProposal).where(
             ApplicationProposal.job_id == application.job_id,
@@ -131,9 +133,7 @@ def _close_open_proposals(db: Session, application: Application) -> None:
     for prop in open_props:
         try:
             proposal_svc.transition(
-                db, prop, "rejected",
-                consent={"channel": "frontend", "note": "user marked the application applied"},
-                reason=proposal_svc.APPLIED_MANUALLY,
+                db, prop, "rejected", consent={"channel": "frontend", "note": note}, reason=reason,
             )
         except proposal_svc.TransitionError:
             # A concurrent transition beat us to a terminal state; the user's status change
@@ -148,7 +148,10 @@ def apply_status_effects(db: Session, application: Application, fields: set[str]
     if "status" in fields and application.status in SUBMITTED_STAGES:
         # Marked applied: the job's receipt rows posted before it had an application are its.
         filled_answers.link_unlinked(db, application)
-        _close_open_proposals(db, application)
+        _close_open_proposals(db, application, reason=proposal_svc.APPLIED_MANUALLY,
+                              note="user marked the application applied")
+    elif "status" in fields and application.status == "skipped":
+        _close_open_proposals(db, application, reason=None, note="user skipped the job")
 
 
 def apply_status_and_notes(db: Session, application: Application, values: dict,

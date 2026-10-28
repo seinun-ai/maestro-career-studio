@@ -43,8 +43,8 @@ its links or attachments.
    - rejection → `rejected`, from `draft`, `applied` or `interviewing`
    - offer → `offered`, from `draft`, `applied` or `interviewing`
    - an assessment adds a note but keeps the status.
-   Leave `offered`, `accepted`, `rejected` and `withdrawn` as they are.
-   Never set `accepted` or `withdrawn`; those are the user's.
+   Leave `offered`, `accepted`, `rejected`, `withdrawn` and `skipped` as they are.
+   Never set `accepted`, `withdrawn` or `skipped`; those are the user's.
 5. **Proposals.** Moving to `applied`, `interviewing` or `offered` closes the job's
    open proposal. If `get_job(job_id)` shows `proposal_status` `approved`, an apply
    session is under way: change nothing and list it. The digest names any proposal

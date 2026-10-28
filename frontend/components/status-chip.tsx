@@ -56,6 +56,13 @@ const STATUS_STYLES: Record<
     chip: "bg-muted text-muted-foreground line-through decoration-muted-foreground/40",
     dot: "bg-muted-foreground/40",
   },
+  // You decided not to apply: a skipped agent job's word (PROPOSAL_STATUS_CHIP), Withdrawn's muted look
+  // without the strike, since nothing was sent.
+  skipped: {
+    label: "Skipped",
+    chip: "bg-muted text-muted-foreground",
+    dot: "bg-muted-foreground/40",
+  },
 };
 
 /** The bar-segment tone for each status: the same roles as the dots above (the dots dim draft and
@@ -68,6 +75,7 @@ export const STATUS_TONES: Record<ApplicationStatus, SegmentTone> = {
   accepted: "success",
   rejected: "error",
   withdrawn: "muted",
+  skipped: "muted",
 };
 
 export function statusLabel(status: string | null): string {

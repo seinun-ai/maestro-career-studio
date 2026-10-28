@@ -305,14 +305,14 @@ def test_a_page_filled_from_the_base_says_nothing_was_written_down(tmp_path):
 
 
 def test_a_status_this_panel_cannot_write_is_not_offered_a_two_value_control(tmp_path):
-    """`ALLOWED_STATUSES` has seven and this surface writes two.
+    """`ALLOWED_STATUSES` has eight and this surface writes two.
 
     An application moved to `interviewing` in the web app would render with
     NEITHER button checked, and pressing Draft would walk the record backwards
     past three states — so the segment is withheld rather than shown wrong. The
     identity chip still names the status and the body's own sentence says where
     to change it, so nothing is hidden; what is withheld is a two-value control
-    over a seven-value field.
+    over an eight-value field.
     """
     out = _track(tmp_path, detail={**DRAFT_DETAIL, "status": "interviewing"})
     assert out["statuses"] == []
