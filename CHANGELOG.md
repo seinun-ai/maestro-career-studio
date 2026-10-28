@@ -481,6 +481,11 @@ rules. Your agent does the writing.
 - **Job market counts each value once.** "Hybrid" and "hybrid ", or "USA" and "United States", are
   one bar, the Country filter lists each country once, and a job that names no country reads "Not
   stated".
+- **Skill names keep the capitals their field uses.** Analytics showed "Sap" where a job said "SAP":
+  common acronyms from supply chain, finance, HR, healthcare and engineering (SAP, S&OP, GAAP, HRIS, EHR,
+  CAD and others) now read in capitals, as software ones already did.
+- **Referrals fits a 1024-pixel window.** The table no longer scrolls sideways there, so the edit and
+  delete buttons stay in view, the header stays put as you scroll, and company names show in full.
 - **"AWS SageMaker" is not added to a line that already says "AWS (SageMaker, EKS, S3)".** The fix for
   #50 caught "AWS" and "SageMaker" on their own; the job's joined wording now counts as named too.
 - **The health report no longer calls a reworded bullet new.** After Check again, a bullet that now has a
