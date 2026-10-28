@@ -60,14 +60,14 @@ def test_skills_by_role_shows_counts_below_twenty_jobs_in_a_role():
     """D7 on the heatmap: each row carries its role's job count (`of`, routers/explore.py) and a cell reads
     "2 of 3" while the role has fewer than rates.MIN_RATE_N jobs, a share only from there
     (components/charts/heatmap-chart.test.mjs renders it)."""
-    from tests.node_ts import run_node_test
+    from tests.node_ts import run_node_render_test
 
     src = Path(explore.__file__).read_text(encoding="utf-8")
     assert '"count": row.n,' in src and '"of": role_totals.get(row.role_category, 0),' in src
     heatmap = _read("components/charts/heatmap-chart.tsx")
     assert "const words = rateWords(share).value;" in heatmap and "const counts = of < MIN_RATE_N;" in heatmap
     assert "toFixed(0)}%" not in heatmap
-    result = run_node_test("components/charts/heatmap-chart.test.mjs")
+    result = run_node_render_test("components/charts/heatmap-chart.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr
 
 

@@ -608,6 +608,8 @@ anchors, Jobs, Agent inbox, job steps, Analytics); the tiers (one `LeadCard`, th
   never under `data/` or with `-n`) and blanks the four provider keys (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`):
   a worker's `load_dotenv()` finds the
   nearest `.env`, so unstubbed tests made billed calls. Parity tests (`tests/node_ts.py`) need node 24: skip locally, FAIL in `CI`.
+  Render tests (`components/**/*.test.mjs`) also need the web app's packages: call them through `run_node_render_test`, which
+  skips without `frontend/node_modules` (the backend job); the frontend job runs every one by glob after `npm ci`.
 - **Deploying a local change = rebuilding BOTH images** (MAINTAINER path, MAIN checkout): `docker build -t maestro-career-studio-backend
   backend/` AND `…-frontend frontend/`, then `docker compose up -d --no-build --force-recreate backend frontend`. A frontend-only change
   still needs the frontend image rebuilt — a stale image once made fixed UI look broken for a whole review.

@@ -40,6 +40,20 @@ def run_node_test(test_file: str) -> subprocess.CompletedProcess[str]:
                           capture_output=True, text=True, check=False)
 
 
+def run_node_render_test(test_file: str) -> subprocess.CompletedProcess[str]:
+    """Run a `components/**/*.test.mjs` file, which renders real components and so needs the web
+    app's installed packages (React, the TypeScript compiler; `components/render-harness.mjs`).
+
+    The backend CI job installs none, so there this SKIPS and the frontend CI job runs every such
+    file after `npm ci` (`.github/workflows/ci.yml`). A missing node still fails in CI: it is
+    checked before the skip.
+    """
+    _node_with_typescript()
+    if not (FRONTEND / "node_modules" / "typescript").is_dir():
+        pytest.skip("frontend packages are not installed; the frontend CI job runs this file")
+    return run_node_test(test_file)
+
+
 def ts_map(module: str, export: str, values: list) -> list:
     """`values.map(module[export])`, computed by node, as JSON."""
     node = _node_with_typescript()

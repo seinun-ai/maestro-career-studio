@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from tests.node_ts import run_node_test
+from tests.node_ts import run_node_render_test, run_node_test
 
 _ROOT = Path(__file__).resolve().parents[2]
 _FRONTEND = _ROOT / "frontend"
@@ -159,8 +159,6 @@ def test_an_open_page_reads_the_answers_again_when_you_come_back():
     the WHOLE profile: one that kept its old copy would erase a learned answer on its next edit. So each reads it
     again on focus (`"always"`, since a learn within the 30 s a read stays fresh would be skipped by `true`) and
     takes the new copy only while every edit is on the server (`adopt`)."""
-    result = run_node_test("components/profile/use-autofill-query.test.mjs")
-    assert result.returncode == 0, result.stdout + result.stderr
     assert 'refetchOnWindowFocus: "always",' in _src("components/profile/use-autofill-query.ts")
     for rel in ("components/profile/profile-view.tsx", "components/setup/setup-flow.tsx"):
         assert "useAutofillQuery()" in _src(rel), rel
@@ -179,6 +177,9 @@ def test_an_open_page_reads_the_answers_again_when_you_come_back():
     assert "useAdoptServed(served, answers.adopt);" in provider
     setup = _src("components/setup/setup-answers-step.tsx")
     assert "useAdoptServed(profile, answers.adopt);" in setup and "const save = useSaveAnswers();" in setup
+    # Last, because it skips where the web app's packages are not installed (the backend CI job).
+    result = run_node_render_test("components/profile/use-autofill-query.test.mjs")
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_every_profile_editor_stays_mounted_and_the_persona_keeps_its_save():
@@ -257,5 +258,5 @@ def test_the_contact_fill_node_suite_runs():
 
 def test_profile_view_node_suite():
     """Profile rendered with seeded reads: the header, Next up, the tiles, work permits per country, the folds."""
-    result = run_node_test("components/profile/profile-view.test.mjs")
+    result = run_node_render_test("components/profile/profile-view.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr
