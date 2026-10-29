@@ -63,6 +63,7 @@ import { statusDate } from "@/lib/job-standing";
 import { isListCapped } from "@/lib/list-cap";
 import { nextStep, nextStepHref, type Rung } from "@/lib/next-step";
 import { chipCount, matchesFilter } from "@/lib/tracker-counts";
+import { leaveJobsList, takeJobsListReturn } from "@/lib/view-transition";
 import {
   DEFAULT_FILTER,
   STAGE_FILTERS,
@@ -553,6 +554,15 @@ function ApplicationsContent() {
       ),
     );
   }, [filtered, loading, stale]);
+
+  // Back from a job page, the list opens where it was left (lib/view-transition.ts), so the job's row is on screen
+  // for the morph back. Layout effects run before the morph measures the row; one that is off screen does not morph.
+  useLayoutEffect(() => {
+    if (loading) return;
+    const scrollY = takeJobsListReturn();
+    if (scrollY !== null) window.scrollTo(0, scrollY);
+  }, [loading]);
+  useLayoutEffect(() => () => leaveJobsList(window.scrollY), []);
 
   // In the commit that drops the row, before paint (a passive effect left
   // focus on <body> for a frame): the next row's status chip, else the

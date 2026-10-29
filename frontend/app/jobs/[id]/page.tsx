@@ -77,6 +77,7 @@ import { answersSummary } from "@/lib/filled-answers";
 import { formatShortDate } from "@/lib/format-date";
 import { formatPay, payLine, periodWords } from "@/lib/money";
 import { countryName } from "@/lib/place-name";
+import { returnToJobsList } from "@/lib/view-transition";
 import { TAB_TO_STEP, currentStep, stepForTab, type StepKey } from "@/lib/job-steps";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { cn } from "@/lib/utils";
@@ -133,9 +134,12 @@ function JobHeadingLead({
         size="icon-sm"
         className="mt-1.5 shrink-0"
         nativeButton={false}
+        transitionOnClick
         render={
+          // The Jobs list puts its own scroll back (lib/view-transition.ts), so Next leaves it alone.
           <Link
             href={fromProposals ? "/proposals" : "/applications"}
+            scroll={fromProposals ? undefined : false}
             className="text-muted-foreground"
             onClick={onBack}
           />
@@ -244,9 +248,11 @@ export default function JobDetailPage({
   // The Jobs row's title and company while the detail loads: the morph from the row needs them in the first frame.
   const known = useCachedJobHeading(id);
   // Back pressed from the keyboard (a click with no pointer) leaves without the morph: keyboard actions never animate.
+  // Back to Jobs is a return either way: the list opens where it was left, its row on screen for the morph back.
   const [unmorphed, setUnmorphed] = useState(false);
   const backClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.detail === 0) flushSync(() => setUnmorphed(true));
+    if (!fromProposals) returnToJobsList();
   };
 
   const application = data?.application ?? null;

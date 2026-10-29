@@ -28,6 +28,10 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+### Fixed
+
+- Leaving a job page by Back to Jobs or the browser's Back now morphs the job back into its row, and the Jobs list keeps its scroll position and filters.
+
 ## [0.12.0] — 2026-10-28
 
 Edit a bullet on a base resume, click Add, and career history used to keep both: the old bullet and

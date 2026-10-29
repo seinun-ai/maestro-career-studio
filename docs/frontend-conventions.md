@@ -2200,9 +2200,14 @@ Every action answers. The answer depends on where the effect lands:
   changes in place rolls (`NumberRoll`) and the Match score's decimal counts (`useCountUp`). A Jobs row opens into the
   job page with a View Transition (React's `ViewTransition`, no flag in Next 16.3) that names only the monogram and the
   title (`components/job-morph.tsx`, `lib/view-transition.ts` `morphName`, `default="none"` with `share`), 250ms;
-  the page itself swaps without a fade, nothing slides, back navigation morphs by name, and under reduced motion the
-  pair fades in place (`::view-transition-group(*)` loses its animation). While a job's detail loads, its header draws
-  the title and company a Jobs list holds (`hooks/use-cached-job-heading.ts`), so the pair is on the page in the
+  the page itself swaps without a fade, nothing slides, and under reduced motion the pair fades in place
+  (`::view-transition-group(*)` loses its animation). Back to Jobs and the browser's Back morph it back. The list
+  remembers its scroll when it is left and puts it back in a layout effect, before the morph measures the row (a row off
+  screen does not morph; `lib/view-transition.ts`). Back to Jobs is a link with `scroll={false}`. The leave guard holds a
+  job page's popstate to the list for one task (`holdForMorph`): React renders a cached popstate synchronously, and a
+  synchronous render runs no view transition. Back's tooltip stays as it is once clicked and goes with the page
+  (`IconButton` `transitionOnClick`): Base UI ends a tooltip's close and answers a hover with a `flushSync`, and that
+  cancels a transition still preparing. While a job's detail loads, its header draws the title and company a Jobs list holds (`hooks/use-cached-job-heading.ts`), so the pair is on the page in the
   navigation's first frame. Keyboard actions never animate: a row opened with Enter drops its names first
   (`flushSync`), as do the row's Next step and the job page's Back when a key presses them (a click with
   `detail === 0`), and no key handler starts motion. Pinned by `test_frontend_motion.py`.

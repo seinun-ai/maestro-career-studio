@@ -21,10 +21,13 @@ import {
   type GuardState,
   type HistoryEntry,
 } from "@/lib/leave-guard";
+import { isBackToJobsList, jobsListLeft, returnToJobsList } from "@/lib/view-transition";
 
 /*
  * Back and Forward with unsaved work (owner decision 1). The decisions live in the
  * pure machine in lib/leave-guard.ts; this file feeds it and carries out its commands.
+ * It is the app's one popstate listener, so the job page's way back to the Jobs list
+ * (holdForMorph) is held here too.
  *
  * Next internals this relies on (Next 16.3.0; an upgrade re-runs browser check U1-7
  * and the Back/Forward scenarios in the lane doc):
@@ -161,6 +164,27 @@ function isReplaying() {
   return replaying;
 }
 
+/**
+ * Back from a job page to the Jobs list, with nothing for the machine to do. React renders a
+ * popstate synchronously, so the browser can restore scroll at once, and a synchronous render runs
+ * no view transition. So Next is held for one task: its render is then an ordinary transition and
+ * the job's pair morphs back into its row (components/job-morph.tsx). By then the browser has put
+ * the list's scroll on the job page: the job page gets its own back, and the list puts its scroll
+ * back itself (lib/view-transition.ts). A list never left in this tab has no scroll to put back,
+ * so its pop is left to Next and the browser.
+ */
+function holdForMorph(commands: GuardCommand[], from: string): GuardCommand[] {
+  if (!commands.every((command) => command.type === "setBypass")) return commands;
+  if (!isBackToJobsList(from, currentEntry().url) || !jobsListLeft()) return commands;
+  returnToJobsList();
+  const pageScroll = window.scrollY;
+  setTimeout(() => {
+    window.scrollTo(0, pageScroll);
+    replay();
+  }, 0);
+  return [...commands, { type: "stop" }];
+}
+
 function settleLeave() {
   clearTimeout(stallTimer);
   stallTimer = undefined;
@@ -231,7 +255,8 @@ export function LeaveGuardListeners() {
     const onPopState = (event: PopStateEvent) => {
       if (isReplaying()) return;
       settleLeave();
-      run(feed({ type: "pop", entry: currentEntry(), length: window.history.length }), event);
+      const from = machine().page;
+      run(holdForMorph(feed({ type: "pop", entry: currentEntry(), length: window.history.length }), from), event);
     };
     const onPageShow = (event: PageTransitionEvent) => {
       if (!event.persisted) return;

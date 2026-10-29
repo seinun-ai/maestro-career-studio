@@ -835,6 +835,9 @@ the refresh, the slop ratchet's stale pair, readers still on a job's country tex
 invariant has done its job: promote it (into Cross-cutting invariants or `.system_md_enforcement.json`) and delete
 the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 
+- **Back from a job page never morphed** (2026-10-28): React renders a cached popstate synchronously (for the browser's scroll restore)
+  and a synchronous commit runs no view transition; a named element off screen, or a `flushSync` while one prepares (a Base UI tooltip
+  closing), skips it too → hold the pop one task (`holdForMorph`), restore scroll in a layout effect, `IconButton` `transitionOnClick`.
 - **A faked compiler hid behind the probe cache** (2026-10-24): patching `pdf_render.subprocess.run` patches the shared module, so the
   resolver's `pdflatex --version` probe hit the fake (500 `{"detail":""}` run alone) unless an earlier real render had cached the banner
   (`engines._VERSION_CACHE`) → a test that fakes the compiler pins `engines.probe_pdflatex` too (`_stub_render_compilers`, `_with_tex`).
