@@ -163,8 +163,11 @@ reach an agent.
 
 **Phases.**
 1. Catalog, no visible change: `form_questions.yaml` holds today's questions exactly; Profile,
-   Setup and readiness read the served set; `GROUPS` and its parity test retired; the "chosen"
-   mark. A golden test shows every existing user's set is unchanged.
+   Setup and readiness read the served set; `GROUPS` and its parity test retired. A golden test
+   shows every existing user's set is unchanged. This reverses the call recorded in
+   `test_autofill_groups_parity.py` (serving the list was rejected because labels were
+   presentation): per-country wording makes them country data. The "chosen" mark moves to phase 3,
+   where it is first read.
 2. Source check, before building on country facts: CA, AU and AE status lists; the derivation
    rules; whether UAE addresses need an Emirate line (`asks_state`); India's CTC and notice
    conventions. Each source is cited in the YAML, as `markets.yaml` does.
