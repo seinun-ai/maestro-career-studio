@@ -735,6 +735,17 @@ The planner's calls, made from the code. Each changes *how* the design is built,
 7. **The Companion's version is not bumped here.** It moves at the next release (docs/RELEASING.md
    bumps it with the app).
 
+## Open for the owner, before release
+
+- **UAE dirham pay comparisons.** The ECB publishes no AED rate. So `home_market_currency` returns
+  AED for a UAE home, and `money.convert` returns None for every job not paid in AED (rule D8,
+  `money.py`). There are two options:
+  - log it in `docs/deferred.md` with a test that pins the behaviour;
+  - approve the Central Bank of the UAE's fixed peg (3.6725 AED to the USD) as a named exception to
+    D8.
+
+  Found in Task 3.2's review. It does not block Phase 3; it must be settled before release.
+
 ## Shared shapes
 
 Several tasks read these, so they are fixed here. Change them only with a deviation note.
