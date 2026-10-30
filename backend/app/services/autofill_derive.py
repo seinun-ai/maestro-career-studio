@@ -4,9 +4,10 @@ Only the rules the sources check verified (form_questions.yaml `citizenship`; so
 1-5): a citizen in their own country, EU/EEA/Swiss citizens in DE, NL and IE, British citizens in
 Ireland, Irish citizens in the UK, GCC nationals in the UAE. Anything else stays unknown.
 
-An answer the user gave always wins, and one that contradicts the rule (not allowed to work, or
-needing sponsorship now or later) turns the rule off for that country: the user knows something the
-rule does not, so nothing is derived beside it (inv-country-answers-stay-home).
+An answer the user gave always wins, and one that contradicts the rule (not allowed to work,
+needing sponsorship now or later, or another status than the one it settles) turns the rule off for
+that country: the user knows something the rule does not, so nothing is derived beside it
+(inv-country-answers-stay-home).
 
 Only readers call `answers_for`; the save path (`autofill_profile._as_stored`,
 `work_auth_entries`) never does, so nothing derived reaches the stored profile.
@@ -49,10 +50,7 @@ def derived_for(citizenships: list[str], market: str) -> dict[str, DerivedAnswer
 def settled_markets(citizenships: list[str]) -> list[str]:
     """The markets Maestro keeps, in `markets.keys()` order, where a citizenship settles that the
     user may work."""
-    return [
-        m for m in markets.keys()
-        if (d := derived_for(citizenships, m).get("authorized_now")) is not None and d.value is True
-    ]
+    return [m for m in markets.keys() if derived_for(citizenships, m)]
 
 
 def answers_for(profile: Any, market: str, home: str | None = None) -> dict[str, Any]:
@@ -60,14 +58,14 @@ def answers_for(profile: Any, market: str, home: str | None = None) -> dict[str,
 
     Two shapes come back, so callers read the result through `typed_work_auth(..., market)`: the
     stored entry as it is when nothing is derived (no citizenship rule, or a given answer that
-    contradicts it), else the derived answers with the given ones laid over them under the typed
-    keys. A given answer is one the typed reader can use: a blank, a status outside the market's
+    differs from one it settles), else the derived answers with the given ones laid over them under
+    the typed keys. A given answer is one the typed reader can use: a blank, a status outside the market's
     list or a non-answer ("maybe") hides nothing. `home` places a legacy single `work_auth` in a raw
     profile (a read view has it placed already)."""
     market = str(market or "").strip().upper()
     stored = autofill_profile.work_auth_entries(profile, home).get(market, {})
     derived = derived_for(citizenships(profile), market)
     given = autofill_profile.typed_work_auth(stored, market).model_dump(exclude_defaults=True)
-    if not derived or any(k in given and given[k] != v for k, v in _SETTLED.items()):
+    if not derived or any(k in given and given[k] != d.value for k, d in derived.items()):
         return stored
     return {**{k: d.value for k, d in derived.items()}, **given}

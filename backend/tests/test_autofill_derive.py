@@ -89,9 +89,12 @@ def test_citizenships_are_read_as_iso_codes():
 
 
 def test_an_explicit_answer_wins_and_the_rest_is_derived():
-    profile = {"personal": {"citizenships": ["AE"]},
-               "work_auth_by_country": {"AE": {"status": "golden_visa", "sponsorship_future": False}}}
-    assert autofill_derive.answers_for(profile, "AE") == {**SETTLED, "status": "golden_visa"}
+    """A given answer stays; one that differs from what the rule settles turns it off (below), so
+    the rest is derived only beside answers that agree with it or that it does not settle."""
+    profile = {"personal": {"citizenships": ["FR"]},
+               "work_auth_by_country": {"DE": {"sponsorship_future": False,
+                                               "authorization_expires_on": "2030-01-01"}}}
+    assert autofill_derive.answers_for(profile, "DE") == {**SETTLED, "authorization_expires_on": "2030-01-01"}
 
 
 def test_a_value_the_typed_reader_cannot_use_is_no_answer():
@@ -131,6 +134,23 @@ def test_an_answer_that_contradicts_the_rule_turns_it_off_for_that_country(entry
     assert autofill_derive.answers_for(profile, "DE") == entry
     # Another country the rule settles is untouched.
     assert autofill_derive.answers_for(profile, "NL") == SETTLED
+
+
+@pytest.mark.parametrize(("citizenship", "market", "entry"), [
+    ("US", "US", {"status": "h1b"}),
+    ("SA", "AE", {"status": "visit_visa"}),
+    ("AE", "AE", {"status": "golden_visa", "sponsorship_future": False}),
+])
+def test_a_given_status_that_differs_turns_the_rule_off_too(citizenship, market, entry):
+    """A US citizen who gave H-1B is not read as "authorized, no sponsorship": the given status is
+    all that market reads."""
+    profile = {"personal": {"citizenships": [citizenship]}, "work_auth_by_country": {market: entry}}
+    assert autofill_derive.answers_for(profile, market) == entry
+
+
+def test_a_given_status_that_agrees_keeps_the_rest_derived():
+    profile = {"personal": {"citizenships": ["SA"]}, "work_auth_by_country": {"AE": {"status": "gcc_national"}}}
+    assert autofill_derive.answers_for(profile, "AE") == {**SETTLED, "status": "gcc_national"}
 
 
 def test_the_market_is_read_as_a_key():
