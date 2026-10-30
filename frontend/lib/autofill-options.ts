@@ -1,273 +1,40 @@
 /**
- * The autofill profile's questions, their options and how a stored answer reads, shared by Profile
- * (`components/profile/*`) and Setup (`components/setup/*`). Pure, so `node --test` loads it
- * (lib/autofill-options.test.ts): it imports only types, which the loader erases.
- *
- * `GROUPS` and `WORK_PERMIT_QUESTIONS` are a hand-mirror of `backend/app/services/setup_status.py`'s
- * required lists (`_PERSONAL`, `_EEO`, `_PREFERENCES`, `_WORK_AUTH_CORE`, `_US_VISA_CORE`): a field that
- * is not `optional` counts toward readiness, a `byHome` one only where you live asks it
- * (`_personal_fields`). `backend/tests/test_autofill_groups_parity.py` fails when the two drift.
+ * How a stored answer to a form question reads, counts and saves, shared by Profile (`components/profile/*`)
+ * and Setup (`components/setup/*`). The questions come from the backend: `GET /api/settings/autofill/questions`
+ * serves the set for where you live and apply (`QuestionSet`, from `services/data/form_questions.yaml`), and
+ * every helper that needs a question takes that set. Nothing here mirrors a backend question list. Pure, so
+ * `node --test` loads it (lib/autofill-options.test.ts): it imports only types, which the loader erases.
  */
-import type { FieldDef, GroupDef } from "./types";
+import type { FieldDef, QuestionSet } from "./types";
 
 export type { FieldDef, GroupDef } from "./types";
-
-/** Where you live, as the state line reads it (a `MarketOption` from `GET /api/settings/market`). */
-export type HomeMarket = { asks_state?: boolean; state_label?: string };
 
 export const YES_NO = [
   { value: "yes", label: "Yes" },
   { value: "no", label: "No" },
 ];
-export const YES_NO_DECLINE = [
-  ...YES_NO,
-  { value: "decline", label: "Decline to answer" },
-];
 
 /** How many saved answers a fill reads: `MAX_CUSTOM` in backend/app/services/autofill_catalog.py. */
 export const CUSTOM_IN_USE = 30;
 
-export const GROUPS: GroupDef[] = [
-  {
-    key: "personal",
-    title: "Personal details",
-    fields: [
-      { key: "first_name", label: "First name" },
-      { key: "last_name", label: "Last name" },
-      { key: "email", label: "Email" },
-      { key: "phone", label: "Phone" },
-      { key: "address", label: "Street address" },
-      { key: "address_2", label: "Address line 2", optional: true },
-      { key: "city", label: "City" },
-      { key: "state", label: "State", byHome: true },
-      { key: "postal_code", label: "Postal code" },
-      { key: "country", label: "Country" },
-      // Optional for readiness: many fields of work and many countries use none of the three links.
-      { key: "linkedin", label: "LinkedIn profile link", optional: true },
-      { key: "github", label: "GitHub link", optional: true },
-      { key: "website", label: "Website", optional: true },
-    ],
-  },
-  {
-    key: "eeo",
-    title: "Diversity questions (voluntary)",
-    fields: [
-      {
-        key: "veteran_status",
-        label: "Are you a veteran?",
-        staleHint: "Answer again: this question changed.",
-        type: "select",
-        // One Yes/No. A "No" also answers a form's "not a protected veteran" option; a "Yes" alone never
-        // says which protected class applies, so the Companion leaves that list to you. The backend
-        // reads the old stored `veteran` as yes; the old `not_veteran` ("not a protected veteran")
-        // is no answer to this question, so it is asked again (staleHint).
-        options: [
-          { value: "no", label: "No, I am not a veteran" },
-          { value: "yes", label: "Yes, I am a veteran" },
-          { value: "decline", label: "I don't wish to answer" },
-        ],
-      },
-      {
-        key: "disability_status",
-        label: "Disability status",
-        type: "select",
-        options: [
-          { value: "no", label: "No, I do not have a disability" },
-          { value: "yes", label: "Yes, I have a disability" },
-          { value: "decline", label: "Decline to answer" },
-        ],
-      },
-      {
-        key: "gender",
-        label: "Gender",
-        type: "select",
-        // The stored values are the Companion's (content/eeo.js maps each to
-        // a form's own wording, and leaves a form without it to you).
-        options: [
-          { value: "male", label: "Male" },
-          { value: "female", label: "Female" },
-          { value: "non_binary", label: "Non-binary" },
-          { value: "self_describe", label: "Prefer to self-describe" },
-          { value: "decline", label: "Decline to answer" },
-        ],
-      },
-      // Voluntary like the group, and not counted by setup readiness.
-      {
-        key: "gender_self_describe",
-        label: "How you describe your gender",
-        hint: "The Companion types this where a form asks you to self-describe.",
-        optional: true,
-        when: ["gender", "self_describe"],
-      },
-      {
-        key: "hispanic_latino",
-        label: "Hispanic or Latino?",
-        type: "select",
-        options: YES_NO_DECLINE,
-      },
-      // Optional for readiness (setup_status counts the other four); its
-      // label carries no "(optional)", because the whole group is voluntary.
-      {
-        key: "race_ethnicity",
-        label: "Race or ethnicity",
-        optional: true,
-      },
-    ],
-  },
-  {
-    key: "eligibility",
-    title: "Eligibility",
-    fields: [
-      // The three questions nearly every US application asks and that nothing
-      // else in this profile can derive. They are knockout answers, so each is
-      // UNSET until you set it: an eligibility question the extension has no
-      // answer for is reported and left blank, never guessed.
-      //
-      // "Previously employed here" is per-EMPLOYER by nature and stored as one
-      // standing answer, which is the compromise it is worth naming: it is the
-      // most common unanswered question in the telemetry (six hosts, worded
-      // differently on every one), and "No" is the true answer at almost every
-      // employer. Where it is not, it has to be changed by hand, hence the
-      // wording of the label.
-      {
-        key: "over_18",
-        label: "Are you 18 or older?",
-        type: "select",
-        boolean: true,
-        options: YES_NO,
-        optional: true,
-      },
-      {
-        key: "previously_employed_here",
-        label: "Have you worked for the company you're applying to?",
-        type: "select",
-        boolean: true,
-        options: YES_NO,
-        optional: true,
-      },
-      {
-        key: "non_compete",
-        // The legal term stays in the label: forms ask it in those words and
-        // the Companion matches them (shared/profile-fields.js). The hint says
-        // what one is.
-        label: "Subject to a restrictive covenant?",
-        hint: "Such as a non-compete or non-solicit agreement.",
-        type: "select",
-        boolean: true,
-        options: YES_NO,
-        optional: true,
-      },
-    ],
-  },
-  {
-    key: "preferences",
-    title: "Preferences",
-    fields: [
-      { key: "desired_salary", label: "Desired salary" },
-      { key: "notice_period", label: "Notice period", hint: "How long before you can start." },
-      { key: "earliest_start_date", label: "Earliest start date" },
-      {
-        key: "willing_to_relocate",
-        label: "Willing to relocate?",
-        type: "select",
-        boolean: true,
-        options: YES_NO,
-      },
-      { key: "how_heard", label: "How did you hear about the job?" },
-    ],
-  },
-];
-
-/** One group's fields, by key ("personal", "eeo", "eligibility", "preferences"), as asked of someone who lives
- *  in `home`. With no home known, the state line reads as it always has: "State", counted. */
-export function groupFields(key: string, home?: HomeMarket): FieldDef[] {
-  const fields = GROUPS.find((group) => group.key === key)?.fields ?? [];
-  if (!home) return fields;
-  return fields.map((field) =>
-    field.byHome
-      ? { ...field, label: home.state_label || field.label, optional: home.asks_state === false }
-      : field,
-  );
-}
-
-/** The market you live in, out of the market list (undefined until both are known). */
-export function homeMarket<M extends { key: string }>(
-  market: { home: string; markets?: readonly M[] } | undefined,
-): M | undefined {
-  return market?.markets?.find((m) => m.key === market.home);
+/** One group's fields, by key ("personal", "eeo", "eligibility", "preferences"), as served: the state line is
+ *  already named and counted for where you live. A group the set lacks has none. */
+export function groupFields(questions: QuestionSet, key: string): FieldDef[] {
+  return questions.groups.find((group) => group.key === key)?.fields ?? [];
 }
 
 // ------------------------------------------------------------------ Work permits, per country
 
-/** A market's work-permit wording (`work_auth_vocab` in backend/app/services/data/markets.yaml, served on
- *  `GET /api/settings/market`). An unknown one reads as `generic`. */
-export type WorkAuthVocab = "us_visa" | "uk" | "generic";
-
-export type PermitKey = "status" | "authorized_now" | "sponsorship_now" | "sponsorship_future";
-
-type PermitQuestion = { key: PermitKey; label: string };
-
-/** The US visa statuses (`schemas/autofill_profile.py` WorkAuthStatus). Only a `us_visa` market asks it. */
-export const US_WORK_STATUS = [
-  { value: "citizen", label: "U.S. citizen" },
-  { value: "permanent_resident", label: "Permanent resident" },
-  { value: "opt", label: "F-1 OPT" },
-  { value: "stem_opt", label: "F-1 STEM OPT" },
-  { value: "h1b", label: "H-1B" },
-  { value: "tn", label: "TN" },
-  { value: "other_visa", label: "Other visa or status" },
-  { value: "not_authorized", label: "Not authorized to work in the U.S." },
-];
-
-/**
- * The knockout answers each country asks, in its own words. Every country asks the three yes/no keys; the
- * visa status list is the US taxonomy, so only `us_visa` asks it. A country's set is shown under its name,
- * so the generic words say "this country" rather than guess at a name's grammar.
- */
-const WORK_PERMIT_QUESTIONS: Record<WorkAuthVocab, PermitQuestion[]> = {
-  us_visa: [
-    { key: "status", label: "Work authorization status" },
-    { key: "authorized_now", label: "Authorized to work in the U.S. now?" },
-    { key: "sponsorship_now", label: "Do you need visa sponsorship now?" },
-    { key: "sponsorship_future", label: "Will you need visa sponsorship later?" },
-  ],
-  uk: [
-    { key: "authorized_now", label: "Do you have the right to work in the UK now?" },
-    { key: "sponsorship_now", label: "Do you need visa sponsorship to work in the UK now?" },
-    { key: "sponsorship_future", label: "Will you need visa sponsorship in the UK later?" },
-  ],
-  generic: [
-    { key: "authorized_now", label: "Can you work in this country now?" },
-    { key: "sponsorship_now", label: "Do you need visa sponsorship now?" },
-    { key: "sponsorship_future", label: "Will you need visa sponsorship later?" },
-  ],
-};
-
-export function permitVocab(vocab: string | null | undefined): WorkAuthVocab {
-  return vocab === "us_visa" || vocab === "uk" ? vocab : "generic";
+/** One country's work-permit fields, in its own words: its required questions, then when the permit runs out
+ *  (optional). Served per market you apply in ("UK", never "GB"); any other market has none, never another
+ *  country's. */
+export function permitFields(questions: QuestionSet, market: string): FieldDef[] {
+  return questions.permits[market] ?? [];
 }
 
-/** The required work-permit questions of one vocabulary, as fields (the status a select, the rest Yes/No). */
-export function permitQuestions(vocab: string | null | undefined): FieldDef[] {
-  return WORK_PERMIT_QUESTIONS[permitVocab(vocab)].map(({ key, label }) =>
-    key === "status"
-      ? { key, label, type: "select" as const, options: US_WORK_STATUS }
-      : { key, label, type: "select" as const, boolean: true, options: YES_NO },
-  );
-}
-
-/** One country's work-permit fields: its required questions, then when the permit runs out (optional). */
-export function workPermitFields(vocab: string | null | undefined): FieldDef[] {
-  return [
-    ...permitQuestions(vocab),
-    {
-      key: "authorization_expires_on",
-      label: "Authorization expires on",
-      hint: "Leave it empty if your right to work there does not run out.",
-      type: "date",
-      optional: true,
-    },
-  ];
+/** One country's required work-permit questions: the ones setup readiness counts. */
+export function permitQuestions(questions: QuestionSet, market: string): FieldDef[] {
+  return permitFields(questions, market).filter((field) => !field.optional);
 }
 
 // ------------------------------------------------------------------------- Education and languages
@@ -508,20 +275,21 @@ export function answered(field: FieldDef, value: unknown): boolean {
 
 export type Count = { answered: number; answerable: number };
 
-/** How many of a group's required answers are given: the fields setup readiness counts, for where you live. */
-export function groupCount(profile: Profile, group: string, home?: HomeMarket): Count {
+/** How many of a group's required answers are given: the fields setup readiness counts, as served for where
+ *  you live. */
+export function groupCount(profile: Profile, questions: QuestionSet, group: string): Count {
   const values = groupValues(profile, group);
-  const required = groupFields(group, home).filter((field) => !field.optional);
+  const required = groupFields(questions, group).filter((field) => !field.optional);
   return {
     answered: required.filter((field) => answered(field, values[field.key])).length,
     answerable: required.length,
   };
 }
 
-/** How many of one country's required work-permit answers are given, in its vocabulary. */
-export function permitCount(profile: Profile, market: string, vocab: string | null | undefined): Count {
+/** How many of one country's required work-permit answers are given, in its own questions. */
+export function permitCount(profile: Profile, questions: QuestionSet, market: string): Count {
   const entry = permitEntry(profile, market);
-  const required = permitQuestions(vocab);
+  const required = permitQuestions(questions, market);
   return {
     answered: required.filter((field) => answered(field, entry[field.key])).length,
     answerable: required.length,
@@ -532,6 +300,7 @@ export function permitCount(profile: Profile, market: string, vocab: string | nu
  *  goes with that answer: a self-description must not stay stored under "Female", unseen. */
 export function withField(
   profile: Profile,
+  questions: QuestionSet,
   group: string,
   key: string,
   value: string | boolean | undefined,
@@ -542,7 +311,7 @@ export function withField(
   } else {
     values[key] = value;
   }
-  for (const field of groupFields(group)) {
+  for (const field of groupFields(questions, group)) {
     if (field.when?.[0] === key && field.when[1] !== value) delete values[field.key];
   }
   return { ...profile, [group]: values };
@@ -554,10 +323,10 @@ export const RACE_STAYS_YOURS = "Race or ethnicity has no decline choice, so it 
 
 /** "Decline the rest": each diversity select still blank gets its decline option (every one offers the
  *  value "decline", whatever its words), and nothing already answered changes. Empty when nothing is blank. */
-export function declinedEeo(profile: Profile): Record<string, string> {
+export function declinedEeo(profile: Profile, questions: QuestionSet): Record<string, string> {
   const eeo = groupValues(profile, "eeo");
   return Object.fromEntries(
-    groupFields("eeo").flatMap((field) => {
+    groupFields(questions, "eeo").flatMap((field) => {
       if (field.type !== "select" || !isBlank(eeo[field.key])) return [];
       const decline = field.options?.find((option) => option.value === "decline");
       return decline ? [[field.key, decline.value]] : [];
@@ -594,9 +363,6 @@ export type MissingAnswer =
   | { kind: "field"; group: "personal" | "preferences"; field: FieldDef }
   | { kind: "diversity" };
 
-/** One market as Next up reads it (a `MarketOption` from `GET /api/settings/market`). */
-type AskedIn = HomeMarket & { key: string; work_auth_vocab?: string | null; offers_eeo: boolean };
-
 export function missingKey(item: MissingAnswer): string {
   if (item.kind === "permit") return `permit:${item.market}:${item.field.key}`;
   if (item.kind === "field") return `${item.group}:${item.field.key}`;
@@ -606,33 +372,28 @@ export function missingKey(item: MissingAnswer): string {
 /**
  * Every required answer still missing, in the order Next up asks: each country's work permit first, in the
  * order you apply in (the knockout answers, never guessed), then contact, then start and pay, then the
- * diversity questions where a country you apply in has a checked set. The fields are the ones setup
- * readiness counts for where you live (`home`, a market key), so an empty list is a full ring.
+ * diversity questions where a country you apply in has a checked set (`offers_eeo`). The fields are the ones
+ * setup readiness counts, as served for where you live, so an empty list is a full ring.
  */
 export function missingAnswers(
   profile: Profile,
+  questions: QuestionSet,
   applyIn: readonly string[],
-  markets: readonly AskedIn[],
-  home?: string,
 ): MissingAnswer[] {
-  const byKey = new Map(markets.map((m) => [m.key, m]));
-  const lives = home ? byKey.get(home) : undefined;
   const out: MissingAnswer[] = [];
   for (const market of applyIn) {
     const entry = permitEntry(profile, market);
-    for (const field of permitQuestions(byKey.get(market)?.work_auth_vocab)) {
+    for (const field of permitQuestions(questions, market)) {
       if (!answered(field, entry[field.key])) out.push({ kind: "permit", market, field });
     }
   }
   for (const group of ["personal", "preferences"] as const) {
     const values = groupValues(profile, group);
-    for (const field of groupFields(group, lives)) {
+    for (const field of groupFields(questions, group)) {
       if (!field.optional && !answered(field, values[field.key])) out.push({ kind: "field", group, field });
     }
   }
-  const offered = applyIn.some((market) => byKey.get(market)?.offers_eeo);
-  if (offered && groupCount(profile, "eeo").answered < groupCount(profile, "eeo").answerable) {
-    out.push({ kind: "diversity" });
-  }
+  const eeo = groupCount(profile, questions, "eeo");
+  if (questions.offers_eeo && eeo.answered < eeo.answerable) out.push({ kind: "diversity" });
   return out;
 }
