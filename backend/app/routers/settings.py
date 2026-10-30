@@ -18,6 +18,7 @@ from app.db import begin_write, get_db
 from app.schemas.auto_apply import AutoApplySettings
 from app.schemas.companion_apply import CompanionApplySettings
 from app.schemas.eeo_consent import EeoConsent
+from app.schemas.form_questions import QuestionSet
 from app.schemas.job_preferences import JobPreferences
 from app.schemas.job_site_login import (
     PASSWORD_MAX,
@@ -41,6 +42,7 @@ from app.services import (
     autofill_profile,
     companion_apply,
     eeo_consent,
+    form_questions,
     jev,
     job_preferences,
     job_site_login,
@@ -322,6 +324,17 @@ def draft_persona(db: Annotated[Session, Depends(get_db)]):
 @router.get("/autofill", response_model=SettingEnvelope[dict[str, Any]])
 def get_autofill(db: Annotated[Session, Depends(get_db)]):
     return {"key": "autofill_profile", "value": autofill_profile.get_profile(db)}
+
+
+@router.get(
+    "/autofill/questions", response_model=QuestionSet, response_model_exclude_defaults=True
+)
+def get_autofill_questions(db: Annotated[Session, Depends(get_db)]):
+    """The form questions for where you live and apply (services/form_questions): Profile, Setup and
+    readiness read this one set, never a list of their own. Served without defaults, as the
+    frontend's FieldDef reads them (every key but `key` and `label` may be absent)."""
+    market = market_settings.get_market(db)
+    return form_questions.resolve(home=market.home, apply_in=market.apply_in)
 
 
 @router.put("/autofill", response_model=SettingEnvelope[dict[str, Any]])
