@@ -8,6 +8,7 @@ authorization); employment and skills are the answers that are tailored per
 application, and taking them from anywhere else would let the extension send an
 employer something the resume beside it does not say."""
 
+import dataclasses
 import hashlib
 import json
 import logging
@@ -428,20 +429,22 @@ class _Catalog:
         self._company = job.company if job else None
         self._location = job.location if job else None
         self.job_market = autofill_job.job_market(job)
-        self._built: dict[str, dict[str, autofill_catalog.Fact]] = {}
+        self._built: dict[str | None, tuple[str, dict[str, autofill_catalog.Fact]]] = {}
 
     def _keyed(self, market: str | None) -> tuple[str, dict[str, autofill_catalog.Fact]]:
-        """The facts for one market's answers, built once per distinct set of answers."""
-        profile = autofill_country.with_work_auth(self._profile, market)
-        key = json.dumps(profile.get(autofill_profile.WORK_AUTH), sort_keys=True, default=str)
-        if key not in self._built:
+        """The facts for one market's answers, built once per market, keyed by what they say: the
+        same answers read differently in another market (a "citizen" status, the US-citizen fact),
+        so two markets share one group in `split` only when their facts match."""
+        if market not in self._built:
             facts = autofill_catalog.build(
-                profile, self._employment, self._skills, today=self._today,
-                company=self._company, location=self._location,
+                autofill_country.with_work_auth(self._profile, market), self._employment,
+                self._skills, today=self._today, company=self._company, location=self._location,
             )
             # Served: an agreement given under an older policy reads off (lapsed).
-            self._built[key] = autofill_catalog.with_agreement(facts, self._agrees)
-        return key, self._built[key]
+            facts = autofill_catalog.with_agreement(facts, self._agrees)
+            key = json.dumps([dataclasses.astuple(f) for f in facts.values()], default=str)
+            self._built[market] = (key, facts)
+        return self._built[market]
 
     def facts(self) -> dict[str, autofill_catalog.Fact]:
         """The facts with the job's country's work-permit answers."""

@@ -6,7 +6,10 @@ import pytest
 from app.services import autofill_catalog as cat
 from app.services import autofill_slots, form_questions
 
+# A US job's profile: `work_auth` is the US's answers (`autofill_country.with_work_auth`).
+US = {"work_auth_market": "US"}
 PROFILE = {
+    **US,
     "personal": {"first_name": "Sample", "city": "Springfield"},
     "work_auth": {"status": "stem_opt", "sponsorship_future": True},
     "eeo": {"veteran_status": "no"},
@@ -103,6 +106,7 @@ def test_a_hand_edited_profile_of_the_wrong_shapes_builds_what_it_can():
 
 def test_exact_slots_are_described_in_words_a_form_uses():
     f = cat.build({
+        **US,
         "work_auth": {"status": "opt", "authorized_now": True, "sponsorship_now": False,
                       "sponsorship_future": True, "authorization_expires_on": "2027-01-01",
                       "countries_authorized": ["United States"]},
@@ -160,8 +164,8 @@ def test_today_defaults_to_the_real_clock():
 
 @pytest.mark.parametrize("status", form_questions.status_values("US"))
 def test_us_citizen_is_derived_from_every_work_authorization_status(status):
-    """Every US status answers it: only a citizen is one."""
-    f = derived({"work_auth": {"status": status}})
+    """Every US status answers it, on a US job: only a citizen is one."""
+    f = derived({**US, "work_auth": {"status": status}})
     assert f["derived.us_citizen"].value == ("Yes" if status == "citizen" else "No")
     assert f["derived.us_citizen"].describe == "is a US citizen (yes/no; derived from the applicant's work authorization)"
     # A knockout answer: it maps only at the exact floor, and a near miss is refused.
@@ -171,7 +175,24 @@ def test_us_citizen_is_derived_from_every_work_authorization_status(status):
 @pytest.mark.parametrize("work_auth", [{}, {"status": None}, {"status": ""}, {"status": "martian"},
                                        {"authorized_now": True}, "citizen"])
 def test_an_unknown_status_derives_no_citizenship(work_auth):
-    assert "derived.us_citizen" not in derived({"work_auth": work_auth})
+    assert "derived.us_citizen" not in derived({**US, "work_auth": work_auth})
+
+
+@pytest.mark.parametrize("market, status", [("CA", "citizen"), ("AU", "permanent_resident"),
+                                            ("CA", "not_authorized"), (None, "citizen"), ("UK", "h1b")])
+def test_another_countrys_status_says_nothing_about_us_citizenship(market, status):
+    """A Canadian citizen is no US citizen, and an Australian permanent resident is not "not a US
+    citizen" by that alone: only the US's own answers derive it (inv-work-permit-per-country)."""
+    assert "derived.us_citizen" not in derived({"work_auth_market": market, "work_auth": {"status": status}})
+
+
+def test_a_status_takes_the_words_of_its_own_market_only():
+    """"citizen" is a U.S. citizen on a US job only; elsewhere the code is served until that market
+    has words of its own."""
+    assert cat.build({**US, "work_auth": {"status": "citizen"}}, [], [])["work_auth.status"].value == "U.S. citizen"
+    for market in ("CA", "AU", None):
+        f = cat.build({"work_auth_market": market, "work_auth": {"status": "citizen"}}, [], [])
+        assert f["work_auth.status"].value == "citizen", market
 
 
 @pytest.mark.parametrize("stored", ["Immedietly", "Immediately", "immediate", "ASAP", "right away", "Now",
@@ -218,7 +239,7 @@ def test_the_phone_and_street_address_say_what_they_are_not():
 
 
 def test_derived_descriptions_carry_no_values():
-    f = cat.build({"personal": {"first_name": "Sample", "last_name": "Person"}, "work_auth": {"status": "citizen"},
+    f = cat.build({**US, "personal": {"first_name": "Sample", "last_name": "Person"}, "work_auth": {"status": "citizen"},
                    "preferences": {"earliest_start_date": "Immedietly"}}, [], [], today=TODAY)
     for slot in ("derived.full_name", "derived.today", "derived.us_citizen", "derived.earliest_start_date"):
         assert str(f[slot].value) not in f[slot].describe, slot
@@ -227,7 +248,7 @@ def test_derived_descriptions_carry_no_values():
 def test_derived_facts_survive_the_size_cap():
     many = [{"employer": f"E{i}", "title": "T", "location": "L", "description": "D", "start_date": "2020-01",
              "end_date": "2021-01"} for i in range(8)]
-    f = cat.build({"personal": {"first_name": "A", "last_name": "B"}, "work_auth": {"status": "opt"},
+    f = cat.build({**US, "personal": {"first_name": "A", "last_name": "B"}, "work_auth": {"status": "opt"},
                    "custom": [{"question": f"q{i}", "answer": "a"} for i in range(30)]}, many, ["x"] * 50, today=TODAY)
     assert {"derived.full_name", "derived.today", "derived.us_citizen"} <= set(f)
 
@@ -239,7 +260,7 @@ def test_derived_facts_survive_the_size_cap():
 def test_derived_policies_come_from_policy_for(slot, policy):
     """One place decides a slot's policy, derived slots included."""
     assert autofill_slots.policy_for(slot) == policy
-    f = cat.build({"personal": {"first_name": "A", "last_name": "B"}, "work_auth": {"status": "tn"},
+    f = cat.build({**US, "personal": {"first_name": "A", "last_name": "B"}, "work_auth": {"status": "tn"},
                    "preferences": {"earliest_start_date": "ASAP"}}, [], [], today=TODAY)
     assert f[slot].policy == policy
 
@@ -659,7 +680,8 @@ INTENDED_YES_NO = {("eeo.disability_status", "no"), ("eeo.disability_status", "y
 
 
 def test_only_the_intended_status_words_read_as_a_yes_or_no():
-    got = {(slot, code) for slot, words in cat._WORDS.items() for code, text in words.items() if cat.is_yes_no(text)}
+    words_by_slot = [*cat._WORDS.items(), *(("work_auth.status", w) for w in cat._STATUS_WORDS.values())]
+    got = {(slot, code) for slot, words in words_by_slot for code, text in words.items() if cat.is_yes_no(text)}
     assert got == INTENDED_YES_NO
 
 
@@ -677,7 +699,7 @@ YES_NO_SLOTS = ("work_auth.authorized_now", "work_auth.sponsorship_now", "work_a
 
 
 def test_every_description_a_yes_or_no_fact_carries_has_a_direction():
-    profile = {"work_auth": {"status": "citizen", "authorized_now": True, "sponsorship_now": False,
+    profile = {**US, "work_auth": {"status": "citizen", "authorized_now": True, "sponsorship_now": False,
                              "sponsorship_future": False},
                "eligibility": {"over_18": True, "previously_employed_here": False, "non_compete": False},
                "eeo": {"hispanic_latino": "no", "disability_status": "no", "veteran_status": "no"},

@@ -371,9 +371,9 @@ class PreferenceAnswers(TypedDict, total=False):
 
 @with_config(ConfigDict(extra="forbid"))
 class WorkPermitAnswers(TypedDict, total=False):
-    """One country's work-permit answers (true is Yes); a null removes one. status is the US
-    visa status, asked for the US only; authorization_expires_on is YYYY-MM-DD, absent when the
-    right to work there does not run out."""
+    """One country's work-permit answers (true is Yes); a null removes one. status is one of that
+    market's own statuses (a refused save names them; a market with no list takes none);
+    authorization_expires_on is YYYY-MM-DD, absent when the right to work there does not run out."""
 
     status: str | None
     authorized_now: bool | None

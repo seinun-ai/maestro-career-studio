@@ -1166,7 +1166,8 @@ STATES_THE_VALUE = re.compile(r"states (the |its |this )?(applicant )?value", re
 # The one-shot "judge, flip and pick" instruction the split replaced: never asked again.
 ONE_SHOT = re.compile(r"Read the question as it is worded|reverse or a negation of it, and the right option",
                       re.IGNORECASE)
-STATUS_FACTS = autofill_catalog.build({"work_auth": {"status": "opt", "sponsorship_now": False},
+STATUS_FACTS = autofill_catalog.build({"work_auth_market": "US",
+                                       "work_auth": {"status": "opt", "sponsorship_now": False},
                                        "eeo": {"race_ethnicity": ["Asian"],
                                                "disability_status": "no"}}, [], [])
 
@@ -1771,7 +1772,8 @@ def test_now_or_in_the_future_judged_same_picks_the_combined_answer(db_session, 
 
 
 @pytest.mark.parametrize("slot, profile, said", [
-    ("derived.us_citizen", {"work_auth": {"status": "h1b"}}, 'for the applicant, "is a US citizen" is not true'),
+    ("derived.us_citizen", {"work_auth_market": "US", "work_auth": {"status": "h1b"}},
+     'for the applicant, "is a US citizen" is not true'),
     ("derived.sponsorship_now_or_future", {"work_auth": {"sponsorship_now": False, "sponsorship_future": False}},
      'for the applicant, "will need visa sponsorship now or in the future" is not true'),
 ])

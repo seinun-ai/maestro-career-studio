@@ -411,6 +411,7 @@ def test_the_reversed_wording_cases_are_labelled():
 
 # A profile holding every slot the cases name, built the way production builds it.
 EVERY_SLOT = {
+    "work_auth_market": "US",  # a US job's answers: the US-citizen fact and the US status words
     "work_auth": {"status": "h1b", "authorized_now": True, "sponsorship_now": False, "sponsorship_future": False},
     "eligibility": {"over_18": True, "non_compete": False, "previously_employed_here": False},
     "eeo": {"gender": "male", "race_ethnicity": ["Asian"], "hispanic_latino": "no", "veteran_status": "no",

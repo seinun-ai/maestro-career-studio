@@ -183,7 +183,7 @@ QUIET += [
      {"work_auth": {"sponsorship_now": False, "sponsorship_future": False}}),
     ("a citizenship answer read off the saved status",
      _field("Are you a US citizen?", "Yes", "inferred", slot="derived.us_citizen"),
-     {"work_auth": {"status": "citizen"}}),
+     {"work_auth_market": "US", "work_auth": {"status": "citizen"}}),
     ("agreeing to the application's terms",
      _field("I agree to the terms", "Yes", "inferred", slot="derived.agrees_to_terms"), {}),
     ("a language level", _field("Language", "English", "inferred", slot="languages.0.language"), {}),

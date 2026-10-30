@@ -218,6 +218,30 @@ def test_the_fill_loop_answers_each_question_from_its_own_country(db_session, cl
     assert body["c"]["route"] == "none"   # no job, no country named: asked, never guessed
 
 
+def test_the_same_answers_in_another_country_are_read_as_that_countrys(db_session, client, monkeypatch):
+    """A Canadian citizen's "citizen" is no US citizenship: a question naming the US gets the
+    US-citizen fact, one naming Canada does not, though both countries hold the same answers (the
+    fill's catalog is built per market, never shared by equal answers)."""
+    from app.services import autofill_map
+
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "CA"]), db_session)
+    autofill_profile.set_profile({"work_auth_by_country": {
+        "US": {"status": "citizen"}, "CA": {"status": "citizen"}}}, db_session)
+
+    def fake_map(fields, facts, session, **_kw):
+        fact = facts.get("derived.us_citizen")
+        return {f.fid: autofill_map.Mapped(route="slot", slot="derived.us_citizen", value=fact.value)
+                if fact else autofill_map.Mapped(route="none") for f in fields}
+
+    monkeypatch.setattr(autofill_map, "map_fields", fake_map)
+    body = client.post("/api/autofill/map", json={"fields": [
+        {"fid": "us", "question": "Are you a citizen of the United States?", "shape": "select", "options": ["Yes", "No"]},
+        {"fid": "ca", "question": "Are you a citizen of Canada?", "shape": "select", "options": ["Yes", "No"]},
+    ]}).json()["fields"]
+    assert body["us"]["value"] == "Yes"
+    assert body["ca"]["route"] == "none"
+
+
 def test_the_extension_reads_only_the_resolved_work_auth():
     """The Companion never picks a country itself: it fills from `profile.work_auth` off /context, which the
     server resolved to the job's country (`profile_for_job`). The one file that names the per-country map is

@@ -31,6 +31,7 @@ status outside the market's own list, or a citizenship that names no country
 """
 
 import json
+from collections.abc import Collection
 from typing import Any
 
 from pydantic import ValidationError
@@ -123,9 +124,16 @@ def work_auth_entries(profile: Any, home: str | None) -> dict[str, dict[str, Any
 def _with_work_auth_by_country(data: dict[str, Any], home: str | None) -> dict[str, Any]:
     """The read view: every market's answers under `work_auth_by_country`, `work_auth` as the home
     market's (absent when it has none), and `work_auth_market` naming the home whenever the profile
-    holds any work-permit answers, so a client that adds or edits the one set says whose it is."""
+    holds any work-permit answers, so a client that adds or edits the one set says whose it is.
+    Country answers are served keyed by market as permits are ("in " is "IN")."""
     entries = work_auth_entries(data, home)
-    view = {k: v for k, v in data.items() if k not in (WORK_AUTH, BY_COUNTRY, WORK_AUTH_MARKET)}
+    country_answers = _by_market(data.get(ANSWERS_BY_COUNTRY))
+    view = {
+        k: v for k, v in data.items()
+        if k not in (WORK_AUTH, BY_COUNTRY, WORK_AUTH_MARKET, ANSWERS_BY_COUNTRY)
+    }
+    if country_answers:
+        view[ANSWERS_BY_COUNTRY] = country_answers
     if entries:
         view[BY_COUNTRY] = entries
         if home:
@@ -136,8 +144,8 @@ def _with_work_auth_by_country(data: dict[str, Any], home: str | None) -> dict[s
 
 
 def _sent_entries(sent: Any) -> dict[str, dict[str, Any] | None]:
-    """A save's `work_auth_by_country` by market ("uk " is "UK"): an object is that market's answers,
-    anything else (null) removes them."""
+    """A save's per-market map (`work_auth_by_country` or `answers_by_country`) by market ("uk " is
+    "UK"): an object is that market's answers, anything else (null) removes them."""
     if not isinstance(sent, dict):
         return {}
     return {
@@ -413,6 +421,13 @@ def _citizenship_refusal(personal: Any) -> str | None:
     return None
 
 
+def _not_kept(section: str, market: str) -> str:
+    return (
+        f"{section}: {market} is not a market Maestro keeps answers for. "
+        f"The markets are {', '.join(markets.keys())}."
+    )
+
+
 def _status_refusal(permits: Any) -> str | None:
     """A work-permit status outside its market's own list (`form_questions.status_values`)."""
     for market, answers in _sent_entries(permits).items():
@@ -420,6 +435,8 @@ def _status_refusal(permits: Any) -> str | None:
         allowed = form_questions.status_values(market)
         if status is None or (isinstance(status, str) and status in allowed):
             continue
+        if not markets.is_supported(market):
+            return _not_kept(f"{BY_COUNTRY}.{market}.status", market)
         if not allowed:
             asking = [m for m in markets.keys() if form_questions.status_values(m)]
             return (
@@ -435,18 +452,19 @@ def _status_refusal(permits: Any) -> str | None:
 
 def _country_answer_refusal(given: Any) -> str | None:
     """A country answer for a market Maestro does not keep, or one that market does not ask
-    (`form_questions.answer_keys`: its answers after packs)."""
+    (`form_questions.answer_keys`: its answers after packs). A null only removes, so it is never
+    refused: an agent can clear a stale answer or market."""
     for market, answers in _sent_entries(given).items():
+        setting = [key for key, value in (answers or {}).items() if value is not None]
+        if not setting:
+            continue
         if not markets.is_supported(market):
-            return (
-                f"{ANSWERS_BY_COUNTRY}: {market} is not a market Maestro keeps answers for. "
-                f"The markets are {', '.join(markets.keys())}."
-            )
+            return _not_kept(ANSWERS_BY_COUNTRY, market)
         allowed = form_questions.answer_keys(market)
-        unknown = [key for key in (answers or {}) if key not in allowed]
+        unknown = [key for key in setting if key not in allowed]
         if unknown:
             return (
-                f"{ANSWERS_BY_COUNTRY}.{market}: {', '.join(unknown)} is not asked there. "
+                f"{ANSWERS_BY_COUNTRY}.{market}: not asked there: {', '.join(unknown)}. "
                 f"{markets.get(market)['label']} asks {', '.join(allowed)}."
             )
     return None
@@ -493,7 +511,7 @@ def patch_profile(changes: dict[str, Any], session: Session) -> dict[str, Any]:
     return saved
 
 
-def _usable_answers_only(values: dict[str, Any], statuses: list[str] | set[str]) -> WorkAuth:
+def _usable_answers_only(values: dict[str, Any], statuses: Collection[str]) -> WorkAuth:
     """Validate field by field so one unusable answer cannot blank the others.
 
     settings/autofill.json is hand-editable and `PUT /api/settings/autofill`

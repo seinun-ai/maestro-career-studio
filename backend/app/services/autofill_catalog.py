@@ -4,12 +4,14 @@ Built from the CONSENT-GATED profile (`eeo_consent.disclosable_profile`) plus
 the selected resume's employment blocks and skills. `value` is what code types
 or Pick compares against (never sent to Jev during /map); `describe` is the
 label-only text /map offers; `policy` is `autofill_slots.policy_for`. Codes
-become the words a form shows ("stem_opt" → "F-1 STEM OPT extension").
+become the words a form shows ("stem_opt" → "F-1 STEM OPT extension"); a
+work-permit status takes its own market's words (`work_auth_market`), so a
+Canadian citizen is never a "U.S. citizen".
 
 DERIVED facts (`derived.*`) are computed here from the profile and the clock,
 in their own section so /map's description says where each comes from: the
-full legal name, today's date, US citizenship read off the work-authorization
-status, an "immediately" availability as a date, and — for an application
+full legal name, today's date, US citizenship read off the US work-authorization
+status (on a US job only), an "immediately" availability as a date, and — for an application
 whose company the work history lists — "previously employed here" as Yes,
 in place of the standing answer, which is the same for every company. Each is
 absent when what it is derived from is. `with_agreement` adds Yes to the
@@ -23,7 +25,7 @@ from datetime import date
 from typing import Any
 
 from app.services import form_questions
-from app.services.autofill_profile import canonical_identity_from_profile
+from app.services.autofill_profile import WORK_AUTH_MARKET, canonical_identity_from_profile
 from app.services.autofill_slots import Policy, _as_text, policy_for
 
 MAX_SLOTS = 240  # Jev Choice ceiling 255 incl. sentinels
@@ -32,12 +34,16 @@ MAX_EXPERIENCE = 8
 MAX_LANGUAGES = 4
 MAX_CUSTOM = 30
 
-_WORDS: dict[str, dict[str, str]] = {
-    "work_auth.status": {
+# A work-permit status in words, by the market whose answers it is (`work_auth_market`): the same code
+# means another thing in another country ("citizen"), so a market with no words here serves its code.
+_STATUS_WORDS: dict[str, dict[str, str]] = {
+    "US": {
         "citizen": "U.S. citizen", "permanent_resident": "Permanent resident (green card holder)",
         "opt": "F-1 OPT", "stem_opt": "F-1 STEM OPT extension", "h1b": "H-1B visa", "tn": "TN visa",
         "other_visa": "Another visa", "not_authorized": "Not authorized to work",
     },
+}
+_WORDS: dict[str, dict[str, str]] = {
     # Worded as a Yes or a No (`is_yes_no`), so a reversed question is read by its meaning.
     # One Yes/No question (owner, 2026-10-14). The profile reader maps the old values (autofill_profile).
     "eeo.veteran_status": {"no": "No, I am not a veteran", "yes": "Yes, I am a veteran",
@@ -136,12 +142,6 @@ _DESCRIBES: dict[str, str] = {
                                 "circumstances, and never a question about criminal history, convictions or "
                                 "charges, or anything a background check might find)"),
     "skills": "applicant skills (a list)",
-}
-# "Are you a US citizen?", from every US status (form_questions.yaml
-# `statuses.us`): only a citizen is one; every other status (a green card, any
-# visa, none) is a No. Any other status derives nothing.
-_US_CITIZEN = {
-    status: "Yes" if status == "citizen" else "No" for status in form_questions.status_values("US")
 }
 # A stored availability that means "today" (the owner's profile says "Immedietly";
 # "Immediatly", "Immediate start", "Available: now"): the WHOLE value is the
@@ -320,6 +320,8 @@ def _add(out: dict[str, Fact], slot: str, value: Any, describe: str | None = Non
 
 
 def _profile_sections(out: dict[str, Fact], profile: dict[str, Any]) -> None:
+    market = profile.get(WORK_AUTH_MARKET)
+    status_words = _STATUS_WORDS.get(market, {}) if isinstance(market, str) else {}
     for section in ("personal", "work_auth", "eligibility", "eeo", "preferences"):
         values = profile.get(section)
         if not isinstance(values, dict):
@@ -327,6 +329,8 @@ def _profile_sections(out: dict[str, Fact], profile: dict[str, Any]) -> None:
         for key, value in values.items():
             if section == "eeo" and key == "gender" and value == "self_describe":
                 value = values.get("gender_self_describe")
+            if section == "work_auth" and key == "status" and isinstance(value, str):
+                value = status_words.get(value, value)
             if isinstance(value, list):
                 value = tuple(str(v).strip() for v in value if str(v).strip())
             _add(out, f"{section}.{key}", value)
@@ -438,8 +442,12 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
         out["derived.phone_country"] = make_fact("derived.phone_country", dialing)
     work_auth = profile.get("work_auth") if isinstance(profile.get("work_auth"), dict) else {}
     status = work_auth.get("status")
-    if isinstance(status, str) and status in _US_CITIZEN:
-        out["derived.us_citizen"] = make_fact("derived.us_citizen", _US_CITIZEN[status])
+    # "Are you a US citizen?", from the US answers only (`work_auth_market`): a citizen is one, and
+    # every other US status (a green card, any visa, none) is a No. Another country's status says
+    # nothing about US citizenship (a Canadian citizen, an Australian permanent resident), and a
+    # status outside the US list derives nothing.
+    if profile.get(WORK_AUTH_MARKET) == "US" and status in form_questions.status_values("US"):
+        out["derived.us_citizen"] = make_fact("derived.us_citizen", "Yes" if status == "citizen" else "No")
     if (either := _now_or_future(work_auth)) is not None:
         out["derived.sponsorship_now_or_future"] = make_fact("derived.sponsorship_now_or_future", either)
     # Lazy: autofill_education reads answer_flags, which imports this module.

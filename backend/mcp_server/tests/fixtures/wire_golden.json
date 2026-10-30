@@ -2156,7 +2156,7 @@
        },
        "WorkPermitAnswers": {
         "additionalProperties": false,
-        "description": "One country's work-permit answers (true is Yes); a null removes one. status is the US\nvisa status, asked for the US only; authorization_expires_on is YYYY-MM-DD, absent when the\nright to work there does not run out.",
+        "description": "One country's work-permit answers (true is Yes); a null removes one. status is one of that\nmarket's own statuses (a refused save names them; a market with no list takes none);\nauthorization_expires_on is YYYY-MM-DD, absent when the right to work there does not run out.",
         "properties": {
          "authorization_expires_on": {
           "anyOf": [

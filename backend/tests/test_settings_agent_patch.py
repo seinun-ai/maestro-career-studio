@@ -129,6 +129,28 @@ def test_an_unknown_country_answer_is_refused(client):
     assert "expected_pay" in r.text  # names what Germany asks
 
 
+def test_a_null_clears_a_stale_country_answer_or_market(client, settings_dir):
+    """A null only removes, so it is never refused: an answer the market no longer asks, or a market
+    Maestro no longer keeps, can be cleared (the web's PUT stores what it is sent)."""
+    client.put("/api/settings/autofill", json={"value": {"answers_by_country": {
+        "DE": {"current_ctc": "1", "expected_pay": "2"}, "FR": {"expected_pay": "3"}}}})
+    r = _patch(client, "autofill", {"answers_by_country": {"DE": {"current_ctc": None}, "FR": None}})
+    assert r.status_code == 200, r.text
+    assert _stored_profile(settings_dir)["answers_by_country"] == {"DE": {"expected_pay": "2"}}
+    assert _patch(client, "autofill", {"answers_by_country": {"FR": {"expected_pay": None}}}).status_code == 200
+
+
+def test_country_answers_are_served_keyed_by_market(client, db_session):
+    """As permits are: a hand-edited "in " is India's answers."""
+    from app.services import text_settings
+
+    text_settings.set_text(autofill_profile.AUTOFILL_KEY, autofill_profile.AUTOFILL_FILE,
+                           json.dumps({"answers_by_country": {"in ": {"current_ctc": "1"}, "AE": "no"}}),
+                           db_session)
+    served = client.get("/api/settings/autofill").json()["value"]
+    assert served["answers_by_country"] == {"IN": {"current_ctc": "1"}}
+
+
 def test_a_market_maestro_does_not_keep_is_refused(client):
     r = _patch(client, "autofill", {"answers_by_country": {"FR": {"expected_pay": "1"}}})
     assert r.status_code == 422 and "FR" in r.text and "DE" in r.text  # names the markets
@@ -141,7 +163,12 @@ def test_a_status_from_another_country_is_refused(client):
 
 def test_a_status_where_no_status_is_asked_is_refused(client):
     r = _patch(client, "autofill", {"work_auth_by_country": {"UK": {"status": "citizen"}}})
-    assert r.status_code == 422 and "UK" in r.text
+    assert r.status_code == 422 and "UK asks no status" in r.text and "CA" in r.text
+
+
+def test_a_status_for_a_market_maestro_does_not_keep_says_so(client):
+    r = _patch(client, "autofill", {"work_auth_by_country": {"FR": {"status": "citizen"}}})
+    assert r.status_code == 422 and "FR is not a market Maestro keeps" in r.text
 
 
 def test_a_status_from_the_markets_own_list_or_a_null_is_saved(client, settings_dir):
