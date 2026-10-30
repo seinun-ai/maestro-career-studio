@@ -5,8 +5,10 @@ there only (`autofill_catalog.custom_for_job`), and `work_auth` is the job's
 country's work-permit answers (`autofill_country`: none for a job with no
 country). Every route that hands the profile onward, to the deterministic fill
 (/context) or to a model (/choose), passes it through `profile_for_job`, so the
-scope is decided in one place. The fill loop's catalog (`routers/autofill._facts`)
-resolves `work_auth` the same way, and per question."""
+scope is decided in one place. The job's country's own answers (`answers_by_country`)
+are folded over the slots they fill, and no other country's reach it
+(`autofill_country.for_market`). The fill loop's catalog (`routers/autofill._facts`)
+resolves both the same way, and per question."""
 
 from typing import Any
 from urllib.parse import urlsplit
@@ -31,10 +33,11 @@ def job_market(job: Job | None) -> str | None:
 
 def profile_for_job(db: Session, profile: Any, application_id: UUID | None,
                     question: str | None = None) -> Any:
-    """The profile with the saved answers that hold for the application's job, and the job's
-    country's work-permit answers as `work_auth` (`work_auth_market` names it). With no application
-    (a form not tracked yet) a scoped answer holds nowhere, and there are no work-permit answers: a
-    question that names its country is answered on the fill loop, where the question is known.
+    """The profile with the saved answers that hold for the application's job, the job's country's
+    work-permit answers as `work_auth` (`work_auth_market` names it) and its own answers over the
+    slots they fill (`autofill_country.for_market`). With no application (a form not tracked yet) a
+    scoped answer holds nowhere, and there are no country's answers: a question that names its
+    country is answered on the fill loop, where the question is known.
     `question` is that case for one question (the Companion's pause row learning an answer): the
     market it gets by `autofill_country.market_for_question`, the country it names, else the job's,
     and `work_auth_country` naming that country in words, one no market covers too (None: no one
@@ -45,7 +48,7 @@ def profile_for_job(db: Session, profile: Any, application_id: UUID | None,
     market = job_market(job)
     if question is not None:
         market = autofill_country.market_for_question(question, market)
-    profile = autofill_country.with_work_auth(profile, market)
+    profile = autofill_country.for_market(profile, market)
     if question is not None:
         code = autofill_country.country_for_question(question, job.country_code if job else None)
         profile = {**profile, autofill_country.WORK_AUTH_COUNTRY: countries.label(code)}

@@ -99,10 +99,10 @@ def _host_of(url: str | None) -> str | None:
 def flag_context(session: Session, job: Job,
                  profile: dict[str, Any] | None = None) -> tuple[dict[str, Fact], set[str]]:
     """What the flags compare against: the profile as the fill would serve it, with the job's
-    country's work-permit answers (`autofill_job.profile_for_job`'s rule). A batch passes
+    country's work-permit and own answers (`autofill_job.profile_for_job`'s rule). A batch passes
     `profile` (`eeo_consent.disclosable_profile`) so it is read once."""
     profile = eeo_consent.disclosable_profile(session) if profile is None else profile
-    profile = autofill_country.with_work_auth(profile, autofill_job.job_market(job))
+    profile = autofill_country.for_market(profile, autofill_job.job_market(job))
     facts = autofill_catalog.build(profile, [], [], company=job.company, location=job.location)
     return facts, answer_flags.saved_eeo(profile)
 

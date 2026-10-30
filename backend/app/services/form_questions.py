@@ -90,6 +90,51 @@ def answer_keys(market: str | None) -> list[str]:
     return [f.key for f in catalog().answers if _shown(f, m["packs"])] if m else []
 
 
+def answer_fills(market: str | None) -> dict[str, str]:
+    """`answer_keys(market)`, each with the flat slot it fills on that country's jobs (`fills`,
+    "preferences.desired_salary"), in catalog order; {} for a market Maestro does not keep."""
+    keys = set(answer_keys(market))
+    return {f.key: f.fills for f in catalog().answers if f.key in keys and f.fills}
+
+
+def status_labels(market: str | None) -> dict[str, str]:
+    """A market's statuses in its own words (`work_status` list: value to label); {} for a market
+    with no list or one Maestro does not keep."""
+    m = _market(market)
+    if not (m and m["work_status"]):
+        return {}
+    return {o.value: o.label for o in catalog().statuses[m["work_status"]].options}
+
+
+@cache
+def _by_slot() -> dict[str, list[Field]]:
+    """Every catalog field under the fill slot it answers, unindexed: a group field as
+    `section.key`, a country answer as its `fills`, a language field as `languages.key`. A slot may
+    have two (`expected_pay` fills `preferences.desired_salary`): the group's comes first."""
+    cat = catalog()
+    out: dict[str, list[Field]] = {}
+    pairs = [
+        *((f"{g.key}.{f.key}", f) for g in cat.groups for f in g.fields),
+        *((f.fills, f) for f in cat.answers if f.fills),
+        *((f"languages.{f.key}", f) for f in cat.language_fields),
+    ]
+    for slot, f in pairs:
+        out.setdefault(slot, []).append(f)
+    return out
+
+
+def describe_for(slot: str) -> str | None:
+    """What the fill loop reads for the answer in `slot` (unindexed, "languages.cefr"), as the
+    catalog words it (`describe`), or None where it says nothing (the fill's own rule)."""
+    return next((f.describe for f in _by_slot().get(slot, ()) if f.describe), None)
+
+
+def policy_for(slot: str) -> str | None:
+    """How strictly a picked option must match the answer in `slot` (unindexed), as the catalog
+    sets it (`policy`), or None where it sets none (the slot's section decides)."""
+    return next((f.policy for f in _by_slot().get(slot, ()) if f.policy), None)
+
+
 def citizenship_rule(code: str, market: str) -> CitizenshipRule | None:
     """The rule under which a citizen of `code` (ISO, "GB") may work in `market` (a market key,
     "UK") with no permit, or None: their own country's, else the first `citizenship` rule that

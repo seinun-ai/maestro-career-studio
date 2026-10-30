@@ -314,3 +314,197 @@ def test_the_knockout_scan_reads_the_job_countrys_answers(db_session):
     assert verdict(country_code="US") == "pass"
     assert verdict() == "pass"
     assert verdict(country_code="FR") == "profile_missing"   # no market: no answers, never the home ones
+
+
+# --- country answers: each job reads its own country's (Task 3.7) --------------------------------
+
+def test_a_uae_job_reads_uae_answers_and_none_of_germanys():
+    profile = {"preferences": {"desired_salary": "90000"},
+               "answers_by_country": {"AE": {"expected_pay": "25000", "in_country_now": True},
+                                      "DE": {"expected_pay": "70000"}}}
+    folded = autofill_country.with_country_answers(profile, "AE")
+    assert folded["preferences"]["desired_salary"] == "25000"
+    assert folded["eligibility"]["in_country_now"] is True
+    assert "answers_by_country" not in folded
+    assert "70000" not in json.dumps(folded)
+    # The input is not changed: the generic answer is still the stored one.
+    assert profile["preferences"]["desired_salary"] == "90000"
+
+
+def test_without_a_country_answer_the_generic_one_stays():
+    profile = {"preferences": {"desired_salary": "90000"}, "answers_by_country": {"DE": {}}}
+    assert autofill_country.with_country_answers(profile, "DE")["preferences"]["desired_salary"] == "90000"
+
+
+def test_a_blank_answer_and_a_key_the_country_does_not_ask_fill_nothing():
+    """Only a set value fills its slot, and only a key the market asks now (`form_questions.answer_keys`):
+    India's current CTC stored under Germany, hand-edited or from before a pack moved, is no German answer."""
+    profile = {"preferences": {"desired_salary": "90000"},
+               "answers_by_country": {"DE": {"expected_pay": "  ", "current_ctc": "1800000", "made_up": "x"}}}
+    folded = autofill_country.with_country_answers(profile, "DE")
+    assert folded["preferences"] == {"desired_salary": "90000"}
+    assert autofill_country.COUNTRY_ANSWERED not in folded
+    assert "1800000" not in json.dumps(folded)
+
+
+def test_no_market_folds_nothing_and_drops_every_countrys_answers():
+    profile = {"preferences": {"desired_salary": "90000"}, "answers_by_country": {"IN": {"expected_pay": "1"}}}
+    for market in (None, "FR"):
+        folded = autofill_country.with_country_answers(profile, market)
+        assert folded == {"preferences": {"desired_salary": "90000"}}, market
+
+
+def test_a_folded_answer_is_named_beside_the_profile():
+    """The slots the job's country's own answers fill ride beside `work_auth_market`, so the catalog can
+    describe a figure in its country's own terms only when it is that country's answer."""
+    profile = {"answers_by_country": {"NL": {"expected_pay": "4500"}}}
+    assert autofill_country.with_country_answers(profile, "NL")[autofill_country.COUNTRY_ANSWERED] == [
+        "preferences.desired_salary"]
+
+
+def test_a_citizenship_answers_the_permit_questions_on_the_job():
+    profile = {"personal": {"citizenships": ["FR"]}}
+    folded = autofill_country.with_work_auth(profile, "NL")
+    assert folded["work_auth"]["authorized_now"] is True
+    assert folded["work_auth"]["sponsorship_now"] is False
+    # Never another country's: a French citizen's UK answers are unknown.
+    assert "authorized_now" not in autofill_country.with_work_auth(profile, "UK")["work_auth"]
+
+
+def test_a_given_answer_still_wins_over_a_citizenship_on_the_job():
+    profile = {"personal": {"citizenships": ["FR"]}, "work_auth_by_country": {"DE": {"authorized_now": False}}}
+    assert work_auth_for(profile, question="", job_country="DE").authorized_now is False
+    assert work_auth_for(profile, question="", job_country="DE").sponsorship_now is None
+
+
+def test_countries_authorized_lists_the_markets_a_citizenship_settles():
+    profile = {"personal": {"citizenships": ["FR"]}}
+    assert work_auth_for(profile, question="", job_country="DE").countries_authorized == [
+        "Ireland", "Germany", "Netherlands"]
+    # A stored Yes keeps its place first; a settled market the answers already name is listed once.
+    profile["work_auth_by_country"] = {"US": {"authorized_now": True}, "NL": {"authorized_now": True}}
+    assert work_auth_for(profile, question="", job_country="DE").countries_authorized == [
+        "United States", "Netherlands", "Ireland", "Germany"]
+    # A given No turns the rule off there, so that country is not listed.
+    profile["work_auth_by_country"]["IE"] = {"authorized_now": False}
+    assert "Ireland" not in work_auth_for(profile, question="", job_country="DE").countries_authorized
+
+
+def test_a_question_naming_germany_on_a_uae_job_gets_germanys_country_answers(db_session):
+    from app.models.application import Application
+    from app.services import autofill_job
+    from tests.test_proposals_models import _mk_job
+
+    job = _mk_job(db_session, company="Acme", country_code="AE")
+    app = Application(job_id=job.id, base_resume="hybrid")
+    db_session.add(app)
+    db_session.commit()
+    profile = {"preferences": {"desired_salary": "90000"},
+               "answers_by_country": {"AE": {"expected_pay": "25000", "in_country_now": True},
+                                      "DE": {"expected_pay": "70000"}}}
+
+    named = autofill_job.profile_for_job(db_session, profile, app.id,
+                                         question="What is your expected salary in Germany?")
+    assert named["preferences"]["desired_salary"] == "70000"
+    assert "25000" not in json.dumps(named) and "in_country_now" not in json.dumps(named)
+
+    on_the_job = autofill_job.profile_for_job(db_session, profile, app.id)
+    assert on_the_job["preferences"]["desired_salary"] == "25000"
+    assert on_the_job["eligibility"]["in_country_now"] is True
+    assert "70000" not in json.dumps(on_the_job)
+    # No job: no country, so the generic answer and no country's.
+    no_job = autofill_job.profile_for_job(db_session, profile, None)
+    assert no_job["preferences"]["desired_salary"] == "90000" and "answers_by_country" not in no_job
+
+
+def test_the_fill_loop_reads_each_questions_own_countrys_answers(db_session, client, monkeypatch):
+    """/map's catalog for a UAE job holds the UAE's pay; a question that names Germany is decided against
+    Germany's, and neither group sees the other's figure."""
+    from app.models.application import Application
+    from app.services import autofill_map
+    from tests.test_proposals_models import _mk_job
+
+    market_settings.set_market(MarketSetting(home="IN", apply_in=["AE", "DE"]), db_session)
+    autofill_profile.set_profile({"preferences": {"desired_salary": "90000"}, "answers_by_country": {
+        "AE": {"expected_pay": "25000"}, "DE": {"expected_pay": "70000"}}}, db_session)
+    job = _mk_job(db_session, company="Acme", country_code="AE")
+    application = Application(job_id=job.id, base_resume="hybrid", customized_json={"contact": {"name": "Ada"}})
+    db_session.add(application)
+    db_session.commit()
+    seen = []
+
+    def fake_map(fields, facts, session, **_kw):
+        seen.append(json.dumps({s: f.value for s, f in facts.items()}))
+        pay = facts.get("preferences.desired_salary")
+        return {f.fid: autofill_map.Mapped(route="slot", slot="preferences.desired_salary", value=pay.value)
+                for f in fields}
+
+    monkeypatch.setattr(autofill_map, "map_fields", fake_map)
+    body = client.post("/api/autofill/map", json={"application_id": str(application.id), "fields": [
+        {"fid": "job", "question": "Expected monthly salary?", "shape": "text"},
+        {"fid": "de", "question": "Expected salary in Germany?", "shape": "text"},
+    ]}).json()["fields"]
+    assert (body["job"]["value"], body["de"]["value"]) == ("25000", "70000")
+    assert len(seen) == 2 and not ("70000" in seen[0] and "25000" in seen[0])
+
+
+def test_the_answer_flags_read_the_jobs_country_answers(db_session):
+    from app.services import filled_answers
+    from tests.test_proposals_models import _mk_job
+
+    job = _mk_job(db_session, company="Acme", country_code="AE")
+    facts, _ = filled_answers.flag_context(db_session, job, {
+        "personal": {"citizenships": ["SA"]},
+        "answers_by_country": {"AE": {"in_country_now": False}, "DE": {"expected_pay": "70000"}}})
+    assert facts["eligibility.in_country_now"].value == "No"
+    assert facts["work_auth.status"].value == "GCC national"   # the UAE's own words, from the citizenship
+    assert "70000" not in json.dumps({s: f.value for s, f in facts.items()})
+
+
+def test_the_knockout_scan_reads_a_citizenship(db_session):
+    """A French citizen's German job is authorized, with nothing stored for Germany; a UK job (no rule)
+    stays unknown."""
+    from app.services import knockout
+    from tests.test_proposals_models import _mk_job
+
+    market_settings.set_market(MarketSetting(home="IN", apply_in=["DE"]), db_session)
+    autofill_profile.set_profile({"personal": {"citizenships": ["FR"]}}, db_session)
+
+    def verdict(**kw):
+        job = _mk_job(db_session, work_authorization="no_sponsorship", **kw)
+        return next(c["result"] for c in knockout.scan_for(db_session, job)["checks"]
+                    if c["kind"] == "work_authorization")
+
+    assert verdict(country_code="DE") == "pass"
+    assert verdict(country_code="IE") == "pass"   # settled though not applied in
+    assert verdict(country_code="GB") == "profile_missing"
+
+
+def test_the_knockout_salary_check_reads_the_generic_desired_salary(db_session):
+    """Pay stays out of the country fold there: `_salary_check` compares a yearly figure, and the Dutch
+    answer is a monthly one."""
+    from decimal import Decimal
+
+    from app.services import knockout
+    from tests.test_proposals_models import _mk_job
+
+    market_settings.set_market(MarketSetting(home="NL", apply_in=["NL"]), db_session)
+    autofill_profile.set_profile({"preferences": {"desired_salary": "EUR 60000"},
+                                  "answers_by_country": {"NL": {"expected_pay": "EUR 5000"}}}, db_session)
+    job = _mk_job(db_session, country_code="NL", salary_max=Decimal(70000), salary_period="year",
+                  salary_currency="EUR")
+    salary = next(c for c in knockout.scan_for(db_session, job)["checks"] if c["kind"] == "salary")
+    assert "60" in salary["profile_value"] and "5,000" not in salary["profile_value"]
+    assert salary["result"] == "pass"
+
+
+def test_the_trace_redaction_holds_every_countrys_answers(db_session):
+    from app.routers.autofill import _redaction_facts
+
+    market_settings.set_market(MarketSetting(home="IN", apply_in=["IN", "AE"]), db_session)
+    autofill_profile.set_profile({"preferences": {"desired_salary": "90000"}, "answers_by_country": {
+        "IN": {"current_ctc": "1800000"}, "AE": {"expected_pay": "25000"}}}, db_session)
+    facts = _redaction_facts(db_session)
+    assert facts["preferences.current_ctc#IN"].value == "1800000"
+    assert facts["preferences.desired_salary#AE"].value == "25000"
+    assert facts["preferences.desired_salary"].value == "90000"

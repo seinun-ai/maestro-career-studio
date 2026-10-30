@@ -349,12 +349,16 @@
   a code only as "US" or "UK" in capitals ("CA", "DE" and "IN" are US states as often); "New Mexico", "Latin America" and "Georgia" name
   nothing; the longer name wins ("Northern Ireland" is the UK). One named country gives its market's answers; one with no market or no
   answers, or two countries ("the United States or Canada"), gives none; none named gives the job's (`markets.for_country(country_code)`);
-  a job with no country gives none. `countries_authorized` is derived: the entry's own list, then each market whose `authorized_now` is
-  Yes, by country name. **Readers.** `/context` and `/choose` through `profile_for_job` (the job's set; no job, no set); `/map` and `/pick`
+  a job with no country gives none. A set is read as `autofill_derive.answers_for` serves it (the stored answers over the ones a
+  citizenship settles there), and the same country's own answers (`answers_by_country`) fill their flat slots
+  (`autofill_country.with_country_answers`: expected pay over `desired_salary`; another country's never reach the form). `countries_authorized`
+  is derived: the entry's own list, then each market whose `authorized_now` reads Yes, a citizenship-settled one included, by country
+  name. **Readers.** `/context` and `/choose` through `profile_for_job` (the job's set; no job, no set); `/map` and `/pick`
   group their fields by the set each question gets and decide each group on its own catalog (a second model call only when a question
   names a country whose answers differ from the job's); `/step` takes its question's set; `/sections` and `/reason` the job's; run-trace
   redaction every country's; the answer flags (`filled_answers.flag_context`) the job's. The knock-out scan screens with the job's
-  country's set, and a job with no country with the home set (an advisory check, not an answer given). `get_job_search_brief` serves each
+  country's set, and a job with no country with the home set (an advisory check, not an answer given); its pay check reads the generic
+  desired salary, a yearly figure, never a country's own. `get_job_search_brief` serves each
   apply-in market's set in the brief's yes/no keys, its warnings led by the country's name unless the user lives and applies in one
   country, and the home set for one release (`job_search_brief._work_permits`; SYSTEM.md §13 `brief-work-auth-home`); the job-hunt and
   referral-pages prompts judge a posting by its own country's set and leave one from an unknown or not-applied-in country unfiltered on

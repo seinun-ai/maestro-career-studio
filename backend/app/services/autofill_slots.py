@@ -13,6 +13,8 @@ drift from that value before we refuse to write it:
 import re
 from typing import Any, Literal
 
+from app.services import form_questions
+
 Policy = Literal["any", "flag", "exact"]
 
 FREE_TEXT = "free_text"
@@ -34,9 +36,14 @@ _FLAG_SECTIONS = frozenset({"education", "personal", "experience", "languages", 
 
 
 def policy_for(slot: str | None) -> Policy:
+    """The catalog's `policy` for the answer first (form_questions.yaml: citizenship is exact), then
+    the slot's own, then its section's."""
     if slot is None:
         return "flag"
-    if (unindexed := re.sub(r"\.\d+\.", ".", slot)) in _SLOT_POLICY:
+    unindexed = re.sub(r"\.\d+\.", ".", slot)
+    if catalogued := form_questions.policy_for(unindexed):
+        return catalogued
+    if unindexed in _SLOT_POLICY:
         return _SLOT_POLICY[unindexed]
     section = slot.split(".", 1)[0]
     if section in _EXACT_SECTIONS:

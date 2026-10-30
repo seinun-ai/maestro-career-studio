@@ -25,7 +25,10 @@
 # change n in its "What the sources change in the design". `pack:` on a field
 # shows it only while a country you apply in names that pack; on a country
 # answer, only in a country that names it. `pack`, `fills`, `noExpiry`,
-# `describe` and `policy` are the catalog's own: never served.
+# `describe` and `policy` are the catalog's own: never served. `describe` and
+# `policy` are what the fill loop reads for an answer (its words for the
+# model, and how near an option must be), keyed by the slot it fills
+# (`section.key`, a country answer's `fills`); absent, the fill's own rule.
 #
 # The golden test (backend/tests/test_form_questions.py) pins the resolved set
 # to the hand-written set it replaced
@@ -47,7 +50,9 @@ groups:
       - {key: phone, label: Phone}
       - {key: address, label: Street address}
       - {key: address_2, label: Address line 2, optional: true}
-      - {key: city, label: City}
+      # Indian forms ask the current location, a city (Sources 22): the fill's
+      # words for the city say so.
+      - {key: city, label: City, describe: "personal: city (also the current location)"}
       - {key: state, label: State, byHome: state}
       - {key: postal_code, label: Postal code, byHome: postcode}
       - {key: country, label: Country}
@@ -56,7 +61,8 @@ groups:
       # (the `citizenship` rules below), not with your contact details: the
       # one required answer the country questions add (Decision 6). Profile
       # asks it in Country answers, never in Contact.
-      - {key: citizenships, label: Citizen of, type: countries}
+      - {key: citizenships, label: Citizen of, type: countries,
+         describe: countries the applicant is a citizen of (a list), policy: exact}
       # Optional for readiness: many fields of work and many countries use
       # none of the three links.
       - {key: linkedin, label: LinkedIn profile link, optional: true}
@@ -162,10 +168,11 @@ groups:
         pack: us_screening
       # Indian forms ask total experience in years and months (Sources 20;
       # sources doc rows India 3a, 3b).
+      # Months are what is left over the whole years (Naukri asks 0 to 11).
       - {key: experience_years, label: "Total experience: years", type: number, optional: true,
-         pack: india_basics}
+         pack: india_basics, describe: total work experience in whole years}
       - {key: experience_months, label: "Total experience: months", type: number, optional: true,
-         pack: india_basics}
+         pack: india_basics, describe: the months of total work experience beyond the whole years (0 to 11)}
 
   - key: preferences
     title: Preferences
@@ -183,6 +190,9 @@ groups:
         type: number
         optional: true
         pack: india_basics
+        describe: >-
+          notice period in days; when a form offers fixed choices, pick the
+          shortest one that is at least this long, never a shorter one
       - key: serving_notice
         label: Are you serving your notice period?
         type: select
@@ -190,14 +200,17 @@ groups:
         options: *yes_no
         optional: true
         pack: india_basics
+        describe: is serving a notice period at the current employer now (yes/no)
       # Shown whatever serving_notice says: no `when`, because a yes/no answer
-      # is stored as `true` and `when` compares the raw value.
+      # is stored as `true` and `when` compares the raw value. The fill offers
+      # it only while you serve notice and the day has not passed.
       - key: last_working_day
         label: Last working day
         hint: If you're serving notice.
         type: date
         optional: true
         pack: india_basics
+        describe: the last working day at the current employer, while serving notice
       - {key: earliest_start_date, label: Earliest start date}
       - key: willing_to_relocate
         label: Willing to relocate?
@@ -212,6 +225,7 @@ groups:
         hint: Up to 10 cities, separated by commas.
         optional: true
         pack: india_basics
+        describe: preferred work locations (cities)
 
 # Each country's status question, keyed by its `work_status`: its `label`,
 # whether readiness counts it (`required`, false when absent) and its
@@ -467,6 +481,7 @@ answers:
     optional: true
     pack: india_basics
     fills: preferences.current_ctc
+    describe: "current CTC: total annual cost to company, in rupees"
   # The gulf pack's questions (the approved design,
   # docs/plans/2026-10-30-country-form-questions-design.md).
   - key: in_country_now
@@ -477,6 +492,7 @@ answers:
     optional: true
     pack: gulf
     fills: eligibility.in_country_now
+    describe: is in the UAE now (yes/no)
   - key: uae_driving_licence
     label: Do you hold a UAE driving licence?
     type: select
@@ -485,6 +501,7 @@ answers:
     optional: true
     pack: gulf
     fills: eligibility.uae_driving_licence
+    describe: holds a UAE driving licence (yes/no)
 
 # Asked on each language you list, while a country you apply in names the pack.
 language_fields:
@@ -498,6 +515,7 @@ language_fields:
     type: select
     optional: true
     pack: cefr
+    describe: CEFR level (A1–C2) of this language; on a verbal scale pick the nearest option
     options:
       - {value: A1, label: A1 · Basic user}
       - {value: A2, label: A2 · Basic user}

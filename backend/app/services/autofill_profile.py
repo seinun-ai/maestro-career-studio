@@ -121,13 +121,19 @@ def work_auth_entries(profile: Any, home: str | None) -> dict[str, dict[str, Any
     return entries
 
 
+def answers_entries(profile: Any) -> dict[str, dict[str, Any]]:
+    """Each market's own answers (`answers_by_country`), keyed by market ("in " is "IN"); an entry
+    that is not an object is no answers. Copies: a caller may change them."""
+    return _by_market(profile.get(ANSWERS_BY_COUNTRY) if isinstance(profile, dict) else None)
+
+
 def _with_work_auth_by_country(data: dict[str, Any], home: str | None) -> dict[str, Any]:
     """The read view: every market's answers under `work_auth_by_country`, `work_auth` as the home
     market's (absent when it has none), and `work_auth_market` naming the home whenever the profile
     holds any work-permit answers, so a client that adds or edits the one set says whose it is.
     Country answers are served keyed by market as permits are ("in " is "IN")."""
     entries = work_auth_entries(data, home)
-    country_answers = _by_market(data.get(ANSWERS_BY_COUNTRY))
+    country_answers = answers_entries(data)
     view = {
         k: v for k, v in data.items()
         if k not in (WORK_AUTH, BY_COUNTRY, WORK_AUTH_MARKET, ANSWERS_BY_COUNTRY)

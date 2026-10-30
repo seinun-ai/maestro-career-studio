@@ -3,10 +3,14 @@
 Built from the CONSENT-GATED profile (`eeo_consent.disclosable_profile`) plus
 the selected resume's employment blocks and skills. `value` is what code types
 or Pick compares against (never sent to Jev during /map); `describe` is the
-label-only text /map offers; `policy` is `autofill_slots.policy_for`. Codes
+label-only text /map offers (the catalog's `describe` first,
+form_questions.yaml); `policy` is `autofill_slots.policy_for`. Codes
 become the words a form shows ("stem_opt" → "F-1 STEM OPT extension"); a
-work-permit status takes its own market's words (`work_auth_market`), so a
-Canadian citizen is never a "U.S. citizen".
+work-permit status takes its own market's words (`work_auth_market`; the
+catalog's status labels), so a Canadian citizen is never a "U.S. citizen".
+The job's country's own answers are already folded into the flat slots
+(`autofill_country.for_market`); a pay figure that is that country's answer
+is described in that country's pay terms (markets.yaml `pay`).
 
 DERIVED facts (`derived.*`) are computed here from the profile and the clock,
 in their own section so /map's description says where each comes from: the
@@ -24,8 +28,9 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
-from app.services import form_questions
-from app.services.autofill_profile import WORK_AUTH_MARKET, canonical_identity_from_profile
+from app.services import countries, form_questions, markets
+from app.services.autofill_country import COUNTRY_ANSWERED
+from app.services.autofill_profile import CITIZENSHIPS, WORK_AUTH_MARKET, canonical_identity_from_profile
 from app.services.autofill_slots import Policy, _as_text, policy_for
 
 MAX_SLOTS = 240  # Jev Choice ceiling 255 incl. sentinels
@@ -35,7 +40,9 @@ MAX_LANGUAGES = 4
 MAX_CUSTOM = 30
 
 # A work-permit status in words, by the market whose answers it is (`work_auth_market`): the same code
-# means another thing in another country ("citizen"), so a market with no words here serves its code.
+# means another thing in another country ("citizen"). Each market's status labels in the catalog
+# (`form_questions.status_labels`), and over them the words US forms use, tuned on live forms; a market
+# with no list serves its code.
 _STATUS_WORDS: dict[str, dict[str, str]] = {
     "US": {
         "citizen": "U.S. citizen", "permanent_resident": "Permanent resident (green card holder)",
@@ -272,11 +279,16 @@ def is_yes_no(value: object) -> bool:
 
 def describe_of(slot: str) -> str:
     """A slot's value-free description: the one lookup production and the
-    evaluation both read (a saved answer is described by its own question)."""
+    evaluation both read (a saved answer is described by its own question).
+    The catalog's words come first (`form_questions.describe_for`, by the slot
+    without its index)."""
+    if m := re.fullmatch(r"languages\.(\d+)\.(\w+)", slot):
+        if what := _language_facts().get(m[2]):
+            return f"language entry {int(m[1]) + 1}: {what}"
+    elif described := form_questions.describe_for(slot):
+        return described
     if slot in _DESCRIBES:
         return _DESCRIBES[slot]
-    if (m := re.fullmatch(r"languages\.(\d+)\.(\w+)", slot)) and m[2] in _LANGUAGE_FACTS:
-        return f"language entry {int(m[1]) + 1}: {_LANGUAGE_FACTS[m[2]]}"
     if m := re.fullmatch(r"experience\.(\d+)\.current", slot):
         return f"experience entry {int(m[1]) + 1}: is the applicant's current job (yes/no)"
     return re.sub(r"\.(\d+)\.", lambda m: f" entry {int(m.group(1)) + 1}: ", slot).replace(".", ": ").replace("_", " ")
@@ -319,21 +331,62 @@ def _add(out: dict[str, Fact], slot: str, value: Any, describe: str | None = Non
         out[slot] = make_fact(slot, text, describe)
 
 
-def _profile_sections(out: dict[str, Fact], profile: dict[str, Any]) -> None:
+_PAY = "preferences.desired_salary"
+
+
+def _pay_describe(profile: dict[str, Any]) -> str | None:
+    """The expected pay in its country's terms (markets.yaml `pay`: "Expected gross monthly salary,
+    excluding holiday allowance (EUR)"), only when the figure is that country's own answer
+    (`COUNTRY_ANSWERED`): the generic one was given in no country's terms. None: the generic words."""
     market = profile.get(WORK_AUTH_MARKET)
-    status_words = _STATUS_WORDS.get(market, {}) if isinstance(market, str) else {}
+    answered = profile.get(COUNTRY_ANSWERED)
+    if not (isinstance(answered, list) and _PAY in answered and markets.is_supported(market)):
+        return None
+    label = markets.get(market)["pay"]["label"]
+    return f"{label[:1].lower()}{label[1:]} (expected pay: desired salary, compensation or salary requirements)"
+
+
+def _iso_date(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(value.strip()) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def _notice_held(preferences: dict[str, Any], today: date) -> set[str]:
+    """The notice answers that no longer hold: the last working day unless notice is being served
+    and the day is a date not past; both once that day has passed (the notice is over)."""
+    serving = _as_text(preferences.get("serving_notice"))
+    last = _iso_date(preferences.get("last_working_day"))
+    if serving is None or yes_no_word(serving) != "Yes" or last is None:
+        return {"last_working_day"}
+    return {"serving_notice", "last_working_day"} if last < today else set()
+
+
+def _profile_sections(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None:
+    market = profile.get(WORK_AUTH_MARKET)
+    status_words = (
+        {**form_questions.status_labels(market), **_STATUS_WORDS.get(market, {})} if isinstance(market, str) else {}
+    )
     for section in ("personal", "work_auth", "eligibility", "eeo", "preferences"):
         values = profile.get(section)
         if not isinstance(values, dict):
             continue
+        dropped = _notice_held(values, today) if section == "preferences" else set()
         for key, value in values.items():
+            if key in dropped:
+                continue
             if section == "eeo" and key == "gender" and value == "self_describe":
                 value = values.get("gender_self_describe")
             if section == "work_auth" and key == "status" and isinstance(value, str):
                 value = status_words.get(value, value)
+            if section == "personal" and key == CITIZENSHIPS:
+                # ISO codes are stored; a form offers country names.
+                value = tuple(countries.label(code) or code for code in countries.codes_in(value))
             if isinstance(value, list):
                 value = tuple(str(v).strip() for v in value if str(v).strip())
-            _add(out, f"{section}.{key}", value)
+            slot = f"{section}.{key}"
+            _add(out, slot, value, _pay_describe(profile) if slot == _PAY else None)
 
 
 def _education(out: dict[str, Fact], education: Any) -> None:
@@ -365,13 +418,25 @@ _LANGUAGE_FACTS = {"language": "the language", "read": "reading level", "speak":
                    "fluent": "fluent in it (yes/no)"}
 
 
+def _language_facts() -> dict[str, str]:
+    """The facts a language entry may hold, described: the fill's own, then each field the catalog
+    asks on a language (`language_fields`: the CEFR level) in its words."""
+    asked = {f.key: f.describe for f in form_questions.catalog().language_fields if f.describe}
+    return {**_LANGUAGE_FACTS, **asked}
+
+
 def _language_answer(key: str, value: Any) -> str | None:
     word = value.strip().lower() if isinstance(value, str) else value
     if key == "language":
         return (value.strip() or None) if isinstance(value, str) else None
     if key in ("native", "fluent"):
         return _YES_NO.get(word) if isinstance(word, (str, bool)) else None
-    return _LEVELS.get(word) if isinstance(word, str) else None
+    if key in _LANGUAGE_FACTS:
+        return _LEVELS.get(word) if isinstance(word, str) else None
+    # A catalog field (the CEFR level): one of its options' values, passed through as its code ("B2").
+    field = next((f for f in form_questions.catalog().language_fields if f.key == key), None)
+    codes = {o.value.casefold(): o.value for o in (field.options or [])} if field else {}
+    return codes.get(word) if isinstance(word, str) else None
 
 
 def _languages(out: dict[str, Fact], languages: Any) -> None:
@@ -383,7 +448,7 @@ def _languages(out: dict[str, Fact], languages: Any) -> None:
     named = [e for e in (languages if isinstance(languages, list) else [])
              if isinstance(e, dict) and _language_answer("language", e.get("language"))]
     for i, entry in enumerate(named[:MAX_LANGUAGES]):
-        for key, what in _LANGUAGE_FACTS.items():
+        for key in _language_facts():
             if text := _language_answer(key, entry.get(key)):
                 slot = f"languages.{i}.{key}"
                 out[slot] = make_fact(slot, text)
@@ -1038,8 +1103,9 @@ def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: lis
     default. `company`, `location`: the application's job's, when there is one."""
     out: dict[str, Fact] = {}
     profile = profile or {}
-    _profile_sections(out, profile)
-    _derived(out, profile, today or date.today())
+    today = today or date.today()
+    _profile_sections(out, profile, today)
+    _derived(out, profile, today)
     _education(out, profile.get("education"))
     _experience(out, employment or [])
     _worked_here(out, company, employment or [])

@@ -52,6 +52,7 @@ from app.services import (
     autofill_catalog,
     autofill_choose,
     autofill_country,
+    autofill_derive,
     autofill_gaps,
     autofill_job,
     autofill_map,
@@ -66,6 +67,7 @@ from app.services import (
     base_resume_data,
     companion_apply,
     eeo_consent,
+    form_questions,
     job_url_match,
     model_settings,
 )
@@ -401,7 +403,8 @@ class _Catalog:
     stays a 404 — and neither selector is a profile-only fill.
 
     `work_auth` is one country's answers (inv-work-permit-per-country): the
-    country a question names, else the job's, else none (`autofill_country`).
+    country a question names, else the job's, else none (`autofill_country`),
+    and that country's own answers fill their slots (`for_market`).
     `facts()` is the job's; `split` groups a request's fields by the answers
     their questions get, so a question naming another country is decided
     against that country's facts and nothing else changes."""
@@ -432,12 +435,13 @@ class _Catalog:
         self._built: dict[str | None, tuple[str, dict[str, autofill_catalog.Fact]]] = {}
 
     def _keyed(self, market: str | None) -> tuple[str, dict[str, autofill_catalog.Fact]]:
-        """The facts for one market's answers, built once per market, keyed by what they say: the
-        same answers read differently in another market (a "citizen" status, the US-citizen fact),
-        so two markets share one group in `split` only when their facts match."""
+        """The facts for one market's answers, its own answers folded in, built once per market,
+        keyed by what they say: the same answers read differently in another market (a "citizen"
+        status, the US-citizen fact), so two markets share one group in `split` only when their
+        facts match (a country's own pay included)."""
         if market not in self._built:
             facts = autofill_catalog.build(
-                autofill_country.with_work_auth(self._profile, market), self._employment,
+                autofill_country.for_market(self._profile, market), self._employment,
                 self._skills, today=self._today, company=self._company, location=self._location,
             )
             # Served: an agreement given under an older policy reads off (lapsed).
@@ -479,15 +483,22 @@ MAX_REDACTION_BASES = 8
 
 
 def _redaction_facts(db: Session) -> dict[str, autofill_catalog.Fact]:
-    """Every value a stored page text must not repeat: the profile's, every country's work-permit answers, and
-    each active base resume's employers, titles, schools and skills (a trace names no application, so it cannot
-    say which resume the run used). Later bases' facts, and other countries' answers, keep their value under a
-    numbered or marked key."""
+    """Every value a stored page text must not repeat: the profile's, every country's work-permit and own
+    answers, and each active base resume's employers, titles, schools and skills (a trace names no application,
+    so it cannot say which resume the run used). Later bases' facts, and other countries' answers, keep their
+    value under a numbered or marked key."""
     catalog = _Catalog(db, None, None)
     out = dict(catalog.facts())
-    for market in autofill_profile.work_auth_entries(autofill_profile.get_profile(db), None):
+    profile = autofill_profile.get_profile(db)
+    answered = [
+        *autofill_profile.work_auth_entries(profile, None),
+        *autofill_profile.answers_entries(profile),
+        *autofill_derive.settled_markets(autofill_derive.citizenships(profile)),
+    ]
+    for market in dict.fromkeys(answered):
+        own = set(form_questions.answer_fills(market).values())
         out.update({f"{key}#{market}": fact for key, fact in catalog.facts_for_market(market).items()
-                    if key.startswith(("work_auth.", "derived."))})
+                    if key.startswith(("work_auth.", "derived.")) or key in own})
     for n, slug in enumerate(base_resume_data.active_base_resume_slugs(db)[:MAX_REDACTION_BASES], 1):
         out.update({f"{key}#{n}": fact for key, fact in _facts(db, None, slug)[0].items()})
     return out

@@ -16,7 +16,8 @@ needle can span a JSX line break.
   per country from its market's `work_auth_vocab`, so its row pins the key in every wording, and
   `test_each_country_is_asked_every_work_permit_key` pins that each country you apply in is asked it.
   "Countries authorized" is no field any more: the fill derives it from each country's
-  `authorized_now` and You apply in (`services/autofill_country.py`, `test_autofill_country.py`).
+  `authorized_now`, a citizenship-settled one included, and You apply in (`services/autofill_country.py`,
+  `test_autofill_country.py`).
 - **Setup, 12:** one row per board item, grouped by the step that asks it (`SETUP_STEPS`); Run setup
   again is Settings › Basics' About footer.
 """
@@ -160,8 +161,9 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
      (asked("permits", "authorization_expires_on", label="Authorization expires on"), *_PERMITS)),
     ("Work permits", "Countries authorized", (
         asked("permits", "authorized_now"), *_PERMITS, _APPLY_IN,
-        ("backend/app/services/autofill_country.py", "derived = _authorized_countries(entries)"),
-        ("backend/app/services/autofill_country.py", "if autofill_profile.typed_work_auth(raw, market).authorized_now is True:"),
+        ("backend/app/services/autofill_country.py", "derived = _authorized_countries(profile, home)"),
+        ("backend/app/services/autofill_country.py",
+         "if autofill_profile.typed_work_auth(answers, market).authorized_now is True:"),
     )),
     ("Jobs you want", "Roles you want", ('<Label htmlFor="job-preferences-roles" optional> Roles you want </Label>',)),
     ("Jobs you want", "Years of experience",

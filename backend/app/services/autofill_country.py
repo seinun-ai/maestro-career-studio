@@ -1,4 +1,4 @@
-"""Which country's work-permit answers a form question gets (owner decision D9).
+"""Which country's answers a form question gets (owner decision D9).
 
 The rule, one place for every reader (`profile_for_job`, the fill loop's slot
 lookup in `routers/autofill`, the knock-out scan):
@@ -17,9 +17,16 @@ United States or Canada", where a Yes in one and a No in the other has no one
 true answer) is unknown too.
 
 Answers are keyed by market (the market setting's own key, "UK"), stored under
-`work_auth_by_country` (`autofill_profile`). `countries_authorized` is derived
-from them: every country whose `authorized_now` is Yes, plus what the user's
-own list for that country already names.
+`work_auth_by_country` (`autofill_profile`), and read as readers see them: the
+stored answers over the ones a citizenship settles there
+(`autofill_derive.answers_for`). `countries_authorized` is derived from them:
+every country whose `authorized_now` reads Yes, a citizenship-settled one
+included, plus what the user's own list for that country already names.
+
+A country's own answers (`answers_by_country`, form_questions.yaml `answers`)
+follow the same rule: `with_country_answers` writes one market's over the flat
+slots they fill (`fills`), and drops every country's map, so no other country's
+answer reaches the form.
 """
 
 from __future__ import annotations
@@ -28,7 +35,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from app.schemas.autofill_profile import WorkAuth
-from app.services import autofill_profile, countries, markets
+from app.services import autofill_derive, autofill_profile, countries, form_questions, markets
 
 # The market a question names that has no answers here, or that no market covers: unknown on any job.
 _NOWHERE = ""
@@ -36,6 +43,11 @@ _NOWHERE = ""
 # Beside `work_auth_market` on a profile resolved for one question: the country that question's answer is
 # for, in words, a country no market covers included (`country_for_question`).
 WORK_AUTH_COUNTRY = "work_auth_country"
+
+# Beside `work_auth_market` on a job's profile: the flat slots ("preferences.desired_salary") the job's
+# country's own answers filled (`with_country_answers`), so the catalog can word a figure in that
+# country's terms only when it is that country's answer. Served, never stored; absent when none.
+COUNTRY_ANSWERED = "country_answered"
 
 
 def market_for_job_country(code: str | None) -> str | None:
@@ -81,24 +93,29 @@ def country_for_question(question: str, job_country: str | None) -> str | None:
     return countries.normalize(job_country)
 
 
-def _authorized_countries(entries: dict[str, dict[str, Any]]) -> list[str]:
-    """The country names of every market whose `authorized_now` reads Yes, in the stored order."""
+def _authorized_countries(profile: Any, home: str | None) -> list[str]:
+    """The country names of every market whose `authorized_now` reads Yes as readers see it
+    (`autofill_derive.answers_for`): the stored markets in the stored order, then the ones a
+    citizenship settles (`settled_markets`), each once."""
+    stored = list(autofill_profile.work_auth_entries(profile, home))
+    settled = autofill_derive.settled_markets(autofill_derive.citizenships(profile))
     names = []
-    for market, raw in entries.items():
-        if autofill_profile.typed_work_auth(raw, market).authorized_now is True:
+    for market in dict.fromkeys([*stored, *settled]):
+        answers = autofill_derive.answers_for(profile, market, home)
+        if autofill_profile.typed_work_auth(answers, market).authorized_now is True:
             name = countries.label(markets.country_code(market))
-            if name:
+            if name and name not in names:
                 names.append(name)
     return names
 
 
 def entry(profile: Any, market: str | None, home: str | None = None) -> dict[str, Any]:
-    """One market's raw answers as the fill reads them (`{}`: none), with `countries_authorized`
-    derived across every market. `home` places a legacy single `work_auth` (a read view has it
-    placed already)."""
-    entries = autofill_profile.work_auth_entries(profile, home)
-    own = dict(entries.get(market or "", {})) if market else {}
-    derived = _authorized_countries(entries)
+    """One market's answers as the fill reads them (`{}`: none): the stored ones over the ones a
+    citizenship settles there (`autofill_derive.answers_for`), with `countries_authorized` derived
+    across every market. `home` places a legacy single `work_auth` (a read view has it placed
+    already)."""
+    own = dict(autofill_derive.answers_for(profile, market, home)) if market else {}
+    derived = _authorized_countries(profile, home)
     if not own and not derived:
         return own
     listed = own.get("countries_authorized")
@@ -119,6 +136,44 @@ def with_work_auth(profile: Any, market: str | None, home: str | None = None) ->
         return profile
     return {**profile, autofill_profile.WORK_AUTH: entry(profile, market, home),
             autofill_profile.WORK_AUTH_MARKET: market}
+
+
+def _is_set(value: Any) -> bool:
+    return value is not None and not (isinstance(value, str) and not value.strip())
+
+
+def with_country_answers(profile: Any, market: str | None) -> Any:
+    """The profile with one market's own answers (`answers_by_country[market]`) written over the
+    flat slots they fill (`form_questions.answer_fills`: "preferences.desired_salary"), and no
+    country's map: another country's answers never reach this one's form. A blank answer, or a key
+    the market does not ask now, fills nothing, so the generic answer stays. The slots filled are
+    named under `COUNTRY_ANSWERED`. No market (`None`, or one Maestro does not keep): nothing is
+    filled, and the map still goes."""
+    if not isinstance(profile, dict):
+        return profile
+    out = {k: v for k, v in profile.items() if k != autofill_profile.ANSWERS_BY_COUNTRY}
+    if not market:
+        return out
+    key = market.strip().upper()
+    own = autofill_profile.answers_entries(profile).get(key, {})
+    filled: list[str] = []
+    for answer, slot in form_questions.answer_fills(key).items():
+        value = own.get(answer)
+        if not _is_set(value):
+            continue
+        section, leaf = slot.split(".", 1)
+        values = out.get(section)
+        out[section] = {**(values if isinstance(values, dict) else {}), leaf: value}
+        filled.append(slot)
+    if filled:
+        out[COUNTRY_ANSWERED] = filled
+    return out
+
+
+def for_market(profile: Any, market: str | None, home: str | None = None) -> Any:
+    """The profile as a form in `market` reads it: that market's work-permit answers as `work_auth`
+    (`with_work_auth`) and its own answers over the slots they fill (`with_country_answers`)."""
+    return with_country_answers(with_work_auth(profile, market, home), market)
 
 
 def work_auth_for(profile: Any, *, question: str, job_country: str | None,

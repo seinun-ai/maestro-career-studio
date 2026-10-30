@@ -187,12 +187,13 @@ def test_another_countrys_status_says_nothing_about_us_citizenship(market, statu
 
 
 def test_a_status_takes_the_words_of_its_own_market_only():
-    """"citizen" is a U.S. citizen on a US job only; elsewhere the code is served until that market
-    has words of its own."""
+    """"citizen" is a U.S. citizen on a US job only; elsewhere it is that market's own citizen (the
+    catalog's status labels), and with no market, or one with no list, the code is served."""
     assert cat.build({**US, "work_auth": {"status": "citizen"}}, [], [])["work_auth.status"].value == "U.S. citizen"
-    for market in ("CA", "AU", None):
+    for market, words in (("CA", "Canadian citizen"), ("AU", "Australian citizen"), ("AE", "UAE national (Emirati)"),
+                          ("UK", "citizen"), (None, "citizen")):
         f = cat.build({"work_auth_market": market, "work_auth": {"status": "citizen"}}, [], [])
-        assert f["work_auth.status"].value == "citizen", market
+        assert f["work_auth.status"].value == words, market
 
 
 @pytest.mark.parametrize("stored", ["Immedietly", "Immediately", "immediate", "ASAP", "right away", "Now",
@@ -947,3 +948,116 @@ def test_a_derived_yes_asks_when_the_listed_company_is_only_a_parent_or_subsidia
 ])
 def test_asks_worked_here_is_an_allowlist_of_question_shapes(question, options, expected):
     assert cat.asks_worked_here(_worked_at("Acme Wireless", ["Hooli"]), question, options) is expected, question
+
+
+# ---------- a country's own answers and India's questions (country form questions, Task 3.7)
+
+def _job_facts(profile, market, **kw):
+    """The catalog a job in `market` builds: its permits and its own answers folded in, as the fill
+    loop and the flags build it."""
+    from app.services import autofill_country
+
+    folded = autofill_country.with_work_auth(autofill_country.with_country_answers(profile, market), market)
+    return cat.build(folded, [], [], today=TODAY, **kw)
+
+
+def test_catalog_facts_for_india_pack_answers():
+    facts = _job_facts({"preferences": {"notice_days": 45, "preferred_locations": "Pune, Bengaluru"},
+                        "eligibility": {"experience_years": 6, "experience_months": 4},
+                        "answers_by_country": {"IN": {"current_ctc": "1800000"}}}, "IN")
+    notice = facts["preferences.notice_days"]
+    assert notice.value == "45"
+    assert "never a shorter" in notice.describe and "at least this long" in notice.describe
+    assert facts["preferences.current_ctc"].describe == "current CTC: total annual cost to company, in rupees"
+    # Exact (the eligibility section), so worded by hand with no path-like colon; months are the remainder.
+    assert facts["eligibility.experience_years"].describe == "total work experience in whole years"
+    assert facts["eligibility.experience_months"].describe == (
+        "the months of total work experience beyond the whole years (0 to 11)")
+    assert facts["eligibility.experience_years"].policy == "exact"
+    assert facts["preferences.preferred_locations"].describe == "preferred work locations (cities)"
+    for fact in facts.values():
+        assert str(fact.value) not in fact.describe, fact.slot
+
+
+def test_the_uae_answers_say_what_they_ask():
+    facts = _job_facts({"answers_by_country": {"AE": {"in_country_now": True, "uae_driving_licence": False}}}, "AE")
+    assert facts["eligibility.in_country_now"].value == "Yes"
+    assert "UAE" in facts["eligibility.in_country_now"].describe
+    assert "driving licence" in facts["eligibility.uae_driving_licence"].describe
+    assert facts["eligibility.in_country_now"].policy == "exact"
+
+
+def test_the_city_is_also_the_current_location():
+    f = cat.build({"personal": {"city": "Pune"}}, [], [])
+    assert "(also the current location)" in f["personal.city"].describe
+    assert cat.describe_of("personal.city") == f["personal.city"].describe
+
+
+@pytest.mark.parametrize("slot", ["personal.citizenships", "work_auth.status"])
+def test_citizenship_and_the_status_are_exact(slot):
+    assert autofill_slots.policy_for(slot) == "exact"
+
+
+def test_citizenships_are_a_fact_in_country_names():
+    f = cat.build({"personal": {"citizenships": ["IN", "GB"]}}, [], [])
+    assert f["personal.citizenships"].value == ("India", "United Kingdom")
+    assert f["personal.citizenships"].policy == "exact"
+    assert ":" not in f["personal.citizenships"].describe
+
+
+@pytest.mark.parametrize("serving, last_day, kept", [
+    (True, "2026-10-15", {"preferences.serving_notice": "Yes", "preferences.last_working_day": "2026-10-15"}),
+    (True, "2026-09-26", {"preferences.serving_notice": "Yes", "preferences.last_working_day": "2026-09-26"}),
+    # A past last day: the notice is over, so neither answer is true any more.
+    (True, "2026-09-25", {}),
+    (False, "2026-10-15", {"preferences.serving_notice": "No"}),
+    (None, "2026-10-15", {}),
+    (True, None, {"preferences.serving_notice": "Yes"}),
+    (True, "soon", {"preferences.serving_notice": "Yes"}),
+    ("yes", "2026-10-15", {"preferences.serving_notice": "Yes", "preferences.last_working_day": "2026-10-15"}),
+])
+def test_the_last_working_day_holds_only_while_serving_notice(serving, last_day, kept):
+    """TODAY is 2026-09-26: a last working day is a fact only while the notice is being served and the
+    day is today or later."""
+    preferences = {k: v for k, v in (("serving_notice", serving), ("last_working_day", last_day)) if v is not None}
+    f = cat.build({"preferences": preferences}, [], [], today=TODAY)
+    got = {slot: fact.value for slot, fact in f.items()
+           if slot in ("preferences.serving_notice", "preferences.last_working_day")}
+    assert got == kept
+
+
+def test_a_dutch_pay_answer_is_described_in_dutch_terms():
+    facts = _job_facts({"preferences": {"desired_salary": "60000"},
+                        "answers_by_country": {"NL": {"expected_pay": "4500"}}}, "NL")
+    pay = facts["preferences.desired_salary"]
+    assert pay.value == "4500"
+    assert "gross monthly" in pay.describe and "excluding holiday allowance" in pay.describe
+    assert "(expected pay" in pay.describe and "4500" not in pay.describe
+
+
+def test_the_generic_pay_answer_keeps_the_generic_words_on_a_dutch_job():
+    """The generic figure was given in no country's terms, so it is never described as a Dutch monthly one."""
+    facts = _job_facts({"preferences": {"desired_salary": "60000"}}, "NL")
+    assert facts["preferences.desired_salary"].describe == cat.describe_of("preferences.desired_salary")
+    assert "monthly" not in facts["preferences.desired_salary"].describe
+
+
+def test_a_status_reads_its_own_markets_words_from_the_catalog():
+    assert _job_facts({"work_auth_by_country": {"CA": {"status": "pgwp"}}}, "CA")[
+        "work_auth.status"].value == "Post-graduation work permit"
+    assert _job_facts({"work_auth_by_country": {"AU": {"status": "nz_citizen"}}}, "AU")[
+        "work_auth.status"].value == "New Zealand citizen (Special Category visa, subclass 444)"
+    # The US keeps the words its forms use.
+    assert _job_facts({"work_auth_by_country": {"US": {"status": "stem_opt"}}}, "US")[
+        "work_auth.status"].value == "F-1 STEM OPT extension"
+
+
+def test_a_stored_cefr_level_becomes_a_language_fact():
+    f = cat.build({"languages": [{"language": "German", "cefr": "b2", "speak": "intermediate"},
+                                 {"language": "Dutch", "cefr": "native"}]}, [], [])
+    assert f["languages.0.cefr"].value == "B2"
+    assert f["languages.0.cefr"].describe.startswith("language entry 1: CEFR level")
+    assert "nearest option" in f["languages.0.cefr"].describe
+    assert f["languages.0.cefr"].policy == "flag"
+    assert "languages.1.cefr" not in f   # not one of the six levels
+    assert cat.describe_of("languages.0.cefr") == f["languages.0.cefr"].describe
