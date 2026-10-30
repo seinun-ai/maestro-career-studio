@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from app.schemas.autofill_profile import WorkAuth
 from app.schemas.form_questions import Field, Group, Option
 from app.services import form_questions, markets
 
@@ -52,6 +53,10 @@ def test_the_shared_catalog_cannot_be_changed_in_place():
     field = form_questions.catalog().groups[0].fields[0]
     with pytest.raises(ValidationError):
         field.label = "Changed"
+
+
+def test_a_key_the_catalog_does_not_know_is_refused():
+    """A misspelt attribute in the YAML fails the load instead of being dropped."""
     with pytest.raises(ValidationError):
         Option(value="yes", label="Yes", hint="not an option's")
 
@@ -59,6 +64,16 @@ def test_the_shared_catalog_cannot_be_changed_in_place():
 def test_every_market_has_permit_wording():
     for key in markets.keys():
         assert markets.get(key)["work_auth_vocab"] in form_questions.catalog().permits
+
+
+def test_every_permit_question_is_a_stored_work_permit_answer():
+    """Readiness reads each permit answer off the typed `WorkAuth` by its key: a key only the YAML
+    knows would fail setup status, and one with a default other than None would count as answered
+    before the user says anything."""
+    for vocab, fields in form_questions.catalog().permits.items():
+        for field in fields:
+            assert field.key in WorkAuth.model_fields, (vocab, field.key)
+            assert WorkAuth.model_fields[field.key].default is None, (vocab, field.key)
 
 
 def _today_groups(home: str) -> list[dict]:

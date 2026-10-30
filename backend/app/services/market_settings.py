@@ -136,7 +136,7 @@ def offers_eeo(session: Session | None = None, country: str | None = None) -> bo
     """Whether a checked diversity set exists for `country` (a market key, "UK", or an ISO code,
     "GB"); with no country, whether any market you apply in has one. A country no market covers
     has none: `markets.offers_eeo` falls back to the default market for an unknown key, so it is
-    never asked about one. Non-mutating (`setup_status` reads it)."""
+    never asked about one. Non-mutating."""
     if country is None:
         return any(markets.offers_eeo(market) for market in peek_market(session).apply_in)
     key = country.strip().upper()

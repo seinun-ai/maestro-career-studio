@@ -14,7 +14,8 @@ def settings_dir(tmp_path, monkeypatch):
 
 
 def test_the_questions_follow_the_market(client):
-    client.put("/api/settings/market", json={"value": {"home": "UK", "apply_in": ["UK", "US"]}})
+    saved = client.put("/api/settings/market", json={"value": {"home": "UK", "apply_in": ["UK", "US"]}})
+    assert saved.status_code == 200, saved.text
     body = client.get("/api/settings/autofill/questions").json()
     personal = next(g for g in body["groups"] if g["key"] == "personal")
     state = next(f for f in personal["fields"] if f["key"] == "state")

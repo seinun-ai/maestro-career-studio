@@ -35,32 +35,9 @@ from app.services import (
     form_questions,
     job_preferences,
     market_settings,
-    markets,
     persona,
     role_categories,
 )
-
-# Retired from readiness, which counts the catalog's questions (services/form_questions). They
-# remain only for test_market_settings.py until Task 1.9 of
-# docs/plans/2026-10-30-country-form-questions.md retires them.
-_PERSONAL = [
-    "first_name", "last_name", "email", "phone", "address", "city", "state",
-    "postal_code", "country",
-]
-_EEO = ["veteran_status", "disability_status", "gender", "hispanic_latino"]
-_PREFERENCES = [
-    "desired_salary", "notice_period", "earliest_start_date",
-    "willing_to_relocate", "how_heard",
-]
-_WORK_AUTH_CORE = ["authorized_now", "sponsorship_now", "sponsorship_future"]
-_US_VISA_CORE = ["status", *_WORK_AUTH_CORE]
-
-
-def _personal_fields(home: str) -> list[str]:
-    """The contact answers the parity test compares for a home in `home` (a market key)."""
-    if markets.get(home)["asks_state"]:
-        return _PERSONAL
-    return [f for f in _PERSONAL if f != "state"]
 
 
 def _answered(value) -> bool:
@@ -117,7 +94,7 @@ def _autofill_step(db: Session) -> AutofillStep:
     # have a checked module (US, UK today) ask diversity answers; with none of
     # them, the group is omitted from the denominator rather than scored as
     # unanswered.
-    if market_settings.offers_eeo(db):
+    if questions.offers_eeo:
         groups["eeo"] = _group(profile, "eeo", required["eeo"])
     answered = sum(g.answered for g in groups.values())
     answerable = sum(g.answerable for g in groups.values())

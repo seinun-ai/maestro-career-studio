@@ -220,7 +220,7 @@ def test_market_is_case_insensitive_on_input():
 def test_non_eeo_market_can_reach_full_autofill_readiness():
     """The point of gating the EEO group.
 
-    `_EEO` is the US set — veteran status, CC-305 disability, and the EEO-1's
+    The diversity group is the US set — veteran status, CC-305 disability, and the EEO-1's
     two-part hispanic_latino split. Counting it as required made 100% readiness
     unreachable for every non-US user, since those questions have no answer to
     give. Switching market must change the DENOMINATOR, not just hide the form.
@@ -228,13 +228,15 @@ def test_non_eeo_market_can_reach_full_autofill_readiness():
     Every answer but the diversity set is given, for both countries: work-permit answers are per
     country, so this profile is its own and not whatever an earlier test left in the settings.
     """
-    from app.services import setup_status
+    from app.services import form_questions
 
+    # The catalog's required questions, the state line among them (required as for a US home).
+    required = {g.key: form_questions.required_keys(g.fields) for g in form_questions.catalog().groups}
     work_auth = {"status": "citizen", "authorized_now": True, "sponsorship_now": False, "sponsorship_future": False}
     before = client.get("/api/settings/autofill").json()["value"]
     client.put("/api/settings/autofill", json={"value": {
-        "personal": {key: "x" for key in setup_status._PERSONAL},
-        "preferences": {key: "x" for key in setup_status._PREFERENCES},
+        "personal": {key: "x" for key in required["personal"]},
+        "preferences": {key: "x" for key in required["preferences"]},
         "work_auth_by_country": {"US": work_auth, "IN": work_auth},
     }})
     try:

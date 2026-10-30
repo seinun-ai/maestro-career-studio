@@ -9,12 +9,13 @@ needle can span a JSX line break.
 
 - **Settings, 82:** `test_frontend_settings_refresh.py`'s table, counted here, not copied.
 - **Profile, 62:** one row per board item, grouped by the tile or fold the board names
-  (`lib/profile-tiles.ts`), plus Saving. The field tables the tiles render (labels, options) are the question
-  catalog the backend serves them (`backend/app/services/data/form_questions.yaml`) and, for education and
-  languages, `lib/autofill-options.ts`, so both join every tile's files; the row's other needle is the tile
-  rendering that group. A work-permit question is worded per country from its market's `work_auth_vocab`, so
-  its row pins the key, and `test_each_country_is_asked_every_work_permit_key` pins that each country you
-  apply in is asked it. "Countries authorized" is no field any more: the fill derives it from each country's
+  (`lib/profile-tiles.ts`), plus Saving. A question the backend serves the tiles is pinned in the catalog
+  itself (`Asked`: its group, key and the words shown, read through `form_questions.catalog()`, never the
+  YAML's text), and the row's other needle is the tile rendering that group; the education and language
+  fields are `lib/autofill-options.ts`'s, which joins every tile's files. A work-permit question is worded
+  per country from its market's `work_auth_vocab`, so its row pins the key in every wording, and
+  `test_each_country_is_asked_every_work_permit_key` pins that each country you apply in is asked it.
+  "Countries authorized" is no field any more: the fill derives it from each country's
   `authorized_now` and You apply in (`services/autofill_country.py`, `test_autofill_country.py`).
 - **Setup, 12:** one row per board item, grouped by the step that asks it (`SETUP_STEPS`); Run setup
   again is Settings › Basics' About footer.
@@ -23,7 +24,9 @@ needle can span a JSX line break.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -33,7 +36,38 @@ from tests import test_frontend_settings_refresh as settings
 _ROOT = Path(__file__).resolve().parents[2]
 _FRONTEND = _ROOT / "frontend"
 
-Needle = str | tuple[str, str]
+
+
+@dataclass(frozen=True)
+class Asked:
+    """A question the backend serves (`form_questions.catalog()`) holding each of `words` (label,
+    optional, byHome): `key` in the group `group` names, in one permit wording (`us_visa`, `uk`,
+    `generic`), or in every permit wording when `group` is "permits"."""
+
+    group: str
+    key: str
+    words: tuple[tuple[str, Any], ...] = ()
+
+    def held(self) -> bool:
+        catalog = form_questions.catalog()
+        if self.group == "permits":
+            wordings = list(catalog.permits.values())
+        elif self.group in catalog.permits:
+            wordings = [catalog.permits[self.group]]
+        else:
+            wordings = [g.fields for g in catalog.groups if g.key == self.group]
+        return bool(wordings) and all(self._in(fields) for fields in wordings)
+
+    def _in(self, fields) -> bool:
+        field = next((f for f in fields if f.key == self.key), None)
+        return field is not None and all(getattr(field, name) == value for name, value in self.words)
+
+
+def asked(group: str, key: str, **words: Any) -> Asked:
+    return Asked(group, key, tuple(words.items()))
+
+
+Needle = str | tuple[str, str] | Asked
 
 
 def _read(rel: str) -> str:
@@ -45,10 +79,14 @@ def _flat(text: str) -> str:
 
 
 def _missing(needles: tuple[Needle, ...], src: str) -> list[Needle]:
-    """The needles not found: a string in `src` (already flat), a `(path, text)` in that file."""
+    """The needles not found: a string in `src` (already flat), a `(path, text)` in that file, a question
+    the catalog does not hold as `Asked` says."""
     out = []
     for needle in needles:
-        if isinstance(needle, tuple):
+        if isinstance(needle, Asked):
+            if not needle.held():
+                out.append(needle)
+        elif isinstance(needle, tuple):
             path, text = needle
             if _flat(text) not in _flat((_ROOT / path).read_text(encoding="utf-8")):
                 out.append(needle)
@@ -76,8 +114,8 @@ _PROFILE_FILES: dict[str, tuple[str, ...]] = {
     # Not a tile: the one provider every answer editor saves through, and the status each one shows.
     "Saving": ("components/profile/autofill-profile.tsx", "components/settings/autosave-status.tsx"),
 }
-# Repo-relative: the served question catalog, and the education and language fields.
-_FIELD_TABLES = ("backend/app/services/data/form_questions.yaml", "frontend/lib/autofill-options.ts")
+# Repo-relative: the education and language fields.
+_FIELD_TABLES = ("frontend/lib/autofill-options.ts",)
 
 _PERSONAL = 'fields={groupFields(questionSet, "personal")}'
 _PREFERENCES = 'fields={groupFields(questionSet, "preferences")}'
@@ -89,31 +127,31 @@ _ADD = "onClick={() => setEntries([...entries, newEntry()])}"
 
 # (tile or fold, board label, needles)
 _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
-    ("Contact", "First name", ('{key: first_name, label: First name}', _PERSONAL)),
-    ("Contact", "Last name", ('{key: last_name, label: Last name}', _PERSONAL)),
-    ("Contact", "Email", ('{key: email, label: Email}', _PERSONAL)),
-    ("Contact", "Phone", ('{key: phone, label: Phone}', _PERSONAL)),
-    ("Contact", "Street address", ('{key: address, label: Street address}', _PERSONAL)),
-    ("Contact", "Address line 2", ('{key: address_2, label: Address line 2, optional: true}', _PERSONAL)),
-    ("Contact", "City", ('{key: city, label: City}', _PERSONAL)),
-    ("Contact", "State", ('{key: state, label: State, byHome: true}', _PERSONAL)),
-    ("Contact", "Postal code", ('{key: postal_code, label: Postal code}', _PERSONAL)),
-    ("Contact", "Country", ('{key: country, label: Country}', _PERSONAL)),
-    ("Contact", "LinkedIn profile link", ('{key: linkedin, label: LinkedIn profile link, optional: true}', _PERSONAL)),
-    ("Contact", "GitHub link", ('{key: github, label: GitHub link, optional: true}', _PERSONAL)),
-    ("Contact", "Website", ('{key: website, label: Website, optional: true}', _PERSONAL)),
+    ("Contact", "First name", (asked("personal", "first_name", label="First name"), _PERSONAL)),
+    ("Contact", "Last name", (asked("personal", "last_name", label="Last name"), _PERSONAL)),
+    ("Contact", "Email", (asked("personal", "email", label="Email"), _PERSONAL)),
+    ("Contact", "Phone", (asked("personal", "phone", label="Phone"), _PERSONAL)),
+    ("Contact", "Street address", (asked("personal", "address", label="Street address"), _PERSONAL)),
+    ("Contact", "Address line 2", (asked("personal", "address_2", label="Address line 2", optional=True), _PERSONAL)),
+    ("Contact", "City", (asked("personal", "city", label="City"), _PERSONAL)),
+    ("Contact", "State", (asked("personal", "state", label="State", byHome=True), _PERSONAL)),
+    ("Contact", "Postal code", (asked("personal", "postal_code", label="Postal code"), _PERSONAL)),
+    ("Contact", "Country", (asked("personal", "country", label="Country"), _PERSONAL)),
+    ("Contact", "LinkedIn profile link", (asked("personal", "linkedin", label="LinkedIn profile link", optional=True), _PERSONAL)),
+    ("Contact", "GitHub link", (asked("personal", "github", label="GitHub link", optional=True), _PERSONAL)),
+    ("Contact", "Website", (asked("personal", "website", label="Website", optional=True), _PERSONAL)),
     ("Contact", "Fill from career history", ('"Fill from career history"', "onClick={fillFromResume}")),
     ("Where you apply", "You live in", ("<Label htmlFor={homeId}>You live in</Label>",)),
     ("Where you apply", "You apply in", ("You apply in </span>", "onClick={() => toggleCountry(m.key)}")),
     # Work permits, one set per country, each in its market's words: the keys, not the US wording.
-    ("Work permits", "Work authorization status", ('key: status label: Work authorization status', *_PERMITS)),
-    ("Work permits", "Authorized to work now?", ('key: authorized_now', *_PERMITS)),
-    ("Work permits", "Need visa sponsorship now?", ('key: sponsorship_now', *_PERMITS)),
-    ("Work permits", "Need visa sponsorship later?", ('key: sponsorship_future', *_PERMITS)),
+    ("Work permits", "Work authorization status", (asked("us_visa", "status", label="Work authorization status"), *_PERMITS)),
+    ("Work permits", "Authorized to work now?", (asked("permits", "authorized_now"), *_PERMITS)),
+    ("Work permits", "Need visa sponsorship now?", (asked("permits", "sponsorship_now"), *_PERMITS)),
+    ("Work permits", "Need visa sponsorship later?", (asked("permits", "sponsorship_future"), *_PERMITS)),
     ("Work permits", "Authorization expires on",
-     ('key: authorization_expires_on label: Authorization expires on', *_PERMITS)),
+     (asked("permits", "authorization_expires_on", label="Authorization expires on"), *_PERMITS)),
     ("Work permits", "Countries authorized", (
-        'key: authorized_now', *_PERMITS, _APPLY_IN,
+        asked("permits", "authorized_now"), *_PERMITS, _APPLY_IN,
         ("backend/app/services/autofill_country.py", "derived = _authorized_countries(entries)"),
         ("backend/app/services/autofill_country.py", "if autofill_profile.typed_work_auth(raw).authorized_now is True:"),
     )),
@@ -131,12 +169,12 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("How you come across", "Persona", ('aria-label="Persona"',)),
     ("How you come across", "Draft from my career history",
      ("Draft from my career history", "onClick={() => draftOnce(editRevision.current)}")),
-    ("Start and pay", "Desired salary", ('{key: desired_salary, label: Desired salary}', _PREFERENCES)),
-    ("Start and pay", "Notice period", ('key: notice_period label: Notice period', _PREFERENCES)),
-    ("Start and pay", "Earliest start date", ('{key: earliest_start_date, label: Earliest start date}', _PREFERENCES)),
-    ("Start and pay", "Willing to relocate?", ('key: willing_to_relocate label: Willing to relocate?', _PREFERENCES)),
+    ("Start and pay", "Desired salary", (asked("preferences", "desired_salary", label="Desired salary"), _PREFERENCES)),
+    ("Start and pay", "Notice period", (asked("preferences", "notice_period", label="Notice period"), _PREFERENCES)),
+    ("Start and pay", "Earliest start date", (asked("preferences", "earliest_start_date", label="Earliest start date"), _PREFERENCES)),
+    ("Start and pay", "Willing to relocate?", (asked("preferences", "willing_to_relocate", label="Willing to relocate?"), _PREFERENCES)),
     ("Start and pay", "How did you hear about the job?",
-     ('{key: how_heard, label: "How did you hear about the job?"}', _PREFERENCES)),
+     (asked("preferences", "how_heard", label="How did you hear about the job?"), _PREFERENCES)),
     ("Education", "School", ('{ key: "school", label: "School" }', "{EDUCATION_FIELDS.map((field) => {")),
     ("Education", "Degree", ('{ key: "degree", label: "Degree" }', "{EDUCATION_FIELDS.map((field) => {")),
     ("Education", "Major", ('{ key: "discipline", label: "Major" }', "{EDUCATION_FIELDS.map((field) => {")),
@@ -171,19 +209,20 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
          "You agreed on {formatAbsoluteDateTime(consent.acknowledged_at)}"),
         ("frontend/components/settings/companion-fill-section.tsx", "` (policy ${consent.policy_version})`"),
     )),
-    ("Diversity questions", "Are you a veteran?", ('key: veteran_status label: Are you a veteran?', _EEO)),
-    ("Diversity questions", "Disability status", ('key: disability_status label: Disability status', _EEO)),
-    ("Diversity questions", "Gender", ('key: gender label: Gender', _EEO)),
+    ("Diversity questions", "Are you a veteran?", (asked("eeo", "veteran_status", label="Are you a veteran?"), _EEO)),
+    ("Diversity questions", "Disability status", (asked("eeo", "disability_status", label="Disability status"), _EEO)),
+    ("Diversity questions", "Gender", (asked("eeo", "gender", label="Gender"), _EEO)),
     ("Diversity questions", "How you describe your gender",
-     ('key: gender_self_describe label: How you describe your gender', _EEO)),
-    ("Diversity questions", "Hispanic or Latino?", ('key: hispanic_latino label: Hispanic or Latino?', _EEO)),
-    ("Diversity questions", "Race or ethnicity", ('key: race_ethnicity label: Race or ethnicity', _EEO)),
+     (asked("eeo", "gender_self_describe", label="How you describe your gender"), _EEO)),
+    ("Diversity questions", "Hispanic or Latino?", (asked("eeo", "hispanic_latino", label="Hispanic or Latino?"), _EEO)),
+    ("Diversity questions", "Race or ethnicity", (asked("eeo", "race_ethnicity", label="Race or ethnicity"), _EEO)),
     ("Diversity questions", "Decline the rest", ("Decline the rest", "onClick={declineAllEeo}")),
-    ("Eligibility", "Are you 18 or older?", ('key: over_18 label: Are you 18 or older?', _ELIGIBILITY)),
+    ("Eligibility", "Are you 18 or older?", (asked("eligibility", "over_18", label="Are you 18 or older?"), _ELIGIBILITY)),
     ("Eligibility", "Worked for this company before?",
-     ("key: previously_employed_here label: Have you worked for the company you're applying to?", _ELIGIBILITY)),
+     (asked("eligibility", "previously_employed_here", label="Have you worked for the company you're applying to?"),
+      _ELIGIBILITY)),
     ("Eligibility", "Subject to a restrictive covenant?",
-     ('key: non_compete', 'label: Subject to a restrictive covenant?', _ELIGIBILITY)),
+     (asked("eligibility", "non_compete", label="Subject to a restrictive covenant?"), _ELIGIBILITY)),
     ("Saving", "Saves as you go", ("const answers = useAutosave<Profile>(initial,", "Saving…", "Not saved")),
 ]
 

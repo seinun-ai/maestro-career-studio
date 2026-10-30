@@ -326,17 +326,6 @@ def get_autofill(db: Annotated[Session, Depends(get_db)]):
     return {"key": "autofill_profile", "value": autofill_profile.get_profile(db)}
 
 
-@router.get(
-    "/autofill/questions", response_model=QuestionSet, response_model_exclude_defaults=True
-)
-def get_autofill_questions(db: Annotated[Session, Depends(get_db)]):
-    """The form questions for where you live and apply (services/form_questions): Profile, Setup and
-    readiness read this one set, never a list of their own. Served without defaults, as the
-    frontend's FieldDef reads them (every key but `key` and `label` may be absent)."""
-    market = market_settings.get_market(db)
-    return form_questions.resolve(home=market.home, apply_in=market.apply_in)
-
-
 @router.put("/autofill", response_model=SettingEnvelope[dict[str, Any]])
 def put_autofill(payload: AutofillProfilePayload, db: Annotated[Session, Depends(get_db)]):
     return {
@@ -370,6 +359,18 @@ def patch_autofill(payload: SettingValueIn[dict[str, Any]], db: Annotated[Sessio
         "key": "autofill_profile",
         "value": _agent_save(autofill_profile.patch_profile, payload.value, db),
     }
+
+
+@router.get(
+    "/autofill/questions", response_model=QuestionSet, response_model_exclude_defaults=True
+)
+def get_autofill_questions(db: Annotated[Session, Depends(get_db)]):
+    """The form questions for where you live and apply (services/form_questions.resolve): Profile and
+    Setup read this route, and setup readiness calls `resolve` itself, so all three ask the one set.
+    Served without defaults, as the frontend's FieldDef reads them (every key but `key` and `label`
+    may be absent)."""
+    market = market_settings.get_market(db)
+    return form_questions.resolve(home=market.home, apply_in=market.apply_in)
 
 
 @router.patch("/job-preferences", response_model=SettingEnvelope[JobPreferences])

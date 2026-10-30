@@ -575,7 +575,35 @@ backend tests. Commit (`refactor(profile, setup): ask from the served questions`
 ### Task 1.9: Retire the mirror; record the reversal
 
 **Files:**
-- Delete: `backend/tests/test_autofill_groups_parity.py`, `frontend/scripts/dump-form-questions.ts`
+- Delete: `backend/tests/test_autofill_groups_parity.py`, `frontend/scripts/dump-form-questions.mjs`
+  (Task 1.1 shipped it as `.mjs`: tsc rejects `.ts` import paths)
+- Delete: `setup_status.py`'s `_PERSONAL`, `_EEO`, `_PREFERENCES`, `_WORK_AUTH_CORE`, `_US_VISA_CORE`,
+  `_personal_fields` (kept by Task 1.4 only for the tests); point `test_market_settings.py:236-237`
+  at the catalog (`form_questions.required_keys`); drop the `markets` import if only they used it
+- Review follow-ups from Tasks 1.4–1.5:
+  - `test_form_questions.py`: every permit field key is a `WorkAuth.model_fields` key whose default is
+    `None` (readiness reads them with `getattr`; a YAML-only key would 500 setup status, and a key with
+    a non-None default would always count as answered). No `getattr(..., None)` fallback.
+  - `setup_status._autofill_step`: use the resolved set's `offers_eeo` instead of peeking the market
+    again through `market_settings.offers_eeo(db)`.
+  - `routers/settings.py`: move the questions GET after the GET/PUT/PATCH `/autofill` group; its
+    docstring says readiness calls `resolve`, Profile and Setup read the route.
+  - `test_form_questions.py:50-56`: split the frozen test from the extra-key test, or rename it.
+  - `test_form_questions_route.py`: assert the market PUT's status.
+- Review follow-ups from Tasks 1.6–1.8:
+  - `frontend/components/render-harness.mjs` `servedQuestions` re-implements `resolve` in JS from the
+    frozen "today" fixture (ignores home; throws on an unknown market). Replace it with per-scenario
+    served-set fixtures written from `form_questions.resolve(...)` by the backend (e.g.
+    `backend/tests/fixtures/served_questions/<scenario>.json` for the scenarios the render tests use),
+    a backend test that fails when a fixture differs from `resolve`'s output (with a documented
+    regenerate command), and the harness only loading them.
+  - `backend/tests/test_frontend_every_item_has_a_home.py` (~92-186) matches inline YAML text; pin
+    through `form_questions.catalog()` like the veteran and covenant tests, so Phase 3's new
+    per-question keys do not break ~40 needles.
+  - Naming: a `QuestionSet` value is `questionSet` everywhere (Profile names it `questions`, Setup
+    `questionSet`; Setup's `FormQuestion[]` stays `questions`); `questionAnswered` takes
+    `(question, profile, questionSet)` → keep the set right after `profile` where a profile is passed.
+  - Drop the unused `GroupDef` re-export from `lib/autofill-options.ts`.
 - Modify: `backend/tests/test_autofill_profile_veteran.py:135-155` (read the veteran question from
   `form_questions.catalog()` instead of the TS source; keep every assertion)
 - Modify: `SYSTEM.md` §2 (`services/data/*.yaml` now includes `form_questions`; `form_questions`
@@ -686,6 +714,10 @@ Each task names its files, the interface other tasks read, and the tests that de
   `permits` stays served until the frontend moves (then cut, with a §13 row if both live).
 - Tests: no country → generic; IN + AE + DE + NL → each question once, EU derived for DE and NL
   when a citizenship is EU.
+- Carried from Phase 1 review: serve the countries as an ordered list (not object key order, which
+  `permitMarkets` relies on today); `withPermit` must honour a field's `when` like `withField`; the
+  `MarketOption` fields `work_auth_vocab` / `asks_state` / `state_label` have no frontend reader since
+  Phase 1, so cut them from the type (and their pins) once nothing needs them.
 
 ### 3.6 Readiness: knockout only
 - `setup_status`: generic required + each apply-in market's knockout questions; a derived answer
@@ -734,4 +766,6 @@ Each task names its files, the interface other tasks read, and the tests that de
 # Phase 4 — Out of this plan
 
 Per-country diversity questions (UK first, then Canada and Australia once verified): its own
-design and plan, because it touches inv-eeo-standing-consent.
+design and plan, because it touches inv-eeo-standing-consent. Note from Phase 1 review: the
+diversity fold gates on the served `offers_eeo` but names its countries from the market list
+(`diversityCountries`); the served set should list them itself.
