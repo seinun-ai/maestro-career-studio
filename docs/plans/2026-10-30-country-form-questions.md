@@ -702,8 +702,15 @@ The planner's calls, made from the code. Each changes *how* the design is built,
    - Why: a permit answer belongs to a country. Storing one under the default US is the US-shaped
      default this plan removes. Setup's Where step comes before its answers step, so anyone who
      goes through Setup has countries.
-   - Who it touches: only an install with no stored market row, which never opened Profile or
-     Setup. A seeded row from before the mark reads as chosen (Task 3.1).
+   - Who it touches: an install whose market row is empty (`""`). A row is seeded empty on first
+     read and filled only when the country picker changes, so "never opened Profile or Setup" was
+     wrong. Task 3.1 found this, and fixed it so the approved cost holds:
+     - a stored row from before the mark reads as chosen;
+     - at startup, an empty row is marked chosen (home and apply-in as today) when the stored form
+       answers already hold a work-permit answer, because that user has been answering for the
+       default country. What it asks is whether you answered, never a knockout answer.
+     - Only an install with no permit answers and an untouched picker reads as unchosen. Its picker
+       shows nothing selected, so one click chooses (Tasks 3.10 and 3.11).
 2. **No `learn_to` on `/context`.**
    - The Companion's pause row already finds a learned answer's place from its own field table
      (`extension/shared/profile-fields.js`, `profileFieldFor`).
@@ -1739,6 +1746,9 @@ Expected: fail.
     market autosave does.
   - With no country chosen, the tile shows "Citizen of" and a link to Where you apply instead of
     country rows.
+- **Where you apply, unchosen.** `GET /api/settings/market` serves `chosen`; add it to
+  `MarketSettingResponse` in `lib/types.ts`. While it is false, the country picker shows nothing
+  selected, though the stored default is US, so one click makes the choice.
 - **Contact.** Contact's `FieldGrid` skips the `countries`-type field. In `missingAnswers` a
   missing `citizenships` becomes `{kind: "citizenship"}` and links to Country answers, not Contact.
 - **Screening questions.** `eligibility.tsx` gets the title and summary "Screening questions",
@@ -1792,6 +1802,9 @@ tests/test_market_chosen.py`. Expected: green.
 - A `{kind: "citizenship"}` question with `CountryPicker`, saved with `withCitizenships`. After it
   saves, the questions refetch, and `questionAnswered` reads the new `derived`.
 - `formQuestions` takes the served set (`questionSet.countries`), not `permitMarkets`.
+- `stepsDone.answers` checks the served countries, not the market's `apply_in`. An unchosen install
+  serves `apply_in: ["US"]` but no countries, and the step must still complete. The Where step
+  shows nothing selected while unchosen (Task 3.10).
 - Update the setup pins named in the Profile and Setup map: `test_frontend_setup_flow.py:157-171`
   and `test_frontend_every_item_has_a_home.py:265-270`.
 
