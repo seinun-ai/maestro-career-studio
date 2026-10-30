@@ -1696,6 +1696,8 @@ Expected: green.
   answer keys, and its derived answers.
 - The brief's `work_auth_by_country` shows a derived answer for an FR citizen applying in DE, plus
   each market's `expected_pay` when set.
+- `backend/mcp_server/workflow.py`'s `form_answers` wording names citizenship, so an agent that
+  sees the work-permit group short of one answer knows what is missing.
 - Agents can see that no country is chosen: `chosen` goes in `get_setup_status`'s autofill detail
   and in `get_autofill_profile`. Without it, an unchosen install with everything else answered
   reads as complete, with no hint that its countries are missing.
@@ -1754,6 +1756,12 @@ Expected: fail.
   {citizenships: ["IN"]})`: fixture names carry the citizenships since Task 3.5.
 - **Given beats derived.** `derived` can also hold keys the user answered the same way. Show the
   given answer there, and "From your citizenship" only where nothing is given.
+- **Citizenship counts in Country answers.** Since Task 3.6, readiness counts `citizenships` in the
+  `work_auth` group, the Country answers tile. So:
+  - that tile's count includes it;
+  - Next up gets a `{kind: "citizenship"}` step that opens the picker;
+  - `CountryPicker` must cope with a stored plain string (an older save or a hand edit): show it,
+    and replace it with codes on the next save.
 - **Country answers** (`work-permits.tsx`; the file name and the tile id `permits` stay, to spare
   pins):
   - the title "Country answers";
