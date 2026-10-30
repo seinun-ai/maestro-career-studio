@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from app.schemas.form_questions import Catalog, Field, Group, QuestionSet
+from app.schemas.form_questions import Catalog, CitizenshipRule, Field, Group, QuestionSet
 from app.services import markets
 
 _FILE = Path(__file__).parent / "data" / "form_questions.yaml"
@@ -63,6 +63,16 @@ def answer_keys(market: str | None) -> list[str]:
     Maestro does not keep."""
     m = _market(market)
     return [f.key for f in catalog().answers if f.pack is None or f.pack in m["packs"]] if m else []
+
+
+def citizenship_rule(code: str, market: str) -> CitizenshipRule | None:
+    """The rule under which a citizen of `code` (ISO, "GB") may work in `market` (a market key,
+    "UK") with no permit, or None: their own country's, else the first `citizenship` rule that
+    lists both. The own-country rule settles `citizen`, where the market's status list has it."""
+    if code == markets.country_code(market):
+        return CitizenshipRule(citizens=[code], markets=[market], status="citizen", source="own country")
+    cit = catalog().citizenship
+    return next((r for r in cit.rules if code in cit.members(r) and market in r.markets), None)
 
 
 def resolve(

@@ -65,7 +65,7 @@ class CitizenshipRule(BaseModel):
 
     citizens: str | list[str]  # a group's name, or ISO codes
     markets: list[str]
-    status: str | None = None  # the market's status it settles, when not `citizen`
+    status: str | None = None  # the market's status it settles (`citizen` in one's own country)
     source: str
 
 
@@ -95,6 +95,14 @@ class Catalog(BaseModel):
     # Extra fields on each language you list (CEFR).
     language_fields: list[Field]
     citizenship: Citizenship
+
+
+class DerivedAnswer(BaseModel):
+    """A work-permit answer a citizenship settles (`services/autofill_derive`): computed on read,
+    never stored."""
+
+    value: str | bool
+    via: str  # the ISO code of the citizenship that settles it ("IE")
 
 
 class QuestionSet(BaseModel):
