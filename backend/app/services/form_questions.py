@@ -52,9 +52,14 @@ def _shown(field: Field, packs: set[str] | list[str]) -> bool:
     return field.pack is None or field.pack in packs
 
 
+def required_fields(fields: list[Field]) -> list[Field]:
+    """The fields setup readiness counts: every field not `optional`."""
+    return [f for f in fields if not f.optional]
+
+
 def required_keys(fields: list[Field]) -> list[str]:
-    """The keys setup readiness counts: every field not `optional`."""
-    return [f.key for f in fields if not f.optional]
+    """The keys of `required_fields`."""
+    return [f.key for f in required_fields(fields)]
 
 
 def _market(key: str | None) -> dict | None:

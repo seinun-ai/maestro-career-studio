@@ -133,6 +133,13 @@ def test_a_place_names_at_most_one_country(place, code):
     assert countries.named_in(place) == code
 
 
+def test_a_list_of_countries_reads_as_the_codes_it_names():
+    """What citizenship readiness and the citizenship rules read: codes in order, a miss left out."""
+    assert countries.codes_in(["in", "France", "Narnia", 7, "UK"]) == ["IN", "FR", "GB"]
+    assert countries.codes_in([]) == [] and countries.codes_in(["Narnia"]) == []
+    assert countries.codes_in("India") == [] and countries.codes_in(None) == []
+
+
 def test_a_job_country_comes_from_its_country_then_its_location():
     assert countries.for_job("United States", "Toronto, Canada") == "US"
     assert countries.for_job(None, "Toronto, Canada") == "CA"

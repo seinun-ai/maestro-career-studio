@@ -4,15 +4,20 @@ wizard progress (FirstRunImportCard doctrine: derived signals, dismissible).
 Readiness counts the form-question catalog's required questions
 (services/form_questions, resolved for the stored market), never a list of its
 own. Rules:
-"complete" means ANSWERABLE, not filled ("decline" answers count; optional
-fields are excluded, so a country's own answers, all optional, never count),
-and work_auth is read as its readers see it because its answers are the
-knockout ones the extension reports missing_source on: each country's stored
-answers over the ones a citizenship settles there (`autofill_derive.answers_for`),
-through the typed reader. Work-permit answers count once per country you apply
-in (`work_auth_by_country`, keyed by market): the `work_auth` group sums them,
-and each country's own count rides along for the setup flow's
-one-question-per-country step. No country chosen asks none.
+- "Complete" means ANSWERABLE, not filled: "decline" answers count.
+- Optional fields never count, so a country's own answers (all optional) don't.
+- Work-permit answers count once per country you apply in (`work_auth_by_country`,
+  keyed by market); no country chosen asks none.
+- They are the knockout answers the extension reports missing_source on, so they
+  are read as readers see them: each country's stored answers over the ones a
+  citizenship settles there (`autofill_derive.answers_for`), through the typed
+  reader.
+- Citizenship (`personal.citizenships`, a `countries` list) counts in the
+  `work_auth` group, beside the permits it settles, never in personal: Profile
+  asks it in Country answers, and Contact never shows it.
+- The `work_auth` group is citizenship plus every country's permits, and an
+  incomplete one blocks. Each country's own count rides along for the setup
+  flow's one-question-per-country step.
 """
 
 from sqlalchemy import func, select
@@ -47,11 +52,11 @@ from app.services import (
 
 def _answered(field: FormField, value) -> bool:
     """Whether `value` answers `field`. A list of countries (`type: countries`, citizenship) answers
-    only when it names one, as the citizenship rules read it (`autofill_derive.citizenships`): an
-    empty list, an entry that names no country or loose text is no answer. Any other list answers
-    when it holds something."""
+    only when it names one, as the citizenship rules read it (`countries.codes_in`): an empty list,
+    an entry that names no country or loose text is no answer. Any other list answers when it holds
+    something."""
     if field.type == "countries":
-        return isinstance(value, list) and any(isinstance(v, str) and countries.normalize(v) for v in value)
+        return bool(countries.codes_in(value))
     if value is None:
         return False
     if isinstance(value, str):
@@ -62,12 +67,12 @@ def _answered(field: FormField, value) -> bool:
 
 
 def _group(profile: dict, key: str, fields: list[FormField]) -> GroupCompleteness:
-    """A group's required fields (`form_questions.required_keys`' rule: `optional` ones never count)
-    and how many are answered."""
+    """How many of `fields`' required ones (`form_questions.required_fields`) the stored group `key`
+    answers."""
     values = profile.get(key) or {}
     if not isinstance(values, dict):
         values = {}
-    required = [f for f in fields if not f.optional]
+    required = form_questions.required_fields(fields)
     answered = sum(1 for f in required if _answered(f, values.get(f.key)))
     return GroupCompleteness(answered=answered, answerable=len(required))
 
@@ -96,12 +101,16 @@ def _autofill_step(db: Session) -> AutofillStep:
         home=market.home, apply_in=market.apply_in, chosen=market.chosen, profile=profile
     )
     fields = {g.key: g.fields for g in questions.groups}
+    # Citizenship (the `countries` list, stored in personal) counts with the permits it settles.
+    contact = [f for f in fields["personal"] if f.type != "countries"]
+    citizenship = _group(profile, "personal", [f for f in fields["personal"] if f.type == "countries"])
     by_country = _work_permits(profile, questions)
+    permits = [citizenship, *by_country.values()]
     groups = {
-        "personal": _group(profile, "personal", fields["personal"]),
+        "personal": _group(profile, "personal", contact),
         "work_auth": GroupCompleteness(
-            answered=sum(g.answered for g in by_country.values()),
-            answerable=sum(g.answerable for g in by_country.values()),
+            answered=sum(g.answered for g in permits),
+            answerable=sum(g.answerable for g in permits),
         ),
         "preferences": _group(profile, "preferences", fields["preferences"]),
     }

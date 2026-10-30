@@ -12,8 +12,8 @@ import { SettingCardAction } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import {
-  contactCount,
   contactFields,
+  groupCount,
   groupValues,
   isBlank,
   withField,
@@ -39,7 +39,7 @@ export function useCareerContact() {
 export function useContactTile(questionSet: QuestionSet): TileView {
   const { profile } = useAutofillProfile();
   const personal = groupValues(profile, "personal");
-  const count = contactCount(profile, questionSet);
+  const count = groupCount(profile, questionSet, "personal");
   const shown = ["email", "phone"].map((key) => personal[key]).filter((v): v is string => !isBlank(v));
   return {
     state:

@@ -24,7 +24,8 @@ export function groupFields(questionSet: QuestionSet, key: string): FieldDef[] {
 }
 
 /** Contact's questions: the personal group's as served, less citizenship (`type: "countries"`, a list of
- *  countries, never a line of text), which Country answers asks. */
+ *  countries, never a line of text), which Country answers asks and setup readiness counts beside the work
+ *  permits it settles. */
 export function contactFields(questionSet: QuestionSet): FieldDef[] {
   return groupFields(questionSet, "personal").filter((field) => field.type !== "countries");
 }
@@ -278,24 +279,21 @@ export function storedFieldValue(
 }
 
 /** Whether a field holds an answer the readers count: a boolean field a Yes or No, a select one of its
- *  options, a text field any words. */
+ *  options, a list of countries at least one (the save stores each as its code), a text field any words. */
 export function answered(field: FieldDef, value: unknown): boolean {
   if (field.boolean) return booleanAnswer(value) !== undefined;
   if (field.type === "select") return Boolean(field.options?.some((option) => option.value === value));
+  if (field.type === "countries") return Array.isArray(value) && value.some((entry) => !isBlank(entry));
   return !isBlank(value);
 }
 
 export type Count = { answered: number; answerable: number };
 
-/** How many of a group's required answers are given: the fields setup readiness counts, as served for where
- *  you live. */
+/** How many of a group's required answers are given: the fields setup readiness counts there, as served for
+ *  where you live. Citizenship is not one of personal's: it counts beside the work permits it settles. */
 export function groupCount(profile: Profile, questionSet: QuestionSet, group: string): Count {
-  return countOf(groupValues(profile, group), groupFields(questionSet, group));
-}
-
-/** Contact's count: the required answers of the fields it shows (`contactFields`). */
-export function contactCount(profile: Profile, questionSet: QuestionSet): Count {
-  return countOf(groupValues(profile, "personal"), contactFields(questionSet));
+  const fields = group === "personal" ? contactFields(questionSet) : groupFields(questionSet, group);
+  return countOf(groupValues(profile, group), fields);
 }
 
 function countOf(values: Record<string, unknown>, fields: readonly FieldDef[]): Count {
@@ -308,12 +306,7 @@ function countOf(values: Record<string, unknown>, fields: readonly FieldDef[]): 
 
 /** How many of one country's required work-permit answers are given, in its own questions. */
 export function permitCount(profile: Profile, questionSet: QuestionSet, market: string): Count {
-  const entry = permitEntry(profile, market);
-  const required = permitQuestions(questionSet, market);
-  return {
-    answered: required.filter((field) => answered(field, entry[field.key])).length,
-    answerable: required.length,
-  };
+  return countOf(permitEntry(profile, market), permitQuestions(questionSet, market));
 }
 
 /** Whether every required work-permit answer of one country is given. A country the set serves no questions
@@ -400,7 +393,8 @@ export function missingKey(item: MissingAnswer): string {
  * Every required answer still missing, in the order Next up asks: each served country's work permit first, in
  * the order you apply in (`permitMarkets`; the knockout answers, never guessed), then contact, then start and
  * pay, then the diversity questions where a country you apply in has a checked set (`offers_eeo`). The fields
- * are the ones setup readiness counts, as served for where you live, so an empty list is a full ring.
+ * are the ones setup readiness counts, as served for where you live, less citizenship: a list of countries,
+ * which Country answers asks, never a text box here.
  */
 export function missingAnswers(profile: Profile, questionSet: QuestionSet): MissingAnswer[] {
   const out: MissingAnswer[] = [];
@@ -412,7 +406,7 @@ export function missingAnswers(profile: Profile, questionSet: QuestionSet): Miss
   }
   for (const group of ["personal", "preferences"] as const) {
     const values = groupValues(profile, group);
-    for (const field of groupFields(questionSet, group)) {
+    for (const field of group === "personal" ? contactFields(questionSet) : groupFields(questionSet, group)) {
       if (!field.optional && !answered(field, values[field.key])) out.push({ kind: "field", group, field });
     }
   }

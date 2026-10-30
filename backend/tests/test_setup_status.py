@@ -31,9 +31,10 @@ def test_fresh_install_every_step_pending(client):
         assert body[step]["done"] is False
     assert body["autofill"]["done"] is False
     assert body["autofill"]["readiness"] == 0.0
-    # No country chosen yet: no work-permit questions, so none block (a permit answer belongs to a country).
-    assert body["autofill"]["groups"]["work_auth"] == {"answered": 0, "answerable": 0}
-    assert body["autofill"]["blocking"] == []
+    # No country chosen yet: no work-permit questions (a permit answer belongs to a country), but
+    # citizenship, which counts beside them, is asked and blocks.
+    assert body["autofill"]["groups"]["work_auth"] == {"answered": 0, "answerable": 1}
+    assert body["autofill"]["blocking"] == ["work_auth"]
 
 
 def test_status_read_does_not_seed_settings_or_mirrors(client, db_session, tmp_path, monkeypatch):
@@ -339,8 +340,9 @@ def test_authorized_now_is_required_for_work_auth_readiness(
 
     body = _status(client)["autofill"]
 
-    assert body["groups"]["work_auth"] == {"answered": 3, "answerable": 4}
-    assert body["groups"]["personal"] == {"answered": 10, "answerable": 10}
+    # Citizenship is given; the US status and two of the three answers are.
+    assert body["groups"]["work_auth"] == {"answered": 4, "answerable": 5}
+    assert body["groups"]["personal"] == {"answered": 9, "answerable": 9}
     assert body["readiness"] == 0.957
     assert body["blocking"] == ["work_auth"]
     assert body["done"] is False
@@ -352,8 +354,8 @@ def test_malformed_profile_group_degrades_to_unanswered(client, db_session):
     autofill_profile.set_profile({"personal": "garbage"}, db_session)
 
     body = _status(client)["autofill"]
-    # No country chosen, so the state line is not counted: the other eight required answers and citizenship.
-    assert body["groups"]["personal"] == {"answered": 0, "answerable": 9}
+    # No country chosen, so the state line is not counted: the other eight required answers.
+    assert body["groups"]["personal"] == {"answered": 0, "answerable": 8}
 
 
 def test_contact_links_are_optional_so_a_profile_without_them_is_done(
@@ -390,7 +392,7 @@ def test_contact_links_are_optional_so_a_profile_without_them_is_done(
     )
 
     body = _status(client)["autofill"]
-    assert body["groups"]["personal"] == {"answered": 10, "answerable": 10}
+    assert body["groups"]["personal"] == {"answered": 9, "answerable": 9}
     assert body["readiness"] == 1.0
     assert body["done"] is True
 
@@ -429,7 +431,7 @@ def test_a_home_whose_addresses_have_no_state_is_done_without_one(client, db_ses
     autofill_profile.set_profile(_answers_but_state("NL"), db_session)
 
     body = _status(client)["autofill"]
-    assert body["groups"]["personal"] == {"answered": 9, "answerable": 9}
+    assert body["groups"]["personal"] == {"answered": 8, "answerable": 8}
     assert body["readiness"] == 1.0
     assert body["done"] is True
 
@@ -444,7 +446,7 @@ def test_a_us_home_with_no_state_is_not_done(client, db_session, tmp_path, monke
     autofill_profile.set_profile(_answers_but_state("US"), db_session)
 
     body = _status(client)["autofill"]
-    assert body["groups"]["personal"] == {"answered": 9, "answerable": 10}
+    assert body["groups"]["personal"] == {"answered": 8, "answerable": 9}
     assert body["done"] is False
 
 
@@ -457,20 +459,22 @@ def test_with_no_country_chosen_the_state_is_not_counted(client, db_session, tmp
     autofill_profile.set_profile(_answers_but_state("US"), db_session)
 
     body = _status(client)["autofill"]
-    assert body["groups"]["personal"] == {"answered": 9, "answerable": 9}
+    assert body["groups"]["personal"] == {"answered": 8, "answerable": 8}
+    # Citizenship is the one answer counted beside the (absent) work permits.
+    assert body["groups"]["work_auth"] == {"answered": 1, "answerable": 1}
     assert body["work_auth_by_country"] == {} and "eeo" not in body["groups"]
     assert body["done"] is True
 
 
 @pytest.mark.parametrize(
     "home,answerable",
-    [("US", 10), ("CA", 10), ("AU", 10), ("IN", 10), ("UK", 9), ("IE", 9), ("DE", 9), ("NL", 9), ("AE", 9)],
+    [("US", 9), ("CA", 9), ("AU", 9), ("IN", 9), ("UK", 8), ("IE", 8), ("DE", 8), ("NL", 8), ("AE", 8)],
 )
 def test_the_state_counts_only_where_your_home_puts_one_in_addresses(
     client, db_session, tmp_path, monkeypatch, home, answerable
 ):
     """A state or province where addresses require one; Ireland's county is written but not required. A UAE
-    address has an emirate and no postal code (`asks_postcode: false`). Citizenship counts everywhere."""
+    address has an emirate and no postal code (`asks_postcode: false`)."""
     from app.schemas.market_settings import MarketSetting
     from app.services import market_settings
 
@@ -557,7 +561,8 @@ def test_work_permits_count_once_per_country_you_apply_in(client, db_session, tm
     body = _status(client)["autofill"]
     assert body["work_auth_by_country"] == {
         "US": {"answered": 4, "answerable": 4}, "DE": {"answered": 1, "answerable": 3}}
-    assert body["groups"]["work_auth"] == {"answered": 5, "answerable": 7}
+    # Citizenship and both countries' permits.
+    assert body["groups"]["work_auth"] == {"answered": 6, "answerable": 8}
     assert body["blocking"] == ["work_auth"]
 
 
@@ -609,12 +614,13 @@ def _contact(**extra) -> dict:
 
 @pytest.mark.parametrize(
     "citizenships,answered",
-    [(None, 9), ([], 9), (["Narnia"], 9), ("India", 9), (["IN"], 10), (["IN", "FR"], 10)],
+    [(None, 0), ([], 0), (["Narnia"], 0), ("India", 0), (["IN"], 1), (["IN", "FR"], 1)],
 )
-def test_citizenship_counts_once_in_personal_details(client, db_session, tmp_path, monkeypatch, citizenships, answered):
-    """The one new required answer (Decision 6): asked once whatever your countries, answered by a list
-    that names a country, as the citizenship rules read it (`autofill_derive.citizenships`). An empty
-    list, an entry that names no country or loose text is no answer."""
+def test_citizenship_counts_once_beside_the_work_permits(client, db_session, tmp_path, monkeypatch, citizenships, answered):
+    """The one new required answer (Decision 6), counted once in `work_auth` beside the permits it settles
+    (Country answers asks it), never in personal though it is stored there. Answered by a list that names a
+    country, as the citizenship rules read it (`countries.codes_in`): an empty list, an entry that names no
+    country or loose text is no answer."""
     from app.services import autofill_profile
 
     _chose_us(db_session, tmp_path, monkeypatch)
@@ -624,12 +630,15 @@ def test_citizenship_counts_once_in_personal_details(client, db_session, tmp_pat
         autofill_profile.AUTOFILL_KEY, autofill_profile.AUTOFILL_FILE, json.dumps({"personal": personal}), db_session
     )
 
-    assert _status(client)["autofill"]["groups"]["personal"] == {"answered": answered, "answerable": 10}
+    groups = _status(client)["autofill"]["groups"]
+    assert groups["personal"] == {"answered": 9, "answerable": 9}
+    # Citizenship and the US's four permit answers, none of them stored (IN settles nothing in the US).
+    assert groups["work_auth"] == {"answered": answered, "answerable": 5}
 
 
 def test_a_citizenship_answers_the_work_permits_it_settles(client, db_session, tmp_path, monkeypatch):
     """A French citizen may work in Germany with no permit (the EU rule): Germany's three knockout answers
-    count with nothing stored, and nothing blocks."""
+    count with nothing stored, beside the citizenship itself, and nothing blocks."""
     from app.services import autofill_profile
 
     _chose(db_session, tmp_path, monkeypatch, "IN", ["DE"])
@@ -637,7 +646,7 @@ def test_a_citizenship_answers_the_work_permits_it_settles(client, db_session, t
 
     body = _status(client)["autofill"]
     assert body["work_auth_by_country"] == {"DE": {"answered": 3, "answerable": 3}}
-    assert body["groups"]["work_auth"] == {"answered": 3, "answerable": 3}
+    assert body["groups"]["work_auth"] == {"answered": 4, "answerable": 4}
     assert body["blocking"] == []
 
 
@@ -677,22 +686,33 @@ def test_a_countrys_optional_answers_never_count(client, db_session, tmp_path, m
         "answers_by_country": {"IN": {"current_ctc": "18 LPA", "expected_pay": "24 LPA"}},
         "preferences": {**base["preferences"], "notice_days": 60},
     }, db_session)
+    stored = autofill_profile.peek_profile(db_session)
+    assert stored["answers_by_country"]["IN"]["current_ctc"] == "18 LPA"
+    assert stored["preferences"]["notice_days"] == 60
     with_them = _status(client)["autofill"]
 
     assert with_them["groups"] == without["groups"]
     assert with_them["readiness"] == without["readiness"] < 1.0
 
 
-def test_with_no_country_chosen_no_permit_answer_is_asked_or_blocks(client, db_session, tmp_path, monkeypatch):
-    """A permit answer belongs to a country: unchosen asks none, even with a half-answered set stored."""
+def test_with_no_country_chosen_only_citizenship_is_asked_beside_the_permits(
+    client, db_session, tmp_path, monkeypatch
+):
+    """A permit answer belongs to a country: unchosen asks none, even with a half-answered set stored. Citizenship
+    is still asked, and blocks until given."""
     from app.services import autofill_profile
 
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
     autofill_profile.set_profile({"work_auth_by_country": {"US": {"authorized_now": True}}}, db_session)
 
     body = _status(client)["autofill"]
-    assert body["groups"]["work_auth"] == {"answered": 0, "answerable": 0}
+    assert body["groups"]["work_auth"] == {"answered": 0, "answerable": 1}
     assert body["work_auth_by_country"] == {}
+    assert body["blocking"] == ["work_auth"]
+
+    autofill_profile.set_profile({"personal": {"citizenships": ["IN"]}}, db_session)
+    body = _status(client)["autofill"]
+    assert body["groups"]["work_auth"] == {"answered": 1, "answerable": 1}
     assert body["blocking"] == []
 
 
@@ -703,7 +723,7 @@ def test_a_uae_home_with_no_postal_code_has_personal_details_complete(client, db
     personal = {k: v for k, v in _contact(state="Dubai", citizenships=["IN"]).items() if k != "postal_code"}
     autofill_profile.set_profile({"personal": personal}, db_session)
 
-    assert _status(client)["autofill"]["groups"]["personal"] == {"answered": 9, "answerable": 9}
+    assert _status(client)["autofill"]["groups"]["personal"] == {"answered": 8, "answerable": 8}
 
 
 def test_the_shipped_demo_base_is_named_so_it_is_never_taken_for_the_users(client, db_session):

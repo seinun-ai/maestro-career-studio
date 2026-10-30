@@ -25,10 +25,7 @@ def citizenships(profile: Any) -> list[str]:
     """`personal.citizenships` as ISO codes, in the order stored; an entry that names no country is
     left out."""
     personal = profile.get("personal") if isinstance(profile, dict) else None
-    raw = personal.get(autofill_profile.CITIZENSHIPS) if isinstance(personal, dict) else None
-    if not isinstance(raw, list):
-        return []
-    return [code for code in (countries.normalize(c) for c in raw if isinstance(c, str)) if code]
+    return countries.codes_in(personal.get(autofill_profile.CITIZENSHIPS) if isinstance(personal, dict) else None)
 
 
 def derived_for(citizenships: list[str], market: str) -> dict[str, DerivedAnswer]:

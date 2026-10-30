@@ -118,6 +118,14 @@ def normalize(value: str | None) -> str | None:
     return _ALIASES.get(folded) or _names().get(folded)
 
 
+def codes_in(values: object) -> list[str]:
+    """The ISO codes a list of countries names (`normalize`), in the order given; an entry that
+    names no country is left out, and anything that is not a list names none."""
+    if not isinstance(values, list):
+        return []
+    return [code for code in (normalize(v) for v in values if isinstance(v, str)) if code]
+
+
 # A place line splits into parts at commas, slashes, brackets and spaced dashes; "and" never
 # splits, or "Bosnia and Herzegovina" would be two places.
 _PLACE_PARTS = re.compile(r"[,/;|()\[\]]+|\s[-\u2013\u2014]\s")

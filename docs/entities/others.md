@@ -528,10 +528,12 @@
   `data/markets.yaml`: required in the US, Canada, Australia, India and the UAE; not the UK, Ireland, Germany or the
   Netherlands); with no home set, home reads as the default US and it counts. The postal code (`byHome`
   too) is optional where the home's addresses have none (`asks_postcode`: the UAE). Citizenship
-  (`personal.citizenships`, `type: countries`) counts in personal wherever you live, answered once its list
-  names a country; a country's own answers (`answers_by_country`, expected pay among them) are all optional and
-  never count. The frontend shows each field as served and resolves nothing itself (Contact leaves citizenship
-  out, `contactFields`). Work-permit answers count per apply-in country (the served `countries`; none when no
+  (`personal.citizenships`, `type: countries`) is stored and served in personal but counts in `work_auth`,
+  beside the permits it settles, wherever you live and with no country chosen too; it is answered once its
+  list names a country (`countries.codes_in`). A country's own answers (`answers_by_country`, expected pay
+  among them) are all optional and never count. The frontend shows each field as served and resolves nothing
+  itself (Contact and Next up leave citizenship out, `contactFields`). Work-permit answers count per apply-in
+  country (the served `countries`; none when no
   country is chosen), read as `autofill_derive.answers_for` serves them (the stored answers over the ones a
   citizenship settles there, unless a stored one differs) off typed
   `WorkAuth` by the required keys of that country's permits: a status question built from its `statuses`

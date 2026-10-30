@@ -3,7 +3,6 @@ import { test } from "node:test";
 
 import {
   answered,
-  contactCount,
   contactFields,
   declinedEeo,
   forSaving,
@@ -270,18 +269,41 @@ test("contact counts the state only where it is served as required", () => {
   assert.deepEqual(groupCount(profile, servedFor(["DE"], { state: STATE }), "personal"), { answered: 1, answerable: 4 });
 });
 
-test("contact leaves citizenship to Country answers: it neither shows nor counts it", () => {
-  const citizen: FieldDef = { key: "citizenships", label: "Citizen of", type: "countries" };
-  const plain = servedFor(["DE"]);
-  const served: QuestionSet = {
-    ...plain,
-    groups: plain.groups.map((g) => (g.key === "personal" ? { ...g, fields: [...g.fields, citizen] } : g)),
+// Citizenship, served in the personal group: Country answers asks it, and setup readiness counts it beside the
+// work permits it settles.
+const CITIZEN: FieldDef = { key: "citizenships", label: "Citizen of", type: "countries" };
+
+function withCitizenship(served: QuestionSet): QuestionSet {
+  return {
+    ...served,
+    groups: served.groups.map((g) => (g.key === "personal" ? { ...g, fields: [...g.fields, CITIZEN] } : g)),
   };
-  assert.deepEqual(contactFields(served), groupFields(plain, "personal"));
+}
+
+test("contact leaves citizenship to Country answers: it neither shows nor counts it", () => {
+  const served = withCitizenship(servedFor(["DE"]));
+  assert.deepEqual(contactFields(served), groupFields(servedFor(["DE"]), "personal"));
   const profile = { personal: { first_name: "Ada", last_name: "Lovelace", email: "ada@example.com", state: "BE" } };
-  assert.deepEqual(contactCount(profile, served), { answered: 4, answerable: 4 });
-  // The group still holds it: setup readiness counts citizenship in `personal`.
-  assert.deepEqual(groupCount(profile, served, "personal"), { answered: 4, answerable: 5 });
+  assert.deepEqual(groupCount(profile, served, "personal"), { answered: 4, answerable: 4 });
+});
+
+test("next up never asks citizenship in a text box", () => {
+  const served = withCitizenship(servedFor(["DE"], { offersEeo: false }));
+  const done = { authorized_now: true, sponsorship_now: false, sponsorship_future: false };
+  const profile = {
+    personal: { first_name: "Ada", last_name: "Lovelace", email: "ada@example.com", state: "BE" },
+    work_auth_by_country: { DE: done },
+    preferences: { desired_salary: "x", willing_to_relocate: false },
+  };
+  assert.deepEqual(missingAnswers(profile, served).map(missingKey), []);
+});
+
+test("a list of countries is answered once it holds one", () => {
+  assert.equal(answered(CITIZEN, ["IN"]), true);
+  assert.equal(answered(CITIZEN, ["IN", "FR"]), true);
+  for (const value of [[], [""], ["  "], "India", undefined, null, [7]]) {
+    assert.equal(answered(CITIZEN, value), false, JSON.stringify(value));
+  }
 });
 
 test("next up asks the state where it is required, never where it is served optional", () => {
