@@ -110,8 +110,8 @@ backend/
                        registry (model id to provider), OpenAI-compatible, Gemini and Claude adapters),
                        attachment_extract (bounded DOCX/PPTX + notes; decks are documents),
                        autofill_choose + autofill_reason + contact_scan + autofill_slots + autofill_education + autofill_place + autofill_sponsorship + board_visits + jev (Companion fill), resumes_folder (visible PDF copies),
-                       application_status (the one status writer), countries + markets + autofill_country (data:
-                       services/data/*.yaml), money + money_settings + fx_rates (ECB), rates, search_summary, today, …)
+                       application_status (the one status writer), countries + markets + autofill_country +
+                       form_questions (data: services/data/*.yaml), money + money_settings + fx_rates (ECB), rates, search_summary, today, …)
     automations/skills/  the agent prompts, one <name>/SKILL.md each: the Automations
                        source of the Automations page; indexed by docs/skills/README.md
     templates/         six seeded resume designs + both cover-letter sources (licenses: THIRD_PARTY_NOTICES.md)
@@ -782,6 +782,9 @@ exception, so ingest lands drafts and consent-gated `kb_approve_points` is the o
 - 2026-10-28 — The Companion installs from its unlisted Chrome Web Store listing first, Load unpacked for a source checkout; the manifest
   keeps the unpacked `key` and the backend admits both ids (docs/RELEASING.md, "Chrome Web Store"); superseded the planned
   `extension-id-swap` (store key into the manifest), which would have left unpacked installs to Remove and reinstall.
+- 2026-10-30 — The form questions are served from one catalog, `data/form_questions.yaml`, resolved for where you live and apply
+  (`GET /api/settings/autofill/questions`; readiness counts the same set); superseded the frontend's hand-written list, mirrored by
+  readiness and kept by a parity test because labels were presentation, since per-country wording makes the labels country data.
 
 ## 11. Known deferred items (priority order)
 

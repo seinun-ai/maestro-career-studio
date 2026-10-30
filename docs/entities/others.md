@@ -516,21 +516,21 @@
   `lib/settings-tabs.ts` `anchorHref`, which picks the Settings tab that holds the anchor (Profile has none);
   readiness is app-wide, not Profile-scoped. `model_key` is `llm.any_model_key_configured()` (a stored
   or env key for any of the four providers, or a custom server): whether a key WORKS is what the capability
-  probe answers, and storing that verdict would break the derived-only rule. Autofill readiness spans the
-  required personal, work-auth, EEO, and preferences groups and means
-  **answerable**, not merely filled: `decline` is an answer, optional fields
-  are excluded (in contact: address line 2 and the LinkedIn, GitHub and website links, which many
-  fields of work and countries have none of). The contact's state line counts only where the home market's
-  addresses need one (`asks_state` in `data/markets.yaml`: the US, Canada, Australia and India; not the UK,
-  Ireland, Germany or the Netherlands), `_personal_fields(home)`; with no home set, home reads as the default
-  US and it counts. The frontend's `byHome` field resolves the same way, named by the home's `state_label`
-  and marked optional where it does not count. Work authorization reads typed `WorkAuth`; its four-answer
-  knockout core is `status`, `authorized_now`, `sponsorship_now`,
-  `sponsorship_future` — status never implies current authorization, and an
-  incomplete core is blocking. The backend's required field lists deliberately
-  hand-mirror the frontend autofill groups; update both sides together —
-  `tests/test_autofill_groups_parity.py` fails when they drift, per the §11
-  rule that cross-boundary duplication needs a contract test, not a deletion.
+  probe answers, and storing that verdict would break the derived-only rule. Autofill readiness counts the
+  required questions of the form-question catalog (`services/form_questions.py` over
+  `data/form_questions.yaml`), resolved for where you live and apply (`resolve(home, apply_in)`, the set
+  `GET /api/settings/autofill/questions` serves Profile and Setup, so all three ask one list): the personal,
+  work-permit and preferences groups, and the diversity group only where the set `offers_eeo`. It means
+  **answerable**, not merely filled: `decline` is an answer, and `optional` fields are excluded (in contact:
+  address line 2 and the LinkedIn, GitHub and website links, which many fields of work and countries have
+  none of). The contact's state line (`byHome`) is resolved on the server: named by the home's `state_label`,
+  and optional, so not counted, where the home market's addresses need none (`asks_state` in
+  `data/markets.yaml`: required in the US, Canada, Australia and India; not the UK, Ireland, Germany or the
+  Netherlands); with no home set, home reads as the default US and it counts. The frontend shows each field
+  as served and resolves nothing itself. Work-permit answers count per apply-in country, read off typed
+  `WorkAuth` by the keys of that country's wording (`work_auth_vocab`; every permit key is a `WorkAuth`
+  field whose default is None, `test_form_questions.py`): the three yes/no knockout answers everywhere,
+  `status` only for `us_visa`. Status never implies current authorization, and an incomplete set is blocking.
 - **Today** (`GET /api/today?tz=&utc_offset_minutes=`, `services/today.py`): read-only, and it writes nothing (a
   proposal past `expires_at` is left out via `proposals.past_expiry`, not expired). Like the Jobs list it reads the
   other copy's replicas too. `next_up` is the first that exists in `NEXT_UP_ORDER`: an application at `offered`

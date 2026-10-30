@@ -1182,9 +1182,9 @@
   **Your resume**: one drop zone into the import dialog's own flow (`use-resume-import.ts`, shared with
   its resume lane), its counts only from the response (`importCounts`). **Where and what**: You live
   in, You apply in (chips), roles offered from your base resumes and the work mode, saving as you go.
-  **Form answers**, one question at a time: a work-permit card per apply-in country, headed by the
-  country and asked in its own words (`work_auth_vocab`, the visa status for `us_visa`; Profile's one
-  table), each answer's group named by the country and the question and saved to that country's own
+  **Form answers**, one question at a time: a work-permit card per country the served set lists, headed by
+  the country and asked in its own words (`work_auth_vocab`, the visa status for `us_visa`; the served set
+  Profile asks from too), each answer's group named by the country and the question and saved to that country's own
   entry; then notice period and relocation; then diversity, only when an apply-in market `offers_eeo`:
   **Answer them** or **Decline the rest**, each only once the diversity consent is on record (Profile's
   confirm and the server's stamp; Cancel stores nothing), with the switch beside the answers (D10). As in
@@ -1216,7 +1216,11 @@
   per apply-in country under its name, worded by the market's `work_auth_vocab` (the visa status only for
   `us_visa`), each answer that country's own entry in `work_auth_by_country`. Contact's state line follows
   where you live: it carries the home market's `state_label` (State, Province, County), and it is optional
-  (not counted, never Next up) where that market's `asks_state` is false. Every answer saves as you go
+  (not counted, never Next up) where that market's `asks_state` is false. Every question, its words and
+  whether it counts come from the served set (`GET /api/settings/autofill/questions`, read with
+  `useFormQuestions` by Profile and Setup alike, the `lib/autofill-options.ts` helpers taking it as
+  `questionSet`), never a list of the frontend's own; Work permits and Next up ask only the countries it
+  lists, in its order. Every answer saves as you go
   (`AutofillProfileProvider`: one `useAutosave` for the answers). Each editor's status follows its own newest
   edit (`lib/save-surfaces.ts`): Saving until a write that carries it lands, Not saved when the last one
   failed, nothing while it has no edit waiting, so it never says Saved before its own edit is on the server
