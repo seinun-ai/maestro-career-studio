@@ -13,11 +13,19 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.config import settings
 from app.main import app
 from app.schemas.market_settings import MarketSetting
 from app.services import market_settings, markets
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def settings_dir(tmp_path, monkeypatch):
+    """The market setting's file mirror goes to a throwaway folder (SYSTEM.md §12, 2026-10-21)."""
+    monkeypatch.setattr(settings, "settings_dir", tmp_path)
+    return tmp_path
 
 
 SUPPORTED = ["US", "UK", "CA", "AU", "IE", "IN", "DE", "NL"]
@@ -136,7 +144,7 @@ def test_the_old_market_name_reads_home_and_is_stored_for_peers_not_yet_updated(
     setting = MarketSetting(home="DE", apply_in=["DE", "NL"])
     assert setting.market == "DE"
     stored = json.loads(setting.model_dump_json())
-    assert stored == {"home": "DE", "apply_in": ["DE", "NL"], "market": "DE"}
+    assert stored == {"home": "DE", "apply_in": ["DE", "NL"], "chosen": False, "market": "DE"}
     assert MarketSetting.model_validate(stored) == setting
 
 
@@ -178,7 +186,7 @@ def test_put_market_takes_home_and_apply_in_or_the_old_single_market():
     assert new.status_code == 200, new.text
     body = new.json()
     assert (body["home"], body["apply_in"]) == ("UK", ["UK", "DE"])
-    assert body["value"] == {"home": "UK", "apply_in": ["UK", "DE"], "market": "UK"}
+    assert body["value"] == {"home": "UK", "apply_in": ["UK", "DE"], "chosen": True, "market": "UK"}
     assert body["currency"] == "GBP"
     got = client.get("/api/settings/market").json()
     assert (got["home"], got["apply_in"]) == ("UK", ["UK", "DE"])

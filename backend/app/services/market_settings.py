@@ -9,7 +9,18 @@ from app.schemas.money import MoneySettings
 from app.services import countries, markets, text_settings
 from app.services.json_settings import JsonSetting
 
-MARKET = JsonSetting("market", "market.json", MarketSetting)
+
+class _Market(JsonSetting[MarketSetting]):
+    def migrate(self, payload: Any) -> Any:
+        # Stored before the mark (2026-10-30): that install kept the set it was shown. A row never
+        # stored (`""`, also what `text_settings.get_text` seeds with no mirror) never reaches here:
+        # it reads as `MarketSetting()`, unchosen.
+        if isinstance(payload, dict) and "chosen" not in payload:
+            return {**payload, "chosen": True}
+        return payload
+
+
+MARKET = _Market("market", "market.json", MarketSetting)
 # Key/filename stay importable: callers and tests address the setting by
 # name, and the constants are now derived from the one definition above.
 MARKET_KEY = MARKET.key
@@ -30,10 +41,11 @@ def peek_market(session: Session | None = None) -> MarketSetting:
 
 
 def set_market(setting: MarketSetting, session: Session | None = None) -> MarketSetting:
-    """Store where you live and apply. A move of `home` first pins a legacy one-set work-permit answer
-    to the home it has been read as (`autofill_profile.pin_legacy_work_auth`), in the same session. The
-    pin first, because on its own it changes no read: a refusal or a failure before the move lands
-    leaves both settings meaning what they meant."""
+    """Store where you live and apply, marked `chosen`: every caller is the user's save (the PUT) or an
+    agent's (`patch_place`). A move of `home` first pins a legacy one-set work-permit answer to the
+    home it has been read as (`autofill_profile.pin_legacy_work_auth`), in the same session. The pin
+    first, because on its own it changes no read: a refusal or a failure before the move lands leaves
+    both settings meaning what they meant."""
     from app.db import SessionLocal
     from app.services import autofill_profile
 
@@ -43,7 +55,7 @@ def set_market(setting: MarketSetting, session: Session | None = None) -> Market
         before = peek_market(session).home
         if setting.home != before:
             autofill_profile.pin_legacy_work_auth(before, session)
-        return MARKET.set(setting, session)
+        return MARKET.set(setting.model_copy(update={"chosen": True}), session)
     finally:
         if owns_session:
             session.close()
@@ -57,7 +69,8 @@ AGENT_FIELDS = frozenset({"home", "apply_in", "home_currency"})
 def patch_place(changes: dict[str, Any], session: Session) -> MarketSetting:
     """An agent's save of where the user lives and applies, and of the currency pay reads in, as one
     transaction (`text_settings.one_commit`): `home` alone keeps `apply_in` as stored and the reverse,
-    a None field is left as stored, and `home_currency` changes only the money setting's currency
+    a None field is left as stored (an unchosen `apply_in` is the default, not a choice, so `home`
+    alone then applies where you live), and `home_currency` changes only the money setting's currency
     ("" follows home again; every other money field stays). Both settings are validated before
     either is written (their own ValidationError, the words their PUTs use), so nothing lands unless
     everything does. No field: nothing is written. Returns the market setting as stored."""
@@ -76,9 +89,10 @@ def patch_place(changes: dict[str, Any], session: Session) -> MarketSetting:
         stored = peek_market(session)
         place = None
         if home is not None or apply_in is not None:
+            kept_apply_in = stored.apply_in if stored.chosen else []
             place = MarketSetting.model_validate({
                 "home": stored.home if home is None else home,
-                "apply_in": stored.apply_in if apply_in is None else apply_in,
+                "apply_in": kept_apply_in if apply_in is None else apply_in,
             })
         money = None
         if currency is not None:
@@ -94,13 +108,14 @@ def patch_place(changes: dict[str, Any], session: Session) -> MarketSetting:
 
 
 def is_set(setting: MarketSetting) -> bool:
-    """Whether the user has actually chosen a market.
+    """Whether the stored market differs from the default, for currency.
 
     A stored value equal to the default is indistinguishable from never having
     chosen, which is deliberate: both mean "no explicit opinion", and both
-    should let HOME_CURRENCY answer for currency purposes.
+    should let HOME_CURRENCY answer for currency purposes. The `chosen` mark is
+    ignored: it decides the form questions, never currency or dates.
     """
-    return MARKET.is_set(setting)
+    return setting.model_copy(update={"chosen": False}) != MarketSetting()
 
 
 def home_market_currency(session: Session | None = None) -> str:

@@ -155,6 +155,20 @@ def test_offers_eeo_follows_the_apply_in_markets():
     assert form_questions.resolve(home="DE", apply_in=["DE", "UK"]).offers_eeo is True
 
 
+def test_unchosen_resolves_no_country():
+    qs = form_questions.resolve(home="US", apply_in=[], chosen=False)
+    assert qs.permits == {} and qs.offers_eeo is False and qs.chosen is False
+
+
+def test_unchosen_keeps_the_state_line_but_never_requires_it():
+    """No country is chosen, so no address rule applies: the line keeps its catalog label."""
+    groups = form_questions.resolve(home="US", apply_in=[], chosen=False).groups
+    personal = next(g for g in groups if g.key == "personal")
+    state = next(f for f in personal.fields if f.key == "state")
+    assert (state.label, state.optional) == ("State", True)
+    assert "state" not in form_questions.required_keys(personal.fields)
+
+
 def test_no_apply_in_reads_as_home():
     """The market setting's rule (`MarketSetting`: empty `apply_in` reads as `[home]`)."""
     assert list(form_questions.resolve(home="UK", apply_in=[]).permits) == ["UK"]

@@ -368,9 +368,9 @@ def get_autofill_questions(db: Annotated[Session, Depends(get_db)]):
     """The form questions for where you live and apply (services/form_questions.resolve): Profile and
     Setup read this route, and setup readiness calls `resolve` itself, so all three ask the one set.
     Served without defaults, as the frontend's FieldDef reads them (every key but `key` and `label`
-    may be absent)."""
+    may be absent; `chosen` always rides along)."""
     market = market_settings.get_market(db)
-    return form_questions.resolve(home=market.home, apply_in=market.apply_in)
+    return form_questions.resolve(home=market.home, apply_in=market.apply_in, chosen=market.chosen)
 
 
 @router.patch("/job-preferences", response_model=SettingEnvelope[JobPreferences])

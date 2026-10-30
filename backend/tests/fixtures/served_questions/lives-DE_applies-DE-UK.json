@@ -384,5 +384,6 @@
       }
     ]
   },
-  "offers_eeo": true
+  "offers_eeo": true,
+  "chosen": true
 }

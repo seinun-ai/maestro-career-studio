@@ -327,5 +327,6 @@
       }
     ]
   },
-  "offers_eeo": false
+  "offers_eeo": false,
+  "chosen": true
 }

@@ -13,6 +13,15 @@ def _status(client):
     return r.json()
 
 
+def _chose_us(db_session, tmp_path, monkeypatch):
+    """Where you live and apply saved as the US: the US set, permits and diversity questions included."""
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US"]), db_session)
+
+
 def test_fresh_install_every_step_pending(client):
     body = _status(client)
     assert body["complete"] is False
@@ -20,7 +29,9 @@ def test_fresh_install_every_step_pending(client):
         assert body[step]["done"] is False
     assert body["autofill"]["done"] is False
     assert body["autofill"]["readiness"] == 0.0
-    assert "work_auth" in body["autofill"]["blocking"]
+    # No country chosen yet: no work-permit questions, so none block (a permit answer belongs to a country).
+    assert body["autofill"]["groups"]["work_auth"] == {"answered": 0, "answerable": 0}
+    assert body["autofill"]["blocking"] == []
 
 
 def test_status_read_does_not_seed_settings_or_mirrors(client, db_session, tmp_path, monkeypatch):
@@ -254,9 +265,12 @@ def test_template_step_is_not_done_with_no_templates_at_all(client, db_session):
     assert template["detail"]["default_template_name"] is None
 
 
-def test_eeo_decline_counts_as_answered_and_optionals_do_not_block(client, db_session):
+def test_eeo_decline_counts_as_answered_and_optionals_do_not_block(
+    client, db_session, tmp_path, monkeypatch
+):
     from app.services import autofill_profile
 
+    _chose_us(db_session, tmp_path, monkeypatch)
     autofill_profile.set_profile(
         {
             "personal": {
@@ -288,9 +302,12 @@ def test_eeo_decline_counts_as_answered_and_optionals_do_not_block(client, db_se
     assert body["done"] is True
 
 
-def test_authorized_now_is_required_for_work_auth_readiness(client, db_session):
+def test_authorized_now_is_required_for_work_auth_readiness(
+    client, db_session, tmp_path, monkeypatch
+):
     from app.services import autofill_profile
 
+    _chose_us(db_session, tmp_path, monkeypatch)
     autofill_profile.set_profile(
         {
             "personal": {
@@ -332,14 +349,18 @@ def test_malformed_profile_group_degrades_to_unanswered(client, db_session):
     autofill_profile.set_profile({"personal": "garbage"}, db_session)
 
     body = _status(client)["autofill"]
-    assert body["groups"]["personal"] == {"answered": 0, "answerable": 9}
+    # No country chosen, so the state line is not counted: the other eight required answers.
+    assert body["groups"]["personal"] == {"answered": 0, "answerable": 8}
 
 
-def test_contact_links_are_optional_so_a_profile_without_them_is_done(client, db_session):
+def test_contact_links_are_optional_so_a_profile_without_them_is_done(
+    client, db_session, tmp_path, monkeypatch
+):
     """Most people outside tech have no GitHub or website, and many no LinkedIn: a contact block with
     every other answer given is complete, and an agent's setup next step moves past the form answers."""
     from app.services import autofill_profile
 
+    _chose_us(db_session, tmp_path, monkeypatch)
     autofill_profile.set_profile(
         {
             "personal": {
@@ -423,15 +444,18 @@ def test_a_us_home_with_no_state_is_not_done(client, db_session, tmp_path, monke
     assert body["done"] is False
 
 
-def test_with_no_home_set_the_state_counts_as_it_always_has(client, db_session, tmp_path, monkeypatch):
+def test_with_no_country_chosen_the_state_is_not_counted(client, db_session, tmp_path, monkeypatch):
+    """No country chosen, no address rule: the state line is optional, and the permit and diversity
+    answers stored are not asked, so every other answer given is done."""
     from app.services import autofill_profile
 
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
     autofill_profile.set_profile(_answers_but_state("US"), db_session)
 
     body = _status(client)["autofill"]
-    assert body["groups"]["personal"] == {"answered": 8, "answerable": 9}
-    assert body["done"] is False
+    assert body["groups"]["personal"] == {"answered": 8, "answerable": 8}
+    assert body["work_auth_by_country"] == {} and "eeo" not in body["groups"]
+    assert body["done"] is True
 
 
 @pytest.mark.parametrize(

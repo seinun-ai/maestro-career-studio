@@ -24,16 +24,26 @@ class MarketSetting(BaseModel):
     updated, so it is mapped when read, never migrated (the autofill veteran precedent). For the
     same peers `market` (= `home`) is still written; no reader of it remains in the app (SYSTEM.md
     §13 `market-home-apply-in`).
+
+    `chosen` says the user picked these countries (Setup's Where step, Profile's Where you apply, an
+    agent's `set_markets`). Unchosen, `home` and `apply_in` are the defaults, never a choice: the form
+    questions are the generic set, with no country's work permits (services/form_questions.resolve).
+    A row stored before the mark reads as chosen (`market_settings.MARKET`'s `migrate`), so the model's
+    own default stays unchosen.
     """
 
     home: str = markets.DEFAULT_MARKET
     apply_in: list[str] = []
+    chosen: bool = False
 
     @model_validator(mode="before")
     @classmethod
     def _legacy(cls, value):
         if isinstance(value, dict) and "market" in value and "home" not in value:
-            return {"home": value["market"], "apply_in": [value["market"]]}
+            legacy = {"home": value["market"], "apply_in": [value["market"]]}
+            if "chosen" in value:
+                legacy["chosen"] = value["chosen"]
+            return legacy
         return value
 
     @field_validator("home", mode="before")

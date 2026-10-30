@@ -25,9 +25,20 @@ def test_the_questions_follow_the_market(client):
     assert body["offers_eeo"] is True
 
 
-def test_with_no_market_chosen_the_set_is_the_default_markets(client):
+def test_with_no_market_chosen_the_set_is_the_generic_one(client):
+    """No country chosen: no country's work permits or diversity set, and no address rule, so the
+    state line keeps its own label and is optional (Decision 1 of the country form-questions plan)."""
     body = client.get("/api/settings/autofill/questions").json()
-    assert list(body["permits"]) == ["US"]
+    assert body["chosen"] is False and body["permits"] == {} and body["offers_eeo"] is False
+    personal = next(g for g in body["groups"] if g["key"] == "personal")
+    state = next(f for f in personal["fields"] if f["key"] == "state")
+    assert state["label"] == "State" and state["optional"] is True
+
+
+def test_the_set_is_served_without_defaults(client):
+    client.put("/api/settings/market", json={"value": {"home": "US", "apply_in": ["US"]}})
+    body = client.get("/api/settings/autofill/questions").json()
+    assert body["chosen"] is True and list(body["permits"]) == ["US"]
     personal = next(g for g in body["groups"] if g["key"] == "personal")
     state = next(f for f in personal["fields"] if f["key"] == "state")
     # Served without defaults, as the frontend's FieldDef reads them: a required field has no

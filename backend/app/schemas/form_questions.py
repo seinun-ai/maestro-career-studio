@@ -53,8 +53,11 @@ class Catalog(BaseModel):
 
 class QuestionSet(BaseModel):
     """The set for one user's countries: groups resolved for where they live, permit fields per
-    apply-in market, and whether any apply-in market offers a diversity set."""
+    apply-in market, whether any apply-in market offers a diversity set, and whether the user chose
+    their countries (unchosen: the generic set, no permits). `chosen` has no default, so it is
+    served either way."""
 
     groups: list[Group]
     permits: dict[str, list[Field]]
     offers_eeo: bool
+    chosen: bool
