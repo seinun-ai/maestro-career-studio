@@ -1,0 +1,53 @@
+"""The form-question catalog's shape (services/data/form_questions.yaml) and what
+GET /api/settings/autofill/questions serves. Names mirror the frontend's FieldDef, camelCase
+included, so the served JSON drops into today's components."""
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict
+
+
+class Option(BaseModel):
+    value: str
+    label: str
+
+
+class Field(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    label: str
+    optional: bool = False
+    type: Literal["text", "select", "date"] | None = None
+    boolean: bool = False
+    options: list[Option] | None = None
+    hint: str | None = None
+    staleHint: str | None = None
+    when: tuple[str, str] | None = None
+    # The address's state line: named and counted by where you live (markets.yaml).
+    byHome: bool = False
+
+
+class Group(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    title: str
+    fields: list[Field]
+
+
+class Catalog(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    groups: list[Group]
+    # Work-permit fields per `work_auth_vocab` (us_visa, uk, generic), expiry included.
+    permits: dict[str, list[Field]]
+
+
+class QuestionSet(BaseModel):
+    """The set for one user's countries: groups resolved for where they live, permit fields per
+    apply-in market, and whether any apply-in market offers a diversity set."""
+
+    groups: list[Group]
+    permits: dict[str, list[Field]]
+    offers_eeo: bool

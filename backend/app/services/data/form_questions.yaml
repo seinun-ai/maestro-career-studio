@@ -1,0 +1,220 @@
+# Form questions — the questions Profile, Setup and setup readiness ask, in the
+# words they ask them (services/form_questions.py loads and resolves it).
+#
+# THIS IS DOMAIN DATA, NOT CODE — the same contract markets.yaml and
+# role_categories.yaml declare. A question's key is the stored profile key the
+# Companion reads; its label, hint and options are what the user sees. A field
+# that is not `optional` counts toward setup readiness. `byHome` marks the
+# address's state line: named by where you live (`state_label` in markets.yaml)
+# and counted only where an address there needs one (`asks_state`). `when` shows
+# a field only while another field of its group holds that value.
+#
+# `permits` is each country's work-permit wording, keyed by a market's
+# `work_auth_vocab`. Every country asks the three yes/no knockout answers; the
+# visa status list is the US taxonomy, so only `us_visa` asks it. A country's
+# set is shown under its name, so the generic words say "this country" rather
+# than guess at a name's grammar.
+#
+# The golden test (backend/tests/test_form_questions.py) pins the resolved set
+# to the hand-written set it replaced (tests/fixtures/form_questions_today.json),
+# for every market.
+#
+# Quote "yes" and "no" (YAML 1.1 reads them as booleans), and a label that ends
+# in "?" inside {braces} (there a "?" before "}" or "," is syntax). Every yes/no
+# question offers the one `&yes_no` list.
+
+groups:
+  - key: personal
+    title: Personal details
+    fields:
+      - {key: first_name, label: First name}
+      - {key: last_name, label: Last name}
+      - {key: email, label: Email}
+      - {key: phone, label: Phone}
+      - {key: address, label: Street address}
+      - {key: address_2, label: Address line 2, optional: true}
+      - {key: city, label: City}
+      - {key: state, label: State, byHome: true}
+      - {key: postal_code, label: Postal code}
+      - {key: country, label: Country}
+      # Optional for readiness: many fields of work and many countries use none of the three links.
+      - {key: linkedin, label: LinkedIn profile link, optional: true}
+      - {key: github, label: GitHub link, optional: true}
+      - {key: website, label: Website, optional: true}
+
+  - key: eeo
+    title: Diversity questions (voluntary)
+    fields:
+      - key: veteran_status
+        label: Are you a veteran?
+        staleHint: "Answer again: this question changed."
+        type: select
+        # One Yes/No. A "No" also answers a form's "not a protected veteran" option; a "Yes" alone never
+        # says which protected class applies, so the Companion leaves that list to you. The backend
+        # reads the old stored `veteran` as yes; the old `not_veteran` ("not a protected veteran")
+        # is no answer to this question, so it is asked again (staleHint).
+        options:
+          - {value: "no", label: "No, I am not a veteran"}
+          - {value: "yes", label: "Yes, I am a veteran"}
+          - {value: decline, label: "I don't wish to answer"}
+      - key: disability_status
+        label: Disability status
+        type: select
+        options:
+          - {value: "no", label: "No, I do not have a disability"}
+          - {value: "yes", label: "Yes, I have a disability"}
+          - {value: decline, label: Decline to answer}
+      - key: gender
+        label: Gender
+        type: select
+        # The stored values are the Companion's (content/eeo.js maps each to
+        # a form's own wording, and leaves a form without it to you).
+        options:
+          - {value: male, label: Male}
+          - {value: female, label: Female}
+          - {value: non_binary, label: Non-binary}
+          - {value: self_describe, label: Prefer to self-describe}
+          - {value: decline, label: Decline to answer}
+      # Voluntary like the group, and not counted by setup readiness.
+      - key: gender_self_describe
+        label: How you describe your gender
+        hint: The Companion types this where a form asks you to self-describe.
+        optional: true
+        when: [gender, self_describe]
+      - key: hispanic_latino
+        label: Hispanic or Latino?
+        type: select
+        options:
+          - {value: "yes", label: "Yes"}
+          - {value: "no", label: "No"}
+          - {value: decline, label: Decline to answer}
+      # Optional for readiness (setup_status counts the other four); its
+      # label carries no "(optional)", because the whole group is voluntary.
+      - key: race_ethnicity
+        label: Race or ethnicity
+        optional: true
+
+  - key: eligibility
+    title: Eligibility
+    fields:
+      # The three questions nearly every US application asks and that nothing
+      # else in this profile can derive. They are knockout answers, so each is
+      # UNSET until you set it: an eligibility question the extension has no
+      # answer for is reported and left blank, never guessed.
+      #
+      # "Previously employed here" is per-EMPLOYER by nature and stored as one
+      # standing answer, which is the compromise it is worth naming: it is the
+      # most common unanswered question in the telemetry (six hosts, worded
+      # differently on every one), and "No" is the true answer at almost every
+      # employer. Where it is not, it has to be changed by hand, hence the
+      # wording of the label.
+      - key: over_18
+        label: Are you 18 or older?
+        type: select
+        boolean: true
+        options: &yes_no
+          - {value: "yes", label: "Yes"}
+          - {value: "no", label: "No"}
+        optional: true
+      - key: previously_employed_here
+        label: Have you worked for the company you're applying to?
+        type: select
+        boolean: true
+        options: *yes_no
+        optional: true
+      - key: non_compete
+        # The legal term stays in the label: forms ask it in those words and
+        # the Companion matches them (shared/profile-fields.js). The hint says
+        # what one is.
+        label: Subject to a restrictive covenant?
+        hint: Such as a non-compete or non-solicit agreement.
+        type: select
+        boolean: true
+        options: *yes_no
+        optional: true
+
+  - key: preferences
+    title: Preferences
+    fields:
+      - {key: desired_salary, label: Desired salary}
+      - {key: notice_period, label: Notice period, hint: How long before you can start.}
+      - {key: earliest_start_date, label: Earliest start date}
+      - key: willing_to_relocate
+        label: Willing to relocate?
+        type: select
+        boolean: true
+        options: *yes_no
+      - {key: how_heard, label: "How did you hear about the job?"}
+
+# The knockout answers each country asks, in its own words, then when the permit
+# runs out (optional).
+permits:
+  us_visa:
+    - key: status
+      label: Work authorization status
+      type: select
+      # The US visa statuses (schemas/autofill_profile.py WorkAuthStatus).
+      options:
+        - {value: citizen, label: U.S. citizen}
+        - {value: permanent_resident, label: Permanent resident}
+        - {value: opt, label: F-1 OPT}
+        - {value: stem_opt, label: F-1 STEM OPT}
+        - {value: h1b, label: H-1B}
+        - {value: tn, label: TN}
+        - {value: other_visa, label: Other visa or status}
+        - {value: not_authorized, label: Not authorized to work in the U.S.}
+    - key: authorized_now
+      label: Authorized to work in the U.S. now?
+      type: select
+      boolean: true
+      options: *yes_no
+    - key: sponsorship_now
+      label: Do you need visa sponsorship now?
+      type: select
+      boolean: true
+      options: *yes_no
+    - key: sponsorship_future
+      label: Will you need visa sponsorship later?
+      type: select
+      boolean: true
+      options: *yes_no
+    - &expires_on
+      key: authorization_expires_on
+      label: Authorization expires on
+      hint: Leave it empty if your right to work there does not run out.
+      type: date
+      optional: true
+  uk:
+    - key: authorized_now
+      label: Do you have the right to work in the UK now?
+      type: select
+      boolean: true
+      options: *yes_no
+    - key: sponsorship_now
+      label: Do you need visa sponsorship to work in the UK now?
+      type: select
+      boolean: true
+      options: *yes_no
+    - key: sponsorship_future
+      label: Will you need visa sponsorship in the UK later?
+      type: select
+      boolean: true
+      options: *yes_no
+    - *expires_on
+  generic:
+    - key: authorized_now
+      label: Can you work in this country now?
+      type: select
+      boolean: true
+      options: *yes_no
+    - key: sponsorship_now
+      label: Do you need visa sponsorship now?
+      type: select
+      boolean: true
+      options: *yes_no
+    - key: sponsorship_future
+      label: Will you need visa sponsorship later?
+      type: select
+      boolean: true
+      options: *yes_no
+    - *expires_on
