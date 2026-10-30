@@ -21,8 +21,8 @@ class Option(BaseModel):
 
     value: str
     label: str
-    # A status whose right to work never runs out, so its expiry is not asked (Task 3.5). Catalog
-    # only.
+    # A status whose right to work never runs out, so its expiry is not asked (the expiry's
+    # `unless`). Catalog only.
     noExpiry: bool = PydanticField(default=False, exclude=True)
 
 
@@ -32,16 +32,20 @@ class Field(BaseModel):
     key: str
     label: str
     optional: bool = False
-    type: Literal["text", "select", "date"] | None = None
+    type: Literal["text", "select", "date", "number", "countries"] | None = None
     boolean: bool = False
     options: list[Option] | None = None
     hint: str | None = None
     staleHint: str | None = None
     when: tuple[str, str] | None = None
-    # The address's state line: named and counted by where you live (markets.yaml).
-    byHome: bool = False
+    # Hidden while another field of the same list holds one of these values: the expiry, for the
+    # statuses that never run out (`services/form_questions.resolve` sets it).
+    unless: tuple[str, list[str]] | None = None
+    # The address line named and counted by where you live (markets.yaml): the state line
+    # (`state_label`, `asks_state`) or the postal code (`asks_postcode`).
+    byHome: Literal["state", "postcode"] | None = None
     # Catalog only, never served:
-    # - shown only while a country you apply in names this pack (markets.yaml `packs`; Task 3.5);
+    # - shown only while a country you apply in names this pack (markets.yaml `packs`);
     pack: str | None = PydanticField(default=None, exclude=True)
     # - what the fill reads for this answer, and how strictly (Task 3.7); absent is today's rule;
     describe: str | None = PydanticField(default=None, exclude=True)
@@ -105,13 +109,31 @@ class DerivedAnswer(BaseModel):
     via: str  # the ISO code of the citizenship that settles it ("IE")
 
 
+class CountryQuestions(BaseModel):
+    """One apply-in country's questions: its work permits (stored in
+    `work_auth_by_country[market]`), its own answers (`answers_by_country[market]`), and the permit
+    answers a citizenship settles there (`services/autofill_derive.derived_in_effect`), keyed like
+    the permits."""
+
+    market: str  # "DE"
+    label: str  # "Germany"
+    permits: list[Field]
+    answers: list[Field]
+    derived: dict[str, DerivedAnswer] = {}
+
+
 class QuestionSet(BaseModel):
-    """The set for one user's countries: groups resolved for where they live, permit fields per
-    apply-in market, whether any apply-in market offers a diversity set, and whether the user chose
-    their countries (unchosen: the generic set, no permits). `chosen` has no default, so it is
-    served either way."""
+    """The set for one user's countries: facts about you once (`groups`, pack fields included,
+    resolved for where they live), each apply-in country's own questions in apply-in order
+    (`countries`; none when unchosen), the fields asked on each language, whether any apply-in
+    market offers a diversity set, and whether the user chose their countries (unchosen: the generic
+    set). `permits` is each country's permit list keyed by market, as Phase 1 served it, until the
+    frontend reads `countries` (Task 3.10 of docs/plans/2026-10-30-country-form-questions.md).
+    `countries` and `chosen` have no default, so they are served either way."""
 
     groups: list[Group]
     permits: dict[str, list[Field]]
+    countries: list[CountryQuestions]
+    language_fields: list[Field] = []
     offers_eeo: bool
     chosen: bool

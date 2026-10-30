@@ -42,11 +42,13 @@ export function renderElement(element, seed = []) {
 
 /**
  * What `GET /api/settings/autofill/questions` serves to someone who lives in `home` and applies in `applyIn`
- * (market keys): the backend writes one file per scenario from `form_questions.resolve` and fails when one
+ * (market keys), with `citizenships` (ISO codes) stored, or with no country `chosen` (the generic set, the same
+ * wherever you live): the backend writes one file per scenario from `form_questions.resolve` and fails when one
  * drifts (backend/tests/test_served_questions_fixtures.py, which also says how to add a scenario).
  */
-export function servedQuestions(home, applyIn) {
-  const name = `lives-${home}_applies-${applyIn.join("-")}.json`;
+export function servedQuestions(home, applyIn, { citizenships = [], chosen = true } = {}) {
+  const where = chosen ? `lives-${home}_applies-${applyIn.join("-")}` : "lives-none";
+  const name = `${where}${citizenships.length ? `_citizen-${citizenships.join("-")}` : ""}.json`;
   const fixture = path.join(frontend, "../backend/tests/fixtures/served_questions", name);
   if (!fs.existsSync(fixture)) {
     throw new Error(`No served questions for ${name}: add the scenario to SCENARIOS in backend/tests/test_served_questions_fixtures.py and regenerate`);

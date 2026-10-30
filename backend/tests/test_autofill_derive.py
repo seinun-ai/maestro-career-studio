@@ -148,6 +148,17 @@ def test_a_given_status_that_differs_turns_the_rule_off_too(citizenship, market,
     assert autofill_derive.answers_for(profile, market) == entry
 
 
+def test_the_derived_answers_in_effect_follow_the_same_rule():
+    """What Profile shows as "From your citizenship" (`derived_in_effect`, served by
+    `form_questions.resolve`) is what the fill reads: off where a given answer differs."""
+    profile = {"personal": {"citizenships": ["FR"]},
+               "work_auth_by_country": {"DE": {"authorized_now": False}, "NL": {"authorized_now": True}}}
+    assert autofill_derive.derived_in_effect(profile, "DE") == {}
+    assert _values(autofill_derive.derived_in_effect(profile, " nl ")) == SETTLED
+    assert autofill_derive.derived_in_effect(profile, "UK") == {}
+    assert autofill_derive.derived_in_effect(None, "DE") == {}
+
+
 def test_a_given_status_that_agrees_keeps_the_rest_derived():
     profile = {"personal": {"citizenships": ["SA"]}, "work_auth_by_country": {"AE": {"status": "gcc_national"}}}
     assert autofill_derive.answers_for(profile, "AE") == {**SETTLED, "status": "gcc_national"}

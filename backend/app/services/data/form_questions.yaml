@@ -4,31 +4,33 @@
 # THIS IS DOMAIN DATA, NOT CODE — the same contract markets.yaml and
 # role_categories.yaml declare. A question's key is the stored profile key the
 # Companion reads; its label, hint and options are what the user sees. A field
-# that is not `optional` counts toward setup readiness. `byHome` marks the
-# address's state line: named by where you live (`state_label` in markets.yaml)
-# and counted only where an address there needs one (`asks_state`). `when` shows
-# a field only while another field of its group holds that value.
+# that is not `optional` counts toward setup readiness. `byHome` marks an
+# address line resolved by where you live: `state`, named by `state_label` in
+# markets.yaml and counted only where an address there needs one
+# (`asks_state`), and `postcode`, counted only where an address there has one
+# (`asks_postcode`). `when` shows a field only while another field of its group
+# holds that value.
 #
 # `permits` is each country's work-permit wording, keyed by a market's
-# `work_auth_vocab`. Every country asks the three yes/no knockout answers; the
-# visa status list is the US taxonomy, so only `us_visa` asks it. A country's
-# set is shown under its name, so the generic words say "this country" rather
-# than guess at a name's grammar.
+# `work_auth_vocab`. Every country asks the three yes/no knockout answers. The
+# status question is built per market from its `statuses` list
+# (services/form_questions.py): first in that country's permits, required in
+# the US only. A country's set is shown under its name, so the generic words
+# say "this country" rather than guess at a name's grammar.
 #
 # Country data: `statuses`, `answers`, `language_fields` and `citizenship`
 # below, each opening with what it holds; markets.yaml names a market's
 # `packs`, `work_status` and `work_auth_vocab`. Every fact is cited from
 # docs/plans/2026-10-30-country-form-questions-sources.md, where "Sources n" is
 # change n in its "What the sources change in the design". `pack:` on a field
-# shows it only while a country you apply in names that pack (from Task 3.5 of
-# docs/plans/2026-10-30-country-form-questions.md; until then the set ignores
-# it). `pack`, `fills`, `noExpiry`, `describe` and `policy` are the catalog's
-# own: never served.
+# shows it only while a country you apply in names that pack; on a country
+# answer, only in a country that names it. `pack`, `fills`, `noExpiry`,
+# `describe` and `policy` are the catalog's own: never served.
 #
 # The golden test (backend/tests/test_form_questions.py) pins the resolved set
 # to the hand-written set it replaced
-# (tests/fixtures/form_questions_today.json), for every market whose wording it
-# holds (Canada's and the UAE's came later).
+# (tests/fixtures/form_questions_today.json) apart from the changes the
+# country questions made on purpose: a chosen US user's set is today's.
 #
 # Quote "yes" and "no" (YAML 1.1 reads them as booleans), and so the country
 # code "NO" (Norway); quote a label that ends in "?" or holds ", " or ": "
@@ -46,8 +48,8 @@ groups:
       - {key: address, label: Street address}
       - {key: address_2, label: Address line 2, optional: true}
       - {key: city, label: City}
-      - {key: state, label: State, byHome: true}
-      - {key: postal_code, label: Postal code}
+      - {key: state, label: State, byHome: state}
+      - {key: postal_code, label: Postal code, byHome: postcode}
       - {key: country, label: Country}
       # Optional for readiness: many fields of work and many countries use
       # none of the three links.
@@ -152,6 +154,12 @@ groups:
         options: *yes_no
         optional: true
         pack: us_screening
+      # Indian forms ask total experience in years and months (Sources 20;
+      # sources doc rows India 3a, 3b).
+      - {key: experience_years, label: "Total experience: years", type: number, optional: true,
+         pack: india_basics}
+      - {key: experience_months, label: "Total experience: months", type: number, optional: true,
+         pack: india_basics}
 
   - key: preferences
     title: Preferences
@@ -160,6 +168,30 @@ groups:
       - key: notice_period
         label: Notice period
         hint: How long before you can start.
+      # Indian forms offer notice in fixed buckets: stored in days, rounded up to
+      # a form's bucket, never down; serving notice and the last working day
+      # are kept (Sources 21; sources doc rows India 2a-2d).
+      - key: notice_days
+        label: Notice period in days
+        hint: Forms that offer fixed choices get the next one up.
+        type: number
+        optional: true
+        pack: india_basics
+      - key: serving_notice
+        label: Are you serving your notice period?
+        type: select
+        boolean: true
+        options: *yes_no
+        optional: true
+        pack: india_basics
+      # Shown whatever serving_notice says: no `when`, because a yes/no answer
+      # is stored as `true` and `when` compares the raw value.
+      - key: last_working_day
+        label: Last working day
+        hint: If you're serving notice.
+        type: date
+        optional: true
+        pack: india_basics
       - {key: earliest_start_date, label: Earliest start date}
       - key: willing_to_relocate
         label: Willing to relocate?
@@ -167,16 +199,23 @@ groups:
         boolean: true
         options: *yes_no
       - {key: how_heard, label: "How did you hear about the job?"}
+      # Sources 22 (sources doc rows India 4a, 4b): the current location is
+      # one city, `personal.city`.
+      - key: preferred_locations
+        label: Preferred work locations
+        hint: Up to 10 cities, separated by commas.
+        optional: true
+        pack: india_basics
 
-# Each country's immigration statuses, keyed by its `work_status`. Citizen
-# first: the own-country rule settles it (Task 3.4). The status says which
-# permit you hold; it never answers the yes/no questions, because many are
-# "yes, with a limit" (Sources 10). `noExpiry`: nothing runs out, so the
-# expiry is not asked (Sources 11).
+# Each country's immigration statuses, keyed by its `work_status`: the options
+# of that country's status question. Citizen first: the own-country rule
+# settles it (Task 3.4). The status says which permit you hold; it never
+# answers the yes/no questions, because many are "yes, with a limit" (Sources
+# 10). `noExpiry`: nothing runs out, so the expiry is not asked (Sources 11).
 statuses:
   # The US visa statuses. A market's list is what a save takes and the typed
   # reader keeps for its `status` (services/autofill_profile.py).
-  us: &us_statuses
+  us:
     - {value: citizen, label: U.S. citizen, noExpiry: true}
     - {value: permanent_resident, label: Permanent resident, noExpiry: true}
     - {value: opt, label: F-1 OPT}
@@ -282,14 +321,9 @@ statuses:
     - {value: no_visa, label: No UAE visa (outside the UAE), noExpiry: true}
 
 # The knockout answers each country asks, in its own words, then when the permit
-# runs out (optional).
+# runs out (optional). The status question goes first, built from `statuses`.
 permits:
   us_visa:
-    - key: status
-      label: Work authorization status
-      type: select
-      # Until Task 3.5 builds the status question per market from `statuses`.
-      options: *us_statuses
     - key: authorized_now
       label: Authorized to work in the U.S. now?
       type: select
@@ -398,7 +432,7 @@ permits:
 # country's jobs only. All optional, so no existing count drops (Decisions 3
 # and 6 of docs/plans/2026-10-30-country-form-questions.md).
 answers:
-  # Labelled per market from markets.yaml `pay` (Task 3.5). The generic desired
+  # Labelled and hinted per market from markets.yaml `pay`. The generic desired
   # salary stays the answer readiness counts (Decision 3).
   - key: expected_pay
     label: Expected salary

@@ -37,11 +37,12 @@
           "key": "state",
           "label": "State",
           "optional": true,
-          "byHome": true
+          "byHome": "state"
         },
         {
           "key": "postal_code",
-          "label": "Postal code"
+          "label": "Postal code",
+          "byHome": "postcode"
         },
         {
           "key": "country",
@@ -175,23 +176,6 @@
       "title": "Eligibility",
       "fields": [
         {
-          "key": "over_18",
-          "label": "Are you 18 or older?",
-          "optional": true,
-          "type": "select",
-          "boolean": true,
-          "options": [
-            {
-              "value": "yes",
-              "label": "Yes"
-            },
-            {
-              "value": "no",
-              "label": "No"
-            }
-          ]
-        },
-        {
           "key": "previously_employed_here",
           "label": "Have you worked for the company you're applying to?",
           "optional": true,
@@ -207,24 +191,6 @@
               "label": "No"
             }
           ]
-        },
-        {
-          "key": "non_compete",
-          "label": "Subject to a restrictive covenant?",
-          "optional": true,
-          "type": "select",
-          "boolean": true,
-          "options": [
-            {
-              "value": "yes",
-              "label": "Yes"
-            },
-            {
-              "value": "no",
-              "label": "No"
-            }
-          ],
-          "hint": "Such as a non-compete or non-solicit agreement."
         }
       ]
     },
@@ -384,6 +350,178 @@
       }
     ]
   },
+  "countries": [
+    {
+      "market": "DE",
+      "label": "Germany",
+      "permits": [
+        {
+          "key": "authorized_now",
+          "label": "Can you work in this country now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_now",
+          "label": "Do you need visa sponsorship now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_future",
+          "label": "Will you need visa sponsorship later?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "authorization_expires_on",
+          "label": "Authorization expires on",
+          "optional": true,
+          "type": "date",
+          "hint": "Leave it empty if your right to work there does not run out."
+        }
+      ],
+      "answers": [
+        {
+          "key": "expected_pay",
+          "label": "Expected gross annual salary (EUR)",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "market": "UK",
+      "label": "United Kingdom",
+      "permits": [
+        {
+          "key": "authorized_now",
+          "label": "Do you have the right to work in the UK now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_now",
+          "label": "Do you need visa sponsorship to work in the UK now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_future",
+          "label": "Will you need visa sponsorship in the UK later?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "authorization_expires_on",
+          "label": "Authorization expires on",
+          "optional": true,
+          "type": "date",
+          "hint": "Leave it empty if your right to work there does not run out."
+        }
+      ],
+      "answers": [
+        {
+          "key": "expected_pay",
+          "label": "Expected salary (GBP)",
+          "optional": true
+        }
+      ]
+    }
+  ],
+  "language_fields": [
+    {
+      "key": "cefr",
+      "label": "Level (CEFR)",
+      "optional": true,
+      "type": "select",
+      "options": [
+        {
+          "value": "A1",
+          "label": "A1 · Basic user"
+        },
+        {
+          "value": "A2",
+          "label": "A2 · Basic user"
+        },
+        {
+          "value": "B1",
+          "label": "B1 · Independent user"
+        },
+        {
+          "value": "B2",
+          "label": "B2 · Independent user"
+        },
+        {
+          "value": "C1",
+          "label": "C1 · Proficient user"
+        },
+        {
+          "value": "C2",
+          "label": "C2 · Proficient user"
+        }
+      ]
+    }
+  ],
   "offers_eeo": true,
   "chosen": true
 }

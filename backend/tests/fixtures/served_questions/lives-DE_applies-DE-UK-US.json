@@ -37,11 +37,12 @@
           "key": "state",
           "label": "State",
           "optional": true,
-          "byHome": true
+          "byHome": "state"
         },
         {
           "key": "postal_code",
-          "label": "Postal code"
+          "label": "Postal code",
+          "byHome": "postcode"
         },
         {
           "key": "country",
@@ -476,10 +477,305 @@
         "label": "Authorization expires on",
         "optional": true,
         "type": "date",
-        "hint": "Leave it empty if your right to work there does not run out."
+        "hint": "Leave it empty if your right to work there does not run out.",
+        "unless": [
+          "status",
+          [
+            "citizen",
+            "permanent_resident",
+            "not_authorized"
+          ]
+        ]
       }
     ]
   },
+  "countries": [
+    {
+      "market": "DE",
+      "label": "Germany",
+      "permits": [
+        {
+          "key": "authorized_now",
+          "label": "Can you work in this country now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_now",
+          "label": "Do you need visa sponsorship now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_future",
+          "label": "Will you need visa sponsorship later?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "authorization_expires_on",
+          "label": "Authorization expires on",
+          "optional": true,
+          "type": "date",
+          "hint": "Leave it empty if your right to work there does not run out."
+        }
+      ],
+      "answers": [
+        {
+          "key": "expected_pay",
+          "label": "Expected gross annual salary (EUR)",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "market": "UK",
+      "label": "United Kingdom",
+      "permits": [
+        {
+          "key": "authorized_now",
+          "label": "Do you have the right to work in the UK now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_now",
+          "label": "Do you need visa sponsorship to work in the UK now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_future",
+          "label": "Will you need visa sponsorship in the UK later?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "authorization_expires_on",
+          "label": "Authorization expires on",
+          "optional": true,
+          "type": "date",
+          "hint": "Leave it empty if your right to work there does not run out."
+        }
+      ],
+      "answers": [
+        {
+          "key": "expected_pay",
+          "label": "Expected salary (GBP)",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "market": "US",
+      "label": "United States",
+      "permits": [
+        {
+          "key": "status",
+          "label": "Work authorization status",
+          "type": "select",
+          "options": [
+            {
+              "value": "citizen",
+              "label": "U.S. citizen"
+            },
+            {
+              "value": "permanent_resident",
+              "label": "Permanent resident"
+            },
+            {
+              "value": "opt",
+              "label": "F-1 OPT"
+            },
+            {
+              "value": "stem_opt",
+              "label": "F-1 STEM OPT"
+            },
+            {
+              "value": "h1b",
+              "label": "H-1B"
+            },
+            {
+              "value": "tn",
+              "label": "TN"
+            },
+            {
+              "value": "other_visa",
+              "label": "Other visa or status"
+            },
+            {
+              "value": "not_authorized",
+              "label": "Not authorized to work in the U.S."
+            }
+          ]
+        },
+        {
+          "key": "authorized_now",
+          "label": "Authorized to work in the U.S. now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_now",
+          "label": "Do you need visa sponsorship now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_future",
+          "label": "Will you need visa sponsorship later?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "authorization_expires_on",
+          "label": "Authorization expires on",
+          "optional": true,
+          "type": "date",
+          "hint": "Leave it empty if your right to work there does not run out.",
+          "unless": [
+            "status",
+            [
+              "citizen",
+              "permanent_resident",
+              "not_authorized"
+            ]
+          ]
+        }
+      ],
+      "answers": [
+        {
+          "key": "expected_pay",
+          "label": "Expected salary (USD)",
+          "optional": true
+        }
+      ]
+    }
+  ],
+  "language_fields": [
+    {
+      "key": "cefr",
+      "label": "Level (CEFR)",
+      "optional": true,
+      "type": "select",
+      "options": [
+        {
+          "value": "A1",
+          "label": "A1 · Basic user"
+        },
+        {
+          "value": "A2",
+          "label": "A2 · Basic user"
+        },
+        {
+          "value": "B1",
+          "label": "B1 · Independent user"
+        },
+        {
+          "value": "B2",
+          "label": "B2 · Independent user"
+        },
+        {
+          "value": "C1",
+          "label": "C1 · Proficient user"
+        },
+        {
+          "value": "C2",
+          "label": "C2 · Proficient user"
+        }
+      ]
+    }
+  ],
   "offers_eeo": true,
   "chosen": true
 }

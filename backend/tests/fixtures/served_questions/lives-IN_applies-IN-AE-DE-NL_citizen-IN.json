@@ -1,0 +1,1000 @@
+{
+  "groups": [
+    {
+      "key": "personal",
+      "title": "Personal details",
+      "fields": [
+        {
+          "key": "first_name",
+          "label": "First name"
+        },
+        {
+          "key": "last_name",
+          "label": "Last name"
+        },
+        {
+          "key": "email",
+          "label": "Email"
+        },
+        {
+          "key": "phone",
+          "label": "Phone"
+        },
+        {
+          "key": "address",
+          "label": "Street address"
+        },
+        {
+          "key": "address_2",
+          "label": "Address line 2",
+          "optional": true
+        },
+        {
+          "key": "city",
+          "label": "City"
+        },
+        {
+          "key": "state",
+          "label": "State",
+          "byHome": "state"
+        },
+        {
+          "key": "postal_code",
+          "label": "Postal code",
+          "byHome": "postcode"
+        },
+        {
+          "key": "country",
+          "label": "Country"
+        },
+        {
+          "key": "linkedin",
+          "label": "LinkedIn profile link",
+          "optional": true
+        },
+        {
+          "key": "github",
+          "label": "GitHub link",
+          "optional": true
+        },
+        {
+          "key": "website",
+          "label": "Website",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "eeo",
+      "title": "Diversity questions (voluntary)",
+      "fields": [
+        {
+          "key": "veteran_status",
+          "label": "Are you a veteran?",
+          "type": "select",
+          "options": [
+            {
+              "value": "no",
+              "label": "No, I am not a veteran"
+            },
+            {
+              "value": "yes",
+              "label": "Yes, I am a veteran"
+            },
+            {
+              "value": "decline",
+              "label": "I don't wish to answer"
+            }
+          ],
+          "staleHint": "Answer again: this question changed."
+        },
+        {
+          "key": "disability_status",
+          "label": "Disability status",
+          "type": "select",
+          "options": [
+            {
+              "value": "no",
+              "label": "No, I do not have a disability"
+            },
+            {
+              "value": "yes",
+              "label": "Yes, I have a disability"
+            },
+            {
+              "value": "decline",
+              "label": "Decline to answer"
+            }
+          ]
+        },
+        {
+          "key": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            {
+              "value": "male",
+              "label": "Male"
+            },
+            {
+              "value": "female",
+              "label": "Female"
+            },
+            {
+              "value": "non_binary",
+              "label": "Non-binary"
+            },
+            {
+              "value": "self_describe",
+              "label": "Prefer to self-describe"
+            },
+            {
+              "value": "decline",
+              "label": "Decline to answer"
+            }
+          ]
+        },
+        {
+          "key": "gender_self_describe",
+          "label": "How you describe your gender",
+          "optional": true,
+          "hint": "The Companion types this where a form asks you to self-describe.",
+          "when": [
+            "gender",
+            "self_describe"
+          ]
+        },
+        {
+          "key": "hispanic_latino",
+          "label": "Hispanic or Latino?",
+          "type": "select",
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "decline",
+              "label": "Decline to answer"
+            }
+          ]
+        },
+        {
+          "key": "race_ethnicity",
+          "label": "Race or ethnicity",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "eligibility",
+      "title": "Eligibility",
+      "fields": [
+        {
+          "key": "previously_employed_here",
+          "label": "Have you worked for the company you're applying to?",
+          "optional": true,
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "experience_years",
+          "label": "Total experience: years",
+          "optional": true,
+          "type": "number"
+        },
+        {
+          "key": "experience_months",
+          "label": "Total experience: months",
+          "optional": true,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "key": "preferences",
+      "title": "Preferences",
+      "fields": [
+        {
+          "key": "desired_salary",
+          "label": "Desired salary"
+        },
+        {
+          "key": "notice_period",
+          "label": "Notice period",
+          "hint": "How long before you can start."
+        },
+        {
+          "key": "notice_days",
+          "label": "Notice period in days",
+          "optional": true,
+          "type": "number",
+          "hint": "Forms that offer fixed choices get the next one up."
+        },
+        {
+          "key": "serving_notice",
+          "label": "Are you serving your notice period?",
+          "optional": true,
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "last_working_day",
+          "label": "Last working day",
+          "optional": true,
+          "type": "date",
+          "hint": "If you're serving notice."
+        },
+        {
+          "key": "earliest_start_date",
+          "label": "Earliest start date"
+        },
+        {
+          "key": "willing_to_relocate",
+          "label": "Willing to relocate?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "how_heard",
+          "label": "How did you hear about the job?"
+        },
+        {
+          "key": "preferred_locations",
+          "label": "Preferred work locations",
+          "optional": true,
+          "hint": "Up to 10 cities, separated by commas."
+        }
+      ]
+    }
+  ],
+  "permits": {
+    "IN": [
+      {
+        "key": "authorized_now",
+        "label": "Can you work in this country now?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "sponsorship_now",
+        "label": "Do you need visa sponsorship now?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "sponsorship_future",
+        "label": "Will you need visa sponsorship later?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "authorization_expires_on",
+        "label": "Authorization expires on",
+        "optional": true,
+        "type": "date",
+        "hint": "Leave it empty if your right to work there does not run out."
+      }
+    ],
+    "AE": [
+      {
+        "key": "status",
+        "label": "Immigration status",
+        "optional": true,
+        "type": "select",
+        "options": [
+          {
+            "value": "citizen",
+            "label": "UAE national (Emirati)"
+          },
+          {
+            "value": "gcc_national",
+            "label": "GCC national"
+          },
+          {
+            "value": "work_visa",
+            "label": "Work visa (employment residence visa)"
+          },
+          {
+            "value": "family_visa",
+            "label": "Residence visa on family sponsorship"
+          },
+          {
+            "value": "golden_visa",
+            "label": "Golden visa"
+          },
+          {
+            "value": "green_visa",
+            "label": "Green visa"
+          },
+          {
+            "value": "student_visa",
+            "label": "Student visa"
+          },
+          {
+            "value": "virtual_work_visa",
+            "label": "Virtual work visa: working for a company outside the UAE"
+          },
+          {
+            "value": "other_residence",
+            "label": "Other residence visa (investor, retired, Blue visa, other)"
+          },
+          {
+            "value": "visit_visa",
+            "label": "Visit visa (including the jobseeker visit visa)"
+          },
+          {
+            "value": "no_visa",
+            "label": "No UAE visa (outside the UAE)"
+          }
+        ]
+      },
+      {
+        "key": "authorized_now",
+        "label": "Can you work in the UAE without an employer sponsoring your residence visa?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "sponsorship_now",
+        "label": "Do you need an employer to sponsor your UAE residence visa now?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "sponsorship_future",
+        "label": "Will you need an employer to sponsor your UAE residence visa later?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "authorization_expires_on",
+        "label": "Authorization expires on",
+        "optional": true,
+        "type": "date",
+        "hint": "Leave it empty if your right to work there does not run out.",
+        "unless": [
+          "status",
+          [
+            "citizen",
+            "gcc_national",
+            "no_visa"
+          ]
+        ]
+      }
+    ],
+    "DE": [
+      {
+        "key": "authorized_now",
+        "label": "Can you work in this country now?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "sponsorship_now",
+        "label": "Do you need visa sponsorship now?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "sponsorship_future",
+        "label": "Will you need visa sponsorship later?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "authorization_expires_on",
+        "label": "Authorization expires on",
+        "optional": true,
+        "type": "date",
+        "hint": "Leave it empty if your right to work there does not run out."
+      }
+    ],
+    "NL": [
+      {
+        "key": "authorized_now",
+        "label": "Can you work in this country now?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "sponsorship_now",
+        "label": "Do you need visa sponsorship now?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "sponsorship_future",
+        "label": "Will you need visa sponsorship later?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "authorization_expires_on",
+        "label": "Authorization expires on",
+        "optional": true,
+        "type": "date",
+        "hint": "Leave it empty if your right to work there does not run out."
+      }
+    ]
+  },
+  "countries": [
+    {
+      "market": "IN",
+      "label": "India",
+      "permits": [
+        {
+          "key": "authorized_now",
+          "label": "Can you work in this country now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_now",
+          "label": "Do you need visa sponsorship now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_future",
+          "label": "Will you need visa sponsorship later?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "authorization_expires_on",
+          "label": "Authorization expires on",
+          "optional": true,
+          "type": "date",
+          "hint": "Leave it empty if your right to work there does not run out."
+        }
+      ],
+      "answers": [
+        {
+          "key": "expected_pay",
+          "label": "Expected CTC (₹ per year)",
+          "optional": true
+        },
+        {
+          "key": "current_ctc",
+          "label": "Current CTC (₹ per year)",
+          "optional": true,
+          "hint": "Leave it empty if you'd rather not share it."
+        }
+      ],
+      "derived": {
+        "authorized_now": {
+          "value": true,
+          "via": "IN"
+        },
+        "sponsorship_now": {
+          "value": false,
+          "via": "IN"
+        },
+        "sponsorship_future": {
+          "value": false,
+          "via": "IN"
+        }
+      }
+    },
+    {
+      "market": "AE",
+      "label": "United Arab Emirates",
+      "permits": [
+        {
+          "key": "status",
+          "label": "Immigration status",
+          "optional": true,
+          "type": "select",
+          "options": [
+            {
+              "value": "citizen",
+              "label": "UAE national (Emirati)"
+            },
+            {
+              "value": "gcc_national",
+              "label": "GCC national"
+            },
+            {
+              "value": "work_visa",
+              "label": "Work visa (employment residence visa)"
+            },
+            {
+              "value": "family_visa",
+              "label": "Residence visa on family sponsorship"
+            },
+            {
+              "value": "golden_visa",
+              "label": "Golden visa"
+            },
+            {
+              "value": "green_visa",
+              "label": "Green visa"
+            },
+            {
+              "value": "student_visa",
+              "label": "Student visa"
+            },
+            {
+              "value": "virtual_work_visa",
+              "label": "Virtual work visa: working for a company outside the UAE"
+            },
+            {
+              "value": "other_residence",
+              "label": "Other residence visa (investor, retired, Blue visa, other)"
+            },
+            {
+              "value": "visit_visa",
+              "label": "Visit visa (including the jobseeker visit visa)"
+            },
+            {
+              "value": "no_visa",
+              "label": "No UAE visa (outside the UAE)"
+            }
+          ]
+        },
+        {
+          "key": "authorized_now",
+          "label": "Can you work in the UAE without an employer sponsoring your residence visa?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_now",
+          "label": "Do you need an employer to sponsor your UAE residence visa now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_future",
+          "label": "Will you need an employer to sponsor your UAE residence visa later?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "authorization_expires_on",
+          "label": "Authorization expires on",
+          "optional": true,
+          "type": "date",
+          "hint": "Leave it empty if your right to work there does not run out.",
+          "unless": [
+            "status",
+            [
+              "citizen",
+              "gcc_national",
+              "no_visa"
+            ]
+          ]
+        }
+      ],
+      "answers": [
+        {
+          "key": "expected_pay",
+          "label": "Expected total monthly salary (AED)",
+          "optional": true,
+          "hint": "Basic pay plus allowances, per month."
+        },
+        {
+          "key": "in_country_now",
+          "label": "Are you in the UAE now?",
+          "optional": true,
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "uae_driving_licence",
+          "label": "Do you hold a UAE driving licence?",
+          "optional": true,
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "market": "DE",
+      "label": "Germany",
+      "permits": [
+        {
+          "key": "authorized_now",
+          "label": "Can you work in this country now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_now",
+          "label": "Do you need visa sponsorship now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_future",
+          "label": "Will you need visa sponsorship later?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "authorization_expires_on",
+          "label": "Authorization expires on",
+          "optional": true,
+          "type": "date",
+          "hint": "Leave it empty if your right to work there does not run out."
+        }
+      ],
+      "answers": [
+        {
+          "key": "expected_pay",
+          "label": "Expected gross annual salary (EUR)",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "market": "NL",
+      "label": "Netherlands",
+      "permits": [
+        {
+          "key": "authorized_now",
+          "label": "Can you work in this country now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_now",
+          "label": "Do you need visa sponsorship now?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "sponsorship_future",
+          "label": "Will you need visa sponsorship later?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "authorization_expires_on",
+          "label": "Authorization expires on",
+          "optional": true,
+          "type": "date",
+          "hint": "Leave it empty if your right to work there does not run out."
+        }
+      ],
+      "answers": [
+        {
+          "key": "expected_pay",
+          "label": "Expected gross monthly salary, excluding holiday allowance (EUR)",
+          "optional": true
+        }
+      ]
+    }
+  ],
+  "language_fields": [
+    {
+      "key": "cefr",
+      "label": "Level (CEFR)",
+      "optional": true,
+      "type": "select",
+      "options": [
+        {
+          "value": "A1",
+          "label": "A1 · Basic user"
+        },
+        {
+          "value": "A2",
+          "label": "A2 · Basic user"
+        },
+        {
+          "value": "B1",
+          "label": "B1 · Independent user"
+        },
+        {
+          "value": "B2",
+          "label": "B2 · Independent user"
+        },
+        {
+          "value": "C1",
+          "label": "C1 · Proficient user"
+        },
+        {
+          "value": "C2",
+          "label": "C2 · Proficient user"
+        }
+      ]
+    }
+  ],
+  "offers_eeo": false,
+  "chosen": true
+}

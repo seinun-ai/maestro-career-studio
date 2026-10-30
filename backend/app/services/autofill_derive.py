@@ -53,19 +53,40 @@ def settled_markets(citizenships: list[str]) -> list[str]:
     return [m for m in markets.keys() if derived_for(citizenships, m)]
 
 
+def derived_in_effect(profile: Any, market: str, home: str | None = None) -> dict[str, DerivedAnswer]:
+    """The answers a citizenship settles in `market` that readers use (`derived_for`), or {} when a
+    given answer differs from one it settles: the user knows something the rule does not, so the
+    rule is off for that country. What the fill reads (`answers_for`) and what Profile shows as
+    "From your citizenship" (`form_questions.resolve`) both come from here. `home` places a legacy
+    single `work_auth` in a raw profile (a read view has it placed already)."""
+    market = _key(market)
+    derived = derived_for(citizenships(profile), market)
+    if not derived:
+        return {}
+    given = _given(profile, market, home)
+    return {} if any(k in given and given[k] != d.value for k, d in derived.items()) else derived
+
+
 def answers_for(profile: Any, market: str, home: str | None = None) -> dict[str, Any]:
     """One market's permit answers as readers see them: each given answer over the derived ones.
 
     Two shapes come back, so callers read the result through `typed_work_auth(..., market)`: the
     stored entry as it is when nothing is derived (no citizenship rule, or a given answer that
-    differs from one it settles), else the derived answers with the given ones laid over them under
-    the typed keys. A given answer is one the typed reader can use: a blank, a status outside the market's
-    list or a non-answer ("maybe") hides nothing. `home` places a legacy single `work_auth` in a raw
-    profile (a read view has it placed already)."""
-    market = str(market or "").strip().upper()
+    differs from one it settles: `derived_in_effect`), else the derived answers with the given ones
+    laid over them under the typed keys. A given answer is one the typed reader can use: a blank, a
+    status outside the market's list or a non-answer ("maybe") hides nothing."""
+    market = _key(market)
+    derived = derived_in_effect(profile, market, home)
+    if not derived:
+        return autofill_profile.work_auth_entries(profile, home).get(market, {})
+    return {**{k: d.value for k, d in derived.items()}, **_given(profile, market, home)}
+
+
+def _key(market: str) -> str:
+    return str(market or "").strip().upper()
+
+
+def _given(profile: Any, market: str, home: str | None) -> dict[str, Any]:
+    """The answers the user gave for `market`, as the typed reader keeps them."""
     stored = autofill_profile.work_auth_entries(profile, home).get(market, {})
-    derived = derived_for(citizenships(profile), market)
-    given = autofill_profile.typed_work_auth(stored, market).model_dump(exclude_defaults=True)
-    if not derived or any(k in given and given[k] != d.value for k, d in derived.items()):
-        return stored
-    return {**{k: d.value for k, d in derived.items()}, **given}
+    return autofill_profile.typed_work_auth(stored, market).model_dump(exclude_defaults=True)

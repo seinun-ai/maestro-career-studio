@@ -41,7 +41,9 @@ _FRONTEND = _ROOT / "frontend"
 class Asked:
     """A question the backend serves (`form_questions.catalog()`) holding each of `words` (label,
     optional, byHome): `key` in the group `group` names, in one permit wording (`us_visa`, `uk`,
-    `generic`), or in every permit wording when `group` is "permits"."""
+    `generic`), in every permit wording when `group` is "permits", or "status" in a market's
+    resolved permits when `group` is "status:<market>" (the status question is built per market from
+    its `statuses` list, never a wording's)."""
 
     group: str
     key: str
@@ -49,7 +51,10 @@ class Asked:
 
     def held(self) -> bool:
         catalog = form_questions.catalog()
-        if self.group == "permits":
+        if self.group.startswith("status:"):
+            market = self.group.removeprefix("status:")
+            wordings = [form_questions.resolve(home=market, apply_in=[market], chosen=True).countries[0].permits]
+        elif self.group == "permits":
             wordings = list(catalog.permits.values())
         elif self.group in catalog.permits:
             wordings = [catalog.permits[self.group]]
@@ -133,8 +138,8 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Contact", "Street address", (asked("personal", "address", label="Street address"), _PERSONAL)),
     ("Contact", "Address line 2", (asked("personal", "address_2", label="Address line 2", optional=True), _PERSONAL)),
     ("Contact", "City", (asked("personal", "city", label="City"), _PERSONAL)),
-    ("Contact", "State", (asked("personal", "state", label="State", byHome=True), _PERSONAL)),
-    ("Contact", "Postal code", (asked("personal", "postal_code", label="Postal code"), _PERSONAL)),
+    ("Contact", "State", (asked("personal", "state", label="State", byHome="state"), _PERSONAL)),
+    ("Contact", "Postal code", (asked("personal", "postal_code", label="Postal code", byHome="postcode"), _PERSONAL)),
     ("Contact", "Country", (asked("personal", "country", label="Country"), _PERSONAL)),
     ("Contact", "LinkedIn profile link", (asked("personal", "linkedin", label="LinkedIn profile link", optional=True), _PERSONAL)),
     ("Contact", "GitHub link", (asked("personal", "github", label="GitHub link", optional=True), _PERSONAL)),
@@ -143,7 +148,7 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Where you apply", "You live in", ("<Label htmlFor={homeId}>You live in</Label>",)),
     ("Where you apply", "You apply in", ("You apply in </span>", "onClick={() => toggleCountry(m.key)}")),
     # Work permits, one set per country, each in its market's words: the keys, not the US wording.
-    ("Work permits", "Work authorization status", (asked("us_visa", "status", label="Work authorization status"), *_PERMITS)),
+    ("Work permits", "Work authorization status", (asked("status:US", "status", label="Work authorization status"), *_PERMITS)),
     ("Work permits", "Authorized to work now?", (asked("permits", "authorized_now"), *_PERMITS)),
     ("Work permits", "Need visa sponsorship now?", (asked("permits", "sponsorship_now"), *_PERMITS)),
     ("Work permits", "Need visa sponsorship later?", (asked("permits", "sponsorship_future"), *_PERMITS)),
@@ -255,9 +260,9 @@ def test_the_profile_sections_are_the_tiles_and_folds():
 
 
 def test_each_country_is_asked_every_work_permit_key():
-    """Every vocabulary asks the three yes/no keys and when the permit runs out; only `us_visa` asks the
-    status. The served set holds one entry per country you apply in; Profile asks each, Setup one card per
-    country."""
+    """Every vocabulary asks the three yes/no keys and when the permit runs out; a market with a status list
+    asks its status first (the US's required, the others optional, so of these only the US asks one). The
+    served set holds one entry per country you apply in; Profile asks each, Setup one card per country."""
     served = form_questions.resolve(home="DE", apply_in=["US", "UK", "DE"], chosen=True).permits
     asked = [[field.key for field in served[market]] for market in ("US", "UK", "DE")]
     keys = ["authorized_now", "sponsorship_now", "sponsorship_future", "authorization_expires_on"]

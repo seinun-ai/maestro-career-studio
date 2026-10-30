@@ -18,6 +18,7 @@ import re
 from pathlib import Path
 
 from app.services import form_questions
+from app.services.markets import keys as market_keys
 from tests.node_ts import run_node_render_test, run_node_test
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -55,8 +56,10 @@ PROFILE_ITEMS = [
 def _profile_source() -> str:
     src = "".join(p.read_text(encoding="utf-8") for p in sorted((_FRONTEND / "components/profile").glob("*.tsx")))
     # The questions the tiles render (labels, options) are the catalog the backend serves them, shared with
-    # Setup; education and languages are in one importable module.
+    # Setup (the status question's words are built per market beside it); education and languages are in
+    # one importable module.
     src += (_ROOT / "backend/app/services/data/form_questions.yaml").read_text(encoding="utf-8")
+    src += (_ROOT / "backend/app/services/form_questions.py").read_text(encoding="utf-8")
     src += _src("lib/autofill-options.ts")
     return src + _src("app/profile/page.tsx")
 
@@ -87,12 +90,13 @@ def test_the_work_permit_questions_node_suite_runs():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_each_vocabulary_asks_the_three_keys_and_only_us_visa_asks_the_status():
-    permits = form_questions.catalog().permits
-    for vocab in ("us_visa", "uk", "generic"):
-        keys = form_questions.required_keys(permits[vocab])
-        expected = ["authorized_now", "sponsorship_now", "sponsorship_future"]
-        assert keys == (["status", *expected] if vocab == "us_visa" else expected), (vocab, keys)
+def test_each_country_counts_the_three_keys_and_only_the_us_counts_the_status():
+    """The status question is built per market from its list: required in the US only, so no other
+    country's count moves (Decision 6 of docs/plans/2026-10-30-country-form-questions.md)."""
+    expected = ["authorized_now", "sponsorship_now", "sponsorship_future"]
+    for country in form_questions.resolve(home="US", apply_in=market_keys(), chosen=True).countries:
+        keys = form_questions.required_keys(country.permits)
+        assert keys == (["status", *expected] if country.market == "US" else expected), (country.market, keys)
 
 
 def test_the_work_permits_tile_asks_one_set_per_country_in_its_own_words():

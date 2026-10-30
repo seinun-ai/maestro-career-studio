@@ -526,11 +526,13 @@
   none of). The contact's state line (`byHome`) is resolved on the server: named by the home's `state_label`,
   and optional, so not counted, where the home market's addresses need none (`asks_state` in
   `data/markets.yaml`: required in the US, Canada, Australia, India and the UAE; not the UK, Ireland, Germany or the
-  Netherlands); with no home set, home reads as the default US and it counts. The frontend shows each field
-  as served and resolves nothing itself. Work-permit answers count per apply-in country, read off typed
-  `WorkAuth` by the keys of that country's wording (`work_auth_vocab`; every permit key is a `WorkAuth`
-  field whose default is None, `test_form_questions.py`): the three yes/no knockout answers everywhere,
-  `status` only for `us_visa`. Status never implies current authorization, and an incomplete set is blocking.
+  Netherlands); with no home set, home reads as the default US and it counts. The postal code (`byHome`
+  too) is optional where the home's addresses have none (`asks_postcode`: the UAE). The frontend shows each
+  field as served and resolves nothing itself. Work-permit answers count per apply-in country, read off typed
+  `WorkAuth` by the required keys of that country's permits: a status question built from its `statuses`
+  list where it has one, then its wording's (`work_auth_vocab`; every permit key is a `WorkAuth` field whose
+  default is None, `test_form_questions.py`). So the three yes/no knockout answers everywhere, and `status`
+  only in the US (optional in the other countries that list statuses). Status never implies current authorization, and an incomplete set is blocking.
 - **Today** (`GET /api/today?tz=&utc_offset_minutes=`, `services/today.py`): read-only, and it writes nothing (a
   proposal past `expires_at` is left out via `proposals.past_expiry`, not expired). Like the Jobs list it reads the
   other copy's replicas too. `next_up` is the first that exists in `NEXT_UP_ORDER`: an application at `offered`
