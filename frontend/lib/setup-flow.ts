@@ -44,7 +44,7 @@ export function preference(profile: AutofillProfile, key: PreferenceKey): string
 }
 
 export type FormQuestion =
-  | { kind: "permit"; market: string; label: string; vocab: string | undefined }
+  | { kind: "permit"; market: string; label: string }
   | { kind: "notice" }
   | { kind: "relocate" }
   | { kind: "diversity"; countries: string[] };
@@ -58,7 +58,6 @@ export function formQuestions(applyIn: readonly string[], markets: readonly Mark
     kind: "permit",
     market,
     label: byKey.get(market)?.label ?? market,
-    vocab: byKey.get(market)?.work_auth_vocab,
   }));
   const withSet = applyIn.flatMap((market) => {
     const m = byKey.get(market);

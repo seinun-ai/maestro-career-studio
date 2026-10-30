@@ -19,6 +19,7 @@ import { ProfileHeader } from "@/components/profile/profile-header";
 import { useStartTile } from "@/components/profile/start-and-pay";
 import { TileButton, TileCloseProvider, type TileView } from "@/components/profile/tile";
 import { useAutofillQuery } from "@/components/profile/use-autofill-query";
+import { useFormQuestions } from "@/components/profile/use-form-questions";
 import { useProfileSections } from "@/components/profile/use-profile-sections";
 import { useWhereTile } from "@/components/profile/where-you-apply";
 import { useWorkPermitsTile } from "@/components/profile/work-permits";
@@ -28,7 +29,7 @@ import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
 import { PROFILE_TILES, type TileId } from "@/lib/profile-tiles";
 import { isLoadFailure } from "@/lib/query-state";
-import type { EeoConsent, MarketSettingResponse, SetupStatus } from "@/lib/types";
+import type { EeoConsent, MarketSettingResponse, QuestionSet, SetupStatus } from "@/lib/types";
 
 const regionId = (id: TileId) => `profile-tile-${id}`;
 const buttonId = (id: TileId) => `profile-tile-${id}-button`;
@@ -38,7 +39,8 @@ const buttonId = (id: TileId) => `profile-tile-${id}-button`;
  * where you live and apply, how many sections are ready), Next up (the Lead: the first required answer still
  * missing, answered in place), nine tiles that each open their editor under the grid, and two folds,
  * Diversity questions and Eligibility. Every answer saves as you go. It needs the answers, the consent
- * record and your countries before it can draw; job preferences and the persona load in their own tiles.
+ * record, your countries and the questions asked there before it can draw; job preferences and the persona
+ * load in their own tiles.
  */
 export function ProfileView({ focus }: { focus: (anchor: string) => void }) {
   const setupStatus = useQuery({
@@ -49,8 +51,9 @@ export function ProfileView({ focus }: { focus: (anchor: string) => void }) {
   const autofill = useAutofillQuery();
   const consent = useEeoConsentQuery();
   const market = useMarketQuery();
-  const queries = [autofill, consent, market];
-  const ready = autofill.data && consent.data && market.data;
+  const questions = useFormQuestions();
+  const queries = [autofill, consent, market, questions];
+  const ready = autofill.data && consent.data && market.data && questions.data;
   const loadFailed = queries.some((q) => isLoadFailure(q));
 
   if (loadFailed && !ready) {
@@ -64,7 +67,7 @@ export function ProfileView({ focus }: { focus: (anchor: string) => void }) {
       />
     );
   }
-  if (!autofill.data || !consent.data || !market.data) {
+  if (!autofill.data || !consent.data || !market.data || !questions.data) {
     return (
       <div className="flex flex-col gap-6">
         <Skeleton className="h-14 w-72" />
@@ -75,7 +78,13 @@ export function ProfileView({ focus }: { focus: (anchor: string) => void }) {
   }
   return (
     <AutofillProfileProvider served={autofill.data.value}>
-      <ProfileBody status={setupStatus.data} market={market.data} consent={consent.data.value} focus={focus} />
+      <ProfileBody
+        status={setupStatus.data}
+        market={market.data}
+        questionSet={questions.data}
+        consent={consent.data.value}
+        focus={focus}
+      />
     </AutofillProfileProvider>
   );
 }
@@ -83,25 +92,27 @@ export function ProfileView({ focus }: { focus: (anchor: string) => void }) {
 function ProfileBody({
   status,
   market,
+  questionSet,
   consent,
   focus,
 }: {
   status: SetupStatus | undefined;
   market: MarketSettingResponse;
+  questionSet: QuestionSet;
   consent: EeoConsent;
   focus: (anchor: string) => void;
 }) {
   const sections = useProfileSections();
   const tiles: Record<TileId, TileView> = {
-    contact: useContactTile(),
+    contact: useContactTile(questionSet),
     where: useWhereTile(market),
-    permits: useWorkPermitsTile(market),
+    permits: useWorkPermitsTile(market, questionSet),
     jobs: useJobsTile(status?.job_preferences.done),
     persona: usePersonaTile(
       status?.persona.done,
       status?.import_resumes.done === true ? undefined : "Import a resume first.",
     ),
-    start: useStartTile(),
+    start: useStartTile(questionSet),
     education: useEducationTile(),
     languages: useLanguagesTile(),
     questions: useQuestionsTile(),
@@ -137,6 +148,7 @@ function ProfileBody({
       <ProfileHeader market={market} status={status} />
       <NextUp
         market={market}
+        questionSet={questionSet}
         onOpenDiversity={() => {
           sections.setFold("diversity", true);
           focus("autofill-eeo");
@@ -176,11 +188,13 @@ function ProfileBody({
       <div className="flex flex-col gap-2">
         <DiversityFold
           market={market}
+          questionSet={questionSet}
           consent={consent}
           open={sections.folds.includes("diversity")}
           onOpenChange={(open) => sections.setFold("diversity", open)}
         />
         <EligibilityFold
+          questionSet={questionSet}
           open={sections.folds.includes("eligibility")}
           onOpenChange={(open) => sections.setFold("eligibility", open)}
         />

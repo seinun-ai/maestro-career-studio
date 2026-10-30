@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.services import llm
+from app.services import form_questions, llm
 
 _ROOT = Path(__file__).resolve().parents[2]
 _FRONTEND = _ROOT / "frontend"
@@ -32,9 +32,16 @@ def _between(src: str, start: str, end: str) -> str:
     return src[at : src.index(end, at)]
 
 
-# Profile's answers for job forms (design refresh Task 7.2): every tile and fold, and the field definitions
-# they render (lib/autofill-options.ts, shared with Setup).
+def _question(group: str, key: str):
+    """One question as the catalog holds it, the words Profile and Setup are served."""
+    fields = next(g for g in form_questions.catalog().groups if g.key == group).fields
+    return next(f for f in fields if f.key == key)
+
+
+# Profile's answers for job forms (design refresh Task 7.2): every tile and fold, the question catalog the
+# backend serves them (services/data/form_questions.yaml, shared with Setup), and the helpers they read it with.
 _AUTOFILL = "".join(p.read_text(encoding="utf-8") for p in sorted((_FRONTEND / "components/profile").glob("*.tsx")))
+_AUTOFILL += (_ROOT / "backend/app/services/data/form_questions.yaml").read_text(encoding="utf-8")
 _AUTOFILL += _read("lib/autofill-options.ts")
 _CONSENT = _read("components/profile/diversity-consent.tsx")
 _DIVERSITY = _read("components/profile/diversity.tsx")
@@ -270,7 +277,7 @@ def test_the_consent_switches_keep_their_promises():
     assert "signatures are always yours" not in flat
     assert "(WOTC)" not in _AUTOFILL
     # M21: the group says the questions are voluntary.
-    assert 'title: "Diversity questions (voluntary)",' in _AUTOFILL
+    assert next(g for g in form_questions.catalog().groups if g.key == "eeo").title == "Diversity questions (voluntary)"
 
 
 def test_the_diversity_switch_points_at_the_answers_below():
@@ -292,7 +299,7 @@ def test_decline_the_rest_fills_only_blank_answers():
     # Each select's own decline choice, whatever its words (the veteran one says "I don't wish to answer").
     assert 'field.options?.find((option) => option.value === "decline")' in declined
     decline = _between(_DIVERSITY, "const declineAllEeo = () => {", "\n  };")
-    assert "const declines = declinedEeo(profile);" in decline
+    assert "const declines = declinedEeo(profile, questionSet);" in decline
     assert 'eeo: { ...groupValues(current, "eeo"), ...declines }' in decline
     # What it does, in the words of what it writes; it saves as you go (design refresh Task 7.2).
     assert "Fills each blank diversity question with its decline choice." in _joined(_DIVERSITY)
@@ -341,7 +348,7 @@ def test_fill_from_career_history_says_why_it_waits():
     assert "<p id={fill.fillHintId}" in _read("components/profile/contact.tsx")
     assert "<p id={fill.fillHintId}" in _read("components/setup/setup-answers-step.tsx")
     # Race sits in a voluntary group, so its label carries no "(optional)" of its own;
-    # it stays optional for readiness (test_autofill_groups_parity.py).
+    # it stays optional for readiness (the catalog's `optional`, services/data/form_questions.yaml).
     assert "<Label htmlFor={id} optional={field.optional && !voluntary}>" in _FIELDS
     assert "voluntary\n" in _between(_DIVERSITY, "<FieldGrid", "/>")
 
@@ -773,9 +780,9 @@ def test_the_covenant_question_explains_its_legal_term():
     """The label keeps "restrictive covenant" (forms ask it that way and the
     Companion matches it); the hint, wired with aria-describedby by the field
     renderer, says what one is."""
-    field = _between(_AUTOFILL, 'key: "non_compete",', "},")
-    assert 'label: "Subject to a restrictive covenant?",' in field
-    assert 'hint: "Such as a non-compete or non-solicit agreement.",' in field
+    field = _question("eligibility", "non_compete")
+    assert field.label == "Subject to a restrictive covenant?"
+    assert field.hint == "Such as a non-compete or non-solicit agreement."
     renderer = _between(_FIELDS, "export function FieldGrid(", "\n}\n")
     assert 'const hint = isStale ? field.staleHint : field.hint;' in renderer
     assert 'const hintId = hint ? `${id}-hint` : undefined;' in renderer
@@ -789,8 +796,8 @@ def test_the_covenant_question_explains_its_legal_term():
 def test_gender_offers_non_binary_and_self_describe():
     """The owner's options, in this order; the stored values are what
     extension/content/eeo.js maps to a form's own wording."""
-    gender = _between(_AUTOFILL, 'key: "gender",', "],")
-    assert re.findall(r'\{ value: "(\w+)", label: "([^"]+)" \}', gender) == [
+    gender = _question("eeo", "gender")
+    assert [(o.value, o.label) for o in gender.options] == [
         ("male", "Male"),
         ("female", "Female"),
         ("non_binary", "Non-binary"),
@@ -804,10 +811,10 @@ def test_the_self_description_shows_only_for_self_describe_and_goes_with_it():
     counted by setup readiness: `optional`), on screen only while "Prefer to
     self-describe" is chosen, and deleted when another answer replaces it, so
     no protected-class text is kept where the user can no longer see it."""
-    field = _between(_AUTOFILL, 'key: "gender_self_describe",', "},")
-    assert 'when: ["gender", "self_describe"],' in field
-    assert "optional: true," in field
-    assert 'hint: "The Companion types this where a form asks you to self-describe.",' in field
+    field = _question("eeo", "gender_self_describe")
+    assert field.when == ("gender", "self_describe")
+    assert field.optional is True
+    assert field.hint == "The Companion types this where a form asks you to self-describe."
     renderer = _between(_FIELDS, "export function FieldGrid(", "\n}\n")
     assert "if (field.when && values[field.when[0]] !== field.when[1]) {" in renderer
     set_field = _between(_AUTOFILL, "export function withField(", "\n}\n")

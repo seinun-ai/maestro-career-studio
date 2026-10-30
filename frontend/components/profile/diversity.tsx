@@ -18,7 +18,7 @@ import {
   staleAnswers,
   withField,
 } from "@/lib/autofill-options";
-import type { EeoConsent, MarketSettingResponse } from "@/lib/types";
+import type { EeoConsent, MarketSettingResponse, QuestionSet } from "@/lib/types";
 
 const SURFACE = "diversity";
 
@@ -40,11 +40,13 @@ export function diversityCountries(market: MarketSettingResponse): string[] {
  */
 export function DiversityFold({
   market,
+  questionSet,
   consent,
   open,
   onOpenChange,
 }: {
   market: MarketSettingResponse;
+  questionSet: QuestionSet;
   consent: EeoConsent;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -54,9 +56,10 @@ export function DiversityFold({
   const declineHintId = useId();
   const countries = diversityCountries(market);
   const eeo = groupValues(profile, "eeo");
-  const count = groupCount(profile, "eeo");
-  const hasAnswers = groupFields("eeo").some((field) => !isBlank(eeo[field.key]));
-  const allDeclined = count.answered > 0 && groupFields("eeo").every((f) => f.type !== "select" || eeo[f.key] === "decline");
+  const count = groupCount(profile, questionSet, "eeo");
+  const hasAnswers = groupFields(questionSet, "eeo").some((field) => !isBlank(eeo[field.key]));
+  const allDeclined =
+    count.answered > 0 && groupFields(questionSet, "eeo").every((f) => f.type !== "select" || eeo[f.key] === "decline");
   // Answers count as given (setup readiness counts them) whether or not the Companion may use them; while
   // it may not, it fills none (`withhold_unconsented`), and the summary says so.
   const summary = countries.length
@@ -70,7 +73,7 @@ export function DiversityFold({
   const stale = staleAnswers(profile).flatMap((item) => (item.startsWith("eeo.") ? [item.slice(4)] : []));
 
   const declineAllEeo = () => {
-    const declines = declinedEeo(profile);
+    const declines = declinedEeo(profile, questionSet);
     if (!Object.keys(declines).length) return;
     update(SURFACE, (current) => ({ ...current, eeo: { ...groupValues(current, "eeo"), ...declines } }));
   };
@@ -112,11 +115,11 @@ export function DiversityFold({
               <FieldGrid
                 idPrefix="af-eeo"
                 group="eeo"
-                fields={groupFields("eeo")}
+                fields={groupFields(questionSet, "eeo")}
                 values={eeo}
                 stale={stale}
                 voluntary
-                onChange={(key, next) => update(SURFACE, (current) => withField(current, "eeo", key, next))}
+                onChange={(key, next) => update(SURFACE, (current) => withField(current, questionSet, "eeo", key, next))}
               />
             </>
           ) : null}

@@ -7,6 +7,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { useEeoConsentQuery } from "@/components/profile/diversity-consent";
 import { useAutofillQuery } from "@/components/profile/use-autofill-query";
+import { useFormQuestions } from "@/components/profile/use-form-questions";
 import { useOpenAIInfo } from "@/components/settings/models-section";
 import { SetupAnswersStep } from "@/components/setup/setup-answers-step";
 import { SetupDone } from "@/components/setup/setup-done";
@@ -34,6 +35,7 @@ import type {
   JobPreferences,
   MarketSettingResponse,
   OpenAIInfo,
+  QuestionSet,
   SettingEnvelope,
   SetupStatus,
 } from "@/lib/types";
@@ -46,6 +48,8 @@ export type SetupData = {
   market: MarketSettingResponse;
   prefs: JobPreferences;
   profile: AutofillProfile;
+  /** The form questions for where you live and apply, as served: the words each answer is asked in. */
+  questionSet: QuestionSet;
   /** The diversity consent: Setup stores a diversity answer only once it is on record. */
   consent: EeoConsent;
 };
@@ -80,7 +84,8 @@ export function SetupFlow() {
   // Read again on coming back to the tab: the Companion learns answers into it from another window.
   const profile = useAutofillQuery();
   const consent = useEeoConsentQuery();
-  const queries = [status, info, market, prefs, profile, consent];
+  const questionSet = useFormQuestions();
+  const queries = [status, info, market, prefs, profile, consent, questionSet];
   const loadFailed = queries.some((q) => isLoadFailure(q));
   const failure = queries.find((q) => isLoadFailure(q));
 
@@ -94,7 +99,7 @@ export function SetupFlow() {
           retrying={queries.some((q) => q.isFetching)}
           onRetry={() => queries.forEach((q) => void (isLoadFailure(q) && q.refetch()))}
         />
-      ) : status.data && info.data && market.data && prefs.data && profile.data && consent.data ? (
+      ) : status.data && info.data && market.data && prefs.data && profile.data && consent.data && questionSet.data ? (
         <SetupScreens
           data={{
             status: status.data,
@@ -102,6 +107,7 @@ export function SetupFlow() {
             market: market.data,
             prefs: prefs.data.value,
             profile: profile.data.value,
+            questionSet: questionSet.data,
             consent: consent.data.value,
           }}
         />
@@ -202,6 +208,7 @@ function StepBody({
       return (
         <SetupAnswersStep
           profile={data.profile}
+          questionSet={data.questionSet}
           consent={data.consent}
           questions={questions}
           question={question}
@@ -218,6 +225,7 @@ function StepBody({
           status={data.status}
           done={done}
           profile={data.profile}
+          questionSet={data.questionSet}
           questions={questions}
           diversity={diversity}
           headingRef={headingRef}

@@ -41,8 +41,8 @@ from app.services import (
 )
 
 # Retired from readiness, which counts the catalog's questions (services/form_questions). They
-# remain only for test_autofill_groups_parity.py and test_market_settings.py until Task 1.9 of
-# docs/plans/2026-10-30-country-form-questions.md retires the mirror and that test together.
+# remain only for test_market_settings.py until Task 1.9 of
+# docs/plans/2026-10-30-country-form-questions.md retires them.
 _PERSONAL = [
     "first_name", "last_name", "email", "phone", "address", "city", "state",
     "postal_code", "country",

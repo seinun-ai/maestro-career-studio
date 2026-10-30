@@ -159,9 +159,9 @@ def test_each_work_permit_question_carries_its_country():
     assert "{question.label}" in answers
     assert "aria-labelledby={`${countryId} ${questionId}`}" in answers
     # In that country's own words (its market's work_auth_vocab, the visa status only for us_visa), from the
-    # one table Profile asks from (lib/autofill-options.ts).
-    assert "permitQuestions(question.vocab).map(" in answers
-    assert "vocab: byKey.get(market)?.work_auth_vocab," in _read("lib/setup-flow.ts")
+    # one served set Profile asks from (GET /api/settings/autofill/questions, one entry per country).
+    assert "permitQuestions(questionSet, question.market).map(" in answers
+    assert "const questionSet = useFormQuestions();" in _read("components/setup/setup-flow.tsx")
     # Each answer is that country's own entry, sent without the one-set work_auth view.
     assert "withPermitAnswer(current, question.market, q.key, option.value)" in answers
     lib = _read("lib/setup-answers.ts")
@@ -180,7 +180,7 @@ def test_diversity_only_for_a_country_with_a_set_and_only_through_consent():
     assert 'import { DiversityConsentSwitch, useDiversityConsent } from "@/components/profile/diversity-consent";' in answers
     pick = answers[answers.index("const pick = async (") : answers.index("\n  };", answers.index("const pick = async ("))]
     assert pick.index("const allowed = consent.enabled || (await setEeoConsentEnabled(true));") < pick.index(
-        "if (!allowed) return;") < pick.index("withDiversityDeclined(current)")
+        "if (!allowed) return;") < pick.index("withDiversityDeclined(current, questionSet)")
     assert '{diversity === "answer" && consent.enabled ? (' in answers
     consent = _read("components/profile/diversity-consent.tsx")
     assert "await confirm(DIVERSITY_CONSENT_CONFIRM);" in consent
@@ -240,7 +240,7 @@ def test_a_progress_dot_says_done_only_for_an_answered_question():
     answers = _read("components/setup/setup-answers-step.tsx")
     dots = answers[answers.index("{questions.map((q, i) => (") : answers.index("))}", answers.index("{questions.map((q, i) => ("))]
     assert "i < question" not in dots
-    assert 'questionAnswered(q, answers.value)\n                        ? "bg-success"' in dots
+    assert 'questionAnswered(q, answers.value, questionSet)\n                        ? "bg-success"' in dots
 
 
 def test_blocked_storage_never_bounces_today_to_setup():

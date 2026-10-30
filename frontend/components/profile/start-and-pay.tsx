@@ -7,16 +7,17 @@ import { useAutofillQuery } from "@/components/profile/use-autofill-query";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCardAction } from "@/components/settings/setting-card";
 import { answered, groupCount, groupFields, groupValues, withField } from "@/lib/autofill-options";
+import type { QuestionSet } from "@/lib/types";
 
 const SURFACE = "start";
 
 /** Start and pay: desired salary, notice period, start date, relocation and how you heard, from the
  *  profile's `preferences`. Saves as you go. */
-export function useStartTile(): TileView {
+export function useStartTile(questionSet: QuestionSet): TileView {
   const { profile } = useAutofillProfile();
-  const count = groupCount(profile, "preferences");
+  const count = groupCount(profile, questionSet, "preferences");
   const values = groupValues(profile, "preferences");
-  const missing = groupFields("preferences")
+  const missing = groupFields(questionSet, "preferences")
     .filter((field) => !field.optional && !answered(field, values[field.key]))
     .map((field) => field.label.replace(/\?$/, "").toLowerCase());
   return {
@@ -29,11 +30,11 @@ export function useStartTile(): TileView {
       </span>
     ),
     note: "Asked on most applications",
-    panel: <StartCard />,
+    panel: <StartCard questionSet={questionSet} />,
   };
 }
 
-function StartCard() {
+function StartCard({ questionSet }: { questionSet: QuestionSet }) {
   const query = useAutofillQuery();
   return (
     <TileCard
@@ -42,12 +43,12 @@ function StartCard() {
       errorTitle="Couldn't load your form answers."
       query={query}
     >
-      {() => <StartEditor />}
+      {() => <StartEditor questionSet={questionSet} />}
     </TileCard>
   );
 }
 
-function StartEditor() {
+function StartEditor({ questionSet }: { questionSet: QuestionSet }) {
   const { profile, update, saveState } = useAutofillProfile();
   return (
     <div className="grid gap-4">
@@ -57,9 +58,9 @@ function StartEditor() {
       <FieldGrid
         idPrefix="af-preferences"
         group="preferences"
-        fields={groupFields("preferences")}
+        fields={groupFields(questionSet, "preferences")}
         values={groupValues(profile, "preferences")}
-        onChange={(key, next) => update(SURFACE, (current) => withField(current, "preferences", key, next))}
+        onChange={(key, next) => update(SURFACE, (current) => withField(current, questionSet, "preferences", key, next))}
       />
     </div>
   );

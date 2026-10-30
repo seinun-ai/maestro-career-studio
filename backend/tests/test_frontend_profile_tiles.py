@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from app.services import form_questions
 from tests.node_ts import run_node_render_test, run_node_test
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -53,7 +54,9 @@ PROFILE_ITEMS = [
 
 def _profile_source() -> str:
     src = "".join(p.read_text(encoding="utf-8") for p in sorted((_FRONTEND / "components/profile").glob("*.tsx")))
-    # The field definitions the tiles render (labels, options) live in one importable module, shared with Setup.
+    # The questions the tiles render (labels, options) are the catalog the backend serves them, shared with
+    # Setup; education and languages are in one importable module.
+    src += (_ROOT / "backend/app/services/data/form_questions.yaml").read_text(encoding="utf-8")
     src += _src("lib/autofill-options.ts")
     return src + _src("app/profile/page.tsx")
 
@@ -85,20 +88,18 @@ def test_the_work_permit_questions_node_suite_runs():
 
 
 def test_each_vocabulary_asks_the_three_keys_and_only_us_visa_asks_the_status():
-    lib = _src("lib/autofill-options.ts")
-    table = _between(lib, "const WORK_PERMIT_QUESTIONS: Record<WorkAuthVocab, PermitQuestion[]> = {", "\n};")
+    permits = form_questions.catalog().permits
     for vocab in ("us_visa", "uk", "generic"):
-        block = _between(table, f"  {vocab}: [", "\n  ],")
-        keys = re.findall(r'key: "(\w+)"', block)
+        keys = form_questions.required_keys(permits[vocab])
         expected = ["authorized_now", "sponsorship_now", "sponsorship_future"]
         assert keys == (["status", *expected] if vocab == "us_visa" else expected), (vocab, keys)
 
 
 def test_the_work_permits_tile_asks_one_set_per_country_in_its_own_words():
-    """The vocabulary comes from the market list (data), never decided here."""
+    """The words come from the served set (data, per market), never decided here."""
     tile = _src("components/profile/work-permits.tsx")
     assert "applyIn.map((key) => {" in tile
-    assert "workPermitFields(market?.work_auth_vocab)" in tile
+    assert "permitFields(questionSet, key)" in tile
     # Each country's answers are its own entry, keyed by market ("UK", not "GB").
     assert "withPermit(current, key, fieldKey, next)" in tile
     types = _src("lib/types.ts")
@@ -113,20 +114,26 @@ def test_the_market_list_carries_each_markets_work_permit_vocabulary():
 
 
 def test_contact_counts_and_names_the_state_line_by_where_you_live():
-    """Data again (markets.yaml `asks_state`, `state_label`): Contact's count, its editor and Next up read the
-    home market, so a Dutch home is done without a state and a Canadian one is asked its province."""
+    """Data again (markets.yaml `asks_state`, `state_label`): the server resolves the state line for the home
+    market, and Contact's count, its editor and Next up read that served set, so a Dutch home is done without a
+    state and a Canadian one is asked its province."""
     router = (_ROOT / "backend/app/routers/settings.py").read_text(encoding="utf-8")
     markets = _between(router, '"markets": [', "for k in markets.keys()")
     assert '"asks_state": markets.get(k)["asks_state"],' in markets
     assert '"state_label": markets.get(k)["state_label"],' in markets
     option = _between(_src("lib/types.ts"), "export interface MarketOption {", "\n}")
     assert "asks_state: boolean;" in option and "state_label: string;" in option
+    def state(home: str):
+        personal = next(g for g in form_questions.resolve(home=home, apply_in=[home]).groups if g.key == "personal")
+        return next(f for f in personal.fields if f.key == "state")
+
+    assert (state("NL").label, state("NL").optional) == ("Province", True)
+    assert (state("CA").label, state("CA").optional) == ("Province", False)
     contact = _src("components/profile/contact.tsx")
-    assert 'const count = groupCount(profile, "personal", home);' in contact
-    assert 'fields={groupFields("personal", home)}' in contact
-    assert contact.count("const home = homeMarket(useMarketQuery().data);") == 2
+    assert 'const count = groupCount(profile, questionSet, "personal");' in contact
+    assert 'fields={groupFields(questionSet, "personal")}' in contact
     nxt = _src("components/profile/next-up.tsx")
-    assert ": groupCount(profile, current.group, homeMarket(market));" in nxt
+    assert ": groupCount(profile, questionSet, current.group);" in nxt
 
 
 # ---------------------------------------------------------------------------- Saving
@@ -218,7 +225,7 @@ def test_the_header_counts_only_what_setup_status_says():
 
 def test_next_up_asks_the_first_missing_answer_in_place_and_never_guesses():
     nxt = _src("components/profile/next-up.tsx")
-    assert "const missing = missingAnswers(profile, market.apply_in, markets, market.home);" in nxt
+    assert "const missing = missingAnswers(profile, questionSet, market.apply_in);" in nxt
     assert "Never guessed for you" in nxt
     assert "Work-permit and diversity answers only ever come from you." in nxt
     # Diversity is answered in its fold, beside its consent (D10): Next up only opens it.

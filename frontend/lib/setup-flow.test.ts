@@ -93,15 +93,14 @@ test("a brand-new install opens setup once; a returning user never", () => {
 test("form questions: one work permit per country you apply in, named, then notice and relocation", () => {
   const qs = formQuestions(["DE", "IE"], MARKETS);
   assert.deepEqual(qs, [
-    { kind: "permit", market: "DE", label: "Germany", vocab: "generic" },
-    { kind: "permit", market: "IE", label: "Ireland", vocab: "generic" },
+    { kind: "permit", market: "DE", label: "Germany" },
+    { kind: "permit", market: "IE", label: "Ireland" },
     { kind: "notice" },
     { kind: "relocate" },
   ]);
-  // Each country carries its own work-permit wording from the market list.
-  assert.equal((formQuestions(["US"], MARKETS)[0] as { vocab?: string }).vocab, "us_visa");
-  // A market the list lacks still carries its key, never nothing (and no wording: generic).
-  assert.deepEqual(formQuestions(["XX"], MARKETS)[0], { kind: "permit", market: "XX", label: "XX", vocab: undefined });
+  // Each country's questions are the ones served for its market key (the words come from the backend).
+  // A market the list lacks still carries its key, never nothing.
+  assert.deepEqual(formQuestions(["XX"], MARKETS)[0], { kind: "permit", market: "XX", label: "XX" });
 });
 
 test("diversity is asked only for the countries with a checked set, and names them", () => {

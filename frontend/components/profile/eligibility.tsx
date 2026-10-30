@@ -5,6 +5,7 @@ import { FieldGrid } from "@/components/profile/field-control";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { Fold } from "@/components/ui/fold";
 import { answered, groupFields, groupValues, withField } from "@/lib/autofill-options";
+import type { QuestionSet } from "@/lib/types";
 
 const SURFACE = "eligibility";
 
@@ -13,10 +14,18 @@ const SURFACE = "eligibility";
  * profile can derive. Each is unset until you set it: one the Companion has no answer for is reported and
  * left blank, never guessed. Saves as you go.
  */
-export function EligibilityFold({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function EligibilityFold({
+  questionSet,
+  open,
+  onOpenChange,
+}: {
+  questionSet: QuestionSet;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const { profile, update, saveState } = useAutofillProfile();
   const values = groupValues(profile, "eligibility");
-  const fields = groupFields("eligibility");
+  const fields = groupFields(questionSet, "eligibility");
   const given = fields.filter((field) => answered(field, values[field.key])).length;
   return (
     <div id="autofill-eligibility">
@@ -38,7 +47,7 @@ export function EligibilityFold({ open, onOpenChange }: { open: boolean; onOpenC
             group="eligibility"
             fields={fields}
             values={values}
-            onChange={(key, next) => update(SURFACE, (current) => withField(current, "eligibility", key, next))}
+            onChange={(key, next) => update(SURFACE, (current) => withField(current, questionSet, "eligibility", key, next))}
           />
         </div>
       </Fold>

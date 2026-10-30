@@ -40,6 +40,23 @@ export function renderElement(element, seed = []) {
   return markup;
 }
 
+/**
+ * What `GET /api/settings/autofill/questions` serves for `applyIn` (market keys of `markets`, each with its
+ * `work_auth_vocab` and `offers_eeo`): the catalog's questions as the backend's golden test freezes them
+ * (backend/tests/fixtures/form_questions_today.json), each country's permit in its vocabulary's words. The state
+ * line stays "State", counted, as for a home with no state wording of its own.
+ */
+export function servedQuestions(markets, applyIn) {
+  const fixture = path.join(frontend, "../backend/tests/fixtures/form_questions_today.json");
+  const today = JSON.parse(fs.readFileSync(fixture, "utf8"));
+  const byKey = new Map(markets.map((m) => [m.key, m]));
+  return {
+    groups: today.groups,
+    permits: Object.fromEntries(applyIn.map((key) => [key, today.permits[byKey.get(key).work_auth_vocab]])),
+    offers_eeo: applyIn.some((key) => byKey.get(key).offers_eeo),
+  };
+}
+
 /** Static rendering never dispatches navigation; mount the router and confirmation providers links need. */
 const { ConfirmDialogProvider } = require("./confirm-dialog.tsx");
 export const withRouter = (element) =>

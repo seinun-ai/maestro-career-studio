@@ -12,10 +12,10 @@ import {
   booleanAnswer,
   permitCount,
   permitEntry,
+  permitFields,
   withPermit,
-  workPermitFields,
 } from "@/lib/autofill-options";
-import type { MarketOption, MarketSettingResponse } from "@/lib/types";
+import type { MarketOption, MarketSettingResponse, QuestionSet } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const SURFACE = "permits";
@@ -28,14 +28,13 @@ function permitWords(entry: Record<string, unknown>, answered: number, answerabl
   return now === true ? "can work now" : now === false ? "can't work there now" : "answered";
 }
 
-/** Work permits: one set per country you apply in, each worded by its market's `work_auth_vocab`. */
-export function useWorkPermitsTile(market: MarketSettingResponse): TileView {
+/** Work permits: one set per country you apply in, each in that country's own words (as served). */
+export function useWorkPermitsTile(market: MarketSettingResponse, questionSet: QuestionSet): TileView {
   const { profile } = useAutofillProfile();
   const byKey = new Map((market.markets ?? []).map((m) => [m.key, m]));
   const rows = market.apply_in.map((key) => {
-    const option = byKey.get(key);
-    const count = permitCount(profile, key, option?.work_auth_vocab);
-    return { key, label: option?.label ?? key, count, entry: permitEntry(profile, key) };
+    const count = permitCount(profile, questionSet, key);
+    return { key, label: byKey.get(key)?.label ?? key, count, entry: permitEntry(profile, key) };
   });
   const open = rows.some((row) => row.count.answered < row.count.answerable);
   return {
@@ -59,11 +58,11 @@ export function useWorkPermitsTile(market: MarketSettingResponse): TileView {
       </span>
     ),
     note: "Never guessed for you",
-    panel: <WorkPermitsCard market={market} />,
+    panel: <WorkPermitsCard market={market} questionSet={questionSet} />,
   };
 }
 
-function WorkPermitsCard({ market }: { market: MarketSettingResponse }) {
+function WorkPermitsCard({ market, questionSet }: { market: MarketSettingResponse; questionSet: QuestionSet }) {
   const query = useAutofillQuery();
   return (
     <TileCard
@@ -72,14 +71,22 @@ function WorkPermitsCard({ market }: { market: MarketSettingResponse }) {
       errorTitle="Couldn't load your form answers."
       query={query}
     >
-      {() => <WorkPermitsEditor applyIn={market.apply_in} markets={market.markets ?? []} />}
+      {() => <WorkPermitsEditor applyIn={market.apply_in} markets={market.markets ?? []} questionSet={questionSet} />}
     </TileCard>
   );
 }
 
 /** One fieldset per country you apply in, named by the country; each answer is that country's own entry
  *  in `work_auth_by_country`, keyed by market ("UK", not the ISO "GB"). */
-function WorkPermitsEditor({ applyIn, markets }: { applyIn: string[]; markets: MarketOption[] }) {
+function WorkPermitsEditor({
+  applyIn,
+  markets,
+  questionSet,
+}: {
+  applyIn: string[];
+  markets: MarketOption[];
+  questionSet: QuestionSet;
+}) {
   const { profile, update, saveState } = useAutofillProfile();
   return (
     // Groups are divided by their headings and a wide gap, never by rules. Each fieldset stays in block
@@ -89,8 +96,7 @@ function WorkPermitsEditor({ applyIn, markets }: { applyIn: string[]; markets: M
         <AutosaveStatus {...saveState(SURFACE)} />
       </SettingCardAction>
       {applyIn.map((key) => {
-        const market = markets.find((m) => m.key === key);
-        const label = market?.label ?? key;
+        const label = markets.find((m) => m.key === key)?.label ?? key;
         return (
           <fieldset key={key} className="space-y-4">
             <legend className={cn(GROUP_HEADING, "flex items-center gap-1.5")}>
@@ -100,7 +106,7 @@ function WorkPermitsEditor({ applyIn, markets }: { applyIn: string[]; markets: M
             <FieldGrid
               idPrefix={`af-permit-${key}`}
               group={`permit-${key}`}
-              fields={workPermitFields(market?.work_auth_vocab)}
+              fields={permitFields(questionSet, key)}
               values={permitEntry(profile, key)}
               onChange={(fieldKey, next) => update(SURFACE, (current) => withPermit(current, key, fieldKey, next))}
             />

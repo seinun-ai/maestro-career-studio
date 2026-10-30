@@ -12,7 +12,7 @@ import { COMPANION_GUIDE_URL, CONNECTED_AGENTS_SETTINGS } from "@/lib/agent-link
 import { answered, groupCount, permitEntry, permitQuestions, profileForEditing } from "@/lib/autofill-options";
 import { SETUP_STEPS, type AutofillProfile, type FormQuestion, type StepsDone } from "@/lib/setup-flow";
 import { anchorHref } from "@/lib/settings-tabs";
-import type { SetupStatus } from "@/lib/types";
+import type { QuestionSet, SetupStatus } from "@/lib/types";
 
 const ALSO_CARD =
   "flex h-full flex-col gap-1 rounded-corner-md bg-card px-4.5 py-4 outline-none transition-colors duration-(--duration-short3) ease-standard hover:bg-surface-container-low focus-visible:ring-3 focus-visible:ring-ring";
@@ -28,6 +28,7 @@ export function SetupDone({
   status,
   done,
   profile,
+  questionSet,
   questions,
   diversity,
   headingRef,
@@ -36,6 +37,7 @@ export function SetupDone({
   status: SetupStatus;
   done: StepsDone;
   profile: AutofillProfile;
+  questionSet: QuestionSet;
   questions: FormQuestion[];
   diversity: DiversityChoice;
   headingRef: RefObject<HTMLHeadingElement | null>;
@@ -48,13 +50,13 @@ export function SetupDone({
   const permitsLeft = questions.flatMap((q) => {
     if (q.kind !== "permit") return [];
     const entry = permitEntry(profileForEditing(profile), q.market);
-    const open = permitQuestions(q.vocab).find((field) => !answered(field, entry[field.key]));
+    const open = permitQuestions(questionSet, q.market).find((field) => !answered(field, entry[field.key]));
     // The country's own control in Profile's Work permits tile (`af-permit-<market>-<key>`).
     return open
       ? [{ label: `Finish your work permit for ${q.label}`, href: anchorHref("/profile", `af-permit-${q.market}-${open.key}`) }]
       : [];
   });
-  const eeo = groupCount(profile, "eeo");
+  const eeo = groupCount(profile, questionSet, "eeo");
   const inProfile = [
     ...permitsLeft,
     ...(diversity === "answer" && eeo.answered < eeo.answerable

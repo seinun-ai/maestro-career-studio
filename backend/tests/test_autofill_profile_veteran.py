@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services import autofill_profile, text_settings
+from app.services import autofill_profile, form_questions, text_settings
 
 client = TestClient(app)
 
@@ -134,19 +134,22 @@ def test_a_save_in_the_new_words_is_kept_as_it_is(db_session, tmp_path):
 
 
 def test_the_profile_asks_one_veteran_question():
-    """Profile's control: "Are you a veteran?" with No / Yes / decline, in the values the backend reads."""
+    """Profile's control: "Are you a veteran?" with No / Yes / decline, in the values the backend reads. The
+    question is the catalog's (services/data/form_questions.yaml), served to Profile and Setup."""
     from pathlib import Path
 
-    frontend = Path(__file__).resolve().parents[2] / "frontend"
-    source = (frontend / "lib/autofill-options.ts").read_text(encoding="utf-8")
-    block = source[source.index('key: "veteran_status"'):source.index('key: "disability_status"')]
-    assert 'label: "Are you a veteran?"' in block
-    assert ('{ value: "no", label: "No, I am not a veteran" }' in block
-            and '{ value: "yes", label: "Yes, I am a veteran" }' in block
-            and '{ value: "decline", label: "I don\'t wish to answer" }' in block)
-    assert "not_veteran" not in block.split("options:")[1] and "protected veteran" not in block.split("options:")[1]
+    eeo = next(g for g in form_questions.catalog().groups if g.key == "eeo")
+    question = next(f for f in eeo.fields if f.key == "veteran_status")
+    assert question.label == "Are you a veteran?"
+    options = [(o.value, o.label) for o in question.options]
+    assert (("no", "No, I am not a veteran") in options
+            and ("yes", "Yes, I am a veteran") in options
+            and ("decline", "I don't wish to answer") in options)
+    words = " ".join(f"{value} {label}" for value, label in options)
+    assert "not_veteran" not in words and "protected veteran" not in words
     # Asked again when the old answer ("not a protected veteran") was dropped.
-    assert 'staleHint: "Answer again: this question changed."' in block
+    assert question.staleHint == "Answer again: this question changed."
+    frontend = Path(__file__).resolve().parents[2] / "frontend"
     fields = (frontend / "components/profile/field-control.tsx").read_text(encoding="utf-8")
     assert "isBlank(rawValue) && stale.includes(field.key)" in fields
     fold = (frontend / "components/profile/diversity.tsx").read_text(encoding="utf-8")

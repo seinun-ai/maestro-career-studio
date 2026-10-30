@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { React, load, renderElement, withRouter } from "../render-harness.mjs";
+import { React, load, renderElement, servedQuestions, withRouter } from "../render-harness.mjs";
 
 const { ProfileView } = load("components/profile/profile-view.tsx");
 
@@ -62,6 +62,7 @@ function render({ applyIn = ["DE", "UK", "US"], profile = { personal: PERSONAL }
       key: "market", value: { home: "DE", apply_in: applyIn, market: "DE" }, home: "DE", apply_in: applyIn,
       markets: MARKETS, currency: "EUR", offers_eeo: false,
     }],
+    [["settings", "form-questions"], servedQuestions(MARKETS, applyIn)],
     [["settings", "job-preferences"], { key: "job_preferences", value: PREFS }],
     [["settings", "persona"], { key: "persona", value: "I design calm tools." }],
     [["base-resumes", { includeArchived: false }], RESUMES],

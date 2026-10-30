@@ -16,7 +16,6 @@ import {
   fieldValue,
   groupCount,
   groupValues,
-  homeMarket,
   missingAnswers,
   missingKey,
   permitCount,
@@ -26,7 +25,7 @@ import {
   type MissingAnswer,
 } from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
-import type { MarketSettingResponse } from "@/lib/types";
+import type { MarketSettingResponse, QuestionSet } from "@/lib/types";
 
 const SURFACE = "next-up";
 
@@ -47,9 +46,11 @@ const YES_NO = [
  */
 export function NextUp({
   market,
+  questionSet,
   onOpenDiversity,
 }: {
   market: MarketSettingResponse;
+  questionSet: QuestionSet;
   onOpenDiversity: () => void;
 }) {
   const { profile, update, saveState } = useAutofillProfile();
@@ -61,7 +62,7 @@ export function NextUp({
   const controlId = useId();
 
   const markets = market.markets ?? [];
-  const missing = missingAnswers(profile, market.apply_in, markets, market.home);
+  const missing = missingAnswers(profile, questionSet, market.apply_in);
   const open = missing.filter((item) => !skipped.includes(missingKey(item)));
   const current = held ?? open[0] ?? null;
   const currentKey = current ? missingKey(current) : null;
@@ -138,15 +139,15 @@ export function NextUp({
   const section = current.kind === "permit" ? SECTION.permit : SECTION[current.group];
   const count =
     current.kind === "permit"
-      ? permitCount(profile, current.market, country?.work_auth_vocab)
-      : groupCount(profile, current.group, homeMarket(market));
+      ? permitCount(profile, questionSet, current.market)
+      : groupCount(profile, questionSet, current.group);
   const raw =
     current.kind === "permit" ? permitEntry(profile, current.market)[field.key] : groupValues(profile, current.group)[field.key];
   const answer = (value: string | boolean | undefined) =>
     update(SURFACE, (profileNow) =>
       current.kind === "permit"
         ? withPermit(profileNow, current.market, field.key, value)
-        : withField(profileNow, current.group, field.key, value),
+        : withField(profileNow, questionSet, current.group, field.key, value),
     );
 
   return (

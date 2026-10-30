@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
 
-import { React, load, withRouter } from "../render-harness.mjs";
+import { React, load, servedQuestions, withRouter } from "../render-harness.mjs";
 
 const require = createRequire(import.meta.url);
 const { renderToStaticMarkup } = require("react-dom/server");
@@ -88,6 +88,7 @@ function render({ status = STATUS, info = INFO, applyIn = ["DE"], profile = {} }
   client.setQueryData(["settings", "job-preferences"], { key: "job_preferences", value: PREFS });
   client.setQueryData(["settings", "autofill"], { key: "autofill_profile", value: profile });
   client.setQueryData(["settings", "eeo-consent"], { key: "eeo_consent", value: CONSENT_OFF });
+  client.setQueryData(["settings", "form-questions"], servedQuestions(MARKETS, applyIn));
   client.setQueryData(["settings", "money"], {
     key: "money",
     value: { home_currency: null, period: "year", hours_per_year: 2080, show_posted: true },
@@ -201,10 +202,14 @@ function renderElement(element, seed = []) {
   return html;
 }
 
+// What the server serves for every country these tests apply in.
+const SERVED = servedQuestions(MARKETS, ["DE", "UK", "US"]);
+
 const answersStep = (props, seed = []) =>
   renderElement(
     React.createElement(SetupAnswersStep, {
       profile: {},
+      questionSet: SERVED,
       consent: CONSENT_OFF,
       onQuestion: () => {},
       onDone: () => {},
@@ -279,17 +284,17 @@ test("what Setup writes: each answer on its own country, never the one-set view"
   assert.equal("work_auth" in after, false);
   assert.deepEqual(before.work_auth_by_country.UK, { authorized_now: false }, "the input is not changed");
   assert.deepEqual(withPermitAnswer({}, "US", "status", "citizen"), { work_auth_by_country: { US: { status: "citizen" } } });
-  const prefs = withPreference({ preferences: { desired_salary: "80k" }, work_auth: {} }, "notice_period", "1 month");
+  const prefs = withPreference({ preferences: { desired_salary: "80k" }, work_auth: {} }, SERVED, "notice_period", "1 month");
   assert.deepEqual(prefs, { preferences: { desired_salary: "80k", notice_period: "1 month" } });
   // Declining fills each blank diversity question with its decline choice, the veteran one too, and leaves
   // race or ethnicity (typed, with no decline choice) blank.
-  assert.deepEqual(withDiversityDeclined({ eeo: { gender: "female" } }).eeo, {
+  assert.deepEqual(withDiversityDeclined({ eeo: { gender: "female" } }, SERVED).eeo, {
     gender: "female", veteran_status: "decline", disability_status: "decline", hispanic_latino: "decline",
   });
-  assert.equal("race_ethnicity" in withDiversityDeclined({}).eeo, false);
-  assert.equal(questionAnswered({ kind: "notice" }, { preferences: { notice_period: "  " } }), false);
-  assert.equal(questionAnswered({ kind: "relocate" }, { preferences: { willing_to_relocate: "No" } }), true);
-  assert.equal(questionAnswered(formQuestions(["US"], MARKETS)[0], { work_auth_by_country: { US: PERMITS } }), false,
+  assert.equal("race_ethnicity" in withDiversityDeclined({}, SERVED).eeo, false);
+  assert.equal(questionAnswered({ kind: "notice" }, { preferences: { notice_period: "  " } }, SERVED), false);
+  assert.equal(questionAnswered({ kind: "relocate" }, { preferences: { willing_to_relocate: "No" } }, SERVED), true);
+  assert.equal(questionAnswered(formQuestions(["US"], MARKETS)[0], { work_auth_by_country: { US: PERMITS } }, SERVED), false,
     "the United States also needs its visa status");
 });
 
@@ -298,6 +303,7 @@ test("the done screen: Add your first job filled, the agent app and the Companio
   const done = stepsDone(PERMITTED, ["DE"]);
   const html = renderElement(
     React.createElement(SetupDone, {
+      questionSet: SERVED,
       status: PERMITTED,
       done,
       profile: { personal: { first_name: "Lena" }, work_auth_by_country: { DE: PERMITS } },
@@ -317,6 +323,7 @@ test("the done screen: Add your first job filled, the agent app and the Companio
   // A country's work permit left open links to that country's own question, never another country's set.
   const left = renderElement(
     React.createElement(SetupDone, {
+      questionSet: SERVED,
       status: PERMITTED,
       done,
       profile: { work_auth_by_country: { DE: PERMITS } },
@@ -331,6 +338,7 @@ test("the done screen: Add your first job filled, the agent app and the Companio
   // Open required steps say so instead of "You're set".
   const early = renderElement(
     React.createElement(SetupDone, {
+      questionSet: SERVED,
       status: STATUS,
       done: stepsDone(STATUS, ["DE"]),
       profile: {},

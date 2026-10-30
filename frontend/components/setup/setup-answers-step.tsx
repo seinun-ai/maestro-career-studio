@@ -39,7 +39,7 @@ import {
   withPreference,
 } from "@/lib/setup-answers";
 import { preference, type AutofillProfile, type FormQuestion } from "@/lib/setup-flow";
-import type { EeoConsent } from "@/lib/types";
+import type { EeoConsent, QuestionSet } from "@/lib/types";
 import { useAutosave } from "@/lib/use-autosave";
 import { cn } from "@/lib/utils";
 
@@ -87,9 +87,9 @@ const YES_NO = [
 
 /**
  * Step 4, the answers job forms ask, one question at a time. Work permits come first, one card per
- * country you apply in, named by its heading and asked in that country's words (its market's
- * `work_auth_vocab`, the visa status only for `us_visa`; each answer's group is labelled by the country and
- * the question, so a country's answer is never asked or heard without it); then notice period and
+ * country you apply in, named by its heading and asked in that country's words (as served for it: the visa
+ * status only where that country asks it; each answer's group is labelled by the country and the question,
+ * so a country's answer is never asked or heard without it); then notice period and
  * relocation; then diversity, only for a country with a checked set. Each answer saves to the autofill
  * profile as you go (`PUT /api/settings/autofill`, the country's own entry in `work_auth_by_country`, never
  * the one-set `work_auth`). Contact fields fill from career history in place. Diversity is answered or
@@ -98,6 +98,7 @@ const YES_NO = [
  */
 export function SetupAnswersStep({
   profile,
+  questionSet,
   consent,
   questions,
   question,
@@ -108,6 +109,7 @@ export function SetupAnswersStep({
   headingRef,
 }: {
   profile: AutofillProfile;
+  questionSet: QuestionSet;
   consent: EeoConsent;
   questions: FormQuestion[];
   question: number;
@@ -164,7 +166,7 @@ export function SetupAnswersStep({
                     "size-1.5 rounded-full",
                     i === question
                       ? "bg-primary"
-                      : questionAnswered(q, answers.value)
+                      : questionAnswered(q, answers.value, questionSet)
                         ? "bg-success"
                         : "bg-surface-container-high",
                   )}
@@ -176,6 +178,7 @@ export function SetupAnswersStep({
             question={current}
             headingRef={questionRef}
             profile={answers.value}
+            questionSet={questionSet}
             consent={consent}
             update={answers.update}
             advance={advance}
@@ -206,11 +209,12 @@ function ContactFromHistory({ profile, update }: { profile: AutofillProfile; upd
   );
 }
 
-/** What every question card is handed: the heading that takes focus, the answers and how to change them, how
- *  to move on, and the diversity consent and choice. */
+/** What every question card is handed: the heading that takes focus, the answers, the questions they answer
+ *  and how to change them, how to move on, and the diversity consent and choice. */
 type QuestionProps = {
   headingRef: RefObject<HTMLHeadingElement | null>;
   profile: AutofillProfile;
+  questionSet: QuestionSet;
   consent: EeoConsent;
   update: Update;
   advance: () => void;
@@ -219,11 +223,19 @@ type QuestionProps = {
 };
 
 function Question({ question, ...props }: QuestionProps & { question: FormQuestion }) {
-  const { headingRef, profile, update, advance } = props;
+  const { headingRef, profile, questionSet, update, advance } = props;
   const titleId = useId();
   const noticeId = useId();
   if (question.kind === "permit") {
-    return <PermitQuestion question={question} headingRef={headingRef} profile={profile} update={update} />;
+    return (
+      <PermitQuestion
+        question={question}
+        headingRef={headingRef}
+        profile={profile}
+        questionSet={questionSet}
+        update={update}
+      />
+    );
   }
   if (question.kind === "notice") {
     const value = preference(profile, "notice_period");
@@ -238,7 +250,7 @@ function Question({ question, ...props }: QuestionProps & { question: FormQuesti
           options={NOTICE_CHOICES.map((choice) => ({ value: choice, label: choice }))}
           value={NOTICE_CHOICES.find((choice) => choice === text)}
           onPick={(choice) => {
-            update((current) => withPreference(current, "notice_period", choice));
+            update((current) => withPreference(current, questionSet, "notice_period", choice));
             advance();
           }}
         />
@@ -249,7 +261,7 @@ function Question({ question, ...props }: QuestionProps & { question: FormQuesti
             value={text}
             onChange={(e) => {
               const next = e.target.value;
-              update((current) => withPreference(current, "notice_period", next));
+              update((current) => withPreference(current, questionSet, "notice_period", next));
             }}
           />
         </div>
@@ -269,7 +281,7 @@ function Question({ question, ...props }: QuestionProps & { question: FormQuesti
           options={YES_NO}
           value={typeof value === "boolean" ? value : undefined}
           onPick={(answer) => {
-            update((current) => withPreference(current, "willing_to_relocate", answer));
+            update((current) => withPreference(current, questionSet, "willing_to_relocate", answer));
             advance();
           }}
         />
@@ -292,6 +304,7 @@ function DiversityQuestion({
   countries,
   headingRef,
   profile,
+  questionSet,
   consent,
   update,
   advance,
@@ -305,7 +318,7 @@ function DiversityQuestion({
     if (!allowed) return;
     onDiversity(choice);
     if (choice === "decline") {
-      update((current) => withDiversityDeclined(current));
+      update((current) => withDiversityDeclined(current, questionSet));
       advance();
     }
   };
@@ -341,11 +354,11 @@ function DiversityQuestion({
           <FieldGrid
             idPrefix="setup-eeo"
             group="eeo"
-            fields={groupFields("eeo")}
+            fields={groupFields(questionSet, "eeo")}
             values={groupValues(profile, "eeo")}
             stale={stale}
             voluntary
-            onChange={(key, next) => update((current) => withDiversityAnswer(current, key, next))}
+            onChange={(key, next) => update((current) => withDiversityAnswer(current, questionSet, key, next))}
           />
         </div>
       ) : null}
@@ -353,18 +366,20 @@ function DiversityQuestion({
   );
 }
 
-/** One country's work permit: its name as the heading, then its required questions in its own words
- *  (`work_auth_vocab`: the visa status first for `us_visa`), each a group named by the country and the
+/** One country's work permit: its name as the heading, then its required questions in its own words (as
+ *  served: the visa status first where that country asks it), each a group named by the country and the
  *  question. Every answer is that country's own entry. Never guessed for you. */
 function PermitQuestion({
   question,
   headingRef,
   profile,
+  questionSet,
   update,
 }: {
   question: Extract<FormQuestion, { kind: "permit" }>;
   headingRef: RefObject<HTMLHeadingElement | null>;
   profile: AutofillProfile;
+  questionSet: QuestionSet;
   update: Update;
 }) {
   const countryId = useId();
@@ -380,7 +395,7 @@ function PermitQuestion({
         {question.label}
       </h3>
       <ul className="flex flex-col gap-4">
-        {permitQuestions(question.vocab).map((q) => {
+        {permitQuestions(questionSet, question.market).map((q) => {
           const questionId = `${baseId}-${q.key}`;
           return (
             <li key={q.key} className="flex flex-wrap items-center justify-between gap-3">

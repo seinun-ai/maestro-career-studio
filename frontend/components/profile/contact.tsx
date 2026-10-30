@@ -10,20 +10,18 @@ import { TileCard, type TileView } from "@/components/profile/tile";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCardAction } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
-import { useMarketQuery } from "@/hooks/use-market";
 import { apiFetch } from "@/lib/api";
 import {
   groupCount,
   groupFields,
   groupValues,
-  homeMarket,
   isBlank,
   withField,
   type Profile,
 } from "@/lib/autofill-options";
 import { contactAdditions, hasFillableContactDetails } from "@/lib/contact-from-history";
 import { couldnt } from "@/lib/error-text";
-import type { KBProfileOut } from "@/lib/types";
+import type { KBProfileOut, QuestionSet } from "@/lib/types";
 import { useAutofillQuery } from "@/components/profile/use-autofill-query";
 
 const SURFACE = "contact";
@@ -36,13 +34,12 @@ export function useCareerContact() {
   });
 }
 
-/** Contact: the personal details forms ask, each saved as you go, and Fill from career history. Where you live
- *  (`homeMarket`) names the state line and says whether it counts; until that loads, it counts as "State". */
-export function useContactTile(): TileView {
+/** Contact: the personal details forms ask, each saved as you go, and Fill from career history. The state line
+ *  is named and counted as served for where you live. */
+export function useContactTile(questionSet: QuestionSet): TileView {
   const { profile } = useAutofillProfile();
-  const home = homeMarket(useMarketQuery().data);
   const personal = groupValues(profile, "personal");
-  const count = groupCount(profile, "personal", home);
+  const count = groupCount(profile, questionSet, "personal");
   const shown = ["email", "phone"].map((key) => personal[key]).filter((v): v is string => !isBlank(v));
   return {
     state:
@@ -51,11 +48,11 @@ export function useContactTile(): TileView {
         : { kind: "count", text: `${count.answered} of ${count.answerable}` },
     summary: <span className="truncate">{shown.length ? shown.join(" · ") : "No email or phone yet"}</span>,
     note: "Your name, address and links for forms",
-    panel: <ContactCard />,
+    panel: <ContactCard questionSet={questionSet} />,
   };
 }
 
-function ContactCard() {
+function ContactCard({ questionSet }: { questionSet: QuestionSet }) {
   const query = useAutofillQuery();
   return (
     <TileCard
@@ -64,7 +61,7 @@ function ContactCard() {
       errorTitle="Couldn't load your form answers."
       query={query}
     >
-      {() => <ContactEditor />}
+      {() => <ContactEditor questionSet={questionSet} />}
     </TileCard>
   );
 }
@@ -132,9 +129,8 @@ export function FillFromResumeButton({ fill }: { fill: ReturnType<typeof useFill
   );
 }
 
-function ContactEditor() {
+function ContactEditor({ questionSet }: { questionSet: QuestionSet }) {
   const { profile, update, saveState } = useAutofillProfile();
-  const home = homeMarket(useMarketQuery().data);
   const fill = useFillFromResume(profile, (next) => update(SURFACE, next));
 
   return (
@@ -152,9 +148,9 @@ function ContactEditor() {
       <FieldGrid
         idPrefix="af-personal"
         group="personal"
-        fields={groupFields("personal", home)}
+        fields={groupFields(questionSet, "personal")}
         values={groupValues(profile, "personal")}
-        onChange={(key, next) => update(SURFACE, (current) => withField(current, "personal", key, next))}
+        onChange={(key, next) => update(SURFACE, (current) => withField(current, questionSet, "personal", key, next))}
       />
     </div>
   );
