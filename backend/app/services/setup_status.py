@@ -1,10 +1,9 @@
 """Setup status, derived entirely from existing data — onboarding stores NO
 wizard progress (FirstRunImportCard doctrine: derived signals, dismissible).
 
-The autofill field lists are a hand-mirror of the frontend GROUPS array and its
-per-country WORK_PERMIT_QUESTIONS in frontend/lib/autofill-options.ts (the
-ALLOWED_STATUSES / APPLICATION_STATUSES precedent; test_autofill_groups_parity.py)
-— update BOTH when a field is added. Rules:
+Readiness counts the form-question catalog's required questions
+(services/form_questions, resolved for the stored market), never a list of its
+own. Rules:
 "complete" means ANSWERABLE, not filled ("decline" answers count; optional
 fields are excluded), and work_auth is read through the typed reader because
 its answers are the knockout ones the extension reports missing_source on.
@@ -21,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.models.base_resume import BaseResume
 from app.models.career_kb import KBEntity
 from app.models.template import Template
+from app.schemas.form_questions import Field as FormField
 from app.schemas.setup_status import (
     AutofillStep,
     EnginesProbe,
@@ -32,6 +32,7 @@ from app.schemas.setup_status import (
 from app.services import (
     autofill_profile,
     engines,
+    form_questions,
     job_preferences,
     market_settings,
     markets,
@@ -39,11 +40,9 @@ from app.services import (
     role_categories,
 )
 
-# Required (answerable) fields per group. address_2, the three links (linkedin,
-# github, website: many fields of work and many countries have none of them),
-# education and custom Q&A never count against readiness. `state` counts only
-# where the home market's addresses need one (`asks_state`, markets.yaml: the
-# frontend's `byHome` field); with no home set, home reads as the default US.
+# Retired from readiness, which counts the catalog's questions (services/form_questions). They
+# remain only for test_autofill_groups_parity.py and test_market_settings.py until Task 1.9 of
+# docs/plans/2026-10-30-country-form-questions.md retires the mirror and that test together.
 _PERSONAL = [
     "first_name", "last_name", "email", "phone", "address", "city", "state",
     "postal_code", "country",
@@ -53,15 +52,12 @@ _PREFERENCES = [
     "desired_salary", "notice_period", "earliest_start_date",
     "willing_to_relocate", "how_heard",
 ]
-# The typed work-auth core; authorization and sponsorship answers are knockout-grade. The visa
-# status list is the US one (`opt`, `h1b`, `tn`), so only a market whose `work_auth_vocab` is
-# `us_visa` asks it; every country asks the other three.
 _WORK_AUTH_CORE = ["authorized_now", "sponsorship_now", "sponsorship_future"]
 _US_VISA_CORE = ["status", *_WORK_AUTH_CORE]
 
 
 def _personal_fields(home: str) -> list[str]:
-    """The contact answers counted for someone who lives in `home` (a market key)."""
+    """The contact answers the parity test compares for a home in `home` (a market key)."""
     if markets.get(home)["asks_state"]:
         return _PERSONAL
     return [f for f in _PERSONAL if f != "state"]
@@ -83,39 +79,46 @@ def _group(profile: dict, key: str, fields: list[str]) -> GroupCompleteness:
     return GroupCompleteness(answered=answered, answerable=len(fields))
 
 
-def _work_permits(profile: dict, apply_in: list[str]) -> dict[str, GroupCompleteness]:
-    """Each apply-in country's work-permit answers, counted through the typed reader."""
+def _work_permits(
+    profile: dict, permits: dict[str, list[FormField]]
+) -> dict[str, GroupCompleteness]:
+    """Each apply-in country's work-permit answers, counted through the typed reader: the required
+    fields of that country's wording (the visa status only in `us_visa`'s; the expiry is optional
+    everywhere, so never)."""
     entries = profile.get(autofill_profile.BY_COUNTRY) or {}
     out: dict[str, GroupCompleteness] = {}
-    for market in apply_in:
+    for market, fields in permits.items():
         work_auth = autofill_profile.typed_work_auth(entries.get(market))
-        fields = _US_VISA_CORE if markets.get(market)["work_auth_vocab"] == "us_visa" else _WORK_AUTH_CORE
+        keys = form_questions.required_keys(fields)
         out[market] = GroupCompleteness(
-            answered=sum(1 for f in fields if getattr(work_auth, f) is not None), answerable=len(fields))
+            answered=sum(1 for k in keys if getattr(work_auth, k) is not None), answerable=len(keys))
     return out
 
 
 def _autofill_step(db: Session) -> AutofillStep:
     profile = autofill_profile.peek_profile(db)
     market = market_settings.peek_market(db)
-    by_country = _work_permits(profile, market.apply_in)
+    questions = form_questions.resolve(home=market.home, apply_in=market.apply_in)
+    required = {g.key: form_questions.required_keys(g.fields) for g in questions.groups}
+    by_country = _work_permits(profile, questions.permits)
     groups = {
-        "personal": _group(profile, "personal", _personal_fields(market.home)),
+        "personal": _group(profile, "personal", required["personal"]),
         "work_auth": GroupCompleteness(
             answered=sum(g.answered for g in by_country.values()),
             answerable=sum(g.answerable for g in by_country.values()),
         ),
-        "preferences": _group(profile, "preferences", _PREFERENCES),
+        "preferences": _group(profile, "preferences", required["preferences"]),
     }
-    # `_EEO` is the US question set — veteran status, CC-305 disability, and the
-    # EEO-1's two-part hispanic_latino ethnicity split. Counting it as required
-    # in a market with no verified question set made 100% readiness unreachable
-    # for every non-US user, and readiness is what the setup strip reports as
-    # "done". Only the countries you apply in that have a checked module (US, UK
-    # today) ask diversity answers; with none of them, the group is omitted from
-    # the denominator rather than scored as unanswered.
+    # The diversity group is the US question set — veteran status, CC-305
+    # disability, and the EEO-1's two-part hispanic_latino ethnicity split.
+    # Counting it as required in a market with no verified question set made
+    # 100% readiness unreachable for every non-US user, and readiness is what
+    # the setup strip reports as "done". Only the countries you apply in that
+    # have a checked module (US, UK today) ask diversity answers; with none of
+    # them, the group is omitted from the denominator rather than scored as
+    # unanswered.
     if market_settings.offers_eeo(db):
-        groups["eeo"] = _group(profile, "eeo", _EEO)
+        groups["eeo"] = _group(profile, "eeo", required["eeo"])
     answered = sum(g.answered for g in groups.values())
     answerable = sum(g.answerable for g in groups.values())
     wa = groups["work_auth"]

@@ -117,6 +117,16 @@ def test_the_state_line_is_named_and_counted_by_where_you_live():
     assert (us.label, us.optional) == ("State", False)
 
 
+def test_required_keys_leave_out_the_optional_fields():
+    """What setup readiness counts: the state line only where an address there needs one."""
+    def personal(home: str) -> list[str]:
+        groups = form_questions.resolve(home=home, apply_in=[home]).groups
+        return form_questions.required_keys(next(g for g in groups if g.key == "personal").fields)
+
+    assert "state" not in personal("UK") and "state" in personal("US")
+    assert "address_2" not in personal("US") and "linkedin" not in personal("US")
+
+
 def test_permits_are_keyed_by_market_in_apply_in_order():
     got = form_questions.resolve(home="IN", apply_in=["UK", "US", "DE"])
     assert list(got.permits) == ["UK", "US", "DE"]

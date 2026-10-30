@@ -30,6 +30,11 @@ def _for_home(field: Field, home: str) -> Field:
     )
 
 
+def required_keys(fields: list[Field]) -> list[str]:
+    """The keys setup readiness counts: every field not `optional`."""
+    return [f.key for f in fields if not f.optional]
+
+
 def resolve(*, home: str, apply_in: list[str]) -> QuestionSet:
     """The questions for someone who lives in `home` and applies in `apply_in`. Callers pass a
     validated `MarketSetting`'s `home` and `apply_in` (upper-cased market keys); an unknown key
