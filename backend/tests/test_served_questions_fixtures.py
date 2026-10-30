@@ -42,7 +42,7 @@ def fixture_name(home: str, apply_in: list[str]) -> str:
 
 def served(home: str, apply_in: list[str]) -> dict:
     """The set as the route serves it: `response_model_exclude_defaults=True`, as JSON."""
-    resolved = form_questions.resolve(home=home, apply_in=apply_in)
+    resolved = form_questions.resolve(home=home, apply_in=apply_in, chosen=True)
     return resolved.model_dump(mode="json", exclude_defaults=True)
 
 

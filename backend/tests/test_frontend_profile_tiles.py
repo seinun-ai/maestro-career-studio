@@ -125,7 +125,7 @@ def test_contact_counts_and_names_the_state_line_by_where_you_live():
     option = _between(_src("lib/types.ts"), "export interface MarketOption {", "\n}")
     assert "asks_state: boolean;" in option and "state_label: string;" in option
     def state(home: str):
-        personal = next(g for g in form_questions.resolve(home=home, apply_in=[home]).groups if g.key == "personal")
+        personal = next(g for g in form_questions.resolve(home=home, apply_in=[home], chosen=True).groups if g.key == "personal")
         return next(f for f in personal.fields if f.key == "state")
 
     assert (state("NL").label, state("NL").optional) == ("Province", True)

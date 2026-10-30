@@ -105,13 +105,13 @@ def _fixture(value) -> dict:
 
 @pytest.mark.parametrize("home", markets.keys())
 def test_every_home_gets_todays_groups(home):
-    got = form_questions.resolve(home=home, apply_in=[home])
+    got = form_questions.resolve(home=home, apply_in=[home], chosen=True)
     assert [_served(g) for g in got.groups] == [_fixture(g) for g in _today_groups(home)]
 
 
 @pytest.mark.parametrize("market", markets.keys())
 def test_every_market_gets_todays_permit_fields(market):
-    got = form_questions.resolve(home="US", apply_in=[market])
+    got = form_questions.resolve(home="US", apply_in=[market], chosen=True)
     vocab = markets.get(market)["work_auth_vocab"]
     want = [
         Field.model_validate(f).model_dump(exclude_defaults=True) for f in _TODAY["permits"][vocab]
@@ -120,7 +120,7 @@ def test_every_market_gets_todays_permit_fields(market):
 
 
 def _state_line(home: str) -> Field:
-    groups = form_questions.resolve(home=home, apply_in=[home]).groups
+    groups = form_questions.resolve(home=home, apply_in=[home], chosen=True).groups
     personal = next(g for g in groups if g.key == "personal")
     return next(f for f in personal.fields if f.key == "state")
 
@@ -135,7 +135,7 @@ def test_the_state_line_is_named_and_counted_by_where_you_live():
 def test_required_keys_leave_out_the_optional_fields():
     """What setup readiness counts: the state line only where an address there needs one."""
     def personal(home: str) -> list[str]:
-        groups = form_questions.resolve(home=home, apply_in=[home]).groups
+        groups = form_questions.resolve(home=home, apply_in=[home], chosen=True).groups
         return form_questions.required_keys(next(g for g in groups if g.key == "personal").fields)
 
     assert "state" not in personal("UK") and "state" in personal("US")
@@ -143,16 +143,16 @@ def test_required_keys_leave_out_the_optional_fields():
 
 
 def test_permits_are_keyed_by_market_in_apply_in_order():
-    got = form_questions.resolve(home="IN", apply_in=["UK", "US", "DE"])
+    got = form_questions.resolve(home="IN", apply_in=["UK", "US", "DE"], chosen=True)
     assert list(got.permits) == ["UK", "US", "DE"]
 
 
 def test_offers_eeo_follows_the_apply_in_markets():
     """Offered when any market you apply in has a checked set (US, UK today), wherever you live."""
-    assert form_questions.resolve(home="IN", apply_in=["US"]).offers_eeo is True
-    assert form_questions.resolve(home="US", apply_in=["IN", "DE"]).offers_eeo is False
-    assert form_questions.resolve(home="DE", apply_in=["DE", "NL"]).offers_eeo is False
-    assert form_questions.resolve(home="DE", apply_in=["DE", "UK"]).offers_eeo is True
+    assert form_questions.resolve(home="IN", apply_in=["US"], chosen=True).offers_eeo is True
+    assert form_questions.resolve(home="US", apply_in=["IN", "DE"], chosen=True).offers_eeo is False
+    assert form_questions.resolve(home="DE", apply_in=["DE", "NL"], chosen=True).offers_eeo is False
+    assert form_questions.resolve(home="DE", apply_in=["DE", "UK"], chosen=True).offers_eeo is True
 
 
 def test_unchosen_resolves_no_country():
@@ -171,6 +171,6 @@ def test_unchosen_keeps_the_state_line_but_never_requires_it():
 
 def test_no_apply_in_reads_as_home():
     """The market setting's rule (`MarketSetting`: empty `apply_in` reads as `[home]`)."""
-    assert list(form_questions.resolve(home="UK", apply_in=[]).permits) == ["UK"]
-    assert form_questions.resolve(home="UK", apply_in=[]).offers_eeo is True
-    assert form_questions.resolve(home="IN", apply_in=[]).offers_eeo is False
+    assert list(form_questions.resolve(home="UK", apply_in=[], chosen=True).permits) == ["UK"]
+    assert form_questions.resolve(home="UK", apply_in=[], chosen=True).offers_eeo is True
+    assert form_questions.resolve(home="IN", apply_in=[], chosen=True).offers_eeo is False

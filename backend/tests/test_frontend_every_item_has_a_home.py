@@ -258,7 +258,7 @@ def test_each_country_is_asked_every_work_permit_key():
     """Every vocabulary asks the three yes/no keys and when the permit runs out; only `us_visa` asks the
     status. The served set holds one entry per country you apply in; Profile asks each, Setup one card per
     country."""
-    served = form_questions.resolve(home="DE", apply_in=["US", "UK", "DE"]).permits
+    served = form_questions.resolve(home="DE", apply_in=["US", "UK", "DE"], chosen=True).permits
     asked = [[field.key for field in served[market]] for market in ("US", "UK", "DE")]
     keys = ["authorized_now", "sponsorship_now", "sponsorship_future", "authorization_expires_on"]
     assert asked == [["status", *keys], keys, keys]

@@ -25,6 +25,15 @@ def _get_brief(db_session):
         app.dependency_overrides.clear()
 
 
+def _chose_us(db_session) -> None:
+    """Where you live and apply saved as the US, so the brief judges the US answers (an unchosen
+    install applies in no country). Call after the test points `settings_dir` at its tmp_path."""
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US"]), db_session)
+
+
 def _assert_points_to_work_permits(warnings: list[str]) -> None:
     """The work-authorization answers live in Profile's Work permits tile (D §9.3):
     a warning names that tile, never Settings, and never the raw profile keys."""
@@ -136,11 +145,10 @@ def test_search_brief_aggregation_shape(db_session, tmp_path, monkeypatch):
         "country": "United States",
         "willing_to_relocate": "yes",
         "work_auth": {"authorized_to_work": "yes", "requires_sponsorship": "yes"},
-        # No market chosen: the default market is home and the one country applied in.
+        # No country chosen: the one set from before still reads as the default home's, but no
+        # country is applied in, so none is listed or judged.
         "work_auth_market": "US",
-        "work_auth_by_country": {
-            "US": {"authorized_to_work": "yes", "requires_sponsorship": "yes"},
-        },
+        "work_auth_by_country": {},
     }
     assert body["persona"] == "Analytics engineer who ships."
     assert body["warnings"] == []  # yes/yes is a valid combo (OPT now, sponsorship later)
@@ -185,6 +193,7 @@ def test_search_brief_carries_provenance_labels(db_session, tmp_path, monkeypatc
 
 def test_search_brief_contradictory_work_auth_warns(db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    _chose_us(db_session)
     autofill_profile.set_profile(
         {"work_auth": {"authorized_to_work": "no", "requires_sponsorship": "no"}},
         db_session,
@@ -203,6 +212,7 @@ def test_search_brief_projects_typed_work_auth_to_public_yes_no_shape(
     db_session, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    _chose_us(db_session)
     autofill_profile.set_profile(
         {
             "work_auth": {
@@ -228,6 +238,7 @@ def test_search_brief_keeps_unknown_typed_work_auth_unknown(
     db_session, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    _chose_us(db_session)
     autofill_profile.set_profile(
         {
             "work_auth": {
@@ -255,6 +266,7 @@ def test_search_brief_warns_for_typed_no_no_contradiction(
     db_session, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    _chose_us(db_session)
     autofill_profile.set_profile(
         {
             "work_auth": {
@@ -373,10 +385,9 @@ def test_search_brief_tolerates_empty_everything(db_session, tmp_path, monkeypat
     assert body["base_resumes"] == []
     assert body["referrals"] == []
     assert body["captured_last_30_days"] == []
-    # Missing work-auth values are a warning, not a guess — and it names the
-    # tile the answers live in (Profile › Work permits, never Settings).
-    assert any("incomplete" in w for w in body["warnings"])
-    _assert_points_to_work_permits(body["warnings"])
+    # No country chosen: no country's work permits are asked, so none is missing.
+    assert body["profile"]["work_auth_by_country"] == {}
+    assert body["warnings"] == []
 
 
 @pytest.mark.parametrize("level", ["facts", "history", "queued"])
@@ -472,11 +483,13 @@ def test_the_home_set_is_one_of_the_countries_when_the_user_applies_at_home(
 
 
 def test_one_country_reads_as_before(db_session, tmp_path, monkeypatch):
-    """Living and applying in one country: the warnings name no country, word for word as before."""
+    """Living and applying in one country: the warnings name no country, word for word as before.
+    Missing answers are a warning, not a guess, and it names the tile they live in."""
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    _chose_us(db_session)
     body = _get_brief(db_session).json()
 
-    assert body["profile"]["work_auth_market"] == "US"  # the default market
+    assert body["profile"]["work_auth_market"] == "US"
     assert body["profile"]["work_auth_by_country"] == {
         "US": {"authorized_to_work": None, "requires_sponsorship": None},
     }
@@ -484,6 +497,7 @@ def test_one_country_reads_as_before(db_session, tmp_path, monkeypatch):
         "Your work authorization answers are incomplete. Fix them in Profile › Work permits "
         "before filtering jobs on them. The brief never guesses."
     ]
+    _assert_points_to_work_permits(body["warnings"])
 
 
 def test_the_brief_says_when_each_automation_last_ran(db_session, tmp_path, monkeypatch):

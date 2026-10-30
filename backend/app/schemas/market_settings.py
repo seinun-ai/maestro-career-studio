@@ -73,3 +73,10 @@ class MarketSetting(BaseModel):
     @property
     def market(self) -> str:
         return self.home
+
+    @property
+    def applied(self) -> list[str]:
+        """The countries the user applies in, as a reader that reports per country takes them:
+        `apply_in` once chosen, none before (an unchosen `apply_in` is the default, not a choice).
+        A plain property, so it is neither stored nor served."""
+        return self.apply_in if self.chosen else []

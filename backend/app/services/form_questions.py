@@ -40,13 +40,14 @@ def required_keys(fields: list[Field]) -> list[str]:
 
 
 def resolve(
-    *, home: str, apply_in: list[str], chosen: bool = True, citizenships: tuple[str, ...] = ()
+    *, home: str, apply_in: list[str], chosen: bool, citizenships: tuple[str, ...] = ()
 ) -> QuestionSet:
     """The questions for someone who lives in `home` and applies in `apply_in`. Callers pass a
     validated `MarketSetting`'s `home`, `apply_in` and `chosen` (upper-cased market keys); an
     unknown key falls back to the default market's (US) wording, as `markets.get` does. Empty
     `apply_in` reads as `[home]`, the setting's own rule.
 
+    `chosen` has no default, so a caller that forgets it fails rather than getting a country's set.
     Unchosen (`MarketSetting.chosen` false) is the generic set: no country is applied in, so no
     work permits (a permit answer belongs to a country) and no diversity set, and the state line is
     optional. `citizenships` is not read yet (Task 3.5 of

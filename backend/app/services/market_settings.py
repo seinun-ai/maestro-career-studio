@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.models.setting import Setting
 from app.schemas.market_settings import MarketSetting
 from app.schemas.money import MoneySettings
 from app.services import countries, markets, text_settings
@@ -15,10 +16,15 @@ class _Market(JsonSetting[MarketSetting]):
         # Stored before the mark (2026-10-30): that install kept the set it was shown. A row never
         # stored (`""`, also what `text_settings.get_text` seeds with no mirror) never reaches here:
         # it reads as `MarketSetting()`, unchosen, unless its permit answers say otherwise at
-        # startup (`mark_answered_installs_chosen`).
+        # startup (`mark_answered_installs_chosen`). A corrupt stored row also reads as unchosen
+        # (`parse`'s defaults) and is not repaired: its text is not empty.
         if isinstance(payload, dict) and "chosen" not in payload:
             return {**payload, "chosen": True}
         return payload
+
+    def is_set(self, value: MarketSetting) -> bool:
+        # The mark decides the form questions, never currency or dates: compared without it.
+        return value.model_copy(update={"chosen": False}) != MarketSetting()
 
 
 MARKET = _Market("market", "market.json", MarketSetting)
@@ -26,6 +32,9 @@ MARKET = _Market("market", "market.json", MarketSetting)
 # name, and the constants are now derived from the one definition above.
 MARKET_KEY = MARKET.key
 MARKET_FILE = MARKET.filename
+# This install has had its one startup check (`mark_answered_installs_chosen`). A local setting
+# (`sync/registry.LOCAL_SETTING_PREFIXES`): each copy checks its own answers once.
+CHOSEN_CHECKED_FLAG = "market.chosen_checked"
 
 
 def get_market(session: Session | None = None) -> MarketSetting:
@@ -42,28 +51,36 @@ def peek_market(session: Session | None = None) -> MarketSetting:
 
 
 def mark_answered_installs_chosen(session: Session) -> bool:
-    """Startup: a market never stored (empty text, row or mirror) on an install whose form answers
-    hold a work-permit answer is stored as chosen, `home` and `apply_in` as an empty row reads them
-    (the `MarketSetting()` defaults). That user has been answering for the default country, so they
-    chose it. The evidence is that they answered, never what they answered: no knockout answer is
-    guessed. An install with no permit answer stays unchosen (Decision 1 of
+    """Startup, once per install: a market never stored (empty text, row or mirror) on an install
+    whose form answers hold a work-permit answer for the default country is stored as chosen, `home`
+    and `apply_in` as an empty row reads them (the `MarketSetting()` defaults). An empty row means the
+    picker was never changed, so that user has been answering for the default country: they chose it.
+    The evidence is that they answered, never what they answered: no knockout answer is guessed. Only
+    the default country's answers count (its `work_auth_by_country` entry and a legacy one-set
+    `work_auth`): an answer for another country, which an agent or the Companion can store, is no
+    choice of the default. An install with no such answer stays unchosen (Decision 1 of
     docs/plans/2026-10-30-country-form-questions.md).
 
-    A startup step, not a read-time rule: the form answers read the market for their home, so a
-    market read that read them back would recurse. Idempotent, and a stored market, an unchosen one
-    included, is never rewritten. Both settings are peeked, never seeded. The always-on copy skips
-    it: the laptop owns the profile, and its row arrives by sync. Returns whether it wrote."""
+    Once: `CHOSEN_CHECKED_FLAG` is set by the first run whatever it found, so a new install that
+    answers later, still unchosen, is never marked at a later restart. A startup step, not a read-time
+    rule: the form answers read the market for their home, so a market read that read them back would
+    recurse. A stored market, an unchosen one included, is never rewritten. Both settings are peeked,
+    never seeded. The always-on copy skips it: the laptop owns the profile, and its row arrives by
+    sync. Returns whether it wrote the market."""
     from app.services import autofill_profile
     from app.services.sync import status
 
-    if status.is_remote():
+    if status.is_remote() or session.get(Setting, CHOSEN_CHECKED_FLAG) is not None:
         return False
-    if text_settings.peek_text(MARKET_KEY, MARKET_FILE, session).strip():
-        return False
-    if not autofill_profile.holds_work_permit_answer(session):
-        return False
-    MARKET.set(MarketSetting(chosen=True), session)
-    return True
+    answered = not text_settings.peek_text(MARKET_KEY, MARKET_FILE, session).strip() and (
+        autofill_profile.holds_work_permit_answer(MarketSetting().home, session)
+    )
+    session.add(Setting(key=CHOSEN_CHECKED_FLAG, value="1"))
+    if answered:
+        MARKET.set(MarketSetting(chosen=True), session)  # commits the flag with it
+    else:
+        session.commit()
+    return answered
 
 
 def set_market(setting: MarketSetting, session: Session | None = None) -> MarketSetting:
@@ -141,7 +158,7 @@ def is_set(setting: MarketSetting) -> bool:
     should let HOME_CURRENCY answer for currency purposes. The `chosen` mark is
     ignored: it decides the form questions, never currency or dates.
     """
-    return setting.model_copy(update={"chosen": False}) != MarketSetting()
+    return MARKET.is_set(setting)
 
 
 def home_market_currency(session: Session | None = None) -> str:

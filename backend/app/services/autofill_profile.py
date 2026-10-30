@@ -206,15 +206,17 @@ def _parse_stored(raw: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def holds_work_permit_answer(session: Session | None = None) -> bool:
-    """Whether the stored form answers hold any work-permit answer: an entry of
-    `work_auth_by_country`, or a legacy top-level `work_auth`, in which the typed reader keeps at least
-    one answer (a blank or unusable value is no answer). Reads the stored text as it is, peeked,
-    never seeded, and without the market (`market_settings.mark_answered_installs_chosen` asks)."""
+def holds_work_permit_answer(market: str, session: Session | None = None) -> bool:
+    """Whether the stored form answers hold a work-permit answer for `market`: its
+    `work_auth_by_country` entry, or a legacy top-level `work_auth` (the one set, read as the home's),
+    in which the typed reader keeps at least one answer (a blank or unusable value is no answer).
+    Reads the stored text as it is, peeked, never seeded, and without the market setting
+    (`market_settings.mark_answered_installs_chosen` asks, for the default market)."""
     stored = _parse_stored(text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session))
-    by_country = stored.get(BY_COUNTRY)
-    entries = [*(by_country.values() if isinstance(by_country, dict) else ()), stored.get(WORK_AUTH)]
-    return any(typed_work_auth(entry).model_dump(exclude_defaults=True) for entry in entries)
+    entry = work_auth_entries({BY_COUNTRY: stored.get(BY_COUNTRY)}, None).get(market)
+    return any(
+        typed_work_auth(raw).model_dump(exclude_defaults=True) for raw in (entry, stored.get(WORK_AUTH))
+    )
 
 
 def pin_legacy_work_auth(market: str, session: Session | None = None) -> None:
