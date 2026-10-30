@@ -53,7 +53,7 @@ const PERSONAL = {
   city: "London", state: "LDN", postal_code: "N1", country: "United Kingdom", linkedin: "x", github: "x", website: "x",
 };
 
-function render({ applyIn = ["DE", "UK", "US"], profile = { personal: PERSONAL }, consent = CONSENT } = {}) {
+function render({ applyIn = ["DE", "UK", "US"], served = applyIn, profile = { personal: PERSONAL }, consent = CONSENT } = {}) {
   return renderElement(withRouter(React.createElement(ProfileView, { focus: () => {} })), [
     [["setup-status"], STATUS],
     [["settings", "autofill"], { key: "autofill_profile", value: profile }],
@@ -62,7 +62,7 @@ function render({ applyIn = ["DE", "UK", "US"], profile = { personal: PERSONAL }
       key: "market", value: { home: "DE", apply_in: applyIn, market: "DE" }, home: "DE", apply_in: applyIn,
       markets: MARKETS, currency: "EUR", offers_eeo: false,
     }],
-    [["settings", "form-questions"], servedQuestions(MARKETS, applyIn)],
+    [["settings", "form-questions"], servedQuestions(MARKETS, served)],
     [["settings", "job-preferences"], { key: "job_preferences", value: PREFS }],
     [["settings", "persona"], { key: "persona", value: "I design calm tools." }],
     [["base-resumes", { includeArchived: false }], RESUMES],
@@ -122,6 +122,14 @@ test("work permits: one set per country you apply in, the visa status only for t
   for (const set of [de, uk, us]) assert.match(set, /Authorization expires on/);
   // Each control names its country, so an answer lands on that country's own entry.
   assert.match(uk, /id="af-permit-UK-sponsorship_now"/);
+});
+
+test("work permits ask only the countries the served set lists, never one it has no questions for", () => {
+  // The market setting already names the United States; the questions read for it have not arrived.
+  const html = render({ served: ["DE", "UK"] });
+  const sets = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*>.*?<\/svg>([^<]+)<\/legend>/g)];
+  assert.deepEqual(sets.map((m) => m[1]), ["Germany", "United Kingdom"]);
+  assert.doesNotMatch(html, /United States<\/span><span class="text-muted-foreground">/);
 });
 
 test("a country chip carries the square of a base resume made for it", () => {

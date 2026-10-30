@@ -9,7 +9,14 @@ import { Button } from "@/components/ui/button";
 import { LeadCard } from "@/components/ui/lead-card";
 import { CheckDraw, NextStep } from "@/components/visual";
 import { COMPANION_GUIDE_URL, CONNECTED_AGENTS_SETTINGS } from "@/lib/agent-links";
-import { answered, groupCount, permitEntry, permitQuestions, profileForEditing } from "@/lib/autofill-options";
+import {
+  answered,
+  groupCount,
+  permitAnswered,
+  permitEntry,
+  permitQuestions,
+  profileForEditing,
+} from "@/lib/autofill-options";
 import { SETUP_STEPS, type AutofillProfile, type FormQuestion, type StepsDone } from "@/lib/setup-flow";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { QuestionSet, SetupStatus } from "@/lib/types";
@@ -47,14 +54,17 @@ export function SetupDone({
   const personal = profile.personal as Record<string, unknown> | undefined;
   const name = typeof personal?.first_name === "string" ? personal.first_name.trim() : "";
   const open = SETUP_STEPS.flatMap((s, i) => (done[s.id] ? [] : [{ ...s, index: i }]));
+  const editing = profileForEditing(profile);
   const permitsLeft = questions.flatMap((q) => {
-    if (q.kind !== "permit") return [];
-    const entry = permitEntry(profileForEditing(profile), q.market);
+    if (q.kind !== "permit" || permitAnswered(editing, questionSet, q.market)) return [];
+    const entry = permitEntry(editing, q.market);
     const open = permitQuestions(questionSet, q.market).find((field) => !answered(field, entry[field.key]));
-    // The country's own control in Profile's Work permits tile (`af-permit-<market>-<key>`).
-    return open
-      ? [{ label: `Finish your work permit for ${q.label}`, href: anchorHref("/profile", `af-permit-${q.market}-${open.key}`) }]
-      : [];
+    // The country's own control in Profile's Work permits tile (`af-permit-<market>-<key>`); a country served no
+    // questions is still open, and its link opens the tile.
+    const href = open
+      ? anchorHref("/profile", `af-permit-${q.market}-${open.key}`)
+      : anchorHref("/profile", `af-permit-${q.market}`);
+    return [{ label: `Finish your work permit for ${q.label}`, href }];
   });
   const eeo = groupCount(profile, questionSet, "eeo");
   const inProfile = [

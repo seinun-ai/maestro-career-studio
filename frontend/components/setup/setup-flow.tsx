@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { loadErrorDetail } from "@/lib/error-text";
+import { permitMarkets } from "@/lib/autofill-options";
 import { isLoadFailure } from "@/lib/query-state";
 import {
   SETUP_STEPS,
@@ -124,7 +125,8 @@ export function SetupFlow() {
 function SetupScreens({ data }: { data: SetupData }) {
   const applyIn = data.market.apply_in;
   const done = stepsDone(data.status, applyIn);
-  const questions = formQuestions(applyIn, data.market.markets ?? []);
+  // The countries asked are the served set's, never a market list newer than it.
+  const questions = formQuestions(permitMarkets(data.questionSet), data.market.markets ?? []);
   // The step shown: 0 to 3, and the done screen after them.
   const [step, setStep] = useState(() => firstOpenStep(done));
   const [question, setQuestion] = useState(0);

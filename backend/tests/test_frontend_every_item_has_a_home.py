@@ -83,7 +83,7 @@ _PERSONAL = 'fields={groupFields(questionSet, "personal")}'
 _PREFERENCES = 'fields={groupFields(questionSet, "preferences")}'
 _EEO = 'fields={groupFields(questionSet, "eeo")}'
 _ELIGIBILITY = 'const fields = groupFields(questionSet, "eligibility");'
-_PERMITS = ("applyIn.map((key) => {", "permitFields(questionSet, key)")
+_PERMITS = ("permitMarkets(questionSet).map((key) => {", "permitFields(questionSet, key)")
 _APPLY_IN = ("frontend/components/profile/country-fields.tsx", "You apply in </span>")
 _ADD = "onClick={() => setEntries([...entries, newEntry()])}"
 

@@ -296,6 +296,8 @@ test("what Setup writes: each answer on its own country, never the one-set view"
   assert.equal(questionAnswered({ kind: "relocate" }, { preferences: { willing_to_relocate: "No" } }, SERVED), true);
   assert.equal(questionAnswered(formQuestions(["US"], MARKETS)[0], { work_auth_by_country: { US: PERMITS } }, SERVED), false,
     "the United States also needs its visa status");
+  // A country the set serves no questions for is open, never answered, whatever is stored for it.
+  assert.equal(questionAnswered({ kind: "permit", market: "FR", label: "France" }, { work_auth_by_country: { FR: PERMITS } }, SERVED), false);
 });
 
 test("the done screen: Add your first job filled, the agent app and the Companion beside it", () => {
@@ -335,6 +337,20 @@ test("the done screen: Add your first job filled, the agent app and the Companio
   );
   assert.match(left, /href="\/profile#af-permit-UK-authorized_now"[^>]*>Finish your work permit for United Kingdom/);
   assert.doesNotMatch(left, /Germany/);
+  // A country served no questions is still left to finish, and its link opens the Work permits tile.
+  const unserved = renderElement(
+    React.createElement(SetupDone, {
+      questionSet: SERVED,
+      status: PERMITTED,
+      done,
+      profile: { work_auth_by_country: { FR: PERMITS } },
+      questions: [{ kind: "permit", market: "FR", label: "France" }],
+      diversity: null,
+      headingRef: { current: null },
+      go: () => {},
+    }),
+  );
+  assert.match(unserved, /href="\/profile#af-permit-FR"[^>]*>Finish your work permit for France/);
   // Open required steps say so instead of "You're set".
   const early = renderElement(
     React.createElement(SetupDone, {

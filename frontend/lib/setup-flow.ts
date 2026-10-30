@@ -71,8 +71,8 @@ export function formQuestions(applyIn: readonly string[], markets: readonly Mark
 export type StepsDone = Record<SetupStepId, boolean>;
 
 /** Each step, done from the data it writes: a key, a resume in career history, job preferences, and every
- *  country's work-permit answers, each in its own words (setup status counts them per country, the visa
- *  status where the vocabulary is `us_visa`). */
+ *  country's work-permit answers (setup status counts each country's required questions from the catalog,
+ *  and a country it has no count for is not done). */
 export function stepsDone(status: SetupStatus, applyIn: readonly string[]): StepsDone {
   const counted = status.autofill.work_auth_by_country;
   return {

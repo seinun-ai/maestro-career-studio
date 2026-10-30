@@ -25,6 +25,12 @@ export function groupFields(questions: QuestionSet, key: string): FieldDef[] {
 
 // ------------------------------------------------------------------ Work permits, per country
 
+/** The countries whose work permit is asked: the served set's own keys, in the order you apply in (the server
+ *  builds them that way). Never the market setting's list, which can change before the set is read again. */
+export function permitMarkets(questions: QuestionSet): string[] {
+  return Object.keys(questions.permits);
+}
+
 /** One country's work-permit fields, in its own words: its required questions, then when the permit runs out
  *  (optional). Served per market you apply in ("UK", never "GB"); any other market has none, never another
  *  country's. */
@@ -296,6 +302,13 @@ export function permitCount(profile: Profile, questions: QuestionSet, market: st
   };
 }
 
+/** Whether every required work-permit answer of one country is given. A country the set serves no questions
+ *  for is open, never answered: a knockout answer is never taken as given. */
+export function permitAnswered(profile: Profile, questions: QuestionSet, market: string): boolean {
+  const count = permitCount(profile, questions, market);
+  return count.answerable > 0 && count.answered === count.answerable;
+}
+
 /** The profile with one answer set in a group (undefined removes it). A field shown only for one answer
  *  goes with that answer: a self-description must not stay stored under "Female", unseen. */
 export function withField(
@@ -370,18 +383,14 @@ export function missingKey(item: MissingAnswer): string {
 }
 
 /**
- * Every required answer still missing, in the order Next up asks: each country's work permit first, in the
- * order you apply in (the knockout answers, never guessed), then contact, then start and pay, then the
- * diversity questions where a country you apply in has a checked set (`offers_eeo`). The fields are the ones
- * setup readiness counts, as served for where you live, so an empty list is a full ring.
+ * Every required answer still missing, in the order Next up asks: each served country's work permit first, in
+ * the order you apply in (`permitMarkets`; the knockout answers, never guessed), then contact, then start and
+ * pay, then the diversity questions where a country you apply in has a checked set (`offers_eeo`). The fields
+ * are the ones setup readiness counts, as served for where you live, so an empty list is a full ring.
  */
-export function missingAnswers(
-  profile: Profile,
-  questions: QuestionSet,
-  applyIn: readonly string[],
-): MissingAnswer[] {
+export function missingAnswers(profile: Profile, questions: QuestionSet): MissingAnswer[] {
   const out: MissingAnswer[] = [];
-  for (const market of applyIn) {
+  for (const market of permitMarkets(questions)) {
     const entry = permitEntry(profile, market);
     for (const field of permitQuestions(questions, market)) {
       if (!answered(field, entry[field.key])) out.push({ kind: "permit", market, field });

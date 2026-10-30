@@ -98,7 +98,8 @@ def test_each_vocabulary_asks_the_three_keys_and_only_us_visa_asks_the_status():
 def test_the_work_permits_tile_asks_one_set_per_country_in_its_own_words():
     """The words come from the served set (data, per market), never decided here."""
     tile = _src("components/profile/work-permits.tsx")
-    assert "applyIn.map((key) => {" in tile
+    # One set per country the served set lists (in apply-in order), never a newer market list's country.
+    assert "permitMarkets(questionSet).map((key) => {" in tile
     assert "permitFields(questionSet, key)" in tile
     # Each country's answers are its own entry, keyed by market ("UK", not "GB").
     assert "withPermit(current, key, fieldKey, next)" in tile
@@ -225,7 +226,7 @@ def test_the_header_counts_only_what_setup_status_says():
 
 def test_next_up_asks_the_first_missing_answer_in_place_and_never_guesses():
     nxt = _src("components/profile/next-up.tsx")
-    assert "const missing = missingAnswers(profile, questionSet, market.apply_in);" in nxt
+    assert "const missing = missingAnswers(profile, questionSet);" in nxt
     assert "Never guessed for you" in nxt
     assert "Work-permit and diversity answers only ever come from you." in nxt
     # Diversity is answered in its fold, beside its consent (D10): Next up only opens it.

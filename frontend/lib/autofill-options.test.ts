@@ -10,8 +10,10 @@ import {
   missingAnswers,
   missingKey,
   permitCount,
+  permitAnswered,
   permitEntry,
   permitFields,
+  permitMarkets,
   permitQuestions,
   profileForEditing,
   withField,
@@ -123,6 +125,28 @@ test("each country is asked in its own words, as served", () => {
   assert.equal(permitQuestions(ALL, "US")[0], PERMITS.US[0], "the served field, passed through");
 });
 
+test("the countries asked are the served set's own, in its order", () => {
+  assert.deepEqual(permitMarkets(servedFor(["DE", "US"])), ["DE", "US"]);
+  assert.deepEqual(permitMarkets(servedFor(["UK"])), ["UK"]);
+});
+
+test("a country the set serves no questions for is open, never answered, wherever it is asked", () => {
+  const set = servedFor(["US"]);
+  assert.equal(permitAnswered({}, set, "UK"), false);
+  // Not even with answers stored: without its questions nothing says they are the ones it asks.
+  const stored = { work_auth_by_country: { UK: { authorized_now: true, sponsorship_now: false, sponsorship_future: false } } };
+  assert.equal(permitAnswered(stored, set, "UK"), false);
+  assert.equal(permitAnswered({ work_auth_by_country: { UK: {} } }, { ...set, permits: { ...set.permits, UK: [] } }, "UK"), false);
+  // A served country with every answer given is answered; one still blank is not.
+  const us = { work_auth_by_country: { US: { status: "citizen", authorized_now: true, sponsorship_now: false, sponsorship_future: false } } };
+  assert.equal(permitAnswered(us, set, "US"), true);
+  assert.equal(permitAnswered({}, set, "US"), false);
+  // Next up asks only what is served, and never skips the served country as answered.
+  const missing = missingAnswers({}, set).map(missingKey);
+  assert.equal(missing.some((key) => key.startsWith("permit:UK:")), false);
+  assert.deepEqual(missing.slice(0, 4), ["permit:US:status", "permit:US:authorized_now", "permit:US:sponsorship_now", "permit:US:sponsorship_future"]);
+});
+
 test("the expiry date ends every country's fields and counts toward nothing", () => {
   for (const market of ["US", "UK", "DE"]) {
     assert.equal(permitFields(ALL, market).at(-1), EXPIRES);
@@ -212,7 +236,7 @@ test("next up asks each country's permit first, then contact, then start and pay
   };
   // The set served for those countries: Germany alone has no checked diversity set.
   const keysOf = (profile: Parameters<typeof missingAnswers>[0], applyIn: string[]) =>
-    missingAnswers(profile, servedFor(applyIn, { offersEeo: applyIn.includes("US") }), applyIn).map(missingKey);
+    missingAnswers(profile, servedFor(applyIn, { offersEeo: applyIn.includes("US") })).map(missingKey);
   assert.deepEqual(keysOf(full, ["DE", "US"]), [
     "permit:DE:authorized_now", "permit:DE:sponsorship_now", "permit:DE:sponsorship_future",
     "permit:US:status", "permit:US:authorized_now", "permit:US:sponsorship_now", "permit:US:sponsorship_future",
@@ -246,9 +270,9 @@ test("contact counts the state only where it is served as required", () => {
 
 test("next up asks the state where it is required, never where it is served optional", () => {
   const missing = (state: FieldDef) =>
-    missingAnswers({ personal: { first_name: "Sam" } }, servedFor(["DE"], { state }), ["DE"]).map(missingKey);
+    missingAnswers({ personal: { first_name: "Sam" } }, servedFor(["DE"], { state })).map(missingKey);
   assert.equal(missing(NO_STATE).includes("personal:state"), false);
   assert.equal(missing(STATE).includes("personal:state"), true);
-  const province = missingAnswers({}, servedFor(["DE"], { state: PROVINCE }), ["DE"]).find((m) => missingKey(m) === "personal:state");
+  const province = missingAnswers({}, servedFor(["DE"], { state: PROVINCE })).find((m) => missingKey(m) === "personal:state");
   assert.equal(province?.kind === "field" && province.field.label, "Province");
 });

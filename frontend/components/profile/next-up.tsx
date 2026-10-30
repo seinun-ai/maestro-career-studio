@@ -62,7 +62,7 @@ export function NextUp({
   const controlId = useId();
 
   const markets = market.markets ?? [];
-  const missing = missingAnswers(profile, questionSet, market.apply_in);
+  const missing = missingAnswers(profile, questionSet);
   const open = missing.filter((item) => !skipped.includes(missingKey(item)));
   const current = held ?? open[0] ?? null;
   const currentKey = current ? missingKey(current) : null;

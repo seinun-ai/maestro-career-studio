@@ -10,9 +10,11 @@ import { GROUP_HEADING } from "@/components/settings/setting-layout";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import {
   booleanAnswer,
+  permitAnswered,
   permitCount,
   permitEntry,
   permitFields,
+  permitMarkets,
   withPermit,
 } from "@/lib/autofill-options";
 import type { MarketOption, MarketSettingResponse, QuestionSet } from "@/lib/types";
@@ -28,33 +30,32 @@ function permitWords(entry: Record<string, unknown>, answered: number, answerabl
   return now === true ? "can work now" : now === false ? "can't work there now" : "answered";
 }
 
-/** Work permits: one set per country you apply in, each in that country's own words (as served). */
+/** Work permits: one set per country you apply in, as the served set lists them, each in that country's own
+ *  words. */
 export function useWorkPermitsTile(market: MarketSettingResponse, questionSet: QuestionSet): TileView {
   const { profile } = useAutofillProfile();
   const byKey = new Map((market.markets ?? []).map((m) => [m.key, m]));
-  const rows = market.apply_in.map((key) => {
+  const rows = permitMarkets(questionSet).map((key) => {
     const count = permitCount(profile, questionSet, key);
-    return { key, label: byKey.get(key)?.label ?? key, count, entry: permitEntry(profile, key) };
+    const done = permitAnswered(profile, questionSet, key);
+    return { key, label: byKey.get(key)?.label ?? key, count, done, entry: permitEntry(profile, key) };
   });
-  const open = rows.some((row) => row.count.answered < row.count.answerable);
+  const open = rows.some((row) => !row.done);
   return {
     state: open ? { kind: "needs" } : { kind: "ready" },
     summary: (
       <span className="flex flex-col gap-1">
-        {rows.map((row) => {
-          const done = row.count.answered === row.count.answerable;
-          return (
-            <span key={row.key} className="flex items-center gap-1.5 text-foreground">
-              {done ? (
-                <CONCEPT_ICONS.done aria-hidden="true" className="size-3.5 shrink-0 text-success" />
-              ) : (
-                <span aria-hidden="true" className="size-3.5 shrink-0 rounded-full border-[1.5px] border-attention" />
-              )}
-              <span className="min-w-0 flex-1 truncate">{row.label}</span>
-              <span className="text-muted-foreground">{permitWords(row.entry, row.count.answered, row.count.answerable)}</span>
-            </span>
-          );
-        })}
+        {rows.map((row) => (
+          <span key={row.key} className="flex items-center gap-1.5 text-foreground">
+            {row.done ? (
+              <CONCEPT_ICONS.done aria-hidden="true" className="size-3.5 shrink-0 text-success" />
+            ) : (
+              <span aria-hidden="true" className="size-3.5 shrink-0 rounded-full border-[1.5px] border-attention" />
+            )}
+            <span className="min-w-0 flex-1 truncate">{row.label}</span>
+            <span className="text-muted-foreground">{permitWords(row.entry, row.count.answered, row.count.answerable)}</span>
+          </span>
+        ))}
       </span>
     ),
     note: "Never guessed for you",
@@ -71,22 +72,14 @@ function WorkPermitsCard({ market, questionSet }: { market: MarketSettingRespons
       errorTitle="Couldn't load your form answers."
       query={query}
     >
-      {() => <WorkPermitsEditor applyIn={market.apply_in} markets={market.markets ?? []} questionSet={questionSet} />}
+      {() => <WorkPermitsEditor markets={market.markets ?? []} questionSet={questionSet} />}
     </TileCard>
   );
 }
 
-/** One fieldset per country you apply in, named by the country; each answer is that country's own entry
- *  in `work_auth_by_country`, keyed by market ("UK", not the ISO "GB"). */
-function WorkPermitsEditor({
-  applyIn,
-  markets,
-  questionSet,
-}: {
-  applyIn: string[];
-  markets: MarketOption[];
-  questionSet: QuestionSet;
-}) {
+/** One fieldset per served country, named by the country; each answer is that country's own entry in
+ *  `work_auth_by_country`, keyed by market ("UK", not the ISO "GB"). */
+function WorkPermitsEditor({ markets, questionSet }: { markets: MarketOption[]; questionSet: QuestionSet }) {
   const { profile, update, saveState } = useAutofillProfile();
   return (
     // Groups are divided by their headings and a wide gap, never by rules. Each fieldset stays in block
@@ -95,7 +88,7 @@ function WorkPermitsEditor({
       <SettingCardAction>
         <AutosaveStatus {...saveState(SURFACE)} />
       </SettingCardAction>
-      {applyIn.map((key) => {
+      {permitMarkets(questionSet).map((key) => {
         const label = markets.find((m) => m.key === key)?.label ?? key;
         return (
           <fieldset key={key} className="space-y-4">

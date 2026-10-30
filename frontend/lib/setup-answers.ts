@@ -12,7 +12,7 @@ import {
   groupCount,
   groupValues,
   isBlank,
-  permitCount,
+  permitAnswered,
   withField,
   withPermit,
   type Profile,
@@ -59,10 +59,8 @@ export function withDiversityDeclined(profile: Profile, questions: QuestionSet):
  *  (round means a state, so a dot never says done for a question you left). */
 export function questionAnswered(question: FormQuestion, profile: Profile, questions: QuestionSet): boolean {
   switch (question.kind) {
-    case "permit": {
-      const count = permitCount(profile, questions, question.market);
-      return count.answered === count.answerable;
-    }
+    case "permit":
+      return permitAnswered(profile, questions, question.market);
     case "notice":
       return !isBlank(groupValues(profile, "preferences").notice_period);
     case "relocate":
