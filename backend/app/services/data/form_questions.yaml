@@ -16,8 +16,8 @@
 # than guess at a name's grammar.
 #
 # The golden test (backend/tests/test_form_questions.py) pins the resolved set
-# to the hand-written set it replaced (tests/fixtures/form_questions_today.json),
-# for every market.
+# to the hand-written set it replaced
+# (tests/fixtures/form_questions_today.json), for every market.
 #
 # Quote "yes" and "no" (YAML 1.1 reads them as booleans), and a label that ends
 # in "?" inside {braces} (there a "?" before "}" or "," is syntax). Every yes/no
@@ -37,7 +37,8 @@ groups:
       - {key: state, label: State, byHome: true}
       - {key: postal_code, label: Postal code}
       - {key: country, label: Country}
-      # Optional for readiness: many fields of work and many countries use none of the three links.
+      # Optional for readiness: many fields of work and many countries use
+      # none of the three links.
       - {key: linkedin, label: LinkedIn profile link, optional: true}
       - {key: github, label: GitHub link, optional: true}
       - {key: website, label: Website, optional: true}
@@ -49,10 +50,12 @@ groups:
         label: Are you a veteran?
         staleHint: "Answer again: this question changed."
         type: select
-        # One Yes/No. A "No" also answers a form's "not a protected veteran" option; a "Yes" alone never
-        # says which protected class applies, so the Companion leaves that list to you. The backend
-        # reads the old stored `veteran` as yes; the old `not_veteran` ("not a protected veteran")
-        # is no answer to this question, so it is asked again (staleHint).
+        # One Yes/No. A "No" also answers a form's "not a protected veteran"
+        # option; a "Yes" alone never says which protected class applies, so
+        # the Companion leaves that list to you. The backend reads the old
+        # stored `veteran` as yes; the old `not_veteran` ("not a protected
+        # veteran") is no answer to this question, so it is asked again
+        # (staleHint).
         options:
           - {value: "no", label: "No, I am not a veteran"}
           - {value: "yes", label: "Yes, I am a veteran"}
@@ -137,7 +140,9 @@ groups:
     title: Preferences
     fields:
       - {key: desired_salary, label: Desired salary}
-      - {key: notice_period, label: Notice period, hint: How long before you can start.}
+      - key: notice_period
+        label: Notice period
+        hint: How long before you can start.
       - {key: earliest_start_date, label: Earliest start date}
       - key: willing_to_relocate
         label: Willing to relocate?

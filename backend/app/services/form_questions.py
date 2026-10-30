@@ -1,8 +1,8 @@
 """The form-question catalog (data/form_questions.yaml) and the set resolved for one user.
 
 Domain data, like markets.yaml: the questions Profile, Setup and setup readiness ask, in the words
-they ask them. Loaded once and validated; a malformed file fails at import in tests, not at a
-user's first Profile visit.
+they ask them. Loaded on first use, then cached, and validated; a malformed file fails that first
+load, which a test makes (tests/test_form_questions.py), not a user's first Profile visit.
 """
 
 from functools import cache
@@ -31,8 +31,10 @@ def _for_home(field: Field, home: str) -> Field:
 
 
 def resolve(*, home: str, apply_in: list[str]) -> QuestionSet:
-    """The questions for someone who lives in `home` and applies in `apply_in` (market keys, as the
-    market setting stores them; empty reads as `[home]`, the setting's own rule)."""
+    """The questions for someone who lives in `home` and applies in `apply_in`. Callers pass a
+    validated `MarketSetting`'s `home` and `apply_in` (upper-cased market keys); an unknown key
+    falls back to the default market's (US) wording, as `markets.get` does. Empty `apply_in` reads
+    as `[home]`, the setting's own rule."""
     cat = catalog()
     apply_in = apply_in or [home]
     groups = [

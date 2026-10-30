@@ -7,13 +7,20 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 
+# Frozen: `services/form_questions.catalog()` is cached, and `resolve` hands its objects to
+# every caller.
+_CATALOG = ConfigDict(extra="forbid", frozen=True)
+
+
 class Option(BaseModel):
+    model_config = _CATALOG
+
     value: str
     label: str
 
 
 class Field(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = _CATALOG
 
     key: str
     label: str
@@ -29,7 +36,7 @@ class Field(BaseModel):
 
 
 class Group(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = _CATALOG
 
     key: str
     title: str
@@ -37,7 +44,7 @@ class Group(BaseModel):
 
 
 class Catalog(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = _CATALOG
 
     groups: list[Group]
     # Work-permit fields per `work_auth_vocab` (us_visa, uk, generic), expiry included.

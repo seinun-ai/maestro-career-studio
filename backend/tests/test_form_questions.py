@@ -7,8 +7,9 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from app.schemas.form_questions import Field, Group
+from app.schemas.form_questions import Field, Group, Option
 from app.services import form_questions, markets
 
 _TODAY = json.loads(
@@ -44,6 +45,15 @@ def test_every_select_offers_options():
     for field in fields:
         if field.type == "select":
             assert field.options, field.key
+
+
+def test_the_shared_catalog_cannot_be_changed_in_place():
+    """`resolve` hands every caller the cached catalog's own objects, so none may be edited."""
+    field = form_questions.catalog().groups[0].fields[0]
+    with pytest.raises(ValidationError):
+        field.label = "Changed"
+    with pytest.raises(ValidationError):
+        Option(value="yes", label="Yes", hint="not an option's")
 
 
 def test_every_market_has_permit_wording():
@@ -92,6 +102,19 @@ def test_every_market_gets_todays_permit_fields(market):
         Field.model_validate(f).model_dump(exclude_defaults=True) for f in _TODAY["permits"][vocab]
     ]
     assert [f.model_dump(exclude_defaults=True) for f in got.permits[market]] == want
+
+
+def _state_line(home: str) -> Field:
+    groups = form_questions.resolve(home=home, apply_in=[home]).groups
+    personal = next(g for g in groups if g.key == "personal")
+    return next(f for f in personal.fields if f.key == "state")
+
+
+def test_the_state_line_is_named_and_counted_by_where_you_live():
+    """A UK address names a county and needs none; a US one needs its state (markets.yaml)."""
+    uk, us = _state_line("UK"), _state_line("US")
+    assert (uk.label, uk.optional) == ("County", True)
+    assert (us.label, us.optional) == ("State", False)
 
 
 def test_permits_are_keyed_by_market_in_apply_in_order():
