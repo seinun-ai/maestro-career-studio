@@ -574,3 +574,25 @@ def test_a_setting_read_saves_back_as_it_was(db_session, tmp_path, client):
     read = client.get("/api/settings/autofill").json()["value"]
     assert autofill_country.COUNTRY_ANSWERED not in read
     assert client.put("/api/settings/autofill", json={"value": read}).status_code == 200
+
+
+def test_a_stored_view_marker_never_blocks_a_save(db_session, tmp_path, client):
+    """A hand-edited autofill.json holding a job view's keys: the read leaves them out, so the read the
+    Companion and Profile send back saves, an agent's merge saves, and the next save drops them."""
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "NL"]), db_session)
+    (tmp_path / "autofill.json").write_text(json.dumps({
+        "preferences": {"desired_salary": "150000"},
+        autofill_country.COUNTRY_ANSWERED: ["preferences.desired_salary"],
+        autofill_country.WORK_AUTH_COUNTRY: "Netherlands",
+    }))
+    read = client.get("/api/settings/autofill").json()["value"]
+    assert autofill_country.COUNTRY_ANSWERED not in read and autofill_country.WORK_AUTH_COUNTRY not in read
+    assert read["preferences"] == {"desired_salary": "150000"}
+
+    assert client.put("/api/settings/autofill", json={"value": read}).status_code == 200
+    _write(db_session, {**_stored(tmp_path), autofill_country.COUNTRY_ANSWERED: []})
+    patch = client.patch("/api/settings/autofill", json={"value": {"preferences": {"notice_period": "2 weeks"}}})
+    assert patch.status_code == 200
+    stored = _stored(tmp_path)
+    assert autofill_country.COUNTRY_ANSWERED not in stored and autofill_country.WORK_AUTH_COUNTRY not in stored
+    assert stored["preferences"] == {"desired_salary": "150000", "notice_period": "2 weeks"}

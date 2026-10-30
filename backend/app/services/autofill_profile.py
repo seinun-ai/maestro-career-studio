@@ -140,12 +140,14 @@ def _with_work_auth_by_country(data: dict[str, Any], home: str | None) -> dict[s
     """The read view: every market's answers under `work_auth_by_country`, `work_auth` as the home
     market's (absent when it has none), and `work_auth_market` naming the home whenever the profile
     holds any work-permit answers, so a client that adds or edits the one set says whose it is.
-    Country answers are served keyed by market as permits are ("in " is "IN")."""
+    Country answers are served keyed by market as permits are ("in " is "IN"). A view's own key found
+    in the stored text (`_VIEW_ONLY`, a hand edit) is not served: sent back, a job view's marker
+    would refuse every save (`job_view_refusal`)."""
     entries = work_auth_entries(data, home)
     country_answers = answers_entries(data)
     view = {
         k: v for k, v in data.items()
-        if k not in (WORK_AUTH, BY_COUNTRY, WORK_AUTH_MARKET, ANSWERS_BY_COUNTRY)
+        if k not in (WORK_AUTH, BY_COUNTRY, ANSWERS_BY_COUNTRY, *_VIEW_ONLY)
     }
     if country_answers:
         view[ANSWERS_BY_COUNTRY] = country_answers
