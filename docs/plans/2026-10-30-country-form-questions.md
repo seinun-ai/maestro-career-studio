@@ -696,15 +696,14 @@ files they touch; Task 3.13 runs everything.
 
 The planner's calls, made from the code. Each changes *how* the design is built, never its scope.
 
-1. **No country chosen asks no work-permit questions. PENDING THE OWNER'S YES.** The approved
-   design's generic set includes the three permit Yes/No questions, so this is a scope change.
+1. **No country chosen asks no work-permit questions. The owner said yes on 2026-10-30.** The
+   approved design's generic set included the three permit Yes/No questions, so this was a scope
+   change.
    - Why: a permit answer belongs to a country. Storing one under the default US is the US-shaped
      default this plan removes. Setup's Where step comes before its answers step, so anyone who
      goes through Setup has countries.
    - Who it touches: only an install with no stored market row, which never opened Profile or
      Setup. A seeded row from before the mark reads as chosen (Task 3.1).
-   - If the owner says no, Task 3.1 serves the generic permit wording for the home market when
-     unchosen, and nothing else in this phase changes.
 2. **No `learn_to` on `/context`.**
    - The Companion's pause row already finds a learned answer's place from its own field table
      (`extension/shared/profile-fields.js`, `profileFieldFor`).
