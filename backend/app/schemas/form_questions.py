@@ -1,10 +1,14 @@
 """The form-question catalog's shape (services/data/form_questions.yaml) and what
 GET /api/settings/autofill/questions serves. Names mirror the frontend's FieldDef, camelCase
-included, so the served JSON drops into today's components."""
+included, so the served JSON drops into today's components.
+
+Some attributes are the catalog's own, read by the backend and never served: declared with
+`exclude=True`, so no dump carries them (`pack`, `describe`, `policy`, `fills`, `noExpiry`)."""
 
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+from pydantic import Field as PydanticField
 
 
 # Frozen: `services/form_questions.catalog()` is cached, and `resolve` hands its objects to
@@ -17,6 +21,9 @@ class Option(BaseModel):
 
     value: str
     label: str
+    # A status whose right to work never runs out, so its expiry is not asked (Task 3.5). Catalog
+    # only.
+    noExpiry: bool = PydanticField(default=False, exclude=True)
 
 
 class Field(BaseModel):
@@ -33,6 +40,14 @@ class Field(BaseModel):
     when: tuple[str, str] | None = None
     # The address's state line: named and counted by where you live (markets.yaml).
     byHome: bool = False
+    # Catalog only, never served:
+    # - shown only while a country you apply in names this pack (markets.yaml `packs`; Task 3.5);
+    pack: str | None = PydanticField(default=None, exclude=True)
+    # - what the fill reads for this answer, and how strictly (Task 3.7); absent is today's rule;
+    describe: str | None = PydanticField(default=None, exclude=True)
+    policy: Literal["exact", "flag", "any"] | None = PydanticField(default=None, exclude=True)
+    # - a country answer's flat slot (`section.key`), which it fills on that country's jobs.
+    fills: str | None = PydanticField(default=None, exclude=True)
 
 
 class Group(BaseModel):
@@ -43,12 +58,37 @@ class Group(BaseModel):
     fields: list[Field]
 
 
+class CitizenshipRule(BaseModel):
+    """Citizens of these countries may work in these markets with no permit: the source says so."""
+
+    model_config = _CATALOG
+
+    citizens: str | list[str]  # a group's name, or ISO codes
+    markets: list[str]
+    status: str | None = None  # the market's status it settles, when not `citizen`
+    source: str
+
+
+class Citizenship(BaseModel):
+    model_config = _CATALOG
+
+    groups: dict[str, list[str]]
+    rules: list[CitizenshipRule]
+
+
 class Catalog(BaseModel):
     model_config = _CATALOG
 
     groups: list[Group]
-    # Work-permit fields per `work_auth_vocab` (us_visa, uk, generic), expiry included.
+    # Each market's immigration statuses, keyed by its `work_status` (us, ca, au, ae).
+    statuses: dict[str, list[Option]]
+    # Work-permit fields per `work_auth_vocab` (us_visa, uk, generic, ca, ae), expiry included.
     permits: dict[str, list[Field]]
+    # Country answers: asked per country you apply in, each filling its `fills` slot there.
+    answers: list[Field]
+    # Extra fields on each language you list (CEFR).
+    language_fields: list[Field]
+    citizenship: Citizenship
 
 
 class QuestionSet(BaseModel):

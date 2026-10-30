@@ -15,12 +15,32 @@
 # set is shown under its name, so the generic words say "this country" rather
 # than guess at a name's grammar.
 #
+# Country data (markets.yaml names a market's `packs`, `work_status` and
+# `work_auth_vocab`; every fact is cited from
+# docs/plans/2026-10-30-country-form-questions-sources.md, where "Sources n" is
+# change n in its "What the sources change in the design"):
+# - `pack:` on a field shows it only while a country you apply in names that
+#   pack (from Task 3.5 of docs/plans/2026-10-30-country-form-questions.md;
+#   until then the set ignores it);
+# - `statuses` is each country's immigration status list, by `work_status`; a
+#   status with `noExpiry` has no expiry to ask. A status never answers the
+#   yes/no questions (Sources 10);
+# - `answers` are asked once per country you apply in, and each fills its
+#   `fills` slot on that country's jobs only;
+# - `language_fields` are asked on each language you list;
+# - `citizenship` lists who may work where with no permit, each rule citing
+#   its source.
+# `pack`, `fills`, `noExpiry`, `describe` and `policy` are the catalog's own:
+# never served.
+#
 # The golden test (backend/tests/test_form_questions.py) pins the resolved set
 # to the hand-written set it replaced
-# (tests/fixtures/form_questions_today.json), for every market.
+# (tests/fixtures/form_questions_today.json), for every market whose wording it
+# holds (Canada's and the UAE's came later).
 #
-# Quote "yes" and "no" (YAML 1.1 reads them as booleans), and a label that ends
-# in "?" inside {braces} (there a "?" before "}" or "," is syntax). Every yes/no
+# Quote "yes" and "no" (YAML 1.1 reads them as booleans), and so the country
+# code "NO" (Norway); quote a label that ends in "?" or holds ", " or ": "
+# inside {braces} (there a "?" before "}" or "," is syntax). Every yes/no
 # question offers the one `&yes_no` list.
 
 groups:
@@ -111,6 +131,9 @@ groups:
       # differently on every one), and "No" is the true answer at almost every
       # employer. Where it is not, it has to be changed by hand, hence the
       # wording of the label.
+      #
+      # "18 or older" and the restrictive covenant are US screening questions
+      # (the `us_screening` pack).
       - key: over_18
         label: Are you 18 or older?
         type: select
@@ -119,6 +142,7 @@ groups:
           - {value: "yes", label: "Yes"}
           - {value: "no", label: "No"}
         optional: true
+        pack: us_screening
       - key: previously_employed_here
         label: Have you worked for the company you're applying to?
         type: select
@@ -135,6 +159,7 @@ groups:
         boolean: true
         options: *yes_no
         optional: true
+        pack: us_screening
 
   - key: preferences
     title: Preferences
@@ -151,6 +176,90 @@ groups:
         options: *yes_no
       - {key: how_heard, label: "How did you hear about the job?"}
 
+# Each country's immigration statuses, keyed by its `work_status`. Citizen
+# first: the own-country rule settles it (Task 3.4). The status says which
+# permit you hold; it never answers the yes/no questions, because many are
+# "yes, with a limit" (Sources 10). `noExpiry`: nothing runs out, so the
+# expiry is not asked (Sources 11).
+statuses:
+  # The US visa statuses (schemas/autofill_profile.py WorkAuthStatus).
+  us: &us_statuses
+    - {value: citizen, label: U.S. citizen, noExpiry: true}
+    - {value: permanent_resident, label: Permanent resident, noExpiry: true}
+    - {value: opt, label: F-1 OPT}
+    - {value: stem_opt, label: F-1 STEM OPT}
+    - {value: h1b, label: H-1B}
+    - {value: tn, label: TN}
+    - {value: other_visa, label: Other visa or status}
+    - {value: not_authorized, label: Not authorized to work in the U.S., noExpiry: true}
+  # Canada (Sources 6, 11; sources doc rows C1-C20, canada.ca and Justice Laws,
+  # read 2026-10-30). IEC Young Professionals and International Co-op are
+  # employer-specific permits (C15, C16).
+  ca:
+    # C1: Charter s.6(2)(b), https://laws-lois.justice.gc.ca/eng/const/page-12.html
+    - {value: citizen, label: Canadian citizen, noExpiry: true}
+    # C2: PRs "can live, work or study anywhere in Canada".
+    - {value: permanent_resident, label: Permanent resident, noExpiry: true}
+    # C3, C4: https://www.canada.ca/en/immigration-refugees-citizenship/services/work-canada/open-work-permit.html
+    - {value: open_work_permit, label: Open work permit}
+    # C10: an open permit, once per person.
+    - {value: pgwp, label: Post-graduation work permit}
+    # C15: an open permit.
+    - {value: iec_working_holiday, label: "International Experience Canada: Working Holiday"}
+    # C5, C6: one employer, occupation and place; another employer needs a new permit.
+    - {value: employer_specific, label: Employer-specific work permit}
+    # C12, C13: off-campus hours are capped in session (24 a week since 8 Nov
+    # 2024; it goes stale, so the label leaves the number out).
+    - {value: study_permit, label: Study permit}
+    # C18: runs until IRCC decides, not to a date.
+    - {value: maintained_status, label: Maintained status (you applied to extend before your permit expired), noExpiry: true}
+    # C19: only for the exempt activity.
+    - {value: permit_exempt, label: Allowed to work without a work permit}
+    # C20: IRPR 183(1)(b), https://laws-lois.justice.gc.ca/eng/regulations/SOR-2002-227/section-183.html
+    - {value: no_status, label: Visitor or no work authorization, noExpiry: true}
+    - {value: other, label: Other status}
+  # Australia (Sources 7, 11; sources doc rows A1-A12, Home Affairs, read
+  # 2026-10-30). Only citizens, permanent residents and New Zealand citizens on
+  # a subclass 444 visa have no work conditions (A1,
+  # https://immi.homeaffairs.gov.au/visas/working-in-australia/work-rights-and-exploitation/work-restrictions);
+  # there is no "full work rights" category (A11), so every other choice names
+  # its visa.
+  au:
+    - {value: citizen, label: Australian citizen, noExpiry: true}  # A1
+    - {value: permanent_resident, label: Australian permanent resident, noExpiry: true}  # A1
+    # A3: no expiry date; it ceases on leaving and is granted again on entry.
+    - {value: nz_citizen, label: "New Zealand citizen (Special Category visa, subclass 444)", noExpiry: true}
+    # A4-A6: replaced the TSS visa on 7 Dec 2024; work for the sponsor (or an
+    # associated entity) only, unless exempt.
+    - {value: skills_in_demand, label: Skills in Demand visa (subclass 482)}
+    - {value: temporary_graduate, label: Temporary Graduate visa (subclass 485)}  # A10
+    - {value: student, label: Student visa (subclass 500)}  # A7
+    - {value: working_holiday, label: Working Holiday (subclass 417) or Work and Holiday (subclass 462) visa}  # A8, A9
+    - {value: bridging, label: Bridging visa}  # A12
+    - {value: other_temporary, label: Other temporary visa}  # A1
+    - {value: visitor, label: Visitor visa or ETA}  # A2
+  # The UAE (Sources 8, 11; sources doc rows UAE 1-22: u.ae, ICP, Decree-Law
+  # 33/2021 and its Executive Regulation, read 2026-10-30; the MOHRE pages from
+  # March 2026 archive copies). Residence statuses: every private-sector hire,
+  # Emiratis included, needs the employer's MOHRE work permit (row 1,
+  # https://uaelegislation.gov.ae/en/legislations/1541 Art. 6). Freelance is a
+  # work permit, not a residence, so it is no choice (row 15); Golden and Green
+  # are two (row 22).
+  ae:
+    - {value: citizen, label: UAE national (Emirati), noExpiry: true}  # row 4
+    - {value: gcc_national, label: GCC national, noExpiry: true}  # row 5
+    # Row 6: tied to the sponsoring employer.
+    - {value: work_visa, label: Work visa (employment residence visa)}
+    # Rows 9, 10: follows the family sponsor's residence.
+    - {value: family_visa, label: Residence visa on family sponsorship}
+    - {value: golden_visa, label: Golden visa}  # rows 11, 12: 5 or 10 years
+    - {value: green_visa, label: Green visa}  # rows 13, 14: 5 years
+    - {value: student_visa, label: Student visa}  # row 19
+    - {value: virtual_work_visa, label: "Virtual work visa: working for a company outside the UAE"}  # row 20
+    - {value: other_residence, label: "Other residence visa (investor, retired, Blue visa, other)"}  # row 21
+    - {value: visit_visa, label: Visit visa (including the jobseeker visit visa)}  # rows 16, 17
+    - {value: no_visa, label: No UAE visa (outside the UAE), noExpiry: true}  # row 18
+
 # The knockout answers each country asks, in its own words, then when the permit
 # runs out (optional).
 permits:
@@ -158,16 +267,8 @@ permits:
     - key: status
       label: Work authorization status
       type: select
-      # The US visa statuses (schemas/autofill_profile.py WorkAuthStatus).
-      options:
-        - {value: citizen, label: U.S. citizen}
-        - {value: permanent_resident, label: Permanent resident}
-        - {value: opt, label: F-1 OPT}
-        - {value: stem_opt, label: F-1 STEM OPT}
-        - {value: h1b, label: H-1B}
-        - {value: tn, label: TN}
-        - {value: other_visa, label: Other visa or status}
-        - {value: not_authorized, label: Not authorized to work in the U.S.}
+      # Until Task 3.5 builds the status question per market from `statuses`.
+      options: *us_statuses
     - key: authorized_now
       label: Authorized to work in the U.S. now?
       type: select
@@ -223,3 +324,143 @@ permits:
       boolean: true
       options: *yes_no
     - *expires_on
+  # Canada: the generic words. IRCC never says "sponsor" for a work permit: the
+  # employer's act is a positive LMIA or an LMIA-exempt offer of employment, so
+  # both sponsorship questions say so (Sources 12; sources doc rows C3-C9,
+  # https://www.canada.ca/en/immigration-refugees-citizenship/services/work-canada/permit/temporary/need-permit.html).
+  ca:
+    - key: authorized_now
+      label: Can you work in this country now?
+      type: select
+      boolean: true
+      options: *yes_no
+    - key: sponsorship_now
+      label: Do you need visa sponsorship now?
+      hint: &ca_sponsorship "In Canada this means an employer-specific work permit: an LMIA or an LMIA-exempt offer of employment."
+      type: select
+      boolean: true
+      options: *yes_no
+    - key: sponsorship_future
+      label: Will you need visa sponsorship later?
+      hint: *ca_sponsorship
+      type: select
+      boolean: true
+      options: *yes_no
+    - *expires_on
+  # The UAE: every private-sector hire, Emiratis included, needs a MOHRE work
+  # permit that the employer files, so "authorized" here means you can take the
+  # job without the employer sponsoring a residence visa (Sources 9; sources doc
+  # rows UAE 1, 4-6: Decree-Law 33/2021 Art. 6(1) and u.ae's work permits page,
+  # https://u.ae/en/information-and-services/jobs/Sector-of-employment/employment-in-the-private-sector/work-permits).
+  ae:
+    - key: authorized_now
+      label: Can you work in the UAE without an employer sponsoring your residence visa?
+      type: select
+      boolean: true
+      options: *yes_no
+    - key: sponsorship_now
+      label: Do you need an employer to sponsor your UAE residence visa now?
+      type: select
+      boolean: true
+      options: *yes_no
+    - key: sponsorship_future
+      label: Will you need an employer to sponsor your UAE residence visa later?
+      type: select
+      boolean: true
+      options: *yes_no
+    - *expires_on
+
+# Country answers: asked once per country you apply in (each country's own,
+# never another's), and each fills its `fills` slot (`section.key`) on that
+# country's jobs only. All optional, so no existing count drops (Decisions 3
+# and 6 of docs/plans/2026-10-30-country-form-questions.md).
+answers:
+  # Labelled per market from markets.yaml `pay` (Task 3.5). The generic desired
+  # salary stays the answer readiness counts (Decision 3).
+  - key: expected_pay
+    label: Expected salary
+    optional: true
+    fills: preferences.desired_salary
+  # Sources 18, 19: an annual figure in rupees, and boards let you leave it out
+  # (sources doc rows India 1a, 1b, 1f). Current pay reaches Indian forms only:
+  # the EU Pay Transparency Directive bars asking it (Europe 29).
+  - key: current_ctc
+    label: Current CTC (₹ per year)
+    hint: Leave it empty if you'd rather not share it.
+    optional: true
+    pack: india_basics
+    fills: preferences.current_ctc
+  # The gulf pack's questions (the approved design,
+  # docs/plans/2026-10-30-country-form-questions-design.md).
+  - key: in_country_now
+    label: Are you in the UAE now?
+    type: select
+    boolean: true
+    options: *yes_no
+    optional: true
+    pack: gulf
+    fills: eligibility.in_country_now
+  - key: uae_driving_licence
+    label: Do you hold a UAE driving licence?
+    type: select
+    boolean: true
+    options: *yes_no
+    optional: true
+    pack: gulf
+    fills: eligibility.uae_driving_licence
+
+# Asked on each language you list, while a country you apply in names the pack.
+language_fields:
+  # Sources 23: the Council of Europe's six levels in three groups (sources doc
+  # rows Europe 14, 15,
+  # https://www.coe.int/en/web/common-european-framework-reference-languages/table-1-cefr-3.3-common-reference-levels-global-scale).
+  # "Native speaker" stays its own answer beside the level: C2 is not native
+  # (Sources 23).
+  - key: cefr
+    label: Level (CEFR)
+    type: select
+    optional: true
+    pack: cefr
+    options:
+      - {value: A1, label: A1 · Basic user}
+      - {value: A2, label: A2 · Basic user}
+      - {value: B1, label: B1 · Independent user}
+      - {value: B2, label: B2 · Independent user}
+      - {value: C1, label: C1 · Proficient user}
+      - {value: C2, label: C2 · Proficient user}
+
+# Who may work where with no permit, by citizenship (Task 3.4 derives the
+# yes/no answers from these: authorized now, no sponsorship now or later; an
+# explicit answer always wins). A citizen in their own country is the implicit
+# first rule, with status `citizen`. Left out on purpose, because citizenship
+# alone does not settle them (Sources 4; sources doc rows Europe 10-12): a
+# British citizen in Germany or the Netherlands (the Withdrawal Agreement turns
+# on residence before 2021) and an EU, EEA or Swiss citizen in the UK.
+citizenship:
+  groups:
+    # The EU 27, the EEA's Iceland, Liechtenstein and Norway, and Switzerland
+    # (the EU-Swiss free movement agreement, in force since 1 Jun 2002); no
+    # transitional limits in force (Sources 1; sources doc rows Europe 1-7).
+    eu_eea_ch: [AT, BE, BG, HR, CY, CZ, DK, EE, FI, FR, DE, GR, HU, IE, IT, LV, LT, LU, MT,
+                NL, PL, PT, RO, SK, SI, ES, SE, IS, LI, "NO", CH]
+    # The other Gulf Cooperation Council states (Sources 5; UAE row 5).
+    gcc: [BH, KW, OM, QA, SA]
+  rules:
+    # Also the Federal Foreign Office, the IND and Ireland's Department of
+    # Enterprise for each country (sources doc rows Europe 4-6).
+    - citizens: eu_eea_ch
+      markets: [DE, NL, IE]
+      source: "https://europa.eu/youreurope/citizens/work/work-abroad/work-permits/index_en.htm"
+    # "British citizen" only, the memorandum's words (paragraph 8; Sources 2).
+    - citizens: [GB]
+      markets: [IE]
+      source: "https://assets.publishing.service.gov.uk/media/5cd29d56ed915d50b5a206d1/CTA-MoU-UK.pdf"
+    # Immigration Act 1971 s.3ZA (Sources 3).
+    - citizens: [IE]
+      markets: [UK]
+      source: "https://www.legislation.gov.uk/ukpga/1971/77/section/3ZA"
+    # "Treated as UAE nationals in all employment procedures", no residence visa.
+    - citizens: gcc
+      markets: [AE]
+      status: gcc_national
+      source: "https://u.ae/en/information-and-services/jobs/Sector-of-employment/employment-in-the-private-sector/gcc-nationals-working-in-the-private-sector"

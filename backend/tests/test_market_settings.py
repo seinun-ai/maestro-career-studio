@@ -28,17 +28,17 @@ def settings_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
-SUPPORTED = ["US", "UK", "CA", "AU", "IE", "IN", "DE", "NL"]
+SUPPORTED = ["US", "UK", "CA", "AU", "IE", "IN", "DE", "NL", "AE"]
 
 
-def test_supported_markets_are_the_declared_eight():
+def test_supported_markets_are_the_declared_nine():
     assert markets.keys() == SUPPORTED
 
 
 @pytest.mark.parametrize(
     "market,currency",
     [("US", "USD"), ("UK", "GBP"), ("CA", "CAD"), ("AU", "AUD"), ("IE", "EUR"), ("IN", "INR"),
-     ("DE", "EUR"), ("NL", "EUR")],
+     ("DE", "EUR"), ("NL", "EUR"), ("AE", "AED")],
 )
 def test_each_market_has_its_own_currency(market, currency):
     assert markets.currency_for(market) == currency
@@ -58,12 +58,13 @@ def test_germany_and_the_netherlands_are_data_with_no_diversity_set(market, labe
 @pytest.mark.parametrize(
     "market,asks,word",
     [("US", True, "State"), ("CA", True, "Province"), ("AU", True, "State"), ("IN", True, "State"),
-     ("UK", False, "County"), ("IE", False, "County"), ("DE", False, "State"), ("NL", False, "Province")],
+     ("UK", False, "County"), ("IE", False, "County"), ("DE", False, "State"), ("NL", False, "Province"),
+     ("AE", True, "Emirate")],
 )
 def test_each_market_says_whether_its_addresses_need_a_state_and_its_word_for_one(market, asks, word):
     """`asks_state` follows the address formats a form there requires (a state or province in the US,
-    Canada, Australia and India; Ireland writes a county but requires none). `state_label` is the
-    country's own word, which the Contact field shows."""
+    Canada, Australia and India, an emirate in the UAE; Ireland writes a county but requires none).
+    `state_label` is the country's own word, which the Contact field shows."""
     entry = markets.get(market)
     assert (entry["asks_state"], entry["state_label"]) == (asks, word)
 
@@ -73,7 +74,68 @@ def test_every_market_declares_its_state_line_rather_than_taking_a_default():
     assert raw.count("asks_state:") == raw.count("state_label:") == len(SUPPORTED)
 
 
-@pytest.mark.parametrize("market", ["CA", "AU", "IE", "IN", "DE", "NL"])
+def test_every_market_declares_its_form_questions_rather_than_taking_a_default():
+    """Packs, status list, pay wording and the postcode line are each market's own call (the
+    loader's defaults only keep a hand-edited entry loading)."""
+    raw = markets._DATA_FILE.read_text(encoding="utf-8")
+    for name in ("packs:", "work_status:", "asks_postcode:", "pay:"):
+        assert raw.count(f"\n    {name}") == len(SUPPORTED), name
+
+
+def test_an_entry_missing_the_form_question_keys_reads_as_todays_rule(tmp_path, monkeypatch):
+    data = tmp_path / "markets.yaml"
+    data.write_text("markets:\n  - {key: US, label: United States, currency: USD}\n", encoding="utf-8")
+    monkeypatch.setattr(markets, "_DATA_FILE", data)
+    markets._load.cache_clear()
+    try:
+        us = markets.get("US")
+        assert (us["packs"], us["work_status"], us["asks_postcode"]) == ([], None, True)
+        assert us["pay"] == {"label": "Expected salary", "hint": None}
+    finally:
+        markets._load.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "market,packs,status,vocab",
+    [("US", ["us_screening"], "us", "us_visa"), ("UK", [], None, "uk"), ("CA", [], "ca", "ca"),
+     ("AU", [], "au", "generic"), ("IE", [], None, "generic"), ("IN", ["india_basics"], None, "generic"),
+     ("DE", ["cefr"], None, "generic"), ("NL", ["cefr"], None, "generic"), ("AE", ["gulf"], "ae", "ae")],
+)
+def test_each_market_names_its_packs_status_list_and_permit_wording(market, packs, status, vocab):
+    entry = markets.get(market)
+    assert (entry["packs"], entry["work_status"], entry["work_auth_vocab"]) == (packs, status, vocab)
+
+
+@pytest.mark.parametrize(
+    "market,label",
+    [("US", "Expected salary (USD)"), ("UK", "Expected salary (GBP)"), ("CA", "Expected salary (CAD)"),
+     ("AU", "Expected base salary, excluding super (AUD per year)"), ("IE", "Expected salary (EUR)"),
+     ("IN", "Expected CTC (₹ per year)"), ("DE", "Expected gross annual salary (EUR)"),
+     ("NL", "Expected gross monthly salary, excluding holiday allowance (EUR)"),
+     ("AE", "Expected total monthly salary (AED)")],
+)
+def test_each_market_words_expected_pay_its_own_way(market, label):
+    """Where a country's pay terms were checked (AU, IN, DE, NL, AE: Sources 14-18) the label says
+    the basis and period; elsewhere it names only the currency."""
+    assert markets.get(market)["pay"]["label"] == label
+
+
+def test_only_the_uae_has_no_postcode_line():
+    """Google's address data for AE has no postcode (Sources 13); every other market keeps today's
+    counted postal code."""
+    assert [k for k in markets.keys() if not markets.get(k)["asks_postcode"]] == ["AE"]
+
+
+def test_the_uae_market():
+    ae = markets.get("AE")
+    assert ae["key"] == "AE" and ae["currency"] == "AED"
+    assert ae["asks_state"] is True and ae["state_label"] == "Emirate"
+    assert ae["asks_postcode"] is False and ae["eeo_module"] is None
+    assert ae["pay"]["hint"] == "Basic pay plus allowances, per month."
+    assert markets.country_code("AE") == "AE" and markets.for_country("AE") == "AE"
+
+
+@pytest.mark.parametrize("market", ["CA", "AU", "IE", "IN", "DE", "NL", "AE"])
 def test_unverified_markets_offer_no_eeo_module(market):
     """The whole point of the eeo_module field.
 

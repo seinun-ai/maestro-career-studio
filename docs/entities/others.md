@@ -525,7 +525,7 @@
   address line 2 and the LinkedIn, GitHub and website links, which many fields of work and countries have
   none of). The contact's state line (`byHome`) is resolved on the server: named by the home's `state_label`,
   and optional, so not counted, where the home market's addresses need none (`asks_state` in
-  `data/markets.yaml`: required in the US, Canada, Australia and India; not the UK, Ireland, Germany or the
+  `data/markets.yaml`: required in the US, Canada, Australia, India and the UAE; not the UK, Ireland, Germany or the
   Netherlands); with no home set, home reads as the default US and it counts. The frontend shows each field
   as served and resolves nothing itself. Work-permit answers count per apply-in country, read off typed
   `WorkAuth` by the keys of that country's wording (`work_auth_vocab`; every permit key is a `WorkAuth`
@@ -584,9 +584,9 @@
   ("UK", not ISO "GB"; `markets.country_code` / `for_country` bridge to the ISO codes jobs and base
   resumes store); an unknown key 422s, never coerced. GET answers `{key, value, home, apply_in,
   currency, offers_eeo, markets}` (each market's label, ISO code, currency, date format, EEO posture,
-  `work_auth_vocab`, how its work-permit questions are worded: `us_visa`, `uk` or `generic`, and
+  `work_auth_vocab`, how its work-permit questions are worded: `us_visa`, `uk`, `generic`, `ca` or `ae`, and
   `asks_state` / `state_label`, whether an address there needs a state line and the country's word for it:
-  State, Province or County); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. The diversity
+  State, Province, County or Emirate); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. The diversity
   questions are offered when any apply-in market has a checked set, decided by `form_questions.resolve`
   (`offers_eeo` on the served set), which setup readiness and Profile read. Migration state: SYSTEM.md §13
   `market-home-apply-in`.

@@ -23,10 +23,23 @@
 # `asks_state` says whether an address where you live needs a state or province
 # line, so setup counts the Contact "State" answer only there. It follows the
 # address formats in Google's address data (the set Chrome autofill uses): the
-# US, Canada, Australia and India require one; the UK, Germany and the
+# US, Canada, Australia, India and the UAE require one; the UK, Germany and the
 # Netherlands have no such line; Ireland writes a county but requires none (the
 # Eircode places the address). `state_label` is the country's own word for that
 # line, which the Contact field shows. Every market declares both.
+#
+# The form questions' country data (form_questions.yaml; the facts and their
+# sources: docs/plans/2026-10-30-country-form-questions-sources.md, "Sources n"
+# below is change n in its "What the sources change in the design"). Every
+# market declares each:
+# - `packs`: the shared question packs it asks (fields tagged `pack:` there);
+# - `work_status`: its immigration status list (`statuses` there), or null;
+# - `work_auth_vocab`: the wording of its work-permit questions (`permits`);
+# - `asks_postcode`: whether an address there has a postal code line, counted
+#   like the state line (only the UAE's was checked; the rest keep today's
+#   counted postal code);
+# - `pay`: how its forms word expected pay. Where its pay terms were checked the
+#   label says the basis and period; elsewhere it names only the currency.
 
 markets:
   - key: US
@@ -39,8 +52,13 @@ markets:
     # rescinded; re-check before treating this as stable.
     eeo_module: us_eeo1
     work_auth_vocab: us_visa
+    work_status: us
+    packs: [us_screening]
     asks_state: true
     state_label: State
+    asks_postcode: true
+    pay:
+      label: Expected salary (USD)
 
   - key: UK
     label: United Kingdom
@@ -52,17 +70,27 @@ markets:
     # England & Wales only and must say so at the point of asking.
     eeo_module: uk_gss
     work_auth_vocab: uk
+    work_status: null
+    packs: []
     asks_state: false
     state_label: County
+    asks_postcode: true
+    pay:
+      label: Expected salary (GBP)
 
   - key: CA
     label: Canada
     currency: CAD
     date_format: DMY
     eeo_module: null          # employment-equity categories not verified
-    work_auth_vocab: generic
+    work_auth_vocab: ca       # the generic words, sponsorship explained (Sources 12)
+    work_status: ca
+    packs: []
     asks_state: true
     state_label: Province
+    asks_postcode: true
+    pay:
+      label: Expected salary (CAD)
 
   - key: AU
     label: Australia
@@ -70,8 +98,17 @@ markets:
     date_format: DMY
     eeo_module: null          # not verified
     work_auth_vocab: generic
+    work_status: au
+    packs: []
     asks_state: true
     state_label: State
+    asks_postcode: true
+    pay:
+      # Sources 14: SEEK asks a candidate's minimum as base pay excluding super
+      # (sources doc row A17, help.au.seek.com "What Minimum Salary requirement
+      # should I select for my SEEK profile"); ads use both "+ super" and
+      # "package including super" (A15, A16, A18).
+      label: Expected base salary, excluding super (AUD per year)
 
   - key: IE
     label: Ireland
@@ -79,8 +116,13 @@ markets:
     date_format: DMY
     eeo_module: null          # not verified
     work_auth_vocab: generic
+    work_status: null
+    packs: []
     asks_state: false
     state_label: County
+    asks_postcode: true
+    pay:
+      label: Expected salary (EUR)
 
   - key: IN
     label: India
@@ -91,8 +133,16 @@ markets:
     # are not ours to infer. No module until verified against a primary source.
     eeo_module: null
     work_auth_vocab: generic
+    work_status: null
+    packs: [india_basics]
     asks_state: true
     state_label: State
+    asks_postcode: true
+    pay:
+      # Sources 18: forms ask expected CTC as an annual amount (sources doc
+      # rows India 1a, 1b, 1e: Naukri's job-posting guide and form, PyjamaHR's
+      # CTC fields), stored in rupees and converted to lakhs where a form asks.
+      label: Expected CTC (₹ per year)
 
   - key: DE
     label: Germany
@@ -100,8 +150,15 @@ markets:
     date_format: DMY
     eeo_module: null          # not verified
     work_auth_vocab: generic
+    work_status: null
+    packs: [cefr]
     asks_state: false
     state_label: State
+    asks_postcode: true
+    pay:
+      # Sources 16: the Gehaltsvorstellung is gross annual (sources doc row
+      # Europe 23: StepStone, JobTeaser and ingenieur.de agree).
+      label: Expected gross annual salary (EUR)
 
   - key: NL
     label: Netherlands
@@ -109,5 +166,36 @@ markets:
     date_format: DMY
     eeo_module: null          # not verified
     work_auth_vocab: generic
+    work_status: null
+    packs: [cefr]
     asks_state: false
     state_label: Province
+    asks_postcode: true
+    pay:
+      # Sources 15: gross per month, excluding the 8% holiday allowance; the
+      # IND (ind.nl "Required amounts income requirements") and Dutch job
+      # boards both use monthly gross (sources doc rows Europe 25, 26).
+      label: Expected gross monthly salary, excluding holiday allowance (EUR)
+
+  - key: AE
+    label: United Arab Emirates
+    currency: AED
+    date_format: DMY
+    eeo_module: null          # not verified
+    # "Authorized" here means no residence visa for the employer to sponsor:
+    # every UAE hire needs the employer's MOHRE work permit (Sources 9).
+    work_auth_vocab: ae
+    work_status: ae
+    packs: [gulf]
+    # Google's address data (chromium-i18n ssl-address/data/AE, read
+    # 2026-10-30; sources doc rows UAE 23, 24): "require": "AS",
+    # "state_name_type": "emirate", and no postcode line (Sources 13).
+    asks_state: true
+    state_label: Emirate
+    asks_postcode: false
+    pay:
+      # Sources 17: forms ask one figure, the total; the basic, housing and
+      # transport split is an offer-letter convention (sources doc rows UAE
+      # 25-30; Decree-Law 33/2021 Art. 1 calls the total the "Wage").
+      label: Expected total monthly salary (AED)
+      hint: Basic pay plus allowances, per month.

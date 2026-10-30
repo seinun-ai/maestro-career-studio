@@ -2435,7 +2435,7 @@ export interface MarketOption {
   /** "DMY" or "MDY". */
   date_format: string;
   offers_eeo: boolean;
-  /** How its work-permit questions are worded: `us_visa` (with the US visa status), `uk` or `generic`
+  /** How its work-permit questions are worded: `us_visa` (with the US visa status), `uk`, `generic`, `ca` or `ae`
    *  (markets.yaml; the served `QuestionSet` holds the words for each market you apply in). */
   work_auth_vocab: string;
   /** Whether an address there needs a state or province line: Contact counts the state only for a home
