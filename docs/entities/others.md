@@ -586,10 +586,10 @@
   currency, offers_eeo, markets}` (each market's label, ISO code, currency, date format, EEO posture,
   `work_auth_vocab`, how its work-permit questions are worded: `us_visa`, `uk` or `generic`, and
   `asks_state` / `state_label`, whether an address there needs a state line and the country's word for it:
-  State, Province or County); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. A diversity set is offered
-  per country: `market_settings.offers_eeo(session, country)` takes a market key or an ISO code (a country
-  no market covers has none) and, with no country, answers for any apply-in market; setup status asks the
-  diversity answers only then. Migration state: SYSTEM.md §13 `market-home-apply-in`.
+  State, Province or County); PUT takes `{value: {home, apply_in}}` or the old `{value: {market}}`. The diversity
+  questions are offered when any apply-in market has a checked set, decided by `form_questions.resolve`
+  (`offers_eeo` on the served set), which setup readiness and Profile read. Migration state: SYSTEM.md §13
+  `market-home-apply-in`.
 - **Career KB** (`models/career_kb.py`, `/career` pages; on screen **Career history**, its entities
   **items** and its points **bullets**): the durable record
   of experience/projects/education/certs + facts; deliberately a sidecar —

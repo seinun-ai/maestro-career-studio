@@ -37,7 +37,6 @@ _ROOT = Path(__file__).resolve().parents[2]
 _FRONTEND = _ROOT / "frontend"
 
 
-
 @dataclass(frozen=True)
 class Asked:
     """A question the backend serves (`form_questions.catalog()`) holding each of `words` (label,

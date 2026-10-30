@@ -148,8 +148,11 @@ def test_permits_are_keyed_by_market_in_apply_in_order():
 
 
 def test_offers_eeo_follows_the_apply_in_markets():
+    """Offered when any market you apply in has a checked set (US, UK today), wherever you live."""
     assert form_questions.resolve(home="IN", apply_in=["US"]).offers_eeo is True
     assert form_questions.resolve(home="US", apply_in=["IN", "DE"]).offers_eeo is False
+    assert form_questions.resolve(home="DE", apply_in=["DE", "NL"]).offers_eeo is False
+    assert form_questions.resolve(home="DE", apply_in=["DE", "UK"]).offers_eeo is True
 
 
 def test_no_apply_in_reads_as_home():

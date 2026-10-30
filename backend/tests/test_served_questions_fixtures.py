@@ -73,7 +73,8 @@ def test_each_fixture_is_what_the_route_serves():
 def test_the_dump_is_the_routes_own(client, tmp_path, monkeypatch):
     """`served` serializes as GET /api/settings/autofill/questions does, so a fixture is its body."""
     monkeypatch.setattr(settings, "settings_dir", tmp_path)  # the market's file mirror (SYSTEM.md §12)
-    home, apply_in = SCENARIOS[2]
+    home, apply_in = "DE", ["DE", "UK", "US"]
+    assert (home, apply_in) in SCENARIOS
     saved = client.put("/api/settings/market", json={"value": {"home": home, "apply_in": apply_in}})
     assert saved.status_code == 200, saved.text
     assert client.get("/api/settings/autofill/questions").json() == served(home, apply_in)
