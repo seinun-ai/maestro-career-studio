@@ -365,14 +365,14 @@ import and profile endpoints and store no progress of their own; frontend-conven
   which they are, the salary rule and what each guards: `docs/entities/others.md`, "Policy deny-list details".
   `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one declaration of EACH list; only the commit ladder stays a
   deliberate, pinned-identical twin (`…commit_ladder_stay_identical`).
-- **One label-pattern table, two readers** `{#inv-one-label-pattern-table}` (`extension/shared/profile-fields.js`). The eleven patterns
-  naming a TYPED home in the autofill profile (`eligibility.*`, `work_auth.*`, `preferences.*`) are read by `content/autofill.js`'s rule
-  table, which FILLS those fields, and by the panel's `saveTargetFor`, which decides where a pause-row answer is LEARNED. They must be one
-  table: an answer learned into `profile.custom` for a field the rules fill from `preferences.notice_period` lands where the rules do not
-  look, so the same question pauses on every later application with nothing failing. **The learn store is the autofill profile, never
-  `qa_entries`** — that table is application-scoped and no reader feeds it back into a fill, so "pause once, learn forever" is only true of
-  `profile.custom` (matched by the deterministic rule pass on every later form) and the typed keys. Wiring faults are loud rather than silent
-  (the two load-time throws: `docs/entities/others.md`, "Label-pattern table details").
+- **One label-pattern table, two readers** `{#inv-one-label-pattern-table}` (`extension/shared/profile-fields.js`). The patterns naming a
+  TYPED home in the autofill profile (`eligibility.*`, `work_auth.*`, `preferences.*`, `answers_by_country.*`) are read by
+  `content/autofill.js`'s rule table, which FILLS those fields, and by the panel's `saveTargetFor`, which decides where a pause-row answer
+  is LEARNED. They must be one table: an answer learned into `profile.custom` for a field the rules fill from `preferences.notice_period`
+  lands where the rules do not look, so the same question pauses on every later application with nothing failing. **The learn store is the
+  autofill profile, never `qa_entries`** — that table is application-scoped and no reader feeds it back into a fill, so "pause once, learn
+  forever" is only true of `profile.custom` (matched by the rule pass on every later form) and the typed keys. Wiring faults are loud (the
+  two load-time throws: `docs/entities/others.md`, "Label-pattern table details").
 - **Em-dash rule** `{#inv-em-dash}`: model- or agent-written answers, cover letters and `kb_add_points` drafts lose U+2014/U+2013 at store
   time (`qa.scrub_typographic_dashes`); a rendered PDF holds none (ATS parsers), and MCP `get_rendered_pdf` is the resume-PDF backstop
   (`docs/entities/others.md`, "Em-dash backstop").

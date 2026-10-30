@@ -370,16 +370,18 @@
   country (`work_auth_by_country` on the autofill step), the US visa status only where `work_auth_vocab` is `us_visa`. **Known limits.**
   The Companion's deterministic rule pass reads the resolved `work_auth` and cannot see which country a label names, so on a German job a
   question about the UK gets the German set there (`docs/deferred.md` item 52); the answer flags compare with the job's set whatever
-  the question names. **The pause row learns per country.** A work-permit answer typed in the Companion (a pause row, or a
-  queued run's Resume) goes to one entry: `/context?question=<label>` (with the application, when there is one) names the market that
-  question gets in `work_auth_market` (`profile_for_job` with `question`: the country it names, else the job's), and the panel writes
-  `work_auth_by_country[<market>]`, promoting that entry's legacy pair first (`workAuthForWrite`) and leaving the served `work_auth`
-  as it came; `work_auth_country` names that question's one country in words, a country no market covers too (null: none known), and
-  the note says "Saved to Profile › Work permits (United Kingdom)." by that name, never the market key. With no market (no job and
-  no country named, a country no market covers, two countries) the field is filled and nothing is learned: the next form asks again,
-  and the note says why ("Profile can't keep work-permit answers for Brazil", else "it isn't clear which country's work permit
-  this is"). The label table stays one (inv-one-label-pattern-table): it names `work_auth.*`, and only the
-  learn maps that onto the country's entry.
+  the question names. **The pause row learns per country.** A work-permit or country answer typed in the Companion (a pause row,
+  or a queued run's Resume) goes to one entry: `/context?question=<label>` (with the application, when there is one) names the market
+  that question gets in `work_auth_market` (`profile_for_job` with `question`: the country it names, else the job's), and the panel
+  writes `work_auth_by_country[<market>]` (promoting that entry's legacy pair first, `workAuthForWrite`) or `answers_by_country[<market>]`,
+  leaving the served `work_auth` as it came. Expected pay ("Expected CTC" on an Indian job) is that market's `expected_pay`, and the
+  generic `desired_salary` when no market is named. `work_auth_country` names that question's one country in words, a country no market
+  covers too (null: none known), and the note says "Saved to Profile › Work permits (United Kingdom)." by that name, never the market
+  key. With no market (no job and no country named, a country no market covers, two countries) a work permit or country answer is
+  filled and not learned: the next form asks again, and the note says why ("Profile can't keep work-permit answers for Brazil", else
+  "it isn't clear which country's work permit this is"; "answers" and "which country this answer is for" for a country answer). The
+  label table stays one (inv-one-label-pattern-table): it names `work_auth.*` and `answers_by_country.*`, the rules read the flat
+  slots /context folds the job's country's answers into, and only the learn maps a row onto the country's entry.
 - **Answers decided in code, and the polarity retry** (live check 7; `services/autofill_pick.py`, `autofill_step.py`, `autofill_education.py`, `autofill_place.py`, `autofill_polarity.py`).
   **Relocate**: "Are you located in X and/or willing to relocate?" over a saved `preferences.willing_to_relocate` Yes is the same way as the fact, decided by code with no model
   (`_located_or_relocate`, in `/pick` and `/step`). It must be ONE question: both halves in one sentence that is a question (or an unpunctuated last line addressed to "you"),
@@ -1437,8 +1439,9 @@
   - **Policy deny-list details** (inv-policy-deny-list-single-source): the four consumers are `fillFormFromProfile` ahead of rule matching
     and `collectOpenQuestions` ahead of EXCLUDE and the per-type ladder — so a consent question rendered as a select/radio is never offered
     to the model or tagged `data-rt-qid` — plus the panel's PAIR: the pause row renders no input for a blocked label AND `submitAnswer`
-    refuses one again (the first decides what to draw, the second touches the page). Salary history/current/CTC and unqualified
-    salary/wage/compensation mentions are also blocked without consent; explicit salary expectations are allowed only AFTER both lists.
+    refuses one again (the first decides what to draw, the second touches the page). Salary history/current salary/current CTC and
+    unqualified salary/wage/compensation/CTC mentions are also blocked without consent; explicit expectations (expected salary, expected
+    CTC) are allowed only AFTER both lists.
   - **Label-pattern table details** (inv-one-label-pattern-table): `profile-fields.js` throws at load if `shared/policy.js` has not run (it
     borrows `salaryExpectationRe`), and `autofill.js`'s `pf()` throws on an unknown id — an undefined pattern does not error, it just never
     matches.

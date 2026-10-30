@@ -763,6 +763,23 @@ def test_a_work_permit_answer_with_no_country_is_not_saved_by_resume(tmp_path):
     assert "Saved" not in _body_text(out["shots"][-1])
 
 
+def test_expected_pay_typed_while_a_run_waited_is_its_jobs_countrys_and_undo_takes_it_back(tmp_path):
+    """On an Indian job "Expected CTC" is India's expected pay: Resume saves it there, never over the generic
+    desired salary, and Undo puts India's entry back as it was."""
+    question = "Expected CTC"
+    served = {"preferences": {"desired_salary": "150000"}, "answers_by_country": {"IN": {"current_ctc": "1800000"}}}
+    out = _run(tmp_path, [{"start": SEED}, {"press": "run-resume"}, {"press": "run-undo-saved"}],
+               pages=(STEP1, REVIEW), reports=[{"fields": [needs("q1", question)]}, {"fields": [verified("f1")]}],
+               inventory=[_field("q1", "2500000", question=question)], profileStore=json.loads(json.dumps(served)),
+               api={"/api/autofill/context?question=": _reply({"profile": {"work_auth_market": "IN"}})})
+    puts = [json.loads(m["init"]["body"])["value"] for m in _api_calls(out, "/api/settings/autofill")
+            if (m.get("init") or {}).get("method") == "PUT"]
+    assert puts[0]["answers_by_country"] == {"IN": {"current_ctc": "1800000", "expected_pay": "2500000"}}
+    assert puts[0]["preferences"] == {"desired_salary": "150000"}
+    assert "Saved 1 answer to your profile · Undo" in _body_text(out["shots"][-2])
+    assert out["profile"] == served
+
+
 def test_undo_restores_a_replaced_custom_answer_and_removes_a_new_one(tmp_path):
     two = [_field("q1", "Yes", question="Have you used our product before?"),
            _field("q3", "Blue", question="Favourite colour?")]

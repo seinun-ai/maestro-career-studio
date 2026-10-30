@@ -573,6 +573,11 @@ async function fillFormFromProfile(
       value: yesNo(el.previously_employed_here), kind: "yesno" },
     { id: "non-compete", ...pf("non-compete"),
       value: yesNo(el.non_compete), kind: "yesno" },
+    // Country answers: /context folds the job's country's own into these
+    // slots, so they are set on that country's jobs only.
+    { id: "uae-driving-licence", ...pf("uae-driving-licence"),
+      value: yesNo(el.uae_driving_licence), kind: "yesno" },
+    { id: "in-uae-now", ...pf("in-uae-now"), value: yesNo(el.in_country_now), kind: "yesno" },
     ...(eeoEnabled ? EEO_RULES : []),
     // The preferences, patterns from `shared/profile-fields.js` for the reason
     // given at the eligibility block above. The salary one is doubly indirect
@@ -583,6 +588,7 @@ async function fillFormFromProfile(
     // hourly rate?" was blocked by the policy AND unmatched here, so the field
     // was refused twice for the same missing wording.
     { id: "salary", ...pf("salary"), value: pref.desired_salary },
+    { id: "current-ctc", ...pf("current-ctc"), value: pref.current_ctc },
     { id: "notice-period", ...pf("notice-period"), value: pref.notice_period },
     // `not:` for the same reason as the employment date rules above, and it
     // matters more here: this one matches on "start date" alone, so iCIMS's

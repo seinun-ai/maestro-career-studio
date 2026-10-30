@@ -1868,14 +1868,14 @@ def test_a_learned_answer_names_the_profile_fold_that_shows_it(tmp_path):
 
 
 def _work_permit_answer(tmp_path, market, served, label="Do you currently require sponsorship?", text="Yes",
-                        country=None):
-    """One work-permit pause row answered, on a job `/api/autofill/context` says is `market`'s (None: no
-    market), the question's country named `country` in words (None: no one country), with `served` as
-    `GET /api/settings/autofill` reads."""
+                        country=None, options=("Yes", "No")):
+    """One pause row answered (a work permit by default, a text box with `options=None`), on a job
+    `/api/autofill/context` says is `market`'s (None: no market), the question's country named `country`
+    in words (None: no one country), with `served` as `GET /api/settings/autofill` reads."""
+    question = {"qid": "wa1", "label": label, "kind": "select", "options": list(options)} if options else {
+        "qid": "wa1", "label": label, "kind": "text"}
     frames = {"collect_open_questions": [{"frameId": 0, "result": {
-        "host": "job-boards.greenhouse.io",
-        "questions": [{"qid": "wa1", "label": label, "kind": "select", "options": ["Yes", "No"]}],
-        "retryables": [],
+        "host": "job-boards.greenhouse.io", "questions": [question], "retryables": [],
     }}]}
     context = {**FILL_CONTEXT, "profile": {**FILL_CONTEXT["profile"], "work_auth_market": market,
                                            "work_auth_country": country}}
@@ -1974,6 +1974,102 @@ def test_a_typed_work_auth_learn_carries_legacy_answers_forward(tmp_path):
     }
 
 
+def test_the_router_sends_a_countrys_own_question_to_its_country_answer(tmp_path):
+    """The country answers' rows (form_questions.yaml `answers`). Each names the UAE or CTC, and the rows
+    above them still win, so a generic question or one about somewhere else never lands there. Expected
+    pay keeps its generic key here: where it goes depends on the job's country (the pause rows below)."""
+    out = run_node(_ROUTER_DRIVER_JS, {"questions": [
+        "What is your current CTC?",
+        "Current annual CTC (in lakhs)",
+        "Are you currently in the UAE?",
+        "Are you residing in the United Arab Emirates?",
+        "Do you live in the U.A.E.?",
+        "Do you hold a valid UAE driving licence?",
+        "Do you currently have a UAE driver's license?",
+        "Expected CTC",
+        "Are you authorized to work in the UAE?",
+        "Are you willing to relocate to the UAE?",
+        "UAE driving licence number",
+        "Do you have experience working in the UAE?",
+        "Are you currently on a UAE residence visa?",
+        "Are you currently located in India?",
+    ]}, tmp_path, source=PANEL_SOURCE)
+    assert out["targets"] == [
+        ["profile", "answers_by_country.current_ctc"],
+        ["profile", "answers_by_country.current_ctc"],
+        ["profile", "answers_by_country.in_country_now"],
+        ["profile", "answers_by_country.in_country_now"],
+        ["profile", "answers_by_country.in_country_now"],
+        ["profile", "answers_by_country.uae_driving_licence"],
+        ["profile", "answers_by_country.uae_driving_licence"],
+        ["profile", "preferences.desired_salary"],
+        ["profile", "work_auth.authorized_now"],
+        ["profile", "preferences.willing_to_relocate"],
+        ["custom", None],
+        ["custom", None],
+        ["custom", None],
+        ["custom", None],
+    ]
+
+
+# Home US, applying in the US and India, India's current CTC given in Profile.
+SERVED_INDIA = {"preferences": {"desired_salary": "150000"},
+                "answers_by_country": {"IN": {"current_ctc": "1800000"}}}
+
+
+def test_expected_pay_paused_on_a_job_with_a_country_is_that_countrys(tmp_path, db_session, monkeypatch):
+    """"Expected CTC" on an Indian job is India's expected pay, in rupees: learned into
+    `answers_by_country.IN`, the generic desired salary left as it was, so it never fills a US form."""
+    out = _work_permit_answer(tmp_path, "IN", SERVED_INDIA, label="Expected CTC", text="2500000",
+                              country="India", options=None)
+    assert _market_asks(out) == ["/api/autofill/context?question=Expected+CTC"]
+    [body] = _profile_put(out)
+    assert body["value"]["answers_by_country"] == {"IN": {"current_ctc": "1800000", "expected_pay": "2500000"}}
+    assert body["value"]["preferences"] == {"desired_salary": "150000"}
+    [note] = _by_class(out["answered"]["foot"], "note")
+    assert "Saved to Profile › Work permits (India)." in note["text"]
+
+    # …and the server keeps it for India's jobs only.
+    from app.schemas.market_settings import MarketSetting
+    from app.services import autofill_country, autofill_profile, market_settings, text_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path / "settings")
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "IN"]), db_session)
+    saved = autofill_profile.set_profile(body["value"], db_session)
+    assert autofill_country.for_market(saved, "IN")["preferences"]["desired_salary"] == "2500000"
+    assert autofill_country.for_market(saved, "US")["preferences"]["desired_salary"] == "150000"
+
+
+def test_expected_pay_with_no_country_is_the_generic_desired_salary(tmp_path):
+    out = _work_permit_answer(tmp_path, None, SERVED_INDIA, label="What is your expected salary?",
+                              text="160000", options=None)
+    [body] = _profile_put(out)
+    assert body["value"]["preferences"] == {"desired_salary": "160000"}
+    assert body["value"]["answers_by_country"] == SERVED_INDIA["answers_by_country"]
+    [note] = _by_class(out["answered"]["foot"], "note")
+    assert "Saved to Profile › Start and pay." in note["text"]
+
+
+def test_a_paused_uae_question_on_a_uae_job_learns_into_the_uae(tmp_path):
+    out = _work_permit_answer(tmp_path, "AE", SERVED_INDIA, label="Are you currently in the UAE?",
+                              country="United Arab Emirates")
+    [body] = _profile_put(out)
+    assert body["value"]["answers_by_country"] == {"IN": {"current_ctc": "1800000"},
+                                                   "AE": {"in_country_now": "Yes"}}
+    assert "eligibility" not in body["value"]
+    [note] = _by_class(out["answered"]["foot"], "note")
+    assert "Saved to Profile › Work permits (United Arab Emirates)." in note["text"]
+
+
+def test_a_country_answer_with_no_country_is_filled_and_not_learned(tmp_path):
+    """Two countries named: no one country's answer, so nothing is read or saved, and it asks again."""
+    out = _work_permit_answer(tmp_path, None, SERVED_INDIA, label="Are you currently in the UAE or Qatar?")
+    assert _profile_put(out) == []
+    assert [msg for msg in out["sent"] if msg["type"] == "api" and msg["path"] == "/api/settings/autofill"] == []
+    [note] = _by_class(out["answered"]["foot"], "note")
+    assert "Not saved: it isn't clear which country this answer is for, so it will ask again." in note["text"]
+
+
 def test_a_question_with_no_typed_key_is_learned_into_the_custom_list(tmp_path):
     """The other branch, and the one most real questions take.
 
@@ -2037,6 +2133,8 @@ main(async () => {
     read: () => ({ job: spec.job }),
     api: async (path, init) => {
       if (init?.method === "PUT") { profile = JSON.parse(init.body).value; return {}; }
+      // The country `/context` names for a question: the job's (`spec.market`).
+      if (path.startsWith("/api/autofill/context")) return { profile: { work_auth_market: spec.market ?? null } };
       return { value: profile };
     },
   };
@@ -2125,6 +2223,19 @@ def test_a_scoped_answer_met_again_at_another_job_stays_and_the_new_one_is_a_new
         [{"question": "Willing to relocate to Denver?", "answer": "No", "only_for": "Austin", "only_for_kind": "city"},
          {"question": "Willing to relocate to Denver?", "answer": "Yes", "only_for": "Denver", "only_for_kind": "city"}],
     ]
+
+
+def test_undoing_a_country_answer_puts_back_that_countrys_entry(tmp_path):
+    """A run's Resume learns expected pay into the job's country beside an ordinary saved answer; Undo
+    leaves India's entry as it was before, and the generic salary is untouched throughout."""
+    items = [{"label": "Expected CTC", "answer": "2500000"}, {"label": "Preferred shift", "answer": "Day"}]
+    out = run_node(_LEARN_DRIVER_JS, {
+        "profile": SERVED_INDIA, "items": items, "market": "IN",
+        "job": {"company": "Globex", "location": "Pune, India", "applicationId": "app-1"}}, tmp_path, source=PANEL_SOURCE)
+    assert out["after"]["answers_by_country"] == {"IN": {"current_ctc": "1800000", "expected_pay": "2500000"}}
+    assert out["after"]["preferences"] == SERVED_INDIA["preferences"]
+    assert out["after"]["custom"] == [{"question": "Preferred shift", "answer": "Day"}]
+    assert out["undone"] == {**SERVED_INDIA, "custom": []}
 
 
 def test_undoing_a_scoped_learn_puts_back_only_its_own_row(tmp_path):

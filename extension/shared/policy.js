@@ -52,8 +52,11 @@
   // The run between the two words is bounded on `?` AND `|`, so it cannot reach
   // across a question boundary or between two label sources to manufacture an
   // exemption out of words that were never in the same sentence.
+  //
+  // CTC (cost to company) is how Indian forms say pay: "Expected CTC" is the
+  // expectation, "Current CTC" stays salary history below.
   const SALARY_EXPECTATION =
-    /\b(?:expected|desired|target)\b[^?|]{0,30}\b(?:salary|wages?|compensation|pay|rate)\b|\b(?:salary|wages?|compensation|pay)\b[^?|]{0,40}\bexpectations?\b|\b(?:salary|wages?|compensation|pay)\s+(?:expectation|expectations|range)\b/i;
+    /\b(?:expected|desired|target)\b[^?|]{0,30}\b(?:salary|wages?|compensation|pay|rate|ctc)\b|\b(?:salary|wages?|compensation|pay|ctc)\b[^?|]{0,40}\bexpectations?\b|\b(?:salary|wages?|compensation|pay|ctc)\s+(?:expectation|expectations|range)\b/i;
   const SALARY_MENTION = /\b(?:salary|wages?|compensation|ctc)\b/i;
 
   /** `consentForms` comes from the backend's standing consent and defaults to

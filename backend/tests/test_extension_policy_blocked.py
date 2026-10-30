@@ -62,6 +62,9 @@ _NEVER_FILL = [
         ("Last drawn salary", "policy_blocked", ""),
         ("Current CTC", "policy_blocked", ""),
         ("Expected salary", "filled", "150000"),
+        # Indian forms' word for pay: the expectation fills, the current figure stays history.
+        ("Expected CTC", "filled", "150000"),
+        ("CTC expectations", "filled", "150000"),
         ("Salary", "policy_blocked", ""),
     ],
 )

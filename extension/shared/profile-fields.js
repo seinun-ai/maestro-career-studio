@@ -18,7 +18,8 @@
  *
  * WHAT IS IN THE TABLE, and what is deliberately not. Only fields whose answer
  * is a SCALAR the user could type into a pause row and that the profile has a
- * declared key for: the standing eligibility answers and the preferences.
+ * declared key for: the standing eligibility answers, the preferences and the
+ * country answers (one country's, learned into its entry; see that block).
  * Everything else in the engine's rule table stays there, because none of it is
  * a pause row's to learn — identity and contact come from the profile's own
  * form, employment and skills are STRUCTURED (a block index, a token list) and
@@ -69,6 +70,8 @@
   const NOW_WORDS = "currently|presently|at this time|\\bnow\\b(?!\\s+or\\b)";
   const SPONSORSHIP_NOW_RE = new RegExp(
     `(${NOW_WORDS})[^|]*sponsor|sponsor[^|]*(${NOW_WORDS})`, "i");
+  // The UAE by name, as the gulf pack's questions say it.
+  const UAE_RE = /(?:\buae\b|\bu\.a\.e\b|\bunited arab emirates\b|\bemirates\b)/i;
 
   const PROFILE_FIELDS = [
     // ---- standing eligibility answers (profile.eligibility) ----
@@ -123,7 +126,13 @@
     // annual base salary or hourly rate?" was blocked by the policy AND
     // unmatched by the rule, so the field was refused twice for the same
     // missing wording. A THIRD copy here would be the same bug again.
-    { id: "salary", path: ["preferences", "desired_salary"],
+    //
+    // Expected pay is also a country answer (`countryKey`): a figure in one
+    // country's currency and terms. With the job's country known the pause row
+    // learns it into that country's `expected_pay`, else into `desired_salary`,
+    // the generic answer. The rule fills `desired_salary` either way: /context
+    // folds the job's country's own figure over it.
+    { id: "salary", path: ["preferences", "desired_salary"], countryKey: "expected_pay",
       re: ns.salaryExpectationRe },
     { id: "notice-period", path: ["preferences", "notice_period"],
       re: /notice\s*period/i },
@@ -140,6 +149,32 @@
       re: /relocat/i },
     { id: "how-heard", path: ["preferences", "how_heard"],
       re: /hear(d)?\s*about/i },
+
+    // ---- country answers (profile.answers_by_country) ----
+    //
+    // Answers one country's forms ask (form_questions.yaml `answers`). The
+    // pause row learns each into the entry of the country the backend names
+    // for its question (`panel/actions/pause.js`); /context folds the job's
+    // country's answers into flat slots (each one's `fills`), and the rules
+    // read those. LAST, so no row above is shadowed: "are you authorized to
+    // work in the UAE?" stays a work permit, "willing to relocate to the UAE?"
+    // a preference. Each names the country or its own term, so a question
+    // about somewhere else never lands here.
+    //
+    // Never learned today, like the start date: current pay is the policy's
+    // salary history, which the pause row and a run's Resume refuse. The rule
+    // fills it, with the agreement permission, from India's answer in Profile.
+    { id: "current-ctc", path: ["answers_by_country", "current_ctc"],
+      re: /\b(?:current|present|existing)\b[^?|]{0,20}\bctc\b/i },
+    // Before "in the UAE now": "do you currently hold a UAE driving licence?"
+    // has the presence words too. Never a licence NUMBER, which is no yes/no.
+    { id: "uae-driving-licence", path: ["answers_by_country", "uae_driving_licence"],
+      all: [UAE_RE, /\bdriv(?:ing|er'?s?)\s+licen[cs]e\b(?!\s*(?:number|no\b|#))/i] },
+    // Being IN the country, and now: "have you worked in the UAE?" is
+    // neither, "are you currently on a UAE visa?" is not being there.
+    { id: "in-uae-now", path: ["answers_by_country", "in_country_now"],
+      all: [new RegExp(`\\b(?:in|inside|within)\\s+(?:the\\s+)?${UAE_RE.source}`, "i"),
+        /\b(?:currently|presently|now|at present)\b|\b(?:are|do)\s+you\s+(?:in|inside|within|based|located|residing|reside|living|live|staying)\b/i] },
   ];
 
   /** The label, normalised the way BOTH sides already normalise one.

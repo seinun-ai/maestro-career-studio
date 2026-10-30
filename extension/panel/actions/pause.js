@@ -68,8 +68,9 @@
    */
   function saveTargetFor(question, fields) {
     const field = ns.profileFieldFor(question, fields);
-    return field ? { store: "profile", path: field.path, id: field.id }
-      : { store: "custom" };
+    if (!field) return { store: "custom" };
+    const target = { store: "profile", path: field.path, id: field.id };
+    return field.countryKey ? { ...target, countryKey: field.countryKey } : target;
   }
 
   /** The profile with one typed key set, without touching anything else.
@@ -122,16 +123,37 @@
     };
   };
 
-  /** WORK-PERMIT ANSWERS ARE PER COUNTRY (inv-work-permit-per-country). The
-   * label table names `work_auth.*` (the resolved set the fill engine reads off
-   * `/context`), but a learned answer belongs to ONE country's entry in
-   * `work_auth_by_country`: the market the backend's own rule gives this
-   * question, the country it names, else the job's. The panel never decides
-   * that and never guesses it; `workAuthPlaceFor` asks. The served one-set
-   * `work_auth` is left exactly as it came, and the server keeps the map edit
-   * (`autofill_profile._as_stored`). */
+  /** WORK PERMITS AND COUNTRY ANSWERS ARE PER COUNTRY (inv-work-permit-per-country).
+   * The label table names `work_auth.*` (the resolved set the fill engine reads
+   * off `/context`) and `answers_by_country.*` (a country's own answers, which
+   * `/context` folds into flat slots), but a learned answer belongs to ONE
+   * country's entry, `work_auth_by_country[market]` or
+   * `answers_by_country[market]`: the market the backend's own rule gives this
+   * question, the country it names, else the job's. A row with a `countryKey`
+   * (expected pay) is that country's answer when the market is known, and its
+   * generic key when not. The panel never decides the market and never guesses
+   * it; `workAuthPlaceFor` asks. The served one-set `work_auth` is left exactly
+   * as it came, and the server keeps the map edit (`autofill_profile._as_stored`). */
   const BY_COUNTRY = "work_auth_by_country";
-  const isWorkPermit = (target) => target.store === "profile" && target.path[0] === "work_auth";
+  const ANSWERS_BY_COUNTRY = "answers_by_country";
+  // The table's section, and the per-market map its answers are learned into.
+  const BY_MARKET = { work_auth: BY_COUNTRY, [ANSWERS_BY_COUNTRY]: ANSWERS_BY_COUNTRY };
+  const isCountryScoped = (target) => target.store === "profile" && Object.hasOwn(BY_MARKET, target.path[0]);
+  // Whether where the answer goes depends on the country, so `workAuthPlaceFor` is asked first.
+  const asksCountry = (target) => isCountryScoped(target) || Boolean(target.countryKey);
+
+  /** The target in `market`'s entry. With no market a country-scoped answer is
+   * not learned (`store: "unsaved"`; `permit` says which kind, for the note),
+   * and a `countryKey` row keeps its generic key. Any other target is as it was. */
+  function inCountry(target, market) {
+    if (isCountryScoped(target)) {
+      return market ? { ...target, path: [BY_MARKET[target.path[0]], market, ...target.path.slice(1)], market }
+        : { store: "unsaved", permit: target.path[0] === "work_auth" };
+    }
+    return market && target.countryKey
+      ? { ...target, path: [ANSWERS_BY_COUNTRY, market, target.countryKey], market }
+      : target;
+  }
 
   // A country's entry is a work-permit set: its legacy pair is promoted before the first typed write.
   const isWorkPermitSet = (at) => at.length === 2 && at[0] === BY_COUNTRY;
@@ -149,8 +171,9 @@
     return base;
   }
 
-  /** Where a work-permit answer to `question` is learned, as
-   * `/api/autofill/context` names it with `question`: `market`
+  /** Where a country's answer to `question` (a work permit, a country answer,
+   * expected pay) is learned, as `/api/autofill/context` names it with
+   * `question`: `market`
    * (`work_auth_market`), the country the question names, else the
    * application's job's, and `country`, that country's name in words
    * (`work_auth_country`). `market` is NULL — so the answer is not learned and
@@ -265,14 +288,12 @@
    * `before` is what Undo needs and nothing more: the typed key's old value (undefined when the
    * profile had none), or the custom row this question had (null when it had none) and the scope of
    * the row the answer landed in, which with a scoped row for another job beside it is what tells the
-   * two apart. A work-permit answer goes to `market`'s entry (`workAuthPlaceFor`); with no market
-   * it is not learned (`store: "unsaved"`, the profile unchanged, nothing to undo). */
+   * two apart. A country's answer goes to `market`'s entry (`workAuthPlaceFor`, `inCountry`); with no
+   * market a country-scoped one is not learned (`store: "unsaved"`, the profile unchanged, nothing to
+   * undo). */
   function applyAnswer(profile, label, answer, job, market) {
-    let target = saveTargetFor(label);
-    if (isWorkPermit(target)) {
-      if (!market) return { profile, target: { store: "unsaved" }, before: null };
-      target = { ...target, path: [BY_COUNTRY, market, ...target.path.slice(1)], market };
-    }
+    const target = inCountry(saveTargetFor(label), market);
+    if (target.store === "unsaved") return { profile, target, before: null };
     if (target.store === "profile") {
       return { profile: withProfileAnswer(profile, target.path, answer), target,
                before: { path: target.path, value: valueAt(profile, target.path) } };
@@ -312,27 +333,28 @@
    * the Settings page itself already makes with every save. If a later round
    * adds a merge route, this function is the one caller to move.
    *
-   * A WORK-PERMIT ANSWER asks `/api/autofill/context` first which country's
-   * set it belongs to (`workAuthPlaceFor`), and is learned into that entry
-   * only; with no market it is not learned at all, and no profile is read.
+   * A COUNTRY'S ANSWER (a work permit, a country answer, expected pay) asks
+   * `/api/autofill/context` first which country's entry it belongs to
+   * (`workAuthPlaceFor`), and is learned into that entry only; with no market a
+   * work permit or country answer is not learned at all, and no profile is read,
+   * while expected pay is learned as the generic desired salary.
    *
    * THROWS on failure, and the caller treats that as a NOTE rather than a
    * rollback — see `submitAnswer`.
    */
   async function learnAnswer(store, row, answer) {
     const facts = store.read();
-    let place = null;
-    if (isWorkPermit(saveTargetFor(row.label))) {
-      place = await workAuthPlaceFor(store, row.label, facts.application?.id);
-      if (!place.market) return { store: "unsaved", country: place.country };
-    }
+    const asked = saveTargetFor(row.label);
+    const place = asksCountry(asked) ? await workAuthPlaceFor(store, row.label, facts.application?.id) : null;
+    const placed = place && inCountry(asked, place.market);
+    if (placed?.store === "unsaved") return { ...placed, country: place.country };
     const current = await store.api("/api/settings/autofill");
     const { profile, target } = applyAnswer(current?.value ?? {}, row.label, answer, {
       company: facts.job?.company ?? facts.application?.job_company,
       location: facts.job?.location,
     }, place?.market);
     await putProfile(store, profile);
-    return place ? { ...target, country: place.country } : target;
+    return target.market ? { ...target, country: place.country } : target;
   }
 
   /** Learn several answers in ONE read-modify-write (a queued run's Resume saves everything the user
@@ -340,13 +362,13 @@
    * whole-object PUT is why this is one round trip and not one per answer: a second PUT built from
    * a read taken before the first would erase it. Items are `{label, answer}`; `job` is the
    * `{company, location, applicationId}` the page was answered for (a run's record): the company and
-   * city scope an answer that names them, the application gives a work-permit answer its country.
-   * A work-permit answer with no country is left out (it asks again), so `saved` can be shorter than
-   * `items`, and with nothing to save there is no write. */
+   * city scope an answer that names them, the application gives a country's answer its country.
+   * A work permit or country answer with no country is left out (it asks again), so `saved` can be
+   * shorter than `items`, and with nothing to save there is no write. */
   async function learnAnswers(store, items, job) {
     const markets = new Map();
     for (const { label } of items) {
-      if (isWorkPermit(saveTargetFor(label)) && !markets.has(label)) {
+      if (asksCountry(saveTargetFor(label)) && !markets.has(label)) {
         markets.set(label, (await workAuthPlaceFor(store, label, job?.applicationId)).market);
       }
     }
@@ -388,15 +410,17 @@
     eligibility: " Saved to Profile › Eligibility.",
   };
 
-  /** What became of a learned answer, said after "Filled …". A work-permit answer names its country's
+  /** What became of a learned answer, said after "Filled …". A country's answer names its country's
    * set by the country's name, as the Work permits tile heads it (never the market key; a server that
    * names none leaves the name out). One not saved says why, and that the next form asks again: a
    * country Profile keeps no set for, or no one country known. */
   function learnedSentence(target) {
     if (target.store === "unsaved") {
-      return target.country
-        ? ` Not saved: Profile can't keep work-permit answers for ${target.country}, so it will ask again.`
-        : " Not saved: it isn't clear which country's work permit this is, so it will ask again.";
+      const what = target.permit ? "work-permit answers" : "answers";
+      if (target.country) return ` Not saved: Profile can't keep ${what} for ${target.country}, so it will ask again.`;
+      return target.permit
+        ? " Not saved: it isn't clear which country's work permit this is, so it will ask again."
+        : " Not saved: it isn't clear which country this answer is for, so it will ask again.";
     }
     if (target.market) {
       return target.country ? ` Saved to Profile › Work permits (${target.country}).` : " Saved to Profile › Work permits.";

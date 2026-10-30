@@ -870,10 +870,12 @@ know, and each one was learned from a live failure.
   Current/present/previous salary, last drawn salary, current CTC, salary
   history, wage history, compensation history, and an unqualified
   salary/wage/compensation label are blocked by the shared policy. Explicit expectations such as expected, desired, target, or salary
-  range may fill `preferences.desired_salary`; an expectation phrase never
+  range (expected CTC too) may fill `preferences.desired_salary`, which on a job
+  whose country has its own expected pay is that country's figure; an expectation phrase never
   overrides another policy block such as signature, consent, terms, credentials,
   or government-ID wording. With the permission, "salary requirements" and
-  "compensation" questions fill from the same fact.
+  "compensation" questions fill from the same fact, and current CTC from India's
+  own answer.
 - **The phone and street address say which boxes they never answer.** /map
   offers them as "the whole number; never a phone extension, a fax number, a
   country calling code or a phone type" and "street address, line 1 (never a

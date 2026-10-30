@@ -229,3 +229,33 @@ def test_the_sponsorship_question_is_not_taken_by_the_new_neighbours(tmp_path):
     )
     assert result["observations"][0]["rule_id"] == "sponsorship-future"
     assert result["values"][label] == "No", "answered with the work-auth yes"
+
+
+# What /context serves an Indian or a UAE job: that country's own answers folded into flat slots
+# (`autofill_country.with_country_answers`), and no other country's.
+_UAE_JOB = {"eligibility": {"in_country_now": True, "uae_driving_licence": False}}
+_INDIAN_JOB = {"preferences": {"desired_salary": "2500000", "current_ctc": "1800000"}}
+
+
+def test_a_uae_jobs_own_answers_fill_its_questions(tmp_path):
+    """The country answers' rows (`shared/profile-fields.js`) fill from the slots the job's country folds
+    into; another country's job has no such slot, so the question is reported, never guessed."""
+    fields = [{"label": "are you currently in the uae?", "kind": "radio", "options": ["Yes", "No"]},
+              {"label": "do you hold a valid uae driving licence?", "kind": "radio", "options": ["Yes", "No"]}]
+    filled = run_profile_fill(tmp_path, fields=fields, profile=_UAE_JOB)
+    assert [obs["rule_id"] for obs in filled["observations"]] == ["in-uae-now", "uae-driving-licence"]
+    assert filled["values"] == {"are you currently in the uae?": "Yes",
+                                "do you hold a valid uae driving licence?": "No"}
+    elsewhere = run_profile_fill(tmp_path, fields=fields, profile={"eligibility": {}})
+    assert {outcome_for(elsewhere, f["label"]) for f in fields} == {"missing_source"}
+
+
+def test_an_indian_jobs_pay_questions_fill_from_indias_answers(tmp_path):
+    """"Expected CTC" is the expectation, filled from the desired salary /context folds India's figure over;
+    "Current CTC" is salary history, filled only with the agreement permission, from India's answer."""
+    fields = [{"label": "expected ctc", "kind": "text"}, {"label": "current ctc", "kind": "text"}]
+    without = run_profile_fill(tmp_path, fields=fields, profile=_INDIAN_JOB)
+    assert without["values"] == {"expected ctc": "2500000", "current ctc": ""}
+    assert outcome_for(without, "current ctc") == "policy_blocked"
+    agreed = run_profile_fill(tmp_path, fields=fields, profile=_INDIAN_JOB, consent_forms=True)
+    assert agreed["values"] == {"expected ctc": "2500000", "current ctc": "1800000"}

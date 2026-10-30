@@ -291,7 +291,8 @@ def test_the_extension_reads_only_the_resolved_work_auth():
     assert 'const BY_COUNTRY = "work_auth_by_country";' in learn
     assert "await store.api(`/api/autofill/context?${params}`)" in learn
     assert "context?.profile?.work_auth_market" in learn
-    assert "path: [BY_COUNTRY, market, ...target.path.slice(1)]" in learn
+    assert "work_auth: BY_COUNTRY" in learn  # the table's `work_auth.*` is learned into the map…
+    assert "path: [BY_MARKET[target.path[0]], market, ...target.path.slice(1)]" in learn  # …at that market
 
 
 def test_the_knockout_scan_reads_the_job_countrys_answers(db_session):
