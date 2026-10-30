@@ -242,6 +242,39 @@ def test_the_same_answers_in_another_country_are_read_as_that_countrys(db_sessio
     assert body["ca"]["route"] == "none"
 
 
+def test_equal_answers_in_another_key_order_share_one_model_call(db_session, client, monkeypatch):
+    """Two countries whose facts match are one group in `split`, however their answers were stored:
+    the US's and Canada's same answers in another key order (a save sorts keys; a profile synced
+    or written by hand need not) take one /map model call."""
+    from app.models.application import Application
+    from app.services import autofill_map
+    from tests.test_proposals_models import _mk_job
+
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "CA"]), db_session)
+    text_settings.set_text(autofill_profile.AUTOFILL_KEY, autofill_profile.AUTOFILL_FILE, json.dumps(
+        {"work_auth_by_country": {
+            "US": {"authorized_now": True, "sponsorship_now": False},
+            "CA": {"sponsorship_now": False, "authorized_now": True},
+        }}), db_session)
+    job = _mk_job(db_session, company="Acme", country_code="US")
+    application = Application(job_id=job.id, base_resume="hybrid", customized_json={"contact": {"name": "Ada"}})
+    db_session.add(application)
+    db_session.commit()
+    calls = []
+
+    def fake_map(fields, facts, session, **_kw):
+        calls.append([f.fid for f in fields])
+        return {f.fid: autofill_map.Mapped(route="none") for f in fields}
+
+    monkeypatch.setattr(autofill_map, "map_fields", fake_map)
+    response = client.post("/api/autofill/map", json={"application_id": str(application.id), "fields": [
+        {"fid": "ca", "question": "Are you authorised to work in Canada?", "shape": "select", "options": ["Yes", "No"]},
+        {"fid": "job", "question": "Are you authorised to work here?", "shape": "select", "options": ["Yes", "No"]},
+    ]})
+    assert response.status_code == 200, response.text
+    assert calls == [["ca", "job"]]
+
+
 def test_the_extension_reads_only_the_resolved_work_auth():
     """The Companion never picks a country itself: it fills from `profile.work_auth` off /context, which the
     server resolved to the job's country (`profile_for_job`). The one file that names the per-country map is

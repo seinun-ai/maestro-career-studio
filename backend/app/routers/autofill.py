@@ -442,7 +442,8 @@ class _Catalog:
             )
             # Served: an agreement given under an older policy reads off (lapsed).
             facts = autofill_catalog.with_agreement(facts, self._agrees)
-            key = json.dumps([dataclasses.astuple(f) for f in facts.values()], default=str)
+            # Keyed by slot and sorted: equal facts are one key whatever order the answers were stored in.
+            key = json.dumps({s: dataclasses.astuple(f) for s, f in facts.items()}, sort_keys=True, default=str)
             self._built[market] = (key, facts)
         return self._built[market]
 
