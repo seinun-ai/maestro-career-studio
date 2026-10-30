@@ -2,8 +2,11 @@
 
 Only the rules the sources check verified (form_questions.yaml `citizenship`; sources doc changes
 1-5): a citizen in their own country, EU/EEA/Swiss citizens in DE, NL and IE, British citizens in
-Ireland, Irish citizens in the UK, GCC nationals in the UAE. Anything else stays unknown, and an
-answer the user gave always wins (inv-country-answers-stay-home).
+Ireland, Irish citizens in the UK, GCC nationals in the UAE. Anything else stays unknown.
+
+An answer the user gave always wins, and one that contradicts the rule (not allowed to work, or
+needing sponsorship now or later) turns the rule off for that country: the user knows something the
+rule does not, so nothing is derived beside it (inv-country-answers-stay-home).
 
 Only readers call `answers_for`; the save path (`autofill_profile._as_stored`,
 `work_auth_entries`) never does, so nothing derived reaches the stored profile.
@@ -12,7 +15,7 @@ Only readers call `answers_for`; the save path (`autofill_profile._as_stored`,
 from typing import Any
 
 from app.schemas.form_questions import DerivedAnswer
-from app.services import autofill_profile, countries, form_questions
+from app.services import autofill_profile, countries, form_questions, markets
 
 _SETTLED = {"authorized_now": True, "sponsorship_now": False, "sponsorship_future": False}
 
@@ -28,10 +31,11 @@ def citizenships(profile: Any) -> list[str]:
 
 
 def derived_for(citizenships: list[str], market: str) -> dict[str, DerivedAnswer]:
-    """The answers the first citizenship with a rule for `market` settles: allowed to work, no
-    sponsorship now or later, and the status the rule names when the market's list has it. {} when
-    no citizenship has a rule there."""
-    for code in citizenships:
+    """The answers a citizenship settles in `market`: allowed to work, no sponsorship now or later,
+    and the status its rule names when the market's list has it. The market's own citizenship comes
+    first, then the others in order, and the first with a rule settles it; {} when none has one."""
+    own = markets.country_code(market)
+    for code in sorted(citizenships, key=lambda c: c != own):
         rule = form_questions.citizenship_rule(code, market)
         if rule is None:
             continue
@@ -42,18 +46,28 @@ def derived_for(citizenships: list[str], market: str) -> dict[str, DerivedAnswer
     return {}
 
 
-def _given(value: Any) -> bool:
-    """Whether a stored value is an answer: a blank select ("") is none, as the typed reader has it."""
-    return value is not None and not (isinstance(value, str) and not value.strip())
+def settled_markets(citizenships: list[str]) -> list[str]:
+    """The markets Maestro keeps, in `markets.keys()` order, where a citizenship settles that the
+    user may work."""
+    return [
+        m for m in markets.keys()
+        if (d := derived_for(citizenships, m).get("authorized_now")) is not None and d.value is True
+    ]
 
 
 def answers_for(profile: Any, market: str, home: str | None = None) -> dict[str, Any]:
-    """One market's permit answers as readers see them: each stored answer over the derived ones.
-    With nothing derived, the stored answers as they are. `home` places a legacy single `work_auth`."""
+    """One market's permit answers as readers see them: each given answer over the derived ones.
+
+    Two shapes come back, so callers read the result through `typed_work_auth(..., market)`: the
+    stored entry as it is when nothing is derived (no citizenship rule, or a given answer that
+    contradicts it), else the derived answers with the given ones laid over them under the typed
+    keys. A given answer is one the typed reader can use: a blank, a status outside the market's
+    list or a non-answer ("maybe") hides nothing. `home` places a legacy single `work_auth` in a raw
+    profile (a read view has it placed already)."""
+    market = str(market or "").strip().upper()
     stored = autofill_profile.work_auth_entries(profile, home).get(market, {})
     derived = derived_for(citizenships(profile), market)
-    if not derived:
+    given = autofill_profile.typed_work_auth(stored, market).model_dump(exclude_defaults=True)
+    if not derived or any(k in given and given[k] != v for k, v in _SETTLED.items()):
         return stored
-    # Under the typed keys, so a legacy pair the user gave is not hidden by a derived typed key.
-    given = {k: v for k, v in autofill_profile.typed_shape(stored).items() if _given(v)}
     return {**{k: d.value for k, d in derived.items()}, **given}

@@ -61,6 +61,24 @@ def test_nothing_else_is_derived():
 
 def test_dual_citizens_take_the_first_rule_that_settles_it():
     assert autofill_derive.derived_for(["IN", "GB"], "IE")["authorized_now"].via == "GB"
+    assert autofill_derive.derived_for(["FR", "GB"], "IE")["authorized_now"].via == "FR"
+
+
+def test_the_markets_own_citizenship_comes_first():
+    for listed in (["SA", "AE"], ["AE", "SA"]):
+        derived = autofill_derive.derived_for(listed, "AE")
+        assert _values(derived) == {**SETTLED, "status": "citizen"}, listed
+        assert derived["status"].via == "AE", listed
+    assert autofill_derive.derived_for(["IE", "GB"], "UK")["authorized_now"].via == "GB"
+
+
+def test_settled_markets_are_where_a_citizenship_lets_you_work():
+    # In markets.yaml's order.
+    assert autofill_derive.settled_markets(["FR"]) == ["IE", "DE", "NL"]
+    assert autofill_derive.settled_markets(["IN"]) == ["IN"]
+    assert autofill_derive.settled_markets(["GB"]) == ["UK", "IE"]
+    assert autofill_derive.settled_markets(["SA"]) == ["AE"]
+    assert autofill_derive.settled_markets([]) == []
 
 
 def test_citizenships_are_read_as_iso_codes():
@@ -71,27 +89,54 @@ def test_citizenships_are_read_as_iso_codes():
 
 
 def test_an_explicit_answer_wins_and_the_rest_is_derived():
-    profile = {"personal": {"citizenships": ["FR"]},
-               "work_auth_by_country": {"DE": {"sponsorship_future": True}}}
-    assert autofill_derive.answers_for(profile, "DE") == {**SETTLED, "sponsorship_future": True}
+    profile = {"personal": {"citizenships": ["AE"]},
+               "work_auth_by_country": {"AE": {"status": "golden_visa", "sponsorship_future": False}}}
+    assert autofill_derive.answers_for(profile, "AE") == {**SETTLED, "status": "golden_visa"}
 
 
-def test_a_blank_answer_is_no_answer():
-    """A blank select ("") is unknown everywhere (`autofill_profile._usable_answers_only`), so it
-    hides nothing a citizenship settles."""
+def test_a_value_the_typed_reader_cannot_use_is_no_answer():
+    """A blank select, a status outside the market's list and a non-answer read as unknown
+    everywhere (`autofill_profile._usable_answers_only`), so they hide nothing a citizenship
+    settles; a usable answer beside them still wins."""
     profile = {"personal": {"citizenships": ["SA"]},
-               "work_auth_by_country": {"AE": {"status": "", "authorized_now": None, "sponsorship_now": True}}}
+               "work_auth_by_country": {"AE": {"status": "", "authorized_now": "maybe",
+                                               "authorization_expires_on": "2030-01-01"}}}
     assert autofill_derive.answers_for(profile, "AE") == {
-        **SETTLED, "status": "gcc_national", "sponsorship_now": True}
+        **SETTLED, "status": "gcc_national", "authorization_expires_on": "2030-01-01"}
 
 
-def test_an_answer_in_the_legacy_shape_still_wins():
-    """The legacy pair is read as `typed_work_auth` reads it, so a derived typed key never hides it
-    (SYSTEM.md §13 autofill-work-auth-shape)."""
+def test_an_invalid_stored_status_shows_the_derived_one():
+    profile = {"personal": {"citizenships": ["AE"]}, "work_auth_by_country": {"AE": {"status": "OPT"}}}
+    assert autofill_derive.answers_for(profile, "AE") == {**SETTLED, "status": "citizen"}
+
+
+def test_an_answer_in_the_legacy_shape_is_read_as_the_typed_reader_reads_it():
+    """The legacy pair (SYSTEM.md §13 autofill-work-auth-shape) is a given answer under the typed
+    keys, so a derived typed key never hides it."""
     profile = {"personal": {"citizenships": ["FR"]},
-               "work_auth_by_country": {"DE": {"authorized_to_work": "no", "requires_sponsorship": "yes"}}}
-    assert autofill_derive.answers_for(profile, "DE") == {
-        **SETTLED, "authorized_now": "no", "sponsorship_future": "yes"}
+               "work_auth_by_country": {"DE": {"authorized_to_work": "yes", "requires_sponsorship": "no"}}}
+    assert autofill_derive.answers_for(profile, "DE") == SETTLED
+
+
+@pytest.mark.parametrize("entry", [
+    {"authorized_now": False},
+    {"sponsorship_now": True},
+    {"sponsorship_future": True, "authorized_now": True},
+    {"authorized_to_work": "yes", "requires_sponsorship": "yes"},  # the legacy pair
+])
+def test_an_answer_that_contradicts_the_rule_turns_it_off_for_that_country(entry):
+    """Never a derived "no sponsorship" beside a given "not authorized": the user knows something
+    the rule does not, so the market reads only what they gave."""
+    profile = {"personal": {"citizenships": ["FR"]}, "work_auth_by_country": {"DE": entry}}
+    assert autofill_derive.answers_for(profile, "DE") == entry
+    # Another country the rule settles is untouched.
+    assert autofill_derive.answers_for(profile, "NL") == SETTLED
+
+
+def test_the_market_is_read_as_a_key():
+    profile = {"personal": {"citizenships": ["FR"]},
+               "work_auth_by_country": {"DE": {"authorization_expires_on": "2030-01-01"}}}
+    assert autofill_derive.answers_for(profile, " de ") == {**SETTLED, "authorization_expires_on": "2030-01-01"}
 
 
 def test_with_nothing_derived_the_stored_answers_are_read_as_they_are():
@@ -103,7 +148,7 @@ def test_with_nothing_derived_the_stored_answers_are_read_as_they_are():
 
 def test_a_legacy_single_set_is_the_home_markets():
     profile = {"personal": {"citizenships": ["FR"]}, "work_auth": {"sponsorship_future": True}}
-    assert autofill_derive.answers_for(profile, "DE", home="DE") == {**SETTLED, "sponsorship_future": True}
+    assert autofill_derive.answers_for(profile, "DE", home="DE") == {"sponsorship_future": True}
     assert autofill_derive.answers_for(profile, "NL", home="DE") == SETTLED
 
 

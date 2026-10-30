@@ -563,21 +563,18 @@ def typed_work_auth(raw: Any, market: str | None = None) -> WorkAuth:
     statuses = (
         form_questions.all_status_values() if market is None else form_questions.status_values(market)
     )
-    return _usable_answers_only(typed_shape(raw), statuses)
-
-
-def typed_shape(raw: dict[str, Any]) -> dict[str, Any]:
-    """One country's raw answers under the typed keys, unvalidated: as stored when any typed key is
-    there, else the legacy pair mapped (SYSTEM.md §13 `autofill-work-auth-shape`)."""
     if _TYPED_WORK_AUTH_KEYS & raw.keys():
-        return raw
-    return {
-        "authorized_now": raw.get("authorized_to_work"),
-        # The legacy flag was never time-scoped. Map it to the FUTURE half,
-        # which is the question employers gate on, and leave `now` unknown
-        # rather than inventing it.
-        "sponsorship_future": raw.get("requires_sponsorship"),
-    }
+        return _usable_answers_only(raw, statuses)
+    return _usable_answers_only(
+        {
+            "authorized_now": raw.get("authorized_to_work"),
+            # The legacy flag was never time-scoped. Map it to the FUTURE half,
+            # which is the question employers gate on, and leave `now` unknown
+            # rather than inventing it.
+            "sponsorship_future": raw.get("requires_sponsorship"),
+        },
+        statuses,
+    )
 
 
 def get_work_auth(session: Session | None = None, market: str | None = None) -> WorkAuth:
