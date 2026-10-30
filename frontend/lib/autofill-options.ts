@@ -8,31 +8,12 @@
  * is not `optional` counts toward readiness, a `byHome` one only where you live asks it
  * (`_personal_fields`). `backend/tests/test_autofill_groups_parity.py` fails when the two drift.
  */
+import type { FieldDef, GroupDef } from "./types";
 
-export type FieldDef = {
-  key: string;
-  label: string;
-  optional?: boolean;
-  type?: "text" | "select" | "date";
-  boolean?: boolean;
-  options?: { value: string; label: string }[];
-  /** A format or a consequence, between the label and the control. Never an example value. */
-  hint?: string;
-  /** Instead of `hint` while the question is empty because the saved answer was dropped when the
-   *  question changed (the backend lists it in the profile's `stale_answers`). */
-  staleHint?: string;
-  /** Shown only while another field of the group holds this value: [key, value].
-   *  Changing that field away deletes this one (`withField`). */
-  when?: [string, string];
-  /** The address's state line: named by where you live (`state_label`) and counted only where an address
-   *  there needs one (`asks_state`), else optional. `groupFields` resolves it. */
-  byHome?: true;
-};
+export type { FieldDef, GroupDef } from "./types";
 
 /** Where you live, as the state line reads it (a `MarketOption` from `GET /api/settings/market`). */
 export type HomeMarket = { asks_state?: boolean; state_label?: string };
-
-export type GroupDef = { key: string; title: string; fields: FieldDef[] };
 
 export const YES_NO = [
   { value: "yes", label: "Yes" },

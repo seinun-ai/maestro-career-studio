@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 
+import { formQuestionsQuery } from "@/components/profile/use-form-questions";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,7 +30,10 @@ export function useCountriesAutosave(market: MarketSettingResponse) {
         method: "PUT",
         body: JSON.stringify({ value: next }),
       }),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      // The form questions follow where you live and apply (the state line, each country's work permit): read
+      // first, so a country never shows on screen without its questions.
+      await qc.invalidateQueries({ queryKey: formQuestionsQuery.queryKey });
       qc.setQueryData(["settings", "market"], (prev: MarketSettingResponse | undefined) =>
         prev ? { ...prev, ...result } : prev,
       );

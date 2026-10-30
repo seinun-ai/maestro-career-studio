@@ -2466,6 +2466,40 @@ export interface MarketSettingResponse {
   offers_eeo: boolean;
 }
 
+/** One form question (backend schemas/form_questions.py `Field`). Served without defaults: every key but `key`
+ *  and `label` may be absent. */
+export type FieldDef = {
+  key: string;
+  label: string;
+  optional?: boolean;
+  type?: "text" | "select" | "date";
+  boolean?: boolean;
+  options?: { value: string; label: string }[];
+  /** A format or a consequence, between the label and the control. Never an example value. */
+  hint?: string;
+  /** Instead of `hint` while the question is empty because the saved answer was dropped when the
+   *  question changed (the backend lists it in the profile's `stale_answers`). */
+  staleHint?: string;
+  /** Shown only while another field of the group holds this value: [key, value].
+   *  Changing that field away deletes this one (lib/autofill-options.ts `withField`). */
+  when?: [string, string];
+  /** The address's state line, served already named by where you live (`state_label`) and optional where an
+   *  address there has none (`asks_state`). */
+  byHome?: true;
+};
+
+export type GroupDef = { key: string; title: string; fields: FieldDef[] };
+
+/** GET /api/settings/autofill/questions (backend schemas/form_questions.py `QuestionSet`): the form questions
+ *  for where you live and apply. The groups are personal, eeo, eligibility and preferences; `permits` holds
+ *  each apply-in market's work-permit fields ("UK", never "GB"), required questions first. */
+export type QuestionSet = {
+  groups: GroupDef[];
+  permits: Record<string, FieldDef[]>;
+  /** Whether a market you apply in has a checked diversity set. */
+  offers_eeo: boolean;
+};
+
 /** How pay reads (`GET/PUT /api/settings/money`; docs/entities/money.md). */
 export interface MoneySettings {
   /** ISO 4217 the user picked; null follows where they live. */
