@@ -1706,6 +1706,10 @@ Expected: green.
 
   `/context` also serves `country_answered` beside `work_auth_market`, which marks the slots a
   country's own answer filled. Both are view-only and never stored.
+  - Since Task 3.7, a profile carrying `country_answered` (a job's view) is refused on save with a
+    422.
+  - `/context` serves `personal.citizenships` as country names ("India"), not ISO codes. Say so in
+    the tool docs; a write still takes either form.
 - Agents can see that no country is chosen: `chosen` goes in `get_setup_status`'s autofill detail
   and in `get_autofill_profile`. Without it, an unchosen install with everything else answered
   reads as complete, with no hint that its countries are missing.
