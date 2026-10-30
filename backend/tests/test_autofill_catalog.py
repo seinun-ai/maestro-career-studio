@@ -1,12 +1,10 @@
 import re
 from datetime import date
-from typing import get_args
 
 import pytest
 
 from app.services import autofill_catalog as cat
-from app.schemas.autofill_profile import WorkAuthStatus
-from app.services import autofill_slots
+from app.services import autofill_slots, form_questions
 
 PROFILE = {
     "personal": {"first_name": "Sample", "city": "Springfield"},
@@ -160,9 +158,9 @@ def test_today_defaults_to_the_real_clock():
     assert cat.build({}, [], [])["derived.today"].value == date.today().isoformat()
 
 
-@pytest.mark.parametrize("status", get_args(WorkAuthStatus))
+@pytest.mark.parametrize("status", form_questions.status_values("US"))
 def test_us_citizen_is_derived_from_every_work_authorization_status(status):
-    """Every status the profile can store answers it: only a citizen is one."""
+    """Every US status answers it: only a citizen is one."""
     f = derived({"work_auth": {"status": status}})
     assert f["derived.us_citizen"].value == ("Yes" if status == "citizen" else "No")
     assert f["derived.us_citizen"].describe == "is a US citizen (yes/no; derived from the applicant's work authorization)"

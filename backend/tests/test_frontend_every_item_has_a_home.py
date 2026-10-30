@@ -152,7 +152,7 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Work permits", "Countries authorized", (
         asked("permits", "authorized_now"), *_PERMITS, _APPLY_IN,
         ("backend/app/services/autofill_country.py", "derived = _authorized_countries(entries)"),
-        ("backend/app/services/autofill_country.py", "if autofill_profile.typed_work_auth(raw).authorized_now is True:"),
+        ("backend/app/services/autofill_country.py", "if autofill_profile.typed_work_auth(raw, market).authorized_now is True:"),
     )),
     ("Jobs you want", "Roles you want", ('<Label htmlFor="job-preferences-roles" optional> Roles you want </Label>',)),
     ("Jobs you want", "Years of experience",

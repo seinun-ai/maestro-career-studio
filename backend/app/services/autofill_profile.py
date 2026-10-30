@@ -21,6 +21,13 @@ knows one set, with `work_auth_market` naming the market that set is for; a save
 folds an edited `work_auth` into the market its client names (`_as_stored`). Which
 set a form gets is `autofill_country`'s rule. Migration state: SYSTEM.md §13
 `autofill-work-auth-by-country`.
+
+**Country answers** (form_questions.yaml `answers`) are kept the same way:
+`answers_by_country` maps a market to that country's answers, merged by market on
+a save. `personal.citizenships` is a list of ISO codes ("GB"), normalised on a
+save. An agent's save is refused a country answer the market does not ask, a
+status outside the market's own list, or a citizenship that names no country
+(`_refusal`).
 """
 
 import json
@@ -30,7 +37,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_profile import WorkAuth
-from app.services import markets, text_settings
+from app.services import countries, form_questions, markets, text_settings
 
 AUTOFILL_KEY = "autofill_profile"
 AUTOFILL_FILE = "autofill.json"
@@ -38,6 +45,10 @@ WORK_AUTH = "work_auth"
 BY_COUNTRY = "work_auth_by_country"
 # The market the `work_auth` beside it is for: served on a read, never stored.
 WORK_AUTH_MARKET = "work_auth_market"
+# Each market's country answers (form_questions.yaml `answers`), keyed like `work_auth_by_country`.
+ANSWERS_BY_COUNTRY = "answers_by_country"
+# Under `personal`: the countries the user is a citizen of, as ISO codes ("GB", not "UK").
+CITIZENSHIPS = "citizenships"
 
 # A profile is "new shape" if it carries ANY typed key. Detecting on one or two
 # chosen keys would send a profile holding only `sponsorship_now` down the
@@ -88,16 +99,21 @@ def _with_current_words(data: dict[str, Any]) -> dict[str, Any]:
     return {**data, STALE_KEY: [STALE_VETERAN]} if stale and not _answered_veteran(data) else data
 
 
-def work_auth_entries(profile: Any, home: str | None) -> dict[str, dict[str, Any]]:
-    """Each market's raw work-permit answers, keyed by market ("UK"): `work_auth_by_country`'s
-    entries (an entry that is not an object is no answers), and a legacy top-level `work_auth`
-    as the home market's when it has none of its own. Copies: a caller may change them."""
-    stored = profile.get(BY_COUNTRY) if isinstance(profile, dict) else None
-    entries = {
+def _by_market(stored: Any) -> dict[str, dict[str, Any]]:
+    """A per-market map's entries keyed by market ("uk " is "UK"); an entry that is not an object
+    is no answers. Copies: a caller may change them."""
+    return {
         str(key).strip().upper(): dict(value)
         for key, value in (stored.items() if isinstance(stored, dict) else ())
         if isinstance(value, dict) and str(key).strip()
     }
+
+
+def work_auth_entries(profile: Any, home: str | None) -> dict[str, dict[str, Any]]:
+    """Each market's raw work-permit answers, keyed by market ("UK"): `work_auth_by_country`'s
+    entries (an entry that is not an object is no answers), and a legacy top-level `work_auth`
+    as the home market's when it has none of its own. Copies: a caller may change them."""
+    entries = _by_market(profile.get(BY_COUNTRY) if isinstance(profile, dict) else None)
     legacy = profile.get(WORK_AUTH) if isinstance(profile, dict) else None
     if home and home not in entries and isinstance(legacy, dict):
         entries[home] = dict(legacy)
@@ -146,27 +162,66 @@ def _one_set_market(profile: dict[str, Any], answered: set[str], home: str | Non
     return home if home and not (answered - {home}) else None
 
 
-def _as_stored(profile: dict[str, Any], before: dict[str, Any], home: str | None) -> dict[str, Any]:
-    """What a save stores: `work_auth_by_country` alone, and never one market's answers written over
-    another's.
-
-    - **The map is merged by market.** A market the save sends replaces that market's answers (sent
-      as null, they go); a market it leaves out, or a save with no map at all, keeps its stored
-      answers: a client that does not know a country cannot have meant to remove them.
-    - **The one set goes to the market it names.** A client that knows one set (the Companion's pause
-      row, an older page) edits `work_auth`, the set a read served beside `work_auth_market`. When it
-      differs from that market's stored answers (`before`), and the client's own map entry for that
-      market is not an edit of its own, it is that market's new answers (`_one_set_market`; no market,
-      no fold). So a client served under the old home, saving after a move, writes the old home's
-      entry, and a client that knows every country leaves `work_auth` as served, or out."""
-    stored = work_auth_entries(before, None)
-    sent = _sent_entries(profile.get(BY_COUNTRY))
+def _laid_over(
+    stored: dict[str, dict[str, Any]], sent: dict[str, dict[str, Any] | None]
+) -> dict[str, dict[str, Any]]:
+    """A per-market map as a save leaves it: each market `sent` replaces its stored answers (None
+    removes them), and a market it leaves out keeps them."""
     entries = dict(stored)
     for market, answers in sent.items():
         if answers is None:
             entries.pop(market, None)
         else:
             entries[market] = answers
+    return entries
+
+
+def _country_codes(values: list[Any]) -> tuple[list[str], list[Any]]:
+    """The countries `values` name as ISO codes (`countries.normalize`: "in", "India" and "IN" are
+    "IN", "UK" is "GB"), each once, in the order given; and the entries that name no country."""
+    codes: list[str] = []
+    unknown: list[Any] = []
+    for value in values:
+        code = countries.normalize(value) if isinstance(value, str) else None
+        if code is None:
+            unknown.append(value)
+        elif code not in codes:
+            codes.append(code)
+    return codes, unknown
+
+
+def _with_citizenship_codes(profile: dict[str, Any]) -> dict[str, Any]:
+    """`personal.citizenships` stored as ISO codes, each once, in the order given. An entry that
+    names no country is no answer and is left out (an agent's save is refused one first,
+    `_refusal`); a value that is not a list is left as written, as every loose answer is."""
+    personal = profile.get("personal")
+    listed = personal.get(CITIZENSHIPS) if isinstance(personal, dict) else None
+    if not isinstance(listed, list):
+        return profile
+    return {**profile, "personal": {**personal, CITIZENSHIPS: _country_codes(listed)[0]}}
+
+
+def _as_stored(profile: dict[str, Any], before: dict[str, Any], home: str | None) -> dict[str, Any]:
+    """What a save stores: `work_auth_by_country` alone, and never one market's answers written over
+    another's.
+
+    - **The map is merged by market.** A market the save sends replaces that market's answers (sent
+      as null, they go); a market it leaves out, or a save with no map at all, keeps its stored
+      answers: a client that does not know a country cannot have meant to remove them. Country
+      answers (`answers_by_country`) are merged by market the same way.
+    - **The one set goes to the market it names.** A client that knows one set (the Companion's pause
+      row, an older page) edits `work_auth`, the set a read served beside `work_auth_market`. When it
+      differs from that market's stored answers (`before`), and the client's own map entry for that
+      market is not an edit of its own, it is that market's new answers (`_one_set_market`; no market,
+      no fold). So a client served under the old home, saving after a move, writes the old home's
+      entry, and a client that knows every country leaves `work_auth` as served, or out.
+    - **Citizenships are ISO codes** (`_with_citizenship_codes`)."""
+    stored = work_auth_entries(before, None)
+    sent = _sent_entries(profile.get(BY_COUNTRY))
+    entries = _laid_over(stored, sent)
+    country_answers = _laid_over(
+        _by_market(before.get(ANSWERS_BY_COUNTRY)), _sent_entries(profile.get(ANSWERS_BY_COUNTRY))
+    )
     single = profile.get(WORK_AUTH)
     if isinstance(single, dict):
         answered = {m for m, answers in {**stored, **sent}.items() if answers}
@@ -174,10 +229,15 @@ def _as_stored(profile: dict[str, Any], before: dict[str, Any], home: str | None
         unedited_in_map = sent.get(market, stored.get(market)) == stored.get(market)
         if market and single != stored.get(market) and unedited_in_map:
             entries[market] = dict(single)
-    out = {k: v for k, v in profile.items() if k not in (WORK_AUTH, BY_COUNTRY, WORK_AUTH_MARKET)}
+    out = {
+        k: v for k, v in profile.items()
+        if k not in (WORK_AUTH, BY_COUNTRY, WORK_AUTH_MARKET, ANSWERS_BY_COUNTRY)
+    }
     if entries:
         out[BY_COUNTRY] = entries
-    return out
+    if country_answers:
+        out[ANSWERS_BY_COUNTRY] = country_answers
+    return _with_citizenship_codes(out)
 
 
 def _home(session: Session | None) -> str:
@@ -215,7 +275,8 @@ def holds_work_permit_answer(market: str, session: Session | None = None) -> boo
     stored = _parse_stored(text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session))
     entry = work_auth_entries({BY_COUNTRY: stored.get(BY_COUNTRY)}, None).get(market)
     return any(
-        typed_work_auth(raw).model_dump(exclude_defaults=True) for raw in (entry, stored.get(WORK_AUTH))
+        typed_work_auth(raw, market).model_dump(exclude_defaults=True)
+        for raw in (entry, stored.get(WORK_AUTH))
     )
 
 
@@ -267,7 +328,9 @@ def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict
 # {#inv-eeo-standing-consent}); the MCP tool has no field for it, its client refuses it, and so does this.
 ANSWER_SECTIONS = ("personal", "eligibility", "preferences")
 LIST_SECTIONS = ("education", "languages", "custom")
-AGENT_SECTIONS = frozenset({*ANSWER_SECTIONS, *LIST_SECTIONS, BY_COUNTRY})
+# The two per-market maps: answers merged inside each market the save names.
+BY_MARKET_SECTIONS = (BY_COUNTRY, ANSWERS_BY_COUNTRY)
+AGENT_SECTIONS = frozenset({*ANSWER_SECTIONS, *LIST_SECTIONS, *BY_MARKET_SECTIONS})
 # The Companion's learn store (SYSTEM.md {#inv-one-label-pattern-table}): an agent's save upserts it.
 CUSTOM = "custom"
 
@@ -313,12 +376,11 @@ def merged_profile(stored: dict[str, Any], changes: dict[str, Any]) -> dict[str,
     """The whole profile an agent's save stores: `stored` (as a read serves it) with the sections
     `changes` names merged in. Answer sections merge key by key, saved answers (`custom`) upsert by
     question (`_upserted_custom`), education and languages replace the stored list, and work permits
-    go per country, each market key read as `set_profile` stores it (a None country is passed on as
-    None, which `set_profile` takes as removing its answers; a country left out keeps its stored
-    answers there). The read view's one-set projection
+    and country answers go per country, each market key read as `set_profile` stores it (a None
+    country is passed on as None, which `set_profile` takes as removing its answers; a country left
+    out keeps its stored answers there). The read view's one-set projection
     is never sent back, so no answer is folded into another country's."""
     profile = {k: v for k, v in stored.items() if k not in (WORK_AUTH, WORK_AUTH_MARKET)}
-    stored_permits = stored.get(BY_COUNTRY) if isinstance(stored.get(BY_COUNTRY), dict) else {}
     for section, given in changes.items():
         if section in ANSWER_SECTIONS:
             profile[section] = _merged_answers(profile.get(section), given)
@@ -326,17 +388,75 @@ def merged_profile(stored: dict[str, Any], changes: dict[str, Any]) -> dict[str,
             profile[CUSTOM] = _upserted_custom(profile.get(CUSTOM), given)
         elif section in LIST_SECTIONS:
             profile[section] = list(given)
-        elif section == BY_COUNTRY:
-            profile[BY_COUNTRY] = {  # keyed as stored ("uk " is "UK"), so a market's answers are found
-                market: None if answers is None else _merged_answers(stored_permits.get(market), answers)
+        elif section in BY_MARKET_SECTIONS:
+            entries = _by_market(stored.get(section))
+            profile[section] = {  # keyed as stored ("uk " is "UK"), so a market's answers are found
+                market: None if answers is None else _merged_answers(entries.get(market), answers)
                 for market, answers in _sent_entries(given).items()
             }
     return profile
 
 
+def _citizenship_refusal(personal: Any) -> str | None:
+    """Citizenships that are not a list, or that name no country."""
+    listed = personal.get(CITIZENSHIPS) if isinstance(personal, dict) else None
+    if listed is None:
+        return None
+    if not isinstance(listed, list):
+        return 'personal.citizenships takes a list of countries: ISO codes ("IN") or English names.'
+    unknown = _country_codes(listed)[1]
+    if unknown:
+        return (
+            f"personal.citizenships: {', '.join(repr(v) for v in unknown)} names no country. "
+            'Give ISO codes ("IN") or English names.'
+        )
+    return None
+
+
+def _status_refusal(permits: Any) -> str | None:
+    """A work-permit status outside its market's own list (`form_questions.status_values`)."""
+    for market, answers in _sent_entries(permits).items():
+        status = (answers or {}).get("status")
+        allowed = form_questions.status_values(market)
+        if status is None or (isinstance(status, str) and status in allowed):
+            continue
+        if not allowed:
+            asking = [m for m in markets.keys() if form_questions.status_values(m)]
+            return (
+                f"{BY_COUNTRY}.{market}.status: {market} asks no status; only "
+                f"{', '.join(asking)} do. Leave it out."
+            )
+        return (
+            f"{BY_COUNTRY}.{market}.status: {status!r} is not one of "
+            f"{markets.get(market)['label']}'s statuses: {', '.join(allowed)}."
+        )
+    return None
+
+
+def _country_answer_refusal(given: Any) -> str | None:
+    """A country answer for a market Maestro does not keep, or one that market does not ask
+    (`form_questions.answer_keys`: its answers after packs)."""
+    for market, answers in _sent_entries(given).items():
+        if not markets.is_supported(market):
+            return (
+                f"{ANSWERS_BY_COUNTRY}: {market} is not a market Maestro keeps answers for. "
+                f"The markets are {', '.join(markets.keys())}."
+            )
+        allowed = form_questions.answer_keys(market)
+        unknown = [key for key in (answers or {}) if key not in allowed]
+        if unknown:
+            return (
+                f"{ANSWERS_BY_COUNTRY}.{market}: {', '.join(unknown)} is not asked there. "
+                f"{markets.get(market)['label']} asks {', '.join(allowed)}."
+            )
+    return None
+
+
 def _refusal(changes: dict[str, Any]) -> str | None:
     """Why an agent's save is refused before anything is read, or None: a section it does not write,
-    or one of the wrong shape (the merge would otherwise fail halfway or store a non-answer)."""
+    one of the wrong shape (the merge would otherwise fail halfway or store a non-answer), a
+    citizenship that names no country, a status outside its market's list, or a country answer
+    the market does not ask. Each refusal names what is allowed."""
     refused = sorted(set(changes) - AGENT_SECTIONS)
     if refused:
         return (
@@ -348,11 +468,15 @@ def _refusal(changes: dict[str, Any]) -> str | None:
             return f"{section} takes an object of answers."
         if section in LIST_SECTIONS and not isinstance(given, list):
             return f"{section} takes a list."
-        if section == BY_COUNTRY and not (
+        if section in BY_MARKET_SECTIONS and not (
             isinstance(given, dict) and all(a is None or isinstance(a, dict) for a in given.values())
         ):
-            return f"{BY_COUNTRY} takes an object of answers (or null) per market."
-    return None
+            return f"{section} takes an object of answers (or null) per market."
+    return (
+        _citizenship_refusal(changes.get("personal"))
+        or _status_refusal(changes.get(BY_COUNTRY))
+        or _country_answer_refusal(changes.get(ANSWERS_BY_COUNTRY))
+    )
 
 
 def patch_profile(changes: dict[str, Any], session: Session) -> dict[str, Any]:
@@ -369,7 +493,7 @@ def patch_profile(changes: dict[str, Any], session: Session) -> dict[str, Any]:
     return saved
 
 
-def _usable_answers_only(values: dict[str, Any]) -> WorkAuth:
+def _usable_answers_only(values: dict[str, Any], statuses: list[str] | set[str]) -> WorkAuth:
     """Validate field by field so one unusable answer cannot blank the others.
 
     settings/autofill.json is hand-editable and `PUT /api/settings/autofill`
@@ -378,11 +502,14 @@ def _usable_answers_only(values: dict[str, Any]) -> WorkAuth:
     cannot interpret IS an unknown answer, so dropping it to None lands on the
     same "ask the user" outcome a missing key already gets. Raising instead
     would take down every caller over one bad key; coercing would answer a
-    knockout question the profile never actually answered.
+    knockout question the profile never actually answered. A status outside
+    `statuses` (its market's list) is unknown the same way.
     """
     usable: dict[str, Any] = {}
     for name in WorkAuth.model_fields:
         value = values.get(name)
+        if name == "status" and not (isinstance(value, str) and value in statuses):
+            continue
         try:
             WorkAuth.model_validate({name: value})
         except ValidationError:
@@ -399,19 +526,27 @@ def work_auth_from_profile(profile: dict[str, Any]) -> WorkAuth:
     Dual-read, not a rewrite-on-load: the extension ships independently and an
     older panel may still POST the legacy shape. Cutting the legacy branch
     follows the `autofill-education-shape` precedent in SYSTEM.md §13 — frontend
-    first, extension one release later.
+    first, extension one release later. Its status is read against the market
+    the view names (`work_auth_market`), when it names one.
     """
-    return typed_work_auth(profile.get(WORK_AUTH))
+    market = profile.get(WORK_AUTH_MARKET)
+    return typed_work_auth(profile.get(WORK_AUTH), market if isinstance(market, str) else None)
 
 
-def typed_work_auth(raw: Any) -> WorkAuth:
-    """One country's raw answers as `WorkAuth`: the typed keys, else the legacy pair."""
+def typed_work_auth(raw: Any, market: str | None = None) -> WorkAuth:
+    """One country's raw answers as `WorkAuth`: the typed keys, else the legacy pair. Its status is
+    kept only when it is one of `market`'s own (`form_questions.status_values`: none where the
+    market lists none, or is one Maestro does not keep); with no market, one of any market's, so a
+    near miss ("OPT") still reads as unknown."""
     if not isinstance(raw, dict):
         # Loose JSON: `work_auth` may be absent, null, or hand-edited to a
         # string. No answers, rather than an AttributeError mid-fill.
         return WorkAuth()
+    statuses = (
+        form_questions.all_status_values() if market is None else form_questions.status_values(market)
+    )
     if _TYPED_WORK_AUTH_KEYS & raw.keys():
-        return _usable_answers_only(raw)
+        return _usable_answers_only(raw, statuses)
     return _usable_answers_only(
         {
             "authorized_now": raw.get("authorized_to_work"),
@@ -419,7 +554,8 @@ def typed_work_auth(raw: Any) -> WorkAuth:
             # which is the question employers gate on, and leave `now` unknown
             # rather than inventing it.
             "sponsorship_future": raw.get("requires_sponsorship"),
-        }
+        },
+        statuses,
     )
 
 
@@ -437,7 +573,8 @@ def peek_work_auth(session: Session | None = None, market: str | None = None) ->
 def _work_auth_of(view: dict[str, Any], market: str | None) -> WorkAuth:
     if market is None:
         return work_auth_from_profile(view)
-    return typed_work_auth((view.get(BY_COUNTRY) or {}).get(market.strip().upper()))
+    key = market.strip().upper()
+    return typed_work_auth((view.get(BY_COUNTRY) or {}).get(key), key)
 
 
 def _personal_str(personal: dict[str, Any], key: str) -> str | None:

@@ -85,7 +85,7 @@ def _authorized_countries(entries: dict[str, dict[str, Any]]) -> list[str]:
     """The country names of every market whose `authorized_now` reads Yes, in the stored order."""
     names = []
     for market, raw in entries.items():
-        if autofill_profile.typed_work_auth(raw).authorized_now is True:
+        if autofill_profile.typed_work_auth(raw, market).authorized_now is True:
             name = countries.label(markets.country_code(market))
             if name:
                 names.append(name)
@@ -126,4 +126,4 @@ def work_auth_for(profile: Any, *, question: str, job_country: str | None,
     """The answers a form question gets, typed: `market_for_question` over the job's ISO
     country. `home` places a legacy single `work_auth` in a raw profile."""
     market = market_for_question(question, market_for_job_country(job_country))
-    return autofill_profile.typed_work_auth(entry(profile, market, home) if market else {})
+    return autofill_profile.typed_work_auth(entry(profile, market, home) if market else {}, market)

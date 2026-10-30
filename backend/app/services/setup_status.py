@@ -65,7 +65,7 @@ def _work_permits(
     entries = profile.get(autofill_profile.BY_COUNTRY) or {}
     out: dict[str, GroupCompleteness] = {}
     for market, fields in permits.items():
-        work_auth = autofill_profile.typed_work_auth(entries.get(market))
+        work_auth = autofill_profile.typed_work_auth(entries.get(market), market)
         keys = form_questions.required_keys(fields)
         out[market] = GroupCompleteness(
             answered=sum(1 for k in keys if getattr(work_auth, k) is not None), answerable=len(keys))

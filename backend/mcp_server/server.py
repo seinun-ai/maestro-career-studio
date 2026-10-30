@@ -16,7 +16,6 @@ from mcp.server.mcpserver.tools import Tool
 from mcp.types import ToolAnnotations
 from pydantic import BeforeValidator, ConfigDict, Field, with_config
 
-from app.schemas.autofill_profile import WorkAuthStatus
 from app.schemas.quick_tailor import QuickTailorProfile
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
 from app.services import http_client, markets
@@ -376,7 +375,7 @@ class WorkPermitAnswers(TypedDict, total=False):
     visa status, asked for the US only; authorization_expires_on is YYYY-MM-DD, absent when the
     right to work there does not run out."""
 
-    status: WorkAuthStatus | None
+    status: str | None
     authorized_now: bool | None
     sponsorship_now: bool | None
     sponsorship_future: bool | None

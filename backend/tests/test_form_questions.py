@@ -147,6 +147,32 @@ def test_statuses_that_never_expire_are_marked():
     }
 
 
+def test_status_values_are_a_markets_own_list():
+    """What a save takes and the typed reader keeps for a market's `status` (autofill_profile)."""
+    assert form_questions.status_values("US")[:2] == ["citizen", "permanent_resident"]
+    assert "h1b" in form_questions.status_values("US")
+    assert "pgwp" in form_questions.status_values("ca ")
+    assert "golden_visa" in form_questions.status_values("AE")
+    # No list, or no market: never the default market's.
+    assert form_questions.status_values("UK") == []
+    assert form_questions.status_values("FR") == []
+    assert form_questions.status_values(None) == []
+
+
+def test_all_status_values_join_every_list():
+    every = {o.value for options in form_questions.catalog().statuses.values() for o in options}
+    assert form_questions.all_status_values() == every
+    assert {"h1b", "pgwp", "nz_citizen", "golden_visa"} <= every
+
+
+def test_answer_keys_follow_a_markets_packs():
+    assert form_questions.answer_keys("US") == ["expected_pay"]
+    assert form_questions.answer_keys("DE") == ["expected_pay"]
+    assert form_questions.answer_keys("IN") == ["expected_pay", "current_ctc"]
+    assert form_questions.answer_keys("ae") == ["expected_pay", "in_country_now", "uae_driving_licence"]
+    assert form_questions.answer_keys("FR") == []
+
+
 def test_every_wording_asks_the_three_answers_then_the_expiry():
     want = ["authorized_now", "sponsorship_now", "sponsorship_future", "authorization_expires_on"]
     for vocab, fields in form_questions.catalog().permits.items():

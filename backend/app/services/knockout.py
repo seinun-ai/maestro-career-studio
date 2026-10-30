@@ -450,7 +450,7 @@ def scan_args(session: Session) -> dict[str, Any]:
         "home_currency": money_settings.home_currency(session),
         "rates": fx_rates.current(session),
         "work_auth_by_market": {
-            market: autofill_profile.typed_work_auth(raw)
+            market: autofill_profile.typed_work_auth(raw, market)
             for market, raw in autofill_profile.work_auth_entries(profile, None).items()
         },
         "home_market": market_settings.peek_market(session).home,

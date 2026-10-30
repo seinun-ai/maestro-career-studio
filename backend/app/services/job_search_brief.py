@@ -123,7 +123,7 @@ def _work_permits(db: Session, profile: dict[str, Any]) -> dict[str, Any]:
     place = market_settings.peek_market(db)
     stored = profile.get(autofill_profile.BY_COUNTRY) or {}
     by_country = {
-        market: _brief_work_auth(autofill_profile.typed_work_auth(stored.get(market)))
+        market: _brief_work_auth(autofill_profile.typed_work_auth(stored.get(market), market))
         for market in place.applied
     }
     one_country = place.applied == [place.home]

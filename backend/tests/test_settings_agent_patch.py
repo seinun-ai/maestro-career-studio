@@ -91,6 +91,92 @@ def test_a_null_market_loses_its_answers_and_a_market_left_out_keeps_them(client
     assert _stored_profile(settings_dir)["work_auth_by_country"] == {"CA": {"authorized_now": False}}
 
 
+# ---------- country answers and citizenships ----------
+
+
+def test_answers_by_country_merge_per_market(client, settings_dir):
+    client.put("/api/settings/autofill", json={"value": {
+        "answers_by_country": {"IN": {"current_ctc": "1800000"}, "AE": {"in_country_now": True}}}})
+    _patch(client, "autofill", {"answers_by_country": {"IN": {"expected_pay": "2400000"}}})
+    stored = _stored_profile(settings_dir)["answers_by_country"]
+    assert stored == {"IN": {"current_ctc": "1800000", "expected_pay": "2400000"},
+                      "AE": {"in_country_now": True}}
+
+
+def test_a_null_country_answer_goes_and_a_null_country_loses_them_all(client, settings_dir):
+    client.put("/api/settings/autofill", json={"value": {
+        "answers_by_country": {"IN": {"current_ctc": "1", "expected_pay": "2"}, "AE": {"in_country_now": True}}}})
+    _patch(client, "autofill", {"answers_by_country": {"in": {"current_ctc": None}, "AE": None}})
+    assert _stored_profile(settings_dir)["answers_by_country"] == {"IN": {"expected_pay": "2"}}
+
+
+def test_a_put_keeps_the_country_answers_it_does_not_send(client, settings_dir):
+    """As for work permits: a client that does not know a country cannot have meant to remove its
+    answers, and a market it sends replaces that market's (null removes them)."""
+    client.put("/api/settings/autofill", json={"value": {
+        "answers_by_country": {"IN": {"current_ctc": "1"}, "AE": {"in_country_now": True}}}})
+    client.put("/api/settings/autofill", json={"value": {"personal": {"first_name": "Ana"}}})
+    assert _stored_profile(settings_dir)["answers_by_country"] == {
+        "IN": {"current_ctc": "1"}, "AE": {"in_country_now": True}}
+    client.put("/api/settings/autofill", json={"value": {
+        "answers_by_country": {"ae ": {"uae_driving_licence": False}, "IN": None}}})
+    assert _stored_profile(settings_dir)["answers_by_country"] == {"AE": {"uae_driving_licence": False}}
+
+
+def test_an_unknown_country_answer_is_refused(client):
+    r = _patch(client, "autofill", {"answers_by_country": {"DE": {"current_ctc": "1"}}})
+    assert r.status_code == 422 and "current_ctc" in r.text
+    assert "expected_pay" in r.text  # names what Germany asks
+
+
+def test_a_market_maestro_does_not_keep_is_refused(client):
+    r = _patch(client, "autofill", {"answers_by_country": {"FR": {"expected_pay": "1"}}})
+    assert r.status_code == 422 and "FR" in r.text and "DE" in r.text  # names the markets
+
+
+def test_a_status_from_another_country_is_refused(client):
+    r = _patch(client, "autofill", {"work_auth_by_country": {"CA": {"status": "h1b"}}})
+    assert r.status_code == 422 and "open_work_permit" in r.text  # names CA's choices
+
+
+def test_a_status_where_no_status_is_asked_is_refused(client):
+    r = _patch(client, "autofill", {"work_auth_by_country": {"UK": {"status": "citizen"}}})
+    assert r.status_code == 422 and "UK" in r.text
+
+
+def test_a_status_from_the_markets_own_list_or_a_null_is_saved(client, settings_dir):
+    client.put("/api/settings/autofill", json={"value": PROFILE})
+    assert _patch(client, "autofill", {"work_auth_by_country": {
+        "ca": {"status": "pgwp"}, "US": {"status": None}}}).status_code == 200
+    stored = _stored_profile(settings_dir)["work_auth_by_country"]
+    assert stored["CA"] == {"status": "pgwp"} and "status" not in stored["US"]
+
+
+def test_citizenships_are_iso_codes(client, settings_dir):
+    _patch(client, "autofill", {"personal": {"citizenships": ["in", "United Kingdom", "IN"]}})
+    assert _stored_profile(settings_dir)["personal"]["citizenships"] == ["IN", "GB"]
+    assert _patch(client, "autofill", {"personal": {"citizenships": ["Atlantis"]}}).status_code == 422
+
+
+@pytest.mark.parametrize("citizenships", ["IN", [None], [3]])
+def test_citizenships_take_a_list_of_countries(client, citizenships):
+    r = _patch(client, "autofill", {"personal": {"citizenships": citizenships}})
+    assert r.status_code == 422 and "citizenships" in r.text
+
+
+def test_a_web_save_stores_citizenships_as_iso_codes_too(client, settings_dir):
+    """The web sends codes from its picker; a save stores them in one form whichever writer sent
+    them, and an entry that names no country is no answer."""
+    client.put("/api/settings/autofill", json={"value": {"personal": {"citizenships": ["ie", "Ireland", "Narnia", "uk"]}}})
+    assert _stored_profile(settings_dir)["personal"]["citizenships"] == ["IE", "GB"]
+
+
+def test_an_old_profile_reads_unchanged(client):
+    client.put("/api/settings/autofill", json={"value": PROFILE})
+    assert client.get("/api/settings/autofill").json()["value"]["work_auth_by_country"] == \
+        PROFILE["work_auth_by_country"]
+
+
 def test_education_and_languages_replace_the_stored_list_whole(client, settings_dir):
     client.put("/api/settings/autofill", json={"value": {
         **PROFILE, "languages": [{"language": "Portuguese", "fluent": True}],
@@ -172,6 +258,8 @@ def test_a_companion_learn_between_an_agents_read_and_its_custom_save_is_kept(cl
     {"personal": ["not", "answers"]},
     {"custom": {"question": "Q"}},
     {"work_auth_by_country": {"UK": "yes"}},
+    {"answers_by_country": {"IN": "yes"}},
+    {"answers_by_country": ["IN"]},
 ])
 def test_a_section_outside_the_list_or_of_the_wrong_shape_writes_nothing(client, settings_dir, changes):
     client.put("/api/settings/autofill", json={"value": PROFILE})

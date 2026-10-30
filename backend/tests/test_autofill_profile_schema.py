@@ -119,6 +119,25 @@ def test_uninterpretable_values_stay_unknown_instead_of_raising(db_session):
     assert wa.sponsorship_future is True
 
 
+def test_a_status_is_read_against_its_market():
+    assert autofill_profile.typed_work_auth({"status": "pgwp"}, "CA").status == "pgwp"
+    assert autofill_profile.typed_work_auth({"status": "pgwp"}, "US").status is None
+    assert autofill_profile.typed_work_auth({"status": "h1b"}, "US").status == "h1b"
+
+
+def test_a_status_where_none_is_asked_reads_as_unknown_and_the_rest_stay():
+    """The UK lists no statuses, and a market Maestro does not keep lists none: never the default
+    market's list."""
+    for market in ("UK", "FR"):
+        wa = autofill_profile.typed_work_auth({"status": "citizen", "authorized_now": True}, market)
+        assert wa.status is None and wa.authorized_now is True, market
+
+
+def test_with_no_market_a_status_from_any_list_reads():
+    assert autofill_profile.typed_work_auth({"status": "golden_visa"}).status == "golden_visa"
+    assert autofill_profile.typed_work_auth({"status": "OPT"}).status is None
+
+
 def test_legacy_blank_answer_stays_unknown(db_session):
     """An empty select is no answer at all, and must not read as False."""
     set_profile(

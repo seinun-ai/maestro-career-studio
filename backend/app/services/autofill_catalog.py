@@ -20,9 +20,9 @@ permission (`consent_forms`) is served on.
 import re
 from dataclasses import dataclass, field, replace
 from datetime import date
-from typing import Any, get_args
+from typing import Any
 
-from app.schemas.autofill_profile import WorkAuthStatus
+from app.services import form_questions
 from app.services.autofill_profile import canonical_identity_from_profile
 from app.services.autofill_slots import Policy, _as_text, policy_for
 
@@ -137,10 +137,12 @@ _DESCRIBES: dict[str, str] = {
                                 "charges, or anything a background check might find)"),
     "skills": "applicant skills (a list)",
 }
-# "Are you a US citizen?", from every status the profile can store: only a
-# citizen is one; every other status (a green card, any visa, none) is a No.
-# A status the profile cannot store derives nothing.
-_US_CITIZEN = {status: "Yes" if status == "citizen" else "No" for status in get_args(WorkAuthStatus)}
+# "Are you a US citizen?", from every US status (form_questions.yaml
+# `statuses.us`): only a citizen is one; every other status (a green card, any
+# visa, none) is a No. Any other status derives nothing.
+_US_CITIZEN = {
+    status: "Yes" if status == "citizen" else "No" for status in form_questions.status_values("US")
+}
 # A stored availability that means "today" (the owner's profile says "Immedietly";
 # "Immediatly", "Immediate start", "Available: now"): the WHOLE value is the
 # word, so "2 weeks from now" or "not immediately" is not.

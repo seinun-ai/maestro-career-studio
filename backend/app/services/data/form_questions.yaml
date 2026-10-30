@@ -174,7 +174,8 @@ groups:
 # "yes, with a limit" (Sources 10). `noExpiry`: nothing runs out, so the
 # expiry is not asked (Sources 11).
 statuses:
-  # The US visa statuses (schemas/autofill_profile.py WorkAuthStatus).
+  # The US visa statuses. A market's list is what a save takes and the typed
+  # reader keeps for its `status` (services/autofill_profile.py).
   us: &us_statuses
     - {value: citizen, label: U.S. citizen, noExpiry: true}
     - {value: permanent_resident, label: Permanent resident, noExpiry: true}

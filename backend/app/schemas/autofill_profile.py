@@ -1,11 +1,4 @@
-from typing import Literal
-
 from pydantic import BaseModel
-
-WorkAuthStatus = Literal[
-    "citizen", "permanent_resident", "opt", "stem_opt",
-    "h1b", "tn", "other_visa", "not_authorized",
-]
 
 
 class WorkAuth(BaseModel):
@@ -17,12 +10,17 @@ class WorkAuth(BaseModel):
     this replaces could not express that, and answered one of the two questions
     wrongly every time.
 
+    `status` is one of its market's own statuses (form_questions.yaml `statuses`,
+    by the market's `work_status`): the typed reader
+    (`autofill_profile.typed_work_auth`) keeps only a value of that list, so the
+    type here is a string.
+
     All fields optional. An unknown answer must STAY unknown: the extension
     reports `missing_source` and the user is asked, which is always better than
     a confident guess on a knockout question.
     """
 
-    status: WorkAuthStatus | None = None
+    status: str | None = None
     authorized_now: bool | None = None
     sponsorship_now: bool | None = None
     sponsorship_future: bool | None = None

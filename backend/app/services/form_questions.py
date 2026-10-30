@@ -39,6 +39,32 @@ def required_keys(fields: list[Field]) -> list[str]:
     return [f.key for f in fields if not f.optional]
 
 
+def _market(key: str | None) -> dict | None:
+    """A supported market's data, or None: unlike `markets.get`, never the default market's, so
+    an unknown market takes no country's statuses or answers."""
+    return markets.get(key) if markets.is_supported(key) else None
+
+
+def status_values(market: str | None) -> list[str]:
+    """The `work_auth_by_country[market].status` values a market takes: its `work_status` list,
+    in order; [] for a market with no list (the UK) or one Maestro does not keep."""
+    m = _market(market)
+    return [o.value for o in catalog().statuses[m["work_status"]]] if m and m["work_status"] else []
+
+
+def all_status_values() -> set[str]:
+    """Every market's status values together: what a status read for no market may be."""
+    return {o.value for options in catalog().statuses.values() for o in options}
+
+
+def answer_keys(market: str | None) -> list[str]:
+    """The `answers_by_country[market]` keys a market takes, in catalog order: every country
+    answer with no pack or a pack the market names (`current_ctc` in India only); [] for a market
+    Maestro does not keep."""
+    m = _market(market)
+    return [f.key for f in catalog().answers if f.pack is None or f.pack in m["packs"]] if m else []
+
+
 def resolve(
     *, home: str, apply_in: list[str], chosen: bool, citizenships: tuple[str, ...] = ()
 ) -> QuestionSet:

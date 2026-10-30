@@ -2205,16 +2205,6 @@
          "status": {
           "anyOf": [
            {
-            "enum": [
-             "citizen",
-             "permanent_resident",
-             "opt",
-             "stem_opt",
-             "h1b",
-             "tn",
-             "other_visa",
-             "not_authorized"
-            ],
             "type": "string"
            },
            {
