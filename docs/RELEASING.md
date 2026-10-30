@@ -185,10 +185,10 @@ listing text is the `description` in `server.json` (100 characters at most).
 ### Chrome Web Store
 
 The owner publishes the Companion to the Chrome Web Store separately from the
-GitHub release. The listing is **Maestro CS Companion**, published
-**unlisted**: it is reachable only by its link,
+GitHub release. The listing is **Maestro CS Companion**, public at
 <https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl>.
-The store ID is `bppkeipififkepldkogmfpkkhoakgndl`; the first upload was 0.11.1.
+The store ID is `bppkeipififkepldkogmfpkkhoakgndl`; the first upload was 0.11.1,
+unlisted, and the listing went public at 0.12.0.
 [The listing notes](../extension/STORE_LISTING.md) hold the single purpose,
 permission explanations and privacy disclosures the dashboard asks for.
 
