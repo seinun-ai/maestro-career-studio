@@ -348,6 +348,8 @@ async function fillFormFromProfile(
     return field.all ? { all: field.all } : { re: field.re };
   };
   const SPONSORSHIP_NOW_RE = pf("sponsorship-now").re;
+  // Built whatever the permission, so an unknown id still throws at once.
+  const currentCtcRule = { id: "current-ctc", ...pf("current-ctc"), value: pref.current_ctc };
   // These words turn a geographic noun into a QUESTION ABOUT ELIGIBILITY or
   // attendance. A home city/country is then the wrong answer even when the
   // label happens to contain "city" or "country".
@@ -588,7 +590,11 @@ async function fillFormFromProfile(
     // hourly rate?" was blocked by the policy AND unmatched here, so the field
     // was refused twice for the same missing wording.
     { id: "salary", ...pf("salary"), value: pref.desired_salary },
-    { id: "current-ctc", ...pf("current-ctc"), value: pref.current_ctc },
+    // Current pay is salary history (`shared/policy.js`): the rule exists only
+    // with the agreement permission, as `consent-forms` below. Without it a
+    // label that asks the expectation too ("current and expected CTC") passes
+    // the policy, and an unanswered salary rule would fall through to this one.
+    ...(consentForms ? [currentCtcRule] : []),
     { id: "notice-period", ...pf("notice-period"), value: pref.notice_period },
     // `not:` for the same reason as the employment date rules above, and it
     // matters more here: this one matches on "start date" alone, so iCIMS's

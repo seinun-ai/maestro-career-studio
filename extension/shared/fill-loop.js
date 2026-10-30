@@ -688,6 +688,11 @@
     // A date part's abstain is final: its list holds no option stating the part.
     const adapts = (f, row) => CAN_ADAPT.has(f.shape) && routeOf(row) !== "reasoned" && !row.part;
     const policyBlocks = (text) => Boolean(ns.isPolicyBlocked?.(text, { consentForms }));
+    // Facts the policy refuses by what they are, not by the label: current pay is salary history,
+    // filled only with the agreement permission. A label that also asks the expectation ("current
+    // and expected CTC") passes the label check, so the slot /map files it under is checked too.
+    const AGREEMENT_SLOTS = new Set(["preferences.current_ctc"]);
+    const slotBlocks = (row) => row.route === "slot" && AGREEMENT_SLOTS.has(row.slot) && !consentForms;
 
     // ---- the page: one operation at a time, each awaited
     const results = (frames) => (frames ?? []).map((fr) => fr?.result).filter((r) => r !== undefined && r !== null);
@@ -1882,7 +1887,7 @@
         } else if (row.route === "none" && holdsPill(f, row)) finish(f, "already");
         else if (row.route === "none" && leftBlank(f, row)) finish(f, "left_blank", { lastOutcome: "no_fact" });
         else if (!row.route || row.route === "none") finish(f, "needs_answer", { lastOutcome: row.route ? "no_fact" : "not_mapped" });
-        else if (row.route === "blocked") finish(f, "blocked", { lastOutcome: "blocked" });
+        else if (row.route === "blocked" || slotBlocks(row)) finish(f, "blocked", { lastOutcome: "blocked" });
         else if (row.route === "free_text") {
           if (f.kind === "text") prose.push(f);
           else finish(f, "needs_answer", { lastOutcome: "no_fact" });

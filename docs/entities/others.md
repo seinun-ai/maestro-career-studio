@@ -1441,7 +1441,8 @@
     to the model or tagged `data-rt-qid` — plus the panel's PAIR: the pause row renders no input for a blocked label AND `submitAnswer`
     refuses one again (the first decides what to draw, the second touches the page). Salary history/current salary/current CTC and
     unqualified salary/wage/compensation/CTC mentions are also blocked without consent; explicit expectations (expected salary, expected
-    CTC) are allowed only AFTER both lists.
+    CTC) are allowed only AFTER both lists. A label asking both ("current and expected CTC") passes, so current pay is also refused by
+    what it is: without consent the rule pass has no current-CTC rule and the fill loop blocks the `preferences.current_ctc` slot.
   - **Label-pattern table details** (inv-one-label-pattern-table): `profile-fields.js` throws at load if `shared/policy.js` has not run (it
     borrows `salaryExpectationRe`), and `autofill.js`'s `pf()` throws on an unknown id — an undefined pattern does not error, it just never
     matches.

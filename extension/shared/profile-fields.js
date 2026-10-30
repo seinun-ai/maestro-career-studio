@@ -70,8 +70,11 @@
   const NOW_WORDS = "currently|presently|at this time|\\bnow\\b(?!\\s+or\\b)";
   const SPONSORSHIP_NOW_RE = new RegExp(
     `(${NOW_WORDS})[^|]*sponsor|sponsor[^|]*(${NOW_WORDS})`, "i");
-  // The UAE by name, as the gulf pack's questions say it.
-  const UAE_RE = /(?:\buae\b|\bu\.a\.e\b|\bunited arab emirates\b|\bemirates\b)/i;
+  // The UAE by name, as the gulf pack's questions say it: only the names the
+  // backend reads as the UAE (`countries.py`: its name and aliases), so the country it
+  // names for the question is the UAE. Never a bare "Emirates", as often an
+  // employer as the country.
+  const UAE_RE = /(?:\buae\b|\bu\.a\.e\b|\bunited arab emirates\b)/i;
 
   const PROFILE_FIELDS = [
     // ---- standing eligibility answers (profile.eligibility) ----

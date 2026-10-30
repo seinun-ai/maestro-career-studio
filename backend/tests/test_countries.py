@@ -24,6 +24,7 @@ def test_normalize_codes_aliases_and_names():
     ("Wales", "GB"),
     ("Turkey", "TR"), ("Turkiye", "TR"), ("Türkiye", "TR"),
     ("Czech Republic", "CZ"), ("The Netherlands", "NL"), ("Holland", "NL"), ("UAE", "AE"),
+    ("U.A.E.", "AE"), ("u.a.e", "AE"),
     ("Korea", "KR"), ("Republic of Korea", "KR"),
     ("Ivory Coast", "CI"), ("Cote d'Ivoire", "CI"), ("Côte d\u2019Ivoire", "CI"),
     ("Russia", "RU"), ("Vietnam", "VN"), ("Viet Nam", "VN"),

@@ -1974,6 +1974,18 @@ def test_a_typed_work_auth_learn_carries_legacy_answers_forward(tmp_path):
     }
 
 
+# The questions the UAE rows take, with the key each is learned into. Each must be one the backend reads as the
+# UAE too, or /context names the job's country for it and that country's entry keeps a UAE answer.
+UAE_QUESTIONS = [
+    ("Are you currently in the UAE?", "in_country_now"),
+    ("Are you residing in the United Arab Emirates?", "in_country_now"),
+    ("Do you live in the U.A.E.?", "in_country_now"),
+    ("Are you in the u.a.e now?", "in_country_now"),
+    ("Do you hold a valid UAE driving licence?", "uae_driving_licence"),
+    ("Do you currently have a U.A.E. driver's license?", "uae_driving_licence"),
+]
+
+
 def test_the_router_sends_a_countrys_own_question_to_its_country_answer(tmp_path):
     """The country answers' rows (form_questions.yaml `answers`). Each names the UAE or CTC, and the rows
     above them still win, so a generic question or one about somewhere else never lands there. Expected
@@ -1981,11 +1993,7 @@ def test_the_router_sends_a_countrys_own_question_to_its_country_answer(tmp_path
     out = run_node(_ROUTER_DRIVER_JS, {"questions": [
         "What is your current CTC?",
         "Current annual CTC (in lakhs)",
-        "Are you currently in the UAE?",
-        "Are you residing in the United Arab Emirates?",
-        "Do you live in the U.A.E.?",
-        "Do you hold a valid UAE driving licence?",
-        "Do you currently have a UAE driver's license?",
+        *(question for question, _ in UAE_QUESTIONS),
         "Expected CTC",
         "Are you authorized to work in the UAE?",
         "Are you willing to relocate to the UAE?",
@@ -1993,15 +2001,13 @@ def test_the_router_sends_a_countrys_own_question_to_its_country_answer(tmp_path
         "Do you have experience working in the UAE?",
         "Are you currently on a UAE residence visa?",
         "Are you currently located in India?",
+        # A bare "Emirates" is an employer or a district as often as the country.
+        "Do you currently live in Emirates Hills?",
     ]}, tmp_path, source=PANEL_SOURCE)
     assert out["targets"] == [
         ["profile", "answers_by_country.current_ctc"],
         ["profile", "answers_by_country.current_ctc"],
-        ["profile", "answers_by_country.in_country_now"],
-        ["profile", "answers_by_country.in_country_now"],
-        ["profile", "answers_by_country.in_country_now"],
-        ["profile", "answers_by_country.uae_driving_licence"],
-        ["profile", "answers_by_country.uae_driving_licence"],
+        *(["profile", f"answers_by_country.{key}"] for _, key in UAE_QUESTIONS),
         ["profile", "preferences.desired_salary"],
         ["profile", "work_auth.authorized_now"],
         ["profile", "preferences.willing_to_relocate"],
@@ -2009,7 +2015,16 @@ def test_the_router_sends_a_countrys_own_question_to_its_country_answer(tmp_path
         ["custom", None],
         ["custom", None],
         ["custom", None],
+        ["custom", None],
     ]
+
+
+def test_every_question_the_uae_rows_take_is_one_the_backend_reads_as_the_uae():
+    """One UAE name list: on an Indian job, /context must name the UAE for every question the Companion learns
+    into a UAE answer (`autofill_country.market_for_question`), so India's entry never keeps one."""
+    from app.services.autofill_country import market_for_question
+
+    assert {q: market_for_question(q, "IN") for q, _ in UAE_QUESTIONS} == {q: "AE" for q, _ in UAE_QUESTIONS}
 
 
 # Home US, applying in the US and India, India's current CTC given in Profile.

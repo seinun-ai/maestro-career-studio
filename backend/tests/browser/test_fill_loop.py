@@ -792,6 +792,24 @@ def test_blocked_touched_and_prefilled_fields_are_never_sent(page, load):
     assert "/api/autofill/map" not in out["calls"]
 
 
+# Current pay, as /map files a label that names it: salary history, which only the agreement permission fills.
+CURRENT_PAY = {"route": "slot", "slot": "preferences.current_ctc", "value": "1800000"}
+CURRENT_AND_EXPECTED = ["current ctc and expected ctc", "current and expected ctc",
+                        "current ctc (we will discuss expectations later)"]
+
+
+def test_current_pay_is_filled_only_with_the_agreement_permission(page, load):
+    """A label that also asks the expectation passes the label check (`shared/policy.js`), so the slot /map
+    files it under is checked: current pay is blocked without the permission and typed with it."""
+    fields = [f(f"c{i}", question=q) for i, q in enumerate(CURRENT_AND_EXPECTED)]
+    out = run(page, load, frames=[fields], map={x["fid"]: CURRENT_PAY for x in fields})
+    assert statuses(out) == {x["fid"]: "blocked" for x in fields}
+    assert actions(out) == []
+    agreed = run(page, load, frames=[[f("c", question="Current CTC")]], map={"c": CURRENT_PAY},
+                 options={"sourceHint": None, "consentForms": True})
+    assert statuses(agreed) == {"c": "verified"} and row(agreed, "c")["answer"] == "1800000"
+
+
 def test_a_value_that_is_not_an_answer_is_not_already(page, load):
     # `answered`, not "has a value", decides: a select sitting on its first option.
     out = run(page, load, frames=[[f("s", "select", "Country", committed="Select…", answered=False,

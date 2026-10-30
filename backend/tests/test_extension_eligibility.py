@@ -259,3 +259,14 @@ def test_an_indian_jobs_pay_questions_fill_from_indias_answers(tmp_path):
     assert outcome_for(without, "current ctc") == "policy_blocked"
     agreed = run_profile_fill(tmp_path, fields=fields, profile=_INDIAN_JOB, consent_forms=True)
     assert agreed["values"] == {"expected ctc": "2500000", "current ctc": "1800000"}
+
+
+@pytest.mark.parametrize("label", [
+    "current ctc and expected ctc", "current and expected ctc", "current ctc (we will discuss expectations later)"])
+def test_a_label_asking_current_and_expected_pay_never_gets_current_pay_without_the_agreement(tmp_path, label):
+    """The expectation in the label passes the policy, so with no desired salary the salary rule has nothing and
+    the scan goes on: without the agreement permission there is no current-pay rule for it to reach."""
+    profile = {"preferences": {"current_ctc": "1800000"}}
+    without = run_profile_fill(tmp_path, fields=[{"label": label, "kind": "text"}], profile=profile)
+    assert without["values"][label] == ""
+    assert outcome_for(without, label) != "filled"

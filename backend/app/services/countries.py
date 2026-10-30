@@ -39,7 +39,7 @@ _ALIASES = {
     "turkey": "TR",
     "czech republic": "CZ",
     "the netherlands": "NL", "holland": "NL",
-    "uae": "AE",
+    "uae": "AE", "u.a.e": "AE", "u.a.e.": "AE",
     "korea": "KR", "republic of korea": "KR",
     "ivory coast": "CI",
     "viet nam": "VN",
