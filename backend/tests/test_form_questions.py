@@ -273,8 +273,24 @@ _INDIA = {
 }
 
 
+# The one question the country questions add to everyone's set (Task 3.6), counted (Decision 6):
+# citizenship, after the country you live in. Profile's Country answers asks it (Task 3.10).
+_CITIZENSHIP = {"key": "citizenships", "label": "Citizen of", "type": "countries"}
+
+
 def _keys(fields) -> list[str]:
     return [f.key for f in fields]
+
+
+def _today_fields(group: dict) -> list[dict]:
+    """A fixture group's fields through today's schema (`_field`), citizenship added after the
+    country."""
+    fields = []
+    for raw in group["fields"]:
+        fields.append(_field(raw))
+        if raw["key"] == "country":
+            fields.append(_CITIZENSHIP)
+    return fields
 
 
 def _field(raw: dict) -> dict:
@@ -292,7 +308,7 @@ def _served_field(field: Field, *leave_out: str) -> dict:
 def _today_groups(home: str) -> list[dict]:
     """groupFields(key, home) for every group, as autofill-options.ts did it, with this phase's
     changes: the US screening pair only for a US home (each home applies in itself here), the
-    address lines' `byHome` named, and no postal code counted for a UAE home."""
+    address lines' `byHome` named, no postal code counted for a UAE home, and citizenship."""
     m = markets.get(home)
     out = []
     for group in _TODAY["groups"]:
@@ -307,6 +323,8 @@ def _today_groups(home: str) -> list[dict]:
             elif field["key"] == "postal_code":
                 field = {**field, "byHome": "postcode", **({"optional": True} if home == "AE" else {})}
             fields.append(field)
+            if field["key"] == "country":
+                fields.append(_CITIZENSHIP)
         out.append({"key": group["key"], "title": group["title"], "fields": fields})
     return out
 
@@ -324,11 +342,11 @@ def _without_india(group, apply_in: list[str]) -> dict:
 
 def test_a_chosen_us_user_sees_todays_set():
     """Labels, options, hints and counted keys as the Phase 1 fixture; only the new attributes
-    differ (byHome's value, the expiry's `unless`)."""
+    differ (byHome's value, the expiry's `unless`), and citizenship is asked."""
     qs = form_questions.resolve(home="US", apply_in=["US"], chosen=True, profile=None)
     assert [(g.key, g.title) for g in qs.groups] == [(g["key"], g["title"]) for g in _TODAY["groups"]]
     got = [[_served_field(f, "byHome") for f in g.fields] for g in qs.groups]
-    assert got == [[_field(f) for f in g["fields"]] for g in _TODAY["groups"]]
+    assert got == [_today_fields(g) for g in _TODAY["groups"]]
     us = qs.countries[0]
     assert (us.market, us.label) == ("US", "United States")
     assert [_served_field(f, "unless") for f in us.permits] == [
@@ -410,6 +428,17 @@ def test_the_state_line_is_named_and_counted_by_where_you_live():
     uk, us = _state_line("UK"), _state_line("US")
     assert (uk.label, uk.optional) == ("County", True)
     assert (us.label, us.optional) == ("State", False)
+
+
+@pytest.mark.parametrize("chosen", [True, False])
+def test_citizenship_is_asked_once_and_counted_wherever_you_live(chosen):
+    """Decision 6: the one new required answer, a list of countries, whatever your countries."""
+    for home in markets.keys():
+        groups = form_questions.resolve(home=home, apply_in=[home], chosen=chosen, profile=None).groups
+        asked = [(g.key, f) for g in groups for f in g.fields if f.key == "citizenships"]
+        assert [(key, f.type, f.optional) for key, f in asked] == [("personal", "countries", False)], home
+        personal = next(g for g in groups if g.key == "personal")
+        assert "citizenships" in form_questions.required_keys(personal.fields)
 
 
 def test_required_keys_leave_out_the_optional_fields():

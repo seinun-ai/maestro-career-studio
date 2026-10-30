@@ -51,6 +51,12 @@ groups:
       - {key: state, label: State, byHome: state}
       - {key: postal_code, label: Postal code, byHome: postcode}
       - {key: country, label: Country}
+      # Every country you hold citizenship of, as ISO codes (a `countries`
+      # list). Counted wherever you live: the one required answer the country
+      # questions add (Decision 6). It settles the work-permit answers the
+      # `citizenship` rules below verify. Profile asks it in Country answers,
+      # never in Contact.
+      - {key: citizenships, label: Citizen of, type: countries}
       # Optional for readiness: many fields of work and many countries use
       # none of the three links.
       - {key: linkedin, label: LinkedIn profile link, optional: true}

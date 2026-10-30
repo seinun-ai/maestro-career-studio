@@ -121,7 +121,11 @@ _PROFILE_FILES: dict[str, tuple[str, ...]] = {
 # Repo-relative: the education and language fields.
 _FIELD_TABLES = ("frontend/lib/autofill-options.ts",)
 
-_PERSONAL = 'fields={groupFields(questionSet, "personal")}'
+# Contact renders the personal group's fields, less citizenship (Country answers asks it).
+_PERSONAL = (
+    "fields={contactFields(questionSet)}",
+    'return groupFields(questionSet, "personal").filter((field) => field.type !== "countries");',
+)
 _PREFERENCES = 'fields={groupFields(questionSet, "preferences")}'
 _EEO = 'fields={groupFields(questionSet, "eeo")}'
 _ELIGIBILITY = 'const fields = groupFields(questionSet, "eligibility");'
@@ -131,19 +135,19 @@ _ADD = "onClick={() => setEntries([...entries, newEntry()])}"
 
 # (tile or fold, board label, needles)
 _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
-    ("Contact", "First name", (asked("personal", "first_name", label="First name"), _PERSONAL)),
-    ("Contact", "Last name", (asked("personal", "last_name", label="Last name"), _PERSONAL)),
-    ("Contact", "Email", (asked("personal", "email", label="Email"), _PERSONAL)),
-    ("Contact", "Phone", (asked("personal", "phone", label="Phone"), _PERSONAL)),
-    ("Contact", "Street address", (asked("personal", "address", label="Street address"), _PERSONAL)),
-    ("Contact", "Address line 2", (asked("personal", "address_2", label="Address line 2", optional=True), _PERSONAL)),
-    ("Contact", "City", (asked("personal", "city", label="City"), _PERSONAL)),
-    ("Contact", "State", (asked("personal", "state", label="State", byHome="state"), _PERSONAL)),
-    ("Contact", "Postal code", (asked("personal", "postal_code", label="Postal code", byHome="postcode"), _PERSONAL)),
-    ("Contact", "Country", (asked("personal", "country", label="Country"), _PERSONAL)),
-    ("Contact", "LinkedIn profile link", (asked("personal", "linkedin", label="LinkedIn profile link", optional=True), _PERSONAL)),
-    ("Contact", "GitHub link", (asked("personal", "github", label="GitHub link", optional=True), _PERSONAL)),
-    ("Contact", "Website", (asked("personal", "website", label="Website", optional=True), _PERSONAL)),
+    ("Contact", "First name", (asked("personal", "first_name", label="First name"), *_PERSONAL)),
+    ("Contact", "Last name", (asked("personal", "last_name", label="Last name"), *_PERSONAL)),
+    ("Contact", "Email", (asked("personal", "email", label="Email"), *_PERSONAL)),
+    ("Contact", "Phone", (asked("personal", "phone", label="Phone"), *_PERSONAL)),
+    ("Contact", "Street address", (asked("personal", "address", label="Street address"), *_PERSONAL)),
+    ("Contact", "Address line 2", (asked("personal", "address_2", label="Address line 2", optional=True), *_PERSONAL)),
+    ("Contact", "City", (asked("personal", "city", label="City"), *_PERSONAL)),
+    ("Contact", "State", (asked("personal", "state", label="State", byHome="state"), *_PERSONAL)),
+    ("Contact", "Postal code", (asked("personal", "postal_code", label="Postal code", byHome="postcode"), *_PERSONAL)),
+    ("Contact", "Country", (asked("personal", "country", label="Country"), *_PERSONAL)),
+    ("Contact", "LinkedIn profile link", (asked("personal", "linkedin", label="LinkedIn profile link", optional=True), *_PERSONAL)),
+    ("Contact", "GitHub link", (asked("personal", "github", label="GitHub link", optional=True), *_PERSONAL)),
+    ("Contact", "Website", (asked("personal", "website", label="Website", optional=True), *_PERSONAL)),
     ("Contact", "Fill from career history", ('"Fill from career history"', "onClick={fillFromResume}")),
     ("Where you apply", "You live in", ("<Label htmlFor={homeId}>You live in</Label>",)),
     ("Where you apply", "You apply in", ("You apply in </span>", "onClick={() => toggleCountry(m.key)}")),

@@ -102,6 +102,14 @@ test("a typed answer next up has Next, the view's one filled button", () => {
   assert.equal((html.match(FILLED) ?? []).length, 1);
 });
 
+test("contact neither asks nor counts citizenship, which the served set holds (Country answers asks it)", () => {
+  const html = render();
+  assert.match(html, /id="af-personal-first_name"/);
+  assert.doesNotMatch(html, /id="af-personal-citizenships"/);
+  const tile = html.match(/<button id="profile-tile-contact-button".*?<\/button>/s)?.[0] ?? "";
+  assert.match(tile, />Ready</);
+});
+
 test("nine tiles, each a closed disclosure for its editor under the grid", () => {
   const html = render();
   const tiles = html.match(/<button id="profile-tile-\w+-button"[^>]*aria-expanded="false"/g) ?? [];

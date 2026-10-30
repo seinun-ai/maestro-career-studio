@@ -3,6 +3,8 @@ import { test } from "node:test";
 
 import {
   answered,
+  contactCount,
+  contactFields,
   declinedEeo,
   forSaving,
   groupCount,
@@ -266,6 +268,20 @@ test("contact counts the state only where it is served as required", () => {
   const profile = { personal: { first_name: "Sam" } };
   assert.deepEqual(groupCount(profile, servedFor(["DE"], { state: NO_STATE }), "personal"), { answered: 1, answerable: 3 });
   assert.deepEqual(groupCount(profile, servedFor(["DE"], { state: STATE }), "personal"), { answered: 1, answerable: 4 });
+});
+
+test("contact leaves citizenship to Country answers: it neither shows nor counts it", () => {
+  const citizen: FieldDef = { key: "citizenships", label: "Citizen of", type: "countries" };
+  const plain = servedFor(["DE"]);
+  const served: QuestionSet = {
+    ...plain,
+    groups: plain.groups.map((g) => (g.key === "personal" ? { ...g, fields: [...g.fields, citizen] } : g)),
+  };
+  assert.deepEqual(contactFields(served), groupFields(plain, "personal"));
+  const profile = { personal: { first_name: "Ada", last_name: "Lovelace", email: "ada@example.com", state: "BE" } };
+  assert.deepEqual(contactCount(profile, served), { answered: 4, answerable: 4 });
+  // The group still holds it: setup readiness counts citizenship in `personal`.
+  assert.deepEqual(groupCount(profile, served, "personal"), { answered: 4, answerable: 5 });
 });
 
 test("next up asks the state where it is required, never where it is served optional", () => {

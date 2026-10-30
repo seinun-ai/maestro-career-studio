@@ -2472,7 +2472,8 @@ export type FieldDef = {
   key: string;
   label: string;
   optional?: boolean;
-  type?: "text" | "select" | "date";
+  /** "countries" is a list of ISO codes (citizenship), which Contact leaves to Country answers. */
+  type?: "text" | "select" | "date" | "number" | "countries";
   boolean?: boolean;
   options?: { value: string; label: string }[];
   /** A format or a consequence, between the label and the control. Never an example value. */

@@ -23,6 +23,12 @@ export function groupFields(questionSet: QuestionSet, key: string): FieldDef[] {
   return questionSet.groups.find((group) => group.key === key)?.fields ?? [];
 }
 
+/** Contact's questions: the personal group's as served, less citizenship (`type: "countries"`, a list of
+ *  countries, never a line of text), which Country answers asks. */
+export function contactFields(questionSet: QuestionSet): FieldDef[] {
+  return groupFields(questionSet, "personal").filter((field) => field.type !== "countries");
+}
+
 // ------------------------------------------------------------------ Work permits, per country
 
 /** The countries whose work permit is asked: the served set's own keys, in the order you apply in (the server
@@ -284,8 +290,16 @@ export type Count = { answered: number; answerable: number };
 /** How many of a group's required answers are given: the fields setup readiness counts, as served for where
  *  you live. */
 export function groupCount(profile: Profile, questionSet: QuestionSet, group: string): Count {
-  const values = groupValues(profile, group);
-  const required = groupFields(questionSet, group).filter((field) => !field.optional);
+  return countOf(groupValues(profile, group), groupFields(questionSet, group));
+}
+
+/** Contact's count: the required answers of the fields it shows (`contactFields`). */
+export function contactCount(profile: Profile, questionSet: QuestionSet): Count {
+  return countOf(groupValues(profile, "personal"), contactFields(questionSet));
+}
+
+function countOf(values: Record<string, unknown>, fields: readonly FieldDef[]): Count {
+  const required = fields.filter((field) => !field.optional);
   return {
     answered: required.filter((field) => answered(field, values[field.key])).length,
     answerable: required.length,

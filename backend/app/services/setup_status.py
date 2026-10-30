@@ -5,11 +5,14 @@ Readiness counts the form-question catalog's required questions
 (services/form_questions, resolved for the stored market), never a list of its
 own. Rules:
 "complete" means ANSWERABLE, not filled ("decline" answers count; optional
-fields are excluded), and work_auth is read through the typed reader because
-its answers are the knockout ones the extension reports missing_source on.
-Work-permit answers count once per country you apply in (`work_auth_by_country`,
-keyed by market): the `work_auth` group sums them, and each country's own count
-rides along for the setup flow's one-question-per-country step.
+fields are excluded, so a country's own answers, all optional, never count),
+and work_auth is read as its readers see it because its answers are the
+knockout ones the extension reports missing_source on: each country's stored
+answers over the ones a citizenship settles there (`autofill_derive.answers_for`),
+through the typed reader. Work-permit answers count once per country you apply
+in (`work_auth_by_country`, keyed by market): the `work_auth` group sums them,
+and each country's own count rides along for the setup flow's
+one-question-per-country step. No country chosen asks none.
 """
 
 from sqlalchemy import func, select
@@ -20,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.models.base_resume import BaseResume
 from app.models.career_kb import KBEntity
 from app.models.template import Template
-from app.schemas.form_questions import Field as FormField
+from app.schemas.form_questions import Field as FormField, QuestionSet
 from app.schemas.setup_status import (
     AutofillStep,
     EnginesProbe,
@@ -30,7 +33,9 @@ from app.schemas.setup_status import (
     SuggestedBase,
 )
 from app.services import (
+    autofill_derive,
     autofill_profile,
+    countries,
     engines,
     form_questions,
     job_preferences,
@@ -40,34 +45,46 @@ from app.services import (
 )
 
 
-def _answered(value) -> bool:
+def _answered(field: FormField, value) -> bool:
+    """Whether `value` answers `field`. A list of countries (`type: countries`, citizenship) answers
+    only when it names one, as the citizenship rules read it (`autofill_derive.citizenships`): an
+    empty list, an entry that names no country or loose text is no answer. Any other list answers
+    when it holds something."""
+    if field.type == "countries":
+        return isinstance(value, list) and any(isinstance(v, str) and countries.normalize(v) for v in value)
     if value is None:
         return False
     if isinstance(value, str):
         return bool(value.strip())
-    return True  # booleans (False is an answer), numbers, lists
+    if isinstance(value, list):
+        return bool(value)
+    return True  # booleans (False is an answer), numbers
 
 
-def _group(profile: dict, key: str, fields: list[str]) -> GroupCompleteness:
+def _group(profile: dict, key: str, fields: list[FormField]) -> GroupCompleteness:
+    """A group's required fields (`form_questions.required_keys`' rule: `optional` ones never count)
+    and how many are answered."""
     values = profile.get(key) or {}
     if not isinstance(values, dict):
         values = {}
-    answered = sum(1 for f in fields if _answered(values.get(f)))
-    return GroupCompleteness(answered=answered, answerable=len(fields))
+    required = [f for f in fields if not f.optional]
+    answered = sum(1 for f in required if _answered(f, values.get(f.key)))
+    return GroupCompleteness(answered=answered, answerable=len(required))
 
 
-def _work_permits(
-    profile: dict, permits: dict[str, list[FormField]]
-) -> dict[str, GroupCompleteness]:
-    """Each apply-in country's work-permit answers, counted through the typed reader: the required
-    fields of that country's wording (the visa status only in `us_visa`'s; the expiry is optional
-    everywhere, so never)."""
-    entries = profile.get(autofill_profile.BY_COUNTRY) or {}
+def _work_permits(profile: dict, questions: QuestionSet) -> dict[str, GroupCompleteness]:
+    """Each apply-in country's knockout answers (`questions.countries`; none when unchosen): its
+    required permit questions (the US status, the three yes/no answers; the other status lists and
+    the expiry are optional), answered as readers see them (`autofill_derive.answers_for`: the
+    stored answers over the ones a citizenship settles there, unless a stored one differs). The
+    profile is a read view, its legacy single set already placed, so no `home` is passed."""
     out: dict[str, GroupCompleteness] = {}
-    for market, fields in permits.items():
-        work_auth = autofill_profile.typed_work_auth(entries.get(market), market)
-        keys = form_questions.required_keys(fields)
-        out[market] = GroupCompleteness(
+    for country in questions.countries:
+        work_auth = autofill_profile.typed_work_auth(
+            autofill_derive.answers_for(profile, country.market), country.market
+        )
+        keys = form_questions.required_keys(country.permits)
+        out[country.market] = GroupCompleteness(
             answered=sum(1 for k in keys if getattr(work_auth, k) is not None), answerable=len(keys))
     return out
 
@@ -78,15 +95,15 @@ def _autofill_step(db: Session) -> AutofillStep:
     questions = form_questions.resolve(
         home=market.home, apply_in=market.apply_in, chosen=market.chosen, profile=profile
     )
-    required = {g.key: form_questions.required_keys(g.fields) for g in questions.groups}
-    by_country = _work_permits(profile, questions.permits)
+    fields = {g.key: g.fields for g in questions.groups}
+    by_country = _work_permits(profile, questions)
     groups = {
-        "personal": _group(profile, "personal", required["personal"]),
+        "personal": _group(profile, "personal", fields["personal"]),
         "work_auth": GroupCompleteness(
             answered=sum(g.answered for g in by_country.values()),
             answerable=sum(g.answerable for g in by_country.values()),
         ),
-        "preferences": _group(profile, "preferences", required["preferences"]),
+        "preferences": _group(profile, "preferences", fields["preferences"]),
     }
     # The diversity group is the US question set — veteran status, CC-305
     # disability, and the EEO-1's two-part hispanic_latino ethnicity split.
@@ -97,7 +114,7 @@ def _autofill_step(db: Session) -> AutofillStep:
     # them, the group is omitted from the denominator rather than scored as
     # unanswered.
     if questions.offers_eeo:
-        groups["eeo"] = _group(profile, "eeo", required["eeo"])
+        groups["eeo"] = _group(profile, "eeo", fields["eeo"])
     answered = sum(g.answered for g in groups.values())
     answerable = sum(g.answerable for g in groups.values())
     wa = groups["work_auth"]

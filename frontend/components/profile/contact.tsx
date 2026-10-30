@@ -12,8 +12,8 @@ import { SettingCardAction } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import {
-  groupCount,
-  groupFields,
+  contactCount,
+  contactFields,
   groupValues,
   isBlank,
   withField,
@@ -35,11 +35,11 @@ export function useCareerContact() {
 }
 
 /** Contact: the personal details forms ask, each saved as you go, and Fill from career history. The state line
- *  is named and counted as served for where you live. */
+ *  is named and counted as served for where you live; citizenship is Country answers'. */
 export function useContactTile(questionSet: QuestionSet): TileView {
   const { profile } = useAutofillProfile();
   const personal = groupValues(profile, "personal");
-  const count = groupCount(profile, questionSet, "personal");
+  const count = contactCount(profile, questionSet);
   const shown = ["email", "phone"].map((key) => personal[key]).filter((v): v is string => !isBlank(v));
   return {
     state:
@@ -148,7 +148,7 @@ function ContactEditor({ questionSet }: { questionSet: QuestionSet }) {
       <FieldGrid
         idPrefix="af-personal"
         group="personal"
-        fields={groupFields(questionSet, "personal")}
+        fields={contactFields(questionSet)}
         values={groupValues(profile, "personal")}
         onChange={(key, next) => update(SURFACE, (current) => withField(current, questionSet, "personal", key, next))}
       />

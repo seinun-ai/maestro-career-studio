@@ -133,8 +133,11 @@ def test_contact_counts_and_names_the_state_line_by_where_you_live():
     assert (state("NL").label, state("NL").optional) == ("Province", True)
     assert (state("CA").label, state("CA").optional) == ("Province", False)
     contact = _src("components/profile/contact.tsx")
-    assert 'const count = groupCount(profile, questionSet, "personal");' in contact
-    assert 'fields={groupFields(questionSet, "personal")}' in contact
+    assert "const count = contactCount(profile, questionSet);" in contact
+    assert "fields={contactFields(questionSet)}" in contact
+    options = _src("lib/autofill-options.ts")
+    assert 'return countOf(groupValues(profile, "personal"), contactFields(questionSet));' in options
+    assert 'return groupFields(questionSet, "personal").filter((field) => field.type !== "countries");' in options
     nxt = _src("components/profile/next-up.tsx")
     assert ": groupCount(profile, questionSet, current.group);" in nxt
 

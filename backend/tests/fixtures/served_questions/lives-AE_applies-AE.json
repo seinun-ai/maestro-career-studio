@@ -49,6 +49,11 @@
           "label": "Country"
         },
         {
+          "key": "citizenships",
+          "label": "Citizen of",
+          "type": "countries"
+        },
+        {
           "key": "linkedin",
           "label": "LinkedIn profile link",
           "optional": true

@@ -323,7 +323,8 @@ def test_non_eeo_market_can_reach_full_autofill_readiness():
     work_auth = {"status": "citizen", "authorized_now": True, "sponsorship_now": False, "sponsorship_future": False}
     before = client.get("/api/settings/autofill").json()["value"]
     client.put("/api/settings/autofill", json={"value": {
-        "personal": {key: "x" for key in required["personal"]},
+        # Citizenship answers with a country (a French one settles nothing in the US or India).
+        "personal": {**{key: "x" for key in required["personal"]}, "citizenships": ["FR"]},
         "preferences": {key: "x" for key in required["preferences"]},
         "work_auth_by_country": {"US": work_auth, "IN": work_auth},
     }})
