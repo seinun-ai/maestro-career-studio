@@ -179,7 +179,8 @@ def test_it_checks_once_so_a_later_answer_never_marks_a_new_install(settings_dir
 
 
 def test_the_flag_is_this_copys_own():
-    """Each copy checks its own answers once: the flag never syncs."""
+    """The laptop checks its own answers once (the always-on copy never checks): the flag never
+    syncs."""
     from app.services.sync import registry
 
     assert not registry.is_profile_row(Setting(key=market_settings.CHOSEN_CHECKED_FLAG, value="1"))
@@ -193,6 +194,7 @@ def test_the_always_on_copy_takes_the_laptops_row(settings_dir, db_session, monk
     _store_profile(_US_ANSWER)
     assert market_settings.mark_answered_installs_chosen(db_session) is False
     assert _market_text() == ""
+    assert not _checked(db_session)  # it never checked, so it never marks itself checked
 
 
 def test_startup_runs_the_step(settings_dir, db_session, monkeypatch):

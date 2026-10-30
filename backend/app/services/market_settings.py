@@ -33,7 +33,8 @@ MARKET = _Market("market", "market.json", MarketSetting)
 MARKET_KEY = MARKET.key
 MARKET_FILE = MARKET.filename
 # This install has had its one startup check (`mark_answered_installs_chosen`). A local setting
-# (`sync/registry.LOCAL_SETTING_PREFIXES`): each copy checks its own answers once.
+# (`sync/registry.LOCAL_SETTING_PREFIXES`), never synced: the laptop checks its own answers once, and
+# the always-on copy never checks (its row arrives from the laptop).
 CHOSEN_CHECKED_FLAG = "market.chosen_checked"
 
 
