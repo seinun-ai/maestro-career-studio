@@ -672,6 +672,9 @@ def test_two_concurrent_creates_for_one_job_leave_one_open_proposal(db_session, 
     # Seeded once, as any install past its first read is: two first-ever reads racing to seed the
     # row is a different race (text_settings.get_text), not this one.
     auto_apply_settings.get_settings(db_session)
+    # Read here, not in the threads: that commit expired the job, and two threads reloading it through
+    # this one session's SQLite connection at once fail with "bad parameter or other API misuse".
+    job_id = str(job.id)
     real_create = svc.create_proposal
 
     def slow_create(*args, **kwargs):
@@ -684,7 +687,7 @@ def test_two_concurrent_creates_for_one_job_leave_one_open_proposal(db_session, 
 
     def file(filer):
         start.wait()
-        replies.append(client.post("/api/proposals", json={"job_id": str(job.id), "proposed_by": filer}))
+        replies.append(client.post("/api/proposals", json={"job_id": job_id, "proposed_by": filer}))
 
     # The web app files as "you"; a body naming nobody files as unknown.
     threads = [threading.Thread(target=file, args=(filer,)) for filer in ("you", None)]
