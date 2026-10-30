@@ -539,7 +539,8 @@
   `WorkAuth` by the required keys of that country's permits: a status question built from its `statuses`
   list where it has one, then its wording's (`work_auth_vocab`; every permit key is a `WorkAuth` field whose
   default is None, `test_form_questions.py`). So the three yes/no knockout answers everywhere, and `status`
-  only in the US (optional in the other countries that list statuses). Status never implies current authorization, and an incomplete set is blocking.
+  only in the US (optional in the other countries that list statuses). Status never implies current authorization, and an incomplete set is blocking;
+  a missing citizenship counts but never blocks (`blocking` names only knockout answers).
 - **Today** (`GET /api/today?tz=&utc_offset_minutes=`, `services/today.py`): read-only, and it writes nothing (a
   proposal past `expires_at` is left out via `proposals.past_expiry`, not expired). Like the Jobs list it reads the
   other copy's replicas too. `next_up` is the first that exists in `NEXT_UP_ORDER`: an application at `offered`

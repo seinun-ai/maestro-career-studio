@@ -15,9 +15,10 @@ own. Rules:
 - Citizenship (`personal.citizenships`, a `countries` list) counts in the
   `work_auth` group, beside the permits it settles, never in personal: Profile
   asks it in Country answers, and Contact never shows it.
-- The `work_auth` group is citizenship plus every country's permits, and an
-  incomplete one blocks. Each country's own count rides along for the setup
-  flow's one-question-per-country step.
+- The `work_auth` group is citizenship plus every country's permits. Only a
+  country's missing knockout answer blocks: a missing citizenship shows in the
+  group and in readiness but blocks nothing. Each country's own count rides
+  along for the setup flow's one-question-per-country step.
 """
 
 from sqlalchemy import func, select
@@ -126,8 +127,9 @@ def _autofill_step(db: Session) -> AutofillStep:
         groups["eeo"] = _group(profile, "eeo", fields["eeo"])
     answered = sum(g.answered for g in groups.values())
     answerable = sum(g.answerable for g in groups.values())
-    wa = groups["work_auth"]
-    blocking = ["work_auth"] if wa.answered < wa.answerable else []
+    # Only the knockout answers block (setup-steps.ts `autofillTarget`): a country's permit answers,
+    # never the citizenship counted beside them.
+    blocking = ["work_auth"] if any(g.answered < g.answerable for g in by_country.values()) else []
     readiness = round(answered / answerable, 3) if answerable else 1.0
     return AutofillStep(
         done=readiness >= 1.0, readiness=readiness, groups=groups, blocking=blocking,

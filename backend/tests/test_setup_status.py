@@ -32,9 +32,9 @@ def test_fresh_install_every_step_pending(client):
     assert body["autofill"]["done"] is False
     assert body["autofill"]["readiness"] == 0.0
     # No country chosen yet: no work-permit questions (a permit answer belongs to a country), but
-    # citizenship, which counts beside them, is asked and blocks.
+    # citizenship, which counts beside them, is asked. Only a knockout answer blocks, so nothing does.
     assert body["autofill"]["groups"]["work_auth"] == {"answered": 0, "answerable": 1}
-    assert body["autofill"]["blocking"] == ["work_auth"]
+    assert body["autofill"]["blocking"] == []
 
 
 def test_status_read_does_not_seed_settings_or_mirrors(client, db_session, tmp_path, monkeypatch):
@@ -566,6 +566,22 @@ def test_work_permits_count_once_per_country_you_apply_in(client, db_session, tm
     assert body["blocking"] == ["work_auth"]
 
 
+def test_a_missing_citizenship_counts_but_never_blocks(client, db_session, tmp_path, monkeypatch):
+    """`blocking` names only the knockout answers (setup-steps.ts `autofillTarget`): every US permit answered
+    and no citizenship is short in `work_auth` and in readiness, and blocks nothing."""
+    from app.services import autofill_profile
+
+    _chose_us(db_session, tmp_path, monkeypatch)
+    autofill_profile.set_profile({"work_auth_by_country": {"US": {
+        "status": "citizen", "authorized_now": True, "sponsorship_now": False, "sponsorship_future": False}}},
+        db_session)
+
+    body = _status(client)["autofill"]
+    assert body["work_auth_by_country"] == {"US": {"answered": 4, "answerable": 4}}
+    assert body["groups"]["work_auth"] == {"answered": 4, "answerable": 5}
+    assert body["blocking"] == []
+
+
 def test_a_legacy_single_work_auth_answers_only_the_home_country(client, db_session, tmp_path, monkeypatch):
     from app.schemas.market_settings import MarketSetting
     from app.services import autofill_profile, market_settings
@@ -699,7 +715,7 @@ def test_with_no_country_chosen_only_citizenship_is_asked_beside_the_permits(
     client, db_session, tmp_path, monkeypatch
 ):
     """A permit answer belongs to a country: unchosen asks none, even with a half-answered set stored. Citizenship
-    is still asked, and blocks until given."""
+    is still asked and counted, but it is no knockout answer, so it never blocks."""
     from app.services import autofill_profile
 
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
@@ -708,7 +724,7 @@ def test_with_no_country_chosen_only_citizenship_is_asked_beside_the_permits(
     body = _status(client)["autofill"]
     assert body["groups"]["work_auth"] == {"answered": 0, "answerable": 1}
     assert body["work_auth_by_country"] == {}
-    assert body["blocking"] == ["work_auth"]
+    assert body["blocking"] == []
 
     autofill_profile.set_profile({"personal": {"citizenships": ["IN"]}}, db_session)
     body = _status(client)["autofill"]
