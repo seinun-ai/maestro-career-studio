@@ -1698,6 +1698,14 @@ Expected: green.
   each market's `expected_pay` when set.
 - `backend/mcp_server/workflow.py`'s `form_answers` wording names citizenship, so an agent that
   sees the work-permit group short of one answer knows what is missing.
+- **Country answers for agents without a job.** Since Task 3.7, `/context` folds one market's
+  country answers and drops `answers_by_country`. With no application there is no market, so an
+  agent reading `get_autofill_profile` without a job sees no country answers. Serve them there:
+  - without a job, keep `answers_by_country` (every market);
+  - with a job, serve the folded view.
+
+  `/context` also serves `country_answered` beside `work_auth_market`, which marks the slots a
+  country's own answer filled. Both are view-only and never stored.
 - Agents can see that no country is chosen: `chosen` goes in `get_setup_status`'s autofill detail
   and in `get_autofill_profile`. Without it, an unchosen install with everything else answered
   reads as complete, with no hint that its countries are missing.
