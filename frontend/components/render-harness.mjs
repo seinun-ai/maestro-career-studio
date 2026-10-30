@@ -41,20 +41,17 @@ export function renderElement(element, seed = []) {
 }
 
 /**
- * What `GET /api/settings/autofill/questions` serves for `applyIn` (market keys of `markets`, each with its
- * `work_auth_vocab` and `offers_eeo`): the catalog's questions as the backend's golden test freezes them
- * (backend/tests/fixtures/form_questions_today.json), each country's permit in its vocabulary's words. The state
- * line stays "State", counted, as for a home with no state wording of its own.
+ * What `GET /api/settings/autofill/questions` serves to someone who lives in `home` and applies in `applyIn`
+ * (market keys): the backend writes one file per scenario from `form_questions.resolve` and fails when one
+ * drifts (backend/tests/test_served_questions_fixtures.py, which also says how to add a scenario).
  */
-export function servedQuestions(markets, applyIn) {
-  const fixture = path.join(frontend, "../backend/tests/fixtures/form_questions_today.json");
-  const today = JSON.parse(fs.readFileSync(fixture, "utf8"));
-  const byKey = new Map(markets.map((m) => [m.key, m]));
-  return {
-    groups: today.groups,
-    permits: Object.fromEntries(applyIn.map((key) => [key, today.permits[byKey.get(key).work_auth_vocab]])),
-    offers_eeo: applyIn.some((key) => byKey.get(key).offers_eeo),
-  };
+export function servedQuestions(home, applyIn) {
+  const name = `lives-${home}_applies-${applyIn.join("-")}.json`;
+  const fixture = path.join(frontend, "../backend/tests/fixtures/served_questions", name);
+  if (!fs.existsSync(fixture)) {
+    throw new Error(`No served questions for ${name}: add the scenario to SCENARIOS in backend/tests/test_served_questions_fixtures.py and regenerate`);
+  }
+  return JSON.parse(fs.readFileSync(fixture, "utf8"));
 }
 
 /** Static rendering never dispatches navigation; mount the router and confirmation providers links need. */

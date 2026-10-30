@@ -88,7 +88,7 @@ function render({ status = STATUS, info = INFO, applyIn = ["DE"], profile = {} }
   client.setQueryData(["settings", "job-preferences"], { key: "job_preferences", value: PREFS });
   client.setQueryData(["settings", "autofill"], { key: "autofill_profile", value: profile });
   client.setQueryData(["settings", "eeo-consent"], { key: "eeo_consent", value: CONSENT_OFF });
-  client.setQueryData(["settings", "form-questions"], servedQuestions(MARKETS, applyIn));
+  client.setQueryData(["settings", "form-questions"], servedQuestions("DE", applyIn));
   client.setQueryData(["settings", "money"], {
     key: "money",
     value: { home_currency: null, period: "year", hours_per_year: 2080, show_posted: true },
@@ -203,7 +203,7 @@ function renderElement(element, seed = []) {
 }
 
 // What the server serves for every country these tests apply in.
-const SERVED = servedQuestions(MARKETS, ["DE", "UK", "US"]);
+const SERVED = servedQuestions("DE", ["DE", "UK", "US"]);
 
 const answersStep = (props, seed = []) =>
   renderElement(

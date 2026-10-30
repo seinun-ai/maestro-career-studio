@@ -32,11 +32,11 @@ export function withPermitAnswer(
 
 export function withPreference(
   profile: Profile,
-  questions: QuestionSet,
+  questionSet: QuestionSet,
   key: "notice_period" | "willing_to_relocate",
   value: string | boolean,
 ): Profile {
-  return forSaving(withField(profile, questions, "preferences", key, value));
+  return forSaving(withField(profile, questionSet, "preferences", key, value));
 }
 
 /** The profile with one diversity answer (`eeo`), or with the rest declined: every blank question that has a
@@ -44,29 +44,29 @@ export function withPreference(
  *  diversity consent is on record (components/setup/setup-answers-step.tsx). */
 export function withDiversityAnswer(
   profile: Profile,
-  questions: QuestionSet,
+  questionSet: QuestionSet,
   key: string,
   value: string | boolean | undefined,
 ): Profile {
-  return forSaving(withField(profile, questions, "eeo", key, value));
+  return forSaving(withField(profile, questionSet, "eeo", key, value));
 }
 
-export function withDiversityDeclined(profile: Profile, questions: QuestionSet): Profile {
-  return forSaving({ ...profile, eeo: { ...groupValues(profile, "eeo"), ...declinedEeo(profile, questions) } });
+export function withDiversityDeclined(profile: Profile, questionSet: QuestionSet): Profile {
+  return forSaving({ ...profile, eeo: { ...groupValues(profile, "eeo"), ...declinedEeo(profile, questionSet) } });
 }
 
 /** Whether a question holds its answer, for its progress dot: a passed or skipped question is not answered
  *  (round means a state, so a dot never says done for a question you left). */
-export function questionAnswered(question: FormQuestion, profile: Profile, questions: QuestionSet): boolean {
+export function questionAnswered(question: FormQuestion, profile: Profile, questionSet: QuestionSet): boolean {
   switch (question.kind) {
     case "permit":
-      return permitAnswered(profile, questions, question.market);
+      return permitAnswered(profile, questionSet, question.market);
     case "notice":
       return !isBlank(groupValues(profile, "preferences").notice_period);
     case "relocate":
       return booleanAnswer(groupValues(profile, "preferences").willing_to_relocate) !== undefined;
     default: {
-      const count = groupCount(profile, questions, "eeo");
+      const count = groupCount(profile, questionSet, "eeo");
       return count.answered === count.answerable;
     }
   }

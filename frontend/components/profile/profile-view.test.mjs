@@ -62,7 +62,7 @@ function render({ applyIn = ["DE", "UK", "US"], served = applyIn, profile = { pe
       key: "market", value: { home: "DE", apply_in: applyIn, market: "DE" }, home: "DE", apply_in: applyIn,
       markets: MARKETS, currency: "EUR", offers_eeo: false,
     }],
-    [["settings", "form-questions"], servedQuestions(MARKETS, served)],
+    [["settings", "form-questions"], servedQuestions("DE", served)],
     [["settings", "job-preferences"], { key: "job_preferences", value: PREFS }],
     [["settings", "persona"], { key: "persona", value: "I design calm tools." }],
     [["base-resumes", { includeArchived: false }], RESUMES],

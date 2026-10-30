@@ -51,9 +51,9 @@ export function ProfileView({ focus }: { focus: (anchor: string) => void }) {
   const autofill = useAutofillQuery();
   const consent = useEeoConsentQuery();
   const market = useMarketQuery();
-  const questions = useFormQuestions();
-  const queries = [autofill, consent, market, questions];
-  const ready = autofill.data && consent.data && market.data && questions.data;
+  const questionSet = useFormQuestions();
+  const queries = [autofill, consent, market, questionSet];
+  const ready = autofill.data && consent.data && market.data && questionSet.data;
   const loadFailed = queries.some((q) => isLoadFailure(q));
 
   if (loadFailed && !ready) {
@@ -67,7 +67,7 @@ export function ProfileView({ focus }: { focus: (anchor: string) => void }) {
       />
     );
   }
-  if (!autofill.data || !consent.data || !market.data || !questions.data) {
+  if (!autofill.data || !consent.data || !market.data || !questionSet.data) {
     return (
       <div className="flex flex-col gap-6">
         <Skeleton className="h-14 w-72" />
@@ -81,7 +81,7 @@ export function ProfileView({ focus }: { focus: (anchor: string) => void }) {
       <ProfileBody
         status={setupStatus.data}
         market={market.data}
-        questionSet={questions.data}
+        questionSet={questionSet.data}
         consent={consent.data.value}
         focus={focus}
       />

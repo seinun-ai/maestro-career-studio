@@ -7,7 +7,7 @@
  */
 import type { FieldDef, QuestionSet } from "./types";
 
-export type { FieldDef, GroupDef } from "./types";
+export type { FieldDef } from "./types";
 
 export const YES_NO = [
   { value: "yes", label: "Yes" },
@@ -19,28 +19,28 @@ export const CUSTOM_IN_USE = 30;
 
 /** One group's fields, by key ("personal", "eeo", "eligibility", "preferences"), as served: the state line is
  *  already named and counted for where you live. A group the set lacks has none. */
-export function groupFields(questions: QuestionSet, key: string): FieldDef[] {
-  return questions.groups.find((group) => group.key === key)?.fields ?? [];
+export function groupFields(questionSet: QuestionSet, key: string): FieldDef[] {
+  return questionSet.groups.find((group) => group.key === key)?.fields ?? [];
 }
 
 // ------------------------------------------------------------------ Work permits, per country
 
 /** The countries whose work permit is asked: the served set's own keys, in the order you apply in (the server
  *  builds them that way). Never the market setting's list, which can change before the set is read again. */
-export function permitMarkets(questions: QuestionSet): string[] {
-  return Object.keys(questions.permits);
+export function permitMarkets(questionSet: QuestionSet): string[] {
+  return Object.keys(questionSet.permits);
 }
 
 /** One country's work-permit fields, in its own words: its required questions, then when the permit runs out
  *  (optional). Served per market you apply in ("UK", never "GB"); any other market has none, never another
  *  country's. */
-export function permitFields(questions: QuestionSet, market: string): FieldDef[] {
-  return questions.permits[market] ?? [];
+export function permitFields(questionSet: QuestionSet, market: string): FieldDef[] {
+  return questionSet.permits[market] ?? [];
 }
 
 /** One country's required work-permit questions: the ones setup readiness counts. */
-export function permitQuestions(questions: QuestionSet, market: string): FieldDef[] {
-  return permitFields(questions, market).filter((field) => !field.optional);
+export function permitQuestions(questionSet: QuestionSet, market: string): FieldDef[] {
+  return permitFields(questionSet, market).filter((field) => !field.optional);
 }
 
 // ------------------------------------------------------------------------- Education and languages
@@ -283,9 +283,9 @@ export type Count = { answered: number; answerable: number };
 
 /** How many of a group's required answers are given: the fields setup readiness counts, as served for where
  *  you live. */
-export function groupCount(profile: Profile, questions: QuestionSet, group: string): Count {
+export function groupCount(profile: Profile, questionSet: QuestionSet, group: string): Count {
   const values = groupValues(profile, group);
-  const required = groupFields(questions, group).filter((field) => !field.optional);
+  const required = groupFields(questionSet, group).filter((field) => !field.optional);
   return {
     answered: required.filter((field) => answered(field, values[field.key])).length,
     answerable: required.length,
@@ -293,9 +293,9 @@ export function groupCount(profile: Profile, questions: QuestionSet, group: stri
 }
 
 /** How many of one country's required work-permit answers are given, in its own questions. */
-export function permitCount(profile: Profile, questions: QuestionSet, market: string): Count {
+export function permitCount(profile: Profile, questionSet: QuestionSet, market: string): Count {
   const entry = permitEntry(profile, market);
-  const required = permitQuestions(questions, market);
+  const required = permitQuestions(questionSet, market);
   return {
     answered: required.filter((field) => answered(field, entry[field.key])).length,
     answerable: required.length,
@@ -304,8 +304,8 @@ export function permitCount(profile: Profile, questions: QuestionSet, market: st
 
 /** Whether every required work-permit answer of one country is given. A country the set serves no questions
  *  for is open, never answered: a knockout answer is never taken as given. */
-export function permitAnswered(profile: Profile, questions: QuestionSet, market: string): boolean {
-  const count = permitCount(profile, questions, market);
+export function permitAnswered(profile: Profile, questionSet: QuestionSet, market: string): boolean {
+  const count = permitCount(profile, questionSet, market);
   return count.answerable > 0 && count.answered === count.answerable;
 }
 
@@ -313,7 +313,7 @@ export function permitAnswered(profile: Profile, questions: QuestionSet, market:
  *  goes with that answer: a self-description must not stay stored under "Female", unseen. */
 export function withField(
   profile: Profile,
-  questions: QuestionSet,
+  questionSet: QuestionSet,
   group: string,
   key: string,
   value: string | boolean | undefined,
@@ -324,7 +324,7 @@ export function withField(
   } else {
     values[key] = value;
   }
-  for (const field of groupFields(questions, group)) {
+  for (const field of groupFields(questionSet, group)) {
     if (field.when?.[0] === key && field.when[1] !== value) delete values[field.key];
   }
   return { ...profile, [group]: values };
@@ -336,10 +336,10 @@ export const RACE_STAYS_YOURS = "Race or ethnicity has no decline choice, so it 
 
 /** "Decline the rest": each diversity select still blank gets its decline option (every one offers the
  *  value "decline", whatever its words), and nothing already answered changes. Empty when nothing is blank. */
-export function declinedEeo(profile: Profile, questions: QuestionSet): Record<string, string> {
+export function declinedEeo(profile: Profile, questionSet: QuestionSet): Record<string, string> {
   const eeo = groupValues(profile, "eeo");
   return Object.fromEntries(
-    groupFields(questions, "eeo").flatMap((field) => {
+    groupFields(questionSet, "eeo").flatMap((field) => {
       if (field.type !== "select" || !isBlank(eeo[field.key])) return [];
       const decline = field.options?.find((option) => option.value === "decline");
       return decline ? [[field.key, decline.value]] : [];
@@ -388,21 +388,21 @@ export function missingKey(item: MissingAnswer): string {
  * pay, then the diversity questions where a country you apply in has a checked set (`offers_eeo`). The fields
  * are the ones setup readiness counts, as served for where you live, so an empty list is a full ring.
  */
-export function missingAnswers(profile: Profile, questions: QuestionSet): MissingAnswer[] {
+export function missingAnswers(profile: Profile, questionSet: QuestionSet): MissingAnswer[] {
   const out: MissingAnswer[] = [];
-  for (const market of permitMarkets(questions)) {
+  for (const market of permitMarkets(questionSet)) {
     const entry = permitEntry(profile, market);
-    for (const field of permitQuestions(questions, market)) {
+    for (const field of permitQuestions(questionSet, market)) {
       if (!answered(field, entry[field.key])) out.push({ kind: "permit", market, field });
     }
   }
   for (const group of ["personal", "preferences"] as const) {
     const values = groupValues(profile, group);
-    for (const field of groupFields(questions, group)) {
+    for (const field of groupFields(questionSet, group)) {
       if (!field.optional && !answered(field, values[field.key])) out.push({ kind: "field", group, field });
     }
   }
-  const eeo = groupCount(profile, questions, "eeo");
-  if (questions.offers_eeo && eeo.answered < eeo.answerable) out.push({ kind: "diversity" });
+  const eeo = groupCount(profile, questionSet, "eeo");
+  if (questionSet.offers_eeo && eeo.answered < eeo.answerable) out.push({ kind: "diversity" });
   return out;
 }

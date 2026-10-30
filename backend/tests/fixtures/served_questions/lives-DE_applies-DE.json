@@ -1,0 +1,331 @@
+{
+  "groups": [
+    {
+      "key": "personal",
+      "title": "Personal details",
+      "fields": [
+        {
+          "key": "first_name",
+          "label": "First name"
+        },
+        {
+          "key": "last_name",
+          "label": "Last name"
+        },
+        {
+          "key": "email",
+          "label": "Email"
+        },
+        {
+          "key": "phone",
+          "label": "Phone"
+        },
+        {
+          "key": "address",
+          "label": "Street address"
+        },
+        {
+          "key": "address_2",
+          "label": "Address line 2",
+          "optional": true
+        },
+        {
+          "key": "city",
+          "label": "City"
+        },
+        {
+          "key": "state",
+          "label": "State",
+          "optional": true,
+          "byHome": true
+        },
+        {
+          "key": "postal_code",
+          "label": "Postal code"
+        },
+        {
+          "key": "country",
+          "label": "Country"
+        },
+        {
+          "key": "linkedin",
+          "label": "LinkedIn profile link",
+          "optional": true
+        },
+        {
+          "key": "github",
+          "label": "GitHub link",
+          "optional": true
+        },
+        {
+          "key": "website",
+          "label": "Website",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "eeo",
+      "title": "Diversity questions (voluntary)",
+      "fields": [
+        {
+          "key": "veteran_status",
+          "label": "Are you a veteran?",
+          "type": "select",
+          "options": [
+            {
+              "value": "no",
+              "label": "No, I am not a veteran"
+            },
+            {
+              "value": "yes",
+              "label": "Yes, I am a veteran"
+            },
+            {
+              "value": "decline",
+              "label": "I don't wish to answer"
+            }
+          ],
+          "staleHint": "Answer again: this question changed."
+        },
+        {
+          "key": "disability_status",
+          "label": "Disability status",
+          "type": "select",
+          "options": [
+            {
+              "value": "no",
+              "label": "No, I do not have a disability"
+            },
+            {
+              "value": "yes",
+              "label": "Yes, I have a disability"
+            },
+            {
+              "value": "decline",
+              "label": "Decline to answer"
+            }
+          ]
+        },
+        {
+          "key": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            {
+              "value": "male",
+              "label": "Male"
+            },
+            {
+              "value": "female",
+              "label": "Female"
+            },
+            {
+              "value": "non_binary",
+              "label": "Non-binary"
+            },
+            {
+              "value": "self_describe",
+              "label": "Prefer to self-describe"
+            },
+            {
+              "value": "decline",
+              "label": "Decline to answer"
+            }
+          ]
+        },
+        {
+          "key": "gender_self_describe",
+          "label": "How you describe your gender",
+          "optional": true,
+          "hint": "The Companion types this where a form asks you to self-describe.",
+          "when": [
+            "gender",
+            "self_describe"
+          ]
+        },
+        {
+          "key": "hispanic_latino",
+          "label": "Hispanic or Latino?",
+          "type": "select",
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "decline",
+              "label": "Decline to answer"
+            }
+          ]
+        },
+        {
+          "key": "race_ethnicity",
+          "label": "Race or ethnicity",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "eligibility",
+      "title": "Eligibility",
+      "fields": [
+        {
+          "key": "over_18",
+          "label": "Are you 18 or older?",
+          "optional": true,
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "previously_employed_here",
+          "label": "Have you worked for the company you're applying to?",
+          "optional": true,
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "non_compete",
+          "label": "Subject to a restrictive covenant?",
+          "optional": true,
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ],
+          "hint": "Such as a non-compete or non-solicit agreement."
+        }
+      ]
+    },
+    {
+      "key": "preferences",
+      "title": "Preferences",
+      "fields": [
+        {
+          "key": "desired_salary",
+          "label": "Desired salary"
+        },
+        {
+          "key": "notice_period",
+          "label": "Notice period",
+          "hint": "How long before you can start."
+        },
+        {
+          "key": "earliest_start_date",
+          "label": "Earliest start date"
+        },
+        {
+          "key": "willing_to_relocate",
+          "label": "Willing to relocate?",
+          "type": "select",
+          "boolean": true,
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "key": "how_heard",
+          "label": "How did you hear about the job?"
+        }
+      ]
+    }
+  ],
+  "permits": {
+    "DE": [
+      {
+        "key": "authorized_now",
+        "label": "Can you work in this country now?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "sponsorship_now",
+        "label": "Do you need visa sponsorship now?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "sponsorship_future",
+        "label": "Will you need visa sponsorship later?",
+        "type": "select",
+        "boolean": true,
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          }
+        ]
+      },
+      {
+        "key": "authorization_expires_on",
+        "label": "Authorization expires on",
+        "optional": true,
+        "type": "date",
+        "hint": "Leave it empty if your right to work there does not run out."
+      }
+    ]
+  },
+  "offers_eeo": false
+}
