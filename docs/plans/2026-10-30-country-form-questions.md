@@ -1748,7 +1748,12 @@ Expected: fail.
 **Step 3: Implement.**
 - **Types.** `QuestionSet`, `CountryQuestions`, `DerivedAnswer` and the new `FieldDef` attributes
   (number, countries, `byHome` as a string, `unless`). `permits` is removed; cut `MarketOption`'s
-  `work_auth_vocab`, `asks_state` and `state_label` if nothing reads them (`git grep`).
+  `work_auth_vocab`, `asks_state` and `state_label` if nothing reads them (`git grep`). Update the
+  `byHome: true` fixtures in `autofill-options.test.ts`.
+- **Seeding the profile view.** Use `servedQuestions("IN", ["IN", "AE", "DE", "NL"],
+  {citizenships: ["IN"]})`: fixture names carry the citizenships since Task 3.5.
+- **Given beats derived.** `derived` can also hold keys the user answered the same way. Show the
+  given answer there, and "From your citizenship" only where nothing is given.
 - **Country answers** (`work-permits.tsx`; the file name and the tile id `permits` stay, to spare
   pins):
   - the title "Country answers";
