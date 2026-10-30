@@ -50,6 +50,14 @@ def settled_markets(citizenships: list[str]) -> list[str]:
     return [m for m in markets.keys() if derived_for(citizenships, m)]
 
 
+def answered_markets(profile: Any, home: str | None = None) -> list[str]:
+    """The markets that may hold work-permit answers as readers see them: each stored one, in the
+    stored order, then each a citizenship settles (`settled_markets`), once each. `home` places a
+    legacy single `work_auth` in a raw profile."""
+    stored = autofill_profile.work_auth_entries(profile, home)
+    return list(dict.fromkeys([*stored, *settled_markets(citizenships(profile))]))
+
+
 def derived_in_effect(profile: Any, market: str, home: str | None = None) -> dict[str, DerivedAnswer]:
     """The answers a citizenship settles in `market` that readers use (`derived_for`), or {} when a
     given answer differs from one it settles: the user knows something the rule does not, so the

@@ -340,14 +340,15 @@ _PAY = "preferences.desired_salary"
 
 def _pay_describe(profile: dict[str, Any]) -> str | None:
     """The expected pay in its country's terms (markets.yaml `pay`: "Expected gross monthly salary,
-    excluding holiday allowance (EUR)"), only when the figure is that country's own answer
-    (`COUNTRY_ANSWERED`): the generic one was given in no country's terms. None: the generic words."""
+    excluding holiday allowance (EUR)") before the generic words, only when the figure is that
+    country's own answer (`COUNTRY_ANSWERED`): the generic one was given in no country's terms.
+    None: the generic words alone."""
     market = profile.get(WORK_AUTH_MARKET)
     answered = profile.get(COUNTRY_ANSWERED)
     if not (isinstance(answered, list) and _PAY in answered and markets.is_supported(market)):
         return None
     label = markets.get(market)["pay"]["label"]
-    return f"{label[:1].lower()}{label[1:]} (expected pay: desired salary, compensation or salary requirements)"
+    return f"{label[:1].lower()}{label[1:]}: {_DESCRIBES[_PAY]}"
 
 
 def _iso_date(value: Any) -> date | None:
@@ -357,7 +358,7 @@ def _iso_date(value: Any) -> date | None:
         return None
 
 
-def _notice_held(preferences: dict[str, Any], today: date) -> set[str]:
+def _stale_notice_keys(preferences: dict[str, Any], today: date) -> set[str]:
     """The notice answers that no longer hold: the last working day unless notice is being served
     and the day is a date not past; both once that day has passed (the notice is over)."""
     serving = _as_text(preferences.get("serving_notice"))
@@ -367,7 +368,24 @@ def _notice_held(preferences: dict[str, Any], today: date) -> set[str]:
     return {"serving_notice", "last_working_day"} if last < today else set()
 
 
-def _profile_sections(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None:
+def with_fill_rules(profile: dict[str, Any], today: date) -> dict[str, Any]:
+    """The answers as a form takes them on `today`: citizenships as country names (ISO codes are
+    stored; a form offers names), and no notice answer that no longer holds (`_stale_notice_keys`).
+    The one rule for every fill: `autofill_country.for_market` applies it to the view, and `build`
+    to whatever it is given (both ways the same; applying it twice changes nothing)."""
+    out = dict(profile)
+    personal = out.get("personal")
+    if isinstance(personal, dict) and CITIZENSHIPS in personal:
+        names = [countries.label(code) or code for code in countries.codes_in(personal[CITIZENSHIPS])]
+        out["personal"] = {**personal, CITIZENSHIPS: names}
+    preferences = out.get("preferences")
+    if isinstance(preferences, dict):
+        stale = _stale_notice_keys(preferences, today)
+        out["preferences"] = {k: v for k, v in preferences.items() if k not in stale}
+    return out
+
+
+def _profile_sections(out: dict[str, Fact], profile: dict[str, Any]) -> None:
     market = profile.get(WORK_AUTH_MARKET)
     status_words = (
         {**form_questions.status_labels(market), **_STATUS_WORDS.get(market, {})} if isinstance(market, str) else {}
@@ -376,17 +394,11 @@ def _profile_sections(out: dict[str, Fact], profile: dict[str, Any], today: date
         values = profile.get(section)
         if not isinstance(values, dict):
             continue
-        dropped = _notice_held(values, today) if section == "preferences" else set()
         for key, value in values.items():
-            if key in dropped:
-                continue
             if section == "eeo" and key == "gender" and value == "self_describe":
                 value = values.get("gender_self_describe")
             if section == "work_auth" and key == "status" and isinstance(value, str):
                 value = status_words.get(value, value)
-            if section == "personal" and key == CITIZENSHIPS:
-                # ISO codes are stored; a form offers country names.
-                value = tuple(countries.label(code) or code for code in countries.codes_in(value))
             if isinstance(value, list):
                 value = tuple(str(v).strip() for v in value if str(v).strip())
             slot = f"{section}.{key}"
@@ -1108,7 +1120,8 @@ def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: lis
     out: dict[str, Fact] = {}
     profile = profile or {}
     today = today or date.today()
-    _profile_sections(out, profile, today)
+    profile = with_fill_rules(profile, today)
+    _profile_sections(out, profile)
     _derived(out, profile, today)
     _education(out, profile.get("education"))
     _experience(out, employment or [])

@@ -190,3 +190,10 @@ def test_derived_answers_are_never_stored(client, settings_dir):
     assert stored["personal"]["citizenships"] == ["FR"]
     assert "DE" not in (stored.get("work_auth_by_country") or {})
     assert "DE" not in (client.get("/api/settings/autofill").json()["value"].get("work_auth_by_country") or {})
+
+
+def test_answered_markets_are_the_stored_then_the_settled_once_each():
+    profile = {"personal": {"citizenships": ["FR"]},
+               "work_auth_by_country": {"US": {"authorized_now": True}, "NL": {"authorized_now": False}}}
+    assert autofill_derive.answered_markets(profile) == ["US", "NL", "IE", "DE"]
+    assert autofill_derive.answered_markets({}) == []

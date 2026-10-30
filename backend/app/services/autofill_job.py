@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.job import Job
-from app.services import autofill_catalog, autofill_country, autofill_profile, countries
+from app.services import autofill_catalog, autofill_country, countries
 
 
 def application_job(db: Session, application_id: UUID | None) -> Job | None:
@@ -31,13 +31,26 @@ def job_market(job: Job | None) -> str | None:
     return autofill_country.market_for_job_country(job.country_code) if job is not None else None
 
 
+def view_for(profile: Any, job: Job | None, market: str | None) -> Any:
+    """The profile a form on `job` reads for one market's questions: that market's answers
+    (`autofill_country.for_market`: its permits and own answers, no other country's) and the saved
+    answers that hold for the job (`custom_for_job`; with no job, no scoped one)."""
+    if not isinstance(profile, dict):
+        return profile
+    view = autofill_country.for_market(profile, market)
+    if "custom" not in view:
+        return view
+    return {**view, "custom": autofill_catalog.custom_for_job(
+        view["custom"], job.company if job else None, job.location if job else None)}
+
+
 def profile_for_job(db: Session, profile: Any, application_id: UUID | None,
                     question: str | None = None) -> Any:
     """The profile with the saved answers that hold for the application's job, the job's country's
     work-permit answers as `work_auth` (`work_auth_market` names it) and its own answers over the
-    slots they fill (`autofill_country.for_market`). With no application (a form not tracked yet) a
-    scoped answer holds nowhere, and there are no country's answers: a question that names its
-    country is answered on the fill loop, where the question is known.
+    slots they fill (`view_for`). With no application (a form not tracked yet) a scoped answer holds
+    nowhere, and there are no country's answers: a question that names its country is answered on
+    the fill loop, where the question is known.
     `question` is that case for one question (the Companion's pause row learning an answer): the
     market it gets by `autofill_country.market_for_question`, the country it names, else the job's,
     and `work_auth_country` naming that country in words, one no market covers too (None: no one
@@ -48,26 +61,11 @@ def profile_for_job(db: Session, profile: Any, application_id: UUID | None,
     market = job_market(job)
     if question is not None:
         market = autofill_country.market_for_question(question, market)
-    profile = autofill_country.for_market(profile, market)
+    view = view_for(profile, job, market)
     if question is not None:
         code = autofill_country.country_for_question(question, job.country_code if job else None)
-        profile = {**profile, autofill_country.WORK_AUTH_COUNTRY: countries.label(code)}
-    if "custom" not in profile:
-        return profile
-    return {**profile, "custom": autofill_catalog.custom_for_job(
-        profile["custom"], job.company if job else None, job.location if job else None)}
-
-
-def profile_for_fill(db: Session, profile: Any, application_id: UUID | None) -> Any:
-    """What a form-filling model reads (/choose: the fast model's prompt and Jev's slots):
-    `profile_for_job`'s view without any per-country map, so the job's country's answers are the
-    only ones there (`work_auth`, its own answers folded) and no other country's reach the form.
-    /context keeps `work_auth_by_country`: agents read it."""
-    view = profile_for_job(db, profile, application_id)
-    if not isinstance(view, dict):
-        return view
-    return {k: v for k, v in view.items()
-            if k not in (autofill_profile.BY_COUNTRY, autofill_profile.ANSWERS_BY_COUNTRY)}
+        view = {**view, autofill_country.WORK_AUTH_COUNTRY: countries.label(code)}
+    return view
 
 
 # The job boards a posting's URL host names as where the job was found ("how did you hear about us?").

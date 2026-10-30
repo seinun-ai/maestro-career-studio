@@ -355,7 +355,11 @@ def get_autofill_context(
     # A saved answer that named another job's company or city (`only_for`) is not
     # this fill's: the deterministic pass matches `custom` by question on every
     # form, so it would fill "Have you worked at Acme before?" at the next employer.
-    sections["profile"] = autofill_job.profile_for_job(db, sections["profile"], application_id, question)
+    gated = sections["profile"]
+    sections["profile"] = autofill_job.profile_for_job(db, gated, application_id, question)
+    # The job's view holds one country's answers; agents also read every market's permits here.
+    if isinstance(gated, dict) and isinstance(sections["profile"], dict) and autofill_profile.BY_COUNTRY in gated:
+        sections["profile"][autofill_profile.BY_COUNTRY] = gated[autofill_profile.BY_COUNTRY]
     return sections
 
 
@@ -441,7 +445,7 @@ class _Catalog:
         facts match (a country's own pay included)."""
         if market not in self._built:
             facts = autofill_catalog.build(
-                autofill_country.for_market(self._profile, market), self._employment,
+                autofill_country.for_market(self._profile, market, today=self._today), self._employment,
                 self._skills, today=self._today, company=self._company, location=self._location,
             )
             # Served: an agreement given under an older policy reads off (lapsed).
@@ -450,6 +454,11 @@ class _Catalog:
             key = json.dumps({s: dataclasses.astuple(f) for s, f in facts.items()}, sort_keys=True, default=str)
             self._built[market] = (key, facts)
         return self._built[market]
+
+    @property
+    def profile(self) -> dict:
+        """The consent-gated profile the facts are built from, every market's answers in it."""
+        return self._profile
 
     def facts(self) -> dict[str, autofill_catalog.Fact]:
         """The facts with the job's country's work-permit answers."""
@@ -489,12 +498,7 @@ def _redaction_facts(db: Session) -> dict[str, autofill_catalog.Fact]:
     value under a numbered or marked key."""
     catalog = _Catalog(db, None, None)
     out = dict(catalog.facts())
-    profile = autofill_profile.get_profile(db)
-    answered = [
-        *autofill_profile.work_auth_entries(profile, None),
-        *autofill_profile.answers_entries(profile),
-        *autofill_derive.settled_markets(autofill_derive.citizenships(profile)),
-    ]
+    answered = [*autofill_derive.answered_markets(catalog.profile), *autofill_profile.answers_entries(catalog.profile)]
     for market in dict.fromkeys(answered):
         own = set(form_questions.answer_fills(market).values())
         out.update({f"{key}#{market}": fact for key, fact in catalog.facts_for_market(market).items()

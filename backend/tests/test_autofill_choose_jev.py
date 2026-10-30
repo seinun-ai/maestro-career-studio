@@ -393,3 +393,53 @@ def test_context_still_serves_every_countrys_permits_for_agents(db_session, clie
     body = client.get("/api/autofill/context", params={"application_id": str(_job_in(db_session, "DE"))}).json()
     assert set(body["profile"]["work_auth_by_country"]) == {"US", "AE"}
     assert "answers_by_country" not in body["profile"]
+
+
+def test_a_question_naming_germany_gets_germanys_answers_on_a_us_job_and_with_none(
+    db_session, monkeypatch, three_countries
+):
+    """Fields are grouped by the country their label names (else the job's), each group filled from that
+    country's answers, in both engines; a label naming no country stays with the job's."""
+    autofill_profile.set_profile({"work_auth_by_country": {"DE": {"authorized_now": False}}}, db_session)
+    named = _field("de", "Are you authorized to work in Germany?", "select", ["Yes", "No"])
+    plain = _field("us", "Are you authorized to work here?", "select", ["Yes", "No"])
+
+    for application_id in (_job_in(db_session, "US"), None):
+        seen = _jev_slots(monkeypatch)
+        _fake_llm(monkeypatch)
+        autofill_choose.choose([named, plain], application_id, db_session)
+        de = next(s for s in seen if s.get("work_auth.authorized_now") == "No")
+        assert len(seen) == 2 and de["work_auth.authorized_now"] == "No", application_id
+        other = next(s for s in seen if s is not de)
+        assert other.get("work_auth.authorized_now") == ("Yes" if application_id else None)
+
+    model_settings.set_autofill_engine(db_session, "fast")
+    prompts = _fake_llm(monkeypatch)
+    autofill_choose.choose([named, plain], _job_in(db_session, "US"), db_session)
+    assert len(prompts) == 2
+    de_prompt = next(p for p in prompts if '"de"' in p)
+    assert '"work_auth_market": "DE"' in de_prompt and '"authorized_now": false' in de_prompt
+    assert '"us"' not in de_prompt and '"authorized_now": true' not in de_prompt
+
+
+def test_one_country_is_one_call(db_session, monkeypatch, three_countries):
+    """No label names another country: one group, one model call, as before."""
+    model_settings.set_autofill_engine(db_session, "fast")
+    prompts = _fake_llm(monkeypatch)
+    autofill_choose.choose([_field("a", "First name"), _field("b", "Authorized to work in the US?")],
+                           _job_in(db_session, "US"), db_session)
+    assert len(prompts) == 1
+
+
+def test_the_fill_prompt_takes_answers_as_a_form_does(db_session, monkeypatch, three_countries):
+    """The view's rules reach the fast prompt and the Jev slots: citizenships as names, a notice that ended
+    gone."""
+    autofill_profile.set_profile({"personal": {"citizenships": ["IN"]},
+                                  "preferences": {"serving_notice": True, "last_working_day": "2020-01-31"}},
+                                 db_session)
+    seen = _jev_slots(monkeypatch)
+    prompts = _fake_llm(monkeypatch)
+    autofill_choose.choose([_field("a", "Citizenship")], _job_in(db_session, "US"), db_session)
+    assert seen[-1]["personal.citizenships"] == "India"
+    assert "preferences.last_working_day" not in seen[-1] and "preferences.serving_notice" not in seen[-1]
+    assert '"India"' in prompts[-1] and "2020-01-31" not in prompts[-1]

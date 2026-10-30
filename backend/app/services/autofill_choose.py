@@ -21,12 +21,14 @@ import logging
 import re
 import time
 from collections.abc import Callable
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_choose import MAX_OPTIONS, Choice, ChooseField
 from app.services import (
+    autofill_country,
     autofill_job,
     autofill_slots,
     career_kb,
@@ -97,10 +99,11 @@ def choose(
     session: Session,
 ) -> dict[str, Choice]:
     began = _clock()
-    if model_settings.get_autofill_engine(session) == "jev":
-        out = _choose_with_jev(fields, application_id, session)
-    else:
-        out = _choose_with_llm(fields, application_id, session)
+    engine = _choose_with_jev if model_settings.get_autofill_engine(session) == "jev" else _choose_with_llm
+    out: dict[str, Choice] = {}
+    for profile, group in _by_country(fields, application_id, session):
+        out |= engine(group, profile, session)
+
     def time_left() -> float | None:
         left = REPLY_BUDGET_S - (_clock() - began)
         return left if left >= MIN_DRAFT_S else None
@@ -284,20 +287,37 @@ def _option_picked(answer: object, criteria: dict[str, str]) -> jev.ChoiceAnswer
     return dataclasses.replace(picked, choice=criteria[picked.choice])
 
 
-def _choose_with_jev(
+def _by_country(
     fields: list[ChooseField], application_id: UUID | None, session: Session
-) -> dict[str, Choice]:
-    """Jev places what it can; the fast model answers the rest, as it always did.
+) -> list[tuple[Any, list[ChooseField]]]:
+    """The fields grouped by whose answers their questions get (inv-work-permit-per-country:
+    `autofill_country.market_for_question`, the country a label names, else the job's; one group
+    when none names another), each with the profile both engines fill it from
+    (`autofill_job.view_for`): that country's answers only, the saved answers that hold for the job,
+    and consent-gated like GET /context, since it goes to a model provider: diversity answers only
+    under standing consent."""
+    profile = eeo_consent.disclosable_profile(session)
+    job = autofill_job.application_job(session, application_id)
+    job_market = autofill_job.job_market(job)
+    groups: dict[str | None, tuple[Any, list[ChooseField]]] = {}
+    for field in fields:
+        market = autofill_country.market_for_question(field.label, job_market)
+        if market not in groups:
+            groups[market] = (autofill_job.view_for(profile, job, market), [])
+        groups[market][1].append(field)
+    return list(groups.values())
 
-    Its slots are the fast model's profile (`_fill_profile`): consent-gated, so an EEO
-    answer without standing consent is not a slot and never reaches Jev, and the job's
-    country's answers only (inv-work-permit-per-country)."""
-    slots = autofill_slots.flatten(_fill_profile(session, application_id))
+
+def _choose_with_jev(fields: list[ChooseField], profile: Any, session: Session) -> dict[str, Choice]:
+    """Jev places what it can; the fast model answers the rest, as it always did. Its slots are
+    the fields' profile (`_by_country`), so an EEO answer without standing consent is not a slot
+    and never reaches Jev."""
+    slots = autofill_slots.flatten(profile)
     try:
         mapped = _map_slots([f for f in fields if not f.known_value], slots, session)
     except llm.LLMProviderError:
         logger.warning("jev slot mapping failed; the fast model answers this batch")
-        return _choose_with_llm(fields, application_id, session)
+        return _choose_with_llm(fields, profile, session)
 
     out: dict[str, Choice] = {}
     to_pick: list[tuple[ChooseField, str, autofill_slots.Policy]] = []
@@ -323,7 +343,7 @@ def _choose_with_jev(
         fallback.extend(f for f, _value, _policy in to_pick)
     if fallback:
         try:
-            out.update(_choose_with_llm(fallback, application_id, session))
+            out.update(_choose_with_llm(fallback, profile, session))
         except llm.LLMProviderError:
             # Nothing placed: the error is the answer, and the extension says why.
             if not out:
@@ -334,21 +354,10 @@ def _choose_with_jev(
     return out
 
 
-def _fill_profile(session: Session, application_id: UUID | None) -> dict:
-    """The profile both engines fill from. Consent-gated like GET /context: it goes to a model
-    provider, so diversity answers go only when standing consent is on. Scoped to the job: a saved
-    answer that named another company or city is not there, and only the job's country's answers
-    are (`autofill_job.profile_for_fill`: no job, no country's)."""
-    return autofill_job.profile_for_fill(session, eeo_consent.disclosable_profile(session), application_id)
-
-
-def _choose_with_llm(
-    fields: list[ChooseField],
-    application_id: UUID | None,
-    session: Session,
-) -> dict[str, Choice]:
+def _choose_with_llm(fields: list[ChooseField], profile: Any, session: Session) -> dict[str, Choice]:
+    """One fast-model call over `fields`, with the fields' profile (`_by_country`)."""
     prompt = prompt_assembly.build_autofill_choose_prompt(
-        profile=_fill_profile(session, application_id),
+        profile=profile,
         memory=career_kb.compose_context(session),
         fields=_wire_fields(fields),
         persona=persona.get_persona(session),

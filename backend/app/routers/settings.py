@@ -328,10 +328,13 @@ def get_autofill(db: Annotated[Session, Depends(get_db)]):
 
 @router.put("/autofill", response_model=SettingEnvelope[dict[str, Any]])
 def put_autofill(payload: AutofillProfilePayload, db: Annotated[Session, Depends(get_db)]):
-    return {
-        "key": "autofill_profile",
-        "value": autofill_profile.set_profile(payload.value, db),
-    }
+    """A job's view (/api/autofill/context's profile) is a 422 that saves nothing
+    (`autofill_profile.job_view_refusal`)."""
+    try:
+        saved = autofill_profile.set_profile(payload.value, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"key": "autofill_profile", "value": saved}
 
 
 # ---- an agent's save: the changes merged on the server ----

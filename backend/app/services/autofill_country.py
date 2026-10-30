@@ -32,10 +32,11 @@ answer reaches the form.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import date
 from typing import Any
 
 from app.schemas.autofill_profile import WorkAuth
-from app.services import autofill_derive, autofill_profile, countries, form_questions, markets
+from app.services import autofill_catalog, autofill_derive, autofill_profile, countries, form_questions, markets
 
 # The market a question names that has no answers here, or that no market covers: unknown on any job.
 _NOWHERE = ""
@@ -95,12 +96,10 @@ def country_for_question(question: str, job_country: str | None) -> str | None:
 
 def _authorized_countries(profile: Any, home: str | None) -> list[str]:
     """The country names of every market whose `authorized_now` reads Yes as readers see it
-    (`autofill_derive.answers_for`): the stored markets in the stored order, then the ones a
-    citizenship settles (`settled_markets`), each once."""
-    stored = list(autofill_profile.work_auth_entries(profile, home))
-    settled = autofill_derive.settled_markets(autofill_derive.citizenships(profile))
+    (`autofill_derive.answers_for`), in `answered_markets` order: the stored markets, then the ones
+    a citizenship settles."""
     names = []
-    for market in dict.fromkeys([*stored, *settled]):
+    for market in autofill_derive.answered_markets(profile, home):
         answers = autofill_derive.answers_for(profile, market, home)
         if autofill_profile.typed_work_auth(answers, market).authorized_now is True:
             name = countries.label(markets.country_code(market))
@@ -147,11 +146,13 @@ def with_country_answers(profile: Any, market: str | None) -> Any:
     flat slots they fill (`form_questions.answer_fills`: "preferences.desired_salary"), and no
     country's map: another country's answers never reach this one's form. A blank answer, or a key
     the market does not ask now, fills nothing, so the generic answer stays. The slots filled are
-    named under `COUNTRY_ANSWERED`. No market (`None`, or one Maestro does not keep): nothing is
-    filled, and the map still goes."""
+    named under `COUNTRY_ANSWERED`, always (`[]`: none), which marks the result as a job's view: a
+    save refuses it (`autofill_profile.set_profile`). No market (`None`, or one Maestro does not
+    keep): nothing is filled, and the map still goes."""
     if not isinstance(profile, dict):
         return profile
     out = {k: v for k, v in profile.items() if k != autofill_profile.ANSWERS_BY_COUNTRY}
+    out[COUNTRY_ANSWERED] = []
     if not market:
         return out
     key = market.strip().upper()
@@ -165,15 +166,22 @@ def with_country_answers(profile: Any, market: str | None) -> Any:
         values = out.get(section)
         out[section] = {**(values if isinstance(values, dict) else {}), leaf: value}
         filled.append(slot)
-    if filled:
-        out[COUNTRY_ANSWERED] = filled
+    out[COUNTRY_ANSWERED] = filled
     return out
 
 
-def for_market(profile: Any, market: str | None, home: str | None = None) -> Any:
-    """The profile as a form in `market` reads it: that market's work-permit answers as `work_auth`
-    (`with_work_auth`) and its own answers over the slots they fill (`with_country_answers`)."""
-    return with_country_answers(with_work_auth(profile, market, home), market)
+def for_market(profile: Any, market: str | None, home: str | None = None, today: date | None = None) -> Any:
+    """The profile as a form in `market` reads it, the one view every fill reads (the catalog, /choose's
+    prompt and Jev's slots, /context): that market's work-permit answers as `work_auth`
+    (`with_work_auth`), its own answers over the slots they fill (`with_country_answers`), no
+    per-country map at all (no other country's answer is there), and the answers as a form takes them
+    on `today` (`autofill_catalog.with_fill_rules`: citizenships as country names, no stale notice).
+    /context adds `work_auth_by_country` back for agents."""
+    view = with_country_answers(with_work_auth(profile, market, home), market)
+    if not isinstance(view, dict):
+        return view
+    view.pop(autofill_profile.BY_COUNTRY, None)
+    return autofill_catalog.with_fill_rules(view, today or date.today())
 
 
 def work_auth_for(profile: Any, *, question: str, job_country: str | None,

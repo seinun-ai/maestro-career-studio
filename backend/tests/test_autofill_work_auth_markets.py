@@ -230,7 +230,8 @@ def test_the_reviewers_case_a_stale_set_after_a_move_from_a_legacy_profile(db_se
 
 def test_a_profile_resolved_for_a_job_names_the_jobs_market(db_session):
     """/context and /choose serve the job's country's set as `work_auth`, so the marker names that market (null
-    with no job or a country no market covers); such a profile put back folds nowhere it was not served for."""
+    with no job or a country no market covers); such a profile is a job's view, and a save of it is refused,
+    so it folds nowhere (`autofill_profile.job_view_refusal`)."""
     from app.models.application import Application
     from app.services import autofill_job
     from tests.test_proposals_models import _mk_job
@@ -249,8 +250,9 @@ def test_a_profile_resolved_for_a_job_names_the_jobs_market(db_session):
     assert uk["work_auth_market"] == "UK"
     assert autofill_job.profile_for_job(db_session, profile, apps["FR"].id)["work_auth_market"] is None
     assert autofill_job.profile_for_job(db_session, profile, None)["work_auth_market"] is None
-    autofill_profile.set_profile({**uk, "work_auth": {**UK_SET, "sponsorship_future": True}}, db_session)
-    assert _map(db_session) == {"US": US_SET, "UK": {**UK_SET, "sponsorship_future": True}}
+    with pytest.raises(ValueError, match="GET /api/settings/autofill"):
+        autofill_profile.set_profile({**uk, "work_auth": {**UK_SET, "sponsorship_future": True}}, db_session)
+    assert _map(db_session) == {"US": US_SET, "UK": UK_SET}
 
 
 # --- finding: the Companion's pause row saved a job's answer to the home set ------------------------------------------

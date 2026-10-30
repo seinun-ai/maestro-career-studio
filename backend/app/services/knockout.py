@@ -444,7 +444,8 @@ def scan_args(session: Session) -> dict[str, Any]:
     """The stored profile as `scan_job`'s keyword arguments, read once: a batch reuses it. Every
     market's work-permit answers ride along as readers see them (`autofill_derive.answers_for`: the
     stored ones over what a citizenship settles), and each job is screened with its own country's:
-    the stored markets, the apply-in ones and every one a citizenship settles. Pay is the generic
+    every market answered (`autofill_derive.answered_markets`: stored, or settled by a citizenship;
+    any other has none). Pay is the generic
     `desired_salary`, never a country's own answer: `_salary_check` reads a yearly figure, and a
     country's may be monthly (the Netherlands, the UAE)."""
     from app.services import (
@@ -457,20 +458,14 @@ def scan_args(session: Session) -> dict[str, Any]:
     )
 
     profile = autofill_profile.get_profile(session)
-    market = market_settings.peek_market(session)
-    screened = dict.fromkeys([
-        *autofill_profile.work_auth_entries(profile, None),
-        *market.apply_in,
-        *autofill_derive.settled_markets(autofill_derive.citizenships(profile)),
-    ])
     return {
         "home_currency": money_settings.home_currency(session),
         "rates": fx_rates.current(session),
         "work_auth_by_market": {
             key: autofill_profile.typed_work_auth(autofill_derive.answers_for(profile, key), key)
-            for key in screened
+            for key in autofill_derive.answered_markets(profile)
         },
-        "home_market": market.home,
+        "home_market": market_settings.peek_market(session).home,
         "preferences": profile.get("preferences"),
         "years_experience": job_preferences.get_preferences(session).years_experience,
         "personal": profile.get("personal"),

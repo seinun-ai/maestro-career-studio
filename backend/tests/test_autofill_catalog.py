@@ -953,12 +953,18 @@ def test_asks_worked_here_is_an_allowlist_of_question_shapes(question, options, 
 # ---------- a country's own answers and India's questions (country form questions, Task 3.7)
 
 def _job_facts(profile, market, **kw):
-    """The catalog a job in `market` builds: its permits and its own answers folded in, as the fill
-    loop and the flags build it."""
+    """The catalog a job in `market` builds from the one fill view (`for_market`), as the fill loop and
+    the flags build it."""
     from app.services import autofill_country
 
-    folded = autofill_country.with_work_auth(autofill_country.with_country_answers(profile, market), market)
-    return cat.build(folded, [], [], today=TODAY, **kw)
+    return cat.build(autofill_country.for_market(profile, market, today=TODAY), [], [], today=TODAY, **kw)
+
+
+def test_catalog_describes_never_override_the_fills_own():
+    """`describe_of` reads the catalog first, so a catalog describe on a slot the fill words by hand
+    (`_DESCRIBES`: knockout, protected and tuned answers) would replace those words silently."""
+    for slot in cat._DESCRIBES:
+        assert form_questions.describe_for(slot) is None, slot
 
 
 def test_catalog_facts_for_india_pack_answers():

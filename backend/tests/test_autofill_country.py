@@ -343,7 +343,7 @@ def test_a_blank_answer_and_a_key_the_country_does_not_ask_fill_nothing():
                "answers_by_country": {"DE": {"expected_pay": "  ", "current_ctc": "1800000", "made_up": "x"}}}
     folded = autofill_country.with_country_answers(profile, "DE")
     assert folded["preferences"] == {"desired_salary": "90000"}
-    assert autofill_country.COUNTRY_ANSWERED not in folded
+    assert folded[autofill_country.COUNTRY_ANSWERED] == []   # still a job's view, so never saved
     assert "1800000" not in json.dumps(folded)
 
 
@@ -351,7 +351,25 @@ def test_no_market_folds_nothing_and_drops_every_countrys_answers():
     profile = {"preferences": {"desired_salary": "90000"}, "answers_by_country": {"IN": {"expected_pay": "1"}}}
     for market in (None, "FR"):
         folded = autofill_country.with_country_answers(profile, market)
-        assert folded == {"preferences": {"desired_salary": "90000"}}, market
+        assert folded == {"preferences": {"desired_salary": "90000"}, autofill_country.COUNTRY_ANSWERED: []}, market
+
+
+def test_the_fill_view_holds_no_countrys_map_and_takes_answers_as_a_form_does():
+    """`for_market` is the one view every fill reads: no per-country map at all, citizenships as country
+    names, and no notice answer that no longer holds."""
+    from datetime import date
+
+    profile = {"personal": {"citizenships": ["IN", "GB"]},
+               "preferences": {"serving_notice": True, "last_working_day": "2026-01-31"},
+               "work_auth_by_country": {"US": {"authorized_now": True}},
+               "answers_by_country": {"IN": {"current_ctc": "1800000"}}}
+    view = autofill_country.for_market(profile, "IN", today=date(2026, 2, 1))
+    assert "work_auth_by_country" not in view and "answers_by_country" not in view
+    assert view["personal"]["citizenships"] == ["India", "United Kingdom"]
+    assert view["preferences"] == {"current_ctc": "1800000"}   # the notice ended yesterday
+    assert view["work_auth"]["authorized_now"] is True          # India settled by the citizenship
+    # with_work_auth alone leaves the map (it is the work-permit rule, not the view).
+    assert "work_auth_by_country" in autofill_country.with_work_auth(profile, "IN")
 
 
 def test_a_folded_answer_is_named_beside_the_profile():
@@ -510,24 +528,49 @@ def test_the_trace_redaction_holds_every_countrys_answers(db_session):
     assert facts["preferences.desired_salary"].value == "90000"
 
 
-def test_a_job_views_own_keys_are_never_stored(db_session, tmp_path, client):
-    """A /context profile PUT back (an older client, a script) stores none of the view's keys."""
+def _nl_job_view(db_session, client, **params) -> dict:
     from app.models.application import Application
     from tests.test_proposals_models import _mk_job
 
-    market_settings.set_market(MarketSetting(home="NL", apply_in=["NL"]), db_session)
-    autofill_profile.set_profile({"answers_by_country": {"NL": {"expected_pay": "4500"}}}, db_session)
     job = _mk_job(db_session, company="Acme", country_code="NL")
     application = Application(job_id=job.id, base_resume="hybrid", customized_json={"contact": {"name": "Ada"}})
     db_session.add(application)
     db_session.commit()
-    context = client.get("/api/autofill/context", params={
-        "application_id": str(application.id), "question": "Are you authorised to work in the Netherlands?"}).json()
-    view = context["profile"]
+    return client.get("/api/autofill/context", params={"application_id": str(application.id), **params}).json()["profile"]
+
+
+def test_a_job_view_is_never_saved(db_session, tmp_path, client):
+    """A /context profile is one country's view: its pay is the Dutch monthly figure in the generic slot and its
+    permits include what the French citizenship settles. A save of it (PUT, or an agent's PATCH carrying the
+    marker) is refused and stores nothing: save from GET /api/settings/autofill."""
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "NL"]), db_session)
+    autofill_profile.set_profile({"personal": {"citizenships": ["FR"]}, "preferences": {"desired_salary": "150000"},
+                                  "answers_by_country": {"NL": {"expected_pay": "4500"}}}, db_session)
+    before = _stored(tmp_path)
+    view = _nl_job_view(db_session, client, question="Are you authorised to work in the Netherlands?")
     assert view[autofill_country.COUNTRY_ANSWERED] == ["preferences.desired_salary"]
     assert view[autofill_country.WORK_AUTH_COUNTRY] == "Netherlands"
+    assert view["preferences"]["desired_salary"] == "4500" and view["work_auth"]["authorized_now"] is True
 
-    assert client.put("/api/settings/autofill", json={"value": view}).status_code == 200
+    put = client.put("/api/settings/autofill", json={"value": view})
+    assert put.status_code == 422 and "GET /api/settings/autofill" in put.json()["detail"]
+    patch = client.patch("/api/settings/autofill", json={"value": {
+        "preferences": {"notice_period": "2 weeks"}, autofill_country.COUNTRY_ANSWERED: []}})
+    assert patch.status_code == 422 and "GET /api/settings/autofill" in patch.json()["detail"]
     stored = _stored(tmp_path)
-    for key in (autofill_country.COUNTRY_ANSWERED, autofill_country.WORK_AUTH_COUNTRY, "work_auth_market"):
-        assert key not in stored, key
+    assert stored == before
+    assert stored["preferences"] == {"desired_salary": "150000"} and "work_auth_by_country" not in stored
+
+    # Even a view with nothing folded is a job's view.
+    assert _nl_job_view(db_session, client)[autofill_country.COUNTRY_ANSWERED] == ["preferences.desired_salary"]
+    autofill_profile.set_profile({"answers_by_country": {"NL": None}}, db_session)
+    assert _nl_job_view(db_session, client)[autofill_country.COUNTRY_ANSWERED] == []
+
+
+def test_a_setting_read_saves_back_as_it_was(db_session, tmp_path, client):
+    """The read the Companion's pause row and the web send back is no job's view."""
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "NL"]), db_session)
+    autofill_profile.set_profile({"preferences": {"desired_salary": "150000"}}, db_session)
+    read = client.get("/api/settings/autofill").json()["value"]
+    assert autofill_country.COUNTRY_ANSWERED not in read
+    assert client.put("/api/settings/autofill", json={"value": read}).status_code == 200

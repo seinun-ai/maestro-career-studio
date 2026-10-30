@@ -50,7 +50,8 @@ WORK_AUTH_MARKET = "work_auth_market"
 # country that question's answer is for, in words. Served by /context, never stored.
 WORK_AUTH_COUNTRY = "work_auth_country"
 # Beside `work_auth_market` on a job's profile: the flat slots ("preferences.desired_salary") the job's
-# country's own answers filled (`autofill_country.with_country_answers`). Served by /context, never stored.
+# country's own answers filled (`autofill_country.with_country_answers`; `[]` for none). Every job's view
+# carries it, and a save that does is refused (`job_view_refusal`).
 COUNTRY_ANSWERED = "country_answered"
 # The keys a read or a job's view adds that a save never stores, whoever sends them back.
 _VIEW_ONLY = (WORK_AUTH_MARKET, WORK_AUTH_COUNTRY, COUNTRY_ANSWERED)
@@ -331,8 +332,24 @@ def peek_profile(session: Session | None = None) -> dict[str, Any]:
     return _parse_profile(text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session), _home(session))
 
 
+def job_view_refusal(profile: Any) -> str | None:
+    """Why a save of `profile` is refused when it is a job's view (`COUNTRY_ANSWERED`, as /context and
+    the fill serve it), else None. That view is one country's: its pay may be that country's monthly
+    figure in the generic slot and its permits include what a citizenship settles, so storing it
+    would make them everyone's answers."""
+    if isinstance(profile, dict) and COUNTRY_ANSWERED in profile:
+        return (
+            "This is one job's view of the form answers (GET /api/autofill/context: one country's answers "
+            "folded in), so it cannot be saved. Read GET /api/settings/autofill, change that, and save it."
+        )
+    return None
+
+
 def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict[str, Any]:
-    """Store `profile` and return it as a read serves it (`work_auth` = the home set)."""
+    """Store `profile` and return it as a read serves it (`work_auth` = the home set). ValueError for a
+    job's view (`job_view_refusal`), before anything is read."""
+    if refusal := job_view_refusal(profile):
+        raise ValueError(refusal)
     raw = text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session)
     home = _home(session)
     # The hint outlasts any save that does not answer the question: whatever is stored, or the client's
@@ -490,7 +507,9 @@ def _refusal(changes: dict[str, Any]) -> str | None:
     """Why an agent's save is refused before anything is read, or None: a section it does not write,
     one of the wrong shape (the merge would otherwise fail halfway or store a non-answer), a
     citizenship that names no country, a status outside its market's list, or a country answer
-    the market does not ask. Each refusal names what is allowed."""
+    the market does not ask, or a job's view (`job_view_refusal`). Each refusal names what is allowed."""
+    if refusal := job_view_refusal(changes):
+        return refusal
     refused = sorted(set(changes) - AGENT_SECTIONS)
     if refused:
         return (
