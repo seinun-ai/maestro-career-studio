@@ -1880,6 +1880,12 @@ tests/test_market_chosen.py`. Expected: green.
 - The full backend suite, both paths, with xdist.
 - The frontend lib and component suites, `tsc`, `lint` and `build`.
 - The extension tests and the slop scan.
+- The backend slop ratchet:
+  `python3 ~/.claude/skills/ai-slop-detector/scripts/slop_scan.py check backend`.
+  - Since Tasks 3.1–3.7 it reports duplicated_lines 373→388, clone_count 44→45 and
+    complexity_hotspots 1097→1115, found in Task 3.8.
+  - Fix the new duplication and hotspots. Re-baseline only what is deliberate, and say why in the
+    commit.
 - A browser check on a fresh stack on spare ports, never the Docker stack. Use the
   `frontend-country-questions` launch config, at 1280 and 1024 only, for:
   1. no country chosen: no permit questions, and no US screening;
