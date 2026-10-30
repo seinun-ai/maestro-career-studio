@@ -162,6 +162,11 @@ def test_seed_startup_data_refreshes_career_export_last(monkeypatch):
     ):
         monkeypatch.setattr(seeding, name, lambda _session, name=name: calls.append(name))
     monkeypatch.setattr(
+        seeding.market_settings,
+        "mark_answered_installs_chosen",
+        lambda _session: calls.append("mark_answered_installs_chosen"),
+    )
+    monkeypatch.setattr(
         seeding.career_exports,
         "best_effort_refresh",
         lambda received: calls.append("refresh") if received is session else None,
@@ -174,6 +179,7 @@ def test_seed_startup_data_refreshes_career_export_last(monkeypatch):
         "seed_base_resumes",
         "seed_prompts",
         "ensure_persona",
+        "mark_answered_installs_chosen",
         "seed_career_kb",
         "refresh",
     ]

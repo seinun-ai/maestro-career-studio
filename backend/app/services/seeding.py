@@ -20,6 +20,7 @@ from app.services import (
     career_kb,
     kb_consolidation,
     llm,
+    market_settings,
     persona,
     prompts,
     template_registry,
@@ -199,6 +200,8 @@ def seed_startup_data(session: Session) -> None:
             seed(session)
         finally:
             session.info.pop("sync_apply", None)
+    # Not a seed: a profile write the laptop makes as itself (it skips the always-on copy).
+    market_settings.mark_answered_installs_chosen(session)
     seed_career_kb(session)
     career_exports.best_effort_refresh(session)
 

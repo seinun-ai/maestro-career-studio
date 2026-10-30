@@ -397,8 +397,11 @@ def test_seed_startup_data_runs_career_seed_last(monkeypatch):
     monkeypatch.setattr(seeding, "seed_base_resumes", lambda session: calls.append("base"))
     monkeypatch.setattr(seeding, "seed_prompts", lambda session: calls.append("prompts"))
     monkeypatch.setattr(seeding, "ensure_persona", lambda session: calls.append("persona"))
+    monkeypatch.setattr(
+        seeding.market_settings, "mark_answered_installs_chosen", lambda session: calls.append("market")
+    )
     monkeypatch.setattr(seeding, "seed_career_kb", lambda session: calls.append("career"))
 
     seeding.seed_startup_data(object())
 
-    assert calls == ["base", "prompts", "persona", "career"]
+    assert calls == ["base", "prompts", "persona", "market", "career"]

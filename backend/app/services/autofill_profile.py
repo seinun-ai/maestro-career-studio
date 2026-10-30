@@ -206,6 +206,17 @@ def _parse_stored(raw: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def holds_work_permit_answer(session: Session | None = None) -> bool:
+    """Whether the stored form answers hold any work-permit answer: an entry of
+    `work_auth_by_country`, or a legacy top-level `work_auth`, in which the typed reader keeps at least
+    one answer (a blank or unusable value is no answer). Reads the stored text as it is, peeked,
+    never seeded, and without the market (`market_settings.mark_answered_installs_chosen` asks)."""
+    stored = _parse_stored(text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session))
+    by_country = stored.get(BY_COUNTRY)
+    entries = [*(by_country.values() if isinstance(by_country, dict) else ()), stored.get(WORK_AUTH)]
+    return any(typed_work_auth(entry).model_dump(exclude_defaults=True) for entry in entries)
+
+
 def pin_legacy_work_auth(market: str, session: Session | None = None) -> None:
     """Before "You live in" moves away from `market` (`market_settings.set_market`): a stored top-level
     `work_auth`, the one set from before per-country answers, is read as the home market's, and nothing in

@@ -14,7 +14,8 @@ class _Market(JsonSetting[MarketSetting]):
     def migrate(self, payload: Any) -> Any:
         # Stored before the mark (2026-10-30): that install kept the set it was shown. A row never
         # stored (`""`, also what `text_settings.get_text` seeds with no mirror) never reaches here:
-        # it reads as `MarketSetting()`, unchosen.
+        # it reads as `MarketSetting()`, unchosen, unless its permit answers say otherwise at
+        # startup (`mark_answered_installs_chosen`).
         if isinstance(payload, dict) and "chosen" not in payload:
             return {**payload, "chosen": True}
         return payload
@@ -38,6 +39,31 @@ def peek_market(session: Session | None = None) -> MarketSetting:
     make the derived-not-stored contract a lie (SYSTEM.md §4 Setup status).
     """
     return MARKET.peek(session)
+
+
+def mark_answered_installs_chosen(session: Session) -> bool:
+    """Startup: a market never stored (empty text, row or mirror) on an install whose form answers
+    hold a work-permit answer is stored as chosen, `home` and `apply_in` as an empty row reads them
+    (the `MarketSetting()` defaults). That user has been answering for the default country, so they
+    chose it. The evidence is that they answered, never what they answered: no knockout answer is
+    guessed. An install with no permit answer stays unchosen (Decision 1 of
+    docs/plans/2026-10-30-country-form-questions.md).
+
+    A startup step, not a read-time rule: the form answers read the market for their home, so a
+    market read that read them back would recurse. Idempotent, and a stored market, an unchosen one
+    included, is never rewritten. Both settings are peeked, never seeded. The always-on copy skips
+    it: the laptop owns the profile, and its row arrives by sync. Returns whether it wrote."""
+    from app.services import autofill_profile
+    from app.services.sync import status
+
+    if status.is_remote():
+        return False
+    if text_settings.peek_text(MARKET_KEY, MARKET_FILE, session).strip():
+        return False
+    if not autofill_profile.holds_work_permit_answer(session):
+        return False
+    MARKET.set(MarketSetting(chosen=True), session)
+    return True
 
 
 def set_market(setting: MarketSetting, session: Session | None = None) -> MarketSetting:
