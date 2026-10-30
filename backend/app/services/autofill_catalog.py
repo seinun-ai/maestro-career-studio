@@ -29,8 +29,12 @@ from datetime import date
 from typing import Any
 
 from app.services import countries, form_questions, markets
-from app.services.autofill_country import COUNTRY_ANSWERED
-from app.services.autofill_profile import CITIZENSHIPS, WORK_AUTH_MARKET, canonical_identity_from_profile
+from app.services.autofill_profile import (
+    CITIZENSHIPS,
+    COUNTRY_ANSWERED,
+    WORK_AUTH_MARKET,
+    canonical_identity_from_profile,
+)
 from app.services.autofill_slots import Policy, _as_text, policy_for
 
 MAX_SLOTS = 240  # Jev Choice ceiling 255 incl. sentinels

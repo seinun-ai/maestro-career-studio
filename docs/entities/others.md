@@ -272,7 +272,7 @@
   forgets the key, which is never sent to another company). `fast` is the batched prompt SYSTEM.md §7 (Guided
   fill) describes. `jev`
   (`autofill_choose._choose_with_jev`): one Jev call maps each field's LABEL to an `autofill_slots`
-  slot (no values sent), code reads the value, a second call picks the option that states it; the
+  slot (no values sent; the slots are the fast prompt's job view, `autofill_job.profile_for_fill`), code reads the value, a second call picks the option that states it; the
   slot's policy (`exact` work_auth/eligibility/eeo/a language's name, `flag` `_FLAG_SECTIONS` facts,
   `any` the rest) makes it `matched`, `closest` (flag only, never from a list at the 30-option cap:
   written, then named in the finished note and listed under **Closest matches to check**) or abstain.
@@ -353,7 +353,9 @@
   citizenship settles there), and the same country's own answers (`answers_by_country`) fill their flat slots
   (`autofill_country.with_country_answers`: expected pay over `desired_salary`; another country's never reach the form). `countries_authorized`
   is derived: the entry's own list, then each market whose `authorized_now` reads Yes, a citizenship-settled one included, by country
-  name. **Readers.** `/context` and `/choose` through `profile_for_job` (the job's set; no job, no set); `/map` and `/pick`
+  name. **Readers.** `/context` through `profile_for_job` (the job's set; no job, no set; it keeps every market's
+  `work_auth_by_country` for agents); `/choose`, both engines (the fast model's prompt and Jev's slots), through
+  `profile_for_fill`, the same view with no per-country map, so it holds the job's country's answers only; `/map` and `/pick`
   group their fields by the set each question gets and decide each group on its own catalog (a second model call only when a question
   names a country whose answers differ from the job's); `/step` takes its question's set; `/sections` and `/reason` the job's; run-trace
   redaction every country's; the answer flags (`filled_answers.flag_context`) the job's. The knock-out scan screens with the job's

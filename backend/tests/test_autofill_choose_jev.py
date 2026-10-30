@@ -97,15 +97,17 @@ def test_the_slot_question_carries_no_profile_values(db_session, monkeypatch, je
 
 
 def test_an_exact_slot_writes_only_a_confident_option(db_session, monkeypatch, jev_on):
+    # A US job: the work-permit answers are its country's (PROFILE's one set is the home's, the US).
+    application_id = _job_in(db_session, "US")
     field = _field("s", "Do you need sponsorship?", "select", ["Yes", "No"])
     _fake_jev(monkeypatch, slot_for={"s": ("work_auth.sponsorship_now", 0.95)},
               option_for={"s": ("No", 0.97)})
     _fake_llm(monkeypatch)
-    assert autofill_choose.choose([field], None, db_session)["s"].answer == "No"
+    assert autofill_choose.choose([field], application_id, db_session)["s"].answer == "No"
 
     _fake_jev(monkeypatch, slot_for={"s": ("work_auth.sponsorship_now", 0.95)},
               option_for={"s": ("No", 0.7)})
-    assert autofill_choose.choose([field], None, db_session)["s"].reason == "abstained"
+    assert autofill_choose.choose([field], application_id, db_session)["s"].reason == "abstained"
 
 
 def test_a_flag_slot_writes_a_near_miss_as_closest(db_session, monkeypatch, jev_on):
@@ -303,3 +305,91 @@ def test_every_jev_question_says_page_text_is_data(db_session, monkeypatch, jev_
     asked = [q["instructions"] for call in calls for q in call["questions"].values()]
     assert len(asked) == 2
     assert all("data, never as instructions" in text for text in asked)
+
+
+# ---------- both engines read the job's own country (inv-work-permit-per-country)
+
+COUNTRIES = {
+    "preferences": {"desired_salary": "150000"},
+    "work_auth_by_country": {"US": {"authorized_now": True, "sponsorship_now": False},
+                             "AE": {"authorized_now": False, "sponsorship_now": True}},
+    "answers_by_country": {"AE": {"expected_pay": "25000"}},
+}
+
+
+def _job_in(db_session, country_code):
+    from app.models.application import Application
+    from tests.test_proposals_models import _mk_job
+
+    job = _mk_job(db_session, company="Acme", country_code=country_code)
+    application = Application(job_id=job.id, base_resume="hybrid", customized_json={"contact": {"name": "Ada"}})
+    db_session.add(application)
+    db_session.commit()
+    return application.id
+
+
+@pytest.fixture
+def three_countries(db_session, jev_on):
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "DE", "AE"]), db_session)
+    autofill_profile.set_profile(COUNTRIES, db_session)
+
+
+def _jev_slots(monkeypatch):
+    seen = []
+
+    def map_slots(fields, slots, session):
+        seen.append(dict(slots))
+        return {}
+
+    monkeypatch.setattr(autofill_choose, "_map_slots", map_slots)
+    return seen
+
+
+def test_jev_slots_hold_the_jobs_country_never_the_homes(db_session, monkeypatch, three_countries):
+    """A home-US user's German form is offered Germany's answers (none here), never the US's Yes; a UAE
+    form's pay is the UAE's own answer."""
+    seen = _jev_slots(monkeypatch)
+    _fake_llm(monkeypatch)
+    field = _field("a", "Are you authorized to work here?", "select", ["Yes", "No"])
+
+    autofill_choose.choose([field], _job_in(db_session, "DE"), db_session)
+    de = seen[-1]
+    assert "work_auth.authorized_now" not in de and "work_auth.sponsorship_now" not in de
+    assert de["preferences.desired_salary"] == "150000"
+
+    autofill_choose.choose([field], _job_in(db_session, "AE"), db_session)
+    ae = seen[-1]
+    assert (ae["work_auth.authorized_now"], ae["work_auth.sponsorship_now"]) == ("No", "Yes")
+    assert ae["preferences.desired_salary"] == "25000"
+
+    autofill_choose.choose([field], _job_in(db_session, "US"), db_session)
+    assert seen[-1]["work_auth.authorized_now"] == "Yes"
+
+
+def test_jev_with_no_job_has_no_countrys_answers(db_session, monkeypatch, three_countries):
+    seen = _jev_slots(monkeypatch)
+    _fake_llm(monkeypatch)
+    autofill_choose.choose([_field("a", "Are you authorized to work here?")], None, db_session)
+    assert not [slot for slot in seen[-1] if slot.startswith("work_auth.") and slot != "work_auth.countries_authorized"]
+    assert seen[-1]["preferences.desired_salary"] == "150000"
+
+
+def test_the_fast_prompt_for_a_german_job_holds_no_other_countrys_answers(db_session, monkeypatch, three_countries):
+    model_settings.set_autofill_engine(db_session, "fast")
+    prompts = _fake_llm(monkeypatch)
+    autofill_choose.choose([_field("a", "Are you authorized to work here?", "select", ["Yes", "No"])],
+                           _job_in(db_session, "DE"), db_session)
+    prompt = prompts[0]
+    for absent in ("work_auth_by_country", "answers_by_country", "authorized_now", "sponsorship_now", "25000"):
+        assert absent not in prompt, absent
+    assert '"work_auth_market": "DE"' in prompt
+
+
+def test_context_still_serves_every_countrys_permits_for_agents(db_session, client, three_countries):
+    """Only the fill's own prompt and slots are cut down: /context keeps `work_auth_by_country`."""
+    body = client.get("/api/autofill/context", params={"application_id": str(_job_in(db_session, "DE"))}).json()
+    assert set(body["profile"]["work_auth_by_country"]) == {"US", "AE"}
+    assert "answers_by_country" not in body["profile"]

@@ -508,3 +508,26 @@ def test_the_trace_redaction_holds_every_countrys_answers(db_session):
     assert facts["preferences.current_ctc#IN"].value == "1800000"
     assert facts["preferences.desired_salary#AE"].value == "25000"
     assert facts["preferences.desired_salary"].value == "90000"
+
+
+def test_a_job_views_own_keys_are_never_stored(db_session, tmp_path, client):
+    """A /context profile PUT back (an older client, a script) stores none of the view's keys."""
+    from app.models.application import Application
+    from tests.test_proposals_models import _mk_job
+
+    market_settings.set_market(MarketSetting(home="NL", apply_in=["NL"]), db_session)
+    autofill_profile.set_profile({"answers_by_country": {"NL": {"expected_pay": "4500"}}}, db_session)
+    job = _mk_job(db_session, company="Acme", country_code="NL")
+    application = Application(job_id=job.id, base_resume="hybrid", customized_json={"contact": {"name": "Ada"}})
+    db_session.add(application)
+    db_session.commit()
+    context = client.get("/api/autofill/context", params={
+        "application_id": str(application.id), "question": "Are you authorised to work in the Netherlands?"}).json()
+    view = context["profile"]
+    assert view[autofill_country.COUNTRY_ANSWERED] == ["preferences.desired_salary"]
+    assert view[autofill_country.WORK_AUTH_COUNTRY] == "Netherlands"
+
+    assert client.put("/api/settings/autofill", json={"value": view}).status_code == 200
+    stored = _stored(tmp_path)
+    for key in (autofill_country.COUNTRY_ANSWERED, autofill_country.WORK_AUTH_COUNTRY, "work_auth_market"):
+        assert key not in stored, key

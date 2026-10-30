@@ -289,9 +289,10 @@ def _choose_with_jev(
 ) -> dict[str, Choice]:
     """Jev places what it can; the fast model answers the rest, as it always did.
 
-    Consent-gated like the LLM path: slots come from `disclosable_profile`, so an
-    EEO answer without standing consent is not a slot and never reaches Jev."""
-    slots = autofill_slots.flatten(eeo_consent.disclosable_profile(session))
+    Its slots are the fast model's profile (`_fill_profile`): consent-gated, so an EEO
+    answer without standing consent is not a slot and never reaches Jev, and the job's
+    country's answers only (inv-work-permit-per-country)."""
+    slots = autofill_slots.flatten(_fill_profile(session, application_id))
     try:
         mapped = _map_slots([f for f in fields if not f.known_value], slots, session)
     except llm.LLMProviderError:
@@ -333,17 +334,21 @@ def _choose_with_jev(
     return out
 
 
+def _fill_profile(session: Session, application_id: UUID | None) -> dict:
+    """The profile both engines fill from. Consent-gated like GET /context: it goes to a model
+    provider, so diversity answers go only when standing consent is on. Scoped to the job: a saved
+    answer that named another company or city is not there, and only the job's country's answers
+    are (`autofill_job.profile_for_fill`: no job, no country's)."""
+    return autofill_job.profile_for_fill(session, eeo_consent.disclosable_profile(session), application_id)
+
+
 def _choose_with_llm(
     fields: list[ChooseField],
     application_id: UUID | None,
     session: Session,
 ) -> dict[str, Choice]:
     prompt = prompt_assembly.build_autofill_choose_prompt(
-        # Consent-gated like GET /context: the prompt goes to a model provider,
-        # so diversity answers go only when standing consent is on.
-        # And scoped to the job: a saved answer that named another company or
-        # city is not offered to the model for this one.
-        profile=autofill_job.profile_for_job(session, eeo_consent.disclosable_profile(session), application_id),
+        profile=_fill_profile(session, application_id),
         memory=career_kb.compose_context(session),
         fields=_wire_fields(fields),
         persona=persona.get_persona(session),

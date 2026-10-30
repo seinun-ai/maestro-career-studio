@@ -169,10 +169,13 @@ groups:
       # Indian forms ask total experience in years and months (Sources 20;
       # sources doc rows India 3a, 3b).
       # Months are what is left over the whole years (Naukri asks 0 to 11).
+      # `flag`, not the section's exact: forms offer buckets ("5-7 years"), so
+      # the fill picks one and says so rather than refusing a near match.
       - {key: experience_years, label: "Total experience: years", type: number, optional: true,
-         pack: india_basics, describe: total work experience in whole years}
+         pack: india_basics, describe: total work experience in whole years, policy: flag}
       - {key: experience_months, label: "Total experience: months", type: number, optional: true,
-         pack: india_basics, describe: the months of total work experience beyond the whole years (0 to 11)}
+         pack: india_basics, describe: the months of total work experience beyond the whole years (0 to 11),
+         policy: flag}
 
   - key: preferences
     title: Preferences

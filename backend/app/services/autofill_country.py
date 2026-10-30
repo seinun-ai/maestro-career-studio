@@ -41,13 +41,13 @@ from app.services import autofill_derive, autofill_profile, countries, form_ques
 _NOWHERE = ""
 
 # Beside `work_auth_market` on a profile resolved for one question: the country that question's answer is
-# for, in words, a country no market covers included (`country_for_question`).
-WORK_AUTH_COUNTRY = "work_auth_country"
+# for, in words, a country no market covers included (`country_for_question`). Never stored.
+WORK_AUTH_COUNTRY = autofill_profile.WORK_AUTH_COUNTRY
 
 # Beside `work_auth_market` on a job's profile: the flat slots ("preferences.desired_salary") the job's
 # country's own answers filled (`with_country_answers`), so the catalog can word a figure in that
-# country's terms only when it is that country's answer. Served, never stored; absent when none.
-COUNTRY_ANSWERED = "country_answered"
+# country's terms only when it is that country's answer. Never stored; absent when none.
+COUNTRY_ANSWERED = autofill_profile.COUNTRY_ANSWERED
 
 
 def market_for_job_country(code: str | None) -> str | None:

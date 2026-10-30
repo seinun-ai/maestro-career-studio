@@ -969,11 +969,14 @@ def test_catalog_facts_for_india_pack_answers():
     assert notice.value == "45"
     assert "never a shorter" in notice.describe and "at least this long" in notice.describe
     assert facts["preferences.current_ctc"].describe == "current CTC: total annual cost to company, in rupees"
-    # Exact (the eligibility section), so worded by hand with no path-like colon; months are the remainder.
+    # Months are the remainder over the whole years.
     assert facts["eligibility.experience_years"].describe == "total work experience in whole years"
     assert facts["eligibility.experience_months"].describe == (
         "the months of total work experience beyond the whole years (0 to 11)")
-    assert facts["eligibility.experience_years"].policy == "exact"
+    # Flagged, not the eligibility section's exact: forms offer buckets ("5-7 years").
+    assert facts["eligibility.experience_years"].policy == "flag"
+    assert facts["eligibility.experience_months"].policy == "flag"
+    assert autofill_slots.policy_for("eligibility.in_country_now") == "exact"
     assert facts["preferences.preferred_locations"].describe == "preferred work locations (cities)"
     for fact in facts.values():
         assert str(fact.value) not in fact.describe, fact.slot

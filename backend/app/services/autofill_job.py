@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.job import Job
-from app.services import autofill_catalog, autofill_country, countries
+from app.services import autofill_catalog, autofill_country, autofill_profile, countries
 
 
 def application_job(db: Session, application_id: UUID | None) -> Job | None:
@@ -56,6 +56,18 @@ def profile_for_job(db: Session, profile: Any, application_id: UUID | None,
         return profile
     return {**profile, "custom": autofill_catalog.custom_for_job(
         profile["custom"], job.company if job else None, job.location if job else None)}
+
+
+def profile_for_fill(db: Session, profile: Any, application_id: UUID | None) -> Any:
+    """What a form-filling model reads (/choose: the fast model's prompt and Jev's slots):
+    `profile_for_job`'s view without any per-country map, so the job's country's answers are the
+    only ones there (`work_auth`, its own answers folded) and no other country's reach the form.
+    /context keeps `work_auth_by_country`: agents read it."""
+    view = profile_for_job(db, profile, application_id)
+    if not isinstance(view, dict):
+        return view
+    return {k: v for k, v in view.items()
+            if k not in (autofill_profile.BY_COUNTRY, autofill_profile.ANSWERS_BY_COUNTRY)}
 
 
 # The job boards a posting's URL host names as where the job was found ("how did you hear about us?").

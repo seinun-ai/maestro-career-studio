@@ -46,6 +46,14 @@ WORK_AUTH = "work_auth"
 BY_COUNTRY = "work_auth_by_country"
 # The market the `work_auth` beside it is for: served on a read, never stored.
 WORK_AUTH_MARKET = "work_auth_market"
+# Beside `work_auth_market` on a profile resolved for one question (`autofill_job.profile_for_job`): the
+# country that question's answer is for, in words. Served by /context, never stored.
+WORK_AUTH_COUNTRY = "work_auth_country"
+# Beside `work_auth_market` on a job's profile: the flat slots ("preferences.desired_salary") the job's
+# country's own answers filled (`autofill_country.with_country_answers`). Served by /context, never stored.
+COUNTRY_ANSWERED = "country_answered"
+# The keys a read or a job's view adds that a save never stores, whoever sends them back.
+_VIEW_ONLY = (WORK_AUTH_MARKET, WORK_AUTH_COUNTRY, COUNTRY_ANSWERED)
 # Each market's country answers (form_questions.yaml `answers`), keyed like `work_auth_by_country`.
 ANSWERS_BY_COUNTRY = "answers_by_country"
 # Under `personal`: the countries the user is a citizen of, as ISO codes ("GB", not "UK").
@@ -229,7 +237,9 @@ def _as_stored(profile: dict[str, Any], before: dict[str, Any], home: str | None
       market is not an edit of its own, it is that market's new answers (`_one_set_market`; no market,
       no fold). So a client served under the old home, saving after a move, writes the old home's
       entry, and a client that knows every country leaves `work_auth` as served, or out.
-    - **Citizenships are ISO codes** (`_with_citizenship_codes`)."""
+    - **Citizenships are ISO codes** (`_with_citizenship_codes`).
+    - **A view's own keys are dropped** (`_VIEW_ONLY`: `work_auth_market`, and the job view's
+      `work_auth_country` and `country_answered`), so a /context profile sent back stores none."""
     stored = work_auth_entries(before, None)
     sent = _sent_entries(profile.get(BY_COUNTRY))
     entries = _laid_over(stored, sent)
@@ -245,7 +255,7 @@ def _as_stored(profile: dict[str, Any], before: dict[str, Any], home: str | None
             entries[market] = dict(single)
     out = {
         k: v for k, v in profile.items()
-        if k not in (WORK_AUTH, BY_COUNTRY, WORK_AUTH_MARKET, ANSWERS_BY_COUNTRY)
+        if k not in (WORK_AUTH, BY_COUNTRY, ANSWERS_BY_COUNTRY, *_VIEW_ONLY)
     }
     if entries:
         out[BY_COUNTRY] = entries
