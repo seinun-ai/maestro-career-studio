@@ -55,20 +55,34 @@ def _load() -> dict[str, dict[str, Any]]:
             # Undeclared reads as today's rule (a state counted, called "State"); every market declares both.
             "asks_state": entry.get("asks_state") is not False,
             "state_label": str(entry.get("state_label") or "State"),
-            # The form questions' country data (form_questions.yaml); every market declares each, and
-            # undeclared reads as today's rule: no pack, no status list, a postal code counted.
-            "packs": [str(p) for p in entry.get("packs") or []],
-            "work_status": entry.get("work_status") or None,
+            # The form questions' country data (form_questions.yaml); every market declares each,
+            # and undeclared reads as today's rule: no pack, no status list, a postal code counted.
+            "packs": _packs(key, entry.get("packs")),
+            "work_status": _text(entry.get("work_status")),
             "asks_postcode": entry.get("asks_postcode") is not False,
             "pay": _pay(entry.get("pay")),
         }
     return entries
 
 
+def _text(value: Any) -> str | None:
+    return str(value) if value else None
+
+
+def _packs(key: str, raw: Any) -> list[str]:
+    """A market's packs, a YAML list: a bare `packs: gulf` would read as its letters, so it
+    fails, naming the market."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(f"markets.yaml: {key}'s packs must be a list, got {raw!r}")
+    return [str(p) for p in raw]
+
+
 def _pay(raw: Any) -> dict[str, str | None]:
     """How a market words expected pay: a label, and a hint where its basis needs one."""
     pay = raw if isinstance(raw, dict) else {}
-    return {"label": str(pay.get("label") or "Expected salary"), "hint": pay.get("hint") or None}
+    return {"label": str(pay.get("label") or "Expected salary"), "hint": _text(pay.get("hint"))}
 
 
 def keys() -> list[str]:

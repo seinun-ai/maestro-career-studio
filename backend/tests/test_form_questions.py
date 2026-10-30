@@ -42,7 +42,7 @@ def test_every_select_offers_options():
     catalog = form_questions.catalog()
     fields = [f for g in catalog.groups for f in g.fields] + [
         f for wording in catalog.permits.values() for f in wording
-    ]
+    ] + [*catalog.answers, *catalog.language_fields]
     for field in fields:
         if field.type == "select":
             assert field.options, field.key
@@ -108,8 +108,13 @@ def test_a_key_appears_once_across_groups_and_answers():
 
 
 def test_every_country_answer_says_where_it_fills():
-    for field in form_questions.catalog().answers:
+    """A `section.key` slot in one of the profile's sections, which Task 3.7 writes on that
+    country's jobs."""
+    cat = form_questions.catalog()
+    sections = {g.key for g in cat.groups}
+    for field in cat.answers:
         assert field.fills and field.fills.count(".") == 1, field.key
+        assert field.fills.split(".")[0] in sections, field.key
 
 
 def test_status_values_are_unique_per_list_and_citizen_is_first():
@@ -168,16 +173,22 @@ def test_the_uae_asks_whether_an_employer_sponsors_your_residence_visa():
                                                          "sponsorship_future"))
 
 
+def test_a_rule_covers_its_groups_codes_or_its_own():
+    cit = form_questions.catalog().citizenship
+    by_markets = {tuple(rule.markets): rule for rule in cit.rules}
+    assert cit.members(by_markets[("AE",)]) == ["BH", "KW", "OM", "QA", "SA"]
+    assert cit.members(by_markets[("IE",)]) == ["GB"]
+    assert "NO" in cit.members(by_markets[("DE", "NL", "IE")])  # Norway, never YAML's false
+
+
 def test_citizenship_rules_name_iso_codes_and_markets():
     cat = form_questions.catalog()
     cit = cat.citizenship
     for members in cit.groups.values():
         assert all(countries.normalize(c) == c for c in members)
     for rule in cit.rules:
-        if isinstance(rule.citizens, str):
-            assert rule.citizens in cit.groups, rule.citizens
-        else:
-            assert all(countries.normalize(c) == c for c in rule.citizens), rule.citizens
+        assert isinstance(rule.citizens, list) or rule.citizens in cit.groups, rule.citizens
+        assert all(countries.normalize(c) == c for c in cit.members(rule)), rule.citizens
         assert all(markets.is_supported(m) for m in rule.markets)
         assert rule.source.startswith("https://")
         if rule.status:  # a status the rule settles is one of each market's own
@@ -197,7 +208,8 @@ def test_catalog_only_attributes_are_never_served():
     )
     assert "us_screening" not in served and '"pack"' not in served
     assert "noExpiry" not in served and '"fills"' not in served
-    assert "fills" not in cat.answers[0].model_dump() and "noExpiry" not in cat.statuses["us"][0].model_dump()
+    assert "fills" not in cat.answers[0].model_dump()
+    assert "noExpiry" not in cat.statuses["us"][0].model_dump()
 
 
 def _today_groups(home: str) -> list[dict]:
@@ -235,9 +247,17 @@ def test_every_home_gets_todays_groups(home):
 
 # Canada's `ca` and the UAE's `ae` wordings are new on purpose (Task 3.2): the golden holds the
 # markets whose wording the fixture has.
-@pytest.mark.parametrize(
-    "market", [k for k in markets.keys() if markets.get(k)["work_auth_vocab"] in _TODAY["permits"]]
-)
+_TODAYS_WORDING = [
+    k for k in markets.keys() if markets.get(k)["work_auth_vocab"] in _TODAY["permits"]
+]
+
+
+def test_the_permit_golden_leaves_out_only_canada_and_the_uae():
+    """So a market moved to a new wording is a decision here, not a silent drop from the golden."""
+    assert set(markets.keys()) - set(_TODAYS_WORDING) == {"CA", "AE"}
+
+
+@pytest.mark.parametrize("market", _TODAYS_WORDING)
 def test_every_market_gets_todays_permit_fields(market):
     got = form_questions.resolve(home="US", apply_in=[market], chosen=True)
     vocab = markets.get(market)["work_auth_vocab"]

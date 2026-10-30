@@ -75,6 +75,12 @@ class Citizenship(BaseModel):
     groups: dict[str, list[str]]
     rules: list[CitizenshipRule]
 
+    def members(self, rule: CitizenshipRule) -> list[str]:
+        """The ISO codes a rule covers: its group's, when it names one, else its own list."""
+        if isinstance(rule.citizens, str):
+            return self.groups[rule.citizens]
+        return rule.citizens
+
 
 class Catalog(BaseModel):
     model_config = _CATALOG

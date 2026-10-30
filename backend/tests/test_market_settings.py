@@ -58,8 +58,8 @@ def test_germany_and_the_netherlands_are_data_with_no_diversity_set(market, labe
 @pytest.mark.parametrize(
     "market,asks,word",
     [("US", True, "State"), ("CA", True, "Province"), ("AU", True, "State"), ("IN", True, "State"),
-     ("UK", False, "County"), ("IE", False, "County"), ("DE", False, "State"), ("NL", False, "Province"),
-     ("AE", True, "Emirate")],
+     ("UK", False, "County"), ("IE", False, "County"), ("DE", False, "State"),
+     ("NL", False, "Province"), ("AE", True, "Emirate")],
 )
 def test_each_market_says_whether_its_addresses_need_a_state_and_its_word_for_one(market, asks, word):
     """`asks_state` follows the address formats a form there requires (a state or province in the US,
@@ -82,34 +82,52 @@ def test_every_market_declares_its_form_questions_rather_than_taking_a_default()
         assert raw.count(f"\n    {name}") == len(SUPPORTED), name
 
 
-def test_an_entry_missing_the_form_question_keys_reads_as_todays_rule(tmp_path, monkeypatch):
-    data = tmp_path / "markets.yaml"
-    data.write_text("markets:\n  - {key: US, label: United States, currency: USD}\n", encoding="utf-8")
-    monkeypatch.setattr(markets, "_DATA_FILE", data)
-    markets._load.cache_clear()
-    try:
-        us = markets.get("US")
-        assert (us["packs"], us["work_status"], us["asks_postcode"]) == ([], None, True)
-        assert us["pay"] == {"label": "Expected salary", "hint": None}
-    finally:
+@pytest.fixture
+def market_data(tmp_path, monkeypatch):
+    """Loads markets from a throwaway file: call it with the file's text."""
+    def load(text: str) -> None:
+        data = tmp_path / "markets.yaml"
+        data.write_text(text, encoding="utf-8")
+        monkeypatch.setattr(markets, "_DATA_FILE", data)
         markets._load.cache_clear()
+
+    yield load
+    markets._load.cache_clear()
+
+
+def test_an_entry_missing_the_form_question_keys_reads_as_todays_rule(market_data):
+    market_data("markets:\n  - {key: US, label: United States, currency: USD}\n")
+    us = markets.get("US")
+    assert (us["packs"], us["work_status"], us["asks_postcode"]) == ([], None, True)
+    assert us["pay"] == {"label": "Expected salary", "hint": None}
+
+
+def test_a_pack_written_without_its_list_fails_naming_the_market(market_data):
+    """`packs: gulf` would read as four one-letter packs."""
+    market_data("markets:\n  - {key: AE, label: United Arab Emirates, packs: gulf}\n")
+    with pytest.raises(ValueError, match="AE's packs must be a list"):
+        markets.keys()
 
 
 @pytest.mark.parametrize(
     "market,packs,status,vocab",
     [("US", ["us_screening"], "us", "us_visa"), ("UK", [], None, "uk"), ("CA", [], "ca", "ca"),
-     ("AU", [], "au", "generic"), ("IE", [], None, "generic"), ("IN", ["india_basics"], None, "generic"),
-     ("DE", ["cefr"], None, "generic"), ("NL", ["cefr"], None, "generic"), ("AE", ["gulf"], "ae", "ae")],
+     ("AU", [], "au", "generic"), ("IE", [], None, "generic"),
+     ("IN", ["india_basics"], None, "generic"), ("DE", ["cefr"], None, "generic"),
+     ("NL", ["cefr"], None, "generic"), ("AE", ["gulf"], "ae", "ae")],
 )
 def test_each_market_names_its_packs_status_list_and_permit_wording(market, packs, status, vocab):
     entry = markets.get(market)
-    assert (entry["packs"], entry["work_status"], entry["work_auth_vocab"]) == (packs, status, vocab)
+    got = (entry["packs"], entry["work_status"], entry["work_auth_vocab"])
+    assert got == (packs, status, vocab)
 
 
 @pytest.mark.parametrize(
     "market,label",
-    [("US", "Expected salary (USD)"), ("UK", "Expected salary (GBP)"), ("CA", "Expected salary (CAD)"),
-     ("AU", "Expected base salary, excluding super (AUD per year)"), ("IE", "Expected salary (EUR)"),
+    [("US", "Expected salary (USD)"), ("UK", "Expected salary (GBP)"),
+     ("CA", "Expected salary (CAD)"),
+     ("AU", "Expected base salary, excluding super (AUD per year)"),
+     ("IE", "Expected salary (EUR)"),
      ("IN", "Expected CTC (₹ per year)"), ("DE", "Expected gross annual salary (EUR)"),
      ("NL", "Expected gross monthly salary, excluding holiday allowance (EUR)"),
      ("AE", "Expected total monthly salary (AED)")],
