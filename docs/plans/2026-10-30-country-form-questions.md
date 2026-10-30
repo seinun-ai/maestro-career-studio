@@ -1685,6 +1685,9 @@ Expected: green.
   answer keys, and its derived answers.
 - The brief's `work_auth_by_country` shows a derived answer for an FR citizen applying in DE, plus
   each market's `expected_pay` when set.
+- Agents can see that no country is chosen: `chosen` goes in `get_setup_status`'s autofill detail
+  and in `get_autofill_profile`. Without it, an unchosen install with everything else answered
+  reads as complete, with no hint that its countries are missing.
 - Tool count still 94.
 
 **Step 2: Run them.** Expected: fail.
