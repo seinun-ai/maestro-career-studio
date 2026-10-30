@@ -67,12 +67,14 @@ def status_values(market: str | None) -> list[str]:
     """The `work_auth_by_country[market].status` values a market takes: its `work_status` list,
     in order; [] for a market with no list (the UK) or one Maestro does not keep."""
     m = _market(market)
-    return [o.value for o in catalog().statuses[m["work_status"]]] if m and m["work_status"] else []
+    if not (m and m["work_status"]):
+        return []
+    return [o.value for o in catalog().statuses[m["work_status"]].options]
 
 
 def all_status_values() -> set[str]:
     """Every market's status values together: what a status read for no market may be."""
-    return {o.value for options in catalog().statuses.values() for o in options}
+    return {o.value for statuses in catalog().statuses.values() for o in statuses.options}
 
 
 def answer_keys(market: str | None) -> list[str]:
@@ -98,25 +100,22 @@ _EXPIRY = "authorization_expires_on"
 
 def _permits(m: dict[str, Any]) -> list[Field]:
     """A market's work-permit questions: its status question first when it has a status list
-    (`work_status`), then its wording's knockout questions and the expiry, which is hidden while the
-    status is one that never runs out (`noExpiry`). The US's status keeps its words and is required,
-    as it always was; every other list's is "Immigration status" and optional, so no existing count
-    drops (Decision 6 of docs/plans/2026-10-30-country-form-questions.md), and the Companion asks it
-    where a form does. New lists and copies only: the catalog's are shared."""
+    (`work_status`), in that list's words, then its wording's knockout questions and the expiry,
+    which is hidden while the status is one that never runs out (`noExpiry`). New lists and copies
+    only: the catalog's are shared."""
     cat = catalog()
-    wording = [f for f in cat.permits[m["work_auth_vocab"]] if f.key != "status"]
-    statuses = cat.statuses[m["work_status"]] if m["work_status"] else []
-    if not statuses:
-        return wording
-    us = m["work_status"] == "us"
+    wording = cat.permits[m["work_auth_vocab"]]
+    statuses = cat.statuses[m["work_status"]] if m["work_status"] else None
+    if statuses is None:
+        return list(wording)
     status = Field(
         key="status",
-        label="Work authorization status" if us else "Immigration status",
+        label=statuses.label,
         type="select",
-        options=list(statuses),
-        optional=not us,
+        options=list(statuses.options),
+        optional=not statuses.required,
     )
-    lasting = [o.value for o in statuses if o.noExpiry]
+    lasting = [o.value for o in statuses.options if o.noExpiry]
     return [
         status,
         *(
@@ -151,7 +150,7 @@ def _country(market: str, profile: Any) -> CountryQuestions:
     )
 
 
-def resolve(*, home: str, apply_in: list[str], chosen: bool, profile: Any = None) -> QuestionSet:
+def resolve(*, home: str, apply_in: list[str], chosen: bool, profile: Any) -> QuestionSet:
     """The questions for someone who lives in `home` and applies in `apply_in`. Callers pass a
     validated `MarketSetting`'s `home`, `apply_in` and `chosen` (upper-cased market keys); an
     unknown key falls back to the default market's (US) wording, as `markets.get` does. Empty
@@ -160,11 +159,12 @@ def resolve(*, home: str, apply_in: list[str], chosen: bool, profile: Any = None
     - Facts about you (`groups`) are asked once: a pack's field while any apply-in country names
       the pack, the address lines resolved for `home`.
     - Each apply-in country (`countries`, in order) gets its permits, its own answers, and the
-      permit answers a citizenship in `profile` (the user's form answers, a read view; None is
+      permit answers a citizenship in `profile` (the user's form answers, a read view; None for
       none) settles there, unless a given answer differs (`autofill_derive.derived_in_effect`).
     - `language_fields` are the fields on each language that a country's pack asks (CEFR).
 
-    `chosen` has no default, so a caller that forgets it fails rather than getting a country's set.
+    `chosen` and `profile` have no default, so a caller that forgets one fails rather than getting
+    a country's set, or every country's with nothing derived.
     Unchosen (`MarketSetting.chosen` false) is the generic set: no country is applied in, so no
     pack, no country questions (a permit answer belongs to a country), no diversity set, and the
     state line is optional."""

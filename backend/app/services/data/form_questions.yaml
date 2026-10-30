@@ -12,11 +12,11 @@
 # holds that value.
 #
 # `permits` is each country's work-permit wording, keyed by a market's
-# `work_auth_vocab`. Every country asks the three yes/no knockout answers. The
-# status question is built per market from its `statuses` list
-# (services/form_questions.py): first in that country's permits, required in
-# the US only. A country's set is shown under its name, so the generic words
-# say "this country" rather than guess at a name's grammar.
+# `work_auth_vocab`. Every country asks the three yes/no knockout answers. A
+# market with a `statuses` list is asked its status first, in that list's
+# words (services/form_questions.py builds the question). A country's set is
+# shown under its name, so the generic words say "this country" rather than
+# guess at a name's grammar.
 #
 # Country data: `statuses`, `answers`, `language_fields` and `citizenship`
 # below, each opening with what it holds; markets.yaml names a market's
@@ -207,54 +207,63 @@ groups:
         optional: true
         pack: india_basics
 
-# Each country's immigration statuses, keyed by its `work_status`: the options
-# of that country's status question. Citizen first: the own-country rule
-# settles it (Task 3.4). The status says which permit you hold; it never
-# answers the yes/no questions, because many are "yes, with a limit" (Sources
-# 10). `noExpiry`: nothing runs out, so the expiry is not asked (Sources 11).
+# Each country's status question, keyed by its `work_status`: its `label`,
+# whether readiness counts it (`required`, false when absent) and its
+# `options`. Citizen first: the own-country rule settles it (Task 3.4). The
+# status says which permit you hold; it never answers the yes/no questions,
+# because many are "yes, with a limit" (Sources 10). `noExpiry`: nothing runs
+# out, so the expiry is not asked (Sources 11).
 statuses:
   # The US visa statuses. A market's list is what a save takes and the typed
   # reader keeps for its `status` (services/autofill_profile.py).
   us:
-    - {value: citizen, label: U.S. citizen, noExpiry: true}
-    - {value: permanent_resident, label: Permanent resident, noExpiry: true}
-    - {value: opt, label: F-1 OPT}
-    - {value: stem_opt, label: F-1 STEM OPT}
-    - {value: h1b, label: H-1B}
-    - {value: tn, label: TN}
-    - {value: other_visa, label: Other visa or status}
-    - {value: not_authorized, label: Not authorized to work in the U.S., noExpiry: true}
+    label: Work authorization status
+    # Required, as it always was; every other list's status is optional,
+    # so no existing count drops (Decision 6 of
+    # docs/plans/2026-10-30-country-form-questions.md).
+    required: true
+    options:
+      - {value: citizen, label: U.S. citizen, noExpiry: true}
+      - {value: permanent_resident, label: Permanent resident, noExpiry: true}
+      - {value: opt, label: F-1 OPT}
+      - {value: stem_opt, label: F-1 STEM OPT}
+      - {value: h1b, label: H-1B}
+      - {value: tn, label: TN}
+      - {value: other_visa, label: Other visa or status}
+      - {value: not_authorized, label: Not authorized to work in the U.S., noExpiry: true}
   # Canada (Sources 6, 11; sources doc rows C1-C20, canada.ca and Justice Laws,
   # read 2026-10-30). IEC Young Professionals and International Co-op are
   # employer-specific permits (C15, C16).
   ca:
-    # C1: Charter s.6(2)(b), https://laws-lois.justice.gc.ca/eng/const/page-12.html
-    - {value: citizen, label: Canadian citizen, noExpiry: true}
-    # C2: PRs "can live, work or study anywhere in Canada".
-    - {value: permanent_resident, label: Permanent resident, noExpiry: true}
-    # C3, C4:
-    # https://www.canada.ca/en/immigration-refugees-citizenship/services/work-canada/open-work-permit.html
-    - {value: open_work_permit, label: Open work permit}
-    # C10: an open permit, once per person.
-    - {value: pgwp, label: Post-graduation work permit}
-    # C15: an open permit.
-    - {value: iec_working_holiday, label: "International Experience Canada: Working Holiday"}
-    # C5, C6: one employer, occupation and place; another employer needs a new permit.
-    - {value: employer_specific, label: Employer-specific work permit}
-    # C12, C13: off-campus hours are capped in session (24 a week since 8 Nov
-    # 2024; it goes stale, so the label leaves the number out).
-    - {value: study_permit, label: Study permit}
-    # C18: runs until IRCC decides, not to a date.
-    - value: maintained_status
-      label: Maintained status (you applied to extend before your permit expired)
-      noExpiry: true
-    # C19: only for the exempt activity.
-    - {value: permit_exempt, label: Allowed to work without a work permit}
-    # C20: IRPR 183(1)(b),
-    # https://laws-lois.justice.gc.ca/eng/regulations/SOR-2002-227/section-183.html
-    - {value: no_status, label: Visitor or no work authorization, noExpiry: true}
-    # Any status the list does not name.
-    - {value: other, label: Other status}
+    label: Immigration status
+    options:
+      # C1: Charter s.6(2)(b), https://laws-lois.justice.gc.ca/eng/const/page-12.html
+      - {value: citizen, label: Canadian citizen, noExpiry: true}
+      # C2: PRs "can live, work or study anywhere in Canada".
+      - {value: permanent_resident, label: Permanent resident, noExpiry: true}
+      # C3, C4:
+      # https://www.canada.ca/en/immigration-refugees-citizenship/services/work-canada/open-work-permit.html
+      - {value: open_work_permit, label: Open work permit}
+      # C10: an open permit, once per person.
+      - {value: pgwp, label: Post-graduation work permit}
+      # C15: an open permit.
+      - {value: iec_working_holiday, label: "International Experience Canada: Working Holiday"}
+      # C5, C6: one employer, occupation and place; another employer needs a new permit.
+      - {value: employer_specific, label: Employer-specific work permit}
+      # C12, C13: off-campus hours are capped in session (24 a week since 8 Nov
+      # 2024; it goes stale, so the label leaves the number out).
+      - {value: study_permit, label: Study permit}
+      # C18: runs until IRCC decides, not to a date.
+      - value: maintained_status
+        label: Maintained status (you applied to extend before your permit expired)
+        noExpiry: true
+      # C19: only for the exempt activity.
+      - {value: permit_exempt, label: Allowed to work without a work permit}
+      # C20: IRPR 183(1)(b),
+      # https://laws-lois.justice.gc.ca/eng/regulations/SOR-2002-227/section-183.html
+      - {value: no_status, label: Visitor or no work authorization, noExpiry: true}
+      # Any status the list does not name.
+      - {value: other, label: Other status}
   # Australia (Sources 7, 11; sources doc rows A1-A12, Home Affairs, read
   # 2026-10-30). Only citizens, permanent residents and New Zealand citizens on
   # a subclass 444 visa have no work conditions (A1,
@@ -262,31 +271,33 @@ statuses:
   # there is no "full work rights" category (A11), so every other choice names
   # its visa.
   au:
-    # A1: no work conditions.
-    - {value: citizen, label: Australian citizen, noExpiry: true}
-    # A1: no work conditions.
-    - {value: permanent_resident, label: Australian permanent resident, noExpiry: true}
-    # A1, A3: no work conditions and no expiry date; it ceases on leaving and is
-    # granted again on entry.
-    - value: nz_citizen
-      label: New Zealand citizen (Special Category visa, subclass 444)
-      noExpiry: true
-    # A4-A6: replaced the TSS visa on 7 Dec 2024; work for the sponsor (or an
-    # associated entity) only, unless exempt.
-    - {value: skills_in_demand, label: Skills in Demand visa (subclass 482)}
-    # A10: time-limited.
-    - {value: temporary_graduate, label: Temporary Graduate visa (subclass 485)}
-    # A7: hours capped in session.
-    - {value: student, label: Student visa (subclass 500)}
-    # A8, A9: usually at most 6 months with one employer.
-    - value: working_holiday
-      label: Working Holiday (subclass 417) or Work and Holiday (subclass 462) visa
-    # A12: work rights follow the grant's conditions.
-    - {value: bridging, label: Bridging visa}
-    # A1: every other visa carries conditions.
-    - {value: other_temporary, label: Other temporary visa}
-    # A2: no work rights.
-    - {value: visitor, label: Visitor visa or ETA}
+    label: Immigration status
+    options:
+      # A1: no work conditions.
+      - {value: citizen, label: Australian citizen, noExpiry: true}
+      # A1: no work conditions.
+      - {value: permanent_resident, label: Australian permanent resident, noExpiry: true}
+      # A1, A3: no work conditions and no expiry date; it ceases on leaving and is
+      # granted again on entry.
+      - value: nz_citizen
+        label: New Zealand citizen (Special Category visa, subclass 444)
+        noExpiry: true
+      # A4-A6: replaced the TSS visa on 7 Dec 2024; work for the sponsor (or an
+      # associated entity) only, unless exempt.
+      - {value: skills_in_demand, label: Skills in Demand visa (subclass 482)}
+      # A10: time-limited.
+      - {value: temporary_graduate, label: Temporary Graduate visa (subclass 485)}
+      # A7: hours capped in session.
+      - {value: student, label: Student visa (subclass 500)}
+      # A8, A9: usually at most 6 months with one employer.
+      - value: working_holiday
+        label: Working Holiday (subclass 417) or Work and Holiday (subclass 462) visa
+      # A12: work rights follow the grant's conditions.
+      - {value: bridging, label: Bridging visa}
+      # A1: every other visa carries conditions.
+      - {value: other_temporary, label: Other temporary visa}
+      # A2: no work rights.
+      - {value: visitor, label: Visitor visa or ETA}
   # The UAE (Sources 8, 11; sources doc rows UAE 1-22: u.ae, ICP, Decree-Law
   # 33/2021 and its Executive Regulation, read 2026-10-30; the MOHRE pages from
   # March 2026 archive copies). Residence statuses: every private-sector hire,
@@ -295,33 +306,36 @@ statuses:
   # work permit, not a residence, so it is no choice (row 15); Golden and Green
   # are two (row 22).
   ae:
-    # Row 4: the employer files a UAE national work permit; no visa.
-    - {value: citizen, label: UAE national (Emirati), noExpiry: true}
-    # Row 5: treated as UAE nationals in employment; no residence visa.
-    - {value: gcc_national, label: GCC national, noExpiry: true}
-    # Row 6: tied to the sponsoring employer.
-    - {value: work_visa, label: Work visa (employment residence visa)}
-    # Rows 9, 10: follows the family sponsor's residence.
-    - {value: family_visa, label: Residence visa on family sponsorship}
-    # Rows 11, 12: 5 or 10 years, no sponsor.
-    - {value: golden_visa, label: Golden visa}
-    # Rows 13, 14: 5 years, no sponsor.
-    - {value: green_visa, label: Green visa}
-    # Row 19: the sources do not say whether it may take a job.
-    - {value: student_visa, label: Student visa}
-    # Row 20: for working for a company abroad.
-    - value: virtual_work_visa
-      label: "Virtual work visa: working for a company outside the UAE"
-    # Row 21: the other residences u.ae lists.
-    - value: other_residence
-      label: Other residence visa (investor, retired, Blue visa, other)
-    # Rows 16, 17: no work permit.
-    - {value: visit_visa, label: Visit visa (including the jobseeker visit visa)}
-    # Row 18: the employer recruits from abroad.
-    - {value: no_visa, label: No UAE visa (outside the UAE), noExpiry: true}
+    label: Immigration status
+    options:
+      # Row 4: the employer files a UAE national work permit; no visa.
+      - {value: citizen, label: UAE national (Emirati), noExpiry: true}
+      # Row 5: treated as UAE nationals in employment; no residence visa.
+      - {value: gcc_national, label: GCC national, noExpiry: true}
+      # Row 6: tied to the sponsoring employer.
+      - {value: work_visa, label: Work visa (employment residence visa)}
+      # Rows 9, 10: follows the family sponsor's residence.
+      - {value: family_visa, label: Residence visa on family sponsorship}
+      # Rows 11, 12: 5 or 10 years, no sponsor.
+      - {value: golden_visa, label: Golden visa}
+      # Rows 13, 14: 5 years, no sponsor.
+      - {value: green_visa, label: Green visa}
+      # Row 19: the sources do not say whether it may take a job.
+      - {value: student_visa, label: Student visa}
+      # Row 20: for working for a company abroad.
+      - value: virtual_work_visa
+        label: "Virtual work visa: working for a company outside the UAE"
+      # Row 21: the other residences u.ae lists.
+      - value: other_residence
+        label: Other residence visa (investor, retired, Blue visa, other)
+      # Rows 16, 17: no work permit.
+      - {value: visit_visa, label: Visit visa (including the jobseeker visit visa)}
+      # Row 18: the employer recruits from abroad.
+      - {value: no_visa, label: No UAE visa (outside the UAE), noExpiry: true}
 
 # The knockout answers each country asks, in its own words, then when the permit
-# runs out (optional). The status question goes first, built from `statuses`.
+# runs out (optional). The status question goes first where a market has a
+# `statuses` list.
 permits:
   us_visa:
     - key: authorized_now

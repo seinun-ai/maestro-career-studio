@@ -119,25 +119,41 @@ def test_every_country_answer_says_where_it_fills():
 
 
 def test_status_values_are_unique_per_list_and_citizen_is_first():
-    for name, options in form_questions.catalog().statuses.items():
-        values = [o.value for o in options]
+    for name, statuses in form_questions.catalog().statuses.items():
+        values = [o.value for o in statuses.options]
         assert len(values) == len(set(values)), name
         assert values[0] == "citizen", name  # the own-country rule sets it (Task 3.4)
 
 
+def test_each_status_list_words_its_question():
+    """Data, like the rest of a country's questions: the US keeps today's words and is counted;
+    every other list is optional, so no existing count drops (Decision 6)."""
+    words = {
+        name: (statuses.label, statuses.required)
+        for name, statuses in form_questions.catalog().statuses.items()
+    }
+    assert words == {
+        "us": ("Work authorization status", True),
+        "ca": ("Immigration status", False),
+        "au": ("Immigration status", False),
+        "ae": ("Immigration status", False),
+    }
+
+
 def test_each_market_with_a_status_list_asks_it_first():
-    """Built per market from its `statuses` list: the US's words and required, as always; every
-    other list's "Immigration status" and optional, so no existing count drops (Decision 6). A
-    market with no list (the UK) asks none."""
+    """Served per market from its `statuses` list, in its words: the US's required, as always;
+    every other list's "Immigration status" and optional. A market with no list (the UK) asks
+    none."""
     cat = form_questions.catalog()
     for key in markets.keys():
         m = markets.get(key)
-        permits = form_questions.resolve(home=key, apply_in=[key], chosen=True).countries[0].permits
+        permits = form_questions.resolve(home=key, apply_in=[key], chosen=True, profile=None).countries[0].permits
         if m["work_status"] is None:
             assert "status" not in [f.key for f in permits], key
             continue
         status = permits[0]
-        assert (status.key, status.type, status.options) == ("status", "select", cat.statuses[m["work_status"]])
+        assert (status.key, status.type) == ("status", "select")
+        assert status.options == cat.statuses[m["work_status"]].options
         want = ("Work authorization status", False) if key == "US" else ("Immigration status", True)
         assert (status.label, status.optional) == want, key
 
@@ -146,8 +162,8 @@ def test_statuses_that_never_expire_are_marked():
     """Each status says whether it has an expiry (Sources 11), so the expiry is asked only where
     one exists (Task 3.5)."""
     lasting = {
-        name: [o.value for o in options if o.noExpiry]
-        for name, options in form_questions.catalog().statuses.items()
+        name: [o.value for o in statuses.options if o.noExpiry]
+        for name, statuses in form_questions.catalog().statuses.items()
     }
     assert lasting == {
         "us": ["citizen", "permanent_resident", "not_authorized"],
@@ -170,7 +186,7 @@ def test_status_values_are_a_markets_own_list():
 
 
 def test_all_status_values_join_every_list():
-    every = {o.value for options in form_questions.catalog().statuses.values() for o in options}
+    every = {o.value for s in form_questions.catalog().statuses.values() for o in s.options}
     assert form_questions.all_status_values() == every
     assert {"h1b", "pgwp", "nz_citizen", "golden_visa"} <= every
 
@@ -229,7 +245,7 @@ def test_citizenship_rules_name_iso_codes_and_markets():
         assert rule.source.startswith("https://")
         if rule.status:  # a status the rule settles is one of each market's own
             for m in rule.markets:
-                values = [o.value for o in cat.statuses[markets.get(m)["work_status"]]]
+                values = [o.value for o in cat.statuses[markets.get(m)["work_status"]].options]
                 assert rule.status in values, (m, rule.status)
 
 
@@ -240,12 +256,12 @@ def test_catalog_only_attributes_are_never_served():
     eligibility = next(g for g in cat.groups if g.key == "eligibility")
     assert next(f for f in eligibility.fields if f.key == "over_18").pack == "us_screening"
     served = json.dumps(
-        form_questions.resolve(home="US", apply_in=["US"], chosen=True).model_dump(mode="json")
+        form_questions.resolve(home="US", apply_in=["US"], chosen=True, profile=None).model_dump(mode="json")
     )
     assert "us_screening" not in served and '"pack"' not in served
     assert "noExpiry" not in served and '"fills"' not in served
     assert "fills" not in cat.answers[0].model_dump()
-    assert "noExpiry" not in cat.statuses["us"][0].model_dump()
+    assert "noExpiry" not in cat.statuses["us"].options[0].model_dump()
 
 
 # The fields the country questions show only where a pack is named, on purpose: the US screening
@@ -295,8 +311,10 @@ def _today_groups(home: str) -> list[dict]:
     return out
 
 
-def _without_india(group) -> dict:
-    added = _INDIA.get(group.key, [])
+def _without_india(group, apply_in: list[str]) -> dict:
+    """The group with India's basics left out where India is applied in (they are pinned on their
+    own); anywhere else they stay in, so a leak fails the comparison with today's set."""
+    added = _INDIA.get(group.key, []) if "IN" in apply_in else []
     return {
         "key": group.key,
         "title": group.title,
@@ -307,7 +325,7 @@ def _without_india(group) -> dict:
 def test_a_chosen_us_user_sees_todays_set():
     """Labels, options, hints and counted keys as the Phase 1 fixture; only the new attributes
     differ (byHome's value, the expiry's `unless`)."""
-    qs = form_questions.resolve(home="US", apply_in=["US"], chosen=True)
+    qs = form_questions.resolve(home="US", apply_in=["US"], chosen=True, profile=None)
     assert [(g.key, g.title) for g in qs.groups] == [(g["key"], g["title"]) for g in _TODAY["groups"]]
     got = [[_served_field(f, "byHome") for f in g.fields] for g in qs.groups]
     assert got == [[_field(f) for f in g["fields"]] for g in _TODAY["groups"]]
@@ -322,15 +340,18 @@ def test_a_chosen_us_user_sees_todays_set():
 
 @pytest.mark.parametrize("home", markets.keys())
 def test_every_home_gets_todays_groups(home):
-    got = form_questions.resolve(home=home, apply_in=[home], chosen=True)
-    assert [_without_india(g) for g in got.groups] == _today_groups(home)
+    got = form_questions.resolve(home=home, apply_in=[home], chosen=True, profile=None)
+    assert [_without_india(g, [home]) for g in got.groups] == _today_groups(home)
+    india = {k for keys in _INDIA.values() for k in keys}
+    asked = {f.key for g in got.groups for f in g.fields}
+    assert (india <= asked) if home == "IN" else not (india & asked)
 
 
 def test_india_asks_its_basics_beside_the_questions_they_go_with():
     """Sources 20-22: experience in years and months, notice in days, serving notice, the last
     working day and preferred locations, all optional; only while India is applied in."""
     def groups(apply_in):
-        resolved = form_questions.resolve(home="DE", apply_in=apply_in, chosen=True).groups
+        resolved = form_questions.resolve(home="DE", apply_in=apply_in, chosen=True, profile=None).groups
         return {g.key: g.fields for g in resolved}
 
     india = groups(["DE", "IN"])
@@ -365,7 +386,7 @@ def test_the_permit_golden_leaves_out_only_canada_and_the_uae():
 def test_every_market_gets_todays_permit_fields(market):
     """Today's wording, apart from this phase's changes: a status list's question ahead of it
     outside the US (Australia's), and the expiry's `unless`."""
-    permits = form_questions.resolve(home="US", apply_in=[market], chosen=True).countries[0].permits
+    permits = form_questions.resolve(home="US", apply_in=[market], chosen=True, profile=None).countries[0].permits
     got = [_served_field(f, "unless") for f in permits if market == "US" or f.key != "status"]
     vocab = markets.get(market)["work_auth_vocab"]
     assert got == [_field(f) for f in _TODAY["permits"][vocab]]
@@ -374,12 +395,12 @@ def test_every_market_gets_todays_permit_fields(market):
 def test_permits_are_still_served_keyed_by_market():
     """Phase 1's `permits` rides beside `countries` until Profile reads `countries` (Task 3.10):
     each country's own permit list."""
-    qs = form_questions.resolve(home="IN", apply_in=["US", "AE", "DE"], chosen=True)
+    qs = form_questions.resolve(home="IN", apply_in=["US", "AE", "DE"], chosen=True, profile=None)
     assert qs.permits == {c.market: c.permits for c in qs.countries}
 
 
 def _state_line(home: str) -> Field:
-    groups = form_questions.resolve(home=home, apply_in=[home], chosen=True).groups
+    groups = form_questions.resolve(home=home, apply_in=[home], chosen=True, profile=None).groups
     personal = next(g for g in groups if g.key == "personal")
     return next(f for f in personal.fields if f.key == "state")
 
@@ -394,7 +415,7 @@ def test_the_state_line_is_named_and_counted_by_where_you_live():
 def test_required_keys_leave_out_the_optional_fields():
     """What setup readiness counts: the state line only where an address there needs one."""
     def personal(home: str) -> list[str]:
-        groups = form_questions.resolve(home=home, apply_in=[home], chosen=True).groups
+        groups = form_questions.resolve(home=home, apply_in=[home], chosen=True, profile=None).groups
         return form_questions.required_keys(next(g for g in groups if g.key == "personal").fields)
 
     assert "state" not in personal("UK") and "state" in personal("US")
@@ -402,26 +423,26 @@ def test_required_keys_leave_out_the_optional_fields():
 
 
 def test_permits_are_keyed_by_market_in_apply_in_order():
-    got = form_questions.resolve(home="IN", apply_in=["UK", "US", "DE"], chosen=True)
+    got = form_questions.resolve(home="IN", apply_in=["UK", "US", "DE"], chosen=True, profile=None)
     assert list(got.permits) == ["UK", "US", "DE"]
 
 
 def test_offers_eeo_follows_the_apply_in_markets():
     """Offered when any market you apply in has a checked set (US, UK today), wherever you live."""
-    assert form_questions.resolve(home="IN", apply_in=["US"], chosen=True).offers_eeo is True
-    assert form_questions.resolve(home="US", apply_in=["IN", "DE"], chosen=True).offers_eeo is False
-    assert form_questions.resolve(home="DE", apply_in=["DE", "NL"], chosen=True).offers_eeo is False
-    assert form_questions.resolve(home="DE", apply_in=["DE", "UK"], chosen=True).offers_eeo is True
+    assert form_questions.resolve(home="IN", apply_in=["US"], chosen=True, profile=None).offers_eeo is True
+    assert form_questions.resolve(home="US", apply_in=["IN", "DE"], chosen=True, profile=None).offers_eeo is False
+    assert form_questions.resolve(home="DE", apply_in=["DE", "NL"], chosen=True, profile=None).offers_eeo is False
+    assert form_questions.resolve(home="DE", apply_in=["DE", "UK"], chosen=True, profile=None).offers_eeo is True
 
 
 def test_unchosen_resolves_no_country():
-    qs = form_questions.resolve(home="US", apply_in=[], chosen=False)
+    qs = form_questions.resolve(home="US", apply_in=[], chosen=False, profile=None)
     assert qs.permits == {} and qs.offers_eeo is False and qs.chosen is False
 
 
 def test_unchosen_keeps_the_state_line_but_never_requires_it():
     """No country is chosen, so no address rule applies: the line keeps its catalog label."""
-    groups = form_questions.resolve(home="US", apply_in=[], chosen=False).groups
+    groups = form_questions.resolve(home="US", apply_in=[], chosen=False, profile=None).groups
     personal = next(g for g in groups if g.key == "personal")
     state = next(f for f in personal.fields if f.key == "state")
     assert (state.label, state.optional) == ("State", True)
@@ -430,9 +451,9 @@ def test_unchosen_keeps_the_state_line_but_never_requires_it():
 
 def test_no_apply_in_reads_as_home():
     """The market setting's rule (`MarketSetting`: empty `apply_in` reads as `[home]`)."""
-    assert list(form_questions.resolve(home="UK", apply_in=[], chosen=True).permits) == ["UK"]
-    assert form_questions.resolve(home="UK", apply_in=[], chosen=True).offers_eeo is True
-    assert form_questions.resolve(home="IN", apply_in=[], chosen=True).offers_eeo is False
+    assert list(form_questions.resolve(home="UK", apply_in=[], chosen=True, profile=None).permits) == ["UK"]
+    assert form_questions.resolve(home="UK", apply_in=[], chosen=True, profile=None).offers_eeo is True
+    assert form_questions.resolve(home="IN", apply_in=[], chosen=True, profile=None).offers_eeo is False
 
 
 # ------------------------------------------------------------- countries, packs and citizenship
@@ -467,7 +488,7 @@ def test_each_question_once_for_india_uae_germany_and_the_netherlands():
 
 def test_expected_pay_is_worded_and_hinted_by_each_market():
     """markets.yaml `pay`: the label everywhere, the hint where the basis needs one (the UAE)."""
-    qs = form_questions.resolve(home="US", apply_in=["US", "AE"], chosen=True)
+    qs = form_questions.resolve(home="US", apply_in=["US", "AE"], chosen=True, profile=None)
     us, ae = (c.answers[0] for c in qs.countries)
     assert (us.label, us.hint) == ("Expected salary (USD)", None)
     assert (ae.label, ae.hint) == ("Expected total monthly salary (AED)", "Basic pay plus allowances, per month.")
@@ -491,21 +512,27 @@ def test_a_given_answer_that_differs_turns_the_derived_ones_off_in_that_country(
 
 
 def test_without_a_profile_nothing_is_derived():
-    qs = form_questions.resolve(home="IN", apply_in=["IN"], chosen=True)
+    qs = form_questions.resolve(home="IN", apply_in=["IN"], chosen=True, profile=None)
     assert qs.countries[0].derived == {}
 
 
+def test_a_caller_that_forgets_the_profile_fails():
+    """Like `chosen`: forgetting it would serve every country with nothing derived."""
+    with pytest.raises(TypeError):
+        form_questions.resolve(home="IN", apply_in=["IN"], chosen=True)
+
+
 def test_the_expiry_hides_for_statuses_that_never_expire():
-    ae = form_questions.resolve(home="AE", apply_in=["AE"], chosen=True).countries[0]
+    ae = form_questions.resolve(home="AE", apply_in=["AE"], chosen=True, profile=None).countries[0]
     expiry = next(f for f in ae.permits if f.key == "authorization_expires_on")
     assert expiry.unless == ("status", ["citizen", "gcc_national", "no_visa"])
     # No status list, no `unless`: the catalog's own expiry, unchanged.
-    uk = form_questions.resolve(home="UK", apply_in=["UK"], chosen=True).countries[0]
+    uk = form_questions.resolve(home="UK", apply_in=["UK"], chosen=True, profile=None).countries[0]
     assert next(f for f in uk.permits if f.key == "authorization_expires_on").unless is None
 
 
 def test_a_uae_home_counts_no_postcode_and_calls_the_state_line_emirate():
-    personal = form_questions.resolve(home="AE", apply_in=["AE"], chosen=True).groups[0]
+    personal = form_questions.resolve(home="AE", apply_in=["AE"], chosen=True, profile=None).groups[0]
     by_key = {f.key: f for f in personal.fields}
     assert by_key["postal_code"].optional is True and by_key["postal_code"].label == "Postal code"
     assert by_key["state"].label == "Emirate" and by_key["state"].optional is False
@@ -515,17 +542,17 @@ def test_a_uae_home_counts_no_postcode_and_calls_the_state_line_emirate():
 def test_a_pack_follows_every_country_you_apply_in():
     """A US screening question is asked once someone applies in the US, wherever they live."""
     def eligibility(apply_in):
-        groups = form_questions.resolve(home="DE", apply_in=apply_in, chosen=True).groups
+        groups = form_questions.resolve(home="DE", apply_in=apply_in, chosen=True, profile=None).groups
         return _keys(next(g for g in groups if g.key == "eligibility").fields)
 
     assert "over_18" not in eligibility(["DE"])
     assert {"over_18", "non_compete"} <= set(eligibility(["DE", "US"]))
-    assert form_questions.resolve(home="DE", apply_in=["UK"], chosen=True).language_fields == []
-    assert _keys(form_questions.resolve(home="UK", apply_in=["NL"], chosen=True).language_fields) == ["cefr"]
+    assert form_questions.resolve(home="DE", apply_in=["UK"], chosen=True, profile=None).language_fields == []
+    assert _keys(form_questions.resolve(home="UK", apply_in=["NL"], chosen=True, profile=None).language_fields) == ["cefr"]
 
 
 def test_unchosen_asks_no_country_and_no_us_screening():
-    qs = form_questions.resolve(home="US", apply_in=[], chosen=False)
+    qs = form_questions.resolve(home="US", apply_in=[], chosen=False, profile=None)
     assert qs.countries == [] and qs.language_fields == []
     assert not {f.key for g in qs.groups for f in g.fields} & {"over_18", "non_compete"}
 
@@ -534,7 +561,7 @@ def test_unchosen_is_the_same_set_wherever_you_live():
     """No country chosen means no address rule, so the generic set reads no home: one served
     fixture (`lives-none`) holds it."""
     sets = {
-        home: form_questions.resolve(home=home, apply_in=[], chosen=False).model_dump()
+        home: form_questions.resolve(home=home, apply_in=[], chosen=False, profile=None).model_dump()
         for home in markets.keys()
     }
     assert all(s == sets["US"] for s in sets.values())

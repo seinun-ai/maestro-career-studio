@@ -76,7 +76,7 @@ def _autofill_step(db: Session) -> AutofillStep:
     profile = autofill_profile.peek_profile(db)
     market = market_settings.peek_market(db)
     questions = form_questions.resolve(
-        home=market.home, apply_in=market.apply_in, chosen=market.chosen
+        home=market.home, apply_in=market.apply_in, chosen=market.chosen, profile=profile
     )
     required = {g.key: form_questions.required_keys(g.fields) for g in questions.groups}
     by_country = _work_permits(profile, questions.permits)

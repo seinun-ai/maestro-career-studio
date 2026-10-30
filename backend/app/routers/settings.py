@@ -367,7 +367,8 @@ def patch_autofill(payload: SettingValueIn[dict[str, Any]], db: Annotated[Sessio
 def get_autofill_questions(db: Annotated[Session, Depends(get_db)]):
     """The form questions for where you live and apply (services/form_questions.resolve): Profile and
     Setup read this route, and setup readiness calls `resolve` itself, so all three ask the one set.
-    The stored form answers say what a citizenship settles in each country (`derived`). Served
+    The stored form answers, peeked (the set is derived, so reading it seeds nothing), say what a
+    citizenship settles in each country (`derived`). Served
     without defaults, as the frontend's FieldDef reads them (every key but `key` and `label` may be
     absent; `countries` and `chosen` always ride along)."""
     market = market_settings.get_market(db)
@@ -375,7 +376,7 @@ def get_autofill_questions(db: Annotated[Session, Depends(get_db)]):
         home=market.home,
         apply_in=market.apply_in,
         chosen=market.chosen,
-        profile=autofill_profile.get_profile(db),
+        profile=autofill_profile.peek_profile(db),
     )
 
 

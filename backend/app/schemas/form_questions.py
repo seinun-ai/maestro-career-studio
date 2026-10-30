@@ -54,6 +54,18 @@ class Field(BaseModel):
     fills: str | None = PydanticField(default=None, exclude=True)
 
 
+class StatusList(BaseModel):
+    """A market's status question in its own words: what it is called, whether readiness counts
+    it, and the statuses it offers (what a save takes). Catalog only: `resolve` serves it as the
+    market's `status` field."""
+
+    model_config = _CATALOG
+
+    label: str
+    required: bool = False
+    options: list[Option]
+
+
 class Group(BaseModel):
     model_config = _CATALOG
 
@@ -90,8 +102,8 @@ class Catalog(BaseModel):
     model_config = _CATALOG
 
     groups: list[Group]
-    # Each market's immigration statuses, keyed by its `work_status` (us, ca, au, ae).
-    statuses: dict[str, list[Option]]
+    # Each market's status question, keyed by its `work_status` (us, ca, au, ae).
+    statuses: dict[str, StatusList]
     # Work-permit fields per `work_auth_vocab` (us_visa, uk, generic, ca, ae), expiry included.
     permits: dict[str, list[Field]]
     # Country answers: asked per country you apply in, each filling its `fills` slot there.

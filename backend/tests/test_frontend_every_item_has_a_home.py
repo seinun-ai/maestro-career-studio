@@ -53,7 +53,7 @@ class Asked:
         catalog = form_questions.catalog()
         if self.group.startswith("status:"):
             market = self.group.removeprefix("status:")
-            wordings = [form_questions.resolve(home=market, apply_in=[market], chosen=True).countries[0].permits]
+            wordings = [form_questions.resolve(home=market, apply_in=[market], chosen=True, profile=None).countries[0].permits]
         elif self.group == "permits":
             wordings = list(catalog.permits.values())
         elif self.group in catalog.permits:
@@ -263,7 +263,7 @@ def test_each_country_is_asked_every_work_permit_key():
     """Every vocabulary asks the three yes/no keys and when the permit runs out; a market with a status list
     asks its status first (the US's required, the others optional, so of these only the US asks one). The
     served set holds one entry per country you apply in; Profile asks each, Setup one card per country."""
-    served = form_questions.resolve(home="DE", apply_in=["US", "UK", "DE"], chosen=True).permits
+    served = form_questions.resolve(home="DE", apply_in=["US", "UK", "DE"], chosen=True, profile=None).permits
     asked = [[field.key for field in served[market]] for market in ("US", "UK", "DE")]
     keys = ["authorized_now", "sponsorship_now", "sponsorship_future", "authorization_expires_on"]
     assert asked == [["status", *keys], keys, keys]

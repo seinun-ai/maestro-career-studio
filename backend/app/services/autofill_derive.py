@@ -59,12 +59,7 @@ def derived_in_effect(profile: Any, market: str, home: str | None = None) -> dic
     rule is off for that country. What the fill reads (`answers_for`) and what Profile shows as
     "From your citizenship" (`form_questions.resolve`) both come from here. `home` places a legacy
     single `work_auth` in a raw profile (a read view has it placed already)."""
-    market = _key(market)
-    derived = derived_for(citizenships(profile), market)
-    if not derived:
-        return {}
-    given = _given(profile, market, home)
-    return {} if any(k in given and given[k] != d.value for k, d in derived.items()) else derived
+    return _in_effect(profile, _key(market), home)[0]
 
 
 def answers_for(profile: Any, market: str, home: str | None = None) -> dict[str, Any]:
@@ -76,17 +71,27 @@ def answers_for(profile: Any, market: str, home: str | None = None) -> dict[str,
     laid over them under the typed keys. A given answer is one the typed reader can use: a blank, a
     status outside the market's list or a non-answer ("maybe") hides nothing."""
     market = _key(market)
-    derived = derived_in_effect(profile, market, home)
+    derived, given = _in_effect(profile, market, home)
     if not derived:
         return autofill_profile.work_auth_entries(profile, home).get(market, {})
-    return {**{k: d.value for k, d in derived.items()}, **_given(profile, market, home)}
+    return {**{k: d.value for k, d in derived.items()}, **given}
 
 
 def _key(market: str) -> str:
     return str(market or "").strip().upper()
 
 
-def _given(profile: Any, market: str, home: str | None) -> dict[str, Any]:
-    """The answers the user gave for `market`, as the typed reader keeps them."""
+def _in_effect(
+    profile: Any, market: str, home: str | None
+) -> tuple[dict[str, DerivedAnswer], dict[str, Any]]:
+    """The rule, once: what a citizenship settles in `market` (a key) and the answers the user gave
+    there as the typed reader keeps them; the derived side is {} when a given answer differs from
+    one it settles. With nothing derived, the given answers are not read ({})."""
+    derived = derived_for(citizenships(profile), market)
+    if not derived:
+        return {}, {}
     stored = autofill_profile.work_auth_entries(profile, home).get(market, {})
-    return autofill_profile.typed_work_auth(stored, market).model_dump(exclude_defaults=True)
+    given = autofill_profile.typed_work_auth(stored, market).model_dump(exclude_defaults=True)
+    if any(k in given and given[k] != d.value for k, d in derived.items()):
+        return {}, given
+    return derived, given

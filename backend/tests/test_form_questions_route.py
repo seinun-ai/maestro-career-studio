@@ -76,3 +76,12 @@ def test_the_set_is_served_without_defaults(client):
     assert state["label"] == "State" and "optional" not in state and state["byHome"] == "state"
     assert next(f for f in personal["fields"] if f["key"] == "postal_code")["byHome"] == "postcode"
     assert "byHome" not in personal["fields"][0]
+
+
+def test_reading_the_set_seeds_no_form_answers(client, db_session, settings_dir):
+    """The set is derived: the route peeks the form answers, so a read leaves no row or mirror."""
+    from app.models.setting import Setting
+
+    client.get("/api/settings/autofill/questions")
+    assert db_session.get(Setting, "autofill_profile") is None
+    assert not (settings_dir / "autofill.json").exists()

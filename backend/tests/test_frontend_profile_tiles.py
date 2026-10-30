@@ -56,10 +56,8 @@ PROFILE_ITEMS = [
 def _profile_source() -> str:
     src = "".join(p.read_text(encoding="utf-8") for p in sorted((_FRONTEND / "components/profile").glob("*.tsx")))
     # The questions the tiles render (labels, options) are the catalog the backend serves them, shared with
-    # Setup (the status question's words are built per market beside it); education and languages are in
-    # one importable module.
+    # Setup; education and languages are in one importable module.
     src += (_ROOT / "backend/app/services/data/form_questions.yaml").read_text(encoding="utf-8")
-    src += (_ROOT / "backend/app/services/form_questions.py").read_text(encoding="utf-8")
     src += _src("lib/autofill-options.ts")
     return src + _src("app/profile/page.tsx")
 
@@ -94,7 +92,7 @@ def test_each_country_counts_the_three_keys_and_only_the_us_counts_the_status():
     """The status question is built per market from its list: required in the US only, so no other
     country's count moves (Decision 6 of docs/plans/2026-10-30-country-form-questions.md)."""
     expected = ["authorized_now", "sponsorship_now", "sponsorship_future"]
-    for country in form_questions.resolve(home="US", apply_in=market_keys(), chosen=True).countries:
+    for country in form_questions.resolve(home="US", apply_in=market_keys(), chosen=True, profile=None).countries:
         keys = form_questions.required_keys(country.permits)
         assert keys == (["status", *expected] if country.market == "US" else expected), (country.market, keys)
 
@@ -129,7 +127,7 @@ def test_contact_counts_and_names_the_state_line_by_where_you_live():
     option = _between(_src("lib/types.ts"), "export interface MarketOption {", "\n}")
     assert "asks_state: boolean;" in option and "state_label: string;" in option
     def state(home: str):
-        personal = next(g for g in form_questions.resolve(home=home, apply_in=[home], chosen=True).groups if g.key == "personal")
+        personal = next(g for g in form_questions.resolve(home=home, apply_in=[home], chosen=True, profile=None).groups if g.key == "personal")
         return next(f for f in personal.fields if f.key == "state")
 
     assert (state("NL").label, state("NL").optional) == ("Province", True)
