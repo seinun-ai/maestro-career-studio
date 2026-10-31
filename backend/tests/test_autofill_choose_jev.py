@@ -443,3 +443,52 @@ def test_the_fill_prompt_takes_answers_as_a_form_does(db_session, monkeypatch, t
     assert seen[-1]["personal.citizenships"] == "India"
     assert "preferences.last_working_day" not in seen[-1] and "preferences.serving_notice" not in seen[-1]
     assert '"India"' in prompts[-1] and "2020-01-31" not in prompts[-1]
+
+
+# ---------- current pay reaches a model only with the agreement permission (eeo_consent.AGREEMENT_SLOTS)
+
+# A label asking both passes the Companion's label policy, so /choose is handed it: what reaches the model
+# provider is the server's call, by what the answer is.
+MIXED_PAY = "Present CTC | Expected CTC"
+INDIA = {"preferences": {"desired_salary": "150000"},
+         "answers_by_country": {"IN": {"current_ctc": "1800000", "expected_pay": "2500000"}}}
+
+
+@pytest.fixture
+def india(db_session, jev_on):
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+
+    market_settings.set_market(MarketSetting(home="IN", apply_in=["IN"]), db_session)
+    autofill_profile.set_profile(INDIA, db_session)
+
+
+def _agree(db_session):
+    from app.schemas.eeo_consent import EeoConsent
+    from app.services import eeo_consent
+
+    eeo_consent.EEO_CONSENT.set(EeoConsent(consent_forms=True, policy_version="2"), db_session)
+
+
+def test_current_pay_reaches_jev_only_with_the_agreement_permission(db_session, monkeypatch, india):
+    seen = _jev_slots(monkeypatch)
+    _fake_llm(monkeypatch)
+    job = _job_in(db_session, "IN")
+    autofill_choose.choose([_field("p", MIXED_PAY)], job, db_session)
+    assert "preferences.current_ctc" not in seen[-1]
+    assert seen[-1]["preferences.desired_salary"] == "2500000"
+    _agree(db_session)
+    autofill_choose.choose([_field("p", MIXED_PAY)], job, db_session)
+    assert seen[-1]["preferences.current_ctc"] == "1800000"
+
+
+def test_current_pay_reaches_the_fast_prompt_only_with_the_agreement_permission(db_session, monkeypatch, india):
+    model_settings.set_autofill_engine(db_session, "fast")
+    prompts = _fake_llm(monkeypatch)
+    job = _job_in(db_session, "IN")
+    autofill_choose.choose([_field("p", MIXED_PAY)], job, db_session)
+    assert "1800000" not in prompts[-1] and "current_ctc" not in prompts[-1]
+    assert "2500000" in prompts[-1]
+    _agree(db_session)
+    autofill_choose.choose([_field("p", MIXED_PAY)], job, db_session)
+    assert "1800000" in prompts[-1]

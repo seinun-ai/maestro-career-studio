@@ -414,7 +414,7 @@ class _Catalog:
     against that country's facts and nothing else changes."""
 
     def __init__(self, db: Session, application_id: UUID | None, base: str | None,
-                 today: date | None = None):
+                 today: date | None = None, *, outward: bool = True):
         resume = (
             None
             if application_id is None and base is None
@@ -429,7 +429,7 @@ class _Catalog:
         # The job's company, so "previously employed here" can be read off the
         # history for THIS application (autofill_catalog._worked_here).
         job = autofill_job.application_job(db, application_id)
-        self._profile = eeo_consent.disclosable_profile(db)
+        self._profile = eeo_consent.disclosable_profile(db, outward=outward)
         self._employment = employment_blocks(resume) if resume else []
         self._skills = resume_skills(resume) if resume else []
         self._today = _today(today)
@@ -495,8 +495,9 @@ def _redaction_facts(db: Session) -> dict[str, autofill_catalog.Fact]:
     """Every value a stored page text must not repeat: the profile's, every country's work-permit and own
     answers, and each active base resume's employers, titles, schools and skills (a trace names no application,
     so it cannot say which resume the run used). Later bases' facts, and other countries' answers, keep their
-    value under a numbered or marked key."""
-    catalog = _Catalog(db, None, None)
+    value under a numbered or marked key. Current pay is among them whatever the agreement permission: a trace
+    never leaves this machine (`outward=False`)."""
+    catalog = _Catalog(db, None, None, outward=False)
     out = dict(catalog.facts())
     answered = [*autofill_derive.answered_markets(catalog.profile), *autofill_profile.answers_entries(catalog.profile)]
     for market in dict.fromkeys(answered):

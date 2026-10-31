@@ -870,9 +870,10 @@ know, and each one was learned from a live failure.
   Current/present/previous salary, last drawn salary, current CTC, salary
   history, wage history, compensation history, and an unqualified
   salary/wage/compensation label are blocked by the shared policy. Explicit expectations such as expected, desired, target, or salary
-  range (expected CTC too) may fill `preferences.desired_salary`, which on a job
-  whose country has its own expected pay is that country's figure; an expectation phrase never
-  overrides another policy block such as signature, consent, terms, credentials,
+  range (expected CTC too) may fill `preferences.desired_salary` (on a job
+  whose country has its own expected pay, that country's figure). An expectation
+  phrase never overrides current pay in the same label ("current and expected
+  CTC") or another policy block such as signature, consent, terms, credentials,
   or government-ID wording. With the permission, "salary requirements" and
   "compensation" questions fill from the same fact, and current CTC from India's
   own answer.

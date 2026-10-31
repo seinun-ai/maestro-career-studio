@@ -377,16 +377,16 @@ import and profile endpoints and store no progress of their own; frontend-conven
   time (`qa.scrub_typographic_dashes`); a rendered PDF holds none (ATS parsers), and MCP `get_rendered_pdf` is the resume-PDF backstop
   (`docs/entities/others.md`, "Em-dash backstop").
 - **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record (`settings/eeo_consent.json`,
-  `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`), TWO permissions kept apart on purpose: `enabled` authorizes disclosing
-  protected characteristics; `consent_forms` lifts the label policy (inv-policy-deny-list-single-source), only if agreed under policy ≥ 2 (an
-  older yes is served off, `consent_forms_lapsed`); one flag for both would make an EEO yes agree to terms. ONE gate, `eeo_consent.withhold_unconsented`,
-  strips `profile.eeo` unless `enabled` for every outward reader —
-  `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's slot catalog — and fails CLOSED
-  when consent cannot be computed; the MCP client keeps its OWN strip (two gates, not a relocated one). Which path asks never decides whether
-  protected-class data is served. Pins (router, `/choose`, Jev): `.system_md_enforcement.json`. No inference or invented EEO answers. Human-only
-  at ANY setting is Submit and nothing wider (Next belongs to the run, per inv-policy-deny-list-single-source); `consent_forms` lifts every
-  label refusal for the callers that pass it, and only it, as served, adds `derived.agrees_to_terms`. The stamp, which callers, the chat rule
-  and the provider list: `docs/entities/others.md`, "EEO consent details".
+  `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`), TWO permissions kept apart on purpose: `enabled` authorizes
+  disclosing protected characteristics; `consent_forms` lifts the label policy (inv-policy-deny-list-single-source), only if agreed under
+  policy ≥ 2 (an older yes is served off, `consent_forms_lapsed`); one flag for both would make an EEO yes agree to terms. ONE gate,
+  `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled`, and current pay (`AGREEMENT_SLOTS`) unless `consent_forms`, for
+  every outward reader — `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's slot catalog — and fails CLOSED when consent
+  cannot be computed; the MCP client keeps its OWN strip (two gates, not a relocated one). Pins (router, `/choose`, Jev):
+  `.system_md_enforcement.json`. No inference or invented EEO answers. Human-only at ANY setting is Submit and nothing wider (Next belongs
+  to the run, per inv-policy-deny-list-single-source); `consent_forms` lifts every label refusal for the callers that pass it, and only it,
+  as served, adds `derived.agrees_to_terms`. The stamp, which callers, the chat rule and the provider list: `docs/entities/others.md`, "EEO
+  consent details".
 - **Provider data** `{#inv-provider-tagged-meta}`: opaque blocks (`ProviderMeta`: Claude thinking signatures, Gemini thought signatures)
   carry their provider and reach only that provider; `replay.for_provider` strips them for any other, so a model switch mid-chat never leaks
   one vendor's blocks to another. Pinned by `tests/test_replay.py`.

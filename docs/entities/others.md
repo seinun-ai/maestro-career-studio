@@ -374,8 +374,10 @@
   or a queued run's Resume) goes to one entry: `/context?question=<label>` (with the application, when there is one) names the market
   that question gets in `work_auth_market` (`profile_for_job` with `question`: the country it names, else the job's), and the panel
   writes `work_auth_by_country[<market>]` (promoting that entry's legacy pair first, `workAuthForWrite`) or `answers_by_country[<market>]`,
-  leaving the served `work_auth` as it came. Expected pay ("Expected CTC" on an Indian job) is that market's `expected_pay`, and the
-  generic `desired_salary` when no market is named. `work_auth_country` names that question's one country in words, a country no market
+  leaving the served `work_auth` as it came. Expected pay ("Expected CTC" on an Indian job) is that market's `expected_pay`, the
+  generic `desired_salary` only when no country is known, and not learned for a country no market covers (a Singapore job), so it never
+  becomes every other form's answer. Current pay is never learned (`ns.currentPayRe`: "current and expected CTC" often holds both
+  figures). Undo puts back each key, and sends a country's entry the learn made as null, so the save removes it. `work_auth_country` names that question's one country in words, a country no market
   covers too (null: none known), and the note says "Saved to Profile › Work permits (United Kingdom)." by that name, never the market
   key. With no market (no job and no country named, a country no market covers, two countries) a work permit or country answer is
   filled and not learned: the next form asks again, and the note says why ("Profile can't keep work-permit answers for Brazil", else
@@ -1441,8 +1443,10 @@
     to the model or tagged `data-rt-qid` — plus the panel's PAIR: the pause row renders no input for a blocked label AND `submitAnswer`
     refuses one again (the first decides what to draw, the second touches the page). Salary history/current salary/current CTC and
     unqualified salary/wage/compensation/CTC mentions are also blocked without consent; explicit expectations (expected salary, expected
-    CTC) are allowed only AFTER both lists. A label asking both ("current and expected CTC") passes, so current pay is also refused by
-    what it is: without consent the rule pass has no current-CTC rule and the fill loop blocks the `preferences.current_ctc` slot.
+    CTC) are allowed only AFTER both lists and after current pay (`CURRENT_PAY`, published as `ns.currentPayRe`): a label asking both
+    ("current and expected CTC", "CTC expectation vs current") is current pay. A label is not the whole guard, so current pay is also
+    refused by what it is, without consent: the server's gate withholds it from every fill view it hands out (`eeo_consent.AGREEMENT_SLOTS`,
+    "EEO consent details"), the rule pass has no current-CTC rule and the fill loop blocks a `preferences.current_ctc` slot.
   - **Label-pattern table details** (inv-one-label-pattern-table): `profile-fields.js` throws at load if `shared/policy.js` has not run (it
     borrows `salaryExpectationRe`), and `autofill.js`'s `pf()` throws on an unknown id — an undefined pattern does not error, it just never
     matches.
@@ -1450,7 +1454,10 @@
     turns on only on its own yes carrying the current policy (`agreed_policy`; `test_eeo_consent.py`). The outward readers' model providers — OpenAI, Gemini, Claude,
     OpenRouter, Jev — are recipients too. Never solicit pasted demographic answers in chat when consented values are in Profile. The callers
     `consent_forms` lifts label refusals for are the fill loop, a model included, never the old collector/pause rows; `derived.agrees_to_terms`
-    is added only as served (lapsed or unreadable: absent).
+    is added only as served (lapsed or unreadable: absent). The same gate (`withhold_unconsented`) withholds the agreement slots
+    (`AGREEMENT_SLOTS`, current pay; the fill loop's `AGREEMENT_SLOTS` is the same list, pinned by `test_autofill_fill_router.py`) from
+    /context, /choose (both engines) and the fill loop's catalog unless `consent_forms` is on as served: the flat slot and every country's
+    answer that fills it. Trace redaction alone reads them anyway (`outward=False`): a trace never leaves the machine.
   - **PDF word-spacing details** (inv-pdf-word-spacing): pdfTeX 1.40.27 misplaces the inter-word space for many Type 1 fonts (e.g. Helvetica,
     Charter, Garamond, Fira); `engines` warns on that build, where boot re-validates ready LaTeX templates once
     (`template_registry.recheck_ready_latex_for_engine_warning`). A uv install uses the HOST's TeX, not Docker's TL 2026 — a PDF's

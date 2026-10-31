@@ -65,6 +65,10 @@ _NEVER_FILL = [
         # Indian forms' word for pay: the expectation fills, the current figure stays history.
         ("Expected CTC", "filled", "150000"),
         ("CTC expectations", "filled", "150000"),
+        # …but current pay anywhere in the label is history, the expectation beside it notwithstanding.
+        ("Current and expected CTC", "policy_blocked", ""),
+        ("CTC expectation vs current", "policy_blocked", ""),
+        ("Expected salary for the current role", "filled", "150000"),
         ("Salary", "policy_blocked", ""),
     ],
 )

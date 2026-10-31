@@ -2003,6 +2003,8 @@ def test_the_router_sends_a_countrys_own_question_to_its_country_answer(tmp_path
         "Are you currently located in India?",
         # A bare "Emirates" is an employer or a district as often as the country.
         "Do you currently live in Emirates Hills?",
+        # Willing to be there is not being there.
+        "Are you willing to work in the UAE now?",
     ]}, tmp_path, source=PANEL_SOURCE)
     assert out["targets"] == [
         ["profile", "answers_by_country.current_ctc"],
@@ -2016,7 +2018,23 @@ def test_the_router_sends_a_countrys_own_question_to_its_country_answer(tmp_path
         ["custom", None],
         ["custom", None],
         ["custom", None],
+        ["custom", None],
     ]
+
+
+def test_every_name_the_uae_rows_know_is_one_the_backend_reads_as_the_uae():
+    """Each alternative of `UAE_RE` (`shared/profile-fields.js`), as words, names the UAE to `countries`."""
+    import re
+
+    from app.services import countries
+
+    source = (EXTENSION / "shared" / "profile-fields.js").read_text(encoding="utf-8")
+    found = re.search(r"const UAE_RE = /\(\?:(.+)\)/i;", source)
+    assert found, "UAE_RE moved: this pin reads its alternatives"
+    names = [alt.replace("\\b", "").replace("\\.", ".") for alt in found.group(1).split("|")]
+    assert names == ["uae", "u.a.e", "united arab emirates"]
+    for name in names:
+        assert countries.mentioned_in(f"Are you in the {name}?") == {"AE"}, name
 
 
 def test_every_question_the_uae_rows_take_is_one_the_backend_reads_as_the_uae():
@@ -2148,8 +2166,10 @@ main(async () => {
     read: () => ({ job: spec.job }),
     api: async (path, init) => {
       if (init?.method === "PUT") { profile = JSON.parse(init.body).value; return {}; }
-      // The country `/context` names for a question: the job's (`spec.market`).
-      if (path.startsWith("/api/autofill/context")) return { profile: { work_auth_market: spec.market ?? null } };
+      // The country `/context` names for a question (`spec.market`, in words `spec.country`).
+      if (path.startsWith("/api/autofill/context")) {
+        return { profile: { work_auth_market: spec.market ?? null, work_auth_country: spec.country ?? null } };
+      }
       return { value: profile };
     },
   };
@@ -2251,6 +2271,56 @@ def test_undoing_a_country_answer_puts_back_that_countrys_entry(tmp_path):
     assert out["after"]["preferences"] == SERVED_INDIA["preferences"]
     assert out["after"]["custom"] == [{"question": "Preferred shift", "answer": "Day"}]
     assert out["undone"] == {**SERVED_INDIA, "custom": []}
+
+
+def _learned(tmp_path, items, profile=SERVED_INDIA, market="IN", country="India"):
+    return run_node(_LEARN_DRIVER_JS, {
+        "profile": profile, "items": items, "market": market, "country": country,
+        "job": {"company": "Globex", "location": "Pune, India", "applicationId": "app-1"}}, tmp_path, source=PANEL_SOURCE)
+
+
+def test_an_answer_about_current_pay_is_never_learned(tmp_path):
+    """"Current and expected CTC" reaches the salary row first, and its answer often holds both figures: kept as
+    expected pay, it would fill the next "Expected CTC" with current pay. Current pay is never learned."""
+    out = _learned(tmp_path, [{"label": "current and expected CTC", "answer": "18 / 25 LPA"},
+                              {"label": "CTC expectation vs current", "answer": "25 LPA (now 18)"}])
+    assert out["after"] == SERVED_INDIA
+
+
+def test_a_pause_row_never_learns_current_pay_even_past_the_policy(tmp_path):
+    """The policy refuses the field first; the learn holds the same line on its own, so a future row source that
+    reached it could not keep current pay either. The note says why it will ask again."""
+    driver = _ACTION_DIRECT_DRIVER_JS.replace("const ns = loadModules();", "const ns = loadModules();\nns.isPolicyBlocked = () => false;")
+    out = run_node(driver, {"rows": [{"qid": "p1", "label": "current and expected ctc", "kind": "text"}]},
+                   tmp_path, source=PANEL_SOURCE)
+    assert out["putsFor"] == [0]
+    assert "Not saved: what you're paid now is yours to add in Profile, so it will ask again." in out["notes"][0]
+
+
+def test_expected_pay_for_a_country_with_no_answers_kept_is_not_the_generic_answer(tmp_path):
+    """Pay for Qatar (or on a Singapore job) is in that country's terms: written over the generic desired salary,
+    it would fill every other country's form. It is not saved, and the note names the country."""
+    out = _learned(tmp_path, [{"label": "Expected salary in Qatar", "answer": "QAR 30000"}], market=None, country="Qatar")
+    assert out["after"] == SERVED_INDIA
+    paused = _work_permit_answer(tmp_path, None, SERVED_INDIA, label="What is your expected salary?", text="SGD 9000",
+                                 country="Singapore", options=None)
+    assert _profile_put(paused) == []
+    [note] = _by_class(paused["answered"]["foot"], "note")
+    assert "Not saved: Profile can't keep answers for Singapore, so it will ask again." in note["text"]
+
+
+def test_undoing_an_answer_that_made_a_countrys_entry_removes_it(tmp_path, db_session, monkeypatch):
+    """The UAE had no answers: Undo sends its entry as null, so the save removes it rather than keeping it empty."""
+    out = _learned(tmp_path, [{"label": "Are you currently in the UAE?", "answer": "Yes"}], market="AE",
+                   country="United Arab Emirates")
+    assert out["after"]["answers_by_country"] == {**SERVED_INDIA["answers_by_country"], "AE": {"in_country_now": "Yes"}}
+    assert out["undone"]["answers_by_country"] == {**SERVED_INDIA["answers_by_country"], "AE": None}
+
+    from app.services import autofill_profile, text_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path / "settings")
+    autofill_profile.set_profile(out["after"], db_session)
+    assert autofill_profile.set_profile(out["undone"], db_session)["answers_by_country"] == SERVED_INDIA["answers_by_country"]
 
 
 def test_undoing_a_scoped_learn_puts_back_only_its_own_row(tmp_path):

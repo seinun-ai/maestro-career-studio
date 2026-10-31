@@ -743,7 +743,8 @@ def _work_permit_run(tmp_path, market, steps=()):
 
 def test_a_work_permit_answer_typed_while_a_run_waited_saves_to_its_jobs_country(tmp_path):
     """The run's application names the job, the backend names its country: the UK entry learns the answer, the
-    US answers and the served one set stay, and Undo empties the UK entry again (sent, so the save keeps it)."""
+    US answers and the served one set stay, and Undo removes the UK entry it made (sent as null, which the save
+    takes as removing it), never leaving it empty."""
     out = _work_permit_run(tmp_path, "UK", [{"press": "run-undo-saved"}])
     [ask] = [m["path"] for m in _api_calls(out, "question=")]
     assert ask == f"/api/autofill/context?question={SPONSORSHIP.replace(' ', '+').replace('?', '%3F')}&application_id=app-1"
@@ -752,7 +753,7 @@ def test_a_work_permit_answer_typed_while_a_run_waited_saves_to_its_jobs_country
     assert puts[0]["work_auth_by_country"] == {"US": US_ANSWERS, "UK": {"sponsorship_now": "Yes"}}
     assert (puts[0]["work_auth"], puts[0]["work_auth_market"]) == (US_ANSWERS, "US")
     assert "Saved 1 answer to your profile · Undo" in _body_text(out["shots"][-2])
-    assert out["profile"]["work_auth_by_country"] == {"US": US_ANSWERS, "UK": {}}
+    assert out["profile"]["work_auth_by_country"] == {"US": US_ANSWERS, "UK": None}
     assert "Undid 1 answer." in _body_text(out["shots"][-1])
 
 

@@ -818,7 +818,8 @@
       }
       if (!items.length) return;
       try {
-        // The application gives a work-permit answer its country; one with none is not saved (it asks again).
+        // The application gives a country's answer its country; one it cannot be kept for, and current
+        // pay, are not saved (they ask again).
         const saved = await ns.panelLearn.learnAnswers(store, items,
           { company: record.company, location: record.location, applicationId: record.applicationId });
         state.undo.set(record.id, saved);

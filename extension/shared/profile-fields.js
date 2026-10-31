@@ -45,9 +45,12 @@
  *
  * ORDER MATTERS and it is the engine's: specific before broad, first match
  * wins. `sponsorship-now` before `sponsorship-future` is that convention and it
- * lives in autofill.js; here the only pair it decides is nothing yet, and the
- * order is kept faithful to the engine's so that a future entry cannot mean two
- * different things on the two sides.
+ * lives in autofill.js. Here it decides the UAE driving licence before being in
+ * the UAE ("do you currently hold a UAE driving licence?" has presence words),
+ * and expected pay before current CTC, though a label asking both is current
+ * pay and is never learned or filled without the agreement permission
+ * (`ns.currentPayRe`). The order is kept faithful to the engine's so that a
+ * future entry cannot mean two different things on the two sides.
  *
  * LOADS AFTER `shared/policy.js`, which publishes `ns.salaryExpectationRe` —
  * the salary pattern is READ from the policy rather than restated, because
@@ -164,20 +167,23 @@
     // a preference. Each names the country or its own term, so a question
     // about somewhere else never lands here.
     //
-    // Never learned today, like the start date: current pay is the policy's
-    // salary history, which the pause row and a run's Resume refuse. The rule
-    // fills it, with the agreement permission, from India's answer in Profile.
+    // Never learned, like the start date: current pay is the policy's salary
+    // history (`ns.currentPayRe`), which the pause row and a run's Resume never
+    // save. The rule fills it, with the agreement permission, from India's
+    // answer in Profile.
     { id: "current-ctc", path: ["answers_by_country", "current_ctc"],
       re: /\b(?:current|present|existing)\b[^?|]{0,20}\bctc\b/i },
     // Before "in the UAE now": "do you currently hold a UAE driving licence?"
     // has the presence words too. Never a licence NUMBER, which is no yes/no.
     { id: "uae-driving-licence", path: ["answers_by_country", "uae_driving_licence"],
       all: [UAE_RE, /\bdriv(?:ing|er'?s?)\s+licen[cs]e\b(?!\s*(?:number|no\b|#))/i] },
-    // Being IN the country, and now: "have you worked in the UAE?" is
-    // neither, "are you currently on a UAE visa?" is not being there.
+    // Being IN the country, said of you or of now, right before it: "have you
+    // worked in the UAE?", "are you willing to work in the UAE now?" and "are
+    // you currently on a UAE visa?" are not being there.
     { id: "in-uae-now", path: ["answers_by_country", "in_country_now"],
-      all: [new RegExp(`\\b(?:in|inside|within)\\s+(?:the\\s+)?${UAE_RE.source}`, "i"),
-        /\b(?:currently|presently|now|at present)\b|\b(?:are|do)\s+you\s+(?:in|inside|within|based|located|residing|reside|living|live|staying)\b/i] },
+      re: new RegExp("\\b(?:(?:are|do)\\s+you\\s+(?:currently\\s+|presently\\s+)?|(?:currently|presently)\\s+)"
+        + "(?:(?:based|located|residing|reside|living|live|staying)\\s+)?(?:in|inside|within)\\s+(?:the\\s+)?"
+        + UAE_RE.source, "i") },
   ];
 
   /** The label, normalised the way BOTH sides already normalise one.

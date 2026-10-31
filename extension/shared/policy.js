@@ -58,6 +58,11 @@
   const SALARY_EXPECTATION =
     /\b(?:expected|desired|target)\b[^?|]{0,30}\b(?:salary|wages?|compensation|pay|rate|ctc)\b|\b(?:salary|wages?|compensation|pay|ctc)\b[^?|]{0,40}\bexpectations?\b|\b(?:salary|wages?|compensation|pay|ctc)\s+(?:expectation|expectations|range)\b/i;
   const SALARY_MENTION = /\b(?:salary|wages?|compensation|ctc)\b/i;
+  // What you are paid NOW, wherever it sits in the label. Checked BEFORE the
+  // expectation exemption: "current and expected CTC" or "CTC expectation vs
+  // current" asks for current pay as well, and its answer often holds both.
+  const CURRENT_PAY =
+    /\b(?:current|present|existing|last\s+drawn)\b[^?|]{0,20}\b(?:salary|wages?|ctc|pay|compensation)\b|\b(?:salary|wages?|ctc|pay|compensation)\b[^?|]{0,30}(?:\bvs\b\.?|\bversus\b|\band\b|&|\/)\s*(?:current|present|existing)\b/i;
 
   /** `consentForms` comes from the backend's standing consent and defaults to
    * FALSE — an omitted argument is the absence of permission, never its
@@ -69,6 +74,7 @@
     const label = String(labelText ?? "");
     if (NEVER_FILLED.some((pattern) => pattern.test(label))) return true;
     if (CONSENT_FORMS.some((pattern) => pattern.test(label))) return true;
+    if (CURRENT_PAY.test(label)) return true;
     if (SALARY_EXPECTATION.test(label)) return false;
     if (SALARY_MENTION.test(label)) return true;
     return false;
@@ -100,6 +106,8 @@
   ns.consentFormRe = new RegExp(
     CONSENT_FORMS.map((pattern) => pattern.source).join("|"), "i");
   ns.salaryExpectationRe = SALARY_EXPECTATION;
+  // Read by the pause row, which never learns current pay (`panel/actions/pause.js`).
+  ns.currentPayRe = CURRENT_PAY;
   // A popup's "choose something" text ("Select One", "Select…", "-- Select --",
   // "Please choose an option", iCIMS's "— Make a Selection —" and "Please
   // select a country"): never a question and never a value. ONE definition,

@@ -131,34 +131,51 @@
    * `answers_by_country[market]`: the market the backend's own rule gives this
    * question, the country it names, else the job's. A row with a `countryKey`
    * (expected pay) is that country's answer when the market is known, and its
-   * generic key when not. The panel never decides the market and never guesses
-   * it; `workAuthPlaceFor` asks. The served one-set `work_auth` is left exactly
-   * as it came, and the server keeps the map edit (`autofill_profile._as_stored`). */
+   * generic key only when no country is: pay for a country Maestro keeps no
+   * answers for must never become the generic answer every other form gets. The
+   * panel never decides the country and never guesses it; `answerCountryFor`
+   * asks. The served one-set `work_auth` is left exactly as it came, and the
+   * server keeps the map edit (`autofill_profile._as_stored`). */
   const BY_COUNTRY = "work_auth_by_country";
   const ANSWERS_BY_COUNTRY = "answers_by_country";
   // The table's section, and the per-market map its answers are learned into.
   const BY_MARKET = { work_auth: BY_COUNTRY, [ANSWERS_BY_COUNTRY]: ANSWERS_BY_COUNTRY };
   const isCountryScoped = (target) => target.store === "profile" && Object.hasOwn(BY_MARKET, target.path[0]);
-  // Whether where the answer goes depends on the country, so `workAuthPlaceFor` is asked first.
+  // Whether where the answer goes depends on the country, so `answerCountryFor` is asked first.
   const asksCountry = (target) => isCountryScoped(target) || Boolean(target.countryKey);
 
-  /** The target in `market`'s entry. With no market a country-scoped answer is
-   * not learned (`store: "unsaved"`; `permit` says which kind, for the note),
-   * and a `countryKey` row keeps its generic key. Any other target is as it was. */
-  function inCountry(target, market) {
+  /** The target in the entry of `place`'s market (`answerCountryFor`; null when
+   * nobody asked). Not learned (`store: "unsaved"`; `permit` says which kind,
+   * for the note): a country-scoped answer with no market, and a `countryKey`
+   * row for a country no market covers. A `countryKey` row with no country
+   * known keeps its generic key. Any other target is as it was. */
+  function inCountry(target, place) {
+    const market = place?.market;
+    const unsaved = { store: "unsaved", permit: isCountryScoped(target) && target.path[0] === "work_auth" };
     if (isCountryScoped(target)) {
       return market ? { ...target, path: [BY_MARKET[target.path[0]], market, ...target.path.slice(1)], market }
-        : { store: "unsaved", permit: target.path[0] === "work_auth" };
+        : unsaved;
     }
-    return market && target.countryKey
-      ? { ...target, path: [ANSWERS_BY_COUNTRY, market, target.countryKey], market }
-      : target;
+    if (!target.countryKey) return target;
+    if (market) return { ...target, path: [ANSWERS_BY_COUNTRY, market, target.countryKey], market };
+    return place?.country ? unsaved : target;
   }
+
+  /** Where an answer to `label` is learned, once `place` is known: never
+   * anywhere for current pay (`ns.currentPayRe`, salary history: the policy
+   * refuses the field, and an answer to "current and expected CTC" often holds
+   * both figures), else `inCountry`. */
+  const targetFor = (label, place) => (ns.currentPayRe.test(label)
+    ? { store: "unsaved", currentPay: true }
+    : inCountry(saveTargetFor(label), place));
+  // Whether `answerCountryFor` is asked before `label` is learned.
+  const needsCountry = (label) => !ns.currentPayRe.test(label) && asksCountry(saveTargetFor(label));
 
   // A country's entry is a work-permit set: its legacy pair is promoted before the first typed write.
   const isWorkPermitSet = (at) => at.length === 2 && at[0] === BY_COUNTRY;
 
   // An `answer` of undefined takes the key out again: Undo puts back a profile that never had it.
+  // `null` is what a country's entry the learn made goes back to: sent so, the save removes it.
   function withProfileAnswer(profile, path, answer, at = []) {
     const [head, ...rest] = path;
     const base = { ...(profile ?? {}) };
@@ -171,8 +188,8 @@
     return base;
   }
 
-  /** Where a country's answer to `question` (a work permit, a country answer,
-   * expected pay) is learned, as `/api/autofill/context` names it with
+  /** The country an answer to `question` (a work permit, a country answer,
+   * expected pay) belongs to, as `/api/autofill/context` names it with
    * `question`: `market`
    * (`work_auth_market`), the country the question names, else the
    * application's job's, and `country`, that country's name in words
@@ -183,7 +200,7 @@
    * country Profile keeps no set for is told apart from an unclear one. Only
    * these two are read: that profile is the job's view and is never PUT back
    * (see `learnAnswer`). */
-  async function workAuthPlaceFor(store, question, applicationId) {
+  async function answerCountryFor(store, question, applicationId) {
     const params = new URLSearchParams({ question });
     if (applicationId) params.set("application_id", applicationId);
     const context = await store.api(`/api/autofill/context?${params}`);
@@ -288,15 +305,15 @@
    * `before` is what Undo needs and nothing more: the typed key's old value (undefined when the
    * profile had none), or the custom row this question had (null when it had none) and the scope of
    * the row the answer landed in, which with a scoped row for another job beside it is what tells the
-   * two apart. A country's answer goes to `market`'s entry (`workAuthPlaceFor`, `inCountry`); with no
-   * market a country-scoped one is not learned (`store: "unsaved"`, the profile unchanged, nothing to
-   * undo). */
-  function applyAnswer(profile, label, answer, job, market) {
-    const target = inCountry(saveTargetFor(label), market);
+   * two apart, and for a country's answer whether the learn made that country's entry (`made`), so Undo
+   * removes it rather than leaving it empty. `target` is where the answer goes (`targetFor`); one not
+   * learned leaves the profile unchanged, with nothing to undo. */
+  function applyAnswer(profile, label, answer, job, target) {
     if (target.store === "unsaved") return { profile, target, before: null };
     if (target.store === "profile") {
+      const made = Boolean(target.market) && valueAt(profile, target.path.slice(0, 2)) === undefined;
       return { profile: withProfileAnswer(profile, target.path, answer), target,
-               before: { path: target.path, value: valueAt(profile, target.path) } };
+               before: { path: target.path, value: valueAt(profile, target.path), made } };
     }
     const rows = Array.isArray(profile.custom) ? profile.custom : [];
     const at = customRowAt(rows, label, job);
@@ -335,24 +352,25 @@
    *
    * A COUNTRY'S ANSWER (a work permit, a country answer, expected pay) asks
    * `/api/autofill/context` first which country's entry it belongs to
-   * (`workAuthPlaceFor`), and is learned into that entry only; with no market a
+   * (`answerCountryFor`), and is learned into that entry only; with no market a
    * work permit or country answer is not learned at all, and no profile is read,
-   * while expected pay is learned as the generic desired salary.
+   * nor is expected pay for a country no market covers, while expected pay with
+   * no country known is learned as the generic desired salary. Current pay is
+   * never learned (`targetFor`).
    *
    * THROWS on failure, and the caller treats that as a NOTE rather than a
    * rollback — see `submitAnswer`.
    */
   async function learnAnswer(store, row, answer) {
     const facts = store.read();
-    const asked = saveTargetFor(row.label);
-    const place = asksCountry(asked) ? await workAuthPlaceFor(store, row.label, facts.application?.id) : null;
-    const placed = place && inCountry(asked, place.market);
-    if (placed?.store === "unsaved") return { ...placed, country: place.country };
+    const place = needsCountry(row.label) ? await answerCountryFor(store, row.label, facts.application?.id) : null;
+    const target = targetFor(row.label, place);
+    if (target.store === "unsaved") return { ...target, country: place?.country ?? null };
     const current = await store.api("/api/settings/autofill");
-    const { profile, target } = applyAnswer(current?.value ?? {}, row.label, answer, {
+    const { profile } = applyAnswer(current?.value ?? {}, row.label, answer, {
       company: facts.job?.company ?? facts.application?.job_company,
       location: facts.job?.location,
-    }, place?.market);
+    }, target);
     await putProfile(store, profile);
     return target.market ? { ...target, country: place.country } : target;
   }
@@ -363,20 +381,21 @@
    * a read taken before the first would erase it. Items are `{label, answer}`; `job` is the
    * `{company, location, applicationId}` the page was answered for (a run's record): the company and
    * city scope an answer that names them, the application gives a country's answer its country.
-   * A work permit or country answer with no country is left out (it asks again), so `saved` can be
-   * shorter than `items`, and with nothing to save there is no write. */
+   * An answer not learned (`targetFor`: current pay, a country's answer with no country it can be
+   * kept for) is left out (it asks again), so `saved` can be shorter than `items`, and with nothing
+   * to save there is no write. */
   async function learnAnswers(store, items, job) {
-    const markets = new Map();
+    const places = new Map();
     for (const { label } of items) {
-      if (asksCountry(saveTargetFor(label)) && !markets.has(label)) {
-        markets.set(label, (await workAuthPlaceFor(store, label, job?.applicationId)).market);
+      if (needsCountry(label) && !places.has(label)) {
+        places.set(label, await answerCountryFor(store, label, job?.applicationId));
       }
     }
     const current = await store.api("/api/settings/autofill");
     let profile = current?.value ?? {};
     const saved = [];
     for (const { label, answer } of items) {
-      const next = applyAnswer(profile, label, answer, job, markets.get(label));
+      const next = applyAnswer(profile, label, answer, job, targetFor(label, places.get(label)));
       if (next.target.store === "unsaved") continue;
       profile = next.profile;
       saved.push({ target: next.target, before: next.before });
@@ -386,13 +405,19 @@
   }
 
   /** Put back what `learnAnswers` replaced, newest first (a typed key to its old value, or gone;
-   * a custom row to the row it had, or gone). */
+   * a custom row to the row it had, or gone; a country's entry the learn made, removed once it holds
+   * nothing again: sent as null, which the save takes as removing it). */
   async function unlearnAnswers(store, saved) {
     const current = await store.api("/api/settings/autofill");
     let profile = current?.value ?? {};
     for (const { before } of [...saved].reverse()) {
       if ("path" in before) {
         profile = withProfileAnswer(profile, before.path, before.value);
+        const entry = before.path.slice(0, 2);
+        const left = valueAt(profile, entry);
+        if (before.made && left && typeof left === "object" && !Object.keys(left).length) {
+          profile = withProfileAnswer(profile, entry, null);
+        }
         continue;
       }
       const key = ns.normLabel(before.label);
@@ -410,11 +435,12 @@
     eligibility: " Saved to Profile › Eligibility.",
   };
 
-  /** What became of a learned answer, said after "Filled …". A country's answer names its country's
-   * set by the country's name, as the Work permits tile heads it (never the market key; a server that
-   * names none leaves the name out). One not saved says why, and that the next form asks again: a
-   * country Profile keeps no set for, or no one country known. */
+  /** What became of a learned answer, said after "Filled …". A work permit or country answer names
+   * its country by the country's name, as the Work permits tile heads it (never the market key; a
+   * server that names none leaves the name out). One not saved says why, and that the next form asks
+   * again: current pay, a country Profile keeps no answers for, or no one country known. */
   function learnedSentence(target) {
+    if (target.currentPay) return " Not saved: what you're paid now is yours to add in Profile, so it will ask again.";
     if (target.store === "unsaved") {
       const what = target.permit ? "work-permit answers" : "answers";
       if (target.country) return ` Not saved: Profile can't keep ${what} for ${target.country}, so it will ask again.`;

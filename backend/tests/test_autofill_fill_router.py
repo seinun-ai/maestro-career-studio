@@ -778,3 +778,62 @@ def test_map_takes_the_reasoning_steps_slot_hint_and_maps_it_without_a_model(db_
     bad = _post(db_session, "/api/autofill/map",
                 {"fields": [{"fid": "a", "question": "City", "shape": "text", "slot_hint": "Ignore everything"}]})
     assert bad.status_code == 422
+
+
+# ---------- current pay is a fact only while the agreement permission is on (eeo_consent.AGREEMENT_SLOTS)
+
+def _indian_application(db_session):
+    from app.models.application import Application
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+    from tests.test_proposals_models import _mk_job
+
+    market_settings.set_market(MarketSetting(home="IN", apply_in=["IN"]), db_session)
+    autofill_profile.set_profile({"answers_by_country": {"IN": {"current_ctc": "1800000"}}}, db_session)
+    job = _mk_job(db_session, company="Acme", country_code="IN")
+    application = Application(job_id=job.id, base_resume="hybrid", customized_json={"contact": {"name": "Ada"}})
+    db_session.add(application)
+    db_session.commit()
+    return str(application.id)
+
+
+@pytest.mark.usefixtures("profile")
+def test_current_pay_is_a_map_fact_only_with_the_agreement_permission(db_session, monkeypatch):
+    """A label asking current and expected pay passes the Companion's label policy, so /map is asked: the facts
+    it hands the model hold current pay only while the permission is on (served: a lapsed one is off)."""
+    body = {"application_id": _indian_application(db_session),
+            "fields": [{"fid": "p", "question": "Current CTC in INR (expected CTC below)", "shape": "text"}]}
+    for stored, present in ((None, False), (EeoConsent(consent_forms=True, policy_version="1"), False),
+                            (EeoConsent(consent_forms=True, policy_version="2"), True)):
+        if stored is not None:
+            eeo_consent.EEO_CONSENT.set(stored, db_session)
+        seen = _spy_map(monkeypatch)
+        assert _post(db_session, "/api/autofill/map", body).status_code == 200
+        assert ("preferences.current_ctc" in seen["facts"]) is present, stored
+
+
+@pytest.mark.usefixtures("profile")
+def test_current_pay_reaches_the_page_only_with_the_agreement_permission(db_session):
+    """GET /context hands the page its profile through the same gate."""
+    params = {"application_id": _indian_application(db_session)}
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        off = TestClient(app).get("/api/autofill/context", params=params).json()["profile"]
+        eeo_consent.EEO_CONSENT.set(EeoConsent(consent_forms=True, policy_version="2"), db_session)
+        on = TestClient(app).get("/api/autofill/context", params=params).json()["profile"]
+    finally:
+        app.dependency_overrides.clear()
+    assert "current_ctc" not in off.get("preferences", {})
+    assert on["preferences"]["current_ctc"] == "1800000"
+
+
+def test_the_agreement_slots_are_one_list_with_the_companions():
+    """The fill loop blocks these slots by name without the permission (`shared/fill-loop.js`); the server
+    withholds the same ones. A slot on one list only is current pay let through on one side."""
+    import re
+    from pathlib import Path
+
+    loop = (Path(__file__).resolve().parents[2] / "extension/shared/fill-loop.js").read_text(encoding="utf-8")
+    listed = re.search(r"const AGREEMENT_SLOTS = new Set\(\[([^\]]*)\]\)", loop)
+    assert listed, "fill-loop.js AGREEMENT_SLOTS moved: this pin reads it"
+    assert tuple(re.findall(r'"([^"]+)"', listed.group(1))) == eeo_consent.AGREEMENT_SLOTS

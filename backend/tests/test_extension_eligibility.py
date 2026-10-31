@@ -262,11 +262,13 @@ def test_an_indian_jobs_pay_questions_fill_from_indias_answers(tmp_path):
 
 
 @pytest.mark.parametrize("label", [
-    "current ctc and expected ctc", "current and expected ctc", "current ctc (we will discuss expectations later)"])
+    "current ctc and expected ctc", "current and expected ctc", "current ctc (we will discuss expectations later)",
+    "current ctc range", "present ctc | expected ctc", "current ctc in inr (expected ctc below)",
+    "ctc expectation vs current"])
 def test_a_label_asking_current_and_expected_pay_never_gets_current_pay_without_the_agreement(tmp_path, label):
-    """The expectation in the label passes the policy, so with no desired salary the salary rule has nothing and
-    the scan goes on: without the agreement permission there is no current-pay rule for it to reach."""
+    """Current pay is refused wherever it sits in the label (`ns.currentPayRe`, checked before the expectation
+    exemption), and without the agreement permission there is no current-pay rule for the scan to reach either."""
     profile = {"preferences": {"current_ctc": "1800000"}}
     without = run_profile_fill(tmp_path, fields=[{"label": label, "kind": "text"}], profile=profile)
     assert without["values"][label] == ""
-    assert outcome_for(without, label) != "filled"
+    assert outcome_for(without, label) == "policy_blocked"
